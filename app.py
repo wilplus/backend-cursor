@@ -35,5 +35,31 @@ app.register_blueprint(user_bp, url_prefix="/user")
 def health():
     return {"status": "ok"}
 
+@app.route("/health/jwks", methods=["GET"])
+def health_jwks():
+    """Health check endpoint to verify JWKS connectivity"""
+    from auth import get_jwks
+    import logging
+    
+    logger = logging.getLogger(__name__)
+    
+    try:
+        jwks = get_jwks()
+        keys_count = len(jwks.get("keys", []))
+        return {
+            "status": "ok",
+            "jwks_accessible": True,
+            "keys_count": keys_count,
+            "supabase_url": config.SUPABASE_URL
+        }, 200
+    except Exception as e:
+        logger.error(f"JWKS health check failed: {str(e)}")
+        return {
+            "status": "error",
+            "jwks_accessible": False,
+            "error": str(e),
+            "supabase_url": config.SUPABASE_URL
+        }, 503
+
 if __name__ == "__main__":
     app.run(debug=not config.is_production, host="0.0.0.0", port=5000)
