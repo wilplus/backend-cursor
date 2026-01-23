@@ -38,26 +38,42 @@ def health():
 @app.route("/health/jwks", methods=["GET"])
 def health_jwks():
     """Health check endpoint to verify JWKS connectivity"""
-    from auth import get_jwks
+    from auth import get_jwks_client, _normalize_supabase_url
     import logging
+    import httpx
     
     logger = logging.getLogger(__name__)
     
     try:
-        jwks = get_jwks()
+        # Test JWKS connectivity by initializing the client
+        jwks_client = get_jwks_client()
+        
+        # Try to fetch JWKS to verify connectivity
+        supabase_url = _normalize_supabase_url(config.SUPABASE_URL)
+        jwks_url = f"{supabase_url}/auth/v1/.well-known/jwks.json"
+        
+        # Make a direct request to verify the endpoint is accessible
+        response = httpx.get(jwks_url, timeout=5)
+        response.raise_for_status()
+        jwks = response.json()
         keys_count = len(jwks.get("keys", []))
+        
         return {
             "status": "ok",
             "jwks_accessible": True,
             "keys_count": keys_count,
+            "jwks_url": jwks_url,
             "supabase_url": config.SUPABASE_URL
         }, 200
     except Exception as e:
         logger.error(f"JWKS health check failed: {str(e)}")
+        supabase_url = _normalize_supabase_url(config.SUPABASE_URL) if config.SUPABASE_URL else "not configured"
+        jwks_url = f"{supabase_url}/auth/v1/.well-known/jwks.json" if config.SUPABASE_URL else "N/A"
         return {
             "status": "error",
             "jwks_accessible": False,
             "error": str(e),
+            "jwks_url": jwks_url,
             "supabase_url": config.SUPABASE_URL
         }, 503
 

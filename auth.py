@@ -1,18 +1,16 @@
 import jwt
-import httpx
+from jwt import PyJWKClient
 from functools import wraps
 from flask import request, jsonify
 from config import Config
 import sentry_sdk
 import logging
-import time
 
 config = Config()
 logger = logging.getLogger(__name__)
 
-# Cache for JWKS
-_jwks_cache = None
-_jwks_cache_expiry = None
+# Global JWKS client (PyJWKClient handles caching automatically)
+_jwks_client = None
 
 def _normalize_supabase_url(url):
     """Ensure Supabase URL has proper protocol"""
@@ -28,81 +26,61 @@ def _normalize_supabase_url(url):
     
     return url
 
-def get_jwks():
-    """Fetch JWKS from Supabase"""
-    global _jwks_cache, _jwks_cache_expiry
+def get_jwks_client():
+    """Get or create the JWKS client"""
+    global _jwks_client
     
-    # Return cached JWKS if still valid (cache for 1 hour)
-    if _jwks_cache and _jwks_cache_expiry and time.time() < _jwks_cache_expiry:
-        logger.debug("Using cached JWKS")
-        return _jwks_cache
+    if _jwks_client is None:
+        try:
+            # Normalize URL to ensure it has protocol
+            supabase_url = _normalize_supabase_url(config.SUPABASE_URL)
+            jwks_url = f"{supabase_url}/auth/v1/.well-known/jwks.json"
+            
+            logger.info(f"Initializing JWKS client with URL: {jwks_url}")
+            
+            # PyJWKClient automatically handles:
+            # - Caching of JWKS
+            # - Key rotation
+            # - Error handling
+            # - Retries
+            _jwks_client = PyJWKClient(
+                jwks_url,
+                cache_jwks=True,
+                max_cached_keys=5,
+                cache_ttl=3600  # Cache for 1 hour
+            )
+            
+            logger.info("JWKS client initialized successfully")
+        except Exception as e:
+            error_msg = f"Failed to initialize JWKS client: {str(e)}"
+            logger.error(error_msg)
+            sentry_sdk.capture_exception(e)
+            raise Exception(f"JWKS client initialization failed: {str(e)}")
     
-    try:
-        # Normalize URL to ensure it has protocol
-        supabase_url = _normalize_supabase_url(config.SUPABASE_URL)
-        jwks_url = f"{supabase_url}/auth/v1/.well-known/jwks.json"
-        
-        logger.info(f"Fetching JWKS from: {jwks_url}")
-        
-        response = httpx.get(jwks_url, timeout=10)
-        response.raise_for_status()
-        
-        _jwks_cache = response.json()
-        _jwks_cache_expiry = time.time() + 3600  # 1 hour cache
-        
-        logger.info(f"Successfully fetched JWKS with {len(_jwks_cache.get('keys', []))} keys")
-        return _jwks_cache
-        
-    except httpx.TimeoutException:
-        supabase_url = _normalize_supabase_url(config.SUPABASE_URL) if config.SUPABASE_URL else "unknown"
-        jwks_url = f"{supabase_url}/.well-known/jwks.json"
-        error_msg = f"Timeout while fetching JWKS from {jwks_url}"
-        logger.error(error_msg)
-        sentry_sdk.capture_message(error_msg, level="error")
-        raise Exception(f"JWKS fetch timeout: Unable to reach Supabase JWKS endpoint. Check network connectivity.")
-    except httpx.RequestError as e:
-        error_msg = f"Network error while fetching JWKS: {str(e)}"
-        logger.error(error_msg)
-        sentry_sdk.capture_exception(e)
-        raise Exception(f"JWKS fetch failed: Network error. Verify SUPABASE_URL is correct and network access is available.")
-    except httpx.HTTPStatusError as e:
-        error_msg = f"HTTP {e.response.status_code} while fetching JWKS: {e.response.text}"
-        logger.error(error_msg)
-        sentry_sdk.capture_message(error_msg, level="error")
-        raise Exception(f"JWKS fetch failed: HTTP {e.response.status_code}. Verify SUPABASE_URL is correct.")
-    except Exception as e:
-        error_msg = f"Unexpected error fetching JWKS: {str(e)}"
-        logger.error(error_msg)
-        sentry_sdk.capture_exception(e)
-        raise Exception(f"Failed to fetch JWKS: {str(e)}")
+    return _jwks_client
 
 def get_signing_key(token):
-    """Get the signing key for a JWT token from JWKS"""
+    """Get the signing key for a JWT token from JWKS using PyJWKClient"""
     try:
-        jwks = get_jwks()
-        unverified_header = jwt.get_unverified_header(token)
-        token_kid = unverified_header.get("kid")
+        jwks_client = get_jwks_client()
         
-        logger.debug(f"Looking for key with kid: {token_kid}")
+        # PyJWKClient automatically:
+        # - Fetches the JWKS if not cached
+        # - Finds the correct key by kid from the token header
+        # - Handles key rotation
+        signing_key = jwks_client.get_signing_key_from_jwt(token)
         
-        if not jwks.get("keys"):
-            raise Exception("JWKS contains no keys")
+        logger.debug(f"Successfully retrieved signing key for token")
+        return signing_key.key
         
-        for key in jwks.get("keys", []):
-            if key.get("kid") == token_kid:
-                logger.debug(f"Found matching key with kid: {token_kid}")
-                return jwt.algorithms.RSAAlgorithm.from_jwk(key)
-        
-        available_kids = [k.get("kid") for k in jwks.get("keys", [])]
-        error_msg = f"Unable to find key with kid '{token_kid}'. Available kids: {available_kids}"
-        logger.warning(error_msg)
-        raise Exception(error_msg)
     except jwt.DecodeError as e:
         logger.error(f"Failed to decode JWT header: {str(e)}")
         raise Exception(f"Invalid token format: {str(e)}")
     except Exception as e:
-        logger.error(f"Error getting signing key: {str(e)}")
-        raise
+        error_msg = f"Error getting signing key: {str(e)}"
+        logger.error(error_msg)
+        sentry_sdk.capture_exception(e)
+        raise Exception(f"Failed to get signing key from JWKS: {str(e)}")
 
 def verify_supabase_token(token):
     """Verify Supabase JWT token and return payload"""
@@ -117,10 +95,12 @@ def verify_supabase_token(token):
         logger.debug(f"Verifying token with issuer: {issuer}")
         
         # Verify token
+        # Supabase uses ES256 (Elliptic Curve) algorithm, but we support both
+        # PyJWKClient automatically returns the correct key type
         payload = jwt.decode(
             token,
             signing_key,
-            algorithms=["RS256"],
+            algorithms=["ES256", "RS256"],  # Support both ES256 and RS256
             audience="authenticated",
             issuer=issuer,
             options={"verify_exp": True, "verify_aud": True, "verify_iss": True}
