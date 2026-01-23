@@ -1,0 +1,50 @@
+from flask import Blueprint, request, jsonify
+from auth import require_auth
+from services.db import db
+import sentry_sdk
+
+user_bp = Blueprint("user", __name__)
+
+@user_bp.route("/profile", methods=["GET"])
+@require_auth
+def get_profile():
+    """Get user profile with summary stats"""
+    try:
+        user_id = request.user_id
+        
+        profile = db.get_user_profile(user_id)
+        
+        # Format response
+        return jsonify({
+            "user": {
+                "id": profile.get("user_id", user_id)
+            },
+            "total_recordings": profile.get("total_recordings", 0),
+            "latest_recordings": profile.get("latest_recordings", [])
+        }), 200
+        
+    except Exception as e:
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "PROFILE_ERROR", "error": str(e)}), 500
+
+@user_bp.route("/recordings", methods=["GET"])
+@require_auth
+def get_recordings():
+    """Get user recordings with pagination"""
+    try:
+        user_id = request.user_id
+        
+        limit = request.args.get("limit", default=10, type=int)
+        offset = request.args.get("offset", default=0, type=int)
+        
+        recordings = db.get_user_recordings(user_id, limit=limit, offset=offset)
+        
+        return jsonify({
+            "recordings": recordings,
+            "limit": limit,
+            "offset": offset
+        }), 200
+        
+    except Exception as e:
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "RECORDINGS_ERROR", "error": str(e)}), 500

@@ -1,0 +1,72 @@
+# Speech Analysis Coaching Backend API
+
+Flask backend API for a speech-analysis coaching app, deployed on Railway.
+
+## Setup
+
+1. Install dependencies:
+```bash
+pip install -r requirements.txt
+```
+
+2. Copy `.env.example` to `.env` and fill in your configuration:
+```bash
+cp .env.example .env
+```
+
+3. Set environment variables:
+- `SUPABASE_URL`: Your Supabase project URL
+- `SUPABASE_SERVICE_ROLE_KEY`: Supabase service role key
+- `SUPABASE_JWT_SECRET`: Supabase JWT secret
+- `OPENAI_API_KEY`: OpenAI API key
+- `RESEND_API_KEY`: Resend API key
+- `RESEND_FROM_EMAIL`: Email address to send from
+- `ADMIN_EMAIL`: Admin email to receive notifications
+- `SENTRY_DSN`: Sentry DSN (optional)
+- `ENV`: `production`, `development`, or `staging`
+- `SEND_EMAILS`: `true` or `false`
+
+## Running Locally
+
+```bash
+python app.py
+```
+
+## Deployment on Railway
+
+1. Connect your repository to Railway
+2. Set all environment variables in Railway dashboard
+3. Railway will automatically detect the `Procfile` and deploy
+
+## API Endpoints
+
+### Auth
+- `POST /auth/signup` - Sign up new user
+- `POST /auth/login` - Login user
+- `POST /auth/reset-password` - Trigger password reset
+
+### Session
+- `POST /session/start` - Start new session
+- `POST /session/abandon` - Abandon active session
+- `GET /session/status` - Get session status
+
+### Questions
+- `GET /questions/pre-recording` - Get pre-recording questions
+- `POST /questions/pre-recording/answers` - Submit pre-answers
+- `POST /questions/post-recording/answers` - Submit post-answers and generate report
+
+### Recordings
+- `POST /recordings/upload` - Upload recording and analyze
+- `GET /recordings/<recording_id>` - Get recording details
+- `GET /recordings/<recording_id>/audio-url` - Get signed audio URL
+
+### User
+- `GET /user/profile` - Get user profile
+- `GET /user/recordings` - Get user recordings
+
+## Development Mode
+
+In non-production environments (`ENV != "production"`):
+- Audio files are not stored
+- OpenAI calls are skipped (mock responses)
+- Emails are not sent if `SEND_EMAILS=false`
