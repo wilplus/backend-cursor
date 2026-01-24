@@ -139,10 +139,15 @@ def submit_post_answers():
         )
         
         # Update recording with final report
-        db.update_recording(recording_id, {
-            "coaching_report": final_report,
-            "trend_sentence": trend_sentence
-        })
+        # Only include fields that exist in the database
+        update_data = {}
+        if final_report:
+            update_data["coaching_report"] = final_report
+        if trend_sentence:
+            update_data["trend_sentence"] = trend_sentence
+        
+        if update_data:
+            db.update_recording(recording_id, update_data)
         
         # Mark session as completed
         db.complete_session(session_id)

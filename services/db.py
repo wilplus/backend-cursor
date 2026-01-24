@@ -92,12 +92,22 @@ class DatabaseService:
     
     def update_recording(self, recording_id: str, data: dict):
         """Update a recording record"""
-        result = self.client.table("recordings")\
-            .update(data)\
-            .eq("id", recording_id)\
-            .execute()
-        
-        return result.data[0] if result.data else None
+        try:
+            result = self.client.table("recordings")\
+                .update(data)\
+                .eq("id", recording_id)\
+                .execute()
+            
+            return result.data[0] if result.data else None
+        except Exception as e:
+            # Log the error but don't fail silently
+            # This helps identify missing columns or other schema issues
+            sentry_sdk.capture_exception(e)
+            error_msg = str(e)
+            # If it's a column doesn't exist error, provide helpful message
+            if "column" in error_msg.lower() and "does not exist" in error_msg.lower():
+                raise Exception(f"Database schema error: {error_msg}. Please ensure all required columns exist in the recordings table.")
+            raise
     
     def get_recording(self, recording_id: str, user_id: str = None):
         """Get a recording by ID, optionally verifying ownership"""
