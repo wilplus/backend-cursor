@@ -228,11 +228,26 @@ def get_recording(recording_id):
         filler_count = filler_data.get("total", 0) if isinstance(filler_data, dict) else 0
         filler_breakdown = filler_data.get("breakdown", {}) if isinstance(filler_data, dict) else {}
         
+        # Get audio URL - use audio_url from database, or generate signed URL if storage_path exists
+        audio_url = recording.get("audio_url")
+        if not audio_url and recording.get("storage_path"):
+            # If audio_url is missing but storage_path exists, generate signed URL
+            try:
+                audio_url = db.create_signed_url(
+                    config.AUDIO_BUCKET_NAME,
+                    recording.get("storage_path"),
+                    config.SIGNED_URL_EXPIRY_SECONDS
+                )
+            except Exception:
+                # If signed URL generation fails, leave audio_url as None
+                audio_url = None
+        
         return jsonify({
             "recording_id": recording_id,
             "session_id": session_id,
             "status": "completed" if recording.get("coaching_report") else "pending",
             "transcription_text": recording.get("transcription_text", ""),
+            "audio_url": audio_url,  # Include audio URL for playback
             "metrics": {
                 "wpm": recording.get("words_per_minute", 0),
                 "filler_count": filler_count,
@@ -255,7 +270,7 @@ def get_recording(recording_id):
 @recordings_bp.route("/<recording_id>/audio-url", methods=["GET"])
 @require_auth
 def get_audio_url(recording_id):
-    """Get signed URL for audio file"""
+    """Get signed URL for audio file (or return existing public URL)"""
     try:
         user_id = request.user_id
         
@@ -264,21 +279,39 @@ def get_audio_url(recording_id):
         if not recording:
             return jsonify({"code": "RECORDING_NOT_FOUND", "error": "Recording not found"}), 404
         
+        # First, check if audio_url already exists (public URL or dev placeholder)
+        audio_url = recording.get("audio_url")
+        if audio_url:
+            # If it's a dev placeholder, return it as-is
+            if audio_url.startswith("dev-placeholder://"):
+                return jsonify({
+                    "signed_url": audio_url,
+                    "expires_in": None,
+                    "note": "Development mode - placeholder URL"
+                }), 200
+            # If it's a public URL, return it
+            if audio_url.startswith("http://") or audio_url.startswith("https://"):
+                return jsonify({
+                    "signed_url": audio_url,
+                    "expires_in": None,
+                    "note": "Public URL"
+                }), 200
+        
+        # If no audio_url, try to generate signed URL from storage_path
         storage_path = recording.get("storage_path")
-        if not storage_path:
-            return jsonify({"code": "NO_AUDIO", "error": "Audio file not available"}), 404
+        if storage_path:
+            signed_url = db.create_signed_url(
+                config.AUDIO_BUCKET_NAME,
+                storage_path,
+                config.SIGNED_URL_EXPIRY_SECONDS
+            )
+            return jsonify({
+                "signed_url": signed_url,
+                "expires_in": config.SIGNED_URL_EXPIRY_SECONDS
+            }), 200
         
-        # Create signed URL
-        signed_url = db.create_signed_url(
-            config.AUDIO_BUCKET_NAME,
-            storage_path,
-            config.SIGNED_URL_EXPIRY_SECONDS
-        )
-        
-        return jsonify({
-            "signed_url": signed_url,
-            "expires_in": config.SIGNED_URL_EXPIRY_SECONDS
-        }), 200
+        # No audio available
+        return jsonify({"code": "NO_AUDIO", "error": "Audio file not available"}), 404
         
     except Exception as e:
         sentry_sdk.capture_exception(e)
