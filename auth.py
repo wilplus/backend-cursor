@@ -58,6 +58,18 @@ def get_jwks_client():
 def get_signing_key(token):
     """Get the signing key for a JWT token from JWKS using PyJWKClient"""
     try:
+        # First, check the token algorithm
+        unverified_header = jwt.get_unverified_header(token)
+        algorithm = unverified_header.get("alg")
+        
+        # If token uses HS256 (HMAC), use JWT secret instead of JWKS
+        if algorithm == "HS256":
+            if not config.SUPABASE_JWT_SECRET:
+                raise Exception("HS256 token requires SUPABASE_JWT_SECRET but it's not configured")
+            logger.debug("Token uses HS256, verifying with JWT secret")
+            return config.SUPABASE_JWT_SECRET
+        
+        # For ES256/RS256, use JWKS
         jwks_client = get_jwks_client()
         
         # PyJWKClient automatically:
@@ -91,12 +103,21 @@ def verify_supabase_token(token):
         logger.debug(f"Verifying token with issuer: {issuer}")
         
         # Verify token
-        # Supabase uses ES256 (Elliptic Curve) algorithm, but we support both
-        # PyJWKClient automatically returns the correct key type
+        # Check algorithm to determine which algorithms to allow
+        unverified_header = jwt.get_unverified_header(token)
+        algorithm = unverified_header.get("alg")
+        
+        if algorithm == "HS256":
+            # HS256 uses symmetric key (JWT secret)
+            algorithms = ["HS256"]
+        else:
+            # ES256/RS256 use asymmetric keys from JWKS
+            algorithms = ["ES256", "RS256"]
+        
         payload = jwt.decode(
             token,
             signing_key,
-            algorithms=["ES256", "RS256"],  # Support both ES256 and RS256
+            algorithms=algorithms,
             audience="authenticated",
             issuer=issuer,
             options={"verify_exp": True, "verify_aud": True, "verify_iss": True}
