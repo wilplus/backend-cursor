@@ -39,16 +39,12 @@ def get_jwks_client():
             logger.info(f"Initializing JWKS client with URL: {jwks_url}")
             
             # PyJWKClient automatically handles:
-            # - Caching of JWKS
+            # - Caching of JWKS (enabled by default)
             # - Key rotation
             # - Error handling
             # - Retries
-            _jwks_client = PyJWKClient(
-                jwks_url,
-                cache_jwks=True,
-                max_cached_keys=5,
-                cache_ttl=3600  # Cache for 1 hour
-            )
+            # Simple initialization - PyJWKClient handles caching automatically
+            _jwks_client = PyJWKClient(jwks_url)
             
             logger.info("JWKS client initialized successfully")
         except Exception as e:
