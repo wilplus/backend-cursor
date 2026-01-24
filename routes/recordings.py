@@ -121,7 +121,8 @@ def upload_recording():
             "user_id": user_id,
             "session_id": session_id,
             "transcription_text": transcript_text,
-            "duration_seconds": actual_duration,
+            "duration": actual_duration,  # duration column (NOT NULL)
+            "duration_seconds": actual_duration,  # duration_seconds column (if exists)
             "words_per_minute": wpm,
             "filler_words_count": {
                 "breakdown": filler_breakdown,
