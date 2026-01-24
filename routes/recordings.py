@@ -117,12 +117,15 @@ def upload_recording():
         )
         
         # Create recording record
+        # Convert duration to integer (database expects integer, not float)
+        duration_int = int(round(actual_duration))
+        
         recording_data = {
             "user_id": user_id,
             "session_id": session_id,
             "transcription_text": transcript_text,
-            "duration": actual_duration,  # duration column (NOT NULL)
-            "duration_seconds": actual_duration,  # duration_seconds column (if exists)
+            "duration": duration_int,  # duration column (NOT NULL, INTEGER type)
+            "duration_seconds": actual_duration,  # duration_seconds column (if exists, can be float)
             "words_per_minute": wpm,
             "filler_words_count": {
                 "breakdown": filler_breakdown,
