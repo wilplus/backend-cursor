@@ -54,11 +54,18 @@ def upload_recording():
         # In production: upload to storage, transcribe, validate duration
         # In dev: skip storage and OpenAI, use mock data
         if config.is_production:
-            # Upload to Supabase Storage
+            # Upload to Supabase Storage first
             storage_path = f"{user_id}/{session_id}{ext}"
             audio_file.seek(0)
             audio_data = audio_file.read()
             db.upload_audio(config.AUDIO_BUCKET_NAME, storage_path, audio_data, content_type=audio_file.content_type or "audio/webm")
+            
+            # Get public URL for the uploaded file
+            # Construct public URL: {SUPABASE_URL}/storage/v1/object/public/{bucket}/{path}
+            # This is a permanent URL that doesn't expire (if bucket is public)
+            # If bucket is private, we'll use storage_path and generate signed URLs on-demand via /audio-url endpoint
+            supabase_url = config.SUPABASE_URL.rstrip('/')
+            audio_url = f"{supabase_url}/storage/v1/object/public/{config.AUDIO_BUCKET_NAME}/{storage_path}"
             
             # Transcribe with Whisper
             audio_file.seek(0)
@@ -80,7 +87,10 @@ def upload_recording():
             # Dev mode: mock data
             transcript_text = "This is a mock transcription for development purposes. The user spoke about their presentation and how they felt nervous but prepared."
             actual_duration = float(duration_seconds) if duration_seconds else 45.0
-            storage_path = None  # Not stored in dev
+            storage_path = None
+            # In dev mode, use a placeholder URL or empty string
+            # Since audio_url is NOT NULL, we'll use a placeholder
+            audio_url = f"dev-placeholder://{user_id}/{session_id}{ext}"
         
         # Compute metrics deterministically
         wpm = compute_wpm(transcript_text, actual_duration)
@@ -119,7 +129,8 @@ def upload_recording():
             },
             "classification": classification_result["classification"],
             "confidence": classification_result["confidence"],
-            "storage_path": storage_path
+            "audio_url": audio_url,  # Use audio_url instead of storage_path
+            "storage_path": storage_path  # Keep storage_path for reference if needed
         }
         
         recording = db.create_recording(recording_data)
