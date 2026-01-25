@@ -276,6 +276,26 @@ class DatabaseService:
         
         return list(set([a["question_id"] for a in answers.data]))
     
+    def get_recent_question_set_ids(self, user_id: str, limit: int = 5) -> List[int]:
+        """Get recently used question set IDs to avoid repetition"""
+        # Get recent recordings
+        recordings = self.client.table("recordings")\
+            .select("id")\
+            .eq("user_id", user_id)\
+            .order("created_at", desc=True)\
+            .limit(limit * 2)\
+            .execute()
+        
+        if not recordings.data:
+            return []
+        
+        recording_ids = [r["id"] for r in recordings.data]
+        
+        # Get post answers from these recordings
+        # Note: We'll need to store question_set_id in post_answers or in a separate table
+        # For now, return empty list (will be improved when question_set_id is stored)
+        return []
+    
     def save_post_answers(self, session_id: str, recording_id: str, answers: list):
         """Save post-recording answers"""
         records = [

@@ -149,28 +149,20 @@ def upload_recording():
             .eq("id", session_id)\
             .execute()
         
-        # Get post-questions based on classification
-        classification = classification_result["classification"]
+        # Get post-questions from question set pool
+        from services.post_questions_service import select_post_question_set, generate_post_questions_from_set
         
-        # Get recent question IDs to avoid repeats
-        recent_question_ids = db.get_recent_post_question_ids(user_id, limit=3)
+        # Get recently used question set IDs (to avoid repetition)
+        recent_set_ids = db.get_recent_question_set_ids(user_id, limit=5)
         
-        post_questions = db.get_post_questions(
-            user_id=user_id,
-            classification=classification,
-            exclude_question_ids=recent_question_ids
-        )
+        # Select a question set
+        selected_set = select_post_question_set(user_id, recent_set_ids)
         
-        # Ensure exactly 3 questions (allow repeats if needed)
-        while len(post_questions) < 3:
-            # Get more questions without exclusion
-            additional = db.get_post_questions(user_id, classification, exclude_question_ids=[])
-            if additional:
-                post_questions.extend(additional[:3 - len(post_questions)])
-            else:
-                break
+        # Generate questions from the set
+        post_questions = generate_post_questions_from_set(selected_set)
         
-        post_questions = post_questions[:3]
+        # Store question set ID in session for later reference (optional)
+        # This helps track which set was used for analytics
         
         return jsonify({
             "recording_id": recording_id,
