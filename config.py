@@ -34,6 +34,9 @@ class Config:
     AUDIO_BUCKET_NAME = "audio_recordings"
     SIGNED_URL_EXPIRY_SECONDS = 3600
     
+    # Admin Dashboard
+    ADMIN_DASHBOARD_URL = os.getenv("ADMIN_DASHBOARD_URL", "https://your-admin-dashboard.com")
+    
     @property
     def is_production(self):
         return self.ENV == "production"
