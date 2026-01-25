@@ -121,16 +121,35 @@ class DatabaseService:
         return result.data[0] if result.data else None
     
     def get_user_recordings(self, user_id: str, limit: int = 10, offset: int = 0):
-        """Get recordings for a user"""
+        """Get recordings for a user with pagination"""
+        # Get paginated recordings with count
+        # Supabase PostgREST returns count in headers when using count=exact
         result = self.client.table("recordings")\
-            .select("*")\
+            .select("*", count="exact")\
             .eq("user_id", user_id)\
             .order("created_at", desc=True)\
             .limit(limit)\
             .offset(offset)\
             .execute()
         
-        return result.data
+        # Extract total count from response
+        # The count is typically in the response metadata or we can get it from the count property
+        total = getattr(result, 'count', None)
+        if total is None:
+            # Fallback: if count not available, we'll need to do a separate count query
+            count_result = self.client.table("recordings")\
+                .select("id", count="exact")\
+                .eq("user_id", user_id)\
+                .limit(1)\
+                .execute()
+            total = getattr(count_result, 'count', len(result.data) if result.data else 0)
+        
+        return {
+            "items": result.data,
+            "total": total if total is not None else len(result.data),
+            "limit": limit,
+            "offset": offset
+        }
     
     def get_prior_recordings_for_trend(self, user_id: str, exclude_recording_id: str = None):
         """Get prior recordings for trend computation (need >=2)"""

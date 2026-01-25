@@ -37,12 +37,16 @@ def get_recordings():
         limit = request.args.get("limit", default=10, type=int)
         offset = request.args.get("offset", default=0, type=int)
         
-        recordings = db.get_user_recordings(user_id, limit=limit, offset=offset)
+        # Get recordings with pagination info
+        result = db.get_user_recordings(user_id, limit=limit, offset=offset)
         
+        # Return in format expected by frontend
         return jsonify({
-            "recordings": recordings,
-            "limit": limit,
-            "offset": offset
+            "recordings": result.get("items", []),
+            "total": result.get("total", 0),
+            "limit": result.get("limit", limit),
+            "offset": result.get("offset", offset),
+            "itemsCount": len(result.get("items", []))
         }), 200
         
     except Exception as e:
