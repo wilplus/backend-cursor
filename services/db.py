@@ -423,6 +423,33 @@ class DatabaseService:
         
         return result.data[0] if result.data else None
     
+    def get_user_admin_context(self, user_id: str):
+        """Get admin notes and context for a user"""
+        # Get professional notes
+        notes_result = self.client.table("professional_notes")\
+            .select("*")\
+            .eq("user_id", user_id)\
+            .execute()
+        
+        # Get custom instructions
+        tech_result = self.client.table("professional_notes_report_tech")\
+            .select("*")\
+            .eq("user_id", user_id)\
+            .execute()
+        
+        # Get specific questions
+        questions_result = self.client.table("professional_notes_specific_questions")\
+            .select("*")\
+            .eq("user_id", user_id)\
+            .execute()
+        
+        return {
+            "general_notes": notes_result.data[0].get("notes") if notes_result.data else None,
+            "custom_instructions": tech_result.data[0].get("custom_instructions") if tech_result.data else None,
+            "max_words": tech_result.data[0].get("max_words", 120) if tech_result.data else 120,
+            "specific_questions": questions_result.data if questions_result.data else []
+        }
+    
     def get_session(self, session_id: str, user_id: str = None):
         """Get a session by ID"""
         query = self.client.table("recording_sessions").select("*").eq("id", session_id)

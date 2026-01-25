@@ -213,6 +213,9 @@ def submit_post_answers():
             for ans in post_answers
         ]
         
+        # Get admin context for personalized analysis
+        admin_context = db.get_user_admin_context(user_id)
+        
         final_report = openai_service.generate_final_report(
             transcript=transcript,
             pre_answers=pre_answers_formatted,
@@ -220,7 +223,9 @@ def submit_post_answers():
             wpm=wpm,
             filler_count=filler_count,
             filler_breakdown=filler_breakdown,
-            trend_sentence=trend_sentence
+            trend_sentence=trend_sentence,
+            user_id=user_id,
+            admin_context=admin_context
         )
         
         # Update recording with final report

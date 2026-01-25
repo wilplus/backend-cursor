@@ -71,6 +71,17 @@ class EmailService:
             email_lines.append(f"Rationale: {q.get('rationale', '')}")
             email_lines.append("")
         
+        # Add feedback link
+        # You can customize this URL based on your admin dashboard
+        admin_dashboard_url = config.ADMIN_DASHBOARD_URL if hasattr(config, 'ADMIN_DASHBOARD_URL') else "https://your-admin-dashboard.com"
+        feedback_url = f"{admin_dashboard_url}/recordings/{recording_id}/feedback?user_id={user_id}"
+        
+        email_lines.append("")
+        email_lines.append("=== Provide Feedback ===")
+        email_lines.append(f"Click here to provide feedback for this user: {feedback_url}")
+        email_lines.append("")
+        email_lines.append("Feedback will be used to personalize future analysis for this user.")
+        
         email_body = "\n".join(email_lines)
         
         # Prepare payload for database

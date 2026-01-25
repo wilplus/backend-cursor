@@ -148,16 +148,24 @@ Respond with ONLY valid JSON in this exact format:
         wpm: float,
         filler_count: int,
         filler_breakdown: dict,
-        trend_sentence: str = None
+        trend_sentence: str = None,
+        user_id: str = None,
+        admin_context: dict = None
     ):
         """
         Generate final coaching report (≤120 words, enforced via truncation).
+        Now includes admin feedback if available.
         """
         if not config.is_production:
             return "Mock coaching report: Your speech analysis shows a WPM of {:.1f} and {} filler words. Consider slowing down slightly for better clarity.".format(wpm, filler_count)
         
         if not self.client:
             raise Exception("OpenAI client not initialized")
+        
+        # Get admin context if not provided
+        if admin_context is None and user_id:
+            from services.db import db
+            admin_context = db.get_user_admin_context(user_id)
         
         # Build context
         pre_answers_text = "\n".join([
@@ -178,6 +186,9 @@ Respond with ONLY valid JSON in this exact format:
         else:
             pacing_instruction = "keep current pace"
         
+        # Get max words from admin context or default
+        max_words = admin_context.get("max_words", 120) if admin_context else 120
+        
         prompt = f"""Generate a concise, analytical coaching report for a speech analysis session.
 
 Transcript:
@@ -193,13 +204,31 @@ Metrics:
 - Words per minute: {wpm}
 - Filler words count: {filler_count}
 - Filler breakdown: {filler_breakdown}
+"""
+        
+        # Add admin observations if available
+        if admin_context and admin_context.get("general_notes"):
+            prompt += f"""
+Admin Observations:
+{admin_context['general_notes']}
 
+"""
+        
+        # Add custom instructions if available
+        if admin_context and admin_context.get("custom_instructions"):
+            prompt += f"""
+Custom Analysis Instructions:
+{admin_context['custom_instructions']}
+
+"""
+        
+        prompt += f"""
 Requirements:
 1. Include quantitative metrics (WPM and filler count)
 2. Include exactly ONE pacing adjustment sentence with: "{pacing_instruction}"
 3. {"Include trend sentence: " + trend_sentence if trend_sentence else "Do NOT include a trend sentence (insufficient prior data)."}
 4. Keep report analytical and neutral (not motivational)
-5. Maximum 120 words (you will be truncated if longer)
+5. Maximum {max_words} words (you will be truncated if longer)
 
 Generate the report:"""
         
@@ -216,10 +245,10 @@ Generate the report:"""
             
             report = response.choices[0].message.content.strip()
             
-            # Enforce 120-word limit via truncation
+            # Enforce word limit via truncation (use max_words from admin context or default 120)
             words = report.split()
-            if len(words) > 120:
-                report = " ".join(words[:120])
+            if len(words) > max_words:
+                report = " ".join(words[:max_words])
             
             return report
         except Exception as e:
