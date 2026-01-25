@@ -23,15 +23,30 @@ class DatabaseService:
             return result.data[0]
         return None
     
-    def create_session(self, user_id: str):
-        """Create a new recording session"""
+    def create_session(self, user_id: str, cursor: float = None, mode: str = None, 
+                       mood: str = None, readiness: int = None, inspiration_needed: bool = None):
+        """Create a new recording session with optional questionnaire data"""
+        session_data = {
+            "user_id": user_id,
+            "pre_questions_completed": False,
+            "recording_completed": False,
+            "post_questions_completed": False
+        }
+        
+        # Add questionnaire data if provided
+        if cursor is not None:
+            session_data["cursor"] = cursor
+        if mode is not None:
+            session_data["mode"] = mode
+        if mood is not None:
+            session_data["mood"] = mood
+        if readiness is not None:
+            session_data["readiness"] = readiness
+        if inspiration_needed is not None:
+            session_data["inspiration_needed"] = inspiration_needed
+        
         result = self.client.table("recording_sessions")\
-            .insert({
-                "user_id": user_id,
-                "pre_questions_completed": False,
-                "recording_completed": False,
-                "post_questions_completed": False
-            })\
+            .insert(session_data)\
             .execute()
         
         return result.data[0] if result.data else None
@@ -58,6 +73,28 @@ class DatabaseService:
             .execute()
         
         return result.data
+    
+    def create_pre_question(self, session_id: str, question_text: str, order_index: int, 
+                           command_id: int = None, cursor: float = None, mode: str = None):
+        """Create a personalized pre-recording question"""
+        question_data = {
+            "question_text": question_text,
+            "order_index": order_index
+        }
+        
+        # Add optional metadata
+        if command_id is not None:
+            question_data["command_id"] = command_id
+        if cursor is not None:
+            question_data["cursor"] = cursor
+        if mode is not None:
+            question_data["mode"] = mode
+        
+        result = self.client.table("pre_recording_questions")\
+            .insert(question_data)\
+            .execute()
+        
+        return result.data[0] if result.data else None
     
     def save_pre_answers(self, session_id: str, answers: list):
         """Save pre-recording answers"""

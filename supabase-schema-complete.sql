@@ -220,6 +220,47 @@ BEGIN
     ALTER TABLE public.recording_sessions 
     ADD COLUMN post_questions_completed BOOLEAN DEFAULT FALSE NOT NULL;
   END IF;
+
+  -- Questionnaire columns
+  -- mood
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_schema = 'public' AND table_name = 'recording_sessions' AND column_name = 'mood'
+  ) THEN
+    ALTER TABLE public.recording_sessions ADD COLUMN mood TEXT;
+  END IF;
+
+  -- readiness
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_schema = 'public' AND table_name = 'recording_sessions' AND column_name = 'readiness'
+  ) THEN
+    ALTER TABLE public.recording_sessions ADD COLUMN readiness INTEGER;
+  END IF;
+
+  -- inspiration_needed
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_schema = 'public' AND table_name = 'recording_sessions' AND column_name = 'inspiration_needed'
+  ) THEN
+    ALTER TABLE public.recording_sessions ADD COLUMN inspiration_needed BOOLEAN;
+  END IF;
+
+  -- cursor
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_schema = 'public' AND table_name = 'recording_sessions' AND column_name = 'cursor'
+  ) THEN
+    ALTER TABLE public.recording_sessions ADD COLUMN cursor NUMERIC;
+  END IF;
+
+  -- mode
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_schema = 'public' AND table_name = 'recording_sessions' AND column_name = 'mode'
+  ) THEN
+    ALTER TABLE public.recording_sessions ADD COLUMN mode TEXT;
+  END IF;
 END $$;
 
 -- ============================================================================

@@ -1,16 +1,23 @@
 from flask import Blueprint, request, jsonify
 from auth import require_auth
 from services.db import db
+from services.question_service import (
+    calculate_cursor, determine_mode, select_commands, generate_question_from_command
+)
 import sentry_sdk
+import logging
 
+logger = logging.getLogger(__name__)
 session_bp = Blueprint("session", __name__)
 
 @session_bp.route("/start", methods=["POST"])
 @require_auth
 def start_session():
-    """Start a new recording session"""
+    """Start a new recording session with optional questionnaire"""
     try:
         user_id = request.user_id
+        data = request.get_json() or {}
+        questionnaire = data.get("questionnaire")
         
         # Check for active session
         active_session = db.get_active_session(user_id)
@@ -18,22 +25,94 @@ def start_session():
         if active_session:
             # Return existing active session
             session_id = active_session["id"]
-        else:
-            # Create new session
-            session = db.create_session(user_id)
-            if not session:
-                return jsonify({"code": "SESSION_CREATE_FAILED", "error": "Failed to create session"}), 500
-            session_id = session["id"]
+            cursor = active_session.get("cursor")
+            mode = active_session.get("mode")
+            
+            # Get existing pre-questions for this session (if stored)
+            # For now, we'll generate new ones based on stored cursor/mode
+            if cursor is not None and mode is not None:
+                selected_commands = select_commands(cursor, mode, num_questions=3)
+                pre_questions = []
+                for idx, command in enumerate(selected_commands):
+                    question_text = generate_question_from_command(command, cursor, mode)
+                    pre_questions.append({
+                        "id": f"generated-{idx}",
+                        "question_text": question_text,
+                        "order_index": idx
+                    })
+            else:
+                # Fallback to default questions
+                pre_questions = db.get_pre_questions(limit=3)
+            
+            return jsonify({
+                "session_id": session_id,
+                "pre_questions": pre_questions,
+                "cursor": cursor,
+                "mode": mode
+            }), 200
         
-        # Get pre-questions
-        pre_questions = db.get_pre_questions(limit=3)
+        # Calculate cursor and mode from questionnaire
+        if questionnaire:
+            mood = questionnaire.get("mood", "positive")
+            readiness = questionnaire.get("readiness", 5)
+            inspiration_needed = questionnaire.get("inspiration_needed", False)
+            
+            # Validate inputs
+            if mood not in ["positive", "negative"]:
+                mood = "positive"
+            if not isinstance(readiness, int) or readiness < 1 or readiness > 10:
+                readiness = 5
+            if not isinstance(inspiration_needed, bool):
+                inspiration_needed = False
+            
+            cursor = calculate_cursor(mood, readiness)
+            mode = determine_mode(inspiration_needed)
+        else:
+            # Default values if no questionnaire
+            cursor = 0.5
+            mode = "open"
+            mood = None
+            readiness = None
+            inspiration_needed = None
+        
+        # Select commands based on cursor and mode
+        selected_commands = select_commands(cursor, mode, num_questions=3)
+        
+        # Generate personalized questions
+        pre_questions = []
+        for idx, command in enumerate(selected_commands):
+            question_text = generate_question_from_command(command, cursor, mode)
+            
+            pre_questions.append({
+                "id": f"generated-{idx}",  # Temporary ID, could be stored in DB
+                "question_text": question_text,
+                "order_index": idx
+            })
+        
+        # Create new session with questionnaire data
+        session = db.create_session(
+            user_id=user_id,
+            cursor=cursor,
+            mode=mode,
+            mood=mood,
+            readiness=readiness,
+            inspiration_needed=inspiration_needed
+        )
+        
+        if not session:
+            return jsonify({"code": "SESSION_CREATE_FAILED", "error": "Failed to create session"}), 500
+        
+        session_id = session["id"]
         
         return jsonify({
             "session_id": session_id,
-            "pre_questions": pre_questions
+            "pre_questions": pre_questions,
+            "cursor": cursor,
+            "mode": mode
         }), 200
         
     except Exception as e:
+        logger.error(f"Session start error: {str(e)}")
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "SESSION_ERROR", "error": str(e)}), 500
 
