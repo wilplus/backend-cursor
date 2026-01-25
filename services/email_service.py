@@ -73,17 +73,84 @@ class EmailService:
             email_lines.append("")
         
         # Add feedback link
-        # You can customize this URL based on your admin dashboard
-        admin_dashboard_url = config.ADMIN_DASHBOARD_URL if hasattr(config, 'ADMIN_DASHBOARD_URL') else "https://your-admin-dashboard.com"
-        feedback_url = f"{admin_dashboard_url}/recordings/{recording_id}/feedback?user_id={user_id}"
+        # Format: https://app.willonski.com/recordings/{recording_id}/feedback?user_id={user_id}
+        # Or: http://localhost:3000/recordings/{recording_id}/feedback?user_id={user_id} (dev)
+        frontend_url = config.FRONTEND_URL
+        feedback_url = f"{frontend_url}/recordings/{recording_id}/feedback?user_id={user_id}"
         
         email_lines.append("")
         email_lines.append("=== Provide Feedback ===")
-        email_lines.append(f"Click here to provide feedback for this user: {feedback_url}")
+        email_lines.append(f"Click here to provide feedback for this user:")
+        email_lines.append(feedback_url)
         email_lines.append("")
         email_lines.append("Feedback will be used to personalize future analysis for this user.")
         
         email_body = "\n".join(email_lines)
+        
+        # Create HTML version with styled button
+        html_body = f"""
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+        .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+        .header {{ background-color: #4F46E5; color: white; padding: 20px; border-radius: 5px 5px 0 0; }}
+        .content {{ background-color: #f9fafb; padding: 20px; border: 1px solid #e5e7eb; }}
+        .button {{ display: inline-block; background-color: #4F46E5; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; margin: 20px 0; }}
+        .button:hover {{ background-color: #4338CA; }}
+        .info {{ background-color: white; padding: 15px; margin: 10px 0; border-radius: 5px; border-left: 4px solid #4F46E5; }}
+        .footer {{ text-align: center; color: #6b7280; font-size: 12px; margin-top: 20px; }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>New Speech Analysis Session Completed</h1>
+        </div>
+        <div class="content">
+            <div class="info">
+                <strong>Recording ID:</strong> {recording_id}<br>
+                <strong>User ID:</strong> {user_id}
+            </div>
+            
+            <div class="info">
+                <strong>Pre-Recording Answers:</strong><br>
+                {'<br>'.join([f"Q: {ans.get('question_text', 'Question')}<br>A: {ans.get('answer_text', '')}" for ans in pre_answers])}
+            </div>
+            
+            <div class="info">
+                <strong>Post-Recording Answers:</strong><br>
+                {'<br>'.join([f"Q: {ans.get('question_text', 'Question')}<br>A: {ans.get('answer_text', '')}" for ans in post_answers])}
+            </div>
+            
+            <div class="info">
+                <strong>Transcript Preview:</strong><br>
+                {transcript_preview[:300]}...
+            </div>
+            
+            <div class="info">
+                <strong>Final Report:</strong><br>
+                {final_report}
+            </div>
+            
+            <div class="info">
+                <strong>Suggested Questions:</strong><br>
+                {'<br>'.join([f"[{q.get('tag', 'unknown')}] {q.get('question_text', '')}<br>Rationale: {q.get('rationale', '')}" for q in suggested_questions])}
+            </div>
+            
+            <div style="text-align: center; margin: 30px 0;">
+                <a href="{feedback_url}" class="button">Provide Feedback</a>
+            </div>
+        </div>
+        <div class="footer">
+            <p>This is an automated notification from Willab.</p>
+            <p>Click the button above to provide feedback and improve AI analysis for this user.</p>
+        </div>
+    </div>
+</body>
+</html>
+"""
         
         # Prepare payload for database
         payload = {
@@ -98,12 +165,13 @@ class EmailService:
         }
         
         try:
-            # Send email using resend.Emails.send()
+            # Send email using resend.Emails.send() with both text and HTML
             params = {
                 "from": config.RESEND_FROM_EMAIL,
                 "to": [config.ADMIN_EMAIL],
                 "subject": f"Speech Analysis Session Completed - Session {session_id[:8]}",
-                "text": email_body
+                "text": email_body,
+                "html": html_body
             }
             
             email_response = resend.Emails.send(params)

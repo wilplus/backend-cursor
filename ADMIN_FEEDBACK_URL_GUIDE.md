@@ -157,15 +157,16 @@ function getToken() {
 
 ### 2. Update Email Link
 
-The email already includes the feedback link. Make sure `ADMIN_DASHBOARD_URL` is set in your config:
+The email already includes the feedback link. Make sure `FRONTEND_URL` is set in your config:
 
 **In Railway environment variables:**
-- `ADMIN_DASHBOARD_URL` = `https://your-admin-dashboard.com`
+- `FRONTEND_URL` = `https://app.willonski.com` (production)
+- `FRONTEND_URL` = `http://localhost:3000` (development)
 
-**Or update `config.py`:**
+**Already configured in `config.py`:**
 
 ```python
-ADMIN_DASHBOARD_URL = os.getenv("ADMIN_DASHBOARD_URL", "https://your-admin-dashboard.com")
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
 ```
 
 ### 3. API Route (if using Next.js API routes)
@@ -247,6 +248,8 @@ curl -X GET https://flask-backend-production-ab37.up.railway.app/admin/user/5402
 
 1. **If you have a frontend:** Implement the feedback form page
 2. **If you don't have a frontend yet:** Use the curl commands to test
-3. **Set ADMIN_DASHBOARD_URL** in Railway environment variables
+3. **Set FRONTEND_URL** in Railway environment variables:
+   - Development: `FRONTEND_URL=http://localhost:3000`
+   - Production: `FRONTEND_URL=https://app.willonski.com`
 
 The backend is ready - you just need the frontend form! 🚀
