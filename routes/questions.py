@@ -94,6 +94,76 @@ def submit_post_answers():
         filler_count = filler_data.get("total", 0) if isinstance(filler_data, dict) else 0
         filler_breakdown = filler_data.get("breakdown", {}) if isinstance(filler_data, dict) else {}
         
+        # Calculate performance score
+        from services.scoring_service import (
+            normalize_scores, calculate_performance_score, calculate_bonuses,
+            calculate_final_kpi, calculate_pacing_score, calculate_attitude_score
+        )
+        
+        # Extract answers (Q1 = scale, Q2 = binary)
+        # Sort answers by question_id to ensure consistent ordering
+        # For now, we'll use the order they come in (first = scale, second = binary)
+        # In production, you might want to query questions to verify types
+        q1_answer = None
+        q2_answer = None
+        
+        if len(answers) >= 1:
+            q1_answer = answers[0].get("answer_text", "3")
+        if len(answers) >= 2:
+            q2_answer = answers[1].get("answer_text", "NO")
+        
+        # Calculate pacing and attitude scores
+        pacing_score = calculate_pacing_score(wpm)
+        classification = recording.get("classification", "uncertain")
+        confidence = recording.get("confidence", "medium")
+        attitude_score = calculate_attitude_score(classification, confidence)
+        
+        # Get pre-recording questionnaire data
+        initial_mood = session.get("mood", "positive")
+        
+        # Get previous performance
+        previous_performance = db.get_previous_performance_score(user_id, recording_id)
+        
+        # Normalize scores
+        normalized = normalize_scores(
+            filler_word_count=filler_count,
+            pacing_score=pacing_score,
+            attitude_score=attitude_score,
+            q1_answer=q1_answer or "3",
+            q2_answer=q2_answer or "NO",
+        )
+        
+        # Calculate performance
+        performance = calculate_performance_score(normalized)
+        
+        # Calculate bonuses
+        bonuses = calculate_bonuses(
+            performance=performance,
+            initial_mood=initial_mood,
+            filler_word_count=filler_count,
+            awareness_bonus=normalized['awareness_bonus'],
+            previous_performance=previous_performance,
+            user_streak=0,  # TODO: Implement streak tracking
+        )
+        
+        # Final KPI
+        final_kpi = calculate_final_kpi(performance, bonuses)
+        
+        # Store performance score
+        performance_data = {
+            "performance": performance,
+            "final_kpi": final_kpi,
+            "bonuses": bonuses,
+            "raw_scores": {
+                "filler_score": normalized['filler_score'],
+                "pacing_score": normalized['pacing_score'],
+                "attitude_score": normalized['attitude_score'],
+                "reflection_score": normalized['reflection_score'],
+            }
+        }
+        
+        db.save_performance_score(recording_id, performance_data)
+        
         # Compute trend if possible
         from utils.metrics import compute_trend_sentence
         prior_recordings = db.get_prior_recordings_for_trend(user_id, exclude_recording_id=recording_id)
@@ -191,7 +261,21 @@ def submit_post_answers():
         
         return jsonify({
             "message": "Answers saved and report generated",
-            "report": final_report
+            "report": final_report,
+            "recording_id": recording_id,
+            "session_id": session_id,
+            "post_questions_completed": True,
+            "performance_score": {
+                "performance": performance,
+                "final_kpi": final_kpi,
+                "bonuses": bonuses,
+                "raw_scores": {
+                    "filler_score": normalized['filler_score'],
+                    "pacing_score": normalized['pacing_score'],
+                    "attitude_score": normalized['attitude_score'],
+                    "reflection_score": normalized['reflection_score'],
+                }
+            }
         }), 200
         
     except Exception as e:

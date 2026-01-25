@@ -309,6 +309,71 @@ class DatabaseService:
         
         return result.data[0] if result.data else None
     
+    def get_previous_performance_score(self, user_id: str, exclude_recording_id: str = None):
+        """Get the most recent performance score for a user"""
+        # Get user's recordings ordered by date
+        query = self.client.table("recordings")\
+            .select("id")\
+            .eq("user_id", user_id)\
+            .order("created_at", desc=True)\
+            .limit(10)\
+            .execute()
+        
+        if not query.data:
+            return None
+        
+        # Find the previous recording (exclude current if specified)
+        previous_recording_id = None
+        for rec in query.data:
+            if rec["id"] != exclude_recording_id:
+                previous_recording_id = rec["id"]
+                break
+        
+        if not previous_recording_id:
+            return None
+        
+        # Get performance score for that recording
+        perf_result = self.client.table("performance_scores")\
+            .select("performance")\
+            .eq("recording_id", previous_recording_id)\
+            .execute()
+        
+        if perf_result.data:
+            return float(perf_result.data[0].get("performance", 0))
+        
+        return None
+    
+    def save_performance_score(self, recording_id: str, performance_data: dict):
+        """Save performance score to database"""
+        score_data = {
+            "recording_id": recording_id,
+            "performance": performance_data["performance"],
+            "final_kpi": performance_data["final_kpi"],
+            "resilience_bonus": performance_data.get("bonuses", {}).get("resilience", 0),
+            "awareness_bonus": performance_data.get("bonuses", {}).get("awareness", 0),
+            "progress_bonus": performance_data.get("bonuses", {}).get("progress", 0),
+            "streak_bonus": performance_data.get("bonuses", {}).get("streak", 0),
+            "filler_score": performance_data.get("raw_scores", {}).get("filler_score", 0),
+            "pacing_score": performance_data.get("raw_scores", {}).get("pacing_score", 0),
+            "attitude_score": performance_data.get("raw_scores", {}).get("attitude_score", 0),
+            "reflection_score": performance_data.get("raw_scores", {}).get("reflection_score", 0),
+        }
+        
+        result = self.client.table("performance_scores")\
+            .insert(score_data)\
+            .execute()
+        
+        return result.data[0] if result.data else None
+    
+    def get_performance_score(self, recording_id: str):
+        """Get performance score for a recording"""
+        result = self.client.table("performance_scores")\
+            .select("*")\
+            .eq("recording_id", recording_id)\
+            .execute()
+        
+        return result.data[0] if result.data else None
+    
     def get_session(self, session_id: str, user_id: str = None):
         """Get a session by ID"""
         query = self.client.table("recording_sessions").select("*").eq("id", session_id)

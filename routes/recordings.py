@@ -242,6 +242,27 @@ def get_recording(recording_id):
                 # If signed URL generation fails, leave audio_url as None
                 audio_url = None
         
+        # Get performance score if it exists
+        performance_score = db.get_performance_score(recording_id)
+        performance_data = None
+        if performance_score:
+            performance_data = {
+                "performance": float(performance_score.get("performance", 0)),
+                "final_kpi": float(performance_score.get("final_kpi", 0)),
+                "bonuses": {
+                    "resilience": float(performance_score.get("resilience_bonus", 0)),
+                    "awareness": float(performance_score.get("awareness_bonus", 0)),
+                    "progress": float(performance_score.get("progress_bonus", 0)),
+                    "streak": float(performance_score.get("streak_bonus", 0)),
+                },
+                "raw_scores": {
+                    "filler_score": float(performance_score.get("filler_score", 0)),
+                    "pacing_score": float(performance_score.get("pacing_score", 0)),
+                    "attitude_score": float(performance_score.get("attitude_score", 0)),
+                    "reflection_score": float(performance_score.get("reflection_score", 0)),
+                }
+            }
+        
         return jsonify({
             "recording_id": recording_id,
             "session_id": session_id,
@@ -257,6 +278,7 @@ def get_recording(recording_id):
                 "report": recording.get("coaching_report"),
                 "trend_sentence": recording.get("trend_sentence")
             },
+            "performance_score": performance_data,  # Include performance score if available
             "answers": {
                 "pre": pre_answers_formatted,
                 "post": post_answers_formatted
