@@ -51,8 +51,12 @@ def start_session():
                 "mode": mode
             }), 200
         
-        # Calculate cursor and mode from questionnaire
+        # ✅ CRITICAL: Determine if questionnaire was submitted
         if questionnaire:
+            # Questionnaire provided = pre-questions completed
+            pre_questions_completed = True
+            session_status = "recording_ready"  # Start at recording_ready, not pre_questions_pending
+            
             mood = questionnaire.get("mood", "positive")
             readiness = questionnaire.get("readiness", 5)
             inspiration_needed = questionnaire.get("inspiration_needed", False)
@@ -68,35 +72,42 @@ def start_session():
             cursor = calculate_cursor(mood, readiness)
             mode = determine_mode(inspiration_needed)
         else:
-            # Default values if no questionnaire
-            cursor = 0.5
-            mode = "open"
+            # No questionnaire = old flow (backward compatibility)
+            pre_questions_completed = False
+            session_status = "pre_questions_pending"
+            cursor = None
+            mode = None
             mood = None
             readiness = None
             inspiration_needed = None
         
-        # Select commands based on cursor and mode
-        selected_commands = select_commands(cursor, mode, num_questions=3)
-        
-        # Generate personalized questions
+        # Generate personalized questions (only if questionnaire provided)
         pre_questions = []
-        for idx, command in enumerate(selected_commands):
-            question_text = generate_question_from_command(command, cursor, mode)
+        if questionnaire:
+            # Select commands and generate 1 prompt (not 3 questions)
+            selected_commands = select_commands(cursor, mode, num_questions=1)
             
-            pre_questions.append({
-                "id": f"generated-{idx}",  # Temporary ID, could be stored in DB
-                "question_text": question_text,
-                "order_index": idx
-            })
+            if selected_commands:
+                question_text = generate_question_from_command(selected_commands[0], cursor, mode)
+                pre_questions.append({
+                    "id": f"generated-0",
+                    "question_text": question_text,
+                    "order_index": 0
+                })
+        else:
+            # Fallback to default questions if no questionnaire
+            pre_questions = db.get_pre_questions(limit=3)
         
-        # Create new session with questionnaire data
+        # ✅ CRITICAL: Create session with pre_questions_completed = True if questionnaire
         session = db.create_session(
             user_id=user_id,
             cursor=cursor,
             mode=mode,
             mood=mood,
             readiness=readiness,
-            inspiration_needed=inspiration_needed
+            inspiration_needed=inspiration_needed,
+            pre_questions_completed=pre_questions_completed,  # ✅ TRUE if questionnaire
+            status=session_status  # ✅ 'recording_ready' if questionnaire
         )
         
         if not session:

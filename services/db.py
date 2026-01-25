@@ -24,14 +24,19 @@ class DatabaseService:
         return None
     
     def create_session(self, user_id: str, cursor: float = None, mode: str = None, 
-                       mood: str = None, readiness: int = None, inspiration_needed: bool = None):
+                       mood: str = None, readiness: int = None, inspiration_needed: bool = None,
+                       pre_questions_completed: bool = False, status: str = None):
         """Create a new recording session with optional questionnaire data"""
         session_data = {
             "user_id": user_id,
-            "pre_questions_completed": False,
+            "pre_questions_completed": pre_questions_completed,  # ✅ Set based on questionnaire
             "recording_completed": False,
             "post_questions_completed": False
         }
+        
+        # Set status if provided
+        if status is not None:
+            session_data["status"] = status
         
         # Add questionnaire data if provided
         if cursor is not None:
