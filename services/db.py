@@ -495,19 +495,62 @@ class DatabaseService:
     
     def create_signed_url(self, bucket: str, path: str, expires_in: int = 3600):
         """Create a signed URL for a file in Supabase Storage"""
+        import logging
+        logger = logging.getLogger(__name__)
+        
         try:
-            result = self.client.storage.from_(bucket).create_signed_url(
+            # Supabase Python client create_signed_url returns a response object
+            response = self.client.storage.from_(bucket).create_signed_url(
                 path, expires_in
             )
-            # Handle different response formats
-            if isinstance(result, dict):
-                return result.get("signedURL") or result.get("signed_url") or result.get("url")
-            elif isinstance(result, str):
-                return result
+            
+            # Log the response for debugging
+            logger.info(f"Signed URL response type: {type(response)}, response: {response}")
+            
+            # Supabase Python SDK returns dict with 'signedUrl' key (camelCase)
+            # Format: {'signedUrl': 'https://...'}
+            signed_url = None
+            
+            # Try direct dict access first (most common)
+            if isinstance(response, dict):
+                signed_url = response.get("signedUrl") or response.get("signedURL") or response.get("signed_url") or response.get("url")
+            # Try accessing .data attribute if it exists
+            elif hasattr(response, 'data'):
+                data = response.data
+                if isinstance(data, dict):
+                    signed_url = data.get("signedUrl") or data.get("signedURL") or data.get("signed_url") or data.get("url")
+                elif isinstance(data, str):
+                    signed_url = data
+            # Try string
+            elif isinstance(response, str):
+                signed_url = response
+            # Try object attributes
             else:
-                # Try to get URL from result object
-                return getattr(result, "signedURL", None) or getattr(result, "signed_url", None) or str(result)
+                signed_url = getattr(response, "signedUrl", None) or getattr(response, "signedURL", None) or getattr(response, "signed_url", None) or getattr(response, "url", None)
+            
+            # If still no URL, try to inspect the response more deeply
+            if not signed_url:
+                logger.warning(f"Could not extract signed URL, response structure: {dir(response) if hasattr(response, '__dict__') else 'N/A'}")
+                # Last resort: try to convert to string and parse
+                response_str = str(response)
+                if "http" in response_str:
+                    # Try to extract URL from string representation
+                    import re
+                    urls = re.findall(r'https?://[^\s<>"{}|\\^`\[\]]+', response_str)
+                    if urls:
+                        signed_url = urls[0]
+            
+            if not signed_url:
+                raise Exception(f"Could not extract signed URL from response: {response} (type: {type(response)})")
+            
+            # Ensure it's a full URL
+            if not signed_url.startswith("http"):
+                raise Exception(f"Signed URL is not a full URL: {signed_url}")
+            
+            logger.info(f"Successfully created signed URL for {bucket}/{path}: {signed_url[:80]}...")
+            return signed_url
         except Exception as e:
+            logger.error(f"Error creating signed URL for {bucket}/{path}: {str(e)}")
             sentry_sdk.capture_exception(e)
             raise Exception(f"Failed to create signed URL: {str(e)}")
     

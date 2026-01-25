@@ -298,30 +298,37 @@ def get_recording(recording_id):
         filler_count = filler_data.get("total", 0) if isinstance(filler_data, dict) else 0
         filler_breakdown = filler_data.get("breakdown", {}) if isinstance(filler_data, dict) else {}
         
-        # Get audio URL - use audio_url from database, or generate signed URL if storage_path exists
-        audio_url = recording.get("audio_url")
+        # Get audio URL - try signed URL first, fallback to public URL
+        import logging
+        logger = logging.getLogger(__name__)
         
-        # If audio_url is a public URL that might not work, or if it's missing, try to generate signed URL
-        if not audio_url or (audio_url and not audio_url.startswith("http")):
-            # Try to generate signed URL from storage_path
-            storage_path = recording.get("storage_path")
-            if storage_path:
-                try:
-                    audio_url = db.create_signed_url(
-                        config.AUDIO_BUCKET_NAME,
-                        storage_path,
-                        config.SIGNED_URL_EXPIRY_SECONDS
-                    )
-                except Exception as e:
-                    import logging
-                    logger = logging.getLogger(__name__)
-                    logger.error(f"Failed to generate signed URL for recording {recording_id}: {str(e)}")
-                    # If signed URL generation fails, try public URL as fallback
-                    if storage_path:
-                        supabase_url = config.SUPABASE_URL.rstrip('/')
-                        audio_url = f"{supabase_url}/storage/v1/object/public/{config.AUDIO_BUCKET_NAME}/{storage_path}"
-                    else:
-                        audio_url = None
+        audio_url = None
+        storage_path = recording.get("storage_path")
+        
+        # Try to generate signed URL from storage_path (works for both public and private buckets)
+        if storage_path:
+            try:
+                audio_url = db.create_signed_url(
+                    config.AUDIO_BUCKET_NAME,
+                    storage_path,
+                    config.SIGNED_URL_EXPIRY_SECONDS
+                )
+                logger.info(f"Generated signed URL for recording {recording_id}: {audio_url[:80]}...")
+            except Exception as e:
+                logger.warning(f"Failed to generate signed URL for recording {recording_id}: {str(e)}")
+                # If signed URL generation fails, try public URL as fallback (works if bucket is public)
+                supabase_url = config.SUPABASE_URL.rstrip('/')
+                audio_url = f"{supabase_url}/storage/v1/object/public/{config.AUDIO_BUCKET_NAME}/{storage_path}"
+                logger.info(f"Using public URL fallback: {audio_url}")
+        
+        # If no storage_path, check if audio_url exists in database
+        if not audio_url:
+            audio_url = recording.get("audio_url")
+            if audio_url:
+                # If it's not a full URL, it might be invalid
+                if not audio_url.startswith("http"):
+                    logger.warning(f"Audio URL in database is not a full URL: {audio_url}")
+                    audio_url = None
         
         # Get performance score if it exists
         performance_score = db.get_performance_score(recording_id)
@@ -351,13 +358,19 @@ def get_recording(recording_id):
         coaching_report = recording.get("coaching_report")
         
         logger.info(f"Recording {recording_id}: transcription_length={len(transcription_text)}, coaching_report_length={len(coaching_report) if coaching_report else 0}, has_coaching_report={bool(coaching_report)}")
+        logger.info(f"Audio URL for recording {recording_id}: {audio_url[:100] if audio_url else 'None'}...")
+        
+        # Ensure audio_url is valid before returning
+        if audio_url and not audio_url.startswith("http"):
+            logger.error(f"Invalid audio_url format: {audio_url}")
+            audio_url = None
         
         return jsonify({
             "recording_id": recording_id,
             "session_id": session_id,
             "status": "completed" if coaching_report else "pending",
             "transcription_text": transcription_text,
-            "audio_url": audio_url,  # Include audio URL for playback
+            "audio_url": audio_url,  # Include audio URL for playback (must be full URL or null)
             "metrics": {
                 "wpm": recording.get("words_per_minute", 0),
                 "filler_count": filler_count,
