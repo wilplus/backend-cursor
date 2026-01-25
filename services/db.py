@@ -1,5 +1,6 @@
 from supabase import create_client, Client
 from config import Config
+from typing import List
 import sentry_sdk
 
 config = Config()
