@@ -23,9 +23,29 @@ CREATE TABLE IF NOT EXISTS pre_recording_questions (
 CREATE TABLE IF NOT EXISTS post_recording_questions (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   question_text TEXT NOT NULL,
-  question_type TEXT CHECK (question_type IN ('reflective', 'amplifying')),
+  question_type TEXT,  -- Can be 'reflective', 'amplifying', 'scale', 'binary', 'free_text'
   created_at TIMESTAMP DEFAULT NOW()
 );
+
+-- Add columns to post_recording_questions if they don't exist
+DO $$ 
+BEGIN
+  -- question_set_id
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_schema = 'public' AND table_name = 'post_recording_questions' AND column_name = 'question_set_id'
+  ) THEN
+    ALTER TABLE public.post_recording_questions ADD COLUMN question_set_id INTEGER;
+  END IF;
+
+  -- order_index
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_schema = 'public' AND table_name = 'post_recording_questions' AND column_name = 'order_index'
+  ) THEN
+    ALTER TABLE public.post_recording_questions ADD COLUMN order_index INTEGER;
+  END IF;
+END $$;
 
 -- Recording sessions (state tracking)
 CREATE TABLE IF NOT EXISTS recording_sessions (

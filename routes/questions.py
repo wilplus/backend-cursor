@@ -80,8 +80,23 @@ def submit_post_answers():
         if not session:
             return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found"}), 404
         
+        # Validate question IDs are valid UUIDs before saving
+        for ans in answers:
+            question_id = ans.get("question_id")
+            if not question_id:
+                return jsonify({"code": "INVALID_INPUT", "error": "Missing question_id in answers"}), 400
+            # Basic UUID format check (36 chars, 4 hyphens)
+            if len(question_id) != 36 or question_id.count('-') != 4:
+                return jsonify({
+                    "code": "INVALID_INPUT", 
+                    "error": f"Invalid question_id format (must be UUID): {question_id}. Make sure you're using the question IDs returned from the upload response."
+                }), 400
+        
         # Save post answers
-        db.save_post_answers(session_id, recording_id, answers)
+        try:
+            db.save_post_answers(session_id, recording_id, answers)
+        except ValueError as e:
+            return jsonify({"code": "INVALID_INPUT", "error": str(e)}), 400
         
         # Get all context for final report
         pre_answers = db.get_pre_answers(session_id)

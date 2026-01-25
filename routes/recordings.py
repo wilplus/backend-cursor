@@ -158,8 +158,27 @@ def upload_recording():
         # Select a question set
         selected_set = select_post_question_set(user_id, recent_set_ids)
         
-        # Generate questions from the set
-        post_questions = generate_post_questions_from_set(selected_set)
+        # Generate questions from the set (temporary structure)
+        temp_questions = generate_post_questions_from_set(selected_set)
+        
+        # Create actual question records in database and get real UUIDs
+        post_questions = []
+        for temp_q in temp_questions:
+            question_record = db.create_post_question(
+                question_text=temp_q["question_text"],
+                question_type=temp_q["question_type"],
+                question_set_id=temp_q.get("question_set_id"),
+                order_index=temp_q.get("order_index")
+            )
+            
+            if question_record:
+                post_questions.append({
+                    "id": question_record["id"],  # Real UUID from database
+                    "question_text": question_record["question_text"],
+                    "question_type": question_record.get("question_type", temp_q["question_type"]),
+                    "question_set_id": temp_q.get("question_set_id"),
+                    "order_index": temp_q.get("order_index")
+                })
         
         # Store question set ID in session for later reference (optional)
         # This helps track which set was used for analytics

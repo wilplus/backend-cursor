@@ -297,8 +297,36 @@ class DatabaseService:
         # For now, return empty list (will be improved when question_set_id is stored)
         return []
     
+    def create_post_question(self, question_text: str, question_type: str, question_set_id: int = None, order_index: int = None):
+        """Create a post-recording question record in the database"""
+        question_data = {
+            "question_text": question_text,
+            "question_type": question_type,  # "scale", "binary", "free_text"
+        }
+        
+        # Add optional metadata if columns exist
+        if question_set_id is not None:
+            question_data["question_set_id"] = question_set_id
+        if order_index is not None:
+            question_data["order_index"] = order_index
+        
+        result = self.client.table("post_recording_questions")\
+            .insert(question_data)\
+            .execute()
+        
+        return result.data[0] if result.data else None
+    
     def save_post_answers(self, session_id: str, recording_id: str, answers: list):
         """Save post-recording answers"""
+        # Validate that question_ids are valid UUIDs
+        for ans in answers:
+            question_id = ans.get("question_id")
+            if not question_id:
+                raise ValueError(f"Missing question_id in answer: {ans}")
+            # Check if it's a valid UUID format (basic check)
+            if len(question_id) != 36 or question_id.count('-') != 4:
+                raise ValueError(f"Invalid question_id format (must be UUID): {question_id}")
+        
         records = [
             {
                 "recording_id": recording_id,
