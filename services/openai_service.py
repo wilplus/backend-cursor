@@ -16,17 +16,23 @@ class OpenAIService:
         Transcribe audio using Whisper-1.
         Returns transcript and duration (from Whisper response).
         """
-        if not config.is_production:
-            # Mock response in dev
-            return {
-                "text": "This is a mock transcription for development purposes. The user spoke about their presentation and how they felt nervous but prepared.",
-                "duration": 45.0
-            }
+        # Dev mode mock response (COMMENTED OUT - using real OpenAI)
+        # if not config.is_production:
+        #     # Mock response in dev
+        #     return {
+        #         "text": "This is a mock transcription for development purposes. The user spoke about their presentation and how they felt nervous but prepared.",
+        #         "duration": 45.0
+        #     }
         
         if not self.client:
             raise Exception("OpenAI client not initialized")
         
         try:
+            # Log that we're calling real OpenAI
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.info("✅ Calling OpenAI Whisper API for transcription...")
+            
             # Read audio file
             audio_file.seek(0)
             audio_data = audio_file.read()

@@ -84,13 +84,41 @@ def upload_recording():
             # Use Whisper duration as source of truth
             actual_duration = whisper_duration
         else:
-            # Dev mode: mock data
-            transcript_text = "This is a mock transcription for development purposes. The user spoke about their presentation and how they felt nervous but prepared."
-            actual_duration = float(duration_seconds) if duration_seconds else 45.0
-            storage_path = None
+            # Dev mode: mock data (COMMENTED OUT - using real OpenAI)
+            # transcript_text = "This is a mock transcription for development purposes. The user spoke about their presentation and how they felt nervous but prepared."
+            # actual_duration = float(duration_seconds) if duration_seconds else 45.0
+            # storage_path = None
             # In dev mode, use a placeholder URL or empty string
             # Since audio_url is NOT NULL, we'll use a placeholder
-            audio_url = f"dev-placeholder://{user_id}/{session_id}{ext}"
+            # audio_url = f"dev-placeholder://{user_id}/{session_id}{ext}"
+            
+            # Use real OpenAI even in dev mode
+            # Upload to Supabase Storage first
+            storage_path = f"{user_id}/{session_id}{ext}"
+            audio_file.seek(0)
+            audio_data = audio_file.read()
+            db.upload_audio(config.AUDIO_BUCKET_NAME, storage_path, audio_data, content_type=audio_file.content_type or "audio/webm")
+            
+            # Get public URL for the uploaded file
+            supabase_url = config.SUPABASE_URL.rstrip('/')
+            audio_url = f"{supabase_url}/storage/v1/object/public/{config.AUDIO_BUCKET_NAME}/{storage_path}"
+            
+            # Transcribe with Whisper
+            audio_file.seek(0)
+            transcript_result = openai_service.transcribe_audio(audio_file, filename)
+            transcript_text = transcript_result["text"]
+            whisper_duration = transcript_result["duration"]
+            
+            # Validate duration from Whisper (must be <= 300 seconds)
+            if whisper_duration > config.MAX_RECORDING_DURATION_SECONDS:
+                # Don't save recording, return error
+                return jsonify({
+                    "code": "RECORDING_TOO_LONG",
+                    "error": "Recording exceeds 5 minutes"
+                }), 400
+            
+            # Use Whisper duration as source of truth
+            actual_duration = whisper_duration
         
         # Compute metrics deterministically
         wpm = compute_wpm(transcript_text, actual_duration)
