@@ -162,8 +162,11 @@ Respond with ONLY valid JSON in this exact format:
         Generate final coaching report (≤120 words, enforced via truncation).
         Now includes admin feedback if available.
         """
-        if not config.is_production:
-            return "Mock coaching report: Your speech analysis shows a WPM of {:.1f} and {} filler words. Consider slowing down slightly for better clarity.".format(wpm, filler_count)
+        # Dev mode mock (COMMENTED OUT - using real OpenAI)
+        # if not config.is_production:
+        #     return "Mock coaching report: Your speech analysis shows a WPM of {:.1f} and {} filler words. Consider slowing down slightly for better clarity.".format(wpm, filler_count)
+        
+        # Always use real OpenAI (even in dev mode for testing)
         
         if not self.client:
             raise Exception("OpenAI client not initialized")

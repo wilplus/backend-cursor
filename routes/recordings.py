@@ -324,11 +324,19 @@ def get_recording(recording_id):
                 }
             }
         
+        # Debug logging
+        import logging
+        logger = logging.getLogger(__name__)
+        transcription_text = recording.get("transcription_text", "")
+        coaching_report = recording.get("coaching_report")
+        
+        logger.info(f"Recording {recording_id}: transcription_length={len(transcription_text)}, coaching_report_length={len(coaching_report) if coaching_report else 0}, has_coaching_report={bool(coaching_report)}")
+        
         return jsonify({
             "recording_id": recording_id,
             "session_id": session_id,
-            "status": "completed" if recording.get("coaching_report") else "pending",
-            "transcription_text": recording.get("transcription_text", ""),
+            "status": "completed" if coaching_report else "pending",
+            "transcription_text": transcription_text,
             "audio_url": audio_url,  # Include audio URL for playback
             "metrics": {
                 "wpm": recording.get("words_per_minute", 0),
@@ -336,7 +344,7 @@ def get_recording(recording_id):
                 "filler_breakdown": filler_breakdown
             },
             "analysis": {
-                "report": recording.get("coaching_report"),
+                "report": coaching_report,  # This should be different from transcription
                 "trend_sentence": recording.get("trend_sentence")
             },
             "performance_score": performance_data,  # Include performance score if available
