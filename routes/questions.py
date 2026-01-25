@@ -225,7 +225,8 @@ def submit_post_answers():
             filler_breakdown=filler_breakdown,
             trend_sentence=trend_sentence,
             user_id=user_id,
-            admin_context=admin_context
+            admin_context=admin_context,
+            recording_id=recording_id
         )
         
         # Update recording with final report

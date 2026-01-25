@@ -450,6 +450,20 @@ class DatabaseService:
             "specific_questions": questions_result.data if questions_result.data else []
         }
     
+    def get_user_recording_history(self, user_id: str, exclude_recording_id: str = None, limit: int = 10):
+        """Get user's recording history with performance scores for progress tracking"""
+        query = self.client.table("recordings")\
+            .select("*, performance_scores(*)")\
+            .eq("user_id", user_id)\
+            .order("created_at", desc=True)\
+            .limit(limit)
+        
+        if exclude_recording_id:
+            query = query.neq("id", exclude_recording_id)
+        
+        result = query.execute()
+        return result.data if result.data else []
+    
     def get_session(self, session_id: str, user_id: str = None):
         """Get a session by ID"""
         query = self.client.table("recording_sessions").select("*").eq("id", session_id)

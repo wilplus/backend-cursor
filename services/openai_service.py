@@ -156,11 +156,12 @@ Respond with ONLY valid JSON in this exact format:
         filler_breakdown: dict,
         trend_sentence: str = None,
         user_id: str = None,
-        admin_context: dict = None
+        admin_context: dict = None,
+        recording_id: str = None
     ):
         """
         Generate final coaching report (≤120 words, enforced via truncation).
-        Now includes admin feedback if available.
+        Now includes admin feedback and progress tracking for time-aware analysis.
         """
         # Dev mode mock (COMMENTED OUT - using real OpenAI)
         # if not config.is_production:
@@ -175,6 +176,68 @@ Respond with ONLY valid JSON in this exact format:
         if admin_context is None and user_id:
             from services.db import db
             admin_context = db.get_user_admin_context(user_id)
+        
+        # Get user's recording history for progress tracking
+        progress_context = None
+        if user_id and recording_id:
+            from services.db import db
+            previous_recordings = db.get_user_recording_history(user_id, exclude_recording_id=recording_id, limit=10)
+            
+            if previous_recordings:
+                # Calculate progress metrics
+                previous_scores = []
+                previous_filler_counts = []
+                previous_wpm = []
+                
+                for prev_rec in previous_recordings:
+                    # Get performance score
+                    perf_score = prev_rec.get("performance_scores")
+                    if perf_score and isinstance(perf_score, list) and len(perf_score) > 0:
+                        previous_scores.append(float(perf_score[0].get("final_kpi", 0)))
+                    elif perf_score and isinstance(perf_score, dict):
+                        previous_scores.append(float(perf_score.get("final_kpi", 0)))
+                    
+                    # Get filler count
+                    filler_data = prev_rec.get("filler_words_count", {})
+                    if isinstance(filler_data, dict):
+                        prev_filler = filler_data.get("total", 0)
+                    else:
+                        prev_filler = filler_data if filler_data else 0
+                    if prev_filler:
+                        previous_filler_counts.append(prev_filler)
+                    
+                    # Get WPM
+                    prev_wpm = prev_rec.get("words_per_minute")
+                    if prev_wpm:
+                        previous_wpm.append(float(prev_wpm))
+                
+                # Calculate trends
+                trend_improving = False
+                trend_stable = False
+                trend_declining = False
+                
+                if len(previous_scores) >= 2:
+                    recent_count = min(3, len(previous_scores))
+                    older_count = min(3, len(previous_scores) - recent_count)
+                    if older_count > 0:
+                        recent_avg = sum(previous_scores[:recent_count]) / recent_count
+                        older_avg = sum(previous_scores[recent_count:recent_count + older_count]) / older_count
+                        if recent_avg > older_avg + 0.05:
+                            trend_improving = True
+                        elif abs(recent_avg - older_avg) < 0.05:
+                            trend_stable = True
+                        else:
+                            trend_declining = True
+                
+                progress_context = {
+                    "total_previous_recordings": len(previous_recordings),
+                    "trend_improving": trend_improving,
+                    "trend_stable": trend_stable,
+                    "trend_declining": trend_declining,
+                    "previous_scores": previous_scores,
+                    "previous_filler_counts": previous_filler_counts,
+                    "previous_wpm": previous_wpm
+                }
         
         # Build context
         pre_answers_text = "\n".join([
@@ -218,38 +281,92 @@ Metrics:
         # Add admin observations if available
         if admin_context and admin_context.get("general_notes"):
             prompt += f"""
-Admin Observations:
+**Admin Observations (Important Context):**
 {admin_context['general_notes']}
+
+These observations should guide your analysis. Pay special attention to these patterns.
 
 """
         
         # Add custom instructions if available
         if admin_context and admin_context.get("custom_instructions"):
             prompt += f"""
-Custom Analysis Instructions:
+**Custom Analysis Instructions (Follow These):**
 {admin_context['custom_instructions']}
+
+These are specific instructions for how to analyze this user's recordings. Follow them closely.
 
 """
         
+        # Add progress context for time-aware analysis
+        if progress_context:
+            prompt += f"""
+**User Progress Context:**
+- Total previous recordings analyzed: {progress_context['total_previous_recordings']}
+- Recent performance trend: {"Improving" if progress_context['trend_improving'] else "Stable" if progress_context['trend_stable'] else "Needs attention"}
+"""
+            
+            if progress_context['previous_scores']:
+                avg_score = sum(progress_context['previous_scores']) / len(progress_context['previous_scores'])
+                prompt += f"""
+- Average performance score: {avg_score:.1%}
+- Current performance: Compare to this baseline
+"""
+            
+            if progress_context['previous_filler_counts']:
+                avg_fillers = sum(progress_context['previous_filler_counts']) / len(progress_context['previous_filler_counts'])
+                if filler_count < avg_fillers:
+                    improvement = ((avg_fillers - filler_count) / avg_fillers * 100) if avg_fillers > 0 else 0
+                    prompt += f"""
+- Filler word improvement: User reduced fillers from average of {avg_fillers:.1f} to {filler_count} ({improvement:.0f}% improvement)
+"""
+                elif filler_count > avg_fillers:
+                    prompt += f"""
+- Filler words: Current {filler_count} is above average of {avg_fillers:.1f} - needs attention
+"""
+            
+            if progress_context['previous_wpm']:
+                avg_wpm = sum(progress_context['previous_wpm']) / len(progress_context['previous_wpm'])
+                prompt += f"""
+- Pacing: Average WPM was {avg_wpm:.0f}, current is {wpm:.0f}
+"""
+        
+        # Add specific questions if admin provided them
+        if admin_context and admin_context.get("specific_questions"):
+            post_questions = [q for q in admin_context['specific_questions'] if q.get('question_type') == 'post']
+            if post_questions:
+                prompt += f"""
+**Admin-Suggested Focus Areas:**
+"""
+                for q in post_questions[:3]:  # Limit to 3
+                    prompt += f"- {q.get('question_text', '')}\n"
+        
         prompt += f"""
-Requirements:
-1. Include quantitative metrics (WPM and filler count)
-2. Include exactly ONE pacing adjustment sentence with: "{pacing_instruction}"
-3. {"Include trend sentence: " + trend_sentence if trend_sentence else "Do NOT include a trend sentence (insufficient prior data)."}
-4. Keep report analytical and neutral (not motivational)
-5. Maximum {max_words} words (you will be truncated if longer)
+
+**Requirements:**
+1. Create a progress-aware report that acknowledges improvements or areas needing work
+2. Reference specific changes from previous recordings when relevant (if progress context available)
+3. Follow the admin's custom instructions closely (if provided)
+4. Include quantitative metrics (WPM and filler count)
+5. Include exactly ONE pacing adjustment sentence with: "{pacing_instruction}"
+6. {"Include trend sentence: " + trend_sentence if trend_sentence else "Do NOT include a trend sentence (insufficient prior data)."}
+7. Be encouraging but specific and analytical
+8. Maximum {max_words} words (you will be truncated if longer)
 
 Generate the report:"""
         
         try:
+            # Enhanced system message for progress-aware analysis
+            system_message = "You are an expert speech coach providing personalized, progress-aware feedback. You analyze recordings over time and help users improve based on their history and admin guidance. Create reports that acknowledge progress, reference previous recordings when relevant, and follow admin's specific instructions."
+            
             response = self.client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=[
-                    {"role": "system", "content": "You are a speech analysis coach. Generate analytical, neutral reports."},
+                    {"role": "system", "content": system_message},
                     {"role": "user", "content": prompt}
                 ],
-                temperature=0.3,
-                max_tokens=200
+                temperature=0.7,  # Increased for more personalized responses
+                max_tokens=max_words * 2  # Rough token estimate based on max_words
             )
             
             report = response.choices[0].message.content.strip()
