@@ -6,9 +6,10 @@ config = Config()
 
 class EmailService:
     def __init__(self):
+        # Set Resend API key (required for resend.Emails.send())
         if config.RESEND_API_KEY:
             resend.api_key = config.RESEND_API_KEY
-        self.client = resend.Resend(api_key=config.RESEND_API_KEY) if config.RESEND_API_KEY else None
+        self.api_key_set = bool(config.RESEND_API_KEY)
     
     def send_admin_notification(
         self,
@@ -32,8 +33,8 @@ class EmailService:
                 "sent": False
             }
         
-        if not self.client:
-            raise Exception("Resend client not initialized")
+        if not self.api_key_set:
+            raise Exception("Resend API key not set")
         
         # Build email content (plain text)
         email_lines = [
@@ -97,7 +98,7 @@ class EmailService:
         }
         
         try:
-            # Send email
+            # Send email using resend.Emails.send()
             params = {
                 "from": config.RESEND_FROM_EMAIL,
                 "to": [config.ADMIN_EMAIL],
@@ -105,7 +106,7 @@ class EmailService:
                 "text": email_body
             }
             
-            email_response = self.client.emails.send(**params)
+            email_response = resend.Emails.send(params)
             
             return {
                 "status": "sent",

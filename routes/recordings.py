@@ -71,12 +71,21 @@ def upload_recording():
             
             db.upload_audio(config.AUDIO_BUCKET_NAME, storage_path, audio_data, content_type=content_type)
             
-            # Get public URL for the uploaded file
-            # Construct public URL: {SUPABASE_URL}/storage/v1/object/public/{bucket}/{path}
-            # This is a permanent URL that doesn't expire (if bucket is public)
-            # If bucket is private, we'll use storage_path and generate signed URLs on-demand via /audio-url endpoint
-            supabase_url = config.SUPABASE_URL.rstrip('/')
-            audio_url = f"{supabase_url}/storage/v1/object/public/{config.AUDIO_BUCKET_NAME}/{storage_path}"
+            # Try to create a signed URL (works for both public and private buckets)
+            # If bucket is public, we could use public URL, but signed URLs are more reliable
+            try:
+                audio_url = db.create_signed_url(
+                    config.AUDIO_BUCKET_NAME,
+                    storage_path,
+                    config.SIGNED_URL_EXPIRY_SECONDS
+                )
+            except Exception as e:
+                # Fallback to public URL if signed URL fails
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(f"Failed to create signed URL, using public URL: {str(e)}")
+                supabase_url = config.SUPABASE_URL.rstrip('/')
+                audio_url = f"{supabase_url}/storage/v1/object/public/{config.AUDIO_BUCKET_NAME}/{storage_path}"
             
             # Transcribe with Whisper
             audio_file.seek(0)
@@ -291,17 +300,28 @@ def get_recording(recording_id):
         
         # Get audio URL - use audio_url from database, or generate signed URL if storage_path exists
         audio_url = recording.get("audio_url")
-        if not audio_url and recording.get("storage_path"):
-            # If audio_url is missing but storage_path exists, generate signed URL
-            try:
-                audio_url = db.create_signed_url(
-                    config.AUDIO_BUCKET_NAME,
-                    recording.get("storage_path"),
-                    config.SIGNED_URL_EXPIRY_SECONDS
-                )
-            except Exception:
-                # If signed URL generation fails, leave audio_url as None
-                audio_url = None
+        
+        # If audio_url is a public URL that might not work, or if it's missing, try to generate signed URL
+        if not audio_url or (audio_url and not audio_url.startswith("http")):
+            # Try to generate signed URL from storage_path
+            storage_path = recording.get("storage_path")
+            if storage_path:
+                try:
+                    audio_url = db.create_signed_url(
+                        config.AUDIO_BUCKET_NAME,
+                        storage_path,
+                        config.SIGNED_URL_EXPIRY_SECONDS
+                    )
+                except Exception as e:
+                    import logging
+                    logger = logging.getLogger(__name__)
+                    logger.error(f"Failed to generate signed URL for recording {recording_id}: {str(e)}")
+                    # If signed URL generation fails, try public URL as fallback
+                    if storage_path:
+                        supabase_url = config.SUPABASE_URL.rstrip('/')
+                        audio_url = f"{supabase_url}/storage/v1/object/public/{config.AUDIO_BUCKET_NAME}/{storage_path}"
+                    else:
+                        audio_url = None
         
         # Get performance score if it exists
         performance_score = db.get_performance_score(recording_id)
