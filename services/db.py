@@ -513,12 +513,56 @@ class DatabaseService:
     
     def upload_audio(self, bucket: str, path: str, file_data: bytes, content_type: str = "audio/webm"):
         """Upload audio file to Supabase Storage"""
+        import logging
+        logger = logging.getLogger(__name__)
+        
         try:
+            # Ensure file_data is bytes
+            if not isinstance(file_data, bytes):
+                if isinstance(file_data, bool):
+                    raise ValueError(f"file_data cannot be a boolean. Got: {type(file_data)}, value: {file_data}")
+                file_data = bytes(file_data)
+            
+            # Ensure path is a string
+            if not isinstance(path, str):
+                if isinstance(path, bool):
+                    raise ValueError(f"path cannot be a boolean. Got: {type(path)}, value: {path}")
+                path = str(path)
+            
+            # Ensure bucket is a string
+            if not isinstance(bucket, str):
+                if isinstance(bucket, bool):
+                    raise ValueError(f"bucket cannot be a boolean. Got: {type(bucket)}, value: {bucket}")
+                bucket = str(bucket)
+            
+            # Ensure content_type is a string
+            if not isinstance(content_type, str):
+                if isinstance(content_type, bool):
+                    raise ValueError(f"content_type cannot be a boolean. Got: {type(content_type)}, value: {content_type}")
+                content_type = str(content_type) if content_type else "audio/webm"
+            
+            # Log parameters for debugging
+            logger.info(f"Uploading audio: bucket={bucket} (type: {type(bucket)}), path={path} (type: {type(path)}), content_type={content_type} (type: {type(content_type)}), file_data size={len(file_data)} bytes (type: {type(file_data)})")
+            
+            # Ensure file_options values are correct types
+            # Only include content-type in file_options (upsert might cause encoding issues)
+            file_options = {
+                "content-type": str(content_type)
+            }
+            
+            logger.info(f"file_options: {file_options}")
+            
+            # Supabase Python client expects: upload(path, file=file_data, file_options={...})
+            # Use keyword argument for 'file' parameter
+            # Note: If file already exists, it will be overwritten by default
             result = self.client.storage.from_(bucket).upload(
-                path, file_data, file_options={"content-type": content_type, "upsert": True}
+                path=path,
+                file=file_data,
+                file_options=file_options
             )
             return result
         except Exception as e:
+            logger.error(f"Upload error details: {str(e)}, type: {type(e)}")
             sentry_sdk.capture_exception(e)
             raise Exception(f"Failed to upload audio: {str(e)}")
     

@@ -58,7 +58,18 @@ def upload_recording():
             storage_path = f"{user_id}/{session_id}{ext}"
             audio_file.seek(0)
             audio_data = audio_file.read()
-            db.upload_audio(config.AUDIO_BUCKET_NAME, storage_path, audio_data, content_type=audio_file.content_type or "audio/webm")
+            
+            # Validate audio_data is bytes
+            if not isinstance(audio_data, bytes):
+                return jsonify({"code": "INVALID_AUDIO", "error": "Audio file data is not in bytes format"}), 400
+            
+            # Ensure content_type is a string, not None or boolean
+            content_type = str(audio_file.content_type) if audio_file.content_type else "audio/webm"
+            # Remove any boolean values (convert True/False to string if needed)
+            if content_type in ["True", "False"]:
+                content_type = "audio/webm"
+            
+            db.upload_audio(config.AUDIO_BUCKET_NAME, storage_path, audio_data, content_type=content_type)
             
             # Get public URL for the uploaded file
             # Construct public URL: {SUPABASE_URL}/storage/v1/object/public/{bucket}/{path}
@@ -97,7 +108,18 @@ def upload_recording():
             storage_path = f"{user_id}/{session_id}{ext}"
             audio_file.seek(0)
             audio_data = audio_file.read()
-            db.upload_audio(config.AUDIO_BUCKET_NAME, storage_path, audio_data, content_type=audio_file.content_type or "audio/webm")
+            
+            # Validate audio_data is bytes
+            if not isinstance(audio_data, bytes):
+                return jsonify({"code": "INVALID_AUDIO", "error": "Audio file data is not in bytes format"}), 400
+            
+            # Ensure content_type is a string, not None or boolean
+            content_type = str(audio_file.content_type) if audio_file.content_type else "audio/webm"
+            # Remove any boolean values (convert True/False to string if needed)
+            if content_type in ["True", "False"]:
+                content_type = "audio/webm"
+            
+            db.upload_audio(config.AUDIO_BUCKET_NAME, storage_path, audio_data, content_type=content_type)
             
             # Get public URL for the uploaded file
             supabase_url = config.SUPABASE_URL.rstrip('/')
