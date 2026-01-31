@@ -68,7 +68,39 @@ Admin = JWT email in `admin_users` with `is_active = true`. Create admin: `INSER
 
 ---
 
-## 5. Pre-Recording Questionnaire
+## 5. Auth & "Invalid Refresh Token" after login
+
+**Error:** `AuthApiError: Invalid Refresh Token: Refresh Token Not Found` (400 on `token`).
+
+This comes from **Supabase Auth** in the browser: something is trying to refresh the session with a refresh token that Supabase doesn’t have (stale, wrong project, or never set).
+
+**Common cause:** The frontend calls backend **POST /auth/login**, gets `access_token` and `refresh_token`, but the **Supabase JS client** still has an old refresh token in its storage (e.g. localStorage). When the client refreshes the session (on load or later), it uses that old token → 400.
+
+**Fix (frontend):**
+
+1. **Set the Supabase session from the backend login response**  
+   After a successful `POST /auth/login`, call:
+   ```ts
+   const { access_token, refresh_token } = res.data;
+   await supabase.auth.setSession({ access_token, refresh_token });
+   ```
+   so the client’s stored session matches the tokens you just received.
+
+2. **Optional: clear stale state before login**  
+   Before calling backend login (or on 400 from refresh), sign out and clear storage:
+   ```ts
+   await supabase.auth.signOut({ scope: 'local' });
+   ```
+   then call `POST /auth/login` and then `setSession` as above.
+
+3. **Same project**  
+   Ensure the frontend uses the same **SUPABASE_URL** and **anon key** as the backend (same Supabase project). A token from project A will be “not found” on project B.
+
+**Backend:** `POST /auth/login` returns `{ access_token, refresh_token, expires_in, user }`. No change required on the backend for this error.
+
+---
+
+## 6. Pre-Recording Questionnaire
 
 - **Endpoint:** `POST /session/start`. Optional body: `{ "questionnaire": { "mood": "positive"|"negative", "readiness": 1-10, "inspiration_needed": true|false } }`.
 - **Cursor:** `((readiness - 1) / 9) * mood_multiplier` (1.0 positive, 0.7 negative), range 0–1.
@@ -78,7 +110,7 @@ Admin = JWT email in `admin_users` with `is_active = true`. Create admin: `INSER
 
 ---
 
-## 6. Frontend Fixes (Reference)
+## 7. Frontend Fixes (Reference)
 
 - **Admin feedback TypeScript:** Use `body: JSON.stringify(body)` and `Content-Type: application/json` when proxying to backend; do not pass a plain object as `body`.
 - **Post-question IDs:** Backend returns real UUIDs in `post_questions[].id`. Submit answers with those UUIDs as `question_id`; no change to response shape except IDs are UUIDs.
