@@ -424,6 +424,7 @@ CREATE INDEX IF NOT EXISTS idx_sessions_user_status ON recording_sessions(user_i
 CREATE INDEX IF NOT EXISTS idx_recordings_user ON recordings(user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_active_sessions ON recording_sessions(user_id, status) 
   WHERE status NOT IN ('completed', 'abandoned');
+CREATE INDEX IF NOT EXISTS idx_performance_scores_recording ON performance_scores(recording_id);
 
 -- ============================================================================
 -- SEED DATA (only if tables are empty)
