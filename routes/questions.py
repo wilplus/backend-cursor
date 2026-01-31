@@ -11,12 +11,26 @@ questions_bp = Blueprint("questions", __name__)
 @questions_bp.route("/pre-recording", methods=["GET"])
 @require_auth
 def get_pre_questions():
-    """Get pre-recording questions"""
+    """v1: If session_id query param present, return planned single question (with code, question_type). Else legacy 3 questions."""
     try:
+        session_id = request.args.get("session_id")
+        if session_id:
+            user_id = request.user_id
+            session = db.get_session(session_id, user_id)
+            if not session:
+                return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found"}), 404
+            if session.get("planned_pre_question_id"):
+                questions = [{
+                    "id": session["planned_pre_question_id"],
+                    "code": session.get("planned_pre_question_code_snapshot"),
+                    "question_text": session.get("planned_pre_question_text_snapshot") or "",
+                    "question_type": session.get("planned_pre_question_type_snapshot") or "text_short",
+                    "order_index": 0,
+                }]
+                return jsonify({"questions": questions}), 200
+            # Session has no plan yet; return legacy
         questions = db.get_pre_questions(limit=3)
-        
         return jsonify({"questions": questions}), 200
-        
     except Exception as e:
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "QUESTIONS_ERROR", "error": str(e)}), 500
@@ -24,30 +38,29 @@ def get_pre_questions():
 @questions_bp.route("/pre-recording/answers", methods=["POST"])
 @require_auth
 def submit_pre_answers():
-    """Submit pre-recording answers"""
+    """Submit pre-recording answers. Supports session_id or recording_session_id. v1: fills snapshot columns from session plan."""
     try:
         user_id = request.user_id
-        data = request.get_json()
-        
-        session_id = data.get("session_id")
+        data = request.get_json() or {}
+        session_id = data.get("session_id") or data.get("recording_session_id")
         answers = data.get("answers", [])
-        
         if not session_id:
             return jsonify({"code": "INVALID_INPUT", "error": "session_id required"}), 400
-        
         if not answers or len(answers) == 0:
             return jsonify({"code": "INVALID_INPUT", "error": "answers required"}), 400
-        
-        # Verify session belongs to user
         session = db.get_session(session_id, user_id)
         if not session:
             return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found"}), 404
-        
-        # Save answers
-        db.save_pre_answers(session_id, answers)
-        
+        snapshot_per_answer = []
+        if session.get("planned_pre_question_id") and len(answers) >= 1:
+            snapshot_per_answer = [{
+                "question_text_snapshot": session.get("planned_pre_question_text_snapshot"),
+                "question_type_snapshot": session.get("planned_pre_question_type_snapshot"),
+                "question_code_snapshot": session.get("planned_pre_question_code_snapshot"),
+                "order_index_snapshot": 0,
+            }]
+        db.save_pre_answers(session_id, answers, user_id=user_id, snapshot_per_answer=snapshot_per_answer or None)
         return jsonify({"message": "Answers saved"}), 200
-        
     except Exception as e:
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "ANSWERS_ERROR", "error": str(e)}), 500
@@ -164,6 +177,18 @@ def submit_post_answers():
         # Final KPI
         final_kpi = calculate_final_kpi(performance, bonuses)
         
+        # v1: Q1 scale answer (order_index 0) stored as self_rating_score (1-5)
+        self_rating_score = None
+        if len(answers) >= 1:
+            try:
+                q1_val = answers[0].get("answer_text", "3")
+                if isinstance(q1_val, str) and q1_val.strip().isdigit():
+                    self_rating_score = min(5, max(1, int(q1_val.strip())))
+                elif isinstance(q1_val, (int, float)):
+                    self_rating_score = min(5, max(1, int(q1_val)))
+            except (ValueError, TypeError):
+                pass
+        
         # Store performance score
         performance_data = {
             "performance": performance,
@@ -176,6 +201,8 @@ def submit_post_answers():
                 "reflection_score": normalized['reflection_score'],
             }
         }
+        if self_rating_score is not None:
+            performance_data["self_rating_score"] = self_rating_score
         
         db.save_performance_score(recording_id, performance_data)
         

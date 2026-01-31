@@ -85,8 +85,18 @@ Admin = JWT email in `admin_users` with `is_active = true`. Create admin: `INSER
 
 ---
 
+## v1 Planned session flow (optional)
+
+- **Migration:** Run `migrations/v1_planned_session.sql` in Supabase SQL Editor after `supabase-schema-complete.sql`. Adds: theme/planning columns on `recording_sessions`, `recordings.command_option_id`, `session_command_options`, `content_exposures`, `admin_session_overrides`, pre-question template columns, `performance_scores.self_rating_score`, and seeds 21 theme pre-question templates.
+- **Full v1 schema (single script):** `docs/archive/supabase-full-schema-v1.sql` or `supabase-schema-full.sql` — idempotent, includes `recordings.command_option_id` for POST /recordings/upload. Use so schema matches the v1 upload contract.
+- **Flow:** `POST /session/start` returns theme + 1 planned pre-question + 3 command options (A/B/C). Upload requires form field `command_option_id` (A|B|C). Backend stores it on each recording row. Post-set is chosen at upload by theme + anti-repeat. Q1 scale answer is stored as `performance_scores.self_rating_score`.
+- **Rollout:** `recording_sessions.mode` is canonical; mirror writes to `structure`; read with `COALESCE(mode, structure)`.
+
+---
+
 ## Quick reference
 
-- **Schema:** `supabase-schema-complete.sql`
+- **Schema:** `supabase-schema-complete.sql` (base) or `supabase-schema-full.sql` / `docs/archive/supabase-full-schema-v1.sql` (full v1, includes `recordings.command_option_id`).
+- **v1 migration:** `migrations/v1_planned_session.sql`
 - **Architecture:** `ARCHITECTURE.md`
 - **Taskmaster (AI):** `.cursor/rules/architecture-taskmaster.mdc` → read ARCHITECTURE.md first, then this file for implementation/ops details.

@@ -13,8 +13,50 @@ try:
 except ImportError:
     HAS_OPENAI = False
 
-config = Config()
-logger = logging.getLogger(__name__)
+# --- v1 theme and mapping constants ---
+THEMES = [
+    "presence_grounding",
+    "clarity_simplicity",
+    "pacing_rhythm",
+    "energy_conviction",
+    "confidence_comfort",
+    "structure_organization",
+    "story_narrative",
+]
+
+# Intent -> theme (20 intents from COMMANDS)
+INTENT_TO_THEME: Dict[str, str] = {
+    "permission_imperfect": "presence_grounding",
+    "micro_start": "presence_grounding",
+    "gentle_checkin": "presence_grounding",
+    "breath_voice": "presence_grounding",
+    "describe_obvious": "clarity_simplicity",
+    "simple_opinion": "energy_conviction",
+    "short_memory": "confidence_comfort",
+    "reading_aloud": "structure_organization",
+    "explain_simply": "clarity_simplicity",
+    "list_format": "structure_organization",
+    "slow_clarity": "pacing_rhythm",
+    "neutral_story": "story_narrative",
+    "personal_reflection": "confidence_comfort",
+    "teach_back": "structure_organization",
+    "contrast": "story_narrative",
+    "time_constraint": "pacing_rhythm",
+    "strong_opinion": "energy_conviction",
+    "energy_push": "energy_conviction",
+    "no_fillers_challenge": "pacing_rhythm",
+    "cheeky_pressure": "energy_conviction",
+}
+
+POST_SETS_BY_THEME: Dict[str, List[int]] = {
+    "presence_grounding": [1, 9, 16, 7],
+    "clarity_simplicity": [3, 11, 6],
+    "pacing_rhythm": [6, 16, 3],
+    "energy_conviction": [2, 20, 5, 17],
+    "confidence_comfort": [4, 15, 17, 14],
+    "structure_organization": [11, 8, 3],
+    "story_narrative": [18, 19, 5, 20],
+}
 
 # Command definitions (20 commands across 5 tiers)
 COMMANDS = [
@@ -342,6 +384,7 @@ def generate_question_from_template(command: Dict, cursor: float, mode: str) -> 
         "reading_aloud": [
             "Read this sentence aloud: 'The quick brown fox jumps over the lazy dog.'",
             "Read this aloud: 'Practice makes progress, not perfection.'",
+            "Read this aloud: 'Slow is smooth, and smooth is fast.'",
         ],
         "explain_simply": [
             "Explain something simple to a friend. What would you say?",
@@ -410,3 +453,62 @@ def generate_question_from_template(command: Dict, cursor: float, mode: str) -> 
     
     # Simple rotation: use first template (could be improved with user history)
     return template_list[0]
+
+
+# --- v1: recording prompt templates (same as above, used for command options) ---
+COMMAND_PROMPT_TEMPLATES = {
+    "permission_imperfect": ["You don't need to perform. Just share one thought that's on your mind.", "There's no pressure here. Say whatever comes to you naturally.", "Take your time. What's one thing you'd like to express right now?"],
+    "micro_start": ["Say one sentence about how you're feeling.", "Share just one thought—nothing more.", "One sentence. That's all. What comes to mind?"],
+    "gentle_checkin": ["How are you feeling right now?", "What's on your mind at this moment?", "Take a breath. How do you feel?"],
+    "breath_voice": ["Take a deep breath and say one thing that matters to you.", "Breathe in, and when you're ready, share something simple.", "Relax your shoulders. Now, what would you like to say?"],
+    "describe_obvious": ["Look around you. Describe one thing you see.", "What's one thing in your immediate environment?", "Notice something nearby. Tell me about it."],
+    "simple_opinion": ["What's one thing you like?", "Share a simple preference you have.", "What's your opinion on something simple?"],
+    "short_memory": ["What's one thing that happened today?", "Share a brief memory from today.", "Tell me about something that happened recently."],
+    "reading_aloud": ["Read this sentence aloud: 'The quick brown fox jumps over the lazy dog.'", "Read this aloud: 'Practice makes progress, not perfection.'", "Read this aloud: 'Slow is smooth, and smooth is fast.'"],
+    "explain_simply": ["Explain something simple to a friend. What would you say?", "How would you explain a basic concept to someone?", "Describe something in simple terms."],
+    "list_format": ["List three things you're grateful for.", "Name three things that make you happy.", "What are three things you appreciate?"],
+    "slow_clarity": ["Speak slowly and clearly about something important to you.", "Take your time. Explain something at a comfortable pace.", "Slow down. What would you like to share?"],
+    "neutral_story": ["Tell a brief, neutral story about something that happened.", "Share a simple story without strong emotions.", "What's a straightforward story you can tell?"],
+    "personal_reflection": ["Why does this matter to you?", "What makes this important in your life?", "Reflect on why this is meaningful to you."],
+    "teach_back": ["Explain this as if you're teaching someone else.", "How would you teach this concept to another person?", "Break this down as if explaining to a student."],
+    "contrast": ["Compare how this was before versus how it is now.", "What changed? How was it different before?", "Contrast the past and present of this topic."],
+    "time_constraint": ["You have one minute. Share what's most important.", "In 60 seconds, what would you want to say?", "Speak for one minute about something that matters."],
+    "strong_opinion": ["What's a strong opinion you hold? Share it confidently.", "Express a firm stance on something you believe in.", "What's something you feel strongly about?"],
+    "energy_push": ["Speak with more energy and intention about something you care about.", "Bring more passion to your voice. What excites you?", "Speak with conviction. What drives you?"],
+    "no_fillers_challenge": ["Speak without filler words. Pause instead of saying 'um' or 'uh'.", "Challenge yourself: speak clearly with intentional pauses.", "No 'ums' or 'uhs'. Use pauses instead. What would you say?"],
+    "cheeky_pressure": ["One take. Make it count. What's your message?", "You've got this. One shot. What do you want to say?", "No do-overs. What's worth saying right now?"],
+}
+
+
+def get_command_prompt_for_intent(intent: str, variant_index: int = 0) -> str:
+    """Return recording prompt text for an intent (for session_command_options snapshot)."""
+    templates = COMMAND_PROMPT_TEMPLATES.get(intent, ["Tell me about something."])
+    idx = min(variant_index, len(templates) - 1) if templates else 0
+    return templates[idx] if templates else "Tell me about something."
+
+
+def filter_commands_for_theme_cursor_mode(
+    theme_code: str,
+    cursor: float,
+    effective_mode: str,
+    no_fillers_eligible: bool = False,
+) -> List[Dict]:
+    """
+    Return COMMANDS that match theme, cursor range, and effective_mode.
+    - reading_aloud: only when effective_mode != 'open'.
+    - no_fillers_challenge: only when no_fillers_eligible is True (caller computes from user stats).
+    """
+    out = []
+    for cmd in COMMANDS:
+        if INTENT_TO_THEME.get(cmd["intent"]) != theme_code:
+            continue
+        if not (cmd["cursor_range"][0] <= cursor <= cmd["cursor_range"][1]):
+            continue
+        if effective_mode not in cmd["mode"]:
+            continue
+        if cmd["intent"] == "reading_aloud" and effective_mode == "open":
+            continue
+        if cmd["intent"] == "no_fillers_challenge" and not no_fillers_eligible:
+            continue
+        out.append(cmd)
+    return out

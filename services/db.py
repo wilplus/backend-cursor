@@ -58,9 +58,10 @@ class DatabaseService:
         return result.data[0] if result.data else None
     
     def abandon_session(self, session_id: str, user_id: str):
-        """Abandon a session"""
+        """Abandon a session (status = abandoned, completed_at set)"""
         result = self.client.table("recording_sessions")\
             .update({
+                "status": "abandoned",
                 "completed_at": "now()",
                 "abandoned_at": "now()"
             })\
@@ -102,16 +103,28 @@ class DatabaseService:
         
         return result.data[0] if result.data else None
     
-    def save_pre_answers(self, session_id: str, answers: list):
-        """Save pre-recording answers"""
-        records = [
-            {
+    def save_pre_answers(self, session_id: str, answers: list, user_id: str = None, snapshot_per_answer: list = None):
+        """Save pre-recording answers. snapshot_per_answer: optional list of dicts with question_text_snapshot, question_type_snapshot, question_code_snapshot, order_index_snapshot."""
+        records = []
+        for i, ans in enumerate(answers):
+            rec = {
                 "recording_session_id": session_id,
                 "question_id": ans["question_id"],
                 "answer_text": ans["answer_text"]
             }
-            for ans in answers
-        ]
+            if user_id:
+                rec["user_id"] = user_id
+            if snapshot_per_answer and i < len(snapshot_per_answer):
+                snap = snapshot_per_answer[i]
+                if snap.get("question_text_snapshot") is not None:
+                    rec["question_text_snapshot"] = snap["question_text_snapshot"]
+                if snap.get("question_type_snapshot") is not None:
+                    rec["question_type_snapshot"] = snap["question_type_snapshot"]
+                if snap.get("question_code_snapshot") is not None:
+                    rec["question_code_snapshot"] = snap["question_code_snapshot"]
+                if snap.get("order_index_snapshot") is not None:
+                    rec["order_index_snapshot"] = snap["order_index_snapshot"]
+            records.append(rec)
         
         result = self.client.table("pre_recording_answers")\
             .insert(records)\
@@ -350,9 +363,9 @@ class DatabaseService:
         return result.data
     
     def complete_session(self, session_id: str):
-        """Mark session as completed"""
+        """Mark session as completed (status + completed_at for v1 predicate)"""
         result = self.client.table("recording_sessions")\
-            .update({"completed_at": "now()"})\
+            .update({"status": "completed", "completed_at": "now()"})\
             .eq("id", session_id)\
             .execute()
         
@@ -407,6 +420,8 @@ class DatabaseService:
             "attitude_score": performance_data.get("raw_scores", {}).get("attitude_score", 0),
             "reflection_score": performance_data.get("raw_scores", {}).get("reflection_score", 0),
         }
+        if "self_rating_score" in performance_data:
+            score_data["self_rating_score"] = performance_data["self_rating_score"]
         
         result = self.client.table("performance_scores")\
             .insert(score_data)\
@@ -639,6 +654,237 @@ class DatabaseService:
             .execute()
         
         return result.data[0] if result.data else None
+
+    # --- v1 planned session flow ---
+    def get_active_override(self, user_id: str):
+        """Get active admin_session_override for user (is_active, not expired, remaining_sessions null or >0)."""
+        from datetime import datetime
+        now = datetime.utcnow().isoformat() if hasattr(datetime, 'utcnow') else datetime.now().isoformat()
+        result = self.client.table("admin_session_overrides")\
+            .select("*")\
+            .eq("user_id", user_id)\
+            .eq("is_active", True)\
+            .execute()
+        if not result.data:
+            return None
+        for row in result.data:
+            if row.get("expires_at") and str(row["expires_at"]) < now:
+                continue
+            remaining = row.get("remaining_sessions")
+            if remaining is not None and remaining <= 0:
+                continue
+            return row
+        return None
+
+    def consume_admin_override(self, override_id: str):
+        """Decrement remaining_sessions if not null. Idempotent: only decrement once per override use."""
+        row = self.client.table("admin_session_overrides").select("remaining_sessions").eq("id", override_id).execute()
+        if not row.data:
+            return
+        remaining = row.data[0].get("remaining_sessions")
+        if remaining is None:
+            return
+        self.client.table("admin_session_overrides")\
+            .update({"remaining_sessions": max(0, remaining - 1)})\
+            .eq("id", override_id)\
+            .execute()
+
+    def log_exposure(self, user_id: str, content_type: str, content_code: str, session_id: str = None,
+                     recording_id: str = None, content_id: str = None, tier: int = None, was_selected: bool = False):
+        """Insert content_exposures row (v1 anti-repetition + analytics)."""
+        data = {
+            "user_id": user_id,
+            "content_type": content_type,
+            "content_code": content_code,
+            "was_selected": was_selected,
+        }
+        if session_id:
+            data["session_id"] = session_id
+        if recording_id:
+            data["recording_id"] = recording_id
+        if content_id:
+            data["content_id"] = content_id
+        if tier is not None:
+            data["tier"] = tier
+        try:
+            self.client.table("content_exposures").insert(data).execute()
+        except Exception:
+            pass  # ignore duplicate / constraint errors for idempotency
+
+    def get_recent_exposures(self, user_id: str, content_type: str, limit: int) -> List[dict]:
+        """Recent exposures for user + content_type (for anti-repeat)."""
+        result = self.client.table("content_exposures")\
+            .select("content_code, session_id, was_selected, exposed_at")\
+            .eq("user_id", user_id)\
+            .eq("content_type", content_type)\
+            .order("exposed_at", desc=True)\
+            .limit(limit * 3)\
+            .execute()
+        return result.data or []
+
+    def get_completed_sessions_count(self, user_id: str) -> int:
+        """Count sessions with status = 'completed' for user (no_fillers_challenge gating)."""
+        result = self.client.table("recording_sessions")\
+            .select("id", count="exact")\
+            .eq("user_id", user_id)\
+            .eq("status", "completed")\
+            .execute()
+        return getattr(result, "count", None) or len(result.data or [])
+
+    def get_avg_fillers_per_min(self, user_id: str, last_n: int = 5) -> float:
+        """Avg fillers/min over last_n recordings. Uses recordings.duration and filler_words_count. If missing data -> return 999 (ineligible)."""
+        recs = self.client.table("recordings")\
+            .select("id, duration, filler_words_count")\
+            .eq("user_id", user_id)\
+            .order("created_at", desc=True)\
+            .limit(last_n)\
+            .execute()
+        if not recs.data or len(recs.data) < last_n:
+            return 999.0
+        total_fillers = 0
+        total_min = 0
+        for r in recs.data:
+            dur = r.get("duration")
+            fc = r.get("filler_words_count")
+            if dur is None or not isinstance(dur, (int, float)) or dur <= 0:
+                return 999.0
+            total = None
+            if isinstance(fc, dict):
+                total = fc.get("total")
+            if total is None:
+                return 999.0
+            total_fillers += int(total)
+            total_min += float(dur) / 60.0
+        if total_min <= 0:
+            return 999.0
+        return total_fillers / total_min
+
+    def get_pre_question_templates_for_theme(self, theme_code: str = None, exclude_codes: List[str] = None, limit: int = 1) -> List[dict]:
+        """Get active pre_recording_questions for theme (theme_code or theme_code IS NULL). Exclude codes if provided."""
+        q = self.client.table("pre_recording_questions")\
+            .select("*")\
+            .eq("active", True)\
+            .order("order_index")
+        if theme_code:
+            q = q.eq("theme_code", theme_code)
+        else:
+            q = q.is_("theme_code", "null")
+        result = q.limit(limit * 3).execute()
+        rows = result.data or []
+        if exclude_codes:
+            rows = [r for r in rows if r.get("code") not in exclude_codes]
+        return rows[:limit]
+
+    def insert_session_command_options(self, session_id: str, options: List[dict]):
+        """Insert rows into session_command_options (option_id, intent, tier, mode, prompt_text_snapshot, is_primary, cursor_min, cursor_max)."""
+        for o in options:
+            row = {
+                "session_id": session_id,
+                "option_id": o["option_id"],
+                "intent": o["intent"],
+                "tier": o["tier"],
+                "mode": o["mode"],
+                "prompt_text_snapshot": o["prompt_text_snapshot"],
+                "is_primary": o.get("is_primary", False),
+            }
+            if o.get("cursor_min") is not None:
+                row["cursor_min"] = o["cursor_min"]
+            if o.get("cursor_max") is not None:
+                row["cursor_max"] = o["cursor_max"]
+            try:
+                self.client.table("session_command_options").insert(row).execute()
+            except Exception:
+                pass
+
+    def get_session_command_options(self, session_id: str) -> List[dict]:
+        """Get session_command_options for session (A/B/C)."""
+        result = self.client.table("session_command_options")\
+            .select("*")\
+            .eq("session_id", session_id)\
+            .order("option_id")\
+            .execute()
+        return result.data or []
+
+    def update_session_planned_pre_question(self, session_id: str, planned_id: str, text_snapshot: str, type_snapshot: str, code_snapshot: str):
+        """Set planned pre-question snapshot on session."""
+        self.client.table("recording_sessions")\
+            .update({
+                "planned_pre_question_id": planned_id,
+                "planned_pre_question_text_snapshot": text_snapshot,
+                "planned_pre_question_type_snapshot": type_snapshot,
+                "planned_pre_question_code_snapshot": code_snapshot,
+            })\
+            .eq("id", session_id)\
+            .execute()
+
+    def update_session_theme(self, session_id: str, recommended_code: str = None, recommended_reason: str = None, chosen_code: str = None, chosen_source: str = None):
+        """Set theme decision on session."""
+        data = {}
+        if recommended_code is not None:
+            data["theme_recommended_code"] = recommended_code
+        if recommended_reason is not None:
+            data["theme_recommended_reason"] = recommended_reason
+        if chosen_code is not None:
+            data["theme_chosen_code"] = chosen_code
+        if chosen_source is not None:
+            data["theme_chosen_source"] = chosen_source
+        if data:
+            self.client.table("recording_sessions").update(data).eq("id", session_id).execute()
+
+    def update_session_selected_command(self, session_id: str, option_id: str, intent: str, tier: int, mode: str, prompt_snapshot: str):
+        """Persist selected command snapshot; mirror mode into structure (rollout)."""
+        self.client.table("recording_sessions")\
+            .update({
+                "selected_command_option_id": option_id,
+                "selected_intent": intent,
+                "selected_tier": tier,
+                "selected_mode": mode,
+                "selected_prompt_text_snapshot": prompt_snapshot,
+                "structure": mode,
+            })\
+            .eq("id", session_id)\
+            .execute()
+
+    def update_session_post_question_set_id(self, session_id: str, set_id: int):
+        """Set post_question_set_id on session (chosen at upload)."""
+        self.client.table("recording_sessions")\
+            .update({"post_question_set_id": set_id})\
+            .eq("id", session_id)\
+            .execute()
+
+    def update_session_admin_override_consumed(self, session_id: str, override_id: str):
+        """Set admin_override_id_applied and admin_override_consumed_at (idempotent guard)."""
+        self.client.table("recording_sessions")\
+            .update({
+                "admin_override_id_applied": override_id,
+                "admin_override_consumed_at": "now()",
+            })\
+            .eq("id", session_id)\
+            .execute()
+
+    def get_recent_theme_exposures_by_session(self, user_id: str, limit_sessions: int = 2) -> List[str]:
+        """Get theme_chosen_code from last N completed sessions (for anti-repeat)."""
+        sessions = self.client.table("recording_sessions")\
+            .select("theme_chosen_code")\
+            .eq("user_id", user_id)\
+            .eq("status", "completed")\
+            .not_.is_("theme_chosen_code", "null")\
+            .order("completed_at", desc=True)\
+            .limit(limit_sessions)\
+            .execute()
+        return [s["theme_chosen_code"] for s in (sessions.data or []) if s.get("theme_chosen_code")]
+
+    def get_recent_post_set_exposures_by_theme(self, user_id: str, theme_code: str, limit_same_theme: int = 2) -> List[int]:
+        """Get post_question_set_id from recent sessions for same theme (for anti-repeat at upload)."""
+        sessions = self.client.table("recording_sessions")\
+            .select("post_question_set_id")\
+            .eq("user_id", user_id)\
+            .eq("theme_chosen_code", theme_code)\
+            .not_.is_("post_question_set_id", "null")\
+            .order("completed_at", desc=True)\
+            .limit(limit_same_theme)\
+            .execute()
+        return [s["post_question_set_id"] for s in (sessions.data or []) if s.get("post_question_set_id") is not None]
 
 # Singleton instance
 db = DatabaseService()

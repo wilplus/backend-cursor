@@ -19,14 +19,16 @@ def upload_recording():
     try:
         user_id = request.user_id
         
-        # Get form data
+        # Get form data (v1: command_option_id required)
         session_id = request.form.get("session_id")
+        command_option_id = request.form.get("command_option_id")
         duration_seconds = request.form.get("duration_seconds")
         audio_file = request.files.get("audio")
         
         if not session_id:
             return jsonify({"code": "INVALID_INPUT", "error": "session_id required"}), 400
-        
+        if not command_option_id or command_option_id not in ("A", "B", "C"):
+            return jsonify({"code": "INVALID_INPUT", "error": "command_option_id required (A, B, or C)"}), 400
         if not audio_file:
             return jsonify({"code": "INVALID_INPUT", "error": "audio file required"}), 400
         
@@ -34,9 +36,26 @@ def upload_recording():
         session = db.get_session(session_id, user_id)
         if not session:
             return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found"}), 404
-        
         if not session.get("pre_questions_completed"):
             return jsonify({"code": "INVALID_STATE", "error": "Pre-questions must be completed first"}), 400
+        
+        # v1: Validate command option exists for this session
+        opts = db.get_session_command_options(session_id)
+        selected_opt = next((o for o in opts if o.get("option_id") == command_option_id), None)
+        if not selected_opt:
+            return jsonify({"code": "INVALID_INPUT", "error": "command_option_id not found for this session"}), 400
+        # Persist selected command snapshot + mirror mode to structure
+        db.update_session_selected_command(
+            session_id,
+            option_id=selected_opt["option_id"],
+            intent=selected_opt["intent"],
+            tier=selected_opt["tier"],
+            mode=selected_opt["mode"],
+            prompt_snapshot=selected_opt["prompt_text_snapshot"],
+        )
+        # Log exposures: intent was_selected=true, command_option
+        db.log_exposure(user_id, "intent", selected_opt["intent"], session_id=session_id, tier=selected_opt["tier"], was_selected=True)
+        db.log_exposure(user_id, "command_option", command_option_id, session_id=session_id, was_selected=True)
         
         # Check file size (25MB limit)
         audio_file.seek(0, os.SEEK_END)
@@ -182,6 +201,7 @@ def upload_recording():
         recording_data = {
             "user_id": user_id,
             "session_id": session_id,
+            "command_option_id": command_option_id,
             "transcription_text": transcript_text,
             "duration": duration_int,  # duration column (NOT NULL, INTEGER type)
             "duration_seconds": actual_duration,  # duration_seconds column (if exists, can be float)
@@ -208,19 +228,38 @@ def upload_recording():
             .eq("id", session_id)\
             .execute()
         
-        # Get post-questions from question set pool
-        from services.post_questions_service import select_post_question_set, generate_post_questions_from_set
+        # v1: Choose post-set at upload (theme + anti-repeat: last 1 overall, last 2 within theme)
+        from services.post_questions_service import POST_QUESTIONS_POOL, generate_post_questions_from_set
+        from services.question_service import POST_SETS_BY_THEME
         
-        # Get recently used question set IDs (to avoid repetition)
-        recent_set_ids = db.get_recent_question_set_ids(user_id, limit=5)
+        theme_chosen = session.get("theme_chosen_code")
+        candidates = POST_SETS_BY_THEME.get(theme_chosen) if theme_chosen else list(range(1, 21))
+        if not candidates:
+            candidates = list(range(1, 21))
+        # Anti-repeat: last 1 overall (from content_exposures or session history), last 2 within theme
+        recent_same_theme = db.get_recent_post_set_exposures_by_theme(user_id, theme_chosen or "", limit_same_theme=2)
+        recent_overall = db.get_recent_exposures(user_id, "post_set", 1)
+        recent_overall_ids = []
+        for r in recent_overall:
+            try:
+                recent_overall_ids.append(int(r.get("content_code", 0)))
+            except (ValueError, TypeError):
+                pass
+        exclude_set_ids = list(set(recent_overall_ids + recent_same_theme))
+        available = [s for s in candidates if s not in exclude_set_ids]
+        if not available:
+            available = candidates
+        import random
+        set_id = random.choice(available)
+        db.update_session_post_question_set_id(session_id, set_id)
+        db.log_exposure(user_id, "post_set", str(set_id), session_id=session_id, was_selected=True)
         
-        # Select a question set
-        selected_set = select_post_question_set(user_id, recent_set_ids)
+        # Get question set by id and instantiate post_recording_questions
+        selected_set = next((s for s in POST_QUESTIONS_POOL if s["id"] == set_id), None)
+        if not selected_set:
+            selected_set = POST_QUESTIONS_POOL[0] if POST_QUESTIONS_POOL else None
+        temp_questions = generate_post_questions_from_set(selected_set) if selected_set else []
         
-        # Generate questions from the set (temporary structure)
-        temp_questions = generate_post_questions_from_set(selected_set)
-        
-        # Create actual question records in database and get real UUIDs
         post_questions = []
         for temp_q in temp_questions:
             question_record = db.create_post_question(
@@ -229,18 +268,14 @@ def upload_recording():
                 question_set_id=temp_q.get("question_set_id"),
                 order_index=temp_q.get("order_index")
             )
-            
             if question_record:
                 post_questions.append({
-                    "id": question_record["id"],  # Real UUID from database
+                    "id": question_record["id"],
                     "question_text": question_record["question_text"],
                     "question_type": question_record.get("question_type", temp_q["question_type"]),
                     "question_set_id": temp_q.get("question_set_id"),
                     "order_index": temp_q.get("order_index")
                 })
-        
-        # Store question set ID in session for later reference (optional)
-        # This helps track which set was used for analytics
         
         return jsonify({
             "recording_id": recording_id,
