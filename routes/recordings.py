@@ -287,11 +287,24 @@ def upload_recording():
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "UPLOAD_ERROR", "error": str(e)}), 500
 
+def _is_valid_uuid(value):
+    """Return True if value is a valid UUID string; avoids DB 'invalid input syntax for type uuid'."""
+    if not value or not isinstance(value, str):
+        return False
+    try:
+        uuid.UUID(value)
+        return True
+    except (ValueError, TypeError, AttributeError):
+        return False
+
+
 @recordings_bp.route("/<recording_id>", methods=["GET"])
 @require_auth
 def get_recording(recording_id):
     """Get recording details"""
     try:
+        if not _is_valid_uuid(recording_id):
+            return jsonify({"code": "INVALID_INPUT", "error": "Invalid recording ID"}), 400
         user_id = request.user_id
         
         # Get recording (verify ownership)
@@ -431,6 +444,8 @@ def get_recording(recording_id):
 def get_audio_url(recording_id):
     """Get signed URL for audio file (or return existing public URL)"""
     try:
+        if not _is_valid_uuid(recording_id):
+            return jsonify({"code": "INVALID_INPUT", "error": "Invalid recording ID"}), 400
         user_id = request.user_id
         
         # Get recording (verify ownership)
