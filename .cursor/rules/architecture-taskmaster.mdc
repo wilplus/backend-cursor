@@ -1,0 +1,51 @@
+---
+description: Taskmaster — initial architecture and conventions so AI doesn't forget
+alwaysApply: true
+---
+
+# Taskmaster: Architecture & Conventions
+
+**Read `ARCHITECTURE.md` first** when changing flows, adding features, or answering "how does X work?". For implementation, schema, admin, and frontend details use **DOCS.md**.
+
+## Project Identity
+
+- **Backend:** Flask (Python), Railway. **DB/Auth/Storage:** Supabase. **AI:** OpenAI (Whisper + GPT-4o-mini). **Email:** Resend.
+- **Frontend:** Separate app; base URL from `FRONTEND_URL` (e.g. app.willonski.com or localhost:3000).
+
+## Layout
+
+- **Routes:** `routes/*.py` (auth, session, questions, recordings, user, admin).
+- **Data & external:** `services/db.py` (all Supabase), `services/openai_service.py`, `services/email_service.py`.
+- **Pre-questions:** `services/question_service.py` (COMMANDS, cursor, mode). **Post-questions:** `services/post_questions_service.py` (POST_QUESTIONS_POOL).
+- **Scoring:** `services/scoring_service.py`. **Config:** `config.py` only.
+
+## Core Flow (Don't Break)
+
+1. Session start → optional questionnaire → cursor/mode → pre_questions (code or DB).
+2. Recording upload → Storage + Whisper → transcript + metrics → post_questions from **code** pool → rows in `post_recording_questions` with **real UUIDs**.
+3. Post-answers → performance score → **admin context + progress context** → `generate_final_report` → save coaching_report → admin email with feedback link.
+
+## Admin Feedback
+
+- Stored: `professional_notes`, `professional_notes_report_tech`, `professional_notes_specific_questions`.
+- Used: `db.get_user_admin_context(user_id)` before report; include in OpenAI prompt.
+- Progress: `db.get_user_recording_history()` for trends; include in same prompt.
+
+## Questions: Code vs DB
+
+- **Pre:** Command definitions in `question_service.py` (COMMANDS). Default pre list in DB `pre_recording_questions`.
+- **Post:** Question **sets** in `post_questions_service.py` (POST_QUESTIONS_POOL). **Instances** per recording in DB `post_recording_questions`.
+- **Goal:** Move definitions to DB so admins can update after sessions/notes. See DOCS.md.
+
+## Conventions
+
+- Config only in `config.py`. DB access only via `services/db.py`.
+- Post-question IDs: real UUIDs from DB, never temporary ids in API.
+- Email feedback link: `{FRONTEND_URL}/recordings/{recording_id}/feedback?user_id={user_id}`.
+
+## When Changing
+
+- Pre-questions / cursor → `question_service.py`, `session.py`, `pre_recording_questions`.
+- Post-questions → `post_questions_service.py`, `recordings.py` upload, `create_post_question`.
+- Report content → `openai_service.generate_final_report`, admin + progress context.
+- Admin APIs → `routes/admin.py`, `professional_notes*` tables.

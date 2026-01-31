@@ -25,6 +25,7 @@ cp .env.example .env
 - `SENTRY_DSN`: Sentry DSN (optional)
 - `ENV`: `production`, `development`, or `staging`
 - `SEND_EMAILS`: `true` or `false`
+- `FRONTEND_URL`: Frontend base URL for admin feedback links (e.g. `https://app.willonski.com` or `http://localhost:3000`)
 
 ## Running Locally
 
@@ -70,3 +71,8 @@ In non-production environments (`ENV != "production"`):
 - Audio files are not stored
 - OpenAI calls are skipped (mock responses)
 - Emails are not sent if `SEND_EMAILS=false`
+
+## Documentation
+
+- **ARCHITECTURE.md** — Stack, layout, core flows, database, conventions (source of truth for design).
+- **DOCS.md** — Implementation and operations: schema, storage, admin feedback, email link, questionnaire, frontend integration.
