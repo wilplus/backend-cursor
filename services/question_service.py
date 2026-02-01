@@ -512,3 +512,45 @@ def filter_commands_for_theme_cursor_mode(
             continue
         out.append(cmd)
     return out
+
+
+def get_commands_for_theme_ignore_cursor(
+    theme_code: str,
+    effective_mode: str,
+    no_fillers_eligible: bool = False,
+) -> List[Dict]:
+    """
+    Return COMMANDS that match theme and mode (cursor range ignored).
+    Used as fallback so we always have options when cursor band has few/no commands (e.g. confidence_comfort at 0.7).
+    """
+    out = []
+    for cmd in COMMANDS:
+        if INTENT_TO_THEME.get(cmd["intent"]) != theme_code:
+            continue
+        if effective_mode not in cmd["mode"]:
+            continue
+        if cmd["intent"] == "reading_aloud" and effective_mode == "open":
+            continue
+        if cmd["intent"] == "no_fillers_challenge" and not no_fillers_eligible:
+            continue
+        out.append(cmd)
+    return out
+
+
+def get_commands_for_mode_any_theme(
+    effective_mode: str,
+    no_fillers_eligible: bool = False,
+) -> List[Dict]:
+    """
+    Return all COMMANDS that match mode (any theme). Last-resort fallback so we never return 0 options.
+    """
+    out = []
+    for cmd in COMMANDS:
+        if effective_mode not in cmd["mode"]:
+            continue
+        if cmd["intent"] == "reading_aloud" and effective_mode == "open":
+            continue
+        if cmd["intent"] == "no_fillers_challenge" and not no_fillers_eligible:
+            continue
+        out.append(cmd)
+    return out

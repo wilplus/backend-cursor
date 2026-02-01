@@ -7,6 +7,8 @@ from services.question_service import (
     THEMES,
     INTENT_TO_THEME,
     filter_commands_for_theme_cursor_mode,
+    get_commands_for_theme_ignore_cursor,
+    get_commands_for_mode_any_theme,
     get_command_prompt_for_intent,
 )
 import random
@@ -222,7 +224,7 @@ def start_session():
                 db.log_exposure(user_id, "pre_q_template", t.get("code", ""), session_id=session_id, content_id=t["id"])
             session = db.get_session(session_id, user_id)
 
-        # --- Plan 3 command options ---
+        # --- Plan 3 command options (always ≥3: strict filter → theme-any-cursor → any-theme) ---
         opts = db.get_session_command_options(session_id)
         if len(opts) < 3:
             effective_mode = _effective_mode(session)
@@ -231,23 +233,53 @@ def start_session():
             no_fillers_eligible = (
                 cursor >= 0.60 and completed_count >= 3 and avg_fillers < 15
             )
+            recent_intent = db.get_recent_exposures(user_id, "intent", 3)
+            recent_codes = [r.get("content_code") for r in recent_intent if r.get("content_code")]
+
+            # 1) Strict: theme + cursor + mode
             candidates = filter_commands_for_theme_cursor_mode(
                 theme_chosen, cursor, effective_mode, no_fillers_eligible
             )
-            recent_intent = db.get_recent_exposures(user_id, "intent", 3)
-            recent_codes = [r.get("content_code") for r in recent_intent if r.get("content_code")]
             candidates = [c for c in candidates if c["intent"] not in recent_codes]
+            seen_intents = {c["intent"] for c in candidates}
+
+            # 2) Fallback: same theme, any cursor (so e.g. confidence_comfort always has options)
             if len(candidates) < 3:
-                candidates = filter_commands_for_theme_cursor_mode(
-                    theme_chosen, cursor, effective_mode, no_fillers_eligible
+                extra = get_commands_for_theme_ignore_cursor(
+                    theme_chosen, effective_mode, no_fillers_eligible
                 )
+                for c in extra:
+                    if c["intent"] not in recent_codes and c["intent"] not in seen_intents:
+                        candidates.append(c)
+                        seen_intents.add(c["intent"])
+                        if len(candidates) >= 5:
+                            break
+
+            # 3) Last resort: any theme, same mode (never leave user with 0 options)
+            if len(candidates) < 3:
+                any_theme = get_commands_for_mode_any_theme(effective_mode, no_fillers_eligible)
+                random.shuffle(any_theme)
+                for c in any_theme:
+                    if c["intent"] not in recent_codes and c["intent"] not in seen_intents:
+                        candidates.append(c)
+                        seen_intents.add(c["intent"])
+                        if len(candidates) >= 5:
+                            break
+
+            # 4) Guarantee ≥3: if anti-repeat left us short, allow repeats so we never show blank
+            if len(candidates) < 3:
+                any_theme = get_commands_for_mode_any_theme(effective_mode, no_fillers_eligible)
+                random.shuffle(any_theme)
+                for c in any_theme:
+                    if c["intent"] not in seen_intents:
+                        candidates.append(c)
+                        seen_intents.add(c["intent"])
+                        if len(candidates) >= 5:
+                            break
+
             candidates = candidates[:5]
             random.shuffle(candidates)
-            primary = candidates[0] if candidates else None
-            alternates = [c for c in candidates[1:4] if c != primary][:2]
-            selected = [primary] + alternates if primary else []
-            if len(selected) < 3:
-                selected = (selected + candidates)[:3]
+            selected = candidates[:3]
             option_ids = ["A", "B", "C"]
             options_payload = []
             for i, cmd in enumerate(selected[:3]):
