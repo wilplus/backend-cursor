@@ -390,7 +390,7 @@ VALUES
   ('clarity_simplicity_2', 'clarity_simplicity', 'binary_yes_no', 'Do you have one main idea you want to share?', 2, true),
   ('clarity_simplicity_3', 'clarity_simplicity', 'text_short', 'In one sentence, what do you want to say?', 3, true),
   ('pacing_rhythm_1', 'pacing_rhythm', 'scale_1_5', 'How comfortable is your usual speaking pace? (1-5)', 1, true),
-  ('pacing_rhythm_2', 'pacing_rhythm', 'binary_choice', 'Today do you prefer: Slower and clear, or Natural pace?', 2, true),
+  ('pacing_rhythm_2', 'pacing_rhythm', 'binary_choice', 'Today do you prefer: Personal or Neutral?', 2, true),
   ('pacing_rhythm_3', 'pacing_rhythm', 'text_short', 'What pace do you want to aim for?', 3, true),
   ('energy_conviction_1', 'energy_conviction', 'scale_1_5', 'How much energy do you have to speak? (1-5)', 1, true),
   ('energy_conviction_2', 'energy_conviction', 'binary_yes_no', 'Do you feel ready to speak with conviction?', 2, true),
@@ -402,7 +402,7 @@ VALUES
   ('structure_organization_2', 'structure_organization', 'binary_yes_no', 'Do you have a clear structure in mind?', 2, true),
   ('structure_organization_3', 'structure_organization', 'text_short', 'What is the one point you want to make?', 3, true),
   ('story_narrative_1', 'story_narrative', 'scale_1_5', 'How ready are you to tell a short story? (1-5)', 1, true),
-  ('story_narrative_2', 'story_narrative', 'binary_choice', 'Prefer: Personal story or Neutral example?', 2, true),
+  ('story_narrative_2', 'story_narrative', 'binary_choice', 'Do you prefer: Personal or Neutral?', 2, true),
   ('story_narrative_3', 'story_narrative', 'text_short', 'What story or example could you share?', 3, true)
 ON CONFLICT (code) DO UPDATE SET
   theme_code = EXCLUDED.theme_code,
