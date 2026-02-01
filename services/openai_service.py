@@ -250,13 +250,13 @@ Respond with ONLY valid JSON in this exact format:
             for ans in post_answers
         ])
         
-        # Determine pacing adjustment
+        # Pacing context for supportive (non-commanding) wording only
         if wpm > 180:
-            pacing_instruction = "slow down slightly"
+            pacing_note = "pacing was fast; user may benefit from a slower pace"
         elif wpm < 120:
-            pacing_instruction = "speed up slightly"
+            pacing_note = "pacing was slow; user may benefit from slightly more pace"
         else:
-            pacing_instruction = "keep current pace"
+            pacing_note = "pacing was steady; no rushing reported"
         
         # Get max words from admin context or default
         max_words = admin_context.get("max_words", 120) if admin_context else 120
@@ -348,16 +348,17 @@ These are specific instructions for how to analyze this user's recordings. Follo
 2. Reference specific changes from previous recordings when relevant (if progress context available)
 3. Follow the admin's custom instructions closely (if provided)
 4. Include quantitative metrics (WPM and filler count)
-5. Include exactly ONE pacing adjustment sentence with: "{pacing_instruction}"
+5. Pacing: note observations in a supportive way (e.g. "{pacing_note}"); do NOT use commanding language like "you should speed up" or "consider adjusting your pacing". Describe what you observed; do not tell the user what to do.
 6. {"Include trend sentence: " + trend_sentence if trend_sentence else "Do NOT include a trend sentence (insufficient prior data)."}
-7. Be encouraging but specific and analytical
-8. Maximum {max_words} words (you will be truncated if longer)
+7. Be encouraging, specific, and analytical. Tone: supportive and adaptive, not prescriptive or commanding.
+8. Include a short closing line in this spirit: that you will analyse their progress and adjust the learning methods to their needs (e.g. "I will use this feedback to tailor future sessions to your needs" or "I will analyse your progress and adjust the learning methods to your needs").
+9. Maximum {max_words} words (you will be truncated if longer)
 
 Generate the report:"""
         
         try:
-            # Enhanced system message for progress-aware analysis
-            system_message = "You are an expert speech coach providing personalized, progress-aware feedback. You analyze recordings over time and help users improve based on their history and admin guidance. Create reports that acknowledge progress, reference previous recordings when relevant, and follow admin's specific instructions."
+            # Supportive, adaptive coach persona (no commanding tone)
+            system_message = "You are a supportive speech coach. You provide personalized, progress-aware feedback and analyse recordings over time. Your tone is warm and adaptive, not commanding or prescriptive. You acknowledge progress, reference previous recordings when relevant, and follow admin guidance. You convey that you will analyse the user's progress and adjust learning methods to their needs. Avoid telling the user what to do (e.g. 'consider adjusting your pacing'); instead describe what you observed and offer that you will use the feedback to tailor future sessions."
             
             response = self.client.chat.completions.create(
                 model="gpt-4o-mini",
