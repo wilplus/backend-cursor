@@ -73,8 +73,8 @@ def upload_recording():
         # In production: upload to storage, transcribe, validate duration
         # In dev: skip storage and OpenAI, use mock data
         if config.is_production:
-            # Upload to Supabase Storage first
-            storage_path = f"{user_id}/{session_id}{ext}"
+            # Upload to Supabase Storage first (unique path per upload to avoid 400 Duplicate on retry)
+            storage_path = f"{user_id}/{session_id}/{uuid.uuid4()}{ext}"
             audio_file.seek(0)
             audio_data = audio_file.read()
             
@@ -132,8 +132,8 @@ def upload_recording():
             # audio_url = f"dev-placeholder://{user_id}/{session_id}{ext}"
             
             # Use real OpenAI even in dev mode
-            # Upload to Supabase Storage first
-            storage_path = f"{user_id}/{session_id}{ext}"
+            # Upload to Supabase Storage first (unique path per upload to avoid 400 Duplicate on retry)
+            storage_path = f"{user_id}/{session_id}/{uuid.uuid4()}{ext}"
             audio_file.seek(0)
             audio_data = audio_file.read()
             

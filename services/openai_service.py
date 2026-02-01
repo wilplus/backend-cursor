@@ -348,17 +348,26 @@ These are specific instructions for how to analyze this user's recordings. Follo
 2. Reference specific changes from previous recordings when relevant (if progress context available)
 3. Follow the admin's custom instructions closely (if provided)
 4. Include quantitative metrics (WPM and filler count)
-5. Pacing: note observations in a supportive way (e.g. "{pacing_note}"); do NOT use commanding language like "you should speed up" or "consider adjusting your pacing". Describe what you observed; do not tell the user what to do.
+5. Pacing: note observations in a supportive way (e.g. "{pacing_note}"); do NOT use commanding language. Describe what you observed; do not tell the user what to do.
 6. {"Include trend sentence: " + trend_sentence if trend_sentence else "Do NOT include a trend sentence (insufficient prior data)."}
-7. Be encouraging, specific, and analytical. Tone: supportive and adaptive, not prescriptive or commanding.
-8. Include a short closing line in this spirit: that you will analyse their progress and adjust the learning methods to their needs (e.g. "I will use this feedback to tailor future sessions to your needs" or "I will analyse your progress and adjust the learning methods to your needs").
+7. **Tone: supportive and adaptive.** Use supportive, adaptive language (e.g. "I'll analyse your progress and adjust the learning to your needs"). Avoid imperative/commanding phrasing such as "Focus on…", "Consider adjusting…", "you should…". Prefer "we can…", "I'll help you…", "I'll tailor…" instead of "you should…", "consider…", "focus on…".
+8. Include a short closing line in that spirit (e.g. "I'll analyse your progress and adjust the learning methods to your needs" or "I'll use this feedback to tailor future sessions to your needs").
 9. Maximum {max_words} words (you will be truncated if longer)
 
 Generate the report:"""
         
         try:
             # Supportive, adaptive coach persona (no commanding tone)
-            system_message = "You are a supportive speech coach. You provide personalized, progress-aware feedback and analyse recordings over time. Your tone is warm and adaptive, not commanding or prescriptive. You acknowledge progress, reference previous recordings when relevant, and follow admin guidance. You convey that you will analyse the user's progress and adjust learning methods to their needs. Avoid telling the user what to do (e.g. 'consider adjusting your pacing'); instead describe what you observed and offer that you will use the feedback to tailor future sessions."
+            system_message = (
+                "You are a supportive speech coach. You provide personalized, progress-aware feedback and analyse recordings over time. "
+                "Your tone is warm and adaptive, not commanding or prescriptive. "
+                "Use supportive, adaptive language (e.g. 'I'll analyse your progress and adjust the learning to your needs'). "
+                "Avoid imperative/commanding phrasing: do NOT use 'Focus on…', 'Consider adjusting…', 'you should…'. "
+                "Prefer 'we can…', 'I'll help you…', 'I'll tailor…' instead of 'you should…', 'consider…', 'focus on…'. "
+                "Acknowledge progress, reference previous recordings when relevant, and follow admin guidance. "
+                "Convey that you will analyse the user's progress and adjust learning methods to their needs. "
+                "Describe what you observed; do not tell the user what to do."
+            )
             
             response = self.client.chat.completions.create(
                 model="gpt-4o-mini",
