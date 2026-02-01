@@ -281,20 +281,22 @@ Metrics:
         # Add admin observations if available
         if admin_context and admin_context.get("general_notes"):
             prompt += f"""
-**Admin Observations (Important Context):**
+**Admin Observations:**
 {admin_context['general_notes']}
 
-These observations should guide your analysis. Pay special attention to these patterns.
+- If the admin explicitly asks to add something to the next coaching message / report (e.g. "add this to the coaching message after the next recording", "include in the next report:", "add to the next coaching message:"), you MUST include that content in this report.
+- Otherwise use these when they add value to your analysis (e.g. patterns that match this recording). If not relevant to this session, omit.
 
 """
         
         # Add custom instructions if available
         if admin_context and admin_context.get("custom_instructions"):
             prompt += f"""
-**Custom Analysis Instructions (Follow These):**
+**Admin Custom Instructions:**
 {admin_context['custom_instructions']}
 
-These are specific instructions for how to analyze this user's recordings. Follow them closely.
+- If the admin explicitly asks to add something to the next coaching message / report (e.g. "add this to the coaching message after the next recording", "include in the next report:"), you MUST include that content in this report.
+- Otherwise incorporate these when they improve the report for this user. If not applicable to this recording, omit.
 
 """
         
@@ -336,17 +338,18 @@ These are specific instructions for how to analyze this user's recordings. Follo
             post_questions = [q for q in admin_context['specific_questions'] if q.get('question_type') == 'post']
             if post_questions:
                 prompt += f"""
-**Admin-Suggested Focus Areas:**
+**Admin-Suggested Focus Areas (use when relevant to this recording):**
 """
                 for q in post_questions[:3]:  # Limit to 3
                     prompt += f"- {q.get('question_text', '')}\n"
+                prompt += "\nWeave in only those that add value to this report; omit if not relevant.\n"
         
         prompt += f"""
 
 **Requirements:**
 1. Create a progress-aware report that acknowledges improvements or areas needing work
 2. Reference specific changes from previous recordings when relevant (if progress context available)
-3. Follow the admin's custom instructions closely (if provided)
+3. **Admin input:** If the admin explicitly requested that something be added to the coaching message after the next recording (e.g. "add this to the coaching message after the next recording", "include in the next report:"), you MUST include that content in this report. Otherwise use admin observations, custom instructions, and focus areas when you judge them valuable for this report; if not relevant, omit.
 4. Include quantitative metrics (WPM and filler count)
 5. Pacing: note observations in a supportive way (e.g. "{pacing_note}"); do NOT use commanding language. Describe what you observed; do not tell the user what to do.
 6. {"Include trend sentence: " + trend_sentence if trend_sentence else "Do NOT include a trend sentence (insufficient prior data)."}
@@ -357,14 +360,15 @@ These are specific instructions for how to analyze this user's recordings. Follo
 Generate the report:"""
         
         try:
-            # Supportive, adaptive coach persona (no commanding tone)
+            # Supportive, adaptive coach persona (no commanding tone); use admin input when valuable
             system_message = (
                 "You are a supportive speech coach. You provide personalized, progress-aware feedback and analyse recordings over time. "
                 "Your tone is warm and adaptive, not commanding or prescriptive. "
                 "Use supportive, adaptive language (e.g. 'I'll analyse your progress and adjust the learning to your needs'). "
                 "Avoid imperative/commanding phrasing: do NOT use 'Focus on…', 'Consider adjusting…', 'you should…'. "
                 "Prefer 'we can…', 'I'll help you…', 'I'll tailor…' instead of 'you should…', 'consider…', 'focus on…'. "
-                "Acknowledge progress, reference previous recordings when relevant, and follow admin guidance. "
+                "Acknowledge progress and reference previous recordings when relevant. "
+                "When the admin explicitly says to add something to the next coaching message (e.g. 'add this to the coaching message after the next recording', 'include in the next report:'), you MUST include that content in the report. Otherwise incorporate admin input when you decide it is valuable and relevant; if not, omit it. Do not force admin points in when they do not fit. "
                 "Convey that you will analyse the user's progress and adjust learning methods to their needs. "
                 "Describe what you observed; do not tell the user what to do."
             )
