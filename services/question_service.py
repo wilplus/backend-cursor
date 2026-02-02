@@ -33,7 +33,6 @@ INTENT_TO_THEME: Dict[str, str] = {
     "describe_obvious": "clarity_simplicity",
     "simple_opinion": "energy_conviction",
     "short_memory": "confidence_comfort",
-    "reading_aloud": "structure_organization",
     "explain_simply": "clarity_simplicity",
     "list_format": "structure_organization",
     "slow_clarity": "pacing_rhythm",
@@ -119,18 +118,9 @@ COMMANDS = [
         "mode": ["guided", "open"],
         "constraints": {"timeframe": "today", "detail": "minimal"}
     },
-    {
-        "id": 8,
-        "tier": 2,
-        "cursor_range": (0.15, 0.30),
-        "intent": "reading_aloud",
-        "mode": ["guided"],
-        "constraints": {"length": "short_sentence"}
-    },
-    
     # Tier 3: Warm-up speaking (0.30–0.45)
     {
-        "id": 9,
+        "id": 8,
         "tier": 3,
         "cursor_range": (0.30, 0.45),
         "intent": "explain_simply",
@@ -138,7 +128,7 @@ COMMANDS = [
         "constraints": {"audience": "friend", "complexity": "simple"}
     },
     {
-        "id": 10,
+        "id": 9,
         "tier": 3,
         "cursor_range": (0.30, 0.45),
         "intent": "list_format",
@@ -146,7 +136,7 @@ COMMANDS = [
         "constraints": {"format": "list", "items": 3, "detail": "none"}
     },
     {
-        "id": 11,
+        "id": 10,
         "tier": 3,
         "cursor_range": (0.30, 0.45),
         "intent": "slow_clarity",
@@ -154,7 +144,7 @@ COMMANDS = [
         "constraints": {"pace": "slower_than_natural"}
     },
     {
-        "id": 12,
+        "id": 11,
         "tier": 3,
         "cursor_range": (0.30, 0.45),
         "intent": "neutral_story",
@@ -164,7 +154,7 @@ COMMANDS = [
     
     # Tier 4: Engagement & structure (0.45–0.60)
     {
-        "id": 13,
+        "id": 12,
         "tier": 4,
         "cursor_range": (0.45, 0.60),
         "intent": "personal_reflection",
@@ -172,7 +162,7 @@ COMMANDS = [
         "constraints": {"depth": "personal", "scope": "why_matters"}
     },
     {
-        "id": 14,
+        "id": 13,
         "tier": 4,
         "cursor_range": (0.45, 0.60),
         "intent": "teach_back",
@@ -180,7 +170,7 @@ COMMANDS = [
         "constraints": {"format": "teaching", "clarity": "high"}
     },
     {
-        "id": 15,
+        "id": 14,
         "tier": 4,
         "cursor_range": (0.45, 0.60),
         "intent": "contrast",
@@ -188,7 +178,7 @@ COMMANDS = [
         "constraints": {"format": "before_vs_after"}
     },
     {
-        "id": 16,
+        "id": 15,
         "tier": 4,
         "cursor_range": (0.45, 0.60),
         "intent": "time_constraint",
@@ -198,7 +188,7 @@ COMMANDS = [
     
     # Tier 5: Challenge & edge (0.60–0.80)
     {
-        "id": 17,
+        "id": 16,
         "tier": 5,
         "cursor_range": (0.60, 0.80),
         "intent": "strong_opinion",
@@ -206,7 +196,7 @@ COMMANDS = [
         "constraints": {"tone": "assertive", "stance": "required"}
     },
     {
-        "id": 18,
+        "id": 17,
         "tier": 5,
         "cursor_range": (0.60, 0.80),
         "intent": "energy_push",
@@ -214,7 +204,7 @@ COMMANDS = [
         "constraints": {"volume": "higher", "intention": "stronger"}
     },
     {
-        "id": 19,
+        "id": 18,
         "tier": 5,
         "cursor_range": (0.60, 0.80),
         "intent": "no_fillers_challenge",
@@ -222,7 +212,7 @@ COMMANDS = [
         "constraints": {"challenge": "pause_instead_of_um"}
     },
     {
-        "id": 20,
+        "id": 19,
         "tier": 5,
         "cursor_range": (0.60, 0.80),
         "intent": "cheeky_pressure",
@@ -381,11 +371,6 @@ def generate_question_from_template(command: Dict, cursor: float, mode: str) -> 
             "Share a brief memory from today.",
             "Tell me about something that happened recently.",
         ],
-        "reading_aloud": [
-            "Read this sentence aloud: 'The quick brown fox jumps over the lazy dog.'",
-            "Read this aloud: 'Practice makes progress, not perfection.'",
-            "Read this aloud: 'Slow is smooth, and smooth is fast.'",
-        ],
         "explain_simply": [
             "Explain something simple to a friend. What would you say?",
             "How would you explain a basic concept to someone?",
@@ -464,7 +449,6 @@ COMMAND_PROMPT_TEMPLATES = {
     "describe_obvious": ["Look around you. Describe one thing you see.", "What's one thing in your immediate environment?", "Notice something nearby. Tell me about it."],
     "simple_opinion": ["What's one thing you like?", "Share a simple preference you have.", "What's your opinion on something simple?"],
     "short_memory": ["What's one thing that happened today?", "Share a brief memory from today.", "Tell me about something that happened recently."],
-    "reading_aloud": ["Read this sentence aloud: 'The quick brown fox jumps over the lazy dog.'", "Read this aloud: 'Practice makes progress, not perfection.'", "Read this aloud: 'Slow is smooth, and smooth is fast.'"],
     "explain_simply": ["Explain something simple to a friend. What would you say?", "How would you explain a basic concept to someone?", "Describe something in simple terms."],
     "list_format": ["List three things you're grateful for.", "Name three things that make you happy.", "What are three things you appreciate?"],
     "slow_clarity": ["Speak slowly and clearly about something important to you.", "Take your time. Explain something at a comfortable pace.", "Slow down. What would you like to share?"],
@@ -495,7 +479,6 @@ def filter_commands_for_theme_cursor_mode(
 ) -> List[Dict]:
     """
     Return COMMANDS that match theme, cursor range, and effective_mode.
-    - reading_aloud: only when effective_mode != 'open'.
     - no_fillers_challenge: only when no_fillers_eligible is True (caller computes from user stats).
     """
     out = []
@@ -505,8 +488,6 @@ def filter_commands_for_theme_cursor_mode(
         if not (cmd["cursor_range"][0] <= cursor <= cmd["cursor_range"][1]):
             continue
         if effective_mode not in cmd["mode"]:
-            continue
-        if cmd["intent"] == "reading_aloud" and effective_mode == "open":
             continue
         if cmd["intent"] == "no_fillers_challenge" and not no_fillers_eligible:
             continue
@@ -529,8 +510,6 @@ def get_commands_for_theme_ignore_cursor(
             continue
         if effective_mode not in cmd["mode"]:
             continue
-        if cmd["intent"] == "reading_aloud" and effective_mode == "open":
-            continue
         if cmd["intent"] == "no_fillers_challenge" and not no_fillers_eligible:
             continue
         out.append(cmd)
@@ -547,8 +526,6 @@ def get_commands_for_mode_any_theme(
     out = []
     for cmd in COMMANDS:
         if effective_mode not in cmd["mode"]:
-            continue
-        if cmd["intent"] == "reading_aloud" and effective_mode == "open":
             continue
         if cmd["intent"] == "no_fillers_challenge" and not no_fillers_eligible:
             continue

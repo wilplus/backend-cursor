@@ -41,6 +41,17 @@ DO $$ BEGIN
   END IF;
 END $$;
 
+-- Relax chk_order_index so optional "Did you find this prompt useful?" and future questions don't violate (allow 0-19)
+ALTER TABLE public.post_recording_questions DROP CONSTRAINT IF EXISTS chk_order_index;
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'chk_order_index' AND conrelid = 'public.post_recording_questions'::regclass
+  ) THEN
+    ALTER TABLE public.post_recording_questions
+      ADD CONSTRAINT chk_order_index CHECK (order_index IS NULL OR (order_index >= 0 AND order_index <= 19));
+  END IF;
+END $$;
+
 CREATE TABLE IF NOT EXISTS recording_sessions (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,

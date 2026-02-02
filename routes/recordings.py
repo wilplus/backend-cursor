@@ -281,13 +281,15 @@ def upload_recording():
                 })
         
         # If command was newly tested (1st or 2nd time this intent), 50% of the time add "was this prompt good?" question
+        # order_index must satisfy chk_order_index (e.g. 0-5); cap at 5 so we never exceed DB constraint.
         newly_tested = intent_selection_count < 2
         if newly_tested and random.random() < 0.5:
+            next_order = min(len(post_questions), 5)
             prompt_feedback_q = db.create_post_question(
                 question_text="Did you find this recording prompt useful?",
                 question_type="binary",
                 question_set_id=selected_set["id"] if selected_set else None,
-                order_index=len(post_questions)
+                order_index=next_order
             )
             if prompt_feedback_q:
                 post_questions.append({
@@ -295,7 +297,7 @@ def upload_recording():
                     "question_text": prompt_feedback_q["question_text"],
                     "question_type": prompt_feedback_q.get("question_type", "binary"),
                     "question_set_id": prompt_feedback_q.get("question_set_id"),
-                    "order_index": len(post_questions) - 1,
+                    "order_index": next_order,
                 })
         
         return jsonify({

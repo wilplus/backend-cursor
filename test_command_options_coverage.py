@@ -86,7 +86,6 @@ def test_any_theme_has_many_options():
     for mode in MODES:
         cmds = get_commands_for_mode_any_theme(mode, False)
         assert len(cmds) >= 3, f"mode={mode!r} has only {len(cmds)} commands (any-theme fallback)"
-    # guided can also include reading_aloud
     guided = get_commands_for_mode_any_theme("guided", False)
     assert len(guided) >= 3
     open_mode = get_commands_for_mode_any_theme("open", False)

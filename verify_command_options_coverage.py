@@ -17,8 +17,7 @@ INTENT_TO_THEME = {
     "simple_opinion": "energy_conviction", "strong_opinion": "energy_conviction",
     "energy_push": "energy_conviction", "cheeky_pressure": "energy_conviction",
     "short_memory": "confidence_comfort", "personal_reflection": "confidence_comfort",
-    "reading_aloud": "structure_organization", "list_format": "structure_organization",
-    "teach_back": "structure_organization",
+    "list_format": "structure_organization", "teach_back": "structure_organization",
     "slow_clarity": "pacing_rhythm", "time_constraint": "pacing_rhythm",
     "no_fillers_challenge": "pacing_rhythm",
     "neutral_story": "story_narrative", "contrast": "story_narrative",
@@ -32,7 +31,6 @@ COMMANDS = [
     ("describe_obvious", (0.15, 0.30), ["guided", "open"]),
     ("simple_opinion", (0.15, 0.30), ["guided", "open"]),
     ("short_memory", (0.15, 0.30), ["guided", "open"]),
-    ("reading_aloud", (0.15, 0.30), ["guided"]),
     ("explain_simply", (0.30, 0.45), ["guided", "open"]),
     ("list_format", (0.30, 0.45), ["guided", "open"]),
     ("slow_clarity", (0.30, 0.45), ["guided", "open"]),
@@ -61,8 +59,6 @@ def filter_strict(theme_code, cursor, effective_mode, no_fillers_eligible):
             continue
         if effective_mode not in mode:
             continue
-        if intent == "reading_aloud" and effective_mode == "open":
-            continue
         if intent == "no_fillers_challenge" and not no_fillers_eligible:
             continue
         out.append(_cmd(intent, cr, mode))
@@ -76,8 +72,6 @@ def theme_ignore_cursor(theme_code, effective_mode, no_fillers_eligible):
             continue
         if effective_mode not in mode:
             continue
-        if intent == "reading_aloud" and effective_mode == "open":
-            continue
         if intent == "no_fillers_challenge" and not no_fillers_eligible:
             continue
         out.append(_cmd(intent, cr, mode))
@@ -88,8 +82,6 @@ def any_theme(effective_mode, no_fillers_eligible):
     out = []
     for intent, cr, mode in COMMANDS:
         if effective_mode not in mode:
-            continue
-        if intent == "reading_aloud" and effective_mode == "open":
             continue
         if intent == "no_fillers_challenge" and not no_fillers_eligible:
             continue
