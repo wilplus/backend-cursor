@@ -25,7 +25,12 @@ def _effective_mode(session):
 
 
 def _build_plan_response(session_id: str, session: dict, pre_questions_list: list, command_options_list: list):
-    """Build v1 response JSON (theme_*, pre_questions length 1, command_options length 3, cursor, mode, structure)."""
+    """Build v1 response JSON (theme_*, pre_questions length 1, command_options length 3, recommended_command_option_id, cursor, mode, structure)."""
+    # Recommended command: use for recording without showing A/B/C picker (system chooses)
+    recommended = "A"
+    if command_options_list:
+        primary = next((o for o in command_options_list if o.get("is_primary")), command_options_list[0])
+        recommended = primary.get("option_id", "A")
     return {
         "session_id": session_id,
         "theme_recommended_code": session.get("theme_recommended_code"),
@@ -34,6 +39,7 @@ def _build_plan_response(session_id: str, session: dict, pre_questions_list: lis
         "theme_chosen_source": session.get("theme_chosen_source"),
         "pre_questions": pre_questions_list,
         "command_options": command_options_list,
+        "recommended_command_option_id": recommended,
         "cursor": session.get("cursor"),
         "mode": session.get("mode"),
         "structure": session.get("structure"),
@@ -205,13 +211,16 @@ def start_session():
         session = db.get_session(session_id, user_id)
         theme_chosen = session.get("theme_chosen_code") or theme_chosen
 
-        # --- Plan 1 pre-question ---
+        # --- Plan 1 pre-question (exclude "How are you feeling today?" – that step is removed from flow) ---
         if not session.get("planned_pre_question_id"):
             recent_pre = db.get_recent_exposures(user_id, "pre_q_template", 5)
             exclude_codes = [r.get("content_code") for r in recent_pre if r.get("content_code")]
-            templates = db.get_pre_question_templates_for_theme(theme_chosen, exclude_codes=exclude_codes or None, limit=1)
+            templates = db.get_pre_question_templates_for_theme(theme_chosen, exclude_codes=exclude_codes or None, limit=3)
             if not templates:
-                templates = db.get_pre_question_templates_for_theme(None, limit=1)
+                templates = db.get_pre_question_templates_for_theme(None, limit=3)
+            # Do not plan "How are you feeling today?" (step 1.5 removed)
+            skip_text = "how are you feeling today"
+            templates = [t for t in templates if (t.get("question_text") or "").strip().lower() != skip_text]
             if templates:
                 t = templates[0]
                 db.update_session_planned_pre_question(

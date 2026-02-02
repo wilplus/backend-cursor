@@ -1,6 +1,7 @@
 from supabase import create_client, Client
 from config import Config
-from typing import List
+from typing import List, Tuple
+from datetime import datetime, timedelta, timezone
 import sentry_sdk
 
 config = Config()
@@ -722,6 +723,17 @@ class DatabaseService:
             .execute()
         return result.data or []
 
+    def get_intent_selection_count(self, user_id: str, intent: str) -> int:
+        """Count how many times this user has selected this intent (was_selected=true). Used to detect newly-tested command for post-question."""
+        result = self.client.table("content_exposures")\
+            .select("id", count="exact")\
+            .eq("user_id", user_id)\
+            .eq("content_type", "intent")\
+            .eq("content_code", intent)\
+            .eq("was_selected", True)\
+            .execute()
+        return getattr(result, "count", None) or len(result.data or [])
+
     def get_completed_sessions_count(self, user_id: str) -> int:
         """Count sessions with status = 'completed' for user (no_fillers_challenge gating)."""
         result = self.client.table("recording_sessions")\
@@ -885,6 +897,41 @@ class DatabaseService:
             .limit(limit_same_theme)\
             .execute()
         return [s["post_question_set_id"] for s in (sessions.data or []) if s.get("post_question_set_id") is not None]
+
+    def get_incomplete_sessions_older_than(self, days: float) -> List[dict]:
+        """Return recording_sessions that are not completed and created_at is older than days (for cleanup)."""
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+        result = self.client.table("recording_sessions")\
+            .select("id, created_at, status")\
+            .neq("status", "completed")\
+            .lt("created_at", cutoff)\
+            .execute()
+        return result.data or []
+
+    def cleanup_incomplete_sessions(self, days: float = 10, dry_run: bool = False) -> Tuple[int, List[str]]:
+        """
+        Delete incomplete sessions (and their recordings, pre/post answers, command options, exposures) older than days.
+        Incomplete = not concluded with a report (status != 'completed').
+        Returns (deleted_count, list of deleted session ids).
+        For testing without waiting 10 days: use days=0.04 (≈1 hour) or days=0.001 (≈1.4 min) with dry_run=True first.
+        """
+        sessions = self.get_incomplete_sessions_older_than(days)
+        ids = [s["id"] for s in sessions]
+        if dry_run:
+            return len(ids), ids
+        if not ids:
+            return 0, []
+        deleted_ids = []
+        for session_id in ids:
+            try:
+                # Delete recordings for this session first (CASCADE will remove performance_scores, post_recording_answers by recording_id)
+                self.client.table("recordings").delete().eq("session_id", session_id).execute()
+                # Delete session (CASCADE: pre_recording_answers, post_recording_answers, session_command_options, content_exposures)
+                self.client.table("recording_sessions").delete().eq("id", session_id).execute()
+                deleted_ids.append(session_id)
+            except Exception as e:
+                sentry_sdk.capture_exception(e)
+        return len(deleted_ids), deleted_ids
 
 # Singleton instance
 db = DatabaseService()

@@ -121,8 +121,66 @@ This comes from **Supabase Auth** in the browser: something is trying to refresh
 
 - **Migration:** Run `migrations/v1_planned_session.sql` in Supabase SQL Editor after `supabase-schema-complete.sql`. Adds: theme/planning columns on `recording_sessions`, `recordings.command_option_id`, `session_command_options`, `content_exposures`, `admin_session_overrides`, pre-question template columns, `performance_scores.self_rating_score`, and seeds 21 theme pre-question templates.
 - **Full v1 schema (single script):** `docs/archive/supabase-full-schema-v1.sql` or `supabase-schema-full.sql` — idempotent, includes `recordings.command_option_id` for POST /recordings/upload. Use so schema matches the v1 upload contract.
-- **Flow:** `POST /session/start` returns theme + 1 planned pre-question + 3 command options (A/B/C). Upload requires form field `command_option_id` (A|B|C). Backend stores it on each recording row. Post-set is chosen at upload by theme + anti-repeat. Q1 scale answer is stored as `performance_scores.self_rating_score`.
+- **Flow:** `POST /session/start` returns theme + 1 planned pre-question + 3 command options (A/B/C) + **`recommended_command_option_id`** (A|B|C). Use the recommended one for recording without showing a picker. Upload requires form field `command_option_id` (A|B|C). Backend stores it on each recording row. Post-set is chosen at upload by theme + anti-repeat. Q1 scale answer is stored as `performance_scores.self_rating_score`.
 - **Rollout:** `recording_sessions.mode` is canonical; mirror writes to `structure`; read with `COALESCE(mode, structure)`.
+
+---
+
+## 3-step flow (new structure)
+
+**Step 1: Pre-questions**  
+1.1 Do you feel more like: [mood/energy]  
+1.2 How ready is your body and mind to present? [readiness]  
+1.3 Theme — default “choose a theme for me” (system picks); remove “optional” in UI  
+1.4 Do you want to be guided [mode]  
+~~1.5 How are you feeling today~~ — **removed** (backend does not plan this question)  
+~~1.6 Choose your recording prompt~~ — **removed** (system uses recommended command; no A/B/C picker)
+
+**Step 2: Command & recording**  
+- Backend returns `recommended_command_option_id` (e.g. `"A"`). Frontend uses that for the recording step and sends it as `command_option_id` on upload. Do not show “choose A/B/C”.
+
+**Step 3: Post-questions**  
+3.1, 3.2, 3.3 — backend returns `post_questions` after upload; frontend renders them.
+
+**Backend support:**  
+- `POST /session/start` includes `recommended_command_option_id` (primary command).  
+- Pre-question “How are you feeling today?” is excluded from planning.  
+- Theme default: system chooses when user does not send `theme_code` (already supported).
+
+**Gaps / frontend:**  
+- Step labels 1.1–1.4 and 3.1–3.3: frontend must map API (theme, mode, pre_questions, post_questions) to these steps.  
+- “Optional” copy for theme: remove in frontend; default = “choose a theme for me”.  
+- Post-question content (3.1, 3.2, 3.3) comes from backend `post_questions` after upload; no backend gap.
+
+**Report:** The coaching report references or summarizes the first set of questions (pre-recording answers) that determined the command choice when relevant.
+
+**Post-questions (summary):** If the command was newly tested (user has selected this intent 0 or 1 time before), 50% of the time the backend adds an extra post-question: "Did you find this recording prompt useful?" (binary). Commands are rotated (anti-repeat at session start) so the 3rd time a new command is offered; after that, 50% of the time when the command is newly tested we ask if the prompt was good.
+
+---
+
+## Cleanup: incomplete sessions (not concluded with a report)
+
+Incomplete flows (sessions that never got a report) are deleted after **10 days**, along with their recordings, pre/post answers, command options, and exposures.
+
+**What gets deleted:**  
+- `recording_sessions` where `status != 'completed'` and `created_at` is older than N days  
+- Related: `recordings`, `pre_recording_answers`, `post_recording_answers`, `session_command_options`, `content_exposures`, `performance_scores` (via cascade)
+
+**How to run (production):**  
+- **Cron (recommended):** Daily run with `days=10`, e.g. `python3 run_cleanup_incomplete_sessions.py --days 10`  
+- **Admin API:** `POST /admin/cleanup-incomplete-sessions?days=10` (requires admin auth)
+
+**How to test without waiting 10 days:**  
+1. **Dry-run (no delete):** See what would be deleted after 10 days:  
+   `python3 run_cleanup_incomplete_sessions.py --days 10 --dry-run`  
+2. **Short cutoff for testing:** Use a small `days` so “old” = e.g. 1 hour:  
+   - Dry-run: `python3 run_cleanup_incomplete_sessions.py --days 0.04 --dry-run` (≈1 hour)  
+   - Actually delete: `python3 run_cleanup_incomplete_sessions.py --days 0.04`  
+3. **Admin API:**  
+   - Dry-run: `POST /admin/cleanup-incomplete-sessions?days=0.04&dry_run=true`  
+   - Delete: `POST /admin/cleanup-incomplete-sessions?days=0.04`  
+
+Response includes `deleted_count` and `deleted_session_ids` (or what would be deleted when `dry_run=true`).
 
 ---
 

@@ -349,13 +349,14 @@ Metrics:
 **Requirements:**
 1. Create a progress-aware report that acknowledges improvements or areas needing work
 2. Reference specific changes from previous recordings when relevant (if progress context available)
-3. **Admin input:** If the admin explicitly requested that something be added to the coaching message after the next recording (e.g. "add this to the coaching message after the next recording", "include in the next report:"), you MUST include that content in this report. Otherwise use admin observations, custom instructions, and focus areas when you judge them valuable for this report; if not relevant, omit.
-4. Include quantitative metrics (WPM and filler count)
-5. Pacing: note observations in a supportive way (e.g. "{pacing_note}"); do NOT use commanding language. Describe what you observed; do not tell the user what to do.
-6. {"Include trend sentence: " + trend_sentence if trend_sentence else "Do NOT include a trend sentence (insufficient prior data)."}
-7. **Tone: supportive and adaptive.** Use supportive, adaptive language (e.g. "I'll analyse your progress and adjust the learning to your needs"). Avoid imperative/commanding phrasing such as "Focus on…", "Consider adjusting…", "you should…". Prefer "we can…", "I'll help you…", "I'll tailor…" instead of "you should…", "consider…", "focus on…".
-8. Include a short closing line in that spirit (e.g. "I'll analyse your progress and adjust the learning methods to your needs" or "I'll use this feedback to tailor future sessions to your needs").
-9. Maximum {max_words} words (you will be truncated if longer)
+3. **Pre-recording answers:** Reference or briefly summarize the first set of questions (pre-recording answers above) that determined the command choice; count or mention them when relevant so the report reflects how the user’s answers led to this recording.
+4. **Admin input:** If the admin explicitly requested that something be added to the coaching message after the next recording (e.g. "add this to the coaching message after the next recording", "include in the next report:"), you MUST include that content in this report. Otherwise use admin observations, custom instructions, and focus areas when you judge them valuable for this report; if not relevant, omit.
+5. Include quantitative metrics (WPM and filler count)
+6. Pacing: note observations in a supportive way (e.g. "{pacing_note}"); do NOT use commanding language. Describe what you observed; do not tell the user what to do.
+7. {"Include trend sentence: " + trend_sentence if trend_sentence else "Do NOT include a trend sentence (insufficient prior data)."}
+8. **Tone: supportive and adaptive.** Use supportive, adaptive language (e.g. "I'll analyse your progress and adjust the learning to your needs"). Avoid imperative/commanding phrasing such as "Focus on…", "Consider adjusting…", "you should…". Prefer "we can…", "I'll help you…", "I'll tailor…" instead of "you should…", "consider…", "focus on…".
+9. Include a short closing line in that spirit (e.g. "I'll analyse your progress and adjust the learning methods to your needs" or "I'll use this feedback to tailor future sessions to your needs").
+10. Maximum {max_words} words (you will be truncated if longer)
 
 Generate the report:"""
         

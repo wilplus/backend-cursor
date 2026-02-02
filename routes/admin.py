@@ -136,6 +136,37 @@ def save_admin_feedback():
         return jsonify({"code": "FEEDBACK_ERROR", "error": str(e)}), 500
 
 
+@admin_bp.route("/cleanup-incomplete-sessions", methods=["POST"])
+@require_admin
+def cleanup_incomplete_sessions():
+    """
+    Delete incomplete sessions (and recordings, pre/post answers, etc.) older than N days.
+    Query params: days (default 10), dry_run (default false).
+    To test without waiting 10 days: call with days=0.04 (≈1 hour) and dry_run=true first.
+    """
+    try:
+        days_arg = request.args.get("days", "10")
+        dry_run_arg = request.args.get("dry_run", "false").lower() in ("true", "1", "yes")
+        try:
+            days = float(days_arg)
+        except ValueError:
+            return jsonify({"code": "INVALID_INPUT", "error": "days must be a number"}), 400
+        if days < 0:
+            return jsonify({"code": "INVALID_INPUT", "error": "days must be >= 0"}), 400
+        count, ids = db.cleanup_incomplete_sessions(days=days, dry_run=dry_run_arg)
+        return jsonify({
+            "status": "success",
+            "dry_run": dry_run_arg,
+            "days": days,
+            "deleted_count": count,
+            "deleted_session_ids": ids,
+        }), 200
+    except Exception as e:
+        logger.error(f"Cleanup error: {str(e)}")
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "CLEANUP_ERROR", "error": str(e)}), 500
+
+
 @admin_bp.route("/user/<user_id>/context", methods=["GET"])
 @require_admin
 def get_user_admin_context(user_id):

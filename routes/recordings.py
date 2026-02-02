@@ -7,6 +7,7 @@ from utils.metrics import count_fillers, compute_wpm
 from config import Config
 import sentry_sdk
 import os
+import random
 import uuid
 
 recordings_bp = Blueprint("recordings", __name__)
@@ -53,6 +54,8 @@ def upload_recording():
             mode=selected_opt["mode"],
             prompt_snapshot=selected_opt["prompt_text_snapshot"],
         )
+        # Count how many times user has selected this intent (before this upload) for "newly tested" post-question
+        intent_selection_count = db.get_intent_selection_count(user_id, selected_opt["intent"])
         # Log exposures: intent was_selected=true, command_option
         db.log_exposure(user_id, "intent", selected_opt["intent"], session_id=session_id, tier=selected_opt["tier"], was_selected=True)
         db.log_exposure(user_id, "command_option", command_option_id, session_id=session_id, was_selected=True)
@@ -275,6 +278,24 @@ def upload_recording():
                     "question_type": question_record.get("question_type", temp_q["question_type"]),
                     "question_set_id": temp_q.get("question_set_id"),
                     "order_index": temp_q.get("order_index")
+                })
+        
+        # If command was newly tested (1st or 2nd time this intent), 50% of the time add "was this prompt good?" question
+        newly_tested = intent_selection_count < 2
+        if newly_tested and random.random() < 0.5:
+            prompt_feedback_q = db.create_post_question(
+                question_text="Did you find this recording prompt useful?",
+                question_type="binary",
+                question_set_id=selected_set["id"] if selected_set else None,
+                order_index=len(post_questions)
+            )
+            if prompt_feedback_q:
+                post_questions.append({
+                    "id": prompt_feedback_q["id"],
+                    "question_text": prompt_feedback_q["question_text"],
+                    "question_type": prompt_feedback_q.get("question_type", "binary"),
+                    "question_set_id": prompt_feedback_q.get("question_set_id"),
+                    "order_index": len(post_questions) - 1,
                 })
         
         return jsonify({
