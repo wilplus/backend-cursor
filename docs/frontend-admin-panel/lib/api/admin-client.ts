@@ -39,6 +39,7 @@ export interface StudentProfile {
   user_id: string;
   email: string | null;
   overrides: {
+    show_exercise_step?: boolean;
     intended_emotion_prompt?: string;
     keywords_prompt?: string;
     emotion_check_question_text?: string;
@@ -73,6 +74,16 @@ export interface Exercise {
   title: string;
   video_url?: string | null;
   description?: string | null;
+  min_task_score?: number;
+  max_task_score?: number;
+  is_active?: boolean;
+  created_at?: string;
+}
+
+export interface Task {
+  id: string;
+  title: string;
+  prompt_text?: string | null;
   min_task_score?: number;
   max_task_score?: number;
   is_active?: boolean;
@@ -118,7 +129,7 @@ export const adminApi = {
     adminFetch<{ status: string }>(`/exercises/${id}`, { method: "DELETE" }),
 
   getTasks: () =>
-    adminFetch<{ tasks: unknown[] }>("/tasks").then((r) => r.tasks),
+    adminFetch<{ tasks: Task[] }>("/tasks").then((r) => r.tasks),
 
   getPostQuestions: () =>
     adminFetch<{ questions: PostQuestion[] }>("/post-recording-questions").then((r) => r.questions),

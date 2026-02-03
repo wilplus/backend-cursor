@@ -16,7 +16,6 @@ export default function AdminExercisesPage() {
     description: "",
     min_task_score: 0,
     max_task_score: 1,
-    is_active: true,
   });
 
   const load = useCallback(() => {
@@ -38,7 +37,6 @@ export default function AdminExercisesPage() {
       description: "",
       min_task_score: 0,
       max_task_score: 1,
-      is_active: true,
     });
     setDialogOpen(true);
   };
@@ -51,7 +49,6 @@ export default function AdminExercisesPage() {
       description: e.description ?? "",
       min_task_score: e.min_task_score ?? 0,
       max_task_score: e.max_task_score ?? 1,
-      is_active: e.is_active ?? true,
     });
     setDialogOpen(true);
   };
@@ -82,17 +79,6 @@ export default function AdminExercisesPage() {
     }
   };
 
-  const remove = (id: string) => {
-    if (!confirm("Deactivate this exercise? It will no longer appear in the student flow.")) return;
-    adminApi
-      .deleteExercise(id)
-      .then(() => {
-        toast.success("Exercise deactivated");
-        load();
-      })
-      .catch((e) => toast.error(e.message));
-  };
-
   if (loading) return <p className="text-muted-foreground">Loading exercises…</p>;
 
   return (
@@ -101,7 +87,7 @@ export default function AdminExercisesPage() {
 
       <SectionCard
         title="Exercise pool"
-        description="Exercises shown in the flow after the 3 universal questions (by task_score band)."
+        description="List of exercises. Who sees the exercise step (and which one) is set per student on their profile."
         action={
           <button
             type="button"
@@ -114,7 +100,7 @@ export default function AdminExercisesPage() {
       >
         <ul className="space-y-2">
           {exercises.length === 0 ? (
-            <li className="text-sm text-muted-foreground">No exercises. Add one to show the exercise step.</li>
+            <li className="text-sm text-muted-foreground">No exercises. Add one to assign to students on their profile.</li>
           ) : (
             exercises.map((e) => (
               <li
@@ -123,9 +109,6 @@ export default function AdminExercisesPage() {
               >
                 <div>
                   <span className="font-medium">{e.title}</span>
-                  {e.is_active === false && (
-                    <span className="ml-2 text-xs text-muted-foreground">(inactive)</span>
-                  )}
                   {e.description && (
                     <p className="mt-1 text-sm text-muted-foreground line-clamp-1">{e.description}</p>
                   )}
@@ -138,15 +121,6 @@ export default function AdminExercisesPage() {
                   >
                     Edit
                   </button>
-                  {e.is_active !== false && (
-                    <button
-                      type="button"
-                      onClick={() => remove(e.id)}
-                      className="rounded-md px-3 py-1.5 text-sm text-destructive hover:bg-destructive/10"
-                    >
-                      Deactivate
-                    </button>
-                  )}
                 </div>
               </li>
             ))
@@ -214,16 +188,6 @@ export default function AdminExercisesPage() {
                   />
                 </div>
               </div>
-              {editing && (
-                <label className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={form.is_active}
-                    onChange={(e) => setForm((p) => ({ ...p, is_active: e.target.checked }))}
-                  />
-                  Active (show in student flow)
-                </label>
-              )}
             </div>
             <div className="mt-6 flex justify-end gap-2">
               <button

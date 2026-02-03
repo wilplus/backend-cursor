@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { ChevronLeft, FileText, Send } from "lucide-react";
 import SectionCard from "@/components/admin/SectionCard";
-import { adminApi, type StudentProfile, type Exercise, type PostQuestion } from "@/lib/api/admin-client";
+import { adminApi, type StudentProfile, type Exercise, type PostQuestion, type Task } from "@/lib/api/admin-client";
 import { toast } from "sonner";
 
 function Chip({
@@ -37,6 +37,7 @@ export default function AdminStudentProfilePage({ params }: { params: { id: stri
   const id = typeof params.id === "string" ? params.id : params.id[0];
   const [profile, setProfile] = useState<StudentProfile | null>(null);
   const [exercises, setExercises] = useState<Exercise[]>([]);
+  const [tasks, setTasks] = useState<Task[]>([]);
   const [postQuestions, setPostQuestions] = useState<PostQuestion[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -47,11 +48,13 @@ export default function AdminStudentProfilePage({ params }: { params: { id: stri
     Promise.all([
       adminApi.getStudentProfile(id),
       adminApi.getExercises(),
+      adminApi.getTasks(),
       adminApi.getPostQuestions(),
     ])
-      .then(([p, ex, q]) => {
+      .then(([p, ex, t, q]) => {
         setProfile(p);
         setExercises(ex);
+        setTasks(t);
         setPostQuestions(q);
       })
       .catch((e) => toast.error(e.message))
@@ -61,11 +64,13 @@ export default function AdminStudentProfilePage({ params }: { params: { id: stri
   useEffect(() => load(), [load]);
 
   const [overridesDraft, setOverridesDraft] = useState({
+    show_exercise_step: true,
     intended_emotion_prompt: "",
     keywords_prompt: "",
     emotion_check_question_text: "",
     assigned_post_question_ids: [] as string[],
     assigned_next_exercise_id: "",
+    assigned_next_task_ids: [] as string[],
   });
   const [speakerDraft, setSpeakerDraft] = useState({
     main_goal: "",
@@ -82,11 +87,13 @@ export default function AdminStudentProfilePage({ params }: { params: { id: stri
     if (!profile) return;
     const o = profile.overrides || {};
     setOverridesDraft({
+      show_exercise_step: o.show_exercise_step !== false,
       intended_emotion_prompt: o.intended_emotion_prompt ?? "",
       keywords_prompt: o.keywords_prompt ?? "",
       emotion_check_question_text: o.emotion_check_question_text ?? "",
       assigned_post_question_ids: o.assigned_post_question_ids ?? [],
       assigned_next_exercise_id: o.assigned_next_exercise_id ?? "",
+      assigned_next_task_ids: o.assigned_next_task_ids ?? [],
     });
     const s = profile.speaker_profile || {};
     setSpeakerDraft({
@@ -104,10 +111,12 @@ export default function AdminStudentProfilePage({ params }: { params: { id: stri
   const saveOverrides = () => {
     setSaving(true);
     const payload: Record<string, unknown> = {
+      show_exercise_step: overridesDraft.show_exercise_step,
       intended_emotion_prompt: overridesDraft.intended_emotion_prompt || undefined,
       keywords_prompt: overridesDraft.keywords_prompt || undefined,
       emotion_check_question_text: overridesDraft.emotion_check_question_text || undefined,
       assigned_next_exercise_id: overridesDraft.assigned_next_exercise_id || undefined,
+      assigned_next_task_ids: overridesDraft.assigned_next_task_ids.length > 0 ? overridesDraft.assigned_next_task_ids : undefined,
     };
     if (overridesDraft.assigned_post_question_ids.length === 3) {
       payload.assigned_post_question_ids = overridesDraft.assigned_post_question_ids;
@@ -149,6 +158,15 @@ export default function AdminStudentProfilePage({ params }: { params: { id: stri
       ...prev,
       assigned_next_exercise_id: prev.assigned_next_exercise_id === exId ? "" : exId,
     }));
+  };
+
+  const toggleTask = (taskId: string) => {
+    setOverridesDraft((prev) => {
+      const ids = prev.assigned_next_task_ids.includes(taskId)
+        ? prev.assigned_next_task_ids.filter((x) => x !== taskId)
+        : [...prev.assigned_next_task_ids, taskId];
+      return { ...prev, assigned_next_task_ids: ids };
+    });
   };
 
   if (loading || !profile) {
@@ -196,10 +214,27 @@ export default function AdminStudentProfilePage({ params }: { params: { id: stri
         }
       >
         <div className="space-y-4">
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="show_exercise_step"
+              checked={overridesDraft.show_exercise_step}
+              onChange={(e) =>
+                setOverridesDraft((p) => ({ ...p, show_exercise_step: e.target.checked }))
+              }
+              className="h-4 w-4 rounded border-input"
+            />
+            <label htmlFor="show_exercise_step" className="text-sm font-medium">
+              Show exercise step for this student
+            </label>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            When on, this student sees the exercise step after the 3 universal questions. When off, they skip it. Which exercise (or auto by task score) is set below.
+          </p>
           <div>
-            <p className="mb-2 text-sm font-medium">Next exercise (optional)</p>
+            <p className="mb-2 text-sm font-medium">Next exercise (optional, when step is on)</p>
             <div className="flex flex-wrap gap-2">
-              {exercises.filter((e) => e.is_active !== false).map((e) => (
+              {exercises.map((e) => (
                 <Chip
                   key={e.id}
                   label={e.title}
@@ -207,8 +242,25 @@ export default function AdminStudentProfilePage({ params }: { params: { id: stri
                   onToggle={() => toggleExercise(e.id)}
                 />
               ))}
-              {exercises.filter((e) => e.is_active !== false).length === 0 && (
-                <span className="text-sm text-muted-foreground">No active exercises.</span>
+              {exercises.length === 0 && (
+                <span className="text-sm text-muted-foreground">No exercises in pool. Add them on the Exercises tab.</span>
+              )}
+            </div>
+          </div>
+          <div>
+            <p className="mb-2 text-sm font-medium">Tasks for this student (multi-select)</p>
+            <p className="mb-2 text-xs text-muted-foreground">Choose which tasks are available for this student. Newly added tasks appear here.</p>
+            <div className="flex flex-wrap gap-2">
+              {tasks.map((t) => (
+                <Chip
+                  key={t.id}
+                  label={t.title}
+                  selected={overridesDraft.assigned_next_task_ids.includes(t.id)}
+                  onToggle={() => toggleTask(t.id)}
+                />
+              ))}
+              {tasks.length === 0 && (
+                <span className="text-sm text-muted-foreground">No tasks in pool. Add them on the Tasks tab.</span>
               )}
             </div>
           </div>
@@ -216,11 +268,12 @@ export default function AdminStudentProfilePage({ params }: { params: { id: stri
             <p className="mb-2 text-sm font-medium">
               Post-Recording Questions ({postCount}/3 selected)
             </p>
+            <p className="mb-2 text-xs text-muted-foreground">All questions from the pool; newly added ones appear here. Select exactly 3.</p>
             {postError && (
               <p className="mb-2 text-sm text-destructive">Select exactly 3 questions.</p>
             )}
             <div className="flex flex-wrap gap-2">
-              {postQuestions.filter((q) => q.is_active !== false).map((q) => (
+              {postQuestions.map((q) => (
                 <Chip
                   key={q.id}
                   label={q.text.slice(0, 30) + (q.text.length > 30 ? "…" : "")}
@@ -229,6 +282,9 @@ export default function AdminStudentProfilePage({ params }: { params: { id: stri
                 />
               ))}
             </div>
+            {postQuestions.length === 0 && (
+              <span className="text-sm text-muted-foreground">No questions in pool. Add them on the Questions tab.</span>
+            )}
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <div>

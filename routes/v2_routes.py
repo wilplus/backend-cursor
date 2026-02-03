@@ -82,12 +82,17 @@ def v2_universal_answers(session_id):
 
         task_score = compute_task_score(mood, readiness, mode_preference)
         overrides = db.v2_get_student_overrides(user_id)
-        exercises = db.v2_get_active_exercises()
-        exercise = select_exercise_for_task_score(
-            exercises,
-            task_score,
-            (overrides.get("assigned_next_exercise_id") if overrides else None),
-        )
+        # Per-student: admin turns exercise step on/off on student profile. When off, skip exercise.
+        show_exercise = overrides.get("show_exercise_step") if overrides is not None else True
+        if show_exercise is False:
+            exercise = None
+        else:
+            exercises = db.v2_get_active_exercises()
+            exercise = select_exercise_for_task_score(
+                exercises,
+                task_score,
+                (overrides.get("assigned_next_exercise_id") if overrides else None),
+            )
 
         # Store universal answers and task_score in all cases
         db.v2_update_session(session_id, user_id, {
