@@ -6,12 +6,9 @@ from flask import Blueprint, request, jsonify
 from auth import require_auth
 from routes.admin import require_admin
 from services.db import db
-from services.v2_flow_service import (
-    compute_task_score,
-    select_exercise_for_task_score,
-    select_tasks_for_task_score,
-    select_post_questions_v2,
-)
+from services.v2_flow_service import compute_task_score
+from services.question_service import calculate_cursor
+from routes.session import run_v1_planning, _build_plan_response
 from services.metrics_v2 import compute_metrics_v2
 from utils.metrics import count_fillers, compute_wpm
 import logging
@@ -61,11 +58,13 @@ def v2_session_start():
         return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
 
 
-# ---------- Student: universal answers -> plan ----------
+# ---------- Student: universal answers -> v1 plan (same flow as v1 + task_score) ----------
 @v2_bp.route("/session/<session_id>/universal-answers", methods=["POST"])
 @require_auth
 def v2_universal_answers(session_id):
-    """POST body: mood (0..1), readiness (1..10), mode_preference (0|1). Returns task_score, exercise, tasks, post_questions."""
+    """POST body: mood (0|1 or 0..1), readiness (1..10), mode_preference (0=guide me, 1=I'll choose).
+    Computes task_score; then creates v1 session and runs v1 planning. Returns v1-style plan + task_score.
+    Frontend uses returned session_id (v1) for pre-answers, recording upload, post-answers (same as v1)."""
     try:
         user_id = request.user_id
         data = request.get_json() or {}
@@ -73,91 +72,52 @@ def v2_universal_answers(session_id):
         readiness = data.get("readiness", 5)
         mode_preference = data.get("mode_preference", 0)
 
-        session = db.v2_get_session(session_id, user_id)
-        if not session:
+        v2_session = db.v2_get_session(session_id, user_id)
+        if not v2_session:
             return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found"}), 404
-        if session.get("status") != "universal_questions":
+        if v2_session.get("status") != "universal_questions":
             return jsonify({"code": "INVALID_STATE", "error": "Session already past universal questions"}), 400
 
         task_score = compute_task_score(mood, readiness, mode_preference)
-        overrides = db.v2_get_student_overrides(user_id)
-        exercises = db.v2_get_active_exercises()
-        exercise = select_exercise_for_task_score(
-            exercises,
-            task_score,
-            (overrides.get("assigned_next_exercise_id") if overrides else None),
+
+        # Map to v1 questionnaire: mood good=positive not great=negative; readiness 1-10; mode guide me=guided I'll choose=open
+        mood_str = "positive" if (mood is not None and float(mood) >= 0.5) else "negative"
+        readiness_int = max(1, min(10, int(readiness) if readiness is not None else 5))
+        mode_str = "guided" if mode_preference == 0 else "open"
+        cursor = calculate_cursor(mood_str, readiness_int)
+
+        # Create v1 session (same as v1 flow after questionnaire)
+        v1_session = db.create_session(
+            user_id=user_id,
+            cursor=cursor,
+            mode=mode_str,
+            mood=mood_str,
+            readiness=readiness_int,
+            inspiration_needed=False,
+            pre_questions_completed=False,
+            status="pre_questions_pending",
         )
-        tasks = db.v2_get_active_tasks()
-        task_options = select_tasks_for_task_score(
-            tasks,
-            task_score,
-            mode_preference,
-            count=3,
-            assigned_task_ids=overrides.get("assigned_next_task_ids") if overrides else None,
-            exclude_recent_ids=None,
-        )
-        pool = db.v2_get_post_questions_pool()
-        assigned_ids = overrides.get("assigned_post_question_ids") if overrides else None
-        post_questions = select_post_questions_v2(pool, assigned_ids=assigned_ids)
+        if not v1_session:
+            return jsonify({"code": "V2_ERROR", "error": "Failed to create session"}), 500
+        v1_session_id = str(v1_session["id"])
+        db.client.table("recording_sessions").update({"structure": mode_str}).eq("id", v1_session_id).execute()
 
-        if mode_preference == 0:
-            selected_task = task_options[0] if task_options else None
-            task_option_ids = None
-        else:
-            selected_task = None
-            task_option_ids = [str(t["id"]) for t in task_options[:3]]
+        # Run v1 planning (theme + 1 pre-question + 3 command options)
+        session, pre_questions, command_options = run_v1_planning(v1_session_id, user_id, theme_code_override=None)
+        if not session:
+            return jsonify({"code": "V2_ERROR", "error": "Planning failed"}), 500
 
-        intent_prompts = {}
-        if overrides:
-            if overrides.get("intended_emotion_prompt"):
-                intent_prompts["intended_emotion"] = overrides["intended_emotion_prompt"]
-            if overrides.get("keywords_prompt"):
-                intent_prompts["keywords"] = overrides["keywords_prompt"]
-        if "intended_emotion" not in intent_prompts:
-            intent_prompts["intended_emotion"] = "What emotion do you intend to convey?"
-        if "keywords" not in intent_prompts:
-            intent_prompts["keywords"] = "Enter 3 keywords you want to use."
-
-        emotion_check_text = (overrides.get("emotion_check_question_text") if overrides else None) or "Did you achieve the intended emotion?"
-
-        # Update session
-        update = {
+        # Link v2 session to v1 and store task_score
+        db.v2_update_session(session_id, user_id, {
             "universal_answers": {"mood": mood, "readiness": readiness, "mode_preference": mode_preference},
             "task_score": task_score,
             "mode_preference": mode_preference,
-            "selected_exercise_id": exercise["id"] if exercise else None,
-            "selected_task_id": selected_task["id"] if selected_task else None,
-            "task_option_ids": task_option_ids,
-            "post_question_ids": [str(q["id"]) for q in post_questions],
-            "status": "exercise" if exercise else "task",
-        }
-        db.v2_update_session(session_id, user_id, update)
+            "v1_session_id": v1_session_id,
+            "status": "pre_questions",
+        })
 
-        # Build response
-        exercise_out = None
-        if exercise:
-            exercise_out = {"id": exercise["id"], "title": exercise.get("title"), "video_url": exercise.get("video_url"), "description": exercise.get("description")}
-
-        tasks_out = []
-        if selected_task:
-            tasks_out = [{"id": selected_task["id"], "title": selected_task.get("title"), "prompt_text": selected_task.get("prompt_text")}]
-        else:
-            for t in task_options[:3]:
-                tasks_out.append({"id": t["id"], "title": t.get("title"), "prompt_text": t.get("prompt_text")})
-
-        post_out = []
-        for q in post_questions:
-            text = emotion_check_text if q.get("code") == "emotion_achieved_check" else q.get("text", "")
-            post_out.append({"id": q["id"], "code": q.get("code"), "text": text, "answer_type": q.get("answer_type")})
-
-        return jsonify({
-            "task_score": task_score,
-            "exercise": exercise_out,
-            "selected_task": tasks_out[0] if mode_preference == 0 and tasks_out else None,
-            "task_options": tasks_out if mode_preference == 1 else None,
-            "intent_prompts": intent_prompts,
-            "post_recording_questions": post_out,
-        }), 200
+        # Return v1-style plan so frontend uses same flow as v1 (pre-answers, record, post-answers)
+        return jsonify(_build_plan_response(v1_session_id, session, pre_questions, command_options, extra={"task_score": task_score})), 200
     except Exception as e:
         logger.error(f"V2 universal-answers error: {str(e)}")
         sentry_sdk.capture_exception(e)

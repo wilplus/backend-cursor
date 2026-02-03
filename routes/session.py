@@ -25,8 +25,8 @@ def _effective_mode(session):
     return (session.get("mode") or session.get("structure")) or "guided"
 
 
-def _build_plan_response(session_id: str, session: dict, pre_questions_list: list, command_options_list: list):
-    """Build v1 response JSON (theme_*, pre_questions, command_options, recommended_command_option_id, cursor, mode, structure, biofeedback_profile)."""
+def _build_plan_response(session_id: str, session: dict, pre_questions_list: list, command_options_list: list, extra: dict = None):
+    """Build v1 response JSON (theme_*, pre_questions, command_options, recommended_command_option_id, cursor, mode, structure, biofeedback_profile). extra is merged in (e.g. task_score for v2)."""
     # Recommended command: use for recording without showing A/B/C picker (system chooses)
     recommended = "A"
     if command_options_list:
@@ -34,7 +34,7 @@ def _build_plan_response(session_id: str, session: dict, pre_questions_list: lis
         recommended = primary.get("option_id", "A")
     theme_chosen = session.get("theme_chosen_code")
     biofeedback_profile = get_biofeedback_profile(theme_chosen)
-    return {
+    out = {
         "session_id": session_id,
         "theme_recommended_code": session.get("theme_recommended_code"),
         "theme_recommended_reason": session.get("theme_recommended_reason"),
@@ -48,6 +48,168 @@ def _build_plan_response(session_id: str, session: dict, pre_questions_list: lis
         "structure": session.get("structure"),
         "biofeedback_profile": biofeedback_profile,
     }
+    if extra:
+        out.update(extra)
+    return out
+
+
+def run_v1_planning(session_id: str, user_id: str, theme_code_override: str = None):
+    """
+    Run v1 theme + 1 pre-question + 3 command options. Session must already exist.
+    Returns (session, pre_questions_list, command_options_list).
+    theme_code_override: if set, use as theme_chosen (user choice); else pick randomly.
+    """
+    session = db.get_session(session_id, user_id)
+    if not session:
+        return None, [], []
+    cursor = session.get("cursor")
+    if cursor is None:
+        cursor = 0.5
+    mode = session.get("mode") or session.get("structure") or "guided"
+    override = db.get_active_override(user_id)
+    if override and session.get("admin_override_consumed_at") is None:
+        theme_forced = override.get("force_theme_code")
+        mode_forced = override.get("force_mode")
+        if theme_forced:
+            db.update_session_theme(session_id, chosen_code=theme_forced, chosen_source="admin")
+        if mode_forced:
+            db.client.table("recording_sessions").update({"mode": mode_forced, "structure": mode_forced}).eq("id", session_id).execute()
+            session["mode"] = mode_forced
+            session["structure"] = mode_forced
+            mode = mode_forced
+        db.update_session_admin_override_consumed(session_id, override["id"])
+        db.consume_admin_override(override["id"])
+        session = db.get_session(session_id, user_id)
+    theme_chosen = session.get("theme_chosen_code")
+    theme_source = session.get("theme_chosen_source")
+    if not theme_chosen:
+        admin_theme = override.get("force_theme_code") if override else None
+        user_theme = theme_code_override
+        recent_themes = []
+        if admin_theme:
+            theme_chosen = admin_theme
+            theme_source = "admin"
+        elif user_theme and user_theme in THEMES:
+            theme_chosen = user_theme
+            theme_source = "user"
+        else:
+            recent_themes = db.get_recent_theme_exposures_by_session(user_id, limit_sessions=2)
+            candidates = [t for t in THEMES if t not in recent_themes]
+            theme_chosen = random.choice(candidates) if candidates else random.choice(THEMES)
+            theme_source = "system"
+        db.update_session_theme(
+            session_id,
+            recommended_code=theme_chosen if theme_source == "system" else None,
+            recommended_reason="anti-repeat" if (theme_source == "system" and recent_themes) else None,
+            chosen_code=theme_chosen,
+            chosen_source=theme_source,
+        )
+        db.log_exposure(user_id, "theme", theme_chosen, session_id=session_id)
+    session = db.get_session(session_id, user_id)
+    theme_chosen = session.get("theme_chosen_code") or theme_chosen
+    if not session.get("planned_pre_question_id"):
+        recent_pre = db.get_recent_exposures(user_id, "pre_q_template", 5)
+        exclude_codes = [r.get("content_code") for r in recent_pre if r.get("content_code")]
+        templates = db.get_pre_question_templates_for_theme(theme_chosen, exclude_codes=exclude_codes or None, limit=3)
+        if not templates:
+            templates = db.get_pre_question_templates_for_theme(None, limit=3)
+        skip_text = "how are you feeling today"
+        templates = [t for t in templates if (t.get("question_text") or "").strip().lower() != skip_text]
+        if templates:
+            t = templates[0]
+            db.update_session_planned_pre_question(
+                session_id,
+                planned_id=t["id"],
+                text_snapshot=t.get("question_text", ""),
+                type_snapshot=t.get("question_type", "text_short"),
+                code_snapshot=t.get("code", ""),
+            )
+            db.log_exposure(user_id, "pre_q_template", t.get("code", ""), session_id=session_id, content_id=t["id"])
+        session = db.get_session(session_id, user_id)
+    opts = db.get_session_command_options(session_id)
+    if len(opts) < 3:
+        effective_mode = _effective_mode(session)
+        completed_count = db.get_completed_sessions_count(user_id)
+        avg_fillers = db.get_avg_fillers_per_min(user_id, 5)
+        no_fillers_eligible = cursor >= 0.60 and completed_count >= 3 and avg_fillers < 15
+        recent_intent = db.get_recent_exposures(user_id, "intent", 3)
+        recent_codes = [r.get("content_code") for r in recent_intent if r.get("content_code")]
+        candidates = filter_commands_for_theme_cursor_mode(theme_chosen, cursor, effective_mode, no_fillers_eligible)
+        candidates = [c for c in candidates if c["intent"] not in recent_codes]
+        seen_intents = {c["intent"] for c in candidates}
+        if len(candidates) < 3:
+            extra = get_commands_for_theme_ignore_cursor(theme_chosen, effective_mode, no_fillers_eligible)
+            for c in extra:
+                if c["intent"] not in recent_codes and c["intent"] not in seen_intents:
+                    candidates.append(c)
+                    seen_intents.add(c["intent"])
+                    if len(candidates) >= 5:
+                        break
+        if len(candidates) < 3:
+            any_theme = get_commands_for_mode_any_theme(effective_mode, no_fillers_eligible)
+            random.shuffle(any_theme)
+            for c in any_theme:
+                if c["intent"] not in recent_codes and c["intent"] not in seen_intents:
+                    candidates.append(c)
+                    seen_intents.add(c["intent"])
+                    if len(candidates) >= 5:
+                        break
+        if len(candidates) < 3:
+            any_theme = get_commands_for_mode_any_theme(effective_mode, no_fillers_eligible)
+            random.shuffle(any_theme)
+            for c in any_theme:
+                if c["intent"] not in seen_intents:
+                    candidates.append(c)
+                    seen_intents.add(c["intent"])
+                    if len(candidates) >= 5:
+                        break
+        candidates = candidates[:5]
+        random.shuffle(candidates)
+        selected = candidates[:3]
+        option_ids = ["A", "B", "C"]
+        options_payload = []
+        for i, cmd in enumerate(selected[:3]):
+            opt_id = option_ids[i]
+            prompt_text = get_command_prompt_for_intent(cmd["intent"], i % 3)
+            options_payload.append({
+                "option_id": opt_id,
+                "intent": cmd["intent"],
+                "tier": cmd["tier"],
+                "mode": effective_mode,
+                "prompt_text_snapshot": prompt_text,
+                "is_primary": i == 0,
+                "cursor_min": cmd["cursor_range"][0],
+                "cursor_max": cmd["cursor_range"][1],
+            })
+            db.log_exposure(user_id, "intent", cmd["intent"], session_id=session_id, tier=cmd["tier"], was_selected=False)
+        db.insert_session_command_options(session_id, options_payload)
+        opts = db.get_session_command_options(session_id)
+    session = db.get_session(session_id, user_id)
+    pre_questions = []
+    if session.get("planned_pre_question_id"):
+        pre_questions = [{
+            "id": session["planned_pre_question_id"],
+            "code": session.get("planned_pre_question_code_snapshot"),
+            "question_text": session.get("planned_pre_question_text_snapshot") or "",
+            "question_type": session.get("planned_pre_question_type_snapshot") or "text_short",
+            "order_index": 0,
+        }]
+    elif session.get("planned_pre_question_text_snapshot"):
+        pre_questions = [{
+            "id": session.get("planned_pre_question_id"),
+            "code": session.get("planned_pre_question_code_snapshot"),
+            "question_text": session.get("planned_pre_question_text_snapshot"),
+            "question_type": session.get("planned_pre_question_type_snapshot") or "text_short",
+            "order_index": 0,
+        }]
+    command_options = [
+        {"option_id": o["option_id"], "intent": o["intent"], "tier": o["tier"], "mode": o["mode"],
+         "prompt_text_snapshot": o["prompt_text_snapshot"], "is_primary": o.get("is_primary", False)}
+        for o in (opts or [])[:3]
+    ]
+    if not pre_questions and command_options:
+        pre_questions = [{"id": "fallback-0", "code": "fallback", "question_text": "What would you like to say?", "question_type": "text_short", "order_index": 0}]
+    return session, pre_questions, command_options
 
 
 @session_bp.route("/start", methods=["POST"])
@@ -163,190 +325,11 @@ def start_session():
                 db.client.table("recording_sessions").update({"structure": mode}).eq("id", session_id).execute()
                 session["structure"] = mode
 
-        # Reload session for latest fields
-        session = db.get_session(session_id, user_id)
-        cursor = session.get("cursor")
-        if cursor is None:
-            cursor = 0.5
-        mode = session.get("mode") or session.get("structure") or "guided"
-
-        # --- Admin override (consume once) ---
-        override = db.get_active_override(user_id)
-        if override and session.get("admin_override_consumed_at") is None:
-            theme_forced = override.get("force_theme_code")
-            mode_forced = override.get("force_mode")
-            if theme_forced:
-                db.update_session_theme(session_id, chosen_code=theme_forced, chosen_source="admin")
-            if mode_forced:
-                db.client.table("recording_sessions").update({"mode": mode_forced, "structure": mode_forced}).eq("id", session_id).execute()
-                session["mode"] = mode_forced
-                session["structure"] = mode_forced
-                mode = mode_forced
-            db.update_session_admin_override_consumed(session_id, override["id"])
-            db.consume_admin_override(override["id"])
-            session = db.get_session(session_id, user_id)
-
-        # --- Theme ---
-        theme_chosen = session.get("theme_chosen_code")
-        theme_source = session.get("theme_chosen_source")
-        if not theme_chosen:
-            admin_theme = override.get("force_theme_code") if override else None
-            user_theme = questionnaire.get("theme_code") if questionnaire else None
-            recent_themes = []
-            if admin_theme:
-                theme_chosen = admin_theme
-                theme_source = "admin"
-            elif user_theme and user_theme in THEMES:
-                theme_chosen = user_theme
-                theme_source = "user"
-            else:
-                recent_themes = db.get_recent_theme_exposures_by_session(user_id, limit_sessions=2)
-                candidates = [t for t in THEMES if t not in recent_themes]
-                theme_chosen = random.choice(candidates) if candidates else random.choice(THEMES)
-                theme_source = "system"
-            db.update_session_theme(
-                session_id,
-                recommended_code=theme_chosen if theme_source == "system" else None,
-                recommended_reason="anti-repeat" if (theme_source == "system" and recent_themes) else None,
-                chosen_code=theme_chosen,
-                chosen_source=theme_source,
-            )
-            db.log_exposure(user_id, "theme", theme_chosen, session_id=session_id)
-        session = db.get_session(session_id, user_id)
-        theme_chosen = session.get("theme_chosen_code") or theme_chosen
-
-        # --- Plan 1 pre-question (exclude "How are you feeling today?" – that step is removed from flow) ---
-        if not session.get("planned_pre_question_id"):
-            recent_pre = db.get_recent_exposures(user_id, "pre_q_template", 5)
-            exclude_codes = [r.get("content_code") for r in recent_pre if r.get("content_code")]
-            templates = db.get_pre_question_templates_for_theme(theme_chosen, exclude_codes=exclude_codes or None, limit=3)
-            if not templates:
-                templates = db.get_pre_question_templates_for_theme(None, limit=3)
-            # Do not plan "How are you feeling today?" (step 1.5 removed)
-            skip_text = "how are you feeling today"
-            templates = [t for t in templates if (t.get("question_text") or "").strip().lower() != skip_text]
-            if templates:
-                t = templates[0]
-                db.update_session_planned_pre_question(
-                    session_id,
-                    planned_id=t["id"],
-                    text_snapshot=t.get("question_text", ""),
-                    type_snapshot=t.get("question_type", "text_short"),
-                    code_snapshot=t.get("code", ""),
-                )
-                db.log_exposure(user_id, "pre_q_template", t.get("code", ""), session_id=session_id, content_id=t["id"])
-            session = db.get_session(session_id, user_id)
-
-        # --- Plan 3 command options (always ≥3: strict filter → theme-any-cursor → any-theme) ---
-        opts = db.get_session_command_options(session_id)
-        if len(opts) < 3:
-            effective_mode = _effective_mode(session)
-            completed_count = db.get_completed_sessions_count(user_id)
-            avg_fillers = db.get_avg_fillers_per_min(user_id, 5)
-            no_fillers_eligible = (
-                cursor >= 0.60 and completed_count >= 3 and avg_fillers < 15
-            )
-            recent_intent = db.get_recent_exposures(user_id, "intent", 3)
-            recent_codes = [r.get("content_code") for r in recent_intent if r.get("content_code")]
-
-            # 1) Strict: theme + cursor + mode
-            candidates = filter_commands_for_theme_cursor_mode(
-                theme_chosen, cursor, effective_mode, no_fillers_eligible
-            )
-            candidates = [c for c in candidates if c["intent"] not in recent_codes]
-            seen_intents = {c["intent"] for c in candidates}
-
-            # 2) Fallback: same theme, any cursor (so e.g. confidence_comfort always has options)
-            if len(candidates) < 3:
-                extra = get_commands_for_theme_ignore_cursor(
-                    theme_chosen, effective_mode, no_fillers_eligible
-                )
-                for c in extra:
-                    if c["intent"] not in recent_codes and c["intent"] not in seen_intents:
-                        candidates.append(c)
-                        seen_intents.add(c["intent"])
-                        if len(candidates) >= 5:
-                            break
-
-            # 3) Last resort: any theme, same mode (never leave user with 0 options)
-            if len(candidates) < 3:
-                any_theme = get_commands_for_mode_any_theme(effective_mode, no_fillers_eligible)
-                random.shuffle(any_theme)
-                for c in any_theme:
-                    if c["intent"] not in recent_codes and c["intent"] not in seen_intents:
-                        candidates.append(c)
-                        seen_intents.add(c["intent"])
-                        if len(candidates) >= 5:
-                            break
-
-            # 4) Guarantee ≥3: if anti-repeat left us short, allow repeats so we never show blank
-            if len(candidates) < 3:
-                any_theme = get_commands_for_mode_any_theme(effective_mode, no_fillers_eligible)
-                random.shuffle(any_theme)
-                for c in any_theme:
-                    if c["intent"] not in seen_intents:
-                        candidates.append(c)
-                        seen_intents.add(c["intent"])
-                        if len(candidates) >= 5:
-                            break
-
-            candidates = candidates[:5]
-            random.shuffle(candidates)
-            selected = candidates[:3]
-            option_ids = ["A", "B", "C"]
-            options_payload = []
-            for i, cmd in enumerate(selected[:3]):
-                opt_id = option_ids[i]
-                prompt_text = get_command_prompt_for_intent(cmd["intent"], i % 3)
-                options_payload.append({
-                    "option_id": opt_id,
-                    "intent": cmd["intent"],
-                    "tier": cmd["tier"],
-                    "mode": effective_mode,
-                    "prompt_text_snapshot": prompt_text,
-                    "is_primary": i == 0,
-                    "cursor_min": cmd["cursor_range"][0],
-                    "cursor_max": cmd["cursor_range"][1],
-                })
-                db.log_exposure(
-                    user_id, "intent", cmd["intent"],
-                    session_id=session_id, tier=cmd["tier"], was_selected=False
-                )
-            db.insert_session_command_options(session_id, options_payload)
-            opts = db.get_session_command_options(session_id)
-
-        # --- Response ---
-        session = db.get_session(session_id, user_id)
-        pre_questions = []
-        if session.get("planned_pre_question_id"):
-            pre_questions = [{
-                "id": session["planned_pre_question_id"],
-                "code": session.get("planned_pre_question_code_snapshot"),
-                "question_text": session.get("planned_pre_question_text_snapshot") or "",
-                "question_type": session.get("planned_pre_question_type_snapshot") or "text_short",
-                "order_index": 0,
-            }]
-        elif session.get("planned_pre_question_text_snapshot"):
-            pre_questions = [{
-                "id": session.get("planned_pre_question_id"),
-                "code": session.get("planned_pre_question_code_snapshot"),
-                "question_text": session.get("planned_pre_question_text_snapshot"),
-                "question_type": session.get("planned_pre_question_type_snapshot") or "text_short",
-                "order_index": 0,
-            }]
-        command_options = [
-            {
-                "option_id": o["option_id"],
-                "intent": o["intent"],
-                "tier": o["tier"],
-                "mode": o["mode"],
-                "prompt_text_snapshot": o["prompt_text_snapshot"],
-                "is_primary": o.get("is_primary", False),
-            }
-            for o in (opts or [])[:3]
-        ]
-        if not pre_questions and command_options:
-            pre_questions = [{"id": "fallback-0", "code": "fallback", "question_text": "What would you like to say?", "question_type": "text_short", "order_index": 0}]
+        # Run v1 planning (theme + 1 pre-question + 3 command options)
+        theme_override = questionnaire.get("theme_code") if questionnaire else None
+        session, pre_questions, command_options = run_v1_planning(session_id, user_id, theme_code_override=theme_override)
+        if not session:
+            return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found"}), 404
         return jsonify(_build_plan_response(session_id, session, pre_questions, command_options)), 200
 
     except Exception as e:
