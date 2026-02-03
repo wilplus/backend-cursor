@@ -77,3 +77,20 @@ Add to `globals.css` or your Tailwind config:
 - `GET /v2/admin/tasks`, `GET /v2/admin/post-recording-questions` — for dropdowns/chips
 
 See `docs/V2-ADMIN-API.md` in the backend repo for full reference.
+
+## Troubleshooting
+
+**Students page shows HTTP 404**  
+The Students page fetches `GET /api/v2/admin/students` (your Next.js BFF). A 404 means that route is missing or not reachable.
+
+1. **Add the BFF route**  
+   Copy `api-routes/students-route.ts` to **`src/app/api/v2/admin/students/route.ts`** in your frontend repo. See `api-routes/README.md` for the full file mapping.
+
+2. **Auth helper**  
+   The route imports `getV2AccessToken` and `getBackendUrl` from `../../getAuth`. Ensure **`src/app/api/v2/getAuth.ts`** exists (same as your v2 flow BFF) and returns the Supabase access token and backend base URL.
+
+3. **Backend URL**  
+   Set **`NEXT_PUBLIC_BACKEND_URL`** (or **`BACKEND_URL`**) in `.env.local` to your Flask backend (e.g. `https://your-backend.up.railway.app` or `http://localhost:5000`). The BFF proxies to `{BACKEND_URL}/v2/admin/students`.
+
+4. **Backend running**  
+   The Flask backend must expose **`GET /v2/admin/students`**. This repo already defines that route; ensure the backend is running and reachable at the URL you set above.
