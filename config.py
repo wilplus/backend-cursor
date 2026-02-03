@@ -12,8 +12,8 @@ class Config:
     SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
     SUPABASE_JWT_SECRET = os.getenv("SUPABASE_JWT_SECRET")
     
-    # OpenAI
-    OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+    # OpenAI (strip so .env newlines/quotes don't break the key)
+    OPENAI_API_KEY = (os.getenv("OPENAI_API_KEY") or "").strip().strip('"').strip("'")
     
     # Email (Resend)
     RESEND_API_KEY = os.getenv("RESEND_API_KEY")

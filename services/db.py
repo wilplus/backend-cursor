@@ -933,5 +933,154 @@ class DatabaseService:
                 sentry_sdk.capture_exception(e)
         return len(deleted_ids), deleted_ids
 
+    # ---------- V2 flow ----------
+    def v2_get_universal_questions(self):
+        """Get 3 universal questions ordered by position."""
+        result = self.client.table("v2_universal_questions").select("*").order("position").execute()
+        return result.data or []
+
+    def v2_get_active_exercises(self):
+        """All active exercises."""
+        result = self.client.table("v2_exercises").select("*").eq("is_active", True).execute()
+        return result.data or []
+
+    def v2_get_active_tasks(self):
+        """All active tasks."""
+        result = self.client.table("v2_tasks").select("*").eq("is_active", True).execute()
+        return result.data or []
+
+    def v2_get_post_questions_pool(self):
+        """All active post-recording questions (pool)."""
+        result = self.client.table("v2_post_recording_questions_pool").select("*").eq("is_active", True).execute()
+        return result.data or []
+
+    def v2_get_metric_definitions(self):
+        """All 5 metric definitions (code, left_label, right_label)."""
+        result = self.client.table("v2_metric_definitions").select("*").execute()
+        return result.data or []
+
+    def v2_get_student_overrides(self, user_id: str):
+        """Overrides for user (assigned post Qs, next exercise/task, prompt overrides)."""
+        result = self.client.table("v2_student_overrides").select("*").eq("user_id", user_id).execute()
+        return result.data[0] if result.data else None
+
+    def v2_get_active_session(self, user_id: str):
+        """Active v2 session (status != completed)."""
+        result = (
+            self.client.table("v2_sessions")
+            .select("*")
+            .eq("user_id", user_id)
+            .neq("status", "completed")
+            .order("created_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+        return result.data[0] if result.data else None
+
+    def v2_create_session(self, user_id: str):
+        """Create new v2 session (status=universal_questions)."""
+        result = self.client.table("v2_sessions").insert({"user_id": user_id, "status": "universal_questions"}).execute()
+        return result.data[0] if result.data else None
+
+    def v2_update_session(self, session_id: str, user_id: str, data: dict):
+        """Update v2 session; verify user_id."""
+        result = self.client.table("v2_sessions").update(data).eq("id", session_id).eq("user_id", user_id).execute()
+        return result.data[0] if result.data else None
+
+    def v2_get_session(self, session_id: str, user_id: str = None):
+        """Get v2 session by id, optionally scoped to user."""
+        q = self.client.table("v2_sessions").select("*").eq("id", session_id)
+        if user_id:
+            q = q.eq("user_id", user_id)
+        result = q.execute()
+        return result.data[0] if result.data else None
+
+    def v2_get_exercise(self, exercise_id: str):
+        result = self.client.table("v2_exercises").select("*").eq("id", exercise_id).execute()
+        return result.data[0] if result.data else None
+
+    def v2_get_task(self, task_id: str):
+        result = self.client.table("v2_tasks").select("*").eq("id", task_id).execute()
+        return result.data[0] if result.data else None
+
+    def v2_get_post_questions_by_ids(self, ids: List[str]):
+        """Fetch pool questions by id list (for snapshot)."""
+        if not ids:
+            return []
+        result = self.client.table("v2_post_recording_questions_pool").select("*").in_("id", ids).execute()
+        order = {str(x): i for i, x in enumerate(ids)}
+        rows = result.data or []
+        rows.sort(key=lambda r: order.get(str(r["id"]), 999))
+        return rows
+
+    def v2_insert_exercise(self, data: dict):
+        result = self.client.table("v2_exercises").insert(data).execute()
+        return result.data[0] if result.data else None
+
+    def v2_update_exercise(self, exercise_id: str, data: dict):
+        result = self.client.table("v2_exercises").update(data).eq("id", exercise_id).execute()
+        return result.data[0] if result.data else None
+
+    def v2_insert_task(self, data: dict):
+        result = self.client.table("v2_tasks").insert(data).execute()
+        return result.data[0] if result.data else None
+
+    def v2_update_task(self, task_id: str, data: dict):
+        result = self.client.table("v2_tasks").update(data).eq("id", task_id).execute()
+        return result.data[0] if result.data else None
+
+    def v2_insert_post_question_pool(self, data: dict):
+        result = self.client.table("v2_post_recording_questions_pool").insert(data).execute()
+        return result.data[0] if result.data else None
+
+    def v2_update_post_question_pool(self, question_id: str, data: dict):
+        result = self.client.table("v2_post_recording_questions_pool").update(data).eq("id", question_id).execute()
+        return result.data[0] if result.data else None
+
+    def v2_delete_post_question_pool(self, question_id: str):
+        self.client.table("v2_post_recording_questions_pool").delete().eq("id", question_id).execute()
+
+    def v2_upsert_metric_definition(self, code: str, left_label: str, right_label: str):
+        now = datetime.now(timezone.utc).isoformat()
+        result = (
+            self.client.table("v2_metric_definitions")
+            .upsert({"code": code, "left_label": left_label, "right_label": right_label, "updated_at": now}, on_conflict="code")
+            .execute()
+        )
+        return result.data[0] if result.data else None
+
+    def v2_upsert_student_overrides(self, user_id: str, data: dict):
+        data["user_id"] = user_id
+        data["updated_at"] = datetime.now(timezone.utc).isoformat()
+        result = self.client.table("v2_student_overrides").upsert(data, on_conflict="user_id").execute()
+        return result.data[0] if result.data else None
+
+    def v2_create_report(self, session_v2_id: str, recording_id: str, report_text: str):
+        result = self.client.table("v2_reports").insert({
+            "session_v2_id": session_v2_id,
+            "recording_id": recording_id,
+            "report_text": report_text,
+        }).execute()
+        return result.data[0] if result.data else None
+
+    def v2_list_users_with_sessions(self, limit: int = 50, offset: int = 0):
+        """List user_ids that have at least one v2_session (for admin students list)."""
+        fetch = max((offset + limit) * 2, 100)
+        result = (
+            self.client.table("v2_sessions")
+            .select("user_id")
+            .order("created_at", desc=True)
+            .limit(fetch)
+            .execute()
+        )
+        seen = set()
+        out = []
+        for row in (result.data or []):
+            uid = row.get("user_id")
+            if uid and uid not in seen:
+                seen.add(uid)
+                out.append(uid)
+        return out[offset : offset + limit]
+
 # Singleton instance
 db = DatabaseService()

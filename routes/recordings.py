@@ -9,6 +9,7 @@ import sentry_sdk
 import os
 import random
 import uuid
+import json
 
 recordings_bp = Blueprint("recordings", __name__)
 config = Config()
@@ -218,7 +219,16 @@ def upload_recording():
             "audio_url": audio_url,  # Use audio_url instead of storage_path
             "storage_path": storage_path  # Keep storage_path for reference if needed
         }
-        
+        # Optional: biofeedback dartboard summary (center_ratio, time_in_center_ms, avg_distance, axis_stats)
+        biofeedback_raw = request.form.get("biofeedback_summary")
+        if biofeedback_raw:
+            try:
+                biofeedback_summary = json.loads(biofeedback_raw)
+                if isinstance(biofeedback_summary, dict):
+                    recording_data["biofeedback_summary"] = biofeedback_summary
+            except (json.JSONDecodeError, TypeError):
+                pass
+
         recording = db.create_recording(recording_data)
         if not recording:
             return jsonify({"code": "RECORDING_CREATE_FAILED", "error": "Failed to create recording"}), 500

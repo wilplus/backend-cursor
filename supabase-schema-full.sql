@@ -325,6 +325,13 @@ DO $$ BEGIN
   END IF;
 END $$;
 
+-- Biofeedback dartboard: time-in-center KPI and axis stats (client sends after recording)
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'recordings' AND column_name = 'biofeedback_summary') THEN
+    ALTER TABLE public.recordings ADD COLUMN biofeedback_summary JSONB;
+  END IF;
+END $$;
+
 CREATE TABLE IF NOT EXISTS session_command_options (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   session_id UUID NOT NULL REFERENCES recording_sessions(id) ON DELETE CASCADE,

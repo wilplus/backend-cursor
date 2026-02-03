@@ -11,6 +11,7 @@ from services.question_service import (
     get_commands_for_mode_any_theme,
     get_command_prompt_for_intent,
 )
+from services.biofeedback_service import get_biofeedback_profile
 import random
 import sentry_sdk
 import logging
@@ -25,17 +26,19 @@ def _effective_mode(session):
 
 
 def _build_plan_response(session_id: str, session: dict, pre_questions_list: list, command_options_list: list):
-    """Build v1 response JSON (theme_*, pre_questions length 1, command_options length 3, recommended_command_option_id, cursor, mode, structure)."""
+    """Build v1 response JSON (theme_*, pre_questions, command_options, recommended_command_option_id, cursor, mode, structure, biofeedback_profile)."""
     # Recommended command: use for recording without showing A/B/C picker (system chooses)
     recommended = "A"
     if command_options_list:
         primary = next((o for o in command_options_list if o.get("is_primary")), command_options_list[0])
         recommended = primary.get("option_id", "A")
+    theme_chosen = session.get("theme_chosen_code")
+    biofeedback_profile = get_biofeedback_profile(theme_chosen)
     return {
         "session_id": session_id,
         "theme_recommended_code": session.get("theme_recommended_code"),
         "theme_recommended_reason": session.get("theme_recommended_reason"),
-        "theme_chosen_code": session.get("theme_chosen_code"),
+        "theme_chosen_code": theme_chosen,
         "theme_chosen_source": session.get("theme_chosen_source"),
         "pre_questions": pre_questions_list,
         "command_options": command_options_list,
@@ -43,6 +46,7 @@ def _build_plan_response(session_id: str, session: dict, pre_questions_list: lis
         "cursor": session.get("cursor"),
         "mode": session.get("mode"),
         "structure": session.get("structure"),
+        "biofeedback_profile": biofeedback_profile,
     }
 
 

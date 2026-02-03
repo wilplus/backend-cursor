@@ -26,7 +26,7 @@ Single reference for setup, schema, admin flows, and frontend integration. For a
 Required columns (ensure via `supabase-schema-complete.sql` or):
 
 - **NOT NULL:** `id` (UUID), `user_id` (UUID), `audio_url` (TEXT), `duration` (INTEGER, seconds).
-- **Optional but used:** `session_id`, `transcription_text`, `duration_seconds`, `words_per_minute`, `filler_words_count` (JSONB), `classification`, `confidence`, `storage_path`, `coaching_report`, `trend_sentence`, `created_at`, `updated_at`.
+- **Optional but used:** `session_id`, `transcription_text`, `duration_seconds`, `words_per_minute`, `filler_words_count` (JSONB), `classification`, `confidence`, `storage_path`, `coaching_report`, `trend_sentence`, `biofeedback_summary` (JSONB), `created_at`, `updated_at`.
 
 `duration` is INTEGER; `duration_seconds` is NUMERIC. `coaching_report` and `trend_sentence` are set when post-answers are submitted.
 
@@ -155,6 +155,28 @@ This comes from **Supabase Auth** in the browser: something is trying to refresh
 **Report:** The coaching report references or summarizes the first set of questions (pre-recording answers) that determined the command choice when relevant.
 
 **Post-questions (summary):** If the command was newly tested (user has selected this intent 0 or 1 time before), 50% of the time the backend adds an extra post-question: "Did you find this recording prompt useful?" (binary). Commands are rotated (anti-repeat at session start) so the 3rd time a new command is offered; after that, 50% of the time when the command is newly tested we ask if the prompt was good.
+
+---
+
+## Biofeedback (dartboard) — v1
+
+Live biofeedback uses a 2-axis “dartboard”: the client shows a ball whose position is derived from real-time metrics (e.g. loudness, pace proxy). Goal: keep the ball near the center; score = time-in-center.
+
+**Backend (implemented):**
+
+- **POST /session/start** returns **`biofeedback_profile`** with:
+  - **axes:** list of `{ code, label_left, label_right, metric, target: { center, radius } }`. Theme determines which axes (e.g. `pacing_rhythm` → pace + strength).
+  - **scoring:** `update_hz`, `window_ms`, `center_threshold`.
+- Profiles are in **code:** `services/biofeedback_service.py` (`BIOFEEDBACK_PROFILES_BY_THEME`, `get_biofeedback_profile(theme_code)`).
+- **POST /recordings/upload** accepts optional form field **`biofeedback_summary`** (JSON string). Stored on `recordings.biofeedback_summary` (JSONB). Expected shape: `{ center_ratio, time_in_center_ms, avg_distance, axis_stats }`.
+
+**Client (to implement):**
+
+- Use WebAudio to compute metrics at ~20–30 fps (e.g. RMS → loudness_db; VAD/voiced-frame density → speech_rate_proxy).
+- Normalize each axis: `nx = clamp((value - center) / radius, -1, 1)`. Ball position = (nx, ny). In-center if `d = sqrt(nx² + ny²) <= 0.4` (tunable).
+- Accumulate `time_in_center`, `avg_distance`; at end send `biofeedback_summary` in the upload form.
+
+**Theme → axes (v1):** See `docs/biofeedback-theme-axes.md` for theme codes and suggested 2-axis profiles (for LLM or manual tuning).
 
 ---
 
