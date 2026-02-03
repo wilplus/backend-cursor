@@ -79,7 +79,7 @@ CREATE TABLE IF NOT EXISTS v2_student_overrides (
   updated_at TIMESTAMP DEFAULT NOW()
 );
 
--- 7) V2 sessions
+-- 7) V2 sessions (v1_session_id links to recording_sessions for "same flow as v1" after universal-answers)
 CREATE TABLE IF NOT EXISTS v2_sessions (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
@@ -87,6 +87,7 @@ CREATE TABLE IF NOT EXISTS v2_sessions (
   universal_answers JSONB,
   task_score FLOAT,
   mode_preference INT CHECK (mode_preference IN (0, 1)),
+  v1_session_id UUID REFERENCES recording_sessions(id) ON DELETE SET NULL,
   selected_exercise_id UUID REFERENCES v2_exercises(id) ON DELETE SET NULL,
   exercise_liked BOOLEAN,
   selected_task_id UUID REFERENCES v2_tasks(id) ON DELETE SET NULL,
