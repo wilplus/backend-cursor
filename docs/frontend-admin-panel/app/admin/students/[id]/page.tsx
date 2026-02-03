@@ -45,19 +45,21 @@ export default function AdminStudentProfilePage({ params }: { params: { id: stri
 
   const load = useCallback(() => {
     setLoading(true);
-    Promise.all([
-      adminApi.getStudentProfile(id),
-      adminApi.getExercises(),
-      adminApi.getTasks(),
-      adminApi.getPostQuestions(),
-    ])
+    const fetchProfile = adminApi.getStudentProfile(id);
+    const fetchExercises = adminApi.getExercises().catch(() => [] as Exercise[]);
+    const fetchTasks = adminApi.getTasks().catch(() => [] as Task[]);
+    const fetchQuestions = adminApi.getPostQuestions().catch(() => [] as PostQuestion[]);
+    Promise.all([fetchProfile, fetchExercises, fetchTasks, fetchQuestions])
       .then(([p, ex, t, q]) => {
         setProfile(p);
         setExercises(ex);
         setTasks(t);
         setPostQuestions(q);
       })
-      .catch((e) => toast.error(e.message))
+      .catch((e) => {
+        toast.error(e.message);
+        setProfile(null);
+      })
       .finally(() => setLoading(false));
   }, [id]);
 

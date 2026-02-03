@@ -112,3 +112,6 @@ The Students page fetches `GET /api/v2/admin/students` (your Next.js BFF). A 404
 
 3. **Empty students list**  
    **`GET /v2/admin/students`** returns **`{ "students": [], "limit", "offset" }`** when there are no rows in `v2_sessions`. That’s **200**, not 404. If you expect students, ensure at least one v2 session exists (e.g. a user has started the v2 flow once).
+
+4. **404 for /tasks when opening a student profile**  
+   The student profile page fetches **exercises**, **tasks**, and **post-recording questions** in parallel. If the **tasks** BFF route is missing, you get **404 for /tasks** in the console. **Fix:** add **`src/app/api/v2/admin/tasks/route.ts`** (copy from `api-routes/tasks-route.ts`). The student profile page is now resilient: if tasks (or exercises/questions) fail to load, it still shows the profile with an empty list for that section instead of failing the whole page.
