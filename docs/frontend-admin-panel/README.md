@@ -94,3 +94,21 @@ The Students page fetches `GET /api/v2/admin/students` (your Next.js BFF). A 404
 
 4. **Backend running**  
    The Flask backend must expose **`GET /v2/admin/students`**. This repo already defines that route; ensure the backend is running and reachable at the URL you set above.
+
+**Debug checklist (when “everything is in place” but something fails)**
+
+1. **Verify backend admin route**  
+   Call **`GET {BACKEND_URL}/v2/admin/health`** with `Authorization: Bearer <your_supabase_access_token>`.  
+   - **200** → Backend admin prefix is reachable and your token is valid + admin.  
+   - **401** → Token missing or invalid.  
+   - **403** → Token valid but user not in `admin_users` (add email to `admin_users` in Supabase).  
+   - **404** → Wrong base URL or backend not mounted at `/v2` (check `BACKEND_URL` and Flask blueprint).
+
+2. **Verify BFF proxy**  
+   In the browser Network tab, when you open the Students page you should see a request to **`/api/v2/admin/students`** (or **`/api/v2/admin/tasks`**, etc.).  
+   - If that request is **404** → The corresponding BFF route is missing in the frontend (add the file from `api-routes/` as in `api-routes/README.md`).  
+   - If it’s **401/403** → Backend returned that; check token and `admin_users`.  
+   - If it’s **500** → Backend threw; check backend logs (and Sentry if configured).
+
+3. **Empty students list**  
+   **`GET /v2/admin/students`** returns **`{ "students": [], "limit", "offset" }`** when there are no rows in `v2_sessions`. That’s **200**, not 404. If you expect students, ensure at least one v2 session exists (e.g. a user has started the v2 flow once).

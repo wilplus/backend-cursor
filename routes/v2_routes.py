@@ -470,6 +470,13 @@ def v2_session_status():
 
 
 # ---------- Admin ----------
+@v2_bp.route("/admin/health", methods=["GET"])
+@require_admin
+def v2_admin_health():
+    """Debug: verify admin routes are reachable. Returns 200 if token is valid and user is admin."""
+    return jsonify({"status": "ok", "message": "Admin API reachable"}), 200
+
+
 @v2_bp.route("/admin/students", methods=["GET"])
 @require_admin
 def v2_admin_students():
@@ -480,16 +487,24 @@ def v2_admin_students():
         user_ids = db.v2_list_users_with_sessions(limit=limit, offset=offset)
         students = []
         for uid in user_ids:
-            email = db.get_user_email_from_auth(uid)
-            row = {"user_id": uid, "email": email}
-            stats = db.v2_get_student_list_stats(uid)
-            if stats:
-                row["sessions_count"] = stats.get("sessions_count")
-                row["last_session_at"] = stats.get("last_session_at")
-                row["avg_performance"] = stats.get("avg_performance")
-            students.append(row)
+            try:
+                email = db.get_user_email_from_auth(uid)
+                row = {"user_id": uid, "email": email}
+                try:
+                    stats = db.v2_get_student_list_stats(uid)
+                    if stats:
+                        row["sessions_count"] = stats.get("sessions_count")
+                        row["last_session_at"] = stats.get("last_session_at")
+                        row["avg_performance"] = stats.get("avg_performance")
+                except Exception:
+                    pass  # optional stats: skip on error
+                students.append(row)
+            except Exception as e:
+                logger.warning("Skipping user %s in students list: %s", uid, e)
+                students.append({"user_id": uid, "email": None})
         return jsonify({"students": students, "limit": limit, "offset": offset}), 200
     except Exception as e:
+        logger.exception("v2_admin_students failed")
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
 
