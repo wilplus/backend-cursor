@@ -47,7 +47,9 @@ async function v2Fetch<T>(
 
 export const v2Api = {
   getUniversalQuestions: () =>
-    v2Fetch<{ questions: UniversalQuestionV2[] }>("/universal-questions").then((r) => r.questions),
+    v2Fetch<UniversalQuestionV2[] | { questions: UniversalQuestionV2[] }>("/universal-questions").then(
+      (r) => (Array.isArray(r) ? r : (r as { questions: UniversalQuestionV2[] }).questions ?? [])
+    ),
 
   sessionStart: (sessionId?: string) =>
     v2Fetch<{ session: V2Session; session_id: string }>("/session/start", {

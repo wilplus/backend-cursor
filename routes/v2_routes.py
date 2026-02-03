@@ -27,10 +27,10 @@ v2_bp = Blueprint("v2", __name__, url_prefix="/v2")
 @v2_bp.route("/universal-questions", methods=["GET"])
 @require_auth
 def get_universal_questions():
-    """GET /v2/universal-questions"""
+    """GET /v2/universal-questions. Returns array of questions so frontend can use .find() on the response."""
     try:
         questions = db.v2_get_universal_questions()
-        return jsonify({"questions": questions}), 200
+        return jsonify(questions), 200
     except Exception as e:
         logger.error(f"V2 universal-questions error: {str(e)}")
         sentry_sdk.capture_exception(e)
