@@ -1021,6 +1021,10 @@ class DatabaseService:
         result = self.client.table("v2_exercises").update(data).eq("id", exercise_id).execute()
         return result.data[0] if result.data else None
 
+    def v2_delete_exercise(self, exercise_id: str):
+        """Soft-delete: set is_active=False. Or hard delete if preferred."""
+        self.client.table("v2_exercises").update({"is_active": False}).eq("id", exercise_id).execute()
+
     def v2_insert_task(self, data: dict):
         result = self.client.table("v2_tasks").insert(data).execute()
         return result.data[0] if result.data else None
@@ -1081,6 +1085,71 @@ class DatabaseService:
                 seen.add(uid)
                 out.append(uid)
         return out[offset : offset + limit]
+
+    def v2_get_sessions_with_previews(self, user_id: str, limit: int = 50):
+        """Get v2 sessions for a user with recording and report previews for admin session history."""
+        result = (
+            self.client.table("v2_sessions")
+            .select("id, created_at, status, recording_id, report_id, task_score")
+            .eq("user_id", user_id)
+            .order("created_at", desc=True)
+            .limit(limit)
+            .execute()
+        )
+        sessions = result.data or []
+        out = []
+        for s in sessions:
+            rec = s.copy()
+            rec["recording_preview"] = None
+            rec["report_preview"] = None
+            if s.get("recording_id"):
+                r = self.client.table("recordings").select("performance_score_v2, transcription_text").eq("id", s["recording_id"]).execute()
+                if r.data:
+                    row = r.data[0]
+                    rec["recording_preview"] = {
+                        "performance_score_v2": row.get("performance_score_v2"),
+                        "transcription_preview": (row.get("transcription_text") or "")[:300],
+                    }
+            if s.get("report_id"):
+                r = self.client.table("v2_reports").select("report_text").eq("id", s["report_id"]).execute()
+                if r.data:
+                    rec["report_preview"] = {"report_text_preview": (r.data[0].get("report_text") or "")[:500]}
+            out.append(rec)
+        return out
+
+    def v2_get_speaker_profile(self, user_id: str):
+        """Get speaker profile for admin panel (main_goal, motivation, coach_notes, etc.)."""
+        result = self.client.table("v2_speaker_profiles").select("*").eq("user_id", user_id).execute()
+        return result.data[0] if result.data else None
+
+    def v2_upsert_speaker_profile(self, user_id: str, data: dict):
+        """Create or update speaker profile. Keys: main_goal, motivation, strong_points, weak_points, charismatic_traits, hobbies_interests, personality_type, coach_notes."""
+        allowed = {"main_goal", "motivation", "strong_points", "weak_points", "charismatic_traits", "hobbies_interests", "personality_type", "coach_notes"}
+        payload = {k: v for k, v in data.items() if k in allowed}
+        payload["user_id"] = user_id
+        payload["updated_at"] = datetime.now(timezone.utc).isoformat()
+        result = self.client.table("v2_speaker_profiles").upsert(payload, on_conflict="user_id").execute()
+        return result.data[0] if result.data else None
+
+    def get_user_email_from_auth(self, user_id: str) -> str | None:
+        """Fetch user email from Supabase Auth (admin API). Returns None if not found or on error."""
+        try:
+            import httpx
+            url = f"{config.SUPABASE_URL.rstrip('/')}/auth/v1/admin/users/{user_id}"
+            resp = httpx.get(
+                url,
+                headers={
+                    "Authorization": f"Bearer {config.SUPABASE_SERVICE_ROLE_KEY}",
+                    "apikey": config.SUPABASE_SERVICE_ROLE_KEY,
+                },
+                timeout=5,
+            )
+            if resp.status_code != 200:
+                return None
+            data = resp.json()
+            return data.get("email") or (data.get("user", {}).get("email"))
+        except Exception:
+            return None
 
 # Singleton instance
 db = DatabaseService()

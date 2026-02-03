@@ -482,15 +482,32 @@ def v2_admin_students():
 @v2_bp.route("/admin/students/<user_id>", methods=["GET"])
 @require_admin
 def v2_admin_student_profile(user_id):
-    """Speaker profile + overrides + sessions + recordings."""
+    """Student profile for admin panel: email, overrides, speaker_profile, sessions with recording/report previews."""
     try:
+        email = db.get_user_email_from_auth(user_id)
         overrides = db.v2_get_student_overrides(user_id)
-        sessions = db.client.table("v2_sessions").select("*").eq("user_id", user_id).order("created_at", desc=True).limit(50).execute()
+        speaker_profile = db.v2_get_speaker_profile(user_id)
+        sessions = db.v2_get_sessions_with_previews(user_id, limit=50)
         return jsonify({
             "user_id": user_id,
+            "email": email,
             "overrides": overrides,
-            "sessions": sessions.data or [],
+            "speaker_profile": speaker_profile,
+            "sessions": sessions,
         }), 200
+    except Exception as e:
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
+
+
+@v2_bp.route("/admin/students/<user_id>/speaker-profile", methods=["PUT"])
+@require_admin
+def v2_admin_student_speaker_profile(user_id):
+    """Update speaker profile (main_goal, motivation, strong_points, weak_points, charismatic_traits, hobbies_interests, personality_type, coach_notes)."""
+    try:
+        data = request.get_json() or {}
+        db.v2_upsert_speaker_profile(user_id, data)
+        return jsonify({"status": "ok"}), 200
     except Exception as e:
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
@@ -499,9 +516,14 @@ def v2_admin_student_profile(user_id):
 @v2_bp.route("/admin/students/<user_id>/overrides", methods=["PUT"])
 @require_admin
 def v2_admin_student_overrides(user_id):
-    """Set prompts, assigned post Qs, next exercise/task."""
+    """Set prompts, assigned post Qs (exactly 3), next exercise/task."""
     try:
         data = request.get_json() or {}
+        ids = data.get("assigned_post_question_ids")
+        if ids is not None and not isinstance(ids, list):
+            return jsonify({"code": "INVALID_INPUT", "error": "assigned_post_question_ids must be an array"}), 400
+        if ids is not None and len(ids) != 3:
+            return jsonify({"code": "INVALID_INPUT", "error": "assigned_post_question_ids must have exactly 3 items"}), 400
         db.v2_upsert_student_overrides(user_id, data)
         return jsonify({"status": "ok"}), 200
     except Exception as e:
@@ -543,6 +565,14 @@ def v2_admin_exercises_update(exercise_id):
     data = request.get_json() or {}
     row = db.v2_update_exercise(exercise_id, data)
     return jsonify({"exercise": row}), 200
+
+
+@v2_bp.route("/admin/exercises/<exercise_id>", methods=["DELETE"])
+@require_admin
+def v2_admin_exercises_delete(exercise_id):
+    """Soft-delete: sets is_active=False so exercise no longer appears in student flow."""
+    db.v2_delete_exercise(exercise_id)
+    return jsonify({"status": "ok"}), 200
 
 
 # ---------- Admin CRUD: tasks ----------
