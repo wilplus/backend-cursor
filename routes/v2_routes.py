@@ -6,6 +6,7 @@ from flask import Blueprint, request, jsonify
 from auth import require_auth
 from routes.admin import require_admin
 from services.db import db
+from services.email_service import email_service
 from services.v2_flow_service import compute_task_score, select_exercise_for_task_score
 from services.question_service import calculate_cursor
 from routes.session import run_v1_planning, _build_plan_response
@@ -534,10 +535,20 @@ def v2_admin_student_overrides(user_id):
 @v2_bp.route("/admin/students/<user_id>/send-assignment", methods=["POST"])
 @require_admin
 def v2_admin_send_assignment(user_id):
-    """Stub: store assignment and optionally email (Resend)."""
+    """Send homework email to the student. Requires student to have an email in Supabase Auth."""
     try:
-        # TODO: create assignment record and send email via email_service
-        return jsonify({"status": "ok", "message": "Assignment sent"}), 200
+        from config import Config
+        config = Config()
+        student_email = db.get_user_email_from_auth(user_id)
+        if not student_email or not student_email.strip():
+            return jsonify({"code": "NO_EMAIL", "error": "Student has no email in auth"}), 400
+        result = email_service.send_assignment_to_student(
+            to_email=student_email.strip(),
+            frontend_url=config.FRONTEND_URL,
+        )
+        if result.get("status") == "failed":
+            return jsonify({"code": "EMAIL_FAILED", "error": result.get("error", "Failed to send email")}), 500
+        return jsonify({"status": "ok", "message": "Assignment sent", "sent": result.get("sent", False)}), 200
     except Exception as e:
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR", "error": str(e)}), 500

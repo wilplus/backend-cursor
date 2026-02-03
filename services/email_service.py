@@ -191,5 +191,42 @@ class EmailService:
                 "payload": payload
             }
 
+    def send_assignment_to_student(self, to_email: str, frontend_url: str) -> dict:
+        """
+        Send "you have new homework" email to a student. Link points to the app (e.g. dashboard).
+        Returns dict with status "sent" | "pending" (emails off) | "failed".
+        """
+        if not config.SEND_EMAILS:
+            return {"status": "pending", "sent": False}
+        if not self.api_key_set:
+            return {"status": "failed", "sent": False, "error": "Resend API key not set"}
+        app_url = (frontend_url or config.FRONTEND_URL or "").rstrip("/")
+        subject = "You have new homework"
+        text = f"Your coach has assigned you new practice.\n\nGet started here: {app_url}\n"
+        html = f"""
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><style>body {{ font-family: Arial,sans-serif; line-height: 1.6; color: #333; }}</style></head>
+<body>
+<p>Your coach has assigned you new practice.</p>
+<p><a href="{app_url}" style="background:#f97316;color:#fff;padding:10px 20px;text-decoration:none;border-radius:6px;">Get started</a></p>
+<p>Or copy this link: {app_url}</p>
+</body>
+</html>
+"""
+        try:
+            params = {
+                "from": config.RESEND_FROM_EMAIL,
+                "to": [to_email],
+                "subject": subject,
+                "text": text,
+                "html": html,
+            }
+            resend.Emails.send(params)
+            return {"status": "sent", "sent": True}
+        except Exception as e:
+            sentry_sdk.capture_exception(e)
+            return {"status": "failed", "sent": False, "error": str(e)}
+
 # Singleton instance
 email_service = EmailService()

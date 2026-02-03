@@ -16,6 +16,7 @@ Use the same `getV2AccessToken` and `getBackendUrl` from your existing v2 BFF (`
 | `exercises-route.ts` | `src/app/api/v2/admin/exercises/route.ts` |
 | `exercises-[id]-route.ts` | `src/app/api/v2/admin/exercises/[id]/route.ts` |
 | `tasks-route.ts` | `src/app/api/v2/admin/tasks/route.ts` |
-| `post-recording-questions-route.ts` | `src/app/api/v2/admin/post-recording-questions/route.ts` |
+| `post-recording-questions-route.ts` | `src/app/api/v2/admin/post-recording-questions/route.ts` (GET + POST) |
+| `post-recording-questions-[id]-route.ts` | `src/app/api/v2/admin/post-recording-questions/[id]/route.ts` (PUT + DELETE) |
 
 Imports assume `getAuth.ts` is at `src/app/api/v2/getAuth.ts` (so from `admin/students/route.ts` use `../../getAuth`, from `admin/students/[id]/route.ts` use `../../../getAuth`).

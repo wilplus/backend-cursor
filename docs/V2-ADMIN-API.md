@@ -18,7 +18,7 @@ The **backend** exposes these admin endpoints. An **admin panel** (Next.js UI) t
 | GET | `/v2/admin/students/<user_id>` | Student profile for admin panel. Response: `{ user_id, email, overrides, speaker_profile, sessions }`. `sessions` include `recording_preview` (performance_score_v2, transcription_preview) and `report_preview` (report_text_preview) when available. |
 | PUT | `/v2/admin/students/<user_id>/overrides` | Set per-student overrides. Body: `intended_emotion_prompt`, `keywords_prompt`, `emotion_check_question_text`, `assigned_post_question_ids` (UUID[], must be exactly 3 if provided), `assigned_next_exercise_id` (UUID), `assigned_next_task_ids` (UUID[]). |
 | PUT | `/v2/admin/students/<user_id>/speaker-profile` | Update speaker profile. Body: `main_goal`, `motivation`, `strong_points`, `weak_points`, `charismatic_traits`, `hobbies_interests`, `personality_type`, `coach_notes`. |
-| POST | `/v2/admin/students/<user_id>/send-assignment` | Stub (no email/DB yet). |
+| POST | `/v2/admin/students/<user_id>/send-assignment` | Sends "you have new homework" email to the student (Resend). 400 if student has no email in auth; 500 if send fails. |
 
 **Student profile ↔ flow**
 

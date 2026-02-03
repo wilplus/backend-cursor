@@ -122,4 +122,13 @@ export const adminApi = {
 
   getPostQuestions: () =>
     adminFetch<{ questions: PostQuestion[] }>("/post-recording-questions").then((r) => r.questions),
+
+  createPostQuestion: (data: Partial<PostQuestion>) =>
+    adminFetch<{ question: PostQuestion }>("/post-recording-questions", { method: "POST", body: data }),
+
+  updatePostQuestion: (id: string, data: Partial<PostQuestion>) =>
+    adminFetch<{ question: PostQuestion }>(`/post-recording-questions/${id}`, { method: "PUT", body: data }),
+
+  deletePostQuestion: (id: string) =>
+    adminFetch<{ status: string }>(`/post-recording-questions/${id}`, { method: "DELETE" }),
 };

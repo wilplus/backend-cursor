@@ -34,6 +34,7 @@ If you use shadcn/ui, you can override the CSS variables for the admin route onl
 | `app/admin/students/page.tsx` | `src/app/admin/students/page.tsx` |
 | `app/admin/students/[id]/page.tsx` | `src/app/admin/students/[id]/page.tsx` |
 | `app/admin/exercises/page.tsx` | `src/app/admin/exercises/page.tsx` |
+| `app/admin/questions/page.tsx` | `src/app/admin/questions/page.tsx` |
 | `lib/api/admin-client.ts` | `src/lib/api/admin-client.ts` |
 
 ## BFF (API routes)
@@ -70,8 +71,9 @@ Add to `globals.css` or your Tailwind config:
 - `GET /v2/admin/students/:id` — profile (email, overrides, speaker_profile, sessions with previews)
 - `PUT /v2/admin/students/:id/overrides` — homework config (exercises/tasks/questions + prompt overrides)
 - `PUT /v2/admin/students/:id/speaker-profile` — speaker profile fields
-- `POST /v2/admin/students/:id/send-assignment` — stub
+- `POST /v2/admin/students/:id/send-assignment` — send homework email to student (Resend)
 - `GET/POST/PUT/DELETE /v2/admin/exercises` — exercise CRUD
+- `GET/POST/PUT/DELETE /v2/admin/post-recording-questions` — question pool CRUD (admin Questions page)
 - `GET /v2/admin/tasks`, `GET /v2/admin/post-recording-questions` — for dropdowns/chips
 
 See `docs/V2-ADMIN-API.md` in the backend repo for full reference.
