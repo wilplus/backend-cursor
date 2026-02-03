@@ -468,13 +468,22 @@ def v2_session_status():
 @v2_bp.route("/admin/students", methods=["GET"])
 @require_admin
 def v2_admin_students():
-    """List user_ids with v2 sessions (paginated)."""
+    """List students with email (and optional stats). Required: user_id, email for UI."""
     try:
         limit = request.args.get("limit", default=20, type=int)
         offset = request.args.get("offset", default=0, type=int)
         user_ids = db.v2_list_users_with_sessions(limit=limit, offset=offset)
-        # TODO: enrich with email from auth if needed
-        return jsonify({"students": [{"user_id": uid} for uid in user_ids], "limit": limit, "offset": offset}), 200
+        students = []
+        for uid in user_ids:
+            email = db.get_user_email_from_auth(uid)
+            row = {"user_id": uid, "email": email}
+            stats = db.v2_get_student_list_stats(uid)
+            if stats:
+                row["sessions_count"] = stats.get("sessions_count")
+                row["last_session_at"] = stats.get("last_session_at")
+                row["avg_performance"] = stats.get("avg_performance")
+            students.append(row)
+        return jsonify({"students": students, "limit": limit, "offset": offset}), 200
     except Exception as e:
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
@@ -610,6 +619,14 @@ def v2_admin_tasks_update(task_id):
     return jsonify({"task": row}), 200
 
 
+@v2_bp.route("/admin/tasks/<task_id>", methods=["DELETE"])
+@require_admin
+def v2_admin_tasks_delete(task_id):
+    """Soft-delete: set is_active=False so task no longer appears in student flow."""
+    db.v2_delete_task(task_id)
+    return jsonify({"status": "ok"}), 200
+
+
 # ---------- Admin CRUD: post-recording questions pool ----------
 @v2_bp.route("/admin/post-recording-questions", methods=["GET"])
 @require_admin
@@ -654,6 +671,31 @@ def v2_admin_metric_definitions_get():
 def v2_admin_metric_definitions_put():
     data = request.get_json() or {}
     for item in data.get("metric_definitions", data) if isinstance(data.get("metric_definitions"), list) else [data]:
+        code = item.get("code")
+        if not code:
+            continue
+        db.v2_upsert_metric_definition(code, item.get("left_label", ""), item.get("right_label", ""))
+    return jsonify({"status": "ok"}), 200
+
+
+# ---------- Admin: metrics (alias for frontend spec: GET/PUT /v2/admin/metrics) ----------
+@v2_bp.route("/admin/metrics", methods=["GET"])
+@require_admin
+def v2_admin_metrics_get():
+    """Return metric label pairs as metrics or metric_labels for frontend."""
+    rows = db.v2_get_metric_definitions()
+    return jsonify({"metrics": rows}), 200
+
+
+@v2_bp.route("/admin/metrics", methods=["PUT"])
+@require_admin
+def v2_admin_metrics_put():
+    """Accept { metrics: [ { code, left_label, right_label }, ... ] }."""
+    data = request.get_json() or {}
+    items = data.get("metrics", data.get("metric_labels", []))
+    if not isinstance(items, list):
+        items = [data] if data.get("code") else []
+    for item in items:
         code = item.get("code")
         if not code:
             continue

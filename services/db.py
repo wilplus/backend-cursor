@@ -1033,6 +1033,10 @@ class DatabaseService:
         result = self.client.table("v2_tasks").update(data).eq("id", task_id).execute()
         return result.data[0] if result.data else None
 
+    def v2_delete_task(self, task_id: str):
+        """Soft-delete: set is_active=False so task no longer appears in student flow."""
+        self.client.table("v2_tasks").update({"is_active": False}).eq("id", task_id).execute()
+
     def v2_insert_post_question_pool(self, data: dict):
         result = self.client.table("v2_post_recording_questions_pool").insert(data).execute()
         return result.data[0] if result.data else None
@@ -1085,6 +1089,40 @@ class DatabaseService:
                 seen.add(uid)
                 out.append(uid)
         return out[offset : offset + limit]
+
+    def v2_get_student_list_stats(self, user_id: str):
+        """Optional stats for admin students list: sessions_count, last_session_at (ISO), avg_performance (0-100)."""
+        sessions = (
+            self.client.table("v2_sessions")
+            .select("id, created_at, recording_id")
+            .eq("user_id", user_id)
+            .order("created_at", desc=True)
+            .limit(1000)
+            .execute()
+        )
+        rows = sessions.data or []
+        if not rows:
+            return None
+        sessions_count = len(rows)
+        last_session_at = max((r.get("created_at") for r in rows if r.get("created_at")), default=None)
+        session_ids = [r["id"] for r in rows if r.get("id")]
+        avg_performance = None
+        if session_ids:
+            recs = (
+                self.client.table("recordings")
+                .select("performance_score_v2")
+                .in_("session_v2_id", session_ids)
+                .not_.is_("performance_score_v2", "null")
+                .execute()
+            )
+            scores = [r.get("performance_score_v2") for r in (recs.data or []) if r.get("performance_score_v2") is not None]
+            if scores:
+                avg_performance = round((sum(scores) / len(scores)) * 100)
+        return {
+            "sessions_count": sessions_count,
+            "last_session_at": last_session_at,
+            "avg_performance": avg_performance,
+        }
 
     def v2_get_sessions_with_previews(self, user_id: str, limit: int = 50):
         """Get v2 sessions for a user with recording and report previews for admin session history."""

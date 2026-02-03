@@ -14,7 +14,7 @@ The **backend** exposes these admin endpoints. An **admin panel** (Next.js UI) t
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/v2/admin/students` | List user_ids with v2 sessions. Query: `limit`, `offset`. Response: `{ students: [{ user_id }], limit, offset }`. |
+| GET | `/v2/admin/students` | List students with email. Query: `limit`, `offset`. Response: `{ students: [{ user_id, email?, sessions_count?, last_session_at?, avg_performance? }], limit, offset }`. |
 | GET | `/v2/admin/students/<user_id>` | Student profile for admin panel. Response: `{ user_id, email, overrides, speaker_profile, sessions }`. `sessions` include `recording_preview` (performance_score_v2, transcription_preview) and `report_preview` (report_text_preview) when available. |
 | PUT | `/v2/admin/students/<user_id>/overrides` | Set per-student overrides. Body: `intended_emotion_prompt`, `keywords_prompt`, `emotion_check_question_text`, `assigned_post_question_ids` (UUID[], must be exactly 3 if provided), `assigned_next_exercise_id` (UUID), `assigned_next_task_ids` (UUID[]). |
 | PUT | `/v2/admin/students/<user_id>/speaker-profile` | Update speaker profile. Body: `main_goal`, `motivation`, `strong_points`, `weak_points`, `charismatic_traits`, `hobbies_interests`, `personality_type`, `coach_notes`. |
@@ -47,9 +47,9 @@ Only exercises with `is_active = true` are considered in the student flow. To â€
 
 ## Other admin (tasks, post-questions, metrics)
 
-- **Tasks:** GET/POST/PUT `/v2/admin/tasks` (no DELETE in backend).
+- **Tasks:** GET/POST/PUT/DELETE `/v2/admin/tasks` and `/v2/admin/tasks/<id>`. DELETE soft-deactivates (`is_active = false`).
 - **Post-recording questions pool:** GET/POST/PUT/DELETE `/v2/admin/post-recording-questions` and `/v2/admin/post-recording-questions/<id>`.
-- **Metric definitions (labels):** GET/PUT `/v2/admin/metric-definitions`.
+- **Metric definitions (labels):** GET/PUT `/v2/admin/metric-definitions`. Alias for frontend spec: GET/PUT `/v2/admin/metrics` (response key `metrics`, PUT body `{ metrics: [ { code, left_label, right_label } ] }`).
 
 ---
 
