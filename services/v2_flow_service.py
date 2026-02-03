@@ -4,28 +4,28 @@ No themes in v1; selection is by task_score and mode_preference.
 """
 from typing import Dict, List, Any, Optional
 
-# Task score formula constants (easy to tweak)
-TASK_SCORE_WEIGHT_MOOD = 0.45
-TASK_SCORE_WEIGHT_READINESS = 0.45
-TASK_SCORE_WEIGHT_MODE = 0.10
+# Task score: average of 3 components (each 0..1)
+# Q1: Do you feel more like? good=1, not great=0
+# Q2: How ready is your body and mind to present? 1..10 → 0.1..1
+# Q3: Do you want to be guided? yes/guide me=0, no/I will choose=1
 
 
 def compute_task_score(mood: float, readiness: int, mode_preference: int) -> float:
     """
-    mood: 0..1
-    readiness: 1..10 (normalized to 0..1 by /10)
-    mode_preference: 0 = Guide me, 1 = I'll choose
-    Returns 0..1.
+    Q1 (mood): good = +1, not great = 0 (frontend sends 1 or 0; float rounded)
+    Q2 (readiness): 1..10 → 0.1 to 1 points (readiness/10)
+    Q3 (mode_preference): yes guide me = 0, no I will choose = +1
+    task_score = (c1 + c2 + c3) / 3, clamped 0..1.
     """
-    readiness_norm = readiness / 10.0 if readiness is not None else 0.5
-    readiness_norm = max(0.0, min(1.0, readiness_norm))
-    mood = max(0.0, min(1.0, float(mood))) if mood is not None else 0.5
-    mode_val = 0.0 if mode_preference == 0 else 1.0
-    raw = (
-        TASK_SCORE_WEIGHT_MOOD * mood
-        + TASK_SCORE_WEIGHT_READINESS * readiness_norm
-        + TASK_SCORE_WEIGHT_MODE * mode_val
-    )
+    # c1: 0 or 1 (good=1, not great=0)
+    m = mood if mood is not None else 0.5
+    c1 = 1.0 if float(m) >= 0.5 else 0.0
+    # c2: 1..10 → 0.1..1
+    r = max(1, min(10, int(readiness) if readiness is not None else 5))
+    c2 = r / 10.0
+    # c3: guide me=0, I will choose=1
+    c3 = 1.0 if mode_preference == 1 else 0.0
+    raw = (c1 + c2 + c3) / 3.0
     return max(0.0, min(1.0, raw))
 
 

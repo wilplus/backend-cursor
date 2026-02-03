@@ -13,10 +13,10 @@ CREATE TABLE IF NOT EXISTS v2_universal_questions (
 );
 
 INSERT INTO v2_universal_questions (code, text, answer_type, position) VALUES
-  ('mood', 'How are you feeling? (0 = low, 1 = high)', 'slider_0_1', 1),
-  ('readiness', 'How ready are you to speak? (1-10)', 'scale_1_10', 2),
-  ('mode_preference', 'Do you want guidance or to choose yourself?', 'binary', 3)
-ON CONFLICT (code) DO NOTHING;
+  ('mood', 'Do you feel more like: Good or Not great?', 'binary', 1),
+  ('readiness', 'How ready is your body and mind to present? (1-10)', 'scale_1_10', 2),
+  ('mode_preference', 'Do you want to be guided?', 'binary', 3)
+ON CONFLICT (code) DO UPDATE SET text = EXCLUDED.text, answer_type = EXCLUDED.answer_type, position = EXCLUDED.position;
 
 -- 2) Exercises
 CREATE TABLE IF NOT EXISTS v2_exercises (
