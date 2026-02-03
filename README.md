@@ -72,6 +72,10 @@ In non-production environments (`ENV != "production"`):
 - OpenAI calls are skipped (mock responses)
 - Emails are not sent if `SEND_EMAILS=false`
 
+## Supabase migrations
+
+Run the SQL files in `migrations/` against your Supabase project (Dashboard → SQL Editor). The backend expects these tables to exist (e.g. `v2_speaker_profiles` for the admin panel). If the admin panel reports *"Could not find the table 'public.v2_speaker_profiles'"*, run `migrations/v2_speaker_profiles.sql` in the SQL Editor, then in Supabase go to **Settings → API** and use **Reload schema cache** if available.
+
 ## Documentation
 
 - **ARCHITECTURE.md** — Stack, layout, core flows, database, conventions (source of truth for design).
