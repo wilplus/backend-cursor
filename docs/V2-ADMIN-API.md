@@ -51,6 +51,22 @@ Only exercises with `is_active = true` are considered in the student flow. To �
 - **Post-recording questions pool:** GET/POST/PUT/DELETE `/v2/admin/post-recording-questions` and `/v2/admin/post-recording-questions/<id>`.
 - **Metric definitions (labels):** GET/PUT `/v2/admin/metric-definitions`. Alias for frontend spec: GET/PUT `/v2/admin/metrics` (response key `metrics`, PUT body `{ metrics: [ { code, left_label, right_label } ] }`).
 
+## Homework flow (admin)
+
+See **docs/FLOW-HOMEWORK-V2.md** for the full flow (warm-up → focus_task → recording_2 → questions → report).
+
+- **Warm-up tasks (per student):** List and CRUD on student profile.
+  - GET `/v2/admin/students/<user_id>/warm-up-tasks` → `{ "warm_up_tasks": [ { id, user_id, text, order_index, created_at }, ... ] }`.
+  - POST `/v2/admin/students/<user_id>/warm-up-tasks` — body: `{ "text", "order_index"?: number }`. Response: `{ "warm_up_task": { ... } }`.
+  - PUT `/v2/admin/students/<user_id>/warm-up-tasks/<task_id>` — body: `{ "text", "order_index" }`. Response: `{ "warm_up_task": { ... } }`.
+  - DELETE `/v2/admin/students/<user_id>/warm-up-tasks/<task_id>` → `{ "status": "ok" }`.
+
+- **Metric questions (metric_question_1, metric_question_2):** In admin Metrics section; used in the AI-generated task block.
+  - GET `/v2/admin/metric-questions` → `{ "questions": [ { id, position (1|2), text, created_at }, ... ] }`.
+  - POST `/v2/admin/metric-questions` — body: `{ "position": 1 | 2, "text" }`. Response: `{ "question": { ... } }`.
+  - PUT `/v2/admin/metric-questions/<question_id>` — body: `{ "position", "text" }`. Response: `{ "question": { ... } }`.
+  - DELETE `/v2/admin/metric-questions/<question_id>` → `{ "status": "ok" }`.
+
 ---
 
 ## Building the admin panel (frontend)

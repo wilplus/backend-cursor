@@ -74,9 +74,10 @@ In non-production environments (`ENV != "production"`):
 
 ## Supabase migrations
 
-Run the SQL files in `migrations/` against your Supabase project (Dashboard → SQL Editor). The backend expects these tables/columns (e.g. `v2_speaker_profiles`, `v2_student_overrides.show_exercise_step` for per-student exercise toggle). If the admin panel reports *"Could not find the table 'public.v2_speaker_profiles'"*, run `migrations/v2_speaker_profiles.sql`. For per-student "show exercise step" toggle, run `migrations/v2_add_show_exercise_step.sql`. Then in Supabase go to **Settings → API** and use **Reload schema cache** if available.
+Run the SQL files in `migrations/` against your Supabase project (Dashboard → SQL Editor). The backend expects these tables/columns (e.g. `v2_speaker_profiles`, `v2_student_overrides.show_exercise_step`, homework flow tables). If the admin panel reports *"Could not find the table 'public.v2_speaker_profiles'"*, run `migrations/v2_speaker_profiles.sql`. For per-student "show exercise step" toggle, run `migrations/v2_add_show_exercise_step.sql`. For the homework flow (warm-up tasks, metric questions, session context/scores), run `migrations/v2_homework_flow.sql`. Then in Supabase go to **Settings → API** and use **Reload schema cache** if available.
 
 ## Documentation
 
 - **ARCHITECTURE.md** — Stack, layout, core flows, database, conventions (source of truth for design).
 - **DOCS.md** — Implementation and operations: schema, storage, admin feedback, email link, questionnaire, frontend integration.
+- **docs/FRONTEND-SYNC-PROMPT.md** — Prompt and reference for frontend team: student flow, admin endpoints, request/response contract, and what to implement (and what not) so the frontend stays in sync with this backend.

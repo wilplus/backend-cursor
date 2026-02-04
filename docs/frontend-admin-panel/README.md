@@ -35,6 +35,7 @@ If you use shadcn/ui, you can override the CSS variables for the admin route onl
 | `app/admin/students/[id]/page.tsx` | `src/app/admin/students/[id]/page.tsx` |
 | `app/admin/exercises/page.tsx` | `src/app/admin/exercises/page.tsx` |
 | `app/admin/questions/page.tsx` | `src/app/admin/questions/page.tsx` |
+| `app/admin/metrics/page.tsx` | `src/app/admin/metrics/page.tsx` |
 | `lib/api/admin-client.ts` | `src/lib/api/admin-client.ts` |
 
 ## BFF (API routes)
@@ -75,6 +76,7 @@ Add to `globals.css` or your Tailwind config:
 - `GET/POST/PUT/DELETE /v2/admin/exercises` — exercise CRUD
 - `GET/POST/PUT/DELETE /v2/admin/post-recording-questions` — question pool CRUD (admin Questions page)
 - `GET /v2/admin/tasks`, `GET /v2/admin/post-recording-questions` — for dropdowns/chips
+- **Homework flow:** `GET/POST/PUT/DELETE /v2/admin/students/:id/warm-up-tasks` (and `/:taskId`); `GET/POST/PUT/DELETE /v2/admin/metric-questions` — see `docs/FLOW-HOMEWORK-V2.md`
 
 See `docs/V2-ADMIN-API.md` in the backend repo for full reference.
 

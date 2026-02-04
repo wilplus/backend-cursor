@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { ChevronLeft, FileText, Send } from "lucide-react";
 import SectionCard from "@/components/admin/SectionCard";
-import { adminApi, type StudentProfile, type Exercise, type PostQuestion, type Task } from "@/lib/api/admin-client";
+import { adminApi, type StudentProfile, type Exercise, type PostQuestion, type Task, type WarmUpTask } from "@/lib/api/admin-client";
 import { toast } from "sonner";
 
 function Chip({
@@ -39,9 +39,13 @@ export default function AdminStudentProfilePage({ params }: { params: { id: stri
   const [exercises, setExercises] = useState<Exercise[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [postQuestions, setPostQuestions] = useState<PostQuestion[]>([]);
+  const [warmUpTasks, setWarmUpTasks] = useState<WarmUpTask[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [expandedSessionId, setExpandedSessionId] = useState<string | null>(null);
+  const [warmUpModalOpen, setWarmUpModalOpen] = useState(false);
+  const [warmUpEditing, setWarmUpEditing] = useState<WarmUpTask | null>(null);
+  const [warmUpFormText, setWarmUpFormText] = useState("");
 
   const load = useCallback(() => {
     setLoading(true);
@@ -49,12 +53,14 @@ export default function AdminStudentProfilePage({ params }: { params: { id: stri
     const fetchExercises = adminApi.getExercises().catch(() => [] as Exercise[]);
     const fetchTasks = adminApi.getTasks().catch(() => [] as Task[]);
     const fetchQuestions = adminApi.getPostQuestions().catch(() => [] as PostQuestion[]);
-    Promise.all([fetchProfile, fetchExercises, fetchTasks, fetchQuestions])
-      .then(([p, ex, t, q]) => {
+    const fetchWarmUp = adminApi.getWarmUpTasks(id).catch(() => [] as WarmUpTask[]);
+    Promise.all([fetchProfile, fetchExercises, fetchTasks, fetchQuestions, fetchWarmUp])
+      .then(([p, ex, t, q, w]) => {
         setProfile(p);
         setExercises(ex);
         setTasks(t);
         setPostQuestions(q);
+        setWarmUpTasks(w);
       })
       .catch((e) => {
         toast.error(e.message);
@@ -171,6 +177,52 @@ export default function AdminStudentProfilePage({ params }: { params: { id: stri
     });
   };
 
+  const openWarmUpCreate = () => {
+    setWarmUpEditing(null);
+    setWarmUpFormText("");
+    setWarmUpModalOpen(true);
+  };
+  const openWarmUpEdit = (w: WarmUpTask) => {
+    setWarmUpEditing(w);
+    setWarmUpFormText(w.text);
+    setWarmUpModalOpen(true);
+  };
+  const saveWarmUp = () => {
+    if (!warmUpFormText.trim()) {
+      toast.error("Text is required");
+      return;
+    }
+    if (warmUpEditing) {
+      adminApi
+        .updateWarmUpTask(id, warmUpEditing.id, { text: warmUpFormText.trim() })
+        .then(() => {
+          toast.success("Warm-up task updated");
+          setWarmUpModalOpen(false);
+          load();
+        })
+        .catch((e) => toast.error(e.message));
+    } else {
+      adminApi
+        .createWarmUpTask(id, { text: warmUpFormText.trim(), order_index: warmUpTasks.length })
+        .then(() => {
+          toast.success("Warm-up task added");
+          setWarmUpModalOpen(false);
+          load();
+        })
+        .catch((e) => toast.error(e.message));
+    }
+  };
+  const deleteWarmUp = (taskId: string) => {
+    if (!confirm("Delete this warm-up task?")) return;
+    adminApi
+      .deleteWarmUpTask(id, taskId)
+      .then(() => {
+        toast.success("Warm-up task deleted");
+        load();
+      })
+      .catch((e) => toast.error(e.message));
+  };
+
   if (loading || !profile) {
     return <p className="text-muted-foreground">Loading…</p>;
   }
@@ -200,6 +252,84 @@ export default function AdminStudentProfilePage({ params }: { params: { id: stri
           </button>
         </div>
       </div>
+
+      <SectionCard
+        title="Warm-up tasks"
+        description="Task text the student sees before recording_1 (homework flow). Add, edit, delete per student."
+        action={
+          <button
+            type="button"
+            onClick={openWarmUpCreate}
+            className="rounded-md bg-[hsl(24_95%_53%)] px-3 py-2 text-sm font-medium text-white hover:opacity-90"
+          >
+            Add warm-up task
+          </button>
+        }
+      >
+        <ul className="space-y-2">
+          {warmUpTasks.length === 0 ? (
+            <li className="text-sm text-muted-foreground">No warm-up tasks. Add one so the student sees task_warm_up before recording.</li>
+          ) : (
+            warmUpTasks.map((w) => (
+              <li
+                key={w.id}
+                className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-muted/30 px-4 py-3"
+              >
+                <p className="text-sm">{w.text}</p>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => openWarmUpEdit(w)}
+                    className="rounded-md border border-input px-3 py-1.5 text-sm hover:bg-muted"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => deleteWarmUp(w.id)}
+                    className="rounded-md px-3 py-1.5 text-sm text-destructive hover:bg-destructive/10"
+                  >
+                    Delete
+                  </button>
+                </div>
+              </li>
+            ))
+          )}
+        </ul>
+      </SectionCard>
+
+      {warmUpModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-lg rounded-xl bg-card p-6 shadow-lg">
+            <h2 className="text-lg font-semibold">{warmUpEditing ? "Edit warm-up task" : "New warm-up task"}</h2>
+            <div className="mt-4">
+              <label className="mb-2 block text-sm font-medium">Task text</label>
+              <textarea
+                className="min-h-[80px] w-full rounded-md border border-input px-3 py-2 text-sm"
+                rows={3}
+                value={warmUpFormText}
+                onChange={(e) => setWarmUpFormText(e.target.value)}
+              />
+            </div>
+            <div className="mt-6 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setWarmUpModalOpen(false)}
+                className="rounded-md border border-input px-4 py-2 text-sm hover:bg-muted"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={saveWarmUp}
+                className="rounded-md bg-[hsl(24_95%_53%)] px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <SectionCard
         title="Homework Configuration"

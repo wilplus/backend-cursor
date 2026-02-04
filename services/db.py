@@ -1048,6 +1048,50 @@ class DatabaseService:
     def v2_delete_post_question_pool(self, question_id: str):
         self.client.table("v2_post_recording_questions_pool").delete().eq("id", question_id).execute()
 
+    # ---------- Warm-up tasks (per student; homework flow) ----------
+    def v2_get_warm_up_tasks(self, user_id: str):
+        result = (
+            self.client.table("v2_warm_up_tasks")
+            .select("*")
+            .eq("user_id", user_id)
+            .order("order_index")
+            .order("created_at")
+            .execute()
+        )
+        return result.data or []
+
+    def v2_insert_warm_up_task(self, data: dict):
+        result = self.client.table("v2_warm_up_tasks").insert(data).execute()
+        return result.data[0] if result.data else None
+
+    def v2_update_warm_up_task(self, task_id: str, data: dict):
+        result = self.client.table("v2_warm_up_tasks").update(data).eq("id", task_id).execute()
+        return result.data[0] if result.data else None
+
+    def v2_delete_warm_up_task(self, task_id: str):
+        self.client.table("v2_warm_up_tasks").delete().eq("id", task_id).execute()
+
+    # ---------- Metric questions (2 questions for AI task block; admin Metrics section) ----------
+    def v2_get_metric_questions(self):
+        result = (
+            self.client.table("v2_metric_questions")
+            .select("*")
+            .order("position")
+            .execute()
+        )
+        return result.data or []
+
+    def v2_insert_metric_question(self, data: dict):
+        result = self.client.table("v2_metric_questions").insert(data).execute()
+        return result.data[0] if result.data else None
+
+    def v2_update_metric_question(self, question_id: str, data: dict):
+        result = self.client.table("v2_metric_questions").update(data).eq("id", question_id).execute()
+        return result.data[0] if result.data else None
+
+    def v2_delete_metric_question(self, question_id: str):
+        self.client.table("v2_metric_questions").delete().eq("id", question_id).execute()
+
     def v2_upsert_metric_definition(self, code: str, left_label: str, right_label: str):
         now = datetime.now(timezone.utc).isoformat()
         result = (

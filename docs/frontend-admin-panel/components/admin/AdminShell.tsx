@@ -2,13 +2,14 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Users, BookOpen, MessageCircleQuestion } from "lucide-react";
+import { Users, BookOpen, MessageCircleQuestion, Gauge } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const nav = [
   { href: "/admin/students", label: "Students", icon: Users },
   { href: "/admin/exercises", label: "Exercises", icon: BookOpen },
   { href: "/admin/questions", label: "Questions", icon: MessageCircleQuestion },
+  { href: "/admin/metrics", label: "Metrics", icon: Gauge },
 ];
 
 export default function AdminShell({

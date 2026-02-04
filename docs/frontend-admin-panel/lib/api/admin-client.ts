@@ -98,6 +98,21 @@ export interface PostQuestion {
   is_active?: boolean;
 }
 
+export interface WarmUpTask {
+  id: string;
+  user_id: string;
+  text: string;
+  order_index: number;
+  created_at?: string;
+}
+
+export interface MetricQuestion {
+  id: string;
+  position: 1 | 2;
+  text: string;
+  created_at?: string;
+}
+
 export const adminApi = {
   getStudents: (params?: { limit?: number; offset?: number }) =>
     adminFetch<{ students: StudentListItem[]; limit: number; offset: number }>(
@@ -142,4 +157,30 @@ export const adminApi = {
 
   deletePostQuestion: (id: string) =>
     adminFetch<{ status: string }>(`/post-recording-questions/${id}`, { method: "DELETE" }),
+
+  // Homework flow: warm-up tasks (per student)
+  getWarmUpTasks: (userId: string) =>
+    adminFetch<{ warm_up_tasks: WarmUpTask[] }>(`/students/${userId}/warm-up-tasks`).then((r) => r.warm_up_tasks),
+
+  createWarmUpTask: (userId: string, data: { text: string; order_index?: number }) =>
+    adminFetch<{ warm_up_task: WarmUpTask }>(`/students/${userId}/warm-up-tasks`, { method: "POST", body: data }),
+
+  updateWarmUpTask: (userId: string, taskId: string, data: { text?: string; order_index?: number }) =>
+    adminFetch<{ warm_up_task: WarmUpTask }>(`/students/${userId}/warm-up-tasks/${taskId}`, { method: "PUT", body: data }),
+
+  deleteWarmUpTask: (userId: string, taskId: string) =>
+    adminFetch<{ status: string }>(`/students/${userId}/warm-up-tasks/${taskId}`, { method: "DELETE" }),
+
+  // Homework flow: metric questions (metric_question_1, metric_question_2)
+  getMetricQuestions: () =>
+    adminFetch<{ questions: MetricQuestion[] }>("/metric-questions").then((r) => r.questions),
+
+  createMetricQuestion: (data: { position: 1 | 2; text: string }) =>
+    adminFetch<{ question: MetricQuestion }>("/metric-questions", { method: "POST", body: data }),
+
+  updateMetricQuestion: (id: string, data: { position?: 1 | 2; text?: string }) =>
+    adminFetch<{ question: MetricQuestion }>(`/metric-questions/${id}`, { method: "PUT", body: data }),
+
+  deleteMetricQuestion: (id: string) =>
+    adminFetch<{ status: string }>(`/metric-questions/${id}`, { method: "DELETE" }),
 };

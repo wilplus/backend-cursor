@@ -678,6 +678,72 @@ def v2_admin_post_questions_delete(question_id):
     return jsonify({"status": "ok"}), 200
 
 
+# ---------- Admin: warm-up tasks (per student; homework flow) ----------
+@v2_bp.route("/admin/students/<user_id>/warm-up-tasks", methods=["GET"])
+@require_admin
+def v2_admin_warm_up_tasks_list(user_id):
+    rows = db.v2_get_warm_up_tasks(user_id)
+    return jsonify({"warm_up_tasks": rows}), 200
+
+
+@v2_bp.route("/admin/students/<user_id>/warm-up-tasks", methods=["POST"])
+@require_admin
+def v2_admin_warm_up_tasks_create(user_id):
+    data = request.get_json() or {}
+    data["user_id"] = user_id
+    data.setdefault("order_index", 0)
+    row = db.v2_insert_warm_up_task(data)
+    return jsonify({"warm_up_task": row}), 201
+
+
+@v2_bp.route("/admin/students/<user_id>/warm-up-tasks/<task_id>", methods=["PUT"])
+@require_admin
+def v2_admin_warm_up_tasks_update(user_id, task_id):
+    data = request.get_json() or {}
+    row = db.v2_update_warm_up_task(task_id, data)
+    return jsonify({"warm_up_task": row}), 200
+
+
+@v2_bp.route("/admin/students/<user_id>/warm-up-tasks/<task_id>", methods=["DELETE"])
+@require_admin
+def v2_admin_warm_up_tasks_delete(user_id, task_id):
+    db.v2_delete_warm_up_task(task_id)
+    return jsonify({"status": "ok"}), 200
+
+
+# ---------- Admin: metric questions (metric_question_1, metric_question_2; homework flow) ----------
+@v2_bp.route("/admin/metric-questions", methods=["GET"])
+@require_admin
+def v2_admin_metric_questions_list():
+    rows = db.v2_get_metric_questions()
+    return jsonify({"questions": rows}), 200
+
+
+@v2_bp.route("/admin/metric-questions", methods=["POST"])
+@require_admin
+def v2_admin_metric_questions_create():
+    data = request.get_json() or {}
+    if data.get("position") not in (1, 2):
+        return jsonify({"code": "INVALID_INPUT", "error": "position must be 1 or 2"}), 400
+    row = db.v2_insert_metric_question(data)
+    return jsonify({"question": row}), 201
+
+
+@v2_bp.route("/admin/metric-questions/<question_id>", methods=["PUT"])
+@require_admin
+def v2_admin_metric_questions_update(question_id):
+    data = request.get_json() or {}
+    row = db.v2_update_metric_question(question_id, data)
+    return jsonify({"question": row}), 200
+
+
+@v2_bp.route("/admin/metric-questions/<question_id>", methods=["DELETE"])
+@require_admin
+def v2_admin_metric_questions_delete(question_id):
+    db.v2_delete_metric_question(question_id)
+    return jsonify({"status": "ok"}), 200
+
+
 # ---------- Admin: metric definitions (GET + PUT labels) ----------
 @v2_bp.route("/admin/metric-definitions", methods=["GET"])
 @require_admin
