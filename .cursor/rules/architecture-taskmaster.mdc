@@ -63,7 +63,7 @@ Session statuses: `warm_up` → `task_block` → `final_task_ready` → `post_qu
 
 Backend stays as-is; no change required. BFF sends `Authorization: Bearer <supabase_access_token>`.
 
-**404 on "start"?** Frontend is calling Next.js (e.g. `POST /api/homework/session/start`) but the route doesn’t exist. Add BFF routes by copying from **`docs/homework-bff-routes/`** in this repo into the frontend app:
+**404 on "start" / "backend not connected"?** (1) The path must include **`session`**: correct is **`POST /v2/homework/session/start`**, not `POST /v2/homework/start`. Frontend must call **`/api/homework/session/start`** (not `/api/homework/start`). (2) Next.js must have the BFF route: without it the request hits Next.js and returns 404, so the app shows "backend not connected". Add BFF routes by copying from **`docs/homework-bff-routes/`** in this repo into the frontend app:
 
 | Copy from (this repo) | Copy to (Next.js app) |
 |----------------------|------------------------|
