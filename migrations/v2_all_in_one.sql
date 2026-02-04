@@ -251,3 +251,15 @@ END $$;
 
 COMMENT ON COLUMN v2_student_overrides.assigned_warm_up_task_id IS 'The single warm-up task the student sees for the next homework run. Admin sets this on student profile.';
 COMMENT ON COLUMN v2_sessions.context_long_entries IS 'Append-only list of report entries: [{ "at": "ISO8601", "text": "..." }]. Latest = last element.';
+
+-- ============================================================================
+-- 6) Warm-up selection by last performance_score (max_performance_score)
+-- ============================================================================
+
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'v2_warm_up_tasks' AND column_name = 'max_performance_score') THEN
+    ALTER TABLE v2_warm_up_tasks ADD COLUMN max_performance_score DECIMAL(3,2) DEFAULT 1.00 CHECK (max_performance_score >= 0 AND max_performance_score <= 1);
+  END IF;
+END $$;
+
+COMMENT ON COLUMN v2_warm_up_tasks.max_performance_score IS 'Show this warm-up to students with last performance_score_end <= this value (0-1). Easiest = 1.0. Selection: eligible where max_performance_score >= last_score; then closest ±3%%; random if ties.';

@@ -292,6 +292,7 @@ def v2_admin_warm_up_tasks_create(user_id):
     data = request.get_json() or {}
     data["user_id"] = user_id
     data.setdefault("order_index", 0)
+    data.setdefault("max_performance_score", 1.0)  # 0-1; show if student's last score <= this (easiest = 1.0)
     row = db.v2_insert_warm_up_task(data)
     return jsonify({"warm_up_task": row}), 201
 

@@ -1071,17 +1071,32 @@ class DatabaseService:
     def v2_delete_warm_up_task(self, task_id: str):
         self.client.table("v2_warm_up_tasks").delete().eq("id", task_id).execute()
 
+    def v2_get_last_homework_performance_score(self, user_id: str):
+        """Last completed homework session's performance_score_end (0-1), or None if no completed session."""
+        result = (
+            self.client.table("v2_sessions")
+            .select("performance_score_end")
+            .eq("user_id", user_id)
+            .eq("status", "completed")
+            .order("created_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+        if not result.data:
+            return None
+        score = result.data[0].get("performance_score_end")
+        if score is None:
+            return None
+        return float(score)
+
     def v2_get_assigned_warm_up_task(self, user_id: str):
-        """Get the single warm-up task the student sees: from overrides.assigned_warm_up_task_id, or first by order_index if unset."""
-        overrides = self.v2_get_student_overrides(user_id)
-        assigned_id = overrides.get("assigned_warm_up_task_id") if overrides else None
-        if assigned_id:
-            result = self.client.table("v2_warm_up_tasks").select("*").eq("id", assigned_id).eq("user_id", user_id).execute()
-            if result.data:
-                return result.data[0]
-        # Fallback: first by order_index
+        """Get the single warm-up task: selection by last performance_score_end (max_performance_score, ±3%%, random if ties). First-time student gets easiest (highest max)."""
+        from services.v2_flow_service import select_warm_up_task
         tasks = self.v2_get_warm_up_tasks(user_id)
-        return tasks[0] if tasks else None
+        if not tasks:
+            return None
+        last_score = self.v2_get_last_homework_performance_score(user_id)
+        return select_warm_up_task(last_score, tasks)
 
     def v2_get_active_homework_session(self, user_id: str):
         """Active homework flow session (status in warm_up, task_block, final_task_ready, post_questions)."""

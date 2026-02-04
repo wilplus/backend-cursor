@@ -41,13 +41,13 @@ Single reference for this repo. No other .md docs; everything lives here.
 
 **Endpoints:**
 
-1. **Start** — `POST /v2/homework/session/start`, body `{}` → `{ session_id, status: "warm_up", warm_up_task?: { id, text } }`. **Frontend:** Render `warm_up_task.text` (string), not the object `warm_up_task` — React throws "Objects are not valid as a React child" (error #31) if you render the object. **If `warm_up_task` is null:** the student has no warm-up task assigned; add one via admin (POST /v2/admin/students/:id/warm-up-tasks). Backend uses overrides.assigned_warm_up_task_id or first task by order_index.
+1. **Start** — `POST /v2/homework/session/start`, body `{}` → `{ session_id, status: "warm_up", warm_up_task?: { id, text } }`. **Warm-up selection:** By last `performance_score_end` (previous report). Each warm-up has `max_performance_score` (0-1): eligible = warm-ups where `max_performance_score >=` student's last score; then pick closest score within ±3%; random if ties. First-time (no previous score) → easiest (highest max). High scorer above all → hardest (lowest max). Admin: set `max_performance_score` when creating/editing warm-ups (default 1.0). **Frontend:** Render `warm_up_task.text`. If null, add warm-ups for student in admin.
 2. **Warm-up (optional)** — `GET /v2/homework/session/<id>/warm-up-task` → `{ warm_up_task }`.
-3. **Recording 1** — `POST /v2/homework/session/<id>/recording-1` (multipart: `audio`; optional `duration_seconds`) → `{ recording_id, performance_score_1, context_short, task_block: { context_short, focus_task, metric_question_1, metric_question_2 } }`. Status → `task_block`.
-4. **Metric answers** — `POST /v2/homework/session/<id>/metric-answers`, body `{ answer_1, answer_2 }` → `{ final_task }`. Status → `final_task_ready`.
+3. **Recording 1** — `POST /v2/homework/session/<id>/recording-1` (multipart: `audio`; optional `duration_seconds`) → `{ recording_id, performance_score_1, context_short, task_block: { context_short, focus_task, metric_question_1, metric_question_2 } }`. Status → `task_block`. **Frontend:** Show metric questions step; collect `answer_1`, `answer_2`; POST metric-answers.
+4. **Metric answers** — `POST /v2/homework/session/<id>/metric-answers`, body `{ answer_1, answer_2 }` → `{ final_task }`. **Final task:** AI-generated, exactly 2 sentences: (1) "Based on [context], your task is: [focus_task]." (2) "Focus especially on [metric_answer_1] and [metric_answer_2]." 20-50 words, no extra commentary. Status → `final_task_ready`.
 5. **Recording 2** — `POST /v2/homework/session/<id>/recording-2` (multipart) → `{ recording_id, performance_score_2 }`. Status → `post_questions`.
-6. **Questions** — `GET /v2/homework/session/<id>/questions` → `{ questions: [ { id, text, answer_type } ] }`. If empty, skip next.
-7. **Post-answers** — `POST /v2/homework/session/<id>/post-answers`, body `{ answers: [ { question_id, answer_text } ] }` → `{ report_text, performance_score_end, performance_metrics }`. Status → `completed`.
+6. **Questions** — `GET /v2/homework/session/<id>/questions` → `{ questions: [ ... ] }`. **Reflective questions:** Only if admin set exactly 3 `assigned_post_question_ids` for the student. Empty or not 3 → `questions: []` (skip step).
+7. **Post-answers** — `POST /v2/homework/session/<id>/post-answers`, body `{ answers: [ { question_id, answer_text } ] }` → `{ report_text, performance_score_end, performance_metrics }`. **Report (homework):** 3 paragraphs. (1) Performance Overview: overall score, improvement/decline recording 1→2, strongest/weakest metrics. (2) Detailed Metric Analysis: strength, fillers, pacing; compare self-ratings vs measured; note discrepancies. (3) Actionable Next Steps: one to keep, one to improve, one concrete exercise. 150-250 words, encouraging but honest. Status → `completed`.
 8. **Status** — `GET /v2/homework/session/status` → `{ session | null, session_id?, has_active_session }`.
 
 Session statuses: `warm_up` → `task_block` → `final_task_ready` → `post_questions` → `completed`.
@@ -75,6 +75,8 @@ Backend stays as-is; no change required. BFF sends `Authorization: Bearer <supab
 **getAuth:** Example routes use `import { getV2AccessToken, getBackendUrl } from "../../../../getAuth"` (start/status) or `../../../../../getAuth` ([sessionId] routes). Put `getAuth` at `src/app/api/getAuth.ts` or adjust the import path. Set `NEXT_PUBLIC_BACKEND_URL` or `BACKEND_URL` in frontend env.
 
 **Reference code in this repo:** `docs/frontend-admin-panel/` (admin BFF routes, pages, components); `docs/homework-bff-routes/` (homework route .ts files). Copy or adapt; ensure 401/403 and backend error bodies are handled.
+
+**Frontend UX gotchas:** (1) **Metric questions:** After recording-1, the backend returns `task_block.metric_question_1` and `metric_question_2`. The frontend must render both and submit `answer_1` / `answer_2` in POST metric-answers; otherwise the report does not include them. (2) **Post-questions input accepts only one letter:** Usually the input re-mounts or loses focus on every keystroke (e.g. `key` derived from list index, or parent state causing full re-render). Use a **stable key** for each question input and **local state** for the value (e.g. one state object keyed by question_id); avoid storing the value in parent state that triggers a refetch or remount on every change.
 
 ---
 

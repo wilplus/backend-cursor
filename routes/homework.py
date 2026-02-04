@@ -335,11 +335,11 @@ def homework_get_questions(session_id):
             return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found or wrong status"}), 404
 
         overrides = db.v2_get_student_overrides(user_id)
-        assigned_ids = (overrides.get("assigned_post_question_ids") or []) if overrides else None
-        if assigned_ids and len(assigned_ids) == 3:
-            pool = db.v2_get_post_questions_by_ids(assigned_ids)
-        else:
-            pool = db.v2_get_post_questions_pool()
+        assigned_ids = (overrides.get("assigned_post_question_ids") or []) if overrides else []
+        # Option A: empty or not exactly 3 = no reflective questions for this student
+        if len(assigned_ids) != 3:
+            return jsonify({"questions": []}), 200
+        pool = db.v2_get_post_questions_by_ids(assigned_ids)
         questions = select_post_questions_v2(pool, assigned_ids)
         if not questions:
             return jsonify({"questions": []}), 200
@@ -413,6 +413,8 @@ def homework_submit_post_answers(session_id):
         performance_score_end = max(0.0, min(1.0, performance_score_end))
 
         report_text = f"Your performance score: {performance_score_end:.0%}. "
+        context_short = (session.get("context_short") or "").strip()
+        metric_answers = session.get("metric_answers") or {}
         try:
             report_text = openai_service.generate_final_report(
                 transcript=transcript[:500],
@@ -424,6 +426,12 @@ def homework_submit_post_answers(session_id):
                 user_id=user_id,
                 admin_context=db.get_user_admin_context(user_id),
                 recording_id=recording_2_id,
+                homework_context_short=context_short or None,
+                homework_metric_answers=metric_answers if metric_answers else None,
+                homework_performance_score_1=performance_score_1,
+                homework_performance_score_2=performance_score_2,
+                homework_metric_1_name="pacing",
+                homework_metric_2_name="vocal strength",
             ) or report_text
         except Exception as e:
             logger.warning(f"Homework report generation failed: {e}")

@@ -157,11 +157,17 @@ Respond with ONLY valid JSON in this exact format:
         trend_sentence: str = None,
         user_id: str = None,
         admin_context: dict = None,
-        recording_id: str = None
+        recording_id: str = None,
+        homework_context_short: str = None,
+        homework_metric_answers: dict = None,
+        homework_performance_score_1: float = None,
+        homework_performance_score_2: float = None,
+        homework_metric_1_name: str = "pacing",
+        homework_metric_2_name: str = "vocal strength",
     ):
         """
-        Generate final coaching report (≤120 words, enforced via truncation).
-        Now includes admin feedback and progress tracking for time-aware analysis.
+        Generate final coaching report. For homework flow: pass homework_* params for 3-paragraph rubric
+        (Performance Overview, Metric Analysis with self-ratings vs measured, Actionable Next Steps). 150-250 words.
         """
         # Dev mode mock (COMMENTED OUT - using real OpenAI)
         # if not config.is_production:
@@ -250,6 +256,18 @@ Respond with ONLY valid JSON in this exact format:
             for ans in post_answers
         ])
         
+        # Homework flow: first recording summary and metric self-ratings (so report includes recording_1 and metric questions)
+        homework_section = ""
+        if homework_context_short or homework_metric_answers:
+            homework_section = "\n**Homework flow (two recordings):**\n"
+            if homework_context_short:
+                homework_section += f"- First recording (warm-up) summary: {homework_context_short}\n"
+            if homework_metric_answers:
+                a1 = homework_metric_answers.get("answer_1") or homework_metric_answers.get("metric_answer_1") or ""
+                a2 = homework_metric_answers.get("answer_2") or homework_metric_answers.get("metric_answer_2") or ""
+                homework_section += f"- Metric self-ratings (after first recording): 1: {a1}, 2: {a2}\n"
+            homework_section += "\n**Second recording transcript:**\n"
+        
         # Pacing context for supportive (non-commanding) wording only
         if wpm > 180:
             pacing_note = "pacing was fast; user may benefit from a slower pace"
@@ -260,9 +278,72 @@ Respond with ONLY valid JSON in this exact format:
         
         # Get max words from admin context or default
         max_words = admin_context.get("max_words", 120) if admin_context else 120
-        
-        prompt = f"""Generate a concise, analytical coaching report for a speech analysis session.
 
+        # Homework flow: 3-paragraph rubric (Performance Overview, Metric Analysis, Actionable Next Steps)
+        if homework_metric_answers is not None:
+            perf_1 = homework_performance_score_1 if homework_performance_score_1 is not None else 0
+            perf_2 = homework_performance_score_2 if homework_performance_score_2 is not None else 0
+            perf_end = (perf_1 + perf_2) / 2.0
+            a1 = homework_metric_answers.get("answer_1") or homework_metric_answers.get("metric_answer_1") or ""
+            a2 = homework_metric_answers.get("answer_2") or homework_metric_answers.get("metric_answer_2") or ""
+            post_answers_text_hw = "\n".join([f"Q: {a.get('question_text', '')}\nA: {a.get('answer_text', '')}" for a in post_answers])
+            ctx_short = (homework_context_short or "").strip() or "(no context from first recording)"
+            homework_report_prompt = f"""Generate a performance report for this student's speaking exercise.
+
+INPUT DATA:
+- Context (from first recording): {ctx_short}
+- Performance Score (average): {perf_end:.1%}
+  - Recording 1 score: {perf_1:.1%} (based on strength, fillers, pacing)
+  - Recording 2 score: {perf_2:.1%} (based on strength, fillers, pacing, {homework_metric_1_name}, {homework_metric_2_name})
+- Student's self-ratings after first recording: 1. {a1}  2. {a2}
+- Student's answers to reflective questions: {post_answers_text_hw or "(none)"}
+
+REQUIRED STRUCTURE (3 paragraphs):
+
+Paragraph 1 - Performance Overview:
+- State the overall performance score ({perf_end:.1%})
+- Highlight improvement or decline from recording 1 to recording 2
+- Mention strongest and weakest metrics
+
+Paragraph 2 - Detailed Metric Analysis:
+- Comment on strength (vocal projection and confidence)
+- Comment on fillers (um, uh, like, etc.)
+- Comment on pacing (speed and rhythm)
+- Compare student's self-ratings ({a1}, {a2}) vs actual measured performance
+- Point out any discrepancies (e.g. "You rated yourself 4/5 on pacing, but measurements show rushing")
+
+Paragraph 3 - Actionable Next Steps:
+- One specific thing to keep doing (strength)
+- One specific thing to improve (weakness)
+- One concrete exercise or technique to practice
+
+CONSTRAINTS:
+- Length: 150-250 words
+- Tone: Encouraging but honest
+- Always mention: strength, fillers, pacing
+- Use specific percentages and metric values
+- End with a motivating statement
+
+Generate the report now:"""
+            try:
+                response = self.client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=[
+                        {"role": "system", "content": "You are a supportive speech coach. Generate a 3-paragraph report following the required structure. Encouraging but honest tone. 150-250 words."},
+                        {"role": "user", "content": homework_report_prompt}
+                    ],
+                    temperature=0.4,
+                    max_tokens=500,
+                )
+                text = (response.choices[0].message.content or "").strip()
+                if text:
+                    return text[:1500]  # cap length
+            except Exception as e:
+                sentry_sdk.capture_exception(e)
+            # fall through to generic report if homework report fails
+
+        prompt = f"""Generate a concise, analytical coaching report for a speech analysis session.
+{homework_section}
 Transcript:
 {transcript[:500]}...
 
@@ -424,33 +505,42 @@ Generate the report:"""
         metric_answer_1: str,
         metric_answer_2: str,
     ) -> str:
-        """Homework flow: combine context + focus task + metric answers into one final task text for recording_2."""
+        """Homework flow: exactly 2 sentences. Sentence 1: Based on [context], your task is [focus_task]. Sentence 2: Focus especially on [metric_answer_1] and [metric_answer_2]. 20-50 words, no extra commentary."""
+        focus_task = f"{focus_task_title}. {focus_task_prompt}".strip()
+        fallback = f"Based on {context_short[:100]}, your task is: {focus_task}. Focus especially on {metric_answer_1} and {metric_answer_2}."
         if not self.client:
-            return f"{context_short}\n\nTask: {focus_task_title}\n{focus_task_prompt}\n\nYour answers: {metric_answer_1}; {metric_answer_2}"
+            return fallback
         try:
-            prompt = f"""Context from warm-up: {context_short}
+            prompt = f"""Generate a final task instruction in exactly 2 sentences following this structure:
 
-Focus task: {focus_task_title}
-{focus_task_prompt}
+Sentence 1: "Based on [context from recording 1], your task is: [focus_task]."
+Sentence 2: "Focus especially on [metric_answer_1] and [metric_answer_2]."
 
-The speaker answered two reflection questions:
-1. {metric_answer_1}
-2. {metric_answer_2}
+Context from recording 1: {context_short}
+Focus task: {focus_task}
+Metric answer 1: {metric_answer_1}
+Metric answer 2: {metric_answer_2}
 
-Write one short paragraph (2-4 sentences) that combines the context, the focus task, and their answers into a single clear instruction for their next recording. Do not repeat the questions; weave their answers into the instruction."""
+Requirements:
+- Exactly 2 sentences
+- Must include all 4 components: context, focus task, both metric answers
+- Use the exact structure above
+- Do not add additional instructions or commentary
+- Length: 20-50 words total
+- Tone: Clear, direct, instructional"""
             response = self.client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=[
-                    {"role": "system", "content": "You produce a single, clear instruction paragraph for a speech practice recording."},
+                    {"role": "system", "content": "You produce exactly 2 sentences for a speech practice instruction. No extra text."},
                     {"role": "user", "content": prompt}
                 ],
-                temperature=0.4,
-                max_tokens=250,
+                temperature=0.3,
+                max_tokens=120,
             )
-            return (response.choices[0].message.content or "").strip()
+            return (response.choices[0].message.content or "").strip() or fallback
         except Exception as e:
             sentry_sdk.capture_exception(e)
-            return f"{context_short}\n\nTask: {focus_task_title}\n{focus_task_prompt}\n\nReflections: {metric_answer_1}; {metric_answer_2}"
+            return fallback
 
     def generate_suggested_questions(
         self,

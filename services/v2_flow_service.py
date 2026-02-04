@@ -55,6 +55,52 @@ def select_exercise_for_task_score(
     return None
 
 
+def select_warm_up_task(
+    student_last_score: Optional[float],
+    available_warm_ups: List[Dict],
+) -> Optional[Dict]:
+    """
+    Select warm-up task based on student's last performance_score_end.
+    Rule 1: Eligible = warm-ups with max_performance_score >= student's last score.
+    Rule 2: Among eligible, closest max_performance_score to student's score (within ±0.03).
+    Rule 3: Random choice if multiple within tolerance.
+    Rule 4: First-time (no score): easiest = highest max_performance_score (typically 1.0).
+    Fallback: if student scored above all warm-ups, return hardest (lowest max).
+    """
+    import random
+    TOLERANCE = 0.03
+    if not available_warm_ups:
+        return None
+
+    def _max_score(w: Dict) -> float:
+        v = w.get("max_performance_score")
+        if v is None:
+            return 1.0
+        return float(v)
+
+    # CASE 1: First-time student (no previous score)
+    if student_last_score is None:
+        return max(available_warm_ups, key=_max_score)
+
+    # CASE 2: Returning student — filter eligible (max_score >= student's score)
+    eligible = [w for w in available_warm_ups if _max_score(w) >= student_last_score]
+
+    # Fallback: student scored too high for all warm-ups → hardest (lowest max)
+    if not eligible:
+        return min(available_warm_ups, key=_max_score)
+
+    # Closest match score among eligible
+    closest_w = min(eligible, key=lambda w: abs(_max_score(w) - student_last_score))
+    closest_score = _max_score(closest_w)
+
+    # All warm-ups within ±3% of closest score
+    within_tolerance = [
+        w for w in eligible
+        if abs(_max_score(w) - closest_score) <= TOLERANCE
+    ]
+    return random.choice(within_tolerance)
+
+
 def select_focus_task_for_performance_score_1(
     tasks: List[Dict],
     performance_score_1: float,
