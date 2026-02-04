@@ -1,6 +1,6 @@
-# Frontend V2 Deliverables
+# Frontend V2 Deliverables (legacy reference)
 
-Copy these into your **Next.js frontend** repo so the flow uses the backend `/v2/*` endpoints. **Frontend path is `/api/*` (no `v2` in URL);** BFF proxies to backend `/v2/*`.
+**The backend has one student flow only: homework** (warm-up → recording_1 → … → report). The classic v2 flow (universal questions, one recording) has been removed. Use **`docs/homework-bff-routes/`** for the homework BFF. This folder is reference only; session/recordings routes below are no longer served.
 
 ## What's included
 

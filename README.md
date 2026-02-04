@@ -76,6 +76,10 @@ In non-production environments (`ENV != "production"`):
 
 Run the SQL migrations against your Supabase project (Dashboard → SQL Editor). **One file:** run **`migrations/v2_all_in_one.sql`** (includes v2_flow, speaker_profiles, show_exercise_step, homework_flow, homework_flow_schema_additions in order). Alternatively run the individual files in `migrations/` in that same order. Requires your base schema (e.g. `recording_sessions`, `recordings`). Then in Supabase go to **Settings → API** and use **Reload schema cache** if available.
 
+## Student flow (one only)
+
+The app has **one student flow**: **homework** — warm-up task → recording_1 → task block + metric answers → recording_2 → questions → report. Backend: **`/v2/homework/session/start`**, **`/v2/homework/session/:id/recording-1`**, etc. (see `routes/homework.py`). The classic v2 flow (universal questions, one recording) has been removed.
+
 ## Documentation
 
 - **ARCHITECTURE.md** — Stack, layout, core flows, database, conventions (source of truth for design).

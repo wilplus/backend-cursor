@@ -11,10 +11,9 @@ Synchronize the frontend with this backend. The backend is a **Flask API** under
 - **Student app:** Call the backend at `BACKEND_URL/v2/...` (or via your own BFF that proxies to that URL with the user’s token).
 - **Admin panel:** Call `BACKEND_URL/v2/admin/...` with the **admin user’s** token. The backend checks admin via the `admin_users` table; return 403 if the backend returns 403.
 
-The backend supports **two** student flows:
+The backend has **one** student flow only:
 
-1. **Homework flow (recommended / replacement):** First screen = warm-up task text + record button; then recording_1 → task block + metric answers → recording_2 → questions → report. Use **`/v2/homework/...`** endpoints below.
-2. **Classic v2 flow (legacy):** Universal questions → optional exercise → pre-questions + task → **one** recording → post-answers → report. Use **`/v2/session/...`** and **`/v2/recordings/upload`**.
+- **Homework flow:** First screen = warm-up task text + record button; then recording_1 → task block + metric answers → recording_2 → questions → report. Use **`/v2/homework/...`** endpoints below. (Classic v2 flow removed.)
 
 ---
 
@@ -63,54 +62,6 @@ Use this flow when the first screen should be **warm-up task text + record butto
    - `GET /v2/homework/session/status` → `{ "session": {...} | null, "session_id"?, "has_active_session" }`.
 
 Homework session statuses: `warm_up` → `task_block` → `final_task_ready` → `post_questions` → `completed`.
-
----
-
-## Student flow: Classic v2 (legacy) — endpoints and contract
-
-Implement this sequence only if not using the homework flow. All under `GET/POST .../v2/...` with auth.
-
-1. **Session start**
-   - `POST /v2/session/start`
-   - Body (JSON): `{}` or `{ "session_id": "<uuid>" }` to resume.
-   - Response: `{ "session": { ... }, "session_id": "<uuid>" }` (200 or 201). Session has `status`, e.g. `universal_questions`, `exercise`, `pre_questions`, `recording_ready`, `post_questions`, `completed`.
-
-2. **Universal questions**
-   - `GET /v2/universal-questions` → list of questions (array).
-   - After user answers: `POST /v2/session/<session_id>/universal-answers`
-   - Body: `{ "mood": 0|1 or 0..1, "readiness": 1..10, "mode_preference": 0|1 }` (0 = guide me, 1 = I'll choose).
-   - Response **A** (exercise step): `{ "task_score": number, "exercise": { "id", "title", "video_url", "description" }, "status": "exercise" }` → show exercise UI, then call exercise-feedback.
-   - Response **B** (no exercise): `{ "session_id": "<v1_session_id>", "task_score": number, "pre_questions": [...], "command_options": [...], "recommended_command_option_id": "A"|"B"|"C", "mode", "structure", "theme_*", "biofeedback_profile", ... }` → go to pre-questions and task selection.
-
-3. **Exercise feedback (only if step 2 returned status "exercise")**
-   - `POST /v2/session/<session_id>/exercise-feedback`
-   - Body: `{ "exercise_liked": true|false }`
-   - Response: same shape as 2B (v1 plan with pre_questions, command_options, etc.).
-
-4. **Task selection (if mode “I'll choose”)**
-   - User may pick a task; then `POST /v2/session/<session_id>/select-task`
-   - Body: `{ "task_id": "<uuid>" }`.
-   - Response: `{ "task": { "id", "title", "prompt_text" } }`.
-
-5. **Intent (emotion + keywords)**
-   - `POST /v2/session/<session_id>/intent`
-   - Body: `{ "intended_emotion": string, "keywords": [string, string, string] }` (exactly 3 keywords).
-   - Response: `{ "status": "ok" }`.
-
-6. **Recording upload**
-   - `POST /v2/recordings/upload` (multipart/form-data)
-   - Fields: `session_id`, `task_id`, `audio` (file). Optional: `duration_seconds`.
-   - Response: `{ "recording_id", "performance_score", "performance_metrics", "metric_labels_snapshot" }`. Session moves to `post_questions`.
-
-7. **Post-answers**
-   - `POST /v2/session/<session_id>/post-answers`
-   - Body: `{ "answers": [ { "question_id": "<uuid>", "answer_text": string } ] }`.
-   - Response: `{ "report_text", "performance_score", "performance_metrics", "metric_labels_snapshot" }`. Session moves to `completed`.
-
-8. **Session status**
-   - `GET /v2/session/status` → `{ "session": {...} | null, "session_id"?, "has_active_session": boolean }`.
-
-Error responses: `{ "code": "SESSION_NOT_FOUND"|"INVALID_STATE"|"V2_ERROR"|... , "error": string }` with appropriate 4xx/5xx status.
 
 ---
 
