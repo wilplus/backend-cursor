@@ -82,6 +82,9 @@ See `docs/V2-ADMIN-API.md` in the backend repo for full reference.
 
 ## Troubleshooting
 
+**404 on /api/v2/admin/tasks when opening a student profile**  
+The student profile fetches the global tasks pool for "Focus tasks". Add the BFF route: copy `api-routes/tasks-route.ts` to **`src/app/api/v2/admin/tasks/route.ts`** in your Next.js app. If you need to create/update/delete tasks from the UI, also copy `api-routes/tasks-[id]-route.ts` to **`src/app/api/v2/admin/tasks/[id]/route.ts`**. See `api-routes/README.md` for the full file mapping.
+
 **Students page shows HTTP 404**  
 The Students page fetches `GET /api/v2/admin/students` (your Next.js BFF). A 404 means that route is missing or not reachable.
 

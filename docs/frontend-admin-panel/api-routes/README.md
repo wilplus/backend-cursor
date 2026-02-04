@@ -15,7 +15,8 @@ Use the same `getV2AccessToken` and `getBackendUrl` from your existing v2 BFF (`
 | `students-[id]-send-assignment-route.ts` | `src/app/api/v2/admin/students/[id]/send-assignment/route.ts` |
 | `exercises-route.ts` | `src/app/api/v2/admin/exercises/route.ts` |
 | `exercises-[id]-route.ts` | `src/app/api/v2/admin/exercises/[id]/route.ts` |
-| `tasks-route.ts` | `src/app/api/v2/admin/tasks/route.ts` |
+| `tasks-route.ts` | `src/app/api/v2/admin/tasks/route.ts` (GET + POST) |
+| `tasks-[id]-route.ts` | `src/app/api/v2/admin/tasks/[id]/route.ts` (PUT + DELETE) |
 | `post-recording-questions-route.ts` | `src/app/api/v2/admin/post-recording-questions/route.ts` (GET + POST) |
 | `post-recording-questions-[id]-route.ts` | `src/app/api/v2/admin/post-recording-questions/[id]/route.ts` (PUT + DELETE) |
 | `students-[id]-warm-up-tasks-route.ts` | `src/app/api/v2/admin/students/[id]/warm-up-tasks/route.ts` (GET + POST) |

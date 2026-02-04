@@ -1,7 +1,8 @@
 /**
  * Copy to: src/app/api/v2/admin/tasks/route.ts
+ * Required for student profile "Focus tasks" (load global pool). Without this route you get 404 on /api/v2/admin/tasks.
  */
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getV2AccessToken, getBackendUrl } from "../../getAuth";
 
 export async function GET() {
@@ -18,4 +19,26 @@ export async function GET() {
     return NextResponse.json(data, { status: res.status });
   }
   return NextResponse.json(data);
+}
+
+export async function POST(request: NextRequest) {
+  const token = await getV2AccessToken();
+  if (!token) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  const body = await request.json().catch(() => ({}));
+  const backend = getBackendUrl();
+  const res = await fetch(`${backend}/v2/admin/tasks`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    return NextResponse.json(data, { status: res.status });
+  }
+  return NextResponse.json(data, { status: 201 });
 }
