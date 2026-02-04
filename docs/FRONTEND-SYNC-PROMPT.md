@@ -114,20 +114,18 @@ Error responses: `{ "code": "SESSION_NOT_FOUND"|"INVALID_STATE"|"V2_ERROR"|... ,
 
 ---
 
-## Admin panel — endpoints and BFF mapping
+## Admin panel — simplified (two routes only)
 
-All under `GET/POST/PUT/DELETE .../v2/admin/...` with admin auth. The backend returns JSON; admin panel can proxy via Next.js (or similar) BFF routes that forward the token.
+Admin UI: **`/admin/students`** (list) and **`/admin/students/:id`** (profile). All config from the profile; no separate Exercises/Tasks/Questions/Metrics pages. Backend still exposes the same APIs (profile uses them in modals). **Full contract:** `docs/ADMIN-PANEL-SYNC.md`.
+
+All under `GET/POST/PUT/DELETE .../v2/admin/...` with admin auth.
 
 ### Students
-- `GET /v2/admin/students` — Query: `limit`, `offset`. Response: `{ "students": [ { "user_id" } ], "limit", "offset" }`.
-- `GET /v2/admin/students/<user_id>` — **Student profile (single page mockup).** Response: `{ "user_id", "email", "overrides", "speaker_profile", "warm_up_tasks", "last_report", "last_report_preview", "sessions" }`.
-  - **overrides:** includes `assigned_warm_up_task_id`, `assigned_next_task_ids`, `assigned_post_question_ids`, etc. Use for “Save” in Homework Configuration (warm-up assignment, focus tasks list, questions list).
-  - **warm_up_tasks:** `[{ "id", "user_id", "text", "order_index", "created_at" }]` — list for “list of warm-up tasks (add new, delete, edit)”.
-  - **last_report:** full text for “Last Report” section; **last_report_preview:** first 500 chars. Null if no report yet.
-  - **sessions:** as before, with `recording_preview` and `report_preview` (report can come from `v2_reports` or `context_long`).
-- `PUT /v2/admin/students/<user_id>/overrides` — Body: `{ "show_exercise_step"?, "assigned_post_question_ids"?, "assigned_next_exercise_id"?, "assigned_next_task_ids"?, "assigned_warm_up_task_id"?, "intended_emotion_prompt"?, "keywords_prompt"?, "emotion_check_question_text"?, ... }`. `assigned_post_question_ids` must be exactly 3 IDs if provided. `assigned_warm_up_task_id` (UUID) is the single warm-up task the student sees for the homework flow.
-- `PUT /v2/admin/students/<user_id>/speaker-profile` — Body: speaker profile fields (e.g. `main_goal`, `motivation`, `strong_points`, `weak_points`, `charismatic_traits`, `hobbies_interests`, `personality_type`, `coach_notes`).
-- `POST /v2/admin/students/<user_id>/send-assignment` — No body. Sends “new homework” email to the student (requires student email in Supabase Auth).
+- `GET /v2/admin/students` — Query: `limit`, `offset`. Response: `{ "students": [ { "user_id", "email", "user_email", "sessions_count?", "last_session_at?", "avg_performance?" } ], "limit", "offset" }`.
+- `GET /v2/admin/students/<user_id>` — **Profile (simplified admin: one page).** Response: `user_id`, `email`, `overrides` (always arrays for `assigned_post_question_ids`, `assigned_next_task_ids`), `speaker_profile` (at least `coach_notes`), `warm_up_tasks`, `last_report`, `last_report_preview`, `sessions` (each: `id`, `created_at`, `status`, `report_preview.report_text_preview`).
+- `PUT /v2/admin/students/<user_id>/overrides` — Body: `assigned_next_task_ids`, `assigned_post_question_ids` (exactly 3 when set), optionally `assigned_warm_up_task_id`, etc.
+- `PUT /v2/admin/students/<user_id>/speaker-profile` — Body: `{ "coach_notes"?: string, ... }`. Frontend sends the single “Context” as `coach_notes`.
+- `POST /v2/admin/students/<user_id>/send-assignment` — No body. Response: `{ "status": "ok" }`.
 
 ### Warm-up tasks (per student; for future homework flow UI)
 - `GET /v2/admin/students/<user_id>/warm-up-tasks` → `{ "warm_up_tasks": [ { "id", "user_id", "text", "order_index", "created_at" } ] }`.
@@ -135,13 +133,10 @@ All under `GET/POST/PUT/DELETE .../v2/admin/...` with admin auth. The backend re
 - `PUT /v2/admin/students/<user_id>/warm-up-tasks/<task_id>` — Body: `{ "text"?, "order_index"? }`.
 - `DELETE /v2/admin/students/<user_id>/warm-up-tasks/<task_id>` — No body; 204 or 200.
 
-### Exercises
-- `GET /v2/admin/exercises` → `{ "exercises": [ { "id", "title", "video_url", "description", "min_task_score", "max_task_score", "is_active", "created_at" } ] }`.
-- `POST /v2/admin/exercises` — Body: same fields.
-- `PUT /v2/admin/exercises/<exercise_id>` — Body: partial.
-- `DELETE /v2/admin/exercises/<exercise_id>` — Soft delete.
+### Exercises (unused by simplified admin; endpoints kept)
+- `GET/POST/PUT/DELETE /v2/admin/exercises` — Profile does not call these.
 
-### Tasks
+### Tasks (global pool)
 - `GET /v2/admin/tasks` → `{ "tasks": [ { "id", "title", "prompt_text", "min_task_score", "max_task_score", "is_active", "created_at" } ] }`.
 - `POST /v2/admin/tasks`, `PUT /v2/admin/tasks/<task_id>`, `DELETE /v2/admin/tasks/<task_id>` — Same pattern.
 
@@ -149,16 +144,10 @@ All under `GET/POST/PUT/DELETE .../v2/admin/...` with admin auth. The backend re
 - `GET /v2/admin/post-recording-questions` → `{ "questions": [ { "id", "code", "text", "answer_type", "is_active" } ] }`.
 - `POST /v2/admin/post-recording-questions`, `PUT /v2/admin/post-recording-questions/<question_id>`, `DELETE /v2/admin/post-recording-questions/<question_id>`.
 
-### Metric questions (two questions for future homework flow)
-- `GET /v2/admin/metric-questions` → `{ "questions": [ { "id", "position": 1|2, "text", "created_at" } ] }`.
-- `POST /v2/admin/metric-questions` — Body: `{ "position": 1|2, "text" }`.
-- `PUT /v2/admin/metric-questions/<question_id>`, `DELETE /v2/admin/metric-questions/<question_id>`.
-
-### Metric definitions (labels for the 5 metrics)
-- `GET /v2/admin/metric-definitions` → `{ "metric_definitions": [ { "code", "left_label", "right_label" } ] }`.
-- `PUT /v2/admin/metric-definitions` — Body: `{ "metric_definitions": [ { "code", "left_label", "right_label" } ] }`.
-- `GET /v2/admin/metrics` — Alias: same as metric-definitions but response key `"metrics"` (for frontend that expects `metrics`).
-- `PUT /v2/admin/metrics` — Body: `{ "metrics": [ ... ] }`; backend accepts and writes metric definitions.
+### Metrics (global, 5 fixed labels)
+- `GET /v2/admin/metrics` → `{ "metrics": [ { "code", "left_label", "right_label" }, ... ] }`.
+- `PUT /v2/admin/metrics` — Body: `{ "metrics": [ ... ] }`.
+- Metric questions (position 1 & 2): `GET/POST/PUT/DELETE /v2/admin/metric-questions` — used by homework flow; simplified profile does not edit them.
 
 ---
 

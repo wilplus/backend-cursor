@@ -489,7 +489,7 @@ def v2_admin_students():
         for uid in user_ids:
             try:
                 email = db.get_user_email_from_auth(uid)
-                row = {"user_id": uid, "email": email}
+                row = {"user_id": uid, "email": email, "user_email": email}
                 try:
                     stats = db.v2_get_student_list_stats(uid)
                     if stats:
@@ -501,7 +501,7 @@ def v2_admin_students():
                 students.append(row)
             except Exception as e:
                 logger.warning("Skipping user %s in students list: %s", uid, e)
-                students.append({"user_id": uid, "email": None})
+                students.append({"user_id": uid, "email": None, "user_email": None})
         return jsonify({"students": students, "limit": limit, "offset": offset}), 200
     except Exception as e:
         logger.exception("v2_admin_students failed")
@@ -512,12 +512,15 @@ def v2_admin_students():
 @v2_bp.route("/admin/students/<user_id>", methods=["GET"])
 @require_admin
 def v2_admin_student_profile(user_id):
-    """Student profile for admin panel: email, overrides, speaker_profile, warm_up_tasks, last_report, sessions.
-    Aligns with mockup: Homework Configuration (warm-up list, focus tasks via overrides, questions via overrides,
-    metric questions + metrics from separate endpoints), Speaker Profile, Last Report."""
+    """Student profile for simplified admin panel: one page with Homework Configuration, Speaker Profile, Reports History.
+    Contract: user_id, email, overrides (assigned_post_question_ids[], assigned_next_task_ids[]), speaker_profile (coach_notes),
+    sessions (id, created_at, status, report_preview.report_text_preview)."""
     try:
         email = db.get_user_email_from_auth(user_id)
-        overrides = db.v2_get_student_overrides(user_id)
+        raw_overrides = db.v2_get_student_overrides(user_id)
+        overrides = dict(raw_overrides) if raw_overrides else {}
+        overrides["assigned_post_question_ids"] = overrides.get("assigned_post_question_ids") or []
+        overrides["assigned_next_task_ids"] = overrides.get("assigned_next_task_ids") or []
         speaker_profile = db.v2_get_speaker_profile(user_id)
         warm_up_tasks = db.v2_get_warm_up_tasks(user_id)
         last_report = db.v2_get_last_report_for_user(user_id)

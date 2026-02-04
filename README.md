@@ -80,4 +80,5 @@ Run the SQL files in `migrations/` against your Supabase project (Dashboard → 
 
 - **ARCHITECTURE.md** — Stack, layout, core flows, database, conventions (source of truth for design).
 - **DOCS.md** — Implementation and operations: schema, storage, admin feedback, email link, questionnaire, frontend integration.
-- **docs/FRONTEND-SYNC-PROMPT.md** — Prompt and reference for frontend team: student flow, admin endpoints, request/response contract, and what to implement (and what not) so the frontend stays in sync with this backend.
+- **docs/FRONTEND-SYNC-PROMPT.md** — Prompt and reference for frontend team: student flow, admin endpoints, request/response contract.
+- **docs/ADMIN-PANEL-SYNC.md** — Backend contract for the simplified admin panel (two routes: students list + student profile with Homework Configuration, Speaker Profile, Reports History).
