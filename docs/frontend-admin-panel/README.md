@@ -82,6 +82,9 @@ See `docs/V2-ADMIN-API.md` in the backend repo for full reference.
 
 ## Troubleshooting
 
+**Student profile doesn’t open / shows “Loading…” then “HTTP 404 for /tasks”**  
+The profile page loads several resources in parallel (profile, tasks, exercises, questions, warm-up tasks). If the **tasks** BFF route is missing, the request to `/api/admin/tasks` returns 404 and can block the profile from opening. **Fix:** Add the tasks BFF route (see next paragraph). The reference student profile page in this repo now uses `Promise.allSettled` so the profile still opens when one request fails (e.g. tasks 404); you’ll see a toast and an empty Focus tasks section until the route is added.
+
 **404 on /api/admin/tasks when opening a student profile**  
 The student profile fetches the global tasks pool for "Focus tasks". Add the BFF route: copy `api-routes/tasks-route.ts` to **`src/app/api/admin/tasks/route.ts`** in your Next.js app. If you need to create/update/delete tasks from the UI, also copy `api-routes/tasks-[id]-route.ts` to **`src/app/api/admin/tasks/[id]/route.ts`**. See `api-routes/README.md` for the full file mapping.
 
