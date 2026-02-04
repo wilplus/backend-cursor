@@ -2,6 +2,13 @@
 
 If the student **"Start homework"** screen shows **"Backend returned invalid JSON"** with an HTML 404, the Next.js app has no route for `/api/homework/session/start`. The frontend calls `/api/homework/*`; the BFF must proxy to the backend at `BASE_URL/v2/homework/*`.
 
+## Show recording right away (no click)
+
+On the Homework page, **do not** show a "Start homework" button. On page load:
+
+1. Call **`GET /api/homework/session/status`**. If the response has `has_active_session` and `session`, render the current step (warm-up + record, or task block, etc.) using `session.id` and `session.status`.
+2. If there is **no** active session, call **`POST /api/homework/session/start`** in the same load (e.g. in `useEffect`). Use the response (`session_id`, `status`, `warm_up_task`) to render the warm-up task and record button immediately so the user can record without clicking anything.
+
 ## Fix
 
 Copy the route files from this folder into your Next.js app so the paths match. Ensure **`getAuth`** is at **`src/app/api/getAuth.ts`** (same as admin routes); if it lives elsewhere, adjust the import in each file (e.g. `../../../getAuth` or `../../../../getAuth` so it resolves to your getAuth module).

@@ -29,6 +29,14 @@ The backend has **one** student flow only:
 
 Use this flow when the first screen should be **warm-up task text + record button** only (no universal questions). All under **`/v2/homework/...`** with auth.
 
+**UX: Show recording right away (no "Start homework" click)**  
+On Homework page load, **do not** show a "Start homework" button. Instead:
+
+1. **On mount:** Call `GET /v2/homework/session/status` (or your BFF `GET /api/homework/session/status`).
+2. **If `has_active_session` and `session`:** Use `session.id`, `session.status`, and any step data (e.g. `warm_up_task`) to render the **current step** immediately (warm-up + record button, or task block, or recording_2, etc.).
+3. **If no active session:** Call `POST /v2/homework/session/start` (or BFF `POST /api/homework/session/start`) **in the same load** (e.g. in `useEffect`). From the response use `session_id`, `status`, and `warm_up_task` to render the **warm-up task text + record button** right away so the user can record without any extra click.
+4. If the flow is unavailable (e.g. 404/500), show an error and optionally a retry; do not block on a button.
+
 1. **Start**
    - `POST /v2/homework/session/start`
    - Body: `{}`
@@ -148,6 +156,6 @@ Nothing else is required in the admin panel beyond this page and the listed endp
 
 ## Summary
 
-- **Student:** Prefer the **homework flow** (`/v2/homework/...`): first screen = warm-up task + record; then recording_1 → task block + metric answers → recording_2 → questions → report. Alternatively, the classic flow (`/v2/session/...`, one recording) remains available.
+- **Student:** Use only the **homework flow** (`/v2/homework/...`). On Homework page load, call session/status then session/start if needed and show the warm-up task + record button immediately (no "Start homework" click). Then: recording_1 → task block + metric answers → recording_2 → questions → report.
 - **Admin:** Use the v2 admin endpoints for students, overrides, speaker profile, send-assignment, exercises, tasks, post-recording questions, warm-up tasks, metric questions, and metric definitions. Proxy with the admin token and handle errors.
 - **Sync:** Keep types (e.g. `StudentProfile`, session `status` values, overrides keys) aligned with the backend; add BFF routes for any admin endpoint you use; do not rely on homework-flow student APIs or report overwrite until the backend implements them.
