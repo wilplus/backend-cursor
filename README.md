@@ -74,7 +74,7 @@ In non-production environments (`ENV != "production"`):
 
 ## Supabase migrations
 
-Run the SQL files in `migrations/` against your Supabase project (Dashboard → SQL Editor). The backend expects these tables/columns (e.g. `v2_speaker_profiles`, `v2_student_overrides.show_exercise_step`, homework flow tables). If the admin panel reports *"Could not find the table 'public.v2_speaker_profiles'"*, run `migrations/v2_speaker_profiles.sql`. For per-student "show exercise step" toggle, run `migrations/v2_add_show_exercise_step.sql`. For the homework flow (warm-up tasks, metric questions, session context/scores), run `migrations/v2_homework_flow.sql`. Then in Supabase go to **Settings → API** and use **Reload schema cache** if available.
+Run the SQL files in `migrations/` against your Supabase project (Dashboard → SQL Editor). The backend expects these tables/columns (e.g. `v2_speaker_profiles`, `v2_student_overrides.show_exercise_step`, homework flow tables). If the admin panel reports *"Could not find the table 'public.v2_speaker_profiles'"*, run `migrations/v2_speaker_profiles.sql`. For per-student "show exercise step" toggle, run `migrations/v2_add_show_exercise_step.sql`. For the homework flow: run `migrations/v2_homework_flow.sql` (warm-up tasks, metric questions, session context/scores), then `migrations/v2_homework_flow_schema_additions.sql` (assigned_warm_up_task_id, context_long_entries). Then in Supabase go to **Settings → API** and use **Reload schema cache** if available.
 
 ## Documentation
 

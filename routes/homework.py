@@ -1,0 +1,449 @@
+"""
+Homework flow: warm_up task + recording_1 → task block + metric answers → recording_2 → questions → report.
+All routes under /v2/homework, require auth. Replaces the classic v2 flow for the student dashboard.
+"""
+from flask import Blueprint, request, jsonify
+from auth import require_auth
+from services.db import db
+from services.v2_flow_service import select_focus_task_for_performance_score_1, select_post_questions_v2
+from services.metrics_v2 import compute_performance_score_1, compute_metrics_v2
+from services.openai_service import openai_service
+from utils.metrics import count_fillers, compute_wpm
+import logging
+import uuid
+import sentry_sdk
+
+logger = logging.getLogger(__name__)
+homework_bp = Blueprint("homework", __name__, url_prefix="/v2/homework")
+
+# Homework session statuses
+STATUS_WARM_UP = "warm_up"
+STATUS_TASK_BLOCK = "task_block"
+STATUS_FINAL_TASK_READY = "final_task_ready"
+STATUS_POST_QUESTIONS = "post_questions"
+STATUS_COMPLETED = "completed"
+
+
+# ---------- Start & status ----------
+@homework_bp.route("/session/start", methods=["POST"])
+@require_auth
+def homework_session_start():
+    """Start or resume homework session. Returns session_id and warm_up_task (text) for step 1."""
+    try:
+        user_id = request.user_id
+        active = db.v2_get_active_homework_session(user_id)
+        if active:
+            warm_up = db.v2_get_assigned_warm_up_task(user_id)
+            return jsonify({
+                "session_id": active["id"],
+                "status": active["status"],
+                "warm_up_task": {"id": warm_up["id"], "text": warm_up["text"]} if warm_up else None,
+            }), 200
+        session = db.v2_create_homework_session(user_id)
+        if not session:
+            return jsonify({"code": "V2_ERROR", "error": "Failed to create session"}), 500
+        warm_up = db.v2_get_assigned_warm_up_task(user_id)
+        return jsonify({
+            "session_id": session["id"],
+            "status": STATUS_WARM_UP,
+            "warm_up_task": {"id": warm_up["id"], "text": warm_up["text"]} if warm_up else None,
+        }), 201
+    except Exception as e:
+        logger.error(f"Homework session start: {str(e)}")
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
+
+
+@homework_bp.route("/session/status", methods=["GET"])
+@require_auth
+def homework_session_status():
+    """Get active homework session if any."""
+    try:
+        user_id = request.user_id
+        active = db.v2_get_active_homework_session(user_id)
+        if not active:
+            return jsonify({"session": None, "has_active_session": False}), 200
+        return jsonify({
+            "session": active,
+            "session_id": active["id"],
+            "has_active_session": True,
+        }), 200
+    except Exception as e:
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
+
+
+# ---------- Step 1: warm-up task (GET) + recording_1 (POST) ----------
+@homework_bp.route("/session/<session_id>/warm-up-task", methods=["GET"])
+@require_auth
+def homework_get_warm_up_task(session_id):
+    """Get the single warm-up task text for this session (step 1 screen)."""
+    try:
+        user_id = request.user_id
+        session = db.v2_get_session(session_id, user_id)
+        if not session or session.get("status") != STATUS_WARM_UP:
+            return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found or not in warm_up"}), 404
+        warm_up = db.v2_get_assigned_warm_up_task(user_id)
+        if not warm_up:
+            return jsonify({"code": "NO_WARM_UP", "error": "No warm-up task assigned"}), 404
+        return jsonify({"warm_up_task": {"id": warm_up["id"], "text": warm_up["text"]}}), 200
+    except Exception as e:
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
+
+
+@homework_bp.route("/session/<session_id>/recording-1", methods=["POST"])
+@require_auth
+def homework_submit_recording_1(session_id):
+    """Upload recording_1 (warm-up). Returns performance_score_1, context_short, task_block (context_short + focus_task + metric_question_1 + metric_question_2)."""
+    try:
+        from config import Config
+
+        user_id = request.user_id
+        session = db.v2_get_session(session_id, user_id)
+        if not session or session.get("status") != STATUS_WARM_UP:
+            return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found or not in warm_up"}), 404
+
+        audio_file = request.files.get("audio")
+        if not audio_file:
+            return jsonify({"code": "INVALID_INPUT", "error": "audio required"}), 400
+
+        config = Config()
+        ext = ".webm"
+        storage_path = f"{user_id}/{session_id}/{uuid.uuid4()}{ext}"
+        audio_file.seek(0)
+        audio_data = audio_file.read()
+        content_type = str(audio_file.content_type or "audio/webm")
+        if content_type in ("True", "False"):
+            content_type = "audio/webm"
+
+        db.upload_audio(config.AUDIO_BUCKET_NAME, storage_path, audio_data, content_type=content_type)
+        audio_url = db.create_signed_url(config.AUDIO_BUCKET_NAME, storage_path, config.SIGNED_URL_EXPIRY_SECONDS)
+        if not audio_url:
+            supabase_url = config.SUPABASE_URL.rstrip("/")
+            audio_url = f"{supabase_url}/storage/v1/object/public/{config.AUDIO_BUCKET_NAME}/{storage_path}"
+
+        audio_file.seek(0)
+        transcript_result = openai_service.transcribe_audio(audio_file, "audio.webm")
+        transcript_text = transcript_result["text"]
+        duration_seconds = transcript_result.get("duration") or float(request.form.get("duration_seconds") or 60.0)
+
+        wpm = compute_wpm(transcript_text, duration_seconds)
+        filler_data = count_fillers(transcript_text)
+        filler_count = filler_data["total"]
+        strength_raw = None
+
+        performance_score_1 = compute_performance_score_1(wpm=wpm, strength_raw=strength_raw, filler_count=filler_count)
+
+        context_short = openai_service.generate_context_short(transcript_text)
+
+        overrides = db.v2_get_student_overrides(user_id)
+        assigned_task_ids = (overrides.get("assigned_next_task_ids") or []) if overrides else None
+        all_tasks = db.v2_get_active_tasks()
+        focus_task = select_focus_task_for_performance_score_1(
+            all_tasks, performance_score_1, assigned_task_ids
+        )
+
+        metric_questions = db.v2_get_metric_questions()
+
+        duration_int = int(round(duration_seconds))
+        recording_data = {
+            "user_id": user_id,
+            "session_id": None,
+            "session_v2_id": session_id,
+            "task_id": focus_task["id"] if focus_task else None,
+            "audio_url": audio_url,
+            "storage_path": storage_path,
+            "duration": duration_int,
+            "duration_seconds": duration_seconds,
+            "transcription_text": transcript_text,
+            "words_per_minute": wpm,
+            "filler_words_count": {"breakdown": filler_data.get("breakdown", {}), "total": filler_count},
+        }
+        recording = db.create_recording(recording_data)
+        if not recording:
+            return jsonify({"code": "RECORDING_CREATE_FAILED"}), 500
+
+        db.v2_update_session(session_id, user_id, {
+            "recording_1_id": recording["id"],
+            "performance_score_1": performance_score_1,
+            "context_short": context_short,
+            "selected_task_id": focus_task["id"] if focus_task else None,
+            "status": STATUS_TASK_BLOCK,
+        })
+
+        task_block = {
+            "context_short": context_short,
+            "focus_task": {"id": focus_task["id"], "title": focus_task["title"], "prompt_text": focus_task.get("prompt_text")} if focus_task else None,
+            "metric_question_1": next((q for q in metric_questions if q.get("position") == 1), {}),
+            "metric_question_2": next((q for q in metric_questions if q.get("position") == 2), {}),
+        }
+        return jsonify({
+            "recording_id": recording["id"],
+            "performance_score_1": performance_score_1,
+            "context_short": context_short,
+            "task_block": task_block,
+        }), 200
+    except Exception as e:
+        logger.error(f"Homework recording-1: {str(e)}")
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
+
+
+# ---------- Step 2: metric answers → final_task ----------
+@homework_bp.route("/session/<session_id>/metric-answers", methods=["POST"])
+@require_auth
+def homework_submit_metric_answers(session_id):
+    """Submit metric_question_1 and metric_question_2 answers. Returns final_task text for step 3."""
+    try:
+        user_id = request.user_id
+        data = request.get_json() or {}
+        answer_1 = (data.get("answer_1") or data.get("metric_answer_1") or "").strip()
+        answer_2 = (data.get("answer_2") or data.get("metric_answer_2") or "").strip()
+
+        session = db.v2_get_session(session_id, user_id)
+        if not session or session.get("status") != STATUS_TASK_BLOCK:
+            return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found or not in task_block"}), 404
+
+        context_short = session.get("context_short") or ""
+        task_id = session.get("selected_task_id")
+        focus_task = db.v2_get_task(task_id) if task_id else None
+        focus_title = (focus_task.get("title") or "") if focus_task else ""
+        focus_prompt = (focus_task.get("prompt_text") or "") if focus_task else ""
+
+        final_task_text = openai_service.generate_final_task(
+            context_short=context_short,
+            focus_task_title=focus_title,
+            focus_task_prompt=focus_prompt,
+            metric_answer_1=answer_1,
+            metric_answer_2=answer_2,
+        )
+
+        db.v2_update_session(session_id, user_id, {
+            "metric_answers": {"answer_1": answer_1, "answer_2": answer_2},
+            "status": STATUS_FINAL_TASK_READY,
+        })
+
+        return jsonify({"final_task": final_task_text}), 200
+    except Exception as e:
+        logger.error(f"Homework metric-answers: {str(e)}")
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
+
+
+# ---------- Step 3: recording_2 ----------
+@homework_bp.route("/session/<session_id>/recording-2", methods=["POST"])
+@require_auth
+def homework_submit_recording_2(session_id):
+    """Upload recording_2. Returns performance_score_2. Session moves to post_questions."""
+    try:
+        from config import Config
+
+        user_id = request.user_id
+        session = db.v2_get_session(session_id, user_id)
+        if not session or session.get("status") != STATUS_FINAL_TASK_READY:
+            return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found or not in final_task_ready"}), 404
+
+        audio_file = request.files.get("audio")
+        if not audio_file:
+            return jsonify({"code": "INVALID_INPUT", "error": "audio required"}), 400
+
+        config = Config()
+        ext = ".webm"
+        storage_path = f"{user_id}/{session_id}/{uuid.uuid4()}{ext}"
+        audio_file.seek(0)
+        audio_data = audio_file.read()
+        content_type = str(audio_file.content_type or "audio/webm")
+        if content_type in ("True", "False"):
+            content_type = "audio/webm"
+
+        db.upload_audio(config.AUDIO_BUCKET_NAME, storage_path, audio_data, content_type=content_type)
+        audio_url = db.create_signed_url(config.AUDIO_BUCKET_NAME, storage_path, config.SIGNED_URL_EXPIRY_SECONDS)
+        if not audio_url:
+            supabase_url = config.SUPABASE_URL.rstrip("/")
+            audio_url = f"{supabase_url}/storage/v1/object/public/{config.AUDIO_BUCKET_NAME}/{storage_path}"
+
+        audio_file.seek(0)
+        transcript_result = openai_service.transcribe_audio(audio_file, "audio.webm")
+        transcript_text = transcript_result["text"]
+        duration_seconds = transcript_result.get("duration") or float(request.form.get("duration_seconds") or 60.0)
+
+        wpm = compute_wpm(transcript_text, duration_seconds)
+        filler_data = count_fillers(transcript_text)
+        filler_count = filler_data["total"]
+        strength_raw = None
+        keywords = []
+        metric_defs = db.v2_get_metric_definitions()
+        prelim = compute_metrics_v2(
+            wpm=wpm,
+            strength_raw=strength_raw,
+            filler_count=filler_count,
+            emotion_achieved=False,
+            transcript=transcript_text,
+            keywords=keywords,
+            metric_definitions=metric_defs,
+        )
+        performance_score_2 = prelim["performance_score"]
+
+        duration_int = int(round(duration_seconds))
+        recording_data = {
+            "user_id": user_id,
+            "session_id": None,
+            "session_v2_id": session_id,
+            "task_id": session.get("selected_task_id"),
+            "audio_url": audio_url,
+            "storage_path": storage_path,
+            "duration": duration_int,
+            "duration_seconds": duration_seconds,
+            "transcription_text": transcript_text,
+            "words_per_minute": wpm,
+            "filler_words_count": {"breakdown": filler_data.get("breakdown", {}), "total": filler_count},
+            "performance_score_v2": performance_score_2,
+            "performance_metrics_v2": prelim["metrics"],
+            "metric_labels_snapshot_v2": prelim["metric_labels_snapshot"],
+        }
+        recording = db.create_recording(recording_data)
+        if not recording:
+            return jsonify({"code": "RECORDING_CREATE_FAILED"}), 500
+
+        db.v2_update_session(session_id, user_id, {
+            "recording_2_id": recording["id"],
+            "recording_id": recording["id"],
+            "performance_score_2": performance_score_2,
+            "status": STATUS_POST_QUESTIONS,
+        })
+
+        return jsonify({
+            "recording_id": recording["id"],
+            "performance_score_2": performance_score_2,
+        }), 200
+    except Exception as e:
+        logger.error(f"Homework recording-2: {str(e)}")
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
+
+
+# ---------- Step 4: questions (GET) + post-answers (POST) ----------
+@homework_bp.route("/session/<session_id>/questions", methods=["GET"])
+@require_auth
+def homework_get_questions(session_id):
+    """Get post-recording questions for this session (from overrides). If none, frontend skips step 4."""
+    try:
+        user_id = request.user_id
+        session = db.v2_get_session(session_id, user_id)
+        if not session or session.get("status") not in (STATUS_POST_QUESTIONS, STATUS_COMPLETED):
+            return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found or wrong status"}), 404
+
+        overrides = db.v2_get_student_overrides(user_id)
+        assigned_ids = (overrides.get("assigned_post_question_ids") or []) if overrides else None
+        if assigned_ids and len(assigned_ids) == 3:
+            pool = db.v2_get_post_questions_by_ids(assigned_ids)
+        else:
+            pool = db.v2_get_post_questions_pool()
+        questions = select_post_questions_v2(pool, assigned_ids)
+        if not questions:
+            return jsonify({"questions": []}), 200
+        db.v2_update_session(session_id, user_id, {"post_question_ids": [q["id"] for q in questions]})
+        return jsonify({"questions": [{"id": q["id"], "text": q["text"], "answer_type": q.get("answer_type", "text")} for q in questions]}), 200
+    except Exception as e:
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
+
+
+@homework_bp.route("/session/<session_id>/post-answers", methods=["POST"])
+@require_auth
+def homework_submit_post_answers(session_id):
+    """Submit post-recording answers. Compute performance_score_end, generate report, append to context_long_entries. Returns report_text and performance_score_end."""
+    try:
+        user_id = request.user_id
+        data = request.get_json() or {}
+        answers = data.get("answers", [])
+
+        session = db.v2_get_session(session_id, user_id)
+        if not session or session.get("status") != STATUS_POST_QUESTIONS:
+            return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found or not in post_questions"}), 404
+
+        recording_2_id = session.get("recording_2_id") or session.get("recording_id")
+        if not recording_2_id:
+            return jsonify({"code": "INVALID_STATE", "error": "No recording_2"}), 400
+
+        recording = db.get_recording(recording_2_id, user_id)
+        if not recording:
+            return jsonify({"code": "RECORDING_NOT_FOUND"}), 404
+
+        post_question_ids = session.get("post_question_ids") or []
+        emotion_achieved = False
+        for ans in answers:
+            qid = str(ans.get("question_id", ""))
+            if qid not in post_question_ids:
+                continue
+            pool = db.v2_get_post_questions_by_ids(post_question_ids)
+            for q in pool:
+                if str(q["id"]) == qid and q.get("code") == "emotion_achieved_check":
+                    text = (ans.get("answer_text") or "").strip().upper()
+                    emotion_achieved = text in ("YES", "Y", "1", "TRUE")
+                    break
+
+        transcript = recording.get("transcription_text") or ""
+        wpm = float(recording.get("words_per_minute") or 0)
+        filler_data = recording.get("filler_words_count") or {}
+        filler_count = int(filler_data.get("total", 0)) if isinstance(filler_data, dict) else 0
+        strength_raw = None
+        if isinstance(recording.get("performance_metrics_v2"), dict):
+            strength_raw = recording["performance_metrics_v2"].get("strength", {}).get("raw")
+        metric_defs = db.v2_get_metric_definitions()
+        final = compute_metrics_v2(
+            wpm=wpm,
+            strength_raw=strength_raw,
+            filler_count=filler_count,
+            emotion_achieved=emotion_achieved,
+            transcript=transcript,
+            keywords=[],
+            metric_definitions=metric_defs,
+        )
+        db.update_recording(recording_2_id, {
+            "performance_score_v2": final["performance_score"],
+            "performance_metrics_v2": final["metrics"],
+            "metric_labels_snapshot_v2": final["metric_labels_snapshot"],
+        })
+
+        performance_score_1 = float(session.get("performance_score_1") or 0)
+        performance_score_2 = float(session.get("performance_score_2") or final["performance_score"])
+        performance_score_end = (performance_score_1 + performance_score_2) / 2.0
+        performance_score_end = max(0.0, min(1.0, performance_score_end))
+
+        report_text = f"Your performance score: {performance_score_end:.0%}. "
+        try:
+            report_text = openai_service.generate_final_report(
+                transcript=transcript[:500],
+                pre_answers=[],
+                post_answers=[{"question_text": "", "answer_text": a.get("answer_text", "")} for a in answers],
+                wpm=wpm,
+                filler_count=filler_count,
+                filler_breakdown={},
+                user_id=user_id,
+                admin_context=db.get_user_admin_context(user_id),
+                recording_id=recording_2_id,
+            ) or report_text
+        except Exception as e:
+            logger.warning(f"Homework report generation failed: {e}")
+            report_text += "Details: pace, strength, fillers, emotion, keywords."
+
+        db.v2_append_context_long_entry(session_id, user_id, report_text)
+        report_row = db.v2_create_report(session_id, recording_2_id, report_text)
+        db.v2_update_session(session_id, user_id, {
+            "post_answers": answers,
+            "report_id": report_row["id"] if report_row else None,
+            "performance_score_end": performance_score_end,
+            "status": STATUS_COMPLETED,
+        })
+
+        return jsonify({
+            "report_text": report_text,
+            "performance_score_end": performance_score_end,
+            "performance_metrics": final["metrics"],
+        }), 200
+    except Exception as e:
+        logger.error(f"Homework post-answers: {str(e)}")
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": str(e)}), 500

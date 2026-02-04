@@ -55,6 +55,32 @@ def select_exercise_for_task_score(
     return None
 
 
+def select_focus_task_for_performance_score_1(
+    tasks: List[Dict],
+    performance_score_1: float,
+    assigned_task_ids: Optional[List[str]] = None,
+) -> Optional[Dict]:
+    """
+    Homework flow: pick one focus task where min_task_score <= performance_score_1.
+    If assigned_task_ids is set, only consider those tasks; else consider all active.
+    If several match, shuffle and return one.
+    """
+    import random
+    active = [t for t in tasks if t.get("is_active") is True]
+    if assigned_task_ids:
+        allowed = {str(tid) for tid in assigned_task_ids}
+        active = [t for t in active if str(t.get("id")) in allowed]
+    matching = []
+    for t in active:
+        mn = float(t.get("min_task_score", 0))
+        if mn <= performance_score_1:
+            matching.append(t)
+    if not matching:
+        return None
+    random.shuffle(matching)
+    return matching[0]
+
+
 def select_tasks_for_task_score(
     tasks: List[Dict],
     task_score: float,

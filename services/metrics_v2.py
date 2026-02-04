@@ -83,6 +83,14 @@ def normalize_keywords_used(transcript: str, keywords: List[str], min_match: int
     return 0.0
 
 
+def compute_performance_score_1(wpm: float, strength_raw: Optional[float], filler_count: int) -> float:
+    """Homework flow: score from recording_1 using 3 metrics (pace, strength, fillers). 0..1."""
+    pace_n = normalize_pace(wpm)
+    strength_n = normalize_strength(strength_raw) if strength_raw is not None else 0.5
+    fillers_n = normalize_fillers(filler_count)
+    return max(0.0, min(1.0, (pace_n + strength_n + fillers_n) / 3.0))
+
+
 def compute_metrics_v2(
     wpm: float,
     strength_raw: Optional[float],

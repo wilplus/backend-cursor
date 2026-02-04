@@ -11,7 +11,10 @@ Synchronize the frontend with this backend. The backend is a **Flask API** under
 - **Student app:** Call the backend at `BACKEND_URL/v2/...` (or via your own BFF that proxies to that URL with the user’s token).
 - **Admin panel:** Call `BACKEND_URL/v2/admin/...` with the **admin user’s** token. The backend checks admin via the `admin_users` table; return 403 if the backend returns 403.
 
-Implement **only** what the backend currently provides. Do **not** assume a “homework flow” with two recordings or endpoints like “get warm-up task” or “submit recording_1” — those are not implemented yet. The **current student flow** is: one v2 session → universal questions → optional exercise → pre-questions + task → **one** recording → post-answers → report.
+The backend supports **two** student flows:
+
+1. **Homework flow (recommended / replacement):** First screen = warm-up task text + record button; then recording_1 → task block + metric answers → recording_2 → questions → report. Use **`/v2/homework/...`** endpoints below.
+2. **Classic v2 flow (legacy):** Universal questions → optional exercise → pre-questions + task → **one** recording → post-answers → report. Use **`/v2/session/...`** and **`/v2/recordings/upload`**.
 
 ---
 
@@ -23,9 +26,49 @@ Implement **only** what the backend currently provides. Do **not** assume a “h
 
 ---
 
-## Student flow (current) — endpoints and contract
+## Student flow: Homework flow (warm_up + two recordings) — endpoints and contract
 
-Implement this sequence. All under `GET/POST .../v2/...` with auth.
+Use this flow when the first screen should be **warm-up task text + record button** only (no universal questions). All under **`/v2/homework/...`** with auth.
+
+1. **Start**
+   - `POST /v2/homework/session/start`
+   - Body: `{}`
+   - Response: `{ "session_id", "status": "warm_up", "warm_up_task": { "id", "text" } }` (200 or 201). If no warm-up assigned, `warm_up_task` may be null.
+
+2. **Get warm-up task (optional; already in start)**
+   - `GET /v2/homework/session/<session_id>/warm-up-task` → `{ "warm_up_task": { "id", "text" } }`.
+
+3. **Submit recording_1**
+   - `POST /v2/homework/session/<session_id>/recording-1` (multipart: `audio` file; optional `duration_seconds`).
+   - Response: `{ "recording_id", "performance_score_1", "context_short", "task_block": { "context_short", "focus_task": { "id", "title", "prompt_text" }, "metric_question_1", "metric_question_2" } }`. Session moves to `task_block`.
+
+4. **Submit metric answers**
+   - `POST /v2/homework/session/<session_id>/metric-answers`
+   - Body: `{ "answer_1": string, "answer_2": string }` (or `metric_answer_1`, `metric_answer_2`).
+   - Response: `{ "final_task": string }`. Session moves to `final_task_ready`.
+
+5. **Submit recording_2**
+   - `POST /v2/homework/session/<session_id>/recording-2` (multipart: `audio`).
+   - Response: `{ "recording_id", "performance_score_2" }`. Session moves to `post_questions`.
+
+6. **Get questions**
+   - `GET /v2/homework/session/<session_id>/questions` → `{ "questions": [ { "id", "text", "answer_type" } ] }`. If empty, skip step 7.
+
+7. **Submit post-answers**
+   - `POST /v2/homework/session/<session_id>/post-answers`
+   - Body: `{ "answers": [ { "question_id", "answer_text" } ] }`. If no questions, may send `[]`.
+   - Response: `{ "report_text", "performance_score_end", "performance_metrics" }`. Session moves to `completed`.
+
+8. **Status**
+   - `GET /v2/homework/session/status` → `{ "session": {...} | null, "session_id"?, "has_active_session" }`.
+
+Homework session statuses: `warm_up` → `task_block` → `final_task_ready` → `post_questions` → `completed`.
+
+---
+
+## Student flow: Classic v2 (legacy) — endpoints and contract
+
+Implement this sequence only if not using the homework flow. All under `GET/POST .../v2/...` with auth.
 
 1. **Session start**
    - `POST /v2/session/start`
@@ -78,7 +121,7 @@ All under `GET/POST/PUT/DELETE .../v2/admin/...` with admin auth. The backend re
 ### Students
 - `GET /v2/admin/students` — Query: `limit`, `offset`. Response: `{ "students": [ { "user_id" } ], "limit", "offset" }`.
 - `GET /v2/admin/students/<user_id>` — Response: `{ "user_id", "email", "overrides", "speaker_profile", "sessions": [ { "id", "created_at", "status", "recording_id", "report_id", "task_score", "recording_preview", "report_preview" } ] }`.
-- `PUT /v2/admin/students/<user_id>/overrides` — Body: `{ "show_exercise_step"?, "assigned_post_question_ids"?, "assigned_next_exercise_id"?, "assigned_next_task_ids"?, "intended_emotion_prompt"?, "keywords_prompt"?, "emotion_check_question_text"?, ... }`. `assigned_post_question_ids` must be exactly 3 IDs if provided.
+- `PUT /v2/admin/students/<user_id>/overrides` — Body: `{ "show_exercise_step"?, "assigned_post_question_ids"?, "assigned_next_exercise_id"?, "assigned_next_task_ids"?, "assigned_warm_up_task_id"?, "intended_emotion_prompt"?, "keywords_prompt"?, "emotion_check_question_text"?, ... }`. `assigned_post_question_ids` must be exactly 3 IDs if provided. `assigned_warm_up_task_id` (UUID) is the single warm-up task the student sees for the homework flow.
 - `PUT /v2/admin/students/<user_id>/speaker-profile` — Body: speaker profile fields (e.g. `main_goal`, `motivation`, `strong_points`, `weak_points`, `charismatic_traits`, `hobbies_interests`, `personality_type`, `coach_notes`).
 - `POST /v2/admin/students/<user_id>/send-assignment` — No body. Sends “new homework” email to the student (requires student email in Supabase Auth).
 
@@ -130,16 +173,15 @@ Copy or adapt these into your frontend app so the admin panel matches the backen
 
 ---
 
-## What not to implement yet (no backend support)
+## What is not yet in the backend
 
-- **Homework flow student steps:** “Get warm-up task”, “Submit recording_1”, “Get AI task with metric_question_1/2”, “Submit metric answers”, “Submit recording_2”, “Get/save report with performance_score_end”. These are designed but not implemented; the DB has columns (`performance_score_1`, `performance_score_2`, `performance_score_end`, `recording_1_id`, `recording_2_id`, `context_short`, `context_long`, `metric_answers`) for future use.
-- **Report overwrite / context_long edit:** Admin editing of report text or `context_long` in session/history is not exposed by the backend yet.
-- **Tasks by ID for student:** Student gets tasks from the plan (command_options) and optional `select-task`; there is no “get task by id” student endpoint beyond that. Admin uses `GET /v2/admin/tasks` for the pool.
+- **Report overwrite / context_long edit:** Admin editing of report text or appending to `context_long_entries` in session/history is not yet exposed (report is appended server-side; admin overwrite API TBD).
+- **Tasks by ID for student (classic flow):** Student gets tasks from the plan (command_options) and optional `select-task`; there is no “get task by id” student endpoint beyond that. Admin uses `GET /v2/admin/tasks` for the pool.
 
 ---
 
 ## Summary
 
-- **Student:** One flow only — session start → universal questions → (optional exercise) → pre-questions + task + intent → one recording upload → post-answers → report. Use the v2 endpoints and response shapes above.
+- **Student:** Prefer the **homework flow** (`/v2/homework/...`): first screen = warm-up task + record; then recording_1 → task block + metric answers → recording_2 → questions → report. Alternatively, the classic flow (`/v2/session/...`, one recording) remains available.
 - **Admin:** Use the v2 admin endpoints for students, overrides, speaker profile, send-assignment, exercises, tasks, post-recording questions, warm-up tasks, metric questions, and metric definitions. Proxy with the admin token and handle errors.
 - **Sync:** Keep types (e.g. `StudentProfile`, session `status` values, overrides keys) aligned with the backend; add BFF routes for any admin endpoint you use; do not rely on homework-flow student APIs or report overwrite until the backend implements them.

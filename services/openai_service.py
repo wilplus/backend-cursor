@@ -396,7 +396,62 @@ Generate the report:"""
             sentry_sdk.capture_exception(e)
             # Return deterministic placeholder
             return "Analysis pending, check back soon."
-    
+
+    def generate_context_short(self, transcript: str) -> str:
+        """Homework flow: 2–3 sentence summary of the warm-up recording for task context."""
+        if not self.client:
+            return (transcript or "")[:400]
+        try:
+            response = self.client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": "Summarize the speaker's warm-up in 2-3 short sentences. Focus on tone, pacing, and main point. Be concise."},
+                    {"role": "user", "content": (transcript or "")[:3000]}
+                ],
+                temperature=0.3,
+                max_tokens=150,
+            )
+            return (response.choices[0].message.content or "").strip() or (transcript or "")[:400]
+        except Exception as e:
+            sentry_sdk.capture_exception(e)
+            return (transcript or "")[:400]
+
+    def generate_final_task(
+        self,
+        context_short: str,
+        focus_task_title: str,
+        focus_task_prompt: str,
+        metric_answer_1: str,
+        metric_answer_2: str,
+    ) -> str:
+        """Homework flow: combine context + focus task + metric answers into one final task text for recording_2."""
+        if not self.client:
+            return f"{context_short}\n\nTask: {focus_task_title}\n{focus_task_prompt}\n\nYour answers: {metric_answer_1}; {metric_answer_2}"
+        try:
+            prompt = f"""Context from warm-up: {context_short}
+
+Focus task: {focus_task_title}
+{focus_task_prompt}
+
+The speaker answered two reflection questions:
+1. {metric_answer_1}
+2. {metric_answer_2}
+
+Write one short paragraph (2-4 sentences) that combines the context, the focus task, and their answers into a single clear instruction for their next recording. Do not repeat the questions; weave their answers into the instruction."""
+            response = self.client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": "You produce a single, clear instruction paragraph for a speech practice recording."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.4,
+                max_tokens=250,
+            )
+            return (response.choices[0].message.content or "").strip()
+        except Exception as e:
+            sentry_sdk.capture_exception(e)
+            return f"{context_short}\n\nTask: {focus_task_title}\n{focus_task_prompt}\n\nReflections: {metric_answer_1}; {metric_answer_2}"
+
     def generate_suggested_questions(
         self,
         transcript: str,

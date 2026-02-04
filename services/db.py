@@ -1071,6 +1071,53 @@ class DatabaseService:
     def v2_delete_warm_up_task(self, task_id: str):
         self.client.table("v2_warm_up_tasks").delete().eq("id", task_id).execute()
 
+    def v2_get_assigned_warm_up_task(self, user_id: str):
+        """Get the single warm-up task the student sees: from overrides.assigned_warm_up_task_id, or first by order_index if unset."""
+        overrides = self.v2_get_student_overrides(user_id)
+        assigned_id = overrides.get("assigned_warm_up_task_id") if overrides else None
+        if assigned_id:
+            result = self.client.table("v2_warm_up_tasks").select("*").eq("id", assigned_id).eq("user_id", user_id).execute()
+            if result.data:
+                return result.data[0]
+        # Fallback: first by order_index
+        tasks = self.v2_get_warm_up_tasks(user_id)
+        return tasks[0] if tasks else None
+
+    def v2_get_active_homework_session(self, user_id: str):
+        """Active homework flow session (status in warm_up, task_block, final_task_ready, post_questions)."""
+        statuses = ("warm_up", "task_block", "final_task_ready", "post_questions")
+        result = (
+            self.client.table("v2_sessions")
+            .select("*")
+            .eq("user_id", user_id)
+            .in_("status", statuses)
+            .order("created_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+        return result.data[0] if result.data else None
+
+    def v2_create_homework_session(self, user_id: str):
+        """Create new homework flow session (status=warm_up)."""
+        result = self.client.table("v2_sessions").insert({"user_id": user_id, "status": "warm_up"}).execute()
+        return result.data[0] if result.data else None
+
+    def v2_append_context_long_entry(self, session_id: str, user_id: str, text: str):
+        """Append one report entry to context_long_entries with current UTC timestamp. Returns updated session."""
+        from datetime import datetime, timezone
+        entry = {"at": datetime.now(timezone.utc).isoformat(), "text": text}
+        # Fetch current entries, append, update
+        row = self.v2_get_session(session_id, user_id)
+        if not row:
+            return None
+        entries = list(row.get("context_long_entries") or [])
+        entries.append(entry)
+        self.client.table("v2_sessions").update({
+            "context_long_entries": entries,
+            "context_long": text,  # keep latest in TEXT for simple reads
+        }).eq("id", session_id).eq("user_id", user_id).execute()
+        return self.v2_get_session(session_id, user_id)
+
     # ---------- Metric questions (2 questions for AI task block; admin Metrics section) ----------
     def v2_get_metric_questions(self):
         result = (

@@ -26,6 +26,7 @@ from routes.recordings import recordings_bp
 from routes.user import user_bp
 from routes.admin import admin_bp
 from routes.v2_routes import v2_bp
+from routes.homework import homework_bp
 
 app.register_blueprint(auth_bp, url_prefix="/auth")
 app.register_blueprint(session_bp, url_prefix="/session")
@@ -34,6 +35,7 @@ app.register_blueprint(recordings_bp, url_prefix="/recordings")
 app.register_blueprint(user_bp, url_prefix="/user")
 app.register_blueprint(admin_bp, url_prefix="/admin")
 app.register_blueprint(v2_bp)
+app.register_blueprint(homework_bp)
 
 @app.route("/health", methods=["GET"])
 def health():
