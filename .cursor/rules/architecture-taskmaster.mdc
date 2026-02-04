@@ -41,7 +41,7 @@ Single reference for this repo. No other .md docs; everything lives here.
 
 **Endpoints:**
 
-1. **Start** — `POST /v2/homework/session/start`, body `{}` → `{ session_id, status: "warm_up", warm_up_task?: { id, text } }`. **If `warm_up_task` is null:** the student has no warm-up task assigned. Add at least one warm-up task for the student (admin: POST /v2/admin/students/:id/warm-up-tasks with `{ "text": "…", "order_index": 0 }`); optionally set `assigned_warm_up_task_id` in overrides. Backend uses overrides.assigned_warm_up_task_id or first task by order_index.
+1. **Start** — `POST /v2/homework/session/start`, body `{}` → `{ session_id, status: "warm_up", warm_up_task?: { id, text } }`. **Frontend:** Render `warm_up_task.text` (string), not the object `warm_up_task` — React throws "Objects are not valid as a React child" (error #31) if you render the object. **If `warm_up_task` is null:** the student has no warm-up task assigned; add one via admin (POST /v2/admin/students/:id/warm-up-tasks). Backend uses overrides.assigned_warm_up_task_id or first task by order_index.
 2. **Warm-up (optional)** — `GET /v2/homework/session/<id>/warm-up-task` → `{ warm_up_task }`.
 3. **Recording 1** — `POST /v2/homework/session/<id>/recording-1` (multipart: `audio`; optional `duration_seconds`) → `{ recording_id, performance_score_1, context_short, task_block: { context_short, focus_task, metric_question_1, metric_question_2 } }`. Status → `task_block`.
 4. **Metric answers** — `POST /v2/homework/session/<id>/metric-answers`, body `{ answer_1, answer_2 }` → `{ final_task }`. Status → `final_task_ready`.
