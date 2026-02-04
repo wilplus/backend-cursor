@@ -1,6 +1,8 @@
 # Homework flow BFF routes
 
-If the student **"Start homework"** screen shows **"Backend returned invalid JSON"** with an HTML 404, the Next.js app has no route for `/api/homework/session/start`. The frontend calls `/api/homework/*`; the BFF must proxy to the backend at `BASE_URL/v2/homework/*`.
+**404 on "start"?** The browser is calling your Next.js app (e.g. `POST /api/homework/session/start`), and that route does not exist yet. Next.js returns 404. Fix: add the BFF route by copying `session/start/route.ts` from this folder to **`src/app/api/homework/session/start/route.ts`** in your frontend repo. Also add **`session/status/route.ts`** → **`src/app/api/homework/session/status/route.ts`** so the status check on page load works.
+
+If the student **"Start homework"** screen shows **"Backend returned invalid JSON"** with an HTML 404, the same cause applies: the Next.js app has no route for `/api/homework/session/start`. The frontend calls `/api/homework/*`; the BFF must proxy to the backend at `BASE_URL/v2/homework/*`.
 
 ## Show recording right away (no click)
 
