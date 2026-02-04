@@ -82,3 +82,4 @@ Run the SQL files in `migrations/` against your Supabase project (Dashboard → 
 - **DOCS.md** — Implementation and operations: schema, storage, admin feedback, email link, questionnaire, frontend integration.
 - **docs/FRONTEND-SYNC-PROMPT.md** — Prompt and reference for frontend team: student flow, admin endpoints, request/response contract.
 - **docs/ADMIN-PANEL-SYNC.md** — Backend contract for the simplified admin panel (two routes: students list + student profile with Homework Configuration, Speaker Profile, Reports History).
+- **docs/API-PATHS-FRONTEND-TO-BACKEND.md** — How the frontend talks to the backend: frontend uses `/api/admin/*`, `/api/session/*`, `/api/homework/*` (no `v2`); BFF proxies to `BASE_URL/v2/...`. Backend keeps serving `/v2/*`; no change required.

@@ -74,6 +74,6 @@ See **docs/FLOW-HOMEWORK-V2.md** for the full flow (warm-up → focus_task → r
 1. **Students list:** Call `GET /v2/admin/students`, then for each student you can link to a profile page.
 2. **Student profile:** Call `GET /v2/admin/students/<user_id>`. Show overrides and sessions. Provide forms to PUT overrides (e.g. “Next exercise” dropdown of exercises, “Post questions” multi-select, custom prompt texts).
 3. **Exercises management:** A page that lists `GET /v2/admin/exercises`, with “Add exercise” (POST), “Edit” (PUT), “Delete” (DELETE). Fields: title, video_url, description, min_task_score, max_task_score, is_active.
-4. **BFF:** Add Next.js API routes under e.g. `/api/v2/admin/*` that proxy to the Flask backend with the admin’s token.
+4. **BFF:** Add Next.js API routes under e.g. `/api/admin/*` (BFF proxies to backend `/v2/admin/*`) that proxy to the Flask backend with the admin’s token.
 
 The backend does **not** include any HTML or React components; the admin panel UI lives in your frontend repo and uses these endpoints.

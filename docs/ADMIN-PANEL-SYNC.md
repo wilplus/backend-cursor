@@ -2,6 +2,8 @@
 
 This document keeps the backend API aligned with the **current Next.js admin panel** (two routes only: students list + student profile).
 
+**Frontend paths:** The frontend uses **`/api/admin/*`** (no `v2` in the URL). The Next.js BFF still proxies to the backend at **`BASE_URL/v2/admin/*`**. No backend change is required.
+
 ---
 
 ## Frontend shape

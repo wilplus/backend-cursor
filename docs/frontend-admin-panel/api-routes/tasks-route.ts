@@ -1,6 +1,6 @@
 /**
- * Copy to: src/app/api/v2/admin/tasks/route.ts
- * Required for student profile "Focus tasks" (load global pool). Without this route you get 404 on /api/v2/admin/tasks.
+ * Copy to: src/app/api/admin/tasks/route.ts
+ * Required for student profile "Focus tasks" (load global pool). Without this route you get 404 on /api/admin/tasks.
  */
 import { NextRequest, NextResponse } from "next/server";
 import { getV2AccessToken, getBackendUrl } from "../../getAuth";

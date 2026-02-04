@@ -1,5 +1,5 @@
 /**
- * Copy to: src/app/api/v2/admin/exercises/route.ts
+ * Copy to: src/app/api/admin/exercises/route.ts
  */
 import { NextRequest, NextResponse } from "next/server";
 import { getV2AccessToken, getBackendUrl } from "../../getAuth";

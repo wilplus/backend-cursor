@@ -156,7 +156,7 @@ All under `GET/POST/PUT/DELETE .../v2/admin/...` with admin auth.
 In this repo, under **`docs/frontend-admin-panel/`**, you have:
 
 - **README.md** — Design tokens (Tailwind), file mapping, BFF instructions, dependencies, backend endpoints list.
-- **api-routes/README.md** — Exact mapping of which Next.js API route file to create for each admin endpoint (e.g. `src/app/api/v2/admin/students/route.ts`).
+- **api-routes/README.md** — Exact mapping of which Next.js API route file to create for each admin endpoint (e.g. `src/app/api/admin/students/route.ts`).
 - **api-routes/*.ts** — Example BFF handlers that proxy to the Flask backend with the admin token.
 - **lib/api/admin-client.ts** — Types (`StudentProfile`, `Exercise`, `Task`, `PostQuestion`, `WarmUpTask`, `MetricQuestion`) and `adminApi` methods matching the admin endpoints above. Add `getMetricDefinitions` / `putMetricDefinitions` (or `getMetrics` / `putMetrics`) if you use the metrics admin page.
 - **app/admin/** — Example pages: layout, students list, student profile (with overrides, speaker profile, warm-up tasks, send assignment), exercises, questions, metrics.
