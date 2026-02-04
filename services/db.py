@@ -1118,6 +1118,22 @@ class DatabaseService:
         }).eq("id", session_id).eq("user_id", user_id).execute()
         return self.v2_get_session(session_id, user_id)
 
+    def v2_set_context_long_entries(self, session_id: str, user_id: str, entries: list):
+        """Admin: set full context_long_entries list. Each entry: { "at": "ISO8601", "text": "..." }. context_long = last entry text or "". Returns updated session or None."""
+        row = self.v2_get_session(session_id, user_id)
+        if not row:
+            return None
+        normalized = []
+        for e in entries or []:
+            if isinstance(e, dict) and e.get("text") is not None:
+                normalized.append({"at": e.get("at") or "", "text": str(e["text"])})
+        latest = normalized[-1]["text"] if normalized else ""
+        self.client.table("v2_sessions").update({
+            "context_long_entries": normalized,
+            "context_long": latest,
+        }).eq("id", session_id).eq("user_id", user_id).execute()
+        return self.v2_get_session(session_id, user_id)
+
     # ---------- Metric questions (2 questions for AI task block; admin Metrics section) ----------
     def v2_get_metric_questions(self):
         result = (

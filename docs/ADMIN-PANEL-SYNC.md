@@ -28,6 +28,11 @@ No separate Exercises / Tasks / Questions / Metrics pages; all config is from th
 - **PUT /v2/admin/students/:id/speaker-profile** — Body: `{ "coach_notes"?: string, ... }`. Frontend sends the single Context as `coach_notes`.
 - **POST /v2/admin/students/:id/send-assignment** — No body. Response: `{ "status": "ok" }` or similar.
 
+### Session detail and report (admin view / overwrite)
+
+- **GET /v2/admin/students/:id/sessions/:session_id** — Full session (including `context_long_entries`, `context_long`). Session must belong to that student. Response: `{ "session": { ... } }`.
+- **PATCH /v2/admin/students/:id/sessions/:session_id/report** — Append or replace report. Body: `{ "action": "append" | "replace", "text"?: "..." (for append), "entries"?: [ { "at": "ISO8601", "text": "..." } ] (for replace) }`. Response: `{ "status": "ok", "context_long_entries", "context_long" }`.
+
 ### Warm-up tasks (per student)
 
 - **GET /v2/admin/students/:id/warm-up-tasks** — `{ "warm_up_tasks": [ { "id", "user_id", "text", "order_index?", "created_at?" } ] }`.

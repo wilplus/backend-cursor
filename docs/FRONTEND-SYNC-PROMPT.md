@@ -168,7 +168,7 @@ Copy or adapt these into your frontend app so the admin panel matches the backen
 
 ## What is not yet in the backend
 
-- **Report overwrite / context_long edit:** Admin editing of report text or appending to `context_long_entries` in session/history is not yet exposed (report is appended server-side; admin overwrite API TBD).
+- **Report overwrite / context_long edit:** Admin can view and edit report history via **GET /v2/admin/students/:id/sessions/:session_id** (full session including `context_long_entries`) and **PATCH /v2/admin/students/:id/sessions/:session_id/report** with body `{ "action": "append" | "replace", "text"?: "...", "entries"?: [{ "at", "text" }] }`. See ADMIN-PANEL-SYNC.md.
 - **Tasks by ID for student (classic flow):** Student gets tasks from the plan (command_options) and optional `select-task`; there is no “get task by id” student endpoint beyond that. Admin uses `GET /v2/admin/tasks` for the pool.
 
 ---

@@ -49,22 +49,27 @@ export default function AdminStudentProfilePage({ params }: { params: { id: stri
 
   const load = useCallback(() => {
     setLoading(true);
-    const fetchProfile = adminApi.getStudentProfile(id);
-    const fetchExercises = adminApi.getExercises().catch(() => [] as Exercise[]);
-    const fetchTasks = adminApi.getTasks().catch(() => [] as Task[]);
-    const fetchQuestions = adminApi.getPostQuestions().catch(() => [] as PostQuestion[]);
-    const fetchWarmUp = adminApi.getWarmUpTasks(id).catch(() => [] as WarmUpTask[]);
-    Promise.all([fetchProfile, fetchExercises, fetchTasks, fetchQuestions, fetchWarmUp])
-      .then(([p, ex, t, q, w]) => {
-        setProfile(p);
-        setExercises(ex);
-        setTasks(t);
-        setPostQuestions(q);
-        setWarmUpTasks(w);
-      })
-      .catch((e) => {
-        toast.error(e.message);
-        setProfile(null);
+    Promise.allSettled([
+      adminApi.getStudentProfile(id),
+      adminApi.getExercises(),
+      adminApi.getTasks(),
+      adminApi.getPostQuestions(),
+      adminApi.getWarmUpTasks(id),
+    ])
+      .then(([profileRes, exercisesRes, tasksRes, questionsRes, warmUpRes]) => {
+        if (profileRes.status === "fulfilled") {
+          setProfile(profileRes.value);
+        } else {
+          toast.error(profileRes.reason?.message ?? "Failed to load profile");
+          setProfile(null);
+        }
+        setExercises(exercisesRes.status === "fulfilled" ? exercisesRes.value : []);
+        setTasks(tasksRes.status === "fulfilled" ? tasksRes.value : []);
+        setPostQuestions(questionsRes.status === "fulfilled" ? questionsRes.value : []);
+        setWarmUpTasks(warmUpRes.status === "fulfilled" ? warmUpRes.value : []);
+        if (tasksRes.status === "rejected") {
+          toast.error("Could not load tasks. Add route: src/app/api/admin/tasks/route.ts");
+        }
       })
       .finally(() => setLoading(false));
   }, [id]);

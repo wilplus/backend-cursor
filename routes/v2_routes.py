@@ -593,6 +593,51 @@ def v2_admin_send_assignment(user_id):
         return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
 
 
+@v2_bp.route("/admin/students/<user_id>/sessions/<session_id>", methods=["GET"])
+@require_admin
+def v2_admin_student_session_detail(user_id, session_id):
+    """Get full session for admin (e.g. report history context_long_entries). Session must belong to user_id."""
+    try:
+        session = db.v2_get_session(session_id, user_id)
+        if not session:
+            return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found"}), 404
+        return jsonify({"session": session}), 200
+    except Exception as e:
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
+
+
+@v2_bp.route("/admin/students/<user_id>/sessions/<session_id>/report", methods=["PATCH"])
+@require_admin
+def v2_admin_student_session_report(user_id, session_id):
+    """Append or replace report (context_long_entries). Body: { \"action\": \"append\"|\"replace\", \"text\"?: \"...\", \"entries\"?: [{ \"at\", \"text\" }] }."""
+    try:
+        data = request.get_json() or {}
+        action = data.get("action")
+        if action == "append":
+            text = data.get("text")
+            if text is None or (isinstance(text, str) and not text.strip()):
+                return jsonify({"code": "INVALID_INPUT", "error": "text required for append"}), 400
+            updated = db.v2_append_context_long_entry(session_id, user_id, text.strip())
+        elif action == "replace":
+            entries = data.get("entries")
+            if not isinstance(entries, list):
+                return jsonify({"code": "INVALID_INPUT", "error": "entries (array) required for replace"}), 400
+            updated = db.v2_set_context_long_entries(session_id, user_id, entries)
+        else:
+            return jsonify({"code": "INVALID_INPUT", "error": "action must be append or replace"}), 400
+        if not updated:
+            return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found"}), 404
+        return jsonify({
+            "status": "ok",
+            "context_long_entries": updated.get("context_long_entries") or [],
+            "context_long": updated.get("context_long") or "",
+        }), 200
+    except Exception as e:
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
+
+
 # ---------- Admin CRUD: exercises ----------
 @v2_bp.route("/admin/exercises", methods=["GET"])
 @require_admin
