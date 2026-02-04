@@ -12,7 +12,7 @@ The **frontend** does **not** use `v2` in its API paths. All requests go to:
 - **Session (student):** `/api/session/*` (e.g. `/api/session/start`, `/api/session/status`, `/api/session/:id/universal-answers`)
 - **Recordings:** `/api/recordings/upload`
 - **Universal questions:** `/api/universal-questions`
-- **Homework (student):** `/api/homework/start`, `/api/homework/session/:id/recording-1`, etc.
+- **Homework (student):** `/api/homework/session/start`, `/api/homework/session/status`, `/api/homework/session/:id/warm-up-task`, `/api/homework/session/:id/recording-1`, etc.
 
 The **Next.js BFF** (API routes under `src/app/api/`) receives these requests and **proxies to the backend** with the path under **`/v2/`**:
 
@@ -22,7 +22,9 @@ The **Next.js BFF** (API routes under `src/app/api/`) receives these requests an
 | `GET /api/admin/students` | `GET BASE_URL/v2/admin/students` |
 | `GET /api/admin/students/:id` | `GET BASE_URL/v2/admin/students/:id` |
 | `POST /api/session/start` | `POST BASE_URL/v2/session/start` |
-| `POST /api/homework/start` | `POST BASE_URL/v2/homework/session/start` (or `/v2/homework/...` as implemented) |
+| `POST /api/homework/session/start` | `POST BASE_URL/v2/homework/session/start` |
+| `GET /api/homework/session/status` | `GET BASE_URL/v2/homework/session/status` |
+| `GET /api/homework/session/:id/warm-up-task` | `GET BASE_URL/v2/homework/session/:id/warm-up-task` |
 | … | … |
 
 ---

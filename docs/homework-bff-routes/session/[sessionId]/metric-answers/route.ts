@@ -1,21 +1,21 @@
 /**
- * File: src/app/api/session/[sessionId]/select-task/route.ts
+ * Copy to: src/app/api/homework/session/[sessionId]/metric-answers/route.ts
  */
-import { NextResponse } from "next/server";
-import { getV2AccessToken, getBackendUrl } from "../../../getAuth";
+import { NextRequest, NextResponse } from "next/server";
+import { getV2AccessToken, getBackendUrl } from "../../../../../getAuth";
 
 export async function POST(
-  request: Request,
-  { params }: { params: Promise<{ sessionId: string }> }
+  request: NextRequest,
+  { params }: { params: { sessionId: string } }
 ) {
   const token = await getV2AccessToken();
   if (!token) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  const { sessionId } = await params;
+  const sessionId = params.sessionId;
   const body = await request.json().catch(() => ({}));
   const backend = getBackendUrl();
-  const res = await fetch(`${backend}/v2/session/${sessionId}/select-task`, {
+  const res = await fetch(`${backend}/v2/homework/session/${sessionId}/metric-answers`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,

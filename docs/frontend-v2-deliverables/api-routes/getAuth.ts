@@ -1,7 +1,7 @@
 /**
- * Copy to src/app/api/v2/getAuth.ts (or keep a shared auth helper).
+ * Copy to src/app/api/getAuth.ts (or keep a shared auth helper). No v2 in path.
  * Implement with your Supabase server API (e.g. createServerComponentClient or getSession).
- * This file is used by all v2 route handlers to get the Bearer token.
+ * Used by all BFF route handlers to get the Bearer token for backend /v2/*.
  */
 import { cookies } from "next/headers";
 

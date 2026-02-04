@@ -99,7 +99,7 @@ Call **v2Api** from `client-v2.ts` (not v1 endpoints) for these:
 
 ## 5. Client-v2 base URL
 
-In `client-v2.ts` you have `getBase()` returning `""` so that `fetch("/api/v2/...")` is same-origin. If your app is deployed with a path prefix, use that:
+In `client-v2.ts` you have `getBase()` returning `""` so that `fetch("/api/...")` is same-origin (no v2 in path). If your app is deployed with a path prefix, use that:
 
 ```ts
 const getBase = () => (typeof window !== "undefined" ? "" : "");

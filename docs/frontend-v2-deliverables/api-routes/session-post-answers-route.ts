@@ -1,5 +1,5 @@
 /**
- * File: src/app/api/v2/session/[sessionId]/post-answers/route.ts
+ * File: src/app/api/session/[sessionId]/post-answers/route.ts
  */
 import { NextResponse } from "next/server";
 import { getV2AccessToken, getBackendUrl } from "../../../getAuth";

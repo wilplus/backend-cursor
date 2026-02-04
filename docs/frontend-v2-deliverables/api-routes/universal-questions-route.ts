@@ -1,8 +1,8 @@
 /**
- * File: src/app/api/v2/universal-questions/route.ts
+ * File: src/app/api/universal-questions/route.ts
  */
 import { NextResponse } from "next/server";
-// When copied to src/app/api/v2/universal-questions/route.ts, import from "../getAuth"
+// When copied to src/app/api/universal-questions/route.ts, import from "../getAuth" (if getAuth is in src/app/api/)
 import { getV2AccessToken, getBackendUrl } from "../getAuth";
 
 export async function GET() {

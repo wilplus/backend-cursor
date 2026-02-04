@@ -1,5 +1,5 @@
 /**
- * File: src/app/api/v2/session/[sessionId]/exercise-feedback/route.ts
+ * File: src/app/api/session/[sessionId]/exercise-feedback/route.ts
  */
 import { NextResponse } from "next/server";
 import { getV2AccessToken, getBackendUrl } from "../../../getAuth";

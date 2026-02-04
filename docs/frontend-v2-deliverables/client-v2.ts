@@ -1,6 +1,6 @@
 /**
- * V2 API client — calls Next.js BFF /api/v2/* (which proxy to Flask /v2/*).
- * Add to src/lib/api/client-v2.ts.
+ * API client — calls Next.js BFF /api/* (proxied to Flask /v2/*). No v2 in frontend path.
+ * Add to src/lib/api/client-v2.ts (or client.ts).
  * Uses fetch with credentials so cookies/session are sent; BFF attaches Bearer token.
  */
 
@@ -22,7 +22,7 @@ async function v2Fetch<T>(
   options: RequestInit & { method?: string; body?: unknown } = {}
 ): Promise<T> {
   const { method = "GET", body, ...rest } = options;
-  const url = `${getBase()}/api/v2${path}`;
+  const url = `${getBase()}/api${path}`;
   const init: RequestInit = {
     ...rest,
     method,

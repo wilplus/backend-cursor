@@ -1,31 +1,27 @@
 /**
- * File: src/app/api/session/[sessionId]/select-task/route.ts
+ * Copy to: src/app/api/homework/session/start/route.ts
+ * Required for "Start homework" — without this, the frontend gets 404 HTML and shows "Backend returned invalid JSON".
  */
 import { NextResponse } from "next/server";
-import { getV2AccessToken, getBackendUrl } from "../../../getAuth";
+import { getV2AccessToken, getBackendUrl } from "../../../../getAuth";
 
-export async function POST(
-  request: Request,
-  { params }: { params: Promise<{ sessionId: string }> }
-) {
+export async function POST() {
   const token = await getV2AccessToken();
   if (!token) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  const { sessionId } = await params;
-  const body = await request.json().catch(() => ({}));
   const backend = getBackendUrl();
-  const res = await fetch(`${backend}/v2/session/${sessionId}/select-task`, {
+  const res = await fetch(`${backend}/v2/homework/session/start`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify(body),
+    body: JSON.stringify({}),
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     return NextResponse.json(data, { status: res.status });
   }
-  return NextResponse.json(data);
+  return NextResponse.json(data, { status: res.status });
 }

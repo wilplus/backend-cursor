@@ -1,8 +1,8 @@
 /**
- * File: src/app/api/session/status/route.ts
+ * Copy to: src/app/api/homework/session/status/route.ts
  */
 import { NextResponse } from "next/server";
-import { getV2AccessToken, getBackendUrl } from "../../getAuth";
+import { getV2AccessToken, getBackendUrl } from "../../../../getAuth";
 
 export async function GET() {
   const token = await getV2AccessToken();
@@ -10,7 +10,7 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const backend = getBackendUrl();
-  const res = await fetch(`${backend}/v2/session/status`, {
+  const res = await fetch(`${backend}/v2/homework/session/status`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   const data = await res.json().catch(() => ({}));

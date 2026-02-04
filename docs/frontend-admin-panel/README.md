@@ -82,11 +82,8 @@ See `docs/V2-ADMIN-API.md` in the backend repo for full reference.
 
 ## Troubleshooting
 
-**Student profile doesn’t open / shows “Loading…” then “HTTP 404 for /tasks”**  
-The profile page loads several resources in parallel (profile, tasks, exercises, questions, warm-up tasks). If the **tasks** BFF route is missing, the request to `/api/admin/tasks` returns 404 and can block the profile from opening. **Fix:** Add the tasks BFF route (see next paragraph). The reference student profile page in this repo now uses `Promise.allSettled` so the profile still opens when one request fails (e.g. tasks 404); you’ll see a toast and an empty Focus tasks section until the route is added.
-
-**404 on /api/admin/tasks when opening a student profile**  
-The student profile fetches the global tasks pool for "Focus tasks". Add the BFF route: copy `api-routes/tasks-route.ts` to **`src/app/api/admin/tasks/route.ts`** in your Next.js app. If you need to create/update/delete tasks from the UI, also copy `api-routes/tasks-[id]-route.ts` to **`src/app/api/admin/tasks/[id]/route.ts`**. See `api-routes/README.md` for the full file mapping.
+**Student profile: missing tasks / questions / exercises**  
+The profile loads profile, tasks, exercises, post-questions, and warm-up tasks in parallel. If a BFF route is missing (e.g. `/api/admin/tasks`), that section shows empty; the profile still opens. **Fix:** Add the missing route — copy from `api-routes/` (e.g. `tasks-route.ts` → **`src/app/api/admin/tasks/route.ts`**, `tasks-[id]-route.ts` → **`src/app/api/admin/tasks/[id]/route.ts`**). See `api-routes/README.md` for the full mapping.
 
 **Students page shows HTTP 404**  
 The Students page fetches `GET /api/admin/students` (your Next.js BFF). A 404 means that route is missing or not reachable.
@@ -121,5 +118,5 @@ The Students page fetches `GET /api/admin/students` (your Next.js BFF). A 404 me
 3. **Empty students list**  
    **`GET /v2/admin/students`** returns **`{ "students": [], "limit", "offset" }`** when there are no rows in `v2_sessions`. That’s **200**, not 404. If you expect students, ensure at least one v2 session exists (e.g. a user has started the v2 flow once).
 
-4. **404 for /tasks when opening a student profile**  
-   The student profile page fetches **exercises**, **tasks**, and **post-recording questions** in parallel. If the **tasks** BFF route is missing, you get **404 for /tasks** in the console. **Fix:** add **`src/app/api/admin/tasks/route.ts`** (copy from `api-routes/tasks-route.ts`). The student profile page is now resilient: if tasks (or exercises/questions) fail to load, it still shows the profile with an empty list for that section instead of failing the whole page.
+4. **Empty Focus tasks / Questions on profile**  
+   If the tasks (or post-questions) BFF route is missing, that section is empty. Add **`src/app/api/admin/tasks/route.ts`** and **`src/app/api/admin/post-recording-questions/route.ts`** (copy from `api-routes/`). Profile opens either way; only the missing pool is empty.

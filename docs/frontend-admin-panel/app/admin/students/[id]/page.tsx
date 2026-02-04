@@ -67,9 +67,6 @@ export default function AdminStudentProfilePage({ params }: { params: { id: stri
         setTasks(tasksRes.status === "fulfilled" ? tasksRes.value : []);
         setPostQuestions(questionsRes.status === "fulfilled" ? questionsRes.value : []);
         setWarmUpTasks(warmUpRes.status === "fulfilled" ? warmUpRes.value : []);
-        if (tasksRes.status === "rejected") {
-          toast.error("Could not load tasks. Add route: src/app/api/admin/tasks/route.ts");
-        }
       })
       .finally(() => setLoading(false));
   }, [id]);

@@ -83,3 +83,5 @@ Run the SQL migrations against your Supabase project (Dashboard → SQL Editor).
 - **docs/FRONTEND-SYNC-PROMPT.md** — Prompt and reference for frontend team: student flow, admin endpoints, request/response contract.
 - **docs/ADMIN-PANEL-SYNC.md** — Backend contract for the simplified admin panel (two routes: students list + student profile with Homework Configuration, Speaker Profile, Reports History).
 - **docs/API-PATHS-FRONTEND-TO-BACKEND.md** — How the frontend talks to the backend: frontend uses `/api/admin/*`, `/api/session/*`, `/api/homework/*` (no `v2`); BFF proxies to `BASE_URL/v2/...`. Backend keeps serving `/v2/*`; no change required.
+- **docs/BACKEND_PROMPT.md** — Short handoff prompt for backend/LLM: frontend paths (no `v2`), BFF → `/v2/*`, no backend change required.
+- **docs/homework-bff-routes/** — BFF route examples for the homework flow. If the student "Start homework" screen shows "Backend returned invalid JSON" (404 HTML), add these routes in the frontend so `/api/homework/*` proxies to `/v2/homework/*`. See `docs/homework-bff-routes/README.md`.

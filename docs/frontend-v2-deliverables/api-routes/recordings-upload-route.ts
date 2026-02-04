@@ -1,5 +1,5 @@
 /**
- * File: src/app/api/v2/recordings/upload/route.ts
+ * File: src/app/api/recordings/upload/route.ts
  * Proxies multipart/form-data to backend. Request must be FormData with session_id, task_id, audio.
  */
 import { NextResponse } from "next/server";
