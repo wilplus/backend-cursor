@@ -1226,9 +1226,20 @@ class DatabaseService:
             .execute()
         )
         sessions = result.data or []
+        # Optional: fetch context_long for homework sessions (column exists after v2_homework_flow_schema_additions)
+        session_ids = [s["id"] for s in sessions]
+        context_long_by_id = {}
+        if session_ids:
+            try:
+                ctx = self.client.table("v2_sessions").select("id, context_long").in_("id", session_ids).execute()
+                for row in (ctx.data or []):
+                    if row.get("context_long"):
+                        context_long_by_id[row["id"]] = row["context_long"]
+            except Exception:
+                pass
         out = []
         for s in sessions:
-            rec = s.copy()
+            rec = {k: v for k, v in s.items() if k in ("id", "created_at", "status", "recording_id", "report_id", "task_score")}
             rec["recording_preview"] = None
             rec["report_preview"] = None
             if s.get("recording_id"):
@@ -1239,12 +1250,46 @@ class DatabaseService:
                         "performance_score_v2": row.get("performance_score_v2"),
                         "transcription_preview": (row.get("transcription_text") or "")[:300],
                     }
+            report_text = None
             if s.get("report_id"):
                 r = self.client.table("v2_reports").select("report_text").eq("id", s["report_id"]).execute()
                 if r.data:
-                    rec["report_preview"] = {"report_text_preview": (r.data[0].get("report_text") or "")[:500]}
+                    report_text = r.data[0].get("report_text") or ""
+            if report_text is None:
+                report_text = context_long_by_id.get(s["id"])
+            if report_text:
+                rec["report_preview"] = {"report_text_preview": (report_text or "")[:500]}
             out.append(rec)
         return out
+
+    def v2_get_last_report_for_user(self, user_id: str):
+        """Get full text of the most recent report for admin 'Last Report' section. Returns { report_text, report_preview } or None."""
+        result = (
+            self.client.table("v2_sessions")
+            .select("id, report_id")
+            .eq("user_id", user_id)
+            .order("created_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+        if not result.data:
+            return None
+        s = result.data[0]
+        report_text = None
+        if s.get("report_id"):
+            r = self.client.table("v2_reports").select("report_text").eq("id", s["report_id"]).execute()
+            if r.data:
+                report_text = r.data[0].get("report_text") or ""
+        if report_text is None and s.get("id"):
+            try:
+                ctx = self.client.table("v2_sessions").select("context_long").eq("id", s["id"]).execute()
+                if ctx.data and ctx.data[0].get("context_long"):
+                    report_text = ctx.data[0]["context_long"]
+            except Exception:
+                pass
+        if not report_text:
+            return None
+        return {"report_text": report_text, "report_preview": (report_text or "")[:500]}
 
     def v2_get_speaker_profile(self, user_id: str):
         """Get speaker profile for admin panel (main_goal, motivation, coach_notes, etc.)."""

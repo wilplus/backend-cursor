@@ -512,17 +512,24 @@ def v2_admin_students():
 @v2_bp.route("/admin/students/<user_id>", methods=["GET"])
 @require_admin
 def v2_admin_student_profile(user_id):
-    """Student profile for admin panel: email, overrides, speaker_profile, sessions with recording/report previews."""
+    """Student profile for admin panel: email, overrides, speaker_profile, warm_up_tasks, last_report, sessions.
+    Aligns with mockup: Homework Configuration (warm-up list, focus tasks via overrides, questions via overrides,
+    metric questions + metrics from separate endpoints), Speaker Profile, Last Report."""
     try:
         email = db.get_user_email_from_auth(user_id)
         overrides = db.v2_get_student_overrides(user_id)
         speaker_profile = db.v2_get_speaker_profile(user_id)
+        warm_up_tasks = db.v2_get_warm_up_tasks(user_id)
+        last_report = db.v2_get_last_report_for_user(user_id)
         sessions = db.v2_get_sessions_with_previews(user_id, limit=50)
         return jsonify({
             "user_id": user_id,
             "email": email,
             "overrides": overrides,
             "speaker_profile": speaker_profile,
+            "warm_up_tasks": warm_up_tasks,
+            "last_report": last_report.get("report_text") if last_report else None,
+            "last_report_preview": last_report.get("report_preview") if last_report else None,
             "sessions": sessions,
         }), 200
     except Exception as e:

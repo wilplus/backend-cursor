@@ -120,7 +120,11 @@ All under `GET/POST/PUT/DELETE .../v2/admin/...` with admin auth. The backend re
 
 ### Students
 - `GET /v2/admin/students` — Query: `limit`, `offset`. Response: `{ "students": [ { "user_id" } ], "limit", "offset" }`.
-- `GET /v2/admin/students/<user_id>` — Response: `{ "user_id", "email", "overrides", "speaker_profile", "sessions": [ { "id", "created_at", "status", "recording_id", "report_id", "task_score", "recording_preview", "report_preview" } ] }`.
+- `GET /v2/admin/students/<user_id>` — **Student profile (single page mockup).** Response: `{ "user_id", "email", "overrides", "speaker_profile", "warm_up_tasks", "last_report", "last_report_preview", "sessions" }`.
+  - **overrides:** includes `assigned_warm_up_task_id`, `assigned_next_task_ids`, `assigned_post_question_ids`, etc. Use for “Save” in Homework Configuration (warm-up assignment, focus tasks list, questions list).
+  - **warm_up_tasks:** `[{ "id", "user_id", "text", "order_index", "created_at" }]` — list for “list of warm-up tasks (add new, delete, edit)”.
+  - **last_report:** full text for “Last Report” section; **last_report_preview:** first 500 chars. Null if no report yet.
+  - **sessions:** as before, with `recording_preview` and `report_preview` (report can come from `v2_reports` or `context_long`).
 - `PUT /v2/admin/students/<user_id>/overrides` — Body: `{ "show_exercise_step"?, "assigned_post_question_ids"?, "assigned_next_exercise_id"?, "assigned_next_task_ids"?, "assigned_warm_up_task_id"?, "intended_emotion_prompt"?, "keywords_prompt"?, "emotion_check_question_text"?, ... }`. `assigned_post_question_ids` must be exactly 3 IDs if provided. `assigned_warm_up_task_id` (UUID) is the single warm-up task the student sees for the homework flow.
 - `PUT /v2/admin/students/<user_id>/speaker-profile` — Body: speaker profile fields (e.g. `main_goal`, `motivation`, `strong_points`, `weak_points`, `charismatic_traits`, `hobbies_interests`, `personality_type`, `coach_notes`).
 - `POST /v2/admin/students/<user_id>/send-assignment` — No body. Sends “new homework” email to the student (requires student email in Supabase Auth).
@@ -177,6 +181,28 @@ Copy or adapt these into your frontend app so the admin panel matches the backen
 
 - **Report overwrite / context_long edit:** Admin editing of report text or appending to `context_long_entries` in session/history is not yet exposed (report is appended server-side; admin overwrite API TBD).
 - **Tasks by ID for student (classic flow):** Student gets tasks from the plan (command_options) and optional `select-task`; there is no “get task by id” student endpoint beyond that. Admin uses `GET /v2/admin/tasks` for the pool.
+
+---
+
+## Admin panel mockup alignment (single student profile page)
+
+The backend is aligned with the admin panel mockup: one student profile page with **Homework Configuration**, **Speaker Profile**, and **Last Report**.
+
+| Mockup section | Backend |
+|----------------|--------|
+| **Header** (email) | `GET /v2/admin/students/:id` → `email` |
+| **Homework Configuration** | |
+| → Send Homework | `POST /v2/admin/students/:id/send-assignment` |
+| → Save | `PUT /v2/admin/students/:id/overrides` (assigned_warm_up_task_id, assigned_next_task_ids, assigned_post_question_ids, etc.) |
+| → List of warm-up tasks (add, delete, edit) | Profile includes `warm_up_tasks`. CRUD: `GET/POST/PUT/DELETE /v2/admin/students/:id/warm-up-tasks` |
+| → List of focus tasks (add, delete, edit) | Overrides `assigned_next_task_ids`. Pool: `GET /v2/admin/tasks`. Save via `PUT .../overrides` |
+| → List of questions (add, delete, edit) | Overrides `assigned_post_question_ids` (exactly 3). Pool: `GET /v2/admin/post-recording-questions`. Save via `PUT .../overrides` |
+| → Metric question 1 & 2 (editable) | `GET/POST/PUT/DELETE /v2/admin/metric-questions` |
+| → Metric 3, 4, 5 (editable) | `GET/PUT /v2/admin/metrics` or `GET/PUT /v2/admin/metric-definitions` (labels for the 5 metrics) |
+| **Speaker Profile** → Save | `PUT /v2/admin/students/:id/speaker-profile` (main_goal, motivation, coach_notes, etc.) |
+| **Last Report** | Profile includes `last_report` (full text) and `last_report_preview` (500 chars). From latest session’s report or context_long. |
+
+Nothing else is required in the admin panel beyond this page and the listed endpoints.
 
 ---
 
