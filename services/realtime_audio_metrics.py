@@ -123,7 +123,7 @@ def _compute_pause_events(frames: List[Tuple[float, bool]]) -> Tuple[float, floa
 def _pause_just_ended(frames: List[Tuple[float, bool]]) -> bool:
     """
     True if a pause event (>= 200 ms silence) just ended in this chunk:
-    - chunk ends with voice, and that voice is immediately after >= MIN_PAUSE_FRAMES
+    - chunk ends with voice, and that voiced run is immediately after >= MIN_PAUSE_FRAMES
       consecutive silent frames, AND
     - there was at least one voiced frame *before* that silent run (so we don't
       treat "started speaking after initial silence" as a pause — dot only for
@@ -133,22 +133,23 @@ def _pause_just_ended(frames: List[Tuple[float, bool]]) -> bool:
         return False
     if frames[-1][1]:
         return False  # last frame is silent: still in pause, not "just ended"
-    # Find last voiced frame from the end
+    # Find start of trailing voiced run (first voiced frame after the pause)
     i = len(frames) - 1
-    while i >= 0 and frames[i][1]:
+    while i >= 0 and not frames[i][1]:  # move back while voiced
         i -= 1
-    if i < 0:
+    # i is now the last silent frame before the trailing voiced run (or -1 if all voiced)
+    first_voiced_after_pause = i + 1
+    if first_voiced_after_pause >= len(frames):
         return False
-    # Count consecutive silent frames before this voiced frame
+    # Count consecutive silent frames immediately before the voiced run
     run_silent = 0
-    j = i - 1
+    j = i
     while j >= 0 and frames[j][1]:
         run_silent += 1
         j -= 1
-    # j is now the index of the last voiced frame before the silent run (or -1)
+    # j is now the last voiced frame before the silent run (or -1)
     if run_silent < MIN_PAUSE_FRAMES:
         return False
-    # Only count as "pause" if there was speech before the pause (not initial silence)
     if j < 0:
         return False  # silent run at start of window = user just started speaking, not a pause
     return True
