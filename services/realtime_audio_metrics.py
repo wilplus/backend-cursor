@@ -123,10 +123,13 @@ def _compute_pause_events(frames: List[Tuple[float, bool]]) -> Tuple[float, floa
 def _pause_just_ended(frames: List[Tuple[float, bool]]) -> bool:
     """
     True if a pause event (>= 200 ms silence) just ended in this chunk:
-    the chunk ends with voice and that voice is immediately after >= MIN_PAUSE_FRAMES
-    consecutive silent frames. Frontend can show a red dot on the glow when this is True.
+    - chunk ends with voice, and that voice is immediately after >= MIN_PAUSE_FRAMES
+      consecutive silent frames, AND
+    - there was at least one voiced frame *before* that silent run (so we don't
+      treat "started speaking after initial silence" as a pause — dot only for
+      real mid-speech pauses).
     """
-    if len(frames) < MIN_PAUSE_FRAMES + 1:
+    if len(frames) < MIN_PAUSE_FRAMES + 2:
         return False
     if frames[-1][1]:
         return False  # last frame is silent: still in pause, not "just ended"
@@ -142,7 +145,13 @@ def _pause_just_ended(frames: List[Tuple[float, bool]]) -> bool:
     while j >= 0 and frames[j][1]:
         run_silent += 1
         j -= 1
-    return run_silent >= MIN_PAUSE_FRAMES
+    # j is now the index of the last voiced frame before the silent run (or -1)
+    if run_silent < MIN_PAUSE_FRAMES:
+        return False
+    # Only count as "pause" if there was speech before the pause (not initial silence)
+    if j < 0:
+        return False  # silent run at start of window = user just started speaking, not a pause
+    return True
 
 
 def _pause_score_from_metrics(
