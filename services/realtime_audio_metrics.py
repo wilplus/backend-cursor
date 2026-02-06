@@ -21,6 +21,7 @@ SILENCE_DB_THRESHOLD = -45.0
 VOICED_RATIO_GATE = 0.15
 WINDOW_SEC = 10.0
 MIN_PAUSE_EVENT_SEC = 0.2  # 200 ms
+MIN_PAUSE_FRAMES = 10  # 200 ms at 20 ms/frame
 MAX_PAUSE_GOOD_SEC = 2.5
 MAX_PAUSE_HARD_SEC = 5.0
 
@@ -117,6 +118,31 @@ def _compute_pause_events(frames: List[Tuple[float, bool]]) -> Tuple[float, floa
             max_pause_s = max(max_pause_s, run_dur)
 
     return silent_time, window_time, num_events, max_pause_s
+
+
+def _pause_just_ended(frames: List[Tuple[float, bool]]) -> bool:
+    """
+    True if a pause event (>= 200 ms silence) just ended in this chunk:
+    the chunk ends with voice and that voice is immediately after >= MIN_PAUSE_FRAMES
+    consecutive silent frames. Frontend can show a red dot on the glow when this is True.
+    """
+    if len(frames) < MIN_PAUSE_FRAMES + 1:
+        return False
+    if frames[-1][1]:
+        return False  # last frame is silent: still in pause, not "just ended"
+    # Find last voiced frame from the end
+    i = len(frames) - 1
+    while i >= 0 and frames[i][1]:
+        i -= 1
+    if i < 0:
+        return False
+    # Count consecutive silent frames before this voiced frame
+    run_silent = 0
+    j = i - 1
+    while j >= 0 and frames[j][1]:
+        run_silent += 1
+        j -= 1
+    return run_silent >= MIN_PAUSE_FRAMES
 
 
 def _pause_score_from_metrics(
@@ -218,12 +244,14 @@ def process_pcm_chunk(
         pause_score = _pause_score_from_metrics(
             pause_ratio, pauses_per_min, max_pause_s
         )
+        pause_detected = _pause_just_ended(frames_list)
 
         out = {
             "seq": seq,
             "t_ms": t_ms,
             "voiced_ratio": round(voiced_ratio, 2),
             "pause_score": round(float(pause_score), 2),
+            "pause_detected": pause_detected,
         }
         if include_debug:
             out["_debug"] = {
@@ -246,6 +274,7 @@ def _neutral_response(
         "t_ms": t_ms,
         "voiced_ratio": round(max(0.0, min(1.0, voiced_ratio)), 2),
         "pause_score": 1.0,
+        "pause_detected": False,
     }
     if include_debug:
         out["_debug"] = {

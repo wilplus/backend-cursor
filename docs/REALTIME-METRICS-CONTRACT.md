@@ -41,16 +41,18 @@
   "seq": 42,
   "t_ms": 10500,
   "voiced_ratio": 0.82,
-  "pause_score": 0.91
+  "pause_score": 0.91,
+  "pause_detected": true
 }
 ```
 
-| Field          | Description |
-|----------------|-------------|
-| `seq`          | Echo of request `X-Seq`. |
-| `t_ms`         | Echo of request `X-T-Ms`. |
-| `voiced_ratio` | Fraction of **this chunk** that is “voiced” (0–1). **Gate:** when &lt; 0.15, backend returns **neutral** (`pause_score` = 1) so the UI doesn’t punish pauses. |
-| `pause_score`  | Single score 0–1: 1 = ideal pausing over the last 10 s; drops when pause ratio, pause frequency, or max pause length is off. |
+| Field             | Description |
+|-------------------|-------------|
+| `seq`             | Echo of request `X-Seq`. |
+| `t_ms`            | Echo of request `X-T-Ms`. |
+| `voiced_ratio`    | Fraction of **this chunk** that is “voiced” (0–1). **Gate:** when &lt; 0.15, backend returns **neutral** (`pause_score` = 1) so the UI doesn’t punish pauses. |
+| `pause_score`     | Single score 0–1: 1 = ideal pausing over the last 10 s; drops when pause ratio, pause frequency, or max pause length is off. |
+| `pause_detected`  | **true** when a pause event (≥200 ms silence) **just ended** in this chunk (user resumed speaking after a pause). Frontend can show a **red dot** on the green oval each time this is true (e.g. flash for ~300–500 ms). |
 
 With **X-Debug: 1** (or **true**):
 
@@ -110,6 +112,7 @@ If **voiced_ratio &lt; 0.15** (user effectively not speaking in that chunk), the
 - **HSL example:** Hue 140, Saturation 70%, **Lightness = 22% + 50% × pause_score**. Shadow/glow intensity ∝ pause_score.
   - `pause_score ≈ 1` → bright + strong glow.
   - `pause_score ≈ 0` → dim circle, little or no glow.
+- **Red dot on pause:** When **`pause_detected`** is **true**, show a small **red dot** on the green oval (e.g. flash for 300–500 ms then hide). That marks “a pause just happened” (user resumed after ≥200 ms silence).
 - **Stability:** Update every 250 ms; optionally smooth with EMA: `pause_score_smooth = 0.2 * new + 0.8 * old`.
 - **Gate:** If `voiced_ratio < 0.15`, either freeze last glow or fade toward neutral (backend already returns 1.0).
 
@@ -190,6 +193,22 @@ If the glow stays the same (e.g. always green, same brightness) whether you’re
    ```
 
    **Expected (silence):** low `voiced_ratio`; backend returns **neutral** (`pause_score`: 1).
+
+---
+
+## Deployment (e.g. Railway): is real-time possible?
+
+**Yes.** The flow is normal HTTP: each chunk is a **POST** and the backend replies with JSON in a few tens of milliseconds. No WebSockets or long-lived connections. Railway (or any host) can run this.
+
+- **Latency:** Round-trip is typically 50–200 ms. The glow may lag the user’s voice by a fraction of a second; that’s still fine for “live” feedback.
+- **Load:** 2–4 requests per second per recording (250–500 ms chunks). Very light.
+- **In-memory state:** The backend keeps a **10 s rolling window per session** in process memory. That works as long as **the same process** handles all chunk requests for that session. So:
+  - **Single instance:** Works. All chunks hit the same app; state is consistent.
+  - **Multiple instances (no sticky sessions):** Chunk 1 might go to instance A, chunk 2 to B — B has no window from A. The glow would behave oddly (e.g. score resets). Fix: run **one instance** for the metrics endpoint, or use **sticky sessions** so a session always hits the same instance, or move the window to a **shared store** (e.g. Redis) keyed by `session_id`.
+  - **Restarts:** On deploy or restart, in-memory state is lost. The next chunks will rebuild the window over ~10 s. Acceptable for most use cases.
+- **Cold start:** If the app sleeps when idle, the first chunk after idle may be slow (1–5 s). After that, responses are fast. Frontend can show a “connecting…” state for the first request.
+
+So on Railway: **yes, real-time reaction is possible.** Prefer a single instance (or sticky sessions) while the window is in-memory; if you scale out later, add Redis (or similar) for the per-session window.
 
 ---
 

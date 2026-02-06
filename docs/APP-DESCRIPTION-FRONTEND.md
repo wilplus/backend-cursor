@@ -104,6 +104,7 @@ During **recording** (Step 1 warm-up or Step 3 final task), the backend can powe
 | **t_ms** | Echo of your `X-T-Ms`. |
 | **voiced_ratio** | Fraction of **this chunk** that is “voice” (0–1). If **&lt; 0.15** the backend returns **pause_score = 1** (neutral) so the glow doesn’t punish silence. |
 | **pause_score** | **Single value 0–1.** 1 = ideal pausing over the last 10 s; lower = too few pauses, too many pauses, or a pause that’s too long (e.g. &gt;5 s). |
+| **pause_detected** | **true** when a pause (≥200 ms silence) **just ended** in this chunk. Show a **red dot** on the green oval when true (e.g. flash 300–500 ms). |
 
 With **X-Debug: 1** you also get `_debug`: `pause_ratio`, `pauses_per_min`, `max_pause_s`, `window_time` (for tuning/debugging).
 
