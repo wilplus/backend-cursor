@@ -1,30 +1,55 @@
 """
 Real-time audio metrics for Ambient Glow (stateless).
+Mathematical contract: raw measurement → ideal band → score [0,1] + delta [-1,+1].
 Input: PCM16 mono, 16 kHz preferred (48k/44.1k resampled to 16k internally).
-Output: raw + lightly normalized features for frontend to smooth (EMA + rolling window).
+Output: seq, voiced_ratio, pacing_score/delta, intonation_score/delta, pause_score/delta.
+Silence gating: when voiced_ratio < 0.15, return neutral (all score=1, delta=0).
 """
 import math
-from typing import Optional
+from typing import Optional, Tuple
 
 import numpy as np
 
-# Target sample rate for processing (F0 and frame logic assume this)
 TARGET_SAMPLE_RATE = 16000
-# Human pitch range (Hz) for autocorrelation search
-F0_MIN_HZ = 75
-F0_MAX_HZ = 400
-# Frame size for VAD and F0 (ms)
-FRAME_MS = 25
-# Overlap hop (ms)
+F0_MIN_HZ = 60
+F0_MAX_HZ = 350
+FRAME_MS = 20
 HOP_MS = 10
-# RMS floor for dB (avoid -inf)
-RMS_FLOOR = 1e-10
-# Energy threshold for "voiced" frame (relative to max in chunk)
-VOICED_THRESHOLD_RATIO = 0.02
-# Ideal pause ratio (15–20% silence); used for pause_balance score
-IDEAL_PAUSE_RATIO = 0.175
-# How far from ideal (in ratio units) before score drops to 0
-PAUSE_BALANCE_TOLERANCE = 0.35
+RMS_FLOOR = 1e-8
+SILENCE_DB = -45.0
+VOICED_RATIO_GATE = 0.15
+
+# Band centers and radii (good zone = center ± radius)
+PAUSE_CENTER = 0.20
+PAUSE_RADIUS = 0.12
+INTON_CENTER_CENTS = 70.0
+INTON_RADIUS_CENTS = 50.0
+PACE_CENTER_WPM = 145.0
+PACE_RADIUS_WPM = 30.0
+# Syllables per word for WPM proxy
+SYLLABLES_PER_WORD = 1.3
+
+
+def _clamp(x: float, lo: float, hi: float) -> float:
+    return max(lo, min(hi, x))
+
+
+def _smoothstep(t: float) -> float:
+    t = _clamp(t, 0.0, 1.0)
+    return t * t * (3.0 - 2.0 * t)
+
+
+def band_score_and_delta(x: float, center: float, radius: float) -> Tuple[float, float]:
+    """
+    Signed delta in [-1, 1]; score in [0, 1] via smoothstep(1 - |delta|).
+    Both extremes are bad; middle (good zone) gives score near 1.
+    """
+    if radius <= 0:
+        return 1.0, 0.0
+    delta = _clamp((x - center) / radius, -1.0, 1.0)
+    raw_score = 1.0 - abs(delta)
+    score = _smoothstep(raw_score)
+    return score, delta
 
 
 def _resample_to_16k(sig: np.ndarray, sample_rate: int) -> np.ndarray:
@@ -37,7 +62,62 @@ def _resample_to_16k(sig: np.ndarray, sample_rate: int) -> np.ndarray:
     if num_out <= 0:
         return sig
     indices = np.linspace(0, sig.size - 1, num=num_out, dtype=np.float32)
-    return np.interp(indices, np.arange(sig.size, dtype=np.float32), sig.astype(np.float32)).astype(np.float32)
+    return np.interp(
+        indices, np.arange(sig.size, dtype=np.float32), sig.astype(np.float32)
+    ).astype(np.float32)
+
+
+def _frame_rms_db(x: np.ndarray, frame_size: int, hop: int) -> np.ndarray:
+    """Per-frame RMS in dB."""
+    rms_db_list = []
+    for i in range(0, len(x) - frame_size + 1, hop):
+        frame = x[i : i + frame_size]
+        rms = math.sqrt(float(np.mean(frame * frame)) + RMS_FLOOR)
+        db = 20.0 * math.log10(rms + RMS_FLOOR)
+        rms_db_list.append(db)
+    return np.array(rms_db_list, dtype=np.float32) if rms_db_list else np.array([], dtype=np.float32)
+
+
+def _estimate_f0_autocorr(frame: np.ndarray, sr: int) -> Optional[float]:
+    """Simple autocorrelation pitch. Returns F0 in Hz or None."""
+    frame = frame - np.mean(frame)
+    if np.max(np.abs(frame)) < 1e-3:
+        return None
+    corr = np.correlate(frame, frame, mode="full")
+    mid = len(corr) // 2
+    lag_min = int(sr / F0_MAX_HZ)
+    lag_max = int(sr / F0_MIN_HZ)
+    if lag_max <= lag_min + 2 or mid + lag_max >= len(corr):
+        return None
+    seg = corr[mid + lag_min : mid + lag_max + 1]
+    lag = lag_min + int(np.argmax(seg))
+    if lag <= 0:
+        return None
+    return float(sr) / float(lag)
+
+
+def _count_envelope_peaks(x: np.ndarray, sr: int) -> int:
+    """Envelope + peak count as syllable-rate proxy. Min distance between peaks to avoid double-count."""
+    env = np.abs(x)
+    win = int(0.03 * sr)
+    if win < 3:
+        return 0
+    kernel = np.ones(win) / win
+    env_smooth = np.convolve(env, kernel, mode="same")
+    thr = float(np.percentile(env_smooth, 75))
+    min_samples_between_peaks = int(0.08 * sr)  # ~80 ms minimum between peaks
+    peaks = 0
+    last_peak_i = -min_samples_between_peaks - 1
+    for i in range(1, len(env_smooth) - 1):
+        if (
+            env_smooth[i] > thr
+            and env_smooth[i] > env_smooth[i - 1]
+            and env_smooth[i] > env_smooth[i + 1]
+            and (i - last_peak_i) >= min_samples_between_peaks
+        ):
+            peaks += 1
+            last_peak_i = i
+    return peaks
 
 
 def process_pcm_chunk(
@@ -45,154 +125,124 @@ def process_pcm_chunk(
     sample_rate: int,
     seq: int = 0,
     t_ms: int = 0,
+    include_debug: bool = False,
 ) -> dict:
     """
     Process one chunk of PCM16 little-endian mono audio.
-    If sample_rate is not 16000 (e.g. 48000 or 44100), resamples to 16 kHz internally.
-    Returns raw + lightly normalized features for frontend smoothing.
-
-    Args:
-        pcm_bytes: Raw PCM16 LE bytes (2 bytes per sample).
-        sample_rate: Sample rate in Hz (16000, 48000, 44100, or 8000–48000).
-        seq: Chunk sequence number (echoed in response).
-        t_ms: Client timestamp or sample offset in ms (echoed in response).
-
-    Returns:
-        Dict with: seq, t_ms, rms_db, voiced_ratio, pause_balance, f0_hz_mean, f0_hz_std,
-                   intonation_proxy (0-1), pace_proxy (0-1).
+    Returns: seq, t_ms, voiced_ratio, pacing_score, pacing_delta, intonation_score,
+             intonation_delta, pause_score, pause_delta.
+    When voiced_ratio < VOICED_RATIO_GATE (0.15), returns neutral (all score=1, delta=0).
+    If include_debug is True, adds raw debug fields: silence_ratio, std_cents, wpm_proxy.
     """
     if len(pcm_bytes) < 2:
-        return _empty_response(seq, t_ms)
+        return _neutral_response(seq, t_ms, 0.0, include_debug)
 
     try:
         samples = np.frombuffer(pcm_bytes, dtype=np.int16)
         if samples.size == 0:
-            return _empty_response(seq, t_ms)
-        # Convert to float in [-1, 1]
+            return _neutral_response(seq, t_ms, 0.0, include_debug)
         sig = samples.astype(np.float32) / 32768.0
-        # Resample to 16 kHz if needed (e.g. 48k or 44.1k from browser)
+
         if sample_rate != TARGET_SAMPLE_RATE:
             sig = _resample_to_16k(sig, sample_rate)
             sample_rate = TARGET_SAMPLE_RATE
 
-        # RMS and dB
-        rms = float(np.sqrt(np.mean(sig * sig)) + RMS_FLOOR)
-        rms_db = 20.0 * math.log10(rms) if rms > 0 else -60.0
-        rms_db = max(-60.0, min(0.0, rms_db))
+        frame_size = int(FRAME_MS * sample_rate / 1000)
+        hop = int(HOP_MS * sample_rate / 1000)
+        if frame_size < 2 or hop < 1:
+            return _neutral_response(seq, t_ms, 0.0, include_debug)
 
-        # Frame-based VAD and F0
-        frame_len = int(sample_rate * FRAME_MS / 1000)
-        hop_len = int(sample_rate * HOP_MS / 1000)
-        if frame_len < 2 or hop_len < 1:
-            return _response(seq, t_ms, rms_db, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+        # VAD: frame RMS dB
+        dbs = _frame_rms_db(sig, frame_size, hop)
+        voiced = dbs > SILENCE_DB
+        n_frames = len(voiced)
+        voiced_ratio = float(np.mean(voiced)) if n_frames else 0.0
+        voiced_ratio = max(0.0, min(1.0, voiced_ratio))
 
-        n_frames = max(1, (len(sig) - frame_len) // hop_len + 1)
-        frame_energies = []
-        f0_list = []
+        # Silence gating: neutral so UI doesn't punish pauses
+        if voiced_ratio < VOICED_RATIO_GATE:
+            return _neutral_response(seq, t_ms, voiced_ratio, include_debug)
 
-        min_period = max(2, int(sample_rate / F0_MAX_HZ))
-        max_period = min(frame_len // 2, int(sample_rate / F0_MIN_HZ))
+        chunk_seconds = len(sig) / float(sample_rate)
 
+        # --- Pause: silence_ratio band ---
+        silence_ratio = 1.0 - voiced_ratio
+        pause_score, pause_delta = band_score_and_delta(
+            silence_ratio, PAUSE_CENTER, PAUSE_RADIUS
+        )
+
+        # --- Intonation: pitch std in cents ---
+        f0s = []
         for i in range(n_frames):
-            start = i * hop_len
-            end = start + frame_len
+            if not voiced[i]:
+                continue
+            start = i * hop
+            end = start + frame_size
             if end > len(sig):
                 break
             frame = sig[start:end]
-            energy = float(np.sqrt(np.mean(frame * frame)) + RMS_FLOOR)
-            frame_energies.append(energy)
+            f0 = _estimate_f0_autocorr(frame, sample_rate)
+            if f0 is not None and F0_MIN_HZ <= f0 <= F0_MAX_HZ:
+                f0s.append(f0)
 
-            # F0 via autocorrelation on voiced frames
-            if energy > VOICED_THRESHOLD_RATIO and max_period > min_period:
-                f0_hz = _estimate_f0_autocorr(frame, sample_rate, min_period, max_period)
-                if f0_hz and F0_MIN_HZ <= f0_hz <= F0_MAX_HZ:
-                    f0_list.append(f0_hz)
-
-        # Voiced ratio: fraction of frames above threshold
-        max_energy = max(frame_energies) if frame_energies else RMS_FLOOR
-        threshold = max(VOICED_THRESHOLD_RATIO * max_energy, RMS_FLOOR * 2)
-        voiced_frames = sum(1 for e in frame_energies if e >= threshold)
-        voiced_ratio = voiced_frames / n_frames if n_frames else 0.0
-        voiced_ratio = max(0.0, min(1.0, voiced_ratio))
-
-        # F0 mean and std (over voiced frames only)
-        if f0_list:
-            f0_mean = float(np.mean(f0_list))
-            f0_std = float(np.std(f0_list))
+        if len(f0s) < 3:
+            intonation_score, intonation_delta = 1.0, 0.0
+            std_cents = 0.0
         else:
-            f0_mean = 0.0
-            f0_std = 0.0
+            f0s_arr = np.array(f0s, dtype=np.float32)
+            med = float(np.median(f0s_arr))
+            med = max(med, 1e-6)
+            cents = 1200.0 * np.log2(f0s_arr / med)
+            std_cents = float(np.std(cents))
+            intonation_score, intonation_delta = band_score_and_delta(
+                std_cents, INTON_CENTER_CENTS, INTON_RADIUS_CENTS
+            )
 
-        # Intonation proxy: 0-1 from F0 std (e.g. 0-50 Hz -> 0-1, band-pass so middle is good)
-        # Monotone (0 std) -> 0; very chaotic (high std) -> cap at 1. Sweet spot ~15-25 Hz.
-        if f0_std <= 0:
-            intonation_proxy = 0.0
-        else:
-            # Normalize: 25 Hz std ~ 0.5, 50 Hz -> 1.0
-            intonation_proxy = min(1.0, f0_std / 50.0)
-
-        # Pace proxy: voiced_ratio as proxy for "activity" (more voice = faster pace)
-        pace_proxy = max(0.0, min(1.0, voiced_ratio * 1.2))  # slight scale
-
-        # Pause balance: 0–1 score. Ideal pause ratio is 15–20% (silence); score = 1 when close to ideal.
-        pause_ratio = 1.0 - voiced_ratio
-        distance = abs(pause_ratio - IDEAL_PAUSE_RATIO)
-        pause_balance = max(0.0, min(1.0, 1.0 - distance / PAUSE_BALANCE_TOLERANCE))
-
-        return _response(
-            seq, t_ms, rms_db, voiced_ratio, pause_balance,
-            f0_mean, f0_std, intonation_proxy, pace_proxy,
+        # --- Pacing: envelope peaks → WPM proxy ---
+        peaks = _count_envelope_peaks(sig, sample_rate)
+        peaks_per_sec = peaks / max(chunk_seconds, 1e-6)
+        wpm_proxy = (peaks_per_sec * 60.0) / SYLLABLES_PER_WORD
+        pacing_score, pacing_delta = band_score_and_delta(
+            wpm_proxy, PACE_CENTER_WPM, PACE_RADIUS_WPM
         )
+
+        out = {
+            "seq": seq,
+            "t_ms": t_ms,
+            "voiced_ratio": round(voiced_ratio, 2),
+            "pacing_score": round(float(pacing_score), 2),
+            "pacing_delta": round(float(pacing_delta), 2),
+            "intonation_score": round(float(intonation_score), 2),
+            "intonation_delta": round(float(intonation_delta), 2),
+            "pause_score": round(float(pause_score), 2),
+            "pause_delta": round(float(pause_delta), 2),
+        }
+        if include_debug:
+            out["_debug"] = {
+                "silence_ratio": round(silence_ratio, 2),
+                "std_cents": round(std_cents, 1) if len(f0s) >= 3 else None,
+                "wpm_proxy": round(wpm_proxy, 1),
+            }
+        return out
     except Exception:
-        return _empty_response(seq, t_ms)
+        return _neutral_response(seq, t_ms, 0.0, include_debug)
 
 
-def _estimate_f0_autocorr(
-    frame: np.ndarray,
-    sample_rate: int,
-    min_period: int,
-    max_period: int,
-) -> Optional[float]:
-    """Autocorrelation pitch estimation. Returns F0 in Hz or None."""
-    if frame.size < max_period * 2:
-        return None
-    frame = frame - np.mean(frame)
-    corr = np.correlate(frame, frame, mode="full")
-    mid = len(corr) // 2
-    # Search only positive lags (second half)
-    search = corr[mid + min_period : mid + max_period + 1]
-    if search.size == 0:
-        return None
-    peak_idx = np.argmax(search)
-    lag = min_period + peak_idx
-    if lag <= 0:
-        return None
-    return float(sample_rate) / float(lag)
-
-
-def _response(
-    seq: int,
-    t_ms: int,
-    rms_db: float,
-    voiced_ratio: float,
-    pause_balance: float,
-    f0_hz_mean: float,
-    f0_hz_std: float,
-    intonation_proxy: float,
-    pace_proxy: float,
+def _neutral_response(
+    seq: int, t_ms: int, voiced_ratio: float, include_debug: bool
 ) -> dict:
-    return {
+    """Return when chunk is empty or silence-gated (voiced_ratio < gate)."""
+    out = {
         "seq": seq,
         "t_ms": t_ms,
-        "rms_db": round(rms_db, 1),
-        "voiced_ratio": round(voiced_ratio, 2),
-        "pause_balance": round(pause_balance, 2),
-        "f0_hz_mean": round(f0_hz_mean, 1),
-        "f0_hz_std": round(f0_hz_std, 1),
-        "intonation_proxy": round(intonation_proxy, 2),
-        "pace_proxy": round(pace_proxy, 2),
+        "voiced_ratio": round(max(0.0, min(1.0, voiced_ratio)), 2),
+        "pacing_score": 1.0,
+        "pacing_delta": 0.0,
+        "intonation_score": 1.0,
+        "intonation_delta": 0.0,
+        "pause_score": 1.0,
+        "pause_delta": 0.0,
     }
-
-
-def _empty_response(seq: int, t_ms: int) -> dict:
-    return _response(seq, t_ms, -60.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+    if include_debug:
+        out["_debug"] = {"silence_ratio": None, "std_cents": None, "wpm_proxy": None}
+    return out

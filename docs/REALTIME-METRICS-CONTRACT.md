@@ -1,6 +1,6 @@
 # Real-time metrics (Ambient Glow) — endpoint contract
 
-Stateless **chunk-in → features-out** endpoint for real-time glow during recording. Frontend sends **raw PCM** chunks; backend returns raw + lightly normalized features. Frontend applies **EMA + rolling window** and maps to glow color/intensity.
+Stateless **chunk-in → score/delta-out** endpoint for real-time glow during recording. Backend returns an **unambiguous mathematical contract**: per metric, a **score** in [0,1] (how good) and a **delta** in [-1,+1] (which direction / which extreme). Frontend smooths, picks **dominant** metric + **delta sign**, and maps to color.
 
 ---
 
@@ -27,40 +27,90 @@ Stateless **chunk-in → features-out** endpoint for real-time glow during recor
 | `X-Seq`          | No       | Chunk sequence number (echoed in response). Default 0. |
 | `X-T-Ms`         | No       | Client timestamp or sample offset in ms (echoed in response). Default 0. |
 | `X-Recording-Slot` | No     | `recording_1` or `recording_2` (for future use; not required for stateless). |
+| `X-Debug`        | No       | `1` or `true` to include `_debug` in response: `silence_ratio`, `std_cents`, `wpm_proxy` (for calibration). |
 
 ---
 
 ## Response (200)
 
-JSON with raw + lightly normalized features:
+JSON with **score** [0,1] and **delta** [-1,+1] per metric, plus `seq` and `voiced_ratio`:
 
 ```json
 {
   "seq": 42,
   "t_ms": 10500,
-  "rms_db": -24.3,
   "voiced_ratio": 0.82,
-  "pause_balance": 0.71,
-  "f0_hz_mean": 146.0,
-  "f0_hz_std": 18.2,
-  "intonation_proxy": 0.63,
-  "pace_proxy": 0.58
+  "pacing_score": 0.85,
+  "pacing_delta": -0.33,
+  "intonation_score": 0.72,
+  "intonation_delta": 0.08,
+  "pause_score": 0.91,
+  "pause_delta": -0.25
 }
 ```
 
-| Field              | Description |
-|--------------------|-------------|
-| `seq`              | Echo of request `X-Seq`. |
-| `t_ms`             | Echo of request `X-T-Ms`. |
-| `rms_db`           | RMS level in dB (approx -60 to 0). |
-| `voiced_ratio`     | Fraction of chunk that is “voiced” (0–1). |
-| `pause_balance`    | 0–1 score for pause/silence balance. Ideal is 15–20% pause (e.g. 0.15–0.20 silence); score is 1 when close to that, lower when too much or too little pause. Derived from `1 - voiced_ratio` with a tolerance band. |
-| `f0_hz_mean`       | Mean fundamental frequency (pitch) over voiced frames, Hz. |
-| `f0_hz_std`        | Std of F0 over voiced frames, Hz. |
-| `intonation_proxy` | 0–1 from pitch variation (for intonation). |
-| `pace_proxy`       | 0–1 from voiced activity (for pacing). |
+| Field               | Description |
+|---------------------|-------------|
+| `seq`               | Echo of request `X-Seq`. |
+| `t_ms`              | Echo of request `X-T-Ms`. |
+| `voiced_ratio`      | Fraction of chunk that is “voiced” (0–1). **Gate:** when &lt; 0.15, backend returns neutral (all score=1, delta=0) so the UI doesn’t punish pauses. |
+| `pacing_score`      | 0–1 how good pacing is (middle band good; too slow or too fast bad). |
+| `pacing_delta`      | -1..+1: &lt;0 = too slow, &gt;0 = too fast. |
+| `intonation_score`  | 0–1 how good intonation is (middle band good; monotone or chaotic bad). |
+| `intonation_delta`  | -1..+1: &lt;0 = too flat/monotone, &gt;0 = too chaotic. |
+| `pause_score`       | 0–1 how good pause balance is (ideal ~20% silence; too few or too many pauses bad). |
+| `pause_delta`       | -1..+1: &lt;0 = too few pauses, &gt;0 = too many pauses. |
 
-**Frontend:** Apply EMA + rolling window (e.g. 2–6 s) to these values, then map to glow color/intensity. **Filler words** are not available in real time; use **pause_balance** and **voiced_ratio** for live feedback. Whisper after full upload provides fillers for the report.
+With **X-Debug: 1** (or **X-Debug: true**), the response includes:
+
+```json
+"_debug": {
+  "silence_ratio": 0.18,
+  "std_cents": 65.2,
+  "wpm_proxy": 138.0
+}
+```
+
+---
+
+## Core math (backend contract)
+
+For each metric the backend:
+
+1. Picks a **raw measurement** \(x\) from the PCM chunk.
+2. Defines an **ideal target band**: center \(c\), half-width \(r\) (good zone = \(c \pm r\)).
+3. Computes **delta** (signed, which extreme): \(\delta = \text{clamp}((x - c) / r,\,-1,\,+1)\).
+4. Computes **score** (middle good, extremes bad): \(\text{rawScore} = 1 - |\delta|\), then \(\text{score} = \text{smoothstep}(\text{rawScore}) = t^2(3-2t)\).
+
+So **both extremes are bad**; only the band is “good”.
+
+### Raw measurements and bands (v1)
+
+| Metric     | Raw \(x\) | Center \(c\) | Radius \(r\) | Interpretation |
+|------------|-----------|--------------|--------------|----------------|
+| **Pause** | silence_ratio (1 − voiced_ratio) | 0.20 | 0.12 | Good ~8–32% silence. |
+| **Intonation** | std(F0 in cents, relative to median) | 70 | 50 | Good ~20–120 cents std. |
+| **Pacing** | wpm_proxy (envelope peaks → syllables → WPM) | 145 | 30 | Good ~115–175 WPM proxy. |
+
+### Silence gating
+
+If `voiced_ratio < 0.15`, the backend returns **neutral**: all `*_score = 1`, all `*_delta = 0`. So the glow doesn’t flip during intentional pauses.
+
+---
+
+## Frontend: smoothing and color
+
+1. **Gate:** Ignore updates when `voiced_ratio < 0.15` (or use backend’s neutral as-is).
+2. **Smooth:** EMA or rolling window (e.g. 2–6 s) over the three scores (and optionally deltas).
+3. **Dominant metric:** Pick `dominant = argmin(smoothed_scores)` (the worst of the three).
+4. **Color by dominant + delta sign:**
+   - **Green** when all three scores are high (e.g. min score &gt; 0.85).
+   - Otherwise choose hue from dominant and delta:
+     - **Pacing** dominant: delta&gt;0 → red (fast), delta&lt;0 → blue (slow).
+     - **Intonation** dominant: delta&lt;0 → grey (monotone), delta&gt;0 → purple (chaotic).
+     - **Pause** dominant: delta&lt;0 → yellow (too few pauses), delta&gt;0 → orange (too many pauses).
+
+This gives “math → behavior” with no ambiguity: red (or the right hue) happens when a metric leaves the good band and delta indicates which side.
 
 ---
 
@@ -79,7 +129,7 @@ If the frontend calls `/api/homework/...`, add a route that **proxies the binary
 
 - **Copy from:** `docs/homework-bff-routes/session/[sessionId]/recording-metrics-chunk/route.ts`
 - **Copy to:** `src/app/api/homework/session/[sessionId]/recording-metrics-chunk/route.ts`
-- **Behavior:** Read `request.arrayBuffer()`, forward to backend with `Authorization` and headers `X-Sample-Rate`, `X-Seq`, `X-T-Ms`, `X-Recording-Slot`. Return backend JSON response. Do not parse the body as JSON; pass through as binary.
+- **Behavior:** Read `request.arrayBuffer()`, forward to backend with `Authorization` and headers `X-Sample-Rate`, `X-Seq`, `X-T-Ms`, `X-Recording-Slot`, `X-Debug` (optional). Return backend JSON response. Do not parse the body as JSON; pass through as binary.
 
 ---
 
@@ -118,7 +168,7 @@ curl -s -X POST "https://BACKEND_URL/v2/homework/session/SESSION_ID/recording-me
   --data-binary @pcm_1s_silence.bin
 ```
 
-Expected (silence): low `voiced_ratio`, low `rms_db`, `intonation_proxy` and `pace_proxy` near 0, `pause_balance` may be high (lots of silence).
+Expected (silence): low `voiced_ratio`; backend returns **neutral** (all `*_score`: 1, all `*_delta`: 0).
 
 To test **48 kHz** (backend resamples to 16k internally):
 
