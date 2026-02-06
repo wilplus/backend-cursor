@@ -141,6 +141,8 @@ The backend expects the BFF to **proxy** the binary body and headers to the back
 
 The route should read `request.arrayBuffer()`, forward to the backend with `Authorization` and `X-Sample-Rate`, `X-Seq`, `X-T-Ms`, `X-Debug` (optional), and return the backend JSON. Do **not** parse the body as JSON.
 
+**CORS / "access control checks" error:** If you see *"Fetch API cannot load ... recording-metrics-chunk due to access control checks"*, the browser is either (1) sending a **preflight OPTIONS** request that your BFF doesn’t handle, or (2) the response is cross-origin and missing CORS headers. Fix: implement **OPTIONS** on the same route (return 204 with `Access-Control-Allow-*` headers) and add **CORS headers** to the POST response (`Access-Control-Allow-Origin`, `Access-Control-Allow-Methods`, `Access-Control-Allow-Headers`). The reference route in `docs/homework-bff-routes/.../recording-metrics-chunk/route.ts` includes OPTIONS and CORS.
+
 ### Full contract
 
 Detailed spec (VAD, pause events, 10 s window, benchmarks, troubleshooting): **docs/REALTIME-METRICS-CONTRACT.md**.
