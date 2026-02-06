@@ -9,7 +9,7 @@ Single live value: pause_score in [0, 1] (1 = ideal pausing). Brightness = funct
 """
 import math
 from collections import deque
-from typing import Deque, Dict, List, Tuple
+from typing import Deque, Dict, List, Tuple, Union
 
 import numpy as np
 
@@ -120,39 +120,69 @@ def _compute_pause_events(frames: List[Tuple[float, bool]]) -> Tuple[float, floa
     return silent_time, window_time, num_events, max_pause_s
 
 
-def _pause_just_ended(frames: List[Tuple[float, bool]]) -> bool:
+def _pause_just_ended(
+    frames: List[Tuple[float, bool]], return_debug: bool = False
+) -> Union[bool, Tuple[bool, dict]]:
     """
-    True if a pause event (>= 200 ms silence) just ended in this chunk:
-    - chunk ends with voice, and that voiced run is immediately after >= MIN_PAUSE_FRAMES
-      consecutive silent frames, AND
-    - there was at least one voiced frame *before* that silent run (so we don't
-      treat "started speaking after initial silence" as a pause — dot only for
-      real mid-speech pauses).
+    True if a pause event (>= 200 ms silence) just ended in this chunk.
+    If return_debug=True, returns (result, debug_dict) for logging.
     """
+    debug: dict = {}
     if len(frames) < MIN_PAUSE_FRAMES + 2:
+        if return_debug:
+            debug["pause_why"] = "too_few_frames"
+            debug["frames_count"] = len(frames)
+            return False, debug
         return False
     if frames[-1][1]:
-        return False  # last frame is silent: still in pause, not "just ended"
-    # Find start of trailing voiced run (first voiced frame after the pause)
+        if return_debug:
+            debug["pause_why"] = "last_frame_silent"
+            debug["tail_20"] = _tail_frames_str(frames, 20)
+            return False, debug
+        return False
+    # Find start of trailing voiced run
     i = len(frames) - 1
-    while i >= 0 and not frames[i][1]:  # move back while voiced
+    while i >= 0 and not frames[i][1]:
         i -= 1
-    # i is now the last silent frame before the trailing voiced run (or -1 if all voiced)
     first_voiced_after_pause = i + 1
     if first_voiced_after_pause >= len(frames):
+        if return_debug:
+            debug["pause_why"] = "no_voiced_after"
+            return False, debug
         return False
-    # Count consecutive silent frames immediately before the voiced run
     run_silent = 0
     j = i
     while j >= 0 and frames[j][1]:
         run_silent += 1
         j -= 1
-    # j is now the last voiced frame before the silent run (or -1)
+    had_voice_before = j >= 0
+    if return_debug:
+        debug["run_silent_frames"] = run_silent
+        debug["run_silent_ms"] = run_silent * FRAME_MS
+        debug["had_voice_before_pause"] = had_voice_before
+        debug["min_required_frames"] = MIN_PAUSE_FRAMES
+        debug["tail_20"] = _tail_frames_str(frames, 20)
+        debug["window_frames"] = len(frames)
     if run_silent < MIN_PAUSE_FRAMES:
+        if return_debug:
+            debug["pause_why"] = "run_too_short"
+            return False, debug
         return False
-    if j < 0:
-        return False  # silent run at start of window = user just started speaking, not a pause
+    if not had_voice_before:
+        if return_debug:
+            debug["pause_why"] = "initial_silence"
+            return False, debug
+        return False
+    if return_debug:
+        debug["pause_why"] = "ok"
+        return True, debug
     return True
+
+
+def _tail_frames_str(frames: List[Tuple[float, bool]], n: int) -> str:
+    """Last n frames as 'V' (voiced) / 'S' (silent), newest last."""
+    tail = frames[-n:] if len(frames) >= n else frames
+    return "".join("S" if f[1] else "V" for f in tail)
 
 
 def _pause_score_from_metrics(
@@ -254,7 +284,10 @@ def process_pcm_chunk(
         pause_score = _pause_score_from_metrics(
             pause_ratio, pauses_per_min, max_pause_s
         )
-        pause_detected = _pause_just_ended(frames_list)
+        if include_debug:
+            pause_detected, pause_debug = _pause_just_ended(frames_list, return_debug=True)
+        else:
+            pause_detected = _pause_just_ended(frames_list)
 
         out = {
             "seq": seq,
@@ -269,6 +302,8 @@ def process_pcm_chunk(
                 "pauses_per_min": round(pauses_per_min, 1),
                 "max_pause_s": round(max_pause_s, 2),
                 "window_time": round(window_time, 2),
+                "pause_detected": pause_detected,
+                "pause_detection": pause_debug,
             }
         return out
     except Exception:
@@ -292,6 +327,8 @@ def _neutral_response(
             "pauses_per_min": None,
             "max_pause_s": None,
             "window_time": None,
+            "pause_detected": False,
+            "pause_detection": {"pause_why": "silence_gated", "voiced_ratio_below": VOICED_RATIO_GATE},
         }
     return out
 

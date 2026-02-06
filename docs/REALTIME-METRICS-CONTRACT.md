@@ -54,16 +54,36 @@
 | `pause_score`     | Single score 0–1: 1 = ideal pausing over the last 10 s; drops when pause ratio, pause frequency, or max pause length is off. |
 | `pause_detected`  | **true** when a pause event (≥200 ms silence) **just ended** in this chunk (user resumed speaking after a pause). Frontend can show a **red dot** on the green oval each time this is true (e.g. flash for ~300–500 ms). |
 
-With **X-Debug: 1** (or **true**):
+With **X-Debug: 1** (or **true**), the response includes **`_debug`** so you can see why `pause_detected` is true or false:
 
 ```json
 "_debug": {
   "pause_ratio": 0.18,
   "pauses_per_min": 10.2,
   "max_pause_s": 1.4,
-  "window_time": 10.0
+  "window_time": 10.0,
+  "pause_detected": false,
+  "pause_detection": {
+    "pause_why": "run_too_short",
+    "run_silent_frames": 5,
+    "run_silent_ms": 100,
+    "had_voice_before_pause": true,
+    "min_required_frames": 10,
+    "tail_20": "VVVVVVVVVVVVVVSSSSSVVV",
+    "window_frames": 312
+  }
 }
 ```
+
+**`pause_detection.pause_why`** — reason we did or didn’t fire:
+- **`ok`** — pause just ended (≥200 ms silence after speech, then speech again) → `pause_detected: true`.
+- **`silence_gated`** — chunk was mostly silence (voiced_ratio &lt; 0.15); we never ran detection (in neutral response).
+- **`last_frame_silent`** — window ends with silence (user still in a pause).
+- **`run_too_short`** — trailing voice is there but the silent run before it is &lt; 10 frames (200 ms).
+- **`had_voice_before_pause`** is false → **`initial_silence`** — user just started speaking (no speech before the silence).
+- **`too_few_frames`** — window has fewer than 12 frames.
+
+**`tail_20`** — last 20 frames: **V** = voiced, **S** = silent (newest on the right). Use this to confirm you see something like `…SSSSSSSSSSVVV` when you pause then speak.
 
 ---
 
