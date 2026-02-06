@@ -73,6 +73,64 @@ All student actions go through **`/api/homework/*`** (BFF proxies to backend `/v
 
 ---
 
+## Real-time glow (recording metrics) — what the backend implements
+
+During **recording** (Step 1 warm-up or Step 3 final task), the backend can power a **live “glow”** that reflects **pause quality**: one number, **pause_score** (0–1). **Brightness = function(pause_score).** This is **already implemented** on the backend; the frontend only needs to call the endpoint and drive the glow from the response.
+
+### Endpoint (via BFF)
+
+- **POST** `/api/homework/session/<session_id>/recording-metrics-chunk`
+- **When:** While the user is recording (e.g. every **250–500 ms**), send a chunk of raw microphone audio.
+- **Request:**
+  - **Body:** Raw **PCM16 little-endian mono** (binary, not JSON). Prefer **16 kHz**; backend also accepts 48 kHz or 44.1 kHz (resamples to 16k).
+  - **Headers:** `Content-Type: application/octet-stream`, optional `X-Sample-Rate` (default 16000), `X-Seq`, `X-T-Ms`. Optional `X-Debug: 1` to get extra `_debug` fields in the response.
+- **Auth:** Same as other homework routes (Supabase Bearer token). Session must exist and be in a recording state.
+- **Rate limit:** 120 requests per 60 seconds per (user, session). 429 if exceeded.
+
+### Response (200)
+
+```json
+{
+  "seq": 42,
+  "t_ms": 10500,
+  "voiced_ratio": 0.82,
+  "pause_score": 0.91
+}
+```
+
+| Field | Meaning |
+|-------|--------|
+| **seq** | Echo of your `X-Seq`. |
+| **t_ms** | Echo of your `X-T-Ms`. |
+| **voiced_ratio** | Fraction of **this chunk** that is “voice” (0–1). If **&lt; 0.15** the backend returns **pause_score = 1** (neutral) so the glow doesn’t punish silence. |
+| **pause_score** | **Single value 0–1.** 1 = ideal pausing over the last 10 s; lower = too few pauses, too many pauses, or a pause that’s too long (e.g. &gt;5 s). |
+
+With **X-Debug: 1** you also get `_debug`: `pause_ratio`, `pauses_per_min`, `max_pause_s`, `window_time` (for tuning/debugging).
+
+### What the frontend must do
+
+1. **While recording:** Capture PCM from the mic (e.g. **AudioWorklet** or ScriptProcessorNode), send chunks every 250–500 ms to **POST /api/homework/session/<session_id>/recording-metrics-chunk** (binary body + headers above).
+2. **Use the response:** Drive the **glow’s brightness** from **`response.pause_score`**. If you don’t, the glow will never change (e.g. always green).
+   - Example: **Lightness** = `22 + 50 * response.pause_score` (percent). Or **opacity** of a glow layer = `0.3 + 0.7 * response.pause_score`.
+   - Keep **hue** constant (e.g. green 140 or blue 200) so “brightness = quality.”
+3. **Optional smoothing:** Apply EMA to avoid jitter: e.g. `pause_score_smooth = 0.2 * response.pause_score + 0.8 * pause_score_smooth`.
+4. **Silence:** When `voiced_ratio < 0.15`, backend returns **pause_score = 1**. You can either keep showing that (bright) or, if you want the glow to **dim when the user isn’t speaking**, use `voiced_ratio` (e.g. after several low-voiced_ratio chunks, fade the glow down).
+
+### BFF route (Next.js)
+
+The backend expects the BFF to **proxy** the binary body and headers to the backend. Example route in this repo:
+
+- **Copy from:** `docs/homework-bff-routes/session/[sessionId]/recording-metrics-chunk/route.ts`
+- **Copy to:** `src/app/api/homework/session/[sessionId]/recording-metrics-chunk/route.ts`
+
+The route should read `request.arrayBuffer()`, forward to the backend with `Authorization` and `X-Sample-Rate`, `X-Seq`, `X-T-Ms`, `X-Debug` (optional), and return the backend JSON. Do **not** parse the body as JSON.
+
+### Full contract
+
+Detailed spec (VAD, pause events, 10 s window, benchmarks, troubleshooting): **docs/REALTIME-METRICS-CONTRACT.md**.
+
+---
+
 ## Admin experience
 
 ### Overview
@@ -141,9 +199,9 @@ These are typically used from the student profile (e.g. modals or dropdowns) to 
 | Area | What the frontend does |
 |------|-------------------------|
 | **Homework page load** | Calls session/status; if no active session, calls session/start; shows current step (warm-up, task block, final task, questions, or report) with no “Start” button. |
-| **Warm-up** | Shows warm_up_task.text; records audio; POSTs to session/:id/recording-1. |
+| **Warm-up** | Shows warm_up_task.text; records audio; POSTs to session/:id/recording-1. Optional: during recording, POST PCM chunks to session/:id/recording-metrics-chunk and drive glow brightness from response.pause_score. |
 | **Task block** | Shows context_short, focus_task, metric_question_1, metric_question_2; collects answer_1, answer_2; POSTs metric-answers. |
-| **Final task** | Shows final_task text; records audio; POSTs to session/:id/recording-2. |
+| **Final task** | Shows final_task text; records audio; POSTs to session/:id/recording-2. Optional: same real-time glow (recording-metrics-chunk + pause_score) during recording. |
 | **Questions** | If GET questions returns a non-empty list, shows 3 questions; collects answers; POSTs post-answers. If empty, skips to report. |
 | **Report** | Shows report_text, performance_score_end, performance_metrics; session is completed. |
 | **Resume** | Uses session/status to restore session and re-render the correct step. |

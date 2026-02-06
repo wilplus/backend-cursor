@@ -117,6 +117,40 @@ Optional: if you want to show **direction** (too few vs too many pauses), you ca
 
 ---
 
+## Troubleshooting: glow always green / brightness never changes
+
+If the glow stays the same (e.g. always green, same brightness) whether you’re silent, speaking, or pausing for 5 s, the **backend is not the cause** — it returns different `pause_score` values when you’re speaking. The issue is almost always in the **frontend**.
+
+### 1. Check that the frontend uses the response
+
+- **The glow must be driven by `response.pause_score`.** If the UI uses a fixed color/brightness or a different field, it will never change.
+- **Concrete:** When you receive the JSON from the chunk endpoint, use **that** value to set the glow, e.g.:
+  - `lightness = 22 + 50 * response.pause_score` (percent), or
+  - `opacity = 0.3 + 0.7 * response.pause_score` for a glow layer.
+- If your code never reads `response.pause_score` (or never applies it to the circle/glow element), the glow will not react.
+
+### 2. Check that the endpoint is called and returns different values
+
+- During recording, the frontend must **send PCM chunks** to `POST .../recording-metrics-chunk` every 250–500 ms and **use the JSON response**.
+- **Verify:** Log the response (e.g. `console.log(response.pause_score, response.voiced_ratio)`) or temporarily show it on screen. When you speak with almost no pauses you should see **lower** `pause_score` (e.g. 0.2–0.5); when you add natural pauses, it should go up. If you never see different numbers, either the endpoint isn’t being called or the request/response path is broken (e.g. BFF not proxying, wrong URL).
+- Use **X-Debug: 1** and log `response._debug` to see raw `pause_ratio`, `pauses_per_min`, `max_pause_s` and confirm they change when you change how you speak.
+
+### 3. Why silence and “stop for 5 s” look the same as speaking
+
+- **During silence** (no speech in the chunk), the backend returns **pause_score = 1** (neutral) so we don’t punish the user. So the glow will stay **bright** during silence if you map 1 → bright. That is by design.
+- So: “silence → then speak → then 5 s silence” can all look similar if the frontend always shows “green” and never actually applies `pause_score` to brightness. Once the frontend **does** use `pause_score`:
+  - While you’re **speaking with few pauses**, `pause_score` will drop → glow should get **dimmer**.
+  - When you **stop for 5 s**, chunks become silence → we return 1.0 → glow can go bright again (or you can treat silence differently; see below).
+
+### 4. If you want the glow to dim when the user isn’t speaking
+
+- Backend returns **pause_score = 1** when `voiced_ratio < 0.15`. So “no speech” is currently treated as “good” and the glow stays bright.
+- If you want the circle to **dim** when the user is silent (e.g. “waiting for you to speak”), use **voiced_ratio** in the frontend: e.g. if `voiced_ratio < 0.15` for several updates in a row, **fade the glow down** (or show a “waiting” state) instead of using the neutral 1.0 for brightness. That way: speaking → brightness from `pause_score`; long silence → dim.
+
+**Summary:** The glow doesn’t change because the frontend isn’t updating the glow from `response.pause_score`. Wire the glow element’s brightness/lightness/opacity to `pause_score` (and optionally use `voiced_ratio` to dim during long silence), and verify with logging that the API is called and returns varying values.
+
+---
+
 ## Errors
 
 - **400** — Missing body or invalid input.
