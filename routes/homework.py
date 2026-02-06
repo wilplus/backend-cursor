@@ -85,9 +85,9 @@ def homework_session_status():
 @require_auth
 def homework_recording_metrics_chunk(session_id):
     """
-    Stateless: accept binary PCM16 mono (16 kHz expected), return score/delta for glow.
-    Request: body = raw PCM16 LE bytes; headers X-Sample-Rate (16000), X-Seq, X-T-Ms (optional), X-Debug (1|true for raw _debug).
-    Response: { seq, t_ms, voiced_ratio, pacing_score, pacing_delta, intonation_score, intonation_delta, pause_score, pause_delta }.
+    Pause-only glow: accept binary PCM16 mono, maintain 10 s rolling window per session, return pause_score.
+    Request: body = raw PCM16 LE bytes; headers X-Sample-Rate (16000), X-Seq, X-T-Ms (optional), X-Debug (1|true for _debug).
+    Response: { seq, t_ms, voiced_ratio, pause_score }. Brightness = function(pause_score).
     Rate limit: 120 requests per 60s per (user_id, session_id).
     """
     try:
@@ -136,7 +136,12 @@ def homework_recording_metrics_chunk(session_id):
 
         include_debug = request.headers.get("X-Debug", "").strip().lower() in ("1", "true")
         result = process_pcm_chunk(
-            pcm_bytes, sample_rate, seq=seq, t_ms=t_ms, include_debug=include_debug
+            pcm_bytes,
+            sample_rate,
+            session_id=session_id,
+            seq=seq,
+            t_ms=t_ms,
+            include_debug=include_debug,
         )
         return jsonify(result), 200
     except Exception as e:
