@@ -1,6 +1,6 @@
 """
 Real-time audio metrics for Ambient Glow (stateless).
-Input: PCM16 mono, 16 kHz (or other rate via sample_rate).
+Input: PCM16 mono, 16 kHz preferred (48k/44.1k resampled to 16k internally).
 Output: raw + lightly normalized features for frontend to smooth (EMA + rolling window).
 """
 import math
@@ -8,6 +8,8 @@ from typing import Optional
 
 import numpy as np
 
+# Target sample rate for processing (F0 and frame logic assume this)
+TARGET_SAMPLE_RATE = 16000
 # Human pitch range (Hz) for autocorrelation search
 F0_MIN_HZ = 75
 F0_MAX_HZ = 400
@@ -19,6 +21,23 @@ HOP_MS = 10
 RMS_FLOOR = 1e-10
 # Energy threshold for "voiced" frame (relative to max in chunk)
 VOICED_THRESHOLD_RATIO = 0.02
+# Ideal pause ratio (15–20% silence); used for pause_balance score
+IDEAL_PAUSE_RATIO = 0.175
+# How far from ideal (in ratio units) before score drops to 0
+PAUSE_BALANCE_TOLERANCE = 0.35
+
+
+def _resample_to_16k(sig: np.ndarray, sample_rate: int) -> np.ndarray:
+    """Resample to TARGET_SAMPLE_RATE using linear interpolation. Returns float32."""
+    if sample_rate <= 0 or sig.size == 0:
+        return sig
+    if sample_rate == TARGET_SAMPLE_RATE:
+        return sig
+    num_out = int(round(sig.size * TARGET_SAMPLE_RATE / sample_rate))
+    if num_out <= 0:
+        return sig
+    indices = np.linspace(0, sig.size - 1, num=num_out, dtype=np.float32)
+    return np.interp(indices, np.arange(sig.size, dtype=np.float32), sig.astype(np.float32)).astype(np.float32)
 
 
 def process_pcm_chunk(
@@ -29,16 +48,17 @@ def process_pcm_chunk(
 ) -> dict:
     """
     Process one chunk of PCM16 little-endian mono audio.
+    If sample_rate is not 16000 (e.g. 48000 or 44100), resamples to 16 kHz internally.
     Returns raw + lightly normalized features for frontend smoothing.
 
     Args:
         pcm_bytes: Raw PCM16 LE bytes (2 bytes per sample).
-        sample_rate: Sample rate in Hz (expect 16000).
+        sample_rate: Sample rate in Hz (16000, 48000, 44100, or 8000–48000).
         seq: Chunk sequence number (echoed in response).
         t_ms: Client timestamp or sample offset in ms (echoed in response).
 
     Returns:
-        Dict with: seq, t_ms, rms_db, voiced_ratio, f0_hz_mean, f0_hz_std,
+        Dict with: seq, t_ms, rms_db, voiced_ratio, pause_balance, f0_hz_mean, f0_hz_std,
                    intonation_proxy (0-1), pace_proxy (0-1).
     """
     if len(pcm_bytes) < 2:
@@ -50,6 +70,10 @@ def process_pcm_chunk(
             return _empty_response(seq, t_ms)
         # Convert to float in [-1, 1]
         sig = samples.astype(np.float32) / 32768.0
+        # Resample to 16 kHz if needed (e.g. 48k or 44.1k from browser)
+        if sample_rate != TARGET_SAMPLE_RATE:
+            sig = _resample_to_16k(sig, sample_rate)
+            sample_rate = TARGET_SAMPLE_RATE
 
         # RMS and dB
         rms = float(np.sqrt(np.mean(sig * sig)) + RMS_FLOOR)
@@ -60,7 +84,7 @@ def process_pcm_chunk(
         frame_len = int(sample_rate * FRAME_MS / 1000)
         hop_len = int(sample_rate * HOP_MS / 1000)
         if frame_len < 2 or hop_len < 1:
-            return _response(seq, t_ms, rms_db, 0.0, 0.0, 0.0, 0.0, 0.0)
+            return _response(seq, t_ms, rms_db, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
 
         n_frames = max(1, (len(sig) - frame_len) // hop_len + 1)
         frame_energies = []
@@ -110,8 +134,13 @@ def process_pcm_chunk(
         # Pace proxy: voiced_ratio as proxy for "activity" (more voice = faster pace)
         pace_proxy = max(0.0, min(1.0, voiced_ratio * 1.2))  # slight scale
 
+        # Pause balance: 0–1 score. Ideal pause ratio is 15–20% (silence); score = 1 when close to ideal.
+        pause_ratio = 1.0 - voiced_ratio
+        distance = abs(pause_ratio - IDEAL_PAUSE_RATIO)
+        pause_balance = max(0.0, min(1.0, 1.0 - distance / PAUSE_BALANCE_TOLERANCE))
+
         return _response(
-            seq, t_ms, rms_db, voiced_ratio,
+            seq, t_ms, rms_db, voiced_ratio, pause_balance,
             f0_mean, f0_std, intonation_proxy, pace_proxy,
         )
     except Exception:
@@ -146,6 +175,7 @@ def _response(
     t_ms: int,
     rms_db: float,
     voiced_ratio: float,
+    pause_balance: float,
     f0_hz_mean: float,
     f0_hz_std: float,
     intonation_proxy: float,
@@ -156,6 +186,7 @@ def _response(
         "t_ms": t_ms,
         "rms_db": round(rms_db, 1),
         "voiced_ratio": round(voiced_ratio, 2),
+        "pause_balance": round(pause_balance, 2),
         "f0_hz_mean": round(f0_hz_mean, 1),
         "f0_hz_std": round(f0_hz_std, 1),
         "intonation_proxy": round(intonation_proxy, 2),
@@ -164,4 +195,4 @@ def _response(
 
 
 def _empty_response(seq: int, t_ms: int) -> dict:
-    return _response(seq, t_ms, -60.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+    return _response(seq, t_ms, -60.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
