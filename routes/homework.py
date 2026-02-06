@@ -8,13 +8,20 @@ from services.db import db
 from services.v2_flow_service import select_focus_task_for_performance_score_1, select_post_questions_v2
 from services.metrics_v2 import compute_performance_score_1, compute_metrics_v2
 from services.openai_service import openai_service
+from services.realtime_audio_metrics import process_pcm_chunk
 from utils.metrics import count_fillers, compute_wpm
 import logging
+import time
 import uuid
 import sentry_sdk
 
 logger = logging.getLogger(__name__)
 homework_bp = Blueprint("homework", __name__, url_prefix="/v2/homework")
+
+# Rate limit for recording-metrics-chunk: 120 per minute per (user_id, session_id)
+_metrics_chunk_timestamps = {}
+_METRICS_CHUNK_LIMIT = 120
+_METRICS_CHUNK_WINDOW_SEC = 60
 
 # Homework session statuses
 STATUS_WARM_UP = "warm_up"
@@ -69,6 +76,68 @@ def homework_session_status():
             "has_active_session": True,
         }), 200
     except Exception as e:
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
+
+
+# ---------- Real-time metrics chunk (Ambient Glow): PCM in → raw features out (stateless) ----------
+@homework_bp.route("/session/<session_id>/recording-metrics-chunk", methods=["POST"])
+@require_auth
+def homework_recording_metrics_chunk(session_id):
+    """
+    Stateless: accept binary PCM16 mono (16 kHz expected), return raw features for frontend to smooth.
+    Request: body = raw PCM16 LE bytes; headers X-Sample-Rate (16000), X-Seq, X-Recording-Slot (optional), X-T-Ms (optional).
+    Response: { seq, t_ms, rms_db, voiced_ratio, f0_hz_mean, f0_hz_std, intonation_proxy, pace_proxy }.
+    Rate limit: 120 requests per 60s per (user_id, session_id).
+    """
+    try:
+        user_id = request.user_id
+        session = db.v2_get_session(session_id, user_id)
+        if not session:
+            return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found"}), 404
+        # Allow any active status (user may be in warm_up or final_task_ready while recording)
+        status = session.get("status")
+        if status not in (STATUS_WARM_UP, STATUS_TASK_BLOCK, STATUS_FINAL_TASK_READY, STATUS_POST_QUESTIONS):
+            return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not in recording state"}), 404
+
+        # Rate limit
+        key = (str(user_id), str(session_id))
+        now = time.time()
+        if key not in _metrics_chunk_timestamps:
+            _metrics_chunk_timestamps[key] = []
+        timestamps = _metrics_chunk_timestamps[key]
+        timestamps[:] = [t for t in timestamps if t > now - _METRICS_CHUNK_WINDOW_SEC]
+        if len(timestamps) >= _METRICS_CHUNK_LIMIT:
+            return jsonify({"code": "RATE_LIMITED", "error": "Too many chunk requests"}), 429
+        timestamps.append(now)
+
+        pcm_bytes = request.get_data()
+        if not pcm_bytes:
+            return jsonify({"code": "INVALID_INPUT", "error": "Missing PCM body"}), 400
+
+        sample_rate = request.headers.get("X-Sample-Rate", "16000")
+        try:
+            sample_rate = int(sample_rate)
+        except ValueError:
+            sample_rate = 16000
+        sample_rate = max(8000, min(48000, sample_rate))
+
+        seq = request.headers.get("X-Seq", "0")
+        try:
+            seq = int(seq)
+        except ValueError:
+            seq = 0
+
+        t_ms = request.headers.get("X-T-Ms", "0")
+        try:
+            t_ms = int(t_ms)
+        except ValueError:
+            t_ms = 0
+
+        result = process_pcm_chunk(pcm_bytes, sample_rate, seq=seq, t_ms=t_ms)
+        return jsonify(result), 200
+    except Exception as e:
+        logger.error(f"Homework recording-metrics-chunk: {str(e)}")
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
 
