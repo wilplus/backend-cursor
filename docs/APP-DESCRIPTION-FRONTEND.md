@@ -69,7 +69,22 @@ All student actions go through **`/api/homework/*`** (BFF proxies to backend `/v
 
 - **Warm-up task is null:** The student has no warm-up tasks (or none matching their level). Show a clear message; the fix is in the admin (add warm-up tasks for this student and set **max_performance_score** per task).
 - **404 on “start” or “backend not connected”:** The frontend is calling `/api/homework/session/start` but the Next.js app has no BFF route for it (or the path is wrong, e.g. `/api/homework/start`). Add the BFF route that proxies to the backend and ensure the frontend uses **/api/homework/session/start** and **/api/homework/session/status**.
+- **404 after first recording ("recording-1"):** If you see "Failed to load resource: 404 (recording-1)", add the BFF route **`session/[sessionId]/recording-1/route.ts`** under `src/app/api/homework/` (see `docs/homework-bff-routes/` in backend repo). Call **POST /api/homework/session/<session_id>/recording-1** with FormData field **`audio`**.
 - **Render warm_up_task as text:** Display **warm_up_task.text** (string), never the whole **warm_up_task** object in React — otherwise you get “Objects are not valid as a React child” (React error #31).
+
+### Required BFF routes for the student flow (avoid 404s)
+
+| Step | Frontend calls | BFF file to add (if missing) |
+|------|----------------|-------------------------------|
+| Start / resume | POST `/api/homework/session/start`, GET `/api/homework/session/status` | `session/start/route.ts`, `session/status/route.ts` |
+| Warm-up task | GET `/api/homework/session/<id>/warm-up-task` | `session/[sessionId]/warm-up-task/route.ts` |
+| **First recording upload** | **POST `/api/homework/session/<id>/recording-1`** | **`session/[sessionId]/recording-1/route.ts`** (often missing) |
+| Metric answers | POST `/api/homework/session/<id>/metric-answers` | `session/[sessionId]/metric-answers/route.ts` |
+| Second recording | POST `/api/homework/session/<id>/recording-2` | `session/[sessionId]/recording-2/route.ts` |
+| Questions | GET `/api/homework/session/<id>/questions` | `session/[sessionId]/questions/route.ts` |
+| Post answers | POST `/api/homework/session/<id>/post-answers` | `session/[sessionId]/post-answers/route.ts` |
+
+Reference implementations: **`docs/homework-bff-routes/`** in the backend repo. Copy into **`src/app/api/homework/`** and fix the `getAuth` / `getBackendUrl` import path.
 
 ---
 
