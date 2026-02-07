@@ -200,6 +200,8 @@ The profile page is organized into sections:
 - **Metrics:** **GET/PUT /api/admin/metrics** — fixed set of metric labels (e.g. 5).
 - **Metric questions:** **GET/POST/PUT/DELETE /api/admin/metric-questions** — the two questions shown after the first recording (e.g. pacing, vocal strength).
 
+**Admin 404 for /tasks:** If you see "HTTP 404 for /tasks" on the student Homework Configuration page, the BFF route for the tasks pool is missing. Add **`src/app/api/admin/tasks/route.ts`** (GET + POST) and **`src/app/api/admin/tasks/[id]/route.ts`** (PUT + DELETE). Copy from **`docs/frontend-admin-panel/api-routes/tasks-route.ts`** and **`tasks-[id]-route.ts`** in the backend repo; fix the `getAuth` import path.
+
 These are typically used from the student profile (e.g. modals or dropdowns) to pick tasks and questions; the profile page does not need separate “Exercises” or “Questions” top-level pages.
 
 ---
