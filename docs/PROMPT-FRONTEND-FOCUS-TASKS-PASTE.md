@@ -58,3 +58,12 @@ Same UX as **Warm-up tasks**. No limit on count. Treat **200 + empty `focus_task
 ## 4. SQL (for backend/DB)
 
 The feature uses tables **v2_focus_task_pool** and **v2_focus_tasks**. They are **already defined** in the backend repo in **migrations/v2_focus_tasks.sql**. Someone with DB access must **run that migration** on your Supabase/Postgres so the tables exist. Until then, GET returns 200 with `focus_tasks: []`; POST/PUT will return 503 with a message to run the migration.
+
+---
+
+## 5. "Still 500" when saving a focus task
+
+- **Run the migration.** If **v2_focus_tasks** (and **v2_focus_task_pool**) don’t exist, the backend now returns **503** with a JSON body like `{ "error": "... Run migrations/v2_focus_tasks.sql", "detail": "..." }`. So first run **migrations/v2_focus_tasks.sql** on your DB (Supabase SQL editor or your migration tool).
+- **Redeploy the backend** after pulling the latest code so the focus-tasks routes and 503 handling are live.
+- **Check where the 500 comes from.** In DevTools → Network, open the failing request to `.../focus-tasks`. If the response is from your **BFF** (e.g. `app.willonski.com/api/admin/...`), the BFF might be turning a backend **503** into **500**. Fix the BFF so it either forwards the backend status (503) and body, or at least shows the backend’s `error` / `detail` to the user instead of a generic 500.
+- **Backend logs.** If you have access to Flask logs, look for `focus-tasks POST failed` and the exception; that will show the real DB error (e.g. relation does not exist, RLS, etc.).

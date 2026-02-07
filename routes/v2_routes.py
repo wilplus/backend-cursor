@@ -451,10 +451,11 @@ def v2_admin_focus_task_pool_create():
         })
         return jsonify({"focus_task": row}), 201
     except Exception as err:
-        err_str = str(err).lower()
-        if "relation" in err_str or "does not exist" in err_str or "42p01" in err_str:
-            return jsonify({"error": "v2_focus_task_pool table missing. Run migrations/v2_focus_tasks.sql."}), 503
-        raise
+        logger.warning("focus-task-pool POST failed: %s", err, exc_info=True)
+        return jsonify({
+            "error": "v2_focus_task_pool table missing. Run migrations/v2_focus_tasks.sql.",
+            "detail": str(err),
+        }), 503
 
 
 @v2_bp.route("/admin/focus-task-pool/<pool_id>", methods=["PUT"])
@@ -519,12 +520,13 @@ def v2_admin_focus_tasks_sync(user_id):
     pool_task_ids = [str(x) for x in pool_task_ids]
     try:
         rows = db.v2_sync_student_focus_tasks_from_pool(user_id, pool_task_ids)
+        return jsonify({"focus_tasks": rows}), 200
     except Exception as err:
-        err_str = str(err).lower()
-        if "relation" in err_str or "does not exist" in err_str or "42p01" in err_str:
-            return jsonify({"error": "v2_focus_tasks table missing. Run migrations/v2_focus_tasks.sql."}), 503
-        raise
-    return jsonify({"focus_tasks": rows}), 200
+        logger.warning("focus-tasks PUT sync failed for user %s: %s", user_id, err, exc_info=True)
+        return jsonify({
+            "error": "v2_focus_tasks table missing or sync failed. Run migrations/v2_focus_tasks.sql.",
+            "detail": str(err),
+        }), 503
 
 
 @v2_bp.route("/admin/students/<user_id>/focus-tasks", methods=["POST"])
@@ -544,9 +546,14 @@ def v2_admin_focus_tasks_create(user_id):
         return jsonify({"focus_task": row}), 201
     except Exception as err:
         err_str = str(err).lower()
+        logger.warning("focus-tasks POST failed for user %s: %s", user_id, err, exc_info=True)
+        # Table missing or any DB error: return 503 so frontend doesn't get 500; hint to run migration
         if "relation" in err_str or "does not exist" in err_str or "42p01" in err_str:
             return jsonify({"error": "v2_focus_tasks table missing. Run migrations/v2_focus_tasks.sql."}), 503
-        raise
+        return jsonify({
+            "error": "Failed to create focus task. Run migrations/v2_focus_tasks.sql if not done.",
+            "detail": str(err),
+        }), 503
 
 
 @v2_bp.route("/admin/students/<user_id>/focus-tasks/<task_id>", methods=["PUT"])
