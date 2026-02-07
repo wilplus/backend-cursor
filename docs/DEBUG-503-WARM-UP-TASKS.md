@@ -1,10 +1,53 @@
 # 503 – "v2_warm_up_tasks table missing or sync failed"
 
-If you see that message or a **503** on `/warm-up-tasks`, the backend is failing because the **warm-up** tables are missing or the request (e.g. sync) failed.
+If you see that message or a **503** on `/warm-up-tasks`, the backend is failing because the **warm-up** tables are missing, a **column** is missing, or the request (e.g. sync) failed.
 
 ---
 
-## Fix: create the warm-up tables
+## PGRST204: column `max_performance_score` missing (most common)
+
+If the real error is **`PGRST204`: PostgREST can't find column `max_performance_score` on `public.v2_warm_up_tasks`**, the table exists but that column is missing (or PostgREST hasn’t reloaded its schema cache yet).
+
+### 1) Add the column (Supabase project used by backend `SUPABASE_URL`)
+
+Run in Supabase SQL Editor:
+
+```sql
+ALTER TABLE public.v2_warm_up_tasks
+ADD COLUMN IF NOT EXISTS max_performance_score DECIMAL(3,2) DEFAULT 1.00 CHECK (max_performance_score >= 0 AND max_performance_score <= 1);
+```
+
+(Backend expects 0–1; use DECIMAL to match. If you prefer integer for simplicity, use `integer` and ensure the app sends 0 or 1.)
+
+### 2) Force PostgREST to reload schema cache
+
+Supabase/PostgREST may not see the new column immediately. Run:
+
+```sql
+NOTIFY pgrst, 'reload schema';
+```
+
+(Or: `SELECT pg_notify('pgrst', 'reload schema');`)
+
+### 3) Verify the column exists
+
+```sql
+SELECT column_name, data_type
+FROM information_schema.columns
+WHERE table_schema = 'public'
+  AND table_name = 'v2_warm_up_tasks'
+ORDER BY ordinal_position;
+```
+
+### 4) Retry the admin Save
+
+Warm-up task create should stop returning 503 once the column exists and PostgREST has reloaded.
+
+If it still errors, confirm you added the column in the **same** Supabase project that backend `SUPABASE_URL` points to (not a different project/environment).
+
+---
+
+## Fix: create the warm-up tables (if tables are missing)
 
 The backend expects:
 
@@ -41,12 +84,7 @@ You want **pool_exists = 1** and **tasks_exists = 1**. If either is 0, run the m
 
 ## If the error says `column "max_performance_score" does not exist`
 
-**v2_schema_unified.sql** creates `v2_warm_up_tasks` without that column. The backend expects it for sync/create. Add it in Supabase SQL Editor:
-
-```sql
-ALTER TABLE v2_warm_up_tasks
-ADD COLUMN IF NOT EXISTS max_performance_score DECIMAL(3,2) DEFAULT 1.00 CHECK (max_performance_score >= 0 AND max_performance_score <= 1);
-```
+See **PGRST204** above: add the column, then `NOTIFY pgrst, 'reload schema';`, then verify and retry.
 
 ---
 
