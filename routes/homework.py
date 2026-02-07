@@ -49,6 +49,13 @@ def homework_session_start():
         session = db.v2_create_homework_session(user_id)
         if not session:
             return jsonify({"code": "V2_ERROR", "error": "Failed to create session"}), 500
+        # Snapshot user's custom metric questions for this session (used at end for LLM analysis)
+        prefs = db.v2_get_user_metric_questions(user_id)
+        db.v2_update_session(session["id"], user_id, {
+            "session_metric_question_1": prefs.get("metric_question_1") or "",
+            "session_metric_question_2": prefs.get("metric_question_2") or "",
+            "session_metric_question_3": prefs.get("metric_question_3") or "",
+        })
         warm_up = db.v2_get_assigned_warm_up_task(user_id)
         return jsonify({
             "session_id": session["id"],
@@ -522,17 +529,37 @@ def homework_submit_post_answers(session_id):
 
         db.v2_append_context_long_entry(session_id, user_id, report_text)
         report_row = db.v2_create_report(session_id, recording_2_id, report_text)
-        db.v2_update_session(session_id, user_id, {
+
+        # Custom metric questions: LLM analysis per question (pitch_variance + 3 custom questions flow)
+        q1 = (session.get("session_metric_question_1") or "").strip()
+        q2 = (session.get("session_metric_question_2") or "").strip()
+        q3 = (session.get("session_metric_question_3") or "").strip()
+        custom_results = openai_service.analyze_custom_questions(transcript, [q1, q2, q3])
+        r1, r2, r3 = (custom_results + [{"analysis": "", "score": 0}] * 3)[:3]
+        session_update = {
             "post_answers": answers,
             "report_id": report_row["id"] if report_row else None,
             "performance_score_end": performance_score_end,
             "status": STATUS_COMPLETED,
-        })
+            "question_1_analysis": r1.get("analysis") or "",
+            "question_1_score": float(r1.get("score", 0)),
+            "question_2_analysis": r2.get("analysis") or "",
+            "question_2_score": float(r2.get("score", 0)),
+            "question_3_analysis": r3.get("analysis") or "",
+            "question_3_score": float(r3.get("score", 0)),
+        }
+        db.v2_update_session(session_id, user_id, session_update)
 
         return jsonify({
             "report_text": report_text,
             "performance_score_end": performance_score_end,
             "performance_metrics": final["metrics"],
+            "question_1_analysis": session_update["question_1_analysis"],
+            "question_1_score": session_update["question_1_score"],
+            "question_2_analysis": session_update["question_2_analysis"],
+            "question_2_score": session_update["question_2_score"],
+            "question_3_analysis": session_update["question_3_analysis"],
+            "question_3_score": session_update["question_3_score"],
         }), 200
     except Exception as e:
         logger.error(f"Homework post-answers: {str(e)}")

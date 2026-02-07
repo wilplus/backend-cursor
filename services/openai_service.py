@@ -548,6 +548,64 @@ Requirements:
             sentry_sdk.capture_exception(e)
             return fallback
 
+    def analyze_custom_questions(self, transcript: str, questions: list) -> list:
+        """
+        Analyze transcript against each custom question. Returns list of 3 items: { "analysis": str, "score": float } (0-10).
+        Empty questions get {"analysis": "", "score": 0}.
+        """
+        import json
+        import re
+        # Ensure we have exactly 3 slots
+        qs = [(q or "").strip() for q in (list(questions) + ["", "", ""])[:3]]
+        results = []
+        for question in qs:
+            q = (question or "").strip()
+            if not q:
+                results.append({"analysis": "", "score": 0})
+                continue
+            prompt = f'''You are an expert speech analyst. Analyze the following transcript based on the specific question provided.
+
+Transcript: "{transcript[:8000]}"
+
+Question: "{q}"
+
+Provide a concise answer (1–2 sentences) directly addressing the question, and assign a score from 0 to 10 (10 = fully addressed, 0 = not at all).
+Respond in JSON format only: {{"analysis": "...", "score": N}}'''
+            fallback = {"analysis": "Unable to analyze", "score": 0}
+            try:
+                if not self.client:
+                    results.append(fallback)
+                    continue
+                response = self.client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=[
+                        {"role": "system", "content": "You respond only with valid JSON: {\"analysis\": \"...\", \"score\": N}. No other text."},
+                        {"role": "user", "content": prompt},
+                    ],
+                    temperature=0.2,
+                    max_tokens=300,
+                )
+                raw = (response.choices[0].message.content or "").strip()
+                # Try to extract JSON from the response
+                match = re.search(r'\{[^{}]*"analysis"[^{}]*"score"[^{}]*\}', raw)
+                if match:
+                    raw = match.group(0)
+                obj = json.loads(raw)
+                analysis = (obj.get("analysis") or "").strip() or fallback["analysis"]
+                score = obj.get("score")
+                if score is None:
+                    score = 0
+                try:
+                    score = float(score)
+                except (TypeError, ValueError):
+                    score = 0
+                score = max(0, min(10, score))
+                results.append({"analysis": analysis, "score": score})
+            except Exception as e:
+                sentry_sdk.capture_exception(e)
+                results.append(fallback)
+        return results
+
     def generate_suggested_questions(
         self,
         transcript: str,

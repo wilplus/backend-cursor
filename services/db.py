@@ -1300,7 +1300,44 @@ class DatabaseService:
         "intended_emotion_prompt", "keywords_prompt", "emotion_check_question_text",
         "assigned_post_question_ids", "assigned_next_exercise_id", "assigned_next_task_ids",
         "show_exercise_step", "assigned_warm_up_task_id",
+        "metric_question_1", "metric_question_2", "metric_question_3", "pitch_variance_ideal",
     }
+
+    def v2_get_user_metric_questions(self, user_id: str):
+        """Get user's three custom metric questions (and optional pitch_variance config)."""
+        result = self.client.table("v2_student_overrides").select(
+            "metric_question_1", "metric_question_2", "metric_question_3", "pitch_variance_ideal"
+        ).eq("user_id", user_id).execute()
+        row = result.data[0] if result.data else None
+        if not row:
+            return {
+                "metric_question_1": "",
+                "metric_question_2": "",
+                "metric_question_3": "",
+                "pitch_variance_ideal": None,
+            }
+        return {
+            "metric_question_1": (row.get("metric_question_1") or "").strip(),
+            "metric_question_2": (row.get("metric_question_2") or "").strip(),
+            "metric_question_3": (row.get("metric_question_3") or "").strip(),
+            "pitch_variance_ideal": row.get("pitch_variance_ideal"),
+        }
+
+    def v2_update_user_metric_questions(self, user_id: str, data: dict):
+        """Update user's metric_question_1, 2, 3 (and optionally pitch_variance_ideal)."""
+        payload = {"user_id": user_id, "updated_at": datetime.now(timezone.utc).isoformat()}
+        for k in ("metric_question_1", "metric_question_2", "metric_question_3"):
+            if k in data:
+                payload[k] = (data[k] or "").strip() if data[k] is not None else ""
+        if "pitch_variance_ideal" in data:
+            try:
+                payload["pitch_variance_ideal"] = float(data["pitch_variance_ideal"]) if data["pitch_variance_ideal"] is not None else None
+            except (TypeError, ValueError):
+                payload["pitch_variance_ideal"] = None
+        if len(payload) <= 2:
+            return self.v2_get_user_metric_questions(user_id)
+        result = self.client.table("v2_student_overrides").upsert(payload, on_conflict="user_id").execute()
+        return self.v2_get_user_metric_questions(user_id)
 
     def v2_upsert_student_overrides(self, user_id: str, data: dict):
         payload = {k: v for k, v in data.items() if k in self._V2_OVERRIDES_COLUMNS}

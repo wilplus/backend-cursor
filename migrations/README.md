@@ -21,3 +21,4 @@ Optional follow-ups (if needed):
 - **v2_warm_up_task_pool.sql** — global warm-up task pool + `pool_task_id` on v2_warm_up_tasks (for "Select Warm-up Tasks" modal).
 - **v2_warm_up_task_pool_seed.sql** — run after v2_warm_up_task_pool.sql to copy existing v2_warm_up_tasks into the pool so the modal and the table show the same list.
 - **v2_metric_questions_pool.sql** — metric questions pool (metric_question_1, 2, 3); editable in admin, same mechanics as warm-up-task-pool. Seeds 3 default questions.
+- **v2_pitch_variance_and_custom_metrics.sql** — per-user metric_question_1/2/3 and pitch_variance_ideal; session snapshot + question_1/2/3_analysis and question_1/2/3_score (LLM at end); pitch_variance_avg on session; real-time response includes pitch_variance.

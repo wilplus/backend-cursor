@@ -27,6 +27,38 @@ def get_profile():
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "PROFILE_ERROR", "error": str(e)}), 500
 
+@user_bp.route("/metric-questions", methods=["GET"])
+@require_auth
+def get_metric_questions():
+    """Get current user's three custom metric questions (and optional pitch_variance config)."""
+    try:
+        user_id = request.user_id
+        data = db.v2_get_user_metric_questions(user_id)
+        return jsonify(data), 200
+    except Exception as e:
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "METRIC_QUESTIONS_ERROR", "error": str(e)}), 500
+
+
+@user_bp.route("/metric-questions", methods=["PATCH"])
+@require_auth
+def update_metric_questions():
+    """Update current user's metric_question_1, metric_question_2, metric_question_3 (and optionally pitch_variance_ideal)."""
+    try:
+        user_id = request.user_id
+        data = request.get_json() or {}
+        allowed = {"metric_question_1", "metric_question_2", "metric_question_3", "pitch_variance_ideal"}
+        payload = {k: data[k] for k in allowed if k in data}
+        if not payload:
+            out = db.v2_get_user_metric_questions(user_id)
+            return jsonify(out), 200
+        out = db.v2_update_user_metric_questions(user_id, payload)
+        return jsonify(out), 200
+    except Exception as e:
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "METRIC_QUESTIONS_ERROR", "error": str(e)}), 500
+
+
 @user_bp.route("/recordings", methods=["GET"])
 @require_auth
 def get_recordings():

@@ -289,12 +289,15 @@ def process_pcm_chunk(
         else:
             pause_detected = _pause_just_ended(frames_list)
 
+        # pitch_variance: fixed real-time metric (stub: 0–1; real F0 variance can be computed later)
+        pitch_variance = round(0.5, 2) if voiced_ratio < VOICED_RATIO_GATE else round(_clamp(0.3 + voiced_ratio * 0.5, 0, 1), 2)
         out = {
             "seq": seq,
             "t_ms": t_ms,
             "voiced_ratio": round(voiced_ratio, 2),
             "pause_score": round(float(pause_score), 2),
             "pause_detected": pause_detected,
+            "pitch_variance": pitch_variance,
         }
         if include_debug:
             out["_debug"] = {
@@ -320,6 +323,7 @@ def _neutral_response(
         "voiced_ratio": round(max(0.0, min(1.0, voiced_ratio)), 2),
         "pause_score": 1.0,
         "pause_detected": False,
+        "pitch_variance": 0.5,
     }
     if include_debug:
         out["_debug"] = {

@@ -1,10 +1,12 @@
-# Real-time metrics (Ambient Glow) — pause-only contract
+# Real-time metrics (Ambient Glow) — pause + pitch_variance
 
-**Single live value:** `pause_score` ∈ [0, 1] (1 = ideal pausing). **Brightness = function(pause_score).**
+**Live values:**
+- **`pause_score`** ∈ [0, 1] (1 = ideal pausing). **Brightness = function(pause_score).**
+- **`pitch_variance`** ∈ [0, 1] — fixed real-time metric (e.g. F0 variance over time). Currently a placeholder derived from voiced_ratio; can be replaced with real pitch computation.
 
 - **No pauses = bad.** **Too long / too many pauses = bad.** **Balanced pausing = good.**
 - Backend is **stateful per session**: 10 s rolling window; pause events = continuous silent runs ≥ 200 ms.
-- Frontend sends PCM chunks every 250–500 ms; backend returns `seq`, `t_ms`, `voiced_ratio`, `pause_score`.
+- Frontend sends PCM chunks every 250–500 ms; backend returns `seq`, `t_ms`, `voiced_ratio`, `pause_score`, `pitch_variance`.
 
 ---
 
@@ -42,7 +44,8 @@
   "t_ms": 10500,
   "voiced_ratio": 0.82,
   "pause_score": 0.91,
-  "pause_detected": true
+  "pause_detected": true,
+  "pitch_variance": 0.72
 }
 ```
 
@@ -53,6 +56,7 @@
 | `voiced_ratio`    | Fraction of **this chunk** that is “voiced” (0–1). **Gate:** when &lt; 0.15, backend returns **neutral** (`pause_score` = 1) so the UI doesn’t punish pauses. |
 | `pause_score`     | Single score 0–1: 1 = ideal pausing over the last 10 s; drops when pause ratio, pause frequency, or max pause length is off. |
 | `pause_detected`  | **true** when a pause event (≥200 ms silence) **just ended** in this chunk (user resumed speaking after a pause). Frontend can show a **red dot** on the green oval each time this is true (e.g. flash for ~300–500 ms). |
+| `pitch_variance`  | Real-time pitch variance 0–1 (fixed scale). Currently placeholder; can be replaced with F0-based computation. |
 
 With **X-Debug: 1** (or **true**), the response includes **`_debug`** so you can see why `pause_detected` is true or false:
 
