@@ -1048,6 +1048,74 @@ class DatabaseService:
     def v2_delete_post_question_pool(self, question_id: str):
         self.client.table("v2_post_recording_questions").delete().eq("id", question_id).execute()
 
+    def v2_get_post_question_pool_by_id(self, question_id: str):
+        result = self.client.table("v2_post_recording_questions").select("*").eq("id", question_id).execute()
+        return result.data[0] if result.data else None
+
+    # ---------- Per-student post-recording questions (same mechanism as focus_tasks) ----------
+    def v2_get_student_post_recording_questions(self, user_id: str):
+        result = (
+            self.client.table("v2_student_post_recording_questions")
+            .select("*")
+            .eq("user_id", user_id)
+            .order("order_index")
+            .order("created_at")
+            .execute()
+        )
+        return result.data or []
+
+    def v2_insert_student_post_recording_question(self, data: dict):
+        result = self.client.table("v2_student_post_recording_questions").insert(data).execute()
+        return result.data[0] if result.data else None
+
+    def v2_update_student_post_recording_question(self, question_id: str, data: dict):
+        payload = {}
+        for k in ("text", "order_index", "answer_type", "code"):
+            if k in data:
+                payload[k] = data[k]
+        if not payload:
+            result = self.client.table("v2_student_post_recording_questions").select("*").eq("id", question_id).execute()
+            return result.data[0] if result.data else None
+        result = self.client.table("v2_student_post_recording_questions").update(payload).eq("id", question_id).execute()
+        return result.data[0] if result.data else None
+
+    def v2_delete_student_post_recording_question(self, question_id: str):
+        self.client.table("v2_student_post_recording_questions").delete().eq("id", question_id).execute()
+
+    def v2_get_student_post_recording_questions_by_ids(self, ids: list):
+        """Fetch per-student post-recording questions by row ids (e.g. session post_question_ids)."""
+        if not ids:
+            return []
+        ids = [str(x) for x in ids]
+        result = self.client.table("v2_student_post_recording_questions").select("*").in_("id", ids).execute()
+        order = {str(x): i for i, x in enumerate(ids)}
+        rows = result.data or []
+        rows.sort(key=lambda r: order.get(str(r["id"]), 999))
+        return rows
+
+    def v2_sync_student_post_recording_questions_from_pool(self, user_id: str, pool_question_ids: list):
+        """Replace student's post-recording questions with copies from the pool. Same pattern as focus_tasks sync."""
+        self.client.table("v2_student_post_recording_questions").delete().eq("user_id", user_id).execute()
+        if not pool_question_ids:
+            return []
+        inserted = []
+        for idx, pool_id in enumerate(pool_question_ids):
+            row = self.v2_get_post_question_pool_by_id(pool_id)
+            if not row:
+                continue
+            data = {
+                "user_id": user_id,
+                "pool_question_id": pool_id,
+                "text": row["text"],
+                "order_index": idx,
+                "answer_type": row.get("answer_type", "text"),
+                "code": row.get("code"),
+            }
+            new_row = self.v2_insert_student_post_recording_question(data)
+            if new_row:
+                inserted.append(new_row)
+        return inserted
+
     # ---------- Warm-up tasks (per student; homework flow) ----------
     def v2_get_warm_up_tasks(self, user_id: str):
         result = (

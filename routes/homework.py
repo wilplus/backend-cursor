@@ -5,7 +5,7 @@ All routes under /v2/homework, require auth. Replaces the classic v2 flow for th
 from flask import Blueprint, request, jsonify
 from auth import require_auth
 from services.db import db
-from services.v2_flow_service import select_focus_task_for_performance_score_1, select_post_questions_v2
+from services.v2_flow_service import select_focus_task_for_performance_score_1
 from services.metrics_v2 import compute_performance_score_1, compute_metrics_v2
 from services.openai_service import openai_service
 from services.realtime_audio_metrics import process_pcm_chunk
@@ -451,23 +451,18 @@ def homework_submit_recording_2(session_id):
 @homework_bp.route("/session/<session_id>/questions", methods=["GET"])
 @require_auth
 def homework_get_questions(session_id):
-    """Get post-recording questions for this session (from overrides). If none, frontend skips step 4."""
+    """Get post-recording questions for this session from v2_student_post_recording_questions. If none, frontend skips step 4."""
     try:
         user_id = request.user_id
         session = db.v2_get_session(session_id, user_id)
         if not session or session.get("status") not in (STATUS_POST_QUESTIONS, STATUS_COMPLETED):
             return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found or wrong status"}), 404
 
-        overrides = db.v2_get_student_overrides(user_id)
-        assigned_ids = (overrides.get("assigned_post_question_ids") or []) if overrides else []
-        # 0 questions = skip step 4; 1 or more = show those questions
-        if not assigned_ids:
-            return jsonify({"questions": []}), 200
-        pool = db.v2_get_post_questions_by_ids(assigned_ids)
-        questions = select_post_questions_v2(pool, assigned_ids)
+        questions = db.v2_get_student_post_recording_questions(user_id)
         if not questions:
             return jsonify({"questions": []}), 200
-        db.v2_update_session(session_id, user_id, {"post_question_ids": [q["id"] for q in questions]})
+        # Store per-student row ids in session so post-answers can match by question_id
+        db.v2_update_session(session_id, user_id, {"post_question_ids": [str(q["id"]) for q in questions]})
         return jsonify({"questions": [{"id": q["id"], "text": q["text"], "answer_type": q.get("answer_type", "text")} for q in questions]}), 200
     except Exception as e:
         sentry_sdk.capture_exception(e)
@@ -496,13 +491,13 @@ def homework_submit_post_answers(session_id):
             return jsonify({"code": "RECORDING_NOT_FOUND"}), 404
 
         post_question_ids = session.get("post_question_ids") or []
+        student_questions = db.v2_get_student_post_recording_questions_by_ids(post_question_ids)
         emotion_achieved = False
         for ans in answers:
             qid = str(ans.get("question_id", ""))
             if qid not in post_question_ids:
                 continue
-            pool = db.v2_get_post_questions_by_ids(post_question_ids)
-            for q in pool:
+            for q in student_questions:
                 if str(q["id"]) == qid and q.get("code") == "emotion_achieved_check":
                     text = (ans.get("answer_text") or "").strip().upper()
                     emotion_achieved = text in ("YES", "Y", "1", "TRUE")
