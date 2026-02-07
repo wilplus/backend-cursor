@@ -176,6 +176,40 @@ def homework_get_warm_up_task(session_id):
         return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
 
 
+@homework_bp.route("/session/<session_id>/task-block", methods=["GET"])
+@require_auth
+def homework_get_task_block(session_id):
+    """Get task block (context_short, focus_task, metric_question_1/2/3) for step 2. Use when resuming so the 3 questions can be shown."""
+    try:
+        user_id = request.user_id
+        session = db.v2_get_session(session_id, user_id)
+        if not session or session.get("status") != STATUS_TASK_BLOCK:
+            return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found or not in task_block"}), 404
+        context_short = session.get("context_short") or ""
+        task_id = session.get("selected_task_id")
+        focus_task = db.v2_get_task(task_id) if task_id else None
+        focus_task_payload = (
+            {"id": focus_task["id"], "title": focus_task["title"], "prompt_text": focus_task.get("prompt_text")}
+            if focus_task else None
+        )
+        metric_questions = db.v2_get_metric_questions_for_flow()
+        q1 = metric_questions[0] if len(metric_questions) > 0 else {}
+        q2 = metric_questions[1] if len(metric_questions) > 1 else {}
+        q3 = metric_questions[2] if len(metric_questions) > 2 else {}
+        task_block = {
+            "context_short": context_short,
+            "focus_task": focus_task_payload,
+            "metric_question_1": q1,
+            "metric_question_2": q2,
+            "metric_question_3": q3,
+        }
+        return jsonify({"task_block": task_block}), 200
+    except Exception as e:
+        logger.error(f"Homework get task-block: {str(e)}")
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
+
+
 @homework_bp.route("/session/<session_id>/recording-1", methods=["POST"])
 @require_auth
 def homework_submit_recording_1(session_id):

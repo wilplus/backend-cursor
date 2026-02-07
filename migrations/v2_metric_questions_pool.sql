@@ -15,13 +15,12 @@ CREATE INDEX IF NOT EXISTS idx_v2_metric_questions_pool_order ON v2_metric_quest
 
 COMMENT ON TABLE v2_metric_questions_pool IS 'Pool of metric questions. Admin can add/edit/delete (same as warm-up-task-pool). Student flow uses first 3 by order_index as metric_question_1, metric_question_2, metric_question_3.';
 
--- Seed 3 default questions if pool is empty
+-- Seed 3 default questions in one go when pool is empty (so 3 questions always exist for flow)
 INSERT INTO v2_metric_questions_pool (text, order_index)
-SELECT 'How would you rate your pacing in that take?', 1
+SELECT v.text, v.order_index
+FROM (VALUES
+  ('How would you rate your pacing in that take?', 1),
+  ('How would you rate your vocal strength?', 2),
+  ('How would you rate your clarity and articulation?', 3)
+) AS v(text, order_index)
 WHERE NOT EXISTS (SELECT 1 FROM v2_metric_questions_pool LIMIT 1);
-INSERT INTO v2_metric_questions_pool (text, order_index)
-SELECT 'How would you rate your vocal strength?', 2
-WHERE (SELECT COUNT(*) FROM v2_metric_questions_pool) = 1;
-INSERT INTO v2_metric_questions_pool (text, order_index)
-SELECT 'How would you rate your clarity and articulation?', 3
-WHERE (SELECT COUNT(*) FROM v2_metric_questions_pool) = 2;
