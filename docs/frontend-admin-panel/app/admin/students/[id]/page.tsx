@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { ChevronLeft, FileText, Send } from "lucide-react";
 import SectionCard from "@/components/admin/SectionCard";
-import { adminApi, type StudentProfile, type Exercise, type PostQuestion, type Task, type WarmUpTask } from "@/lib/api/admin-client";
+import { adminApi, type StudentProfile, type Exercise, type PostQuestion, type WarmUpTask } from "@/lib/api/admin-client";
 import { toast } from "sonner";
 
 function Chip({
@@ -37,7 +37,6 @@ export default function AdminStudentProfilePage({ params }: { params: { id: stri
   const id = typeof params.id === "string" ? params.id : params.id[0];
   const [profile, setProfile] = useState<StudentProfile | null>(null);
   const [exercises, setExercises] = useState<Exercise[]>([]);
-  const [tasks, setTasks] = useState<Task[]>([]);
   const [postQuestions, setPostQuestions] = useState<PostQuestion[]>([]);
   const [warmUpTasks, setWarmUpTasks] = useState<WarmUpTask[]>([]);
   const [loading, setLoading] = useState(true);
@@ -52,11 +51,10 @@ export default function AdminStudentProfilePage({ params }: { params: { id: stri
     Promise.allSettled([
       adminApi.getStudentProfile(id),
       adminApi.getExercises(),
-      adminApi.getTasks(),
       adminApi.getPostQuestions(),
       adminApi.getWarmUpTasks(id),
     ])
-      .then(([profileRes, exercisesRes, tasksRes, questionsRes, warmUpRes]) => {
+      .then(([profileRes, exercisesRes, questionsRes, warmUpRes]) => {
         if (profileRes.status === "fulfilled") {
           setProfile(profileRes.value);
         } else {
@@ -64,7 +62,6 @@ export default function AdminStudentProfilePage({ params }: { params: { id: stri
           setProfile(null);
         }
         setExercises(exercisesRes.status === "fulfilled" ? exercisesRes.value : []);
-        setTasks(tasksRes.status === "fulfilled" ? tasksRes.value : []);
         setPostQuestions(questionsRes.status === "fulfilled" ? questionsRes.value : []);
         setWarmUpTasks(warmUpRes.status === "fulfilled" ? warmUpRes.value : []);
       })
@@ -126,7 +123,6 @@ export default function AdminStudentProfilePage({ params }: { params: { id: stri
       keywords_prompt: overridesDraft.keywords_prompt || undefined,
       emotion_check_question_text: overridesDraft.emotion_check_question_text || undefined,
       assigned_next_exercise_id: overridesDraft.assigned_next_exercise_id || undefined,
-      assigned_next_task_ids: overridesDraft.assigned_next_task_ids.length > 0 ? overridesDraft.assigned_next_task_ids : undefined,
     };
     if (overridesDraft.assigned_post_question_ids.length === 3) {
       payload.assigned_post_question_ids = overridesDraft.assigned_post_question_ids;
@@ -168,15 +164,6 @@ export default function AdminStudentProfilePage({ params }: { params: { id: stri
       ...prev,
       assigned_next_exercise_id: prev.assigned_next_exercise_id === exId ? "" : exId,
     }));
-  };
-
-  const toggleTask = (taskId: string) => {
-    setOverridesDraft((prev) => {
-      const ids = prev.assigned_next_task_ids.includes(taskId)
-        ? prev.assigned_next_task_ids.filter((x) => x !== taskId)
-        : [...prev.assigned_next_task_ids, taskId];
-      return { ...prev, assigned_next_task_ids: ids };
-    });
   };
 
   const openWarmUpCreate = () => {
@@ -378,23 +365,6 @@ export default function AdminStudentProfilePage({ params }: { params: { id: stri
               ))}
               {exercises.length === 0 && (
                 <span className="text-sm text-muted-foreground">No exercises in pool. Add from this page if your app supports it.</span>
-              )}
-            </div>
-          </div>
-          <div>
-            <p className="mb-2 text-sm font-medium">Tasks for this student (multi-select)</p>
-            <p className="mb-2 text-xs text-muted-foreground">Choose which tasks are available for this student. Newly added tasks appear here.</p>
-            <div className="flex flex-wrap gap-2">
-              {tasks.map((t) => (
-                <Chip
-                  key={t.id}
-                  label={t.title}
-                  selected={overridesDraft.assigned_next_task_ids.includes(t.id)}
-                  onToggle={() => toggleTask(t.id)}
-                />
-              ))}
-              {tasks.length === 0 && (
-                <span className="text-sm text-muted-foreground">No tasks in pool. Add one with the input above and click Add.</span>
               )}
             </div>
           </div>

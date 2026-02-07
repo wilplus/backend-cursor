@@ -80,16 +80,6 @@ export interface Exercise {
   created_at?: string;
 }
 
-export interface Task {
-  id: string;
-  title: string;
-  prompt_text?: string | null;
-  min_task_score?: number;
-  max_task_score?: number;
-  is_active?: boolean;
-  created_at?: string;
-}
-
 export interface PostQuestion {
   id: string;
   code?: string | null;
@@ -142,18 +132,6 @@ export const adminApi = {
 
   deleteExercise: (id: string) =>
     adminFetch<{ status: string }>(`/exercises/${id}`, { method: "DELETE" }),
-
-  getTasks: () =>
-    adminFetch<{ tasks: Task[] }>("/tasks").then((r) => r.tasks),
-
-  createTask: (data: Partial<Task> & { title: string }) =>
-    adminFetch<{ task: Task }>("/tasks", { method: "POST", body: data }),
-
-  updateTask: (id: string, data: Partial<Task>) =>
-    adminFetch<{ task: Task }>(`/tasks/${id}`, { method: "PUT", body: data }),
-
-  deleteTask: (id: string) =>
-    adminFetch<{ status: string }>(`/tasks/${id}`, { method: "DELETE" }),
 
   getPostQuestions: () =>
     adminFetch<{ questions: PostQuestion[] }>("/post-recording-questions").then((r) => r.questions),
