@@ -274,31 +274,47 @@ def v2_admin_tasks_delete(task_id):
 @v2_bp.route("/admin/post-recording-questions", methods=["GET"])
 @require_admin
 def v2_admin_post_questions_list():
-    result = db.client.table("v2_post_recording_questions").select("*").execute()
-    return jsonify({"questions": result.data or []}), 200
+    try:
+        result = db.client.table("v2_post_recording_questions").select("*").execute()
+        return jsonify({"questions": result.data or []}), 200
+    except Exception as err:
+        logger.warning("post-recording-questions GET failed: %s", err, exc_info=True)
+        return jsonify({"questions": []}), 200
 
 
 @v2_bp.route("/admin/post-recording-questions", methods=["POST"])
 @require_admin
 def v2_admin_post_questions_create():
     data = request.get_json() or {}
-    row = db.v2_insert_post_question_pool(data)
-    return jsonify({"question": row}), 201
+    try:
+        row = db.v2_insert_post_question_pool(data)
+        return jsonify({"question": row}), 201
+    except Exception as err:
+        logger.warning("post-recording-questions POST failed: %s", err, exc_info=True)
+        return jsonify({"error": "Failed to create post-recording question.", "detail": str(err)}), 503
 
 
 @v2_bp.route("/admin/post-recording-questions/<question_id>", methods=["PUT"])
 @require_admin
 def v2_admin_post_questions_update(question_id):
     data = request.get_json() or {}
-    row = db.v2_update_post_question_pool(question_id, data)
-    return jsonify({"question": row}), 200
+    try:
+        row = db.v2_update_post_question_pool(question_id, data)
+        return jsonify({"question": row}), 200
+    except Exception as err:
+        logger.warning("post-recording-questions PUT failed for %s: %s", question_id, err, exc_info=True)
+        return jsonify({"error": "Update failed.", "detail": str(err)}), 503
 
 
 @v2_bp.route("/admin/post-recording-questions/<question_id>", methods=["DELETE"])
 @require_admin
 def v2_admin_post_questions_delete(question_id):
-    db.v2_delete_post_question_pool(question_id)
-    return jsonify({"status": "ok"}), 200
+    try:
+        db.v2_delete_post_question_pool(question_id)
+        return jsonify({"status": "ok"}), 200
+    except Exception as err:
+        logger.warning("post-recording-questions DELETE failed for %s: %s", question_id, err, exc_info=True)
+        return jsonify({"error": "Delete failed.", "detail": str(err)}), 503
 
 
 # ---------- Admin: warm-up task pool (same pattern as post-recording-questions) ----------
@@ -379,8 +395,12 @@ def v2_admin_warm_up_task_pool_delete(pool_id):
 @v2_bp.route("/admin/students/<user_id>/warm-up-tasks", methods=["GET"])
 @require_admin
 def v2_admin_warm_up_tasks_list(user_id):
-    rows = db.v2_get_warm_up_tasks(user_id)
-    return jsonify({"warm_up_tasks": rows}), 200
+    try:
+        rows = db.v2_get_warm_up_tasks(user_id)
+        return jsonify({"warm_up_tasks": rows}), 200
+    except Exception as err:
+        logger.warning("warm-up-tasks GET failed for user %s: %s", user_id, err, exc_info=True)
+        return jsonify({"warm_up_tasks": []}), 200
 
 
 @v2_bp.route("/admin/students/<user_id>/warm-up-tasks", methods=["PUT"])
@@ -394,34 +414,54 @@ def v2_admin_warm_up_tasks_sync(user_id):
     if not isinstance(pool_task_ids, list):
         return jsonify({"error": "pool_task_ids must be a list"}), 400
     pool_task_ids = [str(x) for x in pool_task_ids]
-    rows = db.v2_sync_student_warm_up_tasks_from_pool(user_id, pool_task_ids)
-    return jsonify({"warm_up_tasks": rows}), 200
+    try:
+        rows = db.v2_sync_student_warm_up_tasks_from_pool(user_id, pool_task_ids)
+        return jsonify({"warm_up_tasks": rows}), 200
+    except Exception as err:
+        logger.warning("warm-up-tasks PUT sync failed for user %s: %s", user_id, err, exc_info=True)
+        return jsonify({"error": "v2_warm_up_tasks table missing or sync failed.", "detail": str(err)}), 503
 
 
 @v2_bp.route("/admin/students/<user_id>/warm-up-tasks", methods=["POST"])
 @require_admin
 def v2_admin_warm_up_tasks_create(user_id):
     data = request.get_json() or {}
+    text = (data.get("text") or "").strip()
+    if not text:
+        return jsonify({"error": "text is required"}), 400
     data["user_id"] = user_id
-    data.setdefault("order_index", 0)
-    data.setdefault("max_performance_score", 1.0)  # 0-1; show if student's last score <= this (easiest = 1.0)
-    row = db.v2_insert_warm_up_task(data)
-    return jsonify({"warm_up_task": row}), 201
+    data["text"] = text
+    data.setdefault("order_index", int(data.get("order_index", 0)))
+    data.setdefault("max_performance_score", float(data.get("max_performance_score", 1.0)))
+    try:
+        row = db.v2_insert_warm_up_task(data)
+        return jsonify({"warm_up_task": row}), 201
+    except Exception as err:
+        logger.warning("warm-up-tasks POST failed for user %s: %s", user_id, err, exc_info=True)
+        return jsonify({"error": "Failed to create warm-up task. Check v2_warm_up_tasks table exists.", "detail": str(err)}), 503
 
 
 @v2_bp.route("/admin/students/<user_id>/warm-up-tasks/<task_id>", methods=["PUT"])
 @require_admin
 def v2_admin_warm_up_tasks_update(user_id, task_id):
     data = request.get_json() or {}
-    row = db.v2_update_warm_up_task(task_id, data)
-    return jsonify({"warm_up_task": row}), 200
+    try:
+        row = db.v2_update_warm_up_task(task_id, data)
+        return jsonify({"warm_up_task": row}), 200
+    except Exception as err:
+        logger.warning("warm-up-tasks PUT update failed: %s", err, exc_info=True)
+        return jsonify({"error": "Update failed.", "detail": str(err)}), 503
 
 
 @v2_bp.route("/admin/students/<user_id>/warm-up-tasks/<task_id>", methods=["DELETE"])
 @require_admin
 def v2_admin_warm_up_tasks_delete(user_id, task_id):
-    db.v2_delete_warm_up_task(task_id)
-    return jsonify({"status": "ok"}), 200
+    try:
+        db.v2_delete_warm_up_task(task_id)
+        return jsonify({"status": "ok"}), 200
+    except Exception as err:
+        logger.warning("warm-up-tasks DELETE failed: %s", err, exc_info=True)
+        return jsonify({"error": "Delete failed.", "detail": str(err)}), 503
 
 
 # ---------- Admin: focus task pool (global) ----------
