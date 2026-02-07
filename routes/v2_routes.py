@@ -587,12 +587,15 @@ def v2_admin_focus_tasks_create(user_id):
     except Exception as err:
         err_str = str(err).lower()
         logger.warning("focus-tasks POST failed for user %s: %s", user_id, err, exc_info=True)
-        # Table missing or any DB error: return 503 so frontend doesn't get 500; hint to run migration
+        detail = str(err)
         if "relation" in err_str or "does not exist" in err_str or "42p01" in err_str:
-            return jsonify({"error": "v2_focus_tasks table missing. Run migrations/v2_focus_tasks.sql."}), 503
+            msg = "v2_focus_tasks table missing. Run migrations/v2_focus_tasks.sql."
+        else:
+            msg = "Failed to create focus task. Run migrations/v2_focus_tasks.sql if not done."
         return jsonify({
-            "error": "Failed to create focus task. Run migrations/v2_focus_tasks.sql if not done.",
-            "detail": str(err),
+            "error": msg,
+            "detail": detail,
+            "message": f"{msg} Server said: {detail}",
         }), 503
 
 
