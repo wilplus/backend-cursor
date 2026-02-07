@@ -319,20 +319,25 @@ def v2_admin_warm_up_task_pool_list():
 @require_admin
 def v2_admin_warm_up_task_pool_create():
     data = request.get_json() or {}
-    if not (data.get("text") or "").strip():
-        return jsonify({"error": "text is required"}), 400
+    text = (data.get("text") or "").strip()
+    if not text:
+        return jsonify({"error": "text is required", "hint": "Send JSON body: { \"text\": \"your task text\" }"}), 400
+    payload = {"text": text, "order_index": int(data.get("order_index", 0))}
     try:
-        payload = {"text": data["text"].strip(), "order_index": data.get("order_index", 0)}
-        if "max_performance_score" in data:
-            try:
-                payload["max_performance_score"] = float(data["max_performance_score"])
-            except (TypeError, ValueError):
-                payload["max_performance_score"] = 1.0
+        payload["max_performance_score"] = float(data.get("max_performance_score", 1.0))
+    except (TypeError, ValueError):
+        payload["max_performance_score"] = 1.0
+    try:
         result = db.client.table("v2_warm_up_task_pool").insert(payload).execute()
         row = result.data[0] if result.data else None
         return jsonify({"warm_up_task": row}), 201
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        err = str(e).lower()
+        hint = "Run migrations/v2_warm_up_task_pool.sql to create the table." if ("relation" in err or "does not exist" in err or "42p01" in err) else None
+        out = {"error": str(e)}
+        if hint:
+            out["hint"] = hint
+        return jsonify(out), 500
 
 
 @v2_bp.route("/admin/warm-up-task-pool/<pool_id>", methods=["PUT"])

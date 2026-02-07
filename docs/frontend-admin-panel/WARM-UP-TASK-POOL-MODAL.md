@@ -85,3 +85,27 @@ If your database was created before the pool existed, run the migration that add
 - **Existing DBs:** run `migrations/v2_warm_up_task_pool.sql`, then **`migrations/v2_warm_up_task_pool_seed.sql`** to copy existing `v2_warm_up_tasks` into the pool so the modal and the table show the same list.
 
 After that, the modal and the table show the same tasks. You can add pool items via the modal “Add” or via API; existing per-student warm-up tasks remain until you use “Confirm Selection” for that student (then they are replaced by the selected pool items).
+
+---
+
+## Debug: “Add” doesn’t work
+
+If clicking **Add** in the modal does nothing or fails:
+
+1. **Check the browser Network tab**
+   - When you click Add, is a **POST** request sent?
+   - **URL:** It must be **POST /api/admin/warm-up-task-pool** (your BFF). If you see POST to a different path (e.g. missing `warm-up-task-pool` or wrong prefix), the frontend is calling the wrong URL.
+   - **Request body:** Must be JSON, e.g. `{ "text": "Jump" }`. If the body is empty or uses a different key (e.g. `title` or `name`), the backend returns **400** with `"text is required"`.
+   - **Response status:**  
+     - **404** → BFF route for POST is missing. Add `src/app/api/admin/warm-up-task-pool/route.ts` with a POST handler that proxies to the backend.  
+     - **400** → Backend got no valid `text`. Ensure the frontend sends `JSON.stringify({ text: inputValue })` and `Content-Type: application/json`.  
+     - **401** → Auth failed; check that the BFF forwards the admin token.  
+     - **500** → Backend error. Open the **response body** (JSON). If it contains `"hint": "Run migrations/..."` then the **pool table doesn’t exist**: run **`migrations/v2_warm_up_task_pool.sql`** in Supabase.
+
+2. **Backend: ensure the pool table exists**
+   - In Supabase → SQL Editor, run **`migrations/v2_warm_up_task_pool.sql`** (create table `v2_warm_up_task_pool`).  
+   - If you skip this, GET returns an empty list (so the modal shows “No items in pool yet”) but **POST returns 500** when you try to add.
+
+3. **Frontend: what to send on Add**
+   - Call **POST /api/admin/warm-up-task-pool** with body `{ "text": "<user input>", "order_index": 0, "max_performance_score": 1 }`.  
+   - After a successful **201** response, use `response.warm_up_task` and either append it to the list in state or refetch GET warm-up-task-pool so the new item appears and “No items in pool yet” disappears.
