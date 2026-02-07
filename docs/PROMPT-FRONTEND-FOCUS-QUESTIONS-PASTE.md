@@ -1,6 +1,8 @@
 # Paste this in your frontend repo — Focus questions
 
-Backend is ready. Do the following on the **frontend** so the Focus questions section works (no more 404).
+Backend is ready. Do the following on the **frontend** so the Focus questions section works (no more 404/500).
+
+**If you saw HTTP 500 on focus-questions:** The backend was updated to always return **200** for `GET .../focus-questions` (with `focus_questions: []` if the table is missing or any DB error). Redeploy the backend so the fix is live. On the frontend, treat **200 + empty array** as “no focus questions” and do **not** show an error toast for that.
 
 ---
 
@@ -44,3 +46,11 @@ Same UX as **Warm-up tasks**. No limit on how many focus questions a student can
 - [ ] BFF proxies `GET/POST/PUT/DELETE` for `/api/admin/students/[id]/focus-questions` (and by `[questionId]` for PUT/DELETE) to backend `/v2/admin/students/.../focus-questions`.
 - [ ] Student profile loads focus questions on open and shows list + Add / Edit / Delete.
 - [ ] Optional: BFF for `/api/admin/focus-question-pool` and “Manage list” or “Add from pool” using pool + sync.
+
+---
+
+## 4. If you still get 500 (frontend checks)
+
+- **Backend must be redeployed** after the fix (GET focus-questions now returns 200 with empty list instead of 500 when the DB table is missing or errors).
+- **Do not treat 200 + empty `focus_questions` as an error.** Only show an error when the request fails (e.g. non-2xx status or network error). If your code does `if (!data.focus_questions?.length) showError()`, remove that for this endpoint — empty array is valid.
+- **Confirm the failing request:** In DevTools → Network, find the request to `focus-questions`. Check whether the **backend** returns 500 (then backend fix above + redeploy) or your **BFF** returns 500 (then fix BFF so it proxies to backend and returns the backend response; on backend error, BFF can return 200 with `{ focus_questions: [] }` so the page still loads).

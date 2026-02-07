@@ -1125,10 +1125,10 @@ class DatabaseService:
     def v2_delete_warm_up_task_pool(self, pool_id: str):
         self.client.table("v2_warm_up_task_pool").delete().eq("id", pool_id).execute()
 
-    # ---------- Focus questions (per student; same pattern as warm-up) ----------
-    def v2_get_focus_questions(self, user_id: str):
+    # ---------- Focus tasks (per student; same pattern as warm-up) ----------
+    def v2_get_focus_tasks(self, user_id: str):
         result = (
-            self.client.table("v2_focus_questions")
+            self.client.table("v2_focus_tasks")
             .select("*")
             .eq("user_id", user_id)
             .order("order_index")
@@ -1137,11 +1137,11 @@ class DatabaseService:
         )
         return result.data or []
 
-    def v2_insert_focus_question(self, data: dict):
-        result = self.client.table("v2_focus_questions").insert(data).execute()
+    def v2_insert_focus_task(self, data: dict):
+        result = self.client.table("v2_focus_tasks").insert(data).execute()
         return result.data[0] if result.data else None
 
-    def v2_update_focus_question(self, question_id: str, data: dict):
+    def v2_update_focus_task(self, task_id: str, data: dict):
         payload = {}
         if "text" in data:
             payload["text"] = data["text"]
@@ -1153,17 +1153,17 @@ class DatabaseService:
             except (TypeError, ValueError):
                 payload["max_performance_score"] = 1.0
         if not payload:
-            result = self.client.table("v2_focus_questions").select("*").eq("id", question_id).execute()
+            result = self.client.table("v2_focus_tasks").select("*").eq("id", task_id).execute()
             return result.data[0] if result.data else None
-        result = self.client.table("v2_focus_questions").update(payload).eq("id", question_id).execute()
+        result = self.client.table("v2_focus_tasks").update(payload).eq("id", task_id).execute()
         return result.data[0] if result.data else None
 
-    def v2_delete_focus_question(self, question_id: str):
-        self.client.table("v2_focus_questions").delete().eq("id", question_id).execute()
+    def v2_delete_focus_task(self, task_id: str):
+        self.client.table("v2_focus_tasks").delete().eq("id", task_id).execute()
 
-    def v2_get_focus_question_pool(self):
+    def v2_get_focus_task_pool(self):
         result = (
-            self.client.table("v2_focus_question_pool")
+            self.client.table("v2_focus_task_pool")
             .select("*")
             .order("order_index")
             .order("created_at")
@@ -1171,18 +1171,18 @@ class DatabaseService:
         )
         return result.data or []
 
-    def v2_get_focus_question_pool_by_id(self, pool_id: str):
-        result = self.client.table("v2_focus_question_pool").select("*").eq("id", pool_id).execute()
+    def v2_get_focus_task_pool_by_id(self, pool_id: str):
+        result = self.client.table("v2_focus_task_pool").select("*").eq("id", pool_id).execute()
         return result.data[0] if result.data else None
 
-    def v2_insert_focus_question_pool(self, data: dict):
+    def v2_insert_focus_task_pool(self, data: dict):
         data = dict(data)
         data.setdefault("order_index", 0)
         data.setdefault("max_performance_score", 1.0)
-        result = self.client.table("v2_focus_question_pool").insert(data).execute()
+        result = self.client.table("v2_focus_task_pool").insert(data).execute()
         return result.data[0] if result.data else None
 
-    def v2_update_focus_question_pool(self, pool_id: str, data: dict):
+    def v2_update_focus_task_pool(self, pool_id: str, data: dict):
         payload = {}
         if "text" in data:
             payload["text"] = data["text"]
@@ -1194,31 +1194,31 @@ class DatabaseService:
             except (TypeError, ValueError):
                 payload["max_performance_score"] = 1.0
         if not payload:
-            return self.v2_get_focus_question_pool_by_id(pool_id)
-        result = self.client.table("v2_focus_question_pool").update(payload).eq("id", pool_id).execute()
+            return self.v2_get_focus_task_pool_by_id(pool_id)
+        result = self.client.table("v2_focus_task_pool").update(payload).eq("id", pool_id).execute()
         return result.data[0] if result.data else None
 
-    def v2_delete_focus_question_pool(self, pool_id: str):
-        self.client.table("v2_focus_question_pool").delete().eq("id", pool_id).execute()
+    def v2_delete_focus_task_pool(self, pool_id: str):
+        self.client.table("v2_focus_task_pool").delete().eq("id", pool_id).execute()
 
-    def v2_sync_student_focus_questions_from_pool(self, user_id: str, pool_question_ids: list):
-        """Replace student's focus questions with copies from the pool. pool_question_ids = list of v2_focus_question_pool ids in display order."""
-        self.client.table("v2_focus_questions").delete().eq("user_id", user_id).execute()
-        if not pool_question_ids:
+    def v2_sync_student_focus_tasks_from_pool(self, user_id: str, pool_task_ids: list):
+        """Replace student's focus tasks with copies from the pool. pool_task_ids = list of v2_focus_task_pool ids in display order."""
+        self.client.table("v2_focus_tasks").delete().eq("user_id", user_id).execute()
+        if not pool_task_ids:
             return []
         inserted = []
-        for idx, pool_id in enumerate(pool_question_ids):
-            row = self.v2_get_focus_question_pool_by_id(pool_id)
+        for idx, pool_id in enumerate(pool_task_ids):
+            row = self.v2_get_focus_task_pool_by_id(pool_id)
             if not row:
                 continue
             data = {
                 "user_id": user_id,
-                "pool_question_id": pool_id,
+                "pool_task_id": pool_id,
                 "text": row["text"],
                 "order_index": idx,
                 "max_performance_score": float(row.get("max_performance_score", 1.0)),
             }
-            new_row = self.v2_insert_focus_question(data)
+            new_row = self.v2_insert_focus_task(data)
             if new_row:
                 inserted.append(new_row)
         return inserted
