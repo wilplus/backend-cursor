@@ -75,3 +75,10 @@ Run **`migrations/v2_pitch_variance_and_custom_metrics.sql`** to add:
 - [x] On session start: snapshot 3 questions into session.
 - [x] On session end (post-answers): run analyze_custom_questions(transcript, [q1,q2,q3]), store and return the 6 result fields.
 - [x] Real-time response includes pitch_variance.
+
+---
+
+## Frontend: Metrics editor (list of questions)
+
+- **Do not show Pitch Variance in the list.** The "Metrics" editor should list only the **3 custom questions** (metric_question_1, metric_question_2, metric_question_3). Pitch variance is a real-time value (from recording-metrics-chunk), not an editable question — remove any "Pitch Variance" card from the metrics list.
+- **Design like warm-up tasks:** Show the 3 questions as a **simple list of rounded input fields**, one per row (e.g. one line of text per question, like "How was your day?" / "How is your mood today?"). No separate "Metric Question 1" / "Metric Question 2" cards with bold titles and "(editable)" labels — use the same minimal style as the warm-up task list: plain inputs in a list, optional light background per row.
