@@ -303,11 +303,67 @@ def v2_admin_post_questions_delete(question_id):
     return jsonify({"status": "ok"}), 200
 
 
+# ---------- Admin: warm-up task pool (global; for "Select Warm-up Tasks" modal) ----------
+@v2_bp.route("/admin/warm-up-task-pool", methods=["GET"])
+@require_admin
+def v2_admin_warm_up_task_pool_list():
+    rows = db.v2_get_warm_up_task_pool()
+    return jsonify({"warm_up_task_pool": rows}), 200
+
+
+@v2_bp.route("/admin/warm-up-task-pool", methods=["POST"])
+@require_admin
+def v2_admin_warm_up_task_pool_create():
+    data = request.get_json() or {}
+    if not (data.get("text") or "").strip():
+        return jsonify({"error": "text is required"}), 400
+    payload = {"text": data["text"].strip(), "order_index": data.get("order_index", 0)}
+    if "max_performance_score" in data:
+        try:
+            payload["max_performance_score"] = float(data["max_performance_score"])
+        except (TypeError, ValueError):
+            payload["max_performance_score"] = 1.0
+    row = db.v2_insert_warm_up_task_pool(payload)
+    return jsonify({"warm_up_task": row}), 201
+
+
+@v2_bp.route("/admin/warm-up-task-pool/<pool_id>", methods=["PUT"])
+@require_admin
+def v2_admin_warm_up_task_pool_update(pool_id):
+    data = request.get_json() or {}
+    row = db.v2_update_warm_up_task_pool(pool_id, data)
+    if not row:
+        return jsonify({"error": "Pool task not found"}), 404
+    return jsonify({"warm_up_task": row}), 200
+
+
+@v2_bp.route("/admin/warm-up-task-pool/<pool_id>", methods=["DELETE"])
+@require_admin
+def v2_admin_warm_up_task_pool_delete(pool_id):
+    db.v2_delete_warm_up_task_pool(pool_id)
+    return jsonify({"status": "ok"}), 200
+
+
 # ---------- Admin: warm-up tasks (per student; homework flow) ----------
 @v2_bp.route("/admin/students/<user_id>/warm-up-tasks", methods=["GET"])
 @require_admin
 def v2_admin_warm_up_tasks_list(user_id):
     rows = db.v2_get_warm_up_tasks(user_id)
+    return jsonify({"warm_up_tasks": rows}), 200
+
+
+@v2_bp.route("/admin/students/<user_id>/warm-up-tasks", methods=["PUT"])
+@require_admin
+def v2_admin_warm_up_tasks_sync(user_id):
+    """Set this student's warm-up tasks from the pool. Body: { "pool_task_ids": [uuid, ...] } (order = display order)."""
+    data = request.get_json() or {}
+    pool_task_ids = data.get("pool_task_ids")
+    if pool_task_ids is None:
+        return jsonify({"error": "pool_task_ids is required"}), 400
+    if not isinstance(pool_task_ids, list):
+        return jsonify({"error": "pool_task_ids must be a list"}), 400
+    pool_task_ids = [str(x) for x in pool_task_ids]
+    rows = db.v2_sync_student_warm_up_tasks_from_pool(user_id, pool_task_ids)
     return jsonify({"warm_up_tasks": rows}), 200
 
 

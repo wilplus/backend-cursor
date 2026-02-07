@@ -263,3 +263,24 @@ DO $$ BEGIN
 END $$;
 
 COMMENT ON COLUMN v2_warm_up_tasks.max_performance_score IS 'Show this warm-up to students with last performance_score_end <= this value (0-1). Easiest = 1.0. Selection: eligible where max_performance_score >= last_score; then closest ±3%%; random if ties.';
+
+-- ============================================================================
+-- 7) Warm-up task pool (global pool; admin selects which apply per student)
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS v2_warm_up_task_pool (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  text TEXT NOT NULL,
+  order_index INT NOT NULL DEFAULT 0,
+  max_performance_score DECIMAL(3,2) DEFAULT 1.00 CHECK (max_performance_score >= 0 AND max_performance_score <= 1),
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_v2_warm_up_task_pool_order ON v2_warm_up_task_pool(order_index);
+
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'v2_warm_up_tasks' AND column_name = 'pool_task_id') THEN
+    ALTER TABLE v2_warm_up_tasks
+    ADD COLUMN pool_task_id UUID REFERENCES v2_warm_up_task_pool(id) ON DELETE SET NULL;
+  END IF;
+END $$;

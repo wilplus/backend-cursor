@@ -1084,6 +1084,69 @@ class DatabaseService:
     def v2_delete_warm_up_task(self, task_id: str):
         self.client.table("v2_warm_up_tasks").delete().eq("id", task_id).execute()
 
+    # ---------- Warm-up task pool (global pool; assign to students via modal) ----------
+    def v2_get_warm_up_task_pool(self):
+        result = (
+            self.client.table("v2_warm_up_task_pool")
+            .select("*")
+            .order("order_index")
+            .order("created_at")
+            .execute()
+        )
+        return result.data or []
+
+    def v2_get_warm_up_task_pool_by_id(self, pool_id: str):
+        result = self.client.table("v2_warm_up_task_pool").select("*").eq("id", pool_id).execute()
+        return result.data[0] if result.data else None
+
+    def v2_insert_warm_up_task_pool(self, data: dict):
+        data = dict(data)
+        data.setdefault("order_index", 0)
+        data.setdefault("max_performance_score", 1.0)
+        result = self.client.table("v2_warm_up_task_pool").insert(data).execute()
+        return result.data[0] if result.data else None
+
+    def v2_update_warm_up_task_pool(self, pool_id: str, data: dict):
+        payload = {}
+        if "text" in data:
+            payload["text"] = data["text"]
+        if "order_index" in data:
+            payload["order_index"] = int(data["order_index"])
+        if "max_performance_score" in data:
+            try:
+                payload["max_performance_score"] = float(data["max_performance_score"])
+            except (TypeError, ValueError):
+                payload["max_performance_score"] = 1.0
+        if not payload:
+            return self.v2_get_warm_up_task_pool_by_id(pool_id)
+        result = self.client.table("v2_warm_up_task_pool").update(payload).eq("id", pool_id).execute()
+        return result.data[0] if result.data else None
+
+    def v2_delete_warm_up_task_pool(self, pool_id: str):
+        self.client.table("v2_warm_up_task_pool").delete().eq("id", pool_id).execute()
+
+    def v2_sync_student_warm_up_tasks_from_pool(self, user_id: str, pool_task_ids: list):
+        """Replace student's warm-up tasks with copies from the pool. pool_task_ids = list of v2_warm_up_task_pool ids in display order."""
+        self.client.table("v2_warm_up_tasks").delete().eq("user_id", user_id).execute()
+        if not pool_task_ids:
+            return []
+        inserted = []
+        for idx, pool_id in enumerate(pool_task_ids):
+            row = self.v2_get_warm_up_task_pool_by_id(pool_id)
+            if not row:
+                continue
+            data = {
+                "user_id": user_id,
+                "pool_task_id": pool_id,
+                "text": row["text"],
+                "order_index": idx,
+                "max_performance_score": float(row.get("max_performance_score", 1.0)),
+            }
+            new_row = self.v2_insert_warm_up_task(data)
+            if new_row:
+                inserted.append(new_row)
+        return inserted
+
     def v2_get_last_homework_performance_score(self, user_id: str):
         """Last completed homework session's performance_score_end (0-1), or None if no completed session."""
         result = (
