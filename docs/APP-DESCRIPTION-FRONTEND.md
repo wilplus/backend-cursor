@@ -179,7 +179,7 @@ The profile page is organized into sections:
 - **Send homework:** Button that calls **POST /api/admin/students/:id/send-assignment** (no body). Used to notify or mark that homework is assigned.
 - **Save:** Saves overrides via **PUT /api/admin/students/:id/overrides** (body: **assigned_next_task_ids**, **assigned_post_question_ids** (exactly 3 when set), optionally **assigned_warm_up_task_id**). This configures which focus tasks and which three reflective questions the student sees (and optionally a fixed warm-up).
 - **Warm-up tasks:** List of warm-up tasks for this student. Each has **text** and **max_performance_score** (0–1). Admin can add (POST), edit (PUT), and delete (DELETE) via **/api/admin/students/:id/warm-up-tasks** and **.../warm-up-tasks/:task_id**. **max_performance_score** controls which students see this warm-up (backend selects warm-ups where student’s last score ≤ this value; closest match ±3%, then random).
-- **Focus tasks:** The student’s **assigned_next_task_ids** (from the global task pool). Admin picks from **GET /api/admin/tasks** and saves via **PUT .../overrides** with **assigned_next_task_ids**.
+- **Focus tasks:** The student’s **assigned_next_task_ids** (from the global task pool). Admin manages tasks only from the student profile (no separate Tasks tab): use "Select Focus Tasks", add tasks with Add or pick from the pool; save via **PUT .../overrides** with **assigned_next_task_ids**.
 - **Reflective questions:** The student’s **assigned_post_question_ids** (exactly 3). Admin picks from **GET /api/admin/post-recording-questions** and saves via **PUT .../overrides** with **assigned_post_question_ids**. If this list is **empty** (or not 3), the student sees **no** reflective questions in the homework flow.
 - **Metric questions (1 & 2):** Global metric questions (e.g. pacing, vocal strength) are managed via **GET/POST/PUT/DELETE /api/admin/metric-questions**. They are shown in the task block after the first recording.
 - **Metrics (e.g. 5 labels):** Global metric definitions (e.g. pace, strength, fillers) via **GET /api/admin/metrics** and **PUT /api/admin/metrics**.
@@ -193,9 +193,11 @@ The profile page is organized into sections:
 - **Last report:** Shown from profile’s **last_report** (full text) and **last_report_preview** (e.g. 500 chars).
 - **Reports history:** From **sessions**: each session has **report_preview.report_text_preview** and **created_at**. Admin can open a session to see full details (and optionally edit report) via **GET /api/admin/students/:id/sessions/:session_id** and **PATCH .../sessions/:session_id/report** (append/replace report content).
 
-### Global pools (admin)
+### Global pools (admin) — no separate Tasks/Exercises/Questions tabs
 
-- **Tasks:** **GET/POST/PUT/DELETE /api/admin/tasks** — used as the pool for **assigned_next_task_ids** (focus tasks).
+Admin has **only the Students tab**. Tasks, post-recording questions, and metric questions are managed from each student's profile (modals/dropdowns), not from separate top-level pages.
+
+- **Tasks:** **GET/POST/PUT/DELETE /api/admin/tasks** — pool for **assigned_next_task_ids** (focus tasks). Add tasks in the "Select Focus Tasks" modal on the student profile.
 - **Post-recording questions:** **GET/POST/PUT/DELETE /api/admin/post-recording-questions** — used for **assigned_post_question_ids** (exactly 3 per student).
 - **Metrics:** **GET/PUT /api/admin/metrics** — fixed set of metric labels (e.g. 5).
 - **Metric questions:** **GET/POST/PUT/DELETE /api/admin/metric-questions** — the two questions shown after the first recording (e.g. pacing, vocal strength).

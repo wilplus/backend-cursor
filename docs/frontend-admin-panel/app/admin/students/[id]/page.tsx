@@ -377,7 +377,7 @@ export default function AdminStudentProfilePage({ params }: { params: { id: stri
                 />
               ))}
               {exercises.length === 0 && (
-                <span className="text-sm text-muted-foreground">No exercises in pool. Add them on the Exercises tab.</span>
+                <span className="text-sm text-muted-foreground">No exercises in pool. Add from this page if your app supports it.</span>
               )}
             </div>
           </div>
@@ -394,7 +394,7 @@ export default function AdminStudentProfilePage({ params }: { params: { id: stri
                 />
               ))}
               {tasks.length === 0 && (
-                <span className="text-sm text-muted-foreground">No tasks in pool. Add them on the Tasks tab.</span>
+                <span className="text-sm text-muted-foreground">No tasks in pool. Add one with the input above and click Add.</span>
               )}
             </div>
           </div>
@@ -417,7 +417,7 @@ export default function AdminStudentProfilePage({ params }: { params: { id: stri
               ))}
             </div>
             {postQuestions.length === 0 && (
-              <span className="text-sm text-muted-foreground">No questions in pool. Add them on the Questions tab.</span>
+              <span className="text-sm text-muted-foreground">No questions in pool. Add from this page if your app supports it.</span>
             )}
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
