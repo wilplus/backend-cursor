@@ -96,3 +96,20 @@ The `getAuth` import path depends on where your auth helper lives. From `src/app
 The backend expects **assigned_post_question_ids** to be either omitted or **exactly 3** IDs. If you send 0, 1, 2, or 4+, the backend returns 400 and the save fails. Your frontend should only include `assigned_post_question_ids` in the payload when the user has selected exactly 3 questions (the reference does this).
 
 After adding the two BFF routes and fixing the import, Save should persist correctly.
+
+## 5. Warm-up task "Max score" doesn't save
+
+If warm-up **questions** save but changing **Max score** does not persist:
+
+1. **Backend** accepts `max_performance_score` (0–1) on PUT to `/v2/admin/students/:id/warm-up-tasks/:taskId`. The BFF route forwards the full body, so no BFF change is needed.
+2. **Frontend** must send `max_performance_score` in the **PUT body** when updating a warm-up task. For example:
+   - When the user changes the Max score input, call your update API with `{ max_performance_score: value }` (e.g. on **blur** or with a per-row Save).
+   - When saving the Edit modal, include `max_performance_score` in the payload along with `text` (and optionally `order_index`).
+
+Example update payload that persists the score:
+
+```json
+{ "text": "How are you doing today?", "max_performance_score": 1 }
+```
+
+The reference admin client and student profile page in this repo now include `max_performance_score` in `WarmUpTask`, in `createWarmUpTask` / `updateWarmUpTask` payloads, and an inline Max score input that saves on blur.

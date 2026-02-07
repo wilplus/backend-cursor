@@ -45,6 +45,7 @@ export default function AdminStudentProfilePage({ params }: { params: { id: stri
   const [warmUpModalOpen, setWarmUpModalOpen] = useState(false);
   const [warmUpEditing, setWarmUpEditing] = useState<WarmUpTask | null>(null);
   const [warmUpFormText, setWarmUpFormText] = useState("");
+  const [warmUpFormScore, setWarmUpFormScore] = useState<number>(1);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -169,11 +170,13 @@ export default function AdminStudentProfilePage({ params }: { params: { id: stri
   const openWarmUpCreate = () => {
     setWarmUpEditing(null);
     setWarmUpFormText("");
+    setWarmUpFormScore(1);
     setWarmUpModalOpen(true);
   };
   const openWarmUpEdit = (w: WarmUpTask) => {
     setWarmUpEditing(w);
     setWarmUpFormText(w.text);
+    setWarmUpFormScore(w.max_performance_score ?? 1);
     setWarmUpModalOpen(true);
   };
   const saveWarmUp = () => {
@@ -181,9 +184,10 @@ export default function AdminStudentProfilePage({ params }: { params: { id: stri
       toast.error("Text is required");
       return;
     }
+    const score = Math.min(1, Math.max(0, Number(warmUpFormScore) || 1));
     if (warmUpEditing) {
       adminApi
-        .updateWarmUpTask(id, warmUpEditing.id, { text: warmUpFormText.trim() })
+        .updateWarmUpTask(id, warmUpEditing.id, { text: warmUpFormText.trim(), max_performance_score: score })
         .then(() => {
           toast.success("Warm-up task updated");
           setWarmUpModalOpen(false);
@@ -192,7 +196,7 @@ export default function AdminStudentProfilePage({ params }: { params: { id: stri
         .catch((e) => toast.error(e.message));
     } else {
       adminApi
-        .createWarmUpTask(id, { text: warmUpFormText.trim(), order_index: warmUpTasks.length })
+        .createWarmUpTask(id, { text: warmUpFormText.trim(), order_index: warmUpTasks.length, max_performance_score: score })
         .then(() => {
           toast.success("Warm-up task added");
           setWarmUpModalOpen(false);
@@ -200,6 +204,16 @@ export default function AdminStudentProfilePage({ params }: { params: { id: stri
         })
         .catch((e) => toast.error(e.message));
     }
+  };
+  const saveWarmUpScore = (taskId: string, value: number) => {
+    const score = Math.min(1, Math.max(0, value));
+    adminApi
+      .updateWarmUpTask(id, taskId, { max_performance_score: score })
+      .then(() => {
+        toast.success("Max score saved");
+        load();
+      })
+      .catch((e) => toast.error(e.message));
   };
   const deleteWarmUp = (taskId: string) => {
     if (!confirm("Delete this warm-up task?")) return;
@@ -264,8 +278,25 @@ export default function AdminStudentProfilePage({ params }: { params: { id: stri
                 key={w.id}
                 className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-muted/30 px-4 py-3"
               >
-                <p className="text-sm">{w.text}</p>
-                <div className="flex gap-2">
+                <p className="text-sm flex-1 min-w-0">{w.text}</p>
+                <div className="flex items-center gap-2">
+                  <label className="text-sm text-muted-foreground whitespace-nowrap">
+                    Max score
+                    <input
+                      type="number"
+                      min={0}
+                      max={1}
+                      step={0.1}
+                      className="ml-2 w-14 rounded border border-input px-2 py-1 text-sm"
+                      defaultValue={w.max_performance_score ?? 1}
+                      onBlur={(e) => {
+                        const v = Number(e.target.value);
+                        if (!Number.isNaN(v) && v !== (w.max_performance_score ?? 1)) {
+                          saveWarmUpScore(w.id, v);
+                        }
+                      }}
+                    />
+                  </label>
                   <button
                     type="button"
                     onClick={() => openWarmUpEdit(w)}
@@ -298,6 +329,18 @@ export default function AdminStudentProfilePage({ params }: { params: { id: stri
                 rows={3}
                 value={warmUpFormText}
                 onChange={(e) => setWarmUpFormText(e.target.value)}
+              />
+            </div>
+            <div className="mt-4">
+              <label className="mb-2 block text-sm font-medium">Max score (0–1)</label>
+              <input
+                type="number"
+                min={0}
+                max={1}
+                step={0.1}
+                className="w-24 rounded-md border border-input px-3 py-2 text-sm"
+                value={warmUpFormScore}
+                onChange={(e) => setWarmUpFormScore(Number(e.target.value) || 1)}
               />
             </div>
             <div className="mt-6 flex justify-end gap-2">

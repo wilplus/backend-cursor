@@ -93,6 +93,7 @@ export interface WarmUpTask {
   user_id: string;
   text: string;
   order_index: number;
+  max_performance_score?: number;
   created_at?: string;
 }
 
@@ -149,10 +150,10 @@ export const adminApi = {
   getWarmUpTasks: (userId: string) =>
     adminFetch<{ warm_up_tasks: WarmUpTask[] }>(`/students/${userId}/warm-up-tasks`).then((r) => r.warm_up_tasks),
 
-  createWarmUpTask: (userId: string, data: { text: string; order_index?: number }) =>
+  createWarmUpTask: (userId: string, data: { text: string; order_index?: number; max_performance_score?: number }) =>
     adminFetch<{ warm_up_task: WarmUpTask }>(`/students/${userId}/warm-up-tasks`, { method: "POST", body: data }),
 
-  updateWarmUpTask: (userId: string, taskId: string, data: { text?: string; order_index?: number }) =>
+  updateWarmUpTask: (userId: string, taskId: string, data: { text?: string; order_index?: number; max_performance_score?: number }) =>
     adminFetch<{ warm_up_task: WarmUpTask }>(`/students/${userId}/warm-up-tasks/${taskId}`, { method: "PUT", body: data }),
 
   deleteWarmUpTask: (userId: string, taskId: string) =>

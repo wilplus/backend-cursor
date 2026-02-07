@@ -1065,7 +1065,20 @@ class DatabaseService:
         return result.data[0] if result.data else None
 
     def v2_update_warm_up_task(self, task_id: str, data: dict):
-        result = self.client.table("v2_warm_up_tasks").update(data).eq("id", task_id).execute()
+        payload = {}
+        if "text" in data:
+            payload["text"] = data["text"]
+        if "order_index" in data:
+            payload["order_index"] = int(data["order_index"])
+        if "max_performance_score" in data:
+            try:
+                payload["max_performance_score"] = float(data["max_performance_score"])
+            except (TypeError, ValueError):
+                payload["max_performance_score"] = 1.0
+        if not payload:
+            result = self.client.table("v2_warm_up_tasks").select("*").eq("id", task_id).execute()
+            return result.data[0] if result.data else None
+        result = self.client.table("v2_warm_up_tasks").update(payload).eq("id", task_id).execute()
         return result.data[0] if result.data else None
 
     def v2_delete_warm_up_task(self, task_id: str):
