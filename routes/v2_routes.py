@@ -419,7 +419,12 @@ def v2_admin_warm_up_tasks_sync(user_id):
         return jsonify({"warm_up_tasks": rows}), 200
     except Exception as err:
         logger.warning("warm-up-tasks PUT sync failed for user %s: %s", user_id, err, exc_info=True)
-        return jsonify({"error": "v2_warm_up_tasks table missing or sync failed.", "detail": str(err)}), 503
+        detail = str(err)
+        return jsonify({
+            "error": "v2_warm_up_tasks table missing or sync failed.",
+            "detail": detail,
+            "message": f"Confirm selection failed. Server said: {detail}",
+        }), 503
 
 
 @v2_bp.route("/admin/students/<user_id>/warm-up-tasks", methods=["POST"])

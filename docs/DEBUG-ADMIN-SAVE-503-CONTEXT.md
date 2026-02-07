@@ -71,6 +71,7 @@
 | Warm-up pool only | `migrations/v2_warm_up_task_pool.sql` |
 | Debug focus 503 | `docs/DEBUG-503-FOCUS-TASKS.md` |
 | Debug warm-up 503 | `docs/DEBUG-503-WARM-UP-TASKS.md` |
+| "Confirm selection" doesn't work (warm-up) | `docs/DEBUG-WARM-UP-CONFIRM-SELECTION.md` |
 
 ---
 
