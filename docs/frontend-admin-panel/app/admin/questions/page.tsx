@@ -107,7 +107,7 @@ export default function AdminQuestionsPage() {
 
       <SectionCard
         title="Question pool"
-        description="Questions shown after a recording. Assign exactly 3 per student on their profile."
+        description="Questions shown after a recording. Assign 0 or any number per student on their profile."
         action={
           <button
             type="button"

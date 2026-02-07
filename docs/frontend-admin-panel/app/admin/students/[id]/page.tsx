@@ -46,6 +46,10 @@ export default function AdminStudentProfilePage({ params }: { params: { id: stri
   const [warmUpEditing, setWarmUpEditing] = useState<WarmUpTask | null>(null);
   const [warmUpFormText, setWarmUpFormText] = useState("");
   const [warmUpFormScore, setWarmUpFormScore] = useState<number>(1);
+  const [postQuestionModalOpen, setPostQuestionModalOpen] = useState(false);
+  const [postQuestionEditing, setPostQuestionEditing] = useState<PostQuestion | null>(null);
+  const [postQuestionFormText, setPostQuestionFormText] = useState("");
+  const [postQuestionFormAnswerType, setPostQuestionFormAnswerType] = useState<"yes_no" | "scale_1_5" | "text">("text");
 
   const load = useCallback(() => {
     setLoading(true);
@@ -125,9 +129,7 @@ export default function AdminStudentProfilePage({ params }: { params: { id: stri
       emotion_check_question_text: overridesDraft.emotion_check_question_text || undefined,
       assigned_next_exercise_id: overridesDraft.assigned_next_exercise_id || undefined,
     };
-    if (overridesDraft.assigned_post_question_ids.length === 3) {
-      payload.assigned_post_question_ids = overridesDraft.assigned_post_question_ids;
-    }
+    payload.assigned_post_question_ids = overridesDraft.assigned_post_question_ids;
     adminApi
       .putOverrides(id, payload)
       .then(() => toast.success("Overrides saved"))
@@ -149,15 +151,6 @@ export default function AdminStudentProfilePage({ params }: { params: { id: stri
       .sendAssignment(id)
       .then(() => toast.success("Assignment sent"))
       .catch((e) => toast.error(e.message));
-  };
-
-  const togglePostQuestion = (qId: string) => {
-    setOverridesDraft((prev) => {
-      const ids = prev.assigned_post_question_ids.includes(qId)
-        ? prev.assigned_post_question_ids.filter((x) => x !== qId)
-        : [...prev.assigned_post_question_ids, qId].slice(0, 3);
-      return { ...prev, assigned_post_question_ids: ids };
-    });
   };
 
   const toggleExercise = (exId: string) => {
@@ -226,12 +219,83 @@ export default function AdminStudentProfilePage({ params }: { params: { id: stri
       .catch((e) => toast.error(e.message));
   };
 
+  const ANSWER_TYPES = [
+    { value: "yes_no" as const, label: "Yes / No" },
+    { value: "scale_1_5" as const, label: "Scale 1–5" },
+    { value: "text" as const, label: "Text" },
+  ];
+  const openPostQuestionCreate = () => {
+    setPostQuestionEditing(null);
+    setPostQuestionFormText("");
+    setPostQuestionFormAnswerType("text");
+    setPostQuestionModalOpen(true);
+  };
+  const openPostQuestionEdit = (q: PostQuestion) => {
+    setPostQuestionEditing(q);
+    setPostQuestionFormText(q.text);
+    setPostQuestionFormAnswerType((q.answer_type as "yes_no" | "scale_1_5" | "text") || "text");
+    setPostQuestionModalOpen(true);
+  };
+  const savePostQuestion = () => {
+    if (!postQuestionFormText.trim()) {
+      toast.error("Question text is required");
+      return;
+    }
+    if (postQuestionEditing) {
+      adminApi
+        .updatePostQuestion(postQuestionEditing.id, {
+          text: postQuestionFormText.trim(),
+          answer_type: postQuestionFormAnswerType,
+        })
+        .then(() => {
+          toast.success("Question updated");
+          setPostQuestionModalOpen(false);
+          load();
+        })
+        .catch((e) => toast.error(e.message));
+    } else {
+      adminApi
+        .createPostQuestion({
+          text: postQuestionFormText.trim(),
+          answer_type: postQuestionFormAnswerType,
+        })
+        .then(({ question }) => {
+          const newIds = [...overridesDraft.assigned_post_question_ids, question.id];
+          setOverridesDraft((p) => ({ ...p, assigned_post_question_ids: newIds }));
+          return adminApi.putOverrides(id, { ...overridesDraft, assigned_post_question_ids: newIds });
+        })
+        .then(() => {
+          toast.success("Question added and assigned");
+          setPostQuestionModalOpen(false);
+          load();
+        })
+        .catch((e) => toast.error(e.message));
+    }
+  };
+  const removePostQuestion = (qId: string) => {
+    setOverridesDraft((p) => ({
+      ...p,
+      assigned_post_question_ids: p.assigned_post_question_ids.filter((id) => id !== qId),
+    }));
+  };
+  const addPostQuestionFromPool = (qId: string) => {
+    if (overridesDraft.assigned_post_question_ids.includes(qId)) return;
+    setOverridesDraft((p) => ({
+      ...p,
+      assigned_post_question_ids: [...p.assigned_post_question_ids, qId],
+    }));
+  };
+
   if (loading || !profile) {
     return <p className="text-muted-foreground">Loading…</p>;
   }
 
-  const postCount = overridesDraft.assigned_post_question_ids.length;
-  const postError = postCount > 0 && postCount !== 3;
+  const assignedPostQuestions = overridesDraft.assigned_post_question_ids
+    .map((qId) => postQuestions.find((q) => q.id === qId))
+    .filter(Boolean) as PostQuestion[];
+  const unassignedPostQuestions = postQuestions.filter(
+    (q) => !overridesDraft.assigned_post_question_ids.includes(q.id)
+  );
 
   return (
     <div className="space-y-6">
@@ -363,6 +427,107 @@ export default function AdminStudentProfilePage({ params }: { params: { id: stri
         </div>
       )}
 
+      {postQuestionModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-lg rounded-xl bg-card p-6 shadow-lg max-h-[90vh] overflow-y-auto">
+            <h2 className="text-lg font-semibold">
+              {postQuestionEditing ? "Edit post-recording question" : "Add post-recording question"}
+            </h2>
+            {postQuestionEditing ? (
+              <div className="mt-4 space-y-4">
+                <div>
+                  <label className="mb-2 block text-sm font-medium">Question text</label>
+                  <textarea
+                    className="min-h-[80px] w-full rounded-md border border-input px-3 py-2 text-sm"
+                    rows={2}
+                    value={postQuestionFormText}
+                    onChange={(e) => setPostQuestionFormText(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="mb-2 block text-sm font-medium">Answer type</label>
+                  <select
+                    className="h-10 w-full rounded-md border border-input px-3 py-2 text-sm bg-background"
+                    value={postQuestionFormAnswerType}
+                    onChange={(e) =>
+                      setPostQuestionFormAnswerType(e.target.value as "yes_no" | "scale_1_5" | "text")
+                    }
+                  >
+                    {ANSWER_TYPES.map(({ value, label }) => (
+                      <option key={value} value={value}>{label}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            ) : (
+              <div className="mt-4 space-y-4">
+                <div>
+                  <label className="mb-2 block text-sm font-medium">Create new question</label>
+                  <textarea
+                    className="min-h-[80px] w-full rounded-md border border-input px-3 py-2 text-sm"
+                    rows={2}
+                    placeholder="Question text"
+                    value={postQuestionFormText}
+                    onChange={(e) => setPostQuestionFormText(e.target.value)}
+                  />
+                  <div className="mt-2">
+                    <label className="mb-1 block text-xs font-medium text-muted-foreground">Answer type</label>
+                    <select
+                      className="h-9 w-full rounded-md border border-input px-3 py-1.5 text-sm bg-background"
+                      value={postQuestionFormAnswerType}
+                      onChange={(e) =>
+                        setPostQuestionFormAnswerType(e.target.value as "yes_no" | "scale_1_5" | "text")
+                      }
+                    >
+                      {ANSWER_TYPES.map(({ value, label }) => (
+                        <option key={value} value={value}>{label}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                {unassignedPostQuestions.length > 0 && (
+                  <div>
+                    <label className="mb-2 block text-sm font-medium">Or add from pool</label>
+                    <ul className="space-y-1 rounded-md border border-input p-2 max-h-40 overflow-y-auto">
+                      {unassignedPostQuestions.map((q) => (
+                        <li key={q.id}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              addPostQuestionFromPool(q.id);
+                              setPostQuestionModalOpen(false);
+                            }}
+                            className="w-full text-left rounded px-2 py-1.5 text-sm hover:bg-muted"
+                          >
+                            {q.text.slice(0, 60)}{q.text.length > 60 ? "…" : ""}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
+            <div className="mt-6 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setPostQuestionModalOpen(false)}
+                className="rounded-md border border-input px-4 py-2 text-sm hover:bg-muted"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={savePostQuestion}
+                className="rounded-md bg-[hsl(24_95%_53%)] px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <SectionCard
         title="Homework Configuration"
         description="Assign exercise and post-recording questions for this student."
@@ -370,7 +535,7 @@ export default function AdminStudentProfilePage({ params }: { params: { id: stri
           <button
             type="button"
             onClick={saveOverrides}
-            disabled={saving || postError}
+            disabled={saving}
             className="rounded-md bg-[hsl(24_95%_53%)] px-3 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
           >
             Save
@@ -413,25 +578,53 @@ export default function AdminStudentProfilePage({ params }: { params: { id: stri
           </div>
           <div>
             <p className="mb-2 text-sm font-medium">
-              Post-Recording Questions ({postCount}/3 selected)
+              Post-Recording Questions ({assignedPostQuestions.length} assigned)
             </p>
-            <p className="mb-2 text-xs text-muted-foreground">All questions from the pool; newly added ones appear here. Select exactly 3.</p>
-            {postError && (
-              <p className="mb-2 text-sm text-destructive">Select exactly 3 questions.</p>
-            )}
-            <div className="flex flex-wrap gap-2">
-              {postQuestions.map((q) => (
-                <Chip
-                  key={q.id}
-                  label={q.text.slice(0, 30) + (q.text.length > 30 ? "…" : "")}
-                  selected={overridesDraft.assigned_post_question_ids.includes(q.id)}
-                  onToggle={() => togglePostQuestion(q.id)}
-                />
-              ))}
+            <p className="mb-2 text-xs text-muted-foreground">Optional. Add, edit, or remove questions for this student. No limit.</p>
+            <div className="flex flex-wrap items-center gap-2 mb-2">
+              <button
+                type="button"
+                onClick={openPostQuestionCreate}
+                className="rounded-md bg-[hsl(24_95%_53%)] px-3 py-2 text-sm font-medium text-white hover:opacity-90"
+              >
+                Add post-recording question
+              </button>
+              {unassignedPostQuestions.length > 0 && (
+                <span className="text-xs text-muted-foreground">
+                  or add from pool ({unassignedPostQuestions.length} available)
+                </span>
+              )}
             </div>
-            {postQuestions.length === 0 && (
-              <span className="text-sm text-muted-foreground">No questions in pool. Add from this page if your app supports it.</span>
-            )}
+            <ul className="space-y-2">
+              {assignedPostQuestions.length === 0 ? (
+                <li className="text-sm text-muted-foreground">No post-recording questions. Add one or assign from the pool.</li>
+              ) : (
+                assignedPostQuestions.map((q) => (
+                  <li
+                    key={q.id}
+                    className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-muted/30 px-4 py-3"
+                  >
+                    <p className="text-sm flex-1 min-w-0">{q.text}</p>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => openPostQuestionEdit(q)}
+                        className="rounded-md border border-input px-3 py-1.5 text-sm hover:bg-muted"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => removePostQuestion(q.id)}
+                        className="rounded-md px-3 py-1.5 text-sm text-destructive hover:bg-destructive/10"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </li>
+                ))
+              )}
+            </ul>
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
