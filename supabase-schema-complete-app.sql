@@ -452,7 +452,16 @@ CREATE INDEX IF NOT EXISTS idx_v2_sessions_status ON v2_sessions(user_id, status
 CREATE INDEX IF NOT EXISTS idx_v2_speaker_profiles_updated ON v2_speaker_profiles(updated_at);
 
 -- ============================================================================
--- PART 5: SEED (minimal)
+-- PART 5: GRANTS (fix "permission denied for table" — Supabase roles need access)
+-- ============================================================================
+
+GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;
+GRANT ALL ON ALL TABLES IN SCHEMA public TO anon, authenticated, service_role;
+GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated, service_role;
+GRANT ALL ON ALL FUNCTIONS IN SCHEMA public TO anon, authenticated, service_role;
+
+-- ============================================================================
+-- PART 6: SEED (minimal)
 -- ============================================================================
 
 INSERT INTO admin_users (email, role, is_active)

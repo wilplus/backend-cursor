@@ -1339,7 +1339,7 @@ class DatabaseService:
         """Optional stats for admin students list: sessions_count, last_session_at (ISO), avg_performance (0-100)."""
         sessions = (
             self.client.table("v2_sessions")
-            .select("id, created_at, recording_id")
+            .select("id, created_at, recording_1_id, recording_2_id")
             .eq("user_id", user_id)
             .order("created_at", desc=True)
             .limit(1000)
@@ -1373,7 +1373,7 @@ class DatabaseService:
         """Get v2 sessions for a user with recording and report previews for admin session history."""
         result = (
             self.client.table("v2_sessions")
-            .select("id, created_at, status, recording_id, report_id, task_score")
+            .select("id, created_at, status, recording_1_id, recording_2_id, report_id")
             .eq("user_id", user_id)
             .order("created_at", desc=True)
             .limit(limit)
@@ -1393,11 +1393,13 @@ class DatabaseService:
                 pass
         out = []
         for s in sessions:
-            rec = {k: v for k, v in s.items() if k in ("id", "created_at", "status", "recording_id", "report_id", "task_score")}
+            rec = {k: v for k, v in s.items() if k in ("id", "created_at", "status", "recording_1_id", "recording_2_id", "report_id")}
+            rec["recording_id"] = s.get("recording_2_id") or s.get("recording_1_id")  # for backward compat in API response
             rec["recording_preview"] = None
             rec["report_preview"] = None
-            if s.get("recording_id"):
-                r = self.client.table("recordings").select("performance_score_v2, transcription_text").eq("id", s["recording_id"]).execute()
+            recording_id = s.get("recording_2_id") or s.get("recording_1_id")
+            if recording_id:
+                r = self.client.table("recordings").select("performance_score_v2, transcription_text").eq("id", recording_id).execute()
                 if r.data:
                     row = r.data[0]
                     rec["recording_preview"] = {
