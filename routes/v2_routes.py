@@ -426,7 +426,7 @@ def v2_admin_warm_up_tasks_delete(user_id, task_id):
     return jsonify({"status": "ok"}), 200
 
 
-# ---------- Admin: metric questions (metric_question_1, metric_question_2; homework flow) ----------
+# ---------- Admin: metric questions (legacy 2-question table) ----------
 @v2_bp.route("/admin/metric-questions", methods=["GET"])
 @require_admin
 def v2_admin_metric_questions_list():
@@ -456,6 +456,60 @@ def v2_admin_metric_questions_update(question_id):
 @require_admin
 def v2_admin_metric_questions_delete(question_id):
     db.v2_delete_metric_question(question_id)
+    return jsonify({"status": "ok"}), 200
+
+
+# ---------- Admin: metric questions pool (3 questions: metric_question_1, 2, 3; same mechanics as warm-up-task-pool) ----------
+@v2_bp.route("/admin/metric-questions-pool", methods=["GET"])
+@require_admin
+def v2_admin_metric_questions_pool_list():
+    rows = db.v2_get_metric_questions_pool()
+    return jsonify({"metric_questions_pool": rows}), 200
+
+
+@v2_bp.route("/admin/metric-questions-pool", methods=["POST"])
+@require_admin
+def v2_admin_metric_questions_pool_create():
+    data = request.get_json() or {}
+    if not (data.get("text") or "").strip():
+        return jsonify({"error": "text is required", "hint": "Send JSON body: { \"text\": \"question text\" }"}), 400
+    payload = {"text": data["text"].strip(), "order_index": int(data.get("order_index", 0))}
+    try:
+        result = db.client.table("v2_metric_questions_pool").insert(payload).execute()
+        row = result.data[0] if result.data else None
+        return jsonify({"metric_question": row}), 201
+    except Exception as e:
+        err = str(e).lower()
+        hint = "Run migrations/v2_metric_questions_pool.sql to create the table." if ("relation" in err or "does not exist" in err or "42p01" in err) else None
+        out = {"error": str(e)}
+        if hint:
+            out["hint"] = hint
+        return jsonify(out), 500
+
+
+@v2_bp.route("/admin/metric-questions-pool/<question_id>", methods=["PUT"])
+@require_admin
+def v2_admin_metric_questions_pool_update(question_id):
+    data = request.get_json() or {}
+    payload = {k: data[k] for k in ("text", "order_index") if k in data}
+    if "order_index" in payload:
+        payload["order_index"] = int(payload["order_index"])
+    if not payload:
+        row = db.v2_update_metric_question_pool(question_id, {})
+    else:
+        row = db.v2_update_metric_question_pool(question_id, payload)
+    if not row:
+        return jsonify({"error": "Question not found"}), 404
+    return jsonify({"metric_question": row}), 200
+
+
+@v2_bp.route("/admin/metric-questions-pool/<question_id>", methods=["DELETE"])
+@require_admin
+def v2_admin_metric_questions_pool_delete(question_id):
+    try:
+        db.v2_delete_metric_question_pool(question_id)
+    except Exception:
+        pass
     return jsonify({"status": "ok"}), 200
 
 

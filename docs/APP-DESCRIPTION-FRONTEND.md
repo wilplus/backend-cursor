@@ -38,9 +38,9 @@ All student actions go through **`/api/homework/*`** (BFF proxies to backend `/v
 - The student sees the **task block**:
   - **Context:** The **context_short** from the first recording (what the system “heard”).
   - **Focus task:** A chosen **focus task** (title + prompt text). The backend selects it based on **performance_score_1**: it picks a task whose difficulty matches that score (e.g. score 0.6 → task with that level or easier). The student is meant to keep this focus in mind for the **second** recording.
-  - **Two metric questions:** The backend returns **metric_question_1** and **metric_question_2** (e.g. “How would you rate your pacing in that take?” and “How would you rate your vocal strength?”). The frontend **must** show both and collect two text (or scale) answers.
-- The student submits **answer_1** and **answer_2** with **POST /api/homework/session/<session_id>/metric-answers** (body `{ answer_1, answer_2 }`).
-- The backend returns **final_task**: a short, AI-generated instruction (exactly two sentences) that combines (1) the context from the first recording and the focus task, and (2) “Focus especially on [answer_1] and [answer_2].” The session moves to **final_task_ready**.
+  - **Three metric questions:** The backend returns **metric_question_1**, **metric_question_2**, and **metric_question_3** (editable in admin from the metric-questions-pool). The frontend **must** show all three and collect **answer_1**, **answer_2**, **answer_3** (or metric_answer_1, 2, 3).
+- The student submits **answer_1**, **answer_2**, and **answer_3** with **POST /api/homework/session/<session_id>/metric-answers** (body `{ answer_1, answer_2, answer_3 }`).
+- The backend returns **final_task**: a short, AI-generated instruction (exactly two sentences) that combines (1) the context from the first recording and the focus task, and (2) “Focus especially on [answer_1], [answer_2], and [answer_3].” The session moves to **final_task_ready**.
 
 ### Step 3: Final task and second recording
 
@@ -181,7 +181,7 @@ The profile page is organized into sections:
 - **Warm-up tasks:** A **global pool** of warm-up tasks plus **per-student assignment**. Use the **"Select Warm-up Tasks"** modal: load **all** pool tasks with **GET /api/admin/warm-up-task-pool**, show them with checkboxes, pre-tick the ones assigned to this student (from **GET .../students/:id/warm-up-tasks** — use **pool_task_id**), then on Confirm send **PUT .../students/:id/warm-up-tasks** with body **{ "pool_task_ids": [ ... ] }** to replace this student's warm-up tasks with the selected pool items. Add pool items via **POST /api/admin/warm-up-task-pool** (e.g. "Enter new item" + Add in the modal). See **`docs/frontend-admin-panel/WARM-UP-TASK-POOL-MODAL.md`** for full API and a frontend implementation prompt. (Each task has **text** and **max_performance_score** (0–1); backend selects warm-ups where student's last score ≤ this value.)
 - **Focus tasks:** The student’s **assigned_next_task_ids** (from the global task pool). Admin manages tasks only from the student profile (no separate Tasks tab): use "Select Focus Tasks", add tasks with Add or pick from the pool; save via **PUT .../overrides** with **assigned_next_task_ids**.
 - **Reflective questions:** The student’s **assigned_post_question_ids** (exactly 3). Admin picks from **GET /api/admin/post-recording-questions** and saves via **PUT .../overrides** with **assigned_post_question_ids**. If this list is **empty** (or not 3), the student sees **no** reflective questions in the homework flow.
-- **Metric questions (1 & 2):** Global metric questions (e.g. pacing, vocal strength) are managed via **GET/POST/PUT/DELETE /api/admin/metric-questions**. They are shown in the task block after the first recording.
+- **Metric questions (1, 2, 3):** Three editable metric questions (metric_question_1, metric_question_2, metric_question_3) are managed via **GET/POST/PUT/DELETE /api/admin/metric-questions-pool** — same mechanics as warm-up-task-pool (list, add, edit, delete). See **`docs/frontend-admin-panel/METRIC-QUESTIONS-POOL.md`**. They are shown in the task block after the first recording.
 - **Metrics (e.g. 5 labels):** Global metric definitions (e.g. pace, strength, fillers) via **GET /api/admin/metrics** and **PUT /api/admin/metrics**.
 
 #### Speaker profile
@@ -198,7 +198,7 @@ The profile page is organized into sections:
 Admin has **only the Students tab**. There is **no focus-tasks UI** in the reference: no "Select Focus Tasks" modal, no task pool. **Tasks exist only in the database** (table `v2_tasks`); the backend may use them for homework flow, but the admin UI does not load or edit them. So the frontend **does not call** `/api/admin/tasks` — that avoids the 404. If you had a "Select Focus Tasks" modal or task pool in your app, remove it (and any `getTasks()` / `createTask()` calls) so nothing requests `/api/admin/tasks`.
 - **Post-recording questions:** **GET/POST/PUT/DELETE /api/admin/post-recording-questions** — used for **assigned_post_question_ids** (exactly 3 per student).
 - **Metrics:** **GET/PUT /api/admin/metrics** — fixed set of metric labels (e.g. 5).
-- **Metric questions:** **GET/POST/PUT/DELETE /api/admin/metric-questions** — the two questions shown after the first recording (e.g. pacing, vocal strength).
+- **Metric questions pool:** **GET/POST/PUT/DELETE /api/admin/metric-questions-pool** — the three questions (metric_question_1, 2, 3) shown after the first recording; editable in admin like warm-up-task-pool.
 
 **Admin panel implementation status (what’s done, what you must add, why 404):** See **`docs/frontend-admin-panel/ADMIN-PANEL-IMPLEMENTATION-STATUS.md`** for what the backend repo can and cannot see, what is implemented where, and a checklist to run in your frontend repo to fix the 404.
 
@@ -226,7 +226,7 @@ These are typically used from the student profile (e.g. modals or dropdowns) to 
 |------|-------------------------|
 | **Homework page load** | Calls session/status; if no active session, calls session/start; shows current step (warm-up, task block, final task, questions, or report) with no “Start” button. |
 | **Warm-up** | Shows warm_up_task.text; records audio; POSTs to session/:id/recording-1. Optional: during recording, POST PCM chunks to session/:id/recording-metrics-chunk and drive glow brightness from response.pause_score. |
-| **Task block** | Shows context_short, focus_task, metric_question_1, metric_question_2; collects answer_1, answer_2; POSTs metric-answers. |
+| **Task block** | Shows context_short, focus_task, metric_question_1, metric_question_2, metric_question_3; collects answer_1, answer_2, answer_3; POSTs metric-answers. |
 | **Final task** | Shows final_task text; records audio; POSTs to session/:id/recording-2. Optional: same real-time glow (recording-metrics-chunk + pause_score) during recording. |
 | **Questions** | If GET questions returns a non-empty list, shows 3 questions; collects answers; POSTs post-answers. If empty, skips to report. |
 | **Report** | Shows report_text, performance_score_end, performance_metrics; session is completed. |

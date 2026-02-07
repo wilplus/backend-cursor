@@ -221,7 +221,7 @@ def homework_submit_recording_1(session_id):
             all_tasks, performance_score_1, assigned_task_ids
         )
 
-        metric_questions = db.v2_get_metric_questions()
+        metric_questions = db.v2_get_metric_questions_for_flow()
 
         duration_int = int(round(duration_seconds))
         recording_data = {
@@ -249,11 +249,15 @@ def homework_submit_recording_1(session_id):
             "status": STATUS_TASK_BLOCK,
         })
 
+        q1 = metric_questions[0] if len(metric_questions) > 0 else {}
+        q2 = metric_questions[1] if len(metric_questions) > 1 else {}
+        q3 = metric_questions[2] if len(metric_questions) > 2 else {}
         task_block = {
             "context_short": context_short,
             "focus_task": {"id": focus_task["id"], "title": focus_task["title"], "prompt_text": focus_task.get("prompt_text")} if focus_task else None,
-            "metric_question_1": next((q for q in metric_questions if q.get("position") == 1), {}),
-            "metric_question_2": next((q for q in metric_questions if q.get("position") == 2), {}),
+            "metric_question_1": q1,
+            "metric_question_2": q2,
+            "metric_question_3": q3,
         }
         return jsonify({
             "recording_id": recording["id"],
@@ -271,12 +275,13 @@ def homework_submit_recording_1(session_id):
 @homework_bp.route("/session/<session_id>/metric-answers", methods=["POST"])
 @require_auth
 def homework_submit_metric_answers(session_id):
-    """Submit metric_question_1 and metric_question_2 answers. Returns final_task text for step 3."""
+    """Submit metric_question_1, metric_question_2, metric_question_3 answers. Returns final_task text for step 3."""
     try:
         user_id = request.user_id
         data = request.get_json() or {}
         answer_1 = (data.get("answer_1") or data.get("metric_answer_1") or "").strip()
         answer_2 = (data.get("answer_2") or data.get("metric_answer_2") or "").strip()
+        answer_3 = (data.get("answer_3") or data.get("metric_answer_3") or "").strip()
 
         session = db.v2_get_session(session_id, user_id)
         if not session or session.get("status") != STATUS_TASK_BLOCK:
@@ -294,10 +299,11 @@ def homework_submit_metric_answers(session_id):
             focus_task_prompt=focus_prompt,
             metric_answer_1=answer_1,
             metric_answer_2=answer_2,
+            metric_answer_3=answer_3,
         )
 
         db.v2_update_session(session_id, user_id, {
-            "metric_answers": {"answer_1": answer_1, "answer_2": answer_2},
+            "metric_answers": {"answer_1": answer_1, "answer_2": answer_2, "answer_3": answer_3},
             "status": STATUS_FINAL_TASK_READY,
         })
 

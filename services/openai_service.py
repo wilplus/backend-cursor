@@ -265,7 +265,8 @@ Respond with ONLY valid JSON in this exact format:
             if homework_metric_answers:
                 a1 = homework_metric_answers.get("answer_1") or homework_metric_answers.get("metric_answer_1") or ""
                 a2 = homework_metric_answers.get("answer_2") or homework_metric_answers.get("metric_answer_2") or ""
-                homework_section += f"- Metric self-ratings (after first recording): 1: {a1}, 2: {a2}\n"
+                a3 = homework_metric_answers.get("answer_3") or homework_metric_answers.get("metric_answer_3") or ""
+                homework_section += f"- Metric self-ratings (after first recording): 1: {a1}, 2: {a2}, 3: {a3}\n"
             homework_section += "\n**Second recording transcript:**\n"
         
         # Pacing context for supportive (non-commanding) wording only
@@ -286,6 +287,7 @@ Respond with ONLY valid JSON in this exact format:
             perf_end = (perf_1 + perf_2) / 2.0
             a1 = homework_metric_answers.get("answer_1") or homework_metric_answers.get("metric_answer_1") or ""
             a2 = homework_metric_answers.get("answer_2") or homework_metric_answers.get("metric_answer_2") or ""
+            a3 = homework_metric_answers.get("answer_3") or homework_metric_answers.get("metric_answer_3") or ""
             post_answers_text_hw = "\n".join([f"Q: {a.get('question_text', '')}\nA: {a.get('answer_text', '')}" for a in post_answers])
             ctx_short = (homework_context_short or "").strip() or "(no context from first recording)"
             homework_report_prompt = f"""Generate a performance report for this student's speaking exercise.
@@ -295,7 +297,7 @@ INPUT DATA:
 - Performance Score (average): {perf_end:.1%}
   - Recording 1 score: {perf_1:.1%} (based on strength, fillers, pacing)
   - Recording 2 score: {perf_2:.1%} (based on strength, fillers, pacing, {homework_metric_1_name}, {homework_metric_2_name})
-- Student's self-ratings after first recording: 1. {a1}  2. {a2}
+- Student's self-ratings after first recording: 1. {a1}  2. {a2}  3. {a3}
 - Student's answers to reflective questions: {post_answers_text_hw or "(none)"}
 
 REQUIRED STRUCTURE (3 paragraphs):
@@ -309,7 +311,7 @@ Paragraph 2 - Detailed Metric Analysis:
 - Comment on strength (vocal projection and confidence)
 - Comment on fillers (um, uh, like, etc.)
 - Comment on pacing (speed and rhythm)
-- Compare student's self-ratings ({a1}, {a2}) vs actual measured performance
+- Compare student's self-ratings ({a1}, {a2}, {a3}) vs actual measured performance
 - Point out any discrepancies (e.g. "You rated yourself 4/5 on pacing, but measurements show rushing")
 
 Paragraph 3 - Actionable Next Steps:
@@ -504,26 +506,30 @@ Generate the report:"""
         focus_task_prompt: str,
         metric_answer_1: str,
         metric_answer_2: str,
+        metric_answer_3: str = "",
     ) -> str:
-        """Homework flow: exactly 2 sentences. Sentence 1: Based on [context], your task is [focus_task]. Sentence 2: Focus especially on [metric_answer_1] and [metric_answer_2]. 20-50 words, no extra commentary."""
+        """Homework flow: exactly 2 sentences. Sentence 1: Based on [context], your task is [focus_task]. Sentence 2: Focus especially on [metric_answer_1], [metric_answer_2], and [metric_answer_3]. 20-50 words, no extra commentary."""
         focus_task = f"{focus_task_title}. {focus_task_prompt}".strip()
-        fallback = f"Based on {context_short[:100]}, your task is: {focus_task}. Focus especially on {metric_answer_1} and {metric_answer_2}."
+        parts = [p for p in (metric_answer_1, metric_answer_2, metric_answer_3) if p]
+        focus_phrase = " and ".join(parts) if parts else "your self-ratings"
+        fallback = f"Based on {context_short[:100]}, your task is: {focus_task}. Focus especially on {focus_phrase}."
         if not self.client:
             return fallback
         try:
             prompt = f"""Generate a final task instruction in exactly 2 sentences following this structure:
 
 Sentence 1: "Based on [context from recording 1], your task is: [focus_task]."
-Sentence 2: "Focus especially on [metric_answer_1] and [metric_answer_2]."
+Sentence 2: "Focus especially on [metric_answer_1], [metric_answer_2], and [metric_answer_3]."
 
 Context from recording 1: {context_short}
 Focus task: {focus_task}
 Metric answer 1: {metric_answer_1}
 Metric answer 2: {metric_answer_2}
+Metric answer 3: {metric_answer_3}
 
 Requirements:
 - Exactly 2 sentences
-- Must include all 4 components: context, focus task, both metric answers
+- Must include context, focus task, and all three metric answers (if provided)
 - Use the exact structure above
 - Do not add additional instructions or commentary
 - Length: 20-50 words total

@@ -284,3 +284,26 @@ DO $$ BEGIN
     ADD COLUMN pool_task_id UUID REFERENCES v2_warm_up_task_pool(id) ON DELETE SET NULL;
   END IF;
 END $$;
+
+-- ============================================================================
+-- 8) Metric questions pool (metric_question_1, 2, 3; editable in admin, same mechanics as warm-up-task-pool)
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS v2_metric_questions_pool (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  text TEXT NOT NULL,
+  order_index INT NOT NULL DEFAULT 0,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_v2_metric_questions_pool_order ON v2_metric_questions_pool(order_index);
+
+INSERT INTO v2_metric_questions_pool (text, order_index)
+SELECT 'How would you rate your pacing in that take?', 1
+WHERE NOT EXISTS (SELECT 1 FROM v2_metric_questions_pool LIMIT 1);
+INSERT INTO v2_metric_questions_pool (text, order_index)
+SELECT 'How would you rate your vocal strength?', 2
+WHERE (SELECT COUNT(*) FROM v2_metric_questions_pool) = 1;
+INSERT INTO v2_metric_questions_pool (text, order_index)
+SELECT 'How would you rate your clarity and articulation?', 3
+WHERE (SELECT COUNT(*) FROM v2_metric_questions_pool) = 2;

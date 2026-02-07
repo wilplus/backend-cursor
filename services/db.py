@@ -1246,6 +1246,47 @@ class DatabaseService:
     def v2_delete_metric_question(self, question_id: str):
         self.client.table("v2_metric_questions").delete().eq("id", question_id).execute()
 
+    # ---------- Metric questions pool (3 questions: metric_question_1, 2, 3; same mechanics as warm-up-task-pool) ----------
+    def v2_get_metric_questions_pool(self):
+        try:
+            result = (
+                self.client.table("v2_metric_questions_pool")
+                .select("*")
+                .order("order_index")
+                .order("created_at")
+                .execute()
+            )
+            return result.data or []
+        except Exception:
+            return []
+
+    def v2_get_metric_questions_for_flow(self):
+        """First 3 from pool by order_index (metric_question_1, metric_question_2, metric_question_3)."""
+        pool = self.v2_get_metric_questions_pool()
+        return pool[:3]
+
+    def v2_insert_metric_question_pool(self, data: dict):
+        data = dict(data)
+        data.setdefault("order_index", 0)
+        result = self.client.table("v2_metric_questions_pool").insert(data).execute()
+        return result.data[0] if result.data else None
+
+    def v2_update_metric_question_pool(self, question_id: str, data: dict):
+        payload = {k: data[k] for k in ("text", "order_index") if k in data}
+        if "order_index" in payload:
+            payload["order_index"] = int(payload["order_index"])
+        if not payload:
+            try:
+                result = self.client.table("v2_metric_questions_pool").select("*").eq("id", question_id).execute()
+                return result.data[0] if result.data else None
+            except Exception:
+                return None
+        result = self.client.table("v2_metric_questions_pool").update(payload).eq("id", question_id).execute()
+        return result.data[0] if result.data else None
+
+    def v2_delete_metric_question_pool(self, question_id: str):
+        self.client.table("v2_metric_questions_pool").delete().eq("id", question_id).execute()
+
     def v2_upsert_metric_definition(self, code: str, left_label: str, right_label: str):
         now = datetime.now(timezone.utc).isoformat()
         result = (
