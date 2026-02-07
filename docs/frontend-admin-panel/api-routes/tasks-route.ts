@@ -57,15 +57,16 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   let backend = "";
+  let token = "";
   try {
-    const token = await getV2AccessToken();
+    token = (await getV2AccessToken()) || "";
     if (!token) {
       return NextResponse.json(
         { error: "Unauthorized", code: "NO_TOKEN", _debug: { bffRoute: "admin/tasks", stage: "getAuth" } },
         { status: 401, headers: { [BFF_DEBUG_HEADER]: BFF_DEBUG_VALUE } }
       );
     }
-    backend = getBackendUrl();
+    backend = getBackendUrl() || "";
     if (!backend) {
       return NextResponse.json(
         { error: "Backend URL not configured", code: "NO_BACKEND", _debug: { bffRoute: "admin/tasks", stage: "getBackendUrl" } },
