@@ -2,6 +2,8 @@
 
 The admin panel has a **"Select Warm-up Tasks"** modal where you should see **all** warm-up tasks in a pool, tick which ones apply to the current student, and confirm to save.
 
+**Modal and table must show the same list:** The list in the modal (from GET warm-up-task-pool) should match the tasks visible in the `v2_warm_up_tasks` table. Run **`migrations/v2_warm_up_task_pool_seed.sql`** after the pool migration to copy existing student tasks into the pool; then the modal will show the same items as the table.
+
 ## Backend model
 
 - **Global pool:** `v2_warm_up_task_pool` — one list of warm-up tasks (text, order_index, max_performance_score). No `user_id`; same pool for everyone.
@@ -20,15 +22,21 @@ When you **Confirm Selection** in the modal, the backend **replaces** that stude
 | GET | `/v2/admin/students/<user_id>/warm-up-tasks` | This student’s assigned warm-up tasks. Each row has `pool_task_id` when assigned from pool. Use these `pool_task_id` values to pre-tick the modal. Response: `{ "warm_up_tasks": [ { id, user_id, text, order_index, max_performance_score, pool_task_id, ... }, ... ] }` |
 | PUT | `/v2/admin/students/<user_id>/warm-up-tasks` | **Sync from pool.** Body: `{ "pool_task_ids": [ "uuid1", "uuid2", ... ] }` (pool task IDs in the order you want). Replaces this student’s warm-up tasks with those pool items. Response: `{ "warm_up_tasks": [ ... ] }` |
 
-## BFF routes to add (frontend)
+## BFF routes (same pattern as post-recording-questions)
 
-1. **Pool**
-   - `GET /api/admin/warm-up-task-pool` → proxy to `GET {backend}/v2/admin/warm-up-task-pool`
-   - `POST /api/admin/warm-up-task-pool` → proxy to `POST {backend}/v2/admin/warm-up-task-pool`
-   - `PUT /api/admin/warm-up-task-pool/[poolId]/route.ts` → proxy PUT to backend
-   - `DELETE /api/admin/warm-up-task-pool/[poolId]/route.ts` → proxy DELETE to backend
+Add these the same way you have **post-recording-questions** (one route file for GET/POST on the collection, one for PUT/DELETE by id):
 
-2. **Student sync**
+1. **`src/app/api/admin/warm-up-task-pool/route.ts`**
+   - **GET:** Proxy to `GET {backend}/v2/admin/warm-up-task-pool`. Backend returns `{ "warm_up_task_pool": [ ... ] }` (or `[]` if table missing). Forward the JSON as-is; frontend should use `data.warm_up_task_pool` for the list.
+   - **POST:** Proxy to `POST {backend}/v2/admin/warm-up-task-pool` with request body. Backend returns `{ "warm_up_task": { id, text, ... } }`.
+
+2. **`src/app/api/admin/warm-up-task-pool/[poolId]/route.ts`**
+   - **PUT:** Proxy to `PUT {backend}/v2/admin/warm-up-task-pool/{poolId}` with body.
+   - **DELETE:** Proxy to `DELETE {backend}/v2/admin/warm-up-task-pool/{poolId}`.
+
+Use the same auth and `getBackendUrl()` pattern as in `src/app/api/admin/post-recording-questions/route.ts`. Reference copies: `docs/frontend-admin-panel/api-routes/warm-up-task-pool-route.ts` and `warm-up-task-pool-[poolId]-route.ts`.
+
+3. **Student sync**
    - Same `PUT /api/admin/students/[id]/warm-up-tasks` that you use for sync must send body `{ "pool_task_ids": [...] }` to the backend (not a single-task update). So your existing BFF route for `PUT .../warm-up-tasks` should forward the JSON body as-is; the backend treats PUT with `pool_task_ids` as sync.
 
 ## Frontend prompt: implement the Select Warm-up Tasks modal
@@ -74,6 +82,6 @@ Implement the **"Select Warm-up Tasks"** modal so that:
 If your database was created before the pool existed, run the migration that adds `v2_warm_up_task_pool` and the `pool_task_id` column on `v2_warm_up_tasks`:
 
 - **New installs:** use `migrations/v2_all_in_one.sql` (it includes the pool).
-- **Existing DBs:** run `migrations/v2_warm_up_task_pool.sql`.
+- **Existing DBs:** run `migrations/v2_warm_up_task_pool.sql`, then **`migrations/v2_warm_up_task_pool_seed.sql`** to copy existing `v2_warm_up_tasks` into the pool so the modal and the table show the same list.
 
-After that, you can add pool items via the modal “Add” or via API; existing per-student warm-up tasks remain until you use “Confirm Selection” for that student (then they are replaced by the selected pool items).
+After that, the modal and the table show the same tasks. You can add pool items via the modal “Add” or via API; existing per-student warm-up tasks remain until you use “Confirm Selection” for that student (then they are replaced by the selected pool items).

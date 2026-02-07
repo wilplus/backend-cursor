@@ -303,12 +303,16 @@ def v2_admin_post_questions_delete(question_id):
     return jsonify({"status": "ok"}), 200
 
 
-# ---------- Admin: warm-up task pool (global; for "Select Warm-up Tasks" modal) ----------
+# ---------- Admin: warm-up task pool (same pattern as post-recording-questions) ----------
 @v2_bp.route("/admin/warm-up-task-pool", methods=["GET"])
 @require_admin
 def v2_admin_warm_up_task_pool_list():
-    rows = db.v2_get_warm_up_task_pool()
-    return jsonify({"warm_up_task_pool": rows}), 200
+    try:
+        result = db.client.table("v2_warm_up_task_pool").select("*").order("order_index").order("created_at").execute()
+        data = result.data or []
+    except Exception:
+        data = []
+    return jsonify({"warm_up_task_pool": data}), 200
 
 
 @v2_bp.route("/admin/warm-up-task-pool", methods=["POST"])
@@ -317,21 +321,42 @@ def v2_admin_warm_up_task_pool_create():
     data = request.get_json() or {}
     if not (data.get("text") or "").strip():
         return jsonify({"error": "text is required"}), 400
-    payload = {"text": data["text"].strip(), "order_index": data.get("order_index", 0)}
-    if "max_performance_score" in data:
-        try:
-            payload["max_performance_score"] = float(data["max_performance_score"])
-        except (TypeError, ValueError):
-            payload["max_performance_score"] = 1.0
-    row = db.v2_insert_warm_up_task_pool(payload)
-    return jsonify({"warm_up_task": row}), 201
+    try:
+        payload = {"text": data["text"].strip(), "order_index": data.get("order_index", 0)}
+        if "max_performance_score" in data:
+            try:
+                payload["max_performance_score"] = float(data["max_performance_score"])
+            except (TypeError, ValueError):
+                payload["max_performance_score"] = 1.0
+        result = db.client.table("v2_warm_up_task_pool").insert(payload).execute()
+        row = result.data[0] if result.data else None
+        return jsonify({"warm_up_task": row}), 201
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 @v2_bp.route("/admin/warm-up-task-pool/<pool_id>", methods=["PUT"])
 @require_admin
 def v2_admin_warm_up_task_pool_update(pool_id):
     data = request.get_json() or {}
-    row = db.v2_update_warm_up_task_pool(pool_id, data)
+    payload = {k: data[k] for k in ("text", "order_index", "max_performance_score") if k in data}
+    if "max_performance_score" in payload:
+        try:
+            payload["max_performance_score"] = float(payload["max_performance_score"])
+        except (TypeError, ValueError):
+            payload["max_performance_score"] = 1.0
+    if not payload:
+        try:
+            result = db.client.table("v2_warm_up_task_pool").select("*").eq("id", pool_id).execute()
+            row = result.data[0] if result.data else None
+        except Exception:
+            row = None
+    else:
+        try:
+            result = db.client.table("v2_warm_up_task_pool").update(payload).eq("id", pool_id).execute()
+            row = result.data[0] if result.data else None
+        except Exception:
+            row = None
     if not row:
         return jsonify({"error": "Pool task not found"}), 404
     return jsonify({"warm_up_task": row}), 200
@@ -340,7 +365,10 @@ def v2_admin_warm_up_task_pool_update(pool_id):
 @v2_bp.route("/admin/warm-up-task-pool/<pool_id>", methods=["DELETE"])
 @require_admin
 def v2_admin_warm_up_task_pool_delete(pool_id):
-    db.v2_delete_warm_up_task_pool(pool_id)
+    try:
+        db.client.table("v2_warm_up_task_pool").delete().eq("id", pool_id).execute()
+    except Exception:
+        pass
     return jsonify({"status": "ok"}), 200
 
 
