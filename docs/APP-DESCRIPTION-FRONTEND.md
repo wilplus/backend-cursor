@@ -193,9 +193,9 @@ The profile page is organized into sections:
 - **Last report:** Shown from profile’s **last_report** (full text) and **last_report_preview** (e.g. 500 chars).
 - **Reports history:** From **sessions**: each session has **report_preview.report_text_preview** and **created_at**. Admin can open a session to see full details (and optionally edit report) via **GET /api/admin/students/:id/sessions/:session_id** and **PATCH .../sessions/:session_id/report** (append/replace report content).
 
-### Global pools (admin) — no separate Tasks/Exercises/Questions tabs
+### Global pools (admin) — only the Students tab
 
-Admin has **only the Students tab**. Tasks, post-recording questions, and metric questions are managed from each student's profile (modals/dropdowns), not from separate top-level pages.
+Admin has **only the Students tab** (no Tasks, Exercises, or Questions tabs). Tasks, post-recording questions, and metric questions are managed from each student's profile (modals/dropdowns). The **API** `/api/admin/tasks` is not a tab — it is the endpoint the student profile calls when you open "Select Focus Tasks" or load the task pool; you still need the BFF route at `src/app/api/admin/tasks/route.ts` for that to work.
 
 - **Tasks:** **GET/POST/PUT/DELETE /api/admin/tasks** — pool for **assigned_next_task_ids** (focus tasks). Add tasks in the "Select Focus Tasks" modal on the student profile.
 - **Post-recording questions:** **GET/POST/PUT/DELETE /api/admin/post-recording-questions** — used for **assigned_post_question_ids** (exactly 3 per student).

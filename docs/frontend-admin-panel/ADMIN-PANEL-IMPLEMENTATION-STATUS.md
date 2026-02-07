@@ -1,5 +1,7 @@
 # Admin panel: what I can see, what’s implemented, and why you get 404
 
+**No "Tasks" tab.** Admin has only the **Students** tab. Focus tasks are managed inside the student profile (Select Focus Tasks modal). **/api/admin/tasks** is an **API** used by that modal — not a page or tab. You still need the BFF route at `src/app/api/admin/tasks/route.ts` so the modal can load and add tasks.
+
 ## What I can see (backend repo only)
 
 I only have access to the **backend-cursor** repo. I can see:
