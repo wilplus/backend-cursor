@@ -950,8 +950,8 @@ class DatabaseService:
         return result.data or []
 
     def v2_get_post_questions_pool(self):
-        """All active post-recording questions (pool)."""
-        result = self.client.table("v2_post_recording_questions_pool").select("*").eq("is_active", True).execute()
+        """All active post-recording questions (from v2_post_recording_questions table)."""
+        result = self.client.table("v2_post_recording_questions").select("*").eq("is_active", True).execute()
         return result.data or []
 
     def v2_get_metric_definitions(self):
@@ -1007,7 +1007,7 @@ class DatabaseService:
         """Fetch pool questions by id list (for snapshot)."""
         if not ids:
             return []
-        result = self.client.table("v2_post_recording_questions_pool").select("*").in_("id", ids).execute()
+        result = self.client.table("v2_post_recording_questions").select("*").in_("id", ids).execute()
         order = {str(x): i for i, x in enumerate(ids)}
         rows = result.data or []
         rows.sort(key=lambda r: order.get(str(r["id"]), 999))
@@ -1038,15 +1038,15 @@ class DatabaseService:
         self.client.table("v2_tasks").update({"is_active": False}).eq("id", task_id).execute()
 
     def v2_insert_post_question_pool(self, data: dict):
-        result = self.client.table("v2_post_recording_questions_pool").insert(data).execute()
+        result = self.client.table("v2_post_recording_questions").insert(data).execute()
         return result.data[0] if result.data else None
 
     def v2_update_post_question_pool(self, question_id: str, data: dict):
-        result = self.client.table("v2_post_recording_questions_pool").update(data).eq("id", question_id).execute()
+        result = self.client.table("v2_post_recording_questions").update(data).eq("id", question_id).execute()
         return result.data[0] if result.data else None
 
     def v2_delete_post_question_pool(self, question_id: str):
-        self.client.table("v2_post_recording_questions_pool").delete().eq("id", question_id).execute()
+        self.client.table("v2_post_recording_questions").delete().eq("id", question_id).execute()
 
     # ---------- Warm-up tasks (per student; homework flow) ----------
     def v2_get_warm_up_tasks(self, user_id: str):
@@ -1227,6 +1227,7 @@ class DatabaseService:
 
     # ---------- Metric questions (2 questions for AI task block; admin Metrics section) ----------
     def v2_get_metric_questions(self):
+        """All rows from v2_metric_questions ordered by position (the 3 task-block questions)."""
         result = (
             self.client.table("v2_metric_questions")
             .select("*")
@@ -1234,6 +1235,11 @@ class DatabaseService:
             .execute()
         )
         return result.data or []
+
+    def v2_get_metric_questions_for_flow(self):
+        """First 3 from v2_metric_questions by position (metric_question_1, 2, 3 for task block)."""
+        rows = self.v2_get_metric_questions()
+        return rows[:3]
 
     def v2_insert_metric_question(self, data: dict):
         result = self.client.table("v2_metric_questions").insert(data).execute()
@@ -1243,49 +1249,13 @@ class DatabaseService:
         result = self.client.table("v2_metric_questions").update(data).eq("id", question_id).execute()
         return result.data[0] if result.data else None
 
+    def v2_update_metric_question_by_position(self, position: int, text: str):
+        """Update the single row with this position (1, 2, or 3)."""
+        result = self.client.table("v2_metric_questions").update({"text": (text or "").strip()}).eq("position", position).execute()
+        return result.data[0] if result.data else None
+
     def v2_delete_metric_question(self, question_id: str):
         self.client.table("v2_metric_questions").delete().eq("id", question_id).execute()
-
-    # ---------- Metric questions pool (3 questions: metric_question_1, 2, 3; same mechanics as warm-up-task-pool) ----------
-    def v2_get_metric_questions_pool(self):
-        try:
-            result = (
-                self.client.table("v2_metric_questions_pool")
-                .select("*")
-                .order("order_index")
-                .order("created_at")
-                .execute()
-            )
-            return result.data or []
-        except Exception:
-            return []
-
-    def v2_get_metric_questions_for_flow(self):
-        """First 3 from pool by order_index (metric_question_1, metric_question_2, metric_question_3)."""
-        pool = self.v2_get_metric_questions_pool()
-        return pool[:3]
-
-    def v2_insert_metric_question_pool(self, data: dict):
-        data = dict(data)
-        data.setdefault("order_index", 0)
-        result = self.client.table("v2_metric_questions_pool").insert(data).execute()
-        return result.data[0] if result.data else None
-
-    def v2_update_metric_question_pool(self, question_id: str, data: dict):
-        payload = {k: data[k] for k in ("text", "order_index") if k in data}
-        if "order_index" in payload:
-            payload["order_index"] = int(payload["order_index"])
-        if not payload:
-            try:
-                result = self.client.table("v2_metric_questions_pool").select("*").eq("id", question_id).execute()
-                return result.data[0] if result.data else None
-            except Exception:
-                return None
-        result = self.client.table("v2_metric_questions_pool").update(payload).eq("id", question_id).execute()
-        return result.data[0] if result.data else None
-
-    def v2_delete_metric_question_pool(self, question_id: str):
-        self.client.table("v2_metric_questions_pool").delete().eq("id", question_id).execute()
 
     def v2_upsert_metric_definition(self, code: str, left_label: str, right_label: str):
         now = datetime.now(timezone.utc).isoformat()
@@ -1300,43 +1270,35 @@ class DatabaseService:
         "intended_emotion_prompt", "keywords_prompt", "emotion_check_question_text",
         "assigned_post_question_ids", "assigned_next_exercise_id", "assigned_next_task_ids",
         "show_exercise_step", "assigned_warm_up_task_id",
-        "metric_question_1", "metric_question_2", "metric_question_3", "pitch_variance_ideal",
+        "pitch_variance_ideal",
     }
 
     def v2_get_user_metric_questions(self, user_id: str):
-        """Get user's three custom metric questions (and optional pitch_variance config)."""
-        result = self.client.table("v2_student_overrides").select(
-            "metric_question_1", "metric_question_2", "metric_question_3", "pitch_variance_ideal"
-        ).eq("user_id", user_id).execute()
-        row = result.data[0] if result.data else None
-        if not row:
-            return {
-                "metric_question_1": "",
-                "metric_question_2": "",
-                "metric_question_3": "",
-                "pitch_variance_ideal": None,
-            }
+        """Get the 3 metric questions from v2_metric_questions and pitch_variance_ideal from overrides."""
+        rows = self.v2_get_metric_questions()
+        by_pos = {r.get("position"): (r.get("text") or "").strip() for r in rows}
+        override_result = self.client.table("v2_student_overrides").select("pitch_variance_ideal").eq("user_id", user_id).execute()
+        override_row = override_result.data[0] if override_result.data else None
+        pitch = override_row.get("pitch_variance_ideal") if override_row else None
         return {
-            "metric_question_1": (row.get("metric_question_1") or "").strip(),
-            "metric_question_2": (row.get("metric_question_2") or "").strip(),
-            "metric_question_3": (row.get("metric_question_3") or "").strip(),
-            "pitch_variance_ideal": row.get("pitch_variance_ideal"),
+            "metric_question_1": by_pos.get(1, ""),
+            "metric_question_2": by_pos.get(2, ""),
+            "metric_question_3": by_pos.get(3, ""),
+            "pitch_variance_ideal": pitch,
         }
 
     def v2_update_user_metric_questions(self, user_id: str, data: dict):
-        """Update user's metric_question_1, 2, 3 (and optionally pitch_variance_ideal)."""
-        payload = {"user_id": user_id, "updated_at": datetime.now(timezone.utc).isoformat()}
-        for k in ("metric_question_1", "metric_question_2", "metric_question_3"):
-            if k in data:
-                payload[k] = (data[k] or "").strip() if data[k] is not None else ""
+        """Update the 3 metric questions in v2_metric_questions (by position) and optionally pitch_variance_ideal in overrides."""
+        for pos, key in [(1, "metric_question_1"), (2, "metric_question_2"), (3, "metric_question_3")]:
+            if key in data:
+                self.v2_update_metric_question_by_position(pos, data.get(key))
         if "pitch_variance_ideal" in data:
             try:
-                payload["pitch_variance_ideal"] = float(data["pitch_variance_ideal"]) if data["pitch_variance_ideal"] is not None else None
+                val = float(data["pitch_variance_ideal"]) if data["pitch_variance_ideal"] is not None else None
             except (TypeError, ValueError):
-                payload["pitch_variance_ideal"] = None
-        if len(payload) <= 2:
-            return self.v2_get_user_metric_questions(user_id)
-        result = self.client.table("v2_student_overrides").upsert(payload, on_conflict="user_id").execute()
+                val = None
+            payload = {"user_id": user_id, "updated_at": datetime.now(timezone.utc).isoformat(), "pitch_variance_ideal": val}
+            self.client.table("v2_student_overrides").upsert(payload, on_conflict="user_id").execute()
         return self.v2_get_user_metric_questions(user_id)
 
     def v2_upsert_student_overrides(self, user_id: str, data: dict):
