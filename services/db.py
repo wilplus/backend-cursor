@@ -1179,10 +1179,17 @@ class DatabaseService:
         )
         return result.data[0] if result.data else None
 
+    _V2_OVERRIDES_COLUMNS = {
+        "intended_emotion_prompt", "keywords_prompt", "emotion_check_question_text",
+        "assigned_post_question_ids", "assigned_next_exercise_id", "assigned_next_task_ids",
+        "show_exercise_step", "assigned_warm_up_task_id",
+    }
+
     def v2_upsert_student_overrides(self, user_id: str, data: dict):
-        data["user_id"] = user_id
-        data["updated_at"] = datetime.now(timezone.utc).isoformat()
-        result = self.client.table("v2_student_overrides").upsert(data, on_conflict="user_id").execute()
+        payload = {k: v for k, v in data.items() if k in self._V2_OVERRIDES_COLUMNS}
+        payload["user_id"] = user_id
+        payload["updated_at"] = datetime.now(timezone.utc).isoformat()
+        result = self.client.table("v2_student_overrides").upsert(payload, on_conflict="user_id").execute()
         return result.data[0] if result.data else None
 
     def v2_create_report(self, session_v2_id: str, recording_id: str, report_text: str):

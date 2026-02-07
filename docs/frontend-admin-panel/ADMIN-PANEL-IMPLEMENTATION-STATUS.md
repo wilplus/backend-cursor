@@ -1,6 +1,6 @@
 # Admin panel: what I can see, what’s implemented, and why you get 404
 
-**No "Tasks" tab.** Admin has only the **Students** tab. Focus tasks are managed inside the student profile (Select Focus Tasks modal). **/api/admin/tasks** is an **API** used by that modal — not a page or tab. You still need the BFF route at `src/app/api/admin/tasks/route.ts` so the modal can load and add tasks.
+**No "Tasks" tab.** Admin has only the **Students** tab. There is no focus-tasks UI; tasks exist only in the DB. **/api/admin/tasks** must not be called if you have no task UI — but something in your frontend is still calling it (hence 404). See below how to find and remove that call.
 
 ## What I can see (backend repo only)
 
@@ -16,6 +16,30 @@ I **cannot** see your **frontend** repo (e.g. frontend-cursor). I do not know:
 - Whether you use the App Router or Pages Router, or a different folder layout.
 
 So I can’t “see” your current admin panel implementation — only what the backend expects and what the docs say to build.
+
+---
+
+## Frontend: how to stop /api/admin/tasks from being called (fix 404)
+
+The path **/api/admin/tasks** is not a page — it's an API. It gets called when **your code** runs `adminApi.getTasks()` or `fetch("/api/admin/tasks")`. There is no "tasks page"; you only have the Students page. So the call is coming from code that runs **when you're already on the Students flow** (e.g. when you open a student profile). The pathname doesn't need to change; you need to **remove the code that requests tasks**.
+
+Do this in your **frontend** repo:
+
+1. **Search for what triggers the request**  
+   Search for: `getTasks`, `createTask`, `/api/admin/tasks`, or `"/tasks"`.  
+   Typical place: the **student profile page** (e.g. `app/admin/students/[id]/page.tsx`).
+
+2. **On the student profile page, remove the tasks request from the initial load**  
+   Find the `load` / `useEffect` / `Promise.all` that runs when the profile mounts. You will see something like: `adminApi.getStudentProfile(id)`, `adminApi.getExercises()`, **`adminApi.getTasks()`**, `adminApi.getPostQuestions()`, `adminApi.getWarmUpTasks(id)`.  
+   **Remove** `adminApi.getTasks()` from that list, and remove the handling for that result (e.g. `setTasks(...)` and the `tasksRes` / `tasks` state). Save; the profile will no longer request `/api/admin/tasks` when you open a student.
+
+3. **Remove any "Select Focus Tasks" modal**  
+   Remove the modal and the button that opens it, so no code path ever calls `getTasks()` or `createTask()`.
+
+4. **Optional**  
+   Remove `tasks` state and any UI that shows or selects tasks. You can omit `assigned_next_task_ids` from the save payload if you don't use it.
+
+After this, no request goes to `/api/admin/tasks`, so the 404 stops. You stay on the Students pathname; only the **requests** made by the profile page change.
 
 ---
 
