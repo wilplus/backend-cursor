@@ -93,7 +93,7 @@ The `getAuth` import path depends on where your auth helper lives. From `src/app
 
 ## 4. Backend validation (overrides)
 
-The backend expects **assigned_post_question_ids** to be either omitted or **exactly 3** IDs. If you send 0, 1, 2, or 4+, the backend returns 400 and the save fails. Your frontend should only include `assigned_post_question_ids` in the payload when the user has selected exactly 3 questions (the reference does this).
+The backend accepts **assigned_post_question_ids** as an array of **0 or any number** of question IDs. Omit or send `[]` for none; send one or more IDs to assign that many reflective questions per student.
 
 After adding the two BFF routes and fixing the import, Save should persist correctly.
 

@@ -49,8 +49,8 @@ All student actions go through **`/api/homework/*`** (BFF proxies to backend `/v
 
 ### Step 4: Reflective questions (optional)
 
-- The frontend calls **GET /api/homework/session/<session_id>/questions**. The backend returns **questions** only if the admin has set **exactly 3** reflective questions for this student (`assigned_post_question_ids`). If the list is empty or not exactly three, the backend returns **questions: []** and the frontend should **skip** this step (no question UI, go straight to report).
-- If there are three questions, the student answers each (e.g. yes/no, scale 1–5, or free text). The frontend sends **POST /api/homework/session/<session_id>/post-answers** with body `{ answers: [ { question_id, answer_text } ] }`. Use **stable keys** and **local state** per question so inputs don’t re-mount on every keystroke (avoid “only one letter at a time” bug).
+- The frontend calls **GET /api/homework/session/<session_id>/questions**. The backend returns **questions** from the student’s **assigned_post_question_ids** (0, 1, or any number). If the list is empty, the backend returns **questions: []** and the frontend should **skip** this step (no question UI, go straight to report).
+- If there are one or more questions, the student answers each (e.g. yes/no, scale 1–5, or free text). The frontend sends **POST /api/homework/session/<session_id>/post-answers** with body `{ answers: [ { question_id, answer_text } ] }`. Use **stable keys** and **local state** per question so inputs don’t re-mount on every keystroke (avoid “only one letter at a time” bug).
 
 ### Step 5: Report and completion
 
@@ -166,7 +166,7 @@ Detailed spec (VAD, pause events, 10 s window, benchmarks, troubleshooting): **d
 - **Route (example):** `/admin/students/:id`.
 - The frontend loads the profile with **GET /api/admin/students/:id**. The response includes:
   - **user_id**, **email**
-  - **overrides:** e.g. **assigned_post_question_ids** (exactly 3 question IDs for reflective questions), **assigned_next_task_ids** (focus tasks for this student), **assigned_warm_up_task_id** (optional; if unused, backend selects warm-up by last score)
+  - **overrides:** e.g. **assigned_post_question_ids** (0 or any number of question IDs for reflective questions), **assigned_next_task_ids** (focus tasks for this student), **assigned_warm_up_task_id** (optional; if unused, backend selects warm-up by last score)
   - **speaker_profile:** e.g. **coach_notes** (single “Context” field)
   - **warm_up_tasks:** list of warm-up tasks for this student (each has **id**, **text**, **order_index**, **max_performance_score**)
   - **last_report**, **last_report_preview**
@@ -177,10 +177,10 @@ The profile page is organized into sections:
 #### Homework configuration
 
 - **Send homework:** Button that calls **POST /api/admin/students/:id/send-assignment** (no body). Used to notify or mark that homework is assigned.
-- **Save:** Saves overrides via **PUT /api/admin/students/:id/overrides** (body: **assigned_post_question_ids** (exactly 3 when set), optionally **assigned_warm_up_task_id**, and other overrides). No focus-task selection in the UI; tasks exist only in the DB. **If Save doesn't persist:** add the BFF routes for **PUT .../overrides** and **PUT .../speaker-profile** — see **`docs/frontend-admin-panel/SAVE-BUTTON-BFF-ROUTES.md`**.
+- **Save:** Saves overrides via **PUT /api/admin/students/:id/overrides** (body: **assigned_post_question_ids** (array of 0 or any number of question IDs), optionally **assigned_warm_up_task_id**, and other overrides). No focus-task selection in the UI; tasks exist only in the DB. **If Save doesn't persist:** add the BFF routes for **PUT .../overrides** and **PUT .../speaker-profile** — see **`docs/frontend-admin-panel/SAVE-BUTTON-BFF-ROUTES.md`**.
 - **Warm-up tasks:** A **global pool** of warm-up tasks plus **per-student assignment**. Use the **"Select Warm-up Tasks"** modal: load **all** pool tasks with **GET /api/admin/warm-up-task-pool**, show them with checkboxes, pre-tick the ones assigned to this student (from **GET .../students/:id/warm-up-tasks** — use **pool_task_id**), then on Confirm send **PUT .../students/:id/warm-up-tasks** with body **{ "pool_task_ids": [ ... ] }** to replace this student's warm-up tasks with the selected pool items. Add pool items via **POST /api/admin/warm-up-task-pool** (e.g. "Enter new item" + Add in the modal). See **`docs/frontend-admin-panel/WARM-UP-TASK-POOL-MODAL.md`** for full API and a frontend implementation prompt. (Each task has **text** and **max_performance_score** (0–1); backend selects warm-ups where student's last score ≤ this value.)
 - **Focus tasks:** The student’s **assigned_next_task_ids** (from the global task pool). Admin manages tasks only from the student profile (no separate Tasks tab): use "Select Focus Tasks", add tasks with Add or pick from the pool; save via **PUT .../overrides** with **assigned_next_task_ids**.
-- **Reflective questions:** The student’s **assigned_post_question_ids** (exactly 3). Admin picks from **GET /api/admin/post-recording-questions** and saves via **PUT .../overrides** with **assigned_post_question_ids**. If this list is **empty** (or not 3), the student sees **no** reflective questions in the homework flow.
+- **Reflective questions:** The student’s **assigned_post_question_ids** (0 or any number). Admin picks from **GET /api/admin/post-recording-questions** and saves via **PUT .../overrides** with **assigned_post_question_ids**. If the list is **empty**, the student sees **no** reflective questions; otherwise they see that many questions in the homework flow.
 - **Metric questions (1, 2, 3):** Three editable metric questions (metric_question_1, metric_question_2, metric_question_3) are managed via **GET/POST/PUT/DELETE /api/admin/metric-questions-pool** — same mechanics as warm-up-task-pool (list, add, edit, delete). See **`docs/frontend-admin-panel/METRIC-QUESTIONS-POOL.md`**. They are shown in the task block after the first recording.
 - **Metrics (e.g. 5 labels):** Global metric definitions (e.g. pace, strength, fillers) via **GET /api/admin/metrics** and **PUT /api/admin/metrics**.
 
@@ -196,7 +196,7 @@ The profile page is organized into sections:
 ### Global pools (admin) — only the Students tab
 
 Admin has **only the Students tab**. There is **no focus-tasks UI** in the reference: no "Select Focus Tasks" modal, no task pool. **Tasks exist only in the database** (table `v2_tasks`); the backend may use them for homework flow, but the admin UI does not load or edit them. So the frontend **does not call** `/api/admin/tasks` — that avoids the 404. If you had a "Select Focus Tasks" modal or task pool in your app, remove it (and any `getTasks()` / `createTask()` calls) so nothing requests `/api/admin/tasks`.
-- **Post-recording questions:** **GET/POST/PUT/DELETE /api/admin/post-recording-questions** — used for **assigned_post_question_ids** (exactly 3 per student).
+- **Post-recording questions:** **GET/POST/PUT/DELETE /api/admin/post-recording-questions** — pool of questions; **assigned_post_question_ids** per student can be 0 or any number.
 - **Metrics:** **GET/PUT /api/admin/metrics** — fixed set of metric labels (e.g. 5).
 - **Metric questions pool:** **GET/POST/PUT/DELETE /api/admin/metric-questions-pool** — the three questions (metric_question_1, 2, 3) shown after the first recording; editable in admin like warm-up-task-pool.
 

@@ -460,8 +460,8 @@ def homework_get_questions(session_id):
 
         overrides = db.v2_get_student_overrides(user_id)
         assigned_ids = (overrides.get("assigned_post_question_ids") or []) if overrides else []
-        # Option A: empty or not exactly 3 = no reflective questions for this student
-        if len(assigned_ids) != 3:
+        # 0 questions = skip step 4; 1 or more = show those questions
+        if not assigned_ids:
             return jsonify({"questions": []}), 200
         pool = db.v2_get_post_questions_by_ids(assigned_ids)
         questions = select_post_questions_v2(pool, assigned_ids)

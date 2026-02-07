@@ -101,14 +101,12 @@ def v2_admin_student_speaker_profile(user_id):
 @v2_bp.route("/admin/students/<user_id>/overrides", methods=["PUT"])
 @require_admin
 def v2_admin_student_overrides(user_id):
-    """Set prompts, assigned post Qs (exactly 3), next exercise/task."""
+    """Set prompts, assigned post Qs (0 or any number of question IDs), next exercise/task."""
     try:
         data = request.get_json() or {}
         ids = data.get("assigned_post_question_ids")
         if ids is not None and not isinstance(ids, list):
             return jsonify({"code": "INVALID_INPUT", "error": "assigned_post_question_ids must be an array"}), 400
-        if ids is not None and len(ids) != 3:
-            return jsonify({"code": "INVALID_INPUT", "error": "assigned_post_question_ids must have exactly 3 items"}), 400
         db.v2_upsert_student_overrides(user_id, data)
         return jsonify({"status": "ok"}), 200
     except Exception as e:
