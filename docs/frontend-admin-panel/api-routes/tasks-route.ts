@@ -20,15 +20,16 @@ function debugPayload(backendUrl: string, backendStatus: number) {
 
 export async function GET() {
   let backend = "";
+  let token = "";
   try {
-    const token = await getV2AccessToken();
+    token = (await getV2AccessToken()) || "";
     if (!token) {
       return NextResponse.json(
         { error: "Unauthorized", code: "NO_TOKEN", _debug: { bffRoute: "admin/tasks", stage: "getAuth", message: "getV2AccessToken returned empty" } },
         { status: 401, headers: { [BFF_DEBUG_HEADER]: BFF_DEBUG_VALUE } }
       );
     }
-    backend = getBackendUrl();
+    backend = getBackendUrl() || "";
     if (!backend) {
       return NextResponse.json(
         { error: "Backend URL not configured", code: "NO_BACKEND", _debug: { bffRoute: "admin/tasks", stage: "getBackendUrl", message: "getBackendUrl returned empty" } },

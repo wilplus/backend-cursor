@@ -216,11 +216,16 @@ def v2_admin_exercises_delete(exercise_id):
 
 
 # ---------- Admin CRUD: tasks ----------
+_TASKS_HEADER = ("X-Backend-Route", "v2-admin-tasks")
+
+
 @v2_bp.route("/admin/tasks", methods=["GET"])
 @require_admin
 def v2_admin_tasks_list():
     result = db.client.table("v2_tasks").select("*").order("created_at", desc=True).execute()
-    return jsonify({"tasks": result.data or []}), 200
+    resp = jsonify({"tasks": result.data or []})
+    resp.headers[_TASKS_HEADER[0]] = _TASKS_HEADER[1]
+    return resp, 200
 
 
 @v2_bp.route("/admin/tasks", methods=["POST"])
