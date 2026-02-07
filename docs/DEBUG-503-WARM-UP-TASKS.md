@@ -6,44 +6,77 @@ If you see that message or a **503** on `/warm-up-tasks`, the backend is failing
 
 ## PGRST204: column `max_performance_score` missing (most common)
 
-If the real error is **`PGRST204`: PostgREST can't find column `max_performance_score` on `public.v2_warm_up_tasks`**, the table exists but that column is missing (or PostgREST hasn’t reloaded its schema cache yet).
+Error: **"Could not find the 'max_performance_score' column of 'v2_warm_up_tasks' in the schema cache"** (PGRST204). Two possibilities:
 
-### 1) Add the column (Supabase project used by backend `SUPABASE_URL`)
+1. **PostgREST cache stale (very common)** — Column already exists but PostgREST is serving an old schema. **Try this first:** run `NOTIFY pgrst, 'reload schema';` in Supabase SQL Editor, **wait 5–10 seconds**, then retry Save. No ALTER needed.
+2. **Column really missing** — Table was created without it; a later migration wasn’t run. Then run the migration below.
 
-Run in Supabase SQL Editor:
+**Type note:** We use **DECIMAL(3,2)** (0–1) to match the backend. If the column was added elsewhere as INTEGER, `ADD COLUMN IF NOT EXISTS` won’t change it; run NOTIFY anyway — the cache is often the real issue.
+
+### Fix: run the migration (one go)
+
+In Supabase SQL Editor (same project as backend `SUPABASE_URL`), run:
+
+**migrations/v2_add_max_performance_score_to_tasks.sql**
+
+Or paste this (adds column to both warm-up and focus tasks, then reloads PostgREST):
 
 ```sql
+-- Warm-up tasks
 ALTER TABLE public.v2_warm_up_tasks
-ADD COLUMN IF NOT EXISTS max_performance_score DECIMAL(3,2) DEFAULT 1.00 CHECK (max_performance_score >= 0 AND max_performance_score <= 1);
-```
+ADD COLUMN IF NOT EXISTS max_performance_score DECIMAL(3,2) DEFAULT 1.00
+CHECK (max_performance_score >= 0 AND max_performance_score <= 1);
 
-(Backend expects 0–1; use DECIMAL to match. If you prefer integer for simplicity, use `integer` and ensure the app sends 0 or 1.)
+-- Focus tasks (in case it was created without this column)
+ALTER TABLE public.v2_focus_tasks
+ADD COLUMN IF NOT EXISTS max_performance_score DECIMAL(3,2) DEFAULT 1.00
+CHECK (max_performance_score >= 0 AND max_performance_score <= 1);
 
-### 2) Force PostgREST to reload schema cache
-
-Supabase/PostgREST may not see the new column immediately. Run:
-
-```sql
+-- Reload PostgREST schema cache
 NOTIFY pgrst, 'reload schema';
 ```
 
-(Or: `SELECT pg_notify('pgrst', 'reload schema');`)
+Backend uses **0–1** scale (1.00 = easiest). We use DECIMAL to match; do not use `INTEGER DEFAULT 10` if the app sends 0–1.
 
-### 3) Verify the column exists
+**After running the migration:** run **`NOTIFY pgrst, 'reload schema';`** (it’s in the migration), then **wait 5–10 seconds** before retrying Save. PostgREST must reload its cache.
+
+### Verify column exists and type
+
+Run this and paste the full output if you need to debug:
 
 ```sql
-SELECT column_name, data_type
+SELECT column_name, data_type, numeric_precision, numeric_scale, column_default
 FROM information_schema.columns
 WHERE table_schema = 'public'
   AND table_name = 'v2_warm_up_tasks'
 ORDER BY ordinal_position;
 ```
 
-### 4) Retry the admin Save
+Check that `max_performance_score` appears with the type you expect (e.g. numeric/decimal, default 1.00). If the column is already there but you still get PGRST204, **reload the cache only:**
 
-Warm-up task create should stop returning 503 once the column exists and PostgREST has reloaded.
+```sql
+NOTIFY pgrst, 'reload schema';
+```
 
-If it still errors, confirm you added the column in the **same** Supabase project that backend `SUPABASE_URL` points to (not a different project/environment).
+Then wait 5–10 seconds and try Save again.
+
+**Focus tasks (optional):**
+
+```sql
+SELECT column_name, data_type
+FROM information_schema.columns
+WHERE table_schema = 'public'
+  AND table_name = 'v2_focus_tasks'
+ORDER BY ordinal_position;
+```
+
+If `max_performance_score` is missing there too, the migration above adds it.
+
+### Then test
+
+1. Admin panel → student profile → Warm-up Tasks (and Focus tasks).
+2. Click **+ Add**, enter task text and max score, click **Save**.
+3. Should return **200/201** instead of 503.
 
 ---
 
