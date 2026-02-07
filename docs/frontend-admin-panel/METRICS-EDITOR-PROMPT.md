@@ -31,3 +31,14 @@ Copy the prompt below into your frontend app or hand it to your frontend develop
 
 - **Remove** the Pitch Variance card from the metrics list.
 - **Show only** the 3 custom questions, styled like the warm-up task list: simple list of rounded inputs, one per question, no bold "Metric Question N" cards or "(editable)" labels.
+
+---
+
+## Student flow: "Answer these questions" screen
+
+On the screen where the student answers the metric questions (after the first recording, before "Continue"):
+
+- **Use the actual question text from the task block** as the label for each answer field. Do **not** show generic labels like "Metric question 1" / "Metric question 2".
+- **Source of text:** The task block (from recording-1 response or from the step that shows the task block) contains **metric_question_1**, **metric_question_2**, **metric_question_3**. Each has a **text** property (e.g. "What is the 1 thing you want your audience to understand?"). Use **metric_question_1.text**, **metric_question_2.text**, **metric_question_3.text** as the labels above each "Your answer..." input.
+- **Number of fields:** Show **three** answer fields if the backend sends three questions (even if one has empty text; you can fallback to "Question 1" etc. when `text` is empty). Match the backend’s three questions so **answer_1**, **answer_2**, **answer_3** map correctly when submitting **POST .../metric-answers**.
+- **Title:** You can change "Answer these two questions:" to "Answer these three questions:" (or "Answer the questions below:") and render the three question texts as the labels for the three inputs.

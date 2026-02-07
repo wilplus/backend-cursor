@@ -98,3 +98,24 @@ export interface V2Session {
   report_id?: string | null;
   created_at?: string;
 }
+
+/** One metric question in the task block (from recording-1 response). */
+export interface MetricQuestionItemV2 {
+  id: string;
+  text: string;
+  order_index?: number;
+}
+
+/** Task block returned after POST recording-1. Use metric_question_1/2/3.text as labels. */
+export interface TaskBlockV2 {
+  context_short: string;
+  focus_task: { id: string; title: string; prompt_text: string } | null;
+  metric_question_1: MetricQuestionItemV2;
+  metric_question_2: MetricQuestionItemV2;
+  metric_question_3: MetricQuestionItemV2;
+}
+
+/** Response from POST session/:sessionId/metric-answers */
+export interface MetricAnswersResponseV2 {
+  final_task: string;
+}

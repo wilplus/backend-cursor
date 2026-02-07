@@ -38,7 +38,7 @@ All student actions go through **`/api/homework/*`** (BFF proxies to backend `/v
 - The student sees the **task block**:
   - **Context:** The **context_short** from the first recording (what the system “heard”).
   - **Focus task:** A chosen **focus task** (title + prompt text). The backend selects it based on **performance_score_1**: it picks a task whose difficulty matches that score (e.g. score 0.6 → task with that level or easier). The student is meant to keep this focus in mind for the **second** recording.
-  - **Three metric questions:** The backend returns **metric_question_1**, **metric_question_2**, and **metric_question_3** (editable in admin from the metric-questions-pool). The frontend **must** show all three and collect **answer_1**, **answer_2**, **answer_3** (or metric_answer_1, 2, 3).
+  - **Three metric questions:** The backend returns **metric_question_1**, **metric_question_2**, and **metric_question_3** (each has **id** and **text**). The frontend **must** display the **question text** (e.g. `metric_question_1.text`) as the label for each answer field on the "Answer these questions" screen — not generic "Metric question 1" / "Metric question 2". Show all three (or only those with non-empty `text`), and collect **answer_1**, **answer_2**, **answer_3**.
 - The student submits **answer_1**, **answer_2**, and **answer_3** with **POST /api/homework/session/<session_id>/metric-answers** (body `{ answer_1, answer_2, answer_3 }`).
 - The backend returns **final_task**: a short, AI-generated instruction (exactly two sentences) that combines (1) the context from the first recording and the focus task, and (2) “Focus especially on [answer_1], [answer_2], and [answer_3].” The session moves to **final_task_ready**.
 
@@ -226,7 +226,7 @@ These are typically used from the student profile (e.g. modals or dropdowns) to 
 |------|-------------------------|
 | **Homework page load** | Calls session/status; if no active session, calls session/start; shows current step (warm-up, task block, final task, questions, or report) with no “Start” button. |
 | **Warm-up** | Shows warm_up_task.text; records audio; POSTs to session/:id/recording-1. Optional: during recording, POST PCM chunks to session/:id/recording-metrics-chunk and drive glow brightness from response.pause_score. |
-| **Task block** | Shows context_short, focus_task, metric_question_1, metric_question_2, metric_question_3; collects answer_1, answer_2, answer_3; POSTs metric-answers. |
+| **Task block** | Shows context_short, focus_task, metric_question_1, metric_question_2, metric_question_3; collects answer_1, answer_2, answer_3; POSTs metric-answers. **Reference component:** `docs/frontend-v2-deliverables/components/AnswerMetricQuestionsScreen.tsx` (use `task_block.metric_question_1.text`, `.metric_question_2.text`, `.metric_question_3.text` as labels). |
 | **Final task** | Shows final_task text; records audio; POSTs to session/:id/recording-2. Optional: same real-time glow (recording-metrics-chunk + pause_score) during recording. |
 | **Questions** | If GET questions returns a non-empty list, shows 3 questions; collects answers; POSTs post-answers. If empty, skips to report. |
 | **Report** | Shows report_text, performance_score_end, performance_metrics; session is completed. |
