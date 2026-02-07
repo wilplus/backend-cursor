@@ -2,14 +2,18 @@
 
 If "Add" in the **Select Focus Tasks** modal does nothing or the new task never appears in the pool, wire it like this.
 
-## 1. Ensure the BFF route exists
+## 1. Ensure the BFF route exists (correct path)
 
-You must have **POST /api/admin/tasks** implemented in your Next.js app:
+The frontend calls **`/api/admin/tasks`**, so the route file **must** be at:
 
-- **File:** `src/app/api/admin/tasks/route.ts`
-- **Copy from:** `docs/frontend-admin-panel/api-routes/tasks-route.ts` (in this repo)
+- **File:** `src/app/api/admin/tasks/route.ts`  
+  → This makes the URL **/api/admin/tasks** (correct).
 
-That route must forward **POST** with JSON body to your backend `POST /v2/admin/tasks`. Without it, the browser request gets 404 and nothing is created.
+**Wrong:** `src/app/api/v2/admin/tasks/route.ts`  
+→ That would make the URL **/api/v2/admin/tasks**. The admin client does **not** use `/api/v2/...`; it uses `/api/admin/...`, so you get 404 if the route is under `api/v2`.
+
+- **Copy from:** `docs/frontend-admin-panel/api-routes/tasks-route.ts` (in this repo).
+- The route forwards to your backend `POST /v2/admin/tasks`. Without this file at **api/admin/tasks**, the browser request gets 404.
 
 ## 2. Add button: call the API and refresh the list
 
