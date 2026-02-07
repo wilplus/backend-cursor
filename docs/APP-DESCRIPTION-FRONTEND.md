@@ -202,6 +202,8 @@ The profile page is organized into sections:
 
 **Admin 404 for /tasks:** If you see "HTTP 404 for /tasks" on the student Homework Configuration page, the BFF route for the tasks pool is missing. Add **`src/app/api/admin/tasks/route.ts`** (GET + POST) and **`src/app/api/admin/tasks/[id]/route.ts`** (PUT + DELETE). Copy from **`docs/frontend-admin-panel/api-routes/tasks-route.ts`** and **`tasks-[id]-route.ts`** in the backend repo; fix the `getAuth` import path.
 
+**Cannot add focus task (Add button does nothing or fails):** The "Add" action in the Select Focus Tasks modal must call **POST /api/admin/tasks** with body **`{ title: "your task text" }`** (and optionally `prompt_text`). The backend accepts **title-only** and defaults `prompt_text` to the title, so one field is enough. Ensure (1) the BFF route exists for POST /api/admin/tasks, and (2) the modal's Add handler calls your admin API (e.g. `adminApi.createTask({ title: inputValue })`) and then refetches the task list so the new task appears in the pool.
+
 These are typically used from the student profile (e.g. modals or dropdowns) to pick tasks and questions; the profile page does not need separate “Exercises” or “Questions” top-level pages.
 
 ---

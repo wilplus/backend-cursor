@@ -146,6 +146,15 @@ export const adminApi = {
   getTasks: () =>
     adminFetch<{ tasks: Task[] }>("/tasks").then((r) => r.tasks),
 
+  createTask: (data: Partial<Task> & { title: string }) =>
+    adminFetch<{ task: Task }>("/tasks", { method: "POST", body: data }),
+
+  updateTask: (id: string, data: Partial<Task>) =>
+    adminFetch<{ task: Task }>(`/tasks/${id}`, { method: "PUT", body: data }),
+
+  deleteTask: (id: string) =>
+    adminFetch<{ status: string }>(`/tasks/${id}`, { method: "DELETE" }),
+
   getPostQuestions: () =>
     adminFetch<{ questions: PostQuestion[] }>("/post-recording-questions").then((r) => r.questions),
 

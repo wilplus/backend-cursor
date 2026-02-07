@@ -227,7 +227,21 @@ def v2_admin_tasks_list():
 @require_admin
 def v2_admin_tasks_create():
     data = request.get_json() or {}
-    row = db.v2_insert_task(data)
+    title = (data.get("title") or "").strip()
+    if not title:
+        return jsonify({"code": "INVALID_INPUT", "error": "title is required"}), 400
+    # DB has prompt_text NOT NULL; default to title so "Add" with one field works
+    prompt_text = (data.get("prompt_text") or title).strip() or title
+    payload = {
+        "title": title,
+        "prompt_text": prompt_text,
+        "min_task_score": data.get("min_task_score") if "min_task_score" in data else 0,
+        "max_task_score": data.get("max_task_score") if "max_task_score" in data else 1,
+        "is_active": data.get("is_active", True),
+    }
+    row = db.v2_insert_task(payload)
+    if not row:
+        return jsonify({"code": "V2_ERROR", "error": "Failed to create task"}), 500
     return jsonify({"task": row}), 201
 
 
