@@ -424,6 +424,158 @@ def v2_admin_warm_up_tasks_delete(user_id, task_id):
     return jsonify({"status": "ok"}), 200
 
 
+# ---------- Admin: focus question pool (global) ----------
+@v2_bp.route("/admin/focus-question-pool", methods=["GET"])
+@require_admin
+def v2_admin_focus_question_pool_list():
+    try:
+        data = db.v2_get_focus_question_pool()
+    except Exception as err:
+        err_str = str(err).lower()
+        if "relation" in err_str or "does not exist" in err_str or "42p01" in err_str:
+            return jsonify({"focus_question_pool": []}), 200
+        raise
+    return jsonify({"focus_question_pool": data}), 200
+
+
+@v2_bp.route("/admin/focus-question-pool", methods=["POST"])
+@require_admin
+def v2_admin_focus_question_pool_create():
+    data = request.get_json() or {}
+    text = (data.get("text") or "").strip()
+    if not text:
+        return jsonify({"error": "text is required"}), 400
+    try:
+        row = db.v2_insert_focus_question_pool({
+            "text": text,
+            "order_index": int(data.get("order_index", 0)),
+            "max_performance_score": float(data.get("max_performance_score", 1.0)),
+        })
+        return jsonify({"focus_question": row}), 201
+    except Exception as err:
+        err_str = str(err).lower()
+        if "relation" in err_str or "does not exist" in err_str or "42p01" in err_str:
+            return jsonify({"error": "v2_focus_question_pool table missing. Run migrations/v2_focus_questions.sql."}), 503
+        raise
+
+
+@v2_bp.route("/admin/focus-question-pool/<pool_id>", methods=["PUT"])
+@require_admin
+def v2_admin_focus_question_pool_update(pool_id):
+    data = request.get_json() or {}
+    payload = {}
+    if "text" in data and (data.get("text") or "").strip():
+        payload["text"] = data["text"].strip()
+    if "order_index" in data:
+        payload["order_index"] = int(data["order_index"])
+    if "max_performance_score" in data:
+        try:
+            payload["max_performance_score"] = float(data["max_performance_score"])
+        except (TypeError, ValueError):
+            pass
+    if not payload:
+        try:
+            row = db.v2_get_focus_question_pool_by_id(pool_id)
+            return jsonify({"focus_question": row}), 200
+        except Exception:
+            return jsonify({"error": "Not found"}), 404
+    try:
+        row = db.v2_update_focus_question_pool(pool_id, payload)
+        return jsonify({"focus_question": row}), 200
+    except Exception:
+        return jsonify({"error": "Not found"}), 404
+
+
+@v2_bp.route("/admin/focus-question-pool/<pool_id>", methods=["DELETE"])
+@require_admin
+def v2_admin_focus_question_pool_delete(pool_id):
+    try:
+        db.v2_delete_focus_question_pool(pool_id)
+    except Exception:
+        pass
+    return jsonify({"status": "ok"}), 200
+
+
+# ---------- Admin: focus questions (per student) ----------
+@v2_bp.route("/admin/students/<user_id>/focus-questions", methods=["GET"])
+@require_admin
+def v2_admin_focus_questions_list(user_id):
+    try:
+        rows = db.v2_get_focus_questions(user_id)
+    except Exception as err:
+        err_str = str(err).lower()
+        if "relation" in err_str or "does not exist" in err_str or "42p01" in err_str:
+            return jsonify({"focus_questions": []}), 200
+        raise
+    return jsonify({"focus_questions": rows}), 200
+
+
+@v2_bp.route("/admin/students/<user_id>/focus-questions", methods=["PUT"])
+@require_admin
+def v2_admin_focus_questions_sync(user_id):
+    """Set this student's focus questions from the pool. Body: { "pool_question_ids": [uuid, ...] } (order = display order)."""
+    data = request.get_json() or {}
+    pool_question_ids = data.get("pool_question_ids")
+    if pool_question_ids is None:
+        return jsonify({"error": "pool_question_ids is required"}), 400
+    if not isinstance(pool_question_ids, list):
+        return jsonify({"error": "pool_question_ids must be a list"}), 400
+    pool_question_ids = [str(x) for x in pool_question_ids]
+    try:
+        rows = db.v2_sync_student_focus_questions_from_pool(user_id, pool_question_ids)
+    except Exception as err:
+        err_str = str(err).lower()
+        if "relation" in err_str or "does not exist" in err_str or "42p01" in err_str:
+            return jsonify({"error": "v2_focus_questions table missing. Run migrations/v2_focus_questions.sql."}), 503
+        raise
+    return jsonify({"focus_questions": rows}), 200
+
+
+@v2_bp.route("/admin/students/<user_id>/focus-questions", methods=["POST"])
+@require_admin
+def v2_admin_focus_questions_create(user_id):
+    data = request.get_json() or {}
+    text = (data.get("text") or "").strip()
+    if not text:
+        return jsonify({"error": "text is required"}), 400
+    try:
+        row = db.v2_insert_focus_question({
+            "user_id": user_id,
+            "text": text,
+            "order_index": int(data.get("order_index", 0)),
+            "max_performance_score": float(data.get("max_performance_score", 1.0)),
+        })
+        return jsonify({"focus_question": row}), 201
+    except Exception as err:
+        err_str = str(err).lower()
+        if "relation" in err_str or "does not exist" in err_str or "42p01" in err_str:
+            return jsonify({"error": "v2_focus_questions table missing. Run migrations/v2_focus_questions.sql."}), 503
+        raise
+
+
+@v2_bp.route("/admin/students/<user_id>/focus-questions/<question_id>", methods=["PUT"])
+@require_admin
+def v2_admin_focus_questions_update(user_id, question_id):
+    data = request.get_json() or {}
+    try:
+        row = db.v2_update_focus_question(question_id, data)
+        if not row:
+            return jsonify({"error": "Not found"}), 404
+        return jsonify({"focus_question": row}), 200
+    except Exception:
+        return jsonify({"error": "Not found"}), 404
+
+
+@v2_bp.route("/admin/students/<user_id>/focus-questions/<question_id>", methods=["DELETE"])
+@require_admin
+def v2_admin_focus_questions_delete(user_id, question_id):
+    try:
+        db.v2_delete_focus_question(question_id)
+    except Exception:
+        pass
+    return jsonify({"status": "ok"}), 200
+
+
 # ---------- Admin: metric questions (legacy 2-question table) ----------
 @v2_bp.route("/admin/metric-questions", methods=["GET"])
 @require_admin

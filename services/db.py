@@ -1125,6 +1125,104 @@ class DatabaseService:
     def v2_delete_warm_up_task_pool(self, pool_id: str):
         self.client.table("v2_warm_up_task_pool").delete().eq("id", pool_id).execute()
 
+    # ---------- Focus questions (per student; same pattern as warm-up) ----------
+    def v2_get_focus_questions(self, user_id: str):
+        result = (
+            self.client.table("v2_focus_questions")
+            .select("*")
+            .eq("user_id", user_id)
+            .order("order_index")
+            .order("created_at")
+            .execute()
+        )
+        return result.data or []
+
+    def v2_insert_focus_question(self, data: dict):
+        result = self.client.table("v2_focus_questions").insert(data).execute()
+        return result.data[0] if result.data else None
+
+    def v2_update_focus_question(self, question_id: str, data: dict):
+        payload = {}
+        if "text" in data:
+            payload["text"] = data["text"]
+        if "order_index" in data:
+            payload["order_index"] = int(data["order_index"])
+        if "max_performance_score" in data:
+            try:
+                payload["max_performance_score"] = float(data["max_performance_score"])
+            except (TypeError, ValueError):
+                payload["max_performance_score"] = 1.0
+        if not payload:
+            result = self.client.table("v2_focus_questions").select("*").eq("id", question_id).execute()
+            return result.data[0] if result.data else None
+        result = self.client.table("v2_focus_questions").update(payload).eq("id", question_id).execute()
+        return result.data[0] if result.data else None
+
+    def v2_delete_focus_question(self, question_id: str):
+        self.client.table("v2_focus_questions").delete().eq("id", question_id).execute()
+
+    def v2_get_focus_question_pool(self):
+        result = (
+            self.client.table("v2_focus_question_pool")
+            .select("*")
+            .order("order_index")
+            .order("created_at")
+            .execute()
+        )
+        return result.data or []
+
+    def v2_get_focus_question_pool_by_id(self, pool_id: str):
+        result = self.client.table("v2_focus_question_pool").select("*").eq("id", pool_id).execute()
+        return result.data[0] if result.data else None
+
+    def v2_insert_focus_question_pool(self, data: dict):
+        data = dict(data)
+        data.setdefault("order_index", 0)
+        data.setdefault("max_performance_score", 1.0)
+        result = self.client.table("v2_focus_question_pool").insert(data).execute()
+        return result.data[0] if result.data else None
+
+    def v2_update_focus_question_pool(self, pool_id: str, data: dict):
+        payload = {}
+        if "text" in data:
+            payload["text"] = data["text"]
+        if "order_index" in data:
+            payload["order_index"] = int(data["order_index"])
+        if "max_performance_score" in data:
+            try:
+                payload["max_performance_score"] = float(data["max_performance_score"])
+            except (TypeError, ValueError):
+                payload["max_performance_score"] = 1.0
+        if not payload:
+            return self.v2_get_focus_question_pool_by_id(pool_id)
+        result = self.client.table("v2_focus_question_pool").update(payload).eq("id", pool_id).execute()
+        return result.data[0] if result.data else None
+
+    def v2_delete_focus_question_pool(self, pool_id: str):
+        self.client.table("v2_focus_question_pool").delete().eq("id", pool_id).execute()
+
+    def v2_sync_student_focus_questions_from_pool(self, user_id: str, pool_question_ids: list):
+        """Replace student's focus questions with copies from the pool. pool_question_ids = list of v2_focus_question_pool ids in display order."""
+        self.client.table("v2_focus_questions").delete().eq("user_id", user_id).execute()
+        if not pool_question_ids:
+            return []
+        inserted = []
+        for idx, pool_id in enumerate(pool_question_ids):
+            row = self.v2_get_focus_question_pool_by_id(pool_id)
+            if not row:
+                continue
+            data = {
+                "user_id": user_id,
+                "pool_question_id": pool_id,
+                "text": row["text"],
+                "order_index": idx,
+                "max_performance_score": float(row.get("max_performance_score", 1.0)),
+            }
+            new_row = self.v2_insert_focus_question(data)
+            if new_row:
+                inserted.append(new_row)
+        return inserted
+
     def v2_sync_student_warm_up_tasks_from_pool(self, user_id: str, pool_task_ids: list):
         """Replace student's warm-up tasks with copies from the pool. pool_task_ids = list of v2_warm_up_task_pool ids in display order."""
         self.client.table("v2_warm_up_tasks").delete().eq("user_id", user_id).execute()
