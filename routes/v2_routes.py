@@ -234,7 +234,9 @@ def v2_admin_tasks_create():
     data = request.get_json() or {}
     title = (data.get("title") or "").strip()
     if not title:
-        return jsonify({"code": "INVALID_INPUT", "error": "title is required"}), 400
+        resp = jsonify({"code": "INVALID_INPUT", "error": "title is required", "_debug": {"stage": "validation", "message": "body.title missing or empty"}})
+        resp.headers[_TASKS_HEADER[0]] = _TASKS_HEADER[1]
+        return resp, 400
     # DB has prompt_text NOT NULL; default to title so "Add" with one field works
     prompt_text = (data.get("prompt_text") or title).strip() or title
     payload = {
@@ -246,8 +248,12 @@ def v2_admin_tasks_create():
     }
     row = db.v2_insert_task(payload)
     if not row:
-        return jsonify({"code": "V2_ERROR", "error": "Failed to create task"}), 500
-    return jsonify({"task": row}), 201
+        resp = jsonify({"code": "V2_ERROR", "error": "Failed to create task", "_debug": {"stage": "v2_insert_task", "message": "insert returned no row"}})
+        resp.headers[_TASKS_HEADER[0]] = _TASKS_HEADER[1]
+        return resp, 500
+    resp = jsonify({"task": row})
+    resp.headers[_TASKS_HEADER[0]] = _TASKS_HEADER[1]
+    return resp, 201
 
 
 @v2_bp.route("/admin/tasks/<task_id>", methods=["PUT"])
