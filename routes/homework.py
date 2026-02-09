@@ -93,17 +93,33 @@ def homework_session_start():
 @homework_bp.route("/session/status", methods=["GET"])
 @require_auth
 def homework_session_status():
-    """Get active homework session if any."""
+    """Get active homework session if any. Includes warm_up_task (id, text) so the UI can display it. Backfills snapshot when missing."""
     try:
         user_id = request.user_id
         active = db.v2_get_active_homework_session(user_id)
         if not active:
             return jsonify({"session": None, "has_active_session": False}), 200
-        return jsonify({
+        # If session is in warm_up but missing warm-up snapshot, fetch and persist it so UI can show the task
+        if active.get("status") == STATUS_WARM_UP and (not active.get("warm_up_task_id") or not active.get("warm_up_task_text")):
+            warm_up = db.v2_get_assigned_warm_up_task(user_id)
+            if warm_up:
+                db.v2_update_session(active["id"], user_id, {
+                    "warm_up_task_id": warm_up["id"],
+                    "warm_up_task_text": warm_up.get("text") or "",
+                })
+                active = db.v2_get_session(active["id"], user_id) or active
+        payload = {
             "session": active,
             "session_id": active["id"],
             "has_active_session": True,
-        }), 200
+        }
+        wid = active.get("warm_up_task_id")
+        wtext = active.get("warm_up_task_text")
+        if wid or wtext:
+            payload["warm_up_task"] = {"id": wid, "text": wtext or ""}
+        else:
+            payload["warm_up_task"] = None
+        return jsonify(payload), 200
     except Exception as e:
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
