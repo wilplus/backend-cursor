@@ -488,7 +488,6 @@ def homework_submit_recording_2(session_id):
 
         db.v2_update_session(session_id, user_id, {
             "recording_2_id": recording["id"],
-            "recording_id": recording["id"],
             "performance_score_2": performance_score_2,
             "status": STATUS_POST_QUESTIONS,
         })
