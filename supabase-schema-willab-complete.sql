@@ -442,6 +442,9 @@ DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'v2_sessions' AND column_name = 'pitch_variance_avg') THEN ALTER TABLE v2_sessions ADD COLUMN pitch_variance_avg FLOAT; END IF;
   IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'v2_sessions' AND column_name = 'report_id') THEN ALTER TABLE v2_sessions ADD COLUMN report_id UUID; END IF;
   IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'v2_sessions' AND column_name = 'post_question_ids') THEN ALTER TABLE v2_sessions ADD COLUMN post_question_ids UUID[]; END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'v2_sessions' AND column_name = 'warm_up_task_id') THEN ALTER TABLE v2_sessions ADD COLUMN warm_up_task_id UUID REFERENCES v2_warm_up_tasks(id) ON DELETE SET NULL; END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'v2_sessions' AND column_name = 'warm_up_task_text') THEN ALTER TABLE v2_sessions ADD COLUMN warm_up_task_text TEXT; END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'v2_sessions' AND column_name = 'final_task_text') THEN ALTER TABLE v2_sessions ADD COLUMN final_task_text TEXT; END IF;
 END $$;
 
 DO $$ BEGIN

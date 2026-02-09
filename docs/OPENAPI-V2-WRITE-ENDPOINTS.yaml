@@ -1,0 +1,420 @@
+# OpenAPI: V2 homework write endpoints
+# Base path: /v2/homework. Auth: Bearer required.
+# See CONTRACT-HOMEWORK-FLOW.md and DATA-MAPPING-SCORING-TO-DB.md.
+
+openapi: 3.0.3
+info:
+  title: Homework Flow Write Endpoints (V2)
+  description: |
+    POST/GET for session start, recording-1, metric-answers, recording-2, questions, post-answers. Aligned with routes/homework.py.
+
+    **Backend behavior notes:**
+    - Write endpoints return **minimal payloads** (e.g. session_id, recording_id, performance_score_1/2, final_task, report_text), **not** the full session row. Use **GET /v2/homework/session/status** as the source of truth for resume and current state (it returns the full session object when there is an active session).
+    - **Report generation** is triggered by **POST /session/{id}/post-answers**. There is no separate POST /report endpoint. The report is generated and persisted when the user submits post-answers; the same response includes report_text, performance_score_end, and optional question analyses.
+  version: 1.0.0
+
+servers:
+  - url: /v2/homework
+    description: Homework API base
+
+paths:
+  /session/start:
+    post:
+      summary: Start or resume homework session
+      operationId: postHomeworkSessionStart
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+      responses:
+        "201":
+          description: New session created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionStartCreated"
+        "200":
+          description: Resumed existing active session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionStartResumed"
+        "422":
+          description: No warm-up tasks configured (MVP: must not create session)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NoWarmupConfiguredError"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
+
+  /session/{session_id}/recording-1:
+    post:
+      summary: Upload recording 1 (warm-up). Returns score_1, context_short, task_block.
+      operationId: postHomeworkRecording1
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: session_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [audio]
+              properties:
+                audio:
+                  type: string
+                  format: binary
+                duration_seconds:
+                  type: number
+                  description: Optional client hint
+      responses:
+        "200":
+          description: Success. Session moves to task_block.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Recording1Response"
+        "400":
+          description: Missing audio
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InvalidInputError"
+        "404":
+          description: Session not found or not in warm_up
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionNotFoundError"
+        "500":
+          description: Server or recording create failed
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/V2ErrorResponse"
+                  - $ref: "#/components/schemas/RecordingCreateFailedError"
+
+  /session/{session_id}/metric-answers:
+    post:
+      summary: Submit metric answers (answer_1/2/3). Returns final_task. Session → final_task_ready.
+      operationId: postHomeworkMetricAnswers
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: session_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MetricAnswersRequest"
+      responses:
+        "200":
+          description: Success. final_task_text persisted on session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MetricAnswersResponse"
+        "404":
+          description: Session not found or not in task_block
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionNotFoundError"
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
+
+  /session/{session_id}/recording-2:
+    post:
+      summary: Upload recording 2. Returns performance_score_2. Session → post_questions.
+      operationId: postHomeworkRecording2
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: session_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [audio]
+              properties:
+                audio: { type: string, format: binary }
+                duration_seconds: { type: number }
+      responses:
+        "200":
+          description: Success. Score_2 computed with placeholders; recomputed after post-answers.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Recording2Response"
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InvalidInputError"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionNotFoundError"
+        "500":
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/V2ErrorResponse"
+                  - $ref: "#/components/schemas/RecordingCreateFailedError"
+
+  /session/{session_id}/questions:
+    get:
+      summary: Get post-recording questions for step 4. If empty, frontend skips.
+      operationId: getHomeworkQuestions
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: session_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: List of questions (may be empty)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuestionsResponse"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionNotFoundError"
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
+
+  /session/{session_id}/post-answers:
+    post:
+      summary: Submit post-answers. Recomputes score_2, generates report, session → completed.
+      description: If session is already `completed`, returns 200 with existing report_text and performance_score_end (idempotent; no second report row created).
+      operationId: postHomeworkPostAnswers
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: session_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PostAnswersRequest"
+      responses:
+        "200":
+          description: Success. Report and performance_score_end returned.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PostAnswersResponse"
+        "400":
+          description: No recording_2 or invalid state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InvalidStateError"
+        "404":
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/SessionNotFoundError"
+                  - $ref: "#/components/schemas/RecordingNotFoundError"
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    SessionStartCreated:
+      type: object
+      required: [session_id, status]
+      properties:
+        session_id: { type: string, format: uuid }
+        status: { type: string, enum: [warm_up] }
+        warm_up_task:
+          type: object
+          nullable: true
+          properties:
+            id: { type: string, format: uuid }
+            text: { type: string }
+    SessionStartResumed:
+      type: object
+      required: [session_id, status]
+      properties:
+        session_id: { type: string, format: uuid }
+        status: { type: string, enum: [warm_up, task_block, final_task_ready, post_questions] }
+        warm_up_task:
+          type: object
+          nullable: true
+          properties:
+            id: { type: string, format: uuid }
+            text: { type: string }
+    NoWarmupConfiguredError:
+      type: object
+      required: [error]
+      properties:
+        error: { type: string, enum: [NO_WARMUP_CONFIGURED] }
+        message: { type: string }
+
+    Recording1Response:
+      type: object
+      required: [recording_id, performance_score_1, context_short, task_block]
+      properties:
+        recording_id: { type: string, format: uuid }
+        performance_score_1: { type: number }
+        context_short: { type: string }
+        task_block:
+          type: object
+          properties:
+            context_short: { type: string }
+            focus_task:
+              type: object
+              nullable: true
+              properties:
+                id: { type: string, format: uuid }
+                title: { type: string }
+                prompt_text: { type: string }
+            metric_question_1: { type: object }
+            metric_question_2: { type: object }
+            metric_question_3: { type: object }
+    Recording2Response:
+      type: object
+      required: [recording_id, performance_score_2]
+      properties:
+        recording_id: { type: string, format: uuid }
+        performance_score_2: { type: number }
+
+    MetricAnswersRequest:
+      type: object
+      properties:
+        answer_1: { type: string }
+        answer_2: { type: string }
+        answer_3: { type: string }
+        metric_answer_1: { type: string }
+        metric_answer_2: { type: string }
+        metric_answer_3: { type: string }
+    MetricAnswersResponse:
+      type: object
+      required: [final_task]
+      properties:
+        final_task: { type: string }
+
+    QuestionsResponse:
+      type: object
+      required: [questions]
+      properties:
+        questions:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string, format: uuid }
+              text: { type: string }
+              answer_type: { type: string }
+    PostAnswersRequest:
+      type: object
+      required: [answers]
+      properties:
+        answers:
+          type: array
+          items:
+            type: object
+            properties:
+              question_id: { type: string }
+              answer_text: { type: string }
+    PostAnswersResponse:
+      type: object
+      required: [report_text, performance_score_end]
+      properties:
+        report_text: { type: string }
+        performance_score_end: { type: number }
+        performance_metrics: { type: object }
+        question_1_analysis: { type: string }
+        question_1_score: { type: number }
+        question_2_analysis: { type: string }
+        question_2_score: { type: number }
+        question_3_analysis: { type: string }
+        question_3_score: { type: number }
+
+    V2ErrorResponse:
+      type: object
+      required: [code, error]
+      properties:
+        code: { type: string, enum: [V2_ERROR] }
+        error: { type: string }
+    SessionNotFoundError:
+      type: object
+      required: [code, error]
+      properties:
+        code: { type: string, enum: [SESSION_NOT_FOUND] }
+        error: { type: string }
+    InvalidInputError:
+      type: object
+      required: [code, error]
+      properties:
+        code: { type: string, enum: [INVALID_INPUT] }
+        error: { type: string }
+    InvalidStateError:
+      type: object
+      required: [code, error]
+      properties:
+        code: { type: string, enum: [INVALID_STATE] }
+        error: { type: string }
+    RecordingCreateFailedError:
+      type: object
+      required: [code]
+      properties:
+        code: { type: string, enum: [RECORDING_CREATE_FAILED] }
+    RecordingNotFoundError:
+      type: object
+      required: [code]
+      properties:
+        code: { type: string, enum: [RECORDING_NOT_FOUND] }

@@ -1,0 +1,207 @@
+# OpenAPI fragment: GET /v2/homework/session/status
+# Paste into your main OpenAPI spec or use as reference. Matches current backend response (no transcripts in status).
+
+openapi: 3.0.3
+info:
+  title: Homework Session Status (V2)
+  description: Schema for GET session/status only. Matches reality; no transcript in response.
+  version: 1.0.0
+
+paths:
+  /v2/homework/session/status:
+    get:
+      summary: Get active homework session status
+      description: Returns the current active homework session (if any) or null. Session is the raw v2_sessions row; no transcript fields.
+      operationId: getHomeworkSessionStatus
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Success. Either no active session or active session with full session row.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/NoActiveSessionResponse"
+                  - $ref: "#/components/schemas/ActiveSessionResponse"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    # ---- Wrapper responses ----
+    NoActiveSessionResponse:
+      type: object
+      required:
+        - session
+        - has_active_session
+      properties:
+        session:
+          type: "null"
+          nullable: true
+          description: No active session.
+        has_active_session:
+          type: boolean
+          enum: [false]
+      additionalProperties: false
+
+    ActiveSessionResponse:
+      type: object
+      required:
+        - session
+        - session_id
+        - has_active_session
+      properties:
+        session:
+          $ref: "#/components/schemas/V2SessionRow"
+        session_id:
+          type: string
+          format: uuid
+          description: Same as session.id.
+        has_active_session:
+          type: boolean
+          enum: [true]
+      additionalProperties: false
+
+    # ---- Raw v2_sessions row (no transcript fields) ----
+    V2SessionRow:
+      type: object
+      description: Full v2_sessions row as returned by backend. Snake_case; all fields nullable except id, user_id, status, created_at.
+      required:
+        - id
+        - user_id
+        - status
+        - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum:
+            - warm_up
+            - task_block
+            - final_task_ready
+            - post_questions
+            - completed
+          description: Current step in homework flow.
+        created_at:
+          type: string
+          format: date-time
+        context_short:
+          type: [string, "null"]
+          nullable: true
+        context_long:
+          type: [string, "null"]
+          nullable: true
+        context_long_entries:
+          type: [array, "null"]
+          nullable: true
+          items:
+            type: object
+            properties:
+              at: { type: string, format: date-time }
+              text: { type: string }
+        selected_task_id:
+          type: [string, "null"]
+          format: uuid
+          nullable: true
+        recording_1_id:
+          type: [string, "null"]
+          format: uuid
+          nullable: true
+        recording_2_id:
+          type: [string, "null"]
+          format: uuid
+          nullable: true
+        performance_score_1:
+          type: [number, "null"]
+          nullable: true
+        performance_score_2:
+          type: [number, "null"]
+          nullable: true
+        performance_score_end:
+          type: [number, "null"]
+          nullable: true
+        session_metric_question_1:
+          type: [string, "null"]
+          nullable: true
+        session_metric_question_2:
+          type: [string, "null"]
+          nullable: true
+        session_metric_question_3:
+          type: [string, "null"]
+          nullable: true
+        metric_answers:
+          type: [object, "null"]
+          nullable: true
+          description: e.g. { answer_1, answer_2, answer_3 }
+        question_1_analysis:
+          type: [string, "null"]
+          nullable: true
+        question_1_score:
+          type: [number, "null"]
+          nullable: true
+        question_2_analysis:
+          type: [string, "null"]
+          nullable: true
+        question_2_score:
+          type: [number, "null"]
+          nullable: true
+        question_3_analysis:
+          type: [string, "null"]
+          nullable: true
+        question_3_score:
+          type: [number, "null"]
+          nullable: true
+        pitch_variance_avg:
+          type: [number, "null"]
+          nullable: true
+        report_id:
+          type: [string, "null"]
+          format: uuid
+          nullable: true
+        post_question_ids:
+          type: [array, "null"]
+          nullable: true
+          items:
+            type: string
+            format: uuid
+        warm_up_task_id:
+          type: [string, "null"]
+          format: uuid
+          nullable: true
+        warm_up_task_text:
+          type: [string, "null"]
+          nullable: true
+        final_task_text:
+          type: [string, "null"]
+          nullable: true
+      # Allow additional DB columns if backend adds them later
+      additionalProperties: true
+
+    V2ErrorResponse:
+      type: object
+      required:
+        - code
+        - error
+      properties:
+        code:
+          type: string
+          enum: [V2_ERROR]
+        error:
+          type: string
+      additionalProperties: false

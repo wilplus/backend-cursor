@@ -110,21 +110,29 @@ def select_focus_task_for_performance_score_1(
     Homework flow: pick one focus task where min_task_score <= performance_score_1.
     If assigned_task_ids is set, only consider those tasks; else consider all active.
     If several match, shuffle and return one.
+    If no task is eligible (score_1 below all min_task_scores), pick easiest so flow never blocks:
+    easiest = task with smallest min_task_score.
     """
     import random
     active = [t for t in tasks if t.get("is_active") is True]
+    if not active:
+        return None
     if assigned_task_ids:
         allowed = {str(tid) for tid in assigned_task_ids}
         active = [t for t in active if str(t.get("id")) in allowed]
+    if not active:
+        return None
     matching = []
     for t in active:
         mn = float(t.get("min_task_score", 0))
         if mn <= performance_score_1:
             matching.append(t)
-    if not matching:
-        return None
-    random.shuffle(matching)
-    return matching[0]
+    if matching:
+        random.shuffle(matching)
+        return matching[0]
+    # No eligible task: pick easiest (smallest min_task_score) so flow never blocks
+    easiest = min(active, key=lambda t: float(t.get("min_task_score", 0)))
+    return easiest
 
 
 def select_tasks_for_task_score(

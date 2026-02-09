@@ -41,6 +41,12 @@ def homework_session_start():
         active = db.v2_get_active_homework_session(user_id)
         if active:
             warm_up = db.v2_get_assigned_warm_up_task(user_id)
+            # Snapshot warm-up for resume/reproducibility (idempotent if already set)
+            if warm_up and (not active.get("warm_up_task_id") or not active.get("warm_up_task_text")):
+                db.v2_update_session(active["id"], user_id, {
+                    "warm_up_task_id": warm_up["id"],
+                    "warm_up_task_text": warm_up.get("text") or "",
+                })
             return jsonify({
                 "session_id": active["id"],
                 "status": active["status"],
@@ -51,12 +57,14 @@ def homework_session_start():
             return jsonify({"code": "V2_ERROR", "error": "Failed to create session"}), 500
         # Snapshot user's custom metric questions for this session (used at end for LLM analysis)
         prefs = db.v2_get_user_metric_questions(user_id)
+        warm_up = db.v2_get_assigned_warm_up_task(user_id)
         db.v2_update_session(session["id"], user_id, {
             "session_metric_question_1": prefs.get("metric_question_1") or "",
             "session_metric_question_2": prefs.get("metric_question_2") or "",
             "session_metric_question_3": prefs.get("metric_question_3") or "",
+            "warm_up_task_id": warm_up["id"] if warm_up else None,
+            "warm_up_task_text": (warm_up.get("text") or "") if warm_up else "",
         })
-        warm_up = db.v2_get_assigned_warm_up_task(user_id)
         return jsonify({
             "session_id": session["id"],
             "status": STATUS_WARM_UP,
@@ -346,6 +354,7 @@ def homework_submit_metric_answers(session_id):
         db.v2_update_session(session_id, user_id, {
             "metric_answers": {"answer_1": answer_1, "answer_2": answer_2, "answer_3": answer_3},
             "status": STATUS_FINAL_TASK_READY,
+            "final_task_text": final_task_text,
         })
 
         return jsonify({"final_task": final_task_text}), 200
@@ -479,7 +488,25 @@ def homework_submit_post_answers(session_id):
         answers = data.get("answers", [])
 
         session = db.v2_get_session(session_id, user_id)
-        if not session or session.get("status") != STATUS_POST_QUESTIONS:
+        if not session:
+            return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found"}), 404
+        # Idempotency: if already completed, return existing report (do not create second report row)
+        if session.get("status") == STATUS_COMPLETED:
+            rec_id = session.get("recording_2_id") or session.get("recording_id")
+            rec = db.get_recording(rec_id, user_id) if rec_id else None
+            metrics = (rec.get("performance_metrics_v2") or {}) if rec else {}
+            return jsonify({
+                "report_text": session.get("context_long") or "",
+                "performance_score_end": float(session.get("performance_score_end") or 0),
+                "performance_metrics": metrics,
+                "question_1_analysis": session.get("question_1_analysis") or "",
+                "question_1_score": float(session.get("question_1_score") or 0),
+                "question_2_analysis": session.get("question_2_analysis") or "",
+                "question_2_score": float(session.get("question_2_score") or 0),
+                "question_3_analysis": session.get("question_3_analysis") or "",
+                "question_3_score": float(session.get("question_3_score") or 0),
+            }), 200
+        if session.get("status") != STATUS_POST_QUESTIONS:
             return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found or not in post_questions"}), 404
 
         recording_2_id = session.get("recording_2_id") or session.get("recording_id")

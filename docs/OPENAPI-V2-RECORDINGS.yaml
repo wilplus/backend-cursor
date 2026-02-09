@@ -1,0 +1,127 @@
+# GET /v2/recordings/{id} — OpenAPI fragment
+# Merge into main spec or keep as reference. Matches TRANSCRIPT-RETRIEVAL-REVIEW.md and backend contract (404 for not-found or not-authorized).
+
+openapi: 3.0.3
+info:
+  title: Recordings API (V2)
+  version: 1.0.0
+  description: |
+    V2 endpoint for fetching a single recording by id (includes transcript).
+    Does not change the homework session/status contract.
+
+servers:
+  - url: https://your-domain.com
+
+paths:
+  /v2/recordings/{recording_id}:
+    get:
+      summary: Get a recording by id (V2)
+      description: |
+        Returns a single recording. Includes full transcription_text if available.
+        Authorization: owner only (admin optional later). Returns 404 for not found OR not authorized.
+      operationId: getV2RecordingById
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: recording_id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Recording found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2GetRecordingResponse"
+        "400":
+          description: Invalid recording ID (e.g. not a UUID)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
+        "404":
+          description: Not found or not authorized (same response)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    V2GetRecordingResponse:
+      type: object
+      required:
+        - id
+        - user_id
+        - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        created_at:
+          type: string
+          format: date-time
+        session_id:
+          type: [string, "null"]
+          format: uuid
+          nullable: true
+        session_v2_id:
+          type: [string, "null"]
+          format: uuid
+          nullable: true
+        transcription_text:
+          type: [string, "null"]
+          nullable: true
+        transcript_preview:
+          type: [string, "null"]
+          nullable: true
+        duration_seconds:
+          type: [integer, "null"]
+          nullable: true
+        words_per_minute:
+          type: [number, "null"]
+          nullable: true
+        filler_words_count:
+          type: [integer, "null"]
+          nullable: true
+        performance_score_v2:
+          type: [number, "null"]
+          nullable: true
+        performance_metrics_v2:
+          type: [object, "null"]
+          nullable: true
+        metric_labels_snapshot_v2:
+          type: [object, "null"]
+          nullable: true
+      additionalProperties: true
+
+    V2ErrorResponse:
+      type: object
+      required:
+        - code
+        - error
+      properties:
+        code:
+          type: string
+          description: e.g. RECORDING_NOT_FOUND, INVALID_INPUT, V2_ERROR
+        error:
+          type: string
+      additionalProperties: false
