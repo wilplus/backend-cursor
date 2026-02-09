@@ -1117,6 +1117,21 @@ class DatabaseService:
         return inserted
 
     # ---------- Warm-up tasks (per student; homework flow) ----------
+    DEFAULT_WARM_UP_TASK_TEXT = "How was your day so far?"
+
+    def v2_ensure_default_warm_up_task(self, user_id: str):
+        """If user has no warm-up tasks, create the default one so everyone can proceed. Idempotent."""
+        tasks = self.v2_get_warm_up_tasks(user_id)
+        if tasks:
+            return
+        data = {
+            "user_id": user_id,
+            "text": self.DEFAULT_WARM_UP_TASK_TEXT,
+            "order_index": 0,
+            "max_performance_score": 1.0,
+        }
+        self.v2_insert_warm_up_task(data)
+
     def v2_get_warm_up_tasks(self, user_id: str):
         result = (
             self.client.table("v2_warm_up_tasks")
@@ -1332,8 +1347,9 @@ class DatabaseService:
         return float(score)
 
     def v2_get_assigned_warm_up_task(self, user_id: str):
-        """Get the single warm-up task: selection by last performance_score_end (max_performance_score, ±3%%, random if ties). First-time student gets easiest (highest max)."""
+        """Get the single warm-up task: selection by last performance_score_end (max_performance_score, ±3%%, random if ties). First-time student gets easiest (highest max). If user has no tasks, ensure default warm-up is created first."""
         from services.v2_flow_service import select_warm_up_task
+        self.v2_ensure_default_warm_up_task(user_id)
         tasks = self.v2_get_warm_up_tasks(user_id)
         if not tasks:
             return None

@@ -22,8 +22,11 @@ ALTER TABLE v2_sessions ADD COLUMN IF NOT EXISTS final_task_text TEXT;
 
 ### 1.2 Backend behavior (already implemented)
 
-- **No warm-up:**  
-  - **POST /v2/homework/session/start** (new session or resume): if the user has **no** warm-up tasks, backend returns **422** with:
+- **Default warm-up:**  
+  When assigning a warm-up task, the backend **ensures every user has at least one**: if the user has no warm-up tasks, it creates the default task *"How was your day so far?"* (so new and existing users without tasks can always proceed).
+
+- **No warm-up (rare):**  
+  **POST /v2/homework/session/start** (new session or resume): only if the user still has **no** warm-up task after that (e.g. DB error creating the default), backend returns **422** with:
   - `code`: `"NO_WARMUP_CONFIGURED"`
   - `message`: `"No warm-up tasks are configured for your account. Please contact your coach to get started."`
   - No session is created on new start; on resume, same 422 so user cannot proceed.
