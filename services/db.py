@@ -1121,6 +1121,8 @@ class DatabaseService:
 
     def v2_ensure_default_warm_up_task(self, user_id: str):
         """If user has no warm-up tasks, create the default one so everyone can proceed. Idempotent."""
+        import logging
+        log = logging.getLogger(__name__)
         tasks = self.v2_get_warm_up_tasks(user_id)
         if tasks:
             return
@@ -1130,7 +1132,11 @@ class DatabaseService:
             "order_index": 0,
             "max_performance_score": 1,  # int: works for INTEGER or DECIMAL columns; 1 = easiest
         }
-        self.v2_insert_warm_up_task(data)
+        try:
+            self.v2_insert_warm_up_task(data)
+        except Exception as e:
+            log.warning("v2_ensure_default_warm_up_task insert failed for user_id=%s: %s", user_id, e)
+            raise
 
     def v2_get_warm_up_tasks(self, user_id: str):
         result = (
