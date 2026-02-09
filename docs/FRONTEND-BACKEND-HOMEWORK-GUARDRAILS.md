@@ -43,6 +43,10 @@ You don’t need to change anything else on the backend for these two guardrails
 
 ## 2) What the FRONTEND must do
 
+### 2.0 Display the warm-up task prompt (required)
+
+In the warm-up step (step 1), the UI must show the **actual task text** (e.g. "How was your day so far?") that the user should speak to, not only the label "Warm-up task". Use `response.warm_up_task.text` from **GET /session/status** or **POST /session/start**; fallback to `session.warm_up_task_text` or "Your warm-up task will appear here." Do not leave the task content area empty — the user must see the prompt so they know what to say.
+
 ### 2.1 Handle “no warm-up” (422 NO_WARMUP_CONFIGURED)
 
 **When:** After calling **POST /v2/homework/session/start** (or **GET /v2/homework/session/status** if you treat resume the same).
@@ -85,6 +89,7 @@ You don’t need to change anything else on the backend for these two guardrails
 
 | Topic | You (backend/DB) | Frontend |
 |--------|-------------------|----------|
+| **Show warm-up prompt** | Returns `warm_up_task: { id, text }` in status and start | Render `warm_up_task.text` in the task area (not only the "Warm-up task" label) |
 | **Missing columns (PGRST204)** | Run migration (add `warm_up_task_id`, `warm_up_task_text`, `final_task_text`); reload schema | — |
 | **No warm-up** | Return 422 `NO_WARMUP_CONFIGURED` on start/resume when no warm-up tasks | On 422: show message; do not show homework flow; offer contact coach / leave |
 | **Metric answers** | Return 422 `VALIDATION_ERROR` if any answer empty | Validate before submit and/or on 422: show “Please answer all three questions”; keep on step 2 |

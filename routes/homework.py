@@ -93,32 +93,41 @@ def homework_session_start():
 @homework_bp.route("/session/status", methods=["GET"])
 @require_auth
 def homework_session_status():
-    """Get active homework session if any. Includes warm_up_task (id, text) so the UI can display it. Backfills snapshot when missing."""
+    """Get active homework session if any. Includes warm_up_task (id, text) from v2_warm_up_tasks so the UI can display it."""
     try:
         user_id = request.user_id
         active = db.v2_get_active_homework_session(user_id)
         if not active:
             return jsonify({"session": None, "has_active_session": False}), 200
-        # If session is in warm_up but missing warm-up snapshot, fetch and persist it so UI can show the task
-        if active.get("status") == STATUS_WARM_UP and (not active.get("warm_up_task_id") or not active.get("warm_up_task_text")):
-            warm_up = db.v2_get_assigned_warm_up_task(user_id)
-            if warm_up:
-                db.v2_update_session(active["id"], user_id, {
-                    "warm_up_task_id": warm_up["id"],
-                    "warm_up_task_text": warm_up.get("text") or "",
-                })
-                active = db.v2_get_session(active["id"], user_id) or active
         payload = {
             "session": active,
             "session_id": active["id"],
             "has_active_session": True,
         }
-        wid = active.get("warm_up_task_id")
-        wtext = active.get("warm_up_task_text")
-        if wid or wtext:
-            payload["warm_up_task"] = {"id": wid, "text": wtext or ""}
+        # When in warm_up, always fetch warm-up task from v2_warm_up_tasks so the UI has the prompt text
+        if active.get("status") == STATUS_WARM_UP:
+            warm_up = db.v2_get_assigned_warm_up_task(user_id)
+            if warm_up:
+                payload["warm_up_task"] = {
+                    "id": warm_up.get("id"),
+                    "text": (warm_up.get("text") or "").strip() or db.DEFAULT_WARM_UP_TASK_TEXT,
+                }
+                # Persist snapshot on session for resume/audit
+                if not active.get("warm_up_task_id") or not active.get("warm_up_task_text"):
+                    db.v2_update_session(active["id"], user_id, {
+                        "warm_up_task_id": warm_up.get("id"),
+                        "warm_up_task_text": payload["warm_up_task"]["text"],
+                    })
+            else:
+                payload["warm_up_task"] = None
         else:
-            payload["warm_up_task"] = None
+            # Other statuses: use session snapshot if present
+            wid = active.get("warm_up_task_id")
+            wtext = active.get("warm_up_task_text")
+            if wid or wtext:
+                payload["warm_up_task"] = {"id": wid, "text": (wtext or "").strip()}
+            else:
+                payload["warm_up_task"] = None
         return jsonify(payload), 200
     except Exception as e:
         sentry_sdk.capture_exception(e)
