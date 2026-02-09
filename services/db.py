@@ -1128,7 +1128,7 @@ class DatabaseService:
             "user_id": user_id,
             "text": self.DEFAULT_WARM_UP_TASK_TEXT,
             "order_index": 0,
-            "max_performance_score": 1.0,
+            "max_performance_score": 1,  # int: works for INTEGER or DECIMAL columns; 1 = easiest
         }
         self.v2_insert_warm_up_task(data)
 
