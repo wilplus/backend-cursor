@@ -41,8 +41,15 @@ def homework_session_start():
         active = db.v2_get_active_homework_session(user_id)
         if active:
             warm_up = db.v2_get_assigned_warm_up_task(user_id)
+            # If no warm-up is configured, do not allow proceeding (same as on start)
+            if not warm_up:
+                return jsonify({
+                    "code": "NO_WARMUP_CONFIGURED",
+                    "message": "No warm-up tasks are configured for your account. Please contact your coach to get started.",
+                    "details": {},
+                }), 422
             # Snapshot warm-up for resume/reproducibility (idempotent if already set)
-            if warm_up and (not active.get("warm_up_task_id") or not active.get("warm_up_task_text")):
+            if not active.get("warm_up_task_id") or not active.get("warm_up_task_text"):
                 db.v2_update_session(active["id"], user_id, {
                     "warm_up_task_id": warm_up["id"],
                     "warm_up_task_text": warm_up.get("text") or "",
@@ -50,14 +57,21 @@ def homework_session_start():
             return jsonify({
                 "session_id": active["id"],
                 "status": active["status"],
-                "warm_up_task": {"id": warm_up["id"], "text": warm_up["text"]} if warm_up else None,
+                "warm_up_task": {"id": warm_up["id"], "text": warm_up["text"]},
             }), 200
+        # Require at least one warm-up task; otherwise do not create session (prevents broken flow)
+        warm_up = db.v2_get_assigned_warm_up_task(user_id)
+        if not warm_up:
+            return jsonify({
+                "code": "NO_WARMUP_CONFIGURED",
+                "message": "No warm-up tasks are configured for your account. Please contact your coach to get started.",
+                "details": {},
+            }), 422
         session = db.v2_create_homework_session(user_id)
         if not session:
             return jsonify({"code": "V2_ERROR", "error": "Failed to create session"}), 500
         # Snapshot user's custom metric questions for this session (used at end for LLM analysis)
         prefs = db.v2_get_user_metric_questions(user_id)
-        warm_up = db.v2_get_assigned_warm_up_task(user_id)
         db.v2_update_session(session["id"], user_id, {
             "session_metric_question_1": prefs.get("metric_question_1") or "",
             "session_metric_question_2": prefs.get("metric_question_2") or "",
@@ -335,6 +349,14 @@ def homework_submit_metric_answers(session_id):
         session = db.v2_get_session(session_id, user_id)
         if not session or session.get("status") != STATUS_TASK_BLOCK:
             return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found or not in task_block"}), 404
+
+        # Require all three metric answers before continuing
+        if not answer_1 or not answer_2 or not answer_3:
+            return jsonify({
+                "code": "VALIDATION_ERROR",
+                "message": "Please answer all three questions before continuing.",
+                "details": {"field": "metric_answers"},
+            }), 422
 
         context_short = session.get("context_short") or ""
         task_id = session.get("selected_task_id")
