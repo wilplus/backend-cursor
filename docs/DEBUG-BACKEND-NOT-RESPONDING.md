@@ -8,6 +8,17 @@ the app cannot reach the backend API. Until this is fixed, the frontend cannot s
 
 ---
 
+## If it was fixed and the bug came back
+
+1. **Redeploy the backend** — Ensure the latest backend (with `GET /`, `GET /health`, `GET /health/`, `GET /api/health`) is deployed. Railway may be serving an old build.
+2. **CORS** — In production, `CORS_ORIGINS` must include your frontend origin (e.g. `https://your-app.vercel.app`). If the browser blocks the health request due to CORS, the frontend reports "not responding."
+3. **Verify from browser or curl:**
+   - `curl -i https://flask-backend-production-ab37.up.railway.app/`
+   - `curl -i https://flask-backend-production-ab37.up.railway.app/health`
+   All should return **200** and `{"status":"ok"}`.
+
+---
+
 ## What the error means
 
 The frontend (e.g. Next.js) is calling the backend URL (from `NEXT_PUBLIC_API_URL`) and getting no valid response. Typical triggers:

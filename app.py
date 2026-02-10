@@ -39,15 +39,32 @@ app.register_blueprint(v2_bp)
 app.register_blueprint(homework_bp)
 
 
+def _health_response():
+    """Single response for all health endpoints so frontend gets 200 regardless of path."""
+    return {"status": "ok"}, 200
+
+
 @app.route("/", methods=["GET"])
 def root():
     """Public root health check; frontend may use base URL with no path."""
-    return {"status": "ok"}, 200
+    return _health_response()
 
 
 @app.route("/health", methods=["GET"])
 def health():
-    return {"status": "ok"}
+    return _health_response()
+
+
+@app.route("/health/", methods=["GET"])
+def health_trailing():
+    """Health with trailing slash (some clients or proxies normalize to this)."""
+    return _health_response()
+
+
+@app.route("/api/health", methods=["GET"])
+def api_health():
+    """Health at /api/health in case frontend or BFF uses this path."""
+    return _health_response()
 
 @app.route("/health/jwks", methods=["GET"])
 def health_jwks():
