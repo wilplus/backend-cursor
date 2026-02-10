@@ -72,7 +72,7 @@ The backend returns a **bucket** name (e.g. `audio_recordings`) and a **storage_
 |------|------|
 | ☐ | Supabase bucket **audio_recordings** (or your `AUDIO_BUCKET_NAME`) exists |
 | ☐ | CORS on that bucket allows your frontend origin (PUT/POST) |
-| ☐ | Storage RLS allows upload (e.g. INSERT) for paths like `{user_id}/*` |
+| ☐ | Storage RLS allows upload (e.g. INSERT) for paths like `{user_id}/*` — see `docs/SUPABASE-STORAGE-RLS-AUDIO-RECORDINGS.md` for SQL |
 | ☐ | BFF route **POST** `.../recording-upload-url` exists and proxies to backend |
 | ☐ | Mock (if used) returns **bucket: "audio_recordings"** and path like `user_id/session_id/*.webm` |
 | ☐ | Backend redeployed with recording-upload-url and by-URL recording-1/2 |
