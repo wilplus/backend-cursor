@@ -302,5 +302,6 @@ In DevTools Network, verify this progression:
 
 **Full detail:** `docs/IMPLEMENT-THIS-TO-MAKE-FLOW-WORK.md`  
 **Response shape and contract:** `docs/EXAMPLE-GET-SESSION-STATUS-RESPONSES.md` §4  
+**Wheel not working:** `docs/FIX-WHEEL-NOT-WORKING.md` — checklist (BFF route, auth, same-origin URL, step gating, using response.pause_score).
 
 **Sanity check:** If you paste BFF code for `/api/homework/session/status` and `/api/homework/session/[sessionId]/recording-upload-url`, auth forwarding and production-safe paths can be verified.

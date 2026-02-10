@@ -445,6 +445,7 @@ DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'v2_sessions' AND column_name = 'warm_up_task_id') THEN ALTER TABLE v2_sessions ADD COLUMN warm_up_task_id UUID REFERENCES v2_warm_up_tasks(id) ON DELETE SET NULL; END IF;
   IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'v2_sessions' AND column_name = 'warm_up_task_text') THEN ALTER TABLE v2_sessions ADD COLUMN warm_up_task_text TEXT; END IF;
   IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'v2_sessions' AND column_name = 'final_task_text') THEN ALTER TABLE v2_sessions ADD COLUMN final_task_text TEXT; END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'v2_sessions' AND column_name = 'post_answers') THEN ALTER TABLE v2_sessions ADD COLUMN post_answers JSONB; END IF;
 END $$;
 
 DO $$ BEGIN
