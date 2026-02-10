@@ -152,7 +152,7 @@ def homework_recording_metrics_chunk(session_id):
         # Allow any active status (user may be in warm_up or final_task_ready while recording)
         status = session.get("status")
         if status not in (STATUS_WARM_UP, STATUS_TASK_BLOCK, STATUS_FINAL_TASK_READY, STATUS_POST_QUESTIONS):
-            return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not in recording state"}), 404
+            return jsonify({"code": "INVALID_SESSION_STATE", "error": "Session not in recording state", "status": status}), 409
 
         # Rate limit
         key = (str(user_id), str(session_id))
@@ -278,9 +278,9 @@ def homework_recording_upload_url(session_id):
         if not session:
             return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found"}), 404
         if recording == "1" and session.get("status") != STATUS_WARM_UP:
-            return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session must be in warm_up for recording-1"}), 404
+            return jsonify({"code": "INVALID_SESSION_STATE", "error": "Session must be in warm_up for recording-1", "status": session.get("status")}), 409
         if recording == "2" and session.get("status") != STATUS_FINAL_TASK_READY:
-            return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session must be in final_task_ready for recording-2"}), 404
+            return jsonify({"code": "INVALID_SESSION_STATE", "error": "Session must be in final_task_ready for recording-2", "status": session.get("status")}), 409
 
         storage_path = _storage_path_for_session(user_id, session_id)
         return jsonify({
@@ -304,8 +304,10 @@ def homework_submit_recording_1(session_id):
         config = Config()
         user_id = request.user_id
         session = db.v2_get_session(session_id, user_id)
-        if not session or session.get("status") != STATUS_WARM_UP:
-            return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found or not in warm_up"}), 404
+        if not session:
+            return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found"}), 404
+        if session.get("status") != STATUS_WARM_UP:
+            return jsonify({"code": "INVALID_SESSION_STATE", "error": "Session not found or not in warm_up", "status": session.get("status")}), 409
 
         audio_file = request.files.get("audio")
         data = request.get_json(silent=True) or (request.form or {})
@@ -337,6 +339,21 @@ def homework_submit_recording_1(session_id):
                 duration_seconds = float(duration_seconds)
             except (TypeError, ValueError):
                 return jsonify({"code": "INVALID_INPUT", "error": "duration_seconds must be a number"}), 400
+            # Idempotency: if we already have a recording for this session with this storage_path, return same response (retry/abort safe)
+            existing_rid = session.get("recording_1_id")
+            if existing_rid:
+                existing = db.get_recording(existing_rid, user_id)
+                if existing and (existing.get("storage_path") or "").strip() == storage_path:
+                    metric_questions = db.v2_get_metric_questions_for_flow()
+                    q1 = metric_questions[0] if len(metric_questions) > 0 else {}
+                    q2 = metric_questions[1] if len(metric_questions) > 1 else {}
+                    q3 = metric_questions[2] if len(metric_questions) > 2 else {}
+                    task_block = {"metric_question_1": q1, "metric_question_2": q2, "metric_question_3": q3}
+                    return jsonify({
+                        "recording_id": existing["id"],
+                        "performance_score_1": session.get("performance_score_1"),
+                        "task_block": task_block,
+                    }), 200
             audio_bytes = db.download_audio(config.AUDIO_BUCKET_NAME, storage_path)
             transcript_result = openai_service.transcribe_audio(BytesIO(audio_bytes), "audio.webm")
             duration_seconds = transcript_result.get("duration") or duration_seconds
@@ -515,6 +532,15 @@ def homework_submit_recording_2(session_id):
                 duration_seconds = float(duration_seconds)
             except (TypeError, ValueError):
                 return jsonify({"code": "INVALID_INPUT", "error": "duration_seconds must be a number"}), 400
+            # Idempotency: if we already have recording_2 for this session with this storage_path, return same response
+            existing_rid = session.get("recording_2_id")
+            if existing_rid:
+                existing = db.get_recording(existing_rid, user_id)
+                if existing and (existing.get("storage_path") or "").strip() == storage_path:
+                    return jsonify({
+                        "recording_id": existing["id"],
+                        "performance_score_2": session.get("performance_score_2"),
+                    }), 200
             audio_bytes = db.download_audio(config.AUDIO_BUCKET_NAME, storage_path)
             transcript_result = openai_service.transcribe_audio(BytesIO(audio_bytes), "audio.webm")
             duration_seconds = transcript_result.get("duration") or duration_seconds
