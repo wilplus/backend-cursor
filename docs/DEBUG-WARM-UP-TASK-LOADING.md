@@ -2,6 +2,8 @@
 
 When the UI shows "Tap Try again to load your task", "Your warm-up task will appear here", or the warm-up task never appears, one of these is happening:
 
+**If both warm-up and focus tasks are missing** even though they exist in the admin panel, use the consolidated checklist: **docs/DEBUG-TASKS-NOT-SHOWING-BFF-JWT.md** (BFF stripping, wrong `user_id` from JWT, status/endpoint logic, and what to paste).
+
 1. **The request the UI is using is not returning `warm_up_task`** (different endpoint / error / session not `warm_up`).
 2. **The UI calls the BFF** and the **BFF is dropping/reshaping** the backend payload.
 3. **The backend is returning null/empty** for that user/session (no tasks, wrong `user_id` from JWT, session not `warm_up`, DB query failing).
