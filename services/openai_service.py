@@ -533,11 +533,14 @@ Requirements:
 - Use the exact structure above
 - Do not add additional instructions or commentary
 - Length: 20-50 words total
-- Tone: Clear, direct, instructional"""
+- Tone: Clear, direct, instructional
+- Do NOT mention time limits (e.g. seconds, minutes, "60 seconds")
+- Do NOT say "short summary" or generic "final recording" instructions
+- Use the user's context_short explicitly (quote or paraphrase one concrete detail from it)"""
             response = self.client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=[
-                    {"role": "system", "content": "You produce exactly 2 sentences for a speech practice instruction. No extra text."},
+                    {"role": "system", "content": "You produce exactly 2 sentences for a speech practice instruction. No extra text. Do not mention time limits (seconds/minutes), 'short summary', or '60 seconds'. Use the user's context explicitly."},
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.3,
