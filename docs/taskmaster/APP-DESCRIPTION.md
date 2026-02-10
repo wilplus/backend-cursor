@@ -95,7 +95,7 @@
 - reportText = `res.session?.context_long ?? ""`
 - performanceScoreEnd = `res.session?.performance_score_end ?? null`
 
-Backend uses **snake_case** everywhere; frontend normalizes once (e.g. in applyStatusToState) and uses camelCase internally.
+Backend uses **snake_case** everywhere; frontend normalizes once (e.g. in applyStatusToState) and uses camelCase internally. The status response may have **no session** (`has_active_session: false`, `session: null`). Frontend must either call applyStatusToState only when `session != null`, or type applyStatusToState to accept `HomeworkSessionStatus | null` and clear state (show Start) when null.
 
 ---
 
