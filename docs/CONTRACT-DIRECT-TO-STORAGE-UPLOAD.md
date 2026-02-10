@@ -125,3 +125,17 @@ Same validation: **storage_path** must be under this user/session and end with `
 | 4 | Backend | Download from storage, transcribe, score, persist — same as multipart flow |
 
 This removes large payloads from the API and BFF, eliminating 413 from body size limits.
+
+---
+
+## Risks and alignment (what’s in place vs frontend/config)
+
+| Risk | Where | Backend / doc in place? | Notes |
+|------|--------|--------------------------|--------|
+| **Supabase Storage** (bucket missing, CORS, RLS) | Recording 1 & 2 | Doc only | Contract doc says: set CORS on the bucket and RLS so the user can upload to their path. Backend doesn’t create the bucket or set Storage policies; that’s Supabase Dashboard / config. |
+| **Backend doesn’t implement upload-URL** | recording-upload-url | Yes | `POST /v2/homework/session/<id>/recording-upload-url` is implemented; returns 200 with `bucket` + `storage_path`. Frontend can still keep multipart as fallback if desired. |
+| **Backend expects different path** | Recording 1/2 | Yes | Backend **mints** the path (upload-url) and **validates** it in recording-1/2 (`_validate_storage_path`: prefix `user_id/session_id/`, suffix `.webm`). So we accept exactly the path we gave. |
+| **Session / step derivation** | Resume (step 0→1) | Contract stable | Step is derived from GET session/status (e.g. status, recording_1_id, recording_2_id). Backend keeps status enum and response shape stable; frontend owns `deriveStepFromStatus`. |
+| **Single start attempt** (autoStartAttempted) | Frontend | N/A | Purely frontend; backend has no notion of “one attempt per load.” |
+| **Abort during upload** (partial state) | Recording 1/2 | Not mitigated | If user aborts, Supabase upload or POST may still complete; backend doesn’t do cleanup or idempotency for orphaned files. Frontend can retry or show “upload failed” and re-mint URL. |
+| **Mock vs real** (bucket name) | Dev / staging | Align mock to backend | Backend uses `AUDIO_BUCKET_NAME` = **"audio_recordings"** (config). If mock returns `bucket: "recordings"`, client uploads to a different bucket; recording-1/2 then download from **audio_recordings** and won’t find the file. Mock should return `bucket: "audio_recordings"` (or whatever the backend config is) and a path that matches `user_id/session_id/*.webm`. |
