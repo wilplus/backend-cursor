@@ -234,7 +234,7 @@ def homework_get_task_block(session_id):
             return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found or not in task_block"}), 404
         context_short = session.get("context_short") or ""
         task_id = session.get("selected_task_id")
-        focus_task = db.v2_get_task(task_id) if task_id else None
+        focus_task = db.v2_get_task_or_focus_task(task_id) if task_id else None
         focus_task_payload = (
             {"id": focus_task["id"], "title": focus_task["title"], "prompt_text": focus_task.get("prompt_text")}
             if focus_task else None
@@ -302,12 +302,15 @@ def homework_submit_recording_1(session_id):
 
         context_short = openai_service.generate_context_short(transcript_text)
 
-        overrides = db.v2_get_student_overrides(user_id)
-        assigned_task_ids = (overrides.get("assigned_next_task_ids") or []) if overrides else None
-        all_tasks = db.v2_get_active_tasks()
-        focus_task = select_focus_task_for_performance_score_1(
-            all_tasks, performance_score_1, assigned_task_ids
-        )
+        # Prefer per-student focus tasks (admin panel); fall back to global v2_tasks
+        focus_task = db.v2_select_student_focus_task_for_score(user_id, performance_score_1)
+        if not focus_task:
+            overrides = db.v2_get_student_overrides(user_id)
+            assigned_task_ids = (overrides.get("assigned_next_task_ids") or []) if overrides else None
+            all_tasks = db.v2_get_active_tasks()
+            focus_task = select_focus_task_for_performance_score_1(
+                all_tasks, performance_score_1, assigned_task_ids
+            )
 
         metric_questions = db.v2_get_metric_questions_for_flow()
 
@@ -385,7 +388,7 @@ def homework_submit_metric_answers(session_id):
 
         context_short = session.get("context_short") or ""
         task_id = session.get("selected_task_id")
-        focus_task = db.v2_get_task(task_id) if task_id else None
+        focus_task = db.v2_get_task_or_focus_task(task_id) if task_id else None
         focus_title = (focus_task.get("title") or "") if focus_task else ""
         focus_prompt = (focus_task.get("prompt_text") or "") if focus_task else ""
 
@@ -497,9 +500,14 @@ def homework_submit_recording_2(session_id):
             "performance_score_2": performance_score_2,
         }), 200
     except Exception as e:
-        logger.error(f"Homework recording-2: {str(e)}")
+        logger.exception("Homework recording-2 failed")
         sentry_sdk.capture_exception(e)
-        return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
+        err_msg = str(e)
+        payload = {"code": "V2_ERROR", "error": err_msg}
+        # Hint for schema/cache errors (e.g. PGRST204 missing column)
+        if "PGRST204" in err_msg or "schema cache" in err_msg or "column" in err_msg.lower():
+            payload["hint"] = "Database schema may be missing columns or PostgREST cache stale. Run migrations for recordings and v2_sessions; reload PostgREST schema if using Supabase."
+        return jsonify(payload), 500
 
 
 # ---------- Step 4: questions (GET) + post-answers (POST) ----------

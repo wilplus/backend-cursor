@@ -12,15 +12,22 @@ Below: most likely causes and how to fix them.
 
 ## 1) Focus task (step 2) is null or missing
 
-The homework flow uses the **`v2_tasks`** table for the focus task, **not** `v2_focus_tasks`. Selection is done in `select_focus_task_for_performance_score_1` using `v2_get_active_tasks()` (which reads from `v2_tasks`).
+The homework flow **prefers per-student focus tasks** from **`v2_focus_tasks`** (the ones you add in the admin panel for a student). If the student has at least one focus task with `max_performance_score >= performance_score_1`, one of those is chosen. If the student has **no** rows in `v2_focus_tasks`, or none eligible for their score, the flow falls back to **`v2_tasks`** (global tasks).
 
-- If **`v2_tasks` has no rows**, or **no row with `is_active = true`**, then no focus task is selected → `focus_task` is **null** in:
-  - **POST /session/<id>/recording-1** response (`task_block.focus_task`)
-  - **GET /session/<id>/task-block** response (`task_block.focus_task`)
+- If the student has **no rows in `v2_focus_tasks`** and **no active rows in `v2_tasks`**, then no focus task is selected → `focus_task` is **null**.
 
-So the “second task” (focus task) is not processed or shown because there is nothing to select.
+**Check per-student (admin-assigned) focus tasks:**
 
-**Check:**
+```sql
+select id, text, order_index, max_performance_score
+from public.v2_focus_tasks
+where user_id = '<STUDENT_USER_UUID>'
+order by order_index asc;
+```
+
+If this returns **0 rows** for that student, add focus tasks for them in the admin panel (or sync from the focus task pool). Then run the migration **`migrations/allow_focus_task_id_in_selected_task_id.sql`** so the session can store the chosen focus task id (it may reference `v2_focus_tasks`, not only `v2_tasks`).
+
+**Check global fallback:**
 
 ```sql
 select id, title, prompt_text, min_task_score, is_active
@@ -29,12 +36,7 @@ where is_active = true
 order by min_task_score asc;
 ```
 
-If this returns **0 rows**, that’s the cause.
-
-**Fix:**
-
-- Add at least one active task to **`v2_tasks`** (with `min_task_score`, e.g. `0` or `0.5`, and `is_active = true`). The admin panel may expose “Tasks” (v2_tasks) separately from “Focus tasks” (v2_focus_tasks); use the one that writes to **v2_tasks** for the student flow.
-- If you want the flow to use **per-student** focus tasks from **`v2_focus_tasks`** instead, the backend must be changed to use `v2_focus_tasks` (and selection by `max_performance_score` / score_1) for the homework flow. Right now the flow does **not** read from `v2_focus_tasks`.
+If the student has no focus tasks and this also returns **0 rows**, add at least one active task to **`v2_tasks`** or assign focus tasks to the student in the admin panel.
 
 **Optional:** Backend can return a specific code when no focus task is available (e.g. `NO_FOCUS_TASK_CONFIGURED`) so the frontend can show a clear message instead of an empty block.
 

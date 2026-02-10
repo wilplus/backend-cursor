@@ -1003,6 +1003,54 @@ class DatabaseService:
         result = self.client.table("v2_tasks").select("*").eq("id", task_id).execute()
         return result.data[0] if result.data else None
 
+    def v2_get_focus_task_by_id(self, task_id: str):
+        """Single row from v2_focus_tasks by id, or None."""
+        result = self.client.table("v2_focus_tasks").select("*").eq("id", task_id).execute()
+        return result.data[0] if result.data else None
+
+    def v2_select_student_focus_task_for_score(self, user_id: str, performance_score_1: float):
+        """
+        Per-student focus task for homework flow. Returns one task from v2_focus_tasks where
+        max_performance_score >= performance_score_1 (student's score within task range).
+        Order by order_index; if multiple eligible, pick first. Returns normalized dict
+        { id, title, prompt_text } to match v2_tasks shape, or None if no tasks/eligible.
+        """
+        rows = self.v2_get_focus_tasks(user_id)
+        if not rows:
+            return None
+        score = float(performance_score_1)
+        eligible = [r for r in rows if float(r.get("max_performance_score", 1.0)) >= score]
+        if not eligible:
+            # Pick easiest: highest max_performance_score
+            eligible = [max(rows, key=lambda r: float(r.get("max_performance_score", 1.0)))]
+        row = eligible[0]
+        text = (row.get("text") or "").strip()
+        return {
+            "id": row["id"],
+            "title": text,
+            "prompt_text": text,
+        }
+
+    def v2_get_task_or_focus_task(self, task_id: str):
+        """
+        Resolve task from either v2_focus_tasks or v2_tasks (so selected_task_id can
+        refer to either). Returns normalized dict { id, title, prompt_text } or None.
+        """
+        if not task_id:
+            return None
+        focus = self.v2_get_focus_task_by_id(task_id)
+        if focus:
+            text = (focus.get("text") or "").strip()
+            return {"id": focus["id"], "title": text, "prompt_text": text}
+        task = self.v2_get_task(task_id)
+        if task:
+            return {
+                "id": task["id"],
+                "title": (task.get("title") or "").strip(),
+                "prompt_text": (task.get("prompt_text") or "").strip(),
+            }
+        return None
+
     def v2_get_post_questions_by_ids(self, ids: List[str]):
         """Fetch pool questions by id list (for snapshot)."""
         if not ids:
