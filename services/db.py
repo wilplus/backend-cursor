@@ -1166,6 +1166,7 @@ class DatabaseService:
 
     # ---------- Warm-up tasks (per student; homework flow) ----------
     DEFAULT_WARM_UP_TASK_TEXT = "How was your day so far?"
+    DEFAULT_FOCUS_TASK_TEXT = "Pay attention to your breathing"
 
     def v2_ensure_default_warm_up_task(self, user_id: str):
         """If user has no warm-up tasks, create the default one so everyone can proceed. Idempotent."""

@@ -235,10 +235,16 @@ def homework_get_task_block(session_id):
         context_short = session.get("context_short") or ""
         task_id = session.get("selected_task_id")
         focus_task = db.v2_get_task_or_focus_task(task_id) if task_id else None
-        focus_task_payload = (
-            {"id": focus_task["id"], "title": focus_task["title"], "prompt_text": focus_task.get("prompt_text")}
-            if focus_task else None
-        )
+        if not focus_task:
+            # Default when no task was selected (e.g. new student or no suited option)
+            default_text = db.DEFAULT_FOCUS_TASK_TEXT
+            focus_task_payload = {"id": None, "title": default_text, "prompt_text": default_text}
+        else:
+            focus_task_payload = {
+                "id": focus_task["id"],
+                "title": focus_task["title"],
+                "prompt_text": focus_task.get("prompt_text"),
+            }
         metric_questions = db.v2_get_metric_questions_for_flow()
         q1 = metric_questions[0] if len(metric_questions) > 0 else {}
         q2 = metric_questions[1] if len(metric_questions) > 1 else {}
@@ -302,7 +308,7 @@ def homework_submit_recording_1(session_id):
 
         context_short = openai_service.generate_context_short(transcript_text)
 
-        # Prefer per-student focus tasks (admin panel); fall back to global v2_tasks
+        # Prefer per-student focus tasks (admin panel); fall back to global v2_tasks; then default
         focus_task = db.v2_select_student_focus_task_for_score(user_id, performance_score_1)
         if not focus_task:
             overrides = db.v2_get_student_overrides(user_id)
@@ -311,6 +317,10 @@ def homework_submit_recording_1(session_id):
             focus_task = select_focus_task_for_performance_score_1(
                 all_tasks, performance_score_1, assigned_task_ids
             )
+        if not focus_task:
+            # No suited option or new student: use default so flow never blocks
+            default_text = db.DEFAULT_FOCUS_TASK_TEXT
+            focus_task = {"id": None, "title": default_text, "prompt_text": default_text}
 
         metric_questions = db.v2_get_metric_questions_for_flow()
 
@@ -389,8 +399,9 @@ def homework_submit_metric_answers(session_id):
         context_short = session.get("context_short") or ""
         task_id = session.get("selected_task_id")
         focus_task = db.v2_get_task_or_focus_task(task_id) if task_id else None
-        focus_title = (focus_task.get("title") or "") if focus_task else ""
-        focus_prompt = (focus_task.get("prompt_text") or "") if focus_task else ""
+        default_focus = db.DEFAULT_FOCUS_TASK_TEXT
+        focus_title = (focus_task.get("title") or default_focus) if focus_task else default_focus
+        focus_prompt = (focus_task.get("prompt_text") or default_focus) if focus_task else default_focus
 
         final_task_text = openai_service.generate_final_task(
             context_short=context_short,

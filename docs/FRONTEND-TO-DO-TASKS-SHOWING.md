@@ -74,7 +74,8 @@ const promptText = focusTask?.prompt_text ?? "";
 ### 2.3 Render it in the UI
 
 - Show **title** and/or **prompt_text** in the “Your task (after first recording)” area.
-- If **`focus_task` is null**, show the message you already have: *"No focus task available for your current score. You can still answer the questions below and continue…"* and still show the three metric questions so the user can continue.
+- The backend may send a **default focus task** when there is no other suited option (e.g. new students): `focus_task: { id: null, title: "Pay attention to your breathing", prompt_text: "Pay attention to your breathing" }`. Render it the same way as any other focus task (treat `id` as optional).
+- Only if **`focus_task` is null**, show the message: *"No focus task available for your current score. You can still answer the questions below and continue…"* and still show the three metric questions.
 
 ### 2.4 When to call GET task-block
 
