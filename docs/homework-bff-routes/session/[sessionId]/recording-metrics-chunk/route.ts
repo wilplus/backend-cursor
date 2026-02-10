@@ -2,6 +2,8 @@
  * Copy to: src/app/api/homework/session/[sessionId]/recording-metrics-chunk/route.ts
  * Proxies binary PCM body and headers to backend for real-time metrics (Ambient Glow).
  * Includes CORS and OPTIONS so cross-origin requests and preflight succeed (fixes "access control checks" error).
+ * - Next 15: params may be a Promise; this route resolves it so sessionId is never undefined (avoids 404).
+ * - Headers: forwards X-Seq/X-T-Ms; also accepts X-Chunk-Seq/X-Chunk-Start-Ms and maps them for the backend.
  */
 import { NextRequest, NextResponse } from "next/server";
 import { getV2AccessToken, getBackendUrl } from "../../../../../getAuth";
@@ -19,13 +21,17 @@ export async function OPTIONS() {
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { sessionId: string } }
+  { params }: { params: Promise<{ sessionId: string }> | { sessionId: string } }
 ) {
   const token = await getV2AccessToken();
   if (!token) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401, headers: CORS_HEADERS });
   }
-  const sessionId = params.sessionId;
+  const resolvedParams = typeof (params as Promise<unknown>).then === "function" ? await (params as Promise<{ sessionId: string }>) : (params as { sessionId: string });
+  const sessionId = resolvedParams.sessionId;
+  if (!sessionId) {
+    return NextResponse.json({ error: "Missing sessionId" }, { status: 400, headers: CORS_HEADERS });
+  }
   const backend = getBackendUrl();
   const body = await request.arrayBuffer();
   const headers: Record<string, string> = {
@@ -33,8 +39,8 @@ export async function POST(
     "Content-Type": "application/octet-stream",
   };
   const xSampleRate = request.headers.get("X-Sample-Rate");
-  const xSeq = request.headers.get("X-Seq");
-  const xTMs = request.headers.get("X-T-Ms");
+  const xSeq = request.headers.get("X-Seq") ?? request.headers.get("X-Chunk-Seq");
+  const xTMs = request.headers.get("X-T-Ms") ?? request.headers.get("X-Chunk-Start-Ms");
   const xRecordingSlot = request.headers.get("X-Recording-Slot");
   const xDebug = request.headers.get("X-Debug");
   if (xSampleRate != null) headers["X-Sample-Rate"] = xSampleRate;
