@@ -38,6 +38,13 @@ app.register_blueprint(admin_bp, url_prefix="/admin")
 app.register_blueprint(v2_bp)
 app.register_blueprint(homework_bp)
 
+
+@app.route("/", methods=["GET"])
+def root():
+    """Public root health check; frontend may use base URL with no path."""
+    return {"status": "ok"}, 200
+
+
 @app.route("/health", methods=["GET"])
 def health():
     return {"status": "ok"}
