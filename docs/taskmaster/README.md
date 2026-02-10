@@ -1,7 +1,3 @@
-# Taskmaster
+# Taskmaster — only source of truth
 
-This folder holds the **single unified description** of the app for Cursor, task planning, and onboarding.
-
-- **APP-DESCRIPTION.md** — One file that describes: what the app is, homework flow (steps), components, key contracts, where to implement what, and pointers to detailed docs. Use this when you need a single source of truth for “what is this system?”
-
-All other flow/implementation docs live in `docs/` and specialize or extend this description.
+**APP-DESCRIPTION.md** is the **only** source of truth for the Homework / Speaking Coach app. It contains the full app description, flow, contracts, APIs, scoring, wheel, storage, what is missing, failure modes, and implementation checklist. There are no other description or how-to docs; only this folder and code (e.g. `migrations/`, `docs/homework-bff-routes/`) remain.
