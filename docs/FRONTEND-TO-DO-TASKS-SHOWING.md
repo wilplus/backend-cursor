@@ -40,11 +40,15 @@ If **POST /session/start** (or status) returns **422** and `body.code === "NO_WA
 
 ---
 
-## 2. Focus step (step 2 — after first recording)
+## 2. Metrics step (step 2 — after first recording)
 
-### 2.1 Where the focus task comes from
+**Product behavior:** The focus task is **not displayed** on this step; it is chosen and stored for use when generating the final task (step 3). Do **not** show a focus task card or "No focus task available…" here. See **docs/PRODUCT-BEHAVIOR-FOCUS-TASK-NOT-DISPLAYED.md**.
 
-The **focus task** is **not** in the status/start response. It appears when the user is in step 2 (`session.status === "task_block"`):
+### 2.1 What to show on step 2
+
+Show **only** (1) **AI commentary** from `task_block.context_short` and (2) the **3 metric questions** from `task_block.metric_question_1/2/3`. Do **not** show a focus task card or "No focus task available…". The API no longer returns `focus_task`. See **docs/FRONTEND-PROMPT-REMOVE-FOCUS-TASK-UI.md** for a removal prompt.
+
+**Data source when the user is in step 2** (`session.status === "task_block"`):
 
 - **Right after first recording:** In the **POST /session/&lt;sessionId&gt;/recording-1** response, inside **`task_block.focus_task`**:
   - `task_block.focus_task: { id, title, prompt_text }` or `null`.
@@ -124,8 +128,21 @@ So the client receives **`{ session, warm_up_task?, has_active_session?, … }`*
 
 ---
 
+## What to paste if the default focus task still doesn’t show
+
+If you still see **"No focus task available"** and expect **"Pay attention to your breathing"** to appear, paste **one** Network response so we can pinpoint the fix:
+
+- **Which request:** The one that loads the focus step — either **POST …/recording-1** (after first recording) or **GET …/task-block** (when loading/resume step 2). In DevTools → Network, find **`recording-1`** or **`task-block`**, click it.
+- **What to paste:** The **Request URL** and the **full Response body (JSON)**. We need to see **`task_block.focus_task`** (or that it’s missing).
+
+From that we can tell immediately whether it’s: **frontend treating `id: null` as missing**, **backend not returning the default**, or **BFF stripping**, and give the exact code change. See **docs/DEBUG-SECOND-TASK-NOT-PROCESSED.md** § “What to paste so we can pinpoint the fix”.
+
+---
+
 ## References
 
+- **Remove focus-task UI from metrics step (copy-paste prompt):** `docs/FRONTEND-PROMPT-REMOVE-FOCUS-TASK-UI.md`
+- **Focus task not displayed on metrics step (product behavior):** `docs/PRODUCT-BEHAVIOR-FOCUS-TASK-NOT-DISPLAYED.md`
 - **Warm-up display detail:** `docs/FRONTEND-WARM-UP-TASK-DISPLAY.md`
 - **Guardrails (422 handling, metric answers):** `docs/FRONTEND-BACKEND-HOMEWORK-GUARDRAILS.md`
 - **When tasks still don’t show (BFF, JWT, status):** `docs/DEBUG-TASKS-NOT-SHOWING-BFF-JWT.md`

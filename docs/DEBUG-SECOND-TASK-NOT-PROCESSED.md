@@ -71,6 +71,34 @@ Possible issues:
 
 ---
 
+## What to paste so we can pinpoint the fix (focus task / default not showing)
+
+When you see **"No focus task available for your current score"** (or the default **"Pay attention to your breathing"** doesn’t show), paste **one** Network response so we can say immediately whether it’s:
+
+- **Frontend treating `id: null` as missing** (most likely) — UI only renders when `focus_task.id` is truthy and hides the default.
+- **Backend not returning the default** on that endpoint — response has `focus_task: null` instead of `{ id: null, title: "...", prompt_text: "..." }`.
+- **BFF stripping** — BFF returns only part of the body and drops `task_block` or `task_block.focus_task`.
+
+### Which request to capture
+
+The request that **precedes** showing the message is one of:
+
+1. **POST …/recording-1** — Right after the user submits the first recording; the response includes **`task_block`** (with **`focus_task`**). In Network, find the request named **`recording-1`** (or URL containing `recording-1`), click it.
+2. **GET …/task-block** — When loading or resuming step 2 (e.g. refresh on the focus step). In Network, find the request whose URL contains **`task-block`**, click it.
+
+### What to paste (you must paste the actual data)
+
+This is an **instruction** for what to paste, **not the paste itself**. To pinpoint **your** bug we need the **actual** request URL + **actual** JSON response from your environment. **Without that paste we cannot distinguish** "backend didn't send default" vs "frontend still checks focus_task incorrectly."
+
+1. **Request URL** — The exact URL from DevTools → Network for the request that **immediately precedes** the message appearing (e.g. `POST https://…/recording-1` or `GET …/task-block`).
+2. **Full response body (JSON)** — Copy from the **Response** tab of that request (the entire JSON).
+
+Choose **one**: **POST …/recording-1** (right after first recording completes) **or** **GET …/task-block** (when step 2 loads/resumes).
+
+Paste both in your reply. From that we can tell whether the fix is a **frontend conditional** (e.g. show task when `focus_task` is present, including when `focus_task.id` is null) or a **backend fallback** (ensure default is returned on that path) or **BFF passthrough** (return full `data`, not only `data.session`), and give the exact code change. If your desired behavior is **not to display focus_task at all** on that step, see **docs/PRODUCT-BEHAVIOR-FOCUS-TASK-NOT-DISPLAYED.md** (fix is likely: remove the UI check entirely).
+
+---
+
 ## Summary
 
 | Symptom | Likely cause | Action |

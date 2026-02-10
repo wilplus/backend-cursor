@@ -226,32 +226,18 @@ def homework_get_warm_up_task(session_id):
 @homework_bp.route("/session/<session_id>/task-block", methods=["GET"])
 @require_auth
 def homework_get_task_block(session_id):
-    """Get task block (context_short, focus_task, metric_question_1/2/3) for step 2. Use when resuming so the 3 questions can be shown."""
+    """Get task block (metric_question_1/2/3 only) for step 2. context_1 and focus_task are used when generating final_task; not returned here. Use when resuming so the 3 questions can be shown."""
     try:
         user_id = request.user_id
         session = db.v2_get_session(session_id, user_id)
         if not session or session.get("status") != STATUS_TASK_BLOCK:
             return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found or not in task_block"}), 404
-        context_short = session.get("context_short") or ""
-        task_id = session.get("selected_task_id")
-        focus_task = db.v2_get_task_or_focus_task(task_id) if task_id else None
-        if not focus_task:
-            # Default when no task was selected (e.g. new student or no suited option)
-            default_text = db.DEFAULT_FOCUS_TASK_TEXT
-            focus_task_payload = {"id": None, "title": default_text, "prompt_text": default_text}
-        else:
-            focus_task_payload = {
-                "id": focus_task["id"],
-                "title": focus_task["title"],
-                "prompt_text": focus_task.get("prompt_text"),
-            }
+        # Metrics step: only 3 questions. context_1 (context_short) and focus_task are used when generating final_task; not displayed here.
         metric_questions = db.v2_get_metric_questions_for_flow()
         q1 = metric_questions[0] if len(metric_questions) > 0 else {}
         q2 = metric_questions[1] if len(metric_questions) > 1 else {}
         q3 = metric_questions[2] if len(metric_questions) > 2 else {}
         task_block = {
-            "context_short": context_short,
-            "focus_task": focus_task_payload,
             "metric_question_1": q1,
             "metric_question_2": q2,
             "metric_question_3": q3,
@@ -266,7 +252,7 @@ def homework_get_task_block(session_id):
 @homework_bp.route("/session/<session_id>/recording-1", methods=["POST"])
 @require_auth
 def homework_submit_recording_1(session_id):
-    """Upload recording_1 (warm-up). Returns performance_score_1, context_short, task_block (context_short + focus_task + metric_question_1 + metric_question_2)."""
+    """Upload recording_1 (warm-up). Returns performance_score_1, task_block (metric_question_1/2/3 only). context_1 and focus_task are stored and used when generating final_task; not returned for display at metrics stage."""
     try:
         from config import Config
 
@@ -353,9 +339,8 @@ def homework_submit_recording_1(session_id):
         q1 = metric_questions[0] if len(metric_questions) > 0 else {}
         q2 = metric_questions[1] if len(metric_questions) > 1 else {}
         q3 = metric_questions[2] if len(metric_questions) > 2 else {}
+        # Metrics step: only 3 questions. context_1 (context_short) and focus_task are stored and used when generating final_task; not displayed at metrics stage.
         task_block = {
-            "context_short": context_short,
-            "focus_task": {"id": focus_task["id"], "title": focus_task["title"], "prompt_text": focus_task.get("prompt_text")} if focus_task else None,
             "metric_question_1": q1,
             "metric_question_2": q2,
             "metric_question_3": q3,
@@ -363,7 +348,6 @@ def homework_submit_recording_1(session_id):
         return jsonify({
             "recording_id": recording["id"],
             "performance_score_1": performance_score_1,
-            "context_short": context_short,
             "task_block": task_block,
         }), 200
     except Exception as e:
