@@ -1,5 +1,6 @@
-from flask import Flask
+from flask import Flask, jsonify
 from flask_cors import CORS
+from werkzeug.exceptions import RequestEntityTooLarge
 import sentry_sdk
 from sentry_sdk.integrations.flask import FlaskIntegration
 from config import Config
@@ -16,6 +17,8 @@ if config.SENTRY_DSN:
     )
 
 app = Flask(__name__)
+# Allow request bodies up to MAX_AUDIO_SIZE_MB (e.g. 25MB) so recording uploads don't get 413
+app.config["MAX_CONTENT_LENGTH"] = config.MAX_AUDIO_SIZE_MB * 1024 * 1024
 CORS(app, origins=config.CORS_ORIGINS, supports_credentials=True)
 
 # Register blueprints
@@ -37,6 +40,16 @@ app.register_blueprint(user_bp, url_prefix="/user")
 app.register_blueprint(admin_bp, url_prefix="/admin")
 app.register_blueprint(v2_bp)
 app.register_blueprint(homework_bp)
+
+
+@app.errorhandler(RequestEntityTooLarge)
+@app.errorhandler(413)
+def handle_413(e):
+    """Return JSON when request body exceeds MAX_CONTENT_LENGTH (e.g. recording upload > 25MB)."""
+    return jsonify({
+        "code": "PAYLOAD_TOO_LARGE",
+        "error": f"Request body exceeds {config.MAX_AUDIO_SIZE_MB}MB limit. Keep recording under {config.MAX_AUDIO_SIZE_MB}MB.",
+    }), 413
 
 
 def _health_response():
