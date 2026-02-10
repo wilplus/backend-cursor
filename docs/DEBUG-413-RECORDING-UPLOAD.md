@@ -90,6 +90,18 @@ With that we can say whether you need to switch to **direct-to-storage upload** 
 
 ---
 
+## Direct-to-storage (by URL) — recommended long-term fix
+
+The backend supports **direct-to-storage** upload so the client never sends audio through the API:
+
+1. **POST** `/v2/homework/session/<id>/recording-upload-url` with `{ "recording": "1" }` or `{ "recording": "2" }` → returns **storage_path** and **bucket**.
+2. Client uploads the audio blob **directly to Supabase Storage** at that path (e.g. via Supabase JS `storage.from(bucket).upload(storage_path, blob)`).
+3. **POST** `/v2/homework/session/<id>/recording-1` (or recording-2) with JSON only: `{ "storage_path": "<from step 1>", "duration_seconds": <n> }`.
+
+The recording request becomes a few hundred bytes, so 413 from BFF/proxy/Flask no longer occurs. See **docs/CONTRACT-DIRECT-TO-STORAGE-UPLOAD.md** for the full API contract and frontend flow.
+
+---
+
 ## Backend summary (this repo)
 
 | What | Where |

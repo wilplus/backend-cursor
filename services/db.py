@@ -638,7 +638,28 @@ class DatabaseService:
             logger.error(f"Upload error details: {str(e)}, type: {type(e)}")
             sentry_sdk.capture_exception(e)
             raise Exception(f"Failed to upload audio: {str(e)}")
-    
+
+    def download_audio(self, bucket: str, path: str) -> bytes:
+        """Download audio file from Supabase Storage. Used when client uploads by URL (storage_path) and backend fetches for transcription."""
+        import logging
+        logger = logging.getLogger(__name__)
+        try:
+            if not isinstance(bucket, str) or not isinstance(path, str):
+                raise ValueError("bucket and path must be strings")
+            result = self.client.storage.from_(bucket).download(path)
+            if isinstance(result, bytes):
+                return result
+            if hasattr(result, "content"):
+                return result.content if isinstance(result.content, bytes) else bytes(result.content)
+            if hasattr(result, "read"):
+                data = result.read()
+                return data if isinstance(data, bytes) else bytes(data)
+            raise Exception(f"Unexpected download result type: {type(result)}")
+        except Exception as e:
+            logger.error(f"Download error for {bucket}/{path}: {str(e)}")
+            sentry_sdk.capture_exception(e)
+            raise Exception(f"Failed to download audio: {str(e)}")
+
     def save_admin_notification(self, data: dict):
         """Save admin notification record"""
         result = self.client.table("admin_notifications")\

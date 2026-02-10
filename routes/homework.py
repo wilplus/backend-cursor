@@ -249,41 +249,104 @@ def homework_get_task_block(session_id):
         return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
 
 
+def _storage_path_for_session(user_id: str, session_id: str) -> str:
+    return f"{user_id}/{session_id}/{uuid.uuid4()}.webm"
+
+
+def _validate_storage_path(storage_path: str, user_id: str, session_id: str) -> bool:
+    """Path must be under user_id/session_id/ and end with .webm."""
+    if not storage_path or not isinstance(storage_path, str):
+        return False
+    prefix = f"{user_id}/{session_id}/"
+    return storage_path.startswith(prefix) and storage_path.endswith(".webm")
+
+
+@homework_bp.route("/session/<session_id>/recording-upload-url", methods=["POST"])
+@require_auth
+def homework_recording_upload_url(session_id):
+    """Mint a storage path for direct-to-storage upload. Client uploads audio to this path (e.g. via Supabase JS), then calls recording-1 or recording-2 with storage_path + duration_seconds. Reduces 413 by not sending audio through API."""
+    try:
+        from config import Config
+        config = Config()
+        user_id = request.user_id
+        data = request.get_json() or {}
+        recording = str(data.get("recording", "1")).strip()
+        if recording not in ("1", "2"):
+            return jsonify({"code": "INVALID_INPUT", "error": "recording must be '1' or '2'"}), 400
+
+        session = db.v2_get_session(session_id, user_id)
+        if not session:
+            return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found"}), 404
+        if recording == "1" and session.get("status") != STATUS_WARM_UP:
+            return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session must be in warm_up for recording-1"}), 404
+        if recording == "2" and session.get("status") != STATUS_FINAL_TASK_READY:
+            return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session must be in final_task_ready for recording-2"}), 404
+
+        storage_path = _storage_path_for_session(user_id, session_id)
+        return jsonify({
+            "storage_path": storage_path,
+            "bucket": config.AUDIO_BUCKET_NAME,
+        }), 200
+    except Exception as e:
+        logger.error(f"recording-upload-url: {str(e)}")
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
+
+
 @homework_bp.route("/session/<session_id>/recording-1", methods=["POST"])
 @require_auth
 def homework_submit_recording_1(session_id):
-    """Upload recording_1 (warm-up). Returns performance_score_1, task_block (metric_question_1/2/3 only). context_1 and focus_task are stored and used when generating final_task; not returned for display at metrics stage."""
+    """Upload recording_1 (warm-up). Accepts (A) multipart with 'audio' file, or (B) JSON with storage_path + duration_seconds (direct-to-storage). Returns performance_score_1, task_block."""
     try:
         from config import Config
+        from io import BytesIO
 
+        config = Config()
         user_id = request.user_id
         session = db.v2_get_session(session_id, user_id)
         if not session or session.get("status") != STATUS_WARM_UP:
             return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found or not in warm_up"}), 404
 
         audio_file = request.files.get("audio")
-        if not audio_file:
-            return jsonify({"code": "INVALID_INPUT", "error": "audio required"}), 400
+        data = request.get_json(silent=True) or (request.form or {})
+        duration_seconds = None
+        storage_path = None
 
-        config = Config()
-        ext = ".webm"
-        storage_path = f"{user_id}/{session_id}/{uuid.uuid4()}{ext}"
-        audio_file.seek(0)
-        audio_data = audio_file.read()
-        content_type = str(audio_file.content_type or "audio/webm")
-        if content_type in ("True", "False"):
-            content_type = "audio/webm"
+        if audio_file:
+            # Legacy: multipart upload
+            ext = ".webm"
+            storage_path = f"{user_id}/{session_id}/{uuid.uuid4()}{ext}"
+            audio_file.seek(0)
+            audio_data = audio_file.read()
+            content_type = str(audio_file.content_type or "audio/webm")
+            if content_type in ("True", "False"):
+                content_type = "audio/webm"
+            db.upload_audio(config.AUDIO_BUCKET_NAME, storage_path, audio_data, content_type=content_type)
+            audio_file.seek(0)
+            transcript_result = openai_service.transcribe_audio(audio_file, "audio.webm")
+            duration_seconds = transcript_result.get("duration") or float(request.form.get("duration_seconds") or 60.0)
+        else:
+            # By URL: JSON with storage_path + duration_seconds
+            storage_path = (data.get("storage_path") or "").strip()
+            duration_seconds = data.get("duration_seconds")
+            if not storage_path or duration_seconds is None:
+                return jsonify({"code": "INVALID_INPUT", "error": "Either send multipart 'audio' or JSON with storage_path and duration_seconds"}), 400
+            if not _validate_storage_path(storage_path, user_id, session_id):
+                return jsonify({"code": "INVALID_INPUT", "error": "storage_path invalid or not allowed for this session"}), 400
+            try:
+                duration_seconds = float(duration_seconds)
+            except (TypeError, ValueError):
+                return jsonify({"code": "INVALID_INPUT", "error": "duration_seconds must be a number"}), 400
+            audio_bytes = db.download_audio(config.AUDIO_BUCKET_NAME, storage_path)
+            transcript_result = openai_service.transcribe_audio(BytesIO(audio_bytes), "audio.webm")
+            duration_seconds = transcript_result.get("duration") or duration_seconds
 
-        db.upload_audio(config.AUDIO_BUCKET_NAME, storage_path, audio_data, content_type=content_type)
+        transcript_text = transcript_result["text"]
+
         audio_url = db.create_signed_url(config.AUDIO_BUCKET_NAME, storage_path, config.SIGNED_URL_EXPIRY_SECONDS)
         if not audio_url:
             supabase_url = config.SUPABASE_URL.rstrip("/")
             audio_url = f"{supabase_url}/storage/v1/object/public/{config.AUDIO_BUCKET_NAME}/{storage_path}"
-
-        audio_file.seek(0)
-        transcript_result = openai_service.transcribe_audio(audio_file, "audio.webm")
-        transcript_text = transcript_result["text"]
-        duration_seconds = transcript_result.get("duration") or float(request.form.get("duration_seconds") or 60.0)
 
         wpm = compute_wpm(transcript_text, duration_seconds)
         filler_data = count_fillers(transcript_text)
@@ -413,38 +476,55 @@ def homework_submit_metric_answers(session_id):
 @homework_bp.route("/session/<session_id>/recording-2", methods=["POST"])
 @require_auth
 def homework_submit_recording_2(session_id):
-    """Upload recording_2. Returns performance_score_2. Session moves to post_questions."""
+    """Upload recording_2. Accepts (A) multipart with 'audio' file, or (B) JSON with storage_path + duration_seconds (direct-to-storage). Returns performance_score_2."""
     try:
         from config import Config
+        from io import BytesIO
 
+        config = Config()
         user_id = request.user_id
         session = db.v2_get_session(session_id, user_id)
         if not session or session.get("status") != STATUS_FINAL_TASK_READY:
             return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found or not in final_task_ready"}), 404
 
         audio_file = request.files.get("audio")
-        if not audio_file:
-            return jsonify({"code": "INVALID_INPUT", "error": "audio required"}), 400
+        data = request.get_json(silent=True) or (request.form or {})
+        duration_seconds = None
+        storage_path = None
 
-        config = Config()
-        ext = ".webm"
-        storage_path = f"{user_id}/{session_id}/{uuid.uuid4()}{ext}"
-        audio_file.seek(0)
-        audio_data = audio_file.read()
-        content_type = str(audio_file.content_type or "audio/webm")
-        if content_type in ("True", "False"):
-            content_type = "audio/webm"
+        if audio_file:
+            ext = ".webm"
+            storage_path = f"{user_id}/{session_id}/{uuid.uuid4()}{ext}"
+            audio_file.seek(0)
+            audio_data = audio_file.read()
+            content_type = str(audio_file.content_type or "audio/webm")
+            if content_type in ("True", "False"):
+                content_type = "audio/webm"
+            db.upload_audio(config.AUDIO_BUCKET_NAME, storage_path, audio_data, content_type=content_type)
+            audio_file.seek(0)
+            transcript_result = openai_service.transcribe_audio(audio_file, "audio.webm")
+            duration_seconds = transcript_result.get("duration") or float(request.form.get("duration_seconds") or 60.0)
+        else:
+            storage_path = (data.get("storage_path") or "").strip()
+            duration_seconds = data.get("duration_seconds")
+            if not storage_path or duration_seconds is None:
+                return jsonify({"code": "INVALID_INPUT", "error": "Either send multipart 'audio' or JSON with storage_path and duration_seconds"}), 400
+            if not _validate_storage_path(storage_path, user_id, session_id):
+                return jsonify({"code": "INVALID_INPUT", "error": "storage_path invalid or not allowed for this session"}), 400
+            try:
+                duration_seconds = float(duration_seconds)
+            except (TypeError, ValueError):
+                return jsonify({"code": "INVALID_INPUT", "error": "duration_seconds must be a number"}), 400
+            audio_bytes = db.download_audio(config.AUDIO_BUCKET_NAME, storage_path)
+            transcript_result = openai_service.transcribe_audio(BytesIO(audio_bytes), "audio.webm")
+            duration_seconds = transcript_result.get("duration") or duration_seconds
 
-        db.upload_audio(config.AUDIO_BUCKET_NAME, storage_path, audio_data, content_type=content_type)
+        transcript_text = transcript_result["text"]
+
         audio_url = db.create_signed_url(config.AUDIO_BUCKET_NAME, storage_path, config.SIGNED_URL_EXPIRY_SECONDS)
         if not audio_url:
             supabase_url = config.SUPABASE_URL.rstrip("/")
             audio_url = f"{supabase_url}/storage/v1/object/public/{config.AUDIO_BUCKET_NAME}/{storage_path}"
-
-        audio_file.seek(0)
-        transcript_result = openai_service.transcribe_audio(audio_file, "audio.webm")
-        transcript_text = transcript_result["text"]
-        duration_seconds = transcript_result.get("duration") or float(request.form.get("duration_seconds") or 60.0)
 
         wpm = compute_wpm(transcript_text, duration_seconds)
         filler_data = count_fillers(transcript_text)
