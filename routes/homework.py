@@ -23,6 +23,22 @@ _metrics_chunk_timestamps = {}
 _METRICS_CHUNK_LIMIT = 120
 _METRICS_CHUNK_WINDOW_SEC = 60
 
+# #region agent log
+import json as _json
+_DEBUG_LOG_PATH = "/Users/arturwillonski/Documents/backend-cursor/.cursor/debug.log"
+def _agent_log(msg, data=None, hypothesis_id=None):
+    try:
+        payload = {"location": "homework.py", "message": msg, "timestamp": int(time.time() * 1000)}
+        if data is not None:
+            payload["data"] = data
+        if hypothesis_id is not None:
+            payload["hypothesisId"] = hypothesis_id
+        with open(_DEBUG_LOG_PATH, "a") as f:
+            f.write(_json.dumps(payload) + "\n")
+    except Exception:
+        pass
+# #endregion
+
 # Homework session statuses
 STATUS_WARM_UP = "warm_up"
 STATUS_TASK_BLOCK = "task_block"
@@ -145,13 +161,22 @@ def homework_recording_metrics_chunk(session_id):
     Rate limit: 120 requests per 60s per (user_id, session_id).
     """
     try:
+        # #region agent log
+        _agent_log("chunk_request", {"session_id": session_id, "has_user_id": bool(getattr(request, "user_id", None))}, "H1")
+        # #endregion
         user_id = request.user_id
         session = db.v2_get_session(session_id, user_id)
         if not session:
+            # #region agent log
+            _agent_log("chunk_return", {"status": 404, "code": "SESSION_NOT_FOUND"}, "H2")
+            # #endregion
             return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found"}), 404
         # Allow any active status (user may be in warm_up or final_task_ready while recording)
         status = session.get("status")
         if status not in (STATUS_WARM_UP, STATUS_TASK_BLOCK, STATUS_FINAL_TASK_READY, STATUS_POST_QUESTIONS):
+            # #region agent log
+            _agent_log("chunk_return", {"status": 409, "code": "INVALID_SESSION_STATE", "session_status": status}, "H2")
+            # #endregion
             return jsonify({"code": "INVALID_SESSION_STATE", "error": "Session not in recording state", "status": status}), 409
 
         # Rate limit
@@ -162,11 +187,17 @@ def homework_recording_metrics_chunk(session_id):
         timestamps = _metrics_chunk_timestamps[key]
         timestamps[:] = [t for t in timestamps if t > now - _METRICS_CHUNK_WINDOW_SEC]
         if len(timestamps) >= _METRICS_CHUNK_LIMIT:
+            # #region agent log
+            _agent_log("chunk_return", {"status": 429, "code": "RATE_LIMITED"}, "H2")
+            # #endregion
             return jsonify({"code": "RATE_LIMITED", "error": "Too many chunk requests"}), 429
         timestamps.append(now)
 
         pcm_bytes = request.get_data()
         if not pcm_bytes:
+            # #region agent log
+            _agent_log("chunk_return", {"status": 400, "code": "INVALID_INPUT"}, "H2")
+            # #endregion
             return jsonify({"code": "INVALID_INPUT", "error": "Missing PCM body"}), 400
 
         sample_rate = request.headers.get("X-Sample-Rate", "16000")
@@ -197,8 +228,14 @@ def homework_recording_metrics_chunk(session_id):
             t_ms=t_ms,
             include_debug=include_debug,
         )
+        # #region agent log
+        _agent_log("chunk_return", {"status": 200}, "H2")
+        # #endregion
         return jsonify(result), 200
     except Exception as e:
+        # #region agent log
+        _agent_log("chunk_return", {"status": 500, "code": "V2_ERROR", "err": str(e)}, "H2")
+        # #endregion
         logger.error(f"Homework recording-metrics-chunk: {str(e)}")
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
