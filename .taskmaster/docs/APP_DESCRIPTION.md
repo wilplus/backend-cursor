@@ -101,7 +101,7 @@ Backend uses **snake_case** everywhere; frontend normalizes once (e.g. in applyS
 
 ## 8. Recording requirements
 
-- **Recording_2:** Must be **60–300 seconds** (client sends `duration_seconds` in JSON). Backend accepts **≥ 58 s** (2 s tolerance) to avoid 422 when the UI shows 60 s but client sends slightly less. Returns **422 RECORDING_DURATION_OUT_OF_RANGE** with `message` and `details: { min_seconds, max_seconds, duration_seconds }` if outside 58–300. Pace (WPM) is transcript-based: word_count / (duration_seconds/60).
+- **Recording_2:** Must be **60–300 seconds** (client sends `duration_seconds` in JSON). Backend accepts **≥ 58 s** (2 s tolerance) to avoid 422 when the UI shows 60 s but client sends slightly less. Returns **422 RECORDING_DURATION_OUT_OF_RANGE** with `message` and `details: { min_seconds, max_seconds, duration_seconds }` if outside 58–300; the response may still show `min_seconds: 60` in details (display); the effective acceptance threshold is 58 s. Pace (WPM) is transcript-based: word_count / (duration_seconds/60).
 - **Upload:** Backend returns **bucket** (e.g. `audio_recordings`) and **storage_path** (e.g. `{user_id}/{session_id}/{uuid}.webm`). Frontend must use that bucket and path; RLS allows INSERT (and UPDATE if upsert) for authenticated user under that path.
 
 ---

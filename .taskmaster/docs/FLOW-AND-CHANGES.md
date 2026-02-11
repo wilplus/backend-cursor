@@ -24,7 +24,7 @@ This document is the **taskmaster record** of what was in place before the post-
   `"hint": "Complete the main recording (step 3) first, then return to reflective questions."`
 - **Empty post-answers:** Backend explicitly allows **empty `answers`** (e.g. no reflective questions configured). Report is still generated; `post_answers` is stored as provided.
 - **post_question_ids fallback:** If the session has no `post_question_ids` (e.g. GET questions was never called because status was wrong), backend derives question ids from the submitted **answers** so emotion_achieved and persistence still work.
-- **Recording_2 duration:** Range check uses **client-supplied** `duration_seconds` (JSON path). Backend accepts **≥ 58 s** (2 s tolerance below 60) to avoid 422 when the UI shows 60 s but the client sends slightly less. Transcript duration is still used for WPM/scoring after the range check.
+- **Recording_2 duration:** Range check uses **client-supplied** `duration_seconds` (JSON path). Backend accepts **≥ 58 s** (2 s tolerance below 60) to avoid 422 when the UI shows 60 s but the client sends slightly less. The **422 response** may still include `details.min_seconds: 60` (display value); the effective acceptance threshold is 58 s. Transcript duration is still used for WPM/scoring after the range check. Frontend may enforce a stricter minimum (e.g. 62 s) as a buffer.
 - **Idempotency unchanged:** Already completed → POST post-answers returns 200 with existing report. Recording-2 / metric-answers idempotency as before.
 
 ### BFF (frontend app)

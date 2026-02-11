@@ -453,6 +453,13 @@ def homework_submit_recording_1(session_id):
         }
         update_result = db.v2_update_session(session_id, user_id, update_payload)
         _agent_log("recording-1: after v2_update_session", {"session_id": session_id, "update_result_is_none": update_result is None, "status_set": STATUS_TASK_BLOCK}, "H3")
+        # #region agent log
+        try:
+            session_after = db.v2_get_session(session_id, user_id)
+            _agent_log("recording-1: session after update", {"session_id": session_id, "status_after": session_after.get("status") if session_after else None}, "H1")
+        except Exception:
+            pass
+        # #endregion
 
         q1 = metric_questions[0] if len(metric_questions) > 0 else {}
         q2 = metric_questions[1] if len(metric_questions) > 1 else {}
