@@ -16,7 +16,7 @@
 ## 2. What is missing (open / not specified / not in MVP)
 
 - **score_transcription (task_execution_score):** Not in MVP. No LLM task-adherence score; no weighted final score (e.g. 0.65×metrics + 0.35×AI). When added: define storage and formula; never use neutral defaults on failure.
-- **Warm-up selection algorithm:** Selection exists (e.g. anti-repetition last 3 finished sessions, difficulty vs last_score, tags/weakness). Exact prioritization and tie-break may still evolve; document in backend when locked.
+- **Warm-up selection algorithm:** MVP uses deterministic selection (lowest order_index, then created_at); no auto-creation of default warm-up. Future: anti-repetition, difficulty vs last_score, etc.; document in backend when locked.
 - **Recording_1 duration gate:** Not locked (unlike recording_2’s 60–300 s). If added, define min/max and 422 behavior.
 - **Full transcript in GET status:** MVP does not return full transcript in status; use **GET /v2/recordings/{id}** for transcript. Optional later: transcript_preview in status or dedicated endpoint.
 - **Focus task snapshots on session:** Optional columns `selected_task_title_snapshot`, `selected_task_prompt_snapshot` improve determinism if admin edits tasks; add via migration when needed.
@@ -48,7 +48,7 @@
 
 ## 5. Status / state machine
 
-**Exactly 5 values:** `warm_up` | `task_block` | `final_task_ready` | `post_questions` | `completed`.
+**Exactly 5 statuses:** `warm_up` | `task_block` | `final_task_ready` | `post_questions` | `completed`.
 
 - **warm_up** — after start; recording_1 not yet submitted.
 - **task_block** — after recording_1; task block (context_short + focus + 3 questions) available; waiting for metric answers.
@@ -56,7 +56,7 @@
 - **post_questions** — after recording_2; waiting for post-answers.
 - **completed** — after post-answers; report generated.
 
-**Active session:** Only sessions with status in `('warm_up','task_block','final_task_ready','post_questions')`. **Completed sessions are not returned** as the active session. GET status returns the single active session or `has_active_session: false`; next load then uses POST start for a **new** attempt.
+**One active session per student.** **Active session** = status in `('warm_up','task_block','final_task_ready','post_questions')`. **Completed is NOT active** and must not be returned as the active session. **GET `/v2/homework/session/status` never creates a session** — it only returns the current active session or `has_active_session: false`.
 
 ---
 
@@ -79,10 +79,10 @@
 
 ## 7. GET session/status — response shape
 
-- **Always 200** unless server error (500).
-- **No active session:** `{ "has_active_session": false, "session": null }`. Optional `session_id` omitted.
-- **Active session:** `{ "has_active_session": true, "session_id": "<uuid>", "session": <raw v2_sessions row>, "warm_up_task": { "id": "<uuid>", "text": "..." } }`.
-- **session** is the full `v2_sessions` row (snake_case). It does **not** include a shaped `task_block` object or a `final_task` object or a questions list. It includes: id, user_id, status, warm_up_task_id, warm_up_task_text, session_metric_question_1, session_metric_question_2, session_metric_question_3, recording_1_id, context_short, performance_score_1, selected_task_id, metric_answers, final_task_text, recording_2_id, performance_score_2, post_question_ids, context_long, context_long_entries, performance_score_end, post_answers, report_id, etc.
+- **GET `/v2/homework/session/status`** never creates a session. Returns:
+  - **No active session (200):** `{ "has_active_session": false, "session": null }`.
+  - **Active session (200):** `{ "has_active_session": true, "session_id": "<uuid>", "session": <raw v2_sessions row>, "warm_up_task": { "id": "<uuid|null>", "text": "..." } | null }`.
+- **session** is the raw `v2_sessions` row in **snake_case** (whatever Supabase returns). No reshaping; no task_block / final_task / questions list. Fields include: id, user_id, status, warm_up_task_id, warm_up_task_text, session_metric_question_1/2/3, recording_1_id, context_short, performance_score_1, selected_task_id, metric_answers, final_task_text, recording_2_id, performance_score_2, post_question_ids, context_long, context_long_entries, performance_score_end, post_answers, report_id, etc.
 
 **Frontend mapping (minimal):**
 
@@ -101,7 +101,7 @@ Backend uses **snake_case** everywhere; frontend normalizes once (e.g. in applyS
 
 ## 8. Recording requirements
 
-- **Recording_2:** Must be **60–300 seconds**. Backend returns **422 RECORDING_DURATION_OUT_OF_RANGE** if outside. Pace (WPM) is transcript-based: word_count / (duration_seconds/60).
+- **Recording_2:** Must be **60–300 seconds**. Backend returns **422 RECORDING_DURATION_OUT_OF_RANGE** with `message` and `details: { min_seconds, max_seconds, duration_seconds }` if outside range. Pace (WPM) is transcript-based: word_count / (duration_seconds/60).
 - **Upload:** Backend returns **bucket** (e.g. `audio_recordings`) and **storage_path** (e.g. `{user_id}/{session_id}/{uuid}.webm`). Frontend must use that bucket and path; RLS allows INSERT (and UPDATE if upsert) for authenticated user under that path.
 
 ---
@@ -117,18 +117,20 @@ Backend uses **snake_case** everywhere; frontend normalizes once (e.g. in applyS
 
 ## 10. Warm-up and focus task selection
 
-- **Warm-up:** At session start, backend selects one warm-up task (e.g. from v2_warm_up_tasks for user). If user has **0** warm-up tasks → **422 NO_WARMUP_CONFIGURED**; do not create a session. Selection may use last finished session score, anti-repetition (last 3 finished sessions), difficulty (max_performance_score vs last score), and optional tags/weakness. Exact algorithm is in backend code.
+- **Warm-up (strict taskmaster):** Warm-up tasks are per-student (`v2_warm_up_tasks`). If the student has **0 warm-up tasks configured**, then **POST /v2/homework/session/start** returns **422 NO_WARMUP_CONFIGURED** and **no session is created**. The backend does **not** auto-create a default warm-up. The warm-up prompt shown to the student must come from the **session snapshot** (`v2_sessions.warm_up_task_text`). Backend snapshots the chosen warm-up onto the session at start; on legacy sessions missing a snapshot, backend may snapshot once idempotently.
 - **Focus task:** After score_1, backend selects from v2_tasks. Eligible: `min_task_score <= performance_score_1`. If none eligible, pick task with **smallest** min_task_score (easiest). Random among ties. Session stores selected_task_id.
 
 ---
 
 ## 11. Key contracts
 
+- **Responses:** Backend returns raw row dicts in **snake_case** (whatever Supabase returns); no camelCase conversion.
 - **Session identity:** session_id (top-level) and session.id (nested); same value. No session-scoped calls without valid sessionId.
 - **Status → step:** Only from session.status; map to step 1–5 as above.
 - **No task_block / final_task / report_text in status:** Use session.session_metric_question_1/2/3, session.final_task_text, session.context_long.
 - **Step 4 questions:** Status has only post_question_ids; frontend must GET questions when step 4 and questions empty.
-- **Idempotency:** If session already past a step, return **200** with existing data (no duplicate recording or report). Start returns existing active session if one exists.
+- **Wrong step → 409:** If the client calls a step-specific endpoint (e.g. metric-answers, recording-2) when session status does not match, backend returns **409** with code **INVALID_SESSION_STATE** (unless idempotency applies).
+- **Idempotency:** If session is already past that step and the relevant artifact exists, return **200** with existing data (e.g. metric-answers when already final_task_ready with final_task_text; recording-2 when already post_questions/completed with recording_2_id). Start returns existing active session if one exists.
 - **One report per session:** At most one report per session (handler or DB guard). No duplicate reports on double submit.
 - **GET /v2/recordings/{id}:** Canonical way to fetch a recording (including transcription_text). Owner-only; **404** for not found or not allowed (same for privacy).
 
@@ -136,10 +138,10 @@ Backend uses **snake_case** everywhere; frontend normalizes once (e.g. in applyS
 
 ## 12. Wheel (real-time measurement)
 
-**We use real-time metrics with the wheel only. No glow.**
+**Wheel only. No glow.**
 
-- **Wheel:** 100% **client-side**. Mic → AudioContext → AnalyserNode → RMS (loudness) and voiced ratio → WPM (pace). Example: `useRealtimeStrengthPace`. **No BFF routes, no API calls.** Show wheel in steps 1 and 3 while recorder is active; start/stop pipeline with the recorder.
-- **Glow (not used):** Backend still exposes POST `/v2/homework/session/:sessionId/recording-metrics-chunk` (PCM → pause_score) for an optional glow feature; we don't use it. No BFF reference for it in this repo.
+- **Wheel:** 100% **client-side**. Mic → AudioContext → AnalyserNode → RMS (loudness) and voiced ratio → WPM (pace). **No BFF routes, no API calls.** Show wheel in steps 1 and 3 while recorder is active; start/stop pipeline with the recorder.
+- **Glow is not part of MVP:** Backend does **not** support or require `recording-metrics-chunk`. No glow endpoint; wheel only.
 
 ---
 
@@ -162,17 +164,17 @@ Backend uses **snake_case** everywhere; frontend normalizes once (e.g. in applyS
 | POST | /v2/homework/session/:id/recording-2 | Upload main (60–300 s); returns score_2, performance_score_end; status → post_questions |
 | POST | /v2/homework/session/:id/post-answers | Submit post-answers; generates report; status → completed |
 | GET | /v2/homework/session/:id/questions | Get post-questions list (when step 4) |
-| GET | /v2/homework/session/:id/task-block | Optional; get shaped task block if backend exposes it |
-| POST | /v2/homework/session/:id/recording-metrics-chunk | Optional glow: PCM in, pause_score out (we don't use; wheel is client-side only) |
+| GET | /v2/homework/session/:id/warm-up-task | **Optional helper;** returns session's snapshotted warm-up task (may snapshot once if missing) |
+| GET | /v2/homework/session/:id/task-block | **Optional helper;** returns session's snapshotted session_metric_question_1/2/3 (not live pool) |
 | GET | /v2/recordings/:id | Get recording (incl. transcription_text); owner-only; 404 if not found/not allowed |
 
-All require auth. **BFF reference:** `docs/homework-bff-routes/` has all of the above except recording-metrics-chunk (wheel = client-side only).
+All require auth. Status provides enough to run the flow without the optional warm-up-task and task-block endpoints; they exist as optional read helpers for resume/debug. **No recording-metrics-chunk** (wheel only; no glow). **BFF reference:** `docs/homework-bff-routes/` has all of the above except recording-metrics-chunk.
 
 ---
 
 ## 15. What can go wrong
 
-- **Wrong step / 409:** Frontend not deriving step from session.status only, or not overwriting on every GET status. Fix: status-first; overwrite; when has_active_session false, clear state and require POST start.
+- **Wrong step / 409:** Backend returns **409** with code **INVALID_SESSION_STATE** when a step endpoint is called in the wrong status (e.g. metric-answers when not task_block). If already past that step, backend returns **200** with existing data (idempotency). Frontend: derive step only from session.status; overwrite on every GET status; when has_active_session false, clear state and require POST start.
 - **401 / 404 on session:** BFF not forwarding Authorization for a homework route. Fix: every BFF route must send Authorization: Bearer <token>.
 - **Wheel not working:** Wheel is client-side only (AnalyserNode). Check mic permission, AudioContext not suspended, and that the analyser pipeline runs in steps 1 and 3. No BFF/API needed for the wheel.
 - **Blank screens (step 2/4/5):** Frontend expecting task_block object, final_task object, report_text, or questions in status. Fix: use session.session_metric_question_1/2/3, session.final_task_text, session.context_long; GET questions when step 4 and empty.
@@ -186,7 +188,7 @@ All require auth. **BFF reference:** `docs/homework-bff-routes/` has all of the 
 
 - **Frontend:** applyStatusToState with mapping above; derive step only from session.status; overwrite on every GET status; when has_active_session false, clear state and show Start; refetch GET status after recording-1, metric-answers, recording-2, post-answers; call recording-upload-url only for rec "1" on step 1 and rec "2" on step 3; build task block from session_metric_question_1/2/3 or GET task-block if needed; GET questions when step 4 and empty; use bucket from API. **Wheel:** client-side only (AnalyserNode for loudness/pace); no BFF, no recording-metrics-chunk.
 - **BFF:** Reference in this repo includes all full-flow routes (start, status, recording-upload-url, recording-1/2, metric-answers, questions, post-answers, task-block, warm-up-task). Forward Authorization. No recording-metrics-chunk (no glow).
-- **Backend:** Already implements flow; ensure GET status excludes completed from "active"; ensure recording_2 duration 60–300 s; ensure one report per session; ensure post_answers column exists.
+- **Backend (strict taskmaster):** GET status never creates a session; active = status in (warm_up, task_block, final_task_ready, post_questions) only. No default warm-up: 0 warm-ups ⇒ 422 NO_WARMUP_CONFIGURED, no session created; warm-up and task-block content from session snapshots. Recording_2: enforce 60–300 s, 422 RECORDING_DURATION_OUT_OF_RANGE with details. Wrong step ⇒ 409 INVALID_SESSION_STATE; idempotency when already past step (200 with existing data). One report per session; post_answers column required.
 
 ---
 

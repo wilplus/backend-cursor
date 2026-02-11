@@ -6,7 +6,7 @@ load_dotenv()
 class Config:
     ENV = os.getenv("ENV", "development")
     SEND_EMAILS = os.getenv("SEND_EMAILS", "false").lower() == "true"
-    
+
     # Supabase
     SUPABASE_URL = os.getenv("SUPABASE_URL")
     SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")

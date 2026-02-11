@@ -440,43 +440,25 @@ class DatabaseService:
         return result.data[0] if result.data else None
     
     def get_user_admin_context(self, user_id: str):
-        """Get admin notes and context for a user"""
-        # Get professional notes
-        notes_result = self.client.table("professional_notes")\
-            .select("*")\
-            .eq("user_id", user_id)\
-            .execute()
-        
-        # Get custom instructions
-        tech_result = self.client.table("professional_notes_report_tech")\
-            .select("*")\
-            .eq("user_id", user_id)\
-            .execute()
-        
-        # Get specific questions
-        questions_result = self.client.table("professional_notes_specific_questions")\
-            .select("*")\
-            .eq("user_id", user_id)\
-            .execute()
-        
+        """Return admin context for report generation. V2: no professional_notes tables; minimal dict."""
         return {
-            "general_notes": notes_result.data[0].get("notes") if notes_result.data else None,
-            "custom_instructions": tech_result.data[0].get("custom_instructions") if tech_result.data else None,
-            "max_words": tech_result.data[0].get("max_words", 120) if tech_result.data else 120,
-            "specific_questions": questions_result.data if questions_result.data else []
+            "general_notes": None,
+            "custom_instructions": None,
+            "max_words": 120,
+            "specific_questions": [],
         }
     
     def get_user_recording_history(self, user_id: str, exclude_recording_id: str = None, limit: int = 10):
-        """Get user's recording history with performance scores for progress tracking"""
-        query = self.client.table("recordings")\
-            .select("*, performance_scores(*)")\
-            .eq("user_id", user_id)\
-            .order("created_at", desc=True)\
+        """Get user's recording history for progress tracking (v2: recordings only)."""
+        query = (
+            self.client.table("recordings")
+            .select("*")
+            .eq("user_id", user_id)
+            .order("created_at", desc=True)
             .limit(limit)
-        
+        )
         if exclude_recording_id:
             query = query.neq("id", exclude_recording_id)
-        
         result = query.execute()
         return result.data if result.data else []
     
@@ -1189,24 +1171,25 @@ class DatabaseService:
     DEFAULT_WARM_UP_TASK_TEXT = "How was your day so far?"
     DEFAULT_FOCUS_TASK_TEXT = "Pay attention to your breathing"
 
-    def v2_ensure_default_warm_up_task(self, user_id: str):
-        """If user has no warm-up tasks, create the default one so everyone can proceed. Idempotent."""
+    def v2_ensure_default_warm_up_task(self, user_id: str) -> bool:
+        """If user has no warm-up tasks, create the default one. Idempotent. Returns True if ok, False on failure (caller returns 422)."""
         import logging
         log = logging.getLogger(__name__)
         tasks = self.v2_get_warm_up_tasks(user_id)
         if tasks:
-            return
+            return True
         data = {
             "user_id": user_id,
             "text": self.DEFAULT_WARM_UP_TASK_TEXT,
             "order_index": 0,
-            "max_performance_score": 1,  # int: works for INTEGER or DECIMAL columns; 1 = easiest
+            "max_performance_score": 1,
         }
         try:
             self.v2_insert_warm_up_task(data)
+            return True
         except Exception as e:
             log.warning("v2_ensure_default_warm_up_task insert failed for user_id=%s: %s", user_id, e)
-            raise
+            return False
 
     def v2_get_warm_up_tasks(self, user_id: str):
         result = (
@@ -1423,14 +1406,21 @@ class DatabaseService:
         return float(score)
 
     def v2_get_assigned_warm_up_task(self, user_id: str):
-        """Get the single warm-up task: selection by last performance_score_end (max_performance_score, ±3%%, random if ties). First-time student gets easiest (highest max). If user has no tasks, ensure default warm-up is created first."""
-        from services.v2_flow_service import select_warm_up_task
-        self.v2_ensure_default_warm_up_task(user_id)
-        tasks = self.v2_get_warm_up_tasks(user_id)
-        if not tasks:
-            return None
-        last_score = self.v2_get_last_homework_performance_score(user_id)
-        return select_warm_up_task(last_score, tasks)
+        """
+        Strict taskmaster: no auto-creation of warm-up tasks.
+        If user has 0 warm-up tasks => return None (caller returns 422 NO_WARMUP_CONFIGURED).
+        Deterministic selection: first by order_index, then created_at.
+        """
+        result = (
+            self.client.table("v2_warm_up_tasks")
+            .select("*")
+            .eq("user_id", user_id)
+            .order("order_index")
+            .order("created_at")
+            .limit(1)
+            .execute()
+        )
+        return result.data[0] if result.data else None
 
     def v2_get_active_homework_session(self, user_id: str):
         """Active homework flow session (status in warm_up, task_block, final_task_ready, post_questions)."""

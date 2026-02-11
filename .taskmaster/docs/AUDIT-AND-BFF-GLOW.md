@@ -76,7 +76,7 @@ You need the **BFF routes** if the frontend calls **same-origin** `/api/homework
 - `session/[sessionId]/task-block` (GET, optional)
 - `session/[sessionId]/warm-up-task` (GET, optional)
 
-**No BFF for wheel:** Wheel = client-side only (AnalyserNode). No `recording-metrics-chunk` route.
+**No BFF for wheel:** Wheel = client-side only (AnalyserNode). Backend does **not** expose `recording-metrics-chunk` (glow removed).
 
 **If you call backend directly instead:** Point `homework-client.ts` at `NEXT_PUBLIC_API_URL/v2/...`, send token from client, and set backend CORS.
 
@@ -104,9 +104,9 @@ Backend taskmaster: **wheel only; no glow.**
 - Remove any function that calls `/api/homework/session/:id/recording-metrics-chunk`.
 - Remove exported types for `pause_score`, etc.
 
-**Delete BFF route**
+**Delete BFF route (if present)**
 
-- `src/app/api/homework/session/[sessionId]/recording-metrics-chunk/**`
+- `src/app/api/homework/session/[sessionId]/recording-metrics-chunk/**` — backend no longer has this endpoint.
 
 **Sanity check**
 

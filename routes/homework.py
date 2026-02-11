@@ -8,7 +8,6 @@ from services.db import db
 from services.v2_flow_service import select_focus_task_for_performance_score_1
 from services.metrics_v2 import compute_performance_score_1, compute_metrics_v2
 from services.openai_service import openai_service
-from services.realtime_audio_metrics import process_pcm_chunk
 from utils.metrics import count_fillers, compute_wpm
 import logging
 import time
@@ -17,11 +16,6 @@ import sentry_sdk
 
 logger = logging.getLogger(__name__)
 homework_bp = Blueprint("homework", __name__, url_prefix="/v2/homework")
-
-# Rate limit for recording-metrics-chunk: 120 per minute per (user_id, session_id)
-_metrics_chunk_timestamps = {}
-_METRICS_CHUNK_LIMIT = 120
-_METRICS_CHUNK_WINDOW_SEC = 60
 
 # #region agent log
 import json as _json
@@ -51,31 +45,41 @@ STATUS_COMPLETED = "completed"
 @homework_bp.route("/session/start", methods=["POST"])
 @require_auth
 def homework_session_start():
-    """Start or resume homework session. Returns session_id and warm_up_task (text) for step 1."""
+    """Start or resume homework session. Returns session_id and warm_up_task (text) for step 1. Strict: no session if 0 warm-ups."""
     try:
         user_id = request.user_id
+
         active = db.v2_get_active_homework_session(user_id)
         if active:
-            warm_up = db.v2_get_assigned_warm_up_task(user_id)
-            # If no warm-up is configured, do not allow proceeding (same as on start)
-            if not warm_up:
-                return jsonify({
-                    "code": "NO_WARMUP_CONFIGURED",
-                    "message": "No warm-up tasks are configured for your account. Please contact your coach to get started.",
-                    "details": {},
-                }), 422
-            # Snapshot warm-up for resume/reproducibility (idempotent if already set)
-            if not active.get("warm_up_task_id") or not active.get("warm_up_task_text"):
+            wid = active.get("warm_up_task_id")
+            wtext = (active.get("warm_up_task_text") or "").strip()
+
+            warm_up_task = None
+            if wtext:
+                warm_up_task = {"id": wid, "text": wtext}
+            else:
+                warm_up = db.v2_get_assigned_warm_up_task(user_id)
+                if not warm_up:
+                    return jsonify({
+                        "code": "NO_WARMUP_CONFIGURED",
+                        "message": "No warm-up tasks are configured for your account. Please contact your coach to get started.",
+                        "details": {},
+                    }), 422
+                text = (warm_up.get("text") or "").strip()
+                if not text:
+                    return jsonify({"code": "INVALID_STATE", "error": "Warm-up task has empty text"}), 500
                 db.v2_update_session(active["id"], user_id, {
-                    "warm_up_task_id": warm_up["id"],
-                    "warm_up_task_text": warm_up.get("text") or "",
+                    "warm_up_task_id": warm_up.get("id"),
+                    "warm_up_task_text": text,
                 })
+                warm_up_task = {"id": warm_up.get("id"), "text": text}
+
             return jsonify({
                 "session_id": active["id"],
-                "status": active["status"],
-                "warm_up_task": {"id": warm_up["id"], "text": warm_up["text"]},
+                "status": active.get("status"),
+                "warm_up_task": warm_up_task,
             }), 200
-        # Require at least one warm-up task; otherwise do not create session (prevents broken flow)
+
         warm_up = db.v2_get_assigned_warm_up_task(user_id)
         if not warm_up:
             return jsonify({
@@ -83,23 +87,30 @@ def homework_session_start():
                 "message": "No warm-up tasks are configured for your account. Please contact your coach to get started.",
                 "details": {},
             }), 422
+
+        text = (warm_up.get("text") or "").strip()
+        if not text:
+            return jsonify({"code": "INVALID_STATE", "error": "Warm-up task has empty text"}), 500
+
         session = db.v2_create_homework_session(user_id)
         if not session:
             return jsonify({"code": "V2_ERROR", "error": "Failed to create session"}), 500
-        # Snapshot user's custom metric questions for this session (used at end for LLM analysis)
+
         prefs = db.v2_get_user_metric_questions(user_id)
         db.v2_update_session(session["id"], user_id, {
-            "session_metric_question_1": prefs.get("metric_question_1") or "",
-            "session_metric_question_2": prefs.get("metric_question_2") or "",
-            "session_metric_question_3": prefs.get("metric_question_3") or "",
-            "warm_up_task_id": warm_up["id"] if warm_up else None,
-            "warm_up_task_text": (warm_up.get("text") or "") if warm_up else "",
+            "session_metric_question_1": (prefs.get("metric_question_1") or "").strip(),
+            "session_metric_question_2": (prefs.get("metric_question_2") or "").strip(),
+            "session_metric_question_3": (prefs.get("metric_question_3") or "").strip(),
+            "warm_up_task_id": warm_up.get("id"),
+            "warm_up_task_text": text,
         })
+
         return jsonify({
             "session_id": session["id"],
             "status": STATUS_WARM_UP,
-            "warm_up_task": {"id": warm_up["id"], "text": warm_up["text"]} if warm_up else None,
+            "warm_up_task": {"id": warm_up.get("id"), "text": text},
         }), 201
+
     except Exception as e:
         logger.error(f"Homework session start: {str(e)}")
         sentry_sdk.capture_exception(e)
@@ -109,134 +120,38 @@ def homework_session_start():
 @homework_bp.route("/session/status", methods=["GET"])
 @require_auth
 def homework_session_status():
-    """Get active homework session if any. Includes warm_up_task (id, text) from v2_warm_up_tasks so the UI can display it."""
+    """Get active homework session if any. Strict: does NOT create a session. Returns raw v2_sessions row (snake_case)."""
     try:
         user_id = request.user_id
         active = db.v2_get_active_homework_session(user_id)
+
         if not active:
             return jsonify({"session": None, "has_active_session": False}), 200
-        payload = {
+
+        warm_up_task = None
+        wid = active.get("warm_up_task_id")
+        wtext = (active.get("warm_up_task_text") or "").strip()
+
+        if wtext:
+            warm_up_task = {"id": wid, "text": wtext}
+        elif active.get("status") == STATUS_WARM_UP:
+            warm_up = db.v2_get_assigned_warm_up_task(user_id)
+            if warm_up and (warm_up.get("text") or "").strip():
+                text = (warm_up.get("text") or "").strip()
+                db.v2_update_session(active["id"], user_id, {
+                    "warm_up_task_id": warm_up.get("id"),
+                    "warm_up_task_text": text,
+                })
+                warm_up_task = {"id": warm_up.get("id"), "text": text}
+
+        return jsonify({
             "session": active,
             "session_id": active["id"],
             "has_active_session": True,
-        }
-        # When in warm_up, always fetch warm-up task from v2_warm_up_tasks so the UI has the prompt text
-        if active.get("status") == STATUS_WARM_UP:
-            warm_up = db.v2_get_assigned_warm_up_task(user_id)
-            if warm_up:
-                payload["warm_up_task"] = {
-                    "id": warm_up.get("id"),
-                    "text": (warm_up.get("text") or "").strip() or db.DEFAULT_WARM_UP_TASK_TEXT,
-                }
-                # Persist snapshot on session for resume/audit
-                if not active.get("warm_up_task_id") or not active.get("warm_up_task_text"):
-                    db.v2_update_session(active["id"], user_id, {
-                        "warm_up_task_id": warm_up.get("id"),
-                        "warm_up_task_text": payload["warm_up_task"]["text"],
-                    })
-            else:
-                payload["warm_up_task"] = None
-        else:
-            # Other statuses: use session snapshot if present
-            wid = active.get("warm_up_task_id")
-            wtext = active.get("warm_up_task_text")
-            if wid or wtext:
-                payload["warm_up_task"] = {"id": wid, "text": (wtext or "").strip()}
-            else:
-                payload["warm_up_task"] = None
-        return jsonify(payload), 200
+            "warm_up_task": warm_up_task,
+        }), 200
+
     except Exception as e:
-        sentry_sdk.capture_exception(e)
-        return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
-
-
-# ---------- Real-time metrics chunk (Ambient Glow): PCM in → raw features out (stateless) ----------
-@homework_bp.route("/session/<session_id>/recording-metrics-chunk", methods=["POST"])
-@require_auth
-def homework_recording_metrics_chunk(session_id):
-    """
-    Pause-only glow: accept binary PCM16 mono, maintain 10 s rolling window per session, return pause_score.
-    Request: body = raw PCM16 LE bytes; headers X-Sample-Rate (16000), X-Seq, X-T-Ms (optional), X-Debug (1|true for _debug).
-    Response: { seq, t_ms, voiced_ratio, pause_score }. Brightness = function(pause_score).
-    Rate limit: 120 requests per 60s per (user_id, session_id).
-    """
-    try:
-        # #region agent log
-        _agent_log("chunk_request", {"session_id": session_id, "has_user_id": bool(getattr(request, "user_id", None))}, "H1")
-        # #endregion
-        user_id = request.user_id
-        session = db.v2_get_session(session_id, user_id)
-        if not session:
-            # #region agent log
-            _agent_log("chunk_return", {"status": 404, "code": "SESSION_NOT_FOUND"}, "H2")
-            # #endregion
-            return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found"}), 404
-        # Allow any active status (user may be in warm_up or final_task_ready while recording)
-        status = session.get("status")
-        if status not in (STATUS_WARM_UP, STATUS_TASK_BLOCK, STATUS_FINAL_TASK_READY, STATUS_POST_QUESTIONS):
-            # #region agent log
-            _agent_log("chunk_return", {"status": 409, "code": "INVALID_SESSION_STATE", "session_status": status}, "H2")
-            # #endregion
-            return jsonify({"code": "INVALID_SESSION_STATE", "error": "Session not in recording state", "status": status}), 409
-
-        # Rate limit
-        key = (str(user_id), str(session_id))
-        now = time.time()
-        if key not in _metrics_chunk_timestamps:
-            _metrics_chunk_timestamps[key] = []
-        timestamps = _metrics_chunk_timestamps[key]
-        timestamps[:] = [t for t in timestamps if t > now - _METRICS_CHUNK_WINDOW_SEC]
-        if len(timestamps) >= _METRICS_CHUNK_LIMIT:
-            # #region agent log
-            _agent_log("chunk_return", {"status": 429, "code": "RATE_LIMITED"}, "H2")
-            # #endregion
-            return jsonify({"code": "RATE_LIMITED", "error": "Too many chunk requests"}), 429
-        timestamps.append(now)
-
-        pcm_bytes = request.get_data()
-        if not pcm_bytes:
-            # #region agent log
-            _agent_log("chunk_return", {"status": 400, "code": "INVALID_INPUT"}, "H2")
-            # #endregion
-            return jsonify({"code": "INVALID_INPUT", "error": "Missing PCM body"}), 400
-
-        sample_rate = request.headers.get("X-Sample-Rate", "16000")
-        try:
-            sample_rate = int(sample_rate)
-        except ValueError:
-            sample_rate = 16000
-        sample_rate = max(8000, min(48000, sample_rate))
-
-        seq = request.headers.get("X-Seq", "0")
-        try:
-            seq = int(seq)
-        except ValueError:
-            seq = 0
-
-        t_ms = request.headers.get("X-T-Ms", "0")
-        try:
-            t_ms = int(t_ms)
-        except ValueError:
-            t_ms = 0
-
-        include_debug = request.headers.get("X-Debug", "").strip().lower() in ("1", "true")
-        result = process_pcm_chunk(
-            pcm_bytes,
-            sample_rate,
-            session_id=session_id,
-            seq=seq,
-            t_ms=t_ms,
-            include_debug=include_debug,
-        )
-        # #region agent log
-        _agent_log("chunk_return", {"status": 200}, "H2")
-        # #endregion
-        return jsonify(result), 200
-    except Exception as e:
-        # #region agent log
-        _agent_log("chunk_return", {"status": 500, "code": "V2_ERROR", "err": str(e)}, "H2")
-        # #endregion
-        logger.error(f"Homework recording-metrics-chunk: {str(e)}")
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
 
@@ -245,16 +160,43 @@ def homework_recording_metrics_chunk(session_id):
 @homework_bp.route("/session/<session_id>/warm-up-task", methods=["GET"])
 @require_auth
 def homework_get_warm_up_task(session_id):
-    """Get the single warm-up task text for this session (step 1 screen)."""
+    """Get warm-up task for this session (step 1). Snapshot-first for deterministic resume. No default-text fallback."""
     try:
         user_id = request.user_id
         session = db.v2_get_session(session_id, user_id)
-        if not session or session.get("status") != STATUS_WARM_UP:
-            return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found or not in warm_up"}), 404
+        if not session:
+            return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found"}), 404
+        if session.get("status") != STATUS_WARM_UP:
+            return jsonify({
+                "code": "INVALID_SESSION_STATE",
+                "error": "Session must be in warm_up",
+                "status": session.get("status"),
+            }), 409
+
+        wid = session.get("warm_up_task_id")
+        wtext = (session.get("warm_up_task_text") or "").strip()
+
+        if wtext:
+            return jsonify({"warm_up_task": {"id": wid, "text": wtext}}), 200
+
         warm_up = db.v2_get_assigned_warm_up_task(user_id)
         if not warm_up:
-            return jsonify({"code": "NO_WARM_UP", "error": "No warm-up task assigned"}), 404
-        return jsonify({"warm_up_task": {"id": warm_up["id"], "text": warm_up["text"]}}), 200
+            return jsonify({
+                "code": "NO_WARMUP_CONFIGURED",
+                "message": "No warm-up tasks are configured for your account. Please contact your coach to get started.",
+                "details": {},
+            }), 422
+
+        text = (warm_up.get("text") or "").strip()
+        if not text:
+            return jsonify({"code": "INVALID_STATE", "error": "Warm-up task has empty text"}), 500
+
+        db.v2_update_session(session_id, user_id, {
+            "warm_up_task_id": warm_up.get("id"),
+            "warm_up_task_text": text,
+        })
+        return jsonify({"warm_up_task": {"id": warm_up.get("id"), "text": text}}), 200
+
     except Exception as e:
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
@@ -263,23 +205,53 @@ def homework_get_warm_up_task(session_id):
 @homework_bp.route("/session/<session_id>/task-block", methods=["GET"])
 @require_auth
 def homework_get_task_block(session_id):
-    """Get task block (metric_question_1/2/3 only) for step 2. context_1 and focus_task are used when generating final_task; not returned here. Use when resuming so the 3 questions can be shown."""
+    """Get task block for step 2. Returns session snapshots (session_metric_question_1/2/3) for determinism. Optional helper."""
     try:
         user_id = request.user_id
         session = db.v2_get_session(session_id, user_id)
-        if not session or session.get("status") != STATUS_TASK_BLOCK:
-            return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found or not in task_block"}), 404
-        # Metrics step: only 3 questions. context_1 (context_short) and focus_task are used when generating final_task; not displayed here.
-        metric_questions = db.v2_get_metric_questions_for_flow()
-        q1 = metric_questions[0] if len(metric_questions) > 0 else {}
-        q2 = metric_questions[1] if len(metric_questions) > 1 else {}
-        q3 = metric_questions[2] if len(metric_questions) > 2 else {}
+        if not session:
+            return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found"}), 404
+        if session.get("status") != STATUS_TASK_BLOCK:
+            return jsonify({
+                "code": "INVALID_SESSION_STATE",
+                "error": "Session must be in task_block",
+                "status": session.get("status"),
+            }), 409
+
+        q1 = (session.get("session_metric_question_1") or "").strip()
+        q2 = (session.get("session_metric_question_2") or "").strip()
+        q3 = (session.get("session_metric_question_3") or "").strip()
+
+        if not (q1 and q2 and q3):
+            prefs = db.v2_get_user_metric_questions(user_id)
+            q1 = (q1 or prefs.get("metric_question_1") or "").strip()
+            q2 = (q2 or prefs.get("metric_question_2") or "").strip()
+            q3 = (q3 or prefs.get("metric_question_3") or "").strip()
+
+            if not (q1 and q2 and q3):
+                return jsonify({
+                    "code": "INVALID_STATE",
+                    "error": "Session metric questions are missing",
+                    "details": {
+                        "session_metric_question_1": bool(q1),
+                        "session_metric_question_2": bool(q2),
+                        "session_metric_question_3": bool(q3),
+                    },
+                }), 500
+
+            db.v2_update_session(session_id, user_id, {
+                "session_metric_question_1": q1,
+                "session_metric_question_2": q2,
+                "session_metric_question_3": q3,
+            })
+
         task_block = {
-            "metric_question_1": q1,
-            "metric_question_2": q2,
-            "metric_question_3": q3,
+            "metric_question_1": {"id": None, "position": 1, "text": q1},
+            "metric_question_2": {"id": None, "position": 2, "text": q2},
+            "metric_question_3": {"id": None, "position": 3, "text": q3},
         }
         return jsonify({"task_block": task_block}), 200
+
     except Exception as e:
         logger.error(f"Homework get task-block: {str(e)}")
         sentry_sdk.capture_exception(e)
@@ -481,13 +453,18 @@ def homework_submit_metric_answers(session_id):
     try:
         user_id = request.user_id
         data = request.get_json() or {}
-        answer_1 = (data.get("answer_1") or data.get("metric_answer_1") or "").strip()
-        answer_2 = (data.get("answer_2") or data.get("metric_answer_2") or "").strip()
-        answer_3 = (data.get("answer_3") or data.get("metric_answer_3") or "").strip()
+        answer_1 = (data.get("answer_1") or data.get("metric_answer_1") or data.get("q1_keywords") or "").strip()
+        answer_2 = (data.get("answer_2") or data.get("metric_answer_2") or data.get("q2_emotion") or "").strip()
+        answer_3 = (data.get("answer_3") or data.get("metric_answer_3") or data.get("q3_cta") or "").strip()
 
         session = db.v2_get_session(session_id, user_id)
-        if not session or session.get("status") != STATUS_TASK_BLOCK:
-            return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found or not in task_block"}), 404
+        if not session:
+            return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found"}), 404
+        if session.get("status") != STATUS_TASK_BLOCK:
+            # Idempotency: already past step and final_task exists → return 200 with existing
+            if session.get("status") == STATUS_FINAL_TASK_READY and (session.get("final_task_text") or "").strip():
+                return jsonify({"final_task": (session.get("final_task_text") or "").strip()}), 200
+            return jsonify({"code": "INVALID_SESSION_STATE", "error": "Session must be in task_block for metric-answers", "status": session.get("status")}), 409
 
         # Require all three metric answers before continuing
         if not answer_1 or not answer_2 or not answer_3:
@@ -538,8 +515,19 @@ def homework_submit_recording_2(session_id):
         config = Config()
         user_id = request.user_id
         session = db.v2_get_session(session_id, user_id)
-        if not session or session.get("status") != STATUS_FINAL_TASK_READY:
-            return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found or not in final_task_ready"}), 404
+        if not session:
+            return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found"}), 404
+        # Idempotency: already past step and recording_2 exists → return 200 with existing
+        if session.get("status") in (STATUS_POST_QUESTIONS, STATUS_COMPLETED) and session.get("recording_2_id"):
+            return jsonify({
+                "recording_id": session.get("recording_2_id"),
+                "performance_score_2": session.get("performance_score_2"),
+            }), 200
+        if session.get("status") != STATUS_FINAL_TASK_READY:
+            return jsonify({"code": "INVALID_SESSION_STATE", "error": "Session must be in final_task_ready for recording-2", "status": session.get("status")}), 409
+
+        MIN_SECONDS = 60
+        MAX_SECONDS = 300
 
         audio_file = request.files.get("audio")
         data = request.get_json(silent=True) or (request.form or {})
@@ -582,6 +570,17 @@ def homework_submit_recording_2(session_id):
             transcript_result = openai_service.transcribe_audio(BytesIO(audio_bytes), "audio.webm")
             duration_seconds = transcript_result.get("duration") or duration_seconds
 
+        if duration_seconds < MIN_SECONDS or duration_seconds > MAX_SECONDS:
+            return jsonify({
+                "code": "RECORDING_DURATION_OUT_OF_RANGE",
+                "message": "Recording must be between 60 and 300 seconds.",
+                "details": {
+                    "min_seconds": MIN_SECONDS,
+                    "max_seconds": MAX_SECONDS,
+                    "duration_seconds": duration_seconds,
+                },
+            }), 422
+
         transcript_text = transcript_result["text"]
 
         audio_url = db.create_signed_url(config.AUDIO_BUCKET_NAME, storage_path, config.SIGNED_URL_EXPIRY_SECONDS)
@@ -593,7 +592,9 @@ def homework_submit_recording_2(session_id):
         filler_data = count_fillers(transcript_text)
         filler_count = filler_data["total"]
         strength_raw = None
-        keywords = []
+        metric_answers = session.get("metric_answers") or {}
+        answer_1 = (metric_answers.get("answer_1") or "").strip()
+        keywords = [s.strip() for s in answer_1.replace(";", ",").split(",") if s.strip()] if answer_1 else []
         metric_defs = db.v2_get_metric_definitions()
         prelim = compute_metrics_v2(
             wpm=wpm,
@@ -699,7 +700,7 @@ def homework_submit_post_answers(session_id):
                 "question_3_score": float(session.get("question_3_score") or 0),
             }), 200
         if session.get("status") != STATUS_POST_QUESTIONS:
-            return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found or not in post_questions"}), 404
+            return jsonify({"code": "INVALID_SESSION_STATE", "error": "Session must be in post_questions for post-answers", "status": session.get("status")}), 409
 
         recording_2_id = session.get("recording_2_id") or session.get("recording_id")
         if not recording_2_id:
@@ -729,6 +730,9 @@ def homework_submit_post_answers(session_id):
         strength_raw = None
         if isinstance(recording.get("performance_metrics_v2"), dict):
             strength_raw = recording["performance_metrics_v2"].get("strength", {}).get("raw")
+        metric_answers = session.get("metric_answers") or {}
+        answer_1 = (metric_answers.get("answer_1") or "").strip()
+        keywords = [s.strip() for s in answer_1.replace(";", ",").split(",") if s.strip()] if answer_1 else []
         metric_defs = db.v2_get_metric_definitions()
         final = compute_metrics_v2(
             wpm=wpm,
@@ -736,7 +740,7 @@ def homework_submit_post_answers(session_id):
             filler_count=filler_count,
             emotion_achieved=emotion_achieved,
             transcript=transcript,
-            keywords=[],
+            keywords=keywords,
             metric_definitions=metric_defs,
         )
         db.update_recording(recording_2_id, {
