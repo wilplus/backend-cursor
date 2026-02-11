@@ -846,6 +846,7 @@ def homework_submit_post_answers(session_id):
         }
         db.v2_update_session(session_id, user_id, session_update)
 
+        _agent_log("post-answers: success, returning 200 with report", {"session_id": session_id}, "H3")
         return jsonify({
             "report_text": report_text,
             "performance_score_end": performance_score_end,
@@ -858,6 +859,7 @@ def homework_submit_post_answers(session_id):
             "question_3_score": session_update["question_3_score"],
         }), 200
     except Exception as e:
+        _agent_log("post-answers: exception", {"error": str(e), "type": type(e).__name__}, "H5")
         logger.error(f"Homework post-answers: {str(e)}")
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
