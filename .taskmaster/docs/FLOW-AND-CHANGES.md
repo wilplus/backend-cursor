@@ -35,6 +35,7 @@ This document is the **taskmaster record** of what was in place before the post-
 
 ### Frontend
 
+- **UI step floor:** To avoid the UI snapping back when GET status is temporarily stale (eventual consistency), the frontend keeps **server status** as truth and applies a **UI step floor**: displayed step = **max(stepFromStatus, uiStepFloor)**. On success of recording-1 / metric-answers / recording-2, the frontend sets the floor to the step just unlocked, then refetches GET status and applies (step is clamped). Floor is reset when there is no session or the user starts over / goes to dashboard. No backend change required.
 - **After post-answers success:** Frontend **does not** call GET session/status to show the report. It uses the **POST post-answers response body** (`report_text`, `performance_score_end`) and sets step to **5** and report content from that. So the report is always shown correctly even though GET status does not return completed sessions.
 - **Step 4 with zero questions:** When step is 4 and **GET questions** returns an empty list, the frontend **auto-submits** POST post-answers with `answers: []` and then shows the report (step 5) from the response. The user can “finish without post-questions” without clicking “See my report.”
 - **409 on post-answers:** Frontend parses the backend **hint** and appends it to the error message. On **409 INVALID_SESSION_STATE**, it **refetches GET session/status** and applies the response so the UI step syncs with the backend (e.g. back to step 3 if the main recording was never completed).

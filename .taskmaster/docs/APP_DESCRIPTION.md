@@ -72,7 +72,7 @@
 | 5    | Report         | Views report and score      | `completed`        | **After post-answers:** frontend uses **POST post-answers response** (report_text, performance_score_end) to show step 5. GET status does **not** return completed sessions. |
 
 - **Source of truth for step:** **GET session/status** → **session.status** only. Frontend must derive step from this and **overwrite** local state on every successful status response. No overriding from URL or cache.
-- **After step-advancing actions:** For recording-1, metric-answers, recording-2, frontend calls **GET session/status** and applies the response. **After post-answers:** frontend does **not** refetch status for the report; it uses the post-answers response body to set step 5 and report content (because GET status does not return completed sessions).
+- **After step-advancing actions:** For recording-1, metric-answers, recording-2, frontend sets a **UI step floor** (min step the UI may show), then calls **GET session/status** and applies; displayed step = **max(stepFromStatus, uiStepFloor)** so stale status does not move the UI backward. **After post-answers:** frontend does **not** refetch status for the report; it uses the post-answers response body to set step 5 and report content (because GET status does not return completed sessions).
 - **Recording-upload-url:** **POST only** (not GET). Call with body `{ "recording": "1" }` only when step is 1 (`warm_up`); with `{ "recording": "2" }` only when step is 3 (`final_task_ready`). Opening the URL in the browser address bar sends GET and will not return the backend JSON (e.g. 409 body); test with POST (e.g. fetch from console or Network tab).
 
 ---
