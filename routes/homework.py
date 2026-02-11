@@ -607,8 +607,14 @@ def homework_submit_recording_2(session_id):
                 duration_seconds = float(duration_seconds)
             except (TypeError, ValueError):
                 return jsonify({"code": "INVALID_INPUT", "error": "duration_seconds must be a number"}), 400
-            # Range check uses client-supplied duration so timer-at-60s is accepted even if transcript reports slightly less
-            if duration_seconds < MIN_SECONDS or duration_seconds > MAX_SECONDS:
+            # #region agent log
+            _agent_log("recording-2: client duration received", {"client_duration_seconds": duration_seconds, "min": MIN_SECONDS, "max": MAX_SECONDS}, "H2")
+            # #endregion
+            # Range check: accept client >= 58s (2s tolerance below 60) to avoid 422 when UI shows 60s but client sends 58.4
+            if duration_seconds < 58 or duration_seconds > MAX_SECONDS:
+                # #region agent log
+                _agent_log("recording-2: 422 client duration out of range", {"duration_seconds_in_response": duration_seconds, "source": "client"}, "H2")
+                # #endregion
                 return jsonify({
                     "code": "RECORDING_DURATION_OUT_OF_RANGE",
                     "message": "Recording must be between 60 and 300 seconds.",
