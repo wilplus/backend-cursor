@@ -2,7 +2,7 @@
  * Copy to: src/app/api/homework/session/status/route.ts
  */
 import { NextResponse } from "next/server";
-import { getV2AccessToken, getBackendUrl } from "../../../../getAuth";
+import { getV2AccessToken, getBackendUrl } from "../../../getAuth";
 
 export async function GET() {
   const token = await getV2AccessToken();

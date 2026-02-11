@@ -3,7 +3,7 @@
  * Required for "Start homework" — without this, the frontend gets 404 HTML and shows "Backend returned invalid JSON".
  */
 import { NextResponse } from "next/server";
-import { getV2AccessToken, getBackendUrl } from "../../../../getAuth";
+import { getV2AccessToken, getBackendUrl } from "../../../getAuth";
 
 export async function POST() {
   const token = await getV2AccessToken();

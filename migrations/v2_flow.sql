@@ -1,6 +1,6 @@
 -- ============================================================================
 -- V2 FLOW — Major Flow v2 + Admin CRUD
--- Run after supabase-schema-full.sql. All tables use v2_ prefix to avoid v1 collision.
+-- Run after .taskmaster/docs/schema.sql. All tables use v2_ prefix to avoid v1 collision.
 -- ============================================================================
 
 -- 1) Universal questions (3 fixed; seed only, no admin CRUD)

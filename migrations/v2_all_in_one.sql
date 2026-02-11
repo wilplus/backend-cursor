@@ -1,6 +1,6 @@
 -- ============================================================================
 -- V2 MIGRATIONS — ALL IN ONE (run in order)
--- Run this after your base schema (e.g. supabase-schema-full.sql) so that
+-- Run this after your base schema (.taskmaster/docs/schema.sql) so that
 -- tables like recording_sessions and recordings exist.
 -- Execute in Supabase SQL Editor; then Settings → API → Reload schema cache.
 -- ============================================================================

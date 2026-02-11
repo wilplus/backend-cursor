@@ -1,6 +1,6 @@
 # Homework / Speaking Coach — single source of truth
 
-**Taskmaster is the only source of truth for this app.** All behavior, contracts, and implementation guidance are defined here. There are no other description or how-to docs; only this file and code (migrations, BFF reference routes) remain.
+**Taskmaster is the only source of truth for this app.** All behavior, contracts, and implementation guidance are defined here. No other description or how-to docs; only `.taskmaster/docs/` and code (`migrations/`, `docs/homework-bff-routes/`) remain. For frontend alignment and glow removal, see **AUDIT-AND-BFF-GLOW.md**.
 
 ---
 
@@ -166,7 +166,7 @@ Backend uses **snake_case** everywhere; frontend normalizes once (e.g. in applyS
 | POST | /v2/homework/session/:id/recording-metrics-chunk | Optional glow: PCM in, pause_score out (we don't use; wheel is client-side only) |
 | GET | /v2/recordings/:id | Get recording (incl. transcription_text); owner-only; 404 if not found/not allowed |
 
-All require auth. **BFF reference in this repo:** start + status only. Wheel needs no BFF (client-side AnalyserNode).
+All require auth. **BFF reference:** `docs/homework-bff-routes/` has all of the above except recording-metrics-chunk (wheel = client-side only).
 
 ---
 
@@ -185,7 +185,7 @@ All require auth. **BFF reference in this repo:** start + status only. Wheel nee
 ## 16. Implementation checklist
 
 - **Frontend:** applyStatusToState with mapping above; derive step only from session.status; overwrite on every GET status; when has_active_session false, clear state and show Start; refetch GET status after recording-1, metric-answers, recording-2, post-answers; call recording-upload-url only for rec "1" on step 1 and rec "2" on step 3; build task block from session_metric_question_1/2/3 or GET task-block if needed; GET questions when step 4 and empty; use bucket from API. **Wheel:** client-side only (AnalyserNode for loudness/pace); no BFF, no recording-metrics-chunk.
-- **BFF:** Reference in this repo: **start** and **status** only (for session/step). Forward Authorization. For full homework flow, add other routes as needed (restore from git or re-create).
+- **BFF:** Reference in this repo includes all full-flow routes (start, status, recording-upload-url, recording-1/2, metric-answers, questions, post-answers, task-block, warm-up-task). Forward Authorization. No recording-metrics-chunk (no glow).
 - **Backend:** Already implements flow; ensure GET status excludes completed from "active"; ensure recording_2 duration 60–300 s; ensure one report per session; ensure post_answers column exists.
 
 ---
@@ -193,7 +193,7 @@ All require auth. **BFF reference in this repo:** start + status only. Wheel nee
 ## 17. Code reference (no other docs)
 
 - **Schema:** `.taskmaster/docs/schema.sql` — single schema file; update in place only. **Migrations:** Repo root `migrations/` — optional incremental adds (e.g. post_answers, allow_focus_task_id); do not rename. Run per environment.
-- **BFF reference routes:** `docs/homework-bff-routes/` — **start**, **status** only (for session/step if the app needs them). **Wheel** = real-time metrics only, 100% client-side (AnalyserNode); no glow, no recording-metrics-chunk. See `.taskmaster/docs/WHEEL-USE-BFF-URL.md`.
+- **BFF reference routes:** `docs/homework-bff-routes/` — full flow: **start**, **status**, **recording-upload-url**, **recording-1**, **recording-2**, **metric-answers**, **questions**, **post-answers**, **task-block**, **warm-up-task**. No **recording-metrics-chunk** (wheel = client-side only; no glow). **Audit and glow removal:** see `.taskmaster/docs/AUDIT-AND-BFF-GLOW.md`.
 
 ---
 

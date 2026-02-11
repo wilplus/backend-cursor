@@ -1,6 +1,6 @@
 -- ============================================================================
 -- v1 Planned Session Flow — migrations (idempotent)
--- Run after supabase-schema-complete.sql. Use uuid_generate_v4().
+-- Run after .taskmaster/docs/schema.sql. Use uuid_generate_v4().
 -- ============================================================================
 
 -- 1.1 Extend pre_recording_questions (template table)
