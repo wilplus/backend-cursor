@@ -2,7 +2,12 @@
  * Copy to: src/app/api/homework/session/[sessionId]/recording-1/route.ts
  * Accepts multipart (audio file) or JSON (storage_path + duration_seconds for direct-to-storage).
  * Passes through 4xx/5xx body (e.g. 409 INVALID_SESSION_STATE).
+ * Backend does Whisper + scoring; can be slow. Raise maxDuration to avoid Vercel 504.
  */
+export const runtime = "nodejs";
+export const maxDuration = 60;
+export const dynamic = "force-dynamic";
+
 import { NextRequest, NextResponse } from "next/server";
 import { getV2AccessToken, getBackendUrl } from "../../../../getAuth";
 import { proxyResponse } from "../../../../proxyResponse";

@@ -1,7 +1,11 @@
 /**
  * Copy to: src/app/api/homework/session/[sessionId]/metric-answers/route.ts
- * Passes through 4xx/5xx body (e.g. 409 INVALID_SESSION_STATE).
+ * Passes through 4xx/5xx body (e.g. 409 INVALID_SESSION_STATE). Backend generates final_task (LLM); can be slow.
  */
+export const runtime = "nodejs";
+export const maxDuration = 60;
+export const dynamic = "force-dynamic";
+
 import { NextRequest, NextResponse } from "next/server";
 import { getV2AccessToken, getBackendUrl } from "../../../../getAuth";
 import { proxyResponse } from "../../../../proxyResponse";

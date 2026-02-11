@@ -2,7 +2,12 @@
  * Copy to: src/app/api/homework/session/[sessionId]/recording-2/route.ts
  * Accepts multipart (audio file) or JSON (storage_path + duration_seconds). Recording_2 must be 60–300 s.
  * Passes through 4xx/5xx body (e.g. 409, 422 RECORDING_DURATION_OUT_OF_RANGE).
+ * Backend does: download audio → Whisper transcription → metrics → DB; can take >10–30s. Raise maxDuration to avoid Vercel 504.
  */
+export const runtime = "nodejs";
+export const maxDuration = 60; // Vercel plan may cap this (e.g. 10s on Hobby); use 120 if Pro allows
+export const dynamic = "force-dynamic";
+
 import { NextRequest, NextResponse } from "next/server";
 import { getV2AccessToken, getBackendUrl } from "../../../../getAuth";
 import { proxyResponse } from "../../../../proxyResponse";

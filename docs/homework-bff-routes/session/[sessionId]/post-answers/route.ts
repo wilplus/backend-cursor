@@ -1,7 +1,11 @@
 /**
  * Copy to: src/app/api/homework/session/[sessionId]/post-answers/route.ts
- * Passes through 4xx/5xx body.
+ * Passes through 4xx/5xx body. Backend generates report (LLM); can be slow. Raise maxDuration to avoid Vercel 504.
  */
+export const runtime = "nodejs";
+export const maxDuration = 60;
+export const dynamic = "force-dynamic";
+
 import { NextRequest, NextResponse } from "next/server";
 import { getV2AccessToken, getBackendUrl } from "../../../../getAuth";
 import { proxyResponse } from "../../../../proxyResponse";
