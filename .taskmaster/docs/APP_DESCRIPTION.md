@@ -1,6 +1,6 @@
 # Homework / Speaking Coach — single source of truth
 
-**Taskmaster is the only source of truth for this app.** All behavior, contracts, and implementation guidance are defined here. No other description or how-to docs; only `.taskmaster/docs/` and code (`migrations/`, `docs/homework-bff-routes/`) remain. For frontend alignment and glow removal, see **AUDIT-AND-BFF-GLOW.md**.
+**Taskmaster is the only source of truth for this app.** All behavior, contracts, and implementation guidance are defined here. No other description or how-to docs; only `.taskmaster/docs/` and code (`migrations/`, `docs/homework-bff-routes/`) remain. For frontend alignment and glow removal, see **AUDIT-AND-BFF-GLOW.md**. For **what changed** (post-answers recovery, finish without post-questions, 409 hint, etc.) and the **explicit backend flow**, see **FLOW-AND-CHANGES.md**.
 
 ---
 
@@ -68,11 +68,11 @@
 | 1    | Warm-up        | Records warm-up; sees wheel | `warm_up`          | GET status, recording-upload-url (rec "1"), Storage upload, POST recording-1. **Wheel:** client-side only (AnalyserNode), no API. |
 | 2    | Metric answers | Answers 3 questions         | `task_block`       | GET status, GET task-block (optional), POST metric-answers |
 | 3    | Final task     | Records final task; wheel   | `final_task_ready` | GET status, recording-upload-url (rec "2"), upload, POST recording-2. **Wheel:** client-side only. |
-| 4    | Post-questions | Answers reflective Qs       | `post_questions`   | GET status, GET questions, POST post-answers |
-| 5    | Report         | Views report and score      | `completed`        | GET status (report from session.context_long, score from performance_score_end) |
+| 4    | Post-questions | Answers reflective Qs (or none) | `post_questions`   | GET status, GET questions, POST post-answers. **No questions:** frontend may auto-submit post-answers with `answers: []` and use response for report. |
+| 5    | Report         | Views report and score      | `completed`        | **After post-answers:** frontend uses **POST post-answers response** (report_text, performance_score_end) to show step 5. GET status does **not** return completed sessions. |
 
 - **Source of truth for step:** **GET session/status** → **session.status** only. Frontend must derive step from this and **overwrite** local state on every successful status response. No overriding from URL or cache.
-- **After every step-advancing action** (recording-1, metric-answers, recording-2, post-answers), frontend calls **GET session/status** and applies the response.
+- **After step-advancing actions:** For recording-1, metric-answers, recording-2, frontend calls **GET session/status** and applies the response. **After post-answers:** frontend does **not** refetch status for the report; it uses the post-answers response body to set step 5 and report content (because GET status does not return completed sessions).
 - **Recording-upload-url:** **POST only** (not GET). Call with body `{ "recording": "1" }` only when step is 1 (`warm_up`); with `{ "recording": "2" }` only when step is 3 (`final_task_ready`). Opening the URL in the browser address bar sends GET and will not return the backend JSON (e.g. 409 body); test with POST (e.g. fetch from console or Network tab).
 
 ---
@@ -101,7 +101,7 @@ Backend uses **snake_case** everywhere; frontend normalizes once (e.g. in applyS
 
 ## 8. Recording requirements
 
-- **Recording_2:** Must be **60–300 seconds**. Backend returns **422 RECORDING_DURATION_OUT_OF_RANGE** with `message` and `details: { min_seconds, max_seconds, duration_seconds }` if outside range. Pace (WPM) is transcript-based: word_count / (duration_seconds/60).
+- **Recording_2:** Must be **60–300 seconds** (client sends `duration_seconds` in JSON). Backend accepts **≥ 58 s** (2 s tolerance) to avoid 422 when the UI shows 60 s but client sends slightly less. Returns **422 RECORDING_DURATION_OUT_OF_RANGE** with `message` and `details: { min_seconds, max_seconds, duration_seconds }` if outside 58–300. Pace (WPM) is transcript-based: word_count / (duration_seconds/60).
 - **Upload:** Backend returns **bucket** (e.g. `audio_recordings`) and **storage_path** (e.g. `{user_id}/{session_id}/{uuid}.webm`). Frontend must use that bucket and path; RLS allows INSERT (and UPDATE if upsert) for authenticated user under that path.
 
 ---
@@ -129,8 +129,10 @@ Backend uses **snake_case** everywhere; frontend normalizes once (e.g. in applyS
 - **Status → step:** Only from session.status; map to step 1–5 as above.
 - **No task_block / final_task / report_text in status:** Use session.session_metric_question_1/2/3, session.final_task_text, session.context_long.
 - **Step 4 questions:** Status has only post_question_ids; frontend must GET questions when step 4 and questions empty.
-- **Wrong step → 409:** If the client calls a step-specific endpoint (e.g. metric-answers, recording-2) when session status does not match, backend returns **409** with code **INVALID_SESSION_STATE** (unless idempotency applies).
-- **Idempotency:** If session is already past that step and the relevant artifact exists, return **200** with existing data (e.g. metric-answers when already final_task_ready with final_task_text; recording-2 when already post_questions/completed with recording_2_id). Start returns existing active session if one exists.
+- **Wrong step → 409:** If the client calls a step-specific endpoint (e.g. metric-answers, recording-2) when session status does not match, backend returns **409** with code **INVALID_SESSION_STATE** (unless idempotency or recovery applies).
+- **Post-answers recovery:** If POST post-answers is called with status **warm_up**, **task_block**, or **final_task_ready** but the session has **recording_2_id**, backend advances status to **post_questions** and processes the request (so "already started, just fetch and finish" works). If status is wrong and there is **no** recording_2_id, backend returns **409** with optional **hint** in the body (e.g. "Complete the main recording (step 3) first…"). Frontend should refetch GET status on 409 and apply so step syncs.
+- **Empty post-answers:** Backend accepts **empty** `answers` (e.g. no reflective questions); report is still generated.
+- **Idempotency:** If session is already past that step and the relevant artifact exists, return **200** with existing data (e.g. metric-answers when already final_task_ready with final_task_text; recording-2 when already post_questions/completed with recording_2_id; post-answers when already completed). Start returns existing active session if one exists.
 - **One report per session:** At most one report per session (handler or DB guard). No duplicate reports on double submit.
 - **GET /v2/recordings/{id}:** Canonical way to fetch a recording (including transcription_text). Owner-only; **404** for not found or not allowed (same for privacy).
 
@@ -162,14 +164,14 @@ Backend uses **snake_case** everywhere; frontend normalizes once (e.g. in applyS
 | POST | /v2/homework/session/:id/recording-1 | Upload warm-up; returns score_1, task block (context_short, focus, questions) |
 | POST | /v2/homework/session/:id/metric-answers | Submit 3 answers; generates final_task_text; status → final_task_ready |
 | POST | /v2/homework/session/:id/recording-2 | Upload main (60–300 s); returns score_2, performance_score_end; status → post_questions |
-| POST | /v2/homework/session/:id/post-answers | Submit post-answers; generates report; status → completed |
+| POST | /v2/homework/session/:id/post-answers | Submit post-answers (answers may be []); generates report; status → completed. Recovery: if status is warm_up/task_block/final_task_ready but recording_2_id present, advance to post_questions and process. 409 includes optional **hint**. |
 | GET | /v2/homework/session/:id/questions | Get post-questions list (when step 4) |
 | GET | /v2/homework/session/:id/warm-up-task | **Optional helper;** returns session's snapshotted warm-up task (may snapshot once if missing) |
 | GET | /v2/homework/session/:id/task-block | **Optional helper;** returns session's snapshotted session_metric_question_1/2/3 (not live pool) |
 | POST | /v2/homework/session/:id/abandon | **Delete** session (hard delete). After 200, client should refetch GET status and show first page (Start). 409 if already completed. |
 | GET | /v2/recordings/:id | Get recording (incl. transcription_text); owner-only; 404 if not found/not allowed |
 
-All require auth. Status provides enough to run the flow without the optional warm-up-task and task-block endpoints; they exist as optional read helpers for resume/debug. **No recording-metrics-chunk** (wheel only; no glow). **BFF reference:** `docs/homework-bff-routes/` has all of the above except recording-metrics-chunk.
+All require auth. Status provides enough to run the flow without the optional warm-up-task and task-block endpoints; they exist as optional read helpers for resume/debug. **No recording-metrics-chunk** in backend (wheel only; no glow). **BFF:** Frontend app may expose a **no-op** `recording-metrics-chunk` route (204) so legacy/cached clients that still request it do not see failed network requests; see FLOW-AND-CHANGES.md. **BFF reference:** `docs/homework-bff-routes/` has all of the above except recording-metrics-chunk.
 
 ---
 
@@ -189,7 +191,7 @@ All require auth. Status provides enough to run the flow without the optional wa
 
 ## 16. Implementation checklist
 
-- **Frontend:** applyStatusToState with mapping above; derive step only from session.status; overwrite on every GET status; when has_active_session false, clear state and show Start; refetch GET status after recording-1, metric-answers, recording-2, post-answers; call recording-upload-url only for rec "1" on step 1 and rec "2" on step 3; build task block from session_metric_question_1/2/3 or GET task-block if needed; GET questions when step 4 and empty; use bucket from API. **Post-questions form (step 4):** Use **local state** for each answer text (like metric questions); submit only on "Confirm" button. Do **not** refetch status or re-mount the form on every keystroke — that causes the form to block or refresh after a single letter. Reference: `docs/frontend-v2-deliverables/components/AnswerPostQuestionsScreen.tsx`. **Wheel:** client-side only (AnalyserNode for loudness/pace); no BFF, no recording-metrics-chunk.
+- **Frontend:** applyStatusToState with mapping above; derive step only from session.status; overwrite on every GET status; when has_active_session false, clear state and show Start; refetch GET status after recording-1, metric-answers, recording-2 (not after post-answers — use **post-answers response** for report and step 5). Call recording-upload-url only for rec "1" on step 1 and rec "2" on step 3; build task block from session_metric_question_1/2/3 or GET task-block if needed; GET questions when step 4 and empty. **Step 4 with zero questions:** Auto-submit POST post-answers with `answers: []` and show report from response. **On 409 from post-answers:** Refetch GET status and apply so step syncs; show backend **hint** in error message. Use bucket from API. **Post-questions form (step 4):** Use **local state** for each answer text; submit only on "See my report". Do **not** refetch status or re-mount the form on every keystroke. **Wheel:** client-side only (AnalyserNode); no BFF for wheel, no backend recording-metrics-chunk. See **FLOW-AND-CHANGES.md** for what changed and explicit backend flow.
 - **BFF:** Reference in this repo includes all full-flow routes (start, status, recording-upload-url, recording-1/2, metric-answers, questions, post-answers, task-block, warm-up-task). Forward Authorization. **Always pass through upstream response body on 4xx/5xx** (read as text, parse JSON, return with upstream status) so 409/422 show backend payload (code, error, status). No recording-metrics-chunk (no glow). **Heavy endpoints** (recording-1, recording-2, metric-answers, post-answers) can take >10–30s; set **maxDuration = 60** (and `runtime = "nodejs"`, `dynamic = "force-dynamic"`) on those route handlers to avoid Vercel 504; plan limits may cap maxDuration (e.g. 10s on Hobby).
 - **Backend (strict taskmaster):** GET status never creates a session; active = status in (warm_up, task_block, final_task_ready, post_questions) only. No default warm-up: 0 warm-ups ⇒ 422 NO_WARMUP_CONFIGURED, no session created; warm-up and task-block content from session snapshots. Recording_2: enforce 60–300 s, 422 RECORDING_DURATION_OUT_OF_RANGE with details. Wrong step ⇒ 409 INVALID_SESSION_STATE; idempotency when already past step (200 with existing data). One report per session; post_answers column required.
 
@@ -198,7 +200,7 @@ All require auth. Status provides enough to run the flow without the optional wa
 ## 17. Code reference (no other docs)
 
 - **Schema:** `.taskmaster/docs/schema.sql` — single schema file; update in place only. **Migrations:** Repo root `migrations/` — optional incremental adds (e.g. post_answers, allow_focus_task_id); do not rename. Run per environment.
-- **BFF reference routes:** `docs/homework-bff-routes/` — full flow: **start**, **status**, **recording-upload-url**, **recording-1**, **recording-2**, **metric-answers**, **questions**, **post-answers**, **task-block**, **warm-up-task**. No **recording-metrics-chunk** (wheel = client-side only; no glow). **Audit and glow removal:** see `.taskmaster/docs/AUDIT-AND-BFF-GLOW.md`.
+- **BFF reference routes:** `docs/homework-bff-routes/` — full flow: **start**, **status**, **recording-upload-url**, **recording-1**, **recording-2**, **metric-answers**, **questions**, **post-answers**, **task-block**, **warm-up-task**. No backend **recording-metrics-chunk** (wheel = client-side only); BFF may expose a no-op 204 route for legacy clients (see **FLOW-AND-CHANGES.md**). **Audit and glow removal:** see `.taskmaster/docs/AUDIT-AND-BFF-GLOW.md`.
 
 ---
 

@@ -39,7 +39,8 @@ To get a **line-level punch-list** (with code snippets), you need the **frontend
 
 **Mutations + refetch**
 
-- After `recording-1`, `metric-answers`, `recording-2`, `post-answers`: must refetch status and apply.
+- After `recording-1`, `metric-answers`, `recording-2`: refetch GET status and apply.
+- After `post-answers`: **do not** refetch status for the report; use the **POST post-answers response** (report_text, performance_score_end) to show step 5. GET status does not return completed sessions.
 
 **Recording contract**
 
@@ -76,7 +77,7 @@ You need the **BFF routes** if the frontend calls **same-origin** `/api/homework
 - `session/[sessionId]/task-block` (GET, optional)
 - `session/[sessionId]/warm-up-task` (GET, optional)
 
-**No BFF for wheel:** Wheel = client-side only (AnalyserNode). Backend does **not** expose `recording-metrics-chunk` (glow removed).
+**No BFF for wheel:** Wheel = client-side only (AnalyserNode). Backend does **not** expose `recording-metrics-chunk` (glow removed). The frontend app may expose a **no-op** BFF route `session/[sessionId]/recording-metrics-chunk` (GET/POST → 204) so legacy or cached clients that still request it do not see failed network requests; see **FLOW-AND-CHANGES.md**.
 
 **If you call backend directly instead:** Point `homework-client.ts` at `NEXT_PUBLIC_API_URL/v2/...`, send token from client, and set backend CORS.
 

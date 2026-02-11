@@ -759,11 +759,28 @@ def homework_submit_post_answers(session_id):
                 "question_3_analysis": session.get("question_3_analysis") or "",
                 "question_3_score": float(session.get("question_3_score") or 0),
             }), 200
-        if status != STATUS_POST_QUESTIONS:
-            _agent_log("post-answers: wrong status → 409", {"session_id": session_id, "status": status}, "H1")
-            return jsonify({"code": "INVALID_SESSION_STATE", "error": "Session must be in post_questions for post-answers", "status": status}), 409
-
         recording_2_id = session.get("recording_2_id") or session.get("recording_id")
+        if status != STATUS_POST_QUESTIONS:
+            # Recovery: if we have recording_2, session is logically past step 3; advance status and continue
+            if recording_2_id and status in (STATUS_WARM_UP, STATUS_TASK_BLOCK, STATUS_FINAL_TASK_READY):
+                _agent_log("post-answers: recovery, advancing status to post_questions", {"session_id": session_id, "previous_status": status}, "H1")
+                db.v2_update_session(session_id, user_id, {"status": STATUS_POST_QUESTIONS})
+                session = db.v2_get_session(session_id, user_id)
+                if session:
+                    status = session.get("status")
+            else:
+                _agent_log("post-answers: wrong status → 409", {"session_id": session_id, "status": status, "has_recording_2_id": bool(recording_2_id)}, "H1")
+                hint = (
+                    "Complete the main recording (step 3) first, then return to reflective questions."
+                    if status in (STATUS_WARM_UP, STATUS_TASK_BLOCK, STATUS_FINAL_TASK_READY) else None
+                )
+                return jsonify({
+                    "code": "INVALID_SESSION_STATE",
+                    "error": "Session must be in post_questions for post-answers",
+                    "status": status,
+                    "hint": hint,
+                }), 409
+
         if not recording_2_id:
             return jsonify({"code": "INVALID_STATE", "error": "No recording_2"}), 400
 
@@ -772,11 +789,13 @@ def homework_submit_post_answers(session_id):
             return jsonify({"code": "RECORDING_NOT_FOUND"}), 404
 
         post_question_ids = session.get("post_question_ids") or []
+        if not post_question_ids and answers:
+            post_question_ids = list({str(a.get("question_id", "")) for a in answers if a.get("question_id")})
         student_questions = db.v2_get_student_post_recording_questions_by_ids(post_question_ids)
         emotion_achieved = False
         for ans in answers:
             qid = str(ans.get("question_id", ""))
-            if qid not in post_question_ids:
+            if post_question_ids and qid not in post_question_ids:
                 continue
             for q in student_questions:
                 if str(q["id"]) == qid and q.get("code") == "emotion_achieved_check":
