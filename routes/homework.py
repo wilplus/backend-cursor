@@ -586,6 +586,16 @@ def homework_submit_recording_2(session_id):
             audio_file.seek(0)
             transcript_result = openai_service.transcribe_audio(audio_file, "audio.webm")
             duration_seconds = transcript_result.get("duration") or float(request.form.get("duration_seconds") or 60.0)
+            if duration_seconds < MIN_SECONDS or duration_seconds > MAX_SECONDS:
+                return jsonify({
+                    "code": "RECORDING_DURATION_OUT_OF_RANGE",
+                    "message": "Recording must be between 60 and 300 seconds.",
+                    "details": {
+                        "min_seconds": MIN_SECONDS,
+                        "max_seconds": MAX_SECONDS,
+                        "duration_seconds": duration_seconds,
+                    },
+                }), 422
         else:
             storage_path = (data.get("storage_path") or "").strip()
             duration_seconds = data.get("duration_seconds")
@@ -597,6 +607,17 @@ def homework_submit_recording_2(session_id):
                 duration_seconds = float(duration_seconds)
             except (TypeError, ValueError):
                 return jsonify({"code": "INVALID_INPUT", "error": "duration_seconds must be a number"}), 400
+            # Range check uses client-supplied duration so timer-at-60s is accepted even if transcript reports slightly less
+            if duration_seconds < MIN_SECONDS or duration_seconds > MAX_SECONDS:
+                return jsonify({
+                    "code": "RECORDING_DURATION_OUT_OF_RANGE",
+                    "message": "Recording must be between 60 and 300 seconds.",
+                    "details": {
+                        "min_seconds": MIN_SECONDS,
+                        "max_seconds": MAX_SECONDS,
+                        "duration_seconds": duration_seconds,
+                    },
+                }), 422
             # Idempotency: if we already have recording_2 for this session with this storage_path, return same response
             existing_rid = session.get("recording_2_id")
             if existing_rid:
@@ -608,18 +629,8 @@ def homework_submit_recording_2(session_id):
                     }), 200
             audio_bytes = db.download_audio(config.AUDIO_BUCKET_NAME, storage_path)
             transcript_result = openai_service.transcribe_audio(BytesIO(audio_bytes), "audio.webm")
+            # Use transcript duration for WPM/scoring; client duration already passed range check above
             duration_seconds = transcript_result.get("duration") or duration_seconds
-
-        if duration_seconds < MIN_SECONDS or duration_seconds > MAX_SECONDS:
-            return jsonify({
-                "code": "RECORDING_DURATION_OUT_OF_RANGE",
-                "message": "Recording must be between 60 and 300 seconds.",
-                "details": {
-                    "min_seconds": MIN_SECONDS,
-                    "max_seconds": MAX_SECONDS,
-                    "duration_seconds": duration_seconds,
-                },
-            }), 422
 
         transcript_text = transcript_result["text"]
 
