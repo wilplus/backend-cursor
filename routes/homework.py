@@ -308,8 +308,10 @@ def homework_recording_upload_url(session_id):
         if not session:
             return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found"}), 404
         if recording == "1" and session.get("status") != STATUS_WARM_UP:
+            _agent_log("recording-upload-url: 409 rec=1 wrong status", {"session_id": session_id, "status": session.get("status")}, "H_upload")
             return jsonify({"code": "INVALID_SESSION_STATE", "error": "Session must be in warm_up for recording-1", "status": session.get("status")}), 409
         if recording == "2" and session.get("status") != STATUS_FINAL_TASK_READY:
+            _agent_log("recording-upload-url: 409 rec=2 wrong status", {"session_id": session_id, "status": session.get("status")}, "H_upload")
             return jsonify({"code": "INVALID_SESSION_STATE", "error": "Session must be in final_task_ready for recording-2", "status": session.get("status")}), 409
 
         storage_path = _storage_path_for_session(user_id, session_id)
@@ -488,12 +490,17 @@ def homework_submit_metric_answers(session_id):
 
         session = db.v2_get_session(session_id, user_id)
         if not session:
+            _agent_log("metric-answers: session not found", {"session_id": session_id}, "H1")
             return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found"}), 404
-        if session.get("status") != STATUS_TASK_BLOCK:
+        status = session.get("status")
+        _agent_log("metric-answers: entry", {"session_id": session_id, "status": status, "has_answer_1": bool((data.get("answer_1") or data.get("metric_answer_1") or data.get("q1_keywords") or "").strip()), "has_answer_2": bool((data.get("answer_2") or data.get("metric_answer_2") or "").strip()), "has_answer_3": bool((data.get("answer_3") or data.get("metric_answer_3") or "").strip())}, "H1")
+        if status != STATUS_TASK_BLOCK:
             # Idempotency: already past step and final_task exists → return 200 with existing
-            if session.get("status") == STATUS_FINAL_TASK_READY and (session.get("final_task_text") or "").strip():
+            if status == STATUS_FINAL_TASK_READY and (session.get("final_task_text") or "").strip():
+                _agent_log("metric-answers: idempotency 200 (already final_task_ready)", {"session_id": session_id}, "H2")
                 return jsonify({"final_task": (session.get("final_task_text") or "").strip()}), 200
-            return jsonify({"code": "INVALID_SESSION_STATE", "error": "Session must be in task_block for metric-answers", "status": session.get("status")}), 409
+            _agent_log("metric-answers: wrong status → 409", {"session_id": session_id, "status": status}, "H1")
+            return jsonify({"code": "INVALID_SESSION_STATE", "error": "Session must be in task_block for metric-answers", "status": status}), 409
 
         # Require all three metric answers before continuing
         if not answer_1 or not answer_2 or not answer_3:
@@ -518,15 +525,19 @@ def homework_submit_metric_answers(session_id):
             metric_answer_2=answer_2,
             metric_answer_3=answer_3,
         )
+        _agent_log("metric-answers: after generate_final_task", {"session_id": session_id, "final_task_len": len(final_task_text) if final_task_text else 0, "has_context_short": bool(context_short)}, "H3")
 
-        db.v2_update_session(session_id, user_id, {
+        update_result = db.v2_update_session(session_id, user_id, {
             "metric_answers": {"answer_1": answer_1, "answer_2": answer_2, "answer_3": answer_3},
             "status": STATUS_FINAL_TASK_READY,
             "final_task_text": final_task_text,
         })
+        _agent_log("metric-answers: after v2_update_session", {"session_id": session_id, "update_result_is_none": update_result is None}, "H4")
 
+        _agent_log("metric-answers: success, returning 200 with final_task", {"session_id": session_id}, "H5")
         return jsonify({"final_task": final_task_text}), 200
     except Exception as e:
+        _agent_log("metric-answers: exception", {"error": str(e), "type": type(e).__name__}, "H5")
         logger.error(f"Homework metric-answers: {str(e)}")
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
