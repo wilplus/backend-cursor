@@ -73,7 +73,7 @@
 
 - **Source of truth for step:** **GET session/status** → **session.status** only. Frontend must derive step from this and **overwrite** local state on every successful status response. No overriding from URL or cache.
 - **After every step-advancing action** (recording-1, metric-answers, recording-2, post-answers), frontend calls **GET session/status** and applies the response.
-- **Recording-upload-url:** Call with recording **"1"** only when step is 1; with **"2"** only when step is 3.
+- **Recording-upload-url:** **POST only** (not GET). Call with body `{ "recording": "1" }` only when step is 1 (`warm_up`); with `{ "recording": "2" }` only when step is 3 (`final_task_ready`). Opening the URL in the browser address bar sends GET and will not return the backend JSON (e.g. 409 body); test with POST (e.g. fetch from console or Network tab).
 
 ---
 
@@ -158,7 +158,7 @@ Backend uses **snake_case** everywhere; frontend normalizes once (e.g. in applyS
 |--------|------|---------|
 | GET | /v2/homework/session/status | Resume; returns has_active_session, session_id?, session?, warm_up_task? |
 | POST | /v2/homework/session/start | Start or resume session; 422 if no warmups |
-| POST | /v2/homework/session/:id/recording-upload-url | Get bucket + storage_path for recording "1" or "2" |
+| POST | /v2/homework/session/:id/recording-upload-url | **POST only.** Body `{ "recording": "1" \| "2" }`. Get bucket + storage_path. |
 | POST | /v2/homework/session/:id/recording-1 | Upload warm-up; returns score_1, task block (context_short, focus, questions) |
 | POST | /v2/homework/session/:id/metric-answers | Submit 3 answers; generates final_task_text; status → final_task_ready |
 | POST | /v2/homework/session/:id/recording-2 | Upload main (60–300 s); returns score_2, performance_score_end; status → post_questions |
@@ -174,20 +174,21 @@ All require auth. Status provides enough to run the flow without the optional wa
 
 ## 15. What can go wrong
 
-- **Wrong step / 409:** Backend returns **409** with code **INVALID_SESSION_STATE** when a step endpoint is called in the wrong status (e.g. metric-answers when not task_block). If already past that step, backend returns **200** with existing data (idempotency). Frontend: derive step only from session.status; overwrite on every GET status; when has_active_session false, clear state and require POST start.
+- **Wrong step / 409:** Backend returns **409** with code **INVALID_SESSION_STATE** when a step endpoint is called in the wrong status (e.g. recording-upload-url for "1" when status is already `task_block`). If already past that step, backend returns **200** with existing data (idempotency). Frontend: derive step only from session.status; overwrite on every GET status; when has_active_session false, clear state and require POST start. **On 409 from upload-url or recording-1/2:** refetch **GET session/status**, overwrite state from `session.status`, and advance UI (e.g. if status is `task_block`, show step 2; do not block the user on the error).
 - **401 / 404 on session:** BFF not forwarding Authorization for a homework route. Fix: every BFF route must send Authorization: Bearer <token>.
 - **Wheel not working:** Wheel is client-side only (AnalyserNode). Check mic permission, AudioContext not suspended, and that the analyser pipeline runs in steps 1 and 3. No BFF/API needed for the wheel.
 - **Blank screens (step 2/4/5):** Frontend expecting task_block object, final_task object, report_text, or questions in status. Fix: use session.session_metric_question_1/2/3, session.final_task_text, session.context_long; GET questions when step 4 and empty.
 - **Post-answers not saved:** v2_sessions missing post_answers column. Fix: add column (e.g. `ALTER TABLE v2_sessions ADD COLUMN IF NOT EXISTS post_answers JSONB`).
 - **403 on upload:** Wrong bucket or path; or Storage RLS missing. Fix: use bucket from API; path must start with user_id; add INSERT (and UPDATE) policies for authenticated user.
 - **Recording_2 rejected:** Duration outside 60–300 s. Fix: enforce client-side or show 422 message.
+- **409/422 body empty in frontend:** BFF may be swallowing upstream body. Fix: in BFF routes that proxy to backend, read response as `.text()`, then `JSON.parse`, then return with upstream status (see `docs/homework-bff-routes/proxyResponse.ts`).
 
 ---
 
 ## 16. Implementation checklist
 
 - **Frontend:** applyStatusToState with mapping above; derive step only from session.status; overwrite on every GET status; when has_active_session false, clear state and show Start; refetch GET status after recording-1, metric-answers, recording-2, post-answers; call recording-upload-url only for rec "1" on step 1 and rec "2" on step 3; build task block from session_metric_question_1/2/3 or GET task-block if needed; GET questions when step 4 and empty; use bucket from API. **Wheel:** client-side only (AnalyserNode for loudness/pace); no BFF, no recording-metrics-chunk.
-- **BFF:** Reference in this repo includes all full-flow routes (start, status, recording-upload-url, recording-1/2, metric-answers, questions, post-answers, task-block, warm-up-task). Forward Authorization. No recording-metrics-chunk (no glow).
+- **BFF:** Reference in this repo includes all full-flow routes (start, status, recording-upload-url, recording-1/2, metric-answers, questions, post-answers, task-block, warm-up-task). Forward Authorization. **Always pass through upstream response body on 4xx/5xx** (read as text, parse JSON, return with upstream status) so 409/422 show backend payload (code, error, status). No recording-metrics-chunk (no glow).
 - **Backend (strict taskmaster):** GET status never creates a session; active = status in (warm_up, task_block, final_task_ready, post_questions) only. No default warm-up: 0 warm-ups ⇒ 422 NO_WARMUP_CONFIGURED, no session created; warm-up and task-block content from session snapshots. Recording_2: enforce 60–300 s, 422 RECORDING_DURATION_OUT_OF_RANGE with details. Wrong step ⇒ 409 INVALID_SESSION_STATE; idempotency when already past step (200 with existing data). One report per session; post_answers column required.
 
 ---

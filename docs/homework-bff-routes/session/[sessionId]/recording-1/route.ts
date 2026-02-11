@@ -1,9 +1,11 @@
 /**
  * Copy to: src/app/api/homework/session/[sessionId]/recording-1/route.ts
  * Accepts multipart (audio file) or JSON (storage_path + duration_seconds for direct-to-storage).
+ * Passes through 4xx/5xx body (e.g. 409 INVALID_SESSION_STATE).
  */
 import { NextRequest, NextResponse } from "next/server";
 import { getV2AccessToken, getBackendUrl } from "../../../../getAuth";
+import { proxyResponse } from "../../../../proxyResponse";
 
 export async function POST(
   request: NextRequest,
@@ -31,6 +33,5 @@ export async function POST(
       body: JSON.stringify(body),
     });
   }
-  const data = await backendRes.json().catch(() => ({}));
-  return NextResponse.json(data, { status: backendRes.status });
+  return proxyResponse(backendRes);
 }

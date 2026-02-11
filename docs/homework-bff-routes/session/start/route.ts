@@ -1,9 +1,10 @@
 /**
  * Copy to: src/app/api/homework/session/start/route.ts
- * Required for "Start homework" — without this, the frontend gets 404 HTML and shows "Backend returned invalid JSON".
+ * Required for "Start homework". Passes through 4xx/5xx body (e.g. 422 NO_WARMUP_CONFIGURED).
  */
 import { NextResponse } from "next/server";
 import { getV2AccessToken, getBackendUrl } from "../../../getAuth";
+import { proxyResponse } from "../../../proxyResponse";
 
 export async function POST() {
   const token = await getV2AccessToken();
@@ -11,7 +12,7 @@ export async function POST() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const backend = getBackendUrl();
-  const res = await fetch(`${backend}/v2/homework/session/start`, {
+  const upstreamRes = await fetch(`${backend}/v2/homework/session/start`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
@@ -19,9 +20,5 @@ export async function POST() {
     },
     body: JSON.stringify({}),
   });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    return NextResponse.json(data, { status: res.status });
-  }
-  return NextResponse.json(data, { status: res.status });
+  return proxyResponse(upstreamRes);
 }

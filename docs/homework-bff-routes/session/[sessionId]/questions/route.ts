@@ -1,8 +1,10 @@
 /**
  * Copy to: src/app/api/homework/session/[sessionId]/questions/route.ts
+ * Passes through 4xx/5xx body.
  */
 import { NextResponse } from "next/server";
 import { getV2AccessToken, getBackendUrl } from "../../../../getAuth";
+import { proxyResponse } from "../../../../proxyResponse";
 
 export async function GET(
   _request: Request,
@@ -12,9 +14,8 @@ export async function GET(
   if (!token) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { sessionId } = typeof (params as Promise<{ sessionId: string }>).then === "function" ? await (params as Promise<{ sessionId: string }>) : (params as { sessionId: string });
   if (!sessionId) return NextResponse.json({ error: "Missing sessionId" }, { status: 400 });
-  const res = await fetch(`${getBackendUrl()}/v2/homework/session/${sessionId}/questions`, {
+  const upstreamRes = await fetch(`${getBackendUrl()}/v2/homework/session/${sessionId}/questions`, {
     headers: { Authorization: `Bearer ${token}` },
   });
-  const data = await res.json().catch(() => ({}));
-  return NextResponse.json(data, { status: res.status });
+  return proxyResponse(upstreamRes);
 }

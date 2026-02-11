@@ -1,8 +1,10 @@
 /**
  * Copy to: src/app/api/homework/session/[sessionId]/recording-upload-url/route.ts
+ * Passes through 4xx/5xx body so 409 shows backend payload (code, error, status).
  */
 import { NextRequest, NextResponse } from "next/server";
 import { getV2AccessToken, getBackendUrl } from "../../../../getAuth";
+import { proxyResponse } from "../../../../proxyResponse";
 
 export async function POST(
   _request: NextRequest,
@@ -13,11 +15,10 @@ export async function POST(
   const { sessionId } = typeof (params as Promise<{ sessionId: string }>).then === "function" ? await (params as Promise<{ sessionId: string }>) : (params as { sessionId: string });
   if (!sessionId) return NextResponse.json({ error: "Missing sessionId" }, { status: 400 });
   const body = await _request.json().catch(() => ({}));
-  const res = await fetch(`${getBackendUrl()}/v2/homework/session/${sessionId}/recording-upload-url`, {
+  const upstreamRes = await fetch(`${getBackendUrl()}/v2/homework/session/${sessionId}/recording-upload-url`, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  const data = await res.json().catch(() => ({}));
-  return NextResponse.json(data, { status: res.status });
+  return proxyResponse(upstreamRes);
 }
