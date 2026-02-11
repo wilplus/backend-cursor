@@ -335,11 +335,14 @@ def homework_submit_recording_1(session_id):
         user_id = request.user_id
         session = db.v2_get_session(session_id, user_id)
         if not session:
+            _agent_log("recording-1: session not found", {"session_id": session_id}, "H1")
             return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found"}), 404
         if session.get("status") != STATUS_WARM_UP:
+            _agent_log("recording-1: wrong status", {"session_id": session_id, "status": session.get("status")}, "H1")
             return jsonify({"code": "INVALID_SESSION_STATE", "error": "Session not found or not in warm_up", "status": session.get("status")}), 409
 
         audio_file = request.files.get("audio")
+        _agent_log("recording-1: entry", {"session_id": session_id, "status": session.get("status"), "has_audio": bool(audio_file), "has_storage_path": bool((request.get_json(silent=True) or {}).get("storage_path"))}, "H1")
         data = request.get_json(silent=True) or (request.form or {})
         duration_seconds = None
         storage_path = None
@@ -435,16 +438,19 @@ def homework_submit_recording_1(session_id):
             "filler_words_count": {"breakdown": filler_data.get("breakdown", {}), "total": filler_count},
         }
         recording = db.create_recording(recording_data)
+        _agent_log("recording-1: after create_recording", {"recording_id": recording["id"] if recording else None, "has_recording": bool(recording)}, "H2")
         if not recording:
             return jsonify({"code": "RECORDING_CREATE_FAILED"}), 500
 
-        db.v2_update_session(session_id, user_id, {
+        update_payload = {
             "recording_1_id": recording["id"],
             "performance_score_1": performance_score_1,
             "context_short": context_short,
             "selected_task_id": focus_task["id"] if focus_task else None,
             "status": STATUS_TASK_BLOCK,
-        })
+        }
+        update_result = db.v2_update_session(session_id, user_id, update_payload)
+        _agent_log("recording-1: after v2_update_session", {"session_id": session_id, "update_result_is_none": update_result is None, "status_set": STATUS_TASK_BLOCK}, "H3")
 
         q1 = metric_questions[0] if len(metric_questions) > 0 else {}
         q2 = metric_questions[1] if len(metric_questions) > 1 else {}
@@ -455,12 +461,14 @@ def homework_submit_recording_1(session_id):
             "metric_question_2": q2,
             "metric_question_3": q3,
         }
+        _agent_log("recording-1: success, returning 200 with task_block", {"recording_id": str(recording["id"])}, "H5")
         return jsonify({
             "recording_id": recording["id"],
             "performance_score_1": performance_score_1,
             "task_block": task_block,
         }), 200
     except Exception as e:
+        _agent_log("recording-1: exception", {"error": str(e), "type": type(e).__name__}, "H5")
         logger.error(f"Homework recording-1: {str(e)}")
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
