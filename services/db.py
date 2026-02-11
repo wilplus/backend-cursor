@@ -990,6 +990,11 @@ class DatabaseService:
         result = self.client.table("v2_sessions").update(data).eq("id", session_id).eq("user_id", user_id).execute()
         return result.data[0] if result.data else None
 
+    def v2_delete_session(self, session_id: str, user_id: str) -> bool:
+        """Delete v2 session (owner only). Recordings.session_v2_id set to NULL; v2_reports CASCADE deleted. Returns True if a row was deleted."""
+        result = self.client.table("v2_sessions").delete().eq("id", session_id).eq("user_id", user_id).execute()
+        return bool(result.data and len(result.data) > 0)
+
     def v2_get_session(self, session_id: str, user_id: str = None):
         """Get v2 session by id, optionally scoped to user."""
         q = self.client.table("v2_sessions").select("*").eq("id", session_id)
