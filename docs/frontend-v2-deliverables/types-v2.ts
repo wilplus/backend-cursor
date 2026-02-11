@@ -119,3 +119,16 @@ export interface TaskBlockV2 {
 export interface MetricAnswersResponseV2 {
   final_task: string;
 }
+
+/** Response from POST session/:sessionId/post-answers (step 4). */
+export interface PostAnswersResponseV2Homework {
+  report_text: string;
+  performance_score_end: number;
+  performance_metrics?: PerformanceMetricsV2;
+  question_1_analysis?: string;
+  question_1_score?: number;
+  question_2_analysis?: string;
+  question_2_score?: number;
+  question_3_analysis?: string;
+  question_3_score?: number;
+}

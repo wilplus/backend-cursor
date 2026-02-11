@@ -722,9 +722,12 @@ def homework_submit_post_answers(session_id):
 
         session = db.v2_get_session(session_id, user_id)
         if not session:
+            _agent_log("post-answers: session not found", {"session_id": session_id}, "H1")
             return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found"}), 404
+        status = session.get("status")
+        _agent_log("post-answers: entry", {"session_id": session_id, "status": status, "answers_count": len(data.get("answers", []))}, "H1")
         # Idempotency: if already completed, return existing report (do not create second report row)
-        if session.get("status") == STATUS_COMPLETED:
+        if status == STATUS_COMPLETED:
             rec_id = session.get("recording_2_id") or session.get("recording_id")
             rec = db.get_recording(rec_id, user_id) if rec_id else None
             metrics = (rec.get("performance_metrics_v2") or {}) if rec else {}
@@ -739,8 +742,9 @@ def homework_submit_post_answers(session_id):
                 "question_3_analysis": session.get("question_3_analysis") or "",
                 "question_3_score": float(session.get("question_3_score") or 0),
             }), 200
-        if session.get("status") != STATUS_POST_QUESTIONS:
-            return jsonify({"code": "INVALID_SESSION_STATE", "error": "Session must be in post_questions for post-answers", "status": session.get("status")}), 409
+        if status != STATUS_POST_QUESTIONS:
+            _agent_log("post-answers: wrong status → 409", {"session_id": session_id, "status": status}, "H1")
+            return jsonify({"code": "INVALID_SESSION_STATE", "error": "Session must be in post_questions for post-answers", "status": status}), 409
 
         recording_2_id = session.get("recording_2_id") or session.get("recording_id")
         if not recording_2_id:
