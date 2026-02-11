@@ -1,6 +1,6 @@
 /**
  * Copy to: src/app/api/homework/session/[sessionId]/abandon/route.ts
- * Abandon the current session so it is no longer "active"; user can start a new session. Passes through 4xx/5xx body.
+ * Delete the current session (backend hard-deletes the row). After 200, refetch GET session/status and show the first page (Start). Passes through 4xx/5xx body.
  */
 import { NextResponse } from "next/server";
 import { getV2AccessToken, getBackendUrl } from "../../../../getAuth";

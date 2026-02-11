@@ -39,7 +39,6 @@ STATUS_TASK_BLOCK = "task_block"
 STATUS_FINAL_TASK_READY = "final_task_ready"
 STATUS_POST_QUESTIONS = "post_questions"
 STATUS_COMPLETED = "completed"
-STATUS_ABANDONED = "abandoned"
 
 
 # ---------- Start & status ----------
