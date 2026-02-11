@@ -29,9 +29,9 @@
 ## 3. Core flow (student)
 
 1. **Start session** → backend selects and snapshots warm-up task + 3 pre-questions (session_metric_question_1/2/3).
-2. **Recording_1 (warm-up)** → student records; backend transcribes, scores with **3 metrics** (strength, pace, fillers), computes **score_1**, stores context_short, selects focus task, returns task block.
+2. **Recording_1 (warm-up)** → student records; backend transcribes with **Whisper** (OpenAI), then from transcript: scores with **3 metrics** (strength, pace, fillers), computes **score_1**, generates **context_short** (GPT summary of transcript), selects focus task, returns task block.
 3. **Metric answers** → student answers 3 questions (keywords, emotion, CTA); backend persists answers, generates and persists **final_task_text** (OpenAI).
-4. **Recording_2 (main)** → must be **1–5 minutes**; backend transcribes, scores with **5 metrics**, computes **score_2** and **performance_score_end**; optionally re-runs metrics after post-answers with real emotion/keywords.
+4. **Recording_2 (main)** → must be **1–5 minutes**; backend transcribes with **Whisper**, then from transcript: scores with **5 metrics**, computes **score_2** and **performance_score_end**; optionally re-runs metrics after post-answers with real emotion/keywords.
 5. **Post-answers** → student answers all configured post-questions; backend saves answers, recomputes metrics if needed, generates **report** (OpenAI), appends to context_long_entries, sets status to **completed**. No separate /report endpoint.
 6. **Report** → student sees report (session.context_long) and score (performance_score_end).
 
@@ -65,9 +65,9 @@
 | Step | Name           | Student action              | Backend status     | Main APIs |
 |------|----------------|-----------------------------|--------------------|-----------|
 | 0    | No session     | Clicks "Start"              | —                  | GET status, POST start |
-| 1    | Warm-up        | Records warm-up; sees wheel | `warm_up`          | GET status, recording-upload-url (rec "1"), Storage upload, POST recording-1, POST recording-metrics-chunk (wheel) |
+| 1    | Warm-up        | Records warm-up; sees wheel | `warm_up`          | GET status, recording-upload-url (rec "1"), Storage upload, POST recording-1. **Wheel:** client-side only (AnalyserNode), no API. |
 | 2    | Metric answers | Answers 3 questions         | `task_block`       | GET status, GET task-block (optional), POST metric-answers |
-| 3    | Final task     | Records final task; wheel   | `final_task_ready` | GET status, recording-upload-url (rec "2"), upload, POST recording-2, POST recording-metrics-chunk |
+| 3    | Final task     | Records final task; wheel   | `final_task_ready` | GET status, recording-upload-url (rec "2"), upload, POST recording-2. **Wheel:** client-side only. |
 | 4    | Post-questions | Answers reflective Qs       | `post_questions`   | GET status, GET questions, POST post-answers |
 | 5    | Report         | Views report and score      | `completed`        | GET status (report from session.context_long, score from performance_score_end) |
 
@@ -136,14 +136,10 @@ Backend uses **snake_case** everywhere; frontend normalizes once (e.g. in applyS
 
 ## 12. Wheel (real-time measurement)
 
-- **When:** Steps **1** and **3** only, while recorder is active. Start pipeline when entering step 1 or 3; stop when leaving or stopping recording.
-- **API:** POST `/v2/homework/session/:sessionId/recording-metrics-chunk` (via BFF, same-origin). Auth required. Session status must be in warm_up, task_block, final_task_ready, post_questions.
-- **Request:** Body = raw PCM16 mono; headers X-Sample-Rate (default 16000), X-Seq, X-T-Ms, optional X-Debug.
-- **Response (200):** seq, t_ms, **pause_score** (0–1, primary for wheel), voiced_ratio, pause_detected, pitch_variance. Use **pause_score** to drive the wheel.
-- **Backend config:** 16 kHz, 20 ms frames, frame silent if RMS < -45 dB; pause event ≥ 200 ms; 10 s rolling window; ideal band pause_ratio ≈ 0.20, pauses_per_min ≈ 11; silence gating when voiced_ratio < 0.15 → pause_score = 1. Rate limit **120 requests / 60 s** per (user_id, session_id).
-- **Frontend/BFF:** POST to same-origin BFF only (never localhost in production). BFF forwards Authorization and body/headers. On 200, update wheel from response.pause_score.
+**We use real-time metrics with the wheel only. No glow.**
 
-**Why the wheel might have worked before and then stopped:** (1) **URL change** — frontend must POST to the **same-origin BFF** (e.g. `/api/homework/session/[sessionId]/recording-metrics-chunk`), not directly to the backend; if it was switched to the backend URL, CORS or wrong origin can block. (2) **Auth** — BFF must send `Authorization: Bearer <token>`; if token is missing or `getV2AccessToken()` returns null, backend returns 401. (3) **Session / step** — backend returns **404** if session not found (wrong or stale session_id) and **409** if session status is not in warm_up, task_block, final_task_ready, post_questions (e.g. completed); ensure wheel only runs in steps 1 and 3 and uses the current session_id from GET status. (4) **Next.js 15** — if the app was upgraded to Next 15, the BFF route must `await params` to get sessionId (see reference route). (5) **Rate limit** — 120 requests per 60 s per (user_id, session_id); if exceeded, backend returns 429.
+- **Wheel:** 100% **client-side**. Mic → AudioContext → AnalyserNode → RMS (loudness) and voiced ratio → WPM (pace). Example: `useRealtimeStrengthPace`. **No BFF routes, no API calls.** Show wheel in steps 1 and 3 while recorder is active; start/stop pipeline with the recorder.
+- **Glow (not used):** Backend still exposes POST `/v2/homework/session/:sessionId/recording-metrics-chunk` (PCM → pause_score) for an optional glow feature; we don't use it. No BFF reference for it in this repo.
 
 ---
 
@@ -167,10 +163,10 @@ Backend uses **snake_case** everywhere; frontend normalizes once (e.g. in applyS
 | POST | /v2/homework/session/:id/post-answers | Submit post-answers; generates report; status → completed |
 | GET | /v2/homework/session/:id/questions | Get post-questions list (when step 4) |
 | GET | /v2/homework/session/:id/task-block | Optional; get shaped task block if backend exposes it |
-| POST | /v2/homework/session/:id/recording-metrics-chunk | Wheel: PCM in, pause_score out |
+| POST | /v2/homework/session/:id/recording-metrics-chunk | Optional glow: PCM in, pause_score out (we don't use; wheel is client-side only) |
 | GET | /v2/recordings/:id | Get recording (incl. transcription_text); owner-only; 404 if not found/not allowed |
 
-All require auth. BFF must forward Authorization and relevant headers/body to backend.
+All require auth. **BFF reference in this repo:** start + status only. Wheel needs no BFF (client-side AnalyserNode).
 
 ---
 
@@ -178,7 +174,7 @@ All require auth. BFF must forward Authorization and relevant headers/body to ba
 
 - **Wrong step / 409:** Frontend not deriving step from session.status only, or not overwriting on every GET status. Fix: status-first; overwrite; when has_active_session false, clear state and require POST start.
 - **401 / 404 on session:** BFF not forwarding Authorization for a homework route. Fix: every BFF route must send Authorization: Bearer <token>.
-- **Wheel not working:** Frontend posting to localhost instead of same-origin BFF; or BFF not forwarding auth; or frontend not updating from response.pause_score. Fix: same-origin BFF only; forward auth; use pause_score.
+- **Wheel not working:** Wheel is client-side only (AnalyserNode). Check mic permission, AudioContext not suspended, and that the analyser pipeline runs in steps 1 and 3. No BFF/API needed for the wheel.
 - **Blank screens (step 2/4/5):** Frontend expecting task_block object, final_task object, report_text, or questions in status. Fix: use session.session_metric_question_1/2/3, session.final_task_text, session.context_long; GET questions when step 4 and empty.
 - **Post-answers not saved:** v2_sessions missing post_answers column. Fix: add column (e.g. `ALTER TABLE v2_sessions ADD COLUMN IF NOT EXISTS post_answers JSONB`).
 - **403 on upload:** Wrong bucket or path; or Storage RLS missing. Fix: use bucket from API; path must start with user_id; add INSERT (and UPDATE) policies for authenticated user.
@@ -188,8 +184,8 @@ All require auth. BFF must forward Authorization and relevant headers/body to ba
 
 ## 16. Implementation checklist
 
-- **Frontend:** applyStatusToState with mapping above; derive step only from session.status; overwrite on every GET status; when has_active_session false, clear state and show Start; refetch GET status after recording-1, metric-answers, recording-2, post-answers; call recording-upload-url only for rec "1" on step 1 and rec "2" on step 3; build task block from session_metric_question_1/2/3 or GET task-block if needed; GET questions when step 4 and empty; use bucket from API; wheel pipeline to same-origin BFF only; update wheel from response.pause_score.
-- **BFF:** Proxy all homework endpoints; forward Authorization and body/headers (e.g. X-Sample-Rate, X-Seq, X-T-Ms for recording-metrics-chunk). Next 15: await params for sessionId.
+- **Frontend:** applyStatusToState with mapping above; derive step only from session.status; overwrite on every GET status; when has_active_session false, clear state and show Start; refetch GET status after recording-1, metric-answers, recording-2, post-answers; call recording-upload-url only for rec "1" on step 1 and rec "2" on step 3; build task block from session_metric_question_1/2/3 or GET task-block if needed; GET questions when step 4 and empty; use bucket from API. **Wheel:** client-side only (AnalyserNode for loudness/pace); no BFF, no recording-metrics-chunk.
+- **BFF:** Reference in this repo: **start** and **status** only (for session/step). Forward Authorization. For full homework flow, add other routes as needed (restore from git or re-create).
 - **Backend:** Already implements flow; ensure GET status excludes completed from "active"; ensure recording_2 duration 60–300 s; ensure one report per session; ensure post_answers column exists.
 
 ---
@@ -197,7 +193,7 @@ All require auth. BFF must forward Authorization and relevant headers/body to ba
 ## 17. Code reference (no other docs)
 
 - **Schema:** `.taskmaster/docs/schema.sql` — single schema file; update in place only. **Migrations:** Repo root `migrations/` — optional incremental adds (e.g. post_answers, allow_focus_task_id); do not rename. Run per environment.
-- **BFF reference routes:** `docs/homework-bff-routes/` — copy/adapt into frontend app (status, start, recording-upload-url, recording-1, recording-2, recording-metrics-chunk, task-block, metric-answers, questions, post-answers). **Wheel must call BFF URL, not backend:** see `.taskmaster/docs/WHEEL-USE-BFF-URL.md`.
+- **BFF reference routes:** `docs/homework-bff-routes/` — **start**, **status** only (for session/step if the app needs them). **Wheel** = real-time metrics only, 100% client-side (AnalyserNode); no glow, no recording-metrics-chunk. See `.taskmaster/docs/WHEEL-USE-BFF-URL.md`.
 
 ---
 

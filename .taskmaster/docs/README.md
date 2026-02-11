@@ -4,4 +4,4 @@
 
 - **APP_DESCRIPTION.md** — full app spec (read this first).
 - **schema.sql** — complete DB schema (single file; update in place only).
-- **WHEEL-USE-BFF-URL.md** — when and how to use BFF for the wheel (browser-only vs pause/chunk).
+- **WHEEL-USE-BFF-URL.md** — wheel = client-side only (real-time metrics, no glow, no BFF).
