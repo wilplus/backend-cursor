@@ -48,7 +48,7 @@
 
 ## 5. Status / state machine
 
-**Exactly 5 statuses:** `warm_up` | `task_block` | `final_task_ready` | `post_questions` | `completed`.
+**Statuses:** `warm_up` | `task_block` | `final_task_ready` | `post_questions` | `completed` | `abandoned`. Active = first four only; `completed` and `abandoned` are not active.
 
 - **warm_up** — after start; recording_1 not yet submitted.
 - **task_block** — after recording_1; task block (context_short + focus + 3 questions) available; waiting for metric answers.
@@ -166,6 +166,7 @@ Backend uses **snake_case** everywhere; frontend normalizes once (e.g. in applyS
 | GET | /v2/homework/session/:id/questions | Get post-questions list (when step 4) |
 | GET | /v2/homework/session/:id/warm-up-task | **Optional helper;** returns session's snapshotted warm-up task (may snapshot once if missing) |
 | GET | /v2/homework/session/:id/task-block | **Optional helper;** returns session's snapshotted session_metric_question_1/2/3 (not live pool) |
+| POST | /v2/homework/session/:id/abandon | Abandon session (sets status to abandoned); no longer returned as active; user can start a new session. 409 if already completed. |
 | GET | /v2/recordings/:id | Get recording (incl. transcription_text); owner-only; 404 if not found/not allowed |
 
 All require auth. Status provides enough to run the flow without the optional warm-up-task and task-block endpoints; they exist as optional read helpers for resume/debug. **No recording-metrics-chunk** (wheel only; no glow). **BFF reference:** `docs/homework-bff-routes/` has all of the above except recording-metrics-chunk.

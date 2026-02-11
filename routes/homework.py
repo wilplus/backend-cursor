@@ -39,6 +39,7 @@ STATUS_TASK_BLOCK = "task_block"
 STATUS_FINAL_TASK_READY = "final_task_ready"
 STATUS_POST_QUESTIONS = "post_questions"
 STATUS_COMPLETED = "completed"
+STATUS_ABANDONED = "abandoned"
 
 
 # ---------- Start & status ----------
@@ -152,6 +153,27 @@ def homework_session_status():
         }), 200
 
     except Exception as e:
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
+
+
+@homework_bp.route("/session/<session_id>/abandon", methods=["POST"])
+@require_auth
+def homework_abandon_session(session_id):
+    """Abandon the current homework session. Sets status to 'abandoned' so it is no longer returned as active. User can then start a new session."""
+    try:
+        user_id = request.user_id
+        session = db.v2_get_session(session_id, user_id)
+        if not session:
+            return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found"}), 404
+        if session.get("status") == STATUS_COMPLETED:
+            return jsonify({"code": "INVALID_SESSION_STATE", "error": "Cannot abandon a completed session", "status": session.get("status")}), 409
+        if session.get("status") == STATUS_ABANDONED:
+            return jsonify({"abandoned": True, "message": "Session already abandoned"}), 200
+        db.v2_update_session(session_id, user_id, {"status": STATUS_ABANDONED})
+        return jsonify({"abandoned": True, "message": "Session abandoned. You can start a new session."}), 200
+    except Exception as e:
+        logger.error(f"Homework abandon session: {str(e)}")
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
 
