@@ -196,7 +196,7 @@ All require auth. BFF must forward Authorization and relevant headers/body to ba
 
 ## 17. Code reference (no other docs)
 
-- **Migrations:** Repo root `migrations/` — add only missing columns; do not rename. Run per environment.
+- **Schema:** `.taskmaster/docs/schema.sql` — single schema file; update in place only. **Migrations:** Repo root `migrations/` — optional incremental adds (e.g. post_answers, allow_focus_task_id); do not rename. Run per environment.
 - **BFF reference routes:** `docs/homework-bff-routes/` — copy/adapt into frontend app (status, start, recording-upload-url, recording-1, recording-2, recording-metrics-chunk, task-block, metric-answers, questions, post-answers). **Wheel must call BFF URL, not backend:** see `.taskmaster/docs/WHEEL-USE-BFF-URL.md`.
 
 ---
@@ -207,7 +207,7 @@ All require auth. BFF must forward Authorization and relevant headers/body to ba
 
 - **If post_answers is missing:** POST post-answers will fail or silently not persist. Run **`migrations/v2_sessions_add_post_answers.sql`** in Supabase SQL Editor (idempotent).
 - **If selected_task_id is FK to v2_tasks only:** When the chosen task is a focus task (v2_focus_tasks), inserts/updates can fail. Run **`migrations/allow_focus_task_id_in_selected_task_id.sql`** to drop the FK so both v2_tasks and v2_focus_tasks ids are allowed.
-- **Full schema:** Use **`supabase-schema-willab-complete.sql`** for a full idempotent schema (creates v2_sessions with base columns, then a DO block adds all optional columns). Ensure the DO block has run so all columns above exist.
+- **Full schema:** Use **`.taskmaster/docs/schema.sql`** (single source of truth). Idempotent: creates v2_sessions with base columns, then a DO block adds all optional columns. Update this file only; do not create new schema files.
 
 **Verify:** In Supabase SQL Editor, run:  
 `SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'v2_sessions' ORDER BY ordinal_position;`  

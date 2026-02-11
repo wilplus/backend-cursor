@@ -1,5 +1,5 @@
 -- Persistence for resume/reproducibility: warmup ID + text snapshot, final_task text snapshot.
--- Run after v2_sessions exists (e.g. supabase-schema-willab-complete.sql or equivalent).
+-- Run after v2_sessions exists. Canonical schema: .taskmaster/docs/schema.sql.
 
 ALTER TABLE v2_sessions
   ADD COLUMN IF NOT EXISTS warm_up_task_id UUID REFERENCES v2_warm_up_tasks(id) ON DELETE SET NULL,

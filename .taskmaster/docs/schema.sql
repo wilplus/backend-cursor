@@ -1,5 +1,6 @@
 -- ============================================================================
--- WILLAB — COMPLETE APP SCHEMA (single file)
+-- COMPLETE APP SCHEMA (single file — single source of truth)
+-- Location: .taskmaster/docs/schema.sql — update this file only; do not create new schema files.
 -- Run in Supabase SQL Editor. Requires: auth.users (Supabase default).
 -- Idempotent: safe to run multiple times (CREATE IF NOT EXISTS, ADD COLUMN IF NOT EXISTS).
 -- ============================================================================
