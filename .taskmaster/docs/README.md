@@ -10,5 +10,6 @@
 | **schema.sql** | Single DB schema file; update in place only. Run in Supabase SQL Editor. |
 | **AUDIT-AND-BFF-GLOW.md** | Frontend audit checklist (status→step, mapping, refetch, recording contract), BFF rationale, glow removal. **§4** = copy-paste prompt to run in the frontend repo for a line-level punch-list. |
 | **WHEEL-USE-BFF-URL.md** | Wheel = client-side only (AnalyserNode, real-time loudness/pace). No glow, no recording-metrics-chunk. |
+| **SCHEMA-V1-DROP-OPTIONAL.sql** | Optional script to drop v1-only tables. Use only after removing all v1 code and backing up; see file header. |
 
 **BFF reference:** `docs/homework-bff-routes/` — start, status, recording-upload-url, recording-1, recording-2, metric-answers, questions, post-answers, task-block, warm-up-task. Copy into frontend app; no recording-metrics-chunk (no glow).
