@@ -1,0 +1,5 @@
+{
+  "project": "backend-cursor",
+  "sourceOfTruth": ".taskmaster/docs/APP_DESCRIPTION.md",
+  "docsPath": "docs"
+}

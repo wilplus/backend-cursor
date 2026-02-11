@@ -64,7 +64,7 @@
 
 | Step | Name           | Student action              | Backend status     | Main APIs |
 |------|----------------|-----------------------------|--------------------|-----------|
-| 0    | No session     | Clicks “Start”              | —                  | GET status, POST start |
+| 0    | No session     | Clicks "Start"              | —                  | GET status, POST start |
 | 1    | Warm-up        | Records warm-up; sees wheel | `warm_up`          | GET status, recording-upload-url (rec "1"), Storage upload, POST recording-1, POST recording-metrics-chunk (wheel) |
 | 2    | Metric answers | Answers 3 questions         | `task_block`       | GET status, GET task-block (optional), POST metric-answers |
 | 3    | Final task     | Records final task; wheel   | `final_task_ready` | GET status, recording-upload-url (rec "2"), upload, POST recording-2, POST recording-metrics-chunk |
@@ -143,6 +143,8 @@ Backend uses **snake_case** everywhere; frontend normalizes once (e.g. in applyS
 - **Backend config:** 16 kHz, 20 ms frames, frame silent if RMS < -45 dB; pause event ≥ 200 ms; 10 s rolling window; ideal band pause_ratio ≈ 0.20, pauses_per_min ≈ 11; silence gating when voiced_ratio < 0.15 → pause_score = 1. Rate limit **120 requests / 60 s** per (user_id, session_id).
 - **Frontend/BFF:** POST to same-origin BFF only (never localhost in production). BFF forwards Authorization and body/headers. On 200, update wheel from response.pause_score.
 
+**Why the wheel might have worked before and then stopped:** (1) **URL change** — frontend must POST to the **same-origin BFF** (e.g. `/api/homework/session/[sessionId]/recording-metrics-chunk`), not directly to the backend; if it was switched to the backend URL, CORS or wrong origin can block. (2) **Auth** — BFF must send `Authorization: Bearer <token>`; if token is missing or `getV2AccessToken()` returns null, backend returns 401. (3) **Session / step** — backend returns **404** if session not found (wrong or stale session_id) and **409** if session status is not in warm_up, task_block, final_task_ready, post_questions (e.g. completed); ensure wheel only runs in steps 1 and 3 and uses the current session_id from GET status. (4) **Next.js 15** — if the app was upgraded to Next 15, the BFF route must `await params` to get sessionId (see reference route). (5) **Rate limit** — 120 requests per 60 s per (user_id, session_id); if exceeded, backend returns 429.
+
 ---
 
 ## 13. Storage (Supabase)
@@ -188,13 +190,27 @@ All require auth. BFF must forward Authorization and relevant headers/body to ba
 
 - **Frontend:** applyStatusToState with mapping above; derive step only from session.status; overwrite on every GET status; when has_active_session false, clear state and show Start; refetch GET status after recording-1, metric-answers, recording-2, post-answers; call recording-upload-url only for rec "1" on step 1 and rec "2" on step 3; build task block from session_metric_question_1/2/3 or GET task-block if needed; GET questions when step 4 and empty; use bucket from API; wheel pipeline to same-origin BFF only; update wheel from response.pause_score.
 - **BFF:** Proxy all homework endpoints; forward Authorization and body/headers (e.g. X-Sample-Rate, X-Seq, X-T-Ms for recording-metrics-chunk). Next 15: await params for sessionId.
-- **Backend:** Already implements flow; ensure GET status excludes completed from “active”; ensure recording_2 duration 60–300 s; ensure one report per session; ensure post_answers column exists.
+- **Backend:** Already implements flow; ensure GET status excludes completed from "active"; ensure recording_2 duration 60–300 s; ensure one report per session; ensure post_answers column exists.
 
 ---
 
 ## 17. Code reference (no other docs)
 
 - **Migrations:** Repo root `migrations/` — add only missing columns; do not rename. Run per environment.
-- **BFF reference routes:** `docs/homework-bff-routes/` — copy/adapt into frontend app (status, start, recording-upload-url, recording-1, recording-2, recording-metrics-chunk, task-block, metric-answers, questions, post-answers).
+- **BFF reference routes:** `docs/homework-bff-routes/` — copy/adapt into frontend app (status, start, recording-upload-url, recording-1, recording-2, recording-metrics-chunk, task-block, metric-answers, questions, post-answers). **Wheel must call BFF URL, not backend:** see `.taskmaster/docs/WHEEL-USE-BFF-URL.md`.
+
+---
+
+## 18. Database: required columns and migrations
+
+**v2_sessions** must have at least these columns for the homework flow: id, user_id, status, created_at, context_short, context_long, context_long_entries, selected_task_id, recording_1_id, recording_2_id, performance_score_1, performance_score_2, performance_score_end, session_metric_question_1/2/3, metric_answers, final_task_text, post_question_ids, post_answers, warm_up_task_id, warm_up_task_text, report_id, question_1/2/3_analysis, question_1/2/3_score, pitch_variance_avg.
+
+- **If post_answers is missing:** POST post-answers will fail or silently not persist. Run **`migrations/v2_sessions_add_post_answers.sql`** in Supabase SQL Editor (idempotent).
+- **If selected_task_id is FK to v2_tasks only:** When the chosen task is a focus task (v2_focus_tasks), inserts/updates can fail. Run **`migrations/allow_focus_task_id_in_selected_task_id.sql`** to drop the FK so both v2_tasks and v2_focus_tasks ids are allowed.
+- **Full schema:** Use **`supabase-schema-willab-complete.sql`** for a full idempotent schema (creates v2_sessions with base columns, then a DO block adds all optional columns). Ensure the DO block has run so all columns above exist.
+
+**Verify:** In Supabase SQL Editor, run:  
+`SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'v2_sessions' ORDER BY ordinal_position;`  
+Check that `post_answers` (and any other column you need) is in the list.
 
 **End of taskmaster.** This is the only source of truth for the app.
