@@ -25,10 +25,31 @@ def v2_admin_health():
 @v2_bp.route("/admin/students", methods=["GET"])
 @require_admin
 def v2_admin_students():
-    """List students with email (and optional stats). Required: user_id, email for UI."""
+    """List students with email (and optional stats). Uses Auth Admin API so new students appear; fallback to session-based list."""
     try:
         limit = request.args.get("limit", default=20, type=int)
         offset = request.args.get("offset", default=0, type=int)
+        # Prefer auth user list so newly registered students appear before they have any session
+        auth_list = db.v2_list_auth_users(limit=limit, offset=offset)
+        if auth_list is not None:
+            students = []
+            for item in auth_list:
+                uid = item.get("user_id")
+                email = item.get("email")
+                if not uid:
+                    continue
+                row = {"user_id": uid, "email": email, "user_email": email}
+                try:
+                    stats = db.v2_get_student_list_stats(uid)
+                    if stats:
+                        row["sessions_count"] = stats.get("sessions_count")
+                        row["last_session_at"] = stats.get("last_session_at")
+                        row["avg_performance"] = stats.get("avg_performance")
+                except Exception:
+                    pass
+                students.append(row)
+            return jsonify({"students": students, "limit": limit, "offset": offset}), 200
+        # Fallback: list only users who have at least one v2_session (legacy; new students won't appear)
         user_ids = db.v2_list_users_with_sessions(limit=limit, offset=offset)
         students = []
         for uid in user_ids:
@@ -42,7 +63,7 @@ def v2_admin_students():
                         row["last_session_at"] = stats.get("last_session_at")
                         row["avg_performance"] = stats.get("avg_performance")
                 except Exception:
-                    pass  # optional stats: skip on error
+                    pass
                 students.append(row)
             except Exception as e:
                 logger.warning("Skipping user %s in students list: %s", uid, e)

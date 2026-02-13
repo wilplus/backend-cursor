@@ -1588,6 +1588,40 @@ class DatabaseService:
                 out.append(uid)
         return out[offset : offset + limit]
 
+    def v2_list_auth_users(self, limit: int = 50, offset: int = 0):
+        """List all auth users (id, email) via Supabase Auth Admin API so new students appear in admin list.
+        Returns list of dicts with user_id and email (email may be None if not present)."""
+        try:
+            import httpx
+            base = f"{config.SUPABASE_URL.rstrip('/')}/auth/v1/admin/users"
+            # GoTrue list users: per_page and page (1-based)
+            page = (offset // limit) + 1
+            resp = httpx.get(
+                base,
+                params={"per_page": min(limit, 1000), "page": page},
+                headers={
+                    "Authorization": f"Bearer {config.SUPABASE_SERVICE_ROLE_KEY}",
+                    "apikey": config.SUPABASE_SERVICE_ROLE_KEY,
+                },
+                timeout=10,
+            )
+            if resp.status_code != 200:
+                return None
+            data = resp.json()
+            users = data.get("users") or (data.get("data") or {}).get("users") or []
+            out = []
+            for u in users:
+                uid = u.get("id")
+                if not uid:
+                    continue
+                out.append({
+                    "user_id": uid,
+                    "email": u.get("email") or (u.get("user_metadata") or {}).get("email"),
+                })
+            return out
+        except Exception:
+            return None
+
     def v2_get_student_list_stats(self, user_id: str):
         """Optional stats for admin students list: sessions_count, last_session_at (ISO), avg_performance (0-100)."""
         sessions = (
