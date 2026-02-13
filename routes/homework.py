@@ -906,3 +906,64 @@ def homework_submit_post_answers(session_id):
         logger.error(f"Homework post-answers: {str(e)}")
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
+
+
+@homework_bp.route("/session/<session_id>/report", methods=["GET"])
+@require_auth
+def homework_get_report(session_id):
+    """Get report data for a completed session (step 5). Returns report_text, scores (warmup, final, overall 0-100), final_recording { id, audio_url } with fresh signed URL. Owner-only; session must be completed."""
+    try:
+        from config import Config
+        config = Config()
+        user_id = request.user_id
+        session = db.v2_get_session(session_id, user_id)
+        if not session:
+            return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found"}), 404
+        if session.get("status") != STATUS_COMPLETED:
+            return jsonify({"code": "REPORT_NOT_READY", "error": "Report is only available for completed sessions", "status": session.get("status")}), 404
+
+        report_text = (session.get("context_long") or "").strip()
+        if session.get("report_id"):
+            try:
+                r = db.client.table("v2_reports").select("report_text").eq("id", session["report_id"]).execute()
+                if r.data and r.data[0].get("report_text"):
+                    report_text = (r.data[0]["report_text"] or "").strip()
+            except Exception:
+                pass
+
+        perf_1 = float(session.get("performance_score_1") or 0)
+        perf_2 = float(session.get("performance_score_2") or 0)
+        perf_end = float(session.get("performance_score_end") or 0)
+        scores = {
+            "warmup": round(perf_1 * 100),
+            "final": round(perf_2 * 100),
+            "overall": round(perf_end * 100),
+        }
+
+        final_recording = {"id": None, "audio_url": None}
+        recording_2_id = session.get("recording_2_id")
+        if recording_2_id:
+            final_recording["id"] = recording_2_id
+            recording = db.get_recording(recording_2_id, user_id)
+            if recording:
+                storage_path = (recording.get("storage_path") or "").strip()
+                if storage_path:
+                    try:
+                        audio_url = db.create_signed_url(
+                            config.AUDIO_BUCKET_NAME,
+                            storage_path,
+                            config.SIGNED_URL_EXPIRY_SECONDS,
+                        )
+                        final_recording["audio_url"] = audio_url
+                    except Exception as e:
+                        logger.warning(f"Report: could not create signed URL for recording {recording_2_id}: {e}")
+
+        return jsonify({
+            "report_text": report_text,
+            "scores": scores,
+            "final_recording": final_recording,
+        }), 200
+    except Exception as e:
+        logger.exception("Homework get report: %s", e)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": str(e)}), 500

@@ -2,10 +2,14 @@
 from flask import Blueprint, request, jsonify
 from auth import require_auth
 from services.db import db
+from config import Config
 import sentry_sdk
 import uuid
+import logging
 
+logger = logging.getLogger(__name__)
 recordings_v2_bp = Blueprint("recordings_v2", __name__)
+config = Config()
 
 
 def _is_valid_uuid(value):
@@ -64,5 +68,31 @@ def get_recording_v2(recording_id):
         return jsonify(payload), 200
 
     except Exception as e:
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "RECORDING_ERROR", "error": str(e)}), 500
+
+
+@recordings_v2_bp.route("/<recording_id>/playback-url", methods=["GET"])
+@require_auth
+def get_recording_playback_url(recording_id):
+    """Return a fresh signed URL for playback (owner-only). Use when report audio_url has expired."""
+    try:
+        if not _is_valid_uuid(recording_id):
+            return jsonify({"code": "INVALID_INPUT", "error": "Invalid recording ID"}), 400
+        user_id = request.user_id
+        recording = db.get_recording(recording_id, user_id)
+        if not recording:
+            return jsonify({"code": "RECORDING_NOT_FOUND", "error": "Recording not found"}), 404
+        storage_path = (recording.get("storage_path") or "").strip()
+        if not storage_path:
+            return jsonify({"code": "NO_STORAGE_PATH", "error": "Recording has no storage path"}), 404
+        audio_url = db.create_signed_url(
+            config.AUDIO_BUCKET_NAME,
+            storage_path,
+            config.SIGNED_URL_EXPIRY_SECONDS,
+        )
+        return jsonify({"audio_url": audio_url}), 200
+    except Exception as e:
+        logger.exception("Playback URL for %s: %s", recording_id, e)
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "RECORDING_ERROR", "error": str(e)}), 500
