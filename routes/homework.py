@@ -45,7 +45,7 @@ STATUS_COMPLETED = "completed"
 @homework_bp.route("/session/start", methods=["POST"])
 @require_auth
 def homework_session_start():
-    """Start or resume homework session. Returns session_id and warm_up_task (text) for step 1. Strict: no session if 0 warm-ups."""
+    """Start or resume homework session. Returns session_id and warm_up_task (text) for step 1. If user has no warm-up tasks, a default ('How was your day so far?') is created so new users can start."""
     try:
         user_id = request.user_id
 
@@ -58,6 +58,7 @@ def homework_session_start():
             if wtext:
                 warm_up_task = {"id": wid, "text": wtext}
             else:
+                db.v2_ensure_default_warm_up_task(user_id)
                 warm_up = db.v2_get_assigned_warm_up_task(user_id)
                 if not warm_up:
                     return jsonify({
@@ -80,6 +81,7 @@ def homework_session_start():
                 "warm_up_task": warm_up_task,
             }), 200
 
+        db.v2_ensure_default_warm_up_task(user_id)
         warm_up = db.v2_get_assigned_warm_up_task(user_id)
         if not warm_up:
             return jsonify({
@@ -135,6 +137,7 @@ def homework_session_status():
         if wtext:
             warm_up_task = {"id": wid, "text": wtext}
         elif active.get("status") == STATUS_WARM_UP:
+            db.v2_ensure_default_warm_up_task(user_id)
             warm_up = db.v2_get_assigned_warm_up_task(user_id)
             if warm_up and (warm_up.get("text") or "").strip():
                 text = (warm_up.get("text") or "").strip()
@@ -198,6 +201,7 @@ def homework_get_warm_up_task(session_id):
         if wtext:
             return jsonify({"warm_up_task": {"id": wid, "text": wtext}}), 200
 
+        db.v2_ensure_default_warm_up_task(user_id)
         warm_up = db.v2_get_assigned_warm_up_task(user_id)
         if not warm_up:
             return jsonify({

@@ -995,6 +995,40 @@ class DatabaseService:
         result = self.client.table("v2_sessions").delete().eq("id", session_id).eq("user_id", user_id).execute()
         return bool(result.data and len(result.data) > 0)
 
+    def v2_get_incomplete_sessions_older_than(self, hours: float) -> List[dict]:
+        """Return v2_sessions that are not completed and created_at is older than hours (for cleanup)."""
+        cutoff = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
+        result = (
+            self.client.table("v2_sessions")
+            .select("id, user_id, created_at, status")
+            .neq("status", "completed")
+            .lt("created_at", cutoff)
+            .execute()
+        )
+        return result.data or []
+
+    def v2_cleanup_incomplete_sessions(self, hours: float = 1.0, dry_run: bool = False) -> Tuple[int, List[str]]:
+        """
+        Delete incomplete v2_sessions (status != 'completed') older than hours.
+        Uses v2_delete_session per row so recordings get session_v2_id set to NULL and v2_reports CASCADE.
+        Returns (deleted_count, list of deleted session ids). Default 1 hour.
+        """
+        sessions = self.v2_get_incomplete_sessions_older_than(hours)
+        ids = [s["id"] for s in sessions]
+        if dry_run:
+            return len(ids), ids
+        deleted_ids = []
+        for s in sessions:
+            session_id = s.get("id")
+            user_id = s.get("user_id")
+            if session_id and user_id:
+                try:
+                    if self.v2_delete_session(session_id, user_id):
+                        deleted_ids.append(session_id)
+                except Exception as e:
+                    sentry_sdk.capture_exception(e)
+        return len(deleted_ids), deleted_ids
+
     def v2_get_session(self, session_id: str, user_id: str = None):
         """Get v2 session by id, optionally scoped to user."""
         q = self.client.table("v2_sessions").select("*").eq("id", session_id)
