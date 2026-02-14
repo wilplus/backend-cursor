@@ -504,8 +504,11 @@ def v2_admin_task_warm_up_sync(user_id):
     # #region agent log
     try:
         import json
+        import os
         import time
-        with open("/Users/arturwillonski/Documents/backend-cursor/.cursor/debug.log", "a") as _f:
+        _log_path = os.path.join(os.path.dirname(__file__), "..", ".cursor", "debug.log")
+        _log_path = os.path.abspath(_log_path)
+        with open(_log_path, "a") as _f:
             _f.write(json.dumps({"location": "v2_routes.py:v2_admin_task_warm_up_sync", "message": "PUT task-warm-up entry", "data": {"user_id": user_id, "pool_task_ids": pool_task_ids}, "timestamp": int(time.time() * 1000), "hypothesisId": "entry"}) + "\n")
     except Exception:
         pass
@@ -517,9 +520,12 @@ def v2_admin_task_warm_up_sync(user_id):
         # #region agent log
         try:
             import json
+            import os
             import time
             err_msg = str(err)
-            with open("/Users/arturwillonski/Documents/backend-cursor/.cursor/debug.log", "a") as _f:
+            _log_path = os.path.join(os.path.dirname(__file__), "..", ".cursor", "debug.log")
+            _log_path = os.path.abspath(_log_path)
+            with open(_log_path, "a") as _f:
                 _f.write(json.dumps({"location": "v2_routes.py:v2_admin_task_warm_up_sync", "message": "PUT task-warm-up exception", "data": {"err_type": type(err).__name__, "err_message": err_msg, "user_id": user_id}, "timestamp": int(time.time() * 1000), "hypothesisId": "exception"}) + "\n")
         except Exception:
             pass

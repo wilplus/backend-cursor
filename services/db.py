@@ -1442,8 +1442,11 @@ class DatabaseService:
         # #region agent log
         try:
             import json
+            import os
             import time
-            with open("/Users/arturwillonski/Documents/backend-cursor/.cursor/debug.log", "a") as _f:
+            _log_path = os.path.join(os.path.dirname(__file__), "..", ".cursor", "debug.log")
+            _log_path = os.path.abspath(_log_path)
+            with open(_log_path, "a") as _f:
                 _f.write(json.dumps({"location": "db.py:v2_sync_student_warm_up_tasks_from_pool", "message": "sync entry before delete", "data": {"user_id": user_id, "pool_task_ids": pool_task_ids}, "timestamp": int(time.time() * 1000), "hypothesisId": "sync_entry"}) + "\n")
         except Exception:
             pass
@@ -1456,12 +1459,18 @@ class DatabaseService:
             row = self.v2_get_warm_up_task_pool_by_id(pool_id)
             if not row:
                 continue
+            # order_index must be int; max_performance_score must be numeric (DB: DECIMAL(3,2); if INTEGER, run fix_v2_warm_up_tasks_max_performance_score_type.sql)
+            raw_score = row.get("max_performance_score", 1.0)
+            try:
+                score = round(float(raw_score), 2)
+            except (TypeError, ValueError):
+                score = 1.0
             data = {
                 "user_id": user_id,
                 "pool_task_id": pool_id,
                 "text": row["text"],
-                "order_index": idx,
-                "max_performance_score": float(row.get("max_performance_score", 1.0)),
+                "order_index": int(idx),
+                "max_performance_score": score,
             }
             new_row = self.v2_insert_warm_up_task(data)
             if new_row:
