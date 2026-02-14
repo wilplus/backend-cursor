@@ -15,7 +15,7 @@ export async function PUT(
   const { id, taskId } = await params;
   const body = await request.json().catch(() => ({}));
   const backend = getBackendUrl();
-  const res = await fetch(`${backend}/v2/admin/students/${id}/warm-up-tasks/${taskId}`, {
+  const res = await fetch(`${backend}/v2/admin/students/${id}/task-warm-up/${taskId}`, {
     method: "PUT",
     headers: {
       Authorization: `Bearer ${token}`,
@@ -40,7 +40,7 @@ export async function DELETE(
   }
   const { id, taskId } = await params;
   const backend = getBackendUrl();
-  const res = await fetch(`${backend}/v2/admin/students/${id}/warm-up-tasks/${taskId}`, {
+  const res = await fetch(`${backend}/v2/admin/students/${id}/task-warm-up/${taskId}`, {
     method: "DELETE",
     headers: { Authorization: `Bearer ${token}` },
   });

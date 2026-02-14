@@ -14,7 +14,7 @@ export async function GET(
   }
   const { id } = await params;
   const backend = getBackendUrl();
-  const res = await fetch(`${backend}/v2/admin/students/${id}/warm-up-tasks`, {
+  const res = await fetch(`${backend}/v2/admin/students/${id}/task-warm-up`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   const data = await res.json().catch(() => ({}));
@@ -36,7 +36,7 @@ export async function PUT(
   const { id } = await params;
   const body = await request.json().catch(() => ({}));
   const backend = getBackendUrl();
-  const res = await fetch(`${backend}/v2/admin/students/${id}/warm-up-tasks`, {
+  const res = await fetch(`${backend}/v2/admin/students/${id}/task-warm-up`, {
     method: "PUT",
     headers: {
       Authorization: `Bearer ${token}`,
@@ -62,7 +62,7 @@ export async function POST(
   const { id } = await params;
   const body = await request.json().catch(() => ({}));
   const backend = getBackendUrl();
-  const res = await fetch(`${backend}/v2/admin/students/${id}/warm-up-tasks`, {
+  const res = await fetch(`${backend}/v2/admin/students/${id}/task-warm-up`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,

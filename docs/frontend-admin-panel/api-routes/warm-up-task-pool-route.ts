@@ -11,7 +11,7 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const backend = getBackendUrl();
-  const res = await fetch(`${backend}/v2/admin/warm-up-task-pool`, {
+  const res = await fetch(`${backend}/v2/admin/task-warm-up-pool`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   const data = await res.json().catch(() => ({}));
@@ -28,7 +28,7 @@ export async function POST(request: NextRequest) {
   }
   const body = await request.json().catch(() => ({}));
   const backend = getBackendUrl();
-  const res = await fetch(`${backend}/v2/admin/warm-up-task-pool`, {
+  const res = await fetch(`${backend}/v2/admin/task-warm-up-pool`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
