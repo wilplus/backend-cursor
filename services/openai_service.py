@@ -392,26 +392,30 @@ Paragraph 3 - Actionable Next Steps:
 - One concrete exercise or technique to practice
 
 CONSTRAINTS:
-- Length: 150-250 words
-- Tone: Encouraging but honest
-- Always mention: strength, fillers, pacing
-- Use specific percentages and metric values
-- End with a motivating statement
+- Total length: 75-120 words (strict). No more than 120 words.
+- Paragraph 1: One or two short sentences only (overview + improvement or decline).
+- Paragraph 2: One or two short sentences (main metric takeaway; one line on self-ratings vs measured if relevant).
+- Paragraph 3: One short sentence per bullet (keep / improve / exercise). No filler.
+- Tone: Encouraging but honest. Use specific numbers. End with one short motivating line.
 
 Generate the report now:"""
             try:
                 response = self.client.chat.completions.create(
                     model="gpt-4o-mini",
                     messages=[
-                        {"role": "system", "content": "You are a supportive speech coach. Generate a 3-paragraph report following the required structure. Encouraging but honest tone. 150-250 words."},
+                        {"role": "system", "content": "You are a supportive speech coach. Generate a 3-paragraph report following the required structure. Encouraging but honest tone. Strict maximum 120 words total; aim for 75-120 words. Be concise; one or two short sentences per paragraph."},
                         {"role": "user", "content": homework_report_prompt}
                     ],
                     temperature=0.4,
-                    max_tokens=500,
+                    max_tokens=220,
                 )
                 text = (response.choices[0].message.content or "").strip()
                 if text:
-                    return text[:1500]  # cap length
+                    # Enforce ~120 words max; trim to 750 chars to stay under
+                    words = text.split()
+                    if len(words) > 120:
+                        text = " ".join(words[:120])
+                    return text[:750]
             except Exception as e:
                 sentry_sdk.capture_exception(e)
             # fall through to generic report if homework report fails
