@@ -1477,6 +1477,23 @@ class DatabaseService:
             return None
         return float(score)
 
+    def v2_get_performance_history(self, user_id: str, limit: int = 5) -> List[dict]:
+        """Last N completed homework sessions: created_at, performance_score_end (0-1). Oldest first for chart S1..SN."""
+        result = (
+            self.client.table("v2_sessions")
+            .select("created_at, performance_score_end")
+            .eq("user_id", user_id)
+            .eq("status", "completed")
+            .not_.is_("performance_score_end", "null")
+            .order("created_at", desc=True)
+            .limit(limit)
+            .execute()
+        )
+        if not result.data:
+            return []
+        rows = list(reversed(result.data))
+        return [{"created_at": r.get("created_at"), "performance_score_end": float(r.get("performance_score_end") or 0)} for r in rows]
+
     def v2_get_assigned_warm_up_task(self, user_id: str):
         """
         Strict taskmaster: no auto-creation of warm-up tasks.

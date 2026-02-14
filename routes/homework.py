@@ -900,7 +900,7 @@ def homework_submit_post_answers(session_id):
 @homework_bp.route("/session/<session_id>/report", methods=["GET"])
 @require_auth
 def homework_get_report(session_id):
-    """Get report data for a completed session (step 5). Returns report_text, scores (warmup, final, overall 0-100), final_recording { id, audio_url } with fresh signed URL. Owner-only; session must be completed."""
+    """Get report data for a completed session (step 5). Returns report_text, scores (warmup, final, overall 0-100), final_recording { id, audio_url } with fresh signed URL, and performance_history (last 5 completed sessions: date, score 0-100, oldest first). Owner-only; session must be completed."""
     try:
         from config import Config
         config = Config()
@@ -929,6 +929,22 @@ def homework_get_report(session_id):
             "overall": round(perf_end * 100),
         }
 
+        history_rows = db.v2_get_performance_history(user_id, limit=5)
+        performance_history = []
+        for row in history_rows:
+            created_at = row.get("created_at")
+            score_01 = row.get("performance_score_end", 0) or 0
+            if isinstance(created_at, str) and len(created_at) >= 10:
+                date_str = created_at[:10]
+            elif hasattr(created_at, "isoformat"):
+                date_str = created_at.isoformat()[:10]
+            elif created_at:
+                date_str = str(created_at)[:10]
+            else:
+                date_str = ""
+            if date_str:
+                performance_history.append({"date": date_str, "score": round(float(score_01) * 100)})
+
         final_recording = {"id": None, "audio_url": None}
         recording_2_id = session.get("recording_2_id")
         if recording_2_id:
@@ -951,6 +967,7 @@ def homework_get_report(session_id):
             "report_text": report_text,
             "scores": scores,
             "final_recording": final_recording,
+            "performance_history": performance_history,
         }), 200
     except Exception as e:
         logger.exception("Homework get report: %s", e)
