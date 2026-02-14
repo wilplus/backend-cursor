@@ -50,6 +50,9 @@ def homework_session_start():
         user_id = request.user_id
 
         active = db.v2_get_active_homework_session(user_id)
+        if active and db.v2_session_expired(active):
+            db.v2_delete_session(active["id"], user_id)
+            active = None
         if active:
             wid = active.get("warm_up_task_id")
             wtext = (active.get("warm_up_task_text") or "").strip()
@@ -122,11 +125,13 @@ def homework_session_start():
 @homework_bp.route("/session/status", methods=["GET"])
 @require_auth
 def homework_session_status():
-    """Get active homework session if any. Strict: does NOT create a session. Returns raw v2_sessions row (snake_case)."""
+    """Get active homework session if any. Expired sessions (incomplete, older than 1h) are deleted and returned as no session so client goes to step 0. Returns raw v2_sessions row (snake_case)."""
     try:
         user_id = request.user_id
         active = db.v2_get_active_homework_session(user_id)
-
+        if active and db.v2_session_expired(active):
+            db.v2_delete_session(active["id"], user_id)
+            active = None
         if not active:
             return jsonify({"session": None, "has_active_session": False}), 200
 
