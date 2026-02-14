@@ -1439,6 +1439,15 @@ class DatabaseService:
 
     def v2_sync_student_warm_up_tasks_from_pool(self, user_id: str, pool_task_ids: list):
         """Replace student's warm-up tasks with copies from the pool. pool_task_ids = list of v2_warm_up_task_pool ids in display order."""
+        # #region agent log
+        try:
+            import json
+            import time
+            with open("/Users/arturwillonski/Documents/backend-cursor/.cursor/debug.log", "a") as _f:
+                _f.write(json.dumps({"location": "db.py:v2_sync_student_warm_up_tasks_from_pool", "message": "sync entry before delete", "data": {"user_id": user_id, "pool_task_ids": pool_task_ids}, "timestamp": int(time.time() * 1000), "hypothesisId": "sync_entry"}) + "\n")
+        except Exception:
+            pass
+        # #endregion
         self.client.table("v2_warm_up_tasks").delete().eq("user_id", user_id).execute()
         if not pool_task_ids:
             return []

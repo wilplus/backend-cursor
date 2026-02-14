@@ -501,10 +501,29 @@ def v2_admin_task_warm_up_sync(user_id):
     if not isinstance(pool_task_ids, list):
         return jsonify({"error": "pool_task_ids must be a list"}), 400
     pool_task_ids = [str(x) for x in pool_task_ids]
+    # #region agent log
+    try:
+        import json
+        import time
+        with open("/Users/arturwillonski/Documents/backend-cursor/.cursor/debug.log", "a") as _f:
+            _f.write(json.dumps({"location": "v2_routes.py:v2_admin_task_warm_up_sync", "message": "PUT task-warm-up entry", "data": {"user_id": user_id, "pool_task_ids": pool_task_ids}, "timestamp": int(time.time() * 1000), "hypothesisId": "entry"}) + "\n")
+    except Exception:
+        pass
+    # #endregion
     try:
         rows = db.v2_sync_student_warm_up_tasks_from_pool(user_id, pool_task_ids)
         return jsonify({"task_warm_up": rows}), 200
     except Exception as err:
+        # #region agent log
+        try:
+            import json
+            import time
+            err_msg = str(err)
+            with open("/Users/arturwillonski/Documents/backend-cursor/.cursor/debug.log", "a") as _f:
+                _f.write(json.dumps({"location": "v2_routes.py:v2_admin_task_warm_up_sync", "message": "PUT task-warm-up exception", "data": {"err_type": type(err).__name__, "err_message": err_msg, "user_id": user_id}, "timestamp": int(time.time() * 1000), "hypothesisId": "exception"}) + "\n")
+        except Exception:
+            pass
+        # #endregion
         logger.warning("task-warm-up PUT sync failed for user %s: %s", user_id, err, exc_info=True)
         detail = str(err)
         return jsonify({
