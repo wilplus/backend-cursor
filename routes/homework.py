@@ -159,14 +159,12 @@ def homework_session_status():
 @homework_bp.route("/session/<session_id>/abandon", methods=["POST"])
 @require_auth
 def homework_abandon_session(session_id):
-    """Delete the homework session (owner only). User has no active session afterward; GET status returns has_active_session: false. Client should refetch status and show the first page (Start)."""
+    """Delete the homework session (owner only). Works for any status including completed. User has no active session afterward; GET status returns has_active_session: false. Client should refetch status and show the first page (Start)."""
     try:
         user_id = request.user_id
         session = db.v2_get_session(session_id, user_id)
         if not session:
             return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found"}), 404
-        if session.get("status") == STATUS_COMPLETED:
-            return jsonify({"code": "INVALID_SESSION_STATE", "error": "Cannot delete a completed session", "status": session.get("status")}), 409
         deleted = db.v2_delete_session(session_id, user_id)
         if not deleted:
             return jsonify({"code": "V2_ERROR", "error": "Session could not be deleted"}), 500
