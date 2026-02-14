@@ -325,13 +325,29 @@ def homework_recording_upload_url(session_id):
         return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
 
 
+def _is_recording_1_ready(session: dict) -> bool:
+    """True iff session is task_block and recording-1 job has set performance_score_1 and context_short (ready for metric-answers)."""
+    if session.get("status") != STATUS_TASK_BLOCK:
+        return False
+    if session.get("performance_score_1") is None:
+        return False
+    if not (session.get("context_short") or "").strip():
+        return False
+    return True
+
+
+def _recording_1_processing_failed(session: dict) -> bool:
+    """True iff recording-1 processing explicitly failed."""
+    return session.get("recording_1_processing_status") == "failed"
+
+
 @homework_bp.route("/session/<session_id>/recording-1", methods=["POST"])
 @require_auth
 def homework_submit_recording_1(session_id):
-    """Upload recording_1 (warm-up). Accepts (A) multipart with 'audio' file, or (B) JSON with storage_path + duration_seconds (direct-to-storage). Returns performance_score_1, task_block."""
+    """Upload recording_1 (warm-up). Fast path: store only, create minimal recording, set task_block, enqueue job. Returns task_block immediately."""
     try:
         from config import Config
-        from io import BytesIO
+        from services.recording_1_job import enqueue_recording_1_job
 
         config = Config()
         user_id = request.user_id
@@ -350,7 +366,7 @@ def homework_submit_recording_1(session_id):
         storage_path = None
 
         if audio_file:
-            # Legacy: multipart upload
+            # Multipart: upload only, no transcription in request
             ext = ".webm"
             storage_path = f"{user_id}/{session_id}/{uuid.uuid4()}{ext}"
             audio_file.seek(0)
@@ -359,11 +375,12 @@ def homework_submit_recording_1(session_id):
             if content_type in ("True", "False"):
                 content_type = "audio/webm"
             db.upload_audio(config.AUDIO_BUCKET_NAME, storage_path, audio_data, content_type=content_type)
-            audio_file.seek(0)
-            transcript_result = openai_service.transcribe_audio(audio_file, "audio.webm")
-            duration_seconds = transcript_result.get("duration") or float(request.form.get("duration_seconds") or 60.0)
+            try:
+                duration_seconds = float(request.form.get("duration_seconds")) if request.form.get("duration_seconds") else None
+            except (TypeError, ValueError):
+                duration_seconds = None
         else:
-            # By URL: JSON with storage_path + duration_seconds
+            # JSON: storage_path + duration_seconds (direct-to-storage)
             storage_path = (data.get("storage_path") or "").strip()
             duration_seconds = data.get("duration_seconds")
             if not storage_path or duration_seconds is None:
@@ -374,7 +391,7 @@ def homework_submit_recording_1(session_id):
                 duration_seconds = float(duration_seconds)
             except (TypeError, ValueError):
                 return jsonify({"code": "INVALID_INPUT", "error": "duration_seconds must be a number"}), 400
-            # Idempotency: if we already have a recording for this session with this storage_path, return same response (retry/abort safe)
+            # Idempotency: same storage_path → return existing
             existing_rid = session.get("recording_1_id")
             if existing_rid:
                 existing = db.get_recording(existing_rid, user_id)
@@ -384,97 +401,50 @@ def homework_submit_recording_1(session_id):
                     q2 = metric_questions[1] if len(metric_questions) > 1 else {}
                     q3 = metric_questions[2] if len(metric_questions) > 2 else {}
                     task_block = {"metric_question_1": q1, "metric_question_2": q2, "metric_question_3": q3}
-                    return jsonify({
+                    out = {
                         "recording_id": existing["id"],
-                        "performance_score_1": session.get("performance_score_1"),
                         "task_block": task_block,
-                    }), 200
-            audio_bytes = db.download_audio(config.AUDIO_BUCKET_NAME, storage_path)
-            transcript_result = openai_service.transcribe_audio(BytesIO(audio_bytes), "audio.webm")
-            duration_seconds = transcript_result.get("duration") or duration_seconds
+                        "recording_1_processing": session.get("recording_1_processing_status") in (None, "pending"),
+                    }
+                    if session.get("performance_score_1") is not None:
+                        out["performance_score_1"] = session.get("performance_score_1")
+                    return jsonify(out), 200
+            # New recording for this session: create minimal, update session, enqueue
 
-        transcript_text = transcript_result["text"]
-
-        audio_url = db.create_signed_url(config.AUDIO_BUCKET_NAME, storage_path, config.SIGNED_URL_EXPIRY_SECONDS)
-        if not audio_url:
-            supabase_url = config.SUPABASE_URL.rstrip("/")
-            audio_url = f"{supabase_url}/storage/v1/object/public/{config.AUDIO_BUCKET_NAME}/{storage_path}"
-
-        wpm = compute_wpm(transcript_text, duration_seconds)
-        filler_data = count_fillers(transcript_text)
-        filler_count = filler_data["total"]
-        strength_raw = None
-
-        performance_score_1 = compute_performance_score_1(wpm=wpm, strength_raw=strength_raw, filler_count=filler_count)
-
-        context_short = openai_service.generate_context_short(transcript_text)
-
-        # Prefer per-student focus tasks (admin panel); fall back to global v2_tasks; then default
-        focus_task = db.v2_select_student_focus_task_for_score(user_id, performance_score_1)
-        if not focus_task:
-            overrides = db.v2_get_student_overrides(user_id)
-            assigned_task_ids = (overrides.get("assigned_next_task_ids") or []) if overrides else None
-            all_tasks = db.v2_get_active_tasks()
-            focus_task = select_focus_task_for_performance_score_1(
-                all_tasks, performance_score_1, assigned_task_ids
-            )
-        if not focus_task:
-            # No suited option or new student: use default so flow never blocks
-            default_text = db.DEFAULT_FOCUS_TASK_TEXT
-            focus_task = {"id": None, "title": default_text, "prompt_text": default_text}
-
-        metric_questions = db.v2_get_metric_questions_for_flow()
-
-        duration_int = int(round(duration_seconds))
-        recording_data = {
+        # Create minimal recording row (job will fill transcript, wpm, etc.)
+        minimal_recording = {
             "user_id": user_id,
             "session_id": None,
             "session_v2_id": session_id,
-            "task_id": focus_task["id"] if focus_task else None,
-            "audio_url": audio_url,
             "storage_path": storage_path,
-            "duration": duration_int,
-            "duration_seconds": duration_seconds,
-            "transcription_text": transcript_text,
-            "words_per_minute": wpm,
-            "filler_words_count": {"breakdown": filler_data.get("breakdown", {}), "total": filler_count},
+            "audio_url": "",
+            "duration": 0,
         }
-        recording = db.create_recording(recording_data)
-        _agent_log("recording-1: after create_recording", {"recording_id": recording["id"] if recording else None, "has_recording": bool(recording)}, "H2")
+        if duration_seconds is not None:
+            minimal_recording["duration_seconds"] = duration_seconds
+        recording = db.create_recording(minimal_recording)
         if not recording:
             return jsonify({"code": "RECORDING_CREATE_FAILED"}), 500
 
-        update_payload = {
+        db.v2_update_session(session_id, user_id, {
             "recording_1_id": recording["id"],
-            "performance_score_1": performance_score_1,
-            "context_short": context_short,
-            "selected_task_id": focus_task["id"] if focus_task else None,
             "status": STATUS_TASK_BLOCK,
-        }
-        update_result = db.v2_update_session(session_id, user_id, update_payload)
-        _agent_log("recording-1: after v2_update_session", {"session_id": session_id, "update_result_is_none": update_result is None, "status_set": STATUS_TASK_BLOCK}, "H3")
-        # #region agent log
-        try:
-            session_after = db.v2_get_session(session_id, user_id)
-            _agent_log("recording-1: session after update", {"session_id": session_id, "status_after": session_after.get("status") if session_after else None}, "H1")
-        except Exception:
-            pass
-        # #endregion
+            "recording_1_processing_status": "pending",
+        })
 
+        metric_questions = db.v2_get_metric_questions_for_flow()
         q1 = metric_questions[0] if len(metric_questions) > 0 else {}
         q2 = metric_questions[1] if len(metric_questions) > 1 else {}
         q3 = metric_questions[2] if len(metric_questions) > 2 else {}
-        # Metrics step: only 3 questions. context_1 (context_short) and focus_task are stored and used when generating final_task; not displayed at metrics stage.
-        task_block = {
-            "metric_question_1": q1,
-            "metric_question_2": q2,
-            "metric_question_3": q3,
-        }
+        task_block = {"metric_question_1": q1, "metric_question_2": q2, "metric_question_3": q3}
+
+        enqueue_recording_1_job(session_id, str(recording["id"]), storage_path, user_id, duration_seconds)
+
         _agent_log("recording-1: success, returning 200 with task_block", {"recording_id": str(recording["id"])}, "H5")
         return jsonify({
             "recording_id": recording["id"],
-            "performance_score_1": performance_score_1,
             "task_block": task_block,
+            "recording_1_processing": True,
         }), 200
     except Exception as e:
         _agent_log("recording-1: exception", {"error": str(e), "type": type(e).__name__}, "H5")
@@ -516,6 +486,18 @@ def homework_submit_metric_answers(session_id):
                 "message": "Please answer all three questions before continuing.",
                 "details": {"field": "metric_answers"},
             }), 422
+
+        # Recording-1 must be finished (job completed) before we can generate final_task
+        if not _is_recording_1_ready(session):
+            if _recording_1_processing_failed(session):
+                return jsonify({
+                    "code": "RECORDING_1_FAILED",
+                    "message": "We couldn't analyze your recording. Please try again or contact support.",
+                }), 409
+            return jsonify({
+                "code": "RECORDING_1_PROCESSING",
+                "message": "Your recording is still being analyzed. Please wait a moment and try again.",
+            }), 409
 
         context_short = session.get("context_short") or ""
         task_id = session.get("selected_task_id")

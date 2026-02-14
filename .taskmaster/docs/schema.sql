@@ -239,6 +239,8 @@ DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'v2_sessions' AND column_name = 'warm_up_task_text') THEN ALTER TABLE v2_sessions ADD COLUMN warm_up_task_text TEXT; END IF;
   IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'v2_sessions' AND column_name = 'final_task_text') THEN ALTER TABLE v2_sessions ADD COLUMN final_task_text TEXT; END IF;
   IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'v2_sessions' AND column_name = 'post_answers') THEN ALTER TABLE v2_sessions ADD COLUMN post_answers JSONB; END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'v2_sessions' AND column_name = 'recording_1_processing_status') THEN ALTER TABLE v2_sessions ADD COLUMN recording_1_processing_status TEXT; END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'v2_sessions' AND column_name = 'recording_1_re_enqueue_attempted') THEN ALTER TABLE v2_sessions ADD COLUMN recording_1_re_enqueue_attempted BOOLEAN DEFAULT FALSE; END IF;
 END $$;
 
 DO $$ BEGIN
