@@ -13,6 +13,7 @@ import logging
 import time
 import uuid
 import sentry_sdk
+from datetime import datetime, timezone, timedelta
 
 logger = logging.getLogger(__name__)
 homework_bp = Blueprint("homework", __name__, url_prefix="/v2/homework")
@@ -39,6 +40,25 @@ STATUS_TASK_BLOCK = "task_block"
 STATUS_FINAL_TASK_READY = "final_task_ready"
 STATUS_POST_QUESTIONS = "post_questions"
 STATUS_COMPLETED = "completed"
+
+
+def _tutor_feedback_deadline_iso(completed_at, window_hours: float):
+    """Compute tutor_feedback_deadline (ISO 8601) from completion time + window. Returns None if invalid or deadline already passed."""
+    if completed_at is None or window_hours is None or window_hours <= 0:
+        return None
+    try:
+        if isinstance(completed_at, str):
+            completed_dt = datetime.fromisoformat(completed_at.replace("Z", "+00:00"))
+        else:
+            completed_dt = completed_at
+        if completed_dt.tzinfo is None:
+            completed_dt = completed_dt.replace(tzinfo=timezone.utc)
+        deadline = completed_dt + timedelta(hours=window_hours)
+        if deadline <= datetime.now(timezone.utc):
+            return None
+        return deadline.strftime("%Y-%m-%dT%H:%M:%SZ")
+    except (ValueError, TypeError):
+        return None
 
 
 # ---------- Start & status ----------
@@ -125,15 +145,24 @@ def homework_session_start():
 @homework_bp.route("/session/status", methods=["GET"])
 @require_auth
 def homework_session_status():
-    """Get active homework session if any. Expired sessions (incomplete, older than 1h) are deleted and returned as no session so client goes to step 0. Returns raw v2_sessions row (snake_case)."""
+    """Get active homework session if any. Expired sessions (incomplete, older than 1h) are deleted and returned as no session so client goes to step 0. Returns raw v2_sessions row (snake_case). When no active session, includes tutor_feedback_deadline (ISO 8601) if the user just completed a lesson and the tutor feedback window has not ended."""
     try:
+        from config import Config
+        config = Config()
         user_id = request.user_id
         active = db.v2_get_active_homework_session(user_id)
         if active and db.v2_session_expired(active):
             db.v2_delete_session(active["id"], user_id)
             active = None
         if not active:
-            return jsonify({"session": None, "has_active_session": False}), 200
+            payload = {"session": None, "has_active_session": False}
+            last_completed = db.v2_get_last_completed_session(user_id)
+            if last_completed:
+                completion_time = last_completed.get("completed_at") or last_completed.get("created_at")
+                deadline = _tutor_feedback_deadline_iso(completion_time, config.TUTOR_FEEDBACK_WINDOW_HOURS)
+                if deadline:
+                    payload["tutor_feedback_deadline"] = deadline
+            return jsonify(payload), 200
 
         warm_up_task = None
         wid = active.get("warm_up_task_id")
@@ -744,7 +773,11 @@ def homework_submit_post_answers(session_id):
             rec_id = session.get("recording_2_id") or session.get("recording_id")
             rec = db.get_recording(rec_id, user_id) if rec_id else None
             metrics = (rec.get("performance_metrics_v2") or {}) if rec else {}
-            return jsonify({
+            from config import Config
+            config = Config()
+            completion_time = session.get("completed_at") or session.get("created_at")
+            deadline = _tutor_feedback_deadline_iso(completion_time, config.TUTOR_FEEDBACK_WINDOW_HOURS)
+            payload = {
                 "report_text": session.get("context_long") or "",
                 "performance_score_end": float(session.get("performance_score_end") or 0),
                 "performance_metrics": metrics,
@@ -754,7 +787,10 @@ def homework_submit_post_answers(session_id):
                 "question_2_score": float(session.get("question_2_score") or 0),
                 "question_3_analysis": session.get("question_3_analysis") or "",
                 "question_3_score": float(session.get("question_3_score") or 0),
-            }), 200
+            }
+            if deadline:
+                payload["tutor_feedback_deadline"] = deadline
+            return jsonify(payload), 200
         recording_2_id = session.get("recording_2_id") or session.get("recording_id")
         if status != STATUS_POST_QUESTIONS:
             # Recovery: if we have recording_2, session is logically past step 3; advance status and continue
@@ -864,11 +900,13 @@ def homework_submit_post_answers(session_id):
         q3 = (session.get("session_metric_question_3") or "").strip()
         custom_results = openai_service.analyze_custom_questions(transcript, [q1, q2, q3])
         r1, r2, r3 = (custom_results + [{"analysis": "", "score": 0}] * 3)[:3]
+        completed_at_iso = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
         session_update = {
             "post_answers": answers,
             "report_id": report_row["id"] if report_row else None,
             "performance_score_end": performance_score_end,
             "status": STATUS_COMPLETED,
+            "completed_at": completed_at_iso,
             "question_1_analysis": r1.get("analysis") or "",
             "question_1_score": float(r1.get("score", 0)),
             "question_2_analysis": r2.get("analysis") or "",
@@ -879,7 +917,10 @@ def homework_submit_post_answers(session_id):
         db.v2_update_session(session_id, user_id, session_update)
 
         _agent_log("post-answers: success, returning 200 with report", {"session_id": session_id}, "H3")
-        return jsonify({
+        from config import Config
+        config = Config()
+        deadline = _tutor_feedback_deadline_iso(completed_at_iso, config.TUTOR_FEEDBACK_WINDOW_HOURS)
+        payload = {
             "report_text": report_text,
             "performance_score_end": performance_score_end,
             "performance_metrics": final["metrics"],
@@ -889,7 +930,10 @@ def homework_submit_post_answers(session_id):
             "question_2_score": session_update["question_2_score"],
             "question_3_analysis": session_update["question_3_analysis"],
             "question_3_score": session_update["question_3_score"],
-        }), 200
+        }
+        if deadline:
+            payload["tutor_feedback_deadline"] = deadline
+        return jsonify(payload), 200
     except Exception as e:
         _agent_log("post-answers: exception", {"error": str(e), "type": type(e).__name__}, "H5")
         logger.error(f"Homework post-answers: {str(e)}")
@@ -963,12 +1007,19 @@ def homework_get_report(session_id):
                     except Exception as e:
                         logger.warning(f"Report: could not create signed URL for recording {recording_2_id}: {e}")
 
-        return jsonify({
+        payload = {
             "report_text": report_text,
             "scores": scores,
             "final_recording": final_recording,
             "performance_history": performance_history,
-        }), 200
+        }
+        from config import Config
+        config = Config()
+        completion_time = session.get("completed_at") or session.get("created_at")
+        deadline = _tutor_feedback_deadline_iso(completion_time, config.TUTOR_FEEDBACK_WINDOW_HOURS)
+        if deadline:
+            payload["tutor_feedback_deadline"] = deadline
+        return jsonify(payload), 200
     except Exception as e:
         logger.exception("Homework get report: %s", e)
         sentry_sdk.capture_exception(e)

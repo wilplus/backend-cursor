@@ -1070,6 +1070,19 @@ class DatabaseService:
         result = q.execute()
         return result.data[0] if result.data else None
 
+    def v2_get_last_completed_session(self, user_id: str):
+        """Return the most recent completed session for the user (for tutor_feedback_deadline when no active session)."""
+        result = (
+            self.client.table("v2_sessions")
+            .select("id, completed_at, created_at")
+            .eq("user_id", user_id)
+            .eq("status", "completed")
+            .order("created_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+        return result.data[0] if result.data else None
+
     def v2_get_exercise(self, exercise_id: str):
         result = self.client.table("v2_exercises").select("*").eq("id", exercise_id).execute()
         return result.data[0] if result.data else None

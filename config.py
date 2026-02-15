@@ -36,6 +36,9 @@ class Config:
     
     # Frontend URL (for email links)
     FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
+
+    # Tutor feedback window: time the tutor has to send feedback and assign new homework after a lesson is completed (hours)
+    TUTOR_FEEDBACK_WINDOW_HOURS = float(os.getenv("TUTOR_FEEDBACK_WINDOW_HOURS", "24"))
     
     @property
     def is_production(self):
