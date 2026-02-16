@@ -4,6 +4,9 @@
  * Copy to your frontend (e.g. src/components/homework/AnswerMetricQuestionsScreen.tsx).
  * Uses task_block from POST recording-1 response: metric_question_1.text, metric_question_2.text,
  * metric_question_3.text as labels. Submits answer_1, answer_2, answer_3 to metric-answers.
+ *
+ * Important: Show "Abandon session" on this step so the user is not stuck. Handle 409 (recording
+ * still processing) and 422 (validation) by displaying the backend message. See docs/METRIC-QUESTIONS-STEP.md.
  */
 
 import React, { useState } from "react";
@@ -14,6 +17,8 @@ interface AnswerMetricQuestionsScreenProps {
   taskBlock: TaskBlockV2;
   onSuccess: (response: MetricAnswersResponseV2) => void;
   onError?: (message: string) => void;
+  /** Call when user clicks "Abandon session". Parent should call POST .../abandon then clear state and go to step 0. */
+  onAbandon?: () => void;
 }
 
 export function AnswerMetricQuestionsScreen({
@@ -21,11 +26,13 @@ export function AnswerMetricQuestionsScreen({
   taskBlock,
   onSuccess,
   onError,
+  onAbandon,
 }: AnswerMetricQuestionsScreenProps) {
   const [answer1, setAnswer1] = useState("");
   const [answer2, setAnswer2] = useState("");
   const [answer3, setAnswer3] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [apiErrorMessage, setApiErrorMessage] = useState<string | null>(null);
 
   const q1 = taskBlock.metric_question_1 ?? {};
   const q2 = taskBlock.metric_question_2 ?? {};
@@ -41,6 +48,7 @@ export function AnswerMetricQuestionsScreen({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setApiErrorMessage(null);
     setSubmitting(true);
     try {
       const res = await fetch(`/api/homework/session/${sessionId}/metric-answers`, {
@@ -54,12 +62,16 @@ export function AnswerMetricQuestionsScreen({
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        onError?.(data?.error ?? "Failed to submit answers");
+        const message = (data?.message || data?.error || "Failed to submit answers") as string;
+        setApiErrorMessage(message);
+        onError?.(message);
         return;
       }
       onSuccess(data as MetricAnswersResponseV2);
     } catch (err) {
-      onError?.(err instanceof Error ? err.message : "Network error");
+      const message = err instanceof Error ? err.message : "Network error";
+      setApiErrorMessage(message);
+      onError?.(message);
     } finally {
       setSubmitting(false);
     }
@@ -75,8 +87,14 @@ export function AnswerMetricQuestionsScreen({
 
   return (
     <div className="answer-metric-questions">
-      <h2>Answer these three questions</h2>
+      <h2>Answer these questions</h2>
       <p className="subtitle">Your answers will shape the focus for your second recording.</p>
+
+      {apiErrorMessage && (
+        <div className="metric-answers-error" role="alert">
+          {apiErrorMessage}
+        </div>
+      )}
 
       <form onSubmit={handleSubmit}>
         {questions.map((q, i) => (
@@ -93,9 +111,21 @@ export function AnswerMetricQuestionsScreen({
             />
           </div>
         ))}
-        <button type="submit" disabled={submitting}>
-          {submitting ? "Submitting…" : "Continue to next step"}
-        </button>
+        <div className="actions">
+          <button type="submit" disabled={submitting}>
+            {submitting ? "Submitting…" : "Continue to next step"}
+          </button>
+          {onAbandon && (
+            <button
+              type="button"
+              className="secondary"
+              disabled={submitting}
+              onClick={() => onAbandon()}
+            >
+              Abandon session
+            </button>
+          )}
+        </div>
       </form>
     </div>
   );

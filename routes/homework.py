@@ -570,12 +570,16 @@ def homework_submit_metric_answers(session_id):
             _agent_log("metric-answers: wrong status → 409", {"session_id": session_id, "status": status}, "H1")
             return jsonify({"code": "INVALID_SESSION_STATE", "error": "Session must be in task_block for metric-answers", "status": status}), 409
 
-        # Require all three metric answers before continuing
-        if not answer_1 or not answer_2 or not answer_3:
+        # Require answers only for questions that exist in the flow (admin may configure 2 or 3)
+        metric_questions = db.v2_get_metric_questions_for_flow()
+        required_count = min(3, len(metric_questions))
+        answers = [answer_1, answer_2, answer_3]
+        missing = [i + 1 for i in range(required_count) if not (answers[i] or "").strip()]
+        if missing:
             return jsonify({
                 "code": "VALIDATION_ERROR",
-                "message": "Please answer all three questions before continuing.",
-                "details": {"field": "metric_answers"},
+                "message": "Please answer all questions before continuing." if required_count > 1 else "Please answer the question before continuing.",
+                "details": {"field": "metric_answers", "missing_questions": missing},
             }), 422
 
         # Recording-1 must be finished (job completed) before we can generate final_task
