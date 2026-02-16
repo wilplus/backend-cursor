@@ -2,6 +2,59 @@
 
 This doc explains why the homework flow can stop at the "Answer these questions" (metric questions) step and how to fix it.
 
+## Implementation spec (metric questions screen)
+
+Use this as the spec for the step 2 UI:
+
+**1. Abandon session button (required)**  
+On the metric questions screen, add a secondary button, e.g. "Abandon session" or "Start over", that:
+
+- Calls `POST /api/homework/session/${sessionId}/abandon` (with your usual auth).
+- On **200** or **404**: clear session state and go back to step 0 (start).
+- You can disable it while the main form is submitting.
+
+**2. Continue and errors**
+
+- **Continue** should send `POST /api/homework/session/${sessionId}/metric-answers` with `{ answer_1, answer_2, answer_3 }` for every question that has text in `task_block`. Disable the button while the request is in flight.
+- When the API returns **422** or **409**, show `data.message` or `data.error` (e.g. "Please answer all questions before continuing." or "Your recording is still being analyzed. Please wait a moment and try again.") so the user knows why they can't proceed and can fix it or retry.
+
+**3. Optional: "Analyzing…" state**  
+If you have `recording_1_processing` from status or the recording-1 response, you can disable Continue and show "Analyzing your recording…" until it's false (e.g. by polling status), so the user doesn't hit 409 by clicking too early.
+
+---
+
+## Frontend checklist (metric questions screen)
+
+To avoid "no abandon button" and "cannot proceed" on step 2, the metric questions screen **must** have:
+
+1. **Abandon session button**  
+   A secondary button (e.g. "Abandon session" or "Start over") that:
+   - Calls `POST /api/homework/session/{sessionId}/abandon` (with auth).
+   - On **200** or **404**: clear session state and go to step 0 (start screen). Treat 404 as "session already gone" and still go to step 0.
+   - Optionally disable this button while `submitting` is true so the user doesn’t leave mid-submit.
+
+2. **Continue button**  
+   Submits `POST /api/homework/session/{sessionId}/metric-answers` with body `{ answer_1, answer_2, answer_3 }` (only for questions that have text in `task_block`). Disable the button while the request is in flight (`submitting`).
+
+3. **Show all questions from task_block**  
+   Render one input per question that has non-empty text: `task_block.metric_question_1`, `metric_question_2`, `metric_question_3`. Send the corresponding `answer_1`, `answer_2`, `answer_3` (required fields; backend returns 422 if a required answer is empty).
+
+4. **Show API errors so the user can proceed or retry**  
+   When the API returns **422** or **409**, display `data.message` or `data.error` (e.g. "Please answer all questions before continuing." or "Your recording is still being analyzed. Please wait a moment and try again."). That way the user knows why Continue didn’t advance and can fix it or click "Try again" later.
+
+5. **Optional: wait for recording-1 to finish before allowing Continue**  
+   If `GET /v2/homework/session/status` (or the recording-1 response) includes `recording_1_processing: true`, you can disable Continue and show "Analyzing your recording…" and poll status until it’s false, then enable Continue. Otherwise, when the user clicks Continue too early they get 409 and you must show the message above.
+
+Reference implementation: `docs/frontend-v2-deliverables/components/AnswerMetricQuestionsScreen.tsx`.
+
+## Metric questions not displaying
+
+If step 2 shows no questions (or they disappear after refresh):
+
+1. **Backend (fixed):** The backend now saves `session_metric_question_1/2/3` when recording-1 succeeds, so GET status and GET task-block return the question texts. Deploy the latest backend so this is in effect.
+2. **Frontend:** On step 2, you need a `task_block` with `metric_question_1.text`, `metric_question_2.text`, `metric_question_3.text`. Use the recording-1 response when you have it; if you only have the session (e.g. after refresh), build task_block from `session.session_metric_question_1/2/3` or call **GET** `/api/homework/session/:id/task-block` and use its `task_block`.
+3. **Admin:** Ensure metric questions exist: in admin, **Metrics** / metric questions (positions 1, 2, 3) must have text. If `v2_metric_questions` is empty or has no text, the backend returns empty question texts.
+
 ## Why the tool stops and cannot proceed
 
 1. **Backend requires all *configured* answers**  

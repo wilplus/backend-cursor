@@ -29,7 +29,7 @@ Single reference for this repo. No other .md docs; everything lives here.
 - **Install:** `pip install -r requirements.txt`
 - **Env:** Copy `.env.example` to `.env`. Required: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_JWT_SECRET`, `OPENAI_API_KEY`, `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, `ADMIN_EMAIL`, `FRONTEND_URL`. Optional: `SENTRY_DSN`, `ENV`, `SEND_EMAILS`.
 - **Run:** `python app.py` (local). Railway: set env in dashboard; Procfile used.
-- **Migrations:** Run **`migrations/v2_all_in_one.sql`** in Supabase SQL Editor (idempotent). Then run coaching migrations in order: **`add_v2_student_coaching_memory.sql`**, **`add_recording_1_performance_profile.sql`**, **`add_recurring_issues_to_coaching_memory.sql`**, **`add_focus_task_targets_and_difficulty.sql`**. Then Settings → API → Reload schema cache if available.
+- **Migrations:** Run **`migrations/v2_all_in_one.sql`** in Supabase SQL Editor (idempotent). Then run coaching migrations in order: **`add_v2_student_coaching_memory.sql`**, **`add_recording_1_performance_profile.sql`**, **`add_recurring_issues_to_coaching_memory.sql`**, **`add_focus_task_targets_and_difficulty.sql`**. Then **`add_tutor_feedback_deadline.sql`** (adds `completed_at`; required for step 4→5) and **`add_tutor_feedback_sent_at.sql`**. Then Settings → API → Reload schema cache if available. Full 0→5 checklist: **`docs/HOMEWORK-FLOW-0-TO-5-CHECKLIST.md`**.
 
 ---
 

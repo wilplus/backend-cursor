@@ -560,17 +560,22 @@ def homework_submit_recording_1(session_id):
         if not recording:
             return jsonify({"code": "RECORDING_CREATE_FAILED"}), 500
 
-        db.v2_update_session(session_id, user_id, {
-            "recording_1_id": recording["id"],
-            "status": STATUS_TASK_BLOCK,
-            "recording_1_processing_status": "pending",
-        })
-
         metric_questions = db.v2_get_metric_questions_for_flow()
         q1 = metric_questions[0] if len(metric_questions) > 0 else {}
         q2 = metric_questions[1] if len(metric_questions) > 1 else {}
         q3 = metric_questions[2] if len(metric_questions) > 2 else {}
         task_block = {"metric_question_1": q1, "metric_question_2": q2, "metric_question_3": q3}
+        q1_text = ((q1.get("text") if isinstance(q1, dict) else "") or "").strip()
+        q2_text = ((q2.get("text") if isinstance(q2, dict) else "") or "").strip()
+        q3_text = ((q3.get("text") if isinstance(q3, dict) else "") or "").strip()
+        db.v2_update_session(session_id, user_id, {
+            "recording_1_id": recording["id"],
+            "status": STATUS_TASK_BLOCK,
+            "recording_1_processing_status": "pending",
+            "session_metric_question_1": q1_text,
+            "session_metric_question_2": q2_text,
+            "session_metric_question_3": q3_text,
+        })
 
         enqueue_recording_1_job(session_id, str(recording["id"]), storage_path, user_id, duration_seconds)
 
