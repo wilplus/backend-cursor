@@ -24,12 +24,23 @@ The metric questions step must show an **"Abandon session"** (or "Start over") b
 - **Backend:** `POST /v2/homework/session/:id/abandon` — returns 200 when the session is deleted, 404 when it is already gone. The BFF route is in `docs/homework-bff-routes/session/[sessionId]/abandon/route.ts`.
 - **Frontend:** On the metric-questions screen (and ideally every step), render a secondary button that calls the abandon API, then on success (or 404) clear state and go to step 0 (start). See `docs/FRONTEND-SESSION-GONE-START-OVER.md` and `docs/FRONTEND-SESSION-NOT-FOUND.md`.
 
+## Recording-upload-url when session is already task_block (409 → 200 with task_block)
+
+If the frontend calls **POST** `/v2/homework/session/:id/recording-upload-url` with `{ "recording": "1" }` after the session has already moved to `task_block` (e.g. recording-1 was submitted earlier, or page refreshed), the backend now returns **200** with:
+
+- `already_past_step: true`
+- `status: "task_block"`
+- `task_block`: `{ metric_question_1, metric_question_2, metric_question_3 }`
+
+**Frontend:** When you get a 200 from recording-upload-url, check for `data.already_past_step` and `data.task_block`. If present, treat it as "we're already at step 2" and set state to show the metric questions screen using `data.task_block` (do not treat as an error or try to upload again).
+
 ## Summary
 
 | Issue | Backend response | Frontend fix |
 |-------|------------------|--------------|
 | Missing answer(s) | 422 VALIDATION_ERROR, `message` | Show all questions from task_block; display `message` on error. |
 | Recording still analyzing | 409 RECORDING_1_PROCESSING, `message` | Disable Continue while processing and/or show `message` and "Try again". |
+| Upload URL requested but session already task_block | 200 with `already_past_step`, `task_block` | Use `task_block` and show metric questions (step 2). |
 | No way to leave step | — | Add "Abandon session" button that calls abandon API and then goes to step 0. |
 
 Reference component with Abandon and error display: `docs/frontend-v2-deliverables/components/AnswerMetricQuestionsScreen.tsx`.

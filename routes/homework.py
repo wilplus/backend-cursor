@@ -370,6 +370,32 @@ def homework_get_task_block(session_id):
         return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
 
 
+def _build_task_block_for_session(session: dict, session_id: str, user_id: str):
+    """Build task_block dict for a session in task_block status. Returns None if not task_block or questions missing."""
+    if session.get("status") != STATUS_TASK_BLOCK:
+        return None
+    q1 = (session.get("session_metric_question_1") or "").strip()
+    q2 = (session.get("session_metric_question_2") or "").strip()
+    q3 = (session.get("session_metric_question_3") or "").strip()
+    if not (q1 and q2 and q3):
+        prefs = db.v2_get_user_metric_questions(user_id)
+        q1 = (q1 or prefs.get("metric_question_1") or "").strip()
+        q2 = (q2 or prefs.get("metric_question_2") or "").strip()
+        q3 = (q3 or prefs.get("metric_question_3") or "").strip()
+        if not (q1 and q2 and q3):
+            return None
+        db.v2_update_session(session_id, user_id, {
+            "session_metric_question_1": q1,
+            "session_metric_question_2": q2,
+            "session_metric_question_3": q3,
+        })
+    return {
+        "metric_question_1": {"id": None, "position": 1, "text": q1},
+        "metric_question_2": {"id": None, "position": 2, "text": q2},
+        "metric_question_3": {"id": None, "position": 3, "text": q3},
+    }
+
+
 def _storage_path_for_session(user_id: str, session_id: str) -> str:
     return f"{user_id}/{session_id}/{uuid.uuid4()}.webm"
 
@@ -399,6 +425,15 @@ def homework_recording_upload_url(session_id):
         if not session:
             return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found"}), 404
         if recording == "1" and session.get("status") != STATUS_WARM_UP:
+            # Idempotency/recovery: already in task_block → return 200 with task_block so frontend can show metric questions
+            if session.get("status") == STATUS_TASK_BLOCK:
+                task_block = _build_task_block_for_session(session, session_id, user_id)
+                if task_block:
+                    return jsonify({
+                        "already_past_step": True,
+                        "status": STATUS_TASK_BLOCK,
+                        "task_block": task_block,
+                    }), 200
             _agent_log("recording-upload-url: 409 rec=1 wrong status", {"session_id": session_id, "status": session.get("status")}, "H_upload")
             return jsonify({"code": "INVALID_SESSION_STATE", "error": "Session must be in warm_up for recording-1", "status": session.get("status")}), 409
         if recording == "2" and session.get("status") != STATUS_FINAL_TASK_READY:
