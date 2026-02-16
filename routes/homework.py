@@ -618,19 +618,19 @@ def homework_submit_metric_answers(session_id):
             }), 422
 
         # Recording-1 must be finished (job completed) before we can generate final_task
+        # If recording-1 job failed, allow continuing with fallback (empty context + default focus) so user isn't stuck
+        use_fallback = False
         if not _is_recording_1_ready(session):
             if _recording_1_processing_failed(session):
+                use_fallback = True  # proceed with empty context_short and default focus task
+            else:
                 return jsonify({
-                    "code": "RECORDING_1_FAILED",
-                    "message": "We couldn't analyze your recording. Please try again or contact support.",
+                    "code": "RECORDING_1_PROCESSING",
+                    "message": "Your recording is still being analyzed. Please wait a moment and try again.",
                 }), 409
-            return jsonify({
-                "code": "RECORDING_1_PROCESSING",
-                "message": "Your recording is still being analyzed. Please wait a moment and try again.",
-            }), 409
 
-        context_short = session.get("context_short") or ""
-        task_id = session.get("selected_task_id")
+        context_short = "" if use_fallback else (session.get("context_short") or "")
+        task_id = None if use_fallback else session.get("selected_task_id")
         focus_task = db.v2_get_task_or_focus_task(task_id) if task_id else None
         default_focus = db.DEFAULT_FOCUS_TASK_TEXT
         focus_title = (focus_task.get("title") or default_focus) if focus_task else default_focus
@@ -644,7 +644,7 @@ def homework_submit_metric_answers(session_id):
             metric_answer_2=answer_2,
             metric_answer_3=answer_3,
         )
-        _agent_log("metric-answers: after generate_final_task", {"session_id": session_id, "final_task_len": len(final_task_text) if final_task_text else 0, "has_context_short": bool(context_short)}, "H3")
+        _agent_log("metric-answers: after generate_final_task", {"session_id": session_id, "final_task_len": len(final_task_text) if final_task_text else 0, "has_context_short": bool(context_short), "use_fallback": use_fallback}, "H3")
 
         update_result = db.v2_update_session(session_id, user_id, {
             "metric_answers": {"answer_1": answer_1, "answer_2": answer_2, "answer_3": answer_3},
@@ -654,7 +654,11 @@ def homework_submit_metric_answers(session_id):
         _agent_log("metric-answers: after v2_update_session", {"session_id": session_id, "update_result_is_none": update_result is None}, "H4")
 
         _agent_log("metric-answers: success, returning 200 with final_task", {"session_id": session_id}, "H5")
-        return jsonify({"final_task": final_task_text}), 200
+        resp = {"final_task": final_task_text}
+        if use_fallback:
+            resp["recording_1_fallback"] = True
+            resp["message"] = "Your first recording couldn't be fully analyzed; we've used a general focus for your second recording."
+        return jsonify(resp), 200
     except Exception as e:
         _agent_log("metric-answers: exception", {"error": str(e), "type": type(e).__name__}, "H5")
         logger.error(f"Homework metric-answers: {str(e)}")

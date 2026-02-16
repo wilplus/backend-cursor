@@ -41,6 +41,7 @@ If the frontend calls **POST** `/v2/homework/session/:id/recording-upload-url` w
 | Missing answer(s) | 422 VALIDATION_ERROR, `message` | Show all questions from task_block; display `message` on error. |
 | Recording still analyzing | 409 RECORDING_1_PROCESSING, `message` | Disable Continue while processing and/or show `message` and "Try again". |
 | Upload URL requested but session already task_block | 200 with `already_past_step`, `task_block` | Use `task_block` and show metric questions (step 2). |
+| Recording-1 analysis failed (409 RECORDING_1_FAILED) | **Backend fallback:** metric-answers now succeeds with 200; `recording_1_fallback: true` and `message` explain that a general focus was used. | Show optional notice from `message`; user can continue to recording-2. |
 | No way to leave step | — | Add "Abandon session" button that calls abandon API and then goes to step 0. |
 
 Reference component with Abandon and error display: `docs/frontend-v2-deliverables/components/AnswerMetricQuestionsScreen.tsx`.
