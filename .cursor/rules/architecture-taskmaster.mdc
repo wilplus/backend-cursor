@@ -70,6 +70,7 @@ Backend stays as-is; no change required. BFF sends `Authorization: Bearer <supab
 | `session/start/route.ts` | `src/app/api/homework/session/start/route.ts` |
 | `session/status/route.ts` | `src/app/api/homework/session/status/route.ts` |
 | `session/[sessionId]/warm-up-task/route.ts` | `src/app/api/homework/session/[sessionId]/warm-up-task/route.ts` |
+| `session/[sessionId]/abandon/route.ts` | `src/app/api/homework/session/[sessionId]/abandon/route.ts` |
 | … recording-1, metric-answers, recording-2, questions, post-answers | … same pattern |
 
 **getAuth:** Example routes use `import { getV2AccessToken, getBackendUrl } from "../../../../getAuth"` (start/status) or `../../../../../getAuth` ([sessionId] routes). Put `getAuth` at `src/app/api/getAuth.ts` or adjust the import path. Set `NEXT_PUBLIC_BACKEND_URL` or `BACKEND_URL` in frontend env.
