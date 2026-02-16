@@ -83,6 +83,41 @@ def normalize_keywords_used(transcript: str, keywords: List[str], min_match: int
     return 0.0
 
 
+# Performance profile: label thresholds (aligned with normalize_pace / normalize_fillers)
+# Pace: target band 120-160 = optimal; clearly below/above get labels for coaching
+PACE_LEVEL_TOO_SLOW_BELOW = 110   # wpm < this -> too_slow
+PACE_LEVEL_TOO_FAST_ABOVE = 170   # wpm > this -> too_fast
+FILLER_LEVEL_LOW_MAX = 3         # filler_count <= this -> low
+FILLER_LEVEL_MEDIUM_MAX = 8      # 4..8 -> medium, >8 -> high
+
+
+def build_recording_1_performance_profile(wpm: float, filler_count: int) -> Dict[str, Any]:
+    """
+    Deterministic labels from recording-1 metrics for coaching (recurring-issue detection, future task weighting).
+    Only pace_level and filler_level; no LLM. JSON includes version for future extension.
+    """
+    if wpm < PACE_LEVEL_TOO_SLOW_BELOW:
+        pace_level = "too_slow"
+    elif wpm > PACE_LEVEL_TOO_FAST_ABOVE:
+        pace_level = "too_fast"
+    else:
+        pace_level = "optimal"
+
+    filler_count = max(0, int(filler_count))
+    if filler_count <= FILLER_LEVEL_LOW_MAX:
+        filler_level = "low"
+    elif filler_count <= FILLER_LEVEL_MEDIUM_MAX:
+        filler_level = "medium"
+    else:
+        filler_level = "high"
+
+    return {
+        "version": 1,
+        "pace_level": pace_level,
+        "filler_level": filler_level,
+    }
+
+
 def compute_performance_score_1(wpm: float, strength_raw: Optional[float], filler_count: int) -> float:
     """Homework flow: score from recording_1 using 3 metrics (pace, strength, fillers). 0..1."""
     pace_n = normalize_pace(wpm)

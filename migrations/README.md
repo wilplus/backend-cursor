@@ -14,3 +14,12 @@
 
 - **`v2_all_in_one.sql`** — older full v2 setup (includes pool tables; prefer **v2_schema_unified.sql** for new or clean setup).
 - **`v2_flow.sql`**, **v2_homework_flow.sql** — earlier stepwise migrations; superseded by **v2_schema_unified.sql** for the current flow.
+
+---
+
+## Coaching redesign (run after v2 schema)
+
+- **`add_v2_student_coaching_memory.sql`** — table for last_5_scores, recent_focus_task_ids. Run before deploying backend that calls `v2_upsert_student_coaching_memory`.
+- **`add_recording_1_performance_profile.sql`** — adds `v2_sessions.recording_1_performance_profile` (JSONB). **Run in Supabase first, then deploy backend**; otherwise recording_1 job fails when writing the column. Idempotent; existing sessions stay NULL.
+- **`add_recurring_issues_to_coaching_memory.sql`** — adds `v2_student_coaching_memory.recurring_issues` (JSONB). Run after the two above. Backend derives it from last 5 sessions’ performance profiles (e.g. too_fast if pace_level in ≥3 of 5).
+- **`add_focus_task_targets_and_difficulty.sql`** — adds `v2_focus_tasks.targets` (JSONB) and `difficulty` (FLOAT). For multi-factor scoring: tasks with `targets` (e.g. `["pacing"]`) get preferred when `recurring_issues` matches (e.g. too_fast → pacing).

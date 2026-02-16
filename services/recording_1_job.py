@@ -14,7 +14,7 @@ from services.db import db
 from services.openai_service import openai_service
 from services.v2_flow_service import select_focus_task_for_performance_score_1
 from utils.metrics import count_fillers, compute_wpm
-from services.metrics_v2 import compute_performance_score_1
+from services.metrics_v2 import compute_performance_score_1, build_recording_1_performance_profile
 
 logger = logging.getLogger(__name__)
 
@@ -103,6 +103,7 @@ def _process_one(payload: dict):
         filler_data = count_fillers(transcript_text)
         filler_count = filler_data["total"]
         performance_score_1 = compute_performance_score_1(wpm=wpm, strength_raw=None, filler_count=filler_count)
+        performance_profile = build_recording_1_performance_profile(wpm, filler_count)
 
         context_short = openai_service.generate_context_short(transcript_text)
 
@@ -133,6 +134,7 @@ def _process_one(payload: dict):
             "context_short": context_short,
             "selected_task_id": focus_task["id"] if focus_task else None,
             "recording_1_processing_status": "completed",
+            "recording_1_performance_profile": performance_profile,
         })
         logger.info("recording_1_job: completed session_id=%s recording_id=%s", session_id, recording_id)
     except Exception as e:

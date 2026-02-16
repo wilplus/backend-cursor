@@ -191,6 +191,69 @@ class EmailService:
                 "payload": payload
             }
 
+    def send_lesson_complete_to_admin(
+        self,
+        user_id: str,
+        session_id: str,
+        report_preview: str = "",
+        student_email: str | None = None,
+        performance_score_end: float | None = None,
+    ) -> dict:
+        """
+        Notify the coach (ADMIN_EMAIL) that a student completed a homework lesson.
+        Link points to the admin student profile so the coach can view the report and send new homework.
+        Returns dict with status "sent" | "pending" (emails off) | "failed".
+        """
+        if not config.SEND_EMAILS:
+            return {"status": "pending", "sent": False}
+        if not self.api_key_set:
+            return {"status": "failed", "sent": False, "error": "Resend API key not set"}
+        frontend_url = (config.FRONTEND_URL or "").rstrip("/")
+        admin_student_url = f"{frontend_url}/admin/students/{user_id}"
+        preview = (report_preview or "").strip()[:400]
+        if preview and len((report_preview or "").strip()) > 400:
+            preview += "..."
+        score_str = ""
+        if performance_score_end is not None:
+            pct = round(float(performance_score_end) * 100)
+            score_str = f"End score: {pct}%."
+        subject = f"Homework completed – Session {session_id[:8]}"
+        who = (student_email or user_id).strip() or user_id
+        text = f"A student has completed a homework lesson.\n\nStudent: {who}\n"
+        if score_str:
+            text += f"{score_str}\n\n"
+        text += f"View their profile and send new homework:\n{admin_student_url}\n"
+        if preview:
+            text += f"\nReport preview:\n{preview}\n"
+        score_html = f"<p><strong>{score_str}</strong></p>" if score_str else ""
+        html = f"""
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><style>body {{ font-family: Arial,sans-serif; line-height: 1.6; color: #333; }}</style></head>
+<body>
+<p>A student has completed a homework lesson.</p>
+<p><strong>Student:</strong> {who}</p>
+{score_html}
+<p><a href="{admin_student_url}" style="background:#4F46E5;color:#fff;padding:10px 20px;text-decoration:none;border-radius:6px;">View profile & send homework</a></p>
+<p>Or copy this link: {admin_student_url}</p>
+"""
+        if preview:
+            html += f'<div style="margin-top:20px;padding:12px;background:#f3f4f6;border-radius:6px;"><strong>Report preview:</strong><br>{preview}</div>'
+        html += "</body>\n</html>"
+        try:
+            params = {
+                "from": config.RESEND_FROM_EMAIL,
+                "to": [config.ADMIN_EMAIL],
+                "subject": subject,
+                "text": text,
+                "html": html,
+            }
+            resend.Emails.send(params)
+            return {"status": "sent", "sent": True}
+        except Exception as e:
+            sentry_sdk.capture_exception(e)
+            return {"status": "failed", "sent": False, "error": str(e)}
+
     def send_assignment_to_student(self, to_email: str, frontend_url: str) -> dict:
         """
         Send "you have new homework" email to a student. Link points to the app (e.g. dashboard).

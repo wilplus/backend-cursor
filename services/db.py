@@ -4,6 +4,8 @@ from typing import List, Tuple
 from datetime import datetime, timedelta, timezone
 import sentry_sdk
 
+from services.v2_flow_service import score_and_pick_focus_task
+
 config = Config()
 
 class DatabaseService:
@@ -1071,10 +1073,10 @@ class DatabaseService:
         return result.data[0] if result.data else None
 
     def v2_get_last_completed_session(self, user_id: str):
-        """Return the most recent completed session for the user (for tutor_feedback_deadline when no active session)."""
+        """Return the most recent completed session for the user (for tutor_feedback_deadline when no active session). Includes tutor_feedback_sent_at so deadline is omitted once feedback is sent."""
         result = (
             self.client.table("v2_sessions")
-            .select("id, completed_at, created_at")
+            .select("id, completed_at, created_at, tutor_feedback_sent_at")
             .eq("user_id", user_id)
             .eq("status", "completed")
             .order("created_at", desc=True)
@@ -1082,6 +1084,21 @@ class DatabaseService:
             .execute()
         )
         return result.data[0] if result.data else None
+
+    def v2_mark_tutor_feedback_sent(self, session_id: str, user_id: str):
+        """Set tutor_feedback_sent_at to now for this session (idempotent)."""
+        from datetime import datetime, timezone
+        self.client.table("v2_sessions").update({
+            "tutor_feedback_sent_at": datetime.now(timezone.utc).isoformat(),
+        }).eq("id", session_id).eq("user_id", user_id).execute()
+        return True
+
+    def v2_mark_tutor_feedback_sent_for_user(self, user_id: str):
+        """Set tutor_feedback_sent_at on the user's most recent completed session (idempotent). Call when admin sends new homework (POST send-assignment)."""
+        last = self.v2_get_last_completed_session(user_id)
+        if not last or last.get("tutor_feedback_sent_at"):
+            return
+        self.v2_mark_tutor_feedback_sent(last["id"], user_id)
 
     def v2_get_exercise(self, exercise_id: str):
         result = self.client.table("v2_exercises").select("*").eq("id", exercise_id).execute()
@@ -1096,22 +1113,156 @@ class DatabaseService:
         result = self.client.table("v2_focus_tasks").select("*").eq("id", task_id).execute()
         return result.data[0] if result.data else None
 
+    def v2_get_last_completed_session_task_ids(self, user_id: str, limit: int = 2):
+        """Return selected_task_id from the last N completed sessions (for anti-repeat in focus task selection)."""
+        result = (
+            self.client.table("v2_sessions")
+            .select("selected_task_id")
+            .eq("user_id", user_id)
+            .eq("status", "completed")
+            .order("created_at", desc=True)
+            .limit(limit)
+            .execute()
+        )
+        out = []
+        for row in (result.data or []):
+            tid = row.get("selected_task_id")
+            if tid and str(tid).strip() and str(tid) not in out:
+                out.append(str(tid))
+        return out
+
+    def v2_get_student_coaching_memory(self, user_id: str):
+        """Return the coaching memory row for the user, or None if none exists."""
+        result = (
+            self.client.table("v2_student_coaching_memory")
+            .select("*")
+            .eq("user_id", user_id)
+            .execute()
+        )
+        return result.data[0] if result.data else None
+
+    def v2_upsert_student_coaching_memory(self, user_id: str, session_id: str):
+        """
+        Update per-student coaching memory from the last 5 completed sessions.
+        Call after session is marked completed (e.g. after v2_update_session in post-answers).
+        Current session is included; when loading the other 4, exclude session_id explicitly for idempotency.
+        Derives recurring_issues from last 5 recording_1_performance_profile (e.g. too_fast in >=3 of 5).
+        """
+        session = self.v2_get_session(session_id, user_id)
+        if not session or (session.get("status") or "").strip().lower() != "completed":
+            return
+        current_score = session.get("performance_score_end")
+        current_task_id = session.get("selected_task_id")
+        current_profile = session.get("recording_1_performance_profile")
+
+        # Last 4 OTHER completed sessions (exclude current session_id); include profile for recurring_issues
+        result = (
+            self.client.table("v2_sessions")
+            .select("performance_score_end, selected_task_id, recording_1_performance_profile")
+            .eq("user_id", user_id)
+            .eq("status", "completed")
+            .neq("id", session_id)
+            .order("completed_at", desc=True)
+            .limit(4)
+            .execute()
+        )
+        others = list(reversed(result.data or []))  # oldest first
+
+        last_5_scores = []
+        recent_focus_task_ids = []
+        last_5_profiles = []
+        for row in others:
+            s = row.get("performance_score_end")
+            if s is not None:
+                try:
+                    last_5_scores.append(float(s))
+                except (TypeError, ValueError):
+                    pass
+            tid = row.get("selected_task_id")
+            if tid and str(tid).strip():
+                recent_focus_task_ids.append(str(tid))
+            prof = row.get("recording_1_performance_profile")
+            last_5_profiles.append(prof if isinstance(prof, dict) else None)
+
+        if current_score is not None:
+            try:
+                last_5_scores.append(float(current_score))
+            except (TypeError, ValueError):
+                pass
+        if current_task_id and str(current_task_id).strip():
+            recent_focus_task_ids.append(str(current_task_id))
+        last_5_profiles.append(current_profile if isinstance(current_profile, dict) else None)
+
+        last_5_scores = last_5_scores[-5:]
+        recent_focus_task_ids = recent_focus_task_ids[-5:]
+        last_5_profiles = last_5_profiles[-5:]
+
+        # Recurring issues: if a pattern appears in >=3 of last 5 profiles, add it (cap at 3 issues)
+        recurring_issues = []
+        too_fast_count = sum(1 for p in last_5_profiles if p and (p.get("pace_level") or "").strip() == "too_fast")
+        if too_fast_count >= 3:
+            recurring_issues.append("too_fast")
+        too_slow_count = sum(1 for p in last_5_profiles if p and (p.get("pace_level") or "").strip() == "too_slow")
+        if too_slow_count >= 3:
+            recurring_issues.append("too_slow")
+        high_fillers_count = sum(1 for p in last_5_profiles if p and (p.get("filler_level") or "").strip() == "high")
+        if high_fillers_count >= 3:
+            recurring_issues.append("high_fillers")
+        recurring_issues = recurring_issues[:3]
+
+        payload = {
+            "user_id": user_id,
+            "last_5_scores": last_5_scores,
+            "recent_focus_task_ids": recent_focus_task_ids,
+            "recurring_issues": recurring_issues,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+        self.client.table("v2_student_coaching_memory").upsert(
+            payload, on_conflict="user_id"
+        ).execute()
+
     def v2_select_student_focus_task_for_score(self, user_id: str, performance_score_1: float):
         """
         Per-student focus task for homework flow. Returns one task from v2_focus_tasks where
         max_performance_score >= performance_score_1 (student's score within task range).
-        Order by order_index; if multiple eligible, pick first. Returns normalized dict
-        { id, title, prompt_text } to match v2_tasks shape, or None if no tasks/eligible.
+        Excludes tasks used in recent completed sessions (anti-repeat): uses coaching memory
+        recent_focus_task_ids (up to 5) when available, else last 2 sessions. Order by order_index;
+        if multiple eligible, pick first. Returns normalized dict { id, title, prompt_text }, or None.
         """
         rows = self.v2_get_focus_tasks(user_id)
         if not rows:
             return None
+        memory = self.v2_get_student_coaching_memory(user_id)
+        if memory and isinstance(memory.get("recent_focus_task_ids"), list) and memory["recent_focus_task_ids"]:
+            exclude_task_ids = set(str(t) for t in (memory["recent_focus_task_ids"] or [])[:5] if t)
+        else:
+            exclude_task_ids = set(self.v2_get_last_completed_session_task_ids(user_id, limit=2))
         score = float(performance_score_1)
         eligible = [r for r in rows if float(r.get("max_performance_score", 1.0)) >= score]
         if not eligible:
-            # Pick easiest: highest max_performance_score
             eligible = [max(rows, key=lambda r: float(r.get("max_performance_score", 1.0)))]
-        row = eligible[0]
+        # Prefer tasks not used in recent sessions (from memory or last 2)
+        not_recent = [r for r in eligible if str(r.get("id")) not in exclude_task_ids]
+        if not_recent:
+            eligible = not_recent
+        # Multi-factor: when we have recurring_issues and any task has targets, score by weakness match
+        pick_list = eligible
+        if memory and isinstance(memory.get("recurring_issues"), list) and memory["recurring_issues"]:
+            has_targets = any((r.get("targets") or []) for r in pick_list)
+            if has_targets:
+                chosen = score_and_pick_focus_task(
+                    pick_list,
+                    memory["recurring_issues"],
+                    performance_score_1,
+                )
+                if chosen:
+                    row = chosen
+                else:
+                    row = pick_list[0]
+            else:
+                row = pick_list[0]
+        else:
+            row = pick_list[0]
         text = (row.get("text") or "").strip()
         return {
             "id": row["id"],

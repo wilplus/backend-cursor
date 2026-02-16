@@ -2,6 +2,7 @@
 V2 flow: task_score, exercise/task/post-question selection.
 No themes in v1; selection is by task_score and mode_preference.
 """
+import logging
 from typing import Dict, List, Any, Optional
 
 # Task score: average of 3 components (each 0..1)
@@ -99,6 +100,67 @@ def select_warm_up_task(
         if abs(_max_score(w) - closest_score) <= TOLERANCE
     ]
     return random.choice(within_tolerance)
+
+
+# Recurring issue -> task target names for weakness-match scoring (Step 4)
+RECURRING_ISSUE_TARGETS = {
+    "too_fast": ["pacing"],
+    "too_slow": ["pacing"],
+    "high_fillers": ["fillers"],
+}
+WEAKNESS_MATCH_BONUS = 2.0
+
+
+def score_and_pick_focus_task(
+    candidates: List[Dict],
+    recurring_issues: List[str],
+    performance_score_1: float,
+) -> Optional[Dict]:
+    """
+    Multi-factor pick: choose task that best matches recurring_issues (weakness match).
+    candidates: eligible tasks (already filtered by score band and novelty).
+    recurring_issues: e.g. ["too_fast", "high_fillers"] from coaching memory.
+    Returns the best task dict (id, text, ...) or None if candidates empty.
+    Tie-break: first in list (preserves order_index preference).
+    """
+    if not candidates:
+        return None
+    wanted_targets = set()
+    for issue in (recurring_issues or []):
+        if not isinstance(issue, str) or not issue.strip():
+            continue
+        for t in RECURRING_ISSUE_TARGETS.get(issue.strip(), []):
+            wanted_targets.add(t)
+    if not wanted_targets:
+        return candidates[0]
+
+    best_task = None
+    best_score = -1.0
+    # Temporary: remove after validation. Log scoring breakdown for baseline testing.
+    _log = []
+    for task in candidates:
+        score = 0.0
+        targets = task.get("targets")
+        if isinstance(targets, list):
+            task_targets = {str(x).strip().lower() for x in targets if x}
+            for w in wanted_targets:
+                if w.lower() in task_targets:
+                    score += WEAKNESS_MATCH_BONUS
+                    break
+        _log.append({
+            "task_id": task.get("id"),
+            "weakness_score": score,
+            "total_score": score,
+        })
+        if score > best_score:
+            best_score = score
+            best_task = task
+    chosen = best_task if best_task is not None else candidates[0]
+    if _log and logging.getLogger().isEnabledFor(logging.DEBUG):
+        for entry in _log:
+            entry["chosen"] = chosen and str(chosen.get("id")) == str(entry.get("task_id"))
+        logging.debug("FOCUS_TASK_SCORING %s", _log)
+    return chosen
 
 
 def select_focus_task_for_performance_score_1(

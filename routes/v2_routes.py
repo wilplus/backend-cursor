@@ -154,6 +154,7 @@ def v2_admin_send_assignment(user_id):
         )
         if result.get("status") == "failed":
             return jsonify({"code": "EMAIL_FAILED", "error": result.get("error", "Failed to send email")}), 500
+        db.v2_mark_tutor_feedback_sent_for_user(user_id)
         return jsonify({"status": "ok", "message": "Assignment sent", "sent": result.get("sent", False)}), 200
     except Exception as e:
         sentry_sdk.capture_exception(e)

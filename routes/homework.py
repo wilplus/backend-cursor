@@ -8,6 +8,7 @@ from services.db import db
 from services.v2_flow_service import select_focus_task_for_performance_score_1
 from services.metrics_v2 import compute_performance_score_1, compute_metrics_v2
 from services.openai_service import openai_service
+from services.email_service import email_service
 from utils.metrics import count_fillers, compute_wpm
 import logging
 import time
@@ -157,7 +158,7 @@ def homework_session_status():
         if not active:
             payload = {"session": None, "has_active_session": False}
             last_completed = db.v2_get_last_completed_session(user_id)
-            if last_completed:
+            if last_completed and not last_completed.get("tutor_feedback_sent_at"):
                 completion_time = last_completed.get("completed_at") or last_completed.get("created_at")
                 deadline = _tutor_feedback_deadline_iso(completion_time, config.TUTOR_FEEDBACK_WINDOW_HOURS)
                 if deadline:
@@ -776,7 +777,9 @@ def homework_submit_post_answers(session_id):
             from config import Config
             config = Config()
             completion_time = session.get("completed_at") or session.get("created_at")
-            deadline = _tutor_feedback_deadline_iso(completion_time, config.TUTOR_FEEDBACK_WINDOW_HOURS)
+            deadline = None
+            if not session.get("tutor_feedback_sent_at"):
+                deadline = _tutor_feedback_deadline_iso(completion_time, config.TUTOR_FEEDBACK_WINDOW_HOURS)
             payload = {
                 "report_text": session.get("context_long") or "",
                 "performance_score_end": float(session.get("performance_score_end") or 0),
@@ -863,7 +866,15 @@ def homework_submit_post_answers(session_id):
 
         performance_score_1 = float(session.get("performance_score_1") or 0)
         performance_score_2 = float(session.get("performance_score_2") or final["performance_score"])
-        performance_score_end = (performance_score_1 + performance_score_2) / 2.0
+        # Improvement-weighted KPI:
+        # We weight recording 2 higher and reward positive improvement
+        # to align the score with coaching progress rather than static averaging.
+        improvement = max(0.0, performance_score_2 - performance_score_1)
+        performance_score_end = (
+            0.3 * performance_score_1
+            + 0.6 * performance_score_2
+            + 0.3 * improvement
+        )
         performance_score_end = max(0.0, min(1.0, performance_score_end))
 
         report_text = f"Your performance score: {performance_score_end:.0%}. "
@@ -915,6 +926,17 @@ def homework_submit_post_answers(session_id):
             "question_3_score": float(r3.get("score", 0)),
         }
         db.v2_update_session(session_id, user_id, session_update)
+        db.v2_upsert_student_coaching_memory(user_id, session_id)
+
+        try:
+            student_email = db.get_user_email_from_auth(user_id)
+            email_service.send_lesson_complete_to_admin(
+                user_id, session_id, report_text,
+                student_email=student_email,
+                performance_score_end=performance_score_end,
+            )
+        except Exception as mail_err:
+            logger.warning("Lesson-complete email to admin failed: %s", mail_err)
 
         _agent_log("post-answers: success, returning 200 with report", {"session_id": session_id}, "H3")
         from config import Config
@@ -1015,10 +1037,11 @@ def homework_get_report(session_id):
         }
         from config import Config
         config = Config()
-        completion_time = session.get("completed_at") or session.get("created_at")
-        deadline = _tutor_feedback_deadline_iso(completion_time, config.TUTOR_FEEDBACK_WINDOW_HOURS)
-        if deadline:
-            payload["tutor_feedback_deadline"] = deadline
+        if not session.get("tutor_feedback_sent_at"):
+            completion_time = session.get("completed_at") or session.get("created_at")
+            deadline = _tutor_feedback_deadline_iso(completion_time, config.TUTOR_FEEDBACK_WINDOW_HOURS)
+            if deadline:
+                payload["tutor_feedback_deadline"] = deadline
         return jsonify(payload), 200
     except Exception as e:
         logger.exception("Homework get report: %s", e)
