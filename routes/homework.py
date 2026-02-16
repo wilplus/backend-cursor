@@ -43,6 +43,24 @@ STATUS_POST_QUESTIONS = "post_questions"
 STATUS_COMPLETED = "completed"
 
 
+def _session_for_json(obj):
+    """Return a JSON-serializable copy of a session dict (Supabase returns datetime/datetime-like objects; Flask jsonify does not serialize them)."""
+    if obj is None:
+        return None
+    if hasattr(obj, "isoformat") and callable(getattr(obj, "isoformat", None)):
+        dt = obj
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.isoformat().replace("+00:00", "Z")
+    if isinstance(obj, uuid.UUID):
+        return str(obj)
+    if isinstance(obj, dict):
+        return {k: _session_for_json(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_session_for_json(v) for v in obj]
+    return obj
+
+
 def _tutor_feedback_deadline_iso(completed_at, window_hours: float):
     """Compute tutor_feedback_deadline (ISO 8601) from completion time + window. Returns None if invalid or deadline already passed."""
     if completed_at is None or window_hours is None or window_hours <= 0:
@@ -147,22 +165,48 @@ def homework_session_start():
 @require_auth
 def homework_session_status():
     """Get active homework session if any. Expired sessions (incomplete, older than 1h) are deleted and returned as no session so client goes to step 0. Returns raw v2_sessions row (snake_case). When no active session, includes tutor_feedback_deadline (ISO 8601) if the user just completed a lesson and the tutor feedback window has not ended."""
+    # #region agent log
+    try:
+        _uid = getattr(request, "user_id", None)
+        _agent_log("session/status entry", {"user_id": str(_uid) if _uid else None}, "E")
+    except Exception:
+        pass
+    # #endregion
     try:
         from config import Config
         config = Config()
         user_id = request.user_id
+        # #region agent log
+        _agent_log("session/status before get_active", {"user_id": str(user_id)}, "C")
+        # #endregion
         active = db.v2_get_active_homework_session(user_id)
+        # #region agent log
+        _agent_log("session/status after get_active", {"has_active": active is not None, "active_keys": list(active.keys()) if active else [], "date_types": [k for k, v in (active or {}).items() if hasattr(v, "isoformat")]}, "C")
+        # #endregion
         if active and db.v2_session_expired(active):
+            # #region agent log
+            _agent_log("session/status expiring session", {"session_id": str(active["id"])}, "D")
+            # #endregion
             db.v2_delete_session(active["id"], user_id)
             active = None
         if not active:
             payload = {"session": None, "has_active_session": False}
-            last_completed = db.v2_get_last_completed_session(user_id)
-            if last_completed and not last_completed.get("tutor_feedback_sent_at"):
-                completion_time = last_completed.get("completed_at") or last_completed.get("created_at")
-                deadline = _tutor_feedback_deadline_iso(completion_time, config.TUTOR_FEEDBACK_WINDOW_HOURS)
-                if deadline:
-                    payload["tutor_feedback_deadline"] = deadline
+            try:
+                # #region agent log
+                _agent_log("session/status no active, before get_last_completed", {}, "A")
+                # #endregion
+                last_completed = db.v2_get_last_completed_session(user_id)
+                # #region agent log
+                _agent_log("session/status after get_last_completed", {"has_last_completed": last_completed is not None, "tutor_feedback_window_hours": getattr(config, "TUTOR_FEEDBACK_WINDOW_HOURS", None)}, "A")
+                # #endregion
+                if last_completed and not last_completed.get("tutor_feedback_sent_at"):
+                    completion_time = last_completed.get("completed_at") or last_completed.get("created_at")
+                    deadline = _tutor_feedback_deadline_iso(completion_time, getattr(config, "TUTOR_FEEDBACK_WINDOW_HOURS", 24))
+                    if deadline:
+                        payload["tutor_feedback_deadline"] = deadline
+            except Exception:
+                # Missing columns (completed_at, tutor_feedback_sent_at) or DB error: still return 200 without deadline
+                pass
             return jsonify(payload), 200
 
         warm_up_task = None
@@ -182,14 +226,21 @@ def homework_session_status():
                 })
                 warm_up_task = {"id": warm_up.get("id"), "text": text}
 
+        # #region agent log
+        _agent_log("session/status about to jsonify active", {"session_id": str(active.get("id")), "has_datetime_values": [k for k, v in active.items() if hasattr(v, "isoformat")]}, "B")
+        # #endregion
+        session_serializable = _session_for_json(active)
         return jsonify({
-            "session": active,
-            "session_id": active["id"],
+            "session": session_serializable,
+            "session_id": session_serializable.get("id") or str(active["id"]),
             "has_active_session": True,
-            "warm_up_task": warm_up_task,
+            "warm_up_task": _session_for_json(warm_up_task) if warm_up_task else None,
         }), 200
 
     except Exception as e:
+        # #region agent log
+        _agent_log("session/status exception", {"type": type(e).__name__, "message": str(e)}, "ALL")
+        # #endregion
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
 
