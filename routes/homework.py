@@ -233,8 +233,13 @@ def homework_session_status():
         _sid = str(active.get("id") or "")
         _agent_log("session/status about to jsonify active", {"session_id": _sid, "session_id_len": len(_sid), "user_id": user_id, "has_datetime_values": [k for k, v in active.items() if hasattr(v, "isoformat")]}, "B")
         # #endregion
-        # Temporary: log session_id so you can run "SELECT * FROM v2_sessions WHERE id = '...'" immediately after status
-        logger.info("STATUS returning session_id: %s (run SQL for this id right after status to confirm row exists)", _sid)
+        # Debug: confirm row still exists in DB at the moment we return it (rules out "status not reading from DB")
+        _row_check = db.v2_get_session_by_id(_sid)
+        logger.info(
+            "STATUS returning session_id: %s | row_still_exists_in_db: %s",
+            _sid,
+            _row_check is not None,
+        )
         session_serializable = _session_for_json(active)
         return jsonify({
             "session": session_serializable,
