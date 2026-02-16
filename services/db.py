@@ -998,37 +998,8 @@ class DatabaseService:
         return bool(result.data and len(result.data) > 0)
 
     def v2_session_expired(self, session: dict, hours: float = 1.0) -> bool:
-        """True if session is incomplete and created_at is older than hours (same rule as cleanup)."""
-        if not session:
-            return False
-        if (session.get("status") or "").strip().lower() == "completed":
-            return False
-        created = session.get("created_at")
-        if not created:
-            return False
-        try:
-            now_utc = datetime.now(timezone.utc)
-            if isinstance(created, str):
-                created_dt = datetime.fromisoformat(created.replace("Z", "+00:00"))
-            else:
-                created_dt = created
-            if created_dt.tzinfo is None:
-                created_dt = created_dt.replace(tzinfo=timezone.utc)
-            # Never expire if created in the last 2 minutes (avoids timezone/parsing bugs)
-            age_seconds = (now_utc - created_dt).total_seconds()
-            if age_seconds < 120:
-                return False
-            # Future-dated created_at = not expired
-            if age_seconds <= 0:
-                return False
-            # If created_at looks like date-only (midnight UTC) and it's today, don't expire (parsing quirk)
-            if created_dt.hour == 0 and created_dt.minute == 0 and created_dt.second == 0:
-                if created_dt.date() == now_utc.date():
-                    return False
-            cutoff = now_utc - timedelta(hours=hours)
-            return created_dt < cutoff
-        except Exception:
-            return False
+        """True if session is incomplete and created_at is older than hours. Disabled: always returns False so the app never deletes sessions by age."""
+        return False
 
     def v2_get_incomplete_sessions_older_than(self, hours: float) -> List[dict]:
         """Return v2_sessions that are not completed and created_at is older than hours (for cleanup)."""
