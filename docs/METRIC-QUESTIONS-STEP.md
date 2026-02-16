@@ -45,3 +45,40 @@ If the frontend calls **POST** `/v2/homework/session/:id/recording-upload-url` w
 | No way to leave step | — | Add "Abandon session" button that calls abandon API and then goes to step 0. |
 
 Reference component with Abandon and error display: `docs/frontend-v2-deliverables/components/AnswerMetricQuestionsScreen.tsx`.
+
+## Debugging 404 on metric-answers
+
+When **POST** `/v2/homework/session/:id/metric-answers` returns **404** with `code: "SESSION_NOT_FOUND"` even though **GET** `/v2/homework/session/status` just returned an active session, use the following to track down the cause.
+
+### BFF in the path
+
+When the frontend uses the Next.js BFF (reference in `docs/homework-bff-routes/`):
+
+- **GET status:** Browser → `GET /api/homework/session/status` (BFF) → BFF calls backend `GET /v2/homework/session/status` with header `Authorization: Bearer <token>` (no session_id in URL).
+- **POST metric-answers:** Browser → `POST /api/homework/session/{sessionId}/metric-answers` (BFF) → BFF calls backend `POST /v2/homework/session/{sessionId}/metric-answers` with headers `Authorization: Bearer <token>` and `Content-Type: application/json`; body is forwarded as JSON. The `sessionId` comes from the Next.js route segment and is interpolated into the backend URL.
+
+So the backend receives only the headers the BFF sends (e.g. Authorization, Content-Type for metric-answers).
+
+### Exact request headers for both calls
+
+To capture **exact** request headers:
+
+- In the browser: DevTools → Network, select the request to **`/api/homework/session/status`** and the request to **`/api/homework/session/.../metric-answers`**, then copy "Request Headers". Those are what the BFF receives; the backend sees the same `Authorization` (and for metric-answers, `Content-Type` and body) as the BFF forwards.
+- On the backend: When metric-answers returns 404, the handler logs safe request metadata (header names, `Content-Type`) plus `session_id` and `user_id` (see below). Check backend logs for that entry.
+
+### Logged (session_id, user_id) on 404
+
+When the backend returns 404 from metric-answers (session not found for that `session_id` + `user_id`), it writes a log entry (e.g. via `_agent_log`) with:
+
+- `session_id` (string as received from the URL)
+- `session_id_len`, `session_id_repr` (for encoding/whitespace checks)
+- `user_id` (from the JWT)
+- `header_names`, `content_type` (safe request metadata)
+
+Use this to confirm what the backend received and to compare with the session returned by GET status.
+
+### Confirming session_id strings match exactly
+
+- **Server-side:** GET status logs the `session_id` it returns (string + length) when it serializes the active session. Compare that logged value with the `session_id` logged on the metric-answers 404; they should be identical.
+- **Client-side:** The `session_id` used in the POST metric-answers URL must be exactly the same string as `session_id` (or `session.id`) from the last GET status response—no extra/missing characters, same casing.
+- **Optional debug response:** In non-production, or when the request includes header `X-Debug-404: true`, the 404 response body includes a `debug` object with `session_id_received` and `user_id_from_token`. Use this to verify from the client what the backend saw without reading server logs.

@@ -1072,6 +1072,10 @@ class DatabaseService:
         result = q.execute()
         return result.data[0] if result.data else None
 
+    def v2_get_session_by_id(self, session_id: str):
+        """Get v2 session by id only (no user filter). For debugging 404: check if session exists and which user_id owns it."""
+        return self.v2_get_session(session_id, None)
+
     def v2_get_last_completed_session(self, user_id: str):
         """Return the most recent completed session for the user (for tutor_feedback_deadline when no active session). Includes tutor_feedback_sent_at so deadline is omitted once feedback is sent."""
         result = (

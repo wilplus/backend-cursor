@@ -230,7 +230,8 @@ def homework_session_status():
                 warm_up_task = {"id": warm_up.get("id"), "text": text}
 
         # #region agent log
-        _agent_log("session/status about to jsonify active", {"session_id": str(active.get("id")), "has_datetime_values": [k for k, v in active.items() if hasattr(v, "isoformat")]}, "B")
+        _sid = str(active.get("id") or "")
+        _agent_log("session/status about to jsonify active", {"session_id": _sid, "session_id_len": len(_sid), "user_id": user_id, "has_datetime_values": [k for k, v in active.items() if hasattr(v, "isoformat")]}, "B")
         # #endregion
         session_serializable = _session_for_json(active)
         return jsonify({
@@ -593,8 +594,33 @@ def homework_submit_metric_answers(session_id):
 
         session = db.v2_get_session(session_id, user_id)
         if not session:
-            _agent_log("metric-answers: session not found", {"session_id": session_id}, "H1")
-            return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found"}), 404
+            session_id_str = str(session_id)
+            row_by_id = db.v2_get_session_by_id(session_id)
+            log_data = {
+                "session_id": session_id_str,
+                "session_id_len": len(session_id_str),
+                "session_id_repr": repr(session_id),
+                "user_id": user_id,
+                "session_exists_by_id": row_by_id is not None,
+                "session_user_id": str(row_by_id["user_id"]) if row_by_id else None,
+                "header_names": list(request.headers.keys()) if request.headers else [],
+                "content_type": request.headers.get("Content-Type") if request.headers else None,
+            }
+            _agent_log("metric-answers: session not found", log_data, "H1")
+            resp = {"code": "SESSION_NOT_FOUND", "error": "Session not found"}
+            try:
+                from config import Config
+                config = Config()
+                if request.headers.get("X-Debug-404") or not config.is_production():
+                    resp["debug"] = {
+                        "session_id_received": session_id_str,
+                        "user_id_from_token": user_id,
+                        "session_exists_by_id": log_data["session_exists_by_id"],
+                        "session_user_id": log_data["session_user_id"],
+                    }
+            except Exception:
+                pass
+            return jsonify(resp), 404
         status = session.get("status")
         _agent_log("metric-answers: entry", {"session_id": session_id, "status": status, "has_answer_1": bool((data.get("answer_1") or data.get("metric_answer_1") or data.get("q1_keywords") or "").strip()), "has_answer_2": bool((data.get("answer_2") or data.get("metric_answer_2") or "").strip()), "has_answer_3": bool((data.get("answer_3") or data.get("metric_answer_3") or "").strip())}, "H1")
         if status != STATUS_TASK_BLOCK:
