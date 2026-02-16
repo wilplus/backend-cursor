@@ -173,8 +173,11 @@ def homework_session_status():
         pass
     # #endregion
     try:
-        from config import Config
-        config = Config()
+        try:
+            from config import Config
+            config = Config()
+        except Exception:
+            config = type("_FallbackConfig", (), {"TUTOR_FEEDBACK_WINDOW_HOURS": 24})()
         user_id = request.user_id
         # #region agent log
         _agent_log("session/status before get_active", {"user_id": str(user_id)}, "C")
