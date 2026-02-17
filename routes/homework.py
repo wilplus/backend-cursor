@@ -35,12 +35,34 @@ def _agent_log(msg, data=None, hypothesis_id=None):
         pass
 # #endregion
 
-# Homework session statuses
+# Homework session statuses (internal DB values)
 STATUS_WARM_UP = "warm_up"
 STATUS_TASK_BLOCK = "task_block"
 STATUS_FINAL_TASK_READY = "final_task_ready"
 STATUS_POST_QUESTIONS = "post_questions"
 STATUS_COMPLETED = "completed"
+
+# Public API status vocabulary. Frontend uses ONLY top-level "status"; never derive from session.status.
+PUBLIC_STATUS_NONE = "none"
+PUBLIC_STATUS_RECORDING_1_REQUIRED = "recording_1_required"
+PUBLIC_STATUS_TASK_BLOCK = "task_block"
+PUBLIC_STATUS_FINAL_TASK_READY = "final_task_ready"
+PUBLIC_STATUS_POST_QUESTIONS = "post_questions"
+PUBLIC_STATUS_COMPLETED = "completed"
+
+
+def _public_status(db_status):
+    """Map internal DB status to public API status. Frontend depends only on this."""
+    if db_status is None:
+        return PUBLIC_STATUS_NONE
+    m = {
+        STATUS_WARM_UP: PUBLIC_STATUS_RECORDING_1_REQUIRED,
+        STATUS_TASK_BLOCK: PUBLIC_STATUS_TASK_BLOCK,
+        STATUS_FINAL_TASK_READY: PUBLIC_STATUS_FINAL_TASK_READY,
+        STATUS_POST_QUESTIONS: PUBLIC_STATUS_POST_QUESTIONS,
+        STATUS_COMPLETED: PUBLIC_STATUS_COMPLETED,
+    }
+    return m.get(db_status, PUBLIC_STATUS_NONE)
 
 
 def _session_for_json(obj):
@@ -76,6 +98,19 @@ def _tutor_feedback_deadline_iso(completed_at, window_hours: float):
         if deadline <= datetime.now(timezone.utc):
             return None
         return deadline.strftime("%Y-%m-%dT%H:%M:%SZ")
+    except (ValueError, TypeError):
+        return None
+
+
+def _tutor_feedback_message(deadline_iso: str | None) -> str | None:
+    """Build a user-facing message for the step 0 screen when tutor_feedback_deadline is set. Returns None if deadline_iso is None."""
+    if not deadline_iso or not deadline_iso.strip():
+        return None
+    try:
+        dt = datetime.fromisoformat(deadline_iso.replace("Z", "+00:00"))
+        # e.g. "18 Feb 2026, 15:00 UTC"
+        formatted = dt.strftime("%d %b %Y, %H:%M UTC")
+        return f"Your coach has until {formatted} to review your last lesson and send you new homework."
     except (ValueError, TypeError):
         return None
 
@@ -118,8 +153,8 @@ def homework_session_start():
                 warm_up_task = {"id": warm_up.get("id"), "text": text}
 
             return jsonify({
+                "status": _public_status(active.get("status")),
                 "session_id": active["id"],
-                "status": active.get("status"),
                 "warm_up_task": warm_up_task,
             }), 200
 
@@ -150,8 +185,8 @@ def homework_session_start():
         })
 
         return jsonify({
+            "status": PUBLIC_STATUS_RECORDING_1_REQUIRED,
             "session_id": session["id"],
-            "status": STATUS_WARM_UP,
             "warm_up_task": {"id": warm_up.get("id"), "text": text},
         }), 201
 
@@ -193,7 +228,7 @@ def homework_session_status():
             db.v2_delete_session(active["id"], user_id)
             active = None
         if not active:
-            payload = {"session": None, "has_active_session": False}
+            payload = {"status": PUBLIC_STATUS_NONE, "session": None, "has_active_session": False}
             try:
                 # #region agent log
                 _agent_log("session/status no active, before get_last_completed", {}, "A")
@@ -207,6 +242,9 @@ def homework_session_status():
                     deadline = _tutor_feedback_deadline_iso(completion_time, getattr(config, "TUTOR_FEEDBACK_WINDOW_HOURS", 24))
                     if deadline:
                         payload["tutor_feedback_deadline"] = deadline
+                        msg = _tutor_feedback_message(deadline)
+                        if msg:
+                            payload["tutor_feedback_message"] = msg
             except Exception:
                 # Missing columns (completed_at, tutor_feedback_sent_at) or DB error: still return 200 without deadline
                 pass
@@ -242,6 +280,7 @@ def homework_session_status():
         )
         session_serializable = _session_for_json(active)
         return jsonify({
+            "status": _public_status(active.get("status")),
             "session": session_serializable,
             "session_id": session_serializable.get("id") or str(active["id"]),
             "has_active_session": True,
@@ -581,6 +620,7 @@ def homework_submit_recording_1(session_id):
 
         _agent_log("recording-1: success, returning 200 with task_block", {"recording_id": str(recording["id"])}, "H5")
         return jsonify({
+            "status": PUBLIC_STATUS_TASK_BLOCK,
             "recording_id": recording["id"],
             "task_block": task_block,
             "recording_1_processing": True,
@@ -639,7 +679,7 @@ def homework_submit_metric_answers(session_id):
             # Idempotency: already past step and final_task exists → return 200 with existing
             if status == STATUS_FINAL_TASK_READY and (session.get("final_task_text") or "").strip():
                 _agent_log("metric-answers: idempotency 200 (already final_task_ready)", {"session_id": session_id}, "H2")
-                return jsonify({"final_task": (session.get("final_task_text") or "").strip()}), 200
+                return jsonify({"status": PUBLIC_STATUS_FINAL_TASK_READY, "final_task": (session.get("final_task_text") or "").strip()}), 200
             _agent_log("metric-answers: wrong status → 409", {"session_id": session_id, "status": status}, "H1")
             return jsonify({"code": "INVALID_SESSION_STATE", "error": "Session must be in task_block for metric-answers", "status": status}), 409
 
@@ -692,7 +732,7 @@ def homework_submit_metric_answers(session_id):
         _agent_log("metric-answers: after v2_update_session", {"session_id": session_id, "update_result_is_none": update_result is None}, "H4")
 
         _agent_log("metric-answers: success, returning 200 with final_task", {"session_id": session_id}, "H5")
-        resp = {"final_task": final_task_text}
+        resp = {"status": PUBLIC_STATUS_FINAL_TASK_READY, "final_task": final_task_text}
         if use_fallback:
             resp["recording_1_fallback"] = True
             resp["message"] = "Your first recording couldn't be fully analyzed; we've used a general focus for your second recording."
@@ -853,6 +893,7 @@ def homework_submit_recording_2(session_id):
         })
 
         return jsonify({
+            "status": PUBLIC_STATUS_POST_QUESTIONS,
             "recording_id": recording["id"],
             "performance_score_2": performance_score_2,
         }), 200
@@ -928,6 +969,10 @@ def homework_submit_post_answers(session_id):
             }
             if deadline:
                 payload["tutor_feedback_deadline"] = deadline
+                msg = _tutor_feedback_message(deadline)
+                if msg:
+                    payload["tutor_feedback_message"] = msg
+            payload["status"] = PUBLIC_STATUS_COMPLETED
             return jsonify(payload), 200
         recording_2_id = session.get("recording_2_id") or session.get("recording_id")
         if status != STATUS_POST_QUESTIONS:
@@ -1069,11 +1114,18 @@ def homework_submit_post_answers(session_id):
 
         try:
             student_email = db.get_user_email_from_auth(user_id)
-            email_service.send_lesson_complete_to_admin(
+            result = email_service.send_lesson_complete_to_admin(
                 user_id, session_id, report_text,
                 student_email=student_email,
                 performance_score_end=performance_score_end,
             )
+            status = result.get("status", "unknown")
+            if status == "sent":
+                logger.info("Lesson-complete email sent to coach (ADMIN_EMAIL)")
+            elif status == "pending":
+                logger.info("Lesson-complete email not sent (emails disabled). Set SEND_EMAILS=true to enable.")
+            elif status == "failed":
+                logger.warning("Lesson-complete email failed: %s", result.get("error", "unknown"))
         except Exception as mail_err:
             logger.warning("Lesson-complete email to admin failed: %s", mail_err)
 
@@ -1082,6 +1134,7 @@ def homework_submit_post_answers(session_id):
         config = Config()
         deadline = _tutor_feedback_deadline_iso(completed_at_iso, config.TUTOR_FEEDBACK_WINDOW_HOURS)
         payload = {
+            "status": PUBLIC_STATUS_COMPLETED,
             "report_text": report_text,
             "performance_score_end": performance_score_end,
             "performance_metrics": final["metrics"],
@@ -1094,6 +1147,9 @@ def homework_submit_post_answers(session_id):
         }
         if deadline:
             payload["tutor_feedback_deadline"] = deadline
+            msg = _tutor_feedback_message(deadline)
+            if msg:
+                payload["tutor_feedback_message"] = msg
         return jsonify(payload), 200
     except Exception as e:
         _agent_log("post-answers: exception", {"error": str(e), "type": type(e).__name__}, "H5")
@@ -1181,6 +1237,9 @@ def homework_get_report(session_id):
             deadline = _tutor_feedback_deadline_iso(completion_time, config.TUTOR_FEEDBACK_WINDOW_HOURS)
             if deadline:
                 payload["tutor_feedback_deadline"] = deadline
+                msg = _tutor_feedback_message(deadline)
+                if msg:
+                    payload["tutor_feedback_message"] = msg
         return jsonify(payload), 200
     except Exception as e:
         logger.exception("Homework get report: %s", e)

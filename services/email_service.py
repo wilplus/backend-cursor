@@ -1,8 +1,10 @@
+import logging
 import resend
 from config import Config
 import sentry_sdk
 
 config = Config()
+logger = logging.getLogger(__name__)
 
 class EmailService:
     def __init__(self):
@@ -205,6 +207,10 @@ class EmailService:
         Returns dict with status "sent" | "pending" (emails off) | "failed".
         """
         if not config.SEND_EMAILS:
+            logger.info(
+                "Coach notification skipped: SEND_EMAILS is false. Set SEND_EMAILS=true to receive homework-complete emails at %s",
+                config.ADMIN_EMAIL,
+            )
             return {"status": "pending", "sent": False}
         if not self.api_key_set:
             return {"status": "failed", "sent": False, "error": "Resend API key not set"}
