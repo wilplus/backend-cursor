@@ -14,6 +14,7 @@ Run these in the **Supabase SQL Editor** for the project this app uses (idempote
 | 2 | Coaching migrations (see architecture rule) | coaching_memory, performance_profile, etc. |
 | 3 | **`migrations/add_tutor_feedback_deadline.sql`** | Adds `completed_at` on `v2_sessions` (required for step 4 → 5; avoids 500 / PGRST204) |
 | 4 | **`migrations/add_tutor_feedback_sent_at.sql`** | Adds `tutor_feedback_sent_at` |
+| 5 | **`migrations/add_index_v2_sessions_completed_lookup.sql`** | Optional: index to speed up coaching-memory "last 4 completed" query |
 
 After adding columns: **Supabase Dashboard → Settings → API → Reload schema cache** (if available).
 

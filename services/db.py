@@ -1123,7 +1123,15 @@ class DatabaseService:
         Current session is included; when loading the other 4, exclude session_id explicitly for idempotency.
         Derives recurring_issues from last 5 recording_1_performance_profile (e.g. too_fast in >=3 of 5).
         """
-        session = self.v2_get_session(session_id, user_id)
+        # Fetch only the columns we need for this upsert (faster than full session)
+        result = (
+            self.client.table("v2_sessions")
+            .select("status, performance_score_end, selected_task_id, recording_1_performance_profile")
+            .eq("id", session_id)
+            .eq("user_id", user_id)
+            .execute()
+        )
+        session = result.data[0] if result.data else None
         if not session or (session.get("status") or "").strip().lower() != "completed":
             return
         current_score = session.get("performance_score_end")
