@@ -1061,7 +1061,11 @@ def homework_submit_post_answers(session_id):
             "question_3_score": float(r3.get("score", 0)),
         }
         db.v2_update_session(session_id, user_id, session_update)
-        db.v2_upsert_student_coaching_memory(user_id, session_id)
+        try:
+            db.v2_upsert_student_coaching_memory(user_id, session_id)
+        except Exception as cm_err:
+            logger.warning("Coaching memory upsert failed (table may be missing): %s", cm_err)
+            sentry_sdk.capture_exception(cm_err)
 
         try:
             student_email = db.get_user_email_from_auth(user_id)

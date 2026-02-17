@@ -36,3 +36,16 @@ If you are setting up from scratch, run after **v2_all_in_one.sql** and any othe
 - **migrations/add_tutor_feedback_sent_at.sql** (adds `tutor_feedback_sent_at`)
 
 Both are idempotent (safe to run more than once).
+
+---
+
+## PGRST205: "Could not find the table 'public.v2_student_coaching_memory'"
+
+If you see this error when clicking **See my report** (and the first click fails but a **retry** sometimes returns the report), the **`v2_student_coaching_memory`** table is missing. The backend updates it after completing a session; if the table doesn't exist, that call fails and the first request can return 500 even though the session was already marked completed.
+
+**Fix:**
+
+1. Run **`migrations/add_v2_student_coaching_memory.sql`** in Supabase SQL Editor (creates the table). Then run **`migrations/add_recurring_issues_to_coaching_memory.sql`** if you use recurring-issues (adds a column).
+2. Reload the PostgREST schema cache in Supabase (Settings → API → Reload schema cache).
+
+**Resilience:** The backend now catches coaching-memory upsert failures and still returns the report, so the first submit can succeed even if the table is missing. You should still run the migration so coaching memory (e.g. recent focus tasks, recurring issues) is stored correctly.
