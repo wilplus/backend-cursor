@@ -36,6 +36,9 @@ def _agent_log(msg, data=None, hypothesis_id=None):
         pass
 # #endregion
 
+# TEMPORARY: Set to True to skip steps 2–4 (metric questions, final task/recording 2, post-questions). Flow: recording 1 → report only.
+TEMPORARILY_SKIP_STEPS_2_3_4 = True
+
 # Default final task when admin enables skip_metric_questions (student goes straight to recording 2)
 DEFAULT_FINAL_TASK_WHEN_SKIP_METRICS = "Do your best on your next recording. Focus on clear pacing and minimal fillers."
 
@@ -626,6 +629,14 @@ def homework_submit_recording_1(session_id):
             if existing_rid:
                 existing = db.get_recording(existing_rid, user_id)
                 if existing and (existing.get("storage_path") or "").strip() == storage_path:
+                    if TEMPORARILY_SKIP_STEPS_2_3_4:
+                        db.v2_update_session(session_id, user_id, {"status": STATUS_COMPLETING_FROM_RECORDING_1})
+                        return jsonify({
+                            "recording_id": existing["id"],
+                            "status": PUBLIC_STATUS_REPORT_GENERATING,
+                            "recording_1_processing": session.get("recording_1_processing_status") in (None, "pending"),
+                            "message": "Your report is being generated. Refresh in a moment.",
+                        }), 200
                     metric_questions = db.v2_get_metric_questions_for_flow()
                     q1 = metric_questions[0] if len(metric_questions) > 0 else {}
                     q2 = metric_questions[1] if len(metric_questions) > 1 else {}
@@ -674,6 +685,17 @@ def homework_submit_recording_1(session_id):
         })
 
         enqueue_recording_1_job(session_id, str(recording["id"]), storage_path, user_id, duration_seconds)
+
+        # TEMPORARY: skip steps 2–4 → always complete from recording 1 only (report_generating → job completes)
+        if TEMPORARILY_SKIP_STEPS_2_3_4:
+            db.v2_update_session(session_id, user_id, {"status": STATUS_COMPLETING_FROM_RECORDING_1})
+            _agent_log("recording-1: TEMPORARILY_SKIP_STEPS_2_3_4, completing from recording 1 only", {"session_id": session_id}, "H5")
+            return jsonify({
+                "status": PUBLIC_STATUS_REPORT_GENERATING,
+                "recording_id": recording["id"],
+                "recording_1_processing": True,
+                "message": "Your report is being generated. Refresh in a moment.",
+            }), 200
 
         # No focus tasks → skip step 2 and step 3; go straight to report (job will complete when it finishes)
         overrides = db.v2_get_student_overrides(user_id)

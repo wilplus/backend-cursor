@@ -35,6 +35,8 @@ Single reference for this repo. No other .md docs; everything lives here.
 
 ## Student flow: Homework only (don’t break)
 
+**TEMPORARY:** Steps 2–4 (metric questions, final task/recording 2, post-questions) are **off**. Flow is: **start → recording 1 → report**. Backend uses `TEMPORARILY_SKIP_STEPS_2_3_4 = True` in `routes/homework.py`; set to `False` to restore full flow.
+
 **Single flow** under **`/v2/homework/...`**. Auth: `Authorization: Bearer <supabase_access_token>`.
 
 **UX: Show recording right away.** On Homework page load: (1) `GET /v2/homework/session/status`. If `has_active_session` and `session`, render current step from `session.id` / `session.status`. (2) If no active session, call `POST /v2/homework/session/start` in same load (e.g. useEffect) and render warm-up task + record button immediately — no "Start homework" button.
