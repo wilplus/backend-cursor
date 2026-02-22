@@ -77,6 +77,8 @@ export default function AdminStudentProfilePage({ params }: { params: { id: stri
 
   const [overridesDraft, setOverridesDraft] = useState({
     show_exercise_step: true,
+    skip_metric_questions: false,
+    skip_post_questions: false,
     intended_emotion_prompt: "",
     keywords_prompt: "",
     emotion_check_question_text: "",
@@ -100,6 +102,8 @@ export default function AdminStudentProfilePage({ params }: { params: { id: stri
     const o = profile.overrides || {};
     setOverridesDraft({
       show_exercise_step: o.show_exercise_step !== false,
+      skip_metric_questions: o.skip_metric_questions === true,
+      skip_post_questions: o.skip_post_questions === true,
       intended_emotion_prompt: o.intended_emotion_prompt ?? "",
       keywords_prompt: o.keywords_prompt ?? "",
       emotion_check_question_text: o.emotion_check_question_text ?? "",
@@ -124,6 +128,8 @@ export default function AdminStudentProfilePage({ params }: { params: { id: stri
     setSaving(true);
     const payload: Record<string, unknown> = {
       show_exercise_step: overridesDraft.show_exercise_step,
+      skip_metric_questions: overridesDraft.skip_metric_questions,
+      skip_post_questions: overridesDraft.skip_post_questions,
       intended_emotion_prompt: overridesDraft.intended_emotion_prompt || undefined,
       keywords_prompt: overridesDraft.keywords_prompt || undefined,
       emotion_check_question_text: overridesDraft.emotion_check_question_text || undefined,
@@ -559,6 +565,39 @@ export default function AdminStudentProfilePage({ params }: { params: { id: stri
           </div>
           <p className="text-xs text-muted-foreground">
             When on, this student sees the exercise step after the 3 universal questions. When off, they skip it. Which exercise (or auto by task score) is set below.
+          </p>
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="skip_metric_questions"
+                checked={overridesDraft.skip_metric_questions}
+                onChange={(e) =>
+                  setOverridesDraft((p) => ({ ...p, skip_metric_questions: e.target.checked }))
+                }
+                className="h-4 w-4 rounded border-input"
+              />
+              <label htmlFor="skip_metric_questions" className="text-sm font-medium">
+                Skip Step 2: Metric questions
+              </label>
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="skip_post_questions"
+                checked={overridesDraft.skip_post_questions}
+                onChange={(e) =>
+                  setOverridesDraft((p) => ({ ...p, skip_post_questions: e.target.checked }))
+                }
+                className="h-4 w-4 rounded border-input"
+              />
+              <label htmlFor="skip_post_questions" className="text-sm font-medium">
+                Skip Step 4: Post-questions
+              </label>
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            When checked, the student skips that step in the homework flow. Backend returns these as <code className="rounded bg-muted px-1">skip_metric_questions</code> and <code className="rounded bg-muted px-1">skip_post_questions</code> in <code className="rounded bg-muted px-1">overrides</code>.
           </p>
           <div>
             <p className="mb-2 text-sm font-medium">Next exercise (optional, when step is on)</p>

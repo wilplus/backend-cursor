@@ -35,12 +35,17 @@ def _agent_log(msg, data=None, hypothesis_id=None):
         pass
 # #endregion
 
+# Default final task when admin enables skip_metric_questions (student goes straight to recording 2)
+DEFAULT_FINAL_TASK_WHEN_SKIP_METRICS = "Do your best on your next recording. Focus on clear pacing and minimal fillers."
+
 # Homework session statuses (internal DB values)
 STATUS_WARM_UP = "warm_up"
 STATUS_TASK_BLOCK = "task_block"
 STATUS_FINAL_TASK_READY = "final_task_ready"
 STATUS_POST_QUESTIONS = "post_questions"
 STATUS_COMPLETED = "completed"
+# No focus tasks: skip step 2 and 3; job will complete session from recording 1 only
+STATUS_COMPLETING_FROM_RECORDING_1 = "completing_from_recording_1"
 
 # Public API status vocabulary. Frontend uses ONLY top-level "status"; never derive from session.status.
 PUBLIC_STATUS_NONE = "none"
@@ -49,6 +54,7 @@ PUBLIC_STATUS_TASK_BLOCK = "task_block"
 PUBLIC_STATUS_FINAL_TASK_READY = "final_task_ready"
 PUBLIC_STATUS_POST_QUESTIONS = "post_questions"
 PUBLIC_STATUS_COMPLETED = "completed"
+PUBLIC_STATUS_REPORT_GENERATING = "report_generating"
 
 
 def _public_status(db_status):
@@ -61,6 +67,7 @@ def _public_status(db_status):
         STATUS_FINAL_TASK_READY: PUBLIC_STATUS_FINAL_TASK_READY,
         STATUS_POST_QUESTIONS: PUBLIC_STATUS_POST_QUESTIONS,
         STATUS_COMPLETED: PUBLIC_STATUS_COMPLETED,
+        STATUS_COMPLETING_FROM_RECORDING_1: PUBLIC_STATUS_REPORT_GENERATING,
     }
     return m.get(db_status, PUBLIC_STATUS_NONE)
 
@@ -175,14 +182,20 @@ def homework_session_start():
         if not session:
             return jsonify({"code": "V2_ERROR", "error": "Failed to create session"}), 500
 
+        pending_video_url, pending_video_description = db.v2_get_and_clear_pending_tutor_video(user_id)
         prefs = db.v2_get_user_metric_questions(user_id)
-        db.v2_update_session(session["id"], user_id, {
+        session_update = {
             "session_metric_question_1": (prefs.get("metric_question_1") or "").strip(),
             "session_metric_question_2": (prefs.get("metric_question_2") or "").strip(),
             "session_metric_question_3": (prefs.get("metric_question_3") or "").strip(),
             "warm_up_task_id": warm_up.get("id"),
             "warm_up_task_text": text,
-        })
+        }
+        if pending_video_url:
+            session_update["tutor_video_url"] = pending_video_url
+        if pending_video_description is not None:
+            session_update["tutor_video_description"] = pending_video_description
+        db.v2_update_session(session["id"], user_id, session_update)
 
         return jsonify({
             "status": PUBLIC_STATUS_RECORDING_1_REQUIRED,
@@ -618,6 +631,33 @@ def homework_submit_recording_1(session_id):
 
         enqueue_recording_1_job(session_id, str(recording["id"]), storage_path, user_id, duration_seconds)
 
+        # No focus tasks → skip step 2 and step 3; go straight to report (job will complete when it finishes)
+        overrides = db.v2_get_student_overrides(user_id)
+        focus_tasks = db.v2_get_focus_tasks(user_id)
+        if not focus_tasks:
+            db.v2_update_session(session_id, user_id, {"status": STATUS_COMPLETING_FROM_RECORDING_1})
+            _agent_log("recording-1: no focus tasks, completing from recording 1 only (job will generate report)", {"session_id": session_id}, "H5")
+            return jsonify({
+                "status": PUBLIC_STATUS_REPORT_GENERATING,
+                "recording_id": recording["id"],
+                "recording_1_processing": True,
+                "message": "Your report is being generated. Refresh in a moment.",
+            }), 200
+        # Coach set skip_metric_questions → skip step 2 only; student still does recording 2
+        if overrides and overrides.get("skip_metric_questions"):
+            db.v2_update_session(session_id, user_id, {
+                "status": STATUS_FINAL_TASK_READY,
+                "final_task_text": DEFAULT_FINAL_TASK_WHEN_SKIP_METRICS,
+                "metric_answers": {},
+            })
+            _agent_log("recording-1: skip_metric_questions, returning final_task_ready", {"session_id": session_id}, "H5")
+            return jsonify({
+                "status": PUBLIC_STATUS_FINAL_TASK_READY,
+                "recording_id": recording["id"],
+                "final_task": DEFAULT_FINAL_TASK_WHEN_SKIP_METRICS,
+                "recording_1_processing": True,
+            }), 200
+
         _agent_log("recording-1: success, returning 200 with task_block", {"recording_id": str(recording["id"])}, "H5")
         return jsonify({
             "status": PUBLIC_STATUS_TASK_BLOCK,
@@ -863,7 +903,13 @@ def homework_submit_recording_2(session_id):
             keywords=keywords,
             metric_definitions=metric_defs,
         )
-        performance_score_2 = prelim["performance_score"]
+        # Recording-2 uses only pace, strength, fillers (3 metrics). Emotion/keywords are not evaluated
+        # on the final recording, so we avoid the 5-metric average which would drag the score to ~0.3.
+        m = prelim.get("metrics") or {}
+        pace_n = (m.get("pace") or {}).get("normalized", 0.5)
+        strength_n = (m.get("strength") or {}).get("normalized", 0.5)
+        fillers_n = (m.get("fillers") or {}).get("normalized", 0.5)
+        performance_score_2 = max(0.0, min(1.0, (pace_n + strength_n + fillers_n) / 3.0))
 
         duration_int = int(round(duration_seconds))
         recording_data = {
@@ -892,6 +938,19 @@ def homework_submit_recording_2(session_id):
             "status": STATUS_POST_QUESTIONS,
         })
 
+        # Skip step 4 when: (1) coach set skip_post_questions, or (2) student has no post-questions (same idea as no focus tasks → skip step 2)
+        overrides = db.v2_get_student_overrides(user_id)
+        skip_step_4 = overrides and overrides.get("skip_post_questions")
+        if not skip_step_4:
+            post_questions = db.v2_get_student_post_recording_questions(user_id)
+            if not post_questions:
+                skip_step_4 = True
+        if skip_step_4:
+            session = db.v2_get_session(session_id, user_id)
+            if session and session.get("recording_2_id"):
+                payload, status = _complete_homework_session(session_id, user_id, session, recording, [])
+                return jsonify(payload), status
+
         return jsonify({
             "status": PUBLIC_STATUS_POST_QUESTIONS,
             "recording_id": recording["id"],
@@ -906,6 +965,153 @@ def homework_submit_recording_2(session_id):
         if "PGRST204" in err_msg or "schema cache" in err_msg or "column" in err_msg.lower():
             payload["hint"] = "Database schema may be missing columns or PostgREST cache stale. Run migrations for recordings and v2_sessions; reload PostgREST schema if using Supabase."
         return jsonify(payload), 500
+
+
+def _complete_homework_session(session_id, user_id, session, recording, answers):
+    """Generate report, mark session completed, update coaching memory, send email. Returns (payload_dict, 200). Used by POST post-answers and by POST recording-2 when skip_post_questions."""
+    recording_2_id = recording["id"]
+    post_question_ids = session.get("post_question_ids") or []
+    if not post_question_ids and answers:
+        post_question_ids = list({str(a.get("question_id", "")) for a in answers if a.get("question_id")})
+    student_questions = db.v2_get_student_post_recording_questions_by_ids(post_question_ids) if post_question_ids else []
+    emotion_achieved = False
+    for ans in answers:
+        qid = str(ans.get("question_id", ""))
+        if post_question_ids and qid not in post_question_ids:
+            continue
+        for q in student_questions:
+            if str(q["id"]) == qid and q.get("code") == "emotion_achieved_check":
+                text = (ans.get("answer_text") or "").strip().upper()
+                emotion_achieved = text in ("YES", "Y", "1", "TRUE")
+                break
+
+    transcript = recording.get("transcription_text") or ""
+    wpm = float(recording.get("words_per_minute") or 0)
+    filler_data = recording.get("filler_words_count") or {}
+    filler_count = int(filler_data.get("total", 0)) if isinstance(filler_data, dict) else 0
+    strength_raw = None
+    if isinstance(recording.get("performance_metrics_v2"), dict):
+        strength_raw = recording["performance_metrics_v2"].get("strength", {}).get("raw")
+    metric_answers = session.get("metric_answers") or {}
+    answer_1 = (metric_answers.get("answer_1") or "").strip()
+    keywords = [s.strip() for s in answer_1.replace(";", ",").split(",") if s.strip()] if answer_1 else []
+    metric_defs = db.v2_get_metric_definitions()
+    final = compute_metrics_v2(
+        wpm=wpm,
+        strength_raw=strength_raw,
+        filler_count=filler_count,
+        emotion_achieved=emotion_achieved,
+        transcript=transcript,
+        keywords=keywords,
+        metric_definitions=metric_defs,
+    )
+    db.update_recording(recording_2_id, {
+        "performance_score_v2": final["performance_score"],
+        "performance_metrics_v2": final["metrics"],
+        "metric_labels_snapshot_v2": final["metric_labels_snapshot"],
+    })
+
+    performance_score_1 = float(session.get("performance_score_1") or 0)
+    performance_score_2 = float(session.get("performance_score_2") or final["performance_score"])
+    improvement = max(0.0, performance_score_2 - performance_score_1)
+    performance_score_end = (
+        0.3 * performance_score_1
+        + 0.6 * performance_score_2
+        + 0.3 * improvement
+    )
+    performance_score_end = max(0.0, min(1.0, performance_score_end))
+
+    report_text = f"Your performance score: {performance_score_end:.0%}. "
+    context_short = (session.get("context_short") or "").strip()
+    metric_answers_for_report = session.get("metric_answers") or {}
+    try:
+        report_text = openai_service.generate_final_report(
+            transcript=transcript[:500],
+            pre_answers=[],
+            post_answers=[{"question_text": "", "answer_text": a.get("answer_text", "")} for a in answers],
+            wpm=wpm,
+            filler_count=filler_count,
+            filler_breakdown={},
+            user_id=user_id,
+            admin_context=db.get_user_admin_context(user_id),
+            recording_id=recording_2_id,
+            homework_context_short=context_short or None,
+            homework_metric_answers=metric_answers_for_report if metric_answers_for_report else None,
+            homework_performance_score_1=performance_score_1,
+            homework_performance_score_2=performance_score_2,
+            homework_metric_1_name="pacing",
+            homework_metric_2_name="vocal strength",
+        ) or report_text
+    except Exception as e:
+        logger.warning(f"Homework report generation failed: {e}")
+        report_text += "Details: pace, strength, fillers, emotion, keywords."
+
+    db.v2_append_context_long_entry(session_id, user_id, report_text)
+    report_row = db.v2_create_report(session_id, recording_2_id, report_text)
+
+    q1 = (session.get("session_metric_question_1") or "").strip()
+    q2 = (session.get("session_metric_question_2") or "").strip()
+    q3 = (session.get("session_metric_question_3") or "").strip()
+    custom_results = openai_service.analyze_custom_questions(transcript, [q1, q2, q3])
+    r1, r2, r3 = (custom_results + [{"analysis": "", "score": 0}] * 3)[:3]
+    completed_at_iso = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    session_update = {
+        "post_answers": answers,
+        "report_id": report_row["id"] if report_row else None,
+        "performance_score_end": performance_score_end,
+        "status": STATUS_COMPLETED,
+        "completed_at": completed_at_iso,
+        "question_1_analysis": r1.get("analysis") or "",
+        "question_1_score": float(r1.get("score", 0)),
+        "question_2_analysis": r2.get("analysis") or "",
+        "question_2_score": float(r2.get("score", 0)),
+        "question_3_analysis": r3.get("analysis") or "",
+        "question_3_score": float(r3.get("score", 0)),
+    }
+    db.v2_update_session(session_id, user_id, session_update)
+    try:
+        db.v2_upsert_student_coaching_memory(user_id, session_id)
+    except Exception as cm_err:
+        logger.warning("Coaching memory upsert failed (table may be missing): %s", cm_err)
+        sentry_sdk.capture_exception(cm_err)
+
+    try:
+        student_email = db.get_user_email_from_auth(user_id)
+        result = email_service.send_lesson_complete_to_admin(
+            user_id, session_id, report_text,
+            student_email=student_email,
+            performance_score_end=performance_score_end,
+        )
+        if result.get("status") == "sent":
+            logger.info("Lesson-complete email sent to coach (ADMIN_EMAIL)")
+        elif result.get("status") == "pending":
+            logger.info("Lesson-complete email not sent (emails disabled). Set SEND_EMAILS=true to enable.")
+        elif result.get("status") == "failed":
+            logger.warning("Lesson-complete email failed: %s", result.get("error", "unknown"))
+    except Exception as mail_err:
+        logger.warning("Lesson-complete email to admin failed: %s", mail_err)
+
+    from config import Config
+    config = Config()
+    deadline = _tutor_feedback_deadline_iso(completed_at_iso, config.TUTOR_FEEDBACK_WINDOW_HOURS)
+    payload = {
+        "status": PUBLIC_STATUS_COMPLETED,
+        "report_text": report_text,
+        "performance_score_end": performance_score_end,
+        "performance_metrics": final["metrics"],
+        "question_1_analysis": session_update["question_1_analysis"],
+        "question_1_score": session_update["question_1_score"],
+        "question_2_analysis": session_update["question_2_analysis"],
+        "question_2_score": session_update["question_2_score"],
+        "question_3_analysis": session_update["question_3_analysis"],
+        "question_3_score": session_update["question_3_score"],
+    }
+    if deadline:
+        payload["tutor_feedback_deadline"] = deadline
+        msg = _tutor_feedback_message(deadline)
+        if msg:
+            payload["tutor_feedback_message"] = msg
+    return (payload, 200)
 
 
 # ---------- Step 4: questions (GET) + post-answers (POST) ----------
@@ -1003,154 +1209,9 @@ def homework_submit_post_answers(session_id):
         if not recording:
             return jsonify({"code": "RECORDING_NOT_FOUND"}), 404
 
-        post_question_ids = session.get("post_question_ids") or []
-        if not post_question_ids and answers:
-            post_question_ids = list({str(a.get("question_id", "")) for a in answers if a.get("question_id")})
-        student_questions = db.v2_get_student_post_recording_questions_by_ids(post_question_ids)
-        emotion_achieved = False
-        for ans in answers:
-            qid = str(ans.get("question_id", ""))
-            if post_question_ids and qid not in post_question_ids:
-                continue
-            for q in student_questions:
-                if str(q["id"]) == qid and q.get("code") == "emotion_achieved_check":
-                    text = (ans.get("answer_text") or "").strip().upper()
-                    emotion_achieved = text in ("YES", "Y", "1", "TRUE")
-                    break
-
-        transcript = recording.get("transcription_text") or ""
-        wpm = float(recording.get("words_per_minute") or 0)
-        filler_data = recording.get("filler_words_count") or {}
-        filler_count = int(filler_data.get("total", 0)) if isinstance(filler_data, dict) else 0
-        strength_raw = None
-        if isinstance(recording.get("performance_metrics_v2"), dict):
-            strength_raw = recording["performance_metrics_v2"].get("strength", {}).get("raw")
-        metric_answers = session.get("metric_answers") or {}
-        answer_1 = (metric_answers.get("answer_1") or "").strip()
-        keywords = [s.strip() for s in answer_1.replace(";", ",").split(",") if s.strip()] if answer_1 else []
-        metric_defs = db.v2_get_metric_definitions()
-        final = compute_metrics_v2(
-            wpm=wpm,
-            strength_raw=strength_raw,
-            filler_count=filler_count,
-            emotion_achieved=emotion_achieved,
-            transcript=transcript,
-            keywords=keywords,
-            metric_definitions=metric_defs,
-        )
-        db.update_recording(recording_2_id, {
-            "performance_score_v2": final["performance_score"],
-            "performance_metrics_v2": final["metrics"],
-            "metric_labels_snapshot_v2": final["metric_labels_snapshot"],
-        })
-
-        performance_score_1 = float(session.get("performance_score_1") or 0)
-        performance_score_2 = float(session.get("performance_score_2") or final["performance_score"])
-        # Improvement-weighted KPI:
-        # We weight recording 2 higher and reward positive improvement
-        # to align the score with coaching progress rather than static averaging.
-        improvement = max(0.0, performance_score_2 - performance_score_1)
-        performance_score_end = (
-            0.3 * performance_score_1
-            + 0.6 * performance_score_2
-            + 0.3 * improvement
-        )
-        performance_score_end = max(0.0, min(1.0, performance_score_end))
-
-        report_text = f"Your performance score: {performance_score_end:.0%}. "
-        context_short = (session.get("context_short") or "").strip()
-        metric_answers = session.get("metric_answers") or {}
-        try:
-            report_text = openai_service.generate_final_report(
-                transcript=transcript[:500],
-                pre_answers=[],
-                post_answers=[{"question_text": "", "answer_text": a.get("answer_text", "")} for a in answers],
-                wpm=wpm,
-                filler_count=filler_count,
-                filler_breakdown={},
-                user_id=user_id,
-                admin_context=db.get_user_admin_context(user_id),
-                recording_id=recording_2_id,
-                homework_context_short=context_short or None,
-                homework_metric_answers=metric_answers if metric_answers else None,
-                homework_performance_score_1=performance_score_1,
-                homework_performance_score_2=performance_score_2,
-                homework_metric_1_name="pacing",
-                homework_metric_2_name="vocal strength",
-            ) or report_text
-        except Exception as e:
-            logger.warning(f"Homework report generation failed: {e}")
-            report_text += "Details: pace, strength, fillers, emotion, keywords."
-
-        db.v2_append_context_long_entry(session_id, user_id, report_text)
-        report_row = db.v2_create_report(session_id, recording_2_id, report_text)
-
-        # Custom metric questions: LLM analysis per question (pitch_variance + 3 custom questions flow)
-        q1 = (session.get("session_metric_question_1") or "").strip()
-        q2 = (session.get("session_metric_question_2") or "").strip()
-        q3 = (session.get("session_metric_question_3") or "").strip()
-        custom_results = openai_service.analyze_custom_questions(transcript, [q1, q2, q3])
-        r1, r2, r3 = (custom_results + [{"analysis": "", "score": 0}] * 3)[:3]
-        completed_at_iso = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-        session_update = {
-            "post_answers": answers,
-            "report_id": report_row["id"] if report_row else None,
-            "performance_score_end": performance_score_end,
-            "status": STATUS_COMPLETED,
-            "completed_at": completed_at_iso,
-            "question_1_analysis": r1.get("analysis") or "",
-            "question_1_score": float(r1.get("score", 0)),
-            "question_2_analysis": r2.get("analysis") or "",
-            "question_2_score": float(r2.get("score", 0)),
-            "question_3_analysis": r3.get("analysis") or "",
-            "question_3_score": float(r3.get("score", 0)),
-        }
-        db.v2_update_session(session_id, user_id, session_update)
-        try:
-            db.v2_upsert_student_coaching_memory(user_id, session_id)
-        except Exception as cm_err:
-            logger.warning("Coaching memory upsert failed (table may be missing): %s", cm_err)
-            sentry_sdk.capture_exception(cm_err)
-
-        try:
-            student_email = db.get_user_email_from_auth(user_id)
-            result = email_service.send_lesson_complete_to_admin(
-                user_id, session_id, report_text,
-                student_email=student_email,
-                performance_score_end=performance_score_end,
-            )
-            status = result.get("status", "unknown")
-            if status == "sent":
-                logger.info("Lesson-complete email sent to coach (ADMIN_EMAIL)")
-            elif status == "pending":
-                logger.info("Lesson-complete email not sent (emails disabled). Set SEND_EMAILS=true to enable.")
-            elif status == "failed":
-                logger.warning("Lesson-complete email failed: %s", result.get("error", "unknown"))
-        except Exception as mail_err:
-            logger.warning("Lesson-complete email to admin failed: %s", mail_err)
-
-        _agent_log("post-answers: success, returning 200 with report", {"session_id": session_id}, "H3")
-        from config import Config
-        config = Config()
-        deadline = _tutor_feedback_deadline_iso(completed_at_iso, config.TUTOR_FEEDBACK_WINDOW_HOURS)
-        payload = {
-            "status": PUBLIC_STATUS_COMPLETED,
-            "report_text": report_text,
-            "performance_score_end": performance_score_end,
-            "performance_metrics": final["metrics"],
-            "question_1_analysis": session_update["question_1_analysis"],
-            "question_1_score": session_update["question_1_score"],
-            "question_2_analysis": session_update["question_2_analysis"],
-            "question_2_score": session_update["question_2_score"],
-            "question_3_analysis": session_update["question_3_analysis"],
-            "question_3_score": session_update["question_3_score"],
-        }
-        if deadline:
-            payload["tutor_feedback_deadline"] = deadline
-            msg = _tutor_feedback_message(deadline)
-            if msg:
-                payload["tutor_feedback_message"] = msg
-        return jsonify(payload), 200
+        _agent_log("post-answers: success, calling _complete_homework_session", {"session_id": session_id}, "H3")
+        payload, status = _complete_homework_session(session_id, user_id, session, recording, answers)
+        return jsonify(payload), status
     except Exception as e:
         _agent_log("post-answers: exception", {"error": str(e), "type": type(e).__name__}, "H5")
         logger.error(f"Homework post-answers: {str(e)}")

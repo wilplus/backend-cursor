@@ -1,3 +1,4 @@
+import html
 import logging
 import resend
 from config import Config
@@ -7,6 +8,10 @@ config = Config()
 logger = logging.getLogger(__name__)
 
 class EmailService:
+    @staticmethod
+    def _escape_html(s: str) -> str:
+        return html.escape(s, quote=True) if s else ""
+
     def __init__(self):
         # Set Resend API key (required for resend.Emails.send())
         if config.RESEND_API_KEY:
@@ -260,26 +265,40 @@ class EmailService:
             sentry_sdk.capture_exception(e)
             return {"status": "failed", "sent": False, "error": str(e)}
 
-    def send_assignment_to_student(self, to_email: str, frontend_url: str) -> dict:
+    def send_assignment_to_student(self, to_email: str, frontend_url: str, video_url: str = None, video_description: str = None) -> dict:
         """
         Send "you have new homework" email to a student. Link points to the app (e.g. dashboard).
-        Returns dict with status "sent" | "pending" (emails off) | "failed".
+        If video_url is set, include a "Watch video" link and optional video_description. Returns dict with status "sent" | "pending" (emails off) | "failed".
         """
         if not config.SEND_EMAILS:
             return {"status": "pending", "sent": False}
         if not self.api_key_set:
             return {"status": "failed", "sent": False, "error": "Resend API key not set"}
         app_url = (frontend_url or config.FRONTEND_URL or "").rstrip("/")
-        subject = "You have new homework"
-        text = f"Your coach has assigned you new practice.\n\nGet started here: {app_url}\n"
+        dashboard_url = f"{app_url}/dashboard" if app_url else app_url
+        subject = "New homework from your coach"
+        text = f"Your coach has assigned you new practice.\n\nStart homework: {dashboard_url}\n\n— willab team"
+        if video_url:
+            text = f"Your coach has assigned you new practice.\n\nWatch a message from your coach: {video_url}\n\nStart homework: {dashboard_url}\n\n— willab team"
+            if video_description:
+                text = f"Your coach has assigned you new practice.\n\n{video_description}\n\nWatch video: {video_url}\n\nStart homework: {dashboard_url}\n\n— willab team"
+        video_block = ""
+        if video_url:
+            desc_html = f"<p style=\"margin:0 0 8px 0;color:#555;\">{self._escape_html(video_description)}</p>\n  " if video_description else ""
+            video_block = f"  {desc_html}<p style=\"margin:0 0 16px 0;\">Your coach has recorded a message for you: <a href=\"{video_url}\">Watch video</a>.</p>\n"
         html = f"""
 <!DOCTYPE html>
 <html>
-<head><meta charset="utf-8"><style>body {{ font-family: Arial,sans-serif; line-height: 1.6; color: #333; }}</style></head>
-<body>
-<p>Your coach has assigned you new practice.</p>
-<p><a href="{app_url}" style="background:#f97316;color:#fff;padding:10px 20px;text-decoration:none;border-radius:6px;">Get started</a></p>
-<p>Or copy this link: {app_url}</p>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+<body style="margin:0;padding:0;font-family:Arial,sans-serif;line-height:1.6;color:#333;background:#f5f5f5;">
+<div style="max-width:600px;margin:0 auto;padding:24px;background:#fff;">
+  <h2 style="margin:0 0 16px 0;font-size:20px;font-weight:600;">New homework from your coach</h2>
+  <p style="margin:0 0 24px 0;">Your coach has assigned you new practice.</p>
+{video_block}  <p style="margin:0 0 24px 0;">
+    <a href="{dashboard_url}" style="display:inline-block;padding:12px 24px;background:#f97316;color:#fff;text-decoration:none;border-radius:6px;font-weight:500;">Start homework</a>
+  </p>
+  <p style="margin:24px 0 0 0;font-size:13px;color:#666;">— willab team</p>
+</div>
 </body>
 </html>
 """

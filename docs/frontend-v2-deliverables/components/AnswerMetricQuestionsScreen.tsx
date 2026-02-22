@@ -6,7 +6,7 @@
  * metric_question_3.text as labels. Submits answer_1, answer_2, answer_3 to metric-answers.
  *
  * Important: Show "Abandon session" on this step so the user is not stuck. Handle 409 (recording
- * still processing) and 422 (validation) by displaying the backend message. See docs/METRIC-QUESTIONS-STEP.md.
+ * still processing) and 422 (validation) by displaying the backend message. See docs/HOMEWORK-AND-PERFORMANCE.md (§3.4, §9.3).
  */
 
 import React, { useState } from "react";

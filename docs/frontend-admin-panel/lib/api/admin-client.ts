@@ -40,6 +40,8 @@ export interface StudentProfile {
   email: string | null;
   overrides: {
     show_exercise_step?: boolean;
+    skip_metric_questions?: boolean;
+    skip_post_questions?: boolean;
     intended_emotion_prompt?: string;
     keywords_prompt?: string;
     emotion_check_question_text?: string;

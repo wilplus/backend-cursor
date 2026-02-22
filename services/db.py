@@ -3,6 +3,8 @@ from config import Config
 from typing import List, Tuple
 from datetime import datetime, timedelta, timezone
 import sentry_sdk
+import json
+import time
 
 from services.v2_flow_service import score_and_pick_focus_task
 
@@ -1695,6 +1697,8 @@ class DatabaseService:
         result = self.client.table("v2_sessions").insert({"user_id": user_id, "status": "warm_up"}).execute()
         return result.data[0] if result.data else None
 
+    # Context fields: context_short (session summary), context_long (report text), coach_notes (speaker_profile). See docs/CONTEXT-FIELDS.md.
+
     def v2_append_context_long_entry(self, session_id: str, user_id: str, text: str):
         """Append one report entry to context_long_entries with current UTC timestamp. Returns updated session."""
         from datetime import datetime, timezone
@@ -1772,7 +1776,8 @@ class DatabaseService:
         "intended_emotion_prompt", "keywords_prompt", "emotion_check_question_text",
         "assigned_post_question_ids", "assigned_next_exercise_id", "assigned_next_task_ids",
         "show_exercise_step", "assigned_warm_up_task_id",
-        "pitch_variance_ideal",
+        "pitch_variance_ideal", "pending_tutor_video_url", "pending_tutor_video_description",
+        "skip_metric_questions", "skip_post_questions",
     }
 
     def v2_get_user_metric_questions(self, user_id: str):
@@ -1804,11 +1809,64 @@ class DatabaseService:
         return self.v2_get_user_metric_questions(user_id)
 
     def v2_upsert_student_overrides(self, user_id: str, data: dict):
-        payload = {k: v for k, v in data.items() if k in self._V2_OVERRIDES_COLUMNS}
+        """Merge request data with existing overrides so partial PUTs do not clear other fields (e.g. skip_metric_questions, skip_post_questions)."""
+        existing = self.v2_get_student_overrides(user_id) or {}
+        merged = {}
+        for col in self._V2_OVERRIDES_COLUMNS:
+            if col in data:
+                merged[col] = data[col]
+            elif col in existing:
+                merged[col] = existing[col]
+            else:
+                merged[col] = None
+        for key in ("skip_metric_questions", "skip_post_questions"):
+            if merged.get(key) is None:
+                merged[key] = False
+        payload = {k: v for k, v in merged.items() if v is not None or k in ("skip_metric_questions", "skip_post_questions")}
         payload["user_id"] = user_id
         payload["updated_at"] = datetime.now(timezone.utc).isoformat()
+        # #region agent log
+        try:
+            open("/Users/arturwillonski/Documents/backend-cursor/.cursor/debug.log", "a").write(json.dumps({"message": "DB upsert overrides", "data": {"data_keys": list(data.keys()), "existing_keys": list(existing.keys()), "merged_skip_metric": merged.get("skip_metric_questions"), "merged_skip_post": merged.get("skip_post_questions"), "payload_has_skip_metric": "skip_metric_questions" in payload, "payload_has_skip_post": "skip_post_questions" in payload, "payload_skip_metric": payload.get("skip_metric_questions"), "payload_skip_post": payload.get("skip_post_questions")}, "hypothesisId": "H2,H5", "location": "db.py:v2_upsert_student_overrides", "timestamp": int(time.time() * 1000)}) + "\n")
+        except Exception:
+            pass
+        # #endregion
         result = self.client.table("v2_student_overrides").upsert(payload, on_conflict="user_id").execute()
+        # #region agent log
+        try:
+            out = result.data[0] if result.data else None
+            open("/Users/arturwillonski/Documents/backend-cursor/.cursor/debug.log", "a").write(json.dumps({"message": "DB upsert result", "data": {"result_keys": list(out.keys()) if out else None, "result_skip_metric": out.get("skip_metric_questions") if out else None, "result_skip_post": out.get("skip_post_questions") if out else None}, "hypothesisId": "H2,H4", "location": "db.py:v2_upsert_student_overrides after execute", "timestamp": int(time.time() * 1000)}) + "\n")
+        except Exception:
+            pass
+        # #endregion
         return result.data[0] if result.data else None
+
+    def v2_set_pending_tutor_video(self, user_id: str, video_url: str, video_description: str = None):
+        """Store video URL and optional description for the next session. Call when admin sends assignment with video_url."""
+        payload = {"pending_tutor_video_url": video_url}
+        if video_description is not None:
+            payload["pending_tutor_video_description"] = (video_description or "").strip() or None
+        self.v2_upsert_student_overrides(user_id, payload)
+        return True
+
+    def v2_get_and_clear_pending_tutor_video(self, user_id: str):
+        """Return (url, description) for the pending tutor video and clear both. Used on session/start to attach to the new session."""
+        row = self.client.table("v2_student_overrides").select("pending_tutor_video_url, pending_tutor_video_description").eq("user_id", user_id).execute()
+        url = None
+        description = None
+        if row.data:
+            r = row.data[0]
+            if r.get("pending_tutor_video_url"):
+                url = (r["pending_tutor_video_url"] or "").strip() or None
+            if r.get("pending_tutor_video_description"):
+                description = (r["pending_tutor_video_description"] or "").strip() or None
+        if url is not None or description is not None:
+            self.client.table("v2_student_overrides").update({
+                "pending_tutor_video_url": None,
+                "pending_tutor_video_description": None,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }).eq("user_id", user_id).execute()
+        return (url, description)
 
     def v2_create_report(self, session_v2_id: str, recording_id: str, report_text: str):
         result = self.client.table("v2_reports").insert({

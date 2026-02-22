@@ -352,73 +352,11 @@ Respond with ONLY valid JSON in this exact format:
         # Get max words from admin context or default
         max_words = admin_context.get("max_words", 120) if admin_context else 120
 
-        # Homework flow: 3-paragraph rubric (Performance Overview, Metric Analysis, Actionable Next Steps)
+        # Homework flow: report is only filler count + time in good vocal range (no 3-paragraph narrative).
         if homework_metric_answers is not None:
-            perf_1 = homework_performance_score_1 if homework_performance_score_1 is not None else 0
-            perf_2 = homework_performance_score_2 if homework_performance_score_2 is not None else 0
-            perf_end = (perf_1 + perf_2) / 2.0
-            a1 = homework_metric_answers.get("answer_1") or homework_metric_answers.get("metric_answer_1") or ""
-            a2 = homework_metric_answers.get("answer_2") or homework_metric_answers.get("metric_answer_2") or ""
-            a3 = homework_metric_answers.get("answer_3") or homework_metric_answers.get("metric_answer_3") or ""
-            post_answers_text_hw = "\n".join([f"Q: {a.get('question_text', '')}\nA: {a.get('answer_text', '')}" for a in post_answers])
-            ctx_short = (homework_context_short or "").strip() or "(no context from first recording)"
-            homework_report_prompt = f"""Generate a performance report for this student's speaking exercise.
-
-INPUT DATA:
-- Context (from first recording): {ctx_short}
-- Performance Score (average): {perf_end:.1%}
-  - Recording 1 score: {perf_1:.1%} (based on strength, fillers, pacing)
-  - Recording 2 score: {perf_2:.1%} (based on strength, fillers, pacing, {homework_metric_1_name}, {homework_metric_2_name})
-- Student's self-ratings after first recording: 1. {a1}  2. {a2}  3. {a3}
-- Student's answers to reflective questions: {post_answers_text_hw or "(none)"}
-
-REQUIRED STRUCTURE (3 paragraphs):
-
-Paragraph 1 - Performance Overview:
-- State the overall performance score ({perf_end:.1%})
-- Highlight improvement or decline from recording 1 to recording 2
-- Mention strongest and weakest metrics
-
-Paragraph 2 - Detailed Metric Analysis:
-- Comment on strength (vocal projection and confidence)
-- Comment on fillers (um, uh, like, etc.)
-- Comment on pacing (speed and rhythm)
-- Compare student's self-ratings ({a1}, {a2}, {a3}) vs actual measured performance
-- Point out any discrepancies (e.g. "You rated yourself 4/5 on pacing, but measurements show rushing")
-
-Paragraph 3 - Actionable Next Steps:
-- One specific thing to keep doing (strength)
-- One specific thing to improve (weakness)
-- One concrete exercise or technique to practice
-
-CONSTRAINTS:
-- Total length: 75-120 words (strict). No more than 120 words.
-- Paragraph 1: One or two short sentences only (overview + improvement or decline).
-- Paragraph 2: One or two short sentences (main metric takeaway; one line on self-ratings vs measured if relevant).
-- Paragraph 3: One short sentence per bullet (keep / improve / exercise). No filler.
-- Tone: Encouraging but honest. Use specific numbers. End with one short motivating line.
-
-Generate the report now:"""
-            try:
-                response = self.client.chat.completions.create(
-                    model="gpt-4o-mini",
-                    messages=[
-                        {"role": "system", "content": "You are a supportive speech coach. Generate a 3-paragraph report following the required structure. Encouraging but honest tone. Strict maximum 120 words total; aim for 75-120 words. Be concise; one or two short sentences per paragraph."},
-                        {"role": "user", "content": homework_report_prompt}
-                    ],
-                    temperature=0.4,
-                    max_tokens=220,
-                )
-                text = (response.choices[0].message.content or "").strip()
-                if text:
-                    # Enforce ~120 words max; trim to 750 chars to stay under
-                    words = text.split()
-                    if len(words) > 120:
-                        text = " ".join(words[:120])
-                    return text[:750]
-            except Exception as e:
-                sentry_sdk.capture_exception(e)
-            # fall through to generic report if homework report fails
+            # TODO: when time-in-range is available from metrics (e.g. strength −20 dB ± 5 dB), pass it in and format as "X seconds (Y% of recording)".
+            time_in_range_line = "Time in good vocal range: not yet tracked."
+            return f"Report: {filler_count} filler words detected. {time_in_range_line}"
 
         prompt = f"""Generate a concise, analytical coaching report for a speech analysis session.
 {homework_section}

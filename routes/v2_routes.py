@@ -7,8 +7,11 @@ from auth import require_auth
 from routes.admin import require_admin
 from services.db import db
 from services.email_service import email_service
+from services.video_url_validation import validate_video_url
 import logging
 import sentry_sdk
+import json
+import time
 
 logger = logging.getLogger(__name__)
 v2_bp = Blueprint("v2", __name__, url_prefix="/v2")
@@ -84,8 +87,24 @@ def v2_admin_student_profile(user_id):
     try:
         email = db.get_user_email_from_auth(user_id)
         raw_overrides = db.v2_get_student_overrides(user_id)
+        # #region agent log
+        try:
+            _ro = raw_overrides or {}
+            _log_path = "/Users/arturwillonski/Documents/backend-cursor/.cursor/debug.log"
+            with open(_log_path, "a") as _f:
+                _f.write(json.dumps({"message": "GET student profile overrides", "data": {"raw_overrides_keys": list(_ro.keys()), "skip_metric_questions": _ro.get("skip_metric_questions"), "skip_post_questions": _ro.get("skip_post_questions")}, "hypothesisId": "H3", "location": "v2_routes.py:GET profile", "timestamp": int(time.time() * 1000)}) + "\n")
+        except Exception as _e:
+            try:
+                with open("/Users/arturwillonski/Documents/backend-cursor/debug_override.log", "a") as _f:
+                    _f.write(json.dumps({"message": "GET student profile overrides", "data": {"raw_overrides_keys": list(_ro.keys()), "skip_metric_questions": _ro.get("skip_metric_questions"), "skip_post_questions": _ro.get("skip_post_questions")}, "hypothesisId": "H3", "location": "v2_routes.py:GET profile", "timestamp": int(time.time() * 1000), "primary_log_error": str(_e)}) + "\n")
+            except Exception:
+                pass
+        # #endregion
         overrides = dict(raw_overrides) if raw_overrides else {}
         overrides["assigned_next_task_ids"] = overrides.get("assigned_next_task_ids") or []
+        # Ensure skip flags are always booleans for consistent admin UI (false when never set)
+        overrides["skip_metric_questions"] = bool(raw_overrides.get("skip_metric_questions") if raw_overrides else False)
+        overrides["skip_post_questions"] = bool(raw_overrides.get("skip_post_questions") if raw_overrides else False)
         speaker_profile = db.v2_get_speaker_profile(user_id)
         task_warm_up = db.v2_get_warm_up_tasks(user_id)
         task_focus = db.v2_get_focus_tasks(user_id)
@@ -122,18 +141,63 @@ def v2_admin_student_speaker_profile(user_id):
         return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
 
 
+def _coerce_override_bool(value, key: str):
+    """Coerce a value to bool for skip_metric_questions / skip_post_questions. Returns (bool, None) or (None, error_msg)."""
+    if value is True or value is False:
+        return (value, None)
+    if value in ("true", "1", 1):
+        return (True, None)
+    if value in ("false", "0", "", 0, None):
+        return (False, None)
+    return (None, f"{key} must be a boolean (true/false)")
+
+
 @v2_bp.route("/admin/students/<user_id>/overrides", methods=["PUT"])
 @require_admin
 def v2_admin_student_overrides(user_id):
-    """Set prompts, assigned post Qs (0 or any number of question IDs), next exercise/task."""
+    """Set prompts, assigned post Qs, skip_metric_questions, skip_post_questions, next exercise/task."""
     try:
         data = request.get_json() or {}
+        # #region agent log
+        _log_path = "/Users/arturwillonski/Documents/backend-cursor/.cursor/debug.log"
+        try:
+            with open(_log_path, "a") as _f:
+                _f.write(json.dumps({"message": "PUT overrides request body", "data": {"body_keys": list(data.keys()), "skip_metric_questions": data.get("skip_metric_questions"), "skip_post_questions": data.get("skip_post_questions")}, "hypothesisId": "H1", "location": "v2_routes.py:PUT overrides", "timestamp": int(time.time() * 1000)}) + "\n")
+        except Exception as _e:
+            try:
+                with open("/Users/arturwillonski/Documents/backend-cursor/debug_override.log", "a") as _f:
+                    _f.write(json.dumps({"message": "PUT overrides request body", "data": {"body_keys": list(data.keys()), "skip_metric_questions": data.get("skip_metric_questions"), "skip_post_questions": data.get("skip_post_questions")}, "hypothesisId": "H1", "location": "v2_routes.py:PUT overrides", "timestamp": int(time.time() * 1000), "primary_log_error": str(_e)}) + "\n")
+            except Exception:
+                pass
+        # #endregion
+        # Normalize camelCase from frontend to snake_case
+        if "skipMetricQuestions" in data and "skip_metric_questions" not in data:
+            data["skip_metric_questions"] = data.pop("skipMetricQuestions", None)
+        if "skipPostQuestions" in data and "skip_post_questions" not in data:
+            data["skip_post_questions"] = data.pop("skipPostQuestions", None)
         ids = data.get("assigned_post_question_ids")
         if ids is not None and not isinstance(ids, list):
             return jsonify({"code": "INVALID_INPUT", "error": "assigned_post_question_ids must be an array"}), 400
+        for key in ("skip_metric_questions", "skip_post_questions"):
+            if key in data:
+                val, err = _coerce_override_bool(data[key], key)
+                if err:
+                    return jsonify({"code": "INVALID_INPUT", "error": err}), 400
+                data[key] = val
         db.v2_upsert_student_overrides(user_id, data)
         return jsonify({"status": "ok"}), 200
     except Exception as e:
+        # #region agent log
+        try:
+            with open("/Users/arturwillonski/Documents/backend-cursor/.cursor/debug.log", "a") as _f:
+                _f.write(json.dumps({"message": "PUT overrides exception", "data": {"error": str(e), "error_type": type(e).__name__}, "hypothesisId": "H4", "location": "v2_routes.py:PUT overrides except", "timestamp": int(time.time() * 1000)}) + "\n")
+        except Exception as _e2:
+            try:
+                with open("/Users/arturwillonski/Documents/backend-cursor/debug_override.log", "a") as _f:
+                    _f.write(json.dumps({"message": "PUT overrides exception", "data": {"error": str(e), "error_type": type(e).__name__}, "hypothesisId": "H4", "location": "v2_routes.py:PUT overrides except", "timestamp": int(time.time() * 1000), "primary_log_error": str(_e2)}) + "\n")
+            except Exception:
+                pass
+        # #endregion
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
 
@@ -141,16 +205,27 @@ def v2_admin_student_overrides(user_id):
 @v2_bp.route("/admin/students/<user_id>/send-assignment", methods=["POST"])
 @require_admin
 def v2_admin_send_assignment(user_id):
-    """Send homework email to the student. Requires student to have an email in Supabase Auth."""
+    """Send homework email to the student. Body: optional { \"video_url\": \"https://...\", \"video_description\": \"...\" }. Requires student to have an email in Supabase Auth."""
     try:
         from config import Config
         config = Config()
+        body = request.get_json(silent=True) or {}
+        video_url = validate_video_url(body.get("video_url"))
+        if body.get("video_url") is not None and video_url is None:
+            return jsonify({"code": "INVALID_VIDEO_URL", "error": "video_url must be a valid URL (http/https, max 2048 chars)"}), 400
+        video_description = (body.get("video_description") or "").strip() if body.get("video_description") is not None else None
+        if video_description is not None and len(video_description) > 2000:
+            return jsonify({"code": "INVALID_VIDEO_DESCRIPTION", "error": "video_description must be at most 2000 characters"}), 400
         student_email = db.get_user_email_from_auth(user_id)
         if not student_email or not student_email.strip():
             return jsonify({"code": "NO_EMAIL", "error": "Student has no email in auth"}), 400
+        if video_url:
+            db.v2_set_pending_tutor_video(user_id, video_url, video_description)
         result = email_service.send_assignment_to_student(
             to_email=student_email.strip(),
             frontend_url=config.FRONTEND_URL,
+            video_url=video_url,
+            video_description=video_description,
         )
         if result.get("status") == "failed":
             return jsonify({"code": "EMAIL_FAILED", "error": result.get("error", "Failed to send email")}), 500

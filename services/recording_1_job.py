@@ -15,6 +15,7 @@ from services.openai_service import openai_service
 from services.v2_flow_service import select_focus_task_for_performance_score_1
 from utils.metrics import count_fillers, compute_wpm
 from services.metrics_v2 import compute_performance_score_1, build_recording_1_performance_profile
+from services.homework_completion import complete_session_recording_1_only
 
 logger = logging.getLogger(__name__)
 
@@ -136,6 +137,10 @@ def _process_one(payload: dict):
             "recording_1_processing_status": "completed",
             "recording_1_performance_profile": performance_profile,
         })
+        # No focus tasks: session was set to completing_from_recording_1 → generate report and mark completed
+        session_after = db.v2_get_session(session_id, user_id)
+        if session_after and session_after.get("status") == "completing_from_recording_1":
+            complete_session_recording_1_only(session_id, user_id)
         logger.info("recording_1_job: completed session_id=%s recording_id=%s", session_id, recording_id)
     except Exception as e:
         logger.exception("recording_1_job: failed session_id=%s recording_id=%s: %s", session_id, recording_id, e)
