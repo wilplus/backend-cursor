@@ -39,3 +39,15 @@ The backend returns and accepts **snake_case** fields in the single `overrides` 
 - [ ] **UI:** Toggles are bound to the draft fields that are loaded and sent as above.
 
 Reference implementation in this repo: `docs/frontend-admin-panel/app/admin/students/[id]/page.tsx` and `docs/frontend-admin-panel/lib/api/admin-client.ts`.
+
+---
+
+## Step 2: "Could not load questions" → skip to report (step 5)
+
+When the user is on step 2 and questions fail to load (e.g. "Could not load questions. Try continuing or refresh."), the frontend should **skip straight to the report** instead of leaving them stuck.
+
+- **Endpoint:** `POST /v2/homework/session/<session_id>/complete-from-recording-1` (no body).
+- **When to call:** After recording 1 is done, when step 2 (metric questions) fails to load or the user taps "Continue" from the error state.
+- **Success (200):** Response is the same shape as POST post-answers: `status: "completed"`, `report_text`, `performance_score_end`, `performance_metrics`, `question_1_analysis` / `question_1_score`, etc. Show the report (step 5) with this payload.
+- **409 RECORDING_1_PROCESSING:** Recording is still being analyzed. Show "Your recording is still being analyzed. Please wait a moment and try again." and optionally retry or poll GET session/status until ready, then call this endpoint again.
+- **409 INVALID_SESSION_STATE:** Session is not in step 2 or report-generating; refetch GET session/status and show the correct step.

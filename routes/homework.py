@@ -9,6 +9,7 @@ from services.v2_flow_service import select_focus_task_for_performance_score_1
 from services.metrics_v2 import compute_performance_score_1, compute_metrics_v2
 from services.openai_service import openai_service
 from services.email_service import email_service
+from services.homework_completion import complete_session_recording_1_only
 from utils.metrics import count_fillers, compute_wpm
 import logging
 import time
@@ -426,6 +427,49 @@ def homework_get_task_block(session_id):
 
     except Exception as e:
         logger.error(f"Homework get task-block: {str(e)}")
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
+
+
+@homework_bp.route("/session/<session_id>/complete-from-recording-1", methods=["POST"])
+@require_auth
+def homework_complete_from_recording_1(session_id):
+    """Skip step 2 and 3: complete session from recording 1 only and return report (step 5). Use when questions fail to load or no focus task."""
+    try:
+        from config import Config
+        config = Config()
+        user_id = request.user_id
+        session = db.v2_get_session(session_id, user_id)
+        if not session:
+            return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found"}), 404
+        status = session.get("status")
+        if status not in (STATUS_TASK_BLOCK, STATUS_COMPLETING_FROM_RECORDING_1):
+            return jsonify({
+                "code": "INVALID_SESSION_STATE",
+                "error": "Session must be in step 2 (task_block) or report-generating to skip to report",
+                "status": status,
+            }), 409
+        if session.get("recording_1_processing_status") == "pending":
+            return jsonify({
+                "code": "RECORDING_1_PROCESSING",
+                "message": "Your recording is still being analyzed. Please wait a moment and try again.",
+            }), 409
+        if not session.get("recording_1_id"):
+            return jsonify({"code": "INVALID_STATE", "error": "No recording 1"}), 400
+        payload = complete_session_recording_1_only(session_id, user_id, allow_task_block=True)
+        if not payload:
+            return jsonify({"code": "V2_ERROR", "error": "Could not complete session from recording 1"}), 500
+        payload["status"] = PUBLIC_STATUS_COMPLETED
+        completed_at_iso = payload.pop("completed_at_iso", None)
+        deadline = _tutor_feedback_deadline_iso(completed_at_iso, getattr(config, "TUTOR_FEEDBACK_WINDOW_HOURS", 24)) if completed_at_iso else None
+        if deadline:
+            payload["tutor_feedback_deadline"] = deadline
+            msg = _tutor_feedback_message(deadline)
+            if msg:
+                payload["tutor_feedback_message"] = msg
+        return jsonify(payload), 200
+    except Exception as e:
+        logger.exception("Homework complete-from-recording-1: %s", e)
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
 

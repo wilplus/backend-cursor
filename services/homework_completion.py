@@ -15,23 +15,58 @@ logger = logging.getLogger(__name__)
 
 STATUS_COMPLETED = "completed"
 
+COACH_FEEDBACK_MESSAGE = (
+    "Your coach has 24 hours to analyse your homework and send a feedback on your email!"
+)
 
-def complete_session_recording_1_only(session_id: str, user_id: str) -> None:
+
+def _build_report_recording_1_only(
+    transcript: str,
+    wpm: float,
+    filler_count: int,
+    metrics: dict,
+) -> str:
+    """Build a fixed report for recording-1-only flow: transcript, filler count, pace & strength, coach message. No LLM, no blank sections."""
+    lines = []
+    lines.append("**Your recording**")
+    lines.append("")
+    lines.append(transcript.strip() or "(No transcript available.)")
+    lines.append("")
+    lines.append("**Metrics**")
+    pace = metrics.get("pace", {})
+    lines.append(f"- Pace: {wpm:.0f} words per minute" + (f" — {pace.get('explanation', '')}" if pace.get("explanation") else ""))
+    fillers = metrics.get("fillers", {})
+    lines.append(f"- Filler words: {filler_count}" + (f" — {fillers.get('explanation', '')}" if fillers.get("explanation") else ""))
+    strength = metrics.get("strength", {})
+    strength_expl = strength.get("explanation") or (f"Loudness {strength.get('raw')}" if strength.get("raw") is not None else "Loudness (pending)")
+    lines.append(f"- Strength: {strength_expl}")
+    lines.append("")
+    lines.append(COACH_FEEDBACK_MESSAGE)
+    return "\n".join(lines)
+
+
+def complete_session_recording_1_only(session_id: str, user_id: str, allow_task_block: bool = False):
     """
-    Load session (must be in completing_from_recording_1) and recording_1;
-    compute metrics, generate report, mark session completed. No recording_2.
+    Load session and recording_1; compute metrics, generate report, mark session completed. No recording_2.
+    Session must be in completing_from_recording_1, or in task_block if allow_task_block=True (e.g. skip from step 2).
+    Returns dict with report payload (report_text, performance_score_end, performance_metrics, question_*_analysis/score, completed_at_iso) or None if not run.
     """
     session = db.v2_get_session(session_id, user_id)
-    if not session or session.get("status") != "completing_from_recording_1":
-        return
+    status = session.get("status") if session else None
+    allowed = ("completing_from_recording_1", "task_block") if allow_task_block else ("completing_from_recording_1",)
+    if not session or status not in allowed:
+        return None
+    if status == "task_block":
+        db.v2_update_session(session_id, user_id, {"status": "completing_from_recording_1"})
+        session = db.v2_get_session(session_id, user_id)
     recording_1_id = session.get("recording_1_id")
     if not recording_1_id:
         logger.warning("complete_session_recording_1_only: no recording_1_id session_id=%s", session_id)
-        return
+        return None
     recording = db.get_recording(recording_1_id, user_id)
     if not recording:
         logger.warning("complete_session_recording_1_only: recording not found recording_id=%s", recording_1_id)
-        return
+        return None
 
     transcript = recording.get("transcription_text") or ""
     wpm = float(recording.get("words_per_minute") or 0)
@@ -58,29 +93,12 @@ def complete_session_recording_1_only(session_id: str, user_id: str) -> None:
 
     performance_score_1 = float(session.get("performance_score_1") or 0)
     performance_score_end = max(0.0, min(1.0, performance_score_1))
-    context_short = (session.get("context_short") or "").strip()
-    report_text = f"Your performance score: {performance_score_end:.0%}. "
-    try:
-        report_text = openai_service.generate_final_report(
-            transcript=transcript[:500],
-            pre_answers=[],
-            post_answers=[],
-            wpm=wpm,
-            filler_count=filler_count,
-            filler_breakdown={},
-            user_id=user_id,
-            admin_context=db.get_user_admin_context(user_id),
-            recording_id=recording_1_id,
-            homework_context_short=context_short or None,
-            homework_metric_answers=None,
-            homework_performance_score_1=performance_score_1,
-            homework_performance_score_2=performance_score_1,
-            homework_metric_1_name="pacing",
-            homework_metric_2_name="vocal strength",
-        ) or report_text
-    except Exception as e:
-        logger.warning("Homework report (recording-1 only) failed: %s", e)
-        report_text += "Details: pace, strength, fillers."
+    report_text = _build_report_recording_1_only(
+        transcript=transcript,
+        wpm=wpm,
+        filler_count=filler_count,
+        metrics=final["metrics"],
+    )
 
     db.v2_append_context_long_entry(session_id, user_id, report_text)
     report_row = db.v2_create_report(session_id, recording_1_id, report_text)
@@ -120,3 +138,15 @@ def complete_session_recording_1_only(session_id: str, user_id: str) -> None:
         logger.warning("Lesson-complete email failed: %s", mail_err)
 
     logger.info("complete_session_recording_1_only: done session_id=%s", session_id)
+    return {
+        "report_text": report_text,
+        "performance_score_end": performance_score_end,
+        "performance_metrics": final["metrics"],
+        "question_1_analysis": r1.get("analysis") or "",
+        "question_1_score": float(r1.get("score", 0)),
+        "question_2_analysis": r2.get("analysis") or "",
+        "question_2_score": float(r2.get("score", 0)),
+        "question_3_analysis": r3.get("analysis") or "",
+        "question_3_score": float(r3.get("score", 0)),
+        "completed_at_iso": completed_at_iso,
+    }
