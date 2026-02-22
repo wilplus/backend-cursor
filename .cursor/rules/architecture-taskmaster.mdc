@@ -35,7 +35,7 @@ Single reference for this repo. No other .md docs; everything lives here.
 
 ## Student flow: Homework only (don’t break)
 
-**TEMPORARY:** Steps 2–4 (metric questions, final task/recording 2, post-questions) are **off**. Flow is: **start → recording 1 → report**. Backend uses `TEMPORARILY_SKIP_STEPS_2_3_4 = True` in `routes/homework.py`; set to `False` to restore full flow.
+**TEMPORARY:** Steps 2–4 are **fully removed** (code deleted). Flow is: **start → recording 1 → report** only. To restore: see `docs/TEMPORARY-REMOVED-STEPS-2-3-4-BACKUP.md` or git history.
 
 **Single flow** under **`/v2/homework/...`**. Auth: `Authorization: Bearer <supabase_access_token>`.
 
