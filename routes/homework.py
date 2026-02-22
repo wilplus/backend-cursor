@@ -439,9 +439,18 @@ def homework_recording_upload_url(session_id):
         session = db.v2_get_session(session_id, user_id)
         if not session:
             return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found"}), 404
-        if session.get("status") != STATUS_WARM_UP:
-            _agent_log("recording-upload-url: 409 rec=1 wrong status", {"session_id": session_id, "status": session.get("status")}, "H_upload")
-            return jsonify({"code": "INVALID_SESSION_STATE", "error": "Session must be in warm_up for recording-1", "status": session.get("status")}), 409
+        status = session.get("status")
+        if status != STATUS_WARM_UP:
+            # Already past recording 1 (e.g. report generating or completed) — return 200 so frontend doesn't 409
+            if status in (STATUS_COMPLETING_FROM_RECORDING_1, STATUS_COMPLETED):
+                return jsonify({
+                    "already_submitted": True,
+                    "storage_path": None,
+                    "bucket": config.AUDIO_BUCKET_NAME,
+                    "message": "You already submitted your recording. Your report is being generated or ready.",
+                }), 200
+            _agent_log("recording-upload-url: 409 rec=1 wrong status", {"session_id": session_id, "status": status}, "H_upload")
+            return jsonify({"code": "INVALID_SESSION_STATE", "error": "Session must be in warm_up for recording-1", "status": status}), 409
 
         storage_path = _storage_path_for_session(user_id, session_id)
         return jsonify({
