@@ -29,7 +29,7 @@ Single reference for this repo. No other .md docs; everything lives here.
 - **Install:** `pip install -r requirements.txt`
 - **Env:** Copy `.env.example` to `.env`. Required: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_JWT_SECRET`, `OPENAI_API_KEY`, `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, `ADMIN_EMAIL`, `FRONTEND_URL`. Optional: `SENTRY_DSN`, `ENV`, `SEND_EMAILS`.
 - **Run:** `python app.py` (local). Railway: set env in dashboard; Procfile used.
-- **Migrations:** Run **`migrations/v2_all_in_one.sql`** in Supabase SQL Editor (idempotent). Then run coaching migrations in order: **`add_v2_student_coaching_memory.sql`**, **`add_recording_1_performance_profile.sql`**, **`add_recurring_issues_to_coaching_memory.sql`**, **`add_focus_task_targets_and_difficulty.sql`**. Then **`add_tutor_feedback_deadline.sql`** (adds `completed_at`; required for step 4→5) and **`add_tutor_feedback_sent_at.sql`**. Then Settings → API → Reload schema cache if available. Full 0→5 checklist and performance: **`docs/HOMEWORK-AND-PERFORMANCE.md`**.
+- **Migrations:** Run **`migrations/v2_all_in_one.sql`** in Supabase SQL Editor (idempotent). Then run coaching migrations in order: **`add_v2_student_coaching_memory.sql`**, **`add_recording_1_performance_profile.sql`**, **`add_recurring_issues_to_coaching_memory.sql`**, **`add_focus_task_targets_and_difficulty.sql`**. Then **`add_tutor_feedback_deadline.sql`** (adds `completed_at`; required for step 4→5) and **`add_tutor_feedback_sent_at.sql`**. Then Settings → API → Reload schema cache if available. Full flow checklist and performance: **`docs/HOMEWORK-AND-PERFORMANCE.md`**.
 
 ---
 
@@ -50,7 +50,7 @@ Single reference for this repo. No other .md docs; everything lives here.
 7. **Post-answers** — `POST /v2/homework/session/<id>/post-answers`, body `{ answers: [ { question_id, answer_text } ] }` → `{ report_text, performance_score_end, performance_metrics }`. **Report (homework):** 3 paragraphs (overview, metric analysis, next steps). Status → `completed`. **Coaching memory:** Right after marking session completed, `db.v2_upsert_student_coaching_memory(user_id, session_id)` updates `v2_student_coaching_memory`: `last_5_scores`, `recent_focus_task_ids`, and `recurring_issues` (derived from last 5 sessions’ `recording_1_performance_profile`: e.g. too_fast in ≥3 of 5 → `"too_fast"`).
 8. **Status** — `GET /v2/homework/session/status` → `{ session | null, session_id?, has_active_session, tutor_feedback_deadline?, tutor_feedback_message? }`. Session may include **`tutor_video_url`** and **`tutor_video_description`** (see **`docs/FRONTEND-VIDEO-AND-DESCRIPTION.md`**). When no active session and the user recently completed a lesson (tutor hasn’t sent feedback yet), response includes **tutor_feedback_deadline** (ISO 8601) and **tutor_feedback_message** (user-facing string). **Frontend:** On the step 0 screen (no active session), show **tutor_feedback_message** when present (e.g. info banner: “Your coach has until … to review your last lesson and send you new homework.”).
 
-Session statuses: `warm_up` → `task_block` → `final_task_ready` → `post_questions` → `completed`.
+Session statuses (possible values; flow can skip): `warm_up`, `task_block`, `final_task_ready`, `post_questions`, `completing_from_recording_1`, `completed`. The student flow is **status-driven**, not a fixed 0→5 sequence: e.g. no focus tasks → after recording-1 status may be `report_generating` then `completed`; step 2 can skip to report via POST complete-from-recording-1; overrides can skip step 2 or 4.
 
 ---
 

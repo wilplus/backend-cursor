@@ -71,7 +71,7 @@
 | 4    | Post-questions | Answers reflective Qs (or none) | `post_questions`   | GET status, GET questions, POST post-answers. **No questions:** frontend may auto-submit post-answers with `answers: []` and use response for report. |
 | 5    | Report         | Views report and score      | `completed`        | **After post-answers:** frontend uses **POST post-answers response** (report_text, performance_score_end) to show step 5. GET status does **not** return completed sessions. |
 
-- **Source of truth for step:** **GET session/status** → **session.status** only. Frontend must derive step from this and **overwrite** local state on every successful status response. No overriding from URL or cache.
+- **Source of truth for step:** **GET session/status** → **session.status** only. Frontend must derive step from this and **overwrite** local state on every successful status response. The flow can **skip steps** (e.g. `report_generating` then `completed` after one recording; or POST complete-from-recording-1 from step 2); do not enforce a strict 0→5 sequence.
 - **After step-advancing actions:** For recording-1, metric-answers, recording-2, frontend sets a **UI step floor** (min step the UI may show), then calls **GET session/status** and applies; displayed step = **max(stepFromStatus, uiStepFloor)** so stale status does not move the UI backward. **After post-answers:** frontend does **not** refetch status for the report; it uses the post-answers response body to set step 5 and report content (because GET status does not return completed sessions).
 - **Recording-upload-url:** **POST only** (not GET). Call with body `{ "recording": "1" }` only when step is 1 (`warm_up`); with `{ "recording": "2" }` only when step is 3 (`final_task_ready`). Opening the URL in the browser address bar sends GET and will not return the backend JSON (e.g. 409 body); test with POST (e.g. fetch from console or Network tab).
 
@@ -88,7 +88,7 @@
 
 - sessionId = `res.session_id ?? res.session?.id ?? null`
 - status = `res.session?.status ?? null`
-- step = from status: warm_up→1, task_block→2, final_task_ready→3, post_questions→4, completed→5
+- step = from status: warm_up→1, task_block→2, final_task_ready→3, post_questions→4, report_generating→show “report generating”, completed→5 (flow can skip; status may jump)
 - warmUpText = `res.warm_up_task?.text ?? res.session?.warm_up_task_text ?? ""`
 - Step 2 questions: build task block from `res.session?.session_metric_question_1`, `session_metric_question_2`, `session_metric_question_3` (or GET task-block if backend exposes it and block still missing)
 - finalTaskText = `res.session?.final_task_text ?? ""`

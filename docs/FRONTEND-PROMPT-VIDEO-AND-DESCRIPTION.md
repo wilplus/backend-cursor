@@ -35,7 +35,7 @@ Your tasks:
 - **Layout:**
   - If `tutor_video_description` is non-empty, show it **above** the video link (plain text; no HTML from backend).
   - Show a **“Watch video”** link with `href={session.tutor_video_url}`, `target="_blank"`, `rel="noopener"`. Optionally embed (e.g. YouTube iframe) if you detect the domain; a link is sufficient.
-- Do not change the rest of the homework flow (steps 0–5, status, or other API contracts).
+- Do not change the rest of the homework flow (status-driven, status, or other API contracts).
 
 ### 3. Checklist before you’re done
 

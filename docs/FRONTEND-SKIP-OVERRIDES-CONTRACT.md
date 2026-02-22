@@ -51,3 +51,19 @@ When the user is on step 2 and questions fail to load (e.g. "Could not load ques
 - **Success (200):** Response is the same shape as POST post-answers: `status: "completed"`, `report_text`, `performance_score_end`, `performance_metrics`, `question_1_analysis` / `question_1_score`, etc. Show the report (step 5) with this payload.
 - **409 RECORDING_1_PROCESSING:** Recording is still being analyzed. Show "Your recording is still being analyzed. Please wait a moment and try again." and optionally retry or poll GET session/status until ready, then call this endpoint again.
 - **409 INVALID_SESSION_STATE:** Session is not in step 2 or report-generating; refetch GET session/status and show the correct step.
+
+---
+
+## Progress bar / performance score on report (step 5)
+
+All report responses (POST complete-from-recording-1, POST post-answers, GET report) include:
+
+- **`performance_score_end`** — The score to show on the main progress bar (0–1 or display as 0–100%).
+- **`recording_count`** — `1` or `2`.
+- **`performance_score_1`** — Score from the first (warm-up) recording.
+- **`performance_score_2`** — Score from the second recording; only present when `recording_count === 2`. When `recording_count === 1`, use `performance_score_1` (same as `performance_score_end`) for the bar.
+
+**Frontend logic:**
+
+- If **`recording_count === 1`:** Show one progress bar with `performance_score_end` (or `performance_score_1`; they are equal). Label e.g. “Your score” or “Performance (1 recording)”.
+- If **`recording_count === 2`:** Show the main bar with `performance_score_end` (end score). Optionally show warm-up vs final: `performance_score_1` and `performance_score_2`.

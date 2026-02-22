@@ -4,6 +4,7 @@ Used when the student has no focus tasks: job sets status to completing_from_rec
 then when the job finishes it calls this to generate report and mark completed.
 """
 import logging
+import re
 from datetime import datetime, timezone
 
 from services.db import db
@@ -20,17 +21,27 @@ COACH_FEEDBACK_MESSAGE = (
 )
 
 
+def _first_n_sentences(text: str, n: int = 2) -> str:
+    """Return at most n sentences from text (split on . ! ?)."""
+    if not (text or "").strip():
+        return ""
+    # Split on sentence-ending punctuation, keep delimiters
+    parts = re.split(r"(?<=[.!?])\s+", text.strip())
+    return " ".join(parts[:n]).strip() if parts else text.strip()[:200]
+
+
 def _build_report_recording_1_only(
     transcript: str,
     wpm: float,
     filler_count: int,
     metrics: dict,
 ) -> str:
-    """Build a fixed report for recording-1-only flow: transcript, filler count, pace & strength, coach message. No LLM, no blank sections."""
+    """Build a fixed report for recording-1-only flow: max 2 sentences from transcript, filler count, pace & strength, coach message."""
     lines = []
     lines.append("**Your recording**")
     lines.append("")
-    lines.append(transcript.strip() or "(No transcript available.)")
+    excerpt = _first_n_sentences(transcript, 2)
+    lines.append(excerpt or "(No transcript available.)")
     lines.append("")
     lines.append("**Metrics**")
     pace = metrics.get("pace", {})
@@ -141,6 +152,8 @@ def complete_session_recording_1_only(session_id: str, user_id: str, allow_task_
     return {
         "report_text": report_text,
         "performance_score_end": performance_score_end,
+        "performance_score_1": performance_score_end,
+        "recording_count": 1,
         "performance_metrics": final["metrics"],
         "question_1_analysis": r1.get("analysis") or "",
         "question_1_score": float(r1.get("score", 0)),

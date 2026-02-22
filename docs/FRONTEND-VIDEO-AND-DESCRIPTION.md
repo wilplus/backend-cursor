@@ -113,4 +113,4 @@ If only the URL is set, show only the “Watch video” link.
 - [ ] **Student:** When `session.tutor_video_url` is set, show a “Watch video” link (and optionally embed); when `session.tutor_video_description` is set, show it above or beside the link.
 - [ ] **Student:** Video block appears in one clear place (e.g. top of flow or step 0 or report step).
 
-No change to the rest of the homework flow (steps 0–5, status, or other API contracts). The backend already returns `tutor_video_url` and `tutor_video_description` in the session from GET session/status once the migrations are applied.
+No change to the rest of the homework flow (status-driven, status, or other API contracts). The backend already returns `tutor_video_url` and `tutor_video_description` in the session from GET session/status once the migrations are applied.

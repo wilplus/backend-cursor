@@ -1,6 +1,6 @@
 # Homework flow & performance — single reference
 
-This document is the single reference for: how performance scores are calculated, how the task (focus task + final task text) is generated, the homework flow (0→5), the frontend contract (status, applyStatusToState, GET/abandon/refresh), backend invariants, coaching memory, and troubleshooting.
+This document is the single reference for: how performance scores are calculated, how the task (focus task + final task text) is generated, the homework flow (status-driven; steps can be skipped), the frontend contract (status, applyStatusToState, GET/abandon/refresh), backend invariants, coaching memory, and troubleshooting.
 
 ---
 
@@ -155,7 +155,9 @@ POST metric-answers:
 
 ---
 
-## 3. Homework flow (0→5)
+## 3. Homework flow (status-driven; steps can be skipped)
+
+The flow is **status-driven**. The backend does **not** require a strict 0→5 sequence: status can jump (e.g. to `report_generating` or `completed` after recording-1 when there are no focus tasks, or from step 2 to report via POST complete-from-recording-1). Frontend should derive the displayed step from `status` and handle all status values (including skips).
 
 ### 3.1 Status vocabulary (public API)
 
@@ -166,9 +168,10 @@ Frontend must use **only** top-level `status`. Backend returns:
 - `task_block` — step 2 (metric questions)
 - `final_task_ready` — step 3 (final recording)
 - `post_questions` — step 4 (reflective questions)
+- `report_generating` — report being generated from recording 1 only (poll until `completed`)
 - `completed` — step 5 (report)
 
-Mapping to step: none→0, recording_1_required→1, task_block→2, final_task_ready→3, post_questions→4, completed→5.
+Mapping to step: none→0, recording_1_required→1, task_block→2, final_task_ready→3, post_questions→4, report_generating→show “report generating” then poll, completed→5.
 
 ### 3.2 Endpoints
 
@@ -205,9 +208,9 @@ GET status does **not** return `task_block`, `final_task`, or `report_text`; tho
 
 ### 4.1 Principles
 
-- **Backend is the single source of truth.** Never downgrade or override the step derived from `status`.
-- **Each step transition is driven only by the mutation response.** Do not call GET status after a mutation to set step.
-- **GET status only on cold load** (mount, refresh, tab refocus). Never call GET status inside a mutation handler to set step.
+- **Backend is the single source of truth.** Derive the displayed step from `status` only. The flow can skip steps (e.g. 1→report when no focus tasks, or 2→report via complete-from-recording-1); do not force a strict 0→5 order.
+- **Each step transition is driven by the mutation response or GET status.** Do not assume step N+1 always follows step N.
+- **GET status on cold load** (mount, refresh, tab refocus) and when polling (e.g. for `report_generating`). Do not call GET status inside a mutation handler only to “fix” step; use the mutation response.
 
 ### 4.2 applyStatusToState
 
@@ -215,7 +218,7 @@ GET status does **not** return `task_block`, `final_task`, or `report_text`; tho
 - Step from `mapStatusToStep(res.status)` only. No floors, caps, Math.max, or refs.
 - When `status === "none"`: full reset (step 0, clear session and step-specific state).
 - Other fields (session_id, warm_up_task, task_block, final_task, report_text, performance_score_2, performance_score_end) set only when present in `res`. Use `res.report_text` (backend sends `report_text`, not `report`).
-- **Never downgrade step:** If GET returns `status: "task_block"`, render step 2 even if task_block payload is missing (handle via Option A or B below).
+- **Step from status only:** If GET returns `status: "task_block"`, render step 2 even if task_block payload is missing (handle via Option A or B below). If status is `completed` or `report_generating`, show report or “generating” accordingly; do not force a lower step.
 
 ### 4.3 Refresh strategy
 

@@ -1142,6 +1142,9 @@ def _complete_homework_session(session_id, user_id, session, recording, answers)
         "status": PUBLIC_STATUS_COMPLETED,
         "report_text": report_text,
         "performance_score_end": performance_score_end,
+        "performance_score_1": performance_score_1,
+        "performance_score_2": performance_score_2,
+        "recording_count": 2,
         "performance_metrics": final["metrics"],
         "question_1_analysis": session_update["question_1_analysis"],
         "question_1_score": session_update["question_1_score"],
@@ -1206,9 +1209,15 @@ def homework_submit_post_answers(session_id):
             deadline = None
             if not session.get("tutor_feedback_sent_at"):
                 deadline = _tutor_feedback_deadline_iso(completion_time, config.TUTOR_FEEDBACK_WINDOW_HOURS)
+            has_rec_2 = bool(session.get("recording_2_id"))
+            perf_1 = float(session.get("performance_score_1") or 0)
+            perf_2 = float(session.get("performance_score_2") or 0) if has_rec_2 else perf_1
             payload = {
                 "report_text": session.get("context_long") or "",
                 "performance_score_end": float(session.get("performance_score_end") or 0),
+                "performance_score_1": perf_1,
+                "performance_score_2": perf_2,
+                "recording_count": 2 if has_rec_2 else 1,
                 "performance_metrics": metrics,
                 "question_1_analysis": session.get("question_1_analysis") or "",
                 "question_1_score": float(session.get("question_1_score") or 0),
@@ -1286,8 +1295,9 @@ def homework_get_report(session_id):
             except Exception:
                 pass
 
+        has_rec_2 = bool(session.get("recording_2_id"))
         perf_1 = float(session.get("performance_score_1") or 0)
-        perf_2 = float(session.get("performance_score_2") or 0)
+        perf_2 = float(session.get("performance_score_2") or 0) if has_rec_2 else perf_1
         perf_end = float(session.get("performance_score_end") or 0)
         scores = {
             "warmup": round(perf_1 * 100),
@@ -1332,6 +1342,10 @@ def homework_get_report(session_id):
         payload = {
             "report_text": report_text,
             "scores": scores,
+            "performance_score_end": perf_end,
+            "performance_score_1": perf_1,
+            "performance_score_2": perf_2,
+            "recording_count": 2 if has_rec_2 else 1,
             "final_recording": final_recording,
             "performance_history": performance_history,
         }

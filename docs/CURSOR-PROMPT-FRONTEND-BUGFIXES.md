@@ -1,15 +1,15 @@
 # Frontend Cursor prompt: willab bugfixes (production-ready)
 
-You are a senior frontend engineer working on **willab** (willpower lab), the speech coaching app: Next.js frontend with BFF (API routes proxy to Flask backend). The app runs a **5-step homework flow** for students: warm-up recording → metric questions → final recording → post-questions → report. Your task is to support **five backend bugfixes** and implement the **admin + student UI for the video feature** without breaking the flow or the existing API contract.
+You are a senior frontend engineer working on **willab** (willpower lab), the speech coaching app: Next.js frontend with BFF (API routes proxy to Flask backend). The app has a **status-driven homework flow** for students (warm-up → metric questions → final recording → post-questions → report). The flow can **skip steps** (e.g. no focus tasks → report after recording-1 only; or step 2 → report via complete-from-recording-1). Your task is to support **five backend bugfixes** and implement the **admin + student UI for the video feature** without breaking the API contract.
 
 ---
 
 ## Architecture context
 
 - **BFF:** Next.js API routes under `src/app/api/homework/*` and `src/app/api/admin/*` proxy to the backend (`/v2/homework/*`, `/v2/admin/*`). Preserve request/response shapes; do not strip `status` or rename fields (e.g. `report_text`).
-- **Student flow:** `HomeworkFlowCard.tsx` (or equivalent) drives steps 0–5. **Single source of truth:** top-level `status` from backend. Use `applyStatusToState(res)` after every mutation and on cold load; never downgrade step. See `docs/HOMEWORK-AND-PERFORMANCE.md` (in the backend repo or copied) for the full frontend contract.
+- **Student flow:** `HomeworkFlowCard.tsx` (or equivalent) drives the step from backend `status`. **Single source of truth:** top-level `status`. Use `applyStatusToState(res)` after mutations and on cold load. The flow is status-driven and can skip steps (e.g. `report_generating` then `completed` after one recording); do not enforce a strict 0→5 sequence. See `docs/HOMEWORK-AND-PERFORMANCE.md` for the full contract.
 - **Admin:** Admin pages and API client for students, tasks, warm-ups, post-questions, speaker profile, and **send assignment**. Reference: `docs/frontend-admin-panel/` in the backend repo.
-- **Key contracts:** Status values `none` | `recording_1_required` | `task_block` | `final_task_ready` | `post_questions` | `completed`. Step = map from status only. Report data comes from POST post-answers response (`report_text`, `performance_score_end`) and/or GET session when available.
+- **Key contracts:** Status values `none` | `recording_1_required` | `task_block` | `final_task_ready` | `post_questions` | `report_generating` | `completed`. Step = map from status only; flow can skip steps. Report data comes from POST post-answers, POST complete-from-recording-1, or GET report/session when available.
 
 ---
 
@@ -92,4 +92,4 @@ You are a senior frontend engineer working on **willab** (willpower lab), the sp
 - [ ] **Email:** No frontend change; optional: trigger send and check inbox.
 - [ ] **Video:** Admin can enter video URL and send assignment; student sees the video on the homework page when `tutor_video_url` is present in the session.
 
-**Critical:** Do not change the homework flow (steps 0–5, status-driven, applyStatusToState). Do not remove or rename API calls (e.g. keep using `report_text`). Add the video field and UI only where described; keep the rest of the contract unchanged.
+**Critical:** Keep the homework flow status-driven (applyStatusToState; flow can skip steps). Do not remove or rename API calls (e.g. keep using `report_text`). Add the video field and UI only where described; keep the rest of the contract unchanged.
