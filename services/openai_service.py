@@ -513,6 +513,52 @@ Generate the report:"""
             sentry_sdk.capture_exception(e)
             return (transcript or "")[:400]
 
+    def generate_coach_insight(
+        self,
+        context_short: str,
+        transcript_excerpt: str,
+        filler_breakdown: dict,
+        filler_count: int,
+        performance_score: float,
+        performance_history_scores: list,
+    ) -> str:
+        """Two sentences for report view: (1) context from 1st recording + filler words; (2) progress from chart + relevancy (on topic, connected)."""
+        if not self.client:
+            return (
+                f"Your recording had {filler_count} filler words. "
+                f"Your score this time is {round(performance_score * 100)}/100."
+            )
+        try:
+            filler_str = ", ".join(f"{k}: {v}" for k, v in (filler_breakdown or {}).items()) or "none"
+            history_str = ", ".join(str(round(s * 100)) for s in (performance_history_scores or [])[-5:]) or "none"
+            system = (
+                "You write exactly 2 short sentences for a speaking coach report. "
+                "Sentence 1: reference the context/summary of what they said and their filler words (count and which ones). "
+                "Sentence 2: reference their progress (scores over recent sessions) and whether their answer was on topic and connected to the task. "
+                "Be encouraging and specific. No bullet points, no extra lines. Output only the 2 sentences."
+            )
+            user = (
+                f"Context from recording: {(_sanitize_context_short(context_short) or 'N/A')[:400]}\n"
+                f"Transcript excerpt (for relevancy): {(transcript_excerpt or '')[:600]}\n"
+                f"Filler words: total {filler_count}, breakdown: {filler_str}\n"
+                f"Recent session scores (oldest to newest, 0-100): {history_str}\n"
+                f"This session score: {round(performance_score * 100)}"
+            )
+            response = self.client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user},
+                ],
+                temperature=0.3,
+                max_tokens=120,
+            )
+            out = (response.choices[0].message.content or "").strip()
+            return out if out else f"Your recording had {filler_count} filler words. Score: {round(performance_score * 100)}/100."
+        except Exception as e:
+            sentry_sdk.capture_exception(e)
+            return f"Your recording had {filler_count} filler words. Your score this time is {round(performance_score * 100)}/100."
+
     def generate_final_task(
         self,
         context_short: str,

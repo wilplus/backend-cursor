@@ -65,7 +65,7 @@ The frontend must use only the **top-level `status`** returned by the API (not r
 | POST | `/v2/homework/session/<session_id>/recording-upload-url` | Get a storage path and bucket for direct upload. Body `{ "recording": "1" }`. Only `"1"` is supported. If session is already `completing_from_recording_1` or `completed`, returns 200 with `already_submitted: true` (no 409). |
 | POST | `/v2/homework/session/<session_id>/recording-1` | Submit recording 1. Either multipart with `audio` file (and optional `duration_seconds`), or JSON with `storage_path` and `duration_seconds`. Creates a minimal recording row, sets session to `task_block` then immediately to `completing_from_recording_1`, enqueues a background job, and returns `status: "report_generating"`, `recording_id`, `recording_1_processing: true`, `message`. |
 | POST | `/v2/homework/session/<session_id>/complete-from-recording-1` | If the frontend is stuck (e.g. “Could not load questions”), complete the session from recording 1 only and return the report payload. Session must be `task_block` or `completing_from_recording_1`; recording 1 must be processed. |
-| GET | `/v2/homework/session/<session_id>/report` | Get report for a **completed** session: `report_text`, `scores` (warmup, final, overall 0–100), `final_recording`, `performance_history`, optional `tutor_feedback_deadline` / `tutor_feedback_message`. |
+| GET | `/v2/homework/session/<session_id>/report` | Get report for a **completed** session. See **§3.5 GET report payload** for full shape. |
 
 **Removed (no longer exist):**  
 `GET task-block`, `POST metric-answers`, `POST recording-2`, `GET questions`, `POST post-answers`.
@@ -84,7 +84,13 @@ So the user sees: submit recording → `report_generating` → (poll status or r
 
 ### 3.4 Report for “recording 1 only”
 
-The report is built in `services/homework_completion.py` by `_build_report_recording_1_only()`: short transcript excerpt (max 2 sentences), metrics (pace, fillers, strength), and a fixed coach message (e.g. “Your coach has 24 hours to analyse…”). No LLM is used for this report.
+The report is built in `services/homework_completion.py` by `_build_report_recording_1_only()`: short transcript excerpt (max 2 sentences), metrics (pace, fillers, strength), and a fixed coach message (e.g. “Your coach has 24 hours to analyse…”). No LLM is used for this report. After completion, the backend also generates a **coach_insight** (two sentences from GPT-4o-mini) and stores it on the session for the report view.
+
+### 3.5 GET report payload (frontend contract)
+
+`GET /v2/homework/session/<session_id>/report` returns 200 with: `report_text`, `scores` (warmup, final, overall 0–100), `final_recording` (id, audio_url for playback), `performance_history` (chart), and optionally: **`recording`** (id, audio_url, **transcription_text** full transcript, **filler_words_count** { total, breakdown }, words_per_minute), **`context_short`**, **`coach_insight`** (two AI sentences: context+fillers, progress+relevancy), tutor_feedback_*.
+
+**Frontend:** Show full transcription, filler words (breakdown + total), recording playback, keep chart, show coach_insight as 2-sentence coach block.
 
 ---
 

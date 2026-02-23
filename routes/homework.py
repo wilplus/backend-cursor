@@ -618,13 +618,15 @@ def homework_get_report(session_id):
             if date_str:
                 performance_history.append({"date": date_str, "score": round(float(score_01) * 100)})
 
+        # Display recording: recording_2 if present, else recording_1 (for playback, transcript, fillers)
+        display_recording_id = session.get("recording_2_id") or session.get("recording_1_id")
         final_recording = {"id": None, "audio_url": None}
-        recording_2_id = session.get("recording_2_id")
-        if recording_2_id:
-            final_recording["id"] = recording_2_id
-            recording = db.get_recording(recording_2_id, user_id)
-            if recording:
-                storage_path = (recording.get("storage_path") or "").strip()
+        recording_payload = None  # full transcript, fillers, playback for report view
+        if display_recording_id:
+            rec = db.get_recording(display_recording_id, user_id)
+            if rec:
+                storage_path = (rec.get("storage_path") or "").strip()
+                audio_url = None
                 if storage_path:
                     try:
                         audio_url = db.create_signed_url(
@@ -632,9 +634,23 @@ def homework_get_report(session_id):
                             storage_path,
                             config.SIGNED_URL_EXPIRY_SECONDS,
                         )
-                        final_recording["audio_url"] = audio_url
                     except Exception as e:
-                        logger.warning(f"Report: could not create signed URL for recording {recording_2_id}: {e}")
+                        logger.warning("Report: could not create signed URL for recording %s: %s", display_recording_id, e)
+                final_recording["id"] = display_recording_id
+                final_recording["audio_url"] = audio_url
+                filler_data = rec.get("filler_words_count") or {}
+                if not isinstance(filler_data, dict):
+                    filler_data = {}
+                recording_payload = {
+                    "id": display_recording_id,
+                    "audio_url": audio_url,
+                    "transcription_text": (rec.get("transcription_text") or "").strip(),
+                    "filler_words_count": {
+                        "total": int(filler_data.get("total", 0) or 0),
+                        "breakdown": dict(filler_data.get("breakdown") or {}),
+                    },
+                    "words_per_minute": round(float(rec.get("words_per_minute") or 0), 1),
+                }
 
         payload = {
             "report_text": report_text,
@@ -646,8 +662,14 @@ def homework_get_report(session_id):
             "final_recording": final_recording,
             "performance_history": performance_history,
         }
-        from config import Config
-        config = Config()
+        if recording_payload is not None:
+            payload["recording"] = recording_payload
+        context_short = (session.get("context_short") or "").strip()
+        if context_short:
+            payload["context_short"] = context_short
+        coach_insight = (session.get("coach_insight") or "").strip()
+        if coach_insight:
+            payload["coach_insight"] = coach_insight
         if not session.get("tutor_feedback_sent_at"):
             completion_time = session.get("completed_at") or session.get("created_at")
             deadline = _tutor_feedback_deadline_iso(completion_time, config.TUTOR_FEEDBACK_WINDOW_HOURS)

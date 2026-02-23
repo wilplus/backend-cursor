@@ -120,6 +120,26 @@ def complete_session_recording_1_only(session_id: str, user_id: str, allow_task_
     custom_results = openai_service.analyze_custom_questions(transcript, [q1, q2, q3])
     r1, r2, r3 = (custom_results + [{"analysis": "", "score": 0}] * 3)[:3]
     completed_at_iso = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+    # Two-sentence coach insight for report view (context + fillers, progress + relevancy)
+    coach_insight = ""
+    try:
+        context_short = (session.get("context_short") or "").strip()
+        filler_breakdown = dict(filler_data.get("breakdown", {})) if isinstance(filler_data, dict) else {}
+        history_rows = db.v2_get_performance_history(user_id, limit=5)
+        history_scores = [float(r.get("performance_score_end") or 0) for r in history_rows]
+        transcript_excerpt = (transcript or "")[:600]
+        coach_insight = openai_service.generate_coach_insight(
+            context_short=context_short,
+            transcript_excerpt=transcript_excerpt,
+            filler_breakdown=filler_breakdown,
+            filler_count=filler_count,
+            performance_score=performance_score_end,
+            performance_history_scores=history_scores,
+        )
+    except Exception as ci_err:
+        logger.warning("Coach insight generation failed: %s", ci_err)
+
     db.v2_update_session(session_id, user_id, {
         "post_answers": [],
         "report_id": report_row["id"] if report_row else None,
@@ -132,6 +152,7 @@ def complete_session_recording_1_only(session_id: str, user_id: str, allow_task_
         "question_2_score": float(r2.get("score", 0)),
         "question_3_analysis": r3.get("analysis") or "",
         "question_3_score": float(r3.get("score", 0)),
+        "coach_insight": coach_insight or None,
     })
     try:
         db.v2_upsert_student_coaching_memory(user_id, session_id)
