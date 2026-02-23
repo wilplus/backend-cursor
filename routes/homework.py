@@ -580,7 +580,8 @@ def homework_get_report(session_id):
         if not session:
             return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found"}), 404
         if session.get("status") != STATUS_COMPLETED:
-            return jsonify({"code": "REPORT_NOT_READY", "error": "Report is only available for completed sessions", "status": session.get("status")}), 404
+            # 409 so frontend can distinguish "not ready yet, retry" from "session not found" (404)
+            return jsonify({"code": "REPORT_NOT_READY", "error": "Report is only available for completed sessions", "status": session.get("status")}), 409
 
         report_text = (session.get("context_long") or "").strip()
         if session.get("report_id"):

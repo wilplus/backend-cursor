@@ -54,6 +54,8 @@ Single reference for this repo. No other .md docs; everything lives here.
 
 Session statuses (possible values; flow can skip): `warm_up`, `task_block`, `final_task_ready`, `post_questions`, `completing_from_recording_1`, `completed`. The student flow is **status-driven**, not a fixed 0→5 sequence: e.g. no focus tasks → after recording-1 status may be `report_generating` then `completed`; step 2 can skip to report via POST complete-from-recording-1; overrides can skip step 2 or 4.
 
+**GET report:** `GET /v2/homework/session/<id>/report` returns 200 with report payload when session is `completed`. When session is still generating (e.g. `completing_from_recording_1`), backend returns **409** with body `{ "code": "REPORT_NOT_READY", "error": "...", "status": "completing_from_recording_1" }`. **Frontend:** On 409 with `code === "REPORT_NOT_READY"`, show "Generating your report..." and **poll** GET report (e.g. every 2–3 s) until 200 or a max attempts; do not treat as a final error.
+
 ---
 
 ## Frontend / BFF
