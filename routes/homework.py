@@ -688,6 +688,7 @@ def homework_get_report(session_id):
         coach_insight = (session.get("coach_insight") or "").strip()
         if coach_insight:
             payload["coach_insight"] = coach_insight
+        payload["report_cta"] = "Send the homework to the coach!"
         if not session.get("tutor_feedback_sent_at"):
             completion_time = session.get("completed_at") or session.get("created_at")
             deadline = _tutor_feedback_deadline_iso(completion_time, config.TUTOR_FEEDBACK_WINDOW_HOURS)

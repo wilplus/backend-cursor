@@ -88,9 +88,25 @@ The report is built in `services/homework_completion.py` by `_build_report_recor
 
 ### 3.5 GET report payload (frontend contract)
 
-`GET /v2/homework/session/<session_id>/report` returns 200 with: `report_text`, `scores` (warmup, final, overall 0–100), `final_recording` (id, audio_url for playback), `performance_history` (chart), and optionally: **`recording`** (id, audio_url, **transcription_text** full transcript, **filler_words_count** { total, breakdown }, words_per_minute), **`context_short`**, **`coach_insight`** (two AI sentences: context+fillers, progress+relevancy), tutor_feedback_*.
+`GET /v2/homework/session/<session_id>/report` returns 200 with: `report_text`, `scores` (warmup, final, overall 0–100), `final_recording` (id, audio_url for playback), `performance_history` (chart), **`report_cta`** (string, e.g. "Send the homework to the coach!" — show at the end of the report as the main CTA), and optionally: **`recording`** (id, audio_url, **transcription_text** full transcript, **filler_words_count** { total, breakdown }, words_per_minute), **`context_short`**, **`coach_insight`** (two AI sentences: context+fillers, progress+relevancy), **tutor_feedback_deadline**, **tutor_feedback_message**.
 
-**Frontend:** Show full transcription, filler words (breakdown + total), recording playback, keep chart, show coach_insight as 2-sentence coach block.
+**Frontend:** Show full transcription, filler words (breakdown + total), recording playback, keep chart, show coach_insight as 2-sentence coach block. At the end of the report, show **report_cta** as the primary CTA (e.g. button or prominent text: "Send the homework to the coach!"). When the user leaves the report (e.g. clicks that CTA or "Back to homework"), they go to step 0; see §3.6 for the timer on step 0.
+
+### 3.6 Step 0: timer (waiting for coach to send homework)
+
+**State to track:** Use **`GET /v2/homework/session/status`**. When the user is on step 0 (no active session), the response may include:
+
+- **`tutor_feedback_deadline`** (ISO 8601) — countdown target; show a timer until this time.
+- **`tutor_feedback_message`** — user-facing copy, e.g. "Your coach has until … to review your last lesson and send you new homework."
+
+**When to show the timer:** Show the timer (and optional banner using `tutor_feedback_message`) whenever the status response includes **`tutor_feedback_deadline`**. That means: the user recently completed a lesson and the coach has not yet sent new homework (backend has not set `tutor_feedback_sent_at` on the last completed session).
+
+**When to hide the timer:** As soon as the status response **does not** include `tutor_feedback_deadline`. That happens when:
+- The admin sends new homework: **POST /v2/admin/students/<id>/send-assignment** sets `tutor_feedback_sent_at` on the user’s last completed session, so the next GET status for that user omits `tutor_feedback_deadline` and `tutor_feedback_message`.
+- The deadline has passed (backend omits deadline if it’s in the past).
+- The user has no recent completed session.
+
+**Frontend flow:** After the user finishes the report and returns to step 0, call GET session/status. If `tutor_feedback_deadline` is present, show the countdown timer (and optionally `tutor_feedback_message`) until the coach sends homework or the deadline passes; the frontend can poll status periodically or rely on the user refreshing. When the coach sends homework, the next status no longer includes the deadline, so hide the timer and show the normal step 0 (e.g. assigned exercises + Start homework).
 
 ---
 
