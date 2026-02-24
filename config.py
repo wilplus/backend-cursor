@@ -37,6 +37,11 @@ class Config:
     # Frontend URL (for email links)
     FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
 
+    # Coach name and photo in assignment email (for artur@willonski.com / default admin)
+    COACH_NAME = os.getenv("COACH_NAME", "Artur")
+    COACH_IMAGE_URL = (os.getenv("COACH_IMAGE_URL") or "").strip() or None  # Optional; if set, used as coach avatar in email.
+    BACKEND_URL = (os.getenv("BACKEND_URL") or "").strip() or None  # Optional; if set and COACH_IMAGE_URL not set, email uses BACKEND_URL/static/coach-avatar.png as coach avatar.
+
     # Tutor feedback window: time the tutor has to send feedback and assign new homework after a lesson is completed (hours)
     TUTOR_FEEDBACK_WINDOW_HOURS = float(os.getenv("TUTOR_FEEDBACK_WINDOW_HOURS", "24"))
     

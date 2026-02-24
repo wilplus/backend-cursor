@@ -45,6 +45,7 @@ def build_assignment_email_html(
     homework_subtitle: str = "Your next assignment is ready.",
     coach_name: str = "Your Coach",
     coach_role: str = "Public Speaking Coach",
+    coach_image_url: str | None = None,
     unsubscribe_link: str = "#",
     preferences_link: str = "#",
 ) -> str:
@@ -94,6 +95,13 @@ def build_assignment_email_html(
           You have an exercise assigned — it will appear on the main screen after you follow the link below.
         </p>
         """
+
+    has_coach_image = bool(coach_image_url and coach_image_url.strip())
+    if has_coach_image:
+        coach_avatar_html = f'<img src="{escape(coach_image_url)}" width="36" height="36" style="border-radius: 50%; display: block; object-fit: cover;" alt="{escape(coach_name)}" />'
+    else:
+        initials = escape(coach_name[:2].upper() if len(coach_name) >= 2 else (coach_name.upper() if coach_name else ""))
+        coach_avatar_html = f'<span style="display: inline-block; font-size: 12px; font-weight: 600; color: {PRIMARY};">{initials}</span>'
 
     html = f"""<!DOCTYPE html>
 <html lang="en">
@@ -154,8 +162,8 @@ def build_assignment_email_html(
 
           <table role="presentation" cellpadding="0" cellspacing="0" style="margin-top: 2rem; padding-top: 2rem; border-top: 1px solid {BORDER};">
             <tr>
-              <td style="width: 36px; height: 36px; border-radius: 50%; background: rgba(249, 115, 22, 0.15); text-align: center; vertical-align: middle; font-size: 12px; font-weight: 600; color: {PRIMARY};">
-                {escape(coach_name[:2].upper() if len(coach_name) >= 2 else coach_name.upper())}
+              <td style="width: 36px; height: 36px; border-radius: 50%; background: rgba(249, 115, 22, 0.15); text-align: center; vertical-align: middle; overflow: hidden;">
+                {coach_avatar_html}
               </td>
               <td style="padding-left: 0.75rem;">
                 <p style="margin: 0; font-size: 14px; font-weight: 600; color: {FOREGROUND};">{escape(coach_name)}</p>
