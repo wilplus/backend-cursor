@@ -219,7 +219,8 @@ def v2_admin_send_assignment(user_id):
         student_email = db.get_user_email_from_auth(user_id)
         if not student_email or not student_email.strip():
             return jsonify({"code": "NO_EMAIL", "error": "Student has no email in auth"}), 400
-        if video_url:
+        # Store coach message (and optional video URL) so GET session/status can return tutor_video_description
+        if video_url is not None or video_description is not None:
             db.v2_set_pending_tutor_video(user_id, video_url, video_description)
         overrides = db.v2_get_student_overrides(user_id) or {}
         has_assigned_exercise = bool(overrides.get("assigned_next_exercise_id"))

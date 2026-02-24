@@ -260,6 +260,14 @@ def homework_session_status():
                 payload["assigned_exercises"] = db.v2_get_assigned_exercises_for_user(user_id)
             except Exception:
                 payload["assigned_exercises"] = []
+            # Coach message for "A message for you" block (text-only on homework; no video). From pending assignment.
+            try:
+                overrides = db.v2_get_student_overrides(user_id) or {}
+                msg = (overrides.get("pending_tutor_video_description") or "").strip()
+                if msg:
+                    payload["tutor_video_description"] = msg
+            except Exception:
+                pass
             return jsonify(payload), 200
 
         warm_up_task = None
@@ -291,13 +299,18 @@ def homework_session_status():
             _row_check is not None,
         )
         session_serializable = _session_for_json(active)
-        return jsonify({
+        resp = {
             "status": _public_status(active.get("status")),
             "session": session_serializable,
             "session_id": session_serializable.get("id") or str(active["id"]),
             "has_active_session": True,
             "warm_up_task": _session_for_json(warm_up_task) if warm_up_task else None,
-        }), 200
+        }
+        # Coach message for "A message for you" block (text-only on homework; tutor_video_url not used by frontend)
+        msg = (active.get("tutor_video_description") or "").strip()
+        if msg:
+            resp["tutor_video_description"] = msg
+        return jsonify(resp), 200
 
     except Exception as e:
         # #region agent log

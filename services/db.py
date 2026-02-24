@@ -1857,12 +1857,15 @@ class DatabaseService:
         # #endregion
         return result.data[0] if result.data else None
 
-    def v2_set_pending_tutor_video(self, user_id: str, video_url: str, video_description: str = None):
-        """Store video URL and optional description for the next session. Call when admin sends assignment with video_url."""
-        payload = {"pending_tutor_video_url": video_url}
+    def v2_set_pending_tutor_video(self, user_id: str, video_url: str = None, video_description: str = None):
+        """Store coach message and/or video URL for the next session. Call when admin sends assignment. Message is returned as tutor_video_description in GET session/status (homework flow is text-only; no video)."""
+        payload = {}
+        if video_url is not None:
+            payload["pending_tutor_video_url"] = (video_url or "").strip() or None
         if video_description is not None:
             payload["pending_tutor_video_description"] = (video_description or "").strip() or None
-        self.v2_upsert_student_overrides(user_id, payload)
+        if payload:
+            self.v2_upsert_student_overrides(user_id, payload)
         return True
 
     def v2_get_and_clear_pending_tutor_video(self, user_id: str):
