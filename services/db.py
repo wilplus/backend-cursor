@@ -1082,7 +1082,7 @@ class DatabaseService:
         return result.data[0] if result.data else None
 
     def v2_get_exercise_by_title(self, title: str):
-        """First active exercise with this title (case-insensitive), or None. Used for default 'intro-0'."""
+        """First active exercise with this title (case-insensitive), or None. Used for default '0-intro'."""
         if not (title or "").strip():
             return None
         result = (
@@ -1104,7 +1104,7 @@ class DatabaseService:
         }
 
     def v2_get_assigned_exercises_for_user(self, user_id: str):
-        """Exercises for step 0 (no active session). Always returns at least one: assigned_next_exercise_id, else last_assigned_exercise_id, else intro-0 by title, else placeholder."""
+        """Exercises for step 0 (no active session). Always returns at least one: assigned_next_exercise_id, else last_assigned_exercise_id, else 0-intro by title, else placeholder."""
         overrides = self.v2_get_student_overrides(user_id) or {}
         # Prefer current assignment, then last assigned (so old exercise stays visible until new one is set)
         exercise_id = overrides.get("assigned_next_exercise_id") or overrides.get("last_assigned_exercise_id")
@@ -1113,12 +1113,12 @@ class DatabaseService:
             ex = self.v2_get_exercise(str(exercise_id))
             if ex and ex.get("is_active") is True:
                 return [self._format_exercise_for_step0(ex)]
-        # No assignment or exercise inactive: fall back to intro-0 (by title)
-        ex = self.v2_get_exercise_by_title("intro-0")
+        # No assignment or exercise inactive: fall back to 0-intro (by title)
+        ex = self.v2_get_exercise_by_title("0-intro")
         if ex:
             return [self._format_exercise_for_step0(ex)]
-        # No intro-0 row: return placeholder (run migrations/seed_intro_0_exercise.sql so admin can set video_url)
-        return [{"id": None, "title": "intro-0", "video_url": None, "description": None}]
+        # No 0-intro row: return placeholder (run migrations/seed_intro_0_exercise.sql so admin can set video_url)
+        return [{"id": None, "title": "0-intro", "video_url": None, "description": None}]
 
     def v2_get_task(self, task_id: str):
         result = self.client.table("v2_tasks").select("*").eq("id", task_id).execute()

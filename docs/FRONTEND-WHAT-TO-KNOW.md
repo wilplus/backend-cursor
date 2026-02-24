@@ -14,7 +14,7 @@ Short reference for the frontend team. Backend contract and behavior that affect
 ## Step 0 (no active session)
 
 - **`GET /api/homework/session/status`** (→ backend `GET /v2/homework/session/status`) returns **`assigned_exercises`**: `[ { id, title, video_url, description } ]`.
-- **Display:** Show each exercise below the “Start homework” button. If **`video_url`** is present, show the video (link or embed, e.g. Vimeo). If **`description`** is present, show it (e.g. above or beside the video). The backend now provides a **default intro video** for first-time users when the DB has none, so `video_url` can be present even for the default “intro-0” exercise — don’t show “No video for this exercise” when `video_url` is in the response.
+- **Display:** Show each exercise below the “Start homework” button. If **`video_url`** is present, show the video (link or embed, e.g. Vimeo). If **`description`** is present, show it (e.g. above or beside the video). The backend now provides a **default intro video** for first-time users when the DB has none, so `video_url` can be present even for the default “0-intro” exercise — don’t show “No video for this exercise” when `video_url` is in the response.
 - **Timer:** When the response includes **`tutor_feedback_deadline`** (ISO 8601) and optionally **`tutor_feedback_message`**, show a **countdown timer** (and optional banner) on step 0. **Hide the timer** when **`tutor_feedback_deadline`** is **absent** (e.g. after the coach sends new homework). So: **show timer ⇔ `tutor_feedback_deadline` is present.**
 
 ---

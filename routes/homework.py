@@ -258,11 +258,11 @@ def homework_session_status():
             # Assigned exercises for step 0: show "Assigned for you" below Start button (from overrides.assigned_next_exercise_id)
             try:
                 payload["assigned_exercises"] = db.v2_get_assigned_exercises_for_user(user_id)
-                # When intro-0 has no video_url/description in DB, use config fallbacks so step 0 shows a video
+                # When 0-intro has no video_url/description in DB, use config fallbacks so step 0 shows a video
                 from config import Config
                 config = Config()
                 for ex in payload.get("assigned_exercises") or []:
-                    if (ex.get("title") or "").strip().lower() == "intro-0":
+                    if (ex.get("title") or "").strip().lower() == "0-intro":
                         if not (ex.get("video_url") or "").strip() and getattr(config, "INTRO_0_VIDEO_URL", None):
                             ex["video_url"] = config.INTRO_0_VIDEO_URL
                         if not (ex.get("description") or "").strip() and getattr(config, "INTRO_0_DESCRIPTION", None):
