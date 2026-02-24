@@ -289,6 +289,10 @@ class EmailService:
         homework_link = f"{app_url}/dashboard" if app_url else (app_url or "#")
         unsubscribe_link = f"{app_url}/dashboard?unsubscribe=1" if app_url else "#"
         preferences_link = f"{app_url}/dashboard?preferences=1" if app_url else "#"
+        coach_name = getattr(config, "COACH_NAME", "Artur")
+        coach_image_url = getattr(config, "COACH_IMAGE_URL", None) or None
+        if not coach_image_url and getattr(config, "BACKEND_URL", None):
+            coach_image_url = (config.BACKEND_URL or "").rstrip("/") + "/static/coach-avatar.png"
 
         html = build_assignment_email_html(
             video_url=video_url,
@@ -296,6 +300,8 @@ class EmailService:
             has_assigned_exercise=has_assigned_exercise,
             homework_link=homework_link,
             student_name=student_name or "there",
+            coach_name=coach_name,
+            coach_image_url=coach_image_url,
             unsubscribe_link=unsubscribe_link,
             preferences_link=preferences_link,
         )

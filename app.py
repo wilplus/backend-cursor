@@ -1,5 +1,6 @@
-from flask import Flask, jsonify
+from flask import Flask, jsonify, send_from_directory
 from flask_cors import CORS
+import os
 from werkzeug.exceptions import RequestEntityTooLarge
 import sentry_sdk
 from sentry_sdk.integrations.flask import FlaskIntegration
@@ -73,6 +74,16 @@ def health_trailing():
 def api_health():
     """Health at /api/health in case frontend or BFF uses this path."""
     return _health_response()
+
+# Serve static assets (e.g. coach avatar for assignment email)
+STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
+
+
+@app.route("/static/<path:filename>", methods=["GET"])
+def serve_static(filename):
+    """Serve files from static/ (e.g. coach-avatar.png for assignment email)."""
+    return send_from_directory(STATIC_DIR, filename)
+
 
 @app.route("/health/jwks", methods=["GET"])
 def health_jwks():
