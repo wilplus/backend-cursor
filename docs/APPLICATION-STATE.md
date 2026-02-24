@@ -59,7 +59,7 @@ The frontend must use only the **top-level `status`** returned by the API (not r
 | Method | Path | Purpose |
 |--------|------|---------|
 | POST | `/v2/homework/session/start` | Start a new session. Body `{}`. Returns `session_id`, `status: "warm_up"`, optional `warm_up_task`. |
-| GET | `/v2/homework/session/status` | Get current session or none. Returns `has_active_session`, `session` (with public `status`), optional `tutor_feedback_deadline`, `tutor_feedback_message`, `tutor_video_url`, `tutor_video_description`. |
+| GET | `/v2/homework/session/status` | Get current session or none. Returns `has_active_session`, `session` (with public `status`), optional `tutor_feedback_deadline`, `tutor_feedback_message`, `tutor_video_url`, `tutor_video_description`. When **no active session**, may include **`assigned_exercises`**: `[ { id, title, video_url, description } ]` — display below Start homework button. |
 | POST | `/v2/homework/session/<session_id>/abandon` | Delete the session; user has no active session afterward. |
 | GET | `/v2/homework/session/<session_id>/warm-up-task` | Get warm-up task for the session (optional step). |
 | POST | `/v2/homework/session/<session_id>/recording-upload-url` | Get a storage path and bucket for direct upload. Body `{ "recording": "1" }`. Only `"1"` is supported. If session is already `completing_from_recording_1` or `completed`, returns 200 with `already_submitted: true` (no 409). |

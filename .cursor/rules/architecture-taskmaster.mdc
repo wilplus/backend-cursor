@@ -39,7 +39,7 @@ Single reference for this repo. No other .md docs; everything lives here.
 
 **Single flow** under **`/v2/homework/...`**. Auth: `Authorization: Bearer <supabase_access_token>`.
 
-**UX: Show recording right away.** On Homework page load: (1) `GET /v2/homework/session/status`. If `has_active_session` and `session`, render current step from `session.id` / `session.status`. (2) If no active session, call `POST /v2/homework/session/start` in same load (e.g. useEffect) and render warm-up task + record button immediately — no "Start homework" button.
+**UX: Show recording right away.** On Homework page load: (1) `GET /v2/homework/session/status`. If `has_active_session` and `session`, render current step from `session.id` / `session.status`. (2) If no active session, call `POST /v2/homework/session/start` in same load (e.g. useEffect) and render warm-up task + record button immediately — no "Start homework" button. When **no active session**, status response may include **`assigned_exercises`**: `[ { id, title, video_url, description } ]` — **display these below the Start homework button** (videos from admin-assigned exercise; recognized in admin panel by title).
 
 **Endpoints:**
 
@@ -90,13 +90,13 @@ Backend stays as-is; no change required. BFF sends `Authorization: Bearer <supab
 
 All under **`/v2/admin/*`** with admin JWT. Admin = email in `admin_users` with `is_active = true`. 403 if not admin.
 
-**Students:** `GET /v2/admin/students` (limit, offset) → `{ students: [ { user_id, email, user_email, sessions_count?, last_session_at?, avg_performance? } ], limit, offset }`. `GET /v2/admin/students/<id>` → profile: `user_id`, `email`, `overrides` (arrays: `assigned_post_question_ids`, `assigned_next_task_ids`), `speaker_profile` (e.g. `coach_notes`), `warm_up_tasks`, `last_report`, `last_report_preview`, `sessions` (id, created_at, status, report_preview.report_text_preview). `PUT .../overrides` (assigned_next_task_ids, assigned_post_question_ids exactly 3, optional assigned_warm_up_task_id). `PUT .../speaker-profile` body `{ coach_notes?, ... }`. **`POST .../send-assignment`** body optional `{ "video_url"?: "https://...", "video_description"?: "..." }` (video_url: http/https, max 2048 chars; video_description: max 2000 chars) → `{ status: "ok" }`. Email includes video link and description when provided. Frontend: **`docs/FRONTEND-VIDEO-AND-DESCRIPTION.md`**.
+**Students:** `GET /v2/admin/students` (limit, offset) → `{ students: [ { user_id, email, user_email, sessions_count?, last_session_at?, avg_performance? } ], limit, offset }`. `GET /v2/admin/students/<id>` → profile: `user_id`, `email`, `overrides` (arrays: `assigned_post_question_ids`, `assigned_next_task_ids`), `speaker_profile` (e.g. `coach_notes`), `warm_up_tasks`, `last_report`, `last_report_preview`, `sessions` (id, created_at, status, report_preview.report_text_preview). `PUT .../overrides` (assigned_next_task_ids, assigned_post_question_ids exactly 3, optional assigned_next_exercise_id, optional assigned_warm_up_task_id). `PUT .../speaker-profile` body `{ coach_notes?, ... }`. **`POST .../send-assignment`** body optional `{ "video_url"?: "https://...", "video_description"?: "..." }` (video_url: http/https, max 2048 chars; video_description: max 2000 chars) → `{ status: "ok" }`. Email includes video link and description when provided. Frontend: **`docs/FRONTEND-VIDEO-AND-DESCRIPTION.md`**.
 
 **Warm-up tasks (per student):** `GET/POST /v2/admin/students/<id>/warm-up-tasks`, `PUT/DELETE .../warm-up-tasks/<task_id>`.
 
 **Session/report (admin):** `GET /v2/admin/students/<id>/sessions/<session_id>` (full session, context_long_entries). `PATCH .../sessions/<session_id>/report` body `{ action: "append"|"replace", text?, entries? }`.
 
-**Pools:** Tasks: `GET/POST/PUT/DELETE /v2/admin/tasks`. Post-recording questions: `GET/POST/PUT/DELETE /v2/admin/post-recording-questions`. Metrics (5): `GET/PUT /v2/admin/metrics`. Metric questions (1 & 2): `GET/POST/PUT/DELETE /v2/admin/metric-questions`. Exercises: endpoints exist but simplified admin doesn’t use them.
+**Pools:** Tasks: `GET/POST/PUT/DELETE /v2/admin/tasks`. Post-recording questions: `GET/POST/PUT/DELETE /v2/admin/post-recording-questions`. Metrics (5): `GET/PUT /v2/admin/metrics`. Metric questions (1 & 2): `GET/POST/PUT/DELETE /v2/admin/metric-questions`. **Exercises:** GET/POST/PUT/DELETE; pool by title (video_url, description). Assign via overrides assigned_next_exercise_id; shown on step 0 below Start homework. Admin doesn’t use them.
 
 **Mockup alignment:** One student profile page — Homework Configuration (Send Homework, Save overrides, warm-up list, focus tasks, questions, metrics), Speaker Profile (Context → coach_notes), Last Report / Reports history from sessions.
 

@@ -1081,6 +1081,22 @@ class DatabaseService:
         result = self.client.table("v2_exercises").select("*").eq("id", exercise_id).execute()
         return result.data[0] if result.data else None
 
+    def v2_get_assigned_exercises_for_user(self, user_id: str):
+        """Exercises assigned to this user for step 0 (no active session). Returns list of { id, title, video_url, description } from overrides.assigned_next_exercise_id, active only."""
+        overrides = self.v2_get_student_overrides(user_id)
+        exercise_id = (overrides or {}).get("assigned_next_exercise_id")
+        if not exercise_id:
+            return []
+        ex = self.v2_get_exercise(str(exercise_id))
+        if not ex or ex.get("is_active") is not True:
+            return []
+        return [{
+            "id": str(ex["id"]) if ex.get("id") else None,
+            "title": (ex.get("title") or "").strip() or "Exercise",
+            "video_url": (ex.get("video_url") or "").strip() or None,
+            "description": (ex.get("description") or "").strip() or None,
+        }]
+
     def v2_get_task(self, task_id: str):
         result = self.client.table("v2_tasks").select("*").eq("id", task_id).execute()
         return result.data[0] if result.data else None

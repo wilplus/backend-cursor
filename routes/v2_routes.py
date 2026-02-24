@@ -356,7 +356,20 @@ def v2_admin_exercises_list():
 @require_admin
 def v2_admin_exercises_create():
     data = request.get_json() or {}
-    row = db.v2_insert_exercise(data)
+    title = (data.get("title") or "").strip()
+    if not title:
+        return jsonify({"code": "INVALID_INPUT", "error": "title is required"}), 400
+    payload = {
+        "title": title,
+        "video_url": (data.get("video_url") or "").strip() or None,
+        "description": (data.get("description") or "").strip() or None,
+        "is_active": data.get("is_active") if "is_active" in data else True,
+    }
+    if "min_task_score" in data:
+        payload["min_task_score"] = data.get("min_task_score")
+    if "max_task_score" in data:
+        payload["max_task_score"] = data.get("max_task_score")
+    row = db.v2_insert_exercise(payload)
     return jsonify({"exercise": row}), 201
 
 
