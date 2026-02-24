@@ -265,43 +265,46 @@ class EmailService:
             sentry_sdk.capture_exception(e)
             return {"status": "failed", "sent": False, "error": str(e)}
 
-    def send_assignment_to_student(self, to_email: str, frontend_url: str, video_url: str = None, video_description: str = None) -> dict:
+    def send_assignment_to_student(
+        self,
+        to_email: str,
+        frontend_url: str,
+        video_url: str = None,
+        video_description: str = None,
+        has_assigned_exercise: bool = False,
+        student_name: str = "there",
+    ) -> dict:
         """
-        Send "you have new homework" email to a student. Link points to the app (e.g. dashboard).
-        If video_url is set, include a "Watch video" link and optional video_description. Returns dict with status "sent" | "pending" (emails off) | "failed".
+        Send "you have new homework" email. Uses assignment_email.build_assignment_email_html
+        (video block: play button or orange gradient; coach message; assigned exercise line).
+        Returns dict with status "sent" | "pending" (emails off) | "failed".
         """
         if not config.SEND_EMAILS:
             return {"status": "pending", "sent": False}
         if not self.api_key_set:
             return {"status": "failed", "sent": False, "error": "Resend API key not set"}
+        from services.assignment_email import build_assignment_email_html
+
         app_url = (frontend_url or config.FRONTEND_URL or "").rstrip("/")
-        dashboard_url = f"{app_url}/dashboard" if app_url else app_url
+        homework_link = f"{app_url}/dashboard" if app_url else (app_url or "#")
+        unsubscribe_link = f"{app_url}/dashboard?unsubscribe=1" if app_url else "#"
+        preferences_link = f"{app_url}/dashboard?preferences=1" if app_url else "#"
+
+        html = build_assignment_email_html(
+            video_url=video_url,
+            coach_message=video_description,
+            has_assigned_exercise=has_assigned_exercise,
+            homework_link=homework_link,
+            student_name=student_name or "there",
+            unsubscribe_link=unsubscribe_link,
+            preferences_link=preferences_link,
+        )
         subject = "New homework from your coach"
-        text = f"Your coach has assigned you new practice.\n\nStart homework: {dashboard_url}\n\n— willab team"
+        text = f"Your coach has assigned you new practice.\n\nStart homework: {homework_link}\n\n— willab team"
         if video_url:
-            text = f"Your coach has assigned you new practice.\n\nWatch a message from your coach: {video_url}\n\nStart homework: {dashboard_url}\n\n— willab team"
+            text = f"Your coach has assigned you new practice.\n\nWatch a message from your coach: {video_url}\n\nStart homework: {homework_link}\n\n— willab team"
             if video_description:
-                text = f"Your coach has assigned you new practice.\n\n{video_description}\n\nWatch video: {video_url}\n\nStart homework: {dashboard_url}\n\n— willab team"
-        video_block = ""
-        if video_url:
-            desc_html = f"<p style=\"margin:0 0 8px 0;color:#555;\">{self._escape_html(video_description)}</p>\n  " if video_description else ""
-            video_block = f"  {desc_html}<p style=\"margin:0 0 16px 0;\">Your coach has recorded a message for you: <a href=\"{video_url}\">Watch video</a>.</p>\n"
-        html = f"""
-<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
-<body style="margin:0;padding:0;font-family:Arial,sans-serif;line-height:1.6;color:#333;background:#f5f5f5;">
-<div style="max-width:600px;margin:0 auto;padding:24px;background:#fff;">
-  <h2 style="margin:0 0 16px 0;font-size:20px;font-weight:600;">New homework from your coach</h2>
-  <p style="margin:0 0 24px 0;">Your coach has assigned you new practice.</p>
-{video_block}  <p style="margin:0 0 24px 0;">
-    <a href="{dashboard_url}" style="display:inline-block;padding:12px 24px;background:#f97316;color:#fff;text-decoration:none;border-radius:6px;font-weight:500;">Start homework</a>
-  </p>
-  <p style="margin:24px 0 0 0;font-size:13px;color:#666;">— willab team</p>
-</div>
-</body>
-</html>
-"""
+                text = f"Your coach has assigned you new practice.\n\n{video_description}\n\nWatch video: {video_url}\n\nStart homework: {homework_link}\n\n— willab team"
         try:
             params = {
                 "from": config.RESEND_FROM_EMAIL,

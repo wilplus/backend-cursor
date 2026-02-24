@@ -221,11 +221,15 @@ def v2_admin_send_assignment(user_id):
             return jsonify({"code": "NO_EMAIL", "error": "Student has no email in auth"}), 400
         if video_url:
             db.v2_set_pending_tutor_video(user_id, video_url, video_description)
+        overrides = db.v2_get_student_overrides(user_id) or {}
+        has_assigned_exercise = bool(overrides.get("assigned_next_exercise_id"))
         result = email_service.send_assignment_to_student(
             to_email=student_email.strip(),
             frontend_url=config.FRONTEND_URL,
             video_url=video_url,
             video_description=video_description,
+            has_assigned_exercise=has_assigned_exercise,
+            student_name=student_email.strip(),
         )
         if result.get("status") == "failed":
             return jsonify({"code": "EMAIL_FAILED", "error": result.get("error", "Failed to send email")}), 500
