@@ -1081,21 +1081,44 @@ class DatabaseService:
         result = self.client.table("v2_exercises").select("*").eq("id", exercise_id).execute()
         return result.data[0] if result.data else None
 
-    def v2_get_assigned_exercises_for_user(self, user_id: str):
-        """Exercises assigned to this user for step 0 (no active session). Returns list of { id, title, video_url, description } from overrides.assigned_next_exercise_id, active only."""
-        overrides = self.v2_get_student_overrides(user_id)
-        exercise_id = (overrides or {}).get("assigned_next_exercise_id")
-        if not exercise_id:
-            return []
-        ex = self.v2_get_exercise(str(exercise_id))
-        if not ex or ex.get("is_active") is not True:
-            return []
-        return [{
+    def v2_get_exercise_by_title(self, title: str):
+        """First active exercise with this title (case-insensitive), or None. Used for default 'intro-0'."""
+        if not (title or "").strip():
+            return None
+        result = (
+            self.client.table("v2_exercises")
+            .select("*")
+            .eq("is_active", True)
+            .ilike("title", (title or "").strip())
+            .limit(1)
+            .execute()
+        )
+        return result.data[0] if result.data else None
+
+    def _format_exercise_for_step0(self, ex: dict) -> dict:
+        return {
             "id": str(ex["id"]) if ex.get("id") else None,
             "title": (ex.get("title") or "").strip() or "Exercise",
             "video_url": (ex.get("video_url") or "").strip() or None,
             "description": (ex.get("description") or "").strip() or None,
-        }]
+        }
+
+    def v2_get_assigned_exercises_for_user(self, user_id: str):
+        """Exercises for step 0 (no active session). Always returns at least one: assigned_next_exercise_id, else last_assigned_exercise_id, else intro-0 by title, else placeholder."""
+        overrides = self.v2_get_student_overrides(user_id) or {}
+        # Prefer current assignment, then last assigned (so old exercise stays visible until new one is set)
+        exercise_id = overrides.get("assigned_next_exercise_id") or overrides.get("last_assigned_exercise_id")
+        ex = None
+        if exercise_id:
+            ex = self.v2_get_exercise(str(exercise_id))
+            if ex and ex.get("is_active") is True:
+                return [self._format_exercise_for_step0(ex)]
+        # No assignment or exercise inactive: fall back to intro-0 (by title)
+        ex = self.v2_get_exercise_by_title("intro-0")
+        if ex:
+            return [self._format_exercise_for_step0(ex)]
+        # No intro-0 row: return a single placeholder so step 0 always has something
+        return [{"id": None, "title": "intro-0", "video_url": None, "description": None}]
 
     def v2_get_task(self, task_id: str):
         result = self.client.table("v2_tasks").select("*").eq("id", task_id).execute()
@@ -1790,7 +1813,7 @@ class DatabaseService:
 
     _V2_OVERRIDES_COLUMNS = {
         "intended_emotion_prompt", "keywords_prompt", "emotion_check_question_text",
-        "assigned_post_question_ids", "assigned_next_exercise_id", "assigned_next_task_ids",
+        "assigned_post_question_ids", "assigned_next_exercise_id", "last_assigned_exercise_id", "assigned_next_task_ids",
         "show_exercise_step", "assigned_warm_up_task_id",
         "pitch_variance_ideal", "pending_tutor_video_url", "pending_tutor_video_description",
         "skip_metric_questions", "skip_post_questions",
@@ -1841,6 +1864,9 @@ class DatabaseService:
         # Empty string for UUID columns: treat as null so clearing "assigned exercise" persists
         if merged.get("assigned_next_exercise_id") == "":
             merged["assigned_next_exercise_id"] = None
+        # When admin assigns an exercise, remember it so step 0 can show it until a new one is assigned
+        if merged.get("assigned_next_exercise_id"):
+            merged["last_assigned_exercise_id"] = merged["assigned_next_exercise_id"]
         payload = {k: v for k, v in merged.items() if v is not None or k in ("skip_metric_questions", "skip_post_questions")}
         payload["user_id"] = user_id
         payload["updated_at"] = datetime.now(timezone.utc).isoformat()
