@@ -255,13 +255,11 @@ def homework_session_status():
             except Exception:
                 # Missing columns (completed_at, tutor_feedback_sent_at) or DB error: still return 200 without deadline
                 pass
-            # Assigned exercises for step 0: show below Start homework button (videos from admin pool)
+            # Assigned exercises for step 0: show "Assigned for you" below Start button (from overrides.assigned_next_exercise_id)
             try:
-                assigned = db.v2_get_assigned_exercises_for_user(user_id)
-                if assigned:
-                    payload["assigned_exercises"] = assigned
+                payload["assigned_exercises"] = db.v2_get_assigned_exercises_for_user(user_id)
             except Exception:
-                pass
+                payload["assigned_exercises"] = []
             return jsonify(payload), 200
 
         warm_up_task = None
