@@ -1117,7 +1117,7 @@ class DatabaseService:
         ex = self.v2_get_exercise_by_title("intro-0")
         if ex:
             return [self._format_exercise_for_step0(ex)]
-        # No intro-0 row: return a single placeholder so step 0 always has something
+        # No intro-0 row: return placeholder (run migrations/seed_intro_0_exercise.sql so admin can set video_url)
         return [{"id": None, "title": "intro-0", "video_url": None, "description": None}]
 
     def v2_get_task(self, task_id: str):
