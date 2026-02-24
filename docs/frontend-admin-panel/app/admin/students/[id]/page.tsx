@@ -138,7 +138,10 @@ export default function AdminStudentProfilePage({ params }: { params: { id: stri
     payload.assigned_post_question_ids = overridesDraft.assigned_post_question_ids;
     adminApi
       .putOverrides(id, payload)
-      .then(() => toast.success("Overrides saved"))
+      .then(() => {
+        toast.success("Overrides saved");
+        load(); // Refetch profile so assigned exercise (and other overrides) display updates
+      })
       .catch((e) => toast.error(e.message))
       .finally(() => setSaving(false));
   };

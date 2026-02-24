@@ -1838,6 +1838,9 @@ class DatabaseService:
         for key in ("skip_metric_questions", "skip_post_questions"):
             if merged.get(key) is None:
                 merged[key] = False
+        # Empty string for UUID columns: treat as null so clearing "assigned exercise" persists
+        if merged.get("assigned_next_exercise_id") == "":
+            merged["assigned_next_exercise_id"] = None
         payload = {k: v for k, v in merged.items() if v is not None or k in ("skip_metric_questions", "skip_post_questions")}
         payload["user_id"] = user_id
         payload["updated_at"] = datetime.now(timezone.utc).isoformat()
