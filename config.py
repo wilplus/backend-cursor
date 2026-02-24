@@ -45,9 +45,9 @@ class Config:
     # Tutor feedback window: time the tutor has to send feedback and assign new homework after a lesson is completed (hours)
     TUTOR_FEEDBACK_WINDOW_HOURS = float(os.getenv("TUTOR_FEEDBACK_WINDOW_HOURS", "24"))
 
-    # Step 0 intro exercise: when the "intro-0" exercise has no video_url/description in the DB, use these (optional).
-    # Lets the step 0 screen show a video without editing Admin → Exercises. Set in .env or configure in Admin.
-    INTRO_0_VIDEO_URL = (os.getenv("INTRO_0_VIDEO_URL") or "").strip() or None
+    # Step 0 intro exercise: when the "intro-0" exercise has no video_url/description in the DB, use these.
+    # Default intro video for first-time / newly registered users. Override with INTRO_0_VIDEO_URL in .env if needed.
+    INTRO_0_VIDEO_URL = (os.getenv("INTRO_0_VIDEO_URL") or "").strip() or "https://vimeo.com/1167696503?fl=ip&fe=ec"
     INTRO_0_DESCRIPTION = (os.getenv("INTRO_0_DESCRIPTION") or "").strip() or None
     
     @property
