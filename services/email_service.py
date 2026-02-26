@@ -289,7 +289,8 @@ class EmailService:
         homework_link = f"{app_url}/dashboard" if app_url else (app_url or "#")
         unsubscribe_link = f"{app_url}/dashboard?unsubscribe=1" if app_url else "#"
         preferences_link = f"{app_url}/dashboard?preferences=1" if app_url else "#"
-        coach_name = getattr(config, "COACH_NAME", "Artur")
+        raw = (getattr(config, "COACH_NAME", "Artur") or "Artur").strip()
+        coach_name = raw.title() if raw else "Artur"
         coach_image_url = getattr(config, "COACH_IMAGE_URL", None) or None
         if not coach_image_url and getattr(config, "BACKEND_URL", None):
             coach_image_url = (config.BACKEND_URL or "").rstrip("/") + "/static/coach-avatar.png"
@@ -299,13 +300,14 @@ class EmailService:
             coach_message=video_description,
             has_assigned_exercise=has_assigned_exercise,
             homework_link=homework_link,
+            homework_title="Public speaking!",
             student_name=student_name or "there",
             coach_name=coach_name,
             coach_image_url=coach_image_url,
             unsubscribe_link=unsubscribe_link,
             preferences_link=preferences_link,
         )
-        subject = "New homework from your coach"
+        subject = "Public speaking!"
         text = f"Your coach has assigned you new practice.\n\nStart homework: {homework_link}\n\n— willab team"
         if video_url:
             text = f"Your coach has assigned you new practice.\n\nWatch a message from your coach: {video_url}\n\nStart homework: {homework_link}\n\n— willab team"

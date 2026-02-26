@@ -41,7 +41,7 @@ def build_assignment_email_html(
     homework_link: str,
     student_name: str = "there",
     meta_label: str = "Session Recap",
-    homework_title: str = "New Homework Available",
+    homework_title: str = "Public speaking!",
     homework_subtitle: str = "Your next assignment is ready.",
     coach_name: str = "Your Coach",
     coach_role: str = "Public Speaking Coach",
@@ -108,7 +108,7 @@ def build_assignment_email_html(
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>New homework</title>
+  <title>Public speaking!</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Serif+Display&display=swap" rel="stylesheet">
