@@ -29,7 +29,7 @@ Single reference for this repo. No other .md docs; everything lives here.
 - **Install:** `pip install -r requirements.txt`
 - **Env:** Copy `.env.example` to `.env`. Required: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_JWT_SECRET`, `OPENAI_API_KEY`, `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, `ADMIN_EMAIL`, `FRONTEND_URL`. Optional: `SENTRY_DSN`, `ENV`, `SEND_EMAILS`, `INTRO_0_VIDEO_URL`, `INTRO_0_DESCRIPTION` (step 0 intro video when DB has none).
 - **Run:** `python app.py` (local). Railway: set env in dashboard; Procfile used.
-- **Migrations:** Run **`migrations/v2_all_in_one.sql`** in Supabase SQL Editor (idempotent). Then run coaching migrations in order: **`add_v2_student_coaching_memory.sql`**, **`add_recording_1_performance_profile.sql`**, **`add_recurring_issues_to_coaching_memory.sql`**, **`add_focus_task_targets_and_difficulty.sql`**. Then **`add_tutor_feedback_deadline.sql`** (adds `completed_at`; required for step 4→5) and **`add_tutor_feedback_sent_at.sql`**. Run **`seed_intro_0_exercise.sql`** so the default step-0 exercise **"0-intro"** exists; set its **video_url** (and **description**) in Admin → Exercises so the homework page shows the video (default Vimeo link is in config). Then Settings → API → Reload schema cache if available. Full flow checklist and performance: **`docs/HOMEWORK-AND-PERFORMANCE.md`**.
+- **Migrations:** Run **`migrations/v2_all_in_one.sql`** in Supabase SQL Editor (idempotent). Then run coaching migrations in order: **`add_v2_student_coaching_memory.sql`**, **`add_recording_1_performance_profile.sql`**, **`add_recurring_issues_to_coaching_memory.sql`**, **`add_focus_task_targets_and_difficulty.sql`**. Then **`add_tutor_feedback_deadline.sql`** (adds `completed_at`; required for step 4→5) and **`add_tutor_feedback_sent_at.sql`**. Run **`seed_intro_0_exercise.sql`** so the default step-0 exercise **"0-intro"** exists; set its **video_url** (and **description**) in Admin → Exercises so the homework page shows the video (default Vimeo link is in config). For security (RLS): run **`migrations/enable_rls_public_tables.sql`** so PostgREST/anon key cannot read/write tables; backend uses **SUPABASE_SERVICE_ROLE_KEY** and bypasses RLS. Then Settings → API → Reload schema cache if available. Full flow checklist and performance: **`docs/HOMEWORK-AND-PERFORMANCE.md`**.
 
 ---
 
@@ -114,6 +114,7 @@ All under **`/v2/admin/*`** with admin JWT. Admin = email in `admin_users` with 
 
 - **Recordings:** `id`, `user_id`, `audio_url`, `duration` (NOT NULL); optional session_id, transcription_text, coaching_report, trend_sentence, storage_path, etc. `duration` INTEGER; `duration_seconds` NUMERIC.
 - **Storage:** Bucket `audio_recordings` in Supabase. Create in Dashboard if 404; backend uses signed URLs.
+- **RLS:** Row Level Security is enabled on public tables via `migrations/enable_rls_public_tables.sql`. Backend must use **SUPABASE_SERVICE_ROLE_KEY** (bypasses RLS); never use anon key for server-side DB access.
 - **v2 schema:** `migrations/v2_all_in_one.sql` plus coaching migrations: `v2_student_coaching_memory` (last_5_scores, recent_focus_task_ids, recurring_issues), `v2_sessions.recording_1_performance_profile`, `v2_focus_tasks.targets` and `difficulty`. See **`docs/HOMEWORK-AND-PERFORMANCE.md`** for what’s implemented and next steps.
 
 ---
