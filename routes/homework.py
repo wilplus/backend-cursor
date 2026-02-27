@@ -116,6 +116,47 @@ def _tutor_feedback_message(deadline_iso: str | None) -> str | None:
         return None
 
 
+def _build_step0_payload(user_id: str) -> dict:
+    """Build the session/status payload when there is no active session (step 0). Used by GET status and POST leave-report."""
+    try:
+        from config import Config
+        config = Config()
+    except Exception:
+        config = type("_FallbackConfig", (), {"TUTOR_FEEDBACK_WINDOW_HOURS": 24})()
+    payload = {"status": PUBLIC_STATUS_NONE, "session": None, "has_active_session": False}
+    try:
+        last_completed = db.v2_get_last_completed_session(user_id)
+        if last_completed and not last_completed.get("tutor_feedback_sent_at"):
+            completion_time = last_completed.get("completed_at") or last_completed.get("created_at")
+            deadline = _tutor_feedback_deadline_iso(completion_time, getattr(config, "TUTOR_FEEDBACK_WINDOW_HOURS", 24))
+            if deadline:
+                payload["tutor_feedback_deadline"] = deadline
+                msg = _tutor_feedback_message(deadline)
+                if msg:
+                    payload["tutor_feedback_message"] = msg
+    except Exception:
+        pass
+    try:
+        payload["assigned_exercises"] = db.v2_get_assigned_exercises_for_user(user_id)
+        for ex in payload.get("assigned_exercises") or []:
+            if (ex.get("title") or "").strip().lower() == "0-intro":
+                if not (ex.get("video_url") or "").strip() and getattr(config, "INTRO_0_VIDEO_URL", None):
+                    ex["video_url"] = config.INTRO_0_VIDEO_URL
+                if not (ex.get("description") or "").strip() and getattr(config, "INTRO_0_DESCRIPTION", None):
+                    ex["description"] = config.INTRO_0_DESCRIPTION
+                break
+    except Exception:
+        payload["assigned_exercises"] = []
+    try:
+        overrides = db.v2_get_student_overrides(user_id) or {}
+        msg = (overrides.get("pending_tutor_video_description") or "").strip()
+        if msg:
+            payload["tutor_video_description"] = msg
+    except Exception:
+        pass
+    return payload
+
+
 # ---------- Start & status ----------
 @homework_bp.route("/session/start", methods=["POST"])
 @require_auth
@@ -235,50 +276,8 @@ def homework_session_status():
             db.v2_delete_session(active["id"], user_id)
             active = None
         if not active:
-            payload = {"status": PUBLIC_STATUS_NONE, "session": None, "has_active_session": False}
-            try:
-                # #region agent log
-                _agent_log("session/status no active, before get_last_completed", {}, "A")
-                # #endregion
-                last_completed = db.v2_get_last_completed_session(user_id)
-                # #region agent log
-                _agent_log("session/status after get_last_completed", {"has_last_completed": last_completed is not None, "tutor_feedback_window_hours": getattr(config, "TUTOR_FEEDBACK_WINDOW_HOURS", None)}, "A")
-                # #endregion
-                if last_completed and not last_completed.get("tutor_feedback_sent_at"):
-                    completion_time = last_completed.get("completed_at") or last_completed.get("created_at")
-                    deadline = _tutor_feedback_deadline_iso(completion_time, getattr(config, "TUTOR_FEEDBACK_WINDOW_HOURS", 24))
-                    if deadline:
-                        payload["tutor_feedback_deadline"] = deadline
-                        msg = _tutor_feedback_message(deadline)
-                        if msg:
-                            payload["tutor_feedback_message"] = msg
-            except Exception:
-                # Missing columns (completed_at, tutor_feedback_sent_at) or DB error: still return 200 without deadline
-                pass
-            # Assigned exercises for step 0: show "Assigned for you" below Start button (from overrides.assigned_next_exercise_id)
-            try:
-                payload["assigned_exercises"] = db.v2_get_assigned_exercises_for_user(user_id)
-                # When 0-intro has no video_url/description in DB, use config fallbacks so step 0 shows a video
-                from config import Config
-                config = Config()
-                for ex in payload.get("assigned_exercises") or []:
-                    if (ex.get("title") or "").strip().lower() == "0-intro":
-                        if not (ex.get("video_url") or "").strip() and getattr(config, "INTRO_0_VIDEO_URL", None):
-                            ex["video_url"] = config.INTRO_0_VIDEO_URL
-                        if not (ex.get("description") or "").strip() and getattr(config, "INTRO_0_DESCRIPTION", None):
-                            ex["description"] = config.INTRO_0_DESCRIPTION
-                        break
-            except Exception:
-                payload["assigned_exercises"] = []
-            # Coach message for "A message for you" block (text-only on homework; no video). From pending assignment.
-            try:
-                overrides = db.v2_get_student_overrides(user_id) or {}
-                msg = (overrides.get("pending_tutor_video_description") or "").strip()
-                if msg:
-                    payload["tutor_video_description"] = msg
-            except Exception:
-                pass
-            return jsonify(payload), 200
+            _agent_log("session/status no active, building step0 payload", {}, "A")
+            return jsonify(_build_step0_payload(user_id)), 200
 
         warm_up_task = None
         wid = active.get("warm_up_task_id")
@@ -345,6 +344,29 @@ def homework_abandon_session(session_id):
         return jsonify({"deleted": True, "message": "Session deleted. Refetch status and show the start page."}), 200
     except Exception as e:
         logger.error(f"Homework abandon session: {str(e)}")
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
+
+
+@homework_bp.route("/session/<session_id>/leave-report", methods=["POST"])
+@require_auth
+def homework_leave_report(session_id):
+    """Leave the report screen and return to step 0. Use when the user clicks the report CTA (e.g. 'Send the homework to the coach!'). Session must be completed. Returns the same payload as GET session/status when there is no active session, so the frontend can transition to step 0 in one call."""
+    try:
+        user_id = request.user_id
+        session = db.v2_get_session(session_id, user_id)
+        if not session:
+            return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found"}), 404
+        if session.get("status") != STATUS_COMPLETED:
+            return jsonify({
+                "code": "REPORT_NOT_COMPLETED",
+                "error": "Session must be completed to leave the report",
+                "status": session.get("status"),
+            }), 409
+        payload = _build_step0_payload(user_id)
+        return jsonify(payload), 200
+    except Exception as e:
+        logger.exception("Homework leave-report: %s", e)
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
 
@@ -699,6 +721,8 @@ def homework_get_report(session_id):
         if coach_insight:
             payload["coach_insight"] = coach_insight
         payload["report_cta"] = "Send the homework to the coach!"
+        # Frontend: when user clicks the CTA, call POST .../leave-report to get step-0 state and show start screen (or call GET session/status).
+        payload["leave_report_path"] = f"session/{session_id}/leave-report"
         if not session.get("tutor_feedback_sent_at"):
             completion_time = session.get("completed_at") or session.get("created_at")
             deadline = _tutor_feedback_deadline_iso(completion_time, config.TUTOR_FEEDBACK_WINDOW_HOURS)
