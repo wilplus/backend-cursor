@@ -5,6 +5,7 @@ load_dotenv()
 
 class Config:
     ENV = os.getenv("ENV", "development")
+    # When true, coach receives email at ADMIN_EMAIL when a student completes homework; assignment emails are sent. Set SEND_EMAILS=true to receive reports.
     SEND_EMAILS = os.getenv("SEND_EMAILS", "false").lower() == "true"
 
     # Supabase

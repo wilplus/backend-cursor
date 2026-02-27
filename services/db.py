@@ -2022,15 +2022,22 @@ class DatabaseService:
             .execute()
         )
         sessions = result.data or []
-        # Optional: fetch context_long for homework sessions (column exists after v2_homework_flow_schema_additions)
+        # Fetch context_long (and context_long_entries as fallback) so report preview works for completed sessions
         session_ids = [s["id"] for s in sessions]
         context_long_by_id = {}
         if session_ids:
             try:
-                ctx = self.client.table("v2_sessions").select("id, context_long").in_("id", session_ids).execute()
+                ctx = self.client.table("v2_sessions").select("id, context_long, context_long_entries").in_("id", session_ids).execute()
                 for row in (ctx.data or []):
-                    if row.get("context_long"):
-                        context_long_by_id[row["id"]] = row["context_long"]
+                    text = (row.get("context_long") or "").strip()
+                    if not text and row.get("context_long_entries"):
+                        entries = row["context_long_entries"]
+                        if isinstance(entries, list) and entries:
+                            last = entries[-1]
+                            if isinstance(last, dict) and last.get("text"):
+                                text = (last["text"] or "").strip()
+                    if text:
+                        context_long_by_id[row["id"]] = text
             except Exception:
                 pass
         out = []
@@ -2061,11 +2068,12 @@ class DatabaseService:
         return out
 
     def v2_get_last_report_for_user(self, user_id: str):
-        """Get full text of the most recent report for admin 'Last Report' section. Returns { report_text, report_preview } or None."""
+        """Get full text of the most recent completed report for admin 'Last Report' section. Only considers sessions with status='completed'. Returns { report_text, report_preview } or None."""
         result = (
             self.client.table("v2_sessions")
             .select("id, report_id")
             .eq("user_id", user_id)
+            .eq("status", "completed")
             .order("created_at", desc=True)
             .limit(1)
             .execute()
@@ -2080,9 +2088,16 @@ class DatabaseService:
                 report_text = r.data[0].get("report_text") or ""
         if report_text is None and s.get("id"):
             try:
-                ctx = self.client.table("v2_sessions").select("context_long").eq("id", s["id"]).execute()
-                if ctx.data and ctx.data[0].get("context_long"):
-                    report_text = ctx.data[0]["context_long"]
+                ctx = self.client.table("v2_sessions").select("context_long, context_long_entries").eq("id", s["id"]).execute()
+                if ctx.data:
+                    row = ctx.data[0]
+                    report_text = (row.get("context_long") or "").strip()
+                    if not report_text and row.get("context_long_entries"):
+                        entries = row["context_long_entries"]
+                        if isinstance(entries, list) and entries:
+                            last = entries[-1]
+                            if isinstance(last, dict) and last.get("text"):
+                                report_text = (last["text"] or "").strip()
             except Exception:
                 pass
         if not report_text:
