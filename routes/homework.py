@@ -334,6 +334,7 @@ def homework_session_status():
 def homework_abandon_session(session_id):
     """Delete the homework session (owner only). Works for any status including completed. User has no active session afterward; GET status returns has_active_session: false. Client should refetch status and show the first page (Start)."""
     try:
+        from services.sniper_realtime import clear_sniper_session
         user_id = request.user_id
         session = db.v2_get_session(session_id, user_id)
         if not session:
@@ -341,6 +342,7 @@ def homework_abandon_session(session_id):
         deleted = db.v2_delete_session(session_id, user_id)
         if not deleted:
             return jsonify({"code": "V2_ERROR", "error": "Session could not be deleted"}), 500
+        clear_sniper_session(session_id)
         return jsonify({"deleted": True, "message": "Session deleted. Refetch status and show the start page."}), 200
     except Exception as e:
         logger.error(f"Homework abandon session: {str(e)}")
@@ -616,6 +618,101 @@ def homework_submit_recording_1(session_id):
         return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
 
 
+# ---------- Sniper Wheel real-time metrics ----------
+_sniper_rate_limit: dict = {}  # (user_id, session_id) -> [timestamps]
+SNIPER_RATE_LIMIT_PER_MINUTE = 120
+
+
+def _sniper_rate_limit_check(user_id: str, session_id: str) -> bool:
+    """True if request is within limit (120/min per user+session)."""
+    import time as _time
+    key = (user_id, session_id)
+    now = _time.time()
+    cutoff = now - 60.0
+    if key not in _sniper_rate_limit:
+        _sniper_rate_limit[key] = []
+    times = _sniper_rate_limit[key]
+    times[:] = [t for t in times if t > cutoff]
+    if len(times) >= SNIPER_RATE_LIMIT_PER_MINUTE:
+        return False
+    times.append(now)
+    return True
+
+
+@homework_bp.route("/session/<session_id>/sniper-metrics-chunk", methods=["POST"])
+@require_auth
+def homework_sniper_metrics_chunk(session_id):
+    """
+    Real-time Sniper Wheel metrics. Body: raw PCM16 mono. Headers: X-Sample-Rate, X-Seq, X-T-Ms;
+    optional X-WPM (client WPM), X-Debug: true. Returns segments, overall_score, tier, coaching_message,
+    pace_available, score_completeness, live; _debug when X-Debug.
+    """
+    try:
+        user_id = request.user_id
+        session = db.v2_get_session(session_id, user_id)
+        if not session:
+            return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found"}), 404
+        if not _sniper_rate_limit_check(user_id, session_id):
+            return jsonify({"code": "RATE_LIMIT", "error": "Too many requests; 120 per minute per session."}), 429
+
+        sample_rate = request.headers.get("X-Sample-Rate", "16000")
+        try:
+            sample_rate = int(sample_rate)
+        except ValueError:
+            sample_rate = 16000
+        seq = request.headers.get("X-Seq", "0")
+        try:
+            seq = int(seq)
+        except ValueError:
+            seq = 0
+        t_ms = request.headers.get("X-T-Ms", "0")
+        try:
+            t_ms = int(t_ms)
+        except ValueError:
+            t_ms = 0
+        client_wpm = request.headers.get("X-WPM")
+        if client_wpm is not None and client_wpm.strip() != "":
+            try:
+                client_wpm = float(client_wpm)
+            except ValueError:
+                client_wpm = None
+        else:
+            client_wpm = None
+        include_debug = (request.headers.get("X-Debug") or "").strip().lower() in ("true", "1", "yes")
+
+        pcm_bytes = request.get_data()
+        from services.sniper_realtime import process_sniper_chunk
+        from services.sniper_scoring import compute_sniper_state
+
+        inputs, debug = process_sniper_chunk(
+            pcm_bytes,
+            sample_rate,
+            session_id,
+            seq=seq,
+            t_ms=t_ms,
+            client_wpm=client_wpm,
+            include_debug=include_debug,
+        )
+        state = compute_sniper_state(**inputs)
+
+        payload = {
+            "seq": seq,
+            "t_ms": t_ms,
+            "segments": state["segments"],
+            "overall_score": state["overall_score"],
+            "tier": state["tier"],
+            "coaching_message": state["coaching_message"],
+            "pace_available": state["pace_available"],
+            "score_completeness": state["score_completeness"],
+            "live": state["live"],
+        }
+        if include_debug:
+            payload["_debug"] = debug
+        return jsonify(payload), 200
+    except Exception as e:
+        logger.exception("Sniper metrics chunk: %s", e)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
 
 
 @homework_bp.route("/session/<session_id>/report", methods=["GET"])

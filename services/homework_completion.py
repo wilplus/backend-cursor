@@ -20,6 +20,11 @@ COACH_FEEDBACK_MESSAGE = (
     "Your coach has 24 hours to analyse your homework and send a feedback on your email!"
 )
 
+MINIMAL_REPORT_FALLBACK = (
+    "**Report**\n\nHomework recording was submitted. Full report could not be generated. "
+    "Your coach has 24 hours to review and send you feedback."
+)
+
 
 def _first_n_sentences(text: str, n: int = 2) -> str:
     """Return at most n sentences from text (split on . ! ?)."""
@@ -114,14 +119,47 @@ def complete_session_recording_1_only(session_id: str, user_id: str, allow_task_
     db.v2_append_context_long_entry(session_id, user_id, report_text)
     report_row = db.v2_create_report(session_id, recording_1_id, report_text)
 
+    completed_at_iso = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+    # Mark session completed and send coach email immediately so the report is "delivered"
+    # even if optional OpenAI steps (custom questions, coach_insight) fail or are slow.
+    db.v2_update_session(session_id, user_id, {
+        "post_answers": [],
+        "report_id": report_row["id"] if report_row else None,
+        "performance_score_end": performance_score_end,
+        "status": STATUS_COMPLETED,
+        "completed_at": completed_at_iso,
+        "question_1_analysis": "",
+        "question_1_score": 0,
+        "question_2_analysis": "",
+        "question_2_score": 0,
+        "question_3_analysis": "",
+        "question_3_score": 0,
+        "coach_insight": None,
+    })
+
+    try:
+        student_email = db.get_user_email_from_auth(user_id)
+        email_service.send_lesson_complete_to_admin(
+            user_id, session_id, report_text,
+            student_email=student_email,
+            performance_score_end=performance_score_end,
+        )
+    except Exception as mail_err:
+        logger.warning("Lesson-complete email failed: %s", mail_err)
+
+    # Optional: enrich with custom question analysis and coach insight (non-blocking).
+    # Session is already completed and coach already notified.
+    r1 = r2 = r3 = {"analysis": "", "score": 0}
     q1 = (session.get("session_metric_question_1") or "").strip()
     q2 = (session.get("session_metric_question_2") or "").strip()
     q3 = (session.get("session_metric_question_3") or "").strip()
-    custom_results = openai_service.analyze_custom_questions(transcript, [q1, q2, q3])
-    r1, r2, r3 = (custom_results + [{"analysis": "", "score": 0}] * 3)[:3]
-    completed_at_iso = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    try:
+        custom_results = openai_service.analyze_custom_questions(transcript, [q1, q2, q3])
+        r1, r2, r3 = (custom_results + [{"analysis": "", "score": 0}] * 3)[:3]
+    except Exception as cq_err:
+        logger.warning("Custom questions analysis failed: %s", cq_err)
 
-    # Two-sentence coach insight for report view (context + fillers, progress + relevancy)
     coach_insight = ""
     try:
         context_short = (session.get("context_short") or "").strip()
@@ -141,11 +179,6 @@ def complete_session_recording_1_only(session_id: str, user_id: str, allow_task_
         logger.warning("Coach insight generation failed: %s", ci_err)
 
     db.v2_update_session(session_id, user_id, {
-        "post_answers": [],
-        "report_id": report_row["id"] if report_row else None,
-        "performance_score_end": performance_score_end,
-        "status": STATUS_COMPLETED,
-        "completed_at": completed_at_iso,
         "question_1_analysis": r1.get("analysis") or "",
         "question_1_score": float(r1.get("score", 0)),
         "question_2_analysis": r2.get("analysis") or "",
@@ -154,20 +187,11 @@ def complete_session_recording_1_only(session_id: str, user_id: str, allow_task_
         "question_3_score": float(r3.get("score", 0)),
         "coach_insight": coach_insight or None,
     })
+
     try:
         db.v2_upsert_student_coaching_memory(user_id, session_id)
     except Exception as cm_err:
         logger.warning("Coaching memory upsert failed: %s", cm_err)
-
-    try:
-        student_email = db.get_user_email_from_auth(user_id)
-        email_service.send_lesson_complete_to_admin(
-            user_id, session_id, report_text,
-            student_email=student_email,
-            performance_score_end=performance_score_end,
-        )
-    except Exception as mail_err:
-        logger.warning("Lesson-complete email failed: %s", mail_err)
 
     logger.info("complete_session_recording_1_only: done session_id=%s", session_id)
     return {
@@ -184,3 +208,52 @@ def complete_session_recording_1_only(session_id: str, user_id: str, allow_task_
         "question_3_score": float(r3.get("score", 0)),
         "completed_at_iso": completed_at_iso,
     }
+
+
+def minimal_complete_and_notify(session_id: str, user_id: str) -> bool:
+    """
+    Fallback: mark session completed with a minimal report and send coach email.
+    Use when complete_session_recording_1_only fails so the coach is still notified.
+    Returns True if session was marked completed and email sent (or attempted).
+    """
+    try:
+        session = db.v2_get_session(session_id, user_id)
+        if not session or session.get("status") == STATUS_COMPLETED:
+            return False
+        recording_1_id = session.get("recording_1_id")
+        if not recording_1_id:
+            return False
+        report_text = MINIMAL_REPORT_FALLBACK
+        db.v2_append_context_long_entry(session_id, user_id, report_text)
+        report_row = db.v2_create_report(session_id, recording_1_id, report_text)
+        completed_at_iso = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+        performance_score_end = float(session.get("performance_score_1") or 0)
+        db.v2_update_session(session_id, user_id, {
+            "post_answers": [],
+            "report_id": report_row["id"] if report_row else None,
+            "performance_score_end": performance_score_end,
+            "status": STATUS_COMPLETED,
+            "completed_at": completed_at_iso,
+            "recording_1_processing_status": "completed",
+            "question_1_analysis": "",
+            "question_1_score": 0,
+            "question_2_analysis": "",
+            "question_2_score": 0,
+            "question_3_analysis": "",
+            "question_3_score": 0,
+            "coach_insight": None,
+        })
+        try:
+            student_email = db.get_user_email_from_auth(user_id)
+            email_service.send_lesson_complete_to_admin(
+                user_id, session_id, report_text,
+                student_email=student_email,
+                performance_score_end=performance_score_end,
+            )
+        except Exception as mail_err:
+            logger.warning("Minimal-complete: lesson-complete email failed: %s", mail_err)
+        logger.info("minimal_complete_and_notify: done session_id=%s", session_id)
+        return True
+    except Exception as e:
+        logger.exception("minimal_complete_and_notify failed: %s", e)
+        return False

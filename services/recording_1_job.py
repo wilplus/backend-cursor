@@ -15,7 +15,7 @@ from services.openai_service import openai_service
 from services.v2_flow_service import select_focus_task_for_performance_score_1
 from utils.metrics import count_fillers, compute_wpm
 from services.metrics_v2 import compute_performance_score_1, build_recording_1_performance_profile
-from services.homework_completion import complete_session_recording_1_only
+from services.homework_completion import complete_session_recording_1_only, minimal_complete_and_notify
 
 logger = logging.getLogger(__name__)
 
@@ -151,3 +151,9 @@ def _process_one(payload: dict):
             })
         except Exception as update_err:
             logger.warning("recording_1_job: could not set failed status: %s", update_err)
+        # Ensure coach is notified even when full completion failed (e.g. report generation error)
+        try:
+            if minimal_complete_and_notify(session_id, user_id):
+                logger.info("recording_1_job: minimal completion and coach notification sent after failure")
+        except Exception as fallback_err:
+            logger.warning("recording_1_job: minimal_complete_and_notify failed: %s", fallback_err)
