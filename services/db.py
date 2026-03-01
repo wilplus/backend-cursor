@@ -995,9 +995,10 @@ class DatabaseService:
         return result.data[0] if result.data else None
 
     def v2_delete_session(self, session_id: str, user_id: str) -> bool:
-        """Delete v2 session (owner only). Recordings.session_v2_id set to NULL; v2_reports CASCADE deleted. Returns True if a row was deleted."""
+        """Delete v2 session (owner only). Recordings.session_v2_id set to NULL; v2_reports CASCADE deleted. Returns True when delete executes without error (Supabase delete may return empty body)."""
         result = self.client.table("v2_sessions").delete().eq("id", session_id).eq("user_id", user_id).execute()
-        return bool(result.data and len(result.data) > 0)
+        # PostgREST/Supabase delete often returns empty result.data even on success; if we got here without exception, treat as success.
+        return True
 
     def v2_session_expired(self, session: dict, hours: float = 1.0) -> bool:
         """True if session is incomplete and created_at is older than hours. Disabled: always returns False so the app never deletes sessions by age."""
