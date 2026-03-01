@@ -680,7 +680,9 @@ def homework_sniper_metrics_chunk(session_id):
             client_wpm = None
         include_debug = (request.headers.get("X-Debug") or "").strip().lower() in ("true", "1", "yes")
 
-        pcm_bytes = request.get_data()
+        pcm_bytes = request.get_data(cache=True)
+        if not isinstance(pcm_bytes, bytes):
+            pcm_bytes = b""
         from services.sniper_realtime import process_sniper_chunk
         from services.sniper_scoring import compute_sniper_state
 
@@ -706,6 +708,7 @@ def homework_sniper_metrics_chunk(session_id):
         )
 
         payload = {
+            "active": True,
             "seq": seq,
             "t_ms": t_ms,
             "segments": state["segments"],
