@@ -169,7 +169,7 @@ Details are in `.cursor/rules/architecture-taskmaster.mdc` (Admin section).
 - **Paths:** Frontend does **not** use `v2` in its own paths. It calls **`/api/homework/*`** and **`/api/admin/*`**. A Next.js BFF proxies these to the backend (`BASE_URL/v2/homework/*`, `BASE_URL/v2/admin/*`).
 - **Reference:** BFF route examples live in **`docs/homework-bff-routes/`** (and admin in `docs/frontend-admin-panel/`). Frontend must call e.g. **`POST /api/homework/session/start`** (not `/api/homework/start`).
 - **Recording-upload-url:** Backend accepts only `recording: "1"`. If the session is already past recording 1 (`completing_from_recording_1` or `completed`), backend returns **200** with `already_submitted: true` and `storage_path: null` so the frontend does not get 409; frontend should then refetch status and show report state instead of uploading again.
-- **No recording-metrics-chunk:** Backend does not expose a real-time metrics chunk endpoint; any “glow” or wheel is client-side only. BFF may expose a no-op 204 for legacy clients.
+- **No recording-metrics-chunk:** Backend does not expose a real-time metrics chunk endpoint; any “glow” or wheel is client-side only. The BFF must proxy Sniper endpoints (sniper-metrics-chunk, sniper-session-complete) or the wheel will not start; copy routes from docs/homework-bff-routes/session/[sessionId]/sniper-metrics-chunk and sniper-session-complete.
 
 ---
 
