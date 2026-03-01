@@ -1245,6 +1245,191 @@ class DatabaseService:
             payload, on_conflict="user_id"
         ).execute()
 
+    # ---------- Sniper adaptive (user_sniper_profile, session_sniper_metrics) ----------
+
+    def get_sniper_profile(self, user_id: str) -> Optional[dict]:
+        """Get user_sniper_profile row or None."""
+        result = self.client.table("user_sniper_profile").select("*").eq("user_id", user_id).execute()
+        return result.data[0] if result.data else None
+
+    def upsert_sniper_profile(
+        self,
+        user_id: str,
+        session_count: int,
+        sessions_with_energy_count: int = 0,
+        baseline_wpm: Optional[float] = None,
+        baseline_pause_ms: Optional[float] = None,
+        baseline_dynamic_db: Optional[float] = None,
+        baseline_emphasis_per_min: Optional[float] = None,
+        baseline_energy_ratio: Optional[float] = None,
+        baseline_fatigue_sec: Optional[float] = None,
+    ):
+        """Insert or update user_sniper_profile. Pass only fields to set; None leaves existing."""
+        now = datetime.now(timezone.utc).isoformat()
+        payload = {
+            "user_id": user_id,
+            "session_count": session_count,
+            "sessions_with_energy_count": sessions_with_energy_count,
+            "updated_at": now,
+        }
+        if baseline_wpm is not None:
+            payload["baseline_wpm"] = baseline_wpm
+        if baseline_pause_ms is not None:
+            payload["baseline_pause_ms"] = baseline_pause_ms
+        if baseline_dynamic_db is not None:
+            payload["baseline_dynamic_db"] = baseline_dynamic_db
+        if baseline_emphasis_per_min is not None:
+            payload["baseline_emphasis_per_min"] = baseline_emphasis_per_min
+        if baseline_energy_ratio is not None:
+            payload["baseline_energy_ratio"] = baseline_energy_ratio
+        if baseline_fatigue_sec is not None:
+            payload["baseline_fatigue_sec"] = baseline_fatigue_sec
+        self.client.table("user_sniper_profile").upsert(payload, on_conflict="user_id").execute()
+
+    def save_session_sniper_metrics(
+        self,
+        session_id: str,
+        user_id: str,
+        wpm: Optional[float] = None,
+        pause_ms: Optional[float] = None,
+        dynamic_db: Optional[float] = None,
+        emphasis_per_min: Optional[float] = None,
+        energy_ratio: Optional[float] = None,
+        stage_score: Optional[float] = None,
+        voiced_duration_sec: Optional[float] = None,
+    ):
+        """Upsert session_sniper_metrics (from client sniper-session-complete)."""
+        payload = {"session_id": session_id, "user_id": user_id}
+        if wpm is not None:
+            payload["wpm"] = wpm
+        if pause_ms is not None:
+            payload["pause_ms"] = pause_ms
+        if dynamic_db is not None:
+            payload["dynamic_db"] = dynamic_db
+        if emphasis_per_min is not None:
+            payload["emphasis_per_min"] = emphasis_per_min
+        if energy_ratio is not None:
+            payload["energy_ratio"] = energy_ratio
+        if stage_score is not None:
+            payload["stage_score"] = stage_score
+        if voiced_duration_sec is not None:
+            payload["voiced_duration_sec"] = voiced_duration_sec
+        self.client.table("session_sniper_metrics").upsert(payload, on_conflict="session_id").execute()
+
+    def get_session_sniper_metrics(self, session_id: str) -> Optional[dict]:
+        """Get session_sniper_metrics for session or None."""
+        result = self.client.table("session_sniper_metrics").select("*").eq("session_id", session_id).execute()
+        return result.data[0] if result.data else None
+
+    def update_sniper_baseline_from_payload(
+        self,
+        user_id: str,
+        *,
+        wpm: Optional[float] = None,
+        pause_ms: Optional[float] = None,
+        dynamic_db: Optional[float] = None,
+        emphasis_per_min: Optional[float] = None,
+        energy_ratio: Optional[float] = None,
+        stage_score: Optional[float] = None,
+        voiced_duration_sec: Optional[float] = None,
+    ):
+        """
+        Update user_sniper_profile from a single POST payload (e.g. sniper-session-complete).
+        Same EMA and quality rules: only when stage_score >= 60 and voiced_duration_sec >= 60.
+        Call after save_session_sniper_metrics so both tables are written from one frontend POST.
+        """
+        stage_100 = None
+        if stage_score is not None:
+            stage_100 = float(stage_score) * 100.0 if float(stage_score) <= 1.0 else float(stage_score)
+        if stage_100 is None or stage_100 < 60:
+            return
+        if voiced_duration_sec is not None and voiced_duration_sec < 60:
+            return
+
+        profile = self.get_sniper_profile(user_id)
+        session_count = (profile.get("session_count") or 0) + 1
+        had_energy = energy_ratio is not None
+        sessions_with_energy = (profile.get("sessions_with_energy_count") or 0) + (1 if had_energy else 0)
+
+        def ema(old: Optional[float], new: Optional[float]) -> Optional[float]:
+            if new is None:
+                return old
+            if old is None:
+                return new
+            return 0.8 * old + 0.2 * new
+
+        new_wpm = ema(profile.get("baseline_wpm"), wpm)
+        new_pause = ema(profile.get("baseline_pause_ms"), pause_ms)
+        new_dynamic = ema(profile.get("baseline_dynamic_db"), dynamic_db)
+        new_emphasis = ema(profile.get("baseline_emphasis_per_min"), emphasis_per_min)
+        new_energy_ratio = ema(profile.get("baseline_energy_ratio"), energy_ratio)
+
+        self.upsert_sniper_profile(
+            user_id=user_id,
+            session_count=session_count,
+            sessions_with_energy_count=sessions_with_energy,
+            baseline_wpm=new_wpm,
+            baseline_pause_ms=new_pause,
+            baseline_dynamic_db=new_dynamic,
+            baseline_emphasis_per_min=new_emphasis,
+            baseline_energy_ratio=new_energy_ratio,
+        )
+
+    def update_sniper_baseline_from_session(
+        self,
+        session_id: str,
+        user_id: str,
+        recording_wpm: Optional[float] = None,
+        recording_duration_sec: Optional[float] = None,
+        performance_score_end: Optional[float] = None,
+    ):
+        """
+        After session completes: merge session_sniper_metrics + recording into user_sniper_profile (EMA).
+        Only update when session_mean_stage_score >= 60 and voiced_duration >= 60s (or recording_duration >= 60).
+        """
+        metrics = self.get_session_sniper_metrics(session_id)
+        stage_score_100 = None
+        if metrics and metrics.get("stage_score") is not None:
+            stage_score_100 = float(metrics["stage_score"])
+        elif performance_score_end is not None:
+            stage_score_100 = float(performance_score_end) * 100.0
+        voiced_sec = (metrics or {}).get("voiced_duration_sec")
+        duration_sec = voiced_sec if voiced_sec is not None else recording_duration_sec
+        if stage_score_100 is None or stage_score_100 < 60:
+            return
+        if duration_sec is not None and duration_sec < 60:
+            return
+
+        profile = self.get_sniper_profile(user_id)
+        session_count = (profile.get("session_count") or 0) + 1
+        had_energy = (metrics or {}).get("energy_ratio") is not None
+        sessions_with_energy = (profile.get("sessions_with_energy_count") or 0) + (1 if had_energy else 0)
+
+        def ema(old: Optional[float], new: Optional[float]) -> Optional[float]:
+            if new is None:
+                return old
+            if old is None:
+                return new
+            return 0.8 * old + 0.2 * new
+
+        wpm = recording_wpm if recording_wpm is not None else (metrics or {}).get("wpm")
+        new_wpm = ema(profile.get("baseline_wpm"), wpm)
+        new_pause = ema(profile.get("baseline_pause_ms"), (metrics or {}).get("pause_ms"))
+        new_dynamic = ema(profile.get("baseline_dynamic_db"), (metrics or {}).get("dynamic_db"))
+        new_emphasis = ema(profile.get("baseline_emphasis_per_min"), (metrics or {}).get("emphasis_per_min"))
+        new_energy_ratio = ema(profile.get("baseline_energy_ratio"), (metrics or {}).get("energy_ratio"))
+
+        self.upsert_sniper_profile(
+            user_id=user_id,
+            session_count=session_count,
+            sessions_with_energy_count=sessions_with_energy,
+            baseline_wpm=new_wpm,
+            baseline_pause_ms=new_pause,
+            baseline_dynamic_db=new_dynamic,
+            baseline_emphasis_per_min=new_emphasis,
+            baseline_energy_ratio=new_energy_ratio,
+        )
+
     def v2_select_student_focus_task_for_score(self, user_id: str, performance_score_1: float):
         """
         Per-student focus task for homework flow. Returns one task from v2_focus_tasks where

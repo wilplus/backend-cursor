@@ -80,6 +80,25 @@ TIER_DEVELOPING = (60, 74)
 # Coaching priority order (structural first)
 COACHING_PRIORITY = ["energy", "pause", "pace", "emphasis", "dynamic"]
 
+# Soft floor: score = floor + (100 - floor) * (raw/100). Energy has no floor (structural honesty).
+PACE_SOFT_FLOOR = 55
+PAUSE_SOFT_FLOOR = 55
+DYNAMIC_SOFT_FLOOR = 60
+EMPHASIS_SOFT_FLOOR = 60
+
+# Catastrophic zone: bypass soft floor so score can drop to 30–40 (preserve credibility).
+PACE_CATASTROPHIC_LOW_WPM = 110
+PACE_CATASTROPHIC_HIGH_WPM = 190
+DYNAMIC_CATASTROPHIC_LOW_DB = 6.0
+EMPHASIS_CATASTROPHIC_LOW_PER_MIN = 8.0
+
+# Adaptive: baseline ready after N sessions with at least one having energy.
+BASELINE_READY_SESSION_COUNT = 3
+ENERGY_IDEAL_RATIO = 1.0  # E3/E2 >= 1
+IMPROVEMENT_EPSILON = 1e-6
+BLEND_STAGE_WEIGHT = 0.70
+BLEND_GROWTH_WEIGHT = 0.30
+
 
 def _clamp(x: float, lo: float, hi: float) -> float:
     return max(lo, min(hi, x))
@@ -89,6 +108,16 @@ def _gaussian_score(deviation: float, tolerance: float) -> float:
     if tolerance <= 0:
         return 100.0
     return 100.0 * math.exp(-(deviation * deviation) / (2.0 * tolerance * tolerance))
+
+
+def _apply_soft_floor(raw_score: float, floor: float, in_catastrophic_zone: bool) -> float:
+    """Apply soft floor unless in catastrophic zone (then allow low score for credibility)."""
+    if in_catastrophic_zone:
+        return raw_score
+    if floor <= 0:
+        return raw_score
+    gaussian_norm = raw_score / 100.0
+    return floor + (100.0 - floor) * gaussian_norm
 
 
 def zone_for_value(
@@ -130,6 +159,9 @@ def score_pace(
         zone = zone_for_value(
             wpm, PACE_GREEN_LOW, PACE_GREEN_HIGH, PACE_YELLOW_LOW, PACE_YELLOW_HIGH
         )
+    catastrophic = wpm < PACE_CATASTROPHIC_LOW_WPM or wpm > PACE_CATASTROPHIC_HIGH_WPM
+    score = _apply_soft_floor(score, PACE_SOFT_FLOOR, catastrophic)
+    score = _clamp(score, 0, 100)
     return (round(score, 1), zone, wpm, segment_variance_wpm)
 
 
@@ -145,6 +177,8 @@ def score_pause(
         score = max(0, score - 10)
     if not has_dramatic_pause_in_window:
         score = max(0, score - NO_DRAMATIC_PAUSE_PENALTY)
+    score = _clamp(score, 0, 100)
+    score = _apply_soft_floor(score, PAUSE_SOFT_FLOOR, False)
     score = _clamp(score, 0, 100)
     zone = zone_for_value(
         avg_pause_ms,
@@ -172,6 +206,9 @@ def score_dynamic(
         score = _gaussian_score(deviation, DYNAMIC_TOLERANCE_DB)
     if rms_instability_db is not None and rms_instability_db > RMS_INSTABILITY_THRESHOLD_DB:
         score = max(0, score - 10)
+    score = _clamp(score, 0, 100)
+    catastrophic = dynamic_range_db < DYNAMIC_CATASTROPHIC_LOW_DB
+    score = _apply_soft_floor(score, DYNAMIC_SOFT_FLOOR, catastrophic)
     score = _clamp(score, 0, 100)
     zone = zone_for_value(
         dynamic_range_db,
@@ -202,6 +239,9 @@ def score_emphasis(
         score = max(0, score - EMPHASIS_MONOTONE_PENALTY)
     if is_front_loaded:
         score = max(0, score - 5)
+    score = _clamp(score, 0, 100)
+    catastrophic = spikes_per_min < EMPHASIS_CATASTROPHIC_LOW_PER_MIN
+    score = _apply_soft_floor(score, EMPHASIS_SOFT_FLOOR, catastrophic)
     score = _clamp(score, 0, 100)
     zone = zone_for_value(
         spikes_per_min,
@@ -319,6 +359,91 @@ def select_coaching_message(
     return "Delivery controlled. Maintain rhythm."
 
 
+def _improvement_ratio(baseline_dist: float, current_dist: float) -> float:
+    """Improvement = 1 - (current_distance / max(baseline_distance, epsilon)); clamp [0, 1]."""
+    denom = max(baseline_dist, IMPROVEMENT_EPSILON)
+    return _clamp(1.0 - (current_dist / denom), 0.0, 1.0)
+
+
+def compute_growth_score(
+    baseline: Dict[str, Any],
+    current_wpm: Optional[float],
+    current_pause_ms: float,
+    current_dynamic_db: float,
+    current_emphasis_per_min: float,
+    current_energy_ratio: Optional[float],
+    pace_available: bool,
+    energy_available: bool,
+) -> Tuple[Optional[float], Dict[str, float]]:
+    """
+    Growth score 0–100 from improvement vs baseline. Same weights as stage.
+    Energy improvement: 1 - |current_ratio - 1| / max(|baseline_ratio - 1|, epsilon).
+    Returns (growth_score or None if baseline missing required fields, improvements_dict).
+    """
+    improvements: Dict[str, float] = {}
+    base_wpm = baseline.get("baseline_wpm")
+    base_pause = baseline.get("baseline_pause_ms")
+    base_dynamic = baseline.get("baseline_dynamic_db")
+    base_emphasis = baseline.get("baseline_emphasis_per_min")
+    base_energy_ratio = baseline.get("baseline_energy_ratio")
+
+    if pace_available and current_wpm is not None and base_wpm is not None:
+        bd = abs(float(base_wpm) - PACE_IDEAL_WPM)
+        cd = abs(float(current_wpm) - PACE_IDEAL_WPM)
+        improvements["pace"] = _improvement_ratio(bd, cd)
+    if base_pause is not None:
+        bd = abs(float(base_pause) - PAUSE_IDEAL_MS)
+        cd = abs(current_pause_ms - PAUSE_IDEAL_MS)
+        improvements["pause"] = _improvement_ratio(bd, cd)
+    if base_dynamic is not None:
+        bd = abs(float(base_dynamic) - DYNAMIC_IDEAL_DB)
+        cd = abs(current_dynamic_db - DYNAMIC_IDEAL_DB)
+        improvements["dynamic"] = _improvement_ratio(bd, cd)
+    if base_emphasis is not None:
+        bd = abs(float(base_emphasis) - EMPHASIS_IDEAL_PER_MIN)
+        cd = abs(current_emphasis_per_min - EMPHASIS_IDEAL_PER_MIN)
+        improvements["emphasis"] = _improvement_ratio(bd, cd)
+    if energy_available and base_energy_ratio is not None and current_energy_ratio is not None:
+        br = float(base_energy_ratio)
+        cr = float(current_energy_ratio)
+        base_dist = abs(br - ENERGY_IDEAL_RATIO)
+        current_dist = abs(cr - ENERGY_IDEAL_RATIO)
+        improvements["energy"] = _improvement_ratio(base_dist, current_dist)
+
+    if not improvements:
+        return None, improvements
+
+    if pace_available and "pace" in improvements:
+        if energy_available and "energy" in improvements:
+            total = (
+                improvements.get("pace", 0) * WEIGHT_PACE
+                + improvements.get("pause", 0) * WEIGHT_PAUSE
+                + improvements.get("dynamic", 0) * WEIGHT_DYNAMIC
+                + improvements.get("emphasis", 0) * WEIGHT_EMPHASIS
+                + improvements.get("energy", 0) * WEIGHT_ENERGY
+            )
+        else:
+            total = (
+                improvements.get("pace", 0) * WEIGHT_PACE
+                + improvements.get("pause", 0) * WEIGHT_PAUSE
+                + improvements.get("dynamic", 0) * WEIGHT_DYNAMIC
+                + improvements.get("emphasis", 0) * WEIGHT_EMPHASIS
+            )
+            total = total / (1.0 - WEIGHT_ENERGY)
+    else:
+        total = (
+            improvements.get("pause", 0) * WEIGHT_PAUSE_NO_PACE
+            + improvements.get("dynamic", 0) * WEIGHT_DYNAMIC_NO_PACE
+            + improvements.get("emphasis", 0) * WEIGHT_EMPHASIS_NO_PACE
+            + improvements.get("energy", 0) * WEIGHT_ENERGY_NO_PACE
+        )
+        if energy_available and "energy" not in improvements:
+            total = total / (1.0 - WEIGHT_ENERGY)
+
+    growth_score = round(_clamp(total * 100.0, 0, 100), 1)
+    return growth_score, improvements
+
+
 def compute_sniper_state(
     pace_wpm: Optional[float] = None,
     pace_variance_wpm: Optional[float] = None,
@@ -336,10 +461,14 @@ def compute_sniper_state(
     e3: Optional[float] = None,
     energy_has_recovery: bool = False,
     energy_is_declining: bool = False,
+    baseline: Optional[Dict[str, Any]] = None,
+    session_count: int = 0,
 ) -> Dict[str, Any]:
     """
     Full sniper state for one tick. Reweights when pace unavailable.
-    Returns segments, overall_score, tier, coaching_message, pace_available, score_completeness, live.
+    If baseline and session_count >= BASELINE_READY_SESSION_COUNT and profile has energy, computes growth and blend.
+    Returns segments, overall_score (stage), display_score (blend or stage), growth_score, baseline_ready, session_count,
+    tier, coaching_message, pace_available, score_completeness, live.
     """
     pace_score, pace_zone, raw_wpm, _ = score_pace(pace_wpm, pace_variance_wpm)
     pause_score, pause_zone = score_pause(
@@ -384,6 +513,32 @@ def compute_sniper_state(
 
     overall_score = round(total, 0)
     overall_score = int(_clamp(overall_score, 0, 100))
+
+    baseline_ready = (
+        baseline is not None
+        and session_count >= BASELINE_READY_SESSION_COUNT
+        and (baseline.get("sessions_with_energy_count") or 0) >= 1
+    )
+    growth_score: Optional[float] = None
+    display_score = overall_score
+    if baseline_ready and baseline:
+        energy_ratio = (e3 / e2) if (e2 and e3 is not None and e2 != 0) else None
+        growth_score, _ = compute_growth_score(
+            baseline=baseline,
+            current_wpm=pace_wpm,
+            current_pause_ms=pause_avg_ms,
+            current_dynamic_db=dynamic_range_db,
+            current_emphasis_per_min=emphasis_spikes_per_min,
+            current_energy_ratio=energy_ratio,
+            pace_available=pace_available,
+            energy_available=energy_available,
+        )
+        if growth_score is not None:
+            display_score = round(
+                BLEND_STAGE_WEIGHT * overall_score + BLEND_GROWTH_WEIGHT * growth_score,
+                0,
+            )
+            display_score = int(_clamp(display_score, 0, 100))
 
     coaching = select_coaching_message(
         pace_wpm, pace_zone,
@@ -430,7 +585,12 @@ def compute_sniper_state(
     return {
         "segments": segments,
         "overall_score": overall_score,
-        "tier": tier_label(float(overall_score)),
+        "stage_score": overall_score,
+        "display_score": display_score,
+        "growth_score": growth_score,
+        "baseline_ready": baseline_ready,
+        "session_count": session_count,
+        "tier": tier_label(float(display_score)),
         "coaching_message": coaching,
         "pace_available": pace_available,
         "score_completeness": score_completeness,

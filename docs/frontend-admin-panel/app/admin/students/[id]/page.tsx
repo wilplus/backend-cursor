@@ -124,7 +124,8 @@ export default function AdminStudentProfilePage({ params }: { params: { id: stri
     });
   }, [profile]);
 
-  const saveOverrides = () => {
+  /** Save all form changes (overrides + speaker profile) in one go. */
+  const saveAllChanges = () => {
     setSaving(true);
     const payload: Record<string, unknown> = {
       show_exercise_step: overridesDraft.show_exercise_step,
@@ -136,24 +137,48 @@ export default function AdminStudentProfilePage({ params }: { params: { id: stri
       assigned_next_exercise_id: overridesDraft.assigned_next_exercise_id || undefined,
     };
     payload.assigned_post_question_ids = overridesDraft.assigned_post_question_ids;
-    adminApi
-      .putOverrides(id, payload)
+    payload.assigned_next_task_ids = overridesDraft.assigned_next_task_ids;
+    Promise.all([
+      adminApi.putOverrides(id, payload),
+      adminApi.putSpeakerProfile(id, speakerDraft),
+    ])
       .then(() => {
-        toast.success("Overrides saved");
-        load(); // Refetch profile so assigned exercise (and other overrides) display updates
+        toast.success("All changes saved");
+        load();
       })
-      .catch((e) => toast.error(e.message))
+      .catch((e) => toast.error(e?.message ?? "Failed to save"))
       .finally(() => setSaving(false));
   };
 
-  const saveSpeakerProfile = () => {
-    setSaving(true);
-    adminApi
-      .putSpeakerProfile(id, speakerDraft)
-      .then(() => toast.success("Speaker profile saved"))
-      .catch((e) => toast.error(e.message))
-      .finally(() => setSaving(false));
-  };
+  const hasUnsavedChanges =
+    profile &&
+    (JSON.stringify({
+      ...overridesDraft,
+      assigned_post_question_ids: [...overridesDraft.assigned_post_question_ids].sort(),
+      assigned_next_task_ids: [...(overridesDraft.assigned_next_task_ids ?? [])].sort(),
+    }) !==
+      JSON.stringify({
+        show_exercise_step: profile.overrides?.show_exercise_step !== false,
+        skip_metric_questions: profile.overrides?.skip_metric_questions === true,
+        skip_post_questions: profile.overrides?.skip_post_questions === true,
+        intended_emotion_prompt: profile.overrides?.intended_emotion_prompt ?? "",
+        keywords_prompt: profile.overrides?.keywords_prompt ?? "",
+        emotion_check_question_text: profile.overrides?.emotion_check_question_text ?? "",
+        assigned_post_question_ids: (profile.overrides?.assigned_post_question_ids ?? []).slice().sort(),
+        assigned_next_exercise_id: profile.overrides?.assigned_next_exercise_id ?? "",
+        assigned_next_task_ids: (profile.overrides?.assigned_next_task_ids ?? []).slice().sort(),
+      }) ||
+      JSON.stringify(speakerDraft) !==
+        JSON.stringify({
+          main_goal: profile.speaker_profile?.main_goal ?? "",
+          motivation: profile.speaker_profile?.motivation ?? "",
+          strong_points: profile.speaker_profile?.strong_points ?? "",
+          weak_points: profile.speaker_profile?.weak_points ?? "",
+          charismatic_traits: profile.speaker_profile?.charismatic_traits ?? "",
+          hobbies_interests: profile.speaker_profile?.hobbies_interests ?? "",
+          personality_type: profile.speaker_profile?.personality_type ?? "",
+          coach_notes: profile.speaker_profile?.coach_notes ?? "",
+        }));
 
   const sendAssignment = () => {
     adminApi
@@ -269,14 +294,12 @@ export default function AdminStudentProfilePage({ params }: { params: { id: stri
           answer_type: postQuestionFormAnswerType,
         })
         .then(({ question }) => {
-          const newIds = [...overridesDraft.assigned_post_question_ids, question.id];
-          setOverridesDraft((p) => ({ ...p, assigned_post_question_ids: newIds }));
-          return adminApi.putOverrides(id, { ...overridesDraft, assigned_post_question_ids: newIds });
-        })
-        .then(() => {
-          toast.success("Question added and assigned");
+          setOverridesDraft((p) => ({
+            ...p,
+            assigned_post_question_ids: [...p.assigned_post_question_ids, question.id],
+          }));
+          toast.success("Question added. Click “Save all changes” at the bottom to assign it.");
           setPostQuestionModalOpen(false);
-          load();
         })
         .catch((e) => toast.error(e.message));
     }
@@ -539,17 +562,7 @@ export default function AdminStudentProfilePage({ params }: { params: { id: stri
 
       <SectionCard
         title="Homework Configuration"
-        description="Assign exercise and post-recording questions for this student."
-        action={
-          <button
-            type="button"
-            onClick={saveOverrides}
-            disabled={saving}
-            className="rounded-md bg-[hsl(24_95%_53%)] px-3 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
-          >
-            Save
-          </button>
-        }
+        description="Assign exercise and post-recording questions for this student. Changes are saved when you click “Save all changes” at the bottom."
       >
         <div className="space-y-4">
           <div className="flex items-center gap-2">
@@ -707,17 +720,7 @@ export default function AdminStudentProfilePage({ params }: { params: { id: stri
 
       <SectionCard
         title="Speaker Profile"
-        description="Goals, motivation, and coach notes."
-        action={
-          <button
-            type="button"
-            onClick={saveSpeakerProfile}
-            disabled={saving}
-            className="rounded-md bg-[hsl(24_95%_53%)] px-3 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
-          >
-            Save
-          </button>
-        }
+        description="Goals, motivation, and coach notes. Changes are saved when you click “Save all changes” at the bottom."
       >
         <div className="grid gap-4 sm:grid-cols-2">
           {(
@@ -760,6 +763,22 @@ export default function AdminStudentProfilePage({ params }: { params: { id: stri
           </div>
         </div>
       </SectionCard>
+
+      <div className="sticky bottom-0 z-10 -mx-4 -mb-4 flex items-center justify-between gap-4 rounded-lg border border-border bg-card px-4 py-4 shadow-sm md:-mx-6 md:px-6">
+        {hasUnsavedChanges && (
+          <span className="text-sm text-muted-foreground">You have unsaved changes</span>
+        )}
+        <div className="ml-auto">
+          <button
+            type="button"
+            onClick={saveAllChanges}
+            disabled={saving || !hasUnsavedChanges}
+            className="rounded-md bg-[hsl(24_95%_53%)] px-6 py-2.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {saving ? "Saving…" : "Save all changes"}
+          </button>
+        </div>
+      </div>
 
       <SectionCard title="Session History" description="Recent sessions and reports.">
         <div className="space-y-2">

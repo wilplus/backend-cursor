@@ -693,13 +693,28 @@ def homework_sniper_metrics_chunk(session_id):
             client_wpm=client_wpm,
             include_debug=include_debug,
         )
-        state = compute_sniper_state(**inputs)
+        profile = db.get_sniper_profile(user_id)
+        baseline = None
+        session_count = 0
+        if profile:
+            baseline = profile
+            session_count = int(profile.get("session_count") or 0)
+        state = compute_sniper_state(
+            **inputs,
+            baseline=baseline,
+            session_count=session_count,
+        )
 
         payload = {
             "seq": seq,
             "t_ms": t_ms,
             "segments": state["segments"],
             "overall_score": state["overall_score"],
+            "stage_score": state.get("stage_score", state["overall_score"]),
+            "display_score": state.get("display_score", state["overall_score"]),
+            "growth_score": state.get("growth_score"),
+            "baseline_ready": state.get("baseline_ready", False),
+            "session_count": state.get("session_count", 0),
             "tier": state["tier"],
             "coaching_message": state["coaching_message"],
             "pace_available": state["pace_available"],
@@ -711,6 +726,90 @@ def homework_sniper_metrics_chunk(session_id):
         return jsonify(payload), 200
     except Exception as e:
         logger.exception("Sniper metrics chunk: %s", e)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
+
+
+@homework_bp.route("/session/<session_id>/sniper-session-complete", methods=["POST"])
+@require_auth
+def homework_sniper_session_complete(session_id):
+    """
+    Backend owns both tables: stores session means in session_sniper_metrics and updates user_sniper_profile (EMA).
+    Body (all optional): wpm, pause_ms, dynamic_db, emphasis_per_min, energy_ratio, stage_score, voiced_duration_sec.
+    Profile is only updated when stage_score >= 60 and voiced_duration_sec >= 60. Frontend keeps sending the same POST.
+    """
+    try:
+        user_id = request.user_id
+        session = db.v2_get_session(session_id, user_id)
+        if not session:
+            return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found"}), 404
+        data = request.get_json(silent=True) or {}
+        wpm = data.get("wpm")
+        pause_ms = data.get("pause_ms")
+        dynamic_db = data.get("dynamic_db")
+        emphasis_per_min = data.get("emphasis_per_min")
+        energy_ratio = data.get("energy_ratio")
+        stage_score = data.get("stage_score")
+        voiced_duration_sec = data.get("voiced_duration_sec")
+        if wpm is not None:
+            try:
+                wpm = float(wpm)
+            except (TypeError, ValueError):
+                wpm = None
+        if pause_ms is not None:
+            try:
+                pause_ms = float(pause_ms)
+            except (TypeError, ValueError):
+                pause_ms = None
+        if dynamic_db is not None:
+            try:
+                dynamic_db = float(dynamic_db)
+            except (TypeError, ValueError):
+                dynamic_db = None
+        if emphasis_per_min is not None:
+            try:
+                emphasis_per_min = float(emphasis_per_min)
+            except (TypeError, ValueError):
+                emphasis_per_min = None
+        if energy_ratio is not None:
+            try:
+                energy_ratio = float(energy_ratio)
+            except (TypeError, ValueError):
+                energy_ratio = None
+        if stage_score is not None:
+            try:
+                stage_score = float(stage_score)
+            except (TypeError, ValueError):
+                stage_score = None
+        if voiced_duration_sec is not None:
+            try:
+                voiced_duration_sec = float(voiced_duration_sec)
+            except (TypeError, ValueError):
+                voiced_duration_sec = None
+        db.save_session_sniper_metrics(
+            session_id=session_id,
+            user_id=user_id,
+            wpm=wpm,
+            pause_ms=pause_ms,
+            dynamic_db=dynamic_db,
+            emphasis_per_min=emphasis_per_min,
+            energy_ratio=energy_ratio,
+            stage_score=stage_score,
+            voiced_duration_sec=voiced_duration_sec,
+        )
+        db.update_sniper_baseline_from_payload(
+            user_id,
+            wpm=wpm,
+            pause_ms=pause_ms,
+            dynamic_db=dynamic_db,
+            emphasis_per_min=emphasis_per_min,
+            energy_ratio=energy_ratio,
+            stage_score=stage_score,
+            voiced_duration_sec=voiced_duration_sec,
+        )
+        return jsonify({"status": "ok"}), 200
+    except Exception as e:
+        logger.exception("Sniper session complete: %s", e)
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
 
