@@ -1,6 +1,6 @@
 from supabase import create_client, Client
 from config import Config
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 from datetime import datetime, timedelta, timezone
 import sentry_sdk
 import json
