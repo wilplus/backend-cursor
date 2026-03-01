@@ -569,7 +569,48 @@ class DatabaseService:
             logger.error(f"Error creating signed URL for {bucket}/{path}: {str(e)}")
             sentry_sdk.capture_exception(e)
             raise Exception(f"Failed to create signed URL: {str(e)}")
-    
+
+    def create_signed_upload_url(self, bucket: str, path: str):
+        """Create a signed upload URL for direct PUT upload (recording-upload-url). Returns a single URL string or None if not supported."""
+        try:
+            bucket_api = self.client.storage.from_(bucket)
+            create_upload = getattr(bucket_api, "create_signed_upload_url", None)
+            if callable(create_upload):
+                result = create_upload(path)
+                if isinstance(result, dict):
+                    url = result.get("signedUrl") or result.get("signed_url") or result.get("url") or result.get("path")
+                    if isinstance(url, str) and url.startswith("http"):
+                        return url
+                if hasattr(result, "signed_url"):
+                    u = getattr(result, "signed_url", None) or getattr(result, "signedUrl", None) or getattr(result, "url", None)
+                    if isinstance(u, str) and u.startswith("http"):
+                        return u
+        except Exception:
+            pass
+        try:
+            import httpx
+            base = (config.SUPABASE_URL or "").rstrip("/")
+            key = config.SUPABASE_SERVICE_ROLE_KEY or ""
+            if not base or not key:
+                return None
+            url_path = path.lstrip("/")
+            resp = httpx.post(
+                f"{base}/storage/v1/object/upload/sign/{bucket}",
+                json={"path": url_path},
+                headers={"Authorization": f"Bearer {key}", "apikey": key, "Content-Type": "application/json"},
+                timeout=10.0,
+            )
+            if resp.status_code != 200:
+                return None
+            data = resp.json()
+            if isinstance(data, dict):
+                signed = data.get("signedUrl") or data.get("signed_url") or data.get("url")
+                if isinstance(signed, str) and signed.startswith("http"):
+                    return signed
+            return None
+        except Exception:
+            return None
+
     def upload_audio(self, bucket: str, path: str, file_data: bytes, content_type: str = "audio/webm"):
         """Upload audio file to Supabase Storage"""
         import logging

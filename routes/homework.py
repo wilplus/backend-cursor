@@ -8,6 +8,7 @@ from services.db import db
 from services.email_service import email_service
 from services.homework_completion import complete_session_recording_1_only
 import logging
+import os
 import time
 import uuid
 import sentry_sdk
@@ -479,6 +480,14 @@ def _validate_storage_path(storage_path: str, user_id: str, session_id: str) -> 
 @require_auth
 def homework_recording_upload_url(session_id):
     """Mint a storage path for direct-to-storage upload (recording 1 only). Client uploads audio, then calls recording-1 with storage_path + duration_seconds. TEMPORARY: recording-2 removed."""
+    # #region agent log
+    try:
+        os.makedirs(os.path.dirname(_DEBUG_LOG_PATH), exist_ok=True)
+        with open(_DEBUG_LOG_PATH, "a") as _f0:
+            _f0.write(_json.dumps({"hypothesisId": "H0", "location": "homework.py:recording-upload-url", "message": "entry", "data": {"session_id": str(session_id)[:36]}, "timestamp": int(time.time() * 1000)}) + "\n")
+    except Exception:
+        pass
+    # #endregion
     try:
         from config import Config
         config = Config()
@@ -505,10 +514,35 @@ def homework_recording_upload_url(session_id):
             return jsonify({"code": "INVALID_SESSION_STATE", "error": "Session must be in warm_up for recording-1", "status": status}), 409
 
         storage_path = _storage_path_for_session(user_id, session_id)
-        return jsonify({
+        resp_payload = {
             "storage_path": storage_path,
             "bucket": config.AUDIO_BUCKET_NAME,
-        }), 200
+        }
+        # #region agent log
+        try:
+            _log_line = {"hypothesisId": "H1", "location": "homework.py:recording-upload-url", "message": "upload-url response shape", "data": {"keys": list(resp_payload.keys()), "storage_path_type": type(storage_path).__name__, "bucket_type": type(config.AUDIO_BUCKET_NAME).__name__, "has_upload_url": "upload_url" in resp_payload}, "timestamp": int(time.time() * 1000)}
+            with open(_DEBUG_LOG_PATH, "a") as _f:
+                _f.write(_json.dumps(_log_line) + "\n")
+        except Exception:
+            pass
+        # #endregion
+        upload_url_str = db.create_signed_upload_url(config.AUDIO_BUCKET_NAME, storage_path)
+        if isinstance(upload_url_str, str) and upload_url_str:
+            resp_payload["upload_url"] = upload_url_str
+            resp_payload["url"] = upload_url_str
+        else:
+            # Always provide a string so frontend never gets "url is not transferrable" (e.g. when passing to postMessage).
+            # Use storage_path so client can upload via Supabase SDK: supabase.storage.from(bucket).upload(storage_path, file).
+            resp_payload["url"] = storage_path or ""
+        # #region agent log
+        try:
+            _log_line2 = {"hypothesisId": "H2", "location": "homework.py:recording-upload-url", "message": "after upload_url", "data": {"has_upload_url": "upload_url" in resp_payload, "upload_url_type": type(resp_payload.get("upload_url")).__name__ if resp_payload.get("upload_url") else "none"}, "timestamp": int(time.time() * 1000)}
+            with open(_DEBUG_LOG_PATH, "a") as _f2:
+                _f2.write(_json.dumps(_log_line2) + "\n")
+        except Exception:
+            pass
+        # #endregion
+        return jsonify(resp_payload), 200
     except Exception as e:
         logger.error(f"recording-upload-url: {str(e)}")
         sentry_sdk.capture_exception(e)
@@ -939,14 +973,26 @@ def homework_get_report(session_id):
                         )
                     except Exception as e:
                         logger.warning("Report: could not create signed URL for recording %s: %s", display_recording_id, e)
-                final_recording["id"] = display_recording_id
+                final_recording["id"] = str(display_recording_id) if display_recording_id is not None else None
+                # Ensure audio_url is always a string or None for JSON (avoid "not transferrable" when frontend expects string)
+                if audio_url is not None and not isinstance(audio_url, str):
+                    audio_url = str(audio_url) if audio_url else None
                 final_recording["audio_url"] = audio_url
+                # #region agent log
+                try:
+                    os.makedirs(os.path.dirname(_DEBUG_LOG_PATH), exist_ok=True)
+                    _log_line = {"hypothesisId": "H3", "location": "homework.py:report", "message": "report audio_url type", "data": {"audio_url_type": type(audio_url).__name__ if audio_url is not None else "NoneType", "is_string": isinstance(audio_url, str)}, "timestamp": int(time.time() * 1000)}
+                    with open(_DEBUG_LOG_PATH, "a") as _f:
+                        _f.write(_json.dumps(_log_line) + "\n")
+                except Exception:
+                    pass
+                # #endregion
                 filler_data = rec.get("filler_words_count") or {}
                 if not isinstance(filler_data, dict):
                     filler_data = {}
                 recording_payload = {
-                    "id": display_recording_id,
-                    "audio_url": audio_url,
+                    "id": str(display_recording_id) if display_recording_id is not None else None,
+                    "audio_url": audio_url if (audio_url is None or isinstance(audio_url, str)) else str(audio_url),
                     "transcription_text": (rec.get("transcription_text") or "").strip(),
                     "filler_words_count": {
                         "total": int(filler_data.get("total", 0) or 0),
