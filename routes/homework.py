@@ -20,6 +20,22 @@ homework_bp = Blueprint("homework", __name__, url_prefix="/v2/homework")
 # #region agent log
 import json as _json
 _DEBUG_LOG_PATH = "/Users/arturwillonski/Documents/backend-cursor/.cursor/debug.log"
+_DEBUG_LOG_FALLBACK = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "debug_runtime.log")
+
+def _debug_log_write(payload):
+    """Write one NDJSON line to debug log; try primary path then fallback."""
+    line = _json.dumps(payload) + "\n"
+    for path in (_DEBUG_LOG_PATH, _DEBUG_LOG_FALLBACK):
+        try:
+            d = os.path.dirname(path)
+            if d:
+                os.makedirs(d, exist_ok=True)
+            with open(path, "a") as f:
+                f.write(line)
+            return
+        except Exception:
+            continue
+
 def _agent_log(msg, data=None, hypothesis_id=None):
     try:
         payload = {"location": "homework.py", "message": msg, "timestamp": int(time.time() * 1000)}
@@ -27,8 +43,7 @@ def _agent_log(msg, data=None, hypothesis_id=None):
             payload["data"] = data
         if hypothesis_id is not None:
             payload["hypothesisId"] = hypothesis_id
-        with open(_DEBUG_LOG_PATH, "a") as f:
-            f.write(_json.dumps(payload) + "\n")
+        _debug_log_write(payload)
     except Exception:
         pass
 # #endregion
@@ -482,9 +497,7 @@ def homework_recording_upload_url(session_id):
     """Mint a storage path for direct-to-storage upload (recording 1 only). Client uploads audio, then calls recording-1 with storage_path + duration_seconds. TEMPORARY: recording-2 removed."""
     # #region agent log
     try:
-        os.makedirs(os.path.dirname(_DEBUG_LOG_PATH), exist_ok=True)
-        with open(_DEBUG_LOG_PATH, "a") as _f0:
-            _f0.write(_json.dumps({"hypothesisId": "H0", "location": "homework.py:recording-upload-url", "message": "entry", "data": {"session_id": str(session_id)[:36]}, "timestamp": int(time.time() * 1000)}) + "\n")
+        _debug_log_write({"hypothesisId": "H0", "location": "homework.py:recording-upload-url", "message": "entry", "data": {"session_id": str(session_id)[:36]}, "timestamp": int(time.time() * 1000)})
     except Exception:
         pass
     # #endregion
@@ -520,9 +533,7 @@ def homework_recording_upload_url(session_id):
         }
         # #region agent log
         try:
-            _log_line = {"hypothesisId": "H1", "location": "homework.py:recording-upload-url", "message": "upload-url response shape", "data": {"keys": list(resp_payload.keys()), "storage_path_type": type(storage_path).__name__, "bucket_type": type(config.AUDIO_BUCKET_NAME).__name__, "has_upload_url": "upload_url" in resp_payload}, "timestamp": int(time.time() * 1000)}
-            with open(_DEBUG_LOG_PATH, "a") as _f:
-                _f.write(_json.dumps(_log_line) + "\n")
+            _debug_log_write({"hypothesisId": "H1", "location": "homework.py:recording-upload-url", "message": "upload-url response shape", "data": {"keys": list(resp_payload.keys()), "storage_path_type": type(storage_path).__name__, "bucket_type": type(config.AUDIO_BUCKET_NAME).__name__, "has_upload_url": "upload_url" in resp_payload}, "timestamp": int(time.time() * 1000)})
         except Exception:
             pass
         # #endregion
@@ -536,13 +547,13 @@ def homework_recording_upload_url(session_id):
             resp_payload["url"] = storage_path or ""
         # #region agent log
         try:
-            _log_line2 = {"hypothesisId": "H2", "location": "homework.py:recording-upload-url", "message": "after upload_url", "data": {"has_upload_url": "upload_url" in resp_payload, "upload_url_type": type(resp_payload.get("upload_url")).__name__ if resp_payload.get("upload_url") else "none"}, "timestamp": int(time.time() * 1000)}
-            with open(_DEBUG_LOG_PATH, "a") as _f2:
-                _f2.write(_json.dumps(_log_line2) + "\n")
+            _debug_log_write({"hypothesisId": "H2", "location": "homework.py:recording-upload-url", "message": "after upload_url", "data": {"has_upload_url": "upload_url" in resp_payload, "upload_url_type": type(resp_payload.get("upload_url")).__name__ if resp_payload.get("upload_url") else "none"}, "timestamp": int(time.time() * 1000)})
         except Exception:
             pass
         # #endregion
-        return jsonify(resp_payload), 200
+        response = jsonify(resp_payload)
+        response.headers["X-Upload-Url-Type"] = "string" if isinstance(resp_payload.get("url"), str) else "missing"
+        return response
     except Exception as e:
         logger.error(f"recording-upload-url: {str(e)}")
         sentry_sdk.capture_exception(e)
@@ -980,10 +991,7 @@ def homework_get_report(session_id):
                 final_recording["audio_url"] = audio_url
                 # #region agent log
                 try:
-                    os.makedirs(os.path.dirname(_DEBUG_LOG_PATH), exist_ok=True)
-                    _log_line = {"hypothesisId": "H3", "location": "homework.py:report", "message": "report audio_url type", "data": {"audio_url_type": type(audio_url).__name__ if audio_url is not None else "NoneType", "is_string": isinstance(audio_url, str)}, "timestamp": int(time.time() * 1000)}
-                    with open(_DEBUG_LOG_PATH, "a") as _f:
-                        _f.write(_json.dumps(_log_line) + "\n")
+                    _debug_log_write({"hypothesisId": "H3", "location": "homework.py:report", "message": "report audio_url type", "data": {"audio_url_type": type(audio_url).__name__ if audio_url is not None else "NoneType", "is_string": isinstance(audio_url, str)}, "timestamp": int(time.time() * 1000)})
                 except Exception:
                     pass
                 # #endregion
