@@ -64,12 +64,13 @@ def _build_report_recording_1_only(
 def complete_session_recording_1_only(session_id: str, user_id: str, allow_task_block: bool = False):
     """
     Load session and recording_1; compute metrics, generate report, mark session completed. No recording_2.
-    Session must be in completing_from_recording_1, or in task_block if allow_task_block=True (e.g. skip from step 2).
-    Returns dict with report payload (report_text, performance_score_end, performance_metrics, question_*_analysis/score, completed_at_iso) or None if not run.
+    Session must be in completing_from_recording_1, post_questions, or (if allow_task_block) task_block.
+    When status is post_questions, session.post_answers (from POST post-answers) are kept; otherwise [].
+    Returns dict with report payload (report_text, performance_score_end, ...) or None if not run.
     """
     session = db.v2_get_session(session_id, user_id)
     status = session.get("status") if session else None
-    allowed = ("completing_from_recording_1", "task_block") if allow_task_block else ("completing_from_recording_1",)
+    allowed = ("completing_from_recording_1", "post_questions", "task_block") if allow_task_block else ("completing_from_recording_1", "post_questions")
     if not session or status not in allowed:
         return None
     if status == "task_block":
@@ -109,6 +110,14 @@ def complete_session_recording_1_only(session_id: str, user_id: str, allow_task_
 
     performance_score_1 = float(session.get("performance_score_1") or 0)
     performance_score_end = max(0.0, min(1.0, performance_score_1))
+    # Prefer Sniper (Voice Alignment) as the single performance score when available
+    try:
+        sniper = db.get_session_sniper_metrics(session_id)
+        if sniper and sniper.get("stage_score") is not None:
+            raw = float(sniper["stage_score"])
+            performance_score_end = max(0.0, min(1.0, raw / 100.0 if raw > 1.0 else raw))
+    except Exception as sniper_err:
+        logger.debug("No sniper metrics for session %s: %s", session_id, sniper_err)
     report_text = _build_report_recording_1_only(
         transcript=transcript,
         wpm=wpm,
@@ -121,10 +130,13 @@ def complete_session_recording_1_only(session_id: str, user_id: str, allow_task_
 
     completed_at_iso = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
+    # Keep existing post_answers when coming from post_questions step; otherwise [].
+    post_answers = session.get("post_answers") if isinstance(session.get("post_answers"), list) else []
+
     # Mark session completed and send coach email immediately so the report is "delivered"
     # even if optional OpenAI steps (custom questions, coach_insight) fail or are slow.
     db.v2_update_session(session_id, user_id, {
-        "post_answers": [],
+        "post_answers": post_answers,
         "report_id": report_row["id"] if report_row else None,
         "performance_score_end": performance_score_end,
         "status": STATUS_COMPLETED,
@@ -227,7 +239,14 @@ def minimal_complete_and_notify(session_id: str, user_id: str) -> bool:
         db.v2_append_context_long_entry(session_id, user_id, report_text)
         report_row = db.v2_create_report(session_id, recording_1_id, report_text)
         completed_at_iso = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-        performance_score_end = float(session.get("performance_score_1") or 0)
+        performance_score_end = max(0.0, min(1.0, float(session.get("performance_score_1") or 0)))
+        try:
+            sniper = db.get_session_sniper_metrics(session_id)
+            if sniper and sniper.get("stage_score") is not None:
+                raw = float(sniper["stage_score"])
+                performance_score_end = max(0.0, min(1.0, raw / 100.0 if raw > 1.0 else raw))
+        except Exception:
+            pass
         db.v2_update_session(session_id, user_id, {
             "post_answers": [],
             "report_id": report_row["id"] if report_row else None,

@@ -837,8 +837,8 @@ def homework_sniper_metrics_chunk(session_id):
 def homework_sniper_session_complete(session_id):
     """
     Backend owns both tables: stores session means in session_sniper_metrics and updates user_sniper_profile (EMA).
-    Body (all optional): wpm, pause_ms, dynamic_db, emphasis_per_min, energy_ratio, stage_score, voiced_duration_sec.
-    Profile is only updated when stage_score >= 60 and voiced_duration_sec >= 60. Frontend keeps sending the same POST.
+    Body (all optional): wpm, pause_ms, dynamic_db, emphasis_per_min, energy_ratio, stage_score, voiced_duration_sec, student_rating_1_10.
+    Profile is only updated when stage_score >= 60, voiced_duration_sec >= 60, and (student_rating_1_10 >= 8 or coach_grade >= 8).
     """
     try:
         user_id = request.user_id
@@ -853,6 +853,7 @@ def homework_sniper_session_complete(session_id):
         energy_ratio = data.get("energy_ratio")
         stage_score = data.get("stage_score")
         voiced_duration_sec = data.get("voiced_duration_sec")
+        student_rating_1_10 = data.get("student_rating_1_10")
         if wpm is not None:
             try:
                 wpm = float(wpm)
@@ -888,6 +889,13 @@ def homework_sniper_session_complete(session_id):
                 voiced_duration_sec = float(voiced_duration_sec)
             except (TypeError, ValueError):
                 voiced_duration_sec = None
+        if student_rating_1_10 is not None:
+            try:
+                student_rating_1_10 = int(student_rating_1_10)
+                if student_rating_1_10 < 1 or student_rating_1_10 > 10:
+                    student_rating_1_10 = None
+            except (TypeError, ValueError):
+                student_rating_1_10 = None
         db.save_session_sniper_metrics(
             session_id=session_id,
             user_id=user_id,
@@ -898,9 +906,11 @@ def homework_sniper_session_complete(session_id):
             energy_ratio=energy_ratio,
             stage_score=stage_score,
             voiced_duration_sec=voiced_duration_sec,
+            student_rating_1_10=student_rating_1_10,
         )
         db.update_sniper_baseline_from_payload(
             user_id,
+            session_id=session_id,
             wpm=wpm,
             pause_ms=pause_ms,
             dynamic_db=dynamic_db,
@@ -908,10 +918,90 @@ def homework_sniper_session_complete(session_id):
             energy_ratio=energy_ratio,
             stage_score=stage_score,
             voiced_duration_sec=voiced_duration_sec,
+            student_rating_1_10=student_rating_1_10,
         )
         return jsonify({"status": "ok"}), 200
     except Exception as e:
         logger.exception("Sniper session complete: %s", e)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
+
+
+@homework_bp.route("/session/<session_id>/questions", methods=["GET"])
+@require_auth
+def homework_get_questions(session_id):
+    """Get post-recording (reflective) questions for the current session. Session must be in post_questions or completing_from_recording_1. Returns { questions: [ { id, text, answer_type, code? } ] }; empty list if none assigned."""
+    try:
+        user_id = request.user_id
+        session = db.v2_get_session(session_id, user_id)
+        if not session:
+            return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found"}), 404
+        status = (session.get("status") or "").strip()
+        if status not in (STATUS_POST_QUESTIONS, STATUS_COMPLETING_FROM_RECORDING_1):
+            return jsonify({
+                "code": "INVALID_SESSION_STATE",
+                "error": "Questions are only available after your recording is processed",
+                "status": status,
+            }), 409
+        rows = db.v2_get_student_post_recording_questions(user_id)
+        questions = [
+            {
+                "id": str(r["id"]),
+                "text": (r.get("text") or "").strip(),
+                "answer_type": r.get("answer_type") or "text",
+                "code": r.get("code"),
+            }
+            for r in (rows or [])
+        ]
+        return jsonify({"questions": questions}), 200
+    except Exception as e:
+        logger.exception("Homework get questions: %s", e)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
+
+
+@homework_bp.route("/session/<session_id>/post-answers", methods=["POST"])
+@require_auth
+def homework_post_answers(session_id):
+    """Submit post-recording answers and complete the session. Body: { answers: [ { question_id, answer_text } ] }. Empty answers allowed. Session must be in post_questions. Returns report payload (report_text, performance_score_end, ...) and status completed."""
+    try:
+        user_id = request.user_id
+        session = db.v2_get_session(session_id, user_id)
+        if not session:
+            return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found"}), 404
+        if (session.get("status") or "").strip() != STATUS_POST_QUESTIONS:
+            return jsonify({
+                "code": "INVALID_SESSION_STATE",
+                "error": "Post-answers are only accepted when the session is on the questions step",
+                "status": session.get("status"),
+            }), 409
+        data = request.get_json(silent=True) or {}
+        raw = data.get("answers")
+        if raw is None:
+            raw = []
+        if not isinstance(raw, list):
+            raw = []
+        answers = []
+        for item in raw:
+            if not isinstance(item, dict):
+                continue
+            qid = item.get("question_id")
+            atext = item.get("answer_text")
+            if qid is not None:
+                answers.append({"question_id": str(qid), "answer_text": str(atext) if atext is not None else ""})
+        db.v2_update_session(session_id, user_id, {"post_answers": answers})
+        result = complete_session_recording_1_only(session_id, user_id)
+        if not result:
+            return jsonify({"code": "V2_ERROR", "error": "Could not complete session"}), 500
+        return jsonify({
+            "status": PUBLIC_STATUS_COMPLETED,
+            "report_text": result.get("report_text", ""),
+            "performance_score_end": result.get("performance_score_end", 0),
+            "performance_metrics": result.get("performance_metrics"),
+            "completed_at_iso": result.get("completed_at_iso"),
+        }), 200
+    except Exception as e:
+        logger.exception("Homework post-answers: %s", e)
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
 
@@ -944,20 +1034,33 @@ def homework_get_report(session_id):
         perf_1 = float(session.get("performance_score_1") or 0)
         perf_2 = float(session.get("performance_score_2") or 0) if has_rec_2 else perf_1
         perf_end = float(session.get("performance_score_end") or 0)
+        # Prefer Sniper (Voice Alignment) as the single display score when available
+        score_for_display_100 = round(perf_end * 100)
+        try:
+            sniper = db.get_session_sniper_metrics(session_id)
+            if sniper and sniper.get("stage_score") is not None:
+                raw = float(sniper["stage_score"])
+                score_for_display_100 = round(raw) if raw > 1 else round(raw * 100)
+                score_for_display_100 = max(0, min(100, score_for_display_100))
+                perf_end = score_for_display_100 / 100.0
+        except Exception:
+            pass
         scores = {
-            "warmup": round(perf_1 * 100),
-            "final": round(perf_2 * 100),
-            "overall": round(perf_end * 100),
+            "overall": score_for_display_100,
         }
-        # Frontend: use "overall" (performance_score_end) as the single "your result" and for the
-        # graph. The graph (performance_history) uses performance_score_end; "final" is the raw
-        # recording-2 average and can differ (e.g. 58% vs 70%). See docs/HOMEWORK-AND-PERFORMANCE.md §1.3.1.
+        # Frontend: use score_for_display (Sniper Voice Alignment when available) for "your result" and the chart.
 
         history_rows = db.v2_get_performance_history(user_id, limit=5)
         performance_history = []
         for row in history_rows:
             created_at = row.get("created_at")
             score_01 = row.get("performance_score_end", 0) or 0
+            row_session_id = row.get("session_id")
+            # Use Sniper score for current session so chart matches Voice Alignment
+            if row_session_id == session_id:
+                bar_score = score_for_display_100
+            else:
+                bar_score = round(float(score_01) * 100)
             if isinstance(created_at, str) and len(created_at) >= 10:
                 date_str = created_at[:10]
             elif hasattr(created_at, "isoformat"):
@@ -967,7 +1070,7 @@ def homework_get_report(session_id):
             else:
                 date_str = ""
             if date_str:
-                performance_history.append({"date": date_str, "score": round(float(score_01) * 100)})
+                performance_history.append({"date": date_str, "score": bar_score})
 
         # Display recording: recording_2 if present, else recording_1 (for playback, transcript, fillers)
         display_recording_id = session.get("recording_2_id") or session.get("recording_1_id")
@@ -1016,13 +1119,12 @@ def homework_get_report(session_id):
             "report_text": report_text,
             "scores": scores,
             "performance_score_end": perf_end,
-            "performance_score_1": perf_1,
-            "performance_score_2": perf_2,
             "recording_count": 2 if has_rec_2 else 1,
             "final_recording": final_recording,
             "performance_history": performance_history,
-            # Canonical "your result" score (0-100). Same value as last bar on the graph; use this for main display.
-            "score_for_display": round(perf_end * 100),
+            # Single canonical score (0-100): Sniper Voice Alignment when available. Same as last bar on chart.
+            "score_for_display": score_for_display_100,
+            "admin_grade": session.get("coach_grade"),
         }
         if recording_payload is not None:
             payload["recording"] = recording_payload

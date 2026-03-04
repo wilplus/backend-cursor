@@ -241,15 +241,59 @@ def v2_admin_send_assignment(user_id):
         return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
 
 
-@v2_bp.route("/admin/students/<user_id>/sessions/<session_id>", methods=["GET"])
+@v2_bp.route("/admin/students/<user_id>/sessions/<session_id>", methods=["GET", "PATCH"])
 @require_admin
 def v2_admin_student_session_detail(user_id, session_id):
-    """Get full session for admin (e.g. report history context_long_entries). Session must belong to user_id."""
+    """GET: full session for admin. PATCH: update coach_grade (1-10). Body: { \"coach_grade\": 7 }."""
     try:
+        if request.method == "GET":
+            session = db.v2_get_session(session_id, user_id)
+            if not session:
+                return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found"}), 404
+            return jsonify({"session": session}), 200
+        # PATCH: coach_grade
+        data = request.get_json() or {}
+        coach_grade = data.get("coach_grade")
+        if coach_grade is not None:
+            try:
+                g = int(coach_grade)
+                if g < 1 or g > 10:
+                    return jsonify({"code": "INVALID_INPUT", "error": "coach_grade must be between 1 and 10"}), 400
+            except (TypeError, ValueError):
+                return jsonify({"code": "INVALID_INPUT", "error": "coach_grade must be an integer 1-10"}), 400
+        else:
+            g = None
+        updated = db.v2_update_session(session_id, user_id, {"coach_grade": g})
+        if not updated:
+            return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found"}), 404
+        return jsonify({"status": "ok", "coach_grade": updated.get("coach_grade")}), 200
+    except Exception as e:
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
+
+
+@v2_bp.route("/admin/students/<user_id>/sessions/<session_id>/grade", methods=["PUT"])
+@require_admin
+def v2_admin_student_session_grade(user_id, session_id):
+    """Set admin/coach grade for a session. Body: { \"admin_grade\": number } (1-10). Persisted as coach_grade; GET report returns admin_grade."""
+    try:
+        data = request.get_json(silent=True) or {}
+        admin_grade = data.get("admin_grade")
+        if admin_grade is None:
+            return jsonify({"code": "INVALID_INPUT", "error": "admin_grade is required"}), 400
+        try:
+            g = int(round(float(admin_grade)))
+            if g < 1 or g > 10:
+                return jsonify({"code": "INVALID_INPUT", "error": "admin_grade must be between 1 and 10"}), 400
+        except (TypeError, ValueError):
+            return jsonify({"code": "INVALID_INPUT", "error": "admin_grade must be a number 1-10"}), 400
         session = db.v2_get_session(session_id, user_id)
         if not session:
             return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found"}), 404
-        return jsonify({"session": session}), 200
+        updated = db.v2_update_session(session_id, user_id, {"coach_grade": g})
+        if not updated:
+            return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found"}), 404
+        return jsonify({"status": "ok", "admin_grade": g}), 200
     except Exception as e:
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
@@ -282,20 +326,26 @@ def v2_admin_student_session_report_get(user_id, session_id):
                 pass
 
         has_rec_2 = bool(session.get("recording_2_id"))
-        perf_1 = float(session.get("performance_score_1") or 0)
-        perf_2 = float(session.get("performance_score_2") or 0) if has_rec_2 else perf_1
         perf_end = float(session.get("performance_score_end") or 0)
-        scores = {
-            "warmup": round(perf_1 * 100),
-            "final": round(perf_2 * 100),
-            "overall": round(perf_end * 100),
-        }
+        score_for_display_100 = round(perf_end * 100)
+        try:
+            sniper = db.get_session_sniper_metrics(session_id)
+            if sniper and sniper.get("stage_score") is not None:
+                raw = float(sniper["stage_score"])
+                score_for_display_100 = round(raw) if raw > 1 else round(raw * 100)
+                score_for_display_100 = max(0, min(100, score_for_display_100))
+                perf_end = score_for_display_100 / 100.0
+        except Exception:
+            pass
+        scores = {"overall": score_for_display_100}
 
         history_rows = db.v2_get_performance_history(user_id, limit=5)
         performance_history = []
         for row in history_rows:
             created_at = row.get("created_at")
             score_01 = row.get("performance_score_end", 0) or 0
+            row_session_id = row.get("session_id")
+            bar_score = score_for_display_100 if row_session_id == session_id else round(float(score_01) * 100)
             if isinstance(created_at, str) and len(created_at) >= 10:
                 date_str = created_at[:10]
             elif hasattr(created_at, "isoformat"):
@@ -305,7 +355,7 @@ def v2_admin_student_session_report_get(user_id, session_id):
             else:
                 date_str = ""
             if date_str:
-                performance_history.append({"date": date_str, "score": round(float(score_01) * 100)})
+                performance_history.append({"date": date_str, "score": bar_score})
 
         # Same as student report: recording_2 if present, else recording_1 (for recording-1-only flow)
         display_recording_id = session.get("recording_2_id") or session.get("recording_1_id")
@@ -347,12 +397,11 @@ def v2_admin_student_session_report_get(user_id, session_id):
             "report_text": report_text,
             "scores": scores,
             "performance_score_end": perf_end,
-            "performance_score_1": perf_1,
-            "performance_score_2": perf_2,
             "recording_count": 2 if has_rec_2 else 1,
             "final_recording": final_recording,
             "performance_history": performance_history,
-            "score_for_display": round(perf_end * 100),
+            "score_for_display": score_for_display_100,
+            "admin_grade": session.get("coach_grade"),
         }
         if recording_payload is not None:
             payload["recording"] = recording_payload

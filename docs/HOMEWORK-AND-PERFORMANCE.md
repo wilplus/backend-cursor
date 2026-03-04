@@ -70,7 +70,7 @@ performance_score_end = 0.3 * performance_score_1 + 0.6 * performance_score_2 + 
 performance_score_end = clamp(performance_score_end, 0, 1)
 ```
 
-**Stored:** On **session** as `performance_score_end`. Returned in POST post-answers response; used for report, email, warm-up selection, coaching memory.
+**Stored:** On **session** as `performance_score_end`. Returned in POST post-answers response; used for report, chart, coach email, warm-up selection, coaching memory. **Recording-1-only flow:** When Sniper data exists (`session_sniper_metrics.stage_score`), that value is used as the single end score (overwriting the metrics_v2-based value). The coach email “End score: X%” shows this same single score only.
 
 ---
 

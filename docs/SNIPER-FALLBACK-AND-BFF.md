@@ -47,3 +47,7 @@
 - **GET** `.../sniper-metrics-chunk`: returns 200 + `{ "ready": true, "active": true }` when the session exists (probe endpoint).
 - **POST** `.../sniper-metrics-chunk`: always returns **200** with a valid JSON payload (either real metrics or a static fallback). No 500 on missing table or internal errors.
 - If the frontend gets 404, the request never reached the backend → add or fix the BFF route (Option A) or switch to client-side only (Option B).
+
+### session_sniper_metrics and session_id
+
+- `session_sniper_metrics.session_id` has a foreign key to `v2_sessions(id)`. The BFF (or any client) must only call `POST .../sniper-session-complete` with a `session_id` that **already exists** in `v2_sessions` (e.g. the session was created by `POST /v2/homework/session/start` first). Otherwise the backend upsert into `session_sniper_metrics` will fail on the FK. In normal flow the student starts a session before recording, so the session exists when the client sends sniper-session-complete.

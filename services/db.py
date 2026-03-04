@@ -1339,6 +1339,7 @@ class DatabaseService:
         energy_ratio: Optional[float] = None,
         stage_score: Optional[float] = None,
         voiced_duration_sec: Optional[float] = None,
+        student_rating_1_10: Optional[int] = None,
     ):
         """Upsert session_sniper_metrics (from client sniper-session-complete)."""
         payload = {"session_id": session_id, "user_id": user_id}
@@ -1356,6 +1357,8 @@ class DatabaseService:
             payload["stage_score"] = stage_score
         if voiced_duration_sec is not None:
             payload["voiced_duration_sec"] = voiced_duration_sec
+        if student_rating_1_10 is not None:
+            payload["student_rating_1_10"] = student_rating_1_10
         self.client.table("session_sniper_metrics").upsert(payload, on_conflict="session_id").execute()
 
     def get_session_sniper_metrics(self, session_id: str) -> Optional[dict]:
@@ -1367,6 +1370,7 @@ class DatabaseService:
         self,
         user_id: str,
         *,
+        session_id: Optional[str] = None,
         wpm: Optional[float] = None,
         pause_ms: Optional[float] = None,
         dynamic_db: Optional[float] = None,
@@ -1374,11 +1378,12 @@ class DatabaseService:
         energy_ratio: Optional[float] = None,
         stage_score: Optional[float] = None,
         voiced_duration_sec: Optional[float] = None,
+        student_rating_1_10: Optional[int] = None,
     ):
         """
         Update user_sniper_profile from a single POST payload (e.g. sniper-session-complete).
-        Same EMA and quality rules: only when stage_score >= 60 and voiced_duration_sec >= 60.
-        Call after save_session_sniper_metrics so both tables are written from one frontend POST.
+        Only when stage_score >= 60 and voiced_duration_sec >= 60, and only when
+        student_rating_1_10 >= 8 or session coach_grade >= 8 (so only “good” sessions update baseline).
         """
         stage_100 = None
         if stage_score is not None:
@@ -1386,6 +1391,19 @@ class DatabaseService:
         if stage_100 is None or stage_100 < 60:
             return
         if voiced_duration_sec is not None and voiced_duration_sec < 60:
+            return
+        if student_rating_1_10 is not None and student_rating_1_10 < 5:
+            return
+        if session_id:
+            session = self.v2_get_session(session_id, user_id)
+            if session and session.get("coach_grade") is not None and (session.get("coach_grade") or 0) < 5:
+                return
+        rating_ok = student_rating_1_10 is not None and student_rating_1_10 >= 8
+        if not rating_ok and session_id:
+            session = self.v2_get_session(session_id, user_id)
+            if session and (session.get("coach_grade") or 0) >= 8:
+                rating_ok = True
+        if not rating_ok:
             return
 
         profile = self.get_sniper_profile(user_id)
@@ -1427,7 +1445,8 @@ class DatabaseService:
     ):
         """
         After session completes: merge session_sniper_metrics + recording into user_sniper_profile (EMA).
-        Only update when session_mean_stage_score >= 60 and voiced_duration >= 60s (or recording_duration >= 60).
+        Only update when stage_score >= 60, voiced_duration >= 60s, and (student_rating_1_10 >= 8 or coach_grade >= 8).
+        Skip when either grade < 5 (low-rated session).
         """
         metrics = self.get_session_sniper_metrics(session_id)
         stage_score_100 = None
@@ -1440,6 +1459,17 @@ class DatabaseService:
         if stage_score_100 is None or stage_score_100 < 60:
             return
         if duration_sec is not None and duration_sec < 60:
+            return
+        student_rating = (metrics or {}).get("student_rating_1_10")
+        if student_rating is not None and int(student_rating) < 5:
+            return
+        session = self.v2_get_session(session_id, user_id)
+        if session and session.get("coach_grade") is not None and (session.get("coach_grade") or 0) < 5:
+            return
+        rating_ok = student_rating is not None and int(student_rating) >= 8
+        if not rating_ok and session and (session.get("coach_grade") or 0) >= 8:
+            rating_ok = True
+        if not rating_ok:
             return
 
         profile = self.get_sniper_profile(user_id)
@@ -1911,10 +1941,10 @@ class DatabaseService:
         return float(score)
 
     def v2_get_performance_history(self, user_id: str, limit: int = 5) -> List[dict]:
-        """Last N completed homework sessions: created_at, performance_score_end (0-1). Oldest first for chart S1..SN."""
+        """Last N completed homework sessions: session_id, created_at, performance_score_end (0-1). Oldest first for chart S1..SN."""
         result = (
             self.client.table("v2_sessions")
-            .select("created_at, performance_score_end")
+            .select("id, created_at, performance_score_end")
             .eq("user_id", user_id)
             .eq("status", "completed")
             .not_.is_("performance_score_end", "null")
@@ -1925,7 +1955,14 @@ class DatabaseService:
         if not result.data:
             return []
         rows = list(reversed(result.data))
-        return [{"created_at": r.get("created_at"), "performance_score_end": float(r.get("performance_score_end") or 0)} for r in rows]
+        return [
+            {
+                "session_id": str(r["id"]) if r.get("id") else None,
+                "created_at": r.get("created_at"),
+                "performance_score_end": float(r.get("performance_score_end") or 0),
+            }
+            for r in rows
+        ]
 
     def v2_get_assigned_warm_up_task(self, user_id: str):
         """
@@ -1945,8 +1982,8 @@ class DatabaseService:
         return result.data[0] if result.data else None
 
     def v2_get_active_homework_session(self, user_id: str):
-        """Active homework flow session (status in warm_up, task_block, final_task_ready, post_questions)."""
-        statuses = ("warm_up", "task_block", "final_task_ready", "post_questions")
+        """Active homework flow session (status in warm_up, task_block, final_task_ready, post_questions, completing_from_recording_1)."""
+        statuses = ("warm_up", "task_block", "final_task_ready", "post_questions", "completing_from_recording_1")
         result = (
             self.client.table("v2_sessions")
             .select("*")
@@ -2239,10 +2276,10 @@ class DatabaseService:
         }
 
     def v2_get_sessions_with_previews(self, user_id: str, limit: int = 50):
-        """Get v2 sessions for a user with recording and report previews for admin session history."""
+        """Get v2 sessions for a user with full report text and recording previews for admin session history."""
         result = (
             self.client.table("v2_sessions")
-            .select("id, created_at, status, recording_1_id, recording_2_id, report_id")
+            .select("id, created_at, status, recording_1_id, recording_2_id, report_id, coach_grade")
             .eq("user_id", user_id)
             .order("created_at", desc=True)
             .limit(limit)
@@ -2269,7 +2306,7 @@ class DatabaseService:
                 pass
         out = []
         for s in sessions:
-            rec = {k: v for k, v in s.items() if k in ("id", "created_at", "status", "recording_1_id", "recording_2_id", "report_id")}
+            rec = {k: v for k, v in s.items() if k in ("id", "created_at", "status", "recording_1_id", "recording_2_id", "report_id", "coach_grade")}
             rec["recording_id"] = s.get("recording_2_id") or s.get("recording_1_id")  # for backward compat in API response
             rec["recording_preview"] = None
             rec["report_preview"] = None
@@ -2290,7 +2327,8 @@ class DatabaseService:
             if report_text is None:
                 report_text = context_long_by_id.get(s["id"])
             if report_text:
-                rec["report_preview"] = {"report_text_preview": (report_text or "")[:500]}
+                # Full report text so admin always sees the full report (no truncation)
+                rec["report_preview"] = {"report_text_preview": (report_text or "").strip()}
             out.append(rec)
         return out
 

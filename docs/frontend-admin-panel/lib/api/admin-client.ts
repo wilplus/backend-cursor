@@ -66,6 +66,7 @@ export interface StudentProfile {
     recording_id?: string;
     report_id?: string;
     task_score?: number;
+    coach_grade?: number | null;
     recording_preview?: { performance_score_v2?: number; transcription_preview?: string };
     report_preview?: { report_text_preview?: string };
   }>;
@@ -173,4 +174,10 @@ export const adminApi = {
 
   deleteMetricQuestion: (id: string) =>
     adminFetch<{ status: string }>(`/metric-questions/${id}`, { method: "DELETE" }),
+
+  patchSession: (userId: string, sessionId: string, data: { coach_grade?: number | null }) =>
+    adminFetch<{ status: string; coach_grade?: number | null }>(
+      `/students/${userId}/sessions/${sessionId}`,
+      { method: "PATCH", body: data }
+    ),
 };

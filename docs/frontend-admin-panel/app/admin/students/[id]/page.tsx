@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { ChevronLeft, FileText, Send } from "lucide-react";
 import SectionCard from "@/components/admin/SectionCard";
@@ -50,6 +50,8 @@ export default function AdminStudentProfilePage({ params }: { params: { id: stri
   const [postQuestionEditing, setPostQuestionEditing] = useState<PostQuestion | null>(null);
   const [postQuestionFormText, setPostQuestionFormText] = useState("");
   const [postQuestionFormAnswerType, setPostQuestionFormAnswerType] = useState<"yes_no" | "scale_1_5" | "text">("text");
+  const [savingGradeSessionId, setSavingGradeSessionId] = useState<string | null>(null);
+  const sessionGradeSelectRefs = useRef<Record<string, HTMLSelectElement | null>>({});
 
   const load = useCallback(() => {
     setLoading(true);
@@ -817,13 +819,15 @@ export default function AdminStudentProfilePage({ params }: { params: { id: stri
                   />
                 </button>
                 {expandedSessionId === s.id && (
-                  <div className="animate-fade-in border-t border-border bg-muted/30 p-4">
+                  <div className="animate-fade-in border-t border-border bg-muted/30 p-4 space-y-4">
                     {s.report_preview?.report_text_preview && (
-                      <div className="mb-3">
-                        <p className="mb-1 text-sm font-medium">Summary</p>
-                        <p className="text-sm text-muted-foreground whitespace-pre-wrap">
-                          {s.report_preview.report_text_preview}
-                        </p>
+                      <div>
+                        <p className="mb-1 text-sm font-medium">Report</p>
+                        <div className="max-h-64 overflow-y-auto rounded-md border border-border bg-background p-3">
+                          <p className="text-sm text-muted-foreground whitespace-pre-wrap">
+                            {s.report_preview.report_text_preview}
+                          </p>
+                        </div>
                       </div>
                     )}
                     {s.recording_preview?.transcription_preview && (
@@ -832,6 +836,43 @@ export default function AdminStudentProfilePage({ params }: { params: { id: stri
                         <p className="text-sm text-muted-foreground">
                           &quot;{s.recording_preview.transcription_preview}…&quot;
                         </p>
+                      </div>
+                    )}
+                    {s.status === "completed" && (
+                      <div className="flex flex-wrap items-center gap-2">
+                        <label className="text-sm font-medium">Grade (1–10):</label>
+                        <select
+                          ref={(el) => { sessionGradeSelectRefs.current[s.id] = el; }}
+                          className="rounded-md border border-border bg-background px-2 py-1.5 text-sm"
+                          defaultValue={s.coach_grade ?? ""}
+                        >
+                          <option value="">Not graded</option>
+                          {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
+                            <option key={n} value={n}>{n}</option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          disabled={savingGradeSessionId === s.id}
+                          className="rounded-md bg-[hsl(24_95%_53%)] px-3 py-1.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
+                          onClick={async () => {
+                            setSavingGradeSessionId(s.id);
+                            try {
+                              const selectEl = sessionGradeSelectRefs.current[s.id];
+                              const raw = selectEl?.value ?? "";
+                              const grade = raw === "" ? null : parseInt(raw, 10);
+                              await adminApi.patchSession(id, s.id, { coach_grade: grade });
+                              toast.success("Grade saved.");
+                              load();
+                            } catch (e) {
+                              toast.error((e as Error)?.message ?? "Failed to save grade");
+                            } finally {
+                              setSavingGradeSessionId(null);
+                            }
+                          }}
+                        >
+                          {savingGradeSessionId === s.id ? "Saving…" : "Save grade"}
+                        </button>
                       </div>
                     )}
                   </div>

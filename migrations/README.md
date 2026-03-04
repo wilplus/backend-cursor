@@ -23,3 +23,11 @@
 - **`add_recording_1_performance_profile.sql`** — adds `v2_sessions.recording_1_performance_profile` (JSONB). **Run in Supabase first, then deploy backend**; otherwise recording_1 job fails when writing the column. Idempotent; existing sessions stay NULL.
 - **`add_recurring_issues_to_coaching_memory.sql`** — adds `v2_student_coaching_memory.recurring_issues` (JSONB). Run after the two above. Backend derives it from last 5 sessions’ performance profiles (e.g. too_fast if pace_level in ≥3 of 5).
 - **`add_focus_task_targets_and_difficulty.sql`** — adds `v2_focus_tasks.targets` (JSONB) and `difficulty` (FLOAT). For multi-factor scoring: tasks with `targets` (e.g. `["pacing"]`) get preferred when `recurring_issues` matches (e.g. too_fast → pacing).
+
+---
+
+## Admin / coach grade
+
+- **`add_coach_grade_to_v2_sessions.sql`** — adds `v2_sessions.coach_grade` (SMALLINT 1–10, nullable). Lets admins grade a completed session in the admin panel. Run after v2_sessions exists.
+- **`docs/migrations/session_sniper_metrics_rating.sql`** — same as above (idempotent): ensures `coach_grade` exists. Also documents that `session_sniper_metrics.session_id` must reference an existing `v2_sessions.id` so BFF/client only write after session/start. Run on Supabase (or wherever session_sniper_metrics lives).
+- **`add_student_rating_session_sniper_metrics.sql`** — adds `session_sniper_metrics.student_rating_1_10` (SMALLINT 1–10, nullable). Student self-rating; only sessions with student_rating_1_10 >= 8 or coach_grade >= 8 update the Sniper baseline. Run after add_user_sniper_profile.sql.

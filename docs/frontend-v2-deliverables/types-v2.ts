@@ -140,15 +140,16 @@ export interface PostAnswersResponseV2Homework {
  */
 export interface HomeworkReportResponseV2 {
   report_text: string;
-  scores: { warmup: number; final: number; overall: number };
+  /** Single score only (Sniper Voice Alignment when available). */
+  scores: { overall: number };
   /** Canonical score 0–100 for main display and chart. Same as last bar on performance_history. */
   score_for_display: number;
   performance_score_end: number;
-  performance_score_1: number;
-  performance_score_2: number;
   recording_count: number;
   final_recording: { id: string | null; audio_url: string | null };
   performance_history: Array<{ date: string; score: number }>;
+  /** Admin/coach grade (1–10) when set via PUT .../grade; null otherwise. */
+  admin_grade?: number | null;
   report_cta?: string;
   leave_report_path?: string;
   recording?: {

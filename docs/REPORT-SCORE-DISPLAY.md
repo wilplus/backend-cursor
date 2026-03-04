@@ -1,29 +1,27 @@
 # Report screen: score and graph consistency
 
-Use **one** score for both the main “Your result” and the performance chart so the numbers always match.
+Use **one** score (Sniper Voice Alignment) for both the main “Your result” and the performance chart so the numbers always match.
 
 ## Backend
 
-- **`score_for_display`** (0–100) = canonical “your result”. Same value as the last bar on the chart.
-- **`scores.overall`** = same as `score_for_display` (derived from `performance_score_end`).
-- **`scores.final`** = raw recording-2 average (5 metrics). Do **not** use this for the main display or it will not match the graph.
+- **Single score source:** Sniper (`session_sniper_metrics.stage_score`) when the frontend has sent it via `POST .../sniper-session-complete`. Otherwise the backend uses `performance_score_end` from the session (which is also set from Sniper at completion when available).
+- **`score_for_display`** (0–100) = canonical “your result” / “Voice Alignment”. Same value as the last bar on the chart.
+- **`scores.overall`** = same as `score_for_display`. No other scores (warmup/final) are returned; one metric only.
+- **Coach email:** The “End score: X%” in the lesson-complete email to the coach is this same single score (`performance_score_end` stored on the session — Sniper when available). No other performance metrics are shown.
 
 ## Frontend implementation
 
 1. **Types:** Use `HomeworkReportResponseV2` from `docs/frontend-v2-deliverables/types-v2.ts` for the GET report response.
 
-2. **Main “Your result” / “Your score”:**
+2. **Main “Your result” / “Voice Alignment”:**
    ```ts
    const score = report.score_for_display; // 0–100
-   // e.g. "Your result: 70%" or a big number + "%"
    ```
 
 3. **Performance chart (history):**
    - Use `report.performance_history` as-is: `{ date, score }[]`.
    - The last item is the current session; its `score` equals `score_for_display`.
-   - Do not derive the main number from `scores.final` or `performance_score_2`; use `score_for_display` (or `scores.overall`) only.
-
-4. **Optional breakdown:** If you show warmup vs final, use `scores.warmup` and `scores.final` as secondary info, but keep the **primary** displayed score as `score_for_display` so it matches the chart.
+   - Use only `score_for_display` (or `scores.overall`) for the main number and chart.
 
 ## Example (React)
 
@@ -43,4 +41,4 @@ return (
 );
 ```
 
-If you previously used `report.scores.final` or `report.scores.overall` for the main number, switch to `report.score_for_display` so the main result and the graph always show the same value.
+**Important:** The frontend must call `POST .../sniper-session-complete` with `stage_score` (0–100) when the user finishes recording, so the backend can store it and use it for the report and chart. Otherwise the displayed score may fall back to the batch metrics value.

@@ -208,7 +208,8 @@ class EmailService:
     ) -> dict:
         """
         Notify the coach (ADMIN_EMAIL) that a student completed a homework lesson.
-        Link points to the admin student profile so the coach can view the report and send new homework.
+        performance_score_end is the single end score (0-1) stored on the session — Sniper Voice Alignment
+        when available — the only score measured and saved. Shown in email as "End score: X%".
         Returns dict with status "sent" | "pending" (emails off) | "failed".
         """
         if not config.SEND_EMAILS:
