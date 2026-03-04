@@ -258,7 +258,7 @@ def v2_admin_student_session_detail(user_id, session_id):
 @v2_bp.route("/admin/students/<user_id>/sessions/<session_id>/report", methods=["GET", "POST"])
 @require_admin
 def v2_admin_student_session_report_get(user_id, session_id):
-    """Get report for a completed session. Returns report_text, scores (warmup, final, overall 0-100), final_recording { id, audio_url } with fresh signed URL. Supports GET and POST."""
+    """Get report for a completed session. Same payload as student GET report: report_text, scores, final_recording (recording_2 or recording_1), recording (transcript, fillers, wpm), context_short, coach_insight, performance_history, score_for_display. Supports GET and POST."""
     try:
         from config import Config
         config = Config()
@@ -281,8 +281,9 @@ def v2_admin_student_session_report_get(user_id, session_id):
             except Exception:
                 pass
 
+        has_rec_2 = bool(session.get("recording_2_id"))
         perf_1 = float(session.get("performance_score_1") or 0)
-        perf_2 = float(session.get("performance_score_2") or 0)
+        perf_2 = float(session.get("performance_score_2") or 0) if has_rec_2 else perf_1
         perf_end = float(session.get("performance_score_end") or 0)
         scores = {
             "warmup": round(perf_1 * 100),
@@ -290,13 +291,31 @@ def v2_admin_student_session_report_get(user_id, session_id):
             "overall": round(perf_end * 100),
         }
 
+        history_rows = db.v2_get_performance_history(user_id, limit=5)
+        performance_history = []
+        for row in history_rows:
+            created_at = row.get("created_at")
+            score_01 = row.get("performance_score_end", 0) or 0
+            if isinstance(created_at, str) and len(created_at) >= 10:
+                date_str = created_at[:10]
+            elif hasattr(created_at, "isoformat"):
+                date_str = created_at.isoformat()[:10]
+            elif created_at:
+                date_str = str(created_at)[:10]
+            else:
+                date_str = ""
+            if date_str:
+                performance_history.append({"date": date_str, "score": round(float(score_01) * 100)})
+
+        # Same as student report: recording_2 if present, else recording_1 (for recording-1-only flow)
+        display_recording_id = session.get("recording_2_id") or session.get("recording_1_id")
         final_recording = {"id": None, "audio_url": None}
-        recording_2_id = session.get("recording_2_id")
-        if recording_2_id:
-            final_recording["id"] = recording_2_id
-            recording = db.get_recording(recording_2_id, user_id)
-            if recording:
-                storage_path = (recording.get("storage_path") or "").strip()
+        recording_payload = None
+        if display_recording_id:
+            rec = db.get_recording(display_recording_id, user_id)
+            if rec:
+                storage_path = (rec.get("storage_path") or "").strip()
+                audio_url = None
                 if storage_path:
                     try:
                         audio_url = db.create_signed_url(
@@ -304,15 +323,46 @@ def v2_admin_student_session_report_get(user_id, session_id):
                             storage_path,
                             config.SIGNED_URL_EXPIRY_SECONDS,
                         )
-                        final_recording["audio_url"] = audio_url
                     except Exception as e:
-                        logger.warning("Admin report: could not create signed URL for recording %s: %s", recording_2_id, e)
+                        logger.warning("Admin report: could not create signed URL for recording %s: %s", display_recording_id, e)
+                if audio_url is not None and not isinstance(audio_url, str):
+                    audio_url = str(audio_url) if audio_url else None
+                final_recording["id"] = str(display_recording_id) if display_recording_id is not None else None
+                final_recording["audio_url"] = audio_url
+                filler_data = rec.get("filler_words_count") or {}
+                if not isinstance(filler_data, dict):
+                    filler_data = {}
+                recording_payload = {
+                    "id": str(display_recording_id) if display_recording_id is not None else None,
+                    "audio_url": audio_url if (audio_url is None or isinstance(audio_url, str)) else str(audio_url),
+                    "transcription_text": (rec.get("transcription_text") or "").strip(),
+                    "filler_words_count": {
+                        "total": int(filler_data.get("total", 0) or 0),
+                        "breakdown": dict(filler_data.get("breakdown") or {}),
+                    },
+                    "words_per_minute": round(float(rec.get("words_per_minute") or 0), 1),
+                }
 
-        return jsonify({
+        payload = {
             "report_text": report_text,
             "scores": scores,
+            "performance_score_end": perf_end,
+            "performance_score_1": perf_1,
+            "performance_score_2": perf_2,
+            "recording_count": 2 if has_rec_2 else 1,
             "final_recording": final_recording,
-        }), 200
+            "performance_history": performance_history,
+            "score_for_display": round(perf_end * 100),
+        }
+        if recording_payload is not None:
+            payload["recording"] = recording_payload
+        context_short = (session.get("context_short") or "").strip()
+        if context_short:
+            payload["context_short"] = context_short
+        coach_insight = (session.get("coach_insight") or "").strip()
+        if coach_insight:
+            payload["coach_insight"] = coach_insight
+        return jsonify(payload), 200
     except Exception as e:
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR", "error": str(e)}), 500

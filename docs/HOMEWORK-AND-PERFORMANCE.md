@@ -74,6 +74,17 @@ performance_score_end = clamp(performance_score_end, 0, 1)
 
 ---
 
+### 1.3.1 Graph vs “metrics” / “my result” (must match)
+
+**Problem:** If the UI shows 58% as “your result” but the history graph shows 70%, it’s because two different numbers are being used:
+
+- **`scores.final`** (or **`performance_score_2`**) = raw average of the 5 metrics for recording 2 only (e.g. 0.58 → 58%). This is **not** the same as the end KPI.
+- **`scores.overall`** (and **`performance_score_end`**) = improvement-weighted KPI (0.3×score_1 + 0.6×score_2 + 0.3×improvement). The **graph** (`performance_history`) uses this value for every bar.
+
+**Fix:** Use **one** number everywhere for “your result” and for the graph: **`scores.overall`** (or **`performance_score_end`**). The canonical student-facing score is **`performance_score_end`**. Do **not** use `scores.final` as the main “your result” if the graph is driven by `performance_history` (which is based on `performance_score_end`), or the two will disagree.
+
+---
+
 ### 1.4 Constants (metrics_v2)
 
 | Constant | Value | Use |

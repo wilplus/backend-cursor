@@ -132,3 +132,34 @@ export interface PostAnswersResponseV2Homework {
   question_3_analysis?: string;
   question_3_score?: number;
 }
+
+/**
+ * Response from GET session/:sessionId/report (step 5 – report view).
+ * Use score_for_display for the main "Your result" and for the performance chart;
+ * do not use scores.final for the main number or it will not match the graph.
+ */
+export interface HomeworkReportResponseV2 {
+  report_text: string;
+  scores: { warmup: number; final: number; overall: number };
+  /** Canonical score 0–100 for main display and chart. Same as last bar on performance_history. */
+  score_for_display: number;
+  performance_score_end: number;
+  performance_score_1: number;
+  performance_score_2: number;
+  recording_count: number;
+  final_recording: { id: string | null; audio_url: string | null };
+  performance_history: Array<{ date: string; score: number }>;
+  report_cta?: string;
+  leave_report_path?: string;
+  recording?: {
+    id: string;
+    audio_url: string | null;
+    transcription_text: string;
+    filler_words_count: { total: number; breakdown: Record<string, number> };
+    words_per_minute: number;
+  };
+  context_short?: string;
+  coach_insight?: string;
+  tutor_feedback_deadline?: string;
+  tutor_feedback_message?: string;
+}

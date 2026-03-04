@@ -949,6 +949,9 @@ def homework_get_report(session_id):
             "final": round(perf_2 * 100),
             "overall": round(perf_end * 100),
         }
+        # Frontend: use "overall" (performance_score_end) as the single "your result" and for the
+        # graph. The graph (performance_history) uses performance_score_end; "final" is the raw
+        # recording-2 average and can differ (e.g. 58% vs 70%). See docs/HOMEWORK-AND-PERFORMANCE.md §1.3.1.
 
         history_rows = db.v2_get_performance_history(user_id, limit=5)
         performance_history = []
@@ -1018,6 +1021,8 @@ def homework_get_report(session_id):
             "recording_count": 2 if has_rec_2 else 1,
             "final_recording": final_recording,
             "performance_history": performance_history,
+            # Canonical "your result" score (0-100). Same value as last bar on the graph; use this for main display.
+            "score_for_display": round(perf_end * 100),
         }
         if recording_payload is not None:
             payload["recording"] = recording_payload
