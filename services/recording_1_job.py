@@ -15,7 +15,7 @@ from services.openai_service import openai_service
 from services.v2_flow_service import select_focus_task_for_performance_score_1
 from utils.metrics import count_fillers, compute_wpm
 from services.metrics_v2 import compute_performance_score_1, build_recording_1_performance_profile
-from services.homework_completion import minimal_complete_and_notify
+from services.homework_completion import complete_session_recording_1_only, minimal_complete_and_notify
 
 logger = logging.getLogger(__name__)
 
@@ -137,11 +137,14 @@ def _process_one(payload: dict):
             "recording_1_processing_status": "completed",
             "recording_1_performance_profile": performance_profile,
         })
-        # Transition to post_questions so the frontend shows the "next step" (reflective questions).
-        # Completion (report) happens only after POST post-answers.
+        # Complete session: build report, mark completed, send coach email. No post_questions step.
         session_after = db.v2_get_session(session_id, user_id)
         if session_after and session_after.get("status") == "completing_from_recording_1":
-            db.v2_update_session(session_id, user_id, {"status": "post_questions"})
+            payload_out = complete_session_recording_1_only(session_id, user_id)
+            if payload_out:
+                logger.info("recording_1_job: session completed, report created, coach notified session_id=%s", session_id)
+            else:
+                logger.warning("recording_1_job: complete_session_recording_1_only returned None session_id=%s", session_id)
         logger.info("recording_1_job: completed session_id=%s recording_id=%s", session_id, recording_id)
     except Exception as e:
         logger.exception("recording_1_job: failed session_id=%s recording_id=%s: %s", session_id, recording_id, e)
