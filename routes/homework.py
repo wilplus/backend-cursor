@@ -540,12 +540,8 @@ def homework_recording_upload_url(session_id):
         upload_url_str = db.create_signed_upload_url(config.AUDIO_BUCKET_NAME, storage_path)
         if isinstance(upload_url_str, str) and upload_url_str:
             resp_payload["upload_url"] = upload_url_str
-            resp_payload["url"] = upload_url_str
             resp_payload["signed_url_available"] = True
         else:
-            # Always provide a string so frontend never gets "url is not transferrable" (e.g. when passing to postMessage).
-            # Use storage_path so client can upload via Supabase SDK: supabase.storage.from(bucket).upload(storage_path, file).
-            resp_payload["url"] = storage_path or ""
             resp_payload["signed_url_available"] = False
         # #region agent log
         try:
@@ -554,7 +550,7 @@ def homework_recording_upload_url(session_id):
             pass
         # #endregion
         response = jsonify(resp_payload)
-        response.headers["X-Upload-Url-Type"] = "string" if isinstance(resp_payload.get("url"), str) else "missing"
+        response.headers["X-Upload-Url-Type"] = "signed" if resp_payload.get("signed_url_available") else "path"
         return response
     except Exception as e:
         logger.error(f"recording-upload-url: {str(e)}")

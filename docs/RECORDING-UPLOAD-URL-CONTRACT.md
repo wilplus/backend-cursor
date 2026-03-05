@@ -1,27 +1,23 @@
-# Recording upload URL – backend contract and "url is not transferrable"
+# Recording upload URL – backend contract
 
 ## Backend guarantees (POST `/v2/homework/session/<id>/recording-upload-url`)
 
-- **`url`** – Always a **string**. Either a signed upload URL (when available) or the `storage_path` so the client never receives `undefined` for a URL-like field.
-- **`upload_url`** – Present only when the backend obtained a signed upload URL (string).
-- **`signed_url_available`** – **boolean**. `true` when `url` is a full signed URL (use for direct PUT); `false` when `url` is the storage path (use Supabase SDK: `supabase.storage.from(bucket).upload(url, file)`). Do not treat `signed_url_available: false` as "invalid" — the path is valid for SDK upload.
-- **`storage_path`**, **`bucket`** – Strings for Supabase client upload.
-- **Response header** `X-Upload-Url-Type: string` – Set when `url` is a string so you can confirm in the Network tab that this backend responded and sent a string URL.
+- **`bucket`** – Always a **string**. Supabase storage bucket name.
+- **`storage_path`** – Always a **string**. Path in the bucket for this recording (use with SDK when no signed URL).
+- **`signed_url_available`** – **boolean**. `true` when `upload_url` is present (use for direct PUT); `false` when client must use Supabase SDK with `bucket` + `storage_path`. Do not treat `signed_url_available: false` as "invalid".
+- **`upload_url`** – Present only when the backend obtained a signed upload URL (string). Use for direct PUT. When absent, use `bucket` + `storage_path` with `supabase.storage.from(bucket).upload(storage_path, file)`.
+- **Response header** `X-Upload-Url-Type: signed | path` – `signed` when a signed URL was returned; `path` when client must use SDK with `storage_path`.
 
-## If you see "url is not transferrable"
+## Client usage
 
-1. **Use the string, not the whole response**  
-   Use `response.url` (or `response.upload_url` when present) as a **string** for the upload. Do not pass the whole `response` object to `postMessage`, Workers, or any API that expects a single URL string.
+1. **When `signed_url_available` is true**  
+   Use `response.upload_url` for a direct PUT (e.g. `fetch(response.upload_url, { method: 'PUT', body: blob })` with the headers required by the signed URL).
 
-2. **Check the response in Network tab**  
-   Find the request to your recording-upload-url (or BFF proxy). In Response headers, look for `X-Upload-Url-Type: string`. In the JSON body, confirm `url` is a string. If you don’t see this request or this header, the call may not be reaching this backend.
+2. **When `signed_url_available` is false**  
+   Use Supabase SDK: `supabase.storage.from(response.bucket).upload(response.storage_path, file)`.
 
-3. **When `url` is not an `http` URL**  
-   If `url` is the storage path (no `http`), upload with the Supabase client:  
-   `supabase.storage.from(response.bucket).upload(response.url, file)`.
-
-4. **When `url` is an `http` URL**  
-   Use it for a direct PUT upload (e.g. `fetch(response.url, { method: 'PUT', body: blob })` with the headers required by the signed URL).
+3. **Single path for BFF/consumer**  
+   You can normalize to one path: `path = response.storage_path` (always present). Return `{ bucket: response.bucket, storage_path: path }` downstream; use `response.upload_url` for PUT when present.
 
 ## Report playback URL
 
