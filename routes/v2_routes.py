@@ -111,6 +111,14 @@ def v2_admin_student_profile(user_id):
         post_recording_questions = db.v2_get_student_post_recording_questions(user_id)
         last_report = db.v2_get_last_report_for_user(user_id)
         sessions = db.v2_get_sessions_with_previews(user_id, limit=50)
+        # #region agent log
+        try:
+            _log_path = "/Users/arturwillonski/Documents/backend-cursor/.cursor/debug.log"
+            with open(_log_path, "a") as _f:
+                _f.write(json.dumps({"message": "GET admin student profile sessions", "hypothesisId": "H1", "location": "v2_routes.py:GET profile", "timestamp": int(time.time() * 1000), "data": {"user_id": user_id, "sessions_count": len(sessions) if sessions else 0, "sessions_is_list": isinstance(sessions, list)}}) + "\n")
+        except Exception:
+            pass
+        # #endregion
         return jsonify({
             "user_id": user_id,
             "email": email,
