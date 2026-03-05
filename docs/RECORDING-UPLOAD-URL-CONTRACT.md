@@ -4,6 +4,7 @@
 
 - **`url`** – Always a **string**. Either a signed upload URL (when available) or the `storage_path` so the client never receives `undefined` for a URL-like field.
 - **`upload_url`** – Present only when the backend obtained a signed upload URL (string).
+- **`signed_url_available`** – **boolean**. `true` when `url` is a full signed URL (use for direct PUT); `false` when `url` is the storage path (use Supabase SDK: `supabase.storage.from(bucket).upload(url, file)`). Do not treat `signed_url_available: false` as "invalid" — the path is valid for SDK upload.
 - **`storage_path`**, **`bucket`** – Strings for Supabase client upload.
 - **Response header** `X-Upload-Url-Type: string` – Set when `url` is a string so you can confirm in the Network tab that this backend responded and sent a string URL.
 

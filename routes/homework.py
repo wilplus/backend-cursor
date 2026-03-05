@@ -541,10 +541,12 @@ def homework_recording_upload_url(session_id):
         if isinstance(upload_url_str, str) and upload_url_str:
             resp_payload["upload_url"] = upload_url_str
             resp_payload["url"] = upload_url_str
+            resp_payload["signed_url_available"] = True
         else:
             # Always provide a string so frontend never gets "url is not transferrable" (e.g. when passing to postMessage).
             # Use storage_path so client can upload via Supabase SDK: supabase.storage.from(bucket).upload(storage_path, file).
             resp_payload["url"] = storage_path or ""
+            resp_payload["signed_url_available"] = False
         # #region agent log
         try:
             _debug_log_write({"hypothesisId": "H2", "location": "homework.py:recording-upload-url", "message": "after upload_url", "data": {"has_upload_url": "upload_url" in resp_payload, "upload_url_type": type(resp_payload.get("upload_url")).__name__ if resp_payload.get("upload_url") else "none"}, "timestamp": int(time.time() * 1000)})

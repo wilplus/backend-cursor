@@ -59,17 +59,34 @@ def update_metric_questions():
         return jsonify({"code": "METRIC_QUESTIONS_ERROR", "error": str(e)}), 500
 
 
+def _json_safe_profile(obj):
+    """Convert profile dict to JSON-serializable types (Supabase may return UUID, datetime)."""
+    if obj is None:
+        return None
+    if hasattr(obj, "isoformat"):  # datetime
+        return obj.isoformat()
+    if hasattr(obj, "hex"):  # UUID
+        return str(obj)
+    if isinstance(obj, dict):
+        return {k: _json_safe_profile(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_json_safe_profile(v) for v in obj]
+    return obj
+
+
 @user_bp.route("/sniper-profile", methods=["GET"])
 @require_auth
 def get_sniper_profile():
-    """Get current user's sniper profile (user_sniper_profile). Returns {} if none."""
+    """Get current user's sniper profile (user_sniper_profile). Returns {} if none or on error (avoids 500 so frontend flow continues)."""
     try:
         user_id = request.user_id
         profile = db.get_sniper_profile(user_id)
-        return jsonify(profile or {}), 200
+        out = _json_safe_profile(profile) if profile else {}
+        return jsonify(out), 200
     except Exception as e:
         sentry_sdk.capture_exception(e)
-        return jsonify({"code": "SNIPER_PROFILE_ERROR", "error": str(e)}), 500
+        # Return 200 with empty profile so recording flow is not blocked (e.g. table missing, serialization)
+        return jsonify({}), 200
 
 
 @user_bp.route("/sniper-profile/session-rating", methods=["PATCH"])
