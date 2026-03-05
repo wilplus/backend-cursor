@@ -1076,8 +1076,17 @@ def homework_get_report(session_id):
         if not session:
             return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found"}), 404
         if session.get("status") != STATUS_COMPLETED:
-            # 409 so frontend can distinguish "not ready yet, retry" from "session not found" (404)
-            return jsonify({"code": "REPORT_NOT_READY", "error": "Report is only available for completed sessions", "status": session.get("status")}), 409
+            # Fallback: if job is done but frontend never triggered completion (e.g. self-rating was called too early and not retried), run completion once so polling GET report eventually succeeds.
+            if session.get("status") == STATUS_COMPLETING_FROM_RECORDING_1 and session.get("recording_1_processing_status") == "completed":
+                try:
+                    if complete_session_recording_1_only(session_id, user_id):
+                        session = db.v2_get_session(session_id, user_id)
+                        logger.info("homework_get_report: fallback completion ran session_id=%s", session_id)
+                except Exception as fallback_err:
+                    logger.warning("homework_get_report: fallback completion failed: %s", fallback_err)
+            if session.get("status") != STATUS_COMPLETED:
+                # 409 so frontend can distinguish "not ready yet, retry" from "session not found" (404)
+                return jsonify({"code": "REPORT_NOT_READY", "error": "Report is only available for completed sessions", "status": session.get("status")}), 409
 
         report_text = (session.get("context_long") or "").strip()
         if session.get("report_id"):
