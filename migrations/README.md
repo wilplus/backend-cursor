@@ -31,3 +31,9 @@
 - **`add_coach_grade_to_v2_sessions.sql`** — adds `v2_sessions.coach_grade` (SMALLINT 1–10, nullable). Lets admins grade a completed session in the admin panel. Run after v2_sessions exists.
 - **`docs/migrations/session_sniper_metrics_rating.sql`** — same as above (idempotent): ensures `coach_grade` exists. Also documents that `session_sniper_metrics.session_id` must reference an existing `v2_sessions.id` so BFF/client only write after session/start. Run on Supabase (or wherever session_sniper_metrics lives).
 - **`add_student_rating_session_sniper_metrics.sql`** — adds `session_sniper_metrics.student_rating_1_10` (SMALLINT 1–10, nullable). Student self-rating; only sessions with student_rating_1_10 >= 8 or coach_grade >= 8 update the Sniper baseline. Run after add_user_sniper_profile.sql.
+
+---
+
+## Permissions (if you see 42501 / permission denied)
+
+- **`grant_sniper_tables_service_role.sql`** — grants `service_role` full access to `user_sniper_profile` and `session_sniper_metrics`. Run in Supabase SQL Editor if GET /user/sniper-profile or POST .../self-rating returns 500 with "permission denied for table ...".
