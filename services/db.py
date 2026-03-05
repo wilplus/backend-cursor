@@ -1366,6 +1366,27 @@ class DatabaseService:
         result = self.client.table("session_sniper_metrics").select("*").eq("session_id", session_id).execute()
         return result.data[0] if result.data else None
 
+    def update_or_set_session_sniper_rating(
+        self, session_id: str, user_id: str, student_rating_1_10: int
+    ) -> bool:
+        """Set student_rating_1_10 for a session (owned by user). Updates existing row or inserts one. Returns True if ok."""
+        session = self.v2_get_session(session_id, user_id)
+        if not session:
+            return False
+        r = (
+            self.client.table("session_sniper_metrics")
+            .update({"student_rating_1_10": student_rating_1_10})
+            .eq("session_id", session_id)
+            .eq("user_id", user_id)
+            .execute()
+        )
+        if r.data and len(r.data) > 0:
+            return True
+        self.client.table("session_sniper_metrics").insert(
+            {"session_id": session_id, "user_id": user_id, "student_rating_1_10": student_rating_1_10}
+        ).execute()
+        return True
+
     def update_sniper_baseline_from_payload(
         self,
         user_id: str,

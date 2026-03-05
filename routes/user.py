@@ -59,6 +59,47 @@ def update_metric_questions():
         return jsonify({"code": "METRIC_QUESTIONS_ERROR", "error": str(e)}), 500
 
 
+@user_bp.route("/sniper-profile", methods=["GET"])
+@require_auth
+def get_sniper_profile():
+    """Get current user's sniper profile (user_sniper_profile). Returns {} if none."""
+    try:
+        user_id = request.user_id
+        profile = db.get_sniper_profile(user_id)
+        return jsonify(profile or {}), 200
+    except Exception as e:
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "SNIPER_PROFILE_ERROR", "error": str(e)}), 500
+
+
+@user_bp.route("/sniper-profile/session-rating", methods=["PATCH"])
+@require_auth
+def patch_sniper_session_rating():
+    """Set student self-rating (1–10) for a session. Body: { session_id, student_rating_1_10 } or { session_id, rating }."""
+    try:
+        user_id = request.user_id
+        data = request.get_json() or {}
+        session_id = data.get("session_id")
+        rating = data.get("student_rating_1_10") if data.get("student_rating_1_10") is not None else data.get("rating")
+        if not session_id:
+            return jsonify({"code": "MISSING_SESSION_ID", "error": "session_id required"}), 400
+        if rating is None:
+            return jsonify({"code": "MISSING_RATING", "error": "student_rating_1_10 or rating (1–10) required"}), 400
+        try:
+            r = int(rating)
+        except (TypeError, ValueError):
+            return jsonify({"code": "INVALID_RATING", "error": "rating must be 1–10"}), 422
+        if not (1 <= r <= 10):
+            return jsonify({"code": "INVALID_RATING", "error": "rating must be 1–10"}), 422
+        ok = db.update_or_set_session_sniper_rating(session_id, user_id, r)
+        if not ok:
+            return jsonify({"code": "SESSION_NOT_FOUND", "error": "session not found or not yours"}), 404
+        return jsonify({"status": "ok", "student_rating_1_10": r}), 200
+    except Exception as e:
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "SESSION_RATING_ERROR", "error": str(e)}), 500
+
+
 @user_bp.route("/recordings", methods=["GET"])
 @require_auth
 def get_recordings():
