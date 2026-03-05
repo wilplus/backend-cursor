@@ -64,7 +64,7 @@ The frontend must use only the **top-level `status`** returned by the API (not r
 | GET | `/v2/homework/session/<session_id>/warm-up-task` | Get warm-up task for the session (optional step). |
 | POST | `/v2/homework/session/<session_id>/recording-upload-url` | Get a storage path and bucket for direct upload. Body `{ "recording": "1" }`. Only `"1"` is supported. If session is already `completing_from_recording_1` or `completed`, returns 200 with `already_submitted: true` (no 409). |
 | POST | `/v2/homework/session/<session_id>/recording-1` | Submit recording 1. Either multipart with `audio` file (and optional `duration_seconds`), or JSON with `storage_path` and `duration_seconds`. Creates a minimal recording row, sets session to `task_block` then immediately to `completing_from_recording_1`, enqueues a background job, and returns `status: "report_generating"`, `recording_id`, `recording_1_processing: true`, `message`. |
-| POST | `/v2/homework/session/<session_id>/self-rating` | **Post-recording step:** Submit self-rating 1–10. Body `{ "rating": 1-10 }` or `{ "student_rating_1_10": 1-10 }`. Allowed when session status is `task_block`, `completing_from_recording_1`, or `completed`. Returns `{ "status": "ok", "student_rating_1_10": n }`. **Frontend must show this step after recording and before the report.** |
+| POST | `/v2/homework/session/<session_id>/self-rating` | **Post-recording step; completion depends on this.** Submit self-rating 1–10 or skip. Body `{ "rating": 1-10 }` or `{ "student_rating_1_10": 1-10 }`, or `{ "skipped": true }`. When the backend has finished processing the recording (`recording_1_processing_status === "completed"`), this endpoint builds the report, marks the session **completed**, and sends the coach email. Returns `{ "status": "ok", "session_completed": true/false, "student_rating_1_10"?: n, "skipped"?: true }`. If `session_completed === false`, the job may still be running; poll GET status then call self-rating again (e.g. with `skipped: true`) to trigger completion. |
 | POST | `/v2/homework/session/<session_id>/complete-from-recording-1` | If the frontend is stuck (e.g. “Could not load questions”), complete the session from recording 1 only and return the report payload. Session must be `task_block` or `completing_from_recording_1`; recording 1 must be processed. |
 | GET | `/v2/homework/session/<session_id>/report` | Get report for a **completed** session. See **§3.5 GET report payload** for full shape. |
 
@@ -78,16 +78,18 @@ After `POST recording-1`, a **background job** (in-process thread in `services/r
 1. Downloads audio from Supabase Storage, transcribes with Whisper.
 2. Computes WPM, filler count, `performance_score_1`, `recording_1_performance_profile` (pace/filler level), selects a focus task (for future use; not shown in current flow).
 3. Generates `context_short` (OpenAI).
-4. Updates the recording row and session (`performance_score_1`, `context_short`, `recording_1_processing_status: "completed"`, etc.).
-5. Because the session is already `completing_from_recording_1`, the job calls **`complete_session_recording_1_only()`** from `services/homework_completion.py`, which builds a **fixed-format report** (no LLM), appends to context long, creates a report row, marks the session **completed**, updates coaching memory (if table exists), and sends the lesson-complete email to the coach.
+4. Updates the recording row and session (`performance_score_1`, `context_short`, `recording_1_processing_status: "completed"`, etc.). The job **does not** complete the session (no report, no coach email yet). **Completion depends on self-rating.**
+
+5. When the user submits **POST .../self-rating** (with a rating 1–10 or `{ "skipped": true }`), the backend saves the rating (if any), then if `recording_1_processing_status === "completed"` it calls **`complete_session_recording_1_only()`**: builds the report, marks the session **completed**, sends the coach email. So the report and coach notification happen only after the self-rate step is submitted.
 
 **User flow (frontend must implement):**  
 1. Submit recording → backend returns `report_generating`.  
-2. **Show post-recording self-rate step:** "How was it? Rate 1–10." User selects 1–10; frontend calls **POST .../self-rating** with `{ "rating": n }`.  
-3. Then show "Your report is being generated" and poll **GET .../session/status** until `status === "completed"`, or poll **GET .../report** (409 REPORT_NOT_READY → keep polling).  
-4. When 200 on GET report → show report.
+2. **Show post-recording self-rate step:** "How was it? Rate 1–10." User selects 1–10 and submits, or clicks Skip. Frontend calls **POST .../self-rating** with `{ "rating": n }` or `{ "skipped": true }`.  
+3. If response has `session_completed: true`, go to step 5 and poll **GET .../report** (should soon return 200). If `session_completed: false`, the job may still be running; show "Your report is being generated", poll **GET .../session/status** until `recording_1_processing_status` is not `"pending"`, then call **POST .../self-rating** again (e.g. with `{ "skipped": true }`) to trigger completion.  
+4. Poll **GET .../report** until 200 (not 409).  
+5. Show report.
 
-So the user sees: **Record → Self-rate 1–10 → Report generating (poll) → Report.**
+So the user sees: **Record → Self-rate 1–10 (or Skip) → Report generating (poll) → Report.** Completion (report saved, coach emailed) happens only after self-rating is submitted.
 
 ### 3.4 Report for “recording 1 only”
 

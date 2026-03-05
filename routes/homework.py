@@ -482,7 +482,8 @@ def homework_complete_from_recording_1(session_id):
 @homework_bp.route("/session/<session_id>/self-rating", methods=["POST"])
 @require_auth
 def homework_self_rating(session_id):
-    """Post-recording self-rate (1–10). Show this step after recording, before report. Body: { "rating": 1-10 } or { "student_rating_1_10": 1-10 }."""
+    """Post-recording self-rate (1–10) or skip. Completion (report + coach email) happens only after this step.
+    Body: { "rating": 1-10 } or { "student_rating_1_10": 1-10 }, or { "skipped": true } to complete without rating."""
     try:
         user_id = request.user_id
         session = db.v2_get_session(session_id, user_id)
@@ -496,19 +497,42 @@ def homework_self_rating(session_id):
                 "status": status,
             }), 409
         data = request.get_json() or {}
-        rating = data.get("student_rating_1_10") if data.get("student_rating_1_10") is not None else data.get("rating")
-        if rating is None:
-            return jsonify({"code": "MISSING_RATING", "error": "rating or student_rating_1_10 (1–10) required"}), 400
-        try:
-            r = int(rating)
-        except (TypeError, ValueError):
-            return jsonify({"code": "INVALID_RATING", "error": "rating must be 1–10"}), 422
-        if not (1 <= r <= 10):
-            return jsonify({"code": "INVALID_RATING", "error": "rating must be 1–10"}), 422
-        ok = db.update_or_set_session_sniper_rating(session_id, user_id, r)
-        if not ok:
-            return jsonify({"code": "V2_ERROR", "error": "Could not save rating"}), 500
-        return jsonify({"status": "ok", "student_rating_1_10": r}), 200
+        skipped = data.get("skipped") is True
+        rating = None if skipped else (data.get("student_rating_1_10") if data.get("student_rating_1_10") is not None else data.get("rating"))
+        if not skipped and rating is None:
+            return jsonify({"code": "MISSING_RATING", "error": "rating or student_rating_1_10 (1–10) required, or skipped: true"}), 400
+        if not skipped:
+            try:
+                r = int(rating)
+            except (TypeError, ValueError):
+                return jsonify({"code": "INVALID_RATING", "error": "rating must be 1–10"}), 422
+            if not (1 <= r <= 10):
+                return jsonify({"code": "INVALID_RATING", "error": "rating must be 1–10"}), 422
+            ok = db.update_or_set_session_sniper_rating(session_id, user_id, r)
+            if not ok:
+                return jsonify({"code": "V2_ERROR", "error": "Could not save rating"}), 500
+            saved_rating = r
+        else:
+            saved_rating = None
+
+        # Completion depends on self-rating: build report, mark completed, send coach email when job is done.
+        session_completed = False
+        if status == STATUS_COMPLETING_FROM_RECORDING_1 and session.get("recording_1_processing_status") == "completed":
+            payload_out = complete_session_recording_1_only(session_id, user_id)
+            if payload_out:
+                session_completed = True
+                logger.info("homework_self_rating: session completed after self-rating session_id=%s", session_id)
+            else:
+                logger.warning("homework_self_rating: complete_session_recording_1_only returned None session_id=%s", session_id)
+        elif status == STATUS_COMPLETED:
+            session_completed = True
+
+        out = {"status": "ok", "session_completed": session_completed}
+        if saved_rating is not None:
+            out["student_rating_1_10"] = saved_rating
+        if skipped:
+            out["skipped"] = True
+        return jsonify(out), 200
     except Exception as e:
         logger.exception("Homework self-rating: %s", e)
         sentry_sdk.capture_exception(e)
