@@ -324,12 +324,18 @@ def homework_session_status():
             _row_check is not None,
         )
         session_serializable = _session_for_json(active)
+        rec1_status = active.get("recording_1_processing_status")
         resp = {
             "status": _public_status(active.get("status")),
             "session": session_serializable,
             "session_id": session_serializable.get("id") or str(active["id"]),
             "has_active_session": True,
             "warm_up_task": _session_for_json(warm_up_task) if warm_up_task else None,
+            # So frontend can show self-rating when job is done and poll report after
+            "recording_1_processing_status": rec1_status,
+            "ready_for_self_rating": (
+                active.get("status") == STATUS_COMPLETING_FROM_RECORDING_1 and rec1_status == "completed"
+            ),
         }
         # Coach message for "A message for you" block (text-only on homework; tutor_video_url not used by frontend)
         msg = (active.get("tutor_video_description") or "").strip()
