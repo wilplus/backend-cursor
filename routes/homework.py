@@ -479,6 +479,42 @@ def homework_complete_from_recording_1(session_id):
         return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
 
 
+@homework_bp.route("/session/<session_id>/self-rating", methods=["POST"])
+@require_auth
+def homework_self_rating(session_id):
+    """Post-recording self-rate (1–10). Show this step after recording, before report. Body: { "rating": 1-10 } or { "student_rating_1_10": 1-10 }."""
+    try:
+        user_id = request.user_id
+        session = db.v2_get_session(session_id, user_id)
+        if not session:
+            return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found"}), 404
+        status = session.get("status")
+        if status not in (STATUS_TASK_BLOCK, STATUS_COMPLETING_FROM_RECORDING_1, STATUS_COMPLETED):
+            return jsonify({
+                "code": "INVALID_SESSION_STATE",
+                "error": "Self-rating is only available after you have submitted your recording.",
+                "status": status,
+            }), 409
+        data = request.get_json() or {}
+        rating = data.get("student_rating_1_10") if data.get("student_rating_1_10") is not None else data.get("rating")
+        if rating is None:
+            return jsonify({"code": "MISSING_RATING", "error": "rating or student_rating_1_10 (1–10) required"}), 400
+        try:
+            r = int(rating)
+        except (TypeError, ValueError):
+            return jsonify({"code": "INVALID_RATING", "error": "rating must be 1–10"}), 422
+        if not (1 <= r <= 10):
+            return jsonify({"code": "INVALID_RATING", "error": "rating must be 1–10"}), 422
+        ok = db.update_or_set_session_sniper_rating(session_id, user_id, r)
+        if not ok:
+            return jsonify({"code": "V2_ERROR", "error": "Could not save rating"}), 500
+        return jsonify({"status": "ok", "student_rating_1_10": r}), 200
+    except Exception as e:
+        logger.exception("Homework self-rating: %s", e)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
+
+
 def _storage_path_for_session(user_id: str, session_id: str) -> str:
     return f"{user_id}/{session_id}/{uuid.uuid4()}.webm"
 

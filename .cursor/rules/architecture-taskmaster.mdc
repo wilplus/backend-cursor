@@ -35,7 +35,7 @@ Single reference for this repo. No other .md docs; everything lives here.
 
 ## Student flow: Homework only (don’t break)
 
-**TEMPORARY:** Steps 2–4 are **fully removed** (code deleted). Flow is: **start → recording 1 → report** only. To restore: see `docs/TEMPORARY-REMOVED-STEPS-2-3-4-BACKUP.md` or git history.
+**TEMPORARY:** Steps 2–4 are **fully removed** (code deleted). Flow is: **start → recording 1 → self-rate 1–10 → report** only. **Frontend must show the post-recording self-rate step** (e.g. "How was it? Rate 1–10") and call **POST .../self-rating** with `{ "rating": n }` before showing "Report generating" and polling for the report. To restore full flow: see `docs/TEMPORARY-REMOVED-STEPS-2-3-4-BACKUP.md` or git history.
 
 **Single flow** under **`/v2/homework/...`**. Auth: `Authorization: Bearer <supabase_access_token>`.
 
@@ -75,7 +75,7 @@ Backend stays as-is; no change required. BFF sends `Authorization: Bearer <supab
 | `session/status/route.ts` | `src/app/api/homework/session/status/route.ts` |
 | `session/[sessionId]/warm-up-task/route.ts` | `src/app/api/homework/session/[sessionId]/warm-up-task/route.ts` |
 | `session/[sessionId]/abandon/route.ts` | `src/app/api/homework/session/[sessionId]/abandon/route.ts` |
-| … recording-1, metric-answers, recording-2, questions, post-answers | … same pattern |
+| … recording-1, **self-rating**, metric-answers, recording-2, questions, post-answers | … same pattern |
 | `session/[sessionId]/report/route.ts` | `src/app/api/homework/session/[sessionId]/report/route.ts` |
 
 **getAuth:** Example routes use `import { getV2AccessToken, getBackendUrl } from "../../../../getAuth"` (start/status) or `../../../../../getAuth` ([sessionId] routes). Put `getAuth` at `src/app/api/getAuth.ts` or adjust the import path. Set `NEXT_PUBLIC_BACKEND_URL` or `BACKEND_URL` in frontend env.

@@ -64,6 +64,7 @@ The frontend must use only the **top-level `status`** returned by the API (not r
 | GET | `/v2/homework/session/<session_id>/warm-up-task` | Get warm-up task for the session (optional step). |
 | POST | `/v2/homework/session/<session_id>/recording-upload-url` | Get a storage path and bucket for direct upload. Body `{ "recording": "1" }`. Only `"1"` is supported. If session is already `completing_from_recording_1` or `completed`, returns 200 with `already_submitted: true` (no 409). |
 | POST | `/v2/homework/session/<session_id>/recording-1` | Submit recording 1. Either multipart with `audio` file (and optional `duration_seconds`), or JSON with `storage_path` and `duration_seconds`. Creates a minimal recording row, sets session to `task_block` then immediately to `completing_from_recording_1`, enqueues a background job, and returns `status: "report_generating"`, `recording_id`, `recording_1_processing: true`, `message`. |
+| POST | `/v2/homework/session/<session_id>/self-rating` | **Post-recording step:** Submit self-rating 1–10. Body `{ "rating": 1-10 }` or `{ "student_rating_1_10": 1-10 }`. Allowed when session status is `task_block`, `completing_from_recording_1`, or `completed`. Returns `{ "status": "ok", "student_rating_1_10": n }`. **Frontend must show this step after recording and before the report.** |
 | POST | `/v2/homework/session/<session_id>/complete-from-recording-1` | If the frontend is stuck (e.g. “Could not load questions”), complete the session from recording 1 only and return the report payload. Session must be `task_block` or `completing_from_recording_1`; recording 1 must be processed. |
 | GET | `/v2/homework/session/<session_id>/report` | Get report for a **completed** session. See **§3.5 GET report payload** for full shape. |
 
@@ -80,7 +81,13 @@ After `POST recording-1`, a **background job** (in-process thread in `services/r
 4. Updates the recording row and session (`performance_score_1`, `context_short`, `recording_1_processing_status: "completed"`, etc.).
 5. Because the session is already `completing_from_recording_1`, the job calls **`complete_session_recording_1_only()`** from `services/homework_completion.py`, which builds a **fixed-format report** (no LLM), appends to context long, creates a report row, marks the session **completed**, updates coaching memory (if table exists), and sends the lesson-complete email to the coach.
 
-So the user sees: submit recording → `report_generating` → (poll status or refresh) → `completed` → GET report.
+**User flow (frontend must implement):**  
+1. Submit recording → backend returns `report_generating`.  
+2. **Show post-recording self-rate step:** "How was it? Rate 1–10." User selects 1–10; frontend calls **POST .../self-rating** with `{ "rating": n }`.  
+3. Then show "Your report is being generated" and poll **GET .../session/status** until `status === "completed"`, or poll **GET .../report** (409 REPORT_NOT_READY → keep polling).  
+4. When 200 on GET report → show report.
+
+So the user sees: **Record → Self-rate 1–10 → Report generating (poll) → Report.**
 
 ### 3.4 Report for “recording 1 only”
 
