@@ -4,7 +4,7 @@ All /v2/admin/* require auth + admin.
 """
 from flask import Blueprint, request, jsonify
 from auth import require_auth
-from routes.admin import require_admin
+from routes.admin import require_admin, is_admin
 from services.db import db
 from services.email_service import email_service
 from services.video_url_validation import validate_video_url
@@ -79,27 +79,15 @@ def v2_admin_students():
 
 
 @v2_bp.route("/admin/students/<user_id>", methods=["GET"])
-@require_admin
+@require_auth
 def v2_admin_student_profile(user_id):
-    """Student profile for simplified admin panel: one page with Homework Configuration, Speaker Profile, Reports History.
-    Contract: user_id, email, overrides (assigned_next_task_ids[]; assigned_post_question_ids deprecated), speaker_profile (coach_notes),
-    task_warm_up[], task_focus[], post_recording_questions[], sessions (id, created_at, status, report_preview.report_text_preview)."""
+    """Student profile: admin can get any user's profile; authenticated user can get own profile (user_id === token sub).
+    Same contract: user_id, email, overrides, speaker_profile, task_warm_up[], task_focus[], post_recording_questions[], sessions (reports list)."""
     try:
+        if not is_admin(request.user_id) and user_id != request.user_id:
+            return jsonify({"code": "FORBIDDEN", "error": "You can only access your own profile"}), 403
         email = db.get_user_email_from_auth(user_id)
         raw_overrides = db.v2_get_student_overrides(user_id)
-        # #region agent log
-        try:
-            _ro = raw_overrides or {}
-            _log_path = "/Users/arturwillonski/Documents/backend-cursor/.cursor/debug.log"
-            with open(_log_path, "a") as _f:
-                _f.write(json.dumps({"message": "GET student profile overrides", "data": {"raw_overrides_keys": list(_ro.keys()), "skip_metric_questions": _ro.get("skip_metric_questions"), "skip_post_questions": _ro.get("skip_post_questions")}, "hypothesisId": "H3", "location": "v2_routes.py:GET profile", "timestamp": int(time.time() * 1000)}) + "\n")
-        except Exception as _e:
-            try:
-                with open("/Users/arturwillonski/Documents/backend-cursor/debug_override.log", "a") as _f:
-                    _f.write(json.dumps({"message": "GET student profile overrides", "data": {"raw_overrides_keys": list(_ro.keys()), "skip_metric_questions": _ro.get("skip_metric_questions"), "skip_post_questions": _ro.get("skip_post_questions")}, "hypothesisId": "H3", "location": "v2_routes.py:GET profile", "timestamp": int(time.time() * 1000), "primary_log_error": str(_e)}) + "\n")
-            except Exception:
-                pass
-        # #endregion
         overrides = dict(raw_overrides) if raw_overrides else {}
         overrides["assigned_next_task_ids"] = overrides.get("assigned_next_task_ids") or []
         # Ensure skip flags are always booleans for consistent admin UI (false when never set)
@@ -111,14 +99,6 @@ def v2_admin_student_profile(user_id):
         post_recording_questions = db.v2_get_student_post_recording_questions(user_id)
         last_report = db.v2_get_last_report_for_user(user_id)
         sessions = db.v2_get_sessions_with_previews(user_id, limit=50)
-        # #region agent log
-        try:
-            _log_path = "/Users/arturwillonski/Documents/backend-cursor/.cursor/debug.log"
-            with open(_log_path, "a") as _f:
-                _f.write(json.dumps({"message": "GET admin student profile sessions", "hypothesisId": "H1", "location": "v2_routes.py:GET profile", "timestamp": int(time.time() * 1000), "data": {"user_id": user_id, "sessions_count": len(sessions) if sessions else 0, "sessions_is_list": isinstance(sessions, list)}}) + "\n")
-        except Exception:
-            pass
-        # #endregion
         return jsonify({
             "user_id": user_id,
             "email": email,
