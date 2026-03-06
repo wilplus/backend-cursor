@@ -524,12 +524,18 @@ def homework_self_rating(session_id):
         # Completion depends on self-rating: build report, mark completed, send coach email when job is done.
         session_completed = False
         if status == STATUS_COMPLETING_FROM_RECORDING_1 and session.get("recording_1_processing_status") == "completed":
+            # #region agent log
+            _agent_log("POST self-rating attempting completion", {"session_id": session_id, "recording_1_processing_status": session.get("recording_1_processing_status")}, "H4")
+            # #endregion
             payload_out = complete_session_recording_1_only(session_id, user_id)
             if payload_out:
                 session_completed = True
                 logger.info("homework_self_rating: session completed after self-rating session_id=%s", session_id)
             else:
                 logger.warning("homework_self_rating: complete_session_recording_1_only returned None session_id=%s", session_id)
+            # #region agent log
+            _agent_log("POST self-rating completion result", {"session_id": session_id, "session_completed": session_completed}, "H4")
+            # #endregion
         elif status == STATUS_COMPLETED:
             session_completed = True
 
@@ -1079,18 +1085,30 @@ def homework_get_report(session_id):
         config = Config()
         user_id = request.user_id
         session = db.v2_get_session(session_id, user_id)
+        # #region agent log
+        _agent_log("GET report entry", {"session_id": session_id, "user_id": user_id, "status": session.get("status") if session else None, "recording_1_processing_status": session.get("recording_1_processing_status") if session else None}, "H1")
+        # #endregion
         if not session:
             return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found"}), 404
         if session.get("status") != STATUS_COMPLETED:
             # Fallback: if job is done but frontend never triggered completion (e.g. self-rating was called too early and not retried), run completion once so polling GET report eventually succeeds.
             if session.get("status") == STATUS_COMPLETING_FROM_RECORDING_1 and session.get("recording_1_processing_status") == "completed":
+                # #region agent log
+                _agent_log("GET report running fallback completion", {"session_id": session_id}, "H2")
+                # #endregion
                 try:
                     if complete_session_recording_1_only(session_id, user_id):
                         session = db.v2_get_session(session_id, user_id)
                         logger.info("homework_get_report: fallback completion ran session_id=%s", session_id)
+                        # #region agent log
+                        _agent_log("GET report after fallback re-fetch", {"session_id": session_id, "status": session.get("status") if session else None}, "H2")
+                        # #endregion
                 except Exception as fallback_err:
                     logger.warning("homework_get_report: fallback completion failed: %s", fallback_err)
             if session.get("status") != STATUS_COMPLETED:
+                # #region agent log
+                _agent_log("GET report returning 409", {"session_id": session_id, "status": session.get("status")}, "H1")
+                # #endregion
                 # 409 so frontend can distinguish "not ready yet, retry" from "session not found" (404)
                 return jsonify({"code": "REPORT_NOT_READY", "error": "Report is only available for completed sessions", "status": session.get("status")}), 409
 
@@ -1218,6 +1236,9 @@ def homework_get_report(session_id):
                 msg = _tutor_feedback_message(deadline)
                 if msg:
                     payload["tutor_feedback_message"] = msg
+        # #region agent log
+        _agent_log("GET report returning 200", {"session_id": session_id, "status": session.get("status"), "report_id": session.get("report_id")}, "H3")
+        # #endregion
         return jsonify(payload), 200
     except Exception as e:
         logger.exception("Homework get report: %s", e)

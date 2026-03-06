@@ -2,9 +2,11 @@
 In-process background job for recording-1 processing (transcribe, score, context, focus task).
 POST recording-1 returns fast with task_block; this job runs the heavy work.
 """
+import json
 import logging
 import queue
 import threading
+import time
 from io import BytesIO
 
 import sentry_sdk
@@ -71,6 +73,18 @@ def _worker_loop():
             sentry_sdk.capture_exception(e)
 
 
+_DEBUG_LOG_PATH = "/Users/arturwillonski/Documents/backend-cursor/.cursor/debug.log"
+
+
+def _job_debug_log(message: str, data: dict, hypothesis_id: str):
+    try:
+        line = json.dumps({"location": "recording_1_job.py", "message": message, "data": data, "timestamp": int(time.time() * 1000), "hypothesisId": hypothesis_id}) + "\n"
+        with open(_DEBUG_LOG_PATH, "a") as f:
+            f.write(line)
+    except Exception:
+        pass
+
+
 def _process_one(payload: dict):
     session_id = payload["session_id"]
     recording_id = payload["recording_id"]
@@ -82,6 +96,9 @@ def _process_one(payload: dict):
     try:
         session = db.v2_get_session(session_id, user_id)
         if not session:
+            # #region agent log
+            _job_debug_log("recording_1_job: session missing, skipping", {"session_id": session_id, "recording_id": recording_id}, "H6")
+            # #endregion
             logger.warning("recording_1_job: session no longer exists (e.g. abandoned), session_id=%s", session_id)
             return
 
@@ -130,6 +147,9 @@ def _process_one(payload: dict):
             "task_id": focus_task["id"] if focus_task else None,
         })
 
+        # #region agent log
+        _job_debug_log("recording_1_job: setting recording_1_processing_status=completed", {"session_id": session_id, "recording_id": recording_id}, "H6")
+        # #endregion
         db.v2_update_session(session_id, user_id, {
             "performance_score_1": performance_score_1,
             "context_short": context_short,
@@ -141,6 +161,9 @@ def _process_one(payload: dict):
         # submits POST .../self-rating (or skips), the backend builds the report and sends the coach email.
         logger.info("recording_1_job: processing done, waiting for self-rating to complete session_id=%s recording_id=%s", session_id, recording_id)
     except Exception as e:
+        # #region agent log
+        _job_debug_log("recording_1_job: exception, setting failed", {"session_id": session_id, "recording_id": recording_id, "error": str(e)}, "H7")
+        # #endregion
         logger.exception("recording_1_job: failed session_id=%s recording_id=%s: %s", session_id, recording_id, e)
         sentry_sdk.capture_exception(e)
         try:

@@ -3,11 +3,24 @@ Complete a homework session using only recording 1 (no step 2, no recording 2).
 Used when the student has no focus tasks: job sets status to completing_from_recording_1,
 then when the job finishes it calls this to generate report and mark completed.
 """
+import json
 import logging
 import re
+import time
 from datetime import datetime, timezone
 
 from services.db import db
+
+_DEBUG_LOG_PATH = "/Users/arturwillonski/Documents/backend-cursor/.cursor/debug.log"
+
+
+def _completion_debug_log(message: str, data: dict, hypothesis_id: str):
+    try:
+        line = json.dumps({"location": "homework_completion.py", "message": message, "data": data, "timestamp": int(time.time() * 1000), "hypothesisId": hypothesis_id}) + "\n"
+        with open(_DEBUG_LOG_PATH, "a") as f:
+            f.write(line)
+    except Exception:
+        pass
 from services.openai_service import openai_service
 from services.email_service import email_service
 from services.metrics_v2 import compute_metrics_v2
@@ -71,17 +84,30 @@ def complete_session_recording_1_only(session_id: str, user_id: str, allow_task_
     session = db.v2_get_session(session_id, user_id)
     status = session.get("status") if session else None
     allowed = ("completing_from_recording_1", "post_questions", "task_block") if allow_task_block else ("completing_from_recording_1", "post_questions")
+    in_allowed = status in allowed if status else False
+    # #region agent log
+    _completion_debug_log("complete_session_recording_1_only entry", {"session_id": session_id, "status": status, "in_allowed": in_allowed}, "H8")
+    # #endregion
     if not session or status not in allowed:
+        # #region agent log
+        _completion_debug_log("complete_session_recording_1_only return None: no session or status not allowed", {"session_id": session_id, "status": status}, "H8")
+        # #endregion
         return None
     if status == "task_block":
         db.v2_update_session(session_id, user_id, {"status": "completing_from_recording_1"})
         session = db.v2_get_session(session_id, user_id)
     recording_1_id = session.get("recording_1_id")
     if not recording_1_id:
+        # #region agent log
+        _completion_debug_log("complete_session_recording_1_only return None: no recording_1_id", {"session_id": session_id}, "H8")
+        # #endregion
         logger.warning("complete_session_recording_1_only: no recording_1_id session_id=%s", session_id)
         return None
     recording = db.get_recording(recording_1_id, user_id)
     if not recording:
+        # #region agent log
+        _completion_debug_log("complete_session_recording_1_only return None: recording not found", {"session_id": session_id, "recording_1_id": recording_1_id}, "H8")
+        # #endregion
         logger.warning("complete_session_recording_1_only: recording not found recording_id=%s", recording_1_id)
         return None
 
@@ -135,6 +161,9 @@ def complete_session_recording_1_only(session_id: str, user_id: str, allow_task_
 
     # Mark session completed and send coach email immediately so the report is "delivered"
     # even if optional OpenAI steps (custom questions, coach_insight) fail or are slow.
+    # #region agent log
+    _completion_debug_log("complete_session_recording_1_only: updating session to completed", {"session_id": session_id}, "H8")
+    # #endregion
     db.v2_update_session(session_id, user_id, {
         "post_answers": post_answers,
         "report_id": report_row["id"] if report_row else None,
