@@ -337,6 +337,10 @@ def homework_session_status():
                 active.get("status") == STATUS_COMPLETING_FROM_RECORDING_1 and rec1_status == "completed"
             ),
         }
+        if rec1_status == "failed":
+            rec1_error = active.get("recording_1_processing_error_code")
+            if rec1_error:
+                resp["recording_1_processing_error_code"] = rec1_error
         # Coach message for "A message for you" block (text-only on homework; tutor_video_url not used by frontend)
         msg = (active.get("tutor_video_description") or "").strip()
         if msg:

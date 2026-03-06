@@ -1,12 +1,12 @@
 """
 In-process background job for recording-1 processing (transcribe, score, context, focus task).
 POST recording-1 returns fast with task_block; this job runs the heavy work.
+On failure we set recording_1_processing_status='failed' and recording_1_processing_error_code
+so logs and GET session/status show the exact reason.
 """
-import json
 import logging
 import queue
 import threading
-import time
 from io import BytesIO
 
 import sentry_sdk
@@ -20,6 +20,14 @@ from services.metrics_v2 import compute_performance_score_1, build_recording_1_p
 from services.homework_completion import minimal_complete_and_notify
 
 logger = logging.getLogger(__name__)
+
+# Stable error codes when recording_1_processing_status = 'failed' (for logs and optional frontend).
+ERROR_SESSION_MISSING = "session_missing"
+ERROR_STORAGE = "storage_error"
+ERROR_TRANSCRIPTION = "transcription_failed"
+ERROR_CONTEXT = "context_generation_failed"
+ERROR_DB = "db_error"
+ERROR_UNKNOWN = "unknown"
 
 # In-memory queue and worker (Option A). Jobs lost on process restart.
 _recording_1_queue = queue.Queue()
@@ -73,16 +81,22 @@ def _worker_loop():
             sentry_sdk.capture_exception(e)
 
 
-_DEBUG_LOG_PATH = "/Users/arturwillonski/Documents/backend-cursor/.cursor/debug.log"
-
-
-def _job_debug_log(message: str, data: dict, hypothesis_id: str):
+def _mark_failed(session_id: str, user_id: str, error_code: str, exc: Exception):
+    """Log full stack trace and set session to failed with stable error_code (for Railway logs and GET status)."""
+    logger.exception(
+        "recording_1_job: failed session_id=%s error_code=%s error=%s",
+        session_id, error_code, exc,
+        exc_info=True,
+    )
+    sentry_sdk.capture_exception(exc)
+    updates = {"recording_1_processing_status": "failed", "recording_1_processing_error_code": error_code}
     try:
-        line = json.dumps({"location": "recording_1_job.py", "message": message, "data": data, "timestamp": int(time.time() * 1000), "hypothesisId": hypothesis_id}) + "\n"
-        with open(_DEBUG_LOG_PATH, "a") as f:
-            f.write(line)
-    except Exception:
-        pass
+        db.v2_update_session(session_id, user_id, updates)
+    except Exception as update_err:
+        try:
+            db.v2_update_session(session_id, user_id, {"recording_1_processing_status": "failed"})
+        except Exception as retry_err:
+            logger.warning("recording_1_job: could not set failed status: %s (retry without error_code: %s)", update_err, retry_err)
 
 
 def _process_one(payload: dict):
@@ -93,23 +107,43 @@ def _process_one(payload: dict):
     duration_seconds_from_client = payload.get("duration_seconds")
 
     config = Config()
-    try:
-        session = db.v2_get_session(session_id, user_id)
-        if not session:
-            # #region agent log
-            _job_debug_log("recording_1_job: session missing, skipping", {"session_id": session_id, "recording_id": recording_id}, "H6")
-            # #endregion
-            logger.warning("recording_1_job: session no longer exists (e.g. abandoned), session_id=%s", session_id)
-            return
+    session = db.v2_get_session(session_id, user_id)
+    if not session:
+        logger.warning(
+            "recording_1_job: session no longer exists (e.g. abandoned), session_id=%s recording_id=%s",
+            session_id, recording_id,
+        )
+        return
 
+    try:
+        # Step 1: download audio from storage
         audio_bytes = db.download_audio(config.AUDIO_BUCKET_NAME, storage_path)
+    except Exception as e:
+        _mark_failed(session_id, user_id, ERROR_STORAGE, e)
+        try:
+            if minimal_complete_and_notify(session_id, user_id):
+                logger.info("recording_1_job: minimal completion and coach notification sent after storage_error")
+        except Exception as fallback_err:
+            logger.warning("recording_1_job: minimal_complete_and_notify failed: %s", fallback_err)
+        return
+
+    try:
         transcript_result = openai_service.transcribe_audio(BytesIO(audio_bytes), "audio.webm")
+    except Exception as e:
+        _mark_failed(session_id, user_id, ERROR_TRANSCRIPTION, e)
+        try:
+            if minimal_complete_and_notify(session_id, user_id):
+                logger.info("recording_1_job: minimal completion and coach notification sent after transcription_failed")
+        except Exception as fallback_err:
+            logger.warning("recording_1_job: minimal_complete_and_notify failed: %s", fallback_err)
+        return
+
+    try:
         duration_seconds = transcript_result.get("duration") or duration_seconds_from_client
         if duration_seconds is None:
             duration_seconds = 60.0
         else:
             duration_seconds = float(duration_seconds)
-
         transcript_text = (transcript_result.get("text") or "").strip()
 
         audio_url = db.create_signed_url(config.AUDIO_BUCKET_NAME, storage_path, config.SIGNED_URL_EXPIRY_SECONDS)
@@ -123,7 +157,16 @@ def _process_one(payload: dict):
         performance_score_1 = compute_performance_score_1(wpm=wpm, strength_raw=None, filler_count=filler_count)
         performance_profile = build_recording_1_performance_profile(wpm, filler_count)
 
-        context_short = openai_service.generate_context_short(transcript_text)
+        try:
+            context_short = openai_service.generate_context_short(transcript_text)
+        except Exception as e:
+            _mark_failed(session_id, user_id, ERROR_CONTEXT, e)
+            try:
+                if minimal_complete_and_notify(session_id, user_id):
+                    logger.info("recording_1_job: minimal completion and coach notification sent after context_generation_failed")
+            except Exception as fallback_err:
+                logger.warning("recording_1_job: minimal_complete_and_notify failed: %s", fallback_err)
+            return
 
         focus_task = db.v2_select_student_focus_task_for_score(user_id, performance_score_1)
         if not focus_task:
@@ -146,10 +189,6 @@ def _process_one(payload: dict):
             "duration_seconds": duration_seconds,
             "task_id": focus_task["id"] if focus_task else None,
         })
-
-        # #region agent log
-        _job_debug_log("recording_1_job: setting recording_1_processing_status=completed", {"session_id": session_id, "recording_id": recording_id}, "H6")
-        # #endregion
         db.v2_update_session(session_id, user_id, {
             "performance_score_1": performance_score_1,
             "context_short": context_short,
@@ -157,24 +196,16 @@ def _process_one(payload: dict):
             "recording_1_processing_status": "completed",
             "recording_1_performance_profile": performance_profile,
         })
-        # Do NOT complete the session here. Completion depends on self-rating: when the user
-        # submits POST .../self-rating (or skips), the backend builds the report and sends the coach email.
-        logger.info("recording_1_job: processing done, waiting for self-rating to complete session_id=%s recording_id=%s", session_id, recording_id)
     except Exception as e:
-        # #region agent log
-        _job_debug_log("recording_1_job: exception, setting failed", {"session_id": session_id, "recording_id": recording_id, "error": str(e)}, "H7")
-        # #endregion
-        logger.exception("recording_1_job: failed session_id=%s recording_id=%s: %s", session_id, recording_id, e)
-        sentry_sdk.capture_exception(e)
-        try:
-            db.v2_update_session(session_id, user_id, {
-                "recording_1_processing_status": "failed",
-            })
-        except Exception as update_err:
-            logger.warning("recording_1_job: could not set failed status: %s", update_err)
-        # Ensure coach is notified even when full completion failed (e.g. report generation error)
+        _mark_failed(session_id, user_id, ERROR_UNKNOWN, e)
         try:
             if minimal_complete_and_notify(session_id, user_id):
-                logger.info("recording_1_job: minimal completion and coach notification sent after failure")
+                logger.info("recording_1_job: minimal completion and coach notification sent after %s", error_code)
         except Exception as fallback_err:
             logger.warning("recording_1_job: minimal_complete_and_notify failed: %s", fallback_err)
+        return
+
+    logger.info(
+        "recording_1_job: processing done, waiting for self-rating to complete session_id=%s recording_id=%s",
+        session_id, recording_id,
+    )
