@@ -378,6 +378,22 @@ def homework_abandon_session(session_id):
         return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
 
 
+@homework_bp.route("/sessions", methods=["GET"])
+@require_auth
+def homework_list_sessions():
+    """List the current user's sessions with report previews and recording info.
+    Used by the step-0 'View reports' panel on the frontend.
+    Returns up to 20 most-recent sessions that have either a recording or a report."""
+    try:
+        user_id = request.user_id
+        sessions = db.v2_get_sessions_with_previews(user_id, limit=20)
+        return jsonify({"sessions": sessions}), 200
+    except Exception as e:
+        logger.error(f"homework_list_sessions: {str(e)}", exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
+
+
 @homework_bp.route("/session/<session_id>/leave-report", methods=["POST"])
 @require_auth
 def homework_leave_report(session_id):
