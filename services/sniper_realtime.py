@@ -5,7 +5,7 @@ Session-long buffer for energy thirds (normalized by session mean) and dramatic-
 """
 import math
 from collections import deque
-from typing import Deque, Dict, List, Optional, Tuple
+from typing import Any, Deque, Dict, List, Optional, Tuple
 
 import numpy as np
 
