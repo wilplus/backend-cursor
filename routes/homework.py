@@ -1157,7 +1157,20 @@ def homework_get_report(session_id):
                 raw = float(sniper["stage_score"])
                 score_for_display_100 = round(raw) if raw > 1 else round(raw * 100)
                 score_for_display_100 = max(0, min(100, score_for_display_100))
-                perf_end = score_for_display_100 / 100.0
+                new_perf_end = score_for_display_100 / 100.0
+                # Self-heal: if stored performance_score_end differs significantly from sniper score
+                # (race condition: minimal_complete_and_notify ran before sniper metrics reached DB),
+                # update the stored value so future performance_history queries show the correct score.
+                if abs(perf_end - new_perf_end) > 0.02:
+                    try:
+                        db.v2_update_session(session_id, user_id, {"performance_score_end": new_perf_end})
+                        logger.info(
+                            "homework_get_report: corrected performance_score_end %.3f→%.3f session_id=%s",
+                            perf_end, new_perf_end, session_id,
+                        )
+                    except Exception as heal_err:
+                        logger.warning("homework_get_report: could not correct performance_score_end: %s", heal_err)
+                perf_end = new_perf_end
         except Exception:
             pass
         scores = {
@@ -1205,6 +1218,18 @@ def homework_get_report(session_id):
                         )
                     except Exception as e:
                         logger.warning("Report: could not create signed URL for recording %s: %s", display_recording_id, e)
+                        # Fallback 1: use the job-stored audio_url (a recently-created signed URL from the job)
+                        fallback_url = (rec.get("audio_url") or "").strip()
+                        if fallback_url and fallback_url.startswith("http"):
+                            audio_url = fallback_url
+                            logger.info("Report: using stored audio_url fallback for recording %s", display_recording_id)
+                        else:
+                            # Fallback 2: public object URL (works for public buckets; better than no URL)
+                            try:
+                                supabase_url_base = config.SUPABASE_URL.rstrip("/")
+                                audio_url = f"{supabase_url_base}/storage/v1/object/public/{config.AUDIO_BUCKET_NAME}/{storage_path}"
+                            except Exception:
+                                pass  # audio_url stays None
                 final_recording["id"] = str(display_recording_id) if display_recording_id is not None else None
                 # Ensure audio_url is always a string or None for JSON (avoid "not transferrable" when frontend expects string)
                 if audio_url is not None and not isinstance(audio_url, str):
