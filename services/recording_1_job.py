@@ -118,6 +118,9 @@ def _process_one(payload: dict):
     try:
         # Step 1: download audio from storage
         audio_bytes = db.download_audio(config.AUDIO_BUCKET_NAME, storage_path)
+        if not audio_bytes:
+            raise ValueError(f"Downloaded audio is empty (0 bytes): path={storage_path}")
+        logger.info("recording_1_job: downloaded audio size=%d bytes session_id=%s", len(audio_bytes), session_id)
     except Exception as e:
         _mark_failed(session_id, user_id, ERROR_STORAGE, e)
         try:
@@ -200,7 +203,7 @@ def _process_one(payload: dict):
         _mark_failed(session_id, user_id, ERROR_UNKNOWN, e)
         try:
             if minimal_complete_and_notify(session_id, user_id):
-                logger.info("recording_1_job: minimal completion and coach notification sent after %s", error_code)
+                logger.info("recording_1_job: minimal completion and coach notification sent after %s", ERROR_UNKNOWN)
         except Exception as fallback_err:
             logger.warning("recording_1_job: minimal_complete_and_notify failed: %s", fallback_err)
         return

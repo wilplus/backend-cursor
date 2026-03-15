@@ -6,7 +6,7 @@ from flask import Blueprint, request, jsonify
 from auth import require_auth
 from services.db import db
 from services.email_service import email_service
-from services.homework_completion import complete_session_recording_1_only
+from services.homework_completion import complete_session_recording_1_only, minimal_complete_and_notify
 import logging
 import os
 import time
@@ -540,6 +540,16 @@ def homework_self_rating(session_id):
             # #region agent log
             _agent_log("POST self-rating completion result", {"session_id": session_id, "session_completed": session_completed}, "H4")
             # #endregion
+        elif status == STATUS_COMPLETING_FROM_RECORDING_1 and session.get("recording_1_processing_status") == "failed":
+            # Recovery: job failed; give the user a completed session with a minimal report.
+            try:
+                if minimal_complete_and_notify(session_id, user_id):
+                    session_completed = True
+                    logger.info("homework_self_rating: minimal fallback completion ran session_id=%s", session_id)
+                else:
+                    logger.warning("homework_self_rating: minimal fallback returned False session_id=%s", session_id)
+            except Exception as sr_fallback_err:
+                logger.warning("homework_self_rating: minimal fallback failed session_id=%s: %s", session_id, sr_fallback_err)
         elif status == STATUS_COMPLETED:
             session_completed = True
 
@@ -1109,6 +1119,16 @@ def homework_get_report(session_id):
                         # #endregion
                 except Exception as fallback_err:
                     logger.warning("homework_get_report: fallback completion failed: %s", fallback_err)
+            elif session.get("status") == STATUS_COMPLETING_FROM_RECORDING_1 and session.get("recording_1_processing_status") == "failed":
+                # Recovery: job failed and its own minimal_complete_and_notify may also have failed.
+                # Polling GET report is a second-chance to complete the session so the user isn't stuck forever.
+                _agent_log("GET report running minimal fallback for failed job", {"session_id": session_id}, "H2")
+                try:
+                    if minimal_complete_and_notify(session_id, user_id):
+                        session = db.v2_get_session(session_id, user_id)
+                        logger.info("homework_get_report: minimal fallback completion ran session_id=%s", session_id)
+                except Exception as fallback_err:
+                    logger.warning("homework_get_report: minimal fallback completion failed: %s", fallback_err)
             if session.get("status") != STATUS_COMPLETED:
                 # #region agent log
                 _agent_log("GET report returning 409", {"session_id": session_id, "status": session.get("status")}, "H1")

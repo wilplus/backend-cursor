@@ -98,35 +98,37 @@ class OpenAIService:
         
         if not self.client:
             raise Exception("OpenAI client not initialized")
-        
+
+        import logging
+        logger = logging.getLogger(__name__)
+        audio_data = b""
         try:
-            # Log that we're calling real OpenAI
-            import logging
-            logger = logging.getLogger(__name__)
-            logger.info("✅ Calling OpenAI Whisper API for transcription...")
-            
-            # Read audio file
             audio_file.seek(0)
             audio_data = audio_file.read()
             audio_file.seek(0)
-            
+            logger.info("transcribe_audio: filename=%s size=%d bytes", filename, len(audio_data))
+
             # Transcribe
             transcript_response = self.client.audio.transcriptions.create(
                 model="whisper-1",
                 file=(filename, audio_data, "audio/webm"),
                 response_format="verbose_json"
             )
-            
+
             # Extract duration from segments (use last segment end time)
             duration = 0.0
             if hasattr(transcript_response, 'segments') and transcript_response.segments:
                 duration = transcript_response.segments[-1].end
-            
+
             return {
                 "text": transcript_response.text,
                 "duration": duration
             }
         except Exception as e:
+            logger.error(
+                "transcribe_audio: FAILED filename=%s size=%d error=%r",
+                filename, len(audio_data), e, exc_info=True,
+            )
             sentry_sdk.capture_exception(e)
             raise Exception(f"Transcription failed: {str(e)}")
     
