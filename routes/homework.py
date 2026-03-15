@@ -7,6 +7,7 @@ from auth import require_auth
 from services.db import db
 from services.email_service import email_service
 from services.homework_completion import complete_session_recording_1_only, minimal_complete_and_notify
+from services.sniper_realtime import clear_sniper_session
 import logging
 import os
 import time
@@ -360,18 +361,19 @@ def homework_session_status():
 def homework_abandon_session(session_id):
     """Delete the homework session (owner only). Works for any status including completed. User has no active session afterward; GET status returns has_active_session: false. Client should refetch status and show the first page (Start)."""
     try:
-        from services.sniper_realtime import clear_sniper_session
         user_id = request.user_id
         session = db.v2_get_session(session_id, user_id)
         if not session:
             return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found"}), 404
-        deleted = db.v2_delete_session(session_id, user_id)
-        if not deleted:
-            return jsonify({"code": "V2_ERROR", "error": "Session could not be deleted"}), 500
-        clear_sniper_session(session_id)
+        db.v2_delete_session(session_id, user_id)
+        # Clear in-memory sniper state; non-fatal if it fails.
+        try:
+            clear_sniper_session(session_id)
+        except Exception as ce:
+            logger.warning(f"clear_sniper_session failed (non-fatal): {ce}")
         return jsonify({"deleted": True, "message": "Session deleted. Refetch status and show the start page."}), 200
     except Exception as e:
-        logger.error(f"Homework abandon session: {str(e)}")
+        logger.error(f"Homework abandon session: {str(e)}", exc_info=True)
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
 

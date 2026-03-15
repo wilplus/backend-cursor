@@ -1036,8 +1036,27 @@ class DatabaseService:
         return result.data[0] if result.data else None
 
     def v2_delete_session(self, session_id: str, user_id: str) -> bool:
-        """Delete v2 session (owner only). Recordings.session_v2_id set to NULL; v2_reports CASCADE deleted. Returns True when delete executes without error (Supabase delete may return empty body)."""
-        result = self.client.table("v2_sessions").delete().eq("id", session_id).eq("user_id", user_id).execute()
+        """Delete v2 session (owner only). Recordings.session_v2_id set to NULL; v2_reports CASCADE deleted. Returns True when delete executes without error (Supabase delete may return empty body).
+
+        NOTE: The schema has a mutual FK cycle between v2_sessions and v2_reports:
+          v2_sessions.report_id → v2_reports(id) ON DELETE SET NULL
+          v2_reports.session_v2_id → v2_sessions(id) ON DELETE CASCADE
+        PostgreSQL can raise a constraint-cycle error when both fire in the same transaction.
+        We break the cycle first by nulling out the FK columns on v2_sessions before deleting.
+        Same precaution for recording_1_id / recording_2_id (bidirectional with recordings table).
+        """
+        # Step 1: Break circular FK references to avoid PostgreSQL constraint-cycle errors.
+        try:
+            self.client.table("v2_sessions").update({
+                "recording_1_id": None,
+                "recording_2_id": None,
+                "report_id": None,
+            }).eq("id", session_id).eq("user_id", user_id).execute()
+        except Exception:
+            pass  # Best-effort; proceed to delete regardless.
+
+        # Step 2: Delete the session row (v2_reports CASCADE, recordings.session_v2_id SET NULL).
+        self.client.table("v2_sessions").delete().eq("id", session_id).eq("user_id", user_id).execute()
         # PostgREST/Supabase delete often returns empty result.data even on success; if we got here without exception, treat as success.
         return True
 
