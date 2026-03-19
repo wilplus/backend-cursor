@@ -793,29 +793,21 @@ def _sniper_rate_limit_check(user_id: str, session_id: str) -> bool:
 
 
 def _sniper_fallback_payload(seq=0, t_ms=0):
-    """Static payload so frontend always gets a valid response (like client-side-only fallback)."""
+    """Static payload so frontend always gets a valid response on error."""
     return {
         "active": True,
         "seq": seq,
         "t_ms": t_ms,
-        "segments": {
-            "pace": {"score": 75, "zone": "green", "raw": None, "variance_wpm": None},
-            "pause": {"score": 75, "zone": "green", "avg_pause_ms": 440, "speech_density": 75, "max_pause_s": 0},
-            "dynamic": {"score": 75, "zone": "green", "dynamic_range_db": 14},
-            "emphasis": {"score": 75, "zone": "green", "spikes_per_min": 35},
-            "energy": {"score": 70, "zone": "green", "pattern": "—", "e1": None, "e2": None, "e3": None},
+        "simple_live": {
+            "pause_ratio": 0.0,
+            "flow_score": None,
+            "performance_score": None,
+            "flow_offset": 0.0,
+            "pace_offset": 0.0,
+            "coach_color": "gray",
+            "voiced_ratio": 0.0,
+            "silence_gated": True,
         },
-        "overall_score": 75,
-        "stage_score": 75,
-        "display_score": 75,
-        "growth_score": None,
-        "baseline_ready": False,
-        "session_count": 0,
-        "tier": "Structured",
-        "coaching_message": "Delivery controlled. Maintain rhythm.",
-        "pace_available": False,
-        "score_completeness": "partial",
-        "live": {"pace_wpm": None, "pause_avg_ms": 440, "dynamic_range_db": 14, "emphasis_per_min": 35, "energy_pattern": "—"},
     }
 
 
@@ -875,11 +867,10 @@ def homework_sniper_metrics_chunk(session_id):
 
     try:
         from services.sniper_realtime import process_sniper_chunk
-        from services.sniper_scoring import compute_sniper_state
+        from services.sniper_scoring import compute_simple_live
     except Exception as imp_err:
         logger.warning("Sniper imports failed, using fallback: %s", imp_err)
-        payload = _sniper_fallback_payload(seq, t_ms)
-        return jsonify(payload), 200
+        return jsonify(_sniper_fallback_payload(seq, t_ms)), 200
 
     debug = {}
     try:
@@ -894,46 +885,24 @@ def homework_sniper_metrics_chunk(session_id):
         )
     except Exception as chunk_err:
         logger.warning("Sniper process_sniper_chunk failed, using fallback: %s", chunk_err)
-        payload = _sniper_fallback_payload(seq, t_ms)
-        return jsonify(payload), 200
-
-    baseline = None
-    session_count = 0
-    try:
-        profile = db.get_sniper_profile(user_id)
-        if profile:
-            baseline = profile
-            session_count = int(profile.get("session_count") or 0)
-    except Exception as profile_err:
-        logger.warning("Sniper get_sniper_profile failed: %s", profile_err)
+        return jsonify(_sniper_fallback_payload(seq, t_ms)), 200
 
     try:
-        state = compute_sniper_state(
-            **inputs,
-            baseline=baseline,
-            session_count=session_count,
+        simple_live = compute_simple_live(
+            pause_ratio=inputs.get("pause_ratio"),
+            client_wpm=inputs.get("client_wpm"),
+            voiced_ratio=inputs.get("voiced_ratio", 0.0),
+            silence_gated=inputs.get("silence_gated", True),
         )
-    except Exception as state_err:
-        logger.warning("Sniper compute_sniper_state failed, using fallback: %s", state_err)
-        payload = _sniper_fallback_payload(seq, t_ms)
-        return jsonify(payload), 200
+    except Exception as score_err:
+        logger.warning("Sniper compute_simple_live failed, using fallback: %s", score_err)
+        return jsonify(_sniper_fallback_payload(seq, t_ms)), 200
 
     payload = {
         "active": True,
         "seq": seq,
         "t_ms": t_ms,
-        "segments": state["segments"],
-        "overall_score": state["overall_score"],
-        "stage_score": state.get("stage_score", state["overall_score"]),
-        "display_score": state.get("display_score", state["overall_score"]),
-        "growth_score": state.get("growth_score"),
-        "baseline_ready": state.get("baseline_ready", False),
-        "session_count": state.get("session_count", 0),
-        "tier": state["tier"],
-        "coaching_message": state["coaching_message"],
-        "pace_available": state["pace_available"],
-        "score_completeness": state["score_completeness"],
-        "live": state["live"],
+        "simple_live": simple_live,
     }
     if include_debug:
         payload["_debug"] = debug
