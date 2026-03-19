@@ -436,6 +436,48 @@ def v2_admin_student_session_report(user_id, session_id):
         return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
 
 
+@v2_bp.route("/admin/recordings/<recording_id>/playback-url", methods=["GET"])
+@require_admin
+def v2_admin_recording_playback_url(recording_id):
+    """Return a fresh signed playback URL for any recording (admin). Used as fallback when report API returns no audio_url."""
+    try:
+        from config import Config
+        import re
+        config = Config()
+
+        def _is_valid_uuid(val):
+            return bool(re.match(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', str(val or ''), re.I))
+
+        if not _is_valid_uuid(recording_id):
+            return jsonify({"code": "INVALID_INPUT", "error": "Invalid recording ID"}), 400
+
+        # Admin can look up any recording without user_id constraint.
+        result = db.client.table("recordings").select("storage_path, audio_url").eq("id", recording_id).limit(1).execute()
+        if not result.data:
+            return jsonify({"code": "RECORDING_NOT_FOUND", "error": "Recording not found"}), 404
+
+        rec = result.data[0]
+        storage_path = (rec.get("storage_path") or "").strip()
+        if not storage_path:
+            return jsonify({"code": "NO_STORAGE_PATH", "error": "Recording has no storage path"}), 404
+
+        try:
+            audio_url = db.create_signed_url(config.AUDIO_BUCKET_NAME, storage_path, config.SIGNED_URL_EXPIRY_SECONDS)
+        except Exception as e:
+            logger.warning("Admin playback URL: signed URL failed for %s: %s", recording_id, e)
+            # Fallback to public URL pattern
+            supabase_url = (getattr(config, "SUPABASE_URL", "") or "").rstrip("/")
+            audio_url = f"{supabase_url}/storage/v1/object/public/{config.AUDIO_BUCKET_NAME}/{storage_path}" if supabase_url else None
+
+        if not audio_url:
+            return jsonify({"code": "URL_GENERATION_FAILED", "error": "Could not generate playback URL"}), 500
+
+        return jsonify({"audio_url": audio_url}), 200
+    except Exception as e:
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
+
+
 # ---------- Admin CRUD: exercises ----------
 @v2_bp.route("/admin/exercises", methods=["GET"])
 @require_admin
