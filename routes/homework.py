@@ -726,6 +726,9 @@ def homework_submit_recording_1(session_id):
                     }), 200
             # New recording for this session: create minimal, update session, enqueue
 
+        # Client-side Web Speech transcript (fallback when Whisper fails or is slow)
+        client_transcript = (data.get("transcript_text") or "").strip() if isinstance(data, dict) else ""
+
         # Create minimal recording row (job will fill transcript, wpm, etc.)
         minimal_recording = {
             "user_id": user_id,
@@ -737,6 +740,9 @@ def homework_submit_recording_1(session_id):
         }
         if duration_seconds is not None:
             minimal_recording["duration_seconds"] = duration_seconds
+        # Pre-fill transcript from client so it's available immediately even before Whisper runs
+        if client_transcript:
+            minimal_recording["transcription_text"] = client_transcript
         recording = db.create_recording(minimal_recording)
         if not recording:
             return jsonify({"code": "RECORDING_CREATE_FAILED"}), 500

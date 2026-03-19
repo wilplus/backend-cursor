@@ -130,16 +130,27 @@ def _process_one(payload: dict):
             logger.warning("recording_1_job: minimal_complete_and_notify failed: %s", fallback_err)
         return
 
+    # Client-side Web Speech transcript saved on the recording row as fallback
+    recording_row = db.get_recording(recording_id, user_id)
+    client_transcript = (recording_row.get("transcription_text") or "").strip() if recording_row else ""
+
     try:
         transcript_result = openai_service.transcribe_audio(BytesIO(audio_bytes), "audio.webm")
     except Exception as e:
-        _mark_failed(session_id, user_id, ERROR_TRANSCRIPTION, e)
-        try:
-            if minimal_complete_and_notify(session_id, user_id):
-                logger.info("recording_1_job: minimal completion and coach notification sent after transcription_failed")
-        except Exception as fallback_err:
-            logger.warning("recording_1_job: minimal_complete_and_notify failed: %s", fallback_err)
-        return
+        if client_transcript:
+            logger.warning(
+                "recording_1_job: Whisper failed, using client transcript as fallback session_id=%s error=%s",
+                session_id, e,
+            )
+            transcript_result = {"text": client_transcript, "duration": duration_seconds_from_client}
+        else:
+            _mark_failed(session_id, user_id, ERROR_TRANSCRIPTION, e)
+            try:
+                if minimal_complete_and_notify(session_id, user_id):
+                    logger.info("recording_1_job: minimal completion and coach notification sent after transcription_failed")
+            except Exception as fallback_err:
+                logger.warning("recording_1_job: minimal_complete_and_notify failed: %s", fallback_err)
+            return
 
     try:
         duration_seconds = transcript_result.get("duration") or duration_seconds_from_client
