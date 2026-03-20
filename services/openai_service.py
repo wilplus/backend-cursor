@@ -523,28 +523,43 @@ Generate the report:"""
         filler_count: int,
         performance_score: float,
         performance_history_scores: list,
+        speaker_profile_context: str = "",
+        self_rating_1_10: int | None = None,
+        live_ball_score_100: int | None = None,
     ) -> str:
-        """Two sentences for report view: (1) context from 1st recording + filler words; (2) progress from chart + relevancy (on topic, connected)."""
+        """Three short sentences for report view: context+fillers vs speaker profile, self-reflection, and coach handoff."""
         if not self.client:
+            final_score_100 = round(performance_score * 100)
+            live_ball_text = str(live_ball_score_100) if live_ball_score_100 is not None else "not available"
             return (
-                f"Your recording had {filler_count} filler words. "
-                f"Your score this time is {round(performance_score * 100)}/100."
+                f"Your live ball summary was {live_ball_text}/100, while your final review score is {final_score_100}/100 because filler words are applied after transcription ({filler_count} total). "
+                f"Your self-rating was {self_rating_1_10 if self_rating_1_10 is not None else 'not provided'}, so reflect on whether that matches the transcript-based review. "
+                "Let's see what your human coach Artur will say in the next video."
             )
         try:
             filler_str = ", ".join(f"{k}: {v}" for k, v in (filler_breakdown or {}).items()) or "none"
             history_str = ", ".join(str(round(s * 100)) for s in (performance_history_scores or [])[-5:]) or "none"
+            profile_ctx = _sanitize_context_short(speaker_profile_context)
+            self_rating_text = str(self_rating_1_10) if self_rating_1_10 is not None else "not provided"
+            final_score_100 = round(performance_score * 100)
+            live_ball_text = str(live_ball_score_100) if live_ball_score_100 is not None else "not available"
             system = (
-                "You write exactly 2 short sentences for a speaking coach report. "
-                "Sentence 1: reference the context/summary of what they said and their filler words (count and which ones). "
-                "Sentence 2: reference their progress (scores over recent sessions) and whether their answer was on topic and connected to the task. "
-                "Be encouraging and specific. No bullet points, no extra lines. Output only the 2 sentences."
+                "You write exactly 3 short sentences for a speaking coach report. "
+                "Sentence 1: reference the context/summary of what they said, their filler words (count and which ones), and the admin speaker-profile context; point out at least one discrepancy or alignment. "
+                "Sentence 2: clearly explain the honest gap between live-ball summary (pace/flow) and final review score when filler words are high; if live-ball and final are close, say that they are aligned. Make it self-reflective by comparing the student's self-rating with observed delivery and progress scores. "
+                "Sentence 3 must be exactly: Let's see what your human coach Artur will say in the next video. "
+                "Be specific, supportive, and concrete. No bullet points, no extra lines. Output only the 3 sentences."
             )
             user = (
                 f"Context from recording: {(_sanitize_context_short(context_short) or 'N/A')[:400]}\n"
                 f"Transcript excerpt (for relevancy): {(transcript_excerpt or '')[:600]}\n"
+                f"Admin speaker-profile context: {(profile_ctx or 'N/A')[:400]}\n"
+                f"Student self-rating (1-10): {self_rating_text}\n"
+                f"Live ball summary score (pace/flow only, 0-100): {live_ball_text}\n"
+                f"Final review score (0-100): {final_score_100}\n"
                 f"Filler words: total {filler_count}, breakdown: {filler_str}\n"
                 f"Recent session scores (oldest to newest, 0-100): {history_str}\n"
-                f"This session score: {round(performance_score * 100)}"
+                "Important: The live ball does not detect filler words; filler impact is applied in transcript-based review."
             )
             response = self.client.chat.completions.create(
                 model="gpt-4o-mini",
@@ -556,10 +571,21 @@ Generate the report:"""
                 max_tokens=120,
             )
             out = (response.choices[0].message.content or "").strip()
-            return out if out else f"Your recording had {filler_count} filler words. Score: {round(performance_score * 100)}/100."
+            fallback = (
+                f"Your live ball summary was {live_ball_text}/100, while your final review score is {final_score_100}/100 because filler words ({filler_count}, e.g. {filler_str}) are counted after transcription, and this also shows where your delivery differs from your coach profile notes. "
+                f"You rated yourself {self_rating_text}/10, so reflect on whether that matches the transcript-based result and your progress trend ({history_str}). "
+                "Let's see what your human coach Artur will say in the next video."
+            )
+            return out if out else fallback
         except Exception as e:
             sentry_sdk.capture_exception(e)
-            return f"Your recording had {filler_count} filler words. Your score this time is {round(performance_score * 100)}/100."
+            live_ball_text = str(live_ball_score_100) if live_ball_score_100 is not None else "not available"
+            final_score_100 = round(performance_score * 100)
+            return (
+                f"Your live ball summary was {live_ball_text}/100 and your final review score was {final_score_100}/100; that gap can happen because filler words ({filler_count}) are only applied after transcription, and there are still gaps versus your coach profile context to work on. "
+                f"You rated yourself {self_rating_1_10 if self_rating_1_10 is not None else 'not provided'}/10, so reflect on where that rating matches your delivery and score trend. "
+                "Let's see what your human coach Artur will say in the next video."
+            )
 
     def generate_final_task(
         self,

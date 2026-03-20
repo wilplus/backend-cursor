@@ -57,6 +57,28 @@ def normalize_fillers(filler_count: int) -> float:
     return _smoothstep(max(0.0, min(1.0, t)))
 
 
+def normalize_flow(pause_ratio: Optional[float]) -> float:
+    """
+    Flow score 0..1 from pause_ratio.
+    Ideal band: 0.10..0.35 -> 1.0
+    Below ideal: linear ramp from 0.0 at 0.0 to 1.0 at 0.10
+    Above ideal: linear ramp from 1.0 at 0.35 to 0.0 at 0.55
+    """
+    if pause_ratio is None:
+        return 0.5
+    try:
+        p = float(pause_ratio)
+    except (TypeError, ValueError):
+        return 0.5
+    p = max(0.0, min(1.0, p))
+    ideal_lo, ideal_hi, max_ratio = 0.10, 0.35, 0.55
+    if ideal_lo <= p <= ideal_hi:
+        return 1.0
+    if p < ideal_lo:
+        return max(0.0, min(1.0, p / ideal_lo))
+    return max(0.0, min(1.0, (max_ratio - p) / (max_ratio - ideal_hi)))
+
+
 def normalize_emotion_achieved(yes_no_answer: bool) -> float:
     """1.0 if yes, 0.0 if no."""
     return 1.0 if yes_no_answer else 0.0
@@ -118,12 +140,18 @@ def build_recording_1_performance_profile(wpm: float, filler_count: int) -> Dict
     }
 
 
-def compute_performance_score_1(wpm: float, strength_raw: Optional[float], filler_count: int) -> float:
-    """Homework flow: score from recording_1 using 3 metrics (pace, strength, fillers). 0..1."""
+def compute_performance_score_1(
+    wpm: float,
+    strength_raw: Optional[float],
+    filler_count: int,
+    pause_ratio: Optional[float] = None,
+) -> float:
+    """Homework flow: score from recording_1 using pace, flow, and fillers. 0..1."""
     pace_n = normalize_pace(wpm)
-    strength_n = normalize_strength(strength_raw) if strength_raw is not None else 0.5
+    flow_n = normalize_flow(pause_ratio)
     fillers_n = normalize_fillers(filler_count)
-    return max(0.0, min(1.0, (pace_n + strength_n + fillers_n) / 3.0))
+    score = (0.35 * pace_n) + (0.35 * flow_n) + (0.30 * fillers_n)
+    return max(0.0, min(1.0, score))
 
 
 def compute_metrics_v2(

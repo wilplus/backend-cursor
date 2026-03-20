@@ -464,49 +464,6 @@ def homework_get_warm_up_task(session_id):
         return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
 
 
-@homework_bp.route("/session/<session_id>/complete-from-recording-1", methods=["POST"])
-@require_auth
-def homework_complete_from_recording_1(session_id):
-    """Skip step 2 and 3: complete session from recording 1 only and return report (step 5). Use when questions fail to load or no focus task."""
-    try:
-        from config import Config
-        config = Config()
-        user_id = request.user_id
-        session = db.v2_get_session(session_id, user_id)
-        if not session:
-            return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found"}), 404
-        status = session.get("status")
-        if status not in (STATUS_TASK_BLOCK, STATUS_COMPLETING_FROM_RECORDING_1):
-            return jsonify({
-                "code": "INVALID_SESSION_STATE",
-                "error": "Session must be in step 2 (task_block) or report-generating to skip to report",
-                "status": status,
-            }), 409
-        if session.get("recording_1_processing_status") == "pending":
-            return jsonify({
-                "code": "RECORDING_1_PROCESSING",
-                "message": "Your recording is still being analyzed. Please wait a moment and try again.",
-            }), 409
-        if not session.get("recording_1_id"):
-            return jsonify({"code": "INVALID_STATE", "error": "No recording 1"}), 400
-        payload = complete_session_recording_1_only(session_id, user_id, allow_task_block=True)
-        if not payload:
-            return jsonify({"code": "V2_ERROR", "error": "Could not complete session from recording 1"}), 500
-        payload["status"] = PUBLIC_STATUS_COMPLETED
-        completed_at_iso = payload.pop("completed_at_iso", None)
-        deadline = _tutor_feedback_deadline_iso(completed_at_iso, getattr(config, "TUTOR_FEEDBACK_WINDOW_HOURS", 24)) if completed_at_iso else None
-        if deadline:
-            payload["tutor_feedback_deadline"] = deadline
-            msg = _tutor_feedback_message(deadline)
-            if msg:
-                payload["tutor_feedback_message"] = msg
-        return jsonify(payload), 200
-    except Exception as e:
-        logger.exception("Homework complete-from-recording-1: %s", e)
-        sentry_sdk.capture_exception(e)
-        return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
-
-
 @homework_bp.route("/session/<session_id>/self-rating", methods=["POST"])
 @require_auth
 def homework_self_rating(session_id):
@@ -685,6 +642,7 @@ def homework_submit_recording_1(session_id):
         data = request.get_json(silent=True) or (request.form or {})
         duration_seconds = None
         storage_path = None
+        pause_ratio = None
 
         if audio_file:
             # Multipart: upload only, no transcription in request
@@ -700,10 +658,21 @@ def homework_submit_recording_1(session_id):
                 duration_seconds = float(request.form.get("duration_seconds")) if request.form.get("duration_seconds") else None
             except (TypeError, ValueError):
                 duration_seconds = None
+            pause_raw = request.form.get("pause_ratio")
+            if pause_raw in (None, ""):
+                pause_raw = request.form.get("pauseRatio")
+            if pause_raw not in (None, ""):
+                try:
+                    pause_ratio = float(pause_raw)
+                except (TypeError, ValueError):
+                    pause_ratio = None
         else:
             # JSON: storage_path + duration_seconds (direct-to-storage)
             storage_path = (data.get("storage_path") or "").strip()
             duration_seconds = data.get("duration_seconds")
+            pause_raw = data.get("pause_ratio")
+            if pause_raw is None:
+                pause_raw = data.get("pauseRatio")
             if not storage_path or duration_seconds is None:
                 return jsonify({"code": "INVALID_INPUT", "error": "Either send multipart 'audio' or JSON with storage_path and duration_seconds"}), 400
             if not _validate_storage_path(storage_path, user_id, session_id):
@@ -712,6 +681,11 @@ def homework_submit_recording_1(session_id):
                 duration_seconds = float(duration_seconds)
             except (TypeError, ValueError):
                 return jsonify({"code": "INVALID_INPUT", "error": "duration_seconds must be a number"}), 400
+            if pause_raw is not None:
+                try:
+                    pause_ratio = float(pause_raw)
+                except (TypeError, ValueError):
+                    pause_ratio = None
             # Idempotency: same storage_path → return existing (always report_generating; steps 2–4 removed)
             existing_rid = session.get("recording_1_id")
             if existing_rid:
@@ -753,7 +727,14 @@ def homework_submit_recording_1(session_id):
             "recording_1_processing_status": "pending",
         })
 
-        enqueue_recording_1_job(session_id, str(recording["id"]), storage_path, user_id, duration_seconds)
+        enqueue_recording_1_job(
+            session_id,
+            str(recording["id"]),
+            storage_path,
+            user_id,
+            duration_seconds,
+            pause_ratio=pause_ratio,
+        )
 
         # TEMPORARY: steps 2–4 fully removed → always complete from recording 1 only
         db.v2_update_session(session_id, user_id, {"status": STATUS_COMPLETING_FROM_RECORDING_1})
@@ -907,180 +888,6 @@ def homework_sniper_metrics_chunk(session_id):
     if include_debug:
         payload["_debug"] = debug
     return jsonify(payload), 200
-
-
-@homework_bp.route("/session/<session_id>/sniper-session-complete", methods=["POST"])
-@require_auth
-def homework_sniper_session_complete(session_id):
-    """
-    Backend owns both tables: stores session means in session_sniper_metrics and updates user_sniper_profile (EMA).
-    Body (all optional): wpm, pause_ms, dynamic_db, emphasis_per_min, energy_ratio, stage_score, voiced_duration_sec, student_rating_1_10.
-    Profile is only updated when stage_score >= 60, voiced_duration_sec >= 60, and (student_rating_1_10 >= 8 or coach_grade >= 8).
-    """
-    try:
-        user_id = request.user_id
-        session = db.v2_get_session(session_id, user_id)
-        if not session:
-            return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found"}), 404
-        data = request.get_json(silent=True) or {}
-        wpm = data.get("wpm")
-        pause_ms = data.get("pause_ms")
-        dynamic_db = data.get("dynamic_db")
-        emphasis_per_min = data.get("emphasis_per_min")
-        energy_ratio = data.get("energy_ratio")
-        stage_score = data.get("stage_score")
-        voiced_duration_sec = data.get("voiced_duration_sec")
-        student_rating_1_10 = data.get("student_rating_1_10")
-        if wpm is not None:
-            try:
-                wpm = float(wpm)
-            except (TypeError, ValueError):
-                wpm = None
-        if pause_ms is not None:
-            try:
-                pause_ms = float(pause_ms)
-            except (TypeError, ValueError):
-                pause_ms = None
-        if dynamic_db is not None:
-            try:
-                dynamic_db = float(dynamic_db)
-            except (TypeError, ValueError):
-                dynamic_db = None
-        if emphasis_per_min is not None:
-            try:
-                emphasis_per_min = float(emphasis_per_min)
-            except (TypeError, ValueError):
-                emphasis_per_min = None
-        if energy_ratio is not None:
-            try:
-                energy_ratio = float(energy_ratio)
-            except (TypeError, ValueError):
-                energy_ratio = None
-        if stage_score is not None:
-            try:
-                stage_score = float(stage_score)
-            except (TypeError, ValueError):
-                stage_score = None
-        if voiced_duration_sec is not None:
-            try:
-                voiced_duration_sec = float(voiced_duration_sec)
-            except (TypeError, ValueError):
-                voiced_duration_sec = None
-        if student_rating_1_10 is not None:
-            try:
-                student_rating_1_10 = int(student_rating_1_10)
-                if student_rating_1_10 < 1 or student_rating_1_10 > 10:
-                    student_rating_1_10 = None
-            except (TypeError, ValueError):
-                student_rating_1_10 = None
-        db.save_session_sniper_metrics(
-            session_id=session_id,
-            user_id=user_id,
-            wpm=wpm,
-            pause_ms=pause_ms,
-            dynamic_db=dynamic_db,
-            emphasis_per_min=emphasis_per_min,
-            energy_ratio=energy_ratio,
-            stage_score=stage_score,
-            voiced_duration_sec=voiced_duration_sec,
-            student_rating_1_10=student_rating_1_10,
-        )
-        db.update_sniper_baseline_from_payload(
-            user_id,
-            session_id=session_id,
-            wpm=wpm,
-            pause_ms=pause_ms,
-            dynamic_db=dynamic_db,
-            emphasis_per_min=emphasis_per_min,
-            energy_ratio=energy_ratio,
-            stage_score=stage_score,
-            voiced_duration_sec=voiced_duration_sec,
-            student_rating_1_10=student_rating_1_10,
-        )
-        return jsonify({"status": "ok"}), 200
-    except Exception as e:
-        logger.exception("Sniper session complete: %s", e)
-        sentry_sdk.capture_exception(e)
-        return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
-
-
-@homework_bp.route("/session/<session_id>/questions", methods=["GET"])
-@require_auth
-def homework_get_questions(session_id):
-    """Get post-recording (reflective) questions for the current session. Session must be in post_questions or completing_from_recording_1. Returns { questions: [ { id, text, answer_type, code? } ] }; empty list if none assigned."""
-    try:
-        user_id = request.user_id
-        session = db.v2_get_session(session_id, user_id)
-        if not session:
-            return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found"}), 404
-        status = (session.get("status") or "").strip()
-        if status not in (STATUS_POST_QUESTIONS, STATUS_COMPLETING_FROM_RECORDING_1):
-            return jsonify({
-                "code": "INVALID_SESSION_STATE",
-                "error": "Questions are only available after your recording is processed",
-                "status": status,
-            }), 409
-        rows = db.v2_get_student_post_recording_questions(user_id)
-        questions = [
-            {
-                "id": str(r["id"]),
-                "text": (r.get("text") or "").strip(),
-                "answer_type": r.get("answer_type") or "text",
-                "code": r.get("code"),
-            }
-            for r in (rows or [])
-        ]
-        return jsonify({"questions": questions}), 200
-    except Exception as e:
-        logger.exception("Homework get questions: %s", e)
-        sentry_sdk.capture_exception(e)
-        return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
-
-
-@homework_bp.route("/session/<session_id>/post-answers", methods=["POST"])
-@require_auth
-def homework_post_answers(session_id):
-    """Submit post-recording answers and complete the session. Body: { answers: [ { question_id, answer_text } ] }. Empty answers allowed. Session must be in post_questions. Returns report payload (report_text, performance_score_end, ...) and status completed."""
-    try:
-        user_id = request.user_id
-        session = db.v2_get_session(session_id, user_id)
-        if not session:
-            return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found"}), 404
-        if (session.get("status") or "").strip() != STATUS_POST_QUESTIONS:
-            return jsonify({
-                "code": "INVALID_SESSION_STATE",
-                "error": "Post-answers are only accepted when the session is on the questions step",
-                "status": session.get("status"),
-            }), 409
-        data = request.get_json(silent=True) or {}
-        raw = data.get("answers")
-        if raw is None:
-            raw = []
-        if not isinstance(raw, list):
-            raw = []
-        answers = []
-        for item in raw:
-            if not isinstance(item, dict):
-                continue
-            qid = item.get("question_id")
-            atext = item.get("answer_text")
-            if qid is not None:
-                answers.append({"question_id": str(qid), "answer_text": str(atext) if atext is not None else ""})
-        db.v2_update_session(session_id, user_id, {"post_answers": answers})
-        result = complete_session_recording_1_only(session_id, user_id)
-        if not result:
-            return jsonify({"code": "V2_ERROR", "error": "Could not complete session"}), 500
-        return jsonify({
-            "status": PUBLIC_STATUS_COMPLETED,
-            "report_text": result.get("report_text", ""),
-            "performance_score_end": result.get("performance_score_end", 0),
-            "performance_metrics": result.get("performance_metrics"),
-            "completed_at_iso": result.get("completed_at_iso"),
-        }), 200
-    except Exception as e:
-        logger.exception("Homework post-answers: %s", e)
-        sentry_sdk.capture_exception(e)
-        return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
 
 
 @homework_bp.route("/session/<session_id>/report", methods=["GET"])

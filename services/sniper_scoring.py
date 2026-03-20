@@ -15,17 +15,17 @@ def _clamp(v: float, lo: float, hi: float) -> float:
 def score_flow(pause_ratio: Optional[float]) -> Optional[float]:
     """
     Flow score 0–100 from pause_ratio.
-    Good band (0.15–0.30) → 100.
-    Too rushed (< 0.15): linear ramp.
-    Too choppy (> 0.30): linear ramp down to 0 at 0.60.
+    Good band (0.10–0.35) → 100.
+    Too rushed (< 0.10): linear ramp.
+    Too choppy (> 0.35): linear ramp down to 0 at 0.55.
     """
     if pause_ratio is None:
         return None
-    if 0.15 <= pause_ratio <= 0.30:
+    if 0.10 <= pause_ratio <= 0.35:
         return 100.0
-    if pause_ratio < 0.15:
-        return _clamp((pause_ratio / 0.15) * 100.0, 0.0, 100.0)
-    return _clamp(((0.60 - pause_ratio) / (0.60 - 0.30)) * 100.0, 0.0, 100.0)
+    if pause_ratio < 0.10:
+        return _clamp((pause_ratio / 0.10) * 100.0, 0.0, 100.0)
+    return _clamp(((0.55 - pause_ratio) / (0.55 - 0.35)) * 100.0, 0.0, 100.0)
 
 
 def score_pace(wpm: Optional[float]) -> Optional[float]:

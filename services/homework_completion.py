@@ -208,6 +208,22 @@ def complete_session_recording_1_only(session_id: str, user_id: str, allow_task_
         history_rows = db.v2_get_performance_history(user_id, limit=5)
         history_scores = [float(r.get("performance_score_end") or 0) for r in history_rows]
         transcript_excerpt = (transcript or "")[:600]
+        speaker_profile = db.v2_get_speaker_profile(user_id) or {}
+        speaker_profile_context = (speaker_profile.get("coach_notes") or "").strip()
+        session_sniper = db.get_session_sniper_metrics(session_id) or {}
+        self_rating_1_10 = session_sniper.get("student_rating_1_10")
+        live_ball_score_100 = None
+        stage_raw = session_sniper.get("stage_score")
+        if stage_raw is not None:
+            try:
+                stage_raw_f = float(stage_raw)
+                live_ball_score_100 = round(stage_raw_f if stage_raw_f > 1 else stage_raw_f * 100)
+            except (TypeError, ValueError):
+                live_ball_score_100 = None
+        try:
+            self_rating_1_10 = int(self_rating_1_10) if self_rating_1_10 is not None else None
+        except (TypeError, ValueError):
+            self_rating_1_10 = None
         coach_insight = openai_service.generate_coach_insight(
             context_short=context_short,
             transcript_excerpt=transcript_excerpt,
@@ -215,6 +231,9 @@ def complete_session_recording_1_only(session_id: str, user_id: str, allow_task_
             filler_count=filler_count,
             performance_score=performance_score_end,
             performance_history_scores=history_scores,
+            speaker_profile_context=speaker_profile_context,
+            self_rating_1_10=self_rating_1_10,
+            live_ball_score_100=live_ball_score_100,
         )
     except Exception as ci_err:
         logger.warning("Coach insight generation failed: %s", ci_err)

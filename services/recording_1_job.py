@@ -5,10 +5,13 @@ On failure we set recording_1_processing_status='failed' and recording_1_process
 so logs and GET session/status show the exact reason.
 """
 import logging
+import os
 import queue
 import threading
+import tempfile
 from io import BytesIO
 
+import librosa
 import sentry_sdk
 
 from config import Config
@@ -39,7 +42,46 @@ _pending_recording_ids = set()
 _pending_lock = threading.Lock()
 
 
-def enqueue_recording_1_job(session_id: str, recording_id: str, storage_path: str, user_id: str, duration_seconds=None):
+def _compute_pause_ratio_from_audio_bytes(audio_bytes: bytes) -> float | None:
+    """
+    Compute pause_ratio using silence detection from the uploaded audio.
+    pause_ratio = 1 - (voiced_samples / total_samples)
+    Returns None when decoding or analysis fails.
+    """
+    if not audio_bytes:
+        return None
+    tmp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as tmp:
+            tmp.write(audio_bytes)
+            tmp_path = tmp.name
+        y, _sr = librosa.load(tmp_path, sr=None, mono=True)
+        total_samples = int(len(y))
+        if total_samples <= 0:
+            return None
+        intervals = librosa.effects.split(y, top_db=30)
+        voiced_samples = int(sum(max(0, int(end) - int(start)) for start, end in intervals))
+        pause_ratio = 1.0 - (float(voiced_samples) / float(total_samples))
+        return max(0.0, min(1.0, pause_ratio))
+    except Exception as e:
+        logger.warning("recording_1_job: pause_ratio extraction failed, fallback to client value: %s", e)
+        return None
+    finally:
+        if tmp_path:
+            try:
+                os.remove(tmp_path)
+            except Exception:
+                pass
+
+
+def enqueue_recording_1_job(
+    session_id: str,
+    recording_id: str,
+    storage_path: str,
+    user_id: str,
+    duration_seconds=None,
+    pause_ratio=None,
+):
     """Enqueue a recording-1 processing job. Deduplicates by recording_id."""
     with _pending_lock:
         if recording_id in _pending_recording_ids:
@@ -52,6 +94,7 @@ def enqueue_recording_1_job(session_id: str, recording_id: str, storage_path: st
         "storage_path": storage_path,
         "user_id": user_id,
         "duration_seconds": duration_seconds,
+        "pause_ratio": pause_ratio,
     })
     _ensure_worker_started()
 
@@ -105,6 +148,7 @@ def _process_one(payload: dict):
     storage_path = payload["storage_path"]
     user_id = payload["user_id"]
     duration_seconds_from_client = payload.get("duration_seconds")
+    pause_ratio_from_client = payload.get("pause_ratio")
 
     config = Config()
     session = db.v2_get_session(session_id, user_id)
@@ -153,6 +197,12 @@ def _process_one(payload: dict):
             return
 
     try:
+        # Prefer request-provided pause_ratio for lower compute/latency.
+        # Only run audio extraction when client value is missing/invalid.
+        effective_pause_ratio = pause_ratio_from_client
+        if effective_pause_ratio is None:
+            effective_pause_ratio = _compute_pause_ratio_from_audio_bytes(audio_bytes)
+
         duration_seconds = transcript_result.get("duration") or duration_seconds_from_client
         if duration_seconds is None:
             duration_seconds = 60.0
@@ -168,7 +218,12 @@ def _process_one(payload: dict):
         wpm = compute_wpm(transcript_text, duration_seconds)
         filler_data = count_fillers(transcript_text)
         filler_count = filler_data["total"]
-        performance_score_1 = compute_performance_score_1(wpm=wpm, strength_raw=None, filler_count=filler_count)
+        performance_score_1 = compute_performance_score_1(
+            wpm=wpm,
+            strength_raw=None,
+            filler_count=filler_count,
+            pause_ratio=effective_pause_ratio,
+        )
         performance_profile = build_recording_1_performance_profile(wpm, filler_count)
 
         try:
