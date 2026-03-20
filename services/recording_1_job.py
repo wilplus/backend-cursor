@@ -11,13 +11,13 @@ import threading
 import tempfile
 from io import BytesIO
 
-import librosa
 import sentry_sdk
 
 from config import Config
 from services.db import db
 from services.openai_service import openai_service
 from services.v2_flow_service import select_focus_task_for_performance_score_1
+from services.pause_ratio_selector import select_pause_ratio
 from utils.metrics import count_fillers, compute_wpm
 from services.metrics_v2 import compute_performance_score_1, build_recording_1_performance_profile
 from services.homework_completion import minimal_complete_and_notify
@@ -52,6 +52,10 @@ def _compute_pause_ratio_from_audio_bytes(audio_bytes: bytes) -> float | None:
         return None
     tmp_path = None
     try:
+        try:
+            import librosa  # optional dependency; do not hard-fail worker if missing
+        except Exception:
+            return None
         with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as tmp:
             tmp.write(audio_bytes)
             tmp_path = tmp.name
@@ -81,6 +85,9 @@ def enqueue_recording_1_job(
     user_id: str,
     duration_seconds=None,
     pause_ratio=None,
+    center_hold_ratio=None,
+    center_hold_ms=None,
+    total_active_ms=None,
 ):
     """Enqueue a recording-1 processing job. Deduplicates by recording_id."""
     with _pending_lock:
@@ -95,6 +102,9 @@ def enqueue_recording_1_job(
         "user_id": user_id,
         "duration_seconds": duration_seconds,
         "pause_ratio": pause_ratio,
+        "center_hold_ratio": center_hold_ratio,
+        "center_hold_ms": center_hold_ms,
+        "total_active_ms": total_active_ms,
     })
     _ensure_worker_started()
 
@@ -149,6 +159,9 @@ def _process_one(payload: dict):
     user_id = payload["user_id"]
     duration_seconds_from_client = payload.get("duration_seconds")
     pause_ratio_from_client = payload.get("pause_ratio")
+    center_hold_ratio_from_client = payload.get("center_hold_ratio")
+    center_hold_ms_from_client = payload.get("center_hold_ms")
+    total_active_ms_from_client = payload.get("total_active_ms")
 
     config = Config()
     session = db.v2_get_session(session_id, user_id)
@@ -197,11 +210,18 @@ def _process_one(payload: dict):
             return
 
     try:
-        # Prefer request-provided pause_ratio for lower compute/latency.
-        # Only run audio extraction when client value is missing/invalid.
-        effective_pause_ratio = pause_ratio_from_client
-        if effective_pause_ratio is None:
-            effective_pause_ratio = _compute_pause_ratio_from_audio_bytes(audio_bytes)
+        effective_pause_ratio, pause_ratio_source = select_pause_ratio(
+            audio_bytes,
+            pause_ratio_from_client,
+            _compute_pause_ratio_from_audio_bytes,
+        )
+        logger.info(
+            "recording_1_job: pause_ratio source=%s value=%.4f session_id=%s recording_id=%s",
+            pause_ratio_source,
+            effective_pause_ratio,
+            session_id,
+            recording_id,
+        )
 
         duration_seconds = transcript_result.get("duration") or duration_seconds_from_client
         if duration_seconds is None:
@@ -218,11 +238,45 @@ def _process_one(payload: dict):
         wpm = compute_wpm(transcript_text, duration_seconds)
         filler_data = count_fillers(transcript_text)
         filler_count = filler_data["total"]
-        performance_score_1 = compute_performance_score_1(
+        legacy_score_01 = compute_performance_score_1(
             wpm=wpm,
             strength_raw=None,
             filler_count=filler_count,
             pause_ratio=effective_pause_ratio,
+        )
+        score_source = "legacy_formula"
+        base_score_100 = round(legacy_score_01 * 100.0)
+        penalty_points = 0
+        performance_score_1 = legacy_score_01
+        center_hold_ratio = None
+        center_hold_ms = None
+        total_active_ms = None
+        try:
+            if center_hold_ratio_from_client is not None:
+                center_hold_ratio = max(0.0, min(1.0, float(center_hold_ratio_from_client)))
+            if center_hold_ms_from_client is not None:
+                center_hold_ms = max(0, int(center_hold_ms_from_client))
+            if total_active_ms_from_client is not None:
+                total_active_ms = max(0, int(total_active_ms_from_client))
+        except (TypeError, ValueError):
+            center_hold_ratio = None
+            center_hold_ms = None
+            total_active_ms = None
+        if center_hold_ratio is not None:
+            score_source = "center_hold_payload"
+            base_score_100 = round(center_hold_ratio * 100.0)
+            penalty_points = 3 * int(filler_count)
+            final_score_100 = max(0.0, min(100.0, float(base_score_100 - penalty_points)))
+            performance_score_1 = final_score_100 / 100.0
+        logger.info(
+            "recording_1_job: score source=%s base_score_100=%s filler_count=%s penalty_points=%s final_score_01=%.4f session_id=%s recording_id=%s",
+            score_source,
+            base_score_100,
+            filler_count,
+            penalty_points,
+            performance_score_1,
+            session_id,
+            recording_id,
         )
         performance_profile = build_recording_1_performance_profile(wpm, filler_count)
 
@@ -249,6 +303,24 @@ def _process_one(payload: dict):
             focus_task = {"id": None, "title": db.DEFAULT_FOCUS_TASK_TEXT, "prompt_text": db.DEFAULT_FOCUS_TASK_TEXT}
 
         duration_int = int(round(duration_seconds))
+        existing_metrics = recording_row.get("performance_metrics_v2") if isinstance(recording_row, dict) else {}
+        if not isinstance(existing_metrics, dict):
+            existing_metrics = {}
+        scoring_debug = {
+            "score_source": score_source,
+            "center_hold_ratio": center_hold_ratio,
+            "center_hold_ms": center_hold_ms,
+            "total_active_ms": total_active_ms,
+            "base_score_100": base_score_100,
+            "filler_count": int(filler_count),
+            "penalty_points": int(penalty_points),
+            "pause_ratio_source": pause_ratio_source,
+            "pause_ratio_effective": effective_pause_ratio,
+            "legacy_score_01": legacy_score_01,
+            "final_score_01": performance_score_1,
+        }
+        merged_metrics = dict(existing_metrics)
+        merged_metrics["scoring_debug"] = scoring_debug
         db.update_recording(recording_id, {
             "transcription_text": transcript_text,
             "words_per_minute": wpm,
@@ -257,6 +329,7 @@ def _process_one(payload: dict):
             "duration": duration_int,
             "duration_seconds": duration_seconds,
             "task_id": focus_task["id"] if focus_task else None,
+            "performance_metrics_v2": merged_metrics,
         })
         db.v2_update_session(session_id, user_id, {
             "performance_score_1": performance_score_1,
