@@ -325,8 +325,6 @@ def v2_admin_student_session_report_get(user_id, session_id):
                 perf_end = score_for_display_100 / 100.0
         except Exception:
             pass
-        scores = {"overall": score_for_display_100}
-
         history_rows = db.v2_get_performance_history(user_id, limit=5)
         performance_history = []
         for row in history_rows:
@@ -383,7 +381,6 @@ def v2_admin_student_session_report_get(user_id, session_id):
 
         payload = {
             "report_text": report_text,
-            "scores": scores,
             "performance_score_end": perf_end,
             "recording_count": 2 if has_rec_2 else 1,
             "final_recording": final_recording,

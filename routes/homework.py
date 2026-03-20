@@ -642,10 +642,7 @@ def homework_submit_recording_1(session_id):
         data = request.get_json(silent=True) or (request.form or {})
         duration_seconds = None
         storage_path = None
-        pause_ratio = None
         center_hold_ratio = None
-        center_hold_ms = None
-        total_active_ms = None
 
         if audio_file:
             # Multipart: upload only, no transcription in request
@@ -661,14 +658,6 @@ def homework_submit_recording_1(session_id):
                 duration_seconds = float(request.form.get("duration_seconds")) if request.form.get("duration_seconds") else None
             except (TypeError, ValueError):
                 duration_seconds = None
-            pause_raw = request.form.get("pause_ratio")
-            if pause_raw in (None, ""):
-                pause_raw = request.form.get("pauseRatio")
-            if pause_raw not in (None, ""):
-                try:
-                    pause_ratio = float(pause_raw)
-                except (TypeError, ValueError):
-                    pause_ratio = None
             chr_raw = request.form.get("center_hold_ratio")
             if chr_raw in (None, ""):
                 chr_raw = request.form.get("centerHoldRatio")
@@ -677,38 +666,13 @@ def homework_submit_recording_1(session_id):
                     center_hold_ratio = float(chr_raw)
                 except (TypeError, ValueError):
                     center_hold_ratio = None
-            chms_raw = request.form.get("center_hold_ms")
-            if chms_raw in (None, ""):
-                chms_raw = request.form.get("centerHoldMs")
-            if chms_raw not in (None, ""):
-                try:
-                    center_hold_ms = int(chms_raw)
-                except (TypeError, ValueError):
-                    center_hold_ms = None
-            tams_raw = request.form.get("total_active_ms")
-            if tams_raw in (None, ""):
-                tams_raw = request.form.get("totalActiveMs")
-            if tams_raw not in (None, ""):
-                try:
-                    total_active_ms = int(tams_raw)
-                except (TypeError, ValueError):
-                    total_active_ms = None
         else:
             # JSON: storage_path + duration_seconds (direct-to-storage)
             storage_path = (data.get("storage_path") or "").strip()
             duration_seconds = data.get("duration_seconds")
-            pause_raw = data.get("pause_ratio")
-            if pause_raw is None:
-                pause_raw = data.get("pauseRatio")
             chr_raw = data.get("center_hold_ratio")
             if chr_raw is None:
                 chr_raw = data.get("centerHoldRatio")
-            chms_raw = data.get("center_hold_ms")
-            if chms_raw is None:
-                chms_raw = data.get("centerHoldMs")
-            tams_raw = data.get("total_active_ms")
-            if tams_raw is None:
-                tams_raw = data.get("totalActiveMs")
             if not storage_path or duration_seconds is None:
                 return jsonify({"code": "INVALID_INPUT", "error": "Either send multipart 'audio' or JSON with storage_path and duration_seconds"}), 400
             if not _validate_storage_path(storage_path, user_id, session_id):
@@ -717,26 +681,11 @@ def homework_submit_recording_1(session_id):
                 duration_seconds = float(duration_seconds)
             except (TypeError, ValueError):
                 return jsonify({"code": "INVALID_INPUT", "error": "duration_seconds must be a number"}), 400
-            if pause_raw is not None:
-                try:
-                    pause_ratio = float(pause_raw)
-                except (TypeError, ValueError):
-                    pause_ratio = None
             if chr_raw is not None:
                 try:
                     center_hold_ratio = float(chr_raw)
                 except (TypeError, ValueError):
                     center_hold_ratio = None
-            if chms_raw is not None:
-                try:
-                    center_hold_ms = int(chms_raw)
-                except (TypeError, ValueError):
-                    center_hold_ms = None
-            if tams_raw is not None:
-                try:
-                    total_active_ms = int(tams_raw)
-                except (TypeError, ValueError):
-                    total_active_ms = None
             # Idempotency: same storage_path → return existing (always report_generating; steps 2–4 removed)
             existing_rid = session.get("recording_1_id")
             if existing_rid:
@@ -784,10 +733,7 @@ def homework_submit_recording_1(session_id):
             storage_path,
             user_id,
             duration_seconds,
-            pause_ratio=pause_ratio,
             center_hold_ratio=center_hold_ratio,
-            center_hold_ms=center_hold_ms,
-            total_active_ms=total_active_ms,
         )
 
         # TEMPORARY: steps 2–4 fully removed → always complete from recording 1 only
@@ -1027,9 +973,6 @@ def homework_get_report(session_id):
                 perf_end = new_perf_end
         except Exception:
             pass
-        scores = {
-            "overall": score_for_display_100,
-        }
         # Frontend: use score_for_display (Sniper Voice Alignment when available) for "your result" and the chart.
 
         history_rows = db.v2_get_performance_history(user_id, limit=5)
@@ -1111,7 +1054,6 @@ def homework_get_report(session_id):
 
         payload = {
             "report_text": report_text,
-            "scores": scores,
             "performance_score_end": perf_end,
             "recording_count": 2 if has_rec_2 else 1,
             "final_recording": final_recording,
