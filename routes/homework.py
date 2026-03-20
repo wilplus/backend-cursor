@@ -151,8 +151,22 @@ def _build_step0_payload(user_id: str) -> dict:
                 msg = _tutor_feedback_message(deadline)
                 if msg:
                     payload["tutor_feedback_message"] = msg
+        if last_completed and last_completed.get("id"):
+            payload["last_completed_session_id"] = last_completed.get("id")
     except Exception:
         pass
+    try:
+        last_report = db.v2_get_last_report_for_user(user_id)
+        if last_report and (last_report.get("report_preview") or "").strip():
+            payload["last_report_preview"] = (last_report.get("report_preview") or "").strip()
+            payload["has_last_report"] = True
+        elif last_report and (last_report.get("report_text") or "").strip():
+            payload["last_report_preview"] = (last_report.get("report_text") or "").strip()[:500]
+            payload["has_last_report"] = True
+        else:
+            payload["has_last_report"] = False
+    except Exception:
+        payload["has_last_report"] = False
     try:
         payload["assigned_exercises"] = db.v2_get_assigned_exercises_for_user(user_id)
         for ex in payload.get("assigned_exercises") or []:
@@ -1054,6 +1068,8 @@ def homework_get_report(session_id):
 
         payload = {
             "report_text": report_text,
+            # Backward-compat alias: some UIs still read scores.overall.
+            "scores": {"overall": score_for_display_100},
             "performance_score_end": perf_end,
             "recording_count": 2 if has_rec_2 else 1,
             "final_recording": final_recording,

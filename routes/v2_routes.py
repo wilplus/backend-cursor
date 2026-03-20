@@ -433,6 +433,8 @@ def v2_admin_student_session_report_get(user_id, session_id):
 
         payload = {
             "report_text": report_text,
+            # Backward-compat alias: some admin UIs still read scores.overall.
+            "scores": {"overall": score_for_display_100},
             "performance_score_end": perf_end,
             "recording_count": 2 if has_rec_2 else 1,
             "final_recording": final_recording,

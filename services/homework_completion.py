@@ -186,6 +186,14 @@ def complete_session_recording_1_only(session_id: str, user_id: str, allow_task_
             student_email=student_email,
             performance_score_end=performance_score_end,
         )
+        if student_email:
+            email_service.send_lesson_complete_to_student(
+                to_email=student_email,
+                frontend_url=config.FRONTEND_URL,
+                performance_score_end=performance_score_end,
+                report_preview=report_text,
+                student_name=student_email.split("@")[0] if "@" in student_email else "there",
+            )
     except Exception as mail_err:
         logger.warning("Lesson-complete email failed: %s", mail_err)
 
@@ -317,6 +325,14 @@ def minimal_complete_and_notify(session_id: str, user_id: str) -> bool:
                 student_email=student_email,
                 performance_score_end=performance_score_end,
             )
+            if student_email:
+                email_service.send_lesson_complete_to_student(
+                    to_email=student_email,
+                    frontend_url=config.FRONTEND_URL,
+                    performance_score_end=performance_score_end,
+                    report_preview=report_text,
+                    student_name=student_email.split("@")[0] if "@" in student_email else "there",
+                )
         except Exception as mail_err:
             logger.warning("Minimal-complete: lesson-complete email failed: %s", mail_err)
         logger.info("minimal_complete_and_notify: done session_id=%s", session_id)

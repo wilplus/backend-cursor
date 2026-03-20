@@ -220,38 +220,53 @@ class EmailService:
             return {"status": "pending", "sent": False}
         if not self.api_key_set:
             return {"status": "failed", "sent": False, "error": "Resend API key not set"}
+        from services.assignment_email import build_assignment_email_html
+
         frontend_url = (config.FRONTEND_URL or "").rstrip("/")
-        admin_student_url = f"{frontend_url}/admin/students/{user_id}"
-        preview = (report_preview or "").strip()[:400]
-        if preview and len((report_preview or "").strip()) > 400:
-            preview += "..."
+        admin_student_url = f"{frontend_url}/admin/students/{user_id}" if frontend_url else "#"
+        preview = (report_preview or "").strip()
+        if preview and len(preview) > 280:
+            preview = preview[:280].rstrip() + "..."
         score_str = ""
         if performance_score_end is not None:
             pct = round(float(performance_score_end) * 100)
-            score_str = f"End score: {pct}%."
-        subject = f"Homework completed – Session {session_id[:8]}"
+            score_str = f"Final performance score: {pct}%."
         who = (student_email or user_id).strip() or user_id
+
+        coach_message = f"Student completed homework.\n\nStudent: {who}"
+        if score_str:
+            coach_message += f"\n\n{score_str}"
+        if preview:
+            coach_message += f"\n\nReport preview: {preview}"
+        coach_message += "\n\nOpen the student profile to review and send next homework."
+
+        coach_name = (getattr(config, "COACH_NAME", "Artur") or "Artur").strip().title() or "Artur"
+        coach_image_url = getattr(config, "COACH_IMAGE_URL", None) or None
+        if not coach_image_url and getattr(config, "BACKEND_URL", None):
+            coach_image_url = (config.BACKEND_URL or "").rstrip("/") + "/static/coach-avatar.png"
+
+        html = build_assignment_email_html(
+            video_url=None,
+            coach_message=coach_message,
+            has_assigned_exercise=False,
+            homework_link=admin_student_url,
+            meta_label="Coach Notification",
+            homework_title="Homework completed",
+            homework_subtitle="Review the student report and send the next assignment.",
+            student_name="coach",
+            coach_name=coach_name,
+            coach_image_url=coach_image_url,
+            unsubscribe_link="#",
+            preferences_link="#",
+        )
+
+        subject = f"Homework completed – Session {session_id[:8]}"
         text = f"A student has completed a homework lesson.\n\nStudent: {who}\n"
         if score_str:
             text += f"{score_str}\n\n"
-        text += f"View their profile and send new homework:\n{admin_student_url}\n"
         if preview:
-            text += f"\nReport preview:\n{preview}\n"
-        score_html = f"<p><strong>{score_str}</strong></p>" if score_str else ""
-        html = f"""
-<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"><style>body {{ font-family: Arial,sans-serif; line-height: 1.6; color: #333; }}</style></head>
-<body>
-<p>A student has completed a homework lesson.</p>
-<p><strong>Student:</strong> {who}</p>
-{score_html}
-<p><a href="{admin_student_url}" style="background:#4F46E5;color:#fff;padding:10px 20px;text-decoration:none;border-radius:6px;">View profile & send homework</a></p>
-<p>Or copy this link: {admin_student_url}</p>
-"""
-        if preview:
-            html += f'<div style="margin-top:20px;padding:12px;background:#f3f4f6;border-radius:6px;"><strong>Report preview:</strong><br>{preview}</div>'
-        html += "</body>\n</html>"
+            text += f"Report preview: {preview}\n\n"
+        text += f"View profile and send next homework: {admin_student_url}\n"
         try:
             params = {
                 "from": config.RESEND_FROM_EMAIL,
@@ -314,6 +329,86 @@ class EmailService:
             text = f"Your coach has assigned you new practice.\n\nWatch a message from your coach: {video_url}\n\nStart homework: {homework_link}\n\n— willab team"
             if video_description:
                 text = f"Your coach has assigned you new practice.\n\n{video_description}\n\nWatch video: {video_url}\n\nStart homework: {homework_link}\n\n— willab team"
+        try:
+            params = {
+                "from": config.RESEND_FROM_EMAIL,
+                "to": [to_email],
+                "subject": subject,
+                "text": text,
+                "html": html,
+            }
+            resend.Emails.send(params)
+            return {"status": "sent", "sent": True}
+        except Exception as e:
+            sentry_sdk.capture_exception(e)
+            return {"status": "failed", "sent": False, "error": str(e)}
+
+    def send_lesson_complete_to_student(
+        self,
+        to_email: str,
+        frontend_url: str,
+        performance_score_end: float | None = None,
+        report_preview: str = "",
+        student_name: str = "there",
+    ) -> dict:
+        """
+        Send student-facing lesson-complete email using the modern Willab template.
+        Returns dict with status "sent" | "pending" (emails off) | "failed".
+        """
+        if not config.SEND_EMAILS:
+            return {"status": "pending", "sent": False}
+        if not self.api_key_set:
+            return {"status": "failed", "sent": False, "error": "Resend API key not set"}
+
+        from services.assignment_email import build_assignment_email_html
+
+        app_url = (frontend_url or config.FRONTEND_URL or "").rstrip("/")
+        report_link = f"{app_url}/dashboard" if app_url else "#"
+        unsubscribe_link = f"{app_url}/dashboard?unsubscribe=1" if app_url else "#"
+        preferences_link = f"{app_url}/dashboard?preferences=1" if app_url else "#"
+        raw = (getattr(config, "COACH_NAME", "Artur") or "Artur").strip()
+        coach_name = raw.title() if raw else "Artur"
+        coach_image_url = getattr(config, "COACH_IMAGE_URL", None) or None
+        if not coach_image_url and getattr(config, "BACKEND_URL", None):
+            coach_image_url = (config.BACKEND_URL or "").rstrip("/") + "/static/coach-avatar.png"
+
+        score_line = ""
+        if performance_score_end is not None:
+            pct = round(float(performance_score_end) * 100)
+            score_line = f"Your final performance score is {pct}%."
+        preview = (report_preview or "").strip()
+        if preview and len(preview) > 220:
+            preview = preview[:220].rstrip() + "..."
+        coach_message = (
+            f"{score_line}\n\n"
+            "Your lesson report is ready. Open your dashboard to review your transcription, filler words, and coach insight."
+        ).strip()
+        if preview:
+            coach_message += f"\n\nReport preview: {preview}"
+
+        html = build_assignment_email_html(
+            video_url=None,
+            coach_message=coach_message,
+            has_assigned_exercise=False,
+            homework_link=report_link,
+            meta_label="Lesson Complete",
+            homework_title="Your report is ready",
+            homework_subtitle="Open your dashboard to review the final results.",
+            student_name=student_name or "there",
+            coach_name=coach_name,
+            coach_image_url=coach_image_url,
+            unsubscribe_link=unsubscribe_link,
+            preferences_link=preferences_link,
+        )
+
+        subject = "Your lesson report is ready"
+        text = "Your lesson is complete and your report is ready.\n\n"
+        if score_line:
+            text += score_line + "\n\n"
+        if preview:
+            text += f"Report preview: {preview}\n\n"
+        text += f"Open dashboard: {report_link}\n\n— willab team"
+
         try:
             params = {
                 "from": config.RESEND_FROM_EMAIL,

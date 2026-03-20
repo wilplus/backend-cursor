@@ -2391,6 +2391,14 @@ class DatabaseService:
                 r = self.client.table("v2_reports").select("report_text").eq("id", s["report_id"]).execute()
                 if r.data:
                     report_text = r.data[0].get("report_text") or ""
+            if report_text is None and s.get("id"):
+                # Fallback when report_id is null but report row exists for this session.
+                try:
+                    r2 = self.client.table("v2_reports").select("report_text").eq("session_v2_id", s["id"]).order("created_at", desc=True).limit(1).execute()
+                    if r2.data:
+                        report_text = (r2.data[0].get("report_text") or "").strip() or None
+                except Exception:
+                    pass
             if report_text is None:
                 report_text = context_long_by_id.get(s["id"])
             if report_text:
