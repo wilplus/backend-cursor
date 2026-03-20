@@ -37,7 +37,8 @@ DECLARE
     'v2_student_coaching_memory',
     'v2_universal_questions',
     'v2_metric_questions_pool',
-    'recording_sessions'
+    'recording_sessions',
+    'v2_student_details'
   ];
   t text;
 BEGIN

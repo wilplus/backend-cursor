@@ -24,3 +24,10 @@ END $$;
 
 COMMENT ON TABLE v2_student_details IS 'Admin-editable student details used by admin UI.';
 COMMENT ON COLUMN v2_student_details.price_per_live_lesson IS 'USD dollars per live lesson (decimal, e.g. 49.99).';
+
+-- Ensure backend key (service_role via PostgREST) can read/write this table.
+GRANT USAGE ON SCHEMA public TO service_role;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.v2_student_details TO service_role;
+
+-- Keep table protected from anon/authenticated direct API access.
+ALTER TABLE public.v2_student_details ENABLE ROW LEVEL SECURITY;
