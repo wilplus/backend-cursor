@@ -92,12 +92,18 @@ def v2_admin_students():
         return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
 
 
-@v2_bp.route("/admin/students/<user_id>", methods=["GET", "PATCH"])
+@v2_bp.route("/admin/students/<user_id>", methods=["GET", "PATCH", "DELETE"])
 @require_auth
 def v2_admin_student_profile(user_id):
     """Student profile: admin can get any user's profile; authenticated user can get own profile (user_id === token sub).
     Same contract: user_id, email, overrides, speaker_profile, task_warm_up[], task_focus[], post_recording_questions[], sessions (reports list)."""
     try:
+        if request.method == "DELETE":
+            if not is_admin(request.user_id):
+                return jsonify({"code": "FORBIDDEN", "error": "Admin access required"}), 403
+            deleted = db.v2_delete_student(user_id)
+            return jsonify({"status": "ok", "deleted": deleted}), 200
+
         if request.method == "PATCH":
             if not is_admin(request.user_id):
                 return jsonify({"code": "FORBIDDEN", "error": "Admin access required"}), 403

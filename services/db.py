@@ -2478,5 +2478,58 @@ class DatabaseService:
         except Exception:
             return None
 
+    def v2_delete_student(self, user_id: str) -> dict:
+        """
+        Delete a student and related admin-managed rows.
+        Returns a dict with per-step status for observability.
+        """
+        result = {
+            "user_id": user_id,
+            "details_deleted": False,
+            "overrides_deleted": False,
+            "speaker_profile_deleted": False,
+            "warm_up_tasks_deleted": False,
+            "focus_tasks_deleted": False,
+            "post_questions_deleted": False,
+            "sessions_deleted": False,
+            "auth_user_deleted": False,
+        }
+
+        # Best-effort cleanup in public schema first.
+        self.client.table("v2_student_details").delete().eq("user_id", user_id).execute()
+        result["details_deleted"] = True
+        self.client.table("v2_student_overrides").delete().eq("user_id", user_id).execute()
+        result["overrides_deleted"] = True
+        self.client.table("v2_speaker_profiles").delete().eq("user_id", user_id).execute()
+        result["speaker_profile_deleted"] = True
+        self.client.table("v2_warm_up_tasks").delete().eq("user_id", user_id).execute()
+        result["warm_up_tasks_deleted"] = True
+        self.client.table("v2_focus_tasks").delete().eq("user_id", user_id).execute()
+        result["focus_tasks_deleted"] = True
+        self.client.table("v2_student_post_recording_questions").delete().eq("user_id", user_id).execute()
+        result["post_questions_deleted"] = True
+        self.client.table("v2_sessions").delete().eq("user_id", user_id).execute()
+        result["sessions_deleted"] = True
+
+        # Remove user from Supabase Auth as final step.
+        import httpx
+        url = f"{config.SUPABASE_URL.rstrip('/')}/auth/v1/admin/users/{user_id}"
+        resp = httpx.delete(
+            url,
+            headers={
+                "Authorization": f"Bearer {config.SUPABASE_SERVICE_ROLE_KEY}",
+                "apikey": config.SUPABASE_SERVICE_ROLE_KEY,
+            },
+            timeout=10,
+        )
+        if resp.status_code in (200, 204):
+            result["auth_user_deleted"] = True
+            return result
+        if resp.status_code == 404:
+            # User already absent in auth; treat delete as idempotent success.
+            result["auth_user_deleted"] = True
+            return result
+        raise RuntimeError(f"auth_delete_failed status={resp.status_code} body={resp.text[:300]}")
+
 # Singleton instance
 db = DatabaseService()

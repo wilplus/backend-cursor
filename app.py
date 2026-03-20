@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, send_from_directory
+from flask import Flask, jsonify, send_from_directory, request, redirect
 from flask_cors import CORS
 import os
 from werkzeug.exceptions import RequestEntityTooLarge
@@ -48,6 +48,11 @@ def handle_413(e):
     }), 413
 
 
+@app.errorhandler(405)
+def handle_405(e):
+    return jsonify({"code": "METHOD_NOT_ALLOWED", "error": "Method not allowed"}), 405
+
+
 def _health_response():
     """Single response for all health endpoints so frontend gets 200 regardless of path."""
     return {"status": "ok"}, 200
@@ -74,6 +79,22 @@ def health_trailing():
 def api_health():
     """Health at /api/health in case frontend or BFF uses this path."""
     return _health_response()
+
+
+@app.route("/api/admin/students", methods=["GET"])
+def api_admin_students_alias():
+    """Compatibility alias for callers using /api/admin/* directly against backend."""
+    qs = request.query_string.decode().strip()
+    target = "/v2/admin/students"
+    if qs:
+        target = f"{target}?{qs}"
+    return redirect(target, code=308)
+
+
+@app.route("/api/admin/students/<user_id>", methods=["GET", "PATCH", "DELETE"])
+def api_admin_student_alias(user_id):
+    """Compatibility alias for callers using /api/admin/* directly against backend."""
+    return redirect(f"/v2/admin/students/{user_id}", code=308)
 
 # Serve static assets (e.g. coach avatar for assignment email)
 STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
