@@ -2273,13 +2273,40 @@ class DatabaseService:
                 uid = u.get("id")
                 if not uid:
                     continue
+                meta = u.get("user_metadata") or {}
+                raw_name = meta.get("name") or meta.get("display_name")
                 out.append({
                     "user_id": uid,
                     "email": u.get("email") or (u.get("user_metadata") or {}).get("email"),
+                    "name": (str(raw_name).strip() if raw_name is not None and str(raw_name).strip() else None),
                 })
             return out
         except Exception:
             return None
+
+    def v2_get_student_details(self, user_id: str):
+        """Get student details row (name, price_per_live_lesson) or None."""
+        result = (
+            self.client.table("v2_student_details")
+            .select("user_id, name, price_per_live_lesson")
+            .eq("user_id", user_id)
+            .execute()
+        )
+        return result.data[0] if result.data else None
+
+    def v2_upsert_student_details(self, user_id: str, data: dict):
+        """Create/update student details. Allowed keys: name, price_per_live_lesson."""
+        payload = {"user_id": user_id, "updated_at": datetime.now(timezone.utc).isoformat()}
+        if "name" in data:
+            name_val = data.get("name")
+            if name_val is None:
+                payload["name"] = None
+            else:
+                payload["name"] = str(name_val).strip() or None
+        if "price_per_live_lesson" in data:
+            payload["price_per_live_lesson"] = data.get("price_per_live_lesson")
+        result = self.client.table("v2_student_details").upsert(payload, on_conflict="user_id").execute()
+        return result.data[0] if result.data else None
 
     def v2_get_student_list_stats(self, user_id: str):
         """Optional stats for admin students list: sessions_count, last_session_at (ISO), avg_performance (0-100)."""

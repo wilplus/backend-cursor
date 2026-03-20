@@ -41,7 +41,14 @@ def v2_admin_students():
                 email = item.get("email")
                 if not uid:
                     continue
-                row = {"user_id": uid, "email": email, "user_email": email}
+                details = db.v2_get_student_details(uid) or {}
+                row = {
+                    "user_id": uid,
+                    "email": email,
+                    "user_email": email,
+                    "name": details.get("name") or item.get("name"),
+                    "price_per_live_lesson": details.get("price_per_live_lesson"),
+                }
                 try:
                     stats = db.v2_get_student_list_stats(uid)
                     if stats:
@@ -58,7 +65,14 @@ def v2_admin_students():
         for uid in user_ids:
             try:
                 email = db.get_user_email_from_auth(uid)
-                row = {"user_id": uid, "email": email, "user_email": email}
+                details = db.v2_get_student_details(uid) or {}
+                row = {
+                    "user_id": uid,
+                    "email": email,
+                    "user_email": email,
+                    "name": details.get("name"),
+                    "price_per_live_lesson": details.get("price_per_live_lesson"),
+                }
                 try:
                     stats = db.v2_get_student_list_stats(uid)
                     if stats:
@@ -78,15 +92,51 @@ def v2_admin_students():
         return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
 
 
-@v2_bp.route("/admin/students/<user_id>", methods=["GET"])
+@v2_bp.route("/admin/students/<user_id>", methods=["GET", "PATCH"])
 @require_auth
 def v2_admin_student_profile(user_id):
     """Student profile: admin can get any user's profile; authenticated user can get own profile (user_id === token sub).
     Same contract: user_id, email, overrides, speaker_profile, task_warm_up[], task_focus[], post_recording_questions[], sessions (reports list)."""
     try:
+        if request.method == "PATCH":
+            if not is_admin(request.user_id):
+                return jsonify({"code": "FORBIDDEN", "error": "Admin access required"}), 403
+            data = request.get_json(silent=True) or {}
+            payload = {}
+            if "name" in data:
+                name_val = data.get("name")
+                if name_val is None:
+                    payload["name"] = None
+                elif not isinstance(name_val, str):
+                    return jsonify({"code": "INVALID_INPUT", "error": "name must be a string or null"}), 400
+                else:
+                    payload["name"] = name_val.strip() or None
+            if "price_per_live_lesson" in data:
+                price_val = data.get("price_per_live_lesson")
+                if price_val is None or price_val == "":
+                    payload["price_per_live_lesson"] = None
+                else:
+                    try:
+                        p = float(price_val)
+                    except (TypeError, ValueError):
+                        return jsonify({"code": "INVALID_INPUT", "error": "price_per_live_lesson must be a number or null"}), 400
+                    if p < 0:
+                        return jsonify({"code": "INVALID_INPUT", "error": "price_per_live_lesson must be non-negative"}), 400
+                    payload["price_per_live_lesson"] = round(p, 2)
+            if not payload:
+                return jsonify({"code": "INVALID_INPUT", "error": "No updatable fields provided"}), 400
+            row = db.v2_upsert_student_details(user_id, payload)
+            return jsonify({
+                "status": "ok",
+                "user_id": user_id,
+                "name": row.get("name") if row else payload.get("name"),
+                "price_per_live_lesson": row.get("price_per_live_lesson") if row else payload.get("price_per_live_lesson"),
+            }), 200
+
         if not is_admin(request.user_id) and user_id != request.user_id:
             return jsonify({"code": "FORBIDDEN", "error": "You can only access your own profile"}), 403
         email = db.get_user_email_from_auth(user_id)
+        details = db.v2_get_student_details(user_id) or {}
         raw_overrides = db.v2_get_student_overrides(user_id)
         overrides = dict(raw_overrides) if raw_overrides else {}
         overrides["assigned_next_task_ids"] = overrides.get("assigned_next_task_ids") or []
@@ -102,6 +152,8 @@ def v2_admin_student_profile(user_id):
         return jsonify({
             "user_id": user_id,
             "email": email,
+            "name": details.get("name"),
+            "price_per_live_lesson": details.get("price_per_live_lesson"),
             "overrides": overrides,
             "speaker_profile": speaker_profile,
             "task_warm_up": task_warm_up,
