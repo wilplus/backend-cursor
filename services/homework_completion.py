@@ -214,9 +214,14 @@ def complete_session_recording_1_only(
         keywords=[],
         metric_definitions=metric_defs,
     )
+    existing_metrics = recording.get("performance_metrics_v2") if isinstance(recording.get("performance_metrics_v2"), dict) else {}
+    scoring_debug = existing_metrics.get("scoring_debug") if isinstance(existing_metrics, dict) else None
+    merged_metrics = dict(final["metrics"])
+    if isinstance(scoring_debug, dict):
+        merged_metrics["scoring_debug"] = scoring_debug
     db.update_recording(recording_1_id, {
         "performance_score_v2": final["performance_score"],
-        "performance_metrics_v2": final["metrics"],
+        "performance_metrics_v2": merged_metrics,
         "metric_labels_snapshot_v2": final["metric_labels_snapshot"],
     })
 

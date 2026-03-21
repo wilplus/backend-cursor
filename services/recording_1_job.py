@@ -16,7 +16,11 @@ from services.db import db
 from services.openai_service import openai_service
 from services.v2_flow_service import select_focus_task_for_performance_score_1
 from utils.metrics import count_fillers, compute_wpm
-from services.metrics_v2 import build_recording_1_performance_profile
+from services.metrics_v2 import (
+    build_recording_1_performance_profile,
+    normalize_fillers,
+    normalize_pace,
+)
 from services.homework_completion import minimal_complete_and_notify, complete_session_recording_1_only
 
 logger = logging.getLogger(__name__)
@@ -187,10 +191,17 @@ def _process_one(payload: dict):
         if center_hold_ratio is not None:
             score_source = "center_hold_payload"
             base_score_100 = round(center_hold_ratio * 100.0)
+            penalty_points = 3 * int(filler_count)
+            final_score_100 = max(0.0, min(100.0, float(base_score_100 - penalty_points)))
         else:
-            base_score_100 = 10
-        penalty_points = 3 * int(filler_count)
-        final_score_100 = max(0.0, min(100.0, float(base_score_100 - penalty_points)))
+            # Fallback should be meaningful (not constant 10):
+            # derive a base score from transcript pace + fillers when center_hold_ratio is missing.
+            score_source = "transcript_metrics_fallback"
+            pace_n = normalize_pace(wpm)
+            fillers_n = normalize_fillers(filler_count)
+            base_score_100 = round(((0.6 * pace_n) + (0.4 * fillers_n)) * 100.0)
+            penalty_points = 0
+            final_score_100 = max(0.0, min(100.0, float(base_score_100)))
         performance_score_1 = final_score_100 / 100.0
         logger.info(
             "recording_1_job: score source=%s base_score_100=%s filler_count=%s penalty_points=%s final_score_01=%.4f session_id=%s recording_id=%s",
