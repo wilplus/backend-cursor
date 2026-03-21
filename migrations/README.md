@@ -32,6 +32,7 @@
 - **`add_coach_grade_to_v2_sessions.sql`** — adds `v2_sessions.coach_grade` (SMALLINT 1–10, nullable). Lets admins grade a completed session in the admin panel. Run after v2_sessions exists.
 - **`docs/migrations/session_sniper_metrics_rating.sql`** — same as above (idempotent): ensures `coach_grade` exists. Also documents that `session_sniper_metrics.session_id` must reference an existing `v2_sessions.id` so BFF/client only write after session/start. Run on Supabase (or wherever session_sniper_metrics lives).
 - **`add_student_rating_session_sniper_metrics.sql`** — adds `session_sniper_metrics.student_rating_1_10` (SMALLINT 1–10, nullable). Student self-rating; only sessions with student_rating_1_10 >= 8 or coach_grade >= 8 update the Sniper baseline. Run after add_user_sniper_profile.sql.
+- **`add_realtime_progression_to_user_sniper_profile.sql`** — adds `realtime_level`, `realtime_step`, `realtime_pitch_baseline_st`, `sessions_with_pitch_count`, and `realtime_last_completed_session_id` to `user_sniper_profile`. Use this for the recorder Level/Step UI; backend increments step on completed sessions and caps at step 10 by default.
 
 ---
 

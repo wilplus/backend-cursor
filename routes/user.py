@@ -74,19 +74,29 @@ def _json_safe_profile(obj):
     return obj
 
 
+def _empty_sniper_profile(user_id: str):
+    return {
+        "user_id": user_id,
+        "realtime_level": 1,
+        "realtime_step": 1,
+        "realtime_pitch_baseline_st": None,
+        "sessions_with_pitch_count": 0,
+    }
+
+
 @user_bp.route("/sniper-profile", methods=["GET"])
 @require_auth
 def get_sniper_profile():
-    """Get current user's sniper profile (user_sniper_profile). Returns {} if none or on error (avoids 500 so frontend flow continues)."""
+    """Get current user's sniper profile with realtime progression defaults."""
     try:
         user_id = request.user_id
-        profile = db.get_sniper_profile(user_id)
-        out = _json_safe_profile(profile) if profile else {}
+        profile = db.get_sniper_profile_payload(user_id)
+        out = _json_safe_profile(profile)
         return jsonify(out), 200
     except Exception as e:
         sentry_sdk.capture_exception(e)
-        # Return 200 with empty profile so recording flow is not blocked (e.g. table missing, serialization)
-        return jsonify({}), 200
+        # Return 200 with defaults so recorder UI can still render Level/Step.
+        return jsonify(_empty_sniper_profile(request.user_id)), 200
 
 
 @user_bp.route("/sniper-profile/session-rating", methods=["PATCH"])

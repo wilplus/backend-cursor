@@ -202,6 +202,9 @@ def _process_one(payload: dict):
             base_score_100 = round(((0.6 * pace_n) + (0.4 * fillers_n)) * 100.0)
             penalty_points = 0
             final_score_100 = max(0.0, min(100.0, float(base_score_100)))
+        # Product rule: any detected filler prevents perfect 100%.
+        if int(filler_count) > 0 and final_score_100 >= 100.0:
+            final_score_100 = 99.0
         performance_score_1 = final_score_100 / 100.0
         logger.info(
             "recording_1_job: score source=%s base_score_100=%s filler_count=%s penalty_points=%s final_score_01=%.4f session_id=%s recording_id=%s",

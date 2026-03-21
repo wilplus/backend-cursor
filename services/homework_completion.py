@@ -235,6 +235,8 @@ def complete_session_recording_1_only(
             performance_score_end = max(0.0, min(1.0, raw / 100.0 if raw > 1.0 else raw))
     except Exception as sniper_err:
         logger.debug("No sniper metrics for session %s: %s", session_id, sniper_err)
+    if int(filler_count) > 0 and performance_score_end >= 1.0:
+        performance_score_end = 0.99
     report_text = _build_report_recording_1_only(
         transcript=transcript,
         wpm=wpm,
@@ -269,6 +271,10 @@ def complete_session_recording_1_only(
         "question_3_score": 0,
         "coach_insight": None,
     })
+    try:
+        db.advance_sniper_realtime_progression(session_id, user_id)
+    except Exception as progression_err:
+        logger.warning("Realtime sniper progression update failed: %s", progression_err)
 
     token_email = _normalize_email(preferred_student_email)
     auth_email = _normalize_email(db.get_user_email_from_auth(user_id))
@@ -444,6 +450,9 @@ def minimal_complete_and_notify(
         report_row = db.v2_create_report(session_id, recording_1_id, report_text)
         completed_at_iso = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
         performance_score_end = max(0.0, min(1.0, float(session.get("performance_score_1") or 0)))
+        rec = db.get_recording(recording_1_id, user_id)
+        filler_data = rec.get("filler_words_count") if isinstance(rec, dict) else {}
+        filler_count = int((filler_data or {}).get("total", 0)) if isinstance(filler_data, dict) else 0
         try:
             sniper = db.get_session_sniper_metrics(session_id)
             if sniper and sniper.get("stage_score") is not None:
@@ -451,6 +460,8 @@ def minimal_complete_and_notify(
                 performance_score_end = max(0.0, min(1.0, raw / 100.0 if raw > 1.0 else raw))
         except Exception:
             pass
+        if int(filler_count) > 0 and performance_score_end >= 1.0:
+            performance_score_end = 0.99
         db.v2_update_session(session_id, user_id, {
             "post_answers": [],
             "report_id": report_row["id"] if report_row else None,
@@ -466,6 +477,10 @@ def minimal_complete_and_notify(
             "question_3_score": 0,
             "coach_insight": None,
         })
+        try:
+            db.advance_sniper_realtime_progression(session_id, user_id)
+        except Exception as progression_err:
+            logger.warning("Realtime sniper progression update failed: %s", progression_err)
         token_email = _normalize_email(preferred_student_email)
         auth_email = _normalize_email(db.get_user_email_from_auth(user_id))
         student_email = token_email or auth_email

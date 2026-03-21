@@ -1004,6 +1004,16 @@ def homework_get_report(session_id):
         perf_1 = float(session.get("performance_score_1") or 0)
         perf_2 = float(session.get("performance_score_2") or 0) if has_rec_2 else perf_1
         perf_end = float(session.get("performance_score_end") or 0)
+        filler_count_for_cap = 0
+        try:
+            cap_recording_id = session.get("recording_2_id") or session.get("recording_1_id")
+            if cap_recording_id:
+                cap_rec = db.get_recording(cap_recording_id, user_id)
+                cap_fillers = cap_rec.get("filler_words_count") if isinstance(cap_rec, dict) else {}
+                if isinstance(cap_fillers, dict):
+                    filler_count_for_cap = int(cap_fillers.get("total", 0) or 0)
+        except Exception:
+            filler_count_for_cap = 0
         # Prefer Sniper (Voice Alignment) as the single display score when available
         score_for_display_100 = round(perf_end * 100)
         try:
@@ -1028,6 +1038,9 @@ def homework_get_report(session_id):
                 perf_end = new_perf_end
         except Exception:
             pass
+        if filler_count_for_cap > 0 and score_for_display_100 >= 100:
+            score_for_display_100 = 99
+            perf_end = min(perf_end, 0.99)
         # Frontend: use score_for_display (Sniper Voice Alignment when available) for "your result" and the chart.
 
         history_rows = db.v2_get_performance_history(user_id, limit=5)

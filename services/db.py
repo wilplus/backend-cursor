@@ -1313,6 +1313,24 @@ class DatabaseService:
         result = self.client.table("user_sniper_profile").select("*").eq("user_id", user_id).execute()
         return result.data[0] if result.data else None
 
+    def get_sniper_profile_payload(self, user_id: str) -> dict:
+        """Return the sniper profile with frontend-safe realtime progression defaults."""
+        profile = self.get_sniper_profile(user_id) or {}
+
+        def as_int(value, default: int) -> int:
+            try:
+                return int(value)
+            except (TypeError, ValueError):
+                return default
+
+        out = dict(profile)
+        out["user_id"] = str(out.get("user_id") or user_id)
+        out["realtime_level"] = max(1, as_int(out.get("realtime_level"), 1))
+        out["realtime_step"] = min(10, max(1, as_int(out.get("realtime_step"), 1)))
+        out["realtime_pitch_baseline_st"] = out.get("realtime_pitch_baseline_st")
+        out["sessions_with_pitch_count"] = max(0, as_int(out.get("sessions_with_pitch_count"), 0))
+        return out
+
     def upsert_sniper_profile(
         self,
         user_id: str,
@@ -1324,6 +1342,11 @@ class DatabaseService:
         baseline_emphasis_per_min: Optional[float] = None,
         baseline_energy_ratio: Optional[float] = None,
         baseline_fatigue_sec: Optional[float] = None,
+        realtime_level: Optional[int] = None,
+        realtime_step: Optional[int] = None,
+        realtime_pitch_baseline_st: Optional[float] = None,
+        sessions_with_pitch_count: Optional[int] = None,
+        realtime_last_completed_session_id: Optional[str] = None,
     ):
         """Insert or update user_sniper_profile. Pass only fields to set; None leaves existing."""
         now = datetime.now(timezone.utc).isoformat()
@@ -1345,7 +1368,63 @@ class DatabaseService:
             payload["baseline_energy_ratio"] = baseline_energy_ratio
         if baseline_fatigue_sec is not None:
             payload["baseline_fatigue_sec"] = baseline_fatigue_sec
+        if realtime_level is not None:
+            payload["realtime_level"] = realtime_level
+        if realtime_step is not None:
+            payload["realtime_step"] = realtime_step
+        if realtime_pitch_baseline_st is not None:
+            payload["realtime_pitch_baseline_st"] = realtime_pitch_baseline_st
+        if sessions_with_pitch_count is not None:
+            payload["sessions_with_pitch_count"] = sessions_with_pitch_count
+        if realtime_last_completed_session_id is not None:
+            payload["realtime_last_completed_session_id"] = realtime_last_completed_session_id
         self.client.table("user_sniper_profile").upsert(payload, on_conflict="user_id").execute()
+
+    def advance_sniper_realtime_progression(
+        self,
+        session_id: str,
+        user_id: str,
+        *,
+        max_step: int = 10,
+        allow_level_rollover: bool = False,
+    ) -> dict:
+        """
+        Advance the user's realtime training progression once per completed session.
+        Default behavior is simple: increment step by 1, capped at step 10 for level 1.
+        """
+        profile = self.get_sniper_profile(user_id) or {}
+        last_session_id = profile.get("realtime_last_completed_session_id")
+        if last_session_id and str(last_session_id) == str(session_id):
+            return self.get_sniper_profile_payload(user_id)
+
+        def as_int(value, default: int) -> int:
+            try:
+                return int(value)
+            except (TypeError, ValueError):
+                return default
+
+        current_level = max(1, as_int(profile.get("realtime_level"), 1))
+        current_step = min(max_step, max(1, as_int(profile.get("realtime_step"), 1)))
+
+        next_level = current_level
+        next_step = current_step
+        if current_step < max_step:
+            next_step = current_step + 1
+        elif allow_level_rollover:
+            next_level = current_level + 1
+            next_step = 1
+
+        self.upsert_sniper_profile(
+            user_id=user_id,
+            session_count=as_int(profile.get("session_count"), 0),
+            sessions_with_energy_count=as_int(profile.get("sessions_with_energy_count"), 0),
+            realtime_level=next_level,
+            realtime_step=next_step,
+            realtime_pitch_baseline_st=profile.get("realtime_pitch_baseline_st"),
+            sessions_with_pitch_count=as_int(profile.get("sessions_with_pitch_count"), 0),
+            realtime_last_completed_session_id=str(session_id),
+        )
+        return self.get_sniper_profile_payload(user_id)
 
     def save_session_sniper_metrics(
         self,
@@ -1446,7 +1525,7 @@ class DatabaseService:
         if not rating_ok:
             return
 
-        profile = self.get_sniper_profile(user_id)
+        profile = self.get_sniper_profile(user_id) or {}
         session_count = (profile.get("session_count") or 0) + 1
         had_energy = energy_ratio is not None
         sessions_with_energy = (profile.get("sessions_with_energy_count") or 0) + (1 if had_energy else 0)
@@ -1512,7 +1591,7 @@ class DatabaseService:
         if not rating_ok:
             return
 
-        profile = self.get_sniper_profile(user_id)
+        profile = self.get_sniper_profile(user_id) or {}
         session_count = (profile.get("session_count") or 0) + 1
         had_energy = (metrics or {}).get("energy_ratio") is not None
         sessions_with_energy = (profile.get("sessions_with_energy_count") or 0) + (1 if had_energy else 0)
