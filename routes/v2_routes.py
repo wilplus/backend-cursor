@@ -287,6 +287,45 @@ def v2_admin_send_assignment(user_id):
         return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
 
 
+@v2_bp.route("/admin/students/<user_id>/send-completion-email", methods=["POST"])
+@require_admin
+def v2_admin_send_completion_email(user_id):
+    """Manually send the student completion email and return detailed delivery result."""
+    try:
+        from config import Config
+        config = Config()
+        student_email = (db.get_user_email_from_auth(user_id) or "").strip()
+        if not student_email:
+            return jsonify({"code": "NO_EMAIL", "error": "Student has no email in auth"}), 400
+        last_completed = db.v2_get_last_completed_session(user_id) or {}
+        perf_end = last_completed.get("performance_score_end")
+        last_report = db.v2_get_last_report_for_user(user_id) or {}
+        report_preview = (last_report.get("report_preview") or last_report.get("report_text") or "")
+        result = email_service.send_lesson_complete_to_student(
+            to_email=student_email,
+            frontend_url=config.FRONTEND_URL,
+            performance_score_end=perf_end,
+            report_preview=report_preview,
+            student_name=student_email.split("@")[0] if "@" in student_email else "there",
+        )
+        if result.get("status") != "sent":
+            return jsonify({
+                "code": "EMAIL_FAILED",
+                "error": result.get("error", "Failed to send completion email"),
+                "details": result,
+                "student_email": student_email,
+            }), 500
+        return jsonify({
+            "status": "ok",
+            "sent": True,
+            "student_email": student_email,
+            "details": result,
+        }), 200
+    except Exception as e:
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
+
+
 @v2_bp.route("/admin/students/<user_id>/sessions/<session_id>", methods=["GET", "PATCH"])
 @require_admin
 def v2_admin_student_session_detail(user_id, session_id):

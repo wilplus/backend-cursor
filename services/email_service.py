@@ -420,11 +420,27 @@ class EmailService:
                 "text": text,
                 "html": html,
             }
-            resend.Emails.send(params)
-            return {"status": "sent", "sent": True}
+            logger.info(
+                "Sending lesson-complete email to student: to=%s from=%s subject=%s",
+                safe_to_email,
+                config.RESEND_FROM_EMAIL,
+                subject,
+            )
+            response = resend.Emails.send(params)
+            logger.info(
+                "Lesson-complete email accepted by Resend: to=%s response=%s",
+                safe_to_email,
+                response,
+            )
+            return {"status": "sent", "sent": True, "resend_response": response}
         except Exception as e:
             sentry_sdk.capture_exception(e)
-            return {"status": "failed", "sent": False, "error": str(e)}
+            logger.warning(
+                "Lesson-complete email failed for student to=%s error=%r",
+                safe_to_email,
+                e,
+            )
+            return {"status": "failed", "sent": False, "error": str(e), "error_repr": repr(e)}
 
 # Singleton instance
 email_service = EmailService()
