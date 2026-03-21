@@ -1,5 +1,6 @@
 import html
 import logging
+import re
 import resend
 from config import Config
 import sentry_sdk
@@ -220,7 +221,7 @@ class EmailService:
             return {"status": "pending", "sent": False}
         if not self.api_key_set:
             return {"status": "failed", "sent": False, "error": "Resend API key not set"}
-        from services.assignment_email import build_assignment_email_html
+        from services.assignment_email import build_admin_homework_completed_email_html
 
         frontend_url = (config.FRONTEND_URL or "").rstrip("/")
         admin_student_url = f"{frontend_url}/admin/students/{user_id}" if frontend_url else "#"
@@ -240,24 +241,14 @@ class EmailService:
             coach_message += f"\n\nReport preview: {preview}"
         coach_message += "\n\nOpen the student profile to review and send next homework."
 
-        coach_name = (getattr(config, "COACH_NAME", "Artur") or "Artur").strip().title() or "Artur"
-        coach_image_url = getattr(config, "COACH_IMAGE_URL", None) or None
-        if not coach_image_url and getattr(config, "BACKEND_URL", None):
-            coach_image_url = (config.BACKEND_URL or "").rstrip("/") + "/static/coach-avatar.png"
-
-        html = build_assignment_email_html(
-            video_url=None,
-            coach_message=coach_message,
-            has_assigned_exercise=False,
-            homework_link=admin_student_url,
-            meta_label="Coach Notification",
-            homework_title="Homework completed",
-            homework_subtitle="Review the student report and send the next assignment.",
-            student_name="coach",
-            coach_name=coach_name,
-            coach_image_url=coach_image_url,
-            unsubscribe_link="#",
-            preferences_link="#",
+        html = build_admin_homework_completed_email_html(
+            student_email=who,
+            score=performance_score_end,
+            profile_url=admin_student_url,
+            transcript_excerpt=preview or report_preview or "",
+            pace_wpm=None,
+            filler_count=None,
+            strength="Loudness (pending)",
         )
 
         subject = f"Homework completed – Session {session_id[:8]}"
@@ -299,7 +290,7 @@ class EmailService:
             return {"status": "pending", "sent": False}
         if not self.api_key_set:
             return {"status": "failed", "sent": False, "error": "Resend API key not set"}
-        from services.assignment_email import build_assignment_email_html
+        from services.assignment_email import build_student_new_homework_email_html
 
         app_url = (frontend_url or config.FRONTEND_URL or "").rstrip("/")
         homework_link = f"{app_url}/dashboard" if app_url else (app_url or "#")
@@ -307,21 +298,12 @@ class EmailService:
         preferences_link = f"{app_url}/dashboard?preferences=1" if app_url else "#"
         raw = (getattr(config, "COACH_NAME", "Artur") or "Artur").strip()
         coach_name = raw.title() if raw else "Artur"
-        coach_image_url = getattr(config, "COACH_IMAGE_URL", None) or None
-        if not coach_image_url and getattr(config, "BACKEND_URL", None):
-            coach_image_url = (config.BACKEND_URL or "").rstrip("/") + "/static/coach-avatar.png"
-
-        html = build_assignment_email_html(
-            video_url=video_url,
-            coach_message=video_description,
-            has_assigned_exercise=has_assigned_exercise,
-            homework_link=homework_link,
-            homework_title="Public speaking!",
-            student_name=student_name or "there",
+        html = build_student_new_homework_email_html(
+            student_first_name=student_name or "there",
+            coach_message=video_description or "Good work. It is a small step for you, but a huge step for your progress!",
             coach_name=coach_name,
-            coach_image_url=coach_image_url,
-            unsubscribe_link=unsubscribe_link,
-            preferences_link=preferences_link,
+            coach_role="Public Speaking Coach",
+            homework_url=homework_link,
         )
         subject = "Public speaking!"
         text = f"Your coach has assigned you new practice.\n\nStart homework: {homework_link}\n\n— willab team"
@@ -363,51 +345,44 @@ class EmailService:
         if not safe_to_email:
             return {"status": "failed", "sent": False, "error": "Missing student email"}
 
-        from services.assignment_email import build_assignment_email_html
+        from services.assignment_email import build_student_homework_submitted_email_html
 
         app_url = (frontend_url or config.FRONTEND_URL or "").rstrip("/")
         report_link = f"{app_url}/dashboard" if app_url else "#"
-        unsubscribe_link = f"{app_url}/dashboard?unsubscribe=1" if app_url else "#"
-        preferences_link = f"{app_url}/dashboard?preferences=1" if app_url else "#"
         raw = (getattr(config, "COACH_NAME", "Artur") or "Artur").strip()
         coach_name = raw.title() if raw else "Artur"
-        coach_image_url = getattr(config, "COACH_IMAGE_URL", None) or None
-        if not coach_image_url and getattr(config, "BACKEND_URL", None):
-            coach_image_url = (config.BACKEND_URL or "").rstrip("/") + "/static/coach-avatar.png"
 
-        score_line = ""
-        if performance_score_end is not None:
-            pct = round(float(performance_score_end) * 100)
-            score_line = f"Your final performance score is {pct}%."
         preview = (report_preview or "").strip()
         if preview and len(preview) > 220:
             preview = preview[:220].rstrip() + "..."
-        coach_message = (
-            f"{score_line}\n\n"
-            "Your lesson report is ready. Open your dashboard to review your transcription, filler words, and coach insight."
-        ).strip()
-        if preview:
-            coach_message += f"\n\nReport preview: {preview}"
-
-        html = build_assignment_email_html(
-            video_url=None,
-            coach_message=coach_message,
-            has_assigned_exercise=False,
-            homework_link=report_link,
-            meta_label="Lesson Complete",
-            homework_title="Your report is ready",
-            homework_subtitle="Open your dashboard to review the final results.",
-            student_name=student_name or "there",
+        filler_total = None
+        filler_breakdown = ""
+        m_total = re.search(r"filler words:\s*(\d+)", report_preview or "", flags=re.IGNORECASE)
+        if m_total:
+            try:
+                filler_total = int(m_total.group(1))
+            except (TypeError, ValueError):
+                filler_total = None
+        if filler_total is not None and filler_total > 0:
+            filler_breakdown = "see full report"
+        html = build_student_homework_submitted_email_html(
+            student_first_name=student_name or "there",
+            score=performance_score_end,
+            recording_url=report_link,
+            transcript_excerpt=preview,
+            filler_total=filler_total,
+            filler_breakdown=filler_breakdown or "none",
+            ai_insight="You had strong energy and clear intent. Focus next on slowing transitions between points and reducing filler words in openings.",
+            report_url=report_link,
             coach_name=coach_name,
-            coach_image_url=coach_image_url,
-            unsubscribe_link=unsubscribe_link,
-            preferences_link=preferences_link,
+            coach_role="Public Speaking Coach",
         )
 
         subject = "Your lesson report is ready"
         text = "Your lesson is complete and your report is ready.\n\n"
-        if score_line:
-            text += score_line + "\n\n"
+        if performance_score_end is not None:
+            pct = round(float(performance_score_end) * 100)
+            text += f"Your final performance score is {pct}%.\n\n"
         if preview:
             text += f"Report preview: {preview}\n\n"
         text += f"Open dashboard: {report_link}\n\n— willab team"

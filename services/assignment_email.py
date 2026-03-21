@@ -1,38 +1,308 @@
-"""
-Assignment email HTML builder (Willab design).
-Video block: with video_url → dark area + orange play button linking to URL;
-without → orange gradient block. Coach message from video_description or default.
-Assigned exercise line when has_assigned_exercise is True.
-"""
-import re
+"""Dedicated HTML builders for the 3 email templates."""
 from html import escape
 
-DEFAULT_COACH_MESSAGE = (
-    "Good work. It is a small step for you, but a huge step for your progress!"
+DEFAULT_COACH_MESSAGE = "Good work. It is a small step for you, but a huge step for your progress!"
+DEFAULT_AI_INSIGHT = (
+    "You had strong energy and clear intent. Focus next on slowing transitions between points and reducing filler words in openings."
 )
 
-PRIMARY = "#f97316"
-FOREGROUND = "#1b2236"
-BACKGROUND = "#ffffff"
-MUTED_FG = "#6b7280"
-SECONDARY_BG = "#f3f4f6"
-BORDER = "#e5e7eb"
-EMAIL_BG = "#f3f4f6"
-GRADIENT_START = "#f97316"
-GRADIENT_END = "#ea580c"
+
+def _first_name(name_or_email: str | None) -> str:
+    raw = (name_or_email or "").strip()
+    if not raw:
+        return "there"
+    if "@" in raw:
+        raw = raw.split("@", 1)[0]
+    first = raw.replace("_", " ").replace(".", " ").split(" ")[0].strip()
+    return first.capitalize() if first else "there"
 
 
-def _paragraphs(text: str) -> list:
-    """Split into paragraphs (double newline), escape HTML."""
-    if not (text and text.strip()):
-        return []
-    return [
-        escape(p.strip()).replace("\n", "<br>\n")
-        for p in re.split(r"\n\n+", text.strip())
-        if p.strip()
-    ]
+def _initials(name: str | None) -> str:
+    raw = (name or "").strip()
+    if not raw:
+        return "CO"
+    parts = [p for p in raw.replace("_", " ").split(" ") if p.strip()]
+    if len(parts) >= 2:
+        return (parts[0][0] + parts[1][0]).upper()
+    return (parts[0][:2]).upper()
 
 
+def _score_percent(score: float | int | None) -> int:
+    if score is None:
+        return 0
+    try:
+        v = float(score)
+    except (TypeError, ValueError):
+        return 0
+    if v <= 1.0:
+        v *= 100.0
+    return max(0, min(100, round(v)))
+
+
+def _short(text: str | None, limit: int) -> str:
+    t = (text or "").strip()
+    if len(t) <= limit:
+        return t
+    return t[:limit].rstrip() + "..."
+
+
+def build_admin_homework_completed_email_html(
+    *,
+    student_email: str,
+    score: float | int | None,
+    profile_url: str,
+    transcript_excerpt: str = "",
+    pace_wpm: int | None = None,
+    filler_count: int | None = None,
+    strength: str = "Loudness (pending)",
+) -> str:
+    pct = _score_percent(score)
+    pace_text = f"{pace_wpm} WPM" if pace_wpm is not None else "n/a WPM"
+    fillers_text = str(filler_count) if filler_count is not None else "n/a"
+    excerpt = _short(transcript_excerpt, 260) or "No transcript preview available yet."
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Student Homework Completed — Willab</title>
+</head>
+<body style="margin:0;padding:0;background-color:#fafafa;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background-color:#fafafa;padding:48px 16px;">
+<tr><td align="center">
+<table width="520" cellpadding="0" cellspacing="0" style="max-width:520px;width:100%;">
+<tr><td style="padding-bottom:40px;">
+  <span style="font-family:Georgia,'Times New Roman',serif;font-size:20px;font-weight:700;color:#1e293b;letter-spacing:-0.3px;">Willab<span style="color:#f97316;">.</span></span>
+</td></tr>
+<tr><td style="background-color:#ffffff;border-radius:8px;">
+<table width="100%" cellpadding="0" cellspacing="0">
+<tr><td style="padding:36px 36px 0;">
+  <p style="margin:0 0 24px;font-size:18px;font-weight:600;color:#1e293b;line-height:1.4;">A student has completed a homework lesson.</p>
+  <table width="100%" cellpadding="0" cellspacing="0">
+    <tr>
+      <td style="padding:14px 0;border-top:1px solid #f1f5f9;font-size:14px;color:#94a3b8;width:100px;">Student</td>
+      <td style="padding:14px 0;border-top:1px solid #f1f5f9;font-size:14px;color:#1e293b;">{escape(student_email)}</td>
+    </tr>
+    <tr>
+      <td style="padding:14px 0;border-top:1px solid #f1f5f9;font-size:14px;color:#94a3b8;">Score</td>
+      <td style="padding:14px 0;border-top:1px solid #f1f5f9;font-size:24px;font-weight:600;color:#f97316;">{pct}%</td>
+    </tr>
+  </table>
+</td></tr>
+<tr><td style="padding:28px 36px;">
+  <a href="{escape(profile_url)}" style="display:inline-block;background-color:#1e293b;color:#ffffff;font-size:14px;font-weight:600;text-decoration:none;padding:12px 28px;border-radius:6px;">View profile &amp; send homework</a>
+  <p style="margin:12px 0 0;font-size:12px;color:#cbd5e1;">
+    <a href="{escape(profile_url)}" style="color:#94a3b8;word-break:break-all;text-decoration:none;">Copy link →</a>
+  </p>
+</td></tr>
+<tr><td style="padding:0 36px 36px;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#fafafa;border-radius:6px;">
+    <tr><td style="padding:20px 24px;">
+      <p style="margin:0 0 12px;font-size:12px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.8px;">Report preview</p>
+      <p style="margin:0 0 16px;font-size:14px;color:#64748b;line-height:1.6;font-style:italic;">"{escape(excerpt)}"</p>
+      <table cellpadding="0" cellspacing="0" style="font-size:14px;color:#64748b;line-height:2;">
+        <tr><td>Pace: {escape(pace_text)} <span style="color:#cbd5e1;">(target 120–160)</span></td></tr>
+        <tr><td>Filler words: {escape(fillers_text)}</td></tr>
+        <tr><td>Strength: {escape(strength)}</td></tr>
+      </table>
+    </td></tr>
+  </table>
+</td></tr>
+</table>
+</td></tr>
+<tr><td style="padding:32px 0;text-align:center;">
+  <p style="margin:0;font-size:12px;color:#cbd5e1;">Willab</p>
+</td></tr>
+</table>
+</td></tr>
+</table>
+</body>
+</html>"""
+
+
+def build_student_new_homework_email_html(
+    *,
+    student_first_name: str,
+    coach_message: str,
+    coach_name: str,
+    coach_role: str,
+    homework_url: str,
+) -> str:
+    safe_first = escape(_first_name(student_first_name))
+    safe_coach = escape((coach_name or "Coach").strip() or "Coach")
+    safe_role = escape((coach_role or "Public Speaking Coach").strip() or "Public Speaking Coach")
+    safe_message = escape((coach_message or DEFAULT_COACH_MESSAGE).strip() or DEFAULT_COACH_MESSAGE)
+    initials = escape(_initials(safe_coach))
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>New Homework Available — Willab</title>
+</head>
+<body style="margin:0;padding:0;background-color:#fafafa;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background-color:#fafafa;padding:48px 16px;">
+<tr><td align="center">
+<table width="520" cellpadding="0" cellspacing="0" style="max-width:520px;width:100%;">
+<tr><td style="padding-bottom:40px;">
+  <span style="font-family:Georgia,'Times New Roman',serif;font-size:20px;font-weight:700;color:#1e293b;letter-spacing:-0.3px;">Willab<span style="color:#f97316;">.</span></span>
+</td></tr>
+<tr><td style="background-color:#ffffff;border-radius:8px;">
+<table width="100%" cellpadding="0" cellspacing="0">
+<tr><td style="padding:36px 36px 0;">
+  <p style="margin:0;font-size:18px;font-weight:600;color:#1e293b;line-height:1.4;">Great progress, {safe_first}!</p>
+</td></tr>
+<tr><td style="padding:20px 36px 0;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#fafafa;border-radius:6px;border-left:2px solid #f97316;">
+    <tr><td style="padding:16px 20px;">
+      <p style="margin:0;font-size:14px;color:#1e293b;line-height:1.6;font-style:italic;">"{safe_message}"</p>
+      <p style="margin:8px 0 0;font-size:12px;color:#94a3b8;">— {safe_coach}, your coach</p>
+    </td></tr>
+  </table>
+</td></tr>
+<tr><td style="padding:28px 36px 0;"><div style="border-top:1px solid #f1f5f9;"></div></td></tr>
+<tr><td style="padding:28px 36px 0;">
+  <p style="margin:0 0 6px;font-size:14px;font-weight:600;color:#1e293b;">New homework available</p>
+  <p style="margin:0;font-size:14px;color:#64748b;line-height:1.6;">Your next assignment is ready. You have an exercise assigned — it will appear on the main screen after you follow the link below.</p>
+</td></tr>
+<tr><td style="padding:28px 36px;">
+  <a href="{escape(homework_url)}" style="display:inline-block;background-color:#f97316;color:#ffffff;font-size:14px;font-weight:600;text-decoration:none;padding:12px 28px;border-radius:6px;">View homework →</a>
+</td></tr>
+<tr><td style="padding:0 36px;"><div style="border-top:1px solid #f1f5f9;"></div></td></tr>
+<tr><td style="padding:24px 36px 32px;">
+  <table cellpadding="0" cellspacing="0">
+    <tr>
+      <td style="width:36px;vertical-align:top;">
+        <div style="width:32px;height:32px;border-radius:50%;background-color:#1e293b;color:#ffffff;font-size:12px;font-weight:600;text-align:center;line-height:32px;">{initials}</div>
+      </td>
+      <td style="padding-left:10px;">
+        <p style="margin:0;font-size:14px;font-weight:600;color:#1e293b;">{safe_coach}</p>
+        <p style="margin:0;font-size:12px;color:#94a3b8;">{safe_role}</p>
+      </td>
+    </tr>
+  </table>
+</td></tr>
+</table>
+</td></tr>
+<tr><td style="padding:32px 0;text-align:center;">
+  <p style="margin:0;font-size:12px;color:#cbd5e1;">Willab</p>
+</td></tr>
+</table>
+</td></tr>
+</table>
+</body>
+</html>"""
+
+
+def build_student_homework_submitted_email_html(
+    *,
+    student_first_name: str,
+    score: float | int | None,
+    recording_url: str,
+    transcript_excerpt: str,
+    filler_total: int | None,
+    filler_breakdown: str,
+    ai_insight: str,
+    report_url: str,
+    coach_name: str,
+    coach_role: str,
+) -> str:
+    safe_first = escape(_first_name(student_first_name))
+    safe_coach = escape((coach_name or "Coach").strip() or "Coach")
+    safe_role = escape((coach_role or "Public Speaking Coach").strip() or "Public Speaking Coach")
+    pct = _score_percent(score)
+    transcript = _short(transcript_excerpt, 80) or "No transcript yet."
+    filler_total_text = str(filler_total) if filler_total is not None else "0"
+    filler_breakdown_text = escape((filler_breakdown or "none").strip() or "none")
+    insight = escape((ai_insight or DEFAULT_AI_INSIGHT).strip() or DEFAULT_AI_INSIGHT)
+    initials = escape(_initials(safe_coach))
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Homework Complete — Willab</title>
+</head>
+<body style="margin:0;padding:0;background-color:#fafafa;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background-color:#fafafa;padding:48px 16px;">
+<tr><td align="center">
+<table width="520" cellpadding="0" cellspacing="0" style="max-width:520px;width:100%;">
+<tr><td style="padding-bottom:40px;">
+  <span style="font-family:Georgia,'Times New Roman',serif;font-size:20px;font-weight:700;color:#1e293b;letter-spacing:-0.3px;">Willab<span style="color:#f97316;">.</span></span>
+</td></tr>
+<tr><td style="background-color:#ffffff;border-radius:8px;">
+<table width="100%" cellpadding="0" cellspacing="0">
+<tr><td style="padding:36px 36px 0;">
+  <p style="margin:0 0 6px;font-size:18px;font-weight:600;color:#1e293b;line-height:1.4;">Great work, {safe_first}!</p>
+  <p style="margin:0;font-size:14px;color:#64748b;line-height:1.6;">Your coach will contact you soon with feedback.</p>
+</td></tr>
+<tr><td style="padding:28px 36px 0;">
+  <table cellpadding="0" cellspacing="0" style="background-color:#fafafa;border-radius:6px;width:100%;">
+    <tr><td style="padding:20px 24px;text-align:center;">
+      <p style="margin:0 0 4px;font-size:12px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.8px;">Performance score</p>
+      <p style="margin:0;font-size:32px;font-weight:600;color:#f97316;">{pct}%</p>
+    </td></tr>
+  </table>
+</td></tr>
+<tr><td style="padding:28px 36px 0;"><div style="border-top:1px solid #f1f5f9;"></div></td></tr>
+<tr><td style="padding:24px 36px 0;">
+  <p style="margin:0 0 16px;font-size:14px;font-weight:600;color:#1e293b;">Your report</p>
+  <table width="100%" cellpadding="0" cellspacing="0" style="font-size:14px;color:#64748b;">
+    <tr>
+      <td style="padding:10px 0;border-bottom:1px solid #f1f5f9;">Playback</td>
+      <td style="padding:10px 0;border-bottom:1px solid #f1f5f9;text-align:right;">
+        <a href="{escape(recording_url)}" style="color:#f97316;text-decoration:none;">Open recording →</a>
+      </td>
+    </tr>
+    <tr>
+      <td style="padding:10px 0;border-bottom:1px solid #f1f5f9;">Transcript</td>
+      <td style="padding:10px 0;border-bottom:1px solid #f1f5f9;text-align:right;font-style:italic;color:#94a3b8;">"{escape(transcript)}"</td>
+    </tr>
+    <tr>
+      <td style="padding:10px 0;">Filler words</td>
+      <td style="padding:10px 0;text-align:right;">{escape(filler_total_text)} <span style="color:#cbd5e1;">· {filler_breakdown_text}</span></td>
+    </tr>
+  </table>
+</td></tr>
+<tr><td style="padding:24px 36px 0;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#fafafa;border-radius:6px;border-left:2px solid #f97316;">
+    <tr><td style="padding:16px 20px;">
+      <p style="margin:0 0 6px;font-size:12px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.8px;">AI Coach Insight</p>
+      <p style="margin:0;font-size:14px;color:#64748b;line-height:1.6;">"{insight}"</p>
+    </td></tr>
+  </table>
+</td></tr>
+<tr><td style="padding:28px 36px;">
+  <a href="{escape(report_url)}" style="display:inline-block;background-color:#1e293b;color:#ffffff;font-size:14px;font-weight:600;text-decoration:none;padding:12px 28px;border-radius:6px;">View full report</a>
+</td></tr>
+<tr><td style="padding:0 36px;"><div style="border-top:1px solid #f1f5f9;"></div></td></tr>
+<tr><td style="padding:24px 36px 32px;">
+  <table cellpadding="0" cellspacing="0">
+    <tr>
+      <td style="width:36px;vertical-align:top;">
+        <div style="width:32px;height:32px;border-radius:50%;background-color:#1e293b;color:#ffffff;font-size:12px;font-weight:600;text-align:center;line-height:32px;">{initials}</div>
+      </td>
+      <td style="padding-left:10px;">
+        <p style="margin:0;font-size:14px;font-weight:600;color:#1e293b;">{safe_coach}</p>
+        <p style="margin:0;font-size:12px;color:#94a3b8;">{safe_role}</p>
+      </td>
+    </tr>
+  </table>
+</td></tr>
+</table>
+</td></tr>
+<tr><td style="padding:32px 0;text-align:center;">
+  <p style="margin:0 0 4px;font-size:12px;color:#cbd5e1;">Willab</p>
+  <p style="margin:0;font-size:11px;color:#e2e8f0;">You received this because you're enrolled in coaching.</p>
+</td></tr>
+</table>
+</td></tr>
+</table>
+</body>
+</html>"""
+
+
+# Backward-compatible wrapper; keep while callers migrate.
 def build_assignment_email_html(
     *,
     video_url: str | None = None,
@@ -49,142 +319,11 @@ def build_assignment_email_html(
     unsubscribe_link: str = "#",
     preferences_link: str = "#",
 ) -> str:
-    """Build the full HTML for the assignment email."""
-    has_video = bool(video_url and video_url.strip())
-    body_paragraphs = _paragraphs(coach_message) if coach_message and coach_message.strip() else []
-    if not body_paragraphs:
-        body_paragraphs = [escape(DEFAULT_COACH_MESSAGE)]
-
-    if student_name and student_name.strip() and student_name != "there":
-        title = f"Great progress, {escape(student_name)}!"
-    else:
-        title = "Great progress this week!"
-
-    if has_video:
-        video_block = f"""
-        <tr>
-          <td style="background: #1b2236; padding: 80px 24px; text-align: center;">
-            <a href="{escape(video_url)}" style="display: inline-block; text-decoration: none;">
-              <table role="presentation" cellpadding="0" cellspacing="0" align="center">
-                <tr>
-                  <td style="width: 80px; height: 80px; border-radius: 50%; background: {PRIMARY}; text-align: center; vertical-align: middle;">
-                    <span style="display: inline-block; width: 0; height: 0; margin-left: 8px; border-style: solid; border-width: 14px 0 14px 24px; border-color: transparent transparent transparent #fff;"></span>
-                  </td>
-                </tr>
-              </table>
-            </a>
-          </td>
-        </tr>
-        """
-    else:
-        video_block = f"""
-        <tr>
-          <td style="padding: 80px 24px; background: {PRIMARY}; background: linear-gradient(135deg, {GRADIENT_START} 0%, #ea580c 50%, #d97706 100%);"></td>
-        </tr>
-        """
-
-    body_html = "".join(
-        f'<p style="margin: 0 0 1rem; font-size: 15px; line-height: 1.6; color: {FOREGROUND}; opacity: 0.9;">{p}</p>'
-        for p in body_paragraphs
+    _ = (video_url, has_assigned_exercise, meta_label, homework_title, homework_subtitle, coach_image_url, unsubscribe_link, preferences_link)
+    return build_student_new_homework_email_html(
+        student_first_name=student_name,
+        coach_message=coach_message or DEFAULT_COACH_MESSAGE,
+        coach_name=coach_name,
+        coach_role=coach_role,
+        homework_url=homework_link,
     )
-
-    exercise_line = ""
-    if has_assigned_exercise:
-        exercise_line = f"""
-        <p style="margin: 0.5rem 0 0; font-size: 14px; color: {MUTED_FG};">
-          You have an exercise assigned — it will appear on the main screen after you follow the link below.
-        </p>
-        """
-
-    has_coach_image = bool(coach_image_url and coach_image_url.strip())
-    if has_coach_image:
-        coach_avatar_html = f'<img src="{escape(coach_image_url)}" width="36" height="36" style="border-radius: 50%; display: block; object-fit: cover;" alt="{escape(coach_name)}" />'
-    else:
-        initials = escape(coach_name[:2].upper() if len(coach_name) >= 2 else (coach_name.upper() if coach_name else ""))
-        coach_avatar_html = f'<span style="display: inline-block; font-size: 12px; font-weight: 600; color: {PRIMARY};">{initials}</span>'
-
-    html = f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Public speaking!</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Serif+Display&display=swap" rel="stylesheet">
-</head>
-<body style="margin: 0; padding: 2rem 1rem; font-family: 'DM Sans', sans-serif; background: {EMAIL_BG}; -webkit-font-smoothing: antialiased;">
-  <div style="max-width: 600px; margin: 0 auto;">
-    <div style="text-align: center; margin-bottom: 1.5rem;">
-      <p style="margin: 0; font-size: 18px; font-weight: 700; color: {FOREGROUND};">
-        Willab<span style="color: {PRIMARY};"></span>
-      </p>
-      <p style="margin: 0.25rem 0 0; font-size: 14px; color: {MUTED_FG};">
-        Homework tool for public speaking
-      </p>
-    </div>
-
-    <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background: {BACKGROUND}; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 16px -4px rgba(27, 34, 54, 0.07);">
-      <table role="presentation" cellpadding="0" cellspacing="0" width="100%">
-        {video_block}
-      </table>
-      <tr>
-        <td style="padding: 2.5rem 2.5rem 0;">
-          <p style="margin: 0; font-size: 14px; font-weight: 500; color: {MUTED_FG};">{escape(meta_label)}</p>
-          <h1 style="margin: 0.25rem 0 1.5rem; font-family: 'DM Serif Display', serif; font-size: 28px; font-weight: 400; color: {FOREGROUND};">{title}</h1>
-          {body_html}
-        </td>
-      </tr>
-      <tr>
-        <td style="padding: 0 2.5rem; height: 1px; background: {BORDER};"></td>
-      </tr>
-      <tr>
-        <td style="padding: 2rem 2.5rem;">
-          <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background: {SECONDARY_BG}; border-radius: 8px;">
-            <tr>
-              <td style="padding: 1.5rem; vertical-align: top;">
-                <table role="presentation" cellpadding="0" cellspacing="0">
-                  <tr>
-                    <td style="width: 40px; height: 40px; border-radius: 8px; background: rgba(249, 115, 22, 0.1); vertical-align: top; padding-top: 8px; padding-left: 8px;">
-                      <span style="color: {PRIMARY}; font-size: 20px;">📖</span>
-                    </td>
-                    <td style="padding-left: 1rem;">
-                      <h2 style="margin: 0; font-family: 'DM Serif Display', serif; font-size: 18px; font-weight: 600; color: {FOREGROUND};">{escape(homework_title)}</h2>
-                      <p style="margin: 0.25rem 0 0; font-size: 14px; color: {MUTED_FG};">{escape(homework_subtitle)}</p>
-                      {exercise_line}
-                      <a href="{escape(homework_link)}" style="display: inline-flex; align-items: center; gap: 0.5rem; margin-top: 0.75rem; padding: 0.625rem 1.5rem; font-size: 14px; font-weight: 500; color: #fff; background: {PRIMARY}; border-radius: 6px; text-decoration: none;">View Homework →</a>
-                    </td>
-                  </tr>
-                </table>
-              </td>
-            </tr>
-          </table>
-
-          <table role="presentation" cellpadding="0" cellspacing="0" style="margin-top: 2rem; padding-top: 2rem; border-top: 1px solid {BORDER};">
-            <tr>
-              <td style="width: 36px; height: 36px; border-radius: 50%; background: rgba(249, 115, 22, 0.15); text-align: center; vertical-align: middle; overflow: hidden;">
-                {coach_avatar_html}
-              </td>
-              <td style="padding-left: 0.75rem;">
-                <p style="margin: 0; font-size: 14px; font-weight: 600; color: {FOREGROUND};">{escape(coach_name)}</p>
-                <p style="margin: 0; font-size: 12px; color: {MUTED_FG};">{escape(coach_role)}</p>
-              </td>
-            </tr>
-          </table>
-        </td>
-      </tr>
-    </table>
-
-    <p style="text-align: center; font-size: 12px; color: {MUTED_FG}; margin-top: 1.5rem;">
-      You received this because you're enrolled in a coaching program.
-    </p>
-    <p style="text-align: center; font-size: 12px; color: {MUTED_FG}; margin-top: 0.25rem;">
-      <a href="{escape(unsubscribe_link)}" style="color: {MUTED_FG}; text-decoration: underline;">Unsubscribe</a>
-      &nbsp;·&nbsp;
-      <a href="{escape(preferences_link)}" style="color: {MUTED_FG}; text-decoration: underline;">Preferences</a>
-    </p>
-  </div>
-</body>
-</html>
-"""
-    return html
