@@ -1,7 +1,7 @@
 """
-Complete a homework session using only recording 1 (no step 2, no recording 2).
-Used when the student has no focus tasks: job sets status to completing_from_recording_1,
-then when the job finishes it calls this to generate report and mark completed.
+Complete a homework session using only recording 1 (no post-recording questions, no recording 2).
+The current web client path is recording_1 -> self-rating -> report.
+Legacy `post_questions` handling remains only as a compatibility fallback for older sessions.
 """
 import json
 import logging
@@ -163,8 +163,8 @@ def complete_session_recording_1_only(
 ):
     """
     Load session and recording_1; compute metrics, generate report, mark session completed. No recording_2.
-    Session must be in completing_from_recording_1, post_questions, or (if allow_task_block) task_block.
-    When status is post_questions, session.post_answers (from POST post-answers) are kept; otherwise [].
+    Session must be in completing_from_recording_1, legacy post_questions, or (if allow_task_block) task_block.
+    When status is legacy post_questions, session.post_answers are preserved; otherwise [].
     Returns dict with report payload (report_text, performance_score_end, ...) or None if not run.
     """
     session = db.v2_get_session(session_id, user_id)

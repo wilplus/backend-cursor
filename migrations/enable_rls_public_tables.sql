@@ -38,7 +38,9 @@ DECLARE
     'v2_universal_questions',
     'v2_metric_questions_pool',
     'recording_sessions',
-    'v2_student_details'
+    'v2_student_details',
+    'recording_reviews',
+    'recording_review_annotations'
   ];
   t text;
 BEGIN

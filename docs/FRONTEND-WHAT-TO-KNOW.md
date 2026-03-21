@@ -15,14 +15,14 @@ Short reference for the frontend team. Backend contract and behavior that affect
 
 - **`GET /api/homework/session/status`** (→ backend `GET /v2/homework/session/status`) returns **`assigned_exercises`**: `[ { id, title, video_url, description } ]`.
 - **Display:** Show each exercise below the “Start homework” button. If **`video_url`** is present, show the video (link or embed, e.g. Vimeo). If **`description`** is present, show it (e.g. above or beside the video). The backend now provides a **default intro video** for first-time users when the DB has none, so `video_url` can be present even for the default “0-intro” exercise — don’t show “No video for this exercise” when `video_url` is in the response.
-- **Timer:** When the response includes **`tutor_feedback_deadline`** (ISO 8601) and optionally **`tutor_feedback_message`**, show a **countdown timer** (and optional banner) on step 0. **Hide the timer** when **`tutor_feedback_deadline`** is **absent** (e.g. after the coach sends new homework). So: **show timer ⇔ `tutor_feedback_deadline` is present.**
+- There is **no countdown timer on step 0** anymore. After the user leaves the report, just refetch status and render the normal no-active-session state.
 
 ---
 
 ## Report screen
 
-- **`GET /api/homework/session/<sessionId>/report`** returns (among other fields) **`report_cta`** (string). Use it as the **main CTA at the end of the report**, e.g. button or prominent text: **“Send the homework to the coach!”**. When the user taps it (or “Back to homework”), navigate to **step 0** and call **GET session/status** again so the timer can show if needed.
-- Report payload also includes: `report_text`, `scores`, `final_recording`, `performance_history`, optional `recording` (transcript, fillers, `audio_url`), `context_short`, `coach_insight`. When the session is still generating, backend returns **409** with `REPORT_NOT_READY` — poll until 200.
+- **`GET /api/homework/session/<sessionId>/report`** returns (among other fields) **`report_cta`** (string). Use it as the **main CTA at the end of the report**, e.g. button or prominent text: **“Send the homework to the coach!”**. When the user taps it (or “Back to homework”), navigate to **step 0** and call **GET session/status** again.
+- Report payload also includes: `report_text`, `scores`, `final_recording`, `performance_history`, optional `recording` (transcript, fillers, `audio_url`), `context_short`, `coach_insight`, `admin_grade`, and `report_comment`. When the session is still generating, backend returns **409** with `REPORT_NOT_READY` — poll until 200.
 
 ---
 
@@ -38,7 +38,7 @@ Short reference for the frontend team. Backend contract and behavior that affect
 | Item | Backend returns | Frontend |
 |------|-----------------|----------|
 | Step 0 video | `assigned_exercises[].video_url`, `description` | Show video + description when present; default intro video is now provided by backend. |
-| Step 0 timer | `tutor_feedback_deadline`, `tutor_feedback_message` when present | Show countdown and optional banner; hide when `tutor_feedback_deadline` is absent. |
+| Step 0 state | `assigned_exercises`, optional `tutor_video_description` | Show the normal no-active-session state; there is no countdown timer. |
 | End of report | `report_cta` (e.g. “Send the homework to the coach!”) | Show as primary CTA; on click go to step 0 and refetch status. |
 | Paths | `/v2/homework/session/start`, `.../session/status`, `.../session/<id>/report` | BFF must use **session** in path (e.g. `/api/homework/session/start`). |
 

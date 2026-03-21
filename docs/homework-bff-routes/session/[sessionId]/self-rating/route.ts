@@ -1,8 +1,8 @@
 /**
  * Copy to: src/app/api/homework/session/[sessionId]/self-rating/route.ts
- * Post-recording self-rate 1–10 or skip. Completion (report + coach email) runs when job is done.
- * Body: { "rating": 1-10 } or { "student_rating_1_10": 1-10 }, or { "skipped": true }.
- * Passes through 4xx/5xx body. Response: { status: "ok", session_completed: boolean, student_rating_1_10?: n, skipped?: true }.
+ * Post-recording self-rate 1–5 or skip. Completion (report + coach email) runs when job is done.
+ * Body: { "rating": 1-5 } or legacy { "student_rating_1_10": 1-5 }, or { "skipped": true }.
+ * Passes through 4xx/5xx body. Response: { status: "ok", session_completed: boolean, rating?: n, student_rating_1_10?: n, skipped?: true }.
  */
 import { NextRequest, NextResponse } from "next/server";
 import { getV2AccessToken, getBackendUrl } from "../../../../getAuth";

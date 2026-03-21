@@ -30,9 +30,14 @@
 ## Admin / coach grade
 
 - **`add_coach_grade_to_v2_sessions.sql`** — adds `v2_sessions.coach_grade` (SMALLINT 1–10, nullable). Lets admins grade a completed session in the admin panel. Run after v2_sessions exists.
+- **`add_report_comment_to_v2_sessions.sql`** — adds `v2_sessions.report_comment` (TEXT, nullable). Optional short coach-written note shown next to the grade in the full report view.
 - **`docs/migrations/session_sniper_metrics_rating.sql`** — same as above (idempotent): ensures `coach_grade` exists. Also documents that `session_sniper_metrics.session_id` must reference an existing `v2_sessions.id` so BFF/client only write after session/start. Run on Supabase (or wherever session_sniper_metrics lives).
-- **`add_student_rating_session_sniper_metrics.sql`** — adds `session_sniper_metrics.student_rating_1_10` (SMALLINT 1–10, nullable). Student self-rating; only sessions with student_rating_1_10 >= 8 or coach_grade >= 8 update the Sniper baseline. Run after add_user_sniper_profile.sql.
+- **`add_student_rating_session_sniper_metrics.sql`** — adds `session_sniper_metrics.student_rating_1_10` (legacy column name; SMALLINT, nullable). Current product scale is **1–5** even though the column name stays the same; only sessions with self-rating >= 4 or coach_grade >= 8 update the Sniper baseline. Run after add_user_sniper_profile.sql.
+- **`add_session_sniper_completion_fields.sql`** — adds richer completion payload fields to `session_sniper_metrics` (`recording_id`, `duration_seconds`, `pitch_center_st`, `pitch_frame_count`, `frontend_level`, `frontend_step`, `completed`, `valid_for_progression`) and authoritative `realtime_level_at_session` / `realtime_step_at_session` snapshot columns to `v2_sessions`.
 - **`add_realtime_progression_to_user_sniper_profile.sql`** — adds `realtime_level`, `realtime_step`, `realtime_pitch_baseline_st`, `sessions_with_pitch_count`, and `realtime_last_completed_session_id` to `user_sniper_profile`. Use this for the recorder Level/Step UI; backend increments step on completed sessions and caps at step 10 by default.
+- **`add_recording_reviews.sql`** — adds `recording_reviews` (whole-session ML labels) and `recording_review_annotations` (time-span labels on a recording). Admin-only, internal training data; keep separate from `coach_grade`, report text, and student-facing feedback.
+- **`add_admin_import_fields_to_recordings.sql`** — adds `recording_origin` and `source_metadata` to `recordings` so admin-imported files can carry origin/source metadata without going through homework sessions.
+- **`reshape_recording_reviews_for_imports.sql`** — reshapes `recording_reviews` to support standalone imported recordings: adds `id` PK, makes `session_id` optional, preserves session-level uniqueness, and converts `overall_quality` to text for categorical labels like `good`, `bad`, `unclear`.
 
 ---
 

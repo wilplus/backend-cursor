@@ -4,6 +4,7 @@ All routes under /v2/homework, require auth. Restore steps 2–4 from docs/TEMPO
 """
 from flask import Blueprint, request, jsonify
 from auth import require_auth
+from config import Config
 from services.db import db
 from services.email_service import email_service
 from services.homework_completion import (
@@ -17,7 +18,7 @@ import os
 import time
 import uuid
 import sentry_sdk
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 
 logger = logging.getLogger(__name__)
 homework_bp = Blueprint("homework", __name__, url_prefix="/v2/homework")
@@ -57,6 +58,7 @@ def _agent_log(msg, data=None, hypothesis_id=None):
 STATUS_WARM_UP = "warm_up"
 STATUS_TASK_BLOCK = "task_block"
 STATUS_FINAL_TASK_READY = "final_task_ready"
+# Legacy compatibility only; the current web client does not use the post-questions step.
 STATUS_POST_QUESTIONS = "post_questions"
 STATUS_COMPLETED = "completed"
 # No focus tasks: skip step 2 and 3; job will complete session from recording 1 only
@@ -65,9 +67,6 @@ STATUS_COMPLETING_FROM_RECORDING_1 = "completing_from_recording_1"
 # Public API status vocabulary. Frontend uses ONLY top-level "status"; never derive from session.status.
 PUBLIC_STATUS_NONE = "none"
 PUBLIC_STATUS_RECORDING_1_REQUIRED = "recording_1_required"
-PUBLIC_STATUS_TASK_BLOCK = "task_block"
-PUBLIC_STATUS_FINAL_TASK_READY = "final_task_ready"
-PUBLIC_STATUS_POST_QUESTIONS = "post_questions"
 PUBLIC_STATUS_COMPLETED = "completed"
 PUBLIC_STATUS_REPORT_GENERATING = "report_generating"
 
@@ -78,9 +77,11 @@ def _public_status(db_status):
         return PUBLIC_STATUS_NONE
     m = {
         STATUS_WARM_UP: PUBLIC_STATUS_RECORDING_1_REQUIRED,
-        STATUS_TASK_BLOCK: PUBLIC_STATUS_TASK_BLOCK,
-        STATUS_FINAL_TASK_READY: PUBLIC_STATUS_FINAL_TASK_READY,
-        STATUS_POST_QUESTIONS: PUBLIC_STATUS_POST_QUESTIONS,
+        STATUS_TASK_BLOCK: PUBLIC_STATUS_REPORT_GENERATING,
+        STATUS_FINAL_TASK_READY: PUBLIC_STATUS_REPORT_GENERATING,
+        # Old sessions may still exist in this state, but the public API should
+        # still expose the simplified single-recording report-generating state.
+        STATUS_POST_QUESTIONS: PUBLIC_STATUS_REPORT_GENERATING,
         STATUS_COMPLETED: PUBLIC_STATUS_COMPLETED,
         STATUS_COMPLETING_FROM_RECORDING_1: PUBLIC_STATUS_REPORT_GENERATING,
     }
@@ -105,72 +106,38 @@ def _session_for_json(obj):
     return obj
 
 
-def _tutor_feedback_deadline_iso(completed_at, window_hours: float):
-    """Compute tutor_feedback_deadline (ISO 8601) from completion time + window. Returns None if invalid or deadline already passed."""
-    if completed_at is None or window_hours is None or window_hours <= 0:
+def _task_payload(task_id, text):
+    text = (text or "").strip()
+    if not text:
         return None
-    try:
-        if isinstance(completed_at, str):
-            completed_dt = datetime.fromisoformat(completed_at.replace("Z", "+00:00"))
-        else:
-            completed_dt = completed_at
-        if completed_dt.tzinfo is None:
-            completed_dt = completed_dt.replace(tzinfo=timezone.utc)
-        deadline = completed_dt + timedelta(hours=window_hours)
-        if deadline <= datetime.now(timezone.utc):
-            return None
-        return deadline.strftime("%Y-%m-%dT%H:%M:%SZ")
-    except (ValueError, TypeError):
-        return None
+    return {"id": task_id, "text": text}
 
 
-def _tutor_feedback_message(deadline_iso: str | None) -> str | None:
-    """Build a user-facing message for the step 0 screen when tutor_feedback_deadline is set. Returns None if deadline_iso is None."""
-    if not deadline_iso or not deadline_iso.strip():
+def _task_text(text):
+    text = (text or "").strip()
+    return text or None
+
+
+def _public_recording_id(session: dict):
+    if not session:
         return None
-    try:
-        dt = datetime.fromisoformat(deadline_iso.replace("Z", "+00:00"))
-        # e.g. "18 Feb 2026, 15:00 UTC"
-        formatted = dt.strftime("%d %b %Y, %H:%M UTC")
-        return f"Your coach has until {formatted} to review your last lesson and send you new homework."
-    except (ValueError, TypeError):
-        return None
+    recording_id = session.get("recording_2_id") or session.get("recording_1_id")
+    return str(recording_id) if recording_id else None
 
 
 def _build_step0_payload(user_id: str) -> dict:
     """Build the session/status payload when there is no active session (step 0). Used by GET status and POST leave-report."""
-    try:
-        from config import Config
-        config = Config()
-    except Exception:
-        config = type("_FallbackConfig", (), {"TUTOR_FEEDBACK_WINDOW_HOURS": 24})()
-    payload = {"status": PUBLIC_STATUS_NONE, "session": None, "has_active_session": False}
-    try:
-        last_completed = db.v2_get_last_completed_session(user_id)
-        if last_completed and not last_completed.get("tutor_feedback_sent_at"):
-            completion_time = last_completed.get("completed_at") or last_completed.get("created_at")
-            deadline = _tutor_feedback_deadline_iso(completion_time, getattr(config, "TUTOR_FEEDBACK_WINDOW_HOURS", 24))
-            if deadline:
-                payload["tutor_feedback_deadline"] = deadline
-                msg = _tutor_feedback_message(deadline)
-                if msg:
-                    payload["tutor_feedback_message"] = msg
-        if last_completed and last_completed.get("id"):
-            payload["last_completed_session_id"] = last_completed.get("id")
-    except Exception:
-        pass
-    try:
-        last_report = db.v2_get_last_report_for_user(user_id)
-        if last_report and (last_report.get("report_preview") or "").strip():
-            payload["last_report_preview"] = (last_report.get("report_preview") or "").strip()
-            payload["has_last_report"] = True
-        elif last_report and (last_report.get("report_text") or "").strip():
-            payload["last_report_preview"] = (last_report.get("report_text") or "").strip()[:500]
-            payload["has_last_report"] = True
-        else:
-            payload["has_last_report"] = False
-    except Exception:
-        payload["has_last_report"] = False
+    config = Config()
+    payload = {
+        "status": PUBLIC_STATUS_NONE,
+        "session_id": None,
+        "recording_id": None,
+        "task": None,
+        "assigned_exercises": [],
+        "tutor_feedback_deadline": None,
+        "tutor_feedback_message": None,
+        "tutor_video_description": None,
+    }
     try:
         payload["assigned_exercises"] = db.v2_get_assigned_exercises_for_user(user_id)
         for ex in payload.get("assigned_exercises") or []:
@@ -182,6 +149,22 @@ def _build_step0_payload(user_id: str) -> dict:
                 break
     except Exception:
         payload["assigned_exercises"] = []
+    try:
+        last_completed = db.v2_get_last_completed_session(user_id)
+        if last_completed and not last_completed.get("tutor_feedback_sent_at"):
+            raw_completed_at = last_completed.get("completed_at") or last_completed.get("created_at")
+            if raw_completed_at:
+                if isinstance(raw_completed_at, str):
+                    completed_at = datetime.fromisoformat(raw_completed_at.replace("Z", "+00:00"))
+                else:
+                    completed_at = raw_completed_at
+                if completed_at.tzinfo is None:
+                    completed_at = completed_at.replace(tzinfo=timezone.utc)
+                deadline = completed_at + timedelta(hours=float(config.TUTOR_FEEDBACK_WINDOW_HOURS))
+                payload["tutor_feedback_deadline"] = deadline.isoformat().replace("+00:00", "Z")
+                payload["tutor_feedback_message"] = "Your coach is reviewing your last lesson and will send your next homework soon."
+    except Exception:
+        pass
     try:
         overrides = db.v2_get_student_overrides(user_id) or {}
         msg = (overrides.get("pending_tutor_video_description") or "").strip()
@@ -196,7 +179,7 @@ def _build_step0_payload(user_id: str) -> dict:
 @homework_bp.route("/session/start", methods=["POST"])
 @require_auth
 def homework_session_start():
-    """Start or resume homework session. Returns session_id and warm_up_task (text) for step 1. If user has no warm-up tasks, a default ('How was your day so far?') is created so new users can start."""
+    """Start or resume homework session. Returns session_id and one task string."""
     try:
         user_id = request.user_id
 
@@ -208,31 +191,28 @@ def homework_session_start():
             wid = active.get("warm_up_task_id")
             wtext = (active.get("warm_up_task_text") or "").strip()
 
-            warm_up_task = None
-            if wtext:
-                warm_up_task = {"id": wid, "text": wtext}
-            else:
+            task = _task_payload(wid, wtext)
+            if task is None:
                 db.v2_ensure_default_warm_up_task(user_id)
                 warm_up = db.v2_get_assigned_warm_up_task(user_id)
                 if not warm_up:
                     return jsonify({
                         "code": "NO_WARMUP_CONFIGURED",
-                        "message": "No warm-up tasks are configured for your account. Please contact your coach to get started.",
+                        "message": "No task is configured for your account. Please contact your coach to get started.",
                         "details": {},
                     }), 422
                 text = (warm_up.get("text") or "").strip()
                 if not text:
-                    return jsonify({"code": "INVALID_STATE", "error": "Warm-up task has empty text"}), 500
+                    return jsonify({"code": "INVALID_STATE", "error": "Task has empty text"}), 500
                 db.v2_update_session(active["id"], user_id, {
                     "warm_up_task_id": warm_up.get("id"),
                     "warm_up_task_text": text,
                 })
-                warm_up_task = {"id": warm_up.get("id"), "text": text}
+                task = _task_payload(warm_up.get("id"), text)
 
             return jsonify({
-                "status": _public_status(active.get("status")),
                 "session_id": active["id"],
-                "warm_up_task": warm_up_task,
+                "task": _task_text(task.get("text") if task else None),
             }), 200
 
         db.v2_ensure_default_warm_up_task(user_id)
@@ -240,13 +220,13 @@ def homework_session_start():
         if not warm_up:
             return jsonify({
                 "code": "NO_WARMUP_CONFIGURED",
-                "message": "No warm-up tasks are configured for your account. Please contact your coach to get started.",
+                "message": "No task is configured for your account. Please contact your coach to get started.",
                 "details": {},
             }), 422
 
         text = (warm_up.get("text") or "").strip()
         if not text:
-            return jsonify({"code": "INVALID_STATE", "error": "Warm-up task has empty text"}), 500
+            return jsonify({"code": "INVALID_STATE", "error": "Task has empty text"}), 500
 
         session = db.v2_create_homework_session(user_id)
         if not session:
@@ -268,9 +248,8 @@ def homework_session_start():
         db.v2_update_session(session["id"], user_id, session_update)
 
         return jsonify({
-            "status": PUBLIC_STATUS_RECORDING_1_REQUIRED,
             "session_id": session["id"],
-            "warm_up_task": {"id": warm_up.get("id"), "text": text},
+            "task": _task_text(text),
         }), 201
 
     except Exception as e:
@@ -282,7 +261,7 @@ def homework_session_start():
 @homework_bp.route("/session/status", methods=["GET"])
 @require_auth
 def homework_session_status():
-    """Get active homework session if any. Expired sessions (incomplete, older than 1h) are deleted and returned as no session so client goes to step 0. Returns raw v2_sessions row (snake_case). When no active session, includes tutor_feedback_deadline (ISO 8601) if the user just completed a lesson and the tutor feedback window has not ended."""
+    """Get simplified single-recording homework session state."""
     # #region agent log
     try:
         _uid = getattr(request, "user_id", None)
@@ -291,11 +270,6 @@ def homework_session_status():
         pass
     # #endregion
     try:
-        try:
-            from config import Config
-            config = Config()
-        except Exception:
-            config = type("_FallbackConfig", (), {"TUTOR_FEEDBACK_WINDOW_HOURS": 24})()
         user_id = request.user_id
         # #region agent log
         _agent_log("session/status before get_active", {"user_id": str(user_id)}, "C")
@@ -314,12 +288,12 @@ def homework_session_status():
             _agent_log("session/status no active, building step0 payload", {}, "A")
             return jsonify(_build_step0_payload(user_id)), 200
 
-        warm_up_task = None
+        task = None
         wid = active.get("warm_up_task_id")
         wtext = (active.get("warm_up_task_text") or "").strip()
 
         if wtext:
-            warm_up_task = {"id": wid, "text": wtext}
+            task = _task_payload(wid, wtext)
         elif active.get("status") == STATUS_WARM_UP:
             db.v2_ensure_default_warm_up_task(user_id)
             warm_up = db.v2_get_assigned_warm_up_task(user_id)
@@ -329,7 +303,7 @@ def homework_session_status():
                     "warm_up_task_id": warm_up.get("id"),
                     "warm_up_task_text": text,
                 })
-                warm_up_task = {"id": warm_up.get("id"), "text": text}
+                task = _task_payload(warm_up.get("id"), text)
 
         # #region agent log
         _sid = str(active.get("id") or "")
@@ -342,24 +316,16 @@ def homework_session_status():
             _sid,
             _row_check is not None,
         )
-        session_serializable = _session_for_json(active)
-        rec1_status = active.get("recording_1_processing_status")
         resp = {
             "status": _public_status(active.get("status")),
-            "session": session_serializable,
-            "session_id": session_serializable.get("id") or str(active["id"]),
-            "has_active_session": True,
-            "warm_up_task": _session_for_json(warm_up_task) if warm_up_task else None,
-            # So frontend can show self-rating when job is done and poll report after
-            "recording_1_processing_status": rec1_status,
-            "ready_for_self_rating": (
-                active.get("status") == STATUS_COMPLETING_FROM_RECORDING_1 and rec1_status == "completed"
-            ),
+            "session_id": str(active["id"]),
+            "recording_id": _public_recording_id(active),
+            "task": _task_text(task.get("text") if task else None),
+            "assigned_exercises": [],
+            "tutor_feedback_deadline": None,
+            "tutor_feedback_message": None,
+            "tutor_video_description": None,
         }
-        if rec1_status == "failed":
-            rec1_error = active.get("recording_1_processing_error_code")
-            if rec1_error:
-                resp["recording_1_processing_error_code"] = rec1_error
         # Coach message for "A message for you" block (text-only on homework; tutor_video_url not used by frontend)
         msg = (active.get("tutor_video_description") or "").strip()
         if msg:
@@ -435,11 +401,11 @@ def homework_leave_report(session_id):
         return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
 
 
-# ---------- Step 1: warm-up task (GET) + recording_1 (POST) ----------
+# ---------- Step 1: task (GET) + recording_1 (POST) ----------
 @homework_bp.route("/session/<session_id>/warm-up-task", methods=["GET"])
 @require_auth
 def homework_get_warm_up_task(session_id):
-    """Get warm-up task for this session (step 1). Snapshot-first for deterministic resume. No default-text fallback."""
+    """Get the step-1 task for this session. Snapshot-first for deterministic resume."""
     try:
         user_id = request.user_id
         session = db.v2_get_session(session_id, user_id)
@@ -448,7 +414,7 @@ def homework_get_warm_up_task(session_id):
         if session.get("status") != STATUS_WARM_UP:
             return jsonify({
                 "code": "INVALID_SESSION_STATE",
-                "error": "Session must be in warm_up",
+                "error": "Session must be in task",
                 "status": session.get("status"),
             }), 409
 
@@ -456,26 +422,26 @@ def homework_get_warm_up_task(session_id):
         wtext = (session.get("warm_up_task_text") or "").strip()
 
         if wtext:
-            return jsonify({"warm_up_task": {"id": wid, "text": wtext}}), 200
+            return jsonify({"task": _task_text(wtext)}), 200
 
         db.v2_ensure_default_warm_up_task(user_id)
         warm_up = db.v2_get_assigned_warm_up_task(user_id)
         if not warm_up:
             return jsonify({
                 "code": "NO_WARMUP_CONFIGURED",
-                "message": "No warm-up tasks are configured for your account. Please contact your coach to get started.",
+                "message": "No task is configured for your account. Please contact your coach to get started.",
                 "details": {},
             }), 422
 
         text = (warm_up.get("text") or "").strip()
         if not text:
-            return jsonify({"code": "INVALID_STATE", "error": "Warm-up task has empty text"}), 500
+            return jsonify({"code": "INVALID_STATE", "error": "Task has empty text"}), 500
 
         db.v2_update_session(session_id, user_id, {
             "warm_up_task_id": warm_up.get("id"),
             "warm_up_task_text": text,
         })
-        return jsonify({"warm_up_task": {"id": warm_up.get("id"), "text": text}}), 200
+        return jsonify({"task": _task_text(text)}), 200
 
     except Exception as e:
         sentry_sdk.capture_exception(e)
@@ -485,8 +451,8 @@ def homework_get_warm_up_task(session_id):
 @homework_bp.route("/session/<session_id>/self-rating", methods=["POST"])
 @require_auth
 def homework_self_rating(session_id):
-    """Post-recording self-rate (1–10) or skip. Completion (report + coach email) happens only after this step.
-    Body: { "rating": 1-10 } or { "student_rating_1_10": 1-10 }, or { "skipped": true } to complete without rating."""
+    """Post-recording self-rate (1–5) or skip. Completion (report + coach email) happens only after this step.
+    Body: { "rating": 1-5 } or legacy { "student_rating_1_10": 1-5 }, or { "skipped": true }."""
     try:
         user_id = request.user_id
         session = db.v2_get_session(session_id, user_id)
@@ -505,14 +471,14 @@ def homework_self_rating(session_id):
         skipped = data.get("skipped") is True
         rating = None if skipped else (data.get("student_rating_1_10") if data.get("student_rating_1_10") is not None else data.get("rating"))
         if not skipped and rating is None:
-            return jsonify({"code": "MISSING_RATING", "error": "rating or student_rating_1_10 (1–10) required, or skipped: true"}), 400
+            return jsonify({"code": "MISSING_RATING", "error": "rating or student_rating_1_10 (1-5) required, or skipped: true"}), 400
         if not skipped:
             try:
                 r = int(rating)
             except (TypeError, ValueError):
-                return jsonify({"code": "INVALID_RATING", "error": "rating must be 1–10"}), 422
-            if not (1 <= r <= 10):
-                return jsonify({"code": "INVALID_RATING", "error": "rating must be 1–10"}), 422
+                return jsonify({"code": "INVALID_RATING", "error": "rating must be 1-5"}), 422
+            if not (1 <= r <= 5):
+                return jsonify({"code": "INVALID_RATING", "error": "rating must be 1-5"}), 422
             ok = db.update_or_set_session_sniper_rating(session_id, user_id, r)
             if not ok:
                 return jsonify({"code": "V2_ERROR", "error": "Could not save rating"}), 500
@@ -569,6 +535,7 @@ def homework_self_rating(session_id):
 
         out = {"status": "ok", "session_completed": session_completed}
         if saved_rating is not None:
+            out["rating"] = saved_rating
             out["student_rating_1_10"] = saved_rating
         if skipped:
             out["skipped"] = True
@@ -594,7 +561,7 @@ def _validate_storage_path(storage_path: str, user_id: str, session_id: str) -> 
 @homework_bp.route("/session/<session_id>/recording-upload-url", methods=["POST"])
 @require_auth
 def homework_recording_upload_url(session_id):
-    """Mint a storage path for direct-to-storage upload (recording 1 only). Client uploads audio, then calls recording-1 with storage_path + duration_seconds. TEMPORARY: recording-2 removed."""
+    """Mint a storage path for the single homework recording upload."""
     # #region agent log
     try:
         _debug_log_write({"hypothesisId": "H0", "location": "homework.py:recording-upload-url", "message": "entry", "data": {"session_id": str(session_id)[:36]}, "timestamp": int(time.time() * 1000)})
@@ -606,9 +573,6 @@ def homework_recording_upload_url(session_id):
         config = Config()
         user_id = request.user_id
         data = request.get_json() or {}
-        recording = str(data.get("recording", "1")).strip()
-        if recording != "1":
-            return jsonify({"code": "INVALID_INPUT", "error": "Only recording '1' is supported (steps 2–4 temporarily removed)"}), 400
 
         session = db.v2_get_session(session_id, user_id)
         if not session:
@@ -661,7 +625,7 @@ def homework_recording_upload_url(session_id):
 @homework_bp.route("/session/<session_id>/recording-1", methods=["POST"])
 @require_auth
 def homework_submit_recording_1(session_id):
-    """Upload recording_1 (warm-up). Fast path: store only, create minimal recording, set task_block, enqueue job. Returns task_block immediately."""
+    """Upload the single homework recording and return the report-generating state."""
     try:
         from config import Config
         from services.recording_1_job import enqueue_recording_1_job
@@ -734,8 +698,6 @@ def homework_submit_recording_1(session_id):
                     return jsonify({
                         "recording_id": existing["id"],
                         "status": PUBLIC_STATUS_REPORT_GENERATING,
-                        "recording_1_processing": session.get("recording_1_processing_status") in (None, "pending"),
-                        "message": "Your report is being generated. Refresh in a moment.",
                     }), 200
             # New recording for this session: create minimal, update session, enqueue
 
@@ -781,8 +743,6 @@ def homework_submit_recording_1(session_id):
         return jsonify({
             "status": PUBLIC_STATUS_REPORT_GENERATING,
             "recording_id": recording["id"],
-            "recording_1_processing": True,
-            "message": "Your report is being generated. Refresh in a moment.",
         }), 200
     except Exception as e:
         _agent_log("recording-1: exception", {"error": str(e), "type": type(e).__name__}, "H5")
@@ -1131,6 +1091,7 @@ def homework_get_report(session_id):
             # Single canonical score (0-100): Sniper Voice Alignment when available. Same as last bar on chart.
             "score_for_display": score_for_display_100,
             "admin_grade": session.get("coach_grade"),
+            "report_comment": (session.get("report_comment") or "").strip() or None,
         }
         if recording_payload is not None:
             payload["recording"] = recording_payload
@@ -1143,14 +1104,6 @@ def homework_get_report(session_id):
         payload["report_cta"] = "Send the homework to the coach!"
         # Frontend: when user clicks the CTA, call POST .../leave-report to get step-0 state and show start screen (or call GET session/status).
         payload["leave_report_path"] = f"session/{session_id}/leave-report"
-        if not session.get("tutor_feedback_sent_at"):
-            completion_time = session.get("completed_at") or session.get("created_at")
-            deadline = _tutor_feedback_deadline_iso(completion_time, config.TUTOR_FEEDBACK_WINDOW_HOURS)
-            if deadline:
-                payload["tutor_feedback_deadline"] = deadline
-                msg = _tutor_feedback_message(deadline)
-                if msg:
-                    payload["tutor_feedback_message"] = msg
         # #region agent log
         _agent_log("GET report returning 200", {"session_id": session_id, "status": session.get("status"), "report_id": session.get("report_id")}, "H3")
         # #endregion

@@ -1110,6 +1110,198 @@ class DatabaseService:
         """Get v2 session by id only (no user filter). For debugging 404: check if session exists and which user_id owns it."""
         return self.v2_get_session(session_id, None)
 
+    def v2_get_recording_review(self, session_id: str):
+        """Admin-only ML review labels for a session."""
+        result = (
+            self.client.table("recording_reviews")
+            .select("*")
+            .eq("session_id", session_id)
+            .limit(1)
+            .execute()
+        )
+        return result.data[0] if result.data else None
+
+    def v2_get_recording_review_by_recording(self, recording_id: str):
+        """Admin-only ML review labels for an imported or standalone recording."""
+        result = (
+            self.client.table("recording_reviews")
+            .select("*")
+            .eq("recording_id", recording_id)
+            .order("updated_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+        return result.data[0] if result.data else None
+
+    def v2_update_recording_review(self, review_id: str, reviewer_id: str, data: dict):
+        """Update an existing admin-only ML review row by id."""
+        payload = {
+            "reviewer_id": reviewer_id,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+        for key in (
+            "session_id",
+            "recording_id",
+            "overall_quality",
+            "confidence_score",
+            "coach_style_score",
+            "notes",
+            "rubric_version",
+        ):
+            if key in data:
+                payload[key] = data.get(key)
+        result = (
+            self.client.table("recording_reviews")
+            .update(payload)
+            .eq("id", review_id)
+            .execute()
+        )
+        return result.data[0] if result.data else None
+
+    def v2_upsert_recording_review(self, session_id: str, reviewer_id: str, data: dict):
+        """Upsert admin-only ML review labels for a session."""
+        now = datetime.now(timezone.utc).isoformat()
+        payload = {
+            "session_id": session_id,
+            "reviewer_id": reviewer_id,
+            "updated_at": now,
+        }
+        for key in (
+            "recording_id",
+            "overall_quality",
+            "confidence_score",
+            "coach_style_score",
+            "notes",
+            "rubric_version",
+        ):
+            if key in data:
+                payload[key] = data.get(key)
+        result = self.client.table("recording_reviews").upsert(payload, on_conflict="session_id").execute()
+        return result.data[0] if result.data else self.v2_get_recording_review(session_id)
+
+    def v2_create_recording_review_for_recording(self, recording_id: str, reviewer_id: str, data: dict):
+        """Create admin-only ML review labels for a standalone recording import."""
+        now = datetime.now(timezone.utc).isoformat()
+        payload = {
+            "recording_id": recording_id,
+            "reviewer_id": reviewer_id,
+            "updated_at": now,
+        }
+        for key in (
+            "session_id",
+            "overall_quality",
+            "confidence_score",
+            "coach_style_score",
+            "notes",
+            "rubric_version",
+        ):
+            if key in data:
+                payload[key] = data.get(key)
+        result = self.client.table("recording_reviews").insert(payload).execute()
+        return result.data[0] if result.data else self.v2_get_recording_review_by_recording(recording_id)
+
+    def v2_upsert_recording_review_for_recording(self, recording_id: str, reviewer_id: str, data: dict):
+        """Update the latest review for a standalone recording or create one if it does not exist."""
+        existing = self.v2_get_recording_review_by_recording(recording_id)
+        if existing and existing.get("id"):
+            return self.v2_update_recording_review(existing["id"], reviewer_id, data)
+        return self.v2_create_recording_review_for_recording(recording_id, reviewer_id, data)
+
+    def v2_list_admin_import_recordings(self, limit: int = 50, offset: int = 0):
+        """List imported recordings for the admin ML page."""
+        result = (
+            self.client.table("recordings")
+            .select("*")
+            .eq("recording_origin", "admin_import")
+            .order("created_at", desc=True)
+            .range(offset, max(offset + limit - 1, offset))
+            .execute()
+        )
+        rows = result.data or []
+        if not rows:
+            return []
+        recording_ids = [row.get("id") for row in rows if row.get("id")]
+        reviews_by_recording = {}
+        if recording_ids:
+            try:
+                reviews_result = (
+                    self.client.table("recording_reviews")
+                    .select("*")
+                    .in_("recording_id", recording_ids)
+                    .order("updated_at", desc=True)
+                    .execute()
+                )
+                for row in reviews_result.data or []:
+                    rid = row.get("recording_id")
+                    if rid and rid not in reviews_by_recording:
+                        reviews_by_recording[rid] = row
+            except Exception:
+                reviews_by_recording = {}
+        out = []
+        for row in rows:
+            rec = dict(row)
+            rec["review"] = reviews_by_recording.get(row.get("id"))
+            out.append(rec)
+        return out
+
+    def v2_list_recording_review_annotations(self, session_id: str):
+        """Admin-only time-span review labels for a session."""
+        result = (
+            self.client.table("recording_review_annotations")
+            .select("*")
+            .eq("session_id", session_id)
+            .order("start_ms")
+            .order("created_at")
+            .execute()
+        )
+        return result.data or []
+
+    def v2_get_recording_review_annotation(self, annotation_id: str):
+        """Get one review annotation by id."""
+        result = (
+            self.client.table("recording_review_annotations")
+            .select("*")
+            .eq("id", annotation_id)
+            .limit(1)
+            .execute()
+        )
+        return result.data[0] if result.data else None
+
+    def v2_create_recording_review_annotation(self, session_id: str, reviewer_id: str, data: dict):
+        """Create a new time-span review annotation."""
+        payload = {
+            "session_id": session_id,
+            "recording_id": data["recording_id"],
+            "start_ms": data["start_ms"],
+            "end_ms": data["end_ms"],
+            "label": data["label"],
+            "reviewer_id": reviewer_id,
+            "rubric_version": data["rubric_version"],
+        }
+        if "notes" in data:
+            payload["notes"] = data.get("notes")
+        result = self.client.table("recording_review_annotations").insert(payload).execute()
+        return result.data[0] if result.data else None
+
+    def v2_update_recording_review_annotation(self, annotation_id: str, reviewer_id: str, data: dict):
+        """Update an existing time-span review annotation."""
+        payload = {"reviewer_id": reviewer_id, "updated_at": datetime.now(timezone.utc).isoformat()}
+        for key in ("recording_id", "start_ms", "end_ms", "label", "notes", "rubric_version"):
+            if key in data:
+                payload[key] = data.get(key)
+        result = (
+            self.client.table("recording_review_annotations")
+            .update(payload)
+            .eq("id", annotation_id)
+            .execute()
+        )
+        return result.data[0] if result.data else None
+
+    def v2_delete_recording_review_annotation(self, annotation_id: str) -> bool:
+        """Delete a review annotation by id."""
+        self.client.table("recording_review_annotations").delete().eq("id", annotation_id).execute()
+        return True
+
     def v2_get_last_completed_session(self, user_id: str):
         """Return the most recent completed session for the user (for tutor_feedback_deadline when no active session). Includes tutor_feedback_sent_at so deadline is omitted once feedback is sent."""
         result = (
@@ -1426,6 +1618,23 @@ class DatabaseService:
         )
         return self.get_sniper_profile_payload(user_id)
 
+    def save_session_step_snapshot(
+        self,
+        session_id: str,
+        user_id: str,
+        realtime_level_at_session: int,
+        realtime_step_at_session: int,
+    ) -> bool:
+        """Best-effort save of authoritative backend level/step snapshot on v2_sessions."""
+        try:
+            self.client.table("v2_sessions").update({
+                "realtime_level_at_session": int(realtime_level_at_session),
+                "realtime_step_at_session": int(realtime_step_at_session),
+            }).eq("id", session_id).eq("user_id", user_id).execute()
+            return True
+        except Exception:
+            return False
+
     def save_session_sniper_metrics(
         self,
         session_id: str,
@@ -1438,6 +1647,14 @@ class DatabaseService:
         stage_score: Optional[float] = None,
         voiced_duration_sec: Optional[float] = None,
         student_rating_1_10: Optional[int] = None,
+        recording_id: Optional[str] = None,
+        duration_seconds: Optional[float] = None,
+        pitch_center_st: Optional[float] = None,
+        pitch_frame_count: Optional[int] = None,
+        frontend_level: Optional[int] = None,
+        frontend_step: Optional[int] = None,
+        completed: Optional[bool] = None,
+        valid_for_progression: Optional[bool] = None,
     ):
         """Upsert session_sniper_metrics (from client sniper-session-complete)."""
         payload = {"session_id": session_id, "user_id": user_id}
@@ -1457,7 +1674,42 @@ class DatabaseService:
             payload["voiced_duration_sec"] = voiced_duration_sec
         if student_rating_1_10 is not None:
             payload["student_rating_1_10"] = student_rating_1_10
-        self.client.table("session_sniper_metrics").upsert(payload, on_conflict="session_id").execute()
+        if recording_id is not None:
+            payload["recording_id"] = recording_id
+        if duration_seconds is not None:
+            payload["duration_seconds"] = duration_seconds
+        if pitch_center_st is not None:
+            payload["pitch_center_st"] = pitch_center_st
+        if pitch_frame_count is not None:
+            payload["pitch_frame_count"] = pitch_frame_count
+        if frontend_level is not None:
+            payload["frontend_level"] = frontend_level
+        if frontend_step is not None:
+            payload["frontend_step"] = frontend_step
+        if completed is not None:
+            payload["completed"] = completed
+        if valid_for_progression is not None:
+            payload["valid_for_progression"] = valid_for_progression
+        payload["updated_at"] = datetime.now(timezone.utc).isoformat()
+        try:
+            self.client.table("session_sniper_metrics").upsert(payload, on_conflict="session_id").execute()
+        except Exception:
+            legacy_payload = {
+                k: v for k, v in payload.items()
+                if k in {
+                    "session_id",
+                    "user_id",
+                    "wpm",
+                    "pause_ms",
+                    "dynamic_db",
+                    "emphasis_per_min",
+                    "energy_ratio",
+                    "stage_score",
+                    "voiced_duration_sec",
+                    "student_rating_1_10",
+                }
+            }
+            self.client.table("session_sniper_metrics").upsert(legacy_payload, on_conflict="session_id").execute()
 
     def get_session_sniper_metrics(self, session_id: str) -> Optional[dict]:
         """Get session_sniper_metrics for session or None."""
@@ -1467,7 +1719,7 @@ class DatabaseService:
     def update_or_set_session_sniper_rating(
         self, session_id: str, user_id: str, student_rating_1_10: int
     ) -> bool:
-        """Set student_rating_1_10 for a session (owned by user). Updates existing row or inserts one. Returns True if ok."""
+        """Set the legacy student_rating_1_10 column for a session using the current 1-5 self-rating scale."""
         session = self.v2_get_session(session_id, user_id)
         if not session:
             return False
@@ -1502,7 +1754,7 @@ class DatabaseService:
         """
         Update user_sniper_profile from a single POST payload (e.g. sniper-session-complete).
         Only when stage_score >= 60 and voiced_duration_sec >= 60, and only when
-        student_rating_1_10 >= 8 or session coach_grade >= 8 (so only “good” sessions update baseline).
+        the student's 1-5 self-rating is >= 4 or the coach grade is >= 8.
         """
         stage_100 = None
         if stage_score is not None:
@@ -1511,13 +1763,13 @@ class DatabaseService:
             return
         if voiced_duration_sec is not None and voiced_duration_sec < 60:
             return
-        if student_rating_1_10 is not None and student_rating_1_10 < 5:
+        if student_rating_1_10 is not None and student_rating_1_10 < 3:
             return
         if session_id:
             session = self.v2_get_session(session_id, user_id)
             if session and session.get("coach_grade") is not None and (session.get("coach_grade") or 0) < 5:
                 return
-        rating_ok = student_rating_1_10 is not None and student_rating_1_10 >= 8
+        rating_ok = student_rating_1_10 is not None and student_rating_1_10 >= 4
         if not rating_ok and session_id:
             session = self.v2_get_session(session_id, user_id)
             if session and (session.get("coach_grade") or 0) >= 8:
@@ -1554,6 +1806,56 @@ class DatabaseService:
             baseline_energy_ratio=new_energy_ratio,
         )
 
+    def update_sniper_pitch_baseline_from_session_summary(
+        self,
+        user_id: str,
+        *,
+        pitch_center_st: Optional[float] = None,
+        pitch_frame_count: Optional[int] = None,
+        min_pitch_frame_count: int = 10,
+    ) -> bool:
+        """
+        Update the adaptive pitch baseline from a completed session summary.
+        Safe to call repeatedly; skips when there is not enough pitch evidence.
+        """
+        if pitch_center_st is None or pitch_frame_count is None:
+            return False
+        try:
+            pitch_value = float(pitch_center_st)
+            frame_count = int(pitch_frame_count)
+        except (TypeError, ValueError):
+            return False
+        if frame_count < min_pitch_frame_count:
+            return False
+
+        profile = self.get_sniper_profile(user_id) or {}
+
+        def as_int(value, default: int) -> int:
+            try:
+                return int(value)
+            except (TypeError, ValueError):
+                return default
+
+        old_pitch = profile.get("realtime_pitch_baseline_st")
+        if old_pitch is None:
+            new_pitch = pitch_value
+        else:
+            try:
+                new_pitch = (0.8 * float(old_pitch)) + (0.2 * pitch_value)
+            except (TypeError, ValueError):
+                new_pitch = pitch_value
+
+        self.upsert_sniper_profile(
+            user_id=user_id,
+            session_count=as_int(profile.get("session_count"), 0),
+            sessions_with_energy_count=as_int(profile.get("sessions_with_energy_count"), 0),
+            realtime_level=max(1, as_int(profile.get("realtime_level"), 1)),
+            realtime_step=min(10, max(1, as_int(profile.get("realtime_step"), 1))),
+            realtime_pitch_baseline_st=new_pitch,
+            sessions_with_pitch_count=max(0, as_int(profile.get("sessions_with_pitch_count"), 0)) + 1,
+        )
+        return True
+
     def update_sniper_baseline_from_session(
         self,
         session_id: str,
@@ -1564,8 +1866,8 @@ class DatabaseService:
     ):
         """
         After session completes: merge session_sniper_metrics + recording into user_sniper_profile (EMA).
-        Only update when stage_score >= 60, voiced_duration >= 60s, and (student_rating_1_10 >= 8 or coach_grade >= 8).
-        Skip when either grade < 5 (low-rated session).
+        Only update when stage_score >= 60, voiced_duration >= 60s, and (self-rating >= 4 on the 1-5 scale or coach_grade >= 8).
+        Skip when either rating is clearly low.
         """
         metrics = self.get_session_sniper_metrics(session_id)
         stage_score_100 = None
@@ -1580,12 +1882,12 @@ class DatabaseService:
         if duration_sec is not None and duration_sec < 60:
             return
         student_rating = (metrics or {}).get("student_rating_1_10")
-        if student_rating is not None and int(student_rating) < 5:
+        if student_rating is not None and int(student_rating) < 3:
             return
         session = self.v2_get_session(session_id, user_id)
         if session and session.get("coach_grade") is not None and (session.get("coach_grade") or 0) < 5:
             return
-        rating_ok = student_rating is not None and int(student_rating) >= 8
+        rating_ok = student_rating is not None and int(student_rating) >= 4
         if not rating_ok and session and (session.get("coach_grade") or 0) >= 8:
             rating_ok = True
         if not rating_ok:
@@ -2101,7 +2403,11 @@ class DatabaseService:
         return result.data[0] if result.data else None
 
     def v2_get_active_homework_session(self, user_id: str):
-        """Active homework flow session (status in warm_up, task_block, final_task_ready, post_questions, completing_from_recording_1)."""
+        """Active homework flow session.
+
+        `post_questions` stays here only for legacy compatibility with older rows;
+        the current web client should not depend on that state.
+        """
         statuses = ("warm_up", "task_block", "final_task_ready", "post_questions", "completing_from_recording_1")
         result = (
             self.client.table("v2_sessions")

@@ -3,6 +3,7 @@ V2: admin CRUD only. Student flow is homework only (routes/homework.py).
 All /v2/admin/* require auth + admin.
 """
 from flask import Blueprint, request, jsonify
+from config import Config
 from auth import require_auth
 from routes.admin import require_admin, is_admin
 from services.db import db
@@ -12,9 +13,264 @@ import logging
 import sentry_sdk
 import json
 import time
+import mimetypes
+import os
+import uuid
+from datetime import datetime, timezone
+from urllib.parse import urlparse
+from werkzeug.utils import secure_filename
 
 logger = logging.getLogger(__name__)
 v2_bp = Blueprint("v2", __name__, url_prefix="/v2")
+config = Config()
+
+_IMPORT_ALLOWED_SOURCE_KINDS = {"internet", "coach_upload", "manual_import"}
+_IMPORT_ALLOWED_OVERALL_QUALITY = {"good", "bad", "unclear"}
+_IMPORT_ALLOWED_EXTENSIONS = {
+    ".mp3", ".wav", ".m4a", ".webm", ".mp4", ".mpeg", ".mpga", ".ogg", ".oga", ".aac", ".flac"
+}
+
+
+def _coerce_review_score(name: str, value):
+    if value is None:
+        return None
+    try:
+        score = float(value)
+    except (TypeError, ValueError):
+        raise ValueError(f"{name} must be a number")
+    if score != score or score in (float("inf"), float("-inf")):
+        raise ValueError(f"{name} must be a finite number")
+    return score
+
+
+def _is_valid_uuid(val):
+    import re
+    return bool(re.match(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', str(val or ''), re.I))
+
+
+def _coerce_review_overall_quality(value):
+    if value is None:
+        return None
+    if isinstance(value, str):
+        quality = value.strip()
+        if not quality:
+            return None
+        return quality
+    score = _coerce_review_score("overall_quality", value)
+    return str(int(score)) if float(score).is_integer() else str(score)
+
+
+def _coerce_bounded_int(name: str, value, *, min_value: int, max_value: int):
+    if value is None:
+        raise ValueError(f"{name} is required")
+    try:
+        parsed = int(str(value).strip())
+    except (TypeError, ValueError):
+        raise ValueError(f"{name} must be an integer between {min_value} and {max_value}")
+    if parsed < min_value or parsed > max_value:
+        raise ValueError(f"{name} must be between {min_value} and {max_value}")
+    return parsed
+
+
+def _clean_optional_text(value, *, max_len: int | None = None):
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ValueError("Expected a string value")
+    cleaned = value.strip()
+    if not cleaned:
+        return None
+    if max_len is not None and len(cleaned) > max_len:
+        raise ValueError(f"Value must be at most {max_len} characters")
+    return cleaned
+
+
+def _validate_import_source_kind(value):
+    source_kind = _clean_optional_text(value)
+    if not source_kind:
+        raise ValueError("source_kind is required")
+    if source_kind not in _IMPORT_ALLOWED_SOURCE_KINDS:
+        allowed = ", ".join(sorted(_IMPORT_ALLOWED_SOURCE_KINDS))
+        raise ValueError(f"source_kind must be one of {allowed}")
+    return source_kind
+
+
+def _validate_import_overall_quality(value):
+    overall_quality = _clean_optional_text(value)
+    if not overall_quality:
+        raise ValueError("overall_quality is required")
+    if overall_quality not in _IMPORT_ALLOWED_OVERALL_QUALITY:
+        allowed = ", ".join(sorted(_IMPORT_ALLOWED_OVERALL_QUALITY))
+        raise ValueError(f"overall_quality must be one of {allowed}")
+    return overall_quality
+
+
+def _validate_import_source_url(value):
+    source_url = _clean_optional_text(value, max_len=2048)
+    if not source_url:
+        return None
+    parsed = urlparse(source_url)
+    if parsed.scheme not in ("http", "https") or not parsed.netloc:
+        raise ValueError("source_url must be a valid http/https URL")
+    return source_url
+
+
+def _validate_import_audio_file(file_storage):
+    if file_storage is None or not (getattr(file_storage, "filename", "") or "").strip():
+        raise ValueError("audio_file is required")
+    original_name = secure_filename(file_storage.filename or "")
+    ext = os.path.splitext(original_name)[1].lower()
+    if ext not in _IMPORT_ALLOWED_EXTENSIONS:
+        raise ValueError("unsupported audio format")
+    return original_name, ext
+
+
+def _build_admin_import_storage_path(recording_id: str, original_filename: str):
+    safe_name = secure_filename(original_filename or "") or "audio"
+    ext = os.path.splitext(safe_name)[1].lower() or ".bin"
+    now = datetime.now(timezone.utc)
+    return f"admin_imports/{now:%Y/%m}/{recording_id}/{uuid.uuid4().hex}{ext}"
+
+
+def _public_storage_url(bucket: str, path: str):
+    supabase_url = (getattr(config, "SUPABASE_URL", "") or "").rstrip("/")
+    if not supabase_url or not bucket or not path:
+        return ""
+    return f"{supabase_url}/storage/v1/object/public/{bucket}/{path}"
+
+
+def _build_admin_import_source_metadata(*, source_kind: str, source_url, source_title, speaker_label, language_code, transcript_text, import_notes, reviewer_id: str):
+    return {
+        "recording_origin": "admin_import",
+        "source_kind": source_kind,
+        "source_url": source_url,
+        "source_title": source_title,
+        "speaker_label": speaker_label,
+        "language_code": language_code,
+        "transcript_text": transcript_text,
+        "import_notes": import_notes,
+        "imported_by": reviewer_id,
+        "imported_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+    }
+
+
+def _try_queue_admin_import_processing(recording_id: str) -> bool:
+    """Hook for a future standalone recording-processing pipeline."""
+    return False
+
+
+def _parse_admin_import_review_patch(data: dict):
+    payload = {}
+    if "overall_quality" in data:
+        payload["overall_quality"] = _validate_import_overall_quality(data.get("overall_quality")) if data.get("overall_quality") is not None else None
+    if "confidence_score" in data:
+        payload["confidence_score"] = _coerce_bounded_int("confidence_score", data.get("confidence_score"), min_value=1, max_value=10)
+    if "coach_style_score" in data:
+        payload["coach_style_score"] = _coerce_bounded_int("coach_style_score", data.get("coach_style_score"), min_value=1, max_value=10)
+    if "review_notes" in data:
+        payload["notes"] = _clean_optional_text(data.get("review_notes"), max_len=5000)
+    elif "notes" in data:
+        payload["notes"] = _clean_optional_text(data.get("notes"), max_len=5000)
+    if "rubric_version" in data:
+        rubric_version = _clean_optional_text(data.get("rubric_version"), max_len=255)
+        if not rubric_version:
+            raise ValueError("rubric_version is required")
+        payload["rubric_version"] = rubric_version
+    return payload
+
+
+def _allowed_session_recording_ids(session: dict) -> set[str]:
+    ids = set()
+    for key in ("recording_1_id", "recording_2_id"):
+        value = session.get(key)
+        if value:
+            ids.add(str(value))
+    return ids
+
+
+def _validate_session_recording_id(session: dict, recording_id: str | None):
+    if recording_id is None:
+        return
+    allowed_ids = _allowed_session_recording_ids(session)
+    if not allowed_ids:
+        raise ValueError("This session has no recording to attach")
+    if str(recording_id) not in allowed_ids:
+        raise ValueError("recording_id must belong to this session")
+
+
+def _parse_review_payload(data: dict):
+    payload = {}
+    if "recording_id" in data:
+        payload["recording_id"] = str(data.get("recording_id")).strip() if data.get("recording_id") else None
+    if "overall_quality" in data:
+        payload["overall_quality"] = _coerce_review_overall_quality(data.get("overall_quality"))
+    if "confidence_score" in data:
+        payload["confidence_score"] = _coerce_review_score("confidence_score", data.get("confidence_score"))
+    if "coach_style_score" in data:
+        payload["coach_style_score"] = _coerce_review_score("coach_style_score", data.get("coach_style_score"))
+    if "notes" in data:
+        notes = data.get("notes")
+        if notes is not None and not isinstance(notes, str):
+            raise ValueError("notes must be a string or null")
+        payload["notes"] = notes.strip() if isinstance(notes, str) else None
+    if "rubric_version" in data:
+        rubric_version = data.get("rubric_version")
+        if rubric_version is None or not isinstance(rubric_version, str) or not rubric_version.strip():
+            raise ValueError("rubric_version must be a non-empty string")
+        payload["rubric_version"] = rubric_version.strip()
+    return payload
+
+
+def _parse_review_annotation_payload(data: dict, *, partial: bool = False):
+    payload = {}
+    required = () if partial else ("recording_id", "start_ms", "end_ms", "label", "rubric_version")
+    for field in required:
+        if field not in data:
+            raise ValueError(f"{field} is required")
+    if "recording_id" in data:
+        recording_id = data.get("recording_id")
+        if recording_id is None or not str(recording_id).strip():
+            raise ValueError("recording_id is required")
+        payload["recording_id"] = str(recording_id).strip()
+    if "start_ms" in data:
+        try:
+            payload["start_ms"] = int(data.get("start_ms"))
+        except (TypeError, ValueError):
+            raise ValueError("start_ms must be an integer")
+    if "end_ms" in data:
+        try:
+            payload["end_ms"] = int(data.get("end_ms"))
+        except (TypeError, ValueError):
+            raise ValueError("end_ms must be an integer")
+    if "label" in data:
+        label = data.get("label")
+        if label is None or not isinstance(label, str) or not label.strip():
+            raise ValueError("label must be a non-empty string")
+        payload["label"] = label.strip()
+    if "notes" in data:
+        notes = data.get("notes")
+        if notes is not None and not isinstance(notes, str):
+            raise ValueError("notes must be a string or null")
+        payload["notes"] = notes.strip() if isinstance(notes, str) else None
+    if "rubric_version" in data:
+        rubric_version = data.get("rubric_version")
+        if rubric_version is None or not isinstance(rubric_version, str) or not rubric_version.strip():
+            raise ValueError("rubric_version must be a non-empty string")
+        payload["rubric_version"] = rubric_version.strip()
+    return payload
+
+
+def _parse_report_comment(value):
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ValueError("report_comment must be a string or null")
+    comment = value.strip()
+    if not comment:
+        return None
+    if len(comment) > 2000:
+        raise ValueError("report_comment must be at most 2000 characters")
+    return comment
 
 
 # ---------- Admin ----------
@@ -329,15 +585,18 @@ def v2_admin_send_completion_email(user_id):
 @v2_bp.route("/admin/students/<user_id>/sessions/<session_id>", methods=["GET", "PATCH"])
 @require_admin
 def v2_admin_student_session_detail(user_id, session_id):
-    """GET: full session for admin. PATCH: update coach_grade (1-10). Body: { \"coach_grade\": 7 }."""
+    """GET: full session for admin. PATCH: update coach_grade/report_comment."""
     try:
         if request.method == "GET":
             session = db.v2_get_session(session_id, user_id)
             if not session:
                 return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found"}), 404
+            session["recording_review"] = db.v2_get_recording_review(session_id)
+            session["review_annotations_count"] = len(db.v2_list_recording_review_annotations(session_id))
             return jsonify({"session": session}), 200
-        # PATCH: coach_grade
+        # PATCH: coach_grade / report_comment
         data = request.get_json() or {}
+        updates = {}
         coach_grade = data.get("coach_grade")
         if coach_grade is not None:
             try:
@@ -346,12 +605,129 @@ def v2_admin_student_session_detail(user_id, session_id):
                     return jsonify({"code": "INVALID_INPUT", "error": "coach_grade must be between 1 and 10"}), 400
             except (TypeError, ValueError):
                 return jsonify({"code": "INVALID_INPUT", "error": "coach_grade must be an integer 1-10"}), 400
-        else:
-            g = None
-        updated = db.v2_update_session(session_id, user_id, {"coach_grade": g})
+            updates["coach_grade"] = g
+        if "report_comment" in data:
+            try:
+                updates["report_comment"] = _parse_report_comment(data.get("report_comment"))
+            except ValueError as ve:
+                return jsonify({"code": "INVALID_INPUT", "error": str(ve)}), 400
+        if not updates:
+            return jsonify({"code": "INVALID_INPUT", "error": "Provide coach_grade and/or report_comment"}), 400
+        updated = db.v2_update_session(session_id, user_id, updates)
         if not updated:
             return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found"}), 404
-        return jsonify({"status": "ok", "coach_grade": updated.get("coach_grade")}), 200
+        return jsonify({
+            "status": "ok",
+            "coach_grade": updated.get("coach_grade"),
+            "report_comment": updated.get("report_comment"),
+        }), 200
+    except Exception as e:
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
+
+
+@v2_bp.route("/admin/students/<user_id>/sessions/<session_id>/review", methods=["GET", "PUT", "PATCH"])
+@require_admin
+def v2_admin_student_session_review(user_id, session_id):
+    """Admin-only ML review labels for a completed session."""
+    try:
+        session = db.v2_get_session(session_id, user_id)
+        if not session:
+            return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found"}), 404
+
+        if request.method == "GET":
+            return jsonify({
+                "review": db.v2_get_recording_review(session_id),
+                "allowed_recording_ids": sorted(_allowed_session_recording_ids(session)),
+            }), 200
+
+        existing = db.v2_get_recording_review(session_id)
+        data = request.get_json(silent=True) or {}
+        try:
+            payload = _parse_review_payload(data)
+            if "recording_id" in payload:
+                _validate_session_recording_id(session, payload.get("recording_id"))
+            if not payload:
+                return jsonify({"code": "INVALID_INPUT", "error": "No review fields provided"}), 400
+            if not existing and "rubric_version" not in payload:
+                return jsonify({"code": "INVALID_INPUT", "error": "rubric_version is required when creating a review"}), 400
+        except ValueError as ve:
+            return jsonify({"code": "INVALID_INPUT", "error": str(ve)}), 400
+
+        review = db.v2_upsert_recording_review(session_id, request.user_id, payload)
+        return jsonify({"status": "ok", "review": review}), 200
+    except Exception as e:
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
+
+
+@v2_bp.route("/admin/students/<user_id>/sessions/<session_id>/review-annotations", methods=["GET", "POST"])
+@require_admin
+def v2_admin_student_session_review_annotations(user_id, session_id):
+    """Admin-only time-span review labels for a session recording."""
+    try:
+        session = db.v2_get_session(session_id, user_id)
+        if not session:
+            return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found"}), 404
+
+        if request.method == "GET":
+            return jsonify({"annotations": db.v2_list_recording_review_annotations(session_id)}), 200
+
+        data = request.get_json(silent=True) or {}
+        try:
+            payload = _parse_review_annotation_payload(data, partial=False)
+            _validate_session_recording_id(session, payload.get("recording_id"))
+            if payload["start_ms"] < 0:
+                return jsonify({"code": "INVALID_INPUT", "error": "start_ms must be >= 0"}), 400
+            if payload["end_ms"] <= payload["start_ms"]:
+                return jsonify({"code": "INVALID_INPUT", "error": "end_ms must be greater than start_ms"}), 400
+        except ValueError as ve:
+            return jsonify({"code": "INVALID_INPUT", "error": str(ve)}), 400
+
+        annotation = db.v2_create_recording_review_annotation(session_id, request.user_id, payload)
+        return jsonify({"status": "ok", "annotation": annotation}), 201
+    except Exception as e:
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
+
+
+@v2_bp.route("/admin/students/<user_id>/sessions/<session_id>/review-annotations/<annotation_id>", methods=["PATCH", "DELETE"])
+@require_admin
+def v2_admin_student_session_review_annotation_detail(user_id, session_id, annotation_id):
+    """Admin-only update/delete for one time-span review annotation."""
+    try:
+        session = db.v2_get_session(session_id, user_id)
+        if not session:
+            return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found"}), 404
+
+        annotation = db.v2_get_recording_review_annotation(annotation_id)
+        if not annotation or str(annotation.get("session_id")) != str(session_id):
+            return jsonify({"code": "ANNOTATION_NOT_FOUND", "error": "Annotation not found"}), 404
+
+        if request.method == "DELETE":
+            db.v2_delete_recording_review_annotation(annotation_id)
+            return jsonify({"status": "ok", "deleted": True}), 200
+
+        data = request.get_json(silent=True) or {}
+        try:
+            payload = _parse_review_annotation_payload(data, partial=True)
+            if not payload:
+                return jsonify({"code": "INVALID_INPUT", "error": "No annotation fields provided"}), 400
+            if "recording_id" in payload:
+                _validate_session_recording_id(session, payload.get("recording_id"))
+            next_start = payload.get("start_ms", int(annotation.get("start_ms") or 0))
+            next_end = payload.get("end_ms", int(annotation.get("end_ms") or 0))
+            if next_start < 0:
+                return jsonify({"code": "INVALID_INPUT", "error": "start_ms must be >= 0"}), 400
+            if next_end <= next_start:
+                return jsonify({"code": "INVALID_INPUT", "error": "end_ms must be greater than start_ms"}), 400
+        except ValueError as ve:
+            return jsonify({"code": "INVALID_INPUT", "error": str(ve)}), 400
+
+        updated = db.v2_update_recording_review_annotation(annotation_id, request.user_id, payload)
+        if not updated:
+            return jsonify({"code": "ANNOTATION_NOT_FOUND", "error": "Annotation not found"}), 404
+        return jsonify({"status": "ok", "annotation": updated}), 200
     except Exception as e:
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
@@ -360,7 +736,7 @@ def v2_admin_student_session_detail(user_id, session_id):
 @v2_bp.route("/admin/students/<user_id>/sessions/<session_id>/grade", methods=["PUT"])
 @require_admin
 def v2_admin_student_session_grade(user_id, session_id):
-    """Set admin/coach grade for a session. Body: { \"admin_grade\": number } (1-10). Persisted as coach_grade; GET report returns admin_grade."""
+    """Set admin/coach grade for a session. Body: { \"admin_grade\": number, \"report_comment\"?: string|null }."""
     try:
         data = request.get_json(silent=True) or {}
         admin_grade = data.get("admin_grade")
@@ -375,10 +751,21 @@ def v2_admin_student_session_grade(user_id, session_id):
         session = db.v2_get_session(session_id, user_id)
         if not session:
             return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found"}), 404
-        updated = db.v2_update_session(session_id, user_id, {"coach_grade": g})
+        try:
+            report_comment = _parse_report_comment(data.get("report_comment")) if "report_comment" in data else session.get("report_comment")
+        except ValueError as ve:
+            return jsonify({"code": "INVALID_INPUT", "error": str(ve)}), 400
+        updated = db.v2_update_session(session_id, user_id, {
+            "coach_grade": g,
+            "report_comment": report_comment,
+        })
         if not updated:
             return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found"}), 404
-        return jsonify({"status": "ok", "admin_grade": g}), 200
+        return jsonify({
+            "status": "ok",
+            "admin_grade": g,
+            "report_comment": updated.get("report_comment"),
+        }), 200
     except Exception as e:
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
@@ -499,6 +886,7 @@ def v2_admin_student_session_report_get(user_id, session_id):
             "performance_history": performance_history,
             "score_for_display": score_for_display_100,
             "admin_grade": session.get("coach_grade"),
+            "report_comment": (session.get("report_comment") or "").strip() or None,
         }
         if recording_payload is not None:
             payload["recording"] = recording_payload
@@ -551,11 +939,7 @@ def v2_admin_recording_playback_url(recording_id):
     """Return a fresh signed playback URL for any recording (admin). Used as fallback when report API returns no audio_url."""
     try:
         from config import Config
-        import re
         config = Config()
-
-        def _is_valid_uuid(val):
-            return bool(re.match(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', str(val or ''), re.I))
 
         if not _is_valid_uuid(recording_id):
             return jsonify({"code": "INVALID_INPUT", "error": "Invalid recording ID"}), 400
@@ -582,6 +966,277 @@ def v2_admin_recording_playback_url(recording_id):
             return jsonify({"code": "URL_GENERATION_FAILED", "error": "Could not generate playback URL"}), 500
 
         return jsonify({"audio_url": audio_url}), 200
+    except Exception as e:
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
+
+
+@v2_bp.route("/admin/recordings/imports", methods=["GET"])
+@require_admin
+def v2_admin_recordings_imports():
+    """List imported recordings for the admin ML page."""
+    try:
+        try:
+            limit = int(request.args.get("limit", 50))
+        except (TypeError, ValueError):
+            return jsonify({"code": "INVALID_INPUT", "error": "limit must be an integer"}), 400
+        try:
+            offset = int(request.args.get("offset", 0))
+        except (TypeError, ValueError):
+            return jsonify({"code": "INVALID_INPUT", "error": "offset must be an integer"}), 400
+        limit = max(1, min(limit, 200))
+        offset = max(0, offset)
+        rows = db.v2_list_admin_import_recordings(limit=limit, offset=offset)
+        recordings = []
+        for row in rows:
+            playback_url = None
+            storage_path = (row.get("storage_path") or "").strip()
+            if storage_path:
+                try:
+                    playback_url = db.create_signed_url(config.AUDIO_BUCKET_NAME, storage_path, config.SIGNED_URL_EXPIRY_SECONDS)
+                except Exception:
+                    playback_url = _public_storage_url(config.AUDIO_BUCKET_NAME, storage_path) or None
+            recordings.append({
+                "id": row.get("id"),
+                "recording_id": row.get("id"),
+                "created_at": row.get("created_at"),
+                "duration": row.get("duration"),
+                "duration_seconds": row.get("duration_seconds"),
+                "audio_url": playback_url,
+                "transcription_text": row.get("transcription_text"),
+                "recording_origin": row.get("recording_origin"),
+                "source_metadata": row.get("source_metadata") or {},
+                "review": row.get("review"),
+            })
+        return jsonify({
+            "recordings": recordings,
+            "limit": limit,
+            "offset": offset,
+            "count": len(recordings),
+        }), 200
+    except Exception as e:
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
+
+
+@v2_bp.route("/admin/recordings/import", methods=["POST"])
+@require_admin
+def v2_admin_recordings_import():
+    """Admin-only multipart recording ingestion for ML labeling."""
+    try:
+        if "audio_file" not in request.files:
+            return jsonify({"code": "AUDIO_FILE_REQUIRED", "error": "audio_file is required"}), 400
+
+        audio_file = request.files.get("audio_file")
+        try:
+            original_name, _ = _validate_import_audio_file(audio_file)
+        except ValueError as ve:
+            message = str(ve)
+            if message == "unsupported audio format":
+                return jsonify({"code": "UNSUPPORTED_AUDIO_FORMAT", "error": "unsupported audio format"}), 415
+            return jsonify({"code": "AUDIO_FILE_REQUIRED", "error": message}), 400
+
+        max_bytes = int((getattr(config, "MAX_AUDIO_SIZE_MB", 25) or 25) * 1024 * 1024)
+        content_length = request.content_length or 0
+        if content_length and content_length > max_bytes:
+            return jsonify({"code": "FILE_TOO_LARGE", "error": f"audio_file exceeds {config.MAX_AUDIO_SIZE_MB}MB limit"}), 413
+
+        form = request.form
+        try:
+            source_kind = _validate_import_source_kind(form.get("source_kind"))
+            overall_quality = _validate_import_overall_quality(form.get("overall_quality"))
+            confidence_score = _coerce_bounded_int("confidence_score", form.get("confidence_score"), min_value=1, max_value=10)
+            coach_style_score = _coerce_bounded_int("coach_style_score", form.get("coach_style_score"), min_value=1, max_value=10)
+            rubric_version = _clean_optional_text(form.get("rubric_version"), max_len=255)
+            if not rubric_version:
+                raise ValueError("rubric_version is required")
+            source_url = _validate_import_source_url(form.get("source_url"))
+            source_title = _clean_optional_text(form.get("source_title"), max_len=500)
+            speaker_label = _clean_optional_text(form.get("speaker_label"), max_len=255)
+            language_code = _clean_optional_text(form.get("language_code"), max_len=32)
+            transcript_text = _clean_optional_text(form.get("transcript_text"), max_len=50000)
+            import_notes = _clean_optional_text(form.get("import_notes"), max_len=5000)
+            review_notes = _clean_optional_text(form.get("review_notes"), max_len=5000)
+        except ValueError as ve:
+            msg = str(ve)
+            code = "INVALID_IMPORT_PAYLOAD"
+            if msg.startswith("source_kind"):
+                code = "INVALID_SOURCE_KIND"
+            elif msg.startswith("overall_quality"):
+                code = "INVALID_OVERALL_QUALITY"
+            elif msg.startswith("confidence_score"):
+                code = "INVALID_CONFIDENCE_SCORE"
+            elif msg.startswith("coach_style_score"):
+                code = "INVALID_COACH_STYLE_SCORE"
+            elif msg.startswith("rubric_version"):
+                code = "MISSING_RUBRIC_VERSION"
+            elif msg.startswith("source_url"):
+                code = "INVALID_SOURCE_URL"
+            return jsonify({"code": code, "error": msg}), 422
+
+        file_bytes = audio_file.read()
+        if not file_bytes:
+            return jsonify({"code": "INVALID_MULTIPART", "error": "audio_file is empty"}), 400
+        if len(file_bytes) > max_bytes:
+            return jsonify({"code": "FILE_TOO_LARGE", "error": f"audio_file exceeds {config.MAX_AUDIO_SIZE_MB}MB limit"}), 413
+
+        recording_id = str(uuid.uuid4())
+        storage_path = _build_admin_import_storage_path(recording_id, original_name)
+        content_type = (audio_file.mimetype or mimetypes.guess_type(original_name)[0] or "application/octet-stream").strip()
+
+        try:
+            db.upload_audio(config.AUDIO_BUCKET_NAME, storage_path, file_bytes, content_type=content_type)
+        except Exception as upload_err:
+            logger.warning("Admin recording import upload failed: %s", upload_err, exc_info=True)
+            return jsonify({"code": "IMPORT_UPLOAD_FAILED", "error": "Failed to store uploaded audio"}), 500
+
+        source_metadata = _build_admin_import_source_metadata(
+            source_kind=source_kind,
+            source_url=source_url,
+            source_title=source_title,
+            speaker_label=speaker_label,
+            language_code=language_code,
+            transcript_text=transcript_text,
+            import_notes=import_notes,
+            reviewer_id=str(request.user_id),
+        )
+        public_audio_url = _public_storage_url(config.AUDIO_BUCKET_NAME, storage_path)
+
+        try:
+            recording = db.create_recording({
+                "id": recording_id,
+                "user_id": None,
+                "session_id": None,
+                "audio_url": public_audio_url or "",
+                "duration": 0,
+                "duration_seconds": None,
+                "transcription_text": transcript_text,
+                "storage_path": storage_path,
+                "recording_origin": "admin_import",
+                "source_metadata": source_metadata,
+            })
+        except Exception as create_err:
+            logger.warning("Admin recording import create_recording failed: %s", create_err, exc_info=True)
+            return jsonify({"code": "IMPORT_RECORDING_CREATE_FAILED", "error": str(create_err)}), 500
+
+        if not recording:
+            return jsonify({"code": "IMPORT_RECORDING_CREATE_FAILED", "error": "Failed to create recording row"}), 500
+
+        try:
+            review = db.v2_create_recording_review_for_recording(
+                recording_id,
+                str(request.user_id),
+                {
+                    "overall_quality": overall_quality,
+                    "confidence_score": confidence_score,
+                    "coach_style_score": coach_style_score,
+                    "notes": review_notes,
+                    "rubric_version": rubric_version,
+                },
+            )
+        except Exception as review_err:
+            logger.warning("Admin recording import review creation failed: %s", review_err, exc_info=True)
+            return jsonify({"code": "IMPORT_REVIEW_CREATE_FAILED", "error": str(review_err)}), 500
+
+        playback_url = None
+        try:
+            playback_url = db.create_signed_url(config.AUDIO_BUCKET_NAME, storage_path, config.SIGNED_URL_EXPIRY_SECONDS)
+        except Exception as playback_err:
+            logger.warning("Admin recording import signed URL failed: %s", playback_err)
+            playback_url = public_audio_url or None
+
+        queued = False
+        try:
+            queued = _try_queue_admin_import_processing(recording_id)
+        except Exception as queue_err:
+            logger.warning("Admin recording import queue failed: %s", queue_err, exc_info=True)
+
+        message = (
+            "Recording imported and queued for processing."
+            if queued else
+            "Recording imported and labeled."
+        )
+        return jsonify({
+            "status": "ok",
+            "recording_id": recording_id,
+            "review_id": review.get("id") if isinstance(review, dict) else None,
+            "playback_url": playback_url,
+            "message": message,
+        }), 201
+    except Exception as e:
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "IMPORT_FAILED", "error": str(e)}), 500
+
+
+@v2_bp.route("/admin/recordings/<recording_id>", methods=["GET"])
+@require_admin
+def v2_admin_recording_detail(recording_id):
+    """Return one imported/admin recording with metadata and latest review."""
+    try:
+        if not _is_valid_uuid(recording_id):
+            return jsonify({"code": "INVALID_INPUT", "error": "Invalid recording ID"}), 400
+        recording = db.get_recording(recording_id, None)
+        if not recording:
+            return jsonify({"code": "RECORDING_NOT_FOUND", "error": "Recording not found"}), 404
+        review = db.v2_get_recording_review_by_recording(recording_id)
+        playback_url = None
+        storage_path = (recording.get("storage_path") or "").strip()
+        if storage_path:
+            try:
+                playback_url = db.create_signed_url(config.AUDIO_BUCKET_NAME, storage_path, config.SIGNED_URL_EXPIRY_SECONDS)
+            except Exception:
+                playback_url = _public_storage_url(config.AUDIO_BUCKET_NAME, storage_path) or None
+        recording_payload = dict(recording)
+        recording_payload["recording_id"] = recording_payload.get("id")
+        if playback_url:
+            recording_payload["audio_url"] = playback_url
+        return jsonify({
+            "recording_id": recording_id,
+            "recording": recording_payload,
+            "review": review,
+            "playback_url": playback_url,
+        }), 200
+    except Exception as e:
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
+
+
+@v2_bp.route("/admin/recordings/<recording_id>/review", methods=["PATCH"])
+@require_admin
+def v2_admin_recording_review_patch(recording_id):
+    """Create or update the latest ML review for an imported/admin recording."""
+    try:
+        if not _is_valid_uuid(recording_id):
+            return jsonify({"code": "INVALID_INPUT", "error": "Invalid recording ID"}), 400
+        recording = db.get_recording(recording_id, None)
+        if not recording:
+            return jsonify({"code": "RECORDING_NOT_FOUND", "error": "Recording not found"}), 404
+        data = request.get_json(silent=True) or {}
+        try:
+            payload = _parse_admin_import_review_patch(data)
+        except ValueError as ve:
+            msg = str(ve)
+            code = "INVALID_INPUT"
+            if msg.startswith("overall_quality"):
+                code = "INVALID_OVERALL_QUALITY"
+            elif msg.startswith("confidence_score"):
+                code = "INVALID_CONFIDENCE_SCORE"
+            elif msg.startswith("coach_style_score"):
+                code = "INVALID_COACH_STYLE_SCORE"
+            elif msg.startswith("rubric_version"):
+                code = "MISSING_RUBRIC_VERSION"
+            return jsonify({"code": code, "error": msg}), 422
+        if not payload:
+            return jsonify({"code": "INVALID_INPUT", "error": "No review fields provided"}), 400
+        existing = db.v2_get_recording_review_by_recording(recording_id)
+        if not existing and "rubric_version" not in payload:
+            return jsonify({"code": "MISSING_RUBRIC_VERSION", "error": "rubric_version is required when creating a review"}), 422
+        review = db.v2_upsert_recording_review_for_recording(recording_id, str(request.user_id), payload)
+        return jsonify({
+            "status": "ok",
+            "recording_id": recording_id,
+            "review": review,
+        }), 200
     except Exception as e:
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR", "error": str(e)}), 500

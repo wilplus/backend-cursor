@@ -533,7 +533,7 @@ Generate the report:"""
             live_ball_text = str(live_ball_score_100) if live_ball_score_100 is not None else "not available"
             return (
                 f"Your live ball summary was {live_ball_text}/100, while your final review score is {final_score_100}/100 because filler words are applied after transcription ({filler_count} total). "
-                f"Your self-rating was {self_rating_1_10 if self_rating_1_10 is not None else 'not provided'}, so reflect on whether that matches the transcript-based review. "
+                f"Your self-rating was {self_rating_1_10 if self_rating_1_10 is not None else 'not provided'} out of 5, so reflect on whether that matches the transcript-based review. "
                 "Let's see what your human coach Artur will say in the next video."
             )
         try:
@@ -554,7 +554,7 @@ Generate the report:"""
                 f"Context from recording: {(_sanitize_context_short(context_short) or 'N/A')[:400]}\n"
                 f"Transcript excerpt (for relevancy): {(transcript_excerpt or '')[:300]}\n"
                 f"Admin speaker-profile context: {(profile_ctx or 'N/A')[:200]}\n"
-                f"Student self-rating (1-10): {self_rating_text}\n"
+                f"Student self-rating (1-5): {self_rating_text}\n"
                 f"Live ball summary score (pace/flow only, 0-100): {live_ball_text}\n"
                 f"Final review score (0-100): {final_score_100}\n"
                 f"Filler words: total {filler_count}, breakdown: {filler_str}\n"
@@ -574,7 +574,7 @@ Generate the report:"""
             out = (response.choices[0].message.content or "").strip()
             fallback = (
                 f"Your live ball summary was {live_ball_text}/100, while your final review score is {final_score_100}/100 because filler words ({filler_count}, e.g. {filler_str}) are counted after transcription, and this also shows where your delivery differs from your coach profile notes. "
-                f"You rated yourself {self_rating_text}/10, so reflect on whether that matches the transcript-based result and your progress trend ({history_str}). "
+                f"You rated yourself {self_rating_text}/5, so reflect on whether that matches the transcript-based result and your progress trend ({history_str}). "
                 "Let's see what your human coach Artur will say in the next video."
             )
             return out if out else fallback
@@ -584,7 +584,7 @@ Generate the report:"""
             final_score_100 = round(performance_score * 100)
             return (
                 f"Your live ball summary was {live_ball_text}/100 and your final review score was {final_score_100}/100; that gap can happen because filler words ({filler_count}) are only applied after transcription, and there are still gaps versus your coach profile context to work on. "
-                f"You rated yourself {self_rating_1_10 if self_rating_1_10 is not None else 'not provided'}/10, so reflect on where that rating matches your delivery and score trend. "
+                f"You rated yourself {self_rating_1_10 if self_rating_1_10 is not None else 'not provided'}/5, so reflect on where that rating matches your delivery and score trend. "
                 "Let's see what your human coach Artur will say in the next video."
             )
 

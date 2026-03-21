@@ -188,13 +188,13 @@ Mapping to step: none→0, recording_1_required→1, task_block→2, final_task_
 
 | Step | Action | Endpoint | Response includes |
 |------|--------|----------|-------------------|
-| 0→1 | Start | POST `/v2/homework/session/start` | `status`, `session_id`, `warm_up_task` |
+| 0→1 | Start | POST `/v2/homework/session/start` | `status`, `session_id`, `task` (legacy alias `warm_up_task`) |
 | 1→2 | Upload recording 1 | POST `.../session/<id>/recording-1` | `status: "task_block"`, `task_block`, `recording_id` |
 | 2→3 | Submit metric answers | POST `.../session/<id>/metric-answers` | `status: "final_task_ready"`, `final_task` |
 | 3→4 | Upload recording 2 | POST `.../session/<id>/recording-2` | `status: "post_questions"`, `recording_id`, `performance_score_2` |
 | 4→5 | Submit post-answers | POST `.../session/<id>/post-answers` | `status: "completed"`, `report_text`, `performance_score_end` |
 | Any | Abandon | POST `.../session/<id>/abandon` | 200 deleted, 404 already gone |
-| Cold load | Status | GET `/v2/homework/session/status` | `status`, `session_id`, `session`, `has_active_session`, `warm_up_task` (when applicable) |
+| Cold load | Status | GET `/v2/homework/session/status` | `status`, `session_id`, `session`, `has_active_session`, `task` (legacy alias `warm_up_task`) when applicable |
 
 GET status does **not** return `task_block`, `final_task`, or `report_text`; those come from the mutation that advances to that step.
 
@@ -206,8 +206,8 @@ GET status does **not** return `task_block`, `final_task`, or `report_text`; tho
 
 ### 3.4 UI per step
 
-- **Step 0:** GET status; if no active session, call POST start. Show tutor_feedback_message when present (no active session, tutor not yet sent feedback).
-- **Step 1:** Warm-up text from status/start; record; use **recording-1 response only** to advance to step 2 (do not call GET status after recording-1 to set step).
+- **Step 0:** GET status; if no active session, call POST start.
+- **Step 1:** Task text from status/start; record; use **recording-1 response only** to advance to step 2 (do not call GET status after recording-1 to set step).
 - **Step 2:** Show `task_block` from recording-1 response. If on step 2 after refresh with no task_block, fetch GET task-block or build from `session.session_metric_question_1/2/3`. Abandon button (POST abandon → applyStatusToState({ status: "none" })). On 409 RECORDING_1_PROCESSING, show message and optionally poll GET status only to decide when to retry POST metric-answers; step advances only when POST metric-answers succeeds.
 - **Step 3:** Show `final_task` from metric-answers response; record 2 (60–300 s); advance from recording-2 response.
 - **Step 4:** If no reflective questions, POST post-answers with `answers: []`; else show questions, submit, then use post-answers response for step 5.
@@ -228,13 +228,13 @@ GET status does **not** return `task_block`, `final_task`, or `report_text`; tho
 - Single function: `applyStatusToState(res: HomeworkResponse)`.
 - Step from `mapStatusToStep(res.status)` only. No floors, caps, Math.max, or refs.
 - When `status === "none"`: full reset (step 0, clear session and step-specific state).
-- Other fields (session_id, warm_up_task, task_block, final_task, report_text, performance_score_2, performance_score_end) set only when present in `res`. Use `res.report_text` (backend sends `report_text`, not `report`).
+- Other fields (session_id, task, warm_up_task, task_block, final_task, report_text, performance_score_2, performance_score_end) set only when present in `res`. Use `res.report_text` (backend sends `report_text`, not `report`).
 - **Step from status only:** If GET returns `status: "task_block"`, render step 2 even if task_block payload is missing (handle via Option A or B below). If status is `completed` or `report_generating`, show report or “generating” accordingly; do not force a lower step.
 
 ### 4.3 Refresh strategy
 
 - **Option A:** Backend extends GET status with step payload when relevant (task_block, final_task, report_text). Then GET alone suffices for resume.
-- **Option B:** GET returns only status/session_id/session/has_active_session/warm_up_task. On refresh, set step from status; if step-specific data missing, show “Resuming…” or re-fetch/derive from session. **Never** reset to step 1 because payload is missing.
+- **Option B:** GET returns only status/session_id/session/has_active_session/task. On refresh, set step from status; if step-specific data missing, show “Resuming…” or re-fetch/derive from session. **Never** reset to step 1 because payload is missing.
 
 ### 4.4 Abandon
 
@@ -276,20 +276,15 @@ GET status does **not** return `task_block`, `final_task`, or `report_text`; tho
 
 ---
 
-## 7. Step 0: tutor feedback message
+## 7. Step 0
 
-When user has **no active session** and recently completed a lesson (coach has not yet sent feedback), GET status can include:
-
-- **tutor_feedback_deadline:** ISO 8601.
-- **tutor_feedback_message:** User-facing string, e.g. “Your coach has until … to review your last lesson and send you new homework.”
-
-Frontend: on step 0, if `tutor_feedback_message` is present, show it in an info banner. Omitted when user has active session, never completed, or coach already sent feedback.
+There is **no tutor feedback countdown/message on step 0 anymore**. After the report closes, frontend should just refetch **GET status** and render the normal no-active-session state.
 
 ---
 
 ## 8. Default warm-up
 
-- **Backend:** Creates default warm-up “How was your day so far?” for users with none. API returns `warm_up_task: { id, text }` from start/status.
+- **Backend:** Creates default task “How was your day so far?” for users with none. API returns `task: { id, text }` from start/status (legacy alias `warm_up_task` is still present).
 - **Frontend:** If warm-up is missing or empty, show **“How was your day so far?”** so the flow never blocks. On 422 `NO_WARMUP_CONFIGURED`, show message and step 0 (contact coach).
 
 ---

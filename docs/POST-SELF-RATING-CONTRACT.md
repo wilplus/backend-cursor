@@ -7,10 +7,10 @@ Completion (report creation, session → completed, coach email) is triggered by
 - **URL:** `POST /v2/homework/session/<session_id>/self-rating`
 - **Auth:** `Authorization: Bearer <supabase_access_token>`
 - **Body (JSON):**
-  - With rating: `{ "rating": 8 }` or `{ "student_rating_1_10": 8 }` (1–10)
+  - With rating: `{ "rating": 4 }` or legacy `{ "student_rating_1_10": 4 }` (1–5)
   - Skip: `{ "skipped": true }`
 - **Success (200):**
-  - `{ "status": "ok", "session_completed": true, "student_rating_1_10": 8 }` or
+  - `{ "status": "ok", "session_completed": true, "rating": 4, "student_rating_1_10": 4 }` or
   - `{ "status": "ok", "session_completed": true, "skipped": true }`
 - If the job is still running: `session_completed: false` → poll GET status, then call POST self-rating again.
 
@@ -29,7 +29,7 @@ Replace `<SESSION_ID>` and `<ACCESS_TOKEN>` (from Supabase auth / cookie).
 curl -X POST "https://app.willonski.com/api/homework/session/<SESSION_ID>/self-rating" \
   -H "Authorization: Bearer <ACCESS_TOKEN>" \
   -H "Content-Type: application/json" \
-  -d '{"rating": 8}'
+  -d '{"rating": 4}'
 
 # Or skip
 curl -X POST "https://app.willonski.com/api/homework/session/<SESSION_ID>/self-rating" \

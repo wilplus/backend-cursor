@@ -161,6 +161,6 @@ export interface HomeworkReportResponseV2 {
   };
   context_short?: string;
   coach_insight?: string;
-  tutor_feedback_deadline?: string;
-  tutor_feedback_message?: string;
+  admin_grade?: number | null;
+  report_comment?: string | null;
 }
