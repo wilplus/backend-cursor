@@ -188,7 +188,7 @@ def _process_one(payload: dict):
             score_source = "center_hold_payload"
             base_score_100 = round(center_hold_ratio * 100.0)
         else:
-            base_score_100 = 50
+            base_score_100 = 10
         penalty_points = 3 * int(filler_count)
         final_score_100 = max(0.0, min(100.0, float(base_score_100 - penalty_points)))
         performance_score_1 = final_score_100 / 100.0

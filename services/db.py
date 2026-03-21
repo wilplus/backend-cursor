@@ -2471,10 +2471,36 @@ class DatabaseService:
                 },
                 timeout=5,
             )
-            if resp.status_code != 200:
-                return None
-            data = resp.json()
-            return data.get("email") or (data.get("user", {}).get("email"))
+            if resp.status_code == 200:
+                data = resp.json()
+                email = data.get("email") or (data.get("user", {}).get("email"))
+                if email and str(email).strip():
+                    return str(email).strip()
+            # Fallback: some Supabase setups don't expose /admin/users/{id}; use list endpoint and find by id.
+            base = f"{config.SUPABASE_URL.rstrip('/')}/auth/v1/admin/users"
+            for page in range(1, 11):
+                list_resp = httpx.get(
+                    base,
+                    params={"per_page": 1000, "page": page},
+                    headers={
+                        "Authorization": f"Bearer {config.SUPABASE_SERVICE_ROLE_KEY}",
+                        "apikey": config.SUPABASE_SERVICE_ROLE_KEY,
+                    },
+                    timeout=10,
+                )
+                if list_resp.status_code != 200:
+                    break
+                payload = list_resp.json()
+                users = payload.get("users") or (payload.get("data") or {}).get("users") or []
+                if not users:
+                    break
+                for u in users:
+                    if str(u.get("id") or "") == str(user_id):
+                        found = (u.get("email") or (u.get("user_metadata") or {}).get("email") or "").strip()
+                        return found or None
+                if len(users) < 1000:
+                    break
+            return None
         except Exception:
             return None
 
