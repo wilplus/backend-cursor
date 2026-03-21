@@ -486,6 +486,8 @@ def homework_self_rating(session_id):
     try:
         user_id = request.user_id
         session = db.v2_get_session(session_id, user_id)
+        token_payload = getattr(request, "token_payload", {}) or {}
+        preferred_student_email = token_payload.get("email")
         if not session:
             return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found"}), 404
         status = session.get("status")
@@ -520,7 +522,11 @@ def homework_self_rating(session_id):
             # #region agent log
             _agent_log("POST self-rating attempting completion", {"session_id": session_id, "recording_1_processing_status": session.get("recording_1_processing_status")}, "H4")
             # #endregion
-            payload_out = complete_session_recording_1_only(session_id, user_id)
+            payload_out = complete_session_recording_1_only(
+                session_id,
+                user_id,
+                preferred_student_email=preferred_student_email,
+            )
             if payload_out:
                 session_completed = True
                 logger.info("homework_self_rating: session completed after self-rating session_id=%s", session_id)
@@ -532,7 +538,11 @@ def homework_self_rating(session_id):
         elif status == STATUS_COMPLETING_FROM_RECORDING_1 and session.get("recording_1_processing_status") == "failed":
             # Recovery: job failed; give the user a completed session with a minimal report.
             try:
-                if minimal_complete_and_notify(session_id, user_id):
+                if minimal_complete_and_notify(
+                    session_id,
+                    user_id,
+                    preferred_student_email=preferred_student_email,
+                ):
                     session_completed = True
                     logger.info("homework_self_rating: minimal fallback completion ran session_id=%s", session_id)
                 else:
@@ -912,6 +922,8 @@ def homework_get_report(session_id):
         from config import Config
         config = Config()
         user_id = request.user_id
+        token_payload = getattr(request, "token_payload", {}) or {}
+        preferred_student_email = token_payload.get("email")
         session = db.v2_get_session(session_id, user_id)
         # #region agent log
         _agent_log("GET report entry", {"session_id": session_id, "user_id": user_id, "status": session.get("status") if session else None, "recording_1_processing_status": session.get("recording_1_processing_status") if session else None}, "H1")
@@ -925,7 +937,11 @@ def homework_get_report(session_id):
                 _agent_log("GET report running fallback completion", {"session_id": session_id}, "H2")
                 # #endregion
                 try:
-                    if complete_session_recording_1_only(session_id, user_id):
+                    if complete_session_recording_1_only(
+                        session_id,
+                        user_id,
+                        preferred_student_email=preferred_student_email,
+                    ):
                         session = db.v2_get_session(session_id, user_id)
                         logger.info("homework_get_report: fallback completion ran session_id=%s", session_id)
                         # #region agent log
@@ -938,7 +954,11 @@ def homework_get_report(session_id):
                 # Polling GET report is a second-chance to complete the session so the user isn't stuck forever.
                 _agent_log("GET report running minimal fallback for failed job", {"session_id": session_id}, "H2")
                 try:
-                    if minimal_complete_and_notify(session_id, user_id):
+                    if minimal_complete_and_notify(
+                        session_id,
+                        user_id,
+                        preferred_student_email=preferred_student_email,
+                    ):
                         session = db.v2_get_session(session_id, user_id)
                         logger.info("homework_get_report: minimal fallback completion ran session_id=%s", session_id)
                 except Exception as fallback_err:

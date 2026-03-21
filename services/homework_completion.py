@@ -39,6 +39,11 @@ MINIMAL_REPORT_FALLBACK = (
 )
 
 
+def _normalize_email(value) -> str:
+    email = (str(value).strip() if value is not None else "")
+    return email.lower() if "@" in email else ""
+
+
 def _first_n_sentences(text: str, n: int = 2) -> str:
     """Return at most n sentences from text (split on . ! ?)."""
     if not (text or "").strip():
@@ -74,7 +79,12 @@ def _build_report_recording_1_only(
     return "\n".join(lines)
 
 
-def complete_session_recording_1_only(session_id: str, user_id: str, allow_task_block: bool = False):
+def complete_session_recording_1_only(
+    session_id: str,
+    user_id: str,
+    allow_task_block: bool = False,
+    preferred_student_email: str | None = None,
+):
     """
     Load session and recording_1; compute metrics, generate report, mark session completed. No recording_2.
     Session must be in completing_from_recording_1, post_questions, or (if allow_task_block) task_block.
@@ -179,7 +189,16 @@ def complete_session_recording_1_only(session_id: str, user_id: str, allow_task_
         "coach_insight": None,
     })
 
-    student_email = (db.get_user_email_from_auth(user_id) or "").strip()
+    token_email = _normalize_email(preferred_student_email)
+    auth_email = _normalize_email(db.get_user_email_from_auth(user_id))
+    student_email = token_email or auth_email
+    if token_email and auth_email and token_email != auth_email:
+        logger.warning(
+            "Email mismatch on completion session_id=%s token_email=%s auth_email=%s",
+            session_id,
+            token_email,
+            auth_email,
+        )
     try:
         coach_result = email_service.send_lesson_complete_to_admin(
             user_id, session_id, report_text,
@@ -299,7 +318,11 @@ def complete_session_recording_1_only(session_id: str, user_id: str, allow_task_
     }
 
 
-def minimal_complete_and_notify(session_id: str, user_id: str) -> bool:
+def minimal_complete_and_notify(
+    session_id: str,
+    user_id: str,
+    preferred_student_email: str | None = None,
+) -> bool:
     """
     Fallback: mark session completed with a minimal report and send coach email.
     Use when complete_session_recording_1_only fails so the coach is still notified.
@@ -339,7 +362,16 @@ def minimal_complete_and_notify(session_id: str, user_id: str) -> bool:
             "question_3_score": 0,
             "coach_insight": None,
         })
-        student_email = (db.get_user_email_from_auth(user_id) or "").strip()
+        token_email = _normalize_email(preferred_student_email)
+        auth_email = _normalize_email(db.get_user_email_from_auth(user_id))
+        student_email = token_email or auth_email
+        if token_email and auth_email and token_email != auth_email:
+            logger.warning(
+                "Email mismatch on minimal completion session_id=%s token_email=%s auth_email=%s",
+                session_id,
+                token_email,
+                auth_email,
+            )
         try:
             coach_result = email_service.send_lesson_complete_to_admin(
                 user_id, session_id, report_text,
