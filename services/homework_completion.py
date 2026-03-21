@@ -179,23 +179,44 @@ def complete_session_recording_1_only(session_id: str, user_id: str, allow_task_
         "coach_insight": None,
     })
 
+    student_email = (db.get_user_email_from_auth(user_id) or "").strip()
     try:
-        student_email = db.get_user_email_from_auth(user_id)
-        email_service.send_lesson_complete_to_admin(
+        coach_result = email_service.send_lesson_complete_to_admin(
             user_id, session_id, report_text,
-            student_email=student_email,
+            student_email=student_email or None,
             performance_score_end=performance_score_end,
         )
-        if student_email:
-            email_service.send_lesson_complete_to_student(
+        if coach_result.get("status") != "sent":
+            logger.warning(
+                "Coach completion email not sent session_id=%s status=%s error=%s",
+                session_id,
+                coach_result.get("status"),
+                coach_result.get("error"),
+            )
+    except Exception as mail_err:
+        logger.warning("Lesson-complete coach email failed: %s", mail_err)
+
+    if student_email:
+        try:
+            student_result = email_service.send_lesson_complete_to_student(
                 to_email=student_email,
                 frontend_url=config.FRONTEND_URL,
                 performance_score_end=performance_score_end,
                 report_preview=report_text,
                 student_name=student_email.split("@")[0] if "@" in student_email else "there",
             )
-    except Exception as mail_err:
-        logger.warning("Lesson-complete email failed: %s", mail_err)
+            if student_result.get("status") != "sent":
+                logger.warning(
+                    "Student completion email not sent session_id=%s to=%s status=%s error=%s",
+                    session_id,
+                    student_email,
+                    student_result.get("status"),
+                    student_result.get("error"),
+                )
+        except Exception as mail_err:
+            logger.warning("Lesson-complete student email failed: %s", mail_err)
+    else:
+        logger.warning("Student completion email skipped: no auth email for user_id=%s", user_id)
 
     # Optional: enrich with custom question analysis and coach insight (non-blocking).
     # Session is already completed and coach already notified.
@@ -318,23 +339,44 @@ def minimal_complete_and_notify(session_id: str, user_id: str) -> bool:
             "question_3_score": 0,
             "coach_insight": None,
         })
+        student_email = (db.get_user_email_from_auth(user_id) or "").strip()
         try:
-            student_email = db.get_user_email_from_auth(user_id)
-            email_service.send_lesson_complete_to_admin(
+            coach_result = email_service.send_lesson_complete_to_admin(
                 user_id, session_id, report_text,
-                student_email=student_email,
+                student_email=student_email or None,
                 performance_score_end=performance_score_end,
             )
-            if student_email:
-                email_service.send_lesson_complete_to_student(
+            if coach_result.get("status") != "sent":
+                logger.warning(
+                    "Minimal-complete coach email not sent session_id=%s status=%s error=%s",
+                    session_id,
+                    coach_result.get("status"),
+                    coach_result.get("error"),
+                )
+        except Exception as mail_err:
+            logger.warning("Minimal-complete coach email failed: %s", mail_err)
+
+        if student_email:
+            try:
+                student_result = email_service.send_lesson_complete_to_student(
                     to_email=student_email,
                     frontend_url=config.FRONTEND_URL,
                     performance_score_end=performance_score_end,
                     report_preview=report_text,
                     student_name=student_email.split("@")[0] if "@" in student_email else "there",
                 )
-        except Exception as mail_err:
-            logger.warning("Minimal-complete: lesson-complete email failed: %s", mail_err)
+                if student_result.get("status") != "sent":
+                    logger.warning(
+                        "Minimal-complete student email not sent session_id=%s to=%s status=%s error=%s",
+                        session_id,
+                        student_email,
+                        student_result.get("status"),
+                        student_result.get("error"),
+                    )
+            except Exception as mail_err:
+                logger.warning("Minimal-complete student email failed: %s", mail_err)
+        else:
+            logger.warning("Minimal-complete student email skipped: no auth email for user_id=%s", user_id)
         logger.info("minimal_complete_and_notify: done session_id=%s", session_id)
         return True
     except Exception as e:

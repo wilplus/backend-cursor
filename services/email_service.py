@@ -359,6 +359,9 @@ class EmailService:
             return {"status": "pending", "sent": False}
         if not self.api_key_set:
             return {"status": "failed", "sent": False, "error": "Resend API key not set"}
+        safe_to_email = (to_email or "").strip()
+        if not safe_to_email:
+            return {"status": "failed", "sent": False, "error": "Missing student email"}
 
         from services.assignment_email import build_assignment_email_html
 
@@ -412,7 +415,7 @@ class EmailService:
         try:
             params = {
                 "from": config.RESEND_FROM_EMAIL,
-                "to": [to_email],
+                "to": [safe_to_email],
                 "subject": subject,
                 "text": text,
                 "html": html,
