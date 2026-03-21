@@ -519,6 +519,12 @@ def homework_self_rating(session_id):
             saved_rating = r
         else:
             saved_rating = None
+        try:
+            db.v2_update_session(session_id, user_id, {
+                "self_rating_submitted_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+            })
+        except Exception as flag_err:
+            logger.warning("homework_self_rating: could not set self_rating_submitted_at: %s", flag_err)
 
         # Completion depends on self-rating: build report, mark completed, send coach email when job is done.
         session_completed = False

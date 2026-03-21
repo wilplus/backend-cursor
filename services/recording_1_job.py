@@ -17,7 +17,7 @@ from services.openai_service import openai_service
 from services.v2_flow_service import select_focus_task_for_performance_score_1
 from utils.metrics import count_fillers, compute_wpm
 from services.metrics_v2 import build_recording_1_performance_profile
-from services.homework_completion import minimal_complete_and_notify
+from services.homework_completion import minimal_complete_and_notify, complete_session_recording_1_only
 
 logger = logging.getLogger(__name__)
 
@@ -257,6 +257,18 @@ def _process_one(payload: dict):
             "recording_1_processing_status": "completed",
             "recording_1_performance_profile": performance_profile,
         })
+        # If the student already submitted self-rating (or skip), finish in background now.
+        latest = db.v2_get_session(session_id, user_id)
+        if latest and latest.get("status") == "completing_from_recording_1" and latest.get("self_rating_submitted_at"):
+            try:
+                complete_session_recording_1_only(
+                    session_id,
+                    user_id,
+                    preferred_student_email=db.get_user_email_from_auth(user_id),
+                )
+                logger.info("recording_1_job: background completion ran after processing (self-rating already submitted) session_id=%s", session_id)
+            except Exception as auto_complete_err:
+                logger.warning("recording_1_job: background completion failed session_id=%s: %s", session_id, auto_complete_err)
     except Exception as e:
         _mark_failed(session_id, user_id, ERROR_UNKNOWN, e)
         try:
