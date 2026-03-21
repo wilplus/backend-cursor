@@ -334,25 +334,15 @@ def complete_session_recording_1_only(
         except Exception:
             pass
 
-    # Optional: enrich with custom question analysis and coach insight (non-blocking).
-    # Session is already completed and coach already notified.
-    r1 = r2 = r3 = {"analysis": "", "score": 0}
-    q1 = (session.get("session_metric_question_1") or "").strip()
-    q2 = (session.get("session_metric_question_2") or "").strip()
-    q3 = (session.get("session_metric_question_3") or "").strip()
-    try:
-        custom_results = openai_service.analyze_custom_questions(transcript, [q1, q2, q3])
-        r1, r2, r3 = (custom_results + [{"analysis": "", "score": 0}] * 3)[:3]
-    except Exception as cq_err:
-        logger.warning("Custom questions analysis failed: %s", cq_err)
-
+    # Optional enrichment (non-blocking): generate and persist coach insight first,
+    # then run custom question analysis. This improves perceived speed in report UI.
     coach_insight = ""
     try:
         context_short = (session.get("context_short") or "").strip()
         filler_breakdown = dict(filler_data.get("breakdown", {})) if isinstance(filler_data, dict) else {}
-        history_rows = db.v2_get_performance_history(user_id, limit=5)
+        history_rows = db.v2_get_performance_history(user_id, limit=3)
         history_scores = [float(r.get("performance_score_end") or 0) for r in history_rows]
-        transcript_excerpt = (transcript or "")[:600]
+        transcript_excerpt = (transcript or "")[:300]
         speaker_profile = db.v2_get_speaker_profile(user_id) or {}
         speaker_profile_context = (speaker_profile.get("coach_notes") or "").strip()
         session_sniper = db.get_session_sniper_metrics(session_id) or {}
@@ -380,8 +370,20 @@ def complete_session_recording_1_only(
             self_rating_1_10=self_rating_1_10,
             live_ball_score_100=live_ball_score_100,
         )
+        db.v2_update_session(session_id, user_id, {"coach_insight": coach_insight or None})
     except Exception as ci_err:
         logger.warning("Coach insight generation failed: %s", ci_err)
+
+    r1 = r2 = r3 = {"analysis": "", "score": 0}
+    q1 = (session.get("session_metric_question_1") or "").strip()
+    q2 = (session.get("session_metric_question_2") or "").strip()
+    q3 = (session.get("session_metric_question_3") or "").strip()
+    if q1 or q2 or q3:
+        try:
+            custom_results = openai_service.analyze_custom_questions(transcript, [q1, q2, q3])
+            r1, r2, r3 = (custom_results + [{"analysis": "", "score": 0}] * 3)[:3]
+        except Exception as cq_err:
+            logger.warning("Custom questions analysis failed: %s", cq_err)
 
     db.v2_update_session(session_id, user_id, {
         "question_1_analysis": r1.get("analysis") or "",

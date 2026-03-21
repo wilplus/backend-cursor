@@ -538,8 +538,8 @@ Generate the report:"""
             )
         try:
             filler_str = ", ".join(f"{k}: {v}" for k, v in (filler_breakdown or {}).items()) or "none"
-            history_str = ", ".join(str(round(s * 100)) for s in (performance_history_scores or [])[-5:]) or "none"
-            profile_ctx = _sanitize_context_short(speaker_profile_context)
+            history_str = ", ".join(str(round(s * 100)) for s in (performance_history_scores or [])[-3:]) or "none"
+            profile_ctx = (_sanitize_context_short(speaker_profile_context) or "")[:200]
             self_rating_text = str(self_rating_1_10) if self_rating_1_10 is not None else "not provided"
             final_score_100 = round(performance_score * 100)
             live_ball_text = str(live_ball_score_100) if live_ball_score_100 is not None else "not available"
@@ -552,8 +552,8 @@ Generate the report:"""
             )
             user = (
                 f"Context from recording: {(_sanitize_context_short(context_short) or 'N/A')[:400]}\n"
-                f"Transcript excerpt (for relevancy): {(transcript_excerpt or '')[:600]}\n"
-                f"Admin speaker-profile context: {(profile_ctx or 'N/A')[:400]}\n"
+                f"Transcript excerpt (for relevancy): {(transcript_excerpt or '')[:300]}\n"
+                f"Admin speaker-profile context: {(profile_ctx or 'N/A')[:200]}\n"
                 f"Student self-rating (1-10): {self_rating_text}\n"
                 f"Live ball summary score (pace/flow only, 0-100): {live_ball_text}\n"
                 f"Final review score (0-100): {final_score_100}\n"
@@ -569,6 +569,7 @@ Generate the report:"""
                 ],
                 temperature=0.3,
                 max_tokens=120,
+                timeout=8,
             )
             out = (response.choices[0].message.content or "").strip()
             fallback = (
