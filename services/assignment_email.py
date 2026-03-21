@@ -46,6 +46,20 @@ def _short(text: str | None, limit: int) -> str:
     return t[:limit].rstrip() + "..."
 
 
+def _logo_html(logo_url: str | None) -> str:
+    url = (logo_url or "").strip()
+    if url:
+        return (
+            f'<img src="{escape(url)}" alt="Willab" '
+            'style="display:block;height:28px;width:auto;max-width:180px;">'
+        )
+    return (
+        '<span style="font-family:Georgia,\'Times New Roman\',serif;font-size:20px;'
+        'font-weight:700;color:#1e293b;letter-spacing:-0.3px;">'
+        'Willab<span style="color:#f97316;">.</span></span>'
+    )
+
+
 def build_admin_homework_completed_email_html(
     *,
     student_email: str,
@@ -55,6 +69,7 @@ def build_admin_homework_completed_email_html(
     pace_wpm: int | None = None,
     filler_count: int | None = None,
     strength: str = "Loudness (pending)",
+    logo_url: str | None = None,
 ) -> str:
     pct = _score_percent(score)
     pace_text = f"{pace_wpm} WPM" if pace_wpm is not None else "n/a WPM"
@@ -72,7 +87,7 @@ def build_admin_homework_completed_email_html(
 <tr><td align="center">
 <table width="520" cellpadding="0" cellspacing="0" style="max-width:520px;width:100%;">
 <tr><td style="padding-bottom:40px;">
-  <span style="font-family:Georgia,'Times New Roman',serif;font-size:20px;font-weight:700;color:#1e293b;letter-spacing:-0.3px;">Willab<span style="color:#f97316;">.</span></span>
+  {_logo_html(logo_url)}
 </td></tr>
 <tr><td style="background-color:#ffffff;border-radius:8px;">
 <table width="100%" cellpadding="0" cellspacing="0">
@@ -127,6 +142,7 @@ def build_student_new_homework_email_html(
     coach_name: str,
     coach_role: str,
     homework_url: str,
+    logo_url: str | None = None,
 ) -> str:
     safe_first = escape(_first_name(student_first_name))
     safe_coach = escape((coach_name or "Coach").strip() or "Coach")
@@ -145,7 +161,7 @@ def build_student_new_homework_email_html(
 <tr><td align="center">
 <table width="520" cellpadding="0" cellspacing="0" style="max-width:520px;width:100%;">
 <tr><td style="padding-bottom:40px;">
-  <span style="font-family:Georgia,'Times New Roman',serif;font-size:20px;font-weight:700;color:#1e293b;letter-spacing:-0.3px;">Willab<span style="color:#f97316;">.</span></span>
+  {_logo_html(logo_url)}
 </td></tr>
 <tr><td style="background-color:#ffffff;border-radius:8px;">
 <table width="100%" cellpadding="0" cellspacing="0">
@@ -206,6 +222,7 @@ def build_student_homework_submitted_email_html(
     report_url: str,
     coach_name: str,
     coach_role: str,
+    logo_url: str | None = None,
 ) -> str:
     safe_first = escape(_first_name(student_first_name))
     safe_coach = escape((coach_name or "Coach").strip() or "Coach")
@@ -228,7 +245,7 @@ def build_student_homework_submitted_email_html(
 <tr><td align="center">
 <table width="520" cellpadding="0" cellspacing="0" style="max-width:520px;width:100%;">
 <tr><td style="padding-bottom:40px;">
-  <span style="font-family:Georgia,'Times New Roman',serif;font-size:20px;font-weight:700;color:#1e293b;letter-spacing:-0.3px;">Willab<span style="color:#f97316;">.</span></span>
+  {_logo_html(logo_url)}
 </td></tr>
 <tr><td style="background-color:#ffffff;border-radius:8px;">
 <table width="100%" cellpadding="0" cellspacing="0">
@@ -318,6 +335,7 @@ def build_assignment_email_html(
     coach_image_url: str | None = None,
     unsubscribe_link: str = "#",
     preferences_link: str = "#",
+    logo_url: str | None = None,
 ) -> str:
     _ = (video_url, has_assigned_exercise, meta_label, homework_title, homework_subtitle, coach_image_url, unsubscribe_link, preferences_link)
     return build_student_new_homework_email_html(
@@ -326,4 +344,5 @@ def build_assignment_email_html(
         coach_name=coach_name,
         coach_role=coach_role,
         homework_url=homework_link,
+        logo_url=logo_url,
     )

@@ -225,6 +225,7 @@ class EmailService:
 
         frontend_url = (config.FRONTEND_URL or "").rstrip("/")
         admin_student_url = f"{frontend_url}/admin/students/{user_id}" if frontend_url else "#"
+        logo_url = (getattr(config, "APP_LOGO_URL", None) or "").strip() or (f"{frontend_url}/icon" if frontend_url else None)
         preview = (report_preview or "").strip()
         if preview and len(preview) > 280:
             preview = preview[:280].rstrip() + "..."
@@ -249,6 +250,7 @@ class EmailService:
             pace_wpm=None,
             filler_count=None,
             strength="Loudness (pending)",
+            logo_url=logo_url,
         )
 
         subject = f"Homework completed – Session {session_id[:8]}"
@@ -296,6 +298,7 @@ class EmailService:
         homework_link = f"{app_url}/dashboard" if app_url else (app_url or "#")
         unsubscribe_link = f"{app_url}/dashboard?unsubscribe=1" if app_url else "#"
         preferences_link = f"{app_url}/dashboard?preferences=1" if app_url else "#"
+        logo_url = (getattr(config, "APP_LOGO_URL", None) or "").strip() or (f"{app_url}/icon" if app_url else None)
         raw = (getattr(config, "COACH_NAME", "Artur") or "Artur").strip()
         coach_name = raw.title() if raw else "Artur"
         html = build_student_new_homework_email_html(
@@ -304,6 +307,7 @@ class EmailService:
             coach_name=coach_name,
             coach_role="Public Speaking Coach",
             homework_url=homework_link,
+            logo_url=logo_url,
         )
         subject = "Public speaking!"
         text = f"Your coach has assigned you new practice.\n\nStart homework: {homework_link}\n\n— willab team"
@@ -349,6 +353,7 @@ class EmailService:
 
         app_url = (frontend_url or config.FRONTEND_URL or "").rstrip("/")
         report_link = f"{app_url}/dashboard" if app_url else "#"
+        logo_url = (getattr(config, "APP_LOGO_URL", None) or "").strip() or (f"{app_url}/icon" if app_url else None)
         raw = (getattr(config, "COACH_NAME", "Artur") or "Artur").strip()
         coach_name = raw.title() if raw else "Artur"
 
@@ -376,6 +381,7 @@ class EmailService:
             report_url=report_link,
             coach_name=coach_name,
             coach_role="Public Speaking Coach",
+            logo_url=logo_url,
         )
 
         subject = "Your lesson report is ready"

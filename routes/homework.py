@@ -6,7 +6,11 @@ from flask import Blueprint, request, jsonify
 from auth import require_auth
 from services.db import db
 from services.email_service import email_service
-from services.homework_completion import complete_session_recording_1_only, minimal_complete_and_notify
+from services.homework_completion import (
+    complete_session_recording_1_only,
+    minimal_complete_and_notify,
+    ensure_student_completion_email,
+)
 from services.sniper_realtime import clear_sniper_session
 import logging
 import os
@@ -551,6 +555,11 @@ def homework_self_rating(session_id):
                 logger.warning("homework_self_rating: minimal fallback failed session_id=%s: %s", session_id, sr_fallback_err)
         elif status == STATUS_COMPLETED:
             session_completed = True
+            ensure_student_completion_email(
+                session_id,
+                user_id,
+                preferred_student_email=preferred_student_email,
+            )
 
         out = {"status": "ok", "session_completed": session_completed}
         if saved_rating is not None:
@@ -969,6 +978,12 @@ def homework_get_report(session_id):
                 # #endregion
                 # 409 so frontend can distinguish "not ready yet, retry" from "session not found" (404)
                 return jsonify({"code": "REPORT_NOT_READY", "error": "Report is only available for completed sessions", "status": session.get("status")}), 409
+        else:
+            ensure_student_completion_email(
+                session_id,
+                user_id,
+                preferred_student_email=preferred_student_email,
+            )
 
         report_text = (session.get("context_long") or "").strip()
         if session.get("report_id"):
