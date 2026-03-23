@@ -2530,7 +2530,7 @@ class DatabaseService:
     _V2_OVERRIDES_COLUMNS = {
         "intended_emotion_prompt", "keywords_prompt", "emotion_check_question_text",
         "assigned_post_question_ids", "assigned_next_exercise_id", "last_assigned_exercise_id", "assigned_next_task_ids",
-        "show_exercise_step", "assigned_warm_up_task_id", "assigned_realtime_level", "assigned_realtime_step",
+        "show_exercise_step", "assigned_warm_up_task_id",
         "pitch_variance_ideal", "pending_tutor_video_url", "pending_tutor_video_description",
         "skip_metric_questions", "skip_post_questions",
     }
