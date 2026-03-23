@@ -165,12 +165,13 @@ def _build_step0_payload(user_id: str) -> dict:
         "realtime_step": sniper_profile.get("realtime_step"),
     }
     review_pending = False
+    feedback_sent_at = None
     try:
         last_completed = db.v2_get_last_completed_session(user_id)
         completed_at = _parse_isoish_datetime((last_completed or {}).get("completed_at") or (last_completed or {}).get("created_at"))
         feedback_sent_at = _parse_isoish_datetime((last_completed or {}).get("tutor_feedback_sent_at"))
         report_email_sent_at = _parse_isoish_datetime((last_completed or {}).get("student_completion_email_sent_at"))
-        if report_email_sent_at and (feedback_sent_at is None or (completed_at is not None and feedback_sent_at <= completed_at)):
+        if report_email_sent_at and feedback_sent_at is None:
             review_pending = True
             if completed_at:
                 deadline = completed_at + timedelta(hours=float(config.TUTOR_FEEDBACK_WINDOW_HOURS))
@@ -197,7 +198,7 @@ def _build_step0_payload(user_id: str) -> dict:
     try:
         overrides = db.v2_get_student_overrides(user_id) or {}
         msg = (overrides.get("pending_tutor_video_description") or "").strip()
-        if msg and not review_pending:
+        if msg and feedback_sent_at is not None:
             payload["tutor_video_description"] = msg
     except Exception:
         pass

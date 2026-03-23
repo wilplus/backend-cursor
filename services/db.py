@@ -1324,9 +1324,9 @@ class DatabaseService:
         return True
 
     def v2_mark_tutor_feedback_sent_for_user(self, user_id: str):
-        """Set tutor_feedback_sent_at on the user's most recent completed session (idempotent). Call when admin sends new homework (POST send-assignment)."""
+        """Set tutor_feedback_sent_at to now on the user's most recent completed session. Call when admin sends new homework (POST send-assignment)."""
         last = self.v2_get_last_completed_session(user_id)
-        if not last or last.get("tutor_feedback_sent_at"):
+        if not last:
             return
         self.v2_mark_tutor_feedback_sent(last["id"], user_id)
 
