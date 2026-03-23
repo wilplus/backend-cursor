@@ -1009,10 +1009,11 @@ def homework_get_report(session_id):
             filler_count_for_cap = 0
         # Prefer Sniper (Voice Alignment) as the single display score when available
         score_for_display_100 = round(perf_end * 100)
+        session_sniper = None
         try:
-            sniper = db.get_session_sniper_metrics(session_id)
-            if sniper and sniper.get("stage_score") is not None:
-                raw = float(sniper["stage_score"])
+            session_sniper = db.get_session_sniper_metrics(session_id)
+            if session_sniper and session_sniper.get("stage_score") is not None:
+                raw = float(session_sniper["stage_score"])
                 score_for_display_100 = round(raw) if raw > 1 else round(raw * 100)
                 score_for_display_100 = max(0, min(100, score_for_display_100))
                 new_perf_end = score_for_display_100 / 100.0
@@ -1136,6 +1137,42 @@ def homework_get_report(session_id):
         if context_short:
             payload["context_short"] = context_short
         coach_insight = (session.get("coach_insight") or "").strip()
+        if not coach_insight:
+            try:
+                speaker_profile = db.v2_get_speaker_profile(user_id) or {}
+                speaker_profile_context = (speaker_profile.get("coach_notes") or "").strip()
+            except Exception:
+                speaker_profile_context = ""
+            filler_breakdown = {}
+            transcript_excerpt = ""
+            if recording_payload is not None:
+                transcript_excerpt = (recording_payload.get("transcription_text") or "")[:300]
+                filler_breakdown = dict((recording_payload.get("filler_words_count") or {}).get("breakdown") or {})
+            history_scores = [float((row.get("score") or 0) / 100.0) for row in performance_history[-3:]]
+            self_rating = None
+            live_ball_score_100 = None
+            if session_sniper:
+                try:
+                    self_rating = int(session_sniper.get("student_rating_1_10")) if session_sniper.get("student_rating_1_10") is not None else None
+                except (TypeError, ValueError):
+                    self_rating = None
+                if session_sniper.get("stage_score") is not None:
+                    try:
+                        raw = float(session_sniper.get("stage_score"))
+                        live_ball_score_100 = round(raw if raw > 1 else raw * 100)
+                    except (TypeError, ValueError):
+                        live_ball_score_100 = None
+            coach_insight = openai_service.build_coach_insight_fallback(
+                context_short=context_short,
+                transcript_excerpt=transcript_excerpt,
+                filler_breakdown=filler_breakdown,
+                filler_count=int((recording_payload or {}).get("filler_words_count", {}).get("total", 0) or 0),
+                performance_score=perf_end,
+                performance_history_scores=history_scores,
+                speaker_profile_context=speaker_profile_context,
+                self_rating_1_10=self_rating,
+                live_ball_score_100=live_ball_score_100,
+            )
         if coach_insight:
             payload["coach_insight"] = coach_insight
         payload["report_cta"] = "Send the homework to the coach!"

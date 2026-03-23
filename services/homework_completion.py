@@ -346,12 +346,24 @@ def complete_session_recording_1_only(
     try:
         context_short = (session.get("context_short") or "").strip()
         filler_breakdown = dict(filler_data.get("breakdown", {})) if isinstance(filler_data, dict) else {}
-        history_rows = db.v2_get_performance_history(user_id, limit=3)
-        history_scores = [float(r.get("performance_score_end") or 0) for r in history_rows]
         transcript_excerpt = (transcript or "")[:300]
-        speaker_profile = db.v2_get_speaker_profile(user_id) or {}
-        speaker_profile_context = (speaker_profile.get("coach_notes") or "").strip()
-        session_sniper = db.get_session_sniper_metrics(session_id) or {}
+        history_scores = []
+        try:
+            history_rows = db.v2_get_performance_history(user_id, limit=3)
+            history_scores = [float(r.get("performance_score_end") or 0) for r in (history_rows or [])]
+        except Exception as hist_err:
+            logger.debug("Coach insight history unavailable session_id=%s: %s", session_id, hist_err)
+        speaker_profile_context = ""
+        try:
+            speaker_profile = db.v2_get_speaker_profile(user_id) or {}
+            speaker_profile_context = (speaker_profile.get("coach_notes") or "").strip()
+        except Exception as profile_err:
+            logger.debug("Coach insight profile unavailable session_id=%s: %s", session_id, profile_err)
+        session_sniper = {}
+        try:
+            session_sniper = db.get_session_sniper_metrics(session_id) or {}
+        except Exception as sniper_err:
+            logger.debug("Coach insight sniper metrics unavailable session_id=%s: %s", session_id, sniper_err)
         self_rating_1_10 = session_sniper.get("student_rating_1_10")
         live_ball_score_100 = None
         stage_raw = session_sniper.get("stage_score")

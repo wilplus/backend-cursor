@@ -77,6 +77,58 @@ def _build_fallback_final_task(context_short: str, focus_task: str, metric_parts
     s2 = f"Focus especially on {phrase}."
     return f"{s1} {s2}"
 
+
+def _build_coach_insight_fallback(
+    context_short: str,
+    transcript_excerpt: str,
+    filler_breakdown: dict,
+    filler_count: int,
+    performance_score: float,
+    performance_history_scores: list,
+    speaker_profile_context: str = "",
+    self_rating_1_10: int | None = None,
+    live_ball_score_100: int | None = None,
+) -> str:
+    """Deterministic 3-sentence coach insight that works with partial data."""
+    context = _sanitize_context_short(context_short) or _sanitize_context_short(transcript_excerpt)
+    filler_str = ", ".join(f"{k}: {v}" for k, v in (filler_breakdown or {}).items()) or "none"
+    profile_ctx = _sanitize_context_short(speaker_profile_context)
+    history = [str(round(float(s) * 100)) for s in (performance_history_scores or [])[-3:] if s is not None]
+    final_score_100 = round(float(performance_score or 0) * 100)
+    live_ball_text = str(live_ball_score_100) if live_ball_score_100 is not None else None
+    rating_text = str(self_rating_1_10) if self_rating_1_10 is not None else None
+
+    sentence1_parts = []
+    if context:
+        sentence1_parts.append(f"You spoke about {context[:180]}")
+    if filler_count:
+        sentence1_parts.append(f"and used {filler_count} filler words ({filler_str})")
+    elif filler_breakdown:
+        sentence1_parts.append(f"with filler usage noted as {filler_str}")
+    if profile_ctx:
+        sentence1_parts.append(f"which can be compared with your coach notes: {profile_ctx[:120]}")
+    sentence1 = " ".join(sentence1_parts).strip()
+    if not sentence1:
+        sentence1 = f"Your final review score is {final_score_100}/100, based on the data available so far."
+    elif not sentence1.endswith("."):
+        sentence1 += "."
+
+    sentence2_parts = []
+    if live_ball_text is not None:
+        sentence2_parts.append(f"Your live ball summary was {live_ball_text}/100 and your final review score is {final_score_100}/100")
+    else:
+        sentence2_parts.append(f"Your current review score is {final_score_100}/100")
+    if rating_text is not None:
+        sentence2_parts.append(f"while you rated yourself {rating_text}/5")
+    if history:
+        sentence2_parts.append(f"and your recent scores were {', '.join(history)}")
+    sentence2 = " ".join(sentence2_parts).strip()
+    if not sentence2.endswith("."):
+        sentence2 += "."
+
+    sentence3 = "Let's see what your human coach Artur will say in the next video."
+    return f"{sentence1} {sentence2} {sentence3}"
+
 class OpenAIService:
     def __init__(self):
         if config.OPENAI_API_KEY:
@@ -528,39 +580,51 @@ Generate the report:"""
         live_ball_score_100: int | None = None,
     ) -> str:
         """Three short sentences for report view: context+fillers vs speaker profile, self-reflection, and coach handoff."""
+        fallback = _build_coach_insight_fallback(
+            context_short=context_short,
+            transcript_excerpt=transcript_excerpt,
+            filler_breakdown=filler_breakdown,
+            filler_count=filler_count,
+            performance_score=performance_score,
+            performance_history_scores=performance_history_scores,
+            speaker_profile_context=speaker_profile_context,
+            self_rating_1_10=self_rating_1_10,
+            live_ball_score_100=live_ball_score_100,
+        )
         if not self.client:
-            final_score_100 = round(performance_score * 100)
-            live_ball_text = str(live_ball_score_100) if live_ball_score_100 is not None else "not available"
-            return (
-                f"Your live ball summary was {live_ball_text}/100, while your final review score is {final_score_100}/100 because filler words are applied after transcription ({filler_count} total). "
-                f"Your self-rating was {self_rating_1_10 if self_rating_1_10 is not None else 'not provided'} out of 5, so reflect on whether that matches the transcript-based review. "
-                "Let's see what your human coach Artur will say in the next video."
-            )
+            return fallback
         try:
             filler_str = ", ".join(f"{k}: {v}" for k, v in (filler_breakdown or {}).items()) or "none"
-            history_str = ", ".join(str(round(s * 100)) for s in (performance_history_scores or [])[-3:]) or "none"
+            history_str = ", ".join(str(round(s * 100)) for s in (performance_history_scores or [])[-3:] if s is not None)
             profile_ctx = (_sanitize_context_short(speaker_profile_context) or "")[:200]
             self_rating_text = str(self_rating_1_10) if self_rating_1_10 is not None else "not provided"
             final_score_100 = round(performance_score * 100)
             live_ball_text = str(live_ball_score_100) if live_ball_score_100 is not None else "not available"
+            context = (_sanitize_context_short(context_short) or _sanitize_context_short(transcript_excerpt) or "N/A")[:400]
+            prompt_lines = [
+                f"Context from recording: {context}",
+                f"Final review score (0-100): {final_score_100}",
+                f"Filler words: total {filler_count}, breakdown: {filler_str}",
+            ]
+            if transcript_excerpt:
+                prompt_lines.append(f"Transcript excerpt (for relevancy): {(transcript_excerpt or '')[:300]}")
+            if profile_ctx:
+                prompt_lines.append(f"Admin speaker-profile context: {profile_ctx}")
+            if self_rating_1_10 is not None:
+                prompt_lines.append(f"Student self-rating (1-5): {self_rating_text}")
+            if live_ball_score_100 is not None:
+                prompt_lines.append(f"Live ball summary score (pace/flow only, 0-100): {live_ball_text}")
+            if history_str:
+                prompt_lines.append(f"Recent session scores (oldest to newest, 0-100): {history_str}")
             system = (
                 "You write exactly 3 short sentences for a speaking coach report. "
-                "Sentence 1: reference the context/summary of what they said, their filler words (count and which ones), and the admin speaker-profile context; point out at least one discrepancy or alignment. "
-                "Sentence 2: clearly explain the honest gap between live-ball summary (pace/flow) and final review score when filler words are high; if live-ball and final are close, say that they are aligned. Make it self-reflective by comparing the student's self-rating with observed delivery and progress scores. "
+                "Use whatever data fields are provided and ignore fields that are missing. "
+                "Sentence 1: reference the context/summary, filler words, and any coach notes when available; point out at least one discrepancy or alignment when possible. "
+                "Sentence 2: explain the score result using only the available score/self-rating/history inputs; if some are missing, do not mention them. "
                 "Sentence 3 must be exactly: Let's see what your human coach Artur will say in the next video. "
                 "Be specific, supportive, and concrete. No bullet points, no extra lines. Output only the 3 sentences."
             )
-            user = (
-                f"Context from recording: {(_sanitize_context_short(context_short) or 'N/A')[:400]}\n"
-                f"Transcript excerpt (for relevancy): {(transcript_excerpt or '')[:300]}\n"
-                f"Admin speaker-profile context: {(profile_ctx or 'N/A')[:200]}\n"
-                f"Student self-rating (1-5): {self_rating_text}\n"
-                f"Live ball summary score (pace/flow only, 0-100): {live_ball_text}\n"
-                f"Final review score (0-100): {final_score_100}\n"
-                f"Filler words: total {filler_count}, breakdown: {filler_str}\n"
-                f"Recent session scores (oldest to newest, 0-100): {history_str}\n"
-                "Important: The live ball does not detect filler words; filler impact is applied in transcript-based review."
-            )
+            user = "\n".join(prompt_lines + ["Important: The live ball does not detect filler words; filler impact is applied in transcript-based review."])
             response = self.client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=[
@@ -569,24 +633,37 @@ Generate the report:"""
                 ],
                 temperature=0.3,
                 max_tokens=120,
-                timeout=8,
+                timeout=4,
             )
             out = (response.choices[0].message.content or "").strip()
-            fallback = (
-                f"Your live ball summary was {live_ball_text}/100, while your final review score is {final_score_100}/100 because filler words ({filler_count}, e.g. {filler_str}) are counted after transcription, and this also shows where your delivery differs from your coach profile notes. "
-                f"You rated yourself {self_rating_text}/5, so reflect on whether that matches the transcript-based result and your progress trend ({history_str}). "
-                "Let's see what your human coach Artur will say in the next video."
-            )
             return out if out else fallback
         except Exception as e:
             sentry_sdk.capture_exception(e)
-            live_ball_text = str(live_ball_score_100) if live_ball_score_100 is not None else "not available"
-            final_score_100 = round(performance_score * 100)
-            return (
-                f"Your live ball summary was {live_ball_text}/100 and your final review score was {final_score_100}/100; that gap can happen because filler words ({filler_count}) are only applied after transcription, and there are still gaps versus your coach profile context to work on. "
-                f"You rated yourself {self_rating_1_10 if self_rating_1_10 is not None else 'not provided'}/5, so reflect on where that rating matches your delivery and score trend. "
-                "Let's see what your human coach Artur will say in the next video."
-            )
+            return fallback
+
+    def build_coach_insight_fallback(
+        self,
+        context_short: str,
+        transcript_excerpt: str,
+        filler_breakdown: dict,
+        filler_count: int,
+        performance_score: float,
+        performance_history_scores: list,
+        speaker_profile_context: str = "",
+        self_rating_1_10: int | None = None,
+        live_ball_score_100: int | None = None,
+    ) -> str:
+        return _build_coach_insight_fallback(
+            context_short=context_short,
+            transcript_excerpt=transcript_excerpt,
+            filler_breakdown=filler_breakdown,
+            filler_count=filler_count,
+            performance_score=performance_score,
+            performance_history_scores=performance_history_scores,
+            speaker_profile_context=speaker_profile_context,
+            self_rating_1_10=self_rating_1_10,
+            live_ball_score_100=live_ball_score_100,
+        )
 
     def generate_final_task(
         self,
