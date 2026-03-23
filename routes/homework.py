@@ -158,6 +158,7 @@ def _build_step0_payload(user_id: str) -> dict:
         "assigned_exercises": [],
         "tutor_feedback_deadline": None,
         "tutor_feedback_message": None,
+        "tutor_video_url": None,
         "tutor_video_description": None,
         "review_pending": False,
         "report_delivered": False,
@@ -201,9 +202,13 @@ def _build_step0_payload(user_id: str) -> dict:
             payload["assigned_exercises"] = []
     try:
         overrides = db.v2_get_student_overrides(user_id) or {}
+        url = (overrides.get("pending_tutor_video_url") or "").strip()
         msg = (overrides.get("pending_tutor_video_description") or "").strip()
-        if msg and feedback_sent_at is not None:
-            payload["tutor_video_description"] = msg
+        if feedback_sent_at is not None:
+            if url:
+                payload["tutor_video_url"] = url
+            if msg:
+                payload["tutor_video_description"] = msg
     except Exception:
         pass
     return payload
@@ -359,13 +364,18 @@ def homework_session_status():
             "assigned_exercises": [],
             "tutor_feedback_deadline": None,
             "tutor_feedback_message": None,
+            "tutor_video_url": None,
             "tutor_video_description": None,
         }
         # Once the session is completed, the frontend should transition to the report/reviewing
         # screen instead of continuing to show the pre-homework coach message block.
+        url = (active.get("tutor_video_url") or "").strip()
         msg = (active.get("tutor_video_description") or "").strip()
-        if public_status != PUBLIC_STATUS_COMPLETED and msg:
-            resp["tutor_video_description"] = msg
+        if public_status != PUBLIC_STATUS_COMPLETED:
+            if url:
+                resp["tutor_video_url"] = url
+            if msg:
+                resp["tutor_video_description"] = msg
         return jsonify(resp), 200
 
     except Exception as e:
