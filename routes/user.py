@@ -234,10 +234,9 @@ def get_sniper_profile():
                         pitch_center_st=payload.get("pitch_center_st"),
                         pitch_frame_count=payload.get("pitch_frame_count"),
                     )
-                db.advance_sniper_realtime_progression(session_id, user_id)
             else:
                 logger.info(
-                    "sniper-profile POST skipped progression session_id=%s completed=%s valid_for_progression=%s",
+                    "sniper-profile POST skipped progression-triggerable payload session_id=%s completed=%s valid_for_progression=%s",
                     session_id,
                     payload.get("completed"),
                     payload.get("valid_for_progression"),

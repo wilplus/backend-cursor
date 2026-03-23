@@ -128,6 +128,8 @@ def _public_recording_id(session: dict):
 def _build_step0_payload(user_id: str) -> dict:
     """Build the session/status payload when there is no active session (step 0). Used by GET status and POST leave-report."""
     config = Config()
+    sniper_profile = db.get_sniper_profile_payload(user_id)
+    coach_name = (getattr(config, "COACH_NAME", "Artur") or "Artur").strip().title() or "Artur"
     payload = {
         "status": PUBLIC_STATUS_NONE,
         "session_id": None,
@@ -137,21 +139,18 @@ def _build_step0_payload(user_id: str) -> dict:
         "tutor_feedback_deadline": None,
         "tutor_feedback_message": None,
         "tutor_video_description": None,
+        "review_pending": False,
+        "main_screen_state": "assignment_ready",
+        "main_screen_message": None,
+        "sniper_profile": sniper_profile,
+        "realtime_level": sniper_profile.get("realtime_level"),
+        "realtime_step": sniper_profile.get("realtime_step"),
     }
-    try:
-        payload["assigned_exercises"] = db.v2_get_assigned_exercises_for_user(user_id)
-        for ex in payload.get("assigned_exercises") or []:
-            if (ex.get("title") or "").strip().lower() == "0-intro":
-                if not (ex.get("video_url") or "").strip() and getattr(config, "INTRO_0_VIDEO_URL", None):
-                    ex["video_url"] = config.INTRO_0_VIDEO_URL
-                if not (ex.get("description") or "").strip() and getattr(config, "INTRO_0_DESCRIPTION", None):
-                    ex["description"] = config.INTRO_0_DESCRIPTION
-                break
-    except Exception:
-        payload["assigned_exercises"] = []
+    review_pending = False
     try:
         last_completed = db.v2_get_last_completed_session(user_id)
         if last_completed and not last_completed.get("tutor_feedback_sent_at"):
+            review_pending = True
             raw_completed_at = last_completed.get("completed_at") or last_completed.get("created_at")
             if raw_completed_at:
                 if isinstance(raw_completed_at, str):
@@ -162,13 +161,28 @@ def _build_step0_payload(user_id: str) -> dict:
                     completed_at = completed_at.replace(tzinfo=timezone.utc)
                 deadline = completed_at + timedelta(hours=float(config.TUTOR_FEEDBACK_WINDOW_HOURS))
                 payload["tutor_feedback_deadline"] = deadline.isoformat().replace("+00:00", "Z")
-                payload["tutor_feedback_message"] = "Your coach is reviewing your last lesson and will send your next homework soon."
+            payload["review_pending"] = True
+            payload["main_screen_state"] = "review_pending"
+            payload["main_screen_message"] = f"{coach_name} is analysing your homework and will send you the grading and comment soon. If you pass, we will see each other in the next step!"
+            payload["tutor_feedback_message"] = payload["main_screen_message"]
     except Exception:
         pass
+    if not review_pending:
+        try:
+            payload["assigned_exercises"] = db.v2_get_assigned_exercises_for_user(user_id)
+            for ex in payload.get("assigned_exercises") or []:
+                if (ex.get("title") or "").strip().lower() == "0-intro":
+                    if not (ex.get("video_url") or "").strip() and getattr(config, "INTRO_0_VIDEO_URL", None):
+                        ex["video_url"] = config.INTRO_0_VIDEO_URL
+                    if not (ex.get("description") or "").strip() and getattr(config, "INTRO_0_DESCRIPTION", None):
+                        ex["description"] = config.INTRO_0_DESCRIPTION
+                    break
+        except Exception:
+            payload["assigned_exercises"] = []
     try:
         overrides = db.v2_get_student_overrides(user_id) or {}
         msg = (overrides.get("pending_tutor_video_description") or "").strip()
-        if msg:
+        if msg and not review_pending:
             payload["tutor_video_description"] = msg
     except Exception:
         pass
@@ -533,7 +547,14 @@ def homework_self_rating(session_id):
                 preferred_student_email=preferred_student_email,
             )
 
-        out = {"status": "ok", "session_completed": session_completed}
+        sniper_profile = db.get_sniper_profile_payload(user_id)
+        out = {
+            "status": "ok",
+            "session_completed": session_completed,
+            "sniper_profile": sniper_profile,
+            "realtime_level": sniper_profile.get("realtime_level"),
+            "realtime_step": sniper_profile.get("realtime_step"),
+        }
         if saved_rating is not None:
             out["rating"] = saved_rating
             out["student_rating_1_10"] = saved_rating
@@ -1080,6 +1101,7 @@ def homework_get_report(session_id):
                     "words_per_minute": round(float(rec.get("words_per_minute") or 0), 1),
                 }
 
+        sniper_profile = db.get_sniper_profile_payload(user_id)
         payload = {
             "report_text": report_text,
             # Backward-compat alias: some UIs still read scores.overall.
@@ -1092,6 +1114,9 @@ def homework_get_report(session_id):
             "score_for_display": score_for_display_100,
             "admin_grade": session.get("coach_grade"),
             "report_comment": (session.get("report_comment") or "").strip() or None,
+            "sniper_profile": sniper_profile,
+            "realtime_level": sniper_profile.get("realtime_level"),
+            "realtime_step": sniper_profile.get("realtime_step"),
         }
         if recording_payload is not None:
             payload["recording"] = recording_payload

@@ -1572,6 +1572,33 @@ class DatabaseService:
             payload["realtime_last_completed_session_id"] = realtime_last_completed_session_id
         self.client.table("user_sniper_profile").upsert(payload, on_conflict="user_id").execute()
 
+    def set_sniper_realtime_progression(
+        self,
+        user_id: str,
+        *,
+        realtime_level: Optional[int] = None,
+        realtime_step: Optional[int] = None,
+    ) -> dict:
+        """Set the student's unlocked realtime level/step explicitly (coach-controlled progression)."""
+        profile = self.get_sniper_profile(user_id) or {}
+
+        def as_int(value, default: int) -> int:
+            try:
+                return int(value)
+            except (TypeError, ValueError):
+                return default
+
+        level = max(1, as_int(realtime_level if realtime_level is not None else profile.get("realtime_level"), 1))
+        step = min(10, max(1, as_int(realtime_step if realtime_step is not None else profile.get("realtime_step"), 1)))
+        self.upsert_sniper_profile(
+            user_id=user_id,
+            session_count=as_int(profile.get("session_count"), 0),
+            sessions_with_energy_count=as_int(profile.get("sessions_with_energy_count"), 0),
+            realtime_level=level,
+            realtime_step=step,
+        )
+        return self.get_sniper_profile_payload(user_id)
+
     def advance_sniper_realtime_progression(
         self,
         session_id: str,
@@ -2503,7 +2530,7 @@ class DatabaseService:
     _V2_OVERRIDES_COLUMNS = {
         "intended_emotion_prompt", "keywords_prompt", "emotion_check_question_text",
         "assigned_post_question_ids", "assigned_next_exercise_id", "last_assigned_exercise_id", "assigned_next_task_ids",
-        "show_exercise_step", "assigned_warm_up_task_id",
+        "show_exercise_step", "assigned_warm_up_task_id", "assigned_realtime_level", "assigned_realtime_step",
         "pitch_variance_ideal", "pending_tutor_video_url", "pending_tutor_video_description",
         "skip_metric_questions", "skip_post_questions",
     }

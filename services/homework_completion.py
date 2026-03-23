@@ -271,11 +271,6 @@ def complete_session_recording_1_only(
         "question_3_score": 0,
         "coach_insight": None,
     })
-    try:
-        db.advance_sniper_realtime_progression(session_id, user_id)
-    except Exception as progression_err:
-        logger.warning("Realtime sniper progression update failed: %s", progression_err)
-
     token_email = _normalize_email(preferred_student_email)
     auth_email = _normalize_email(db.get_user_email_from_auth(user_id))
     student_email = token_email or auth_email
@@ -477,10 +472,6 @@ def minimal_complete_and_notify(
             "question_3_score": 0,
             "coach_insight": None,
         })
-        try:
-            db.advance_sniper_realtime_progression(session_id, user_id)
-        except Exception as progression_err:
-            logger.warning("Realtime sniper progression update failed: %s", progression_err)
         token_email = _normalize_email(preferred_student_email)
         auth_email = _normalize_email(db.get_user_email_from_auth(user_id))
         student_email = token_email or auth_email

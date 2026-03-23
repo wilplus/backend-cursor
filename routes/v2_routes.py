@@ -406,6 +406,7 @@ def v2_admin_student_profile(user_id):
         overrides["skip_metric_questions"] = bool(raw_overrides.get("skip_metric_questions") if raw_overrides else False)
         overrides["skip_post_questions"] = bool(raw_overrides.get("skip_post_questions") if raw_overrides else False)
         speaker_profile = db.v2_get_speaker_profile(user_id)
+        sniper_profile = db.get_sniper_profile_payload(user_id)
         task_warm_up = db.v2_get_warm_up_tasks(user_id)
         task_focus = db.v2_get_focus_tasks(user_id)
         post_recording_questions = db.v2_get_student_post_recording_questions(user_id)
@@ -418,6 +419,9 @@ def v2_admin_student_profile(user_id):
             "price_per_live_lesson": details.get("price_per_live_lesson"),
             "overrides": overrides,
             "speaker_profile": speaker_profile,
+            "sniper_profile": sniper_profile,
+            "realtime_level": sniper_profile.get("realtime_level"),
+            "realtime_step": sniper_profile.get("realtime_step"),
             "task_warm_up": task_warm_up,
             "task_focus": task_focus,
             "post_recording_questions": post_recording_questions,
@@ -454,6 +458,21 @@ def _coerce_override_bool(value, key: str):
     return (None, f"{key} must be a boolean (true/false)")
 
 
+def _coerce_optional_positive_int(value, key: str, *, maximum: int | None = None):
+    """Coerce optional int input for admin overrides. Returns (int|None, None) or (None, error_msg)."""
+    if value in (None, ""):
+        return (None, None)
+    try:
+        ivalue = int(value)
+    except (TypeError, ValueError):
+        return (None, f"{key} must be an integer")
+    if ivalue < 1:
+        return (None, f"{key} must be at least 1")
+    if maximum is not None and ivalue > maximum:
+        return (None, f"{key} must be at most {maximum}")
+    return (ivalue, None)
+
+
 @v2_bp.route("/admin/students/<user_id>/overrides", methods=["PUT"])
 @require_admin
 def v2_admin_student_overrides(user_id):
@@ -483,6 +502,12 @@ def v2_admin_student_overrides(user_id):
         for key in ("skip_metric_questions", "skip_post_questions"):
             if key in data:
                 val, err = _coerce_override_bool(data[key], key)
+                if err:
+                    return jsonify({"code": "INVALID_INPUT", "error": err}), 400
+                data[key] = val
+        for key, maximum in (("assigned_realtime_level", None), ("assigned_realtime_step", 10)):
+            if key in data:
+                val, err = _coerce_optional_positive_int(data[key], key, maximum=maximum)
                 if err:
                     return jsonify({"code": "INVALID_INPUT", "error": err}), 400
                 data[key] = val
@@ -536,8 +561,25 @@ def v2_admin_send_assignment(user_id):
         )
         if result.get("status") == "failed":
             return jsonify({"code": "EMAIL_FAILED", "error": result.get("error", "Failed to send email")}), 500
-        db.v2_mark_tutor_feedback_sent_for_user(user_id)
-        return jsonify({"status": "ok", "message": "Assignment sent", "sent": result.get("sent", False)}), 200
+        sniper_profile = db.get_sniper_profile_payload(user_id)
+        if result.get("status") == "sent":
+            assigned_level = overrides.get("assigned_realtime_level")
+            assigned_step = overrides.get("assigned_realtime_step")
+            if assigned_level is not None or assigned_step is not None:
+                sniper_profile = db.set_sniper_realtime_progression(
+                    user_id,
+                    realtime_level=assigned_level,
+                    realtime_step=assigned_step,
+                )
+            db.v2_mark_tutor_feedback_sent_for_user(user_id)
+        return jsonify({
+            "status": "ok",
+            "message": "Assignment sent",
+            "sent": result.get("sent", False),
+            "sniper_profile": sniper_profile,
+            "realtime_level": sniper_profile.get("realtime_level"),
+            "realtime_step": sniper_profile.get("realtime_step"),
+        }), 200
     except Exception as e:
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
