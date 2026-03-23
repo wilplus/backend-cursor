@@ -118,6 +118,23 @@ def _task_text(text):
     return text or None
 
 
+def _parse_isoish_datetime(value):
+    if not value:
+        return None
+    if isinstance(value, str):
+        try:
+            dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+    elif hasattr(value, "isoformat"):
+        dt = value
+    else:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
 def _public_recording_id(session: dict):
     if not session:
         return None
@@ -149,16 +166,11 @@ def _build_step0_payload(user_id: str) -> dict:
     review_pending = False
     try:
         last_completed = db.v2_get_last_completed_session(user_id)
-        if last_completed and not last_completed.get("tutor_feedback_sent_at"):
+        completed_at = _parse_isoish_datetime((last_completed or {}).get("completed_at") or (last_completed or {}).get("created_at"))
+        feedback_sent_at = _parse_isoish_datetime((last_completed or {}).get("tutor_feedback_sent_at"))
+        if last_completed and (feedback_sent_at is None or (completed_at is not None and feedback_sent_at <= completed_at)):
             review_pending = True
-            raw_completed_at = last_completed.get("completed_at") or last_completed.get("created_at")
-            if raw_completed_at:
-                if isinstance(raw_completed_at, str):
-                    completed_at = datetime.fromisoformat(raw_completed_at.replace("Z", "+00:00"))
-                else:
-                    completed_at = raw_completed_at
-                if completed_at.tzinfo is None:
-                    completed_at = completed_at.replace(tzinfo=timezone.utc)
+            if completed_at:
                 deadline = completed_at + timedelta(hours=float(config.TUTOR_FEEDBACK_WINDOW_HOURS))
                 payload["tutor_feedback_deadline"] = deadline.isoformat().replace("+00:00", "Z")
             payload["review_pending"] = True

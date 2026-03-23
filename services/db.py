@@ -1309,7 +1309,7 @@ class DatabaseService:
             .select("id, completed_at, created_at, tutor_feedback_sent_at")
             .eq("user_id", user_id)
             .eq("status", "completed")
-            .order("created_at", desc=True)
+            .order("completed_at", desc=True)
             .limit(1)
             .execute()
         )
