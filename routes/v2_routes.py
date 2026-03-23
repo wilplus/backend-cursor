@@ -473,11 +473,20 @@ def _coerce_optional_positive_int(value, key: str, *, maximum: int | None = None
     return (ivalue, None)
 
 
-@v2_bp.route("/admin/students/<user_id>/sniper-profile", methods=["PUT"])
+@v2_bp.route("/admin/students/<user_id>/sniper-profile", methods=["GET", "PUT"])
 @require_admin
 def v2_admin_student_sniper_profile(user_id):
     """Update the student's currently unlocked realtime progression."""
     try:
+        if request.method == "GET":
+            sniper_profile = db.get_sniper_profile_payload(user_id)
+            return jsonify({
+                "status": "ok",
+                "sniper_profile": sniper_profile,
+                "realtime_level": sniper_profile.get("realtime_level"),
+                "realtime_step": sniper_profile.get("realtime_step"),
+            }), 200
+
         data = request.get_json(silent=True) or {}
         if "realtimeLevel" in data and "realtime_level" not in data:
             data["realtime_level"] = data.pop("realtimeLevel")
