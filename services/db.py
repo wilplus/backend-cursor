@@ -1306,7 +1306,7 @@ class DatabaseService:
         """Return the most recent completed session for the user (for tutor_feedback_deadline when no active session). Includes tutor_feedback_sent_at so deadline is omitted once feedback is sent."""
         result = (
             self.client.table("v2_sessions")
-            .select("id, completed_at, created_at, tutor_feedback_sent_at")
+            .select("id, completed_at, created_at, tutor_feedback_sent_at, student_completion_email_sent_at")
             .eq("user_id", user_id)
             .eq("status", "completed")
             .order("completed_at", desc=True)
@@ -2758,9 +2758,9 @@ class DatabaseService:
         """Get v2 sessions for a user with full report text and recording previews for admin session history."""
         result = (
             self.client.table("v2_sessions")
-            .select("id, created_at, status, recording_1_id, recording_2_id, report_id, coach_grade")
+            .select("id, created_at, completed_at, status, recording_1_id, recording_2_id, report_id, coach_grade, student_completion_email_sent_at")
             .eq("user_id", user_id)
-            .order("created_at", desc=True)
+            .order("completed_at", desc=True)
             .limit(limit)
             .execute()
         )
@@ -2785,10 +2785,11 @@ class DatabaseService:
                 pass
         out = []
         for s in sessions:
-            rec = {k: v for k, v in s.items() if k in ("id", "created_at", "status", "recording_1_id", "recording_2_id", "report_id", "coach_grade")}
+            rec = {k: v for k, v in s.items() if k in ("id", "created_at", "completed_at", "status", "recording_1_id", "recording_2_id", "report_id", "coach_grade", "student_completion_email_sent_at")}
             rec["recording_id"] = s.get("recording_2_id") or s.get("recording_1_id")  # for backward compat in API response
             rec["recording_preview"] = None
             rec["report_preview"] = None
+            rec["report_delivered"] = bool(s.get("student_completion_email_sent_at"))
             recording_id = s.get("recording_2_id") or s.get("recording_1_id")
             if recording_id:
                 r = self.client.table("recordings").select("performance_score_v2, transcription_text").eq("id", recording_id).execute()
@@ -2823,10 +2824,10 @@ class DatabaseService:
         """Get full text of the most recent completed report for admin 'Last Report' section. Only considers sessions with status='completed'. Returns { report_text, report_preview } or None."""
         result = (
             self.client.table("v2_sessions")
-            .select("id, report_id")
+            .select("id, report_id, completed_at, student_completion_email_sent_at")
             .eq("user_id", user_id)
             .eq("status", "completed")
-            .order("created_at", desc=True)
+            .order("completed_at", desc=True)
             .limit(1)
             .execute()
         )
@@ -2854,7 +2855,12 @@ class DatabaseService:
                 pass
         if not report_text:
             return None
-        return {"report_text": report_text, "report_preview": (report_text or "")[:500]}
+        return {
+            "report_text": report_text,
+            "report_preview": (report_text or "")[:500],
+            "student_completion_email_sent_at": s.get("student_completion_email_sent_at"),
+            "report_delivered": bool(s.get("student_completion_email_sent_at")),
+        }
 
     def v2_get_speaker_profile(self, user_id: str):
         """Get speaker profile for admin panel (main_goal, motivation, coach_notes, etc.)."""

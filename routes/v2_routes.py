@@ -427,6 +427,7 @@ def v2_admin_student_profile(user_id):
             "post_recording_questions": post_recording_questions,
             "last_report": last_report.get("report_text") if last_report else None,
             "last_report_preview": last_report.get("report_preview") if last_report else None,
+            "last_report_delivered": bool(last_report.get("report_delivered")) if last_report else False,
             "sessions": sessions,
         }), 200
     except Exception as e:
