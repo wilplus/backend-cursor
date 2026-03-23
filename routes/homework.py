@@ -400,6 +400,7 @@ def homework_list_sessions():
     try:
         user_id = request.user_id
         sessions = db.v2_get_sessions_with_previews(user_id, limit=20)
+        sessions = [s for s in sessions if s.get("report_delivered")]
         return jsonify({"sessions": sessions}), 200
     except Exception as e:
         logger.error(f"homework_list_sessions: {str(e)}", exc_info=True)

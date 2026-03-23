@@ -2799,24 +2799,25 @@ class DatabaseService:
                         "performance_score_v2": row.get("performance_score_v2"),
                         "transcription_preview": (row.get("transcription_text") or "")[:300],
                     }
-            report_text = None
-            if s.get("report_id"):
-                r = self.client.table("v2_reports").select("report_text").eq("id", s["report_id"]).execute()
-                if r.data:
-                    report_text = r.data[0].get("report_text") or ""
-            if report_text is None and s.get("id"):
-                # Fallback when report_id is null but report row exists for this session.
-                try:
-                    r2 = self.client.table("v2_reports").select("report_text").eq("session_v2_id", s["id"]).order("created_at", desc=True).limit(1).execute()
-                    if r2.data:
-                        report_text = (r2.data[0].get("report_text") or "").strip() or None
-                except Exception:
-                    pass
-            if report_text is None:
-                report_text = context_long_by_id.get(s["id"])
-            if report_text:
-                # Full report text so admin always sees the full report (no truncation)
-                rec["report_preview"] = {"report_text_preview": (report_text or "").strip()}
+            if rec["report_delivered"]:
+                report_text = None
+                if s.get("report_id"):
+                    r = self.client.table("v2_reports").select("report_text").eq("id", s["report_id"]).execute()
+                    if r.data:
+                        report_text = r.data[0].get("report_text") or ""
+                if report_text is None and s.get("id"):
+                    # Fallback when report_id is null but report row exists for this session.
+                    try:
+                        r2 = self.client.table("v2_reports").select("report_text").eq("session_v2_id", s["id"]).order("created_at", desc=True).limit(1).execute()
+                        if r2.data:
+                            report_text = (r2.data[0].get("report_text") or "").strip() or None
+                    except Exception:
+                        pass
+                if report_text is None:
+                    report_text = context_long_by_id.get(s["id"])
+                if report_text:
+                    # Full report text so admin always sees the full report (no truncation)
+                    rec["report_preview"] = {"report_text_preview": (report_text or "").strip()}
             out.append(rec)
         return out
 
@@ -2827,6 +2828,7 @@ class DatabaseService:
             .select("id, report_id, completed_at, student_completion_email_sent_at")
             .eq("user_id", user_id)
             .eq("status", "completed")
+            .not_.is_("student_completion_email_sent_at", "null")
             .order("completed_at", desc=True)
             .limit(1)
             .execute()
