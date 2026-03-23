@@ -63,6 +63,8 @@ STATUS_POST_QUESTIONS = "post_questions"
 STATUS_COMPLETED = "completed"
 # No focus tasks: skip step 2 and 3; job will complete session from recording 1 only
 STATUS_COMPLETING_FROM_RECORDING_1 = "completing_from_recording_1"
+# Recording 2 submitted; job will complete session from recording 2
+STATUS_COMPLETING_FROM_RECORDING_2 = "completing_from_recording_2"
 
 # Public API status vocabulary. Frontend uses ONLY top-level "status"; never derive from session.status.
 PUBLIC_STATUS_NONE = "none"
@@ -168,6 +170,8 @@ def _build_step0_payload(user_id: str) -> dict:
     feedback_sent_at = None
     try:
         last_completed = db.v2_get_last_completed_session(user_id)
+        if (last_completed or {}).get("report_id"):
+            payload["report_delivered"] = True
         completed_at = _parse_isoish_datetime((last_completed or {}).get("completed_at") or (last_completed or {}).get("created_at"))
         feedback_sent_at = _parse_isoish_datetime((last_completed or {}).get("tutor_feedback_sent_at"))
         report_email_sent_at = _parse_isoish_datetime((last_completed or {}).get("student_completion_email_sent_at"))
@@ -180,7 +184,6 @@ def _build_step0_payload(user_id: str) -> dict:
             payload["main_screen_state"] = "review_pending"
             payload["main_screen_message"] = f"{coach_name} is analysing your homework and will send you the grading and comment soon. If you pass, we will see each other in the next step!"
             payload["tutor_feedback_message"] = payload["main_screen_message"]
-            payload["report_delivered"] = True
     except Exception:
         pass
     if not review_pending:
@@ -346,8 +349,9 @@ def homework_session_status():
             _sid,
             _row_check is not None,
         )
+        public_status = _public_status(active.get("status"))
         resp = {
-            "status": _public_status(active.get("status")),
+            "status": public_status,
             "session_id": str(active["id"]),
             "recording_id": _public_recording_id(active),
             "task": _task_text(task.get("text") if task else None),
@@ -356,9 +360,10 @@ def homework_session_status():
             "tutor_feedback_message": None,
             "tutor_video_description": None,
         }
-        # Coach message for "A message for you" block (text-only on homework; tutor_video_url not used by frontend)
+        # Once the session is completed, the frontend should transition to the report/reviewing
+        # screen instead of continuing to show the pre-homework coach message block.
         msg = (active.get("tutor_video_description") or "").strip()
-        if msg:
+        if public_status != PUBLIC_STATUS_COMPLETED and msg:
             resp["tutor_video_description"] = msg
         return jsonify(resp), 200
 

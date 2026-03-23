@@ -83,6 +83,49 @@ def normalize_keywords_used(transcript: str, keywords: List[str], min_match: int
     return 0.0
 
 
+def compute_recording_performance_score(
+    center_hold_ratio: Optional[float],
+    filler_count: int,
+    wpm: float,
+) -> Dict[str, Any]:
+    """
+    Unified performance score formula for any recording step.
+
+    Primary path (center_hold_ratio available):
+        base = center_hold_ratio * 100, then penalise 3 pts per filler word.
+    Fallback (no center_hold_ratio):
+        base = 60% pace_normalized + 40% fillers_normalized.
+    Product rule: any fillers cap score below 100%.
+
+    Returns a dict with score_01 (0..1) and debug fields so callers can
+    store a consistent scoring_debug regardless of which recording it is.
+    """
+    filler_count = int(filler_count)
+    if center_hold_ratio is not None:
+        score_source = "center_hold_payload"
+        base_score_100 = round(center_hold_ratio * 100.0)
+        penalty_points = 3 * filler_count
+        final_score_100 = max(0.0, min(100.0, float(base_score_100 - penalty_points)))
+    else:
+        score_source = "transcript_metrics_fallback"
+        pace_n = normalize_pace(wpm)
+        fillers_n = normalize_fillers(filler_count)
+        base_score_100 = round(((0.6 * pace_n) + (0.4 * fillers_n)) * 100.0)
+        penalty_points = 0
+        final_score_100 = max(0.0, min(100.0, float(base_score_100)))
+    if filler_count > 0 and final_score_100 >= 100.0:
+        final_score_100 = 99.0
+    return {
+        "score_01": final_score_100 / 100.0,
+        "score_source": score_source,
+        "center_hold_ratio": center_hold_ratio,
+        "base_score_100": base_score_100,
+        "filler_count": filler_count,
+        "penalty_points": penalty_points,
+        "final_score_01": final_score_100 / 100.0,
+    }
+
+
 # Performance profile: label thresholds (aligned with normalize_pace / normalize_fillers)
 # Pace: target band 120-160 = optimal; clearly below/above get labels for coaching
 PACE_LEVEL_TOO_SLOW_BELOW = 110   # wpm < this -> too_slow

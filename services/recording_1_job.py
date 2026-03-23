@@ -18,8 +18,7 @@ from services.v2_flow_service import select_focus_task_for_performance_score_1
 from utils.metrics import count_fillers, compute_wpm
 from services.metrics_v2 import (
     build_recording_1_performance_profile,
-    normalize_fillers,
-    normalize_pace,
+    compute_recording_performance_score,
 )
 from services.homework_completion import minimal_complete_and_notify, complete_session_recording_1_only
 
@@ -181,31 +180,18 @@ def _process_one(payload: dict):
         wpm = compute_wpm(transcript_text, duration_seconds)
         filler_data = count_fillers(transcript_text)
         filler_count = filler_data["total"]
-        score_source = "center_hold_neutral_fallback"
         center_hold_ratio = None
         try:
             if center_hold_ratio_from_client is not None:
                 center_hold_ratio = max(0.0, min(1.0, float(center_hold_ratio_from_client)))
         except (TypeError, ValueError):
             center_hold_ratio = None
-        if center_hold_ratio is not None:
-            score_source = "center_hold_payload"
-            base_score_100 = round(center_hold_ratio * 100.0)
-            penalty_points = 3 * int(filler_count)
-            final_score_100 = max(0.0, min(100.0, float(base_score_100 - penalty_points)))
-        else:
-            # Fallback should be meaningful (not constant 10):
-            # derive a base score from transcript pace + fillers when center_hold_ratio is missing.
-            score_source = "transcript_metrics_fallback"
-            pace_n = normalize_pace(wpm)
-            fillers_n = normalize_fillers(filler_count)
-            base_score_100 = round(((0.6 * pace_n) + (0.4 * fillers_n)) * 100.0)
-            penalty_points = 0
-            final_score_100 = max(0.0, min(100.0, float(base_score_100)))
-        # Product rule: any detected filler prevents perfect 100%.
-        if int(filler_count) > 0 and final_score_100 >= 100.0:
-            final_score_100 = 99.0
-        performance_score_1 = final_score_100 / 100.0
+        score_result = compute_recording_performance_score(center_hold_ratio, filler_count, wpm)
+        score_source = score_result["score_source"]
+        base_score_100 = score_result["base_score_100"]
+        penalty_points = score_result["penalty_points"]
+        final_score_100 = score_result["final_score_01"] * 100.0
+        performance_score_1 = score_result["score_01"]
         logger.info(
             "recording_1_job: score source=%s base_score_100=%s filler_count=%s penalty_points=%s final_score_01=%.4f session_id=%s recording_id=%s",
             score_source,
@@ -244,14 +230,7 @@ def _process_one(payload: dict):
         existing_metrics = recording_row.get("performance_metrics_v2") if isinstance(recording_row, dict) else {}
         if not isinstance(existing_metrics, dict):
             existing_metrics = {}
-        scoring_debug = {
-            "score_source": score_source,
-            "center_hold_ratio": center_hold_ratio,
-            "base_score_100": base_score_100,
-            "filler_count": int(filler_count),
-            "penalty_points": int(penalty_points),
-            "final_score_01": performance_score_1,
-        }
+        scoring_debug = score_result
         merged_metrics = dict(existing_metrics)
         merged_metrics["scoring_debug"] = scoring_debug
         db.update_recording(recording_id, {
