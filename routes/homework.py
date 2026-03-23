@@ -86,6 +86,7 @@ def _public_status(db_status):
         STATUS_POST_QUESTIONS: PUBLIC_STATUS_REPORT_GENERATING,
         STATUS_COMPLETED: PUBLIC_STATUS_COMPLETED,
         STATUS_COMPLETING_FROM_RECORDING_1: PUBLIC_STATUS_REPORT_GENERATING,
+        STATUS_COMPLETING_FROM_RECORDING_2: PUBLIC_STATUS_REPORT_GENERATING,
     }
     return m.get(db_status, PUBLIC_STATUS_NONE)
 
@@ -601,10 +602,225 @@ def _validate_storage_path(storage_path: str, user_id: str, session_id: str) -> 
     return storage_path.startswith(prefix) and storage_path.endswith(".webm")
 
 
+def _normalize_recording_slot(value) -> str:
+    slot = str(value or "1").strip()
+    if slot not in ("1", "2"):
+        raise ValueError("recording must be '1' or '2'")
+    return slot
+
+
+def _recording_slot_fields(slot: str) -> dict:
+    if slot == "1":
+        return {
+            "label": "recording-1",
+            "session_field": "recording_1_id",
+            "processing_field": "recording_1_processing_status",
+            "allowed_status": STATUS_WARM_UP,
+            "completing_status": STATUS_COMPLETING_FROM_RECORDING_1,
+            "already_submitted_statuses": (STATUS_COMPLETING_FROM_RECORDING_1, STATUS_COMPLETED),
+        }
+    return {
+        "label": "recording-2",
+        "session_field": "recording_2_id",
+        "processing_field": "recording_2_processing_status",
+        "allowed_status": STATUS_FINAL_TASK_READY,
+        "completing_status": STATUS_COMPLETING_FROM_RECORDING_2,
+        "already_submitted_statuses": (STATUS_COMPLETING_FROM_RECORDING_2, STATUS_COMPLETED),
+    }
+
+
+def _parse_recording_submission(session_id: str, user_id: str, require_duration: bool = False):
+    audio_file = request.files.get("audio")
+    data = request.get_json(silent=True) or (request.form or {})
+    duration_seconds = None
+    storage_path = None
+    center_hold_ratio = None
+
+    if audio_file:
+        storage_path = f"{user_id}/{session_id}/{uuid.uuid4()}.webm"
+        audio_file.seek(0)
+        audio_data = audio_file.read()
+        content_type = str(audio_file.content_type or "audio/webm")
+        if content_type in ("True", "False"):
+            content_type = "audio/webm"
+        duration_raw = request.form.get("duration_seconds")
+        try:
+            duration_seconds = float(duration_raw) if duration_raw not in (None, "") else None
+        except (TypeError, ValueError):
+            return jsonify({"code": "INVALID_INPUT", "error": "duration_seconds must be a number"}), 400
+        chr_raw = request.form.get("center_hold_ratio")
+        if chr_raw in (None, ""):
+            chr_raw = request.form.get("centerHoldRatio")
+        if chr_raw not in (None, ""):
+            try:
+                center_hold_ratio = float(chr_raw)
+            except (TypeError, ValueError):
+                center_hold_ratio = None
+        return data, storage_path, duration_seconds, center_hold_ratio, (audio_data, content_type)
+
+    storage_path = (data.get("storage_path") or "").strip()
+    duration_raw = data.get("duration_seconds")
+    chr_raw = data.get("center_hold_ratio")
+    if chr_raw is None:
+        chr_raw = data.get("centerHoldRatio")
+    if not storage_path:
+        return jsonify({"code": "INVALID_INPUT", "error": "Either send multipart 'audio' or JSON with storage_path and duration_seconds"}), 400
+    if not _validate_storage_path(storage_path, user_id, session_id):
+        return jsonify({"code": "INVALID_INPUT", "error": "storage_path invalid or not allowed for this session"}), 400
+    if duration_raw is None and require_duration:
+        return jsonify({"code": "INVALID_INPUT", "error": "duration_seconds is required for this recording"}), 400
+    if duration_raw is not None:
+        try:
+            duration_seconds = float(duration_raw)
+        except (TypeError, ValueError):
+            return jsonify({"code": "INVALID_INPUT", "error": "duration_seconds must be a number"}), 400
+    if chr_raw is not None:
+        try:
+            center_hold_ratio = float(chr_raw)
+        except (TypeError, ValueError):
+            center_hold_ratio = None
+    return data, storage_path, duration_seconds, center_hold_ratio, None
+
+
+def _validate_recording_2_duration(duration_seconds):
+    if duration_seconds is None:
+        return jsonify({"code": "INVALID_INPUT", "error": "duration_seconds is required for recording-2"}), 400
+    min_seconds = 60
+    max_seconds = 300
+    effective_min_seconds = 58
+    if float(duration_seconds) < effective_min_seconds or float(duration_seconds) > max_seconds:
+        return jsonify({
+            "code": "RECORDING_DURATION_OUT_OF_RANGE",
+            "error": "Recording 2 must be between 60 and 300 seconds.",
+            "message": "Recording 2 must be between 60 and 300 seconds.",
+            "details": {
+                "min_seconds": min_seconds,
+                "max_seconds": max_seconds,
+                "duration_seconds": float(duration_seconds),
+            },
+        }), 422
+    return None
+
+
+def _submit_recording(session_id: str, slot: str):
+    from config import Config
+    from services.recording_1_job import enqueue_recording_1_job
+    from services.recording_2_job import enqueue_recording_2_job
+
+    config = Config()
+    user_id = request.user_id
+    session = db.v2_get_session(session_id, user_id)
+    fields = _recording_slot_fields(slot)
+    label = fields["label"]
+    session_field = fields["session_field"]
+    processing_field = fields["processing_field"]
+    allowed_status = fields["allowed_status"]
+    completing_status = fields["completing_status"]
+    already_submitted_statuses = fields["already_submitted_statuses"]
+    if not session:
+        _agent_log(f"{label}: session not found", {"session_id": session_id}, "H1")
+        return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found"}), 404
+
+    status = session.get("status")
+    if status != allowed_status:
+        if status in already_submitted_statuses:
+            existing_recording_id = session.get(session_field)
+            existing_payload = {
+                "already_submitted": True,
+                "status": PUBLIC_STATUS_REPORT_GENERATING if status != STATUS_COMPLETED else PUBLIC_STATUS_COMPLETED,
+                "recording_id": existing_recording_id,
+            }
+            if slot == "2" and session.get("performance_score_2") is not None:
+                existing_payload["performance_score_2"] = session.get("performance_score_2")
+            return jsonify(existing_payload), 200
+        _agent_log(f"{label}: wrong status", {"session_id": session_id, "status": status}, "H1")
+        return jsonify({
+            "code": "INVALID_SESSION_STATE",
+            "error": f"Session not found or not in {allowed_status}",
+            "status": status,
+        }), 409
+
+    parsed = _parse_recording_submission(session_id, user_id, require_duration=(slot == "2"))
+    if len(parsed) == 2:
+        return parsed
+    data, storage_path, duration_seconds, center_hold_ratio, audio_upload = parsed
+    if slot == "2":
+        duration_error = _validate_recording_2_duration(duration_seconds)
+        if duration_error is not None:
+            return duration_error
+
+    if audio_upload is not None:
+        audio_data, content_type = audio_upload
+        db.upload_audio(config.AUDIO_BUCKET_NAME, storage_path, audio_data, content_type=content_type)
+
+    existing_rid = session.get(session_field)
+    if existing_rid:
+        existing = db.get_recording(existing_rid, user_id)
+        if existing and (existing.get("storage_path") or "").strip() == storage_path:
+            db.v2_update_session(session_id, user_id, {"status": completing_status})
+            payload = {
+                "recording_id": existing["id"],
+                "status": PUBLIC_STATUS_REPORT_GENERATING,
+            }
+            if slot == "2" and session.get("performance_score_2") is not None:
+                payload["performance_score_2"] = session.get("performance_score_2")
+            return jsonify(payload), 200
+
+    client_transcript = (data.get("transcript_text") or "").strip() if isinstance(data, dict) else ""
+    minimal_recording = {
+        "user_id": user_id,
+        "session_id": None,
+        "session_v2_id": session_id,
+        "storage_path": storage_path,
+        "audio_url": "",
+        "duration": 0,
+    }
+    if duration_seconds is not None:
+        minimal_recording["duration_seconds"] = duration_seconds
+    if client_transcript:
+        minimal_recording["transcription_text"] = client_transcript
+    recording = db.create_recording(minimal_recording)
+    if not recording:
+        return jsonify({"code": "RECORDING_CREATE_FAILED"}), 500
+
+    db.v2_update_session(session_id, user_id, {
+        session_field: recording["id"],
+        "status": completing_status,
+        processing_field: "pending",
+    })
+
+    if slot == "1":
+        enqueue_recording_1_job(
+            session_id,
+            str(recording["id"]),
+            storage_path,
+            user_id,
+            duration_seconds,
+            center_hold_ratio=center_hold_ratio,
+        )
+    else:
+        enqueue_recording_2_job(
+            session_id,
+            str(recording["id"]),
+            storage_path,
+            user_id,
+            duration_seconds,
+            center_hold_ratio=center_hold_ratio,
+        )
+
+    payload = {
+        "status": PUBLIC_STATUS_REPORT_GENERATING,
+        "recording_id": recording["id"],
+    }
+    if slot == "2" and session.get("performance_score_2") is not None:
+        payload["performance_score_2"] = session.get("performance_score_2")
+    return jsonify(payload), 200
+
+
 @homework_bp.route("/session/<session_id>/recording-upload-url", methods=["POST"])
 @require_auth
 def homework_recording_upload_url(session_id):
-    """Mint a storage path for the single homework recording upload."""
+    """Mint a storage path for a homework recording upload."""
     # #region agent log
     try:
         _debug_log_write({"hypothesisId": "H0", "location": "homework.py:recording-upload-url", "message": "entry", "data": {"session_id": str(session_id)[:36]}, "timestamp": int(time.time() * 1000)})
@@ -616,27 +832,36 @@ def homework_recording_upload_url(session_id):
         config = Config()
         user_id = request.user_id
         data = request.get_json() or {}
+        try:
+            recording_slot = _normalize_recording_slot(data.get("recording"))
+        except ValueError as e:
+            return jsonify({"code": "INVALID_INPUT", "error": str(e)}), 400
+        fields = _recording_slot_fields(recording_slot)
 
         session = db.v2_get_session(session_id, user_id)
         if not session:
             return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found"}), 404
         status = session.get("status")
-        if status != STATUS_WARM_UP:
-            # Already past recording 1 (e.g. report generating or completed) — return 200 so frontend doesn't 409
-            if status in (STATUS_COMPLETING_FROM_RECORDING_1, STATUS_COMPLETED):
+        if status != fields["allowed_status"]:
+            if status in fields["already_submitted_statuses"]:
                 return jsonify({
                     "already_submitted": True,
                     "storage_path": None,
                     "bucket": config.AUDIO_BUCKET_NAME,
-                    "message": "You already submitted your recording. Your report is being generated or ready.",
+                    "message": f"You already submitted {fields['label']}. Your report is being generated or ready.",
                 }), 200
-            _agent_log("recording-upload-url: 409 rec=1 wrong status", {"session_id": session_id, "status": status}, "H_upload")
-            return jsonify({"code": "INVALID_SESSION_STATE", "error": "Session must be in warm_up for recording-1", "status": status}), 409
+            _agent_log("recording-upload-url: wrong status", {"session_id": session_id, "status": status, "recording": recording_slot}, "H_upload")
+            return jsonify({
+                "code": "INVALID_SESSION_STATE",
+                "error": f"Session must be in {fields['allowed_status']} for {fields['label']}",
+                "status": status,
+            }), 409
 
         storage_path = _storage_path_for_session(user_id, session_id)
         resp_payload = {
             "storage_path": storage_path,
             "bucket": config.AUDIO_BUCKET_NAME,
+            "recording": recording_slot,
         }
         # #region agent log
         try:
@@ -668,128 +893,27 @@ def homework_recording_upload_url(session_id):
 @homework_bp.route("/session/<session_id>/recording-1", methods=["POST"])
 @require_auth
 def homework_submit_recording_1(session_id):
-    """Upload the single homework recording and return the report-generating state."""
+    """Upload recording 1 and return the report-generating state."""
     try:
-        from config import Config
-        from services.recording_1_job import enqueue_recording_1_job
-
-        config = Config()
-        user_id = request.user_id
-        session = db.v2_get_session(session_id, user_id)
-        if not session:
-            _agent_log("recording-1: session not found", {"session_id": session_id}, "H1")
-            return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found"}), 404
-        if session.get("status") != STATUS_WARM_UP:
-            _agent_log("recording-1: wrong status", {"session_id": session_id, "status": session.get("status")}, "H1")
-            return jsonify({"code": "INVALID_SESSION_STATE", "error": "Session not found or not in warm_up", "status": session.get("status")}), 409
-
-        audio_file = request.files.get("audio")
-        _agent_log("recording-1: entry", {"session_id": session_id, "status": session.get("status"), "has_audio": bool(audio_file), "has_storage_path": bool((request.get_json(silent=True) or {}).get("storage_path"))}, "H1")
-        data = request.get_json(silent=True) or (request.form or {})
-        duration_seconds = None
-        storage_path = None
-        center_hold_ratio = None
-
-        if audio_file:
-            # Multipart: upload only, no transcription in request
-            ext = ".webm"
-            storage_path = f"{user_id}/{session_id}/{uuid.uuid4()}{ext}"
-            audio_file.seek(0)
-            audio_data = audio_file.read()
-            content_type = str(audio_file.content_type or "audio/webm")
-            if content_type in ("True", "False"):
-                content_type = "audio/webm"
-            db.upload_audio(config.AUDIO_BUCKET_NAME, storage_path, audio_data, content_type=content_type)
-            try:
-                duration_seconds = float(request.form.get("duration_seconds")) if request.form.get("duration_seconds") else None
-            except (TypeError, ValueError):
-                duration_seconds = None
-            chr_raw = request.form.get("center_hold_ratio")
-            if chr_raw in (None, ""):
-                chr_raw = request.form.get("centerHoldRatio")
-            if chr_raw not in (None, ""):
-                try:
-                    center_hold_ratio = float(chr_raw)
-                except (TypeError, ValueError):
-                    center_hold_ratio = None
-        else:
-            # JSON: storage_path + duration_seconds (direct-to-storage)
-            storage_path = (data.get("storage_path") or "").strip()
-            duration_seconds = data.get("duration_seconds")
-            chr_raw = data.get("center_hold_ratio")
-            if chr_raw is None:
-                chr_raw = data.get("centerHoldRatio")
-            if not storage_path or duration_seconds is None:
-                return jsonify({"code": "INVALID_INPUT", "error": "Either send multipart 'audio' or JSON with storage_path and duration_seconds"}), 400
-            if not _validate_storage_path(storage_path, user_id, session_id):
-                return jsonify({"code": "INVALID_INPUT", "error": "storage_path invalid or not allowed for this session"}), 400
-            try:
-                duration_seconds = float(duration_seconds)
-            except (TypeError, ValueError):
-                return jsonify({"code": "INVALID_INPUT", "error": "duration_seconds must be a number"}), 400
-            if chr_raw is not None:
-                try:
-                    center_hold_ratio = float(chr_raw)
-                except (TypeError, ValueError):
-                    center_hold_ratio = None
-            # Idempotency: same storage_path → return existing (always report_generating; steps 2–4 removed)
-            existing_rid = session.get("recording_1_id")
-            if existing_rid:
-                existing = db.get_recording(existing_rid, user_id)
-                if existing and (existing.get("storage_path") or "").strip() == storage_path:
-                    db.v2_update_session(session_id, user_id, {"status": STATUS_COMPLETING_FROM_RECORDING_1})
-                    return jsonify({
-                        "recording_id": existing["id"],
-                        "status": PUBLIC_STATUS_REPORT_GENERATING,
-                    }), 200
-            # New recording for this session: create minimal, update session, enqueue
-
-        # Client-side Web Speech transcript (fallback when Whisper fails or is slow)
-        client_transcript = (data.get("transcript_text") or "").strip() if isinstance(data, dict) else ""
-
-        # Create minimal recording row (job will fill transcript, wpm, etc.)
-        minimal_recording = {
-            "user_id": user_id,
-            "session_id": None,
-            "session_v2_id": session_id,
-            "storage_path": storage_path,
-            "audio_url": "",
-            "duration": 0,
-        }
-        if duration_seconds is not None:
-            minimal_recording["duration_seconds"] = duration_seconds
-        # Pre-fill transcript from client so it's available immediately even before Whisper runs
-        if client_transcript:
-            minimal_recording["transcription_text"] = client_transcript
-        recording = db.create_recording(minimal_recording)
-        if not recording:
-            return jsonify({"code": "RECORDING_CREATE_FAILED"}), 500
-
-        db.v2_update_session(session_id, user_id, {
-            "recording_1_id": recording["id"],
-            "status": STATUS_TASK_BLOCK,
-            "recording_1_processing_status": "pending",
-        })
-
-        enqueue_recording_1_job(
-            session_id,
-            str(recording["id"]),
-            storage_path,
-            user_id,
-            duration_seconds,
-            center_hold_ratio=center_hold_ratio,
-        )
-
-        # TEMPORARY: steps 2–4 fully removed → always complete from recording 1 only
-        db.v2_update_session(session_id, user_id, {"status": STATUS_COMPLETING_FROM_RECORDING_1})
-        _agent_log("recording-1: completing from recording 1 only (steps 2–4 removed)", {"session_id": session_id}, "H5")
-        return jsonify({
-            "status": PUBLIC_STATUS_REPORT_GENERATING,
-            "recording_id": recording["id"],
-        }), 200
+        _agent_log("recording-1: entry", {"session_id": session_id}, "H1")
+        return _submit_recording(session_id, "1")
     except Exception as e:
         _agent_log("recording-1: exception", {"error": str(e), "type": type(e).__name__}, "H5")
         logger.error(f"Homework recording-1: {str(e)}")
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
+
+
+@homework_bp.route("/session/<session_id>/recording-2", methods=["POST"])
+@require_auth
+def homework_submit_recording_2(session_id):
+    """Upload recording 2 and return the report-generating state."""
+    try:
+        _agent_log("recording-2: entry", {"session_id": session_id}, "H2")
+        return _submit_recording(session_id, "2")
+    except Exception as e:
+        _agent_log("recording-2: exception", {"error": str(e), "type": type(e).__name__}, "H5")
+        logger.error(f"Homework recording-2: {str(e)}")
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
 
