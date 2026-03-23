@@ -610,8 +610,9 @@ def v2_admin_send_assignment(user_id):
         if result.get("status") == "failed":
             return jsonify({"code": "EMAIL_FAILED", "error": result.get("error", "Failed to send email")}), 500
         sniper_profile = db.get_sniper_profile_payload(user_id)
-        if result.get("status") == "sent":
-            db.v2_mark_tutor_feedback_sent_for_user(user_id)
+        # Treat successful coach action as the unlock trigger for the student UI,
+        # even if email delivery is pending/disabled in this environment.
+        db.v2_mark_tutor_feedback_sent_for_user(user_id)
         return jsonify({
             "status": "ok",
             "message": "Assignment sent",
