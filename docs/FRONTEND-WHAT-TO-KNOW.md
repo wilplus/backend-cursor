@@ -23,6 +23,7 @@ Short reference for the frontend team. Backend contract and behavior that affect
 
 - **`GET /api/homework/session/<sessionId>/report`** returns (among other fields) **`report_cta`** (string). Use it as the **main CTA at the end of the report**, e.g. button or prominent text: **“Send the homework to the coach!”**. When the user taps it (or “Back to homework”), navigate to **step 0** and call **GET session/status** again.
 - Report payload also includes: `report_text`, `scores`, `final_recording`, `performance_history`, optional `recording` (transcript, fillers, `audio_url`), `context_short`, `coach_insight`, `admin_grade`, and `report_comment`. When the session is still generating, backend returns **409** with `REPORT_NOT_READY` — poll until 200.
+- When the session becomes `completed`, show the reviewing/report screen and hide any tutor video block. The video is only for step 0 / in-progress homework, not the completed state.
 
 ---
 

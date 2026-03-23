@@ -1306,7 +1306,7 @@ class DatabaseService:
         """Return the most recent completed session for the user (for tutor_feedback_deadline when no active session). Includes tutor_feedback_sent_at so deadline is omitted once feedback is sent."""
         result = (
             self.client.table("v2_sessions")
-            .select("id, completed_at, created_at, tutor_feedback_sent_at, student_completion_email_sent_at")
+            .select("id, report_id, completed_at, created_at, tutor_feedback_sent_at, student_completion_email_sent_at")
             .eq("user_id", user_id)
             .eq("status", "completed")
             .order("completed_at", desc=True)
@@ -2789,7 +2789,6 @@ class DatabaseService:
             rec["recording_id"] = s.get("recording_2_id") or s.get("recording_1_id")  # for backward compat in API response
             rec["recording_preview"] = None
             rec["report_preview"] = None
-            rec["report_delivered"] = bool(s.get("student_completion_email_sent_at"))
             recording_id = s.get("recording_2_id") or s.get("recording_1_id")
             if recording_id:
                 r = self.client.table("recordings").select("performance_score_v2, transcription_text").eq("id", recording_id).execute()
@@ -2799,25 +2798,25 @@ class DatabaseService:
                         "performance_score_v2": row.get("performance_score_v2"),
                         "transcription_preview": (row.get("transcription_text") or "")[:300],
                     }
-            if rec["report_delivered"]:
-                report_text = None
-                if s.get("report_id"):
-                    r = self.client.table("v2_reports").select("report_text").eq("id", s["report_id"]).execute()
-                    if r.data:
-                        report_text = r.data[0].get("report_text") or ""
-                if report_text is None and s.get("id"):
-                    # Fallback when report_id is null but report row exists for this session.
-                    try:
-                        r2 = self.client.table("v2_reports").select("report_text").eq("session_v2_id", s["id"]).order("created_at", desc=True).limit(1).execute()
-                        if r2.data:
-                            report_text = (r2.data[0].get("report_text") or "").strip() or None
-                    except Exception:
-                        pass
-                if report_text is None:
-                    report_text = context_long_by_id.get(s["id"])
-                if report_text:
-                    # Full report text so admin always sees the full report (no truncation)
-                    rec["report_preview"] = {"report_text_preview": (report_text or "").strip()}
+            report_text = None
+            if s.get("report_id"):
+                r = self.client.table("v2_reports").select("report_text").eq("id", s["report_id"]).execute()
+                if r.data:
+                    report_text = r.data[0].get("report_text") or ""
+            if report_text is None and s.get("id"):
+                # Fallback when report_id is null but report row exists for this session.
+                try:
+                    r2 = self.client.table("v2_reports").select("report_text").eq("session_v2_id", s["id"]).order("created_at", desc=True).limit(1).execute()
+                    if r2.data:
+                        report_text = (r2.data[0].get("report_text") or "").strip() or None
+                except Exception:
+                    pass
+            if report_text is None:
+                report_text = context_long_by_id.get(s["id"])
+            rec["report_delivered"] = bool((report_text or "").strip())
+            if report_text:
+                # Full report text so admin always sees the full report (no truncation)
+                rec["report_preview"] = {"report_text_preview": (report_text or "").strip()}
             out.append(rec)
         return out
 
@@ -2828,7 +2827,6 @@ class DatabaseService:
             .select("id, report_id, completed_at, student_completion_email_sent_at")
             .eq("user_id", user_id)
             .eq("status", "completed")
-            .not_.is_("student_completion_email_sent_at", "null")
             .order("completed_at", desc=True)
             .limit(1)
             .execute()
@@ -2861,7 +2859,7 @@ class DatabaseService:
             "report_text": report_text,
             "report_preview": (report_text or "")[:500],
             "student_completion_email_sent_at": s.get("student_completion_email_sent_at"),
-            "report_delivered": bool(s.get("student_completion_email_sent_at")),
+            "report_delivered": True,
         }
 
     def v2_get_speaker_profile(self, user_id: str):

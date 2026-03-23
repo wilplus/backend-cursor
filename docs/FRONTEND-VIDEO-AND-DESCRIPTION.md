@@ -73,8 +73,8 @@ Your Next.js (or other) API route that proxies to the backend must **forward the
 - **Place:** One clear place per assignment is enough, for example:
   - **Option A:** At the top of the homework flow (e.g. above “Warm-up” or “Record”) when there is an active session with a video.
   - **Option B:** On the “no active session” / step 0 screen, e.g. “Your coach left you a message” with the video and description, then “Start homework”.
-  - **Option C:** On the report step (step 5) as “Message from your coach”.
-- Pick one and keep it consistent so the student sees the message once per homework.
+- Do **not** keep showing the video once the session is `completed`. At that point, replace the video area with the reviewing/report screen and show the report.
+- Pick one pre-completion place and keep it consistent so the student sees the message once per homework.
 
 ### How to show video and description
 

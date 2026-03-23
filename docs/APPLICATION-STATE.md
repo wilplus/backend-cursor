@@ -101,7 +101,7 @@ The report is built in `services/homework_completion.py` by `_build_report_recor
 
 **Frontend (score consistency):** Use **`score_for_display`** (or `scores.overall`) for both (1) the main “Your result” / “Your score” and (2) the performance chart. Do **not** use `scores.final` for the main display — it is the raw recording-2 average and will not match the graph (see `docs/HOMEWORK-AND-PERFORMANCE.md` §1.3.1).
 
-**Frontend:** Show full transcription, filler words (breakdown + total), recording playback, keep chart (driven by `performance_history`; last bar = current session = `score_for_display`), show `coach_insight` as the AI block, and show `report_comment` next to `admin_grade` when present. At the end of the report, show **report_cta** as the primary CTA (e.g. button or prominent text: "Send the homework to the coach!").
+**Frontend:** Show full transcription, filler words (breakdown + total), recording playback, keep chart (driven by `performance_history`; last bar = current session = `score_for_display`), show `coach_insight` as the AI block, and show `report_comment` next to `admin_grade` when present. At the end of the report, show **report_cta** as the primary CTA (e.g. button or prominent text: "Send the homework to the coach!"). When the session is `completed`, the report/reviewing screen replaces any tutor video block.
 
 ### 3.6 Step 0
 

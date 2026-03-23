@@ -31,7 +31,7 @@ Your tasks:
 - **Where to show:** Pick one place and keep it consistent:
   - **Option A:** At the top of the homework flow (above warm-up / record) when there is an active session with a video.
   - **Option B:** On step 0 (no active session), e.g. “Your coach left you a message” + video + description, then “Start homework”.
-  - **Option C:** On the report step (step 5) as “Message from your coach”.
+- **Completed session rule:** When the session becomes `completed`, hide the video block and show the reviewing/report screen instead. Do not keep the tutor video visible on the completed/report state.
 - **Layout:**
   - If `tutor_video_description` is non-empty, show it **above** the video link (plain text; no HTML from backend).
   - Show a **“Watch video”** link with `href={session.tutor_video_url}`, `target="_blank"`, `rel="noopener"`. Optionally embed (e.g. YouTube iframe) if you detect the domain; a link is sufficient.
