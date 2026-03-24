@@ -71,11 +71,14 @@ def build_admin_homework_completed_email_html(
     filler_count: int | None = None,
     strength: str = "Loudness (pending)",
     logo_url: str | None = None,
+    student_name: str = "",
 ) -> str:
     pct = _score_percent(score)
     pace_text = f"{pace_wpm} WPM" if pace_wpm is not None else "n/a WPM"
     fillers_text = str(filler_count) if filler_count is not None else "n/a"
     excerpt = _short(transcript_excerpt, 260) or "No transcript preview available yet."
+    safe_name = escape((student_name or "").strip())
+    student_label = f"{safe_name} ({escape(student_email)})" if safe_name else escape(student_email)
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -97,7 +100,7 @@ def build_admin_homework_completed_email_html(
   <table width="100%" cellpadding="0" cellspacing="0">
     <tr>
       <td style="padding:14px 0;border-top:1px solid #f1f5f9;font-size:14px;color:#94a3b8;width:100px;">Student</td>
-      <td style="padding:14px 0;border-top:1px solid #f1f5f9;font-size:14px;color:#1e293b;">{escape(student_email)}</td>
+      <td style="padding:14px 0;border-top:1px solid #f1f5f9;font-size:14px;color:#1e293b;">{student_label}</td>
     </tr>
     <tr>
       <td style="padding:14px 0;border-top:1px solid #f1f5f9;font-size:14px;color:#94a3b8;">Score</td>
@@ -107,9 +110,6 @@ def build_admin_homework_completed_email_html(
 </td></tr>
 <tr><td style="padding:28px 36px;">
   <a href="{escape(profile_url)}" style="display:inline-block;background-color:#1e293b;color:#ffffff;font-size:14px;font-weight:600;text-decoration:none;padding:12px 28px;border-radius:6px;">View profile &amp; send homework</a>
-  <p style="margin:12px 0 0;font-size:12px;color:#cbd5e1;">
-    <a href="{escape(profile_url)}" style="color:#94a3b8;word-break:break-all;text-decoration:none;">Copy link →</a>
-  </p>
 </td></tr>
 <tr><td style="padding:0 36px 36px;">
   <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#fafafa;border-radius:6px;">

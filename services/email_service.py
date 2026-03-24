@@ -206,6 +206,7 @@ class EmailService:
         report_preview: str = "",
         student_email: str | None = None,
         performance_score_end: float | None = None,
+        student_name: str = "",
     ) -> dict:
         """
         Notify the coach (ADMIN_EMAIL) that a student completed a homework lesson.
@@ -251,6 +252,7 @@ class EmailService:
             filler_count=None,
             strength="Loudness (pending)",
             logo_url=logo_url,
+            student_name=student_name,
         )
 
         subject = f"Homework completed – Session {session_id[:8]}"

@@ -304,6 +304,7 @@ def complete_session_recording_1_only(
             user_id, session_id, report_text,
             student_email=student_email or None,
             performance_score_end=performance_score_end,
+            student_name=_resolve_student_name(user_id, student_email) if student_email else "",
         )
         if coach_result.get("status") != "sent":
             logger.warning(
@@ -564,6 +565,7 @@ def complete_session_recording_2_only(
             user_id, session_id, report_text,
             student_email=student_email or None,
             performance_score_end=performance_score_end,
+            student_name=_resolve_student_name(user_id, student_email) if student_email else "",
         )
         if coach_result.get("status") != "sent":
             logger.warning(
