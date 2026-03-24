@@ -210,17 +210,22 @@ def _build_step0_payload(user_id: str) -> dict:
                     break
         except Exception:
             payload["assigned_exercises"] = []
-    try:
-        overrides = db.v2_get_student_overrides(user_id) or {}
-        url = (overrides.get("pending_tutor_video_url") or "").strip()
-        msg = (overrides.get("pending_tutor_video_description") or "").strip()
-        if feedback_sent_at is not None:
-            if url:
-                payload["tutor_video_url"] = url
-            if msg:
-                payload["tutor_video_description"] = msg
-    except Exception:
-        pass
+    # Pending coach video is for the *next* homework. Do not show it while the student is still in
+    # review_pending (coach analysing the submission). Otherwise send-assignment sets
+    # tutor_feedback_sent_at on the last completed session and we would expose the new video
+    # before the UI leaves the reviewing state — refresh looks "stuck" until logout clears client state.
+    if not review_pending:
+        try:
+            overrides = db.v2_get_student_overrides(user_id) or {}
+            url = (overrides.get("pending_tutor_video_url") or "").strip()
+            msg = (overrides.get("pending_tutor_video_description") or "").strip()
+            if feedback_sent_at is not None:
+                if url:
+                    payload["tutor_video_url"] = url
+                if msg:
+                    payload["tutor_video_description"] = msg
+        except Exception:
+            pass
     return payload
 
 
@@ -366,6 +371,7 @@ def homework_session_status():
             _row_check is not None,
         )
         public_status = _public_status(active.get("status"))
+        internal_status = active.get("status")
         resp = {
             "status": public_status,
             "session_id": str(active["id"]),
@@ -376,12 +382,18 @@ def homework_session_status():
             "tutor_feedback_message": None,
             "tutor_video_url": None,
             "tutor_video_description": None,
+            "has_active_session": True,
         }
+        # Hide intro coach video while report is generating; session row still has tutor_video_* from session/start.
+        hide_tutor_video = internal_status in (
+            STATUS_COMPLETING_FROM_RECORDING_1,
+            STATUS_COMPLETING_FROM_RECORDING_2,
+        )
         # Once the session is completed, the frontend should transition to the report/reviewing
         # screen instead of continuing to show the pre-homework coach message block.
         url = (active.get("tutor_video_url") or "").strip()
         msg = (active.get("tutor_video_description") or "").strip()
-        if public_status != PUBLIC_STATUS_COMPLETED:
+        if public_status != PUBLIC_STATUS_COMPLETED and not hide_tutor_video:
             if url:
                 resp["tutor_video_url"] = url
             if msg:

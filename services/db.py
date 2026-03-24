@@ -2435,7 +2435,14 @@ class DatabaseService:
         `post_questions` stays here only for legacy compatibility with older rows;
         the current web client should not depend on that state.
         """
-        statuses = ("warm_up", "task_block", "final_task_ready", "post_questions", "completing_from_recording_1")
+        statuses = (
+            "warm_up",
+            "task_block",
+            "final_task_ready",
+            "post_questions",
+            "completing_from_recording_1",
+            "completing_from_recording_2",
+        )
         result = (
             self.client.table("v2_sessions")
             .select("*")
