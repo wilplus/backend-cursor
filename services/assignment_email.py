@@ -54,8 +54,9 @@ def _logo_html(logo_url: str | None) -> str:
             'style="display:block;height:28px;width:auto;max-width:180px;">'
         )
     return (
-        '<span style="font-family:Georgia,\'Times New Roman\',serif;font-size:20px;'
-        'font-weight:700;color:#1e293b;letter-spacing:-0.3px;">'
+        '<style>@import url(\'https://fonts.googleapis.com/css2?family=Pacifico&display=swap\');</style>'
+        '<span style="font-family:\'Pacifico\',Georgia,\'Times New Roman\',serif;font-size:22px;'
+        'font-weight:400;color:#1e293b;letter-spacing:-0.3px;">'
         'Willab<span style="color:#f97316;">.</span></span>'
     )
 
@@ -251,7 +252,7 @@ def build_student_homework_submitted_email_html(
 <table width="100%" cellpadding="0" cellspacing="0">
 <tr><td style="padding:36px 36px 0;">
   <p style="margin:0 0 6px;font-size:18px;font-weight:600;color:#1e293b;line-height:1.4;">Great work, {safe_first}!</p>
-  <p style="margin:0;font-size:14px;color:#64748b;line-height:1.6;">Your coach will contact you soon with feedback.</p>
+  <p style="margin:0;font-size:14px;color:#64748b;line-height:1.6;">I will contact you soon with the feedback.</p>
 </td></tr>
 <tr><td style="padding:28px 36px 0;">
   <table cellpadding="0" cellspacing="0" style="background-color:#fafafa;border-radius:6px;width:100%;">

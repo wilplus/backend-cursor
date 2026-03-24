@@ -88,6 +88,7 @@ def ensure_student_completion_email(
             performance_score_end=score_end,
             report_preview=report_text,
             student_name=student_email.split("@")[0] if "@" in student_email else "there",
+            session_id=session_id,
         )
         if result.get("status") == "sent":
             try:
@@ -305,6 +306,7 @@ def complete_session_recording_1_only(
                 performance_score_end=performance_score_end,
                 report_preview=report_text,
                 student_name=student_email.split("@")[0] if "@" in student_email else "there",
+                session_id=session_id,
             )
             if student_result.get("status") != "sent":
                 logger.warning(
@@ -562,6 +564,7 @@ def complete_session_recording_2_only(
                 performance_score_end=performance_score_end,
                 report_preview=report_text,
                 student_name=student_email.split("@")[0] if "@" in student_email else "there",
+                session_id=session_id,
             )
             if student_result.get("status") == "sent":
                 try:
@@ -675,6 +678,7 @@ def minimal_complete_and_notify(
                     performance_score_end=performance_score_end,
                     report_preview=report_text,
                     student_name=student_email.split("@")[0] if "@" in student_email else "there",
+                    session_id=session_id,
                 )
                 if student_result.get("status") != "sent":
                     logger.warning(

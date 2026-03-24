@@ -336,6 +336,7 @@ class EmailService:
         performance_score_end: float | None = None,
         report_preview: str = "",
         student_name: str = "there",
+        session_id: str = "",
     ) -> dict:
         """
         Send student-facing lesson-complete email using the modern Willab template.
@@ -352,7 +353,12 @@ class EmailService:
         from services.assignment_email import build_student_homework_submitted_email_html
 
         app_url = (frontend_url or config.FRONTEND_URL or "").rstrip("/")
-        report_link = f"{app_url}/dashboard" if app_url else "#"
+        sid = (session_id or "").strip()
+        if sid and app_url:
+            deep_link = f"{app_url}/dashboard?showReports=1&openReportSessionId={sid}"
+        else:
+            deep_link = f"{app_url}/dashboard" if app_url else "#"
+        report_link = deep_link
         logo_url = (getattr(config, "APP_LOGO_URL", None) or "").strip() or (f"{app_url}/icon" if app_url else None)
         raw = (getattr(config, "COACH_NAME", "Artur") or "Artur").strip()
         coach_name = raw.title() if raw else "Artur"
