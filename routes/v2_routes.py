@@ -691,9 +691,11 @@ def v2_admin_student_session_detail(user_id, session_id):
             except (TypeError, ValueError):
                 return jsonify({"code": "INVALID_INPUT", "error": "coach_grade must be an integer 1-10"}), 400
             updates["coach_grade"] = g
-        if "report_comment" in data:
+        # Accept both field names: coach_message (admin client) and report_comment (legacy)
+        raw_comment = data.get("coach_message") if "coach_message" in data else data.get("report_comment")
+        if "report_comment" in data or "coach_message" in data:
             try:
-                updates["report_comment"] = _parse_report_comment(data.get("report_comment"))
+                updates["report_comment"] = _parse_report_comment(raw_comment)
             except ValueError as ve:
                 return jsonify({"code": "INVALID_INPUT", "error": str(ve)}), 400
         if not updates:
