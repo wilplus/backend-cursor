@@ -182,7 +182,12 @@ def _build_step0_payload(user_id: str) -> dict:
         completed_at = _parse_isoish_datetime((last_completed or {}).get("completed_at") or (last_completed or {}).get("created_at"))
         feedback_sent_at = _parse_isoish_datetime((last_completed or {}).get("tutor_feedback_sent_at"))
         report_email_sent_at = _parse_isoish_datetime((last_completed or {}).get("student_completion_email_sent_at"))
-        if report_email_sent_at and feedback_sent_at is None:
+        # Treat as review_pending if:
+        # (a) completion email already sent, or
+        # (b) session is completed but email not yet dispatched by background job
+        #     (timing gap: job is async; status is polled immediately after CTA click)
+        session_completed = (last_completed or {}).get("status") == "completed"
+        if (report_email_sent_at or session_completed) and feedback_sent_at is None:
             review_pending = True
             if completed_at:
                 deadline = completed_at + timedelta(hours=float(config.TUTOR_FEEDBACK_WINDOW_HOURS))
