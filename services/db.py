@@ -2876,6 +2876,34 @@ class DatabaseService:
         result = self.client.table("v2_speaker_profiles").upsert(payload, on_conflict="user_id").execute()
         return result.data[0] if result.data else None
 
+    def get_user_name_from_auth(self, user_id: str) -> str | None:
+        """Fetch user display name from Supabase Auth user_metadata. Returns None if not found or on error."""
+        try:
+            import httpx
+            url = f"{config.SUPABASE_URL.rstrip('/')}/auth/v1/admin/users/{user_id}"
+            resp = httpx.get(
+                url,
+                headers={
+                    "Authorization": f"Bearer {config.SUPABASE_SERVICE_ROLE_KEY}",
+                    "apikey": config.SUPABASE_SERVICE_ROLE_KEY,
+                },
+                timeout=5,
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                meta = data.get("user_metadata") or {}
+                raw = (
+                    meta.get("full_name")
+                    or meta.get("name")
+                    or meta.get("display_name")
+                    or ""
+                )
+                cleaned = str(raw).strip()
+                return cleaned if cleaned else None
+            return None
+        except Exception:
+            return None
+
     def get_user_email_from_auth(self, user_id: str) -> str | None:
         """Fetch user email from Supabase Auth (admin API). Returns None if not found or on error."""
         try:

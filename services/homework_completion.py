@@ -46,6 +46,23 @@ def _normalize_email(value) -> str:
     return email.lower() if "@" in email else ""
 
 
+def _resolve_student_name(user_id: str, student_email: str) -> str:
+    """Return the user's full display name from auth metadata, falling back to the
+    email local-part (split on dots/underscores to get a readable first token)."""
+    try:
+        name = db.get_user_name_from_auth(user_id)
+        if name:
+            return name
+    except Exception:
+        pass
+    # Fallback: derive a readable name from the email local-part
+    local = student_email.split("@")[0] if "@" in student_email else student_email
+    # Replace common separators so "artur.willonski" → "artur willonski"
+    readable = local.replace(".", " ").replace("_", " ").replace("-", " ").strip()
+    # Capitalise each word and return the full result (first + last name readable)
+    return " ".join(p.capitalize() for p in readable.split() if p) or "there"
+
+
 def _session_report_text(session: dict) -> str:
     report_text = (session.get("context_long") or "").strip()
     if session.get("report_id"):
@@ -87,7 +104,7 @@ def ensure_student_completion_email(
             frontend_url=config.FRONTEND_URL,
             performance_score_end=score_end,
             report_preview=report_text,
-            student_name=student_email.split("@")[0] if "@" in student_email else "there",
+            student_name=_resolve_student_name(user_id, student_email),
             session_id=session_id,
         )
         if result.get("status") == "sent":
@@ -305,7 +322,7 @@ def complete_session_recording_1_only(
                 frontend_url=config.FRONTEND_URL,
                 performance_score_end=performance_score_end,
                 report_preview=report_text,
-                student_name=student_email.split("@")[0] if "@" in student_email else "there",
+                student_name=_resolve_student_name(user_id, student_email),
                 session_id=session_id,
             )
             if student_result.get("status") != "sent":
@@ -563,7 +580,7 @@ def complete_session_recording_2_only(
                 frontend_url=config.FRONTEND_URL,
                 performance_score_end=performance_score_end,
                 report_preview=report_text,
-                student_name=student_email.split("@")[0] if "@" in student_email else "there",
+                student_name=_resolve_student_name(user_id, student_email),
                 session_id=session_id,
             )
             if student_result.get("status") == "sent":
@@ -677,7 +694,7 @@ def minimal_complete_and_notify(
                     frontend_url=config.FRONTEND_URL,
                     performance_score_end=performance_score_end,
                     report_preview=report_text,
-                    student_name=student_email.split("@")[0] if "@" in student_email else "there",
+                    student_name=_resolve_student_name(user_id, student_email),
                     session_id=session_id,
                 )
                 if student_result.get("status") != "sent":
