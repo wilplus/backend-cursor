@@ -46,18 +46,13 @@ def _short(text: str | None, limit: int) -> str:
     return t[:limit].rstrip() + "..."
 
 
-def _logo_html(logo_url: str | None) -> str:
-    url = (logo_url or "").strip()
-    if url:
-        return (
-            f'<img src="{escape(url)}" alt="Willab" '
-            'style="display:block;height:28px;width:auto;max-width:180px;">'
-        )
+def _logo_html(_logo_url: str | None = None) -> str:
+    """Always renders the Willab text logo in Pacifico, matching the navbar WillabLogo component.
+    The Pacifico @import lives in the <head> of each template; this function only emits the <span>."""
     return (
-        '<style>@import url(\'https://fonts.googleapis.com/css2?family=Pacifico&display=swap\');</style>'
-        '<span style="font-family:\'Pacifico\',Georgia,\'Times New Roman\',serif;font-size:22px;'
-        'font-weight:400;color:#1e293b;letter-spacing:-0.3px;">'
-        'Willab<span style="color:#f97316;">.</span></span>'
+        '<span style="font-family:\'Pacifico\',Georgia,\'Times New Roman\',serif;'
+        'font-size:24px;font-weight:400;color:hsl(220,25%,25%);letter-spacing:-0.5px;">'
+        'Willab<span style="color:hsl(24,95%,53%);">.</span></span>'
     )
 
 
@@ -85,6 +80,7 @@ def build_admin_homework_completed_email_html(
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Student Homework Completed — Willab</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Pacifico&display=swap">
 </head>
 <body style="margin:0;padding:0;background-color:#fafafa;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;">
 <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#fafafa;padding:48px 16px;">
@@ -156,6 +152,7 @@ def build_student_new_homework_email_html(
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>New Homework Available — Willab</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Pacifico&display=swap">
 </head>
 <body style="margin:0;padding:0;background-color:#fafafa;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;">
 <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#fafafa;padding:48px 16px;">
@@ -234,6 +231,7 @@ def build_student_homework_submitted_email_html(
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Homework Complete — Willab</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Pacifico&display=swap">
 </head>
 <body style="margin:0;padding:0;background-color:#fafafa;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;">
 <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#fafafa;padding:48px 16px;">
