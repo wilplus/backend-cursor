@@ -167,37 +167,17 @@ def build_student_new_homework_email_html(
 <tr><td style="background-color:#ffffff;border-radius:8px;">
 <table width="100%" cellpadding="0" cellspacing="0">
 <tr><td style="padding:36px 36px 0;">
-  <p style="margin:0;font-size:18px;font-weight:600;color:#1e293b;line-height:1.4;">Great progress, {safe_first}!</p>
+  <p style="margin:0;font-size:18px;font-weight:600;color:#1e293b;line-height:1.4;">Hey! New practice available!</p>
 </td></tr>
 <tr><td style="padding:20px 36px 0;">
   <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#fafafa;border-radius:6px;border-left:2px solid #f97316;">
     <tr><td style="padding:16px 20px;">
       <p style="margin:0;font-size:14px;color:#1e293b;line-height:1.6;font-style:italic;">"{safe_message}"</p>
-      <p style="margin:8px 0 0;font-size:12px;color:#94a3b8;">— {safe_coach}, your coach</p>
     </td></tr>
   </table>
 </td></tr>
-<tr><td style="padding:28px 36px 0;"><div style="border-top:1px solid #f1f5f9;"></div></td></tr>
-<tr><td style="padding:28px 36px 0;">
-  <p style="margin:0 0 6px;font-size:14px;font-weight:600;color:#1e293b;">New homework available</p>
-  <p style="margin:0;font-size:14px;color:#64748b;line-height:1.6;">Your next assignment is ready. You have an exercise assigned — it will appear on the main screen after you follow the link below.</p>
-</td></tr>
 <tr><td style="padding:28px 36px;">
   <a href="{escape(homework_url)}" style="display:inline-block;background-color:#f97316;color:#ffffff;font-size:14px;font-weight:600;text-decoration:none;padding:12px 28px;border-radius:6px;">View homework →</a>
-</td></tr>
-<tr><td style="padding:0 36px;"><div style="border-top:1px solid #f1f5f9;"></div></td></tr>
-<tr><td style="padding:24px 36px 32px;">
-  <table cellpadding="0" cellspacing="0">
-    <tr>
-      <td style="width:36px;vertical-align:top;">
-        <div style="width:32px;height:32px;border-radius:50%;background-color:#1e293b;color:#ffffff;font-size:12px;font-weight:600;text-align:center;line-height:32px;">{initials}</div>
-      </td>
-      <td style="padding-left:10px;">
-        <p style="margin:0;font-size:14px;font-weight:600;color:#1e293b;">{safe_coach}</p>
-        <p style="margin:0;font-size:12px;color:#94a3b8;">{safe_role}</p>
-      </td>
-    </tr>
-  </table>
 </td></tr>
 </table>
 </td></tr>
