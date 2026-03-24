@@ -167,6 +167,11 @@ def _build_step0_payload(user_id: str) -> dict:
         "sniper_profile": sniper_profile,
         "realtime_level": sniper_profile.get("realtime_level"),
         "realtime_step": sniper_profile.get("realtime_step"),
+        # Explicit signal to the frontend that there is no active session.
+        # Without this field the cold-load effect cannot distinguish "no active session"
+        # from a fresh response, causing restorePersistedFinalReport to be skipped
+        # and the cold-load to behave correctly only after a full logout cycle.
+        "has_active_session": False,
     }
     review_pending = False
     feedback_sent_at = None
