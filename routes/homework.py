@@ -1287,6 +1287,7 @@ def homework_get_report(session_id):
             payload["context_short"] = context_short
         coach_insight = (session.get("coach_insight") or "").strip()
         if not coach_insight:
+            from services.openai_service import openai_service
             try:
                 speaker_profile = db.v2_get_speaker_profile(user_id) or {}
                 speaker_profile_context = (speaker_profile.get("coach_notes") or "").strip()
