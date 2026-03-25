@@ -1794,12 +1794,12 @@ class DatabaseService:
             return
         if session_id:
             session = self.v2_get_session(session_id, user_id)
-            if session and session.get("coach_grade") is not None and (session.get("coach_grade") or 0) < 5:
+            if session and session.get("report_grade") is not None and (session.get("report_grade") or 0) < 5:
                 return
         rating_ok = student_rating_1_10 is not None and student_rating_1_10 >= 4
         if not rating_ok and session_id:
             session = self.v2_get_session(session_id, user_id)
-            if session and (session.get("coach_grade") or 0) >= 8:
+            if session and (session.get("report_grade") or 0) >= 8:
                 rating_ok = True
         if not rating_ok:
             return
@@ -1893,7 +1893,7 @@ class DatabaseService:
     ):
         """
         After session completes: merge session_sniper_metrics + recording into user_sniper_profile (EMA).
-        Only update when stage_score >= 60, voiced_duration >= 60s, and (self-rating >= 4 on the 1-5 scale or coach_grade >= 8).
+        Only update when stage_score >= 60, voiced_duration >= 60s, and (self-rating >= 4 on the 1-5 scale or report_grade >= 8).
         Skip when either rating is clearly low.
         """
         metrics = self.get_session_sniper_metrics(session_id)
@@ -1912,10 +1912,10 @@ class DatabaseService:
         if student_rating is not None and int(student_rating) < 3:
             return
         session = self.v2_get_session(session_id, user_id)
-        if session and session.get("coach_grade") is not None and (session.get("coach_grade") or 0) < 5:
+        if session and session.get("report_grade") is not None and (session.get("report_grade") or 0) < 5:
             return
         rating_ok = student_rating is not None and int(student_rating) >= 4
-        if not rating_ok and session and (session.get("coach_grade") or 0) >= 8:
+        if not rating_ok and session and (session.get("report_grade") or 0) >= 8:
             rating_ok = True
         if not rating_ok:
             return
@@ -2778,7 +2778,7 @@ class DatabaseService:
         """Get v2 sessions for a user with full report text and recording previews for admin session history."""
         result = (
             self.client.table("v2_sessions")
-            .select("id, created_at, completed_at, status, recording_1_id, recording_2_id, report_id, coach_grade, student_completion_email_sent_at")
+            .select("id, created_at, completed_at, status, recording_1_id, recording_2_id, report_id, report_grade, student_completion_email_sent_at")
             .eq("user_id", user_id)
             .order("completed_at", desc=True)
             .limit(limit)
@@ -2805,7 +2805,7 @@ class DatabaseService:
                 pass
         out = []
         for s in sessions:
-            rec = {k: v for k, v in s.items() if k in ("id", "created_at", "completed_at", "status", "recording_1_id", "recording_2_id", "report_id", "coach_grade", "student_completion_email_sent_at")}
+            rec = {k: v for k, v in s.items() if k in ("id", "created_at", "completed_at", "status", "recording_1_id", "recording_2_id", "report_id", "report_grade", "student_completion_email_sent_at")}
             rec["recording_id"] = s.get("recording_2_id") or s.get("recording_1_id")  # for backward compat in API response
             rec["recording_preview"] = None
             rec["report_preview"] = None

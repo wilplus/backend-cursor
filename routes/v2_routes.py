@@ -674,7 +674,7 @@ def v2_admin_send_completion_email(user_id):
 @v2_bp.route("/admin/students/<user_id>/sessions/<session_id>", methods=["GET", "PATCH"])
 @require_admin
 def v2_admin_student_session_detail(user_id, session_id):
-    """GET: full session for admin. PATCH: update coach_grade/report_comment."""
+    """GET: full session for admin. PATCH: update report_grade/report_comment."""
     try:
         if request.method == "GET":
             session = db.v2_get_session(session_id, user_id)
@@ -683,18 +683,18 @@ def v2_admin_student_session_detail(user_id, session_id):
             session["recording_review"] = db.v2_get_recording_review(session_id)
             session["review_annotations_count"] = len(db.v2_list_recording_review_annotations(session_id))
             return jsonify({"session": session}), 200
-        # PATCH: coach_grade / report_comment
+        # PATCH: report_grade / report_comment
         data = request.get_json() or {}
         updates = {}
-        coach_grade = data.get("coach_grade")
-        if coach_grade is not None:
+        report_grade = data.get("report_grade")
+        if report_grade is not None:
             try:
-                g = int(coach_grade)
+                g = int(report_grade)
                 if g < 1 or g > 10:
-                    return jsonify({"code": "INVALID_INPUT", "error": "coach_grade must be between 1 and 10"}), 400
+                    return jsonify({"code": "INVALID_INPUT", "error": "report_grade must be between 1 and 10"}), 400
             except (TypeError, ValueError):
-                return jsonify({"code": "INVALID_INPUT", "error": "coach_grade must be an integer 1-10"}), 400
-            updates["coach_grade"] = g
+                return jsonify({"code": "INVALID_INPUT", "error": "report_grade must be an integer 1-10"}), 400
+            updates["report_grade"] = g
         # Accept both field names: coach_message (admin client) and report_comment (legacy)
         raw_comment = data.get("coach_message") if "coach_message" in data else data.get("report_comment")
         if "report_comment" in data or "coach_message" in data:
@@ -703,13 +703,13 @@ def v2_admin_student_session_detail(user_id, session_id):
             except ValueError as ve:
                 return jsonify({"code": "INVALID_INPUT", "error": str(ve)}), 400
         if not updates:
-            return jsonify({"code": "INVALID_INPUT", "error": "Provide coach_grade and/or report_comment"}), 400
+            return jsonify({"code": "INVALID_INPUT", "error": "Provide report_grade and/or report_comment"}), 400
         updated = db.v2_update_session(session_id, user_id, updates)
         if not updated:
             return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found"}), 404
         return jsonify({
             "status": "ok",
-            "coach_grade": updated.get("coach_grade"),
+            "report_grade": updated.get("report_grade"),
             "report_comment": updated.get("report_comment"),
         }), 200
     except Exception as e:
@@ -827,18 +827,18 @@ def v2_admin_student_session_review_annotation_detail(user_id, session_id, annot
 @v2_bp.route("/admin/students/<user_id>/sessions/<session_id>/grade", methods=["PUT"])
 @require_admin
 def v2_admin_student_session_grade(user_id, session_id):
-    """Set admin/coach grade for a session. Body: { \"admin_grade\": number, \"report_comment\"?: string|null }."""
+    """Set admin/coach grade for a session. Body: { \"report_grade\": number, \"report_comment\"?: string|null }."""
     try:
         data = request.get_json(silent=True) or {}
-        admin_grade = data.get("admin_grade")
+        admin_grade = data.get("report_grade")
         if admin_grade is None:
-            return jsonify({"code": "INVALID_INPUT", "error": "admin_grade is required"}), 400
+            return jsonify({"code": "INVALID_INPUT", "error": "report_grade is required"}), 400
         try:
             g = int(round(float(admin_grade)))
             if g < 1 or g > 10:
-                return jsonify({"code": "INVALID_INPUT", "error": "admin_grade must be between 1 and 10"}), 400
+                return jsonify({"code": "INVALID_INPUT", "error": "report_grade must be between 1 and 10"}), 400
         except (TypeError, ValueError):
-            return jsonify({"code": "INVALID_INPUT", "error": "admin_grade must be a number 1-10"}), 400
+            return jsonify({"code": "INVALID_INPUT", "error": "report_grade must be a number 1-10"}), 400
         session = db.v2_get_session(session_id, user_id)
         if not session:
             return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found"}), 404
@@ -847,14 +847,14 @@ def v2_admin_student_session_grade(user_id, session_id):
         except ValueError as ve:
             return jsonify({"code": "INVALID_INPUT", "error": str(ve)}), 400
         updated = db.v2_update_session(session_id, user_id, {
-            "coach_grade": g,
+            "report_grade": g,
             "report_comment": report_comment,
         })
         if not updated:
             return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found"}), 404
         return jsonify({
             "status": "ok",
-            "admin_grade": g,
+            "report_grade": g,
             "report_comment": updated.get("report_comment"),
         }), 200
     except Exception as e:
@@ -977,7 +977,7 @@ def v2_admin_student_session_report_get(user_id, session_id):
             "final_recording": final_recording,
             "performance_history": performance_history,
             "score_for_display": score_for_display_100,
-            "admin_grade": session.get("coach_grade"),
+            "report_grade": session.get("report_grade"),
             "report_comment": (session.get("report_comment") or "").strip() or None,
         }
         if recording_payload is not None:

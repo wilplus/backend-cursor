@@ -1342,7 +1342,7 @@ def homework_get_report(session_id):
             "performance_history": performance_history,
             # Single canonical score (0-100): Sniper Voice Alignment when available. Same as last bar on chart.
             "score_for_display": score_for_display_100,
-            "admin_grade": session.get("coach_grade"),
+            "report_grade": session.get("report_grade"),
             "report_comment": (session.get("report_comment") or "").strip() or None,
             "sniper_profile": sniper_profile,
             "realtime_level": sniper_profile.get("realtime_level"),
