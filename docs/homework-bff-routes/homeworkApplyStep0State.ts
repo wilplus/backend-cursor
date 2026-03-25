@@ -1,8 +1,9 @@
 /**
  * Copy to your Next.js app, e.g. src/lib/homework/applyStep0State.ts
  *
- * Use with GET /api/homework/session/status when has_active_session is false (including
- * right after the report CTA — do not use a separate leave-report call).
+ * Use with GET /api/homework/session/status when has_active_session is false (e.g. user
+ * opened homework / dashboard after sign-in). The report CTA flow may POST leave-report
+ * and redirect to /logged-out instead of applying this immediately.
  *
  * Problem this fixes: merging the new step-0 JSON into old client state leaves
  * tutor_video_url truthy → video block stays until logout. Replace state instead.
