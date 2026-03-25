@@ -158,6 +158,31 @@ def _video_shown_from_overrides(overrides: dict | None) -> int:
         return 1
 
 
+def _should_block_homework_session_start(user_id: str) -> tuple[bool, str | None]:
+    """Do not create a new session while step 0 is waiting / review UI (stops auto-start on page load)."""
+    overrides = {}
+    try:
+        overrides = db.v2_get_student_overrides(user_id) or {}
+    except Exception:
+        pass
+    vs = _video_shown_from_overrides(overrides)
+    review_pending = False
+    try:
+        last_completed = db.v2_get_last_completed_session(user_id)
+        feedback_sent_at = _parse_isoish_datetime((last_completed or {}).get("tutor_feedback_sent_at"))
+        report_email_sent_at = _parse_isoish_datetime((last_completed or {}).get("student_completion_email_sent_at"))
+        session_completed = (last_completed or {}).get("status") == "completed"
+        if (report_email_sent_at or session_completed) and feedback_sent_at is None:
+            review_pending = True
+    except Exception:
+        pass
+    if review_pending:
+        return True, "REVIEW_PENDING"
+    if vs == 0:
+        return True, "WAITING_FOR_ASSIGNMENT"
+    return False, None
+
+
 def _build_step0_payload(user_id: str) -> dict:
     """Build the session/status payload when there is no active session (step 0). Used by GET status and POST leave-report."""
     config = Config()
@@ -249,6 +274,15 @@ def _build_step0_payload(user_id: str) -> dict:
                     payload["tutor_video_description"] = msg
         except Exception:
             pass
+    if review_pending:
+        payload["can_start_homework"] = False
+        payload["session_start_blocked_reason"] = "REVIEW_PENDING"
+    elif payload["video_shown"] == 0:
+        payload["can_start_homework"] = False
+        payload["session_start_blocked_reason"] = "WAITING_FOR_ASSIGNMENT"
+    else:
+        payload["can_start_homework"] = True
+        payload["session_start_blocked_reason"] = None
     return payload
 
 
@@ -291,6 +325,14 @@ def homework_session_start():
                 "session_id": active["id"],
                 "task": _task_text(task.get("text") if task else None),
             }), 200
+
+        blocked, block_reason = _should_block_homework_session_start(user_id)
+        if blocked:
+            return jsonify({
+                "code": "SESSION_START_BLOCKED",
+                "error": "Homework cannot start yet. Stay on step 0 until your coach sends the next assignment or feedback.",
+                "reason": block_reason,
+            }), 409
 
         db.v2_ensure_default_warm_up_task(user_id)
         warm_up = db.v2_get_assigned_warm_up_task(user_id)

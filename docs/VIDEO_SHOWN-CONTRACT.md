@@ -36,8 +36,20 @@ END $$;
 `GET /v2/homework/session/status` (step 0 and active session) includes:
 
 - **`video_shown`**: `0` | `1`
+- **`can_start_homework`**: `true` | `false` (only meaningful when **`has_active_session`** is false)
+- **`session_start_blocked_reason`**: `null` | `"REVIEW_PENDING"` | `"WAITING_FOR_ASSIGNMENT"`
 
 When **`video_shown === 0`**, the backend sets **`tutor_video_url`** and **`tutor_video_description`** to **`null`** even if a pending row exists (so the client cannot accidentally show the coach clip).
+
+### Blocking auto-start
+
+While **`review_pending`** is true or **`video_shown === 0`**, **`POST /v2/homework/session/start`** returns **409** with:
+
+```json
+{ "code": "SESSION_START_BLOCKED", "reason": "REVIEW_PENDING" | "WAITING_FOR_ASSIGNMENT", "error": "..." }
+```
+
+So the homework page must **not** call **`session/start`** on load when **`can_start_homework === false`** — otherwise the waiting screen flashes and the recorder step opens immediately.
 
 ## Frontend (recommended)
 

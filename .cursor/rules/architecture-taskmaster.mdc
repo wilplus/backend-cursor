@@ -39,7 +39,7 @@ Single reference for this repo. No other .md docs; everything lives here.
 
 **Single flow** under **`/v2/homework/...`**. Auth: `Authorization: Bearer <supabase_access_token>`.
 
-**UX: Show recording right away.** On Homework page load: (1) `GET /v2/homework/session/status`. If `has_active_session` and `session`, render current step from `session.id` / `session.status`. (2) If no active session, call `POST /v2/homework/session/start` in same load (e.g. useEffect) and render warm-up task + record button immediately — no "Start homework" button. When **no active session**, status response may include **`assigned_exercises`**: `[ { id, title, video_url, description } ]` — **display these below the Start homework button** (videos from admin-assigned exercise; recognized in admin panel by title).
+**UX: Show recording right away** when the student may start. On Homework page load: (1) `GET /v2/homework/session/status`. If `has_active_session` and `session`, render current step from `session.id` / `session.status`. (2) If no active session and **`can_start_homework === true`**, call `POST /v2/homework/session/start` in the same load (e.g. useEffect) and render warm-up task + record button immediately — no "Start homework" button. If **`can_start_homework === false`** (waiting for coach / `video_shown === 0` / `review_pending`), **do not** call `session/start` on load — stay on step 0 / waiting UI; `POST start` returns **409** `SESSION_START_BLOCKED`. When **no active session**, status may include **`assigned_exercises`**: `[ { id, title, video_url, description } ]` — **display these below Start homework** when applicable (videos from admin-assigned exercise; recognized in admin panel by title).
 
 **Endpoints:**
 

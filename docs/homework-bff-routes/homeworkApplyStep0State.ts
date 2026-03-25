@@ -14,6 +14,9 @@ export type HomeworkStep0State = {
   main_screen_state: string;
   /** 0 = hide coach assignment video / waiting; 1 = allow video when tutor_video_url is set. */
   video_shown: 0 | 1;
+  /** When false, do not POST session/start on load. */
+  can_start_homework: boolean;
+  session_start_blocked_reason: "REVIEW_PENDING" | "WAITING_FOR_ASSIGNMENT" | null;
   tutor_video_url: string | null;
   tutor_video_description: string | null;
   has_active_session: boolean;
@@ -48,12 +51,27 @@ function videoShown01(v: unknown): 0 | 1 {
 export function normalizeHomeworkStep0Payload(raw: Record<string, unknown>): HomeworkStep0State {
   const exercises = Array.isArray(raw.assigned_exercises) ? raw.assigned_exercises : [];
   const vs = videoShown01(raw.video_shown);
+  const reviewPending = Boolean(raw.review_pending);
+  const canStart =
+    typeof raw.can_start_homework === "boolean"
+      ? raw.can_start_homework
+      : !(reviewPending || vs === 0);
+  const blockedRaw = raw.session_start_blocked_reason;
+  let reason: "REVIEW_PENDING" | "WAITING_FOR_ASSIGNMENT" | null =
+    blockedRaw === "REVIEW_PENDING" || blockedRaw === "WAITING_FOR_ASSIGNMENT"
+      ? blockedRaw
+      : null;
+  if (!canStart && reason === null) {
+    reason = reviewPending ? "REVIEW_PENDING" : "WAITING_FOR_ASSIGNMENT";
+  }
   return {
     status: typeof raw.status === "string" ? raw.status : "none",
-    review_pending: Boolean(raw.review_pending),
+    review_pending: reviewPending,
     main_screen_state:
       typeof raw.main_screen_state === "string" ? raw.main_screen_state : "assignment_ready",
     video_shown: vs,
+    can_start_homework: canStart,
+    session_start_blocked_reason: reason,
     tutor_video_url: vs === 0 ? null : strOrNull(raw.tutor_video_url),
     tutor_video_description: vs === 0 ? null : strOrNull(raw.tutor_video_description),
     has_active_session: Boolean(raw.has_active_session),
