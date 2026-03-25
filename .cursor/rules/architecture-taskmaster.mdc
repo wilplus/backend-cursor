@@ -78,6 +78,8 @@ Backend stays as-is; no change required. BFF sends `Authorization: Bearer <supab
 | … recording-1, **self-rating**, metric-answers, recording-2, questions, post-answers | … same pattern |
 | `session/[sessionId]/report/route.ts` | `src/app/api/homework/session/[sessionId]/report/route.ts` |
 
+**Report CTA → step 0:** Do **not** add `session/[sessionId]/leave-report` — that backend route was removed. After the user taps the report CTA, **`GET /api/homework/session/status` only** supplies waiting / video / `can_start_homework`.
+
 **getAuth:** Example routes use `import { getV2AccessToken, getBackendUrl } from "../../../../getAuth"` (start/status) or `../../../../../getAuth` ([sessionId] routes). Put `getAuth` at `src/app/api/getAuth.ts` or adjust the import path. Set `NEXT_PUBLIC_BACKEND_URL` or `BACKEND_URL` in frontend env.
 
 **Reference code in this repo:** `docs/frontend-admin-panel/` (admin BFF routes, pages, components); `docs/homework-bff-routes/` (homework route .ts files). **Video + description (admin send-assignment, student homework):** `docs/FRONTEND-VIDEO-AND-DESCRIPTION.md`. Copy or adapt; ensure 401/403 and backend error bodies are handled.

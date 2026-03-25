@@ -151,7 +151,6 @@ export interface HomeworkReportResponseV2 {
   /** Admin/coach grade (1–10) when set via PUT .../grade; null otherwise. */
   admin_grade?: number | null;
   report_cta?: string;
-  leave_report_path?: string;
   recording?: {
     id: string;
     audio_url: string | null;

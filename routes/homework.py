@@ -184,7 +184,7 @@ def _should_block_homework_session_start(user_id: str) -> tuple[bool, str | None
 
 
 def _build_step0_payload(user_id: str) -> dict:
-    """Build the session/status payload when there is no active session (step 0). Used by GET status and POST leave-report."""
+    """Build the session/status payload when there is no active session (step 0). Used by GET session/status only."""
     config = Config()
     sniper_profile = db.get_sniper_profile_payload(user_id)
     coach_name = (getattr(config, "COACH_NAME", "Artur") or "Artur").strip().title() or "Artur"
@@ -517,29 +517,6 @@ def homework_list_sessions():
         return jsonify({"sessions": sessions}), 200
     except Exception as e:
         logger.error(f"homework_list_sessions: {str(e)}", exc_info=True)
-        sentry_sdk.capture_exception(e)
-        return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
-
-
-@homework_bp.route("/session/<session_id>/leave-report", methods=["POST"])
-@require_auth
-def homework_leave_report(session_id):
-    """Leave the report screen and return to step 0. Use when the user clicks the report CTA (e.g. 'Send the homework to the coach!'). Session must be completed. Returns the same payload as GET session/status when there is no active session, so the frontend can transition to step 0 in one call."""
-    try:
-        user_id = request.user_id
-        session = db.v2_get_session(session_id, user_id)
-        if not session:
-            return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found"}), 404
-        if session.get("status") != STATUS_COMPLETED:
-            return jsonify({
-                "code": "REPORT_NOT_COMPLETED",
-                "error": "Session must be completed to leave the report",
-                "status": session.get("status"),
-            }), 409
-        payload = _build_step0_payload(user_id)
-        return jsonify(payload), 200
-    except Exception as e:
-        logger.exception("Homework leave-report: %s", e)
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
 
@@ -1417,8 +1394,7 @@ def homework_get_report(session_id):
         if coach_insight:
             payload["coach_insight"] = coach_insight
         payload["report_cta"] = "Send the homework to the coach!"
-        # Frontend: when user clicks the CTA, call POST .../leave-report to get step-0 state and show start screen (or call GET session/status).
-        payload["leave_report_path"] = f"session/{session_id}/leave-report"
+        # Frontend: on CTA, navigate to step 0 and call GET session/status only (single source of truth for waiting/video/can_start_homework).
         # #region agent log
         _agent_log("GET report returning 200", {"session_id": session_id, "status": session.get("status"), "report_id": session.get("report_id")}, "H3")
         # #endregion

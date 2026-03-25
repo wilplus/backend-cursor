@@ -1,8 +1,8 @@
 /**
  * Copy to your Next.js app, e.g. src/lib/homework/applyStep0State.ts
  *
- * Use after POST /api/homework/session/[sessionId]/leave-report (report CTA) or when
- * applying GET /api/homework/session/status when has_active_session is false.
+ * Use with GET /api/homework/session/status when has_active_session is false (including
+ * right after the report CTA — do not use a separate leave-report call).
  *
  * Problem this fixes: merging the new step-0 JSON into old client state leaves
  * tutor_video_url truthy → video block stays until logout. Replace state instead.
@@ -38,7 +38,7 @@ function strOrNull(v: unknown): string | null {
 }
 
 /**
- * Normalize backend step-0 / leave-report payload so missing fields become explicit nulls
+ * Normalize backend step-0 (GET session/status) payload so missing fields become explicit nulls
  * (not undefined), which works better with React state resets.
  */
 function videoShown01(v: unknown): 0 | 1 {
