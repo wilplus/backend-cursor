@@ -27,6 +27,12 @@
 
 ---
 
+## Student UI: coach assignment video flag
+
+- **`add_video_shown_to_student_overrides.sql`** — adds `v2_student_overrides.video_shown` (`0` | `1`, default `1`). Backend sets `0` when homework completes and `1` when admin send-assignment succeeds. `GET /v2/homework/session/status` returns `video_shown` and omits tutor video fields when `0`. See **`docs/VIDEO_SHOWN-CONTRACT.md`**.
+
+---
+
 ## Admin / coach grade
 
 - **`add_coach_grade_to_v2_sessions.sql`** — adds `v2_sessions.coach_grade` (SMALLINT 1–10, nullable). Lets admins grade a completed session in the admin panel. Run after v2_sessions exists.

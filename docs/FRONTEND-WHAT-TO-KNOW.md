@@ -13,7 +13,8 @@ Short reference for the frontend team. Backend contract and behavior that affect
 
 ## Step 0 (no active session)
 
-- **`GET /api/homework/session/status`** (→ backend `GET /v2/homework/session/status`) returns **`assigned_exercises`**: `[ { id, title, video_url, description } ]`.
+- **`GET /api/homework/session/status`** returns **`video_shown`**: `0` | `1`. **`0`** = hide coach assignment video (waiting UX); **`1`** = allow showing **`tutor_video_url`** when present. See **`docs/VIDEO_SHOWN-CONTRACT.md`**.
+- Same endpoint returns **`assigned_exercises`**: `[ { id, title, video_url, description } ]`.
 - **Display:** Show each exercise below the “Start homework” button. If **`video_url`** is present, show the video (link or embed, e.g. Vimeo). If **`description`** is present, show it (e.g. above or beside the video). The backend now provides a **default intro video** for first-time users when the DB has none, so `video_url` can be present even for the default “0-intro” exercise — don’t show “No video for this exercise” when `video_url` is in the response.
 - There is **no countdown timer on step 0** anymore. After the user leaves the report, just refetch status and render the normal no-active-session state.
 

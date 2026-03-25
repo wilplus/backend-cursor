@@ -145,6 +145,19 @@ def _public_recording_id(session: dict):
     return str(recording_id) if recording_id else None
 
 
+def _video_shown_from_overrides(overrides: dict | None) -> int:
+    """1 = allow coach assignment video in API; 0 = hide it (waiting UX). Default 1 if column missing."""
+    if not overrides:
+        return 1
+    vs = overrides.get("video_shown")
+    if vs is None:
+        return 1
+    try:
+        return 0 if int(vs) == 0 else 1
+    except (TypeError, ValueError):
+        return 1
+
+
 def _build_step0_payload(user_id: str) -> dict:
     """Build the session/status payload when there is no active session (step 0). Used by GET status and POST leave-report."""
     config = Config()
@@ -160,6 +173,7 @@ def _build_step0_payload(user_id: str) -> dict:
         "tutor_feedback_message": None,
         "tutor_video_url": None,
         "tutor_video_description": None,
+        "video_shown": 1,
         "review_pending": False,
         "report_delivered": False,
         "main_screen_state": "assignment_ready",
@@ -210,13 +224,22 @@ def _build_step0_payload(user_id: str) -> dict:
                     break
         except Exception:
             payload["assigned_exercises"] = []
+    overrides = {}
+    try:
+        overrides = db.v2_get_student_overrides(user_id) or {}
+    except Exception:
+        pass
+    payload["video_shown"] = _video_shown_from_overrides(overrides)
     # Pending coach video is for the *next* homework. Do not show it while the student is still in
     # review_pending (coach analysing the submission). Otherwise send-assignment sets
     # tutor_feedback_sent_at on the last completed session and we would expose the new video
     # before the UI leaves the reviewing state — refresh looks "stuck" until logout clears client state.
-    if not review_pending:
+    # video_shown=0 (after student completes homework) forces tutor fields off regardless of pending row.
+    if payload["video_shown"] == 0:
+        payload["tutor_video_url"] = None
+        payload["tutor_video_description"] = None
+    elif not review_pending:
         try:
-            overrides = db.v2_get_student_overrides(user_id) or {}
             url = (overrides.get("pending_tutor_video_url") or "").strip()
             msg = (overrides.get("pending_tutor_video_description") or "").strip()
             if feedback_sent_at is not None:
@@ -372,6 +395,12 @@ def homework_session_status():
         )
         public_status = _public_status(active.get("status"))
         internal_status = active.get("status")
+        overrides_active = {}
+        try:
+            overrides_active = db.v2_get_student_overrides(user_id) or {}
+        except Exception:
+            pass
+        video_shown_active = _video_shown_from_overrides(overrides_active)
         resp = {
             "status": public_status,
             "session_id": str(active["id"]),
@@ -382,6 +411,7 @@ def homework_session_status():
             "tutor_feedback_message": None,
             "tutor_video_url": None,
             "tutor_video_description": None,
+            "video_shown": video_shown_active,
             "has_active_session": True,
         }
         # Hide intro coach video while report is generating; session row still has tutor_video_* from session/start.
@@ -393,7 +423,9 @@ def homework_session_status():
         # screen instead of continuing to show the pre-homework coach message block.
         url = (active.get("tutor_video_url") or "").strip()
         msg = (active.get("tutor_video_description") or "").strip()
-        if public_status != PUBLIC_STATUS_COMPLETED and not hide_tutor_video:
+        if video_shown_active == 0:
+            pass
+        elif public_status != PUBLIC_STATUS_COMPLETED and not hide_tutor_video:
             if url:
                 resp["tutor_video_url"] = url
             if msg:

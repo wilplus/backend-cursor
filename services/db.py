@@ -2540,6 +2540,7 @@ class DatabaseService:
         "show_exercise_step", "assigned_warm_up_task_id",
         "pitch_variance_ideal", "pending_tutor_video_url", "pending_tutor_video_description",
         "skip_metric_questions", "skip_post_questions",
+        "video_shown",
     }
 
     def v2_get_user_metric_questions(self, user_id: str):
@@ -2584,6 +2585,13 @@ class DatabaseService:
         for key in ("skip_metric_questions", "skip_post_questions"):
             if merged.get(key) is None:
                 merged[key] = False
+        if merged.get("video_shown") is None:
+            merged["video_shown"] = 1
+        else:
+            try:
+                merged["video_shown"] = 0 if int(merged["video_shown"]) == 0 else 1
+            except (TypeError, ValueError):
+                merged["video_shown"] = 1
         # Empty string for UUID columns: treat as null so clearing "assigned exercise" persists
         if merged.get("assigned_next_exercise_id") == "":
             merged["assigned_next_exercise_id"] = None
@@ -2619,6 +2627,11 @@ class DatabaseService:
         if payload:
             self.v2_upsert_student_overrides(user_id, payload)
         return True
+
+    def v2_set_video_shown(self, user_id: str, value: int):
+        """0 = hide coach assignment video / waiting UI; 1 = allow showing coach video. Persists on v2_student_overrides."""
+        v = 0 if int(value) == 0 else 1
+        return self.v2_upsert_student_overrides(user_id, {"video_shown": v})
 
     def v2_get_and_clear_pending_tutor_video(self, user_id: str):
         """Return (url, description) for the pending tutor video and clear both. Used on session/start to attach to the new session."""

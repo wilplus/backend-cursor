@@ -289,6 +289,10 @@ def complete_session_recording_1_only(
         "question_3_score": 0,
         "coach_insight": None,
     })
+    try:
+        db.v2_set_video_shown(user_id, 0)
+    except Exception as vs_err:
+        logger.warning("complete_session_recording_1_only: video_shown not set session_id=%s: %s", session_id, vs_err)
     token_email = _normalize_email(preferred_student_email)
     auth_email = _normalize_email(db.get_user_email_from_auth(user_id))
     student_email = token_email or auth_email
@@ -556,6 +560,10 @@ def complete_session_recording_2_only(
         "question_3_score": 0,
         "coach_insight": None,
     })
+    try:
+        db.v2_set_video_shown(user_id, 0)
+    except Exception as vs_err:
+        logger.warning("complete_session_recording_2_only: video_shown not set session_id=%s: %s", session_id, vs_err)
 
     token_email = _normalize_email(preferred_student_email)
     auth_email = _normalize_email(db.get_user_email_from_auth(user_id))
@@ -663,6 +671,10 @@ def minimal_complete_and_notify(
             "question_3_score": 0,
             "coach_insight": None,
         })
+        try:
+            db.v2_set_video_shown(user_id, 0)
+        except Exception as vs_err:
+            logger.warning("minimal_complete_and_notify: video_shown not set session_id=%s: %s", session_id, vs_err)
         token_email = _normalize_email(preferred_student_email)
         auth_email = _normalize_email(db.get_user_email_from_auth(user_id))
         student_email = token_email or auth_email

@@ -12,6 +12,8 @@ export type HomeworkStep0State = {
   status: string;
   review_pending: boolean;
   main_screen_state: string;
+  /** 0 = hide coach assignment video / waiting; 1 = allow video when tutor_video_url is set. */
+  video_shown: 0 | 1;
   tutor_video_url: string | null;
   tutor_video_description: string | null;
   has_active_session: boolean;
@@ -36,15 +38,24 @@ function strOrNull(v: unknown): string | null {
  * Normalize backend step-0 / leave-report payload so missing fields become explicit nulls
  * (not undefined), which works better with React state resets.
  */
+function videoShown01(v: unknown): 0 | 1 {
+  if (v === null || v === undefined) return 1;
+  const n = parseInt(String(v), 10);
+  if (Number.isNaN(n)) return 1;
+  return n === 0 ? 0 : 1;
+}
+
 export function normalizeHomeworkStep0Payload(raw: Record<string, unknown>): HomeworkStep0State {
   const exercises = Array.isArray(raw.assigned_exercises) ? raw.assigned_exercises : [];
+  const vs = videoShown01(raw.video_shown);
   return {
     status: typeof raw.status === "string" ? raw.status : "none",
     review_pending: Boolean(raw.review_pending),
     main_screen_state:
       typeof raw.main_screen_state === "string" ? raw.main_screen_state : "assignment_ready",
-    tutor_video_url: strOrNull(raw.tutor_video_url),
-    tutor_video_description: strOrNull(raw.tutor_video_description),
+    video_shown: vs,
+    tutor_video_url: vs === 0 ? null : strOrNull(raw.tutor_video_url),
+    tutor_video_description: vs === 0 ? null : strOrNull(raw.tutor_video_description),
     has_active_session: Boolean(raw.has_active_session),
     assigned_exercises: exercises as HomeworkStep0State["assigned_exercises"],
     session_id: strOrNull(raw.session_id),
