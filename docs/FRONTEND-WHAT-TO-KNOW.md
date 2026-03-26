@@ -17,7 +17,7 @@ Architecture the frontend should follow:
 
 - **Balance:** `GET /api/homework/session/status` includes **`credits`** (integer). Present for **step 0** (`has_active_session: false`) and **while a session is active** (`has_active_session: true`). Default if unset in DB is **15** (server-side).
 - **When credits change:** The backend deducts **5 credits once per completed homework session**, at the moment the session is marked **`completed`** and a **report** is created — **not** when the student calls **`POST .../session/start`**. Idempotency is enforced in the DB (`homework_credits_charged_at` on `v2_sessions`).
-- **Starting a session:** **`POST .../session/start`** still returns **402** with **`code: "INSUFFICIENT_CREDITS"`** if **`credits < 5`** (student must have enough balance to “pay” for a full completion). Body includes **`credits`** (current balance) and **`message`**. No credits are subtracted on a successful start.
+- **Starting a session:** **`POST .../session/start`** returns **402** with **`code: "INSUFFICIENT_CREDITS"`** only if **`credits <= 0`**. Any positive balance can start; **5 credits are removed on completion** (balance floors at 0), so e.g. **3 credits** is enough for one lesson (ends at 0). Body includes **`credits`** and **`message`**. No credits are subtracted on a successful start.
 - **Abandoning:** **`POST .../session/<id>/abandon`** does **not** deduct credits (nothing was completed with a report).
 - **UI guidance:** Show **`credits`** from the latest **status** response. After the report is ready / user returns to step 0, **refetch `GET session/status`** so the balance reflects the completion charge. Do **not** decrement credits in the client; treat the API as the source of truth.
 
@@ -72,6 +72,6 @@ There is **no** student completion email after submitting homework. The waiting 
 | End of report — primary CTA | `report_cta` (e.g. "Finish the lesson and sign out") | Show as primary button; on click sign out → `/logged-out`. |
 | End of report — secondary action | (hardcoded in frontend) | "Do your homework again" — same style as abandon; calls POST abandon → step 0. |
 | Paths | `/v2/homework/session/start`, `.../session/status`, `.../session/<id>/report` | BFF must use **session** in path (e.g. `/api/homework/session/start`). |
-| Credits | `credits` on **GET session/status**; **402** `INSUFFICIENT_CREDITS` on **POST session/start** if `< 5` | Display from API only; refetch status after completion; −5 happens on server when report completes. |
+| Credits | `credits` on **GET session/status**; **402** `INSUFFICIENT_CREDITS` on **POST session/start** if **`credits <= 0`** | Display from API only; refetch after completion; −5 on completion (not at start). |
 
 More detail: **`docs/APPLICATION-STATE.md`** (§3.5, §3.6), **`docs/FRONTEND-VIDEO-AND-DESCRIPTION.md`**, and **`.cursor/rules/architecture-taskmaster.mdc`**.

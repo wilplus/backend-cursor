@@ -277,15 +277,15 @@ def homework_session_start():
                 "task": _task_text(task.get("text") if task else None),
             }), 200
 
-        # Require enough credits to finish a session (charged when the report is generated, not here).
+        # Block only at zero balance. Completion charges 5 (floored at 0); 1–5 credits is still enough for one lesson.
         student_details = db.v2_get_student_details(user_id) or {}
         current_credits = student_details.get("credits")
         if current_credits is None:
             current_credits = 15
-        if int(current_credits) < 5:
+        if int(current_credits) <= 0:
             return jsonify({
                 "code": "INSUFFICIENT_CREDITS",
-                "message": "Your credits balance is too low to start a new homework session.",
+                "message": "You have no credits left. Contact your coach to add more.",
                 "credits": int(current_credits),
             }), 402
 
