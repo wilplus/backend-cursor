@@ -261,7 +261,7 @@ class DatabaseService:
         # (Assuming it does, adjust if schema differs)
         try:
             global_questions = global_query.eq("question_type", question_type).execute()
-        except:
+        except Exception:
             # If no question_type column, get all
             global_questions = global_query.execute()
         
@@ -711,8 +711,7 @@ class DatabaseService:
     # --- v1 planned session flow ---
     def get_active_override(self, user_id: str):
         """Get active admin_session_override for user (is_active, not expired, remaining_sessions null or >0)."""
-        from datetime import datetime
-        now = datetime.utcnow().isoformat() if hasattr(datetime, 'utcnow') else datetime.now().isoformat()
+        now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
         result = self.client.table("admin_session_overrides")\
             .select("*")\
             .eq("user_id", user_id)\
@@ -2744,6 +2743,27 @@ class DatabaseService:
             result = (
                 self.client.table("v2_student_details")
                 .upsert({"user_id": user_id, "credits": new_credits, "updated_at": datetime.now(timezone.utc).isoformat()}, on_conflict="user_id")
+                .execute()
+            )
+            return (result.data[0] or {}).get("credits") if result.data else new_credits
+        except Exception:
+            return None
+
+    def v2_increment_student_credits(self, user_id: str, delta: int) -> int | None:
+        """Add delta to credits (e.g. Stripe payment). Negative delta allowed for corrections; result floors at 0. Returns new balance or None on failure."""
+        try:
+            d = int(delta)
+            details = self.v2_get_student_details(user_id)
+            current = (details or {}).get("credits")
+            if current is None:
+                current = 15
+            new_credits = max(0, int(current) + d)
+            result = (
+                self.client.table("v2_student_details")
+                .upsert(
+                    {"user_id": user_id, "credits": new_credits, "updated_at": datetime.now(timezone.utc).isoformat()},
+                    on_conflict="user_id",
+                )
                 .execute()
             )
             return (result.data[0] or {}).get("credits") if result.data else new_credits

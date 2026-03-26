@@ -618,6 +618,8 @@ Generate the report:"""
                 prompt_lines.append(f"Recent session scores (oldest to newest, 0-100): {history_str}")
             system = (
                 "You write exactly 3 short sentences for a speaking coach report. "
+                "Address the learner directly: use only 'you' and 'your' when talking about them (e.g. 'You covered…', 'You have effectively…', 'Your score reflects…'). "
+                "Never use third person: no 'the student', 'the speaker', 'they', or 'their' for the learner. "
                 "Use whatever data fields are provided and ignore fields that are missing. "
                 "Sentence 1: reference the context/summary, filler words, and any coach notes when available; point out at least one discrepancy or alignment when possible. "
                 "Sentence 2: explain the score result using only the available score/self-rating/history inputs; if some are missing, do not mention them. "

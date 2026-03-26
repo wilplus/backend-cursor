@@ -38,6 +38,9 @@ class Config:
     # Frontend URL (for email links)
     FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
 
+    # Optional: shared secret for POST /v2/internal/student-credits/increment (Stripe webhook / BFF).
+    INTERNAL_CREDITS_WEBHOOK_SECRET = (os.getenv("INTERNAL_CREDITS_WEBHOOK_SECRET") or "").strip()
+
     # Coach name and photo in assignment email (for artur@willonski.com / default admin)
     COACH_NAME = os.getenv("COACH_NAME", "Artur")
     COACH_IMAGE_URL = (os.getenv("COACH_IMAGE_URL") or "").strip() or None  # Optional; if set, used as coach avatar in email.
