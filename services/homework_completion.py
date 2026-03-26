@@ -563,3 +563,66 @@ def minimal_complete_and_notify(
     except Exception as e:
         logger.exception("minimal_complete_and_notify failed: %s", e)
         return False
+
+
+def ensure_student_completion_email(
+    session_id: str,
+    user_id: str,
+    preferred_student_email: str | None = None,
+) -> bool:
+    """Send student completion email once per session (dedup by student_completion_email_sent_at)."""
+    session = db.v2_get_session(session_id, user_id)
+    if not session or session.get("status") != STATUS_COMPLETED:
+        return False
+    if session.get("student_completion_email_sent_at"):
+        return True
+    token_email = _normalize_email(preferred_student_email)
+    auth_email = _normalize_email(db.get_user_email_from_auth(user_id))
+    student_email = token_email or auth_email
+    if not student_email:
+        try:
+            db.v2_update_session(session_id, user_id, {"student_completion_email_last_error": "NO_EMAIL"})
+        except Exception:
+            pass
+        logger.warning("ensure_student_completion_email: no email for user_id=%s session_id=%s", user_id, session_id)
+        return False
+    score_end = float(session.get("performance_score_end") or 0.0)
+    report_text = _session_report_text(session)
+    try:
+        result = email_service.send_lesson_complete_to_student(
+            to_email=student_email,
+            frontend_url=config.FRONTEND_URL,
+            performance_score_end=score_end,
+            report_preview=report_text,
+            student_name=_resolve_student_name(user_id, student_email),
+            session_id=session_id,
+        )
+        if result.get("status") == "sent":
+            try:
+                db.v2_update_session(session_id, user_id, {
+                    "student_completion_email_sent_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+                    "student_completion_email_last_error": None,
+                })
+            except Exception:
+                pass
+            return True
+        err = (result.get("error") or result.get("status") or "EMAIL_FAILED")
+        try:
+            db.v2_update_session(session_id, user_id, {"student_completion_email_last_error": str(err)[:800]})
+        except Exception:
+            pass
+        logger.warning(
+            "ensure_student_completion_email: failed session_id=%s to=%s status=%s error=%s",
+            session_id,
+            student_email,
+            result.get("status"),
+            result.get("error"),
+        )
+        return False
+    except Exception as e:
+        try:
+            db.v2_update_session(session_id, user_id, {"student_completion_email_last_error": str(e)[:800]})
+        except Exception:
+            pass
+        logger.warning("ensure_student_completion_email exception session_id=%s: %s", session_id, e)
+        return False
