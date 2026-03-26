@@ -14,7 +14,7 @@ Single reference for this repo. No other .md docs; everything lives here.
 - **Backend:** Flask (Python), Railway. **DB/Auth/Storage:** Supabase. **AI:** OpenAI (Whisper + GPT-4o-mini). **Email:** Resend.
 - **Frontend:** Separate app; `FRONTEND_URL` in config (e.g. app.willonski.com or localhost:3000).
 
-**Git / deploy branches:** **Backend (this repo):** day-to-day integration and QA on **`staging`**; ship production from **`main`** (Railway prod should track `main`). **Frontend (separate Next.js repo):** integration and QA on **`develop`**; ship production from **`main`**. Configure env so **`develop`/staging builds** call the backend URL that deploys from **`staging`**, and **production frontend** calls the backend that deploys from **`main`**.
+**Git / deploy branches:** **Backend (this repo):** integration and QA on **`staging`**; production from **`main`** (Railway prod should track `main`). **Frontend (separate Next.js repo):** integration and QA on **`develop`**; production from **`main`**. Point **`develop`/staging frontend** env at the backend URL that deploys from **`staging`**; **production frontend** at the backend on **`main`**.
 
 ---
 
