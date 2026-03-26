@@ -574,45 +574,91 @@ class DatabaseService:
             sentry_sdk.capture_exception(e)
             raise Exception(f"Failed to create signed URL: {str(e)}")
 
+    def _absolute_signed_upload_url(self, raw: str | None) -> str | None:
+        """Storage may return a host-relative path; browsers must PUT the full Supabase URL or the app origin gets 404."""
+        if not raw or not isinstance(raw, str):
+            return None
+        s = raw.strip()
+        if not s:
+            return None
+        if s.startswith("http://") or s.startswith("https://"):
+            return s
+        base = (config.SUPABASE_URL or "").rstrip("/")
+        if not base:
+            return None
+        storage_root = f"{base}/storage/v1"
+        if s.startswith("/storage/v1/"):
+            return f"{base}{s}"
+        if s.startswith("storage/v1/"):
+            return f"{base}/{s}"
+        if s.startswith("/object/"):
+            return f"{storage_root}{s}"
+        if s.startswith("object/"):
+            return f"{storage_root}/{s}"
+        return f"{storage_root}/{s.lstrip('/')}"
+
     def create_signed_upload_url(self, bucket: str, path: str):
-        """Create a signed upload URL for direct PUT upload (recording-upload-url). Returns a single URL string or None if not supported."""
+        """Create a signed upload URL for direct PUT upload (recording-upload-url). Always returns absolute https URL or None."""
+        path_clean = path.lstrip("/")
+        sign_segment = f"{bucket}/{path_clean}"
+
+        def _from_api_value(result) -> str | None:
+            if result is None:
+                return None
+            if isinstance(result, dict):
+                u = (
+                    result.get("signedUrl")
+                    or result.get("signed_url")
+                    or result.get("signedURL")
+                    or result.get("url")
+                )
+                if isinstance(u, str):
+                    return self._absolute_signed_upload_url(u)
+                return None
+            for attr in ("signed_url", "signedUrl", "signedURL", "url"):
+                u = getattr(result, attr, None)
+                if isinstance(u, str):
+                    return self._absolute_signed_upload_url(u)
+            return None
+
         try:
             bucket_api = self.client.storage.from_(bucket)
             create_upload = getattr(bucket_api, "create_signed_upload_url", None)
             if callable(create_upload):
-                result = create_upload(path)
-                if isinstance(result, dict):
-                    url = result.get("signedUrl") or result.get("signed_url") or result.get("url") or result.get("path")
-                    if isinstance(url, str) and url.startswith("http"):
-                        return url
-                if hasattr(result, "signed_url"):
-                    u = getattr(result, "signed_url", None) or getattr(result, "signedUrl", None) or getattr(result, "url", None)
-                    if isinstance(u, str) and u.startswith("http"):
-                        return u
-        except Exception:
-            pass
+                result = create_upload(path_clean)
+                normalized = _from_api_value(result)
+                if normalized:
+                    return normalized
+        except Exception as e:
+            logger.debug("create_signed_upload_url SDK path failed: %s", e)
+
         try:
             import httpx
+
             base = (config.SUPABASE_URL or "").rstrip("/")
             key = config.SUPABASE_SERVICE_ROLE_KEY or ""
             if not base or not key:
                 return None
-            url_path = path.lstrip("/")
+            # Match storage-js/storage-py: POST .../object/upload/sign/{bucketId}/{objectPath} (no JSON body).
             resp = httpx.post(
-                f"{base}/storage/v1/object/upload/sign/{bucket}",
-                json={"path": url_path},
-                headers={"Authorization": f"Bearer {key}", "apikey": key, "Content-Type": "application/json"},
+                f"{base}/storage/v1/object/upload/sign/{sign_segment}",
+                headers={"Authorization": f"Bearer {key}", "apikey": key},
                 timeout=10.0,
             )
             if resp.status_code != 200:
+                logger.warning(
+                    "create_signed_upload_url POST sign failed status=%s body=%s",
+                    resp.status_code,
+                    (resp.text or "")[:200],
+                )
                 return None
             data = resp.json()
-            if isinstance(data, dict):
-                signed = data.get("signedUrl") or data.get("signed_url") or data.get("url")
-                if isinstance(signed, str) and signed.startswith("http"):
-                    return signed
-            return None
-        except Exception:
+            if not isinstance(data, dict):
+                return None
+            rel = data.get("url") or data.get("signedURL") or data.get("signedUrl") or data.get("signed_url")
+            return self._absolute_signed_upload_url(rel if isinstance(rel, str) else None)
+        except Exception as e:
+            logger.warning("create_signed_upload_url httpx path failed: %s", e)
             return None
 
     def upload_audio(self, bucket: str, path: str, file_data: bytes, content_type: str = "audio/webm"):
