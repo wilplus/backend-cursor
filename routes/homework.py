@@ -13,6 +13,7 @@ from services.homework_completion import (
     ensure_student_completion_email,
 )
 from services.sniper_realtime import clear_sniper_session
+from services.utils import utc_now_iso
 import logging
 import os
 import time
@@ -21,6 +22,7 @@ import sentry_sdk
 from datetime import datetime, timedelta, timezone
 
 logger = logging.getLogger(__name__)
+config = Config()
 homework_bp = Blueprint("homework", __name__, url_prefix="/v2/homework")
 
 # #region agent log
@@ -148,7 +150,6 @@ def _public_recording_id(session: dict):
 
 def _build_step0_payload(user_id: str) -> dict:
     """Build the session/status payload when there is no active session (step 0). Used by GET session/status only."""
-    config = Config()
     sniper_profile = db.get_sniper_profile_payload(user_id)
     coach_name = (getattr(config, "COACH_NAME", "Artur") or "Artur").strip().title() or "Artur"
     # Fetch credits for this student
@@ -276,7 +277,7 @@ def homework_session_start():
                 "task": _task_text(task.get("text") if task else None),
             }), 200
 
-        # Check credits balance before starting a new session
+        # Require enough credits to finish a session (charged when the report is generated, not here).
         student_details = db.v2_get_student_details(user_id) or {}
         current_credits = student_details.get("credits")
         if current_credits is None:
@@ -304,12 +305,6 @@ def homework_session_start():
         session = db.v2_create_homework_session(user_id)
         if not session:
             return jsonify({"code": "V2_ERROR", "error": "Failed to create session"}), 500
-
-        # Deduct 5 credits for this session
-        try:
-            db.v2_deduct_session_credits(user_id, amount=5)
-        except Exception as e:
-            logger.warning(f"Credits deduction failed for user {user_id}: {e}")
 
         pending_video_url, pending_video_description = db.v2_get_and_clear_pending_tutor_video(user_id)
         prefs = db.v2_get_user_metric_questions(user_id)
@@ -388,15 +383,12 @@ def homework_session_status():
         _sid = str(active.get("id") or "")
         _agent_log("session/status about to jsonify active", {"session_id": _sid, "session_id_len": len(_sid), "user_id": user_id, "has_datetime_values": [k for k, v in active.items() if hasattr(v, "isoformat")]}, "B")
         # #endregion
-        # Debug: confirm row still exists in DB at the moment we return it (rules out "status not reading from DB")
-        _row_check = db.v2_get_session_by_id(_sid)
-        logger.info(
-            "STATUS returning session_id: %s | row_still_exists_in_db: %s",
-            _sid,
-            _row_check is not None,
-        )
         public_status = _public_status(active.get("status"))
         internal_status = active.get("status")
+        student_details_active = db.v2_get_student_details(user_id) or {}
+        credits_active = student_details_active.get("credits")
+        if credits_active is None:
+            credits_active = 15
         resp = {
             "status": public_status,
             "session_id": str(active["id"]),
@@ -408,6 +400,7 @@ def homework_session_status():
             "tutor_video_url": None,
             "tutor_video_description": None,
             "has_active_session": True,
+            "credits": int(credits_active),
         }
         # Hide intro coach video while report is generating; session row still has tutor_video_* from session/start.
         hide_tutor_video = internal_status in (
@@ -558,7 +551,7 @@ def homework_self_rating(session_id):
             saved_rating = None
         try:
             db.v2_update_session(session_id, user_id, {
-                "self_rating_submitted_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+                "self_rating_submitted_at": utc_now_iso()
             })
         except Exception as flag_err:
             logger.warning("homework_self_rating: could not set self_rating_submitted_at: %s", flag_err)
@@ -737,11 +730,9 @@ def _validate_recording_2_duration(duration_seconds):
 
 
 def _submit_recording(session_id: str, slot: str):
-    from config import Config
     from services.recording_1_job import enqueue_recording_1_job
     from services.recording_2_job import enqueue_recording_2_job
 
-    config = Config()
     user_id = request.user_id
     session = db.v2_get_session(session_id, user_id)
     fields = _recording_slot_fields(slot)
@@ -862,8 +853,6 @@ def homework_recording_upload_url(session_id):
         pass
     # #endregion
     try:
-        from config import Config
-        config = Config()
         user_id = request.user_id
         data = request.get_json() or {}
         try:
@@ -1095,8 +1084,6 @@ def homework_sniper_metrics_chunk(session_id):
 def homework_get_report(session_id):
     """Get report data for a completed session (step 5). Returns report_text, scores (warmup, final, overall 0-100), final_recording { id, audio_url } with fresh signed URL, and performance_history (last 5 completed sessions: date, score 0-100, oldest first). Owner-only; session must be completed."""
     try:
-        from config import Config
-        config = Config()
         user_id = request.user_id
         token_payload = getattr(request, "token_payload", {}) or {}
         preferred_student_email = token_payload.get("email")

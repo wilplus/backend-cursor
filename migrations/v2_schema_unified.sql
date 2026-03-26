@@ -185,6 +185,7 @@ DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'v2_sessions' AND column_name = 'question_3_score') THEN ALTER TABLE v2_sessions ADD COLUMN question_3_score FLOAT; END IF;
   IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'v2_sessions' AND column_name = 'pitch_variance_avg') THEN ALTER TABLE v2_sessions ADD COLUMN pitch_variance_avg FLOAT; END IF;
   IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'v2_sessions' AND column_name = 'report_id') THEN ALTER TABLE v2_sessions ADD COLUMN report_id UUID; END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'v2_sessions' AND column_name = 'homework_credits_charged_at') THEN ALTER TABLE v2_sessions ADD COLUMN homework_credits_charged_at TIMESTAMPTZ; END IF;
 END $$;
 
 -- ----------------------------------------------------------------------------

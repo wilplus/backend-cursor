@@ -5,26 +5,15 @@ Legacy `post_questions` handling remains only as a compatibility fallback for ol
 """
 import json
 import logging
-import re
 import time
 from datetime import datetime, timezone
 
 from config import Config
 from services.db import db
-
-_DEBUG_LOG_PATH = "/Users/arturwillonski/Documents/backend-cursor/.cursor/debug.log"
-
-
-def _completion_debug_log(message: str, data: dict, hypothesis_id: str):
-    try:
-        line = json.dumps({"location": "homework_completion.py", "message": message, "data": data, "timestamp": int(time.time() * 1000), "hypothesisId": hypothesis_id}) + "\n"
-        with open(_DEBUG_LOG_PATH, "a") as f:
-            f.write(line)
-    except Exception:
-        pass
 from services.openai_service import openai_service
 from services.email_service import email_service
 from services.metrics_v2 import compute_metrics_v2
+from services.utils import utc_now_iso
 
 logger = logging.getLogger(__name__)
 config = Config()
@@ -46,51 +35,59 @@ def _normalize_email(value) -> str:
     return email.lower() if "@" in email else ""
 
 
+def _resolve_student_email(preferred_email: str | None, user_id: str, *, context: str = "") -> str:
+    """Return the best available student email, logging a warning on mismatch."""
+    token_email = _normalize_email(preferred_email)
+    auth_email = _normalize_email(db.get_user_email_from_auth(user_id))
+    if token_email and auth_email and token_email != auth_email:
+        logger.warning(
+            "Email mismatch%s user_id=%s token_email=%s auth_email=%s",
+            f" on {context}" if context else "",
+            user_id,
+            token_email,
+            auth_email,
+        )
+    return token_email or auth_email
+
+
 def _resolve_student_name(user_id: str, student_email: str) -> str:
     """Return the user's full display name from auth metadata, falling back to the
-    email local-part (split on dots/underscores to get a readable first token)."""
+    part of the email before the @, or an empty string."""
     try:
-        name = db.get_user_name_from_auth(user_id)
+        user = db.get_user_by_id(user_id)
+        raw_meta = (user or {}).get("user_metadata") or {}
+        name = (raw_meta.get("full_name") or raw_meta.get("name") or "").strip()
         if name:
             return name
     except Exception:
         pass
-    # Fallback: derive a readable name from the email local-part
-    local = student_email.split("@")[0] if "@" in student_email else student_email
-    # Replace common separators so "artur.willonski" → "artur willonski"
-    readable = local.replace(".", " ").replace("_", " ").replace("-", " ").strip()
-    # Capitalise each word and return the full result (first + last name readable)
-    return " ".join(p.capitalize() for p in readable.split() if p) or "there"
+    if student_email and "@" in student_email:
+        return student_email.split("@")[0]
+    return ""
 
 
 def _session_report_text(session: dict) -> str:
-    report_text = (session.get("context_long") or "").strip()
-    if session.get("report_id"):
-        try:
-            r = db.client.table("v2_reports").select("report_text").eq("id", session["report_id"]).execute()
-            if r.data and r.data[0].get("report_text"):
-                report_text = (r.data[0]["report_text"] or "").strip()
-        except Exception:
-            pass
-    return report_text
+    """Return the first non-empty report text found in the session row."""
+    for key in ("report_text", "report_preview", "report"):
+        val = (session.get(key) or "").strip()
+        if val:
+            return val
+    return ""
 
 
 def _first_n_sentences(text: str, n: int = 2) -> str:
-    """Return at most n sentences from text (split on . ! ?)."""
-    if not (text or "").strip():
-        return ""
-    # Split on sentence-ending punctuation, keep delimiters
-    parts = re.split(r"(?<=[.!?])\s+", text.strip())
-    return " ".join(parts[:n]).strip() if parts else text.strip()[:200]
+    import re
+    sentences = re.split(r"(?<=[.!?])\s+", text.strip())
+    return " ".join(sentences[:n])
 
 
-def _build_report_recording_1_only(
+def _build_session_report(
     transcript: str,
     wpm: float,
     filler_count: int,
     metrics: dict,
 ) -> str:
-    """Build a fixed report for recording-1-only flow: max 2 sentences from transcript, filler count, pace & strength, coach message."""
+    """Build a report for any recording: excerpt, metrics, and coach message."""
     lines = []
     lines.append("**Your recording**")
     lines.append("")
@@ -110,48 +107,8 @@ def _build_report_recording_1_only(
     return "\n".join(lines)
 
 
-def complete_session_recording_1_only(
-    session_id: str,
-    user_id: str,
-    allow_task_block: bool = False,
-    preferred_student_email: str | None = None,
-):
-    """
-    Load session and recording_1; compute metrics, generate report, mark session completed. No recording_2.
-    Session must be in completing_from_recording_1, legacy post_questions, or (if allow_task_block) task_block.
-    When status is legacy post_questions, session.post_answers are preserved; otherwise [].
-    Returns dict with report payload (report_text, performance_score_end, ...) or None if not run.
-    """
-    session = db.v2_get_session(session_id, user_id)
-    status = session.get("status") if session else None
-    allowed = ("completing_from_recording_1", "post_questions", "task_block") if allow_task_block else ("completing_from_recording_1", "post_questions")
-    in_allowed = status in allowed if status else False
-    # #region agent log
-    _completion_debug_log("complete_session_recording_1_only entry", {"session_id": session_id, "status": status, "in_allowed": in_allowed}, "H8")
-    # #endregion
-    if not session or status not in allowed:
-        # #region agent log
-        _completion_debug_log("complete_session_recording_1_only return None: no session or status not allowed", {"session_id": session_id, "status": status}, "H8")
-        # #endregion
-        return None
-    if status == "task_block":
-        db.v2_update_session(session_id, user_id, {"status": "completing_from_recording_1"})
-        session = db.v2_get_session(session_id, user_id)
-    recording_1_id = session.get("recording_1_id")
-    if not recording_1_id:
-        # #region agent log
-        _completion_debug_log("complete_session_recording_1_only return None: no recording_1_id", {"session_id": session_id}, "H8")
-        # #endregion
-        logger.warning("complete_session_recording_1_only: no recording_1_id session_id=%s", session_id)
-        return None
-    recording = db.get_recording(recording_1_id, user_id)
-    if not recording:
-        # #region agent log
-        _completion_debug_log("complete_session_recording_1_only return None: recording not found", {"session_id": session_id, "recording_1_id": recording_1_id}, "H8")
-        # #endregion
-        logger.warning("complete_session_recording_1_only: recording not found recording_id=%s", recording_1_id)
-        return None
-
+def _compute_recording_metrics(recording: dict) -> tuple[str, float, int, dict, dict]:
+    """Extract transcript/wpm/filler/metrics from a recording row. Returns (transcript, wpm, filler_count, filler_data, final)."""
     transcript = recording.get("transcription_text") or ""
     wpm = float(recording.get("words_per_minute") or 0)
     filler_data = recording.get("filler_words_count") or {}
@@ -169,20 +126,26 @@ def complete_session_recording_1_only(
         keywords=[],
         metric_definitions=metric_defs,
     )
-    existing_metrics = recording.get("performance_metrics_v2") if isinstance(recording.get("performance_metrics_v2"), dict) else {}
-    scoring_debug = existing_metrics.get("scoring_debug") if isinstance(existing_metrics, dict) else None
-    merged_metrics = dict(final["metrics"])
+    return transcript, wpm, filler_count, filler_data, final
+
+
+def _persist_recording_metrics(recording_id: str, recording: dict, final: dict) -> None:
+    """Merge new metrics with any existing scoring_debug and update the recording row."""
+    existing = recording.get("performance_metrics_v2") if isinstance(recording.get("performance_metrics_v2"), dict) else {}
+    scoring_debug = existing.get("scoring_debug") if isinstance(existing, dict) else None
+    merged = dict(final["metrics"])
     if isinstance(scoring_debug, dict):
-        merged_metrics["scoring_debug"] = scoring_debug
-    db.update_recording(recording_1_id, {
+        merged["scoring_debug"] = scoring_debug
+    db.update_recording(recording_id, {
         "performance_score_v2": final["performance_score"],
-        "performance_metrics_v2": merged_metrics,
+        "performance_metrics_v2": merged,
         "metric_labels_snapshot_v2": final["metric_labels_snapshot"],
     })
 
-    performance_score_1 = float(session.get("performance_score_1") or 0)
-    performance_score_end = max(0.0, min(1.0, performance_score_1))
-    # Prefer Sniper (Voice Alignment) as the single performance score when available
+
+def _compute_performance_score_end(session: dict, session_id: str, base_score_key: str, filler_count: int) -> float:
+    """Clamp performance score; prefer Sniper stage score when available; penalise filler words."""
+    performance_score_end = max(0.0, min(1.0, float(session.get(base_score_key) or 0)))
     try:
         sniper = db.get_session_sniper_metrics(session_id)
         if sniper and sniper.get("stage_score") is not None:
@@ -192,69 +155,19 @@ def complete_session_recording_1_only(
         logger.debug("No sniper metrics for session %s: %s", session_id, sniper_err)
     if int(filler_count) > 0 and performance_score_end >= 1.0:
         performance_score_end = 0.99
-    report_text = _build_report_recording_1_only(
-        transcript=transcript,
-        wpm=wpm,
-        filler_count=filler_count,
-        metrics=final["metrics"],
-    )
+    return performance_score_end
 
-    db.v2_append_context_long_entry(session_id, user_id, report_text)
-    report_row = db.v2_create_report(session_id, recording_1_id, report_text)
 
-    completed_at_iso = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-
-    # Keep existing post_answers when coming from post_questions step; otherwise [].
-    post_answers = session.get("post_answers") if isinstance(session.get("post_answers"), list) else []
-
-    # Mark session completed and send coach email immediately so the report is "delivered"
-    # even if optional OpenAI steps (custom questions, coach_insight) fail or are slow.
-    # #region agent log
-    _completion_debug_log("complete_session_recording_1_only: updating session to completed", {"session_id": session_id}, "H8")
-    # #endregion
-    db.v2_update_session(session_id, user_id, {
-        "post_answers": post_answers,
-        "report_id": report_row["id"] if report_row else None,
-        "performance_score_end": performance_score_end,
-        "status": STATUS_COMPLETED,
-        "completed_at": completed_at_iso,
-        "question_1_analysis": "",
-        "question_1_score": 0,
-        "question_2_analysis": "",
-        "question_2_score": 0,
-        "question_3_analysis": "",
-        "question_3_score": 0,
-        "coach_insight": None,
-    })
-    token_email = _normalize_email(preferred_student_email)
-    auth_email = _normalize_email(db.get_user_email_from_auth(user_id))
-    student_email = token_email or auth_email
-    if token_email and auth_email and token_email != auth_email:
-        logger.warning(
-            "Email mismatch on completion session_id=%s token_email=%s auth_email=%s",
-            session_id,
-            token_email,
-            auth_email,
-        )
-    try:
-        coach_result = email_service.send_lesson_complete_to_admin(
-            user_id, session_id, report_text,
-            student_email=student_email or None,
-            performance_score_end=performance_score_end,
-            student_name=_resolve_student_name(user_id, student_email) if student_email else "",
-        )
-        if coach_result.get("status") != "sent":
-            logger.warning(
-                "Coach completion email not sent session_id=%s status=%s error=%s",
-                session_id,
-                coach_result.get("status"),
-                coach_result.get("error"),
-            )
-    except Exception as mail_err:
-        logger.warning("Lesson-complete coach email failed: %s", mail_err)
-
-    # Optional enrichment (non-blocking): generate and persist coach insight first,
-    # then run custom question analysis. This improves perceived speed in report UI.
+def _run_optional_enrichment(
+    session: dict,
+    session_id: str,
+    user_id: str,
+    transcript: str,
+    filler_count: int,
+    filler_data: dict,
+    performance_score_end: float,
+) -> tuple[str, dict, dict, dict]:
+    """Run coach insight + custom question analysis (non-blocking). Returns (coach_insight, r1, r2, r3)."""
     coach_insight = ""
     try:
         context_short = (session.get("context_short") or "").strip()
@@ -270,13 +183,13 @@ def complete_session_recording_1_only(
         try:
             speaker_profile = db.v2_get_speaker_profile(user_id) or {}
             speaker_profile_context = (speaker_profile.get("coach_notes") or "").strip()
-        except Exception as profile_err:
-            logger.debug("Coach insight profile unavailable session_id=%s: %s", session_id, profile_err)
+        except Exception:
+            pass
         session_sniper = {}
         try:
             session_sniper = db.get_session_sniper_metrics(session_id) or {}
-        except Exception as sniper_err:
-            logger.debug("Coach insight sniper metrics unavailable session_id=%s: %s", session_id, sniper_err)
+        except Exception:
+            pass
         self_rating_1_10 = session_sniper.get("student_rating_1_10")
         live_ball_score_100 = None
         stage_raw = session_sniper.get("stage_score")
@@ -285,7 +198,7 @@ def complete_session_recording_1_only(
                 stage_raw_f = float(stage_raw)
                 live_ball_score_100 = round(stage_raw_f if stage_raw_f > 1 else stage_raw_f * 100)
             except (TypeError, ValueError):
-                live_ball_score_100 = None
+                pass
         try:
             self_rating_1_10 = int(self_rating_1_10) if self_rating_1_10 is not None else None
         except (TypeError, ValueError):
@@ -325,114 +238,39 @@ def complete_session_recording_1_only(
         "question_3_score": float(r3.get("score", 0)),
         "coach_insight": coach_insight or None,
     })
-
-    try:
-        db.v2_upsert_student_coaching_memory(user_id, session_id)
-    except Exception as cm_err:
-        logger.warning("Coaching memory upsert failed: %s", cm_err)
-
-    logger.info("complete_session_recording_1_only: done session_id=%s", session_id)
-    return {
-        "report_text": report_text,
-        "performance_score_end": performance_score_end,
-        "performance_score_1": performance_score_end,
-        "recording_count": 1,
-        "performance_metrics": final["metrics"],
-        "question_1_analysis": r1.get("analysis") or "",
-        "question_1_score": float(r1.get("score", 0)),
-        "question_2_analysis": r2.get("analysis") or "",
-        "question_2_score": float(r2.get("score", 0)),
-        "question_3_analysis": r3.get("analysis") or "",
-        "question_3_score": float(r3.get("score", 0)),
-        "completed_at_iso": completed_at_iso,
-    }
+    return coach_insight, r1, r2, r3
 
 
-def complete_session_recording_2_only(
+def _complete_session_from_recording(
+    session: dict,
     session_id: str,
     user_id: str,
-    preferred_student_email: str | None = None,
-):
+    recording_id: str,
+    base_score_key: str,
+    preferred_student_email: str | None,
+    recording_count: int,
+) -> dict:
     """
-    Load session and recording_2; compute final metrics, generate report, mark session completed.
-    Uses the same scoring and completion logic as complete_session_recording_1_only but
-    treats performance_score_2 as the authoritative end score (still prefers Sniper when available).
-    Session must be in completing_from_recording_2 or final_task_ready.
-    Returns dict with report payload or None if not run.
+    Shared completion core: compute metrics, build report, mark session completed,
+    send coach email, run optional enrichment. Used by both recording-1 and recording-2 paths.
+    Returns the result dict.
     """
-    session = db.v2_get_session(session_id, user_id)
-    status = session.get("status") if session else None
-    allowed = ("completing_from_recording_2", "final_task_ready")
-    if not session or status not in allowed:
-        logger.warning(
-            "complete_session_recording_2_only: skipped session_id=%s status=%s", session_id, status
-        )
-        return None
-    if status == "final_task_ready":
-        db.v2_update_session(session_id, user_id, {"status": "completing_from_recording_2"})
-        session = db.v2_get_session(session_id, user_id)
-
-    recording_2_id = session.get("recording_2_id")
-    if not recording_2_id:
-        logger.warning("complete_session_recording_2_only: no recording_2_id session_id=%s", session_id)
-        return None
-    recording = db.get_recording(recording_2_id, user_id)
+    recording = db.get_recording(recording_id, user_id)
     if not recording:
-        logger.warning("complete_session_recording_2_only: recording not found recording_id=%s", recording_2_id)
+        logger.warning("_complete_session_from_recording: recording not found recording_id=%s", recording_id)
         return None
 
-    transcript = recording.get("transcription_text") or ""
-    wpm = float(recording.get("words_per_minute") or 0)
-    filler_data = recording.get("filler_words_count") or {}
-    filler_count = int(filler_data.get("total", 0)) if isinstance(filler_data, dict) else 0
-    strength_raw = None
-    if isinstance(recording.get("performance_metrics_v2"), dict):
-        strength_raw = recording["performance_metrics_v2"].get("strength", {}).get("raw")
-    metric_defs = db.v2_get_metric_definitions()
-    final = compute_metrics_v2(
-        wpm=wpm,
-        strength_raw=strength_raw,
-        filler_count=filler_count,
-        emotion_achieved=False,
-        transcript=transcript,
-        keywords=[],
-        metric_definitions=metric_defs,
-    )
-    existing_metrics = recording.get("performance_metrics_v2") if isinstance(recording.get("performance_metrics_v2"), dict) else {}
-    scoring_debug = existing_metrics.get("scoring_debug") if isinstance(existing_metrics, dict) else None
-    merged_metrics = dict(final["metrics"])
-    if isinstance(scoring_debug, dict):
-        merged_metrics["scoring_debug"] = scoring_debug
-    db.update_recording(recording_2_id, {
-        "performance_score_v2": final["performance_score"],
-        "performance_metrics_v2": merged_metrics,
-        "metric_labels_snapshot_v2": final["metric_labels_snapshot"],
-    })
+    transcript, wpm, filler_count, filler_data, final = _compute_recording_metrics(recording)
+    _persist_recording_metrics(recording_id, recording, final)
 
-    performance_score_2 = float(session.get("performance_score_2") or 0)
-    performance_score_end = max(0.0, min(1.0, performance_score_2))
-    try:
-        sniper = db.get_session_sniper_metrics(session_id)
-        if sniper and sniper.get("stage_score") is not None:
-            raw = float(sniper["stage_score"])
-            performance_score_end = max(0.0, min(1.0, raw / 100.0 if raw > 1.0 else raw))
-    except Exception as sniper_err:
-        logger.debug("No sniper metrics for session %s: %s", session_id, sniper_err)
-    if int(filler_count) > 0 and performance_score_end >= 1.0:
-        performance_score_end = 0.99
-
-    report_text = _build_report_recording_1_only(
-        transcript=transcript,
-        wpm=wpm,
-        filler_count=filler_count,
-        metrics=final["metrics"],
-    )
+    performance_score_end = _compute_performance_score_end(session, session_id, base_score_key, filler_count)
+    report_text = _build_session_report(transcript=transcript, wpm=wpm, filler_count=filler_count, metrics=final["metrics"])
 
     db.v2_append_context_long_entry(session_id, user_id, report_text)
-    recording_1_id = session.get("recording_1_id")
-    report_row = db.v2_create_report(session_id, recording_2_id or recording_1_id, report_text)
+    primary_recording_id = recording_id if recording_count == 1 else (recording_id or session.get("recording_1_id"))
+    report_row = db.v2_create_report(session_id, primary_recording_id, report_text)
 
-    completed_at_iso = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    completed_at_iso = utc_now_iso()
     post_answers = session.get("post_answers") if isinstance(session.get("post_answers"), list) else []
 
     db.v2_update_session(session_id, user_id, {
@@ -449,9 +287,13 @@ def complete_session_recording_2_only(
         "question_3_score": 0,
         "coach_insight": None,
     })
-    token_email = _normalize_email(preferred_student_email)
-    auth_email = _normalize_email(db.get_user_email_from_auth(user_id))
-    student_email = token_email or auth_email
+
+    try:
+        db.v2_charge_homework_completion_credits_once(session_id, user_id, amount=5)
+    except Exception as credit_err:
+        logger.warning("Homework completion credit charge failed session_id=%s: %s", session_id, credit_err)
+
+    student_email = _resolve_student_email(preferred_student_email, user_id, context="completion")
     try:
         coach_result = email_service.send_lesson_complete_to_admin(
             user_id, session_id, report_text,
@@ -467,20 +309,115 @@ def complete_session_recording_2_only(
     except Exception as mail_err:
         logger.warning("Lesson-complete coach email failed: %s", mail_err)
 
+    coach_insight, r1, r2, r3 = _run_optional_enrichment(
+        session=session,
+        session_id=session_id,
+        user_id=user_id,
+        transcript=transcript,
+        filler_count=filler_count,
+        filler_data=filler_data,
+        performance_score_end=performance_score_end,
+    )
+
     try:
         db.v2_upsert_student_coaching_memory(user_id, session_id)
     except Exception as cm_err:
         logger.warning("Coaching memory upsert failed: %s", cm_err)
 
-    logger.info("complete_session_recording_2_only: done session_id=%s", session_id)
-    return {
+    result = {
         "report_text": report_text,
         "performance_score_end": performance_score_end,
-        "performance_score_2": performance_score_2,
-        "recording_count": 2,
+        "recording_count": recording_count,
         "performance_metrics": final["metrics"],
+        "question_1_analysis": r1.get("analysis") or "",
+        "question_1_score": float(r1.get("score", 0)),
+        "question_2_analysis": r2.get("analysis") or "",
+        "question_2_score": float(r2.get("score", 0)),
+        "question_3_analysis": r3.get("analysis") or "",
+        "question_3_score": float(r3.get("score", 0)),
         "completed_at_iso": completed_at_iso,
     }
+    if recording_count == 1:
+        result["performance_score_1"] = performance_score_end
+    else:
+        result["performance_score_2"] = float(session.get("performance_score_2") or 0)
+    return result
+
+
+def complete_session_recording_1_only(
+    session_id: str,
+    user_id: str,
+    allow_task_block: bool = False,
+    preferred_student_email: str | None = None,
+):
+    """
+    Load session and recording_1; compute metrics, generate report, mark session completed. No recording_2.
+    Session must be in completing_from_recording_1, legacy post_questions, or (if allow_task_block) task_block.
+    Returns dict with report payload or None if not run.
+    """
+    session = db.v2_get_session(session_id, user_id)
+    status = session.get("status") if session else None
+    allowed = ("completing_from_recording_1", "post_questions", "task_block") if allow_task_block else ("completing_from_recording_1", "post_questions")
+    if not session or status not in allowed:
+        return None
+    if status == "task_block":
+        db.v2_update_session(session_id, user_id, {"status": "completing_from_recording_1"})
+        session = db.v2_get_session(session_id, user_id)
+    recording_1_id = session.get("recording_1_id")
+    if not recording_1_id:
+        logger.warning("complete_session_recording_1_only: no recording_1_id session_id=%s", session_id)
+        return None
+
+    result = _complete_session_from_recording(
+        session=session,
+        session_id=session_id,
+        user_id=user_id,
+        recording_id=recording_1_id,
+        base_score_key="performance_score_1",
+        preferred_student_email=preferred_student_email,
+        recording_count=1,
+    )
+    if result is not None:
+        logger.info("complete_session_recording_1_only: done session_id=%s", session_id)
+    return result
+
+
+def complete_session_recording_2_only(
+    session_id: str,
+    user_id: str,
+    preferred_student_email: str | None = None,
+):
+    """
+    Load session and recording_2; compute final metrics, generate report, mark session completed.
+    Session must be in completing_from_recording_2 or final_task_ready.
+    Returns dict with report payload or None if not run.
+    """
+    session = db.v2_get_session(session_id, user_id)
+    status = session.get("status") if session else None
+    allowed = ("completing_from_recording_2", "final_task_ready")
+    if not session or status not in allowed:
+        logger.warning("complete_session_recording_2_only: skipped session_id=%s status=%s", session_id, status)
+        return None
+    if status == "final_task_ready":
+        db.v2_update_session(session_id, user_id, {"status": "completing_from_recording_2"})
+        session = db.v2_get_session(session_id, user_id)
+    recording_2_id = session.get("recording_2_id")
+    if not recording_2_id:
+        logger.warning("complete_session_recording_2_only: no recording_2_id session_id=%s", session_id)
+        return None
+
+    result = _complete_session_from_recording(
+        session=session,
+        session_id=session_id,
+        user_id=user_id,
+        recording_id=recording_2_id,
+        base_score_key="performance_score_2",
+        preferred_student_email=preferred_student_email,
+        recording_count=2,
+    )
+    if result is not None:
+        logger.info("complete_session_recording_2_only: done session_id=%s", session_id)
+    return result
 
 
 def minimal_complete_and_notify(
@@ -503,7 +440,7 @@ def minimal_complete_and_notify(
         report_text = MINIMAL_REPORT_FALLBACK
         db.v2_append_context_long_entry(session_id, user_id, report_text)
         report_row = db.v2_create_report(session_id, recording_1_id, report_text)
-        completed_at_iso = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+        completed_at_iso = utc_now_iso()
         performance_score_end = max(0.0, min(1.0, float(session.get("performance_score_1") or 0)))
         rec = db.get_recording(recording_1_id, user_id)
         filler_data = rec.get("filler_words_count") if isinstance(rec, dict) else {}
@@ -532,16 +469,11 @@ def minimal_complete_and_notify(
             "question_3_score": 0,
             "coach_insight": None,
         })
-        token_email = _normalize_email(preferred_student_email)
-        auth_email = _normalize_email(db.get_user_email_from_auth(user_id))
-        student_email = token_email or auth_email
-        if token_email and auth_email and token_email != auth_email:
-            logger.warning(
-                "Email mismatch on minimal completion session_id=%s token_email=%s auth_email=%s",
-                session_id,
-                token_email,
-                auth_email,
-            )
+        try:
+            db.v2_charge_homework_completion_credits_once(session_id, user_id, amount=5)
+        except Exception as credit_err:
+            logger.warning("Minimal completion credit charge failed session_id=%s: %s", session_id, credit_err)
+        student_email = _resolve_student_email(preferred_student_email, user_id, context="minimal completion")
         try:
             coach_result = email_service.send_lesson_complete_to_admin(
                 user_id, session_id, report_text,
@@ -551,9 +483,7 @@ def minimal_complete_and_notify(
             if coach_result.get("status") != "sent":
                 logger.warning(
                     "Minimal-complete coach email not sent session_id=%s status=%s error=%s",
-                    session_id,
-                    coach_result.get("status"),
-                    coach_result.get("error"),
+                    session_id, coach_result.get("status"), coach_result.get("error"),
                 )
         except Exception as mail_err:
             logger.warning("Minimal-complete coach email failed: %s", mail_err)
@@ -576,9 +506,7 @@ def ensure_student_completion_email(
         return False
     if session.get("student_completion_email_sent_at"):
         return True
-    token_email = _normalize_email(preferred_student_email)
-    auth_email = _normalize_email(db.get_user_email_from_auth(user_id))
-    student_email = token_email or auth_email
+    student_email = _resolve_student_email(preferred_student_email, user_id, context="student completion email")
     if not student_email:
         try:
             db.v2_update_session(session_id, user_id, {"student_completion_email_last_error": "NO_EMAIL"})
@@ -600,7 +528,7 @@ def ensure_student_completion_email(
         if result.get("status") == "sent":
             try:
                 db.v2_update_session(session_id, user_id, {
-                    "student_completion_email_sent_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+                    "student_completion_email_sent_at": utc_now_iso(),
                     "student_completion_email_last_error": None,
                 })
             except Exception:
@@ -613,10 +541,7 @@ def ensure_student_completion_email(
             pass
         logger.warning(
             "ensure_student_completion_email: failed session_id=%s to=%s status=%s error=%s",
-            session_id,
-            student_email,
-            result.get("status"),
-            result.get("error"),
+            session_id, student_email, result.get("status"), result.get("error"),
         )
         return False
     except Exception as e:

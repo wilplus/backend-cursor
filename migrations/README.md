@@ -30,6 +30,7 @@
 ## Student UI: coach assignment video flag
 
 - **`add_video_shown_to_student_overrides.sql`** — adds `v2_student_overrides.video_shown` (`0` | `1`, default `1`). Backend sets `0` when homework completes and `1` when admin send-assignment succeeds. `GET /v2/homework/session/status` returns `video_shown` and omits tutor video fields when `0`. See **`docs/VIDEO_SHOWN-CONTRACT.md`**.
+- **`add_homework_credits_charged_at.sql`** — adds `v2_sessions.homework_credits_charged_at` (TIMESTAMPTZ). Backend deducts **5 credits when a session completes with a report** (not at `session/start`). Backfills `completed` rows so they are not charged again on deploy. **In-flight** sessions started before deploy may have been charged at start under the old logic; if one completes after deploy, credits may drop by 5 again — rare; adjust balance manually if needed.
 
 ---
 

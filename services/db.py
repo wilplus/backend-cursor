@@ -2,13 +2,17 @@ from supabase import create_client, Client
 from config import Config
 from typing import List, Optional, Tuple
 from datetime import datetime, timedelta, timezone
-import sentry_sdk
 import json
+import logging
 import time
+
+import sentry_sdk
 
 from services.v2_flow_service import score_and_pick_focus_task
 
 config = Config()
+logger = logging.getLogger(__name__)
+
 
 class DatabaseService:
     def __init__(self):
@@ -2745,6 +2749,42 @@ class DatabaseService:
             return (result.data[0] or {}).get("credits") if result.data else new_credits
         except Exception:
             return None
+
+    def v2_charge_homework_completion_credits_once(self, session_id: str, user_id: str, amount: int = 5) -> None:
+        """
+        Deduct `amount` credits once per session when homework completes with a report.
+        Idempotent: sets homework_credits_charged_at only when NULL, then deducts.
+        If deduct fails, clears homework_credits_charged_at so a retry can succeed.
+        """
+        now = datetime.now(timezone.utc).isoformat()
+        try:
+            result = (
+                self.client.table("v2_sessions")
+                .update({"homework_credits_charged_at": now})
+                .eq("id", session_id)
+                .eq("user_id", user_id)
+                .eq("status", "completed")
+                .is_("homework_credits_charged_at", "null")
+                .execute()
+            )
+            if not result.data:
+                return
+        except Exception as e:
+            sentry_sdk.capture_exception(e)
+            logger.warning("v2_charge_homework_completion_credits_once: flag update failed session_id=%s: %s", session_id, e)
+            return
+
+        new_bal = self.v2_deduct_session_credits(user_id, amount=amount)
+        if new_bal is None:
+            logger.warning(
+                "v2_charge_homework_completion_credits_once: deduct failed after flag; clearing flag session_id=%s user_id=%s",
+                session_id,
+                user_id,
+            )
+            try:
+                self.client.table("v2_sessions").update({"homework_credits_charged_at": None}).eq("id", session_id).eq("user_id", user_id).execute()
+            except Exception:
+                pass
 
     def v2_get_student_list_stats(self, user_id: str):
         """Optional stats for admin students list: sessions_count, last_session_at (ISO), avg_performance (0-100)."""
