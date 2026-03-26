@@ -2540,7 +2540,6 @@ class DatabaseService:
         "show_exercise_step", "assigned_warm_up_task_id",
         "pitch_variance_ideal", "pending_tutor_video_url", "pending_tutor_video_description",
         "skip_metric_questions", "skip_post_questions",
-        "video_shown",
     }
 
     def v2_get_user_metric_questions(self, user_id: str):
@@ -2585,13 +2584,6 @@ class DatabaseService:
         for key in ("skip_metric_questions", "skip_post_questions"):
             if merged.get(key) is None:
                 merged[key] = False
-        if merged.get("video_shown") is None:
-            merged["video_shown"] = 1
-        else:
-            try:
-                merged["video_shown"] = 0 if int(merged["video_shown"]) == 0 else 1
-            except (TypeError, ValueError):
-                merged["video_shown"] = 1
         # Empty string for UUID columns: treat as null so clearing "assigned exercise" persists
         if merged.get("assigned_next_exercise_id") == "":
             merged["assigned_next_exercise_id"] = None
@@ -2627,11 +2619,6 @@ class DatabaseService:
         if payload:
             self.v2_upsert_student_overrides(user_id, payload)
         return True
-
-    def v2_set_video_shown(self, user_id: str, value: int):
-        """0 = hide coach assignment video / waiting UI; 1 = allow showing coach video. Persists on v2_student_overrides."""
-        v = 0 if int(value) == 0 else 1
-        return self.v2_upsert_student_overrides(user_id, {"video_shown": v})
 
     def v2_get_and_clear_pending_tutor_video(self, user_id: str):
         """Return (url, description) for the pending tutor video and clear both. Used on session/start to attach to the new session."""
@@ -2717,17 +2704,17 @@ class DatabaseService:
             return None
 
     def v2_get_student_details(self, user_id: str):
-        """Get student details row (name, price_per_live_lesson) or None."""
+        """Get student details row (name, price_per_live_lesson, credits) or None."""
         result = (
             self.client.table("v2_student_details")
-            .select("user_id, name, price_per_live_lesson")
+            .select("user_id, name, price_per_live_lesson, credits")
             .eq("user_id", user_id)
             .execute()
         )
         return result.data[0] if result.data else None
 
     def v2_upsert_student_details(self, user_id: str, data: dict):
-        """Create/update student details. Allowed keys: name, price_per_live_lesson."""
+        """Create/update student details. Allowed keys: name, price_per_live_lesson, credits."""
         payload = {"user_id": user_id, "updated_at": datetime.now(timezone.utc).isoformat()}
         if "name" in data:
             name_val = data.get("name")
@@ -2737,8 +2724,27 @@ class DatabaseService:
                 payload["name"] = str(name_val).strip() or None
         if "price_per_live_lesson" in data:
             payload["price_per_live_lesson"] = data.get("price_per_live_lesson")
+        if "credits" in data:
+            payload["credits"] = data.get("credits")
         result = self.client.table("v2_student_details").upsert(payload, on_conflict="user_id").execute()
         return result.data[0] if result.data else None
+
+    def v2_deduct_session_credits(self, user_id: str, amount: int = 5) -> int | None:
+        """Deduct credits from a student's balance. Returns new credits value or None on failure."""
+        try:
+            details = self.v2_get_student_details(user_id)
+            current = (details or {}).get("credits")
+            if current is None:
+                current = 15
+            new_credits = max(0, int(current) - amount)
+            result = (
+                self.client.table("v2_student_details")
+                .upsert({"user_id": user_id, "credits": new_credits, "updated_at": datetime.now(timezone.utc).isoformat()}, on_conflict="user_id")
+                .execute()
+            )
+            return (result.data[0] or {}).get("credits") if result.data else new_credits
+        except Exception:
+            return None
 
     def v2_get_student_list_stats(self, user_id: str):
         """Optional stats for admin students list: sessions_count, last_session_at (ISO), avg_performance (0-100)."""

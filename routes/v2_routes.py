@@ -385,6 +385,18 @@ def v2_admin_student_profile(user_id):
                     if p < 0:
                         return jsonify({"code": "INVALID_INPUT", "error": "price_per_live_lesson must be non-negative"}), 400
                     payload["price_per_live_lesson"] = round(p, 2)
+            if "credits" in data:
+                credits_val = data.get("credits")
+                if credits_val is None or credits_val == "":
+                    payload["credits"] = None
+                else:
+                    try:
+                        c = int(credits_val)
+                    except (TypeError, ValueError):
+                        return jsonify({"code": "INVALID_INPUT", "error": "credits must be an integer or null"}), 400
+                    if c < 0:
+                        return jsonify({"code": "INVALID_INPUT", "error": "credits must be non-negative"}), 400
+                    payload["credits"] = c
             if not payload:
                 return jsonify({"code": "INVALID_INPUT", "error": "No updatable fields provided"}), 400
             row = db.v2_upsert_student_details(user_id, payload)
@@ -393,6 +405,7 @@ def v2_admin_student_profile(user_id):
                 "user_id": user_id,
                 "name": row.get("name") if row else payload.get("name"),
                 "price_per_live_lesson": row.get("price_per_live_lesson") if row else payload.get("price_per_live_lesson"),
+                "credits": row.get("credits") if row else payload.get("credits"),
             }), 200
 
         if not is_admin(request.user_id) and user_id != request.user_id:
@@ -418,6 +431,7 @@ def v2_admin_student_profile(user_id):
             "email": email,
             "name": details.get("name"),
             "price_per_live_lesson": details.get("price_per_live_lesson"),
+            "credits": details.get("credits") if details.get("credits") is not None else 15,
             "overrides": overrides,
             "speaker_profile": speaker_profile,
             "sniper_profile": sniper_profile,

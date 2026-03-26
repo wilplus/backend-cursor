@@ -2,8 +2,7 @@
  * Copy to your Next.js app, e.g. src/lib/homework/applyStep0State.ts
  *
  * Use with GET /api/homework/session/status when has_active_session is false (e.g. user
- * opened homework / dashboard after sign-in). The report CTA flow may POST leave-report
- * and redirect to /logged-out instead of applying this immediately.
+ * opened homework / dashboard after sign-in).
  *
  * Problem this fixes: merging the new step-0 JSON into old client state leaves
  * tutor_video_url truthy → video block stays until logout. Replace state instead.
@@ -13,11 +12,7 @@ export type HomeworkStep0State = {
   status: string;
   review_pending: boolean;
   main_screen_state: string;
-  /** 0 = hide coach assignment video / waiting; 1 = allow video when tutor_video_url is set. */
-  video_shown: 0 | 1;
-  /** When false, do not POST session/start on load. */
-  can_start_homework: boolean;
-  session_start_blocked_reason: "REVIEW_PENDING" | "WAITING_FOR_ASSIGNMENT" | null;
+  main_screen_message: string | null;
   tutor_video_url: string | null;
   tutor_video_description: string | null;
   has_active_session: boolean;
@@ -42,39 +37,16 @@ function strOrNull(v: unknown): string | null {
  * Normalize backend step-0 (GET session/status) payload so missing fields become explicit nulls
  * (not undefined), which works better with React state resets.
  */
-function videoShown01(v: unknown): 0 | 1 {
-  if (v === null || v === undefined) return 1;
-  const n = parseInt(String(v), 10);
-  if (Number.isNaN(n)) return 1;
-  return n === 0 ? 0 : 1;
-}
-
 export function normalizeHomeworkStep0Payload(raw: Record<string, unknown>): HomeworkStep0State {
   const exercises = Array.isArray(raw.assigned_exercises) ? raw.assigned_exercises : [];
-  const vs = videoShown01(raw.video_shown);
-  const reviewPending = Boolean(raw.review_pending);
-  const canStart =
-    typeof raw.can_start_homework === "boolean"
-      ? raw.can_start_homework
-      : !(reviewPending || vs === 0);
-  const blockedRaw = raw.session_start_blocked_reason;
-  let reason: "REVIEW_PENDING" | "WAITING_FOR_ASSIGNMENT" | null =
-    blockedRaw === "REVIEW_PENDING" || blockedRaw === "WAITING_FOR_ASSIGNMENT"
-      ? blockedRaw
-      : null;
-  if (!canStart && reason === null) {
-    reason = reviewPending ? "REVIEW_PENDING" : "WAITING_FOR_ASSIGNMENT";
-  }
   return {
     status: typeof raw.status === "string" ? raw.status : "none",
-    review_pending: reviewPending,
+    review_pending: Boolean(raw.review_pending),
     main_screen_state:
       typeof raw.main_screen_state === "string" ? raw.main_screen_state : "assignment_ready",
-    video_shown: vs,
-    can_start_homework: canStart,
-    session_start_blocked_reason: reason,
-    tutor_video_url: vs === 0 ? null : strOrNull(raw.tutor_video_url),
-    tutor_video_description: vs === 0 ? null : strOrNull(raw.tutor_video_description),
+    main_screen_message: strOrNull(raw.main_screen_message),
+    tutor_video_url: strOrNull(raw.tutor_video_url),
+    tutor_video_description: strOrNull(raw.tutor_video_description),
     has_active_session: Boolean(raw.has_active_session),
     assigned_exercises: exercises as HomeworkStep0State["assigned_exercises"],
     session_id: strOrNull(raw.session_id),

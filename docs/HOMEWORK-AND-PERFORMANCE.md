@@ -168,21 +168,24 @@ POST metric-answers:
 
 ## 3. Homework flow (status-driven; steps can be skipped)
 
-The flow is **status-driven**. The backend does **not** require a strict 0→5 sequence: status can jump (e.g. to `report_generating` or `completed` after recording-1 when there are no focus tasks, or from step 2 to report via POST complete-from-recording-1). Frontend should derive the displayed step from `status` and handle all status values (including skips).
+The flow is **status-driven**. The live flow is **step 0 → recording → report** (`none` → `recording_1_required` → `completed`). Steps 2–4 (metric questions, final recording, post-questions) are temporarily removed from the live flow; their code is backed up in `docs/TEMPORARY-REMOVED-STEPS-2-3-4-BACKUP.md`. Frontend should derive the displayed step from `status` and handle all status values.
 
 ### 3.1 Status vocabulary (public API)
 
 Frontend must use **only** top-level `status`. Backend returns:
 
-- `none` — no active session
-- `recording_1_required` — step 1 (warm-up)
-- `task_block` — step 2 (metric questions)
-- `final_task_ready` — step 3 (final recording)
-- `post_questions` — step 4 (reflective questions)
-- `report_generating` — report being generated from recording 1 only (poll until `completed`)
-- `completed` — step 5 (report)
+**Live statuses:**
+- `none` — no active session (step 0)
+- `recording_1_required` — recording (step 1)
+- `report_generating` — report being generated (poll until `completed`)
+- `completed` — report ready (show report screen)
 
-Mapping to step: none→0, recording_1_required→1, task_block→2, final_task_ready→3, post_questions→4, report_generating→show “report generating” then poll, completed→5.
+**Inactive statuses (steps 2–4 removed from live flow; backed up):**
+- `task_block` — metric questions
+- `final_task_ready` — final recording
+- `post_questions` — reflective questions
+
+Mapping: none→step 0, recording_1_required→step 1, report_generating→”generating” then poll, completed→report.
 
 ### 3.2 Endpoints
 
@@ -206,12 +209,10 @@ GET status does **not** return `task_block`, `final_task`, or `report_text`; tho
 
 ### 3.4 UI per step
 
-- **Step 0:** GET status; if no active session, call POST start.
-- **Step 1:** Task text from status/start; record; use **recording-1 response only** to advance to step 2 (do not call GET status after recording-1 to set step).
-- **Step 2:** Show `task_block` from recording-1 response. If on step 2 after refresh with no task_block, fetch GET task-block or build from `session.session_metric_question_1/2/3`. Abandon button (POST abandon → applyStatusToState({ status: "none" })). On 409 RECORDING_1_PROCESSING, show message and optionally poll GET status only to decide when to retry POST metric-answers; step advances only when POST metric-answers succeeds.
-- **Step 3:** Show `final_task` from metric-answers response; record 2 (60–300 s); advance from recording-2 response.
-- **Step 4:** If no reflective questions, POST post-answers with `answers: []`; else show questions, submit, then use post-answers response for step 5.
-- **Step 5:** Show report from post-answers response (`report_text`, `performance_score_end`). No GET status needed (completed sessions not returned by status).
+- **Step 0:** GET status; show coach assignment video + exercises when present. POST start to begin.
+- **Step 1:** Task text from status/start; record; poll GET status until `report_generating` then `completed`.
+- **Report (completed):** Show report from GET report endpoint (`report_text`, `score_for_display`, etc.). Primary CTA: `report_cta` from payload (e.g. "Finish the lesson and sign out") → sign out → `/logged-out`. Secondary action: "Do your homework again" → POST abandon → step 0.
+- **Steps 2–4 (inactive):** Backed up in `docs/TEMPORARY-REMOVED-STEPS-2-3-4-BACKUP.md`.
 
 ---
 
@@ -219,7 +220,7 @@ GET status does **not** return `task_block`, `final_task`, or `report_text`; tho
 
 ### 4.1 Principles
 
-- **Backend is the single source of truth.** Derive the displayed step from `status` only. The flow can skip steps (e.g. 1→report when no focus tasks, or 2→report via complete-from-recording-1); do not force a strict 0→5 order.
+- **Backend is the single source of truth.** Derive the displayed step from `status` only. Do not assume a strict step order; always handle jumps.
 - **Each step transition is driven by the mutation response or GET status.** Do not assume step N+1 always follows step N.
 - **GET status on cold load** (mount, refresh, tab refocus) and when polling (e.g. for `report_generating`). Do not call GET status inside a mutation handler only to “fix” step; use the mutation response.
 

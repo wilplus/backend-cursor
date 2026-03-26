@@ -145,49 +145,17 @@ def _public_recording_id(session: dict):
     return str(recording_id) if recording_id else None
 
 
-def _video_shown_from_overrides(overrides: dict | None) -> int:
-    """1 = allow coach assignment video in API; 0 = hide it (waiting UX). Default 1 if column missing."""
-    if not overrides:
-        return 1
-    vs = overrides.get("video_shown")
-    if vs is None:
-        return 1
-    try:
-        return 0 if int(vs) == 0 else 1
-    except (TypeError, ValueError):
-        return 1
-
-
-def _should_block_homework_session_start(user_id: str) -> tuple[bool, str | None]:
-    """Do not create a new session while step 0 is waiting / review UI (stops auto-start on page load)."""
-    overrides = {}
-    try:
-        overrides = db.v2_get_student_overrides(user_id) or {}
-    except Exception:
-        pass
-    vs = _video_shown_from_overrides(overrides)
-    review_pending = False
-    try:
-        last_completed = db.v2_get_last_completed_session(user_id)
-        feedback_sent_at = _parse_isoish_datetime((last_completed or {}).get("tutor_feedback_sent_at"))
-        report_email_sent_at = _parse_isoish_datetime((last_completed or {}).get("student_completion_email_sent_at"))
-        session_completed = (last_completed or {}).get("status") == "completed"
-        if (report_email_sent_at or session_completed) and feedback_sent_at is None:
-            review_pending = True
-    except Exception:
-        pass
-    if review_pending:
-        return True, "REVIEW_PENDING"
-    if vs == 0:
-        return True, "WAITING_FOR_ASSIGNMENT"
-    return False, None
-
 
 def _build_step0_payload(user_id: str) -> dict:
     """Build the session/status payload when there is no active session (step 0). Used by GET session/status only."""
     config = Config()
     sniper_profile = db.get_sniper_profile_payload(user_id)
     coach_name = (getattr(config, "COACH_NAME", "Artur") or "Artur").strip().title() or "Artur"
+    # Fetch credits for this student
+    student_details = db.v2_get_student_details(user_id) or {}
+    credits = student_details.get("credits")
+    if credits is None:
+        credits = 15
     payload = {
         "status": PUBLIC_STATUS_NONE,
         "session_id": None,
@@ -198,7 +166,6 @@ def _build_step0_payload(user_id: str) -> dict:
         "tutor_feedback_message": None,
         "tutor_video_url": None,
         "tutor_video_description": None,
-        "video_shown": 1,
         "review_pending": False,
         "report_delivered": False,
         "main_screen_state": "assignment_ready",
@@ -206,6 +173,7 @@ def _build_step0_payload(user_id: str) -> dict:
         "sniper_profile": sniper_profile,
         "realtime_level": sniper_profile.get("realtime_level"),
         "realtime_step": sniper_profile.get("realtime_step"),
+        "credits": credits,
         # Explicit signal to the frontend that there is no active session.
         # Without this field the cold-load effect cannot distinguish "no active session"
         # from a fresh response, causing restorePersistedFinalReport to be skipped
@@ -249,22 +217,13 @@ def _build_step0_payload(user_id: str) -> dict:
                     break
         except Exception:
             payload["assigned_exercises"] = []
-    overrides = {}
-    try:
-        overrides = db.v2_get_student_overrides(user_id) or {}
-    except Exception:
-        pass
-    payload["video_shown"] = _video_shown_from_overrides(overrides)
     # Pending coach video is for the *next* homework. Do not show it while the student is still in
     # review_pending (coach analysing the submission). Otherwise send-assignment sets
     # tutor_feedback_sent_at on the last completed session and we would expose the new video
     # before the UI leaves the reviewing state — refresh looks "stuck" until logout clears client state.
-    # video_shown=0 (after student completes homework) forces tutor fields off regardless of pending row.
-    if payload["video_shown"] == 0:
-        payload["tutor_video_url"] = None
-        payload["tutor_video_description"] = None
-    elif not review_pending:
+    if not review_pending:
         try:
+            overrides = db.v2_get_student_overrides(user_id) or {}
             url = (overrides.get("pending_tutor_video_url") or "").strip()
             msg = (overrides.get("pending_tutor_video_description") or "").strip()
             if feedback_sent_at is not None:
@@ -274,15 +233,6 @@ def _build_step0_payload(user_id: str) -> dict:
                     payload["tutor_video_description"] = msg
         except Exception:
             pass
-    if review_pending:
-        payload["can_start_homework"] = False
-        payload["session_start_blocked_reason"] = "REVIEW_PENDING"
-    elif payload["video_shown"] == 0:
-        payload["can_start_homework"] = False
-        payload["session_start_blocked_reason"] = "WAITING_FOR_ASSIGNMENT"
-    else:
-        payload["can_start_homework"] = True
-        payload["session_start_blocked_reason"] = None
     return payload
 
 
@@ -326,13 +276,17 @@ def homework_session_start():
                 "task": _task_text(task.get("text") if task else None),
             }), 200
 
-        blocked, block_reason = _should_block_homework_session_start(user_id)
-        if blocked:
+        # Check credits balance before starting a new session
+        student_details = db.v2_get_student_details(user_id) or {}
+        current_credits = student_details.get("credits")
+        if current_credits is None:
+            current_credits = 15
+        if int(current_credits) < 5:
             return jsonify({
-                "code": "SESSION_START_BLOCKED",
-                "error": "Homework cannot start yet. Stay on step 0 until your coach sends the next assignment or feedback.",
-                "reason": block_reason,
-            }), 409
+                "code": "INSUFFICIENT_CREDITS",
+                "message": "Your credits balance is too low to start a new homework session.",
+                "credits": int(current_credits),
+            }), 402
 
         db.v2_ensure_default_warm_up_task(user_id)
         warm_up = db.v2_get_assigned_warm_up_task(user_id)
@@ -350,6 +304,12 @@ def homework_session_start():
         session = db.v2_create_homework_session(user_id)
         if not session:
             return jsonify({"code": "V2_ERROR", "error": "Failed to create session"}), 500
+
+        # Deduct 5 credits for this session
+        try:
+            db.v2_deduct_session_credits(user_id, amount=5)
+        except Exception as e:
+            logger.warning(f"Credits deduction failed for user {user_id}: {e}")
 
         pending_video_url, pending_video_description = db.v2_get_and_clear_pending_tutor_video(user_id)
         prefs = db.v2_get_user_metric_questions(user_id)
@@ -437,12 +397,6 @@ def homework_session_status():
         )
         public_status = _public_status(active.get("status"))
         internal_status = active.get("status")
-        overrides_active = {}
-        try:
-            overrides_active = db.v2_get_student_overrides(user_id) or {}
-        except Exception:
-            pass
-        video_shown_active = _video_shown_from_overrides(overrides_active)
         resp = {
             "status": public_status,
             "session_id": str(active["id"]),
@@ -453,7 +407,6 @@ def homework_session_status():
             "tutor_feedback_message": None,
             "tutor_video_url": None,
             "tutor_video_description": None,
-            "video_shown": video_shown_active,
             "has_active_session": True,
         }
         # Hide intro coach video while report is generating; session row still has tutor_video_* from session/start.
@@ -465,9 +418,7 @@ def homework_session_status():
         # screen instead of continuing to show the pre-homework coach message block.
         url = (active.get("tutor_video_url") or "").strip()
         msg = (active.get("tutor_video_description") or "").strip()
-        if video_shown_active == 0:
-            pass
-        elif public_status != PUBLIC_STATUS_COMPLETED and not hide_tutor_video:
+        if public_status != PUBLIC_STATUS_COMPLETED and not hide_tutor_video:
             if url:
                 resp["tutor_video_url"] = url
             if msg:
@@ -1393,7 +1344,7 @@ def homework_get_report(session_id):
             )
         if coach_insight:
             payload["coach_insight"] = coach_insight
-        payload["report_cta"] = "Send the homework to the coach!"
+        payload["report_cta"] = "Finish the lesson and sign out"
         # Frontend: on CTA, navigate to step 0 and call GET session/status only (single source of truth for waiting/video/can_start_homework).
         # #region agent log
         _agent_log("GET report returning 200", {"session_id": session_id, "status": session.get("status"), "report_id": session.get("report_id")}, "H3")
