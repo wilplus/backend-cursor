@@ -1,6 +1,6 @@
 from supabase import create_client, Client
 from config import Config
-from typing import List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from datetime import datetime, timedelta, timezone
 import json
 import logging
@@ -597,12 +597,32 @@ class DatabaseService:
             return f"{storage_root}/{s}"
         return f"{storage_root}/{s.lstrip('/')}"
 
-    def create_signed_upload_url(self, bucket: str, path: str):
-        """Create a signed upload URL for direct PUT upload (recording-upload-url). Always returns absolute https URL or None."""
+    def create_signed_upload_url(self, bucket: str, path: str) -> Optional[Dict[str, str]]:
+        """Mint a signed upload URL for browser uploads.
+
+        Returns ``{"signed_url": "<https...>", "token": "<jwt>"}`` or None.
+        Supabase Storage expects the upload as **multipart** PUT (same as
+        ``@supabase/storage-js`` ``uploadToSignedUrl``). A raw binary PUT
+        typically returns **404** (route not matched for that content type).
+        """
+        from urllib.parse import parse_qs, urlparse
+
         path_clean = path.lstrip("/")
         sign_segment = f"{bucket}/{path_clean}"
 
-        def _from_api_value(result) -> str | None:
+        def _finalize(raw_url: Optional[str], token: Optional[str] = None) -> Optional[Dict[str, str]]:
+            signed = self._absolute_signed_upload_url(raw_url) if raw_url else None
+            if not signed:
+                return None
+            if not token:
+                vals = parse_qs(urlparse(signed).query).get("token") or []
+                token = vals[0] if vals else None
+            out: Dict[str, str] = {"signed_url": signed}
+            if token:
+                out["token"] = token
+            return out
+
+        def _from_sdk_result(result: Any) -> Optional[Dict[str, str]]:
             if result is None:
                 return None
             if isinstance(result, dict):
@@ -612,13 +632,15 @@ class DatabaseService:
                     or result.get("signedURL")
                     or result.get("url")
                 )
+                tok = result.get("token")
+                tok_s = tok if isinstance(tok, str) else None
                 if isinstance(u, str):
-                    return self._absolute_signed_upload_url(u)
+                    return _finalize(u, tok_s)
                 return None
             for attr in ("signed_url", "signedUrl", "signedURL", "url"):
                 u = getattr(result, attr, None)
                 if isinstance(u, str):
-                    return self._absolute_signed_upload_url(u)
+                    return _finalize(u)
             return None
 
         try:
@@ -626,7 +648,7 @@ class DatabaseService:
             create_upload = getattr(bucket_api, "create_signed_upload_url", None)
             if callable(create_upload):
                 result = create_upload(path_clean)
-                normalized = _from_api_value(result)
+                normalized = _from_sdk_result(result)
                 if normalized:
                     return normalized
         except Exception as e:
@@ -656,7 +678,9 @@ class DatabaseService:
             if not isinstance(data, dict):
                 return None
             rel = data.get("url") or data.get("signedURL") or data.get("signedUrl") or data.get("signed_url")
-            return self._absolute_signed_upload_url(rel if isinstance(rel, str) else None)
+            tok = data.get("token")
+            tok_s = tok if isinstance(tok, str) else None
+            return _finalize(rel if isinstance(rel, str) else None, tok_s)
         except Exception as e:
             logger.warning("create_signed_upload_url httpx path failed: %s", e)
             return None

@@ -892,9 +892,11 @@ def homework_recording_upload_url(session_id):
         except Exception:
             pass
         # #endregion
-        upload_url_str = db.create_signed_upload_url(config.AUDIO_BUCKET_NAME, storage_path)
-        if isinstance(upload_url_str, str) and upload_url_str:
-            resp_payload["upload_url"] = upload_url_str
+        upload_info = db.create_signed_upload_url(config.AUDIO_BUCKET_NAME, storage_path)
+        if isinstance(upload_info, dict) and upload_info.get("signed_url"):
+            resp_payload["upload_url"] = upload_info["signed_url"]
+            if upload_info.get("token"):
+                resp_payload["upload_token"] = upload_info["token"]
             resp_payload["signed_url_available"] = True
         else:
             resp_payload["signed_url_available"] = False
