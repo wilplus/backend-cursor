@@ -2911,18 +2911,25 @@ class DatabaseService:
         }
 
     def v2_get_sessions_with_previews(self, user_id: str, limit: int = 50):
-        """Get v2 sessions for a user with full report text and recording previews for admin session history."""
+        """Get v2 sessions for a user with full report text and all analytics previews for admin session history."""
         result = (
             self.client.table("v2_sessions")
-            .select("id, created_at, completed_at, status, recording_1_id, recording_2_id, report_id, report_grade, student_completion_email_sent_at")
+            .select(
+                "id, created_at, completed_at, status, recording_1_id, recording_2_id, report_id, "
+                "report_grade, student_completion_email_sent_at, "
+                "performance_score_1, performance_score_2, performance_score_end, task_score, "
+                "question_1_score, question_2_score, question_3_score, "
+                "realtime_level_at_session, realtime_step_at_session"
+            )
             .eq("user_id", user_id)
             .order("completed_at", desc=True)
             .limit(limit)
             .execute()
         )
         sessions = result.data or []
-        # Fetch context_long (and context_long_entries as fallback) so report preview works for completed sessions
         session_ids = [s["id"] for s in sessions]
+
+        # Batch: context_long for report fallback
         context_long_by_id = {}
         if session_ids:
             try:
@@ -2939,28 +2946,89 @@ class DatabaseService:
                         context_long_by_id[row["id"]] = text
             except Exception:
                 pass
+
+        # Batch: session_sniper_metrics
+        sniper_metrics_by_session: dict = {}
+        if session_ids:
+            try:
+                sm = (
+                    self.client.table("session_sniper_metrics")
+                    .select("session_id, wpm, pause_ms, dynamic_db, emphasis_per_min, energy_ratio, voiced_duration_sec, pitch_center_st, pitch_frame_count, stage_score, student_rating_1_10")
+                    .in_("session_id", session_ids)
+                    .execute()
+                )
+                for row in (sm.data or []):
+                    sniper_metrics_by_session[row["session_id"]] = row
+            except Exception:
+                pass
+
+        # Batch: recording_reviews
+        reviews_by_session: dict = {}
+        if session_ids:
+            try:
+                rv = (
+                    self.client.table("recording_reviews")
+                    .select("session_id, overall_quality, confidence_score, coach_style_score")
+                    .in_("session_id", session_ids)
+                    .execute()
+                )
+                for row in (rv.data or []):
+                    reviews_by_session[row["session_id"]] = row
+            except Exception:
+                pass
+
+        # Batch: recordings (keyed by recording id)
+        recording_ids = list({s.get("recording_2_id") or s.get("recording_1_id") for s in sessions if s.get("recording_2_id") or s.get("recording_1_id")})
+        recordings_by_id: dict = {}
+        if recording_ids:
+            try:
+                recs = (
+                    self.client.table("recordings")
+                    .select("id, performance_score_v2, transcription_text, words_per_minute, filler_words_count, performance_metrics_v2, duration_ms")
+                    .in_("id", recording_ids)
+                    .execute()
+                )
+                for row in (recs.data or []):
+                    recordings_by_id[row["id"]] = row
+            except Exception:
+                pass
+
         out = []
+        session_fields = (
+            "id", "created_at", "completed_at", "status",
+            "recording_1_id", "recording_2_id", "report_id", "report_grade",
+            "student_completion_email_sent_at",
+            "performance_score_1", "performance_score_2", "performance_score_end", "task_score",
+            "question_1_score", "question_2_score", "question_3_score",
+            "realtime_level_at_session", "realtime_step_at_session",
+        )
         for s in sessions:
-            rec = {k: v for k, v in s.items() if k in ("id", "created_at", "completed_at", "status", "recording_1_id", "recording_2_id", "report_id", "report_grade", "student_completion_email_sent_at")}
-            rec["recording_id"] = s.get("recording_2_id") or s.get("recording_1_id")  # for backward compat in API response
+            rec = {k: v for k, v in s.items() if k in session_fields}
+            rec["recording_id"] = s.get("recording_2_id") or s.get("recording_1_id")
             rec["recording_preview"] = None
             rec["report_preview"] = None
+
             recording_id = s.get("recording_2_id") or s.get("recording_1_id")
-            if recording_id:
-                r = self.client.table("recordings").select("performance_score_v2, transcription_text").eq("id", recording_id).execute()
-                if r.data:
-                    row = r.data[0]
-                    rec["recording_preview"] = {
-                        "performance_score_v2": row.get("performance_score_v2"),
-                        "transcription_preview": (row.get("transcription_text") or "")[:300],
-                    }
+            if recording_id and recording_id in recordings_by_id:
+                row = recordings_by_id[recording_id]
+                rec["recording_preview"] = {
+                    "performance_score_v2": row.get("performance_score_v2"),
+                    "transcription_preview": (row.get("transcription_text") or "")[:300],
+                    "words_per_minute": row.get("words_per_minute"),
+                    "filler_words_count": row.get("filler_words_count"),
+                    "performance_metrics_v2": row.get("performance_metrics_v2"),
+                    "duration_ms": row.get("duration_ms"),
+                }
+
+            rec["sniper_metrics"] = sniper_metrics_by_session.get(s["id"])
+            rec["review"] = reviews_by_session.get(s["id"])
+
             report_text = None
             if s.get("report_id"):
                 r = self.client.table("v2_reports").select("report_text").eq("id", s["report_id"]).execute()
                 if r.data:
                     report_text = r.data[0].get("report_text") or ""
             if report_text is None and s.get("id"):
-                # Fallback when report_id is null but report row exists for this session.
                 try:
                     r2 = self.client.table("v2_reports").select("report_text").eq("session_v2_id", s["id"]).order("created_at", desc=True).limit(1).execute()
                     if r2.data:
@@ -2971,7 +3039,6 @@ class DatabaseService:
                 report_text = context_long_by_id.get(s["id"])
             rec["report_delivered"] = bool((report_text or "").strip())
             if report_text:
-                # Full report text so admin always sees the full report (no truncation)
                 rec["report_preview"] = {"report_text_preview": (report_text or "").strip()}
             out.append(rec)
         return out
