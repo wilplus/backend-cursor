@@ -1699,7 +1699,9 @@ class DatabaseService:
                     "student_rating_1_10",
                 ):
                     latest[k] = row.get(k)
-                return {"latest": latest, "baselines": baselines or None}
+                wpm_val = latest.get("wpm")
+                wpm_high = bool(wpm_val is not None and float(wpm_val) > 110)
+                return {"latest": latest, "baselines": baselines or None, "wpm_high": wpm_high}
         except Exception as e:
             msg = str(e).lower()
             if "session_sniper_metrics" in msg and (
@@ -2009,13 +2011,18 @@ class DatabaseService:
                     "session_id": row["session_id"],
                 })
 
-        # Enrich with emails
+        # Enrich with emails and names
         for c in candidates:
             try:
                 email = self.get_user_email_from_auth(c["user_id"])
                 c["email"] = email or ""
             except Exception:
                 c["email"] = ""
+            try:
+                details = self.v2_get_student_details(c["user_id"])
+                c["name"] = (details.get("name") or "").strip() if details else ""
+            except Exception:
+                c["name"] = ""
 
         # Sort by WPM descending
         candidates.sort(key=lambda c: c["wpm"], reverse=True)
