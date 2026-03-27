@@ -420,6 +420,7 @@ def v2_admin_student_profile(user_id):
         overrides["skip_post_questions"] = bool(raw_overrides.get("skip_post_questions") if raw_overrides else False)
         speaker_profile = db.v2_get_speaker_profile(user_id)
         sniper_profile = db.get_sniper_profile_payload(user_id)
+        coaching_memory = db.v2_get_student_coaching_memory(user_id)
         task_warm_up = db.v2_get_warm_up_tasks(user_id)
         task_focus = db.v2_get_focus_tasks(user_id)
         post_recording_questions = db.v2_get_student_post_recording_questions(user_id)
@@ -435,6 +436,7 @@ def v2_admin_student_profile(user_id):
             "overrides": overrides,
             "speaker_profile": speaker_profile,
             "sniper_profile": sniper_profile,
+            "coaching_memory": coaching_memory,
             "realtime_level": sniper_profile.get("realtime_level"),
             "realtime_step": sniper_profile.get("realtime_step"),
             "task_warm_up": task_warm_up,
