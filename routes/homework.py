@@ -1272,6 +1272,30 @@ def homework_get_report(session_id):
                 }
 
         sniper_profile = db.get_sniper_profile_payload(user_id)
+        # Build sniper_metrics from session_sniper_metrics for frontend display
+        sniper_metrics = None
+        if session_sniper:
+            def _safe_float(v, decimals=1):
+                if v is None:
+                    return None
+                try:
+                    return round(float(v), decimals)
+                except (TypeError, ValueError):
+                    return None
+            sniper_metrics = {
+                "wpm": _safe_float(session_sniper.get("wpm")),
+                "pause_ms": _safe_float(session_sniper.get("pause_ms"), 0),
+                "dynamic_db": _safe_float(session_sniper.get("dynamic_db")),
+                "emphasis_per_min": _safe_float(session_sniper.get("emphasis_per_min")),
+                "energy_ratio": _safe_float(session_sniper.get("energy_ratio"), 2),
+                "pitch_center_st": _safe_float(session_sniper.get("pitch_center_st")),
+                "pitch_frame_count": int(session_sniper["pitch_frame_count"]) if session_sniper.get("pitch_frame_count") is not None else None,
+                "stage_score": _safe_float(session_sniper.get("stage_score")),
+                "voiced_duration_sec": _safe_float(session_sniper.get("voiced_duration_sec")),
+            }
+            # Also fall back to recording WPM if sniper wpm is missing
+            if sniper_metrics["wpm"] is None and recording_payload and recording_payload.get("words_per_minute"):
+                sniper_metrics["wpm"] = round(float(recording_payload["words_per_minute"]), 1)
         payload = {
             "report_text": report_text,
             # Backward-compat alias: some UIs still read scores.overall.
@@ -1288,6 +1312,8 @@ def homework_get_report(session_id):
             "realtime_level": sniper_profile.get("realtime_level"),
             "realtime_step": sniper_profile.get("realtime_step"),
         }
+        if sniper_metrics is not None:
+            payload["sniper_metrics"] = sniper_metrics
         if recording_payload is not None:
             payload["recording"] = recording_payload
         context_short = (session.get("context_short") or "").strip()

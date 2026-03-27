@@ -1976,6 +1976,64 @@ class DatabaseService:
         result = self.client.table("session_sniper_metrics").select("*").eq("session_id", session_id).execute()
         return result.data[0] if result.data else None
 
+    def get_similar_students_by_wpm(self, user_id: str, wpm_range: float = 30.0) -> List[dict]:
+        """Find other students whose latest session WPM is within ±wpm_range of this student's latest WPM.
+        Returns list of {user_id, email, wpm, session_id} sorted by WPM proximity."""
+        # Get this student's latest WPM
+        my_latest = (
+            self.client.table("session_sniper_metrics")
+            .select("wpm")
+            .eq("user_id", user_id)
+            .not_.is_("wpm", "null")
+            .order("created_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+        if not my_latest.data or my_latest.data[0].get("wpm") is None:
+            return []
+        my_wpm = float(my_latest.data[0]["wpm"])
+
+        # Get all other users' latest sniper metrics with WPM
+        # We fetch the most recent row per user by ordering by created_at desc
+        all_metrics = (
+            self.client.table("session_sniper_metrics")
+            .select("user_id, wpm, session_id, created_at")
+            .not_.is_("wpm", "null")
+            .neq("user_id", user_id)
+            .order("created_at", desc=True)
+            .limit(500)
+            .execute()
+        )
+        # Keep only the latest per user
+        seen_users = set()
+        candidates = []
+        for row in all_metrics.data or []:
+            uid = row["user_id"]
+            if uid in seen_users:
+                continue
+            seen_users.add(uid)
+            row_wpm = float(row["wpm"])
+            if abs(row_wpm - my_wpm) <= wpm_range:
+                candidates.append({
+                    "user_id": uid,
+                    "wpm": round(row_wpm, 1),
+                    "session_id": row["session_id"],
+                })
+
+        # Enrich with emails
+        if candidates:
+            user_ids = [c["user_id"] for c in candidates]
+            for c in candidates:
+                try:
+                    email = self.get_user_email_from_auth(c["user_id"])
+                    c["email"] = email or ""
+                except Exception:
+                    c["email"] = ""
+
+        # Sort by proximity to my_wpm
+        candidates.sort(key=lambda c: abs(c["wpm"] - my_wpm))
+        return candidates
+
     def update_or_set_session_sniper_rating(
         self, session_id: str, user_id: str, student_rating_1_10: int
     ) -> bool:

@@ -226,6 +226,45 @@ def _process_one(payload: dict):
         if not focus_task:
             focus_task = {"id": None, "title": db.DEFAULT_FOCUS_TASK_TEXT, "prompt_text": db.DEFAULT_FOCUS_TASK_TEXT}
 
+        # ── Sniper audio metrics (best-effort; never blocks the job) ──
+        try:
+            from services.audio_metrics import analyze_audio
+            audio_analysis = analyze_audio(
+                audio_bytes,
+                transcript=transcript_text,
+                duration_sec=duration_seconds,
+                fallback_wpm=wpm,
+            )
+            if audio_analysis:
+                db.save_session_sniper_metrics(
+                    session_id=session_id,
+                    user_id=user_id,
+                    wpm=audio_analysis.get("wpm"),
+                    pause_ms=audio_analysis.get("pause_ms"),
+                    dynamic_db=audio_analysis.get("dynamic_db"),
+                    emphasis_per_min=audio_analysis.get("emphasis_per_min"),
+                    energy_ratio=audio_analysis.get("energy_ratio"),
+                    voiced_duration_sec=audio_analysis.get("voiced_duration_sec"),
+                    recording_id=recording_id,
+                    duration_seconds=duration_seconds,
+                    pitch_center_st=audio_analysis.get("pitch_center_st"),
+                    pitch_frame_count=audio_analysis.get("pitch_frame_count"),
+                )
+                logger.info(
+                    "recording_1_job: sniper metrics saved wpm=%.0f pause=%s dyn=%s emph=%s energy=%s pitch=%s session_id=%s",
+                    audio_analysis.get("wpm") or 0,
+                    audio_analysis.get("pause_ms"),
+                    audio_analysis.get("dynamic_db"),
+                    audio_analysis.get("emphasis_per_min"),
+                    audio_analysis.get("energy_ratio"),
+                    audio_analysis.get("pitch_center_st"),
+                    session_id,
+                )
+            else:
+                logger.info("recording_1_job: audio_metrics returned None (decode failed or too short) session_id=%s", session_id)
+        except Exception as metrics_err:
+            logger.warning("recording_1_job: sniper audio metrics failed (non-blocking): %s session_id=%s", metrics_err, session_id)
+
         duration_int = int(round(duration_seconds))
         existing_metrics = recording_row.get("performance_metrics_v2") if isinstance(recording_row, dict) else {}
         if not isinstance(existing_metrics, dict):

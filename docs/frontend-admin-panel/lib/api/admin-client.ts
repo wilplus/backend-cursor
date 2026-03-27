@@ -106,6 +106,12 @@ export interface StudentProfile {
     recording_preview?: { performance_score_v2?: number; transcription_preview?: string };
     report_preview?: { report_text_preview?: string };
   }>;
+  similar_students_by_wpm?: Array<{
+    user_id: string;
+    email: string;
+    wpm: number;
+    session_id?: string;
+  }>;
 }
 
 export interface Exercise {
@@ -158,8 +164,11 @@ export const adminApi = {
   putSpeakerProfile: (userId: string, data: Record<string, unknown>) =>
     adminFetch<{ status: string }>(`/students/${userId}/speaker-profile`, { method: "PUT", body: data }),
 
-  sendAssignment: (userId: string) =>
-    adminFetch<{ status: string }>(`/students/${userId}/send-assignment`, { method: "POST" }),
+  sendAssignment: (userId: string, additionalUserIds?: string[]) =>
+    adminFetch<{ status: string; additional_sends?: Array<{ user_id: string; status: string; email?: string }> }>(
+      `/students/${userId}/send-assignment`,
+      { method: "POST", body: additionalUserIds?.length ? { additional_user_ids: additionalUserIds } : undefined },
+    ),
 
   getExercises: () =>
     adminFetch<{ exercises: Exercise[] }>("/exercises").then((r) => r.exercises),

@@ -428,6 +428,11 @@ def v2_admin_student_profile(user_id):
         sessions = db.v2_get_sessions_with_previews(user_id, limit=50)
         delivered_sessions = [s for s in sessions if s.get("report_delivered")]
         measured_metrics = db.v2_get_admin_measured_metrics_snapshot(user_id)
+        similar_students = []
+        try:
+            similar_students = db.get_similar_students_by_wpm(user_id)
+        except Exception as sim_err:
+            logger.warning("admin profile: similar_students_by_wpm failed: %s", sim_err)
         return jsonify({
             "user_id": user_id,
             "email": email,
@@ -448,6 +453,7 @@ def v2_admin_student_profile(user_id):
             "last_report_preview": last_report.get("report_preview") if last_report else None,
             "last_report_delivered": bool(last_report.get("report_delivered")) if last_report else False,
             "sessions": delivered_sessions,
+            "similar_students_by_wpm": similar_students,
         }), 200
     except Exception as e:
         sentry_sdk.capture_exception(e)
@@ -611,6 +617,12 @@ def v2_admin_send_assignment(user_id):
         video_description = (body.get("video_description") or "").strip() if body.get("video_description") is not None else None
         if video_description is not None and len(video_description) > 2000:
             return jsonify({"code": "INVALID_VIDEO_DESCRIPTION", "error": "video_description must be at most 2000 characters"}), 400
+        additional_user_ids = body.get("additional_user_ids") or []
+        if not isinstance(additional_user_ids, list):
+            additional_user_ids = []
+        # Deduplicate and exclude the primary user
+        additional_user_ids = [uid for uid in additional_user_ids if isinstance(uid, str) and uid != user_id]
+
         student_email = db.get_user_email_from_auth(user_id)
         if not student_email or not student_email.strip():
             return jsonify({"code": "NO_EMAIL", "error": "Student has no email in auth"}), 400
@@ -637,6 +649,37 @@ def v2_admin_send_assignment(user_id):
             db.v2_set_video_shown(user_id, 1)
         except Exception as vs_err:
             logger.warning("send-assignment: video_shown not set user_id=%s: %s", user_id, vs_err)
+
+        # Send to additional (similar) students
+        additional_results = []
+        for extra_uid in additional_user_ids:
+            try:
+                extra_email = db.get_user_email_from_auth(extra_uid)
+                if not extra_email or not extra_email.strip():
+                    additional_results.append({"user_id": extra_uid, "status": "skipped", "reason": "no_email"})
+                    continue
+                if video_url is not None or video_description is not None:
+                    db.v2_set_pending_tutor_video(extra_uid, video_url, video_description)
+                extra_overrides = db.v2_get_student_overrides(extra_uid) or {}
+                extra_has_exercise = bool(extra_overrides.get("assigned_next_exercise_id"))
+                extra_result = email_service.send_assignment_to_student(
+                    to_email=extra_email.strip(),
+                    frontend_url=config.FRONTEND_URL,
+                    video_url=video_url,
+                    video_description=video_description,
+                    has_assigned_exercise=extra_has_exercise,
+                    student_name=extra_email.strip(),
+                )
+                db.v2_mark_tutor_feedback_sent_for_user(extra_uid)
+                try:
+                    db.v2_set_video_shown(extra_uid, 1)
+                except Exception:
+                    pass
+                additional_results.append({"user_id": extra_uid, "status": extra_result.get("status", "unknown"), "email": extra_email.strip()})
+            except Exception as extra_err:
+                logger.warning("send-assignment: additional user %s failed: %s", extra_uid, extra_err)
+                additional_results.append({"user_id": extra_uid, "status": "failed", "reason": str(extra_err)})
+
         return jsonify({
             "status": "ok",
             "message": "Assignment sent",
@@ -644,6 +687,7 @@ def v2_admin_send_assignment(user_id):
             "sniper_profile": sniper_profile,
             "realtime_level": sniper_profile.get("realtime_level"),
             "realtime_step": sniper_profile.get("realtime_step"),
+            "additional_sends": additional_results if additional_user_ids else None,
         }), 200
     except Exception as e:
         sentry_sdk.capture_exception(e)

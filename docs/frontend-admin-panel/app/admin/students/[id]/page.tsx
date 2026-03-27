@@ -210,10 +210,29 @@ export default function AdminStudentProfilePage({ params }: { params: { id: stri
           coach_notes: profile.speaker_profile?.coach_notes ?? "",
         }));
 
+  const [selectedSimilarIds, setSelectedSimilarIds] = useState<Set<string>>(new Set());
+
+  const toggleSimilarStudent = (uid: string) => {
+    setSelectedSimilarIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(uid)) next.delete(uid);
+      else next.add(uid);
+      return next;
+    });
+  };
+
   const sendAssignment = () => {
+    const additionalIds = Array.from(selectedSimilarIds);
     adminApi
-      .sendAssignment(id)
-      .then(() => toast.success("Assignment sent"))
+      .sendAssignment(id, additionalIds.length > 0 ? additionalIds : undefined)
+      .then((res) => {
+        const extra = res?.additional_sends?.filter((s: any) => s.status === "sent")?.length ?? 0;
+        const msg = extra > 0
+          ? `Assignment sent to ${1 + extra} students`
+          : "Assignment sent";
+        toast.success(msg);
+        setSelectedSimilarIds(new Set());
+      })
       .catch((e) => toast.error(e.message));
   };
 
@@ -378,17 +397,10 @@ export default function AdminStudentProfilePage({ params }: { params: { id: stri
         >
           <ChevronLeft className="h-4 w-4" /> Students
         </Link>
-        <div className="mt-2 flex flex-wrap items-center justify-between gap-4">
+        <div className="mt-2">
           <h1 className="text-3xl font-bold">
             {profile.email || profile.user_id}
           </h1>
-          <button
-            type="button"
-            onClick={sendAssignment}
-            className="inline-flex items-center gap-2 rounded-md bg-[hsl(24_95%_53%)] px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-          >
-            <Send className="h-4 w-4" /> Send Homework
-          </button>
         </div>
       </div>
 
@@ -906,6 +918,46 @@ export default function AdminStudentProfilePage({ params }: { params: { id: stri
           </button>
         </div>
       </div>
+
+      {/* ── Send Homework + Similar Students ── */}
+      <SectionCard title="Send Homework" description="Send assignment to this student and optionally to similar students.">
+        <div className="space-y-4">
+          {profile.similar_students_by_wpm?.length > 0 && (
+            <div>
+              <p className="text-sm font-medium text-muted-foreground mb-2">
+                Similar students to share your insight with:
+              </p>
+              <div className="space-y-1.5">
+                {(profile.similar_students_by_wpm ?? []).map((s) => (
+                  <label
+                    key={s.user_id}
+                    className="flex items-center gap-3 rounded-lg border border-border bg-muted/20 px-4 py-2.5 cursor-pointer hover:bg-muted/40"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedSimilarIds.has(s.user_id)}
+                      onChange={() => toggleSimilarStudent(s.user_id)}
+                      className="h-4 w-4 rounded border-gray-300"
+                    />
+                    <span className="text-sm flex-1">{s.email || s.user_id}</span>
+                    <span className="text-xs text-muted-foreground tabular-nums">{Math.round(s.wpm)} WPM</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={sendAssignment}
+            className="inline-flex items-center gap-2 rounded-md bg-[hsl(24_95%_53%)] px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+          >
+            <Send className="h-4 w-4" />
+            {selectedSimilarIds.size > 0
+              ? `Send Homework to ${1 + selectedSimilarIds.size} students`
+              : "Send Homework"}
+          </button>
+        </div>
+      </SectionCard>
 
       <SectionCard title="Session History" description="Recent sessions and reports.">
         <div className="space-y-2">
