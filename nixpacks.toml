@@ -2,4 +2,4 @@
 # Without it, jobs that shell out to ffmpeg are skipped silently.
 # https://nixpacks.com/docs/configuration/file
 [phases.setup]
-nixPkgs = ["...", "ffmpeg"]
+nixPkgs = ["ffmpeg"]
