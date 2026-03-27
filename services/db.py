@@ -1474,14 +1474,31 @@ class DatabaseService:
         return out
 
     def v2_get_student_coaching_memory(self, user_id: str):
-        """Return the coaching memory row for the user, or None if none exists."""
-        result = (
-            self.client.table("v2_student_coaching_memory")
-            .select("*")
-            .eq("user_id", user_id)
-            .execute()
-        )
-        return result.data[0] if result.data else None
+        """Return the coaching memory row for the user, or None.
+
+        This field is optional in admin UI. If DB grants are missing temporarily
+        (e.g. SQLSTATE 42501 on v2_student_coaching_memory), we avoid failing the
+        whole profile endpoint and simply omit coaching memory.
+        """
+        try:
+            result = (
+                self.client.table("v2_student_coaching_memory")
+                .select("*")
+                .eq("user_id", user_id)
+                .execute()
+            )
+            return result.data[0] if result.data else None
+        except Exception as e:
+            msg = str(e).lower()
+            if "v2_student_coaching_memory" in msg and (
+                "permission denied" in msg or "42501" in msg
+            ):
+                logger.warning(
+                    "v2_get_student_coaching_memory: missing DB grant, returning None: %s",
+                    e,
+                )
+                return None
+            raise
 
     def v2_upsert_student_coaching_memory(self, user_id: str, session_id: str):
         """
