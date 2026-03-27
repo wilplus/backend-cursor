@@ -2929,20 +2929,51 @@ class DatabaseService:
 
     def v2_get_sessions_with_previews(self, user_id: str, limit: int = 50):
         """Get v2 sessions for a user with full report text and all analytics previews for admin session history."""
-        result = (
-            self.client.table("v2_sessions")
-            .select(
-                "id, created_at, completed_at, status, recording_1_id, recording_2_id, report_id, "
-                "report_grade, student_completion_email_sent_at, "
-                "performance_score_1, performance_score_2, performance_score_end, task_score, "
-                "question_1_score, question_2_score, question_3_score, "
-                "realtime_level_at_session, realtime_step_at_session"
-            )
-            .eq("user_id", user_id)
-            .order("completed_at", desc=True)
-            .limit(limit)
-            .execute()
+        select_columns = (
+            "id, created_at, completed_at, status, recording_1_id, recording_2_id, report_id, "
+            "report_grade, student_completion_email_sent_at, "
+            "performance_score_1, performance_score_2, performance_score_end, task_score, "
+            "question_1_score, question_2_score, question_3_score, "
+            "realtime_level_at_session, realtime_step_at_session"
         )
+        session_fields = (
+            "id", "created_at", "completed_at", "status",
+            "recording_1_id", "recording_2_id", "report_id", "report_grade",
+            "student_completion_email_sent_at",
+            "performance_score_1", "performance_score_2", "performance_score_end", "task_score",
+            "question_1_score", "question_2_score", "question_3_score",
+            "realtime_level_at_session", "realtime_step_at_session",
+        )
+        try:
+            result = (
+                self.client.table("v2_sessions")
+                .select(select_columns)
+                .eq("user_id", user_id)
+                .order("completed_at", desc=True)
+                .limit(limit)
+                .execute()
+            )
+        except Exception as e:
+            msg = str(e).lower()
+            if "task_score" in msg and (
+                "42703" in msg or "does not exist" in msg or "undefined_column" in msg
+            ):
+                logger.warning(
+                    "v2_get_sessions_with_previews: task_score column missing, retrying without it: %s",
+                    e,
+                )
+                select_columns = select_columns.replace("task_score, ", "", 1)
+                session_fields = tuple(f for f in session_fields if f != "task_score")
+                result = (
+                    self.client.table("v2_sessions")
+                    .select(select_columns)
+                    .eq("user_id", user_id)
+                    .order("completed_at", desc=True)
+                    .limit(limit)
+                    .execute()
+                )
+            else:
+                raise
         sessions = result.data or []
         session_ids = [s["id"] for s in sessions]
 
@@ -3011,14 +3042,6 @@ class DatabaseService:
                 pass
 
         out = []
-        session_fields = (
-            "id", "created_at", "completed_at", "status",
-            "recording_1_id", "recording_2_id", "report_id", "report_grade",
-            "student_completion_email_sent_at",
-            "performance_score_1", "performance_score_2", "performance_score_end", "task_score",
-            "question_1_score", "question_2_score", "question_3_score",
-            "realtime_level_at_session", "realtime_step_at_session",
-        )
         for s in sessions:
             rec = {k: v for k, v in s.items() if k in session_fields}
             rec["recording_id"] = s.get("recording_2_id") or s.get("recording_1_id")

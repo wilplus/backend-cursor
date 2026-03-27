@@ -19,6 +19,7 @@
 
 ## Coaching redesign (run after v2 schema)
 
+- **`add_task_score_to_v2_sessions.sql`** — adds `v2_sessions.task_score` (FLOAT) if missing. Required if the DB was built from **`v2_schema_unified.sql`** (homework path) but the backend/admin selects `task_score` (see `v2_get_sessions_with_previews`). Fixes PostgREST **42703** `column v2_sessions.task_score does not exist` on admin student pages.
 - **`add_v2_student_coaching_memory.sql`** — table for last_5_scores, recent_focus_task_ids. Run before deploying backend that calls `v2_upsert_student_coaching_memory`.
 - **`add_recording_1_performance_profile.sql`** — adds `v2_sessions.recording_1_performance_profile` (JSONB). **Run in Supabase first, then deploy backend**; otherwise recording_1 job fails when writing the column. Idempotent; existing sessions stay NULL.
 - **`add_recording_1_processing_error_code.sql`** — adds `v2_sessions.recording_1_processing_error_code` (TEXT). When the recording-1 job fails, this stores a stable code (e.g. `transcription_failed`, `storage_error`) for logs and GET session/status. Optional; job still sets `recording_1_processing_status: "failed"` if the column is missing.
