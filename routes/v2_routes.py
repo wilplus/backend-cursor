@@ -430,7 +430,8 @@ def v2_admin_student_profile(user_id):
         measured_metrics = db.v2_get_admin_measured_metrics_snapshot(user_id)
         similar_students = []
         try:
-            similar_students = db.get_similar_students_by_wpm(user_id)
+            if measured_metrics.get("wpm_high"):
+                similar_students = db.get_similar_students_by_wpm(user_id)
         except Exception as sim_err:
             logger.warning("admin profile: similar_students_by_wpm failed: %s", sim_err)
         return jsonify({

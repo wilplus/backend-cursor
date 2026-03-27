@@ -1754,7 +1754,10 @@ class DatabaseService:
 
         if not latest.get("source"):
             latest = {**latest, "source": None}
-        return {"latest": latest, "baselines": baselines or None}
+        # Flag WPM > 110 for frontend highlight
+        wpm_val = latest.get("wpm")
+        wpm_high = bool(wpm_val is not None and float(wpm_val) > 110)
+        return {"latest": latest, "baselines": baselines or None, "wpm_high": wpm_high}
 
     def upsert_sniper_profile(
         self,
@@ -1976,35 +1979,21 @@ class DatabaseService:
         result = self.client.table("session_sniper_metrics").select("*").eq("session_id", session_id).execute()
         return result.data[0] if result.data else None
 
-    def get_similar_students_by_wpm(self, user_id: str, wpm_range: float = 30.0) -> List[dict]:
-        """Find other students whose latest session WPM is within ±wpm_range of this student's latest WPM.
-        Returns list of {user_id, email, wpm, session_id} sorted by WPM proximity."""
-        # Get this student's latest WPM
-        my_latest = (
-            self.client.table("session_sniper_metrics")
-            .select("wpm")
-            .eq("user_id", user_id)
-            .not_.is_("wpm", "null")
-            .order("created_at", desc=True)
-            .limit(1)
-            .execute()
-        )
-        if not my_latest.data or my_latest.data[0].get("wpm") is None:
-            return []
-        my_wpm = float(my_latest.data[0]["wpm"])
-
-        # Get all other users' latest sniper metrics with WPM
-        # We fetch the most recent row per user by ordering by created_at desc
+    def get_similar_students_by_wpm(self, user_id: str, wpm_threshold: float = 110.0) -> List[dict]:
+        """Find other students whose latest session WPM is above wpm_threshold.
+        Returns list of {user_id, email, wpm, session_id} sorted by WPM descending.
+        Excludes the current user."""
         all_metrics = (
             self.client.table("session_sniper_metrics")
             .select("user_id, wpm, session_id, created_at")
             .not_.is_("wpm", "null")
+            .gt("wpm", 0)
             .neq("user_id", user_id)
             .order("created_at", desc=True)
             .limit(500)
             .execute()
         )
-        # Keep only the latest per user
+        # Keep only the latest per user, filter by threshold
         seen_users = set()
         candidates = []
         for row in all_metrics.data or []:
@@ -2013,7 +2002,7 @@ class DatabaseService:
                 continue
             seen_users.add(uid)
             row_wpm = float(row["wpm"])
-            if abs(row_wpm - my_wpm) <= wpm_range:
+            if row_wpm > wpm_threshold:
                 candidates.append({
                     "user_id": uid,
                     "wpm": round(row_wpm, 1),
@@ -2021,17 +2010,15 @@ class DatabaseService:
                 })
 
         # Enrich with emails
-        if candidates:
-            user_ids = [c["user_id"] for c in candidates]
-            for c in candidates:
-                try:
-                    email = self.get_user_email_from_auth(c["user_id"])
-                    c["email"] = email or ""
-                except Exception:
-                    c["email"] = ""
+        for c in candidates:
+            try:
+                email = self.get_user_email_from_auth(c["user_id"])
+                c["email"] = email or ""
+            except Exception:
+                c["email"] = ""
 
-        # Sort by proximity to my_wpm
-        candidates.sort(key=lambda c: abs(c["wpm"] - my_wpm))
+        # Sort by WPM descending
+        candidates.sort(key=lambda c: c["wpm"], reverse=True)
         return candidates
 
     def update_or_set_session_sniper_rating(
