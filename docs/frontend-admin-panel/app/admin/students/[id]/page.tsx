@@ -7,6 +7,34 @@ import SectionCard from "@/components/admin/SectionCard";
 import { adminApi, type StudentProfile, type Exercise, type PostQuestion, type WarmUpTask } from "@/lib/api/admin-client";
 import { toast } from "sonner";
 
+function formatMeasured(n: number | null | undefined, decimals = 1): string {
+  if (n == null || Number.isNaN(Number(n))) return "—";
+  return Number(n).toFixed(decimals);
+}
+
+function formatMeasuredInt(n: number | null | undefined): string {
+  if (n == null || Number.isNaN(Number(n))) return "—";
+  return String(Math.round(Number(n)));
+}
+
+function MetricCard({
+  label,
+  value,
+  hint,
+}: {
+  label: string;
+  value: string;
+  hint?: string;
+}) {
+  return (
+    <div className="rounded-xl border border-border bg-muted/20 px-4 py-3">
+      <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
+      <p className="mt-1 text-2xl font-semibold tabular-nums text-foreground">{value}</p>
+      {hint ? <p className="mt-1 text-xs text-muted-foreground">{hint}</p> : null}
+    </div>
+  );
+}
+
 function Chip({
   label,
   selected,
@@ -331,6 +359,16 @@ export default function AdminStudentProfilePage({ params }: { params: { id: stri
     (q) => !overridesDraft.assigned_post_question_ids.includes(q.id)
   );
 
+  const mm = profile.measured_metrics;
+  const latest = mm?.latest;
+  const bl = mm?.baselines ?? null;
+  const measuredSourceHint =
+    latest?.source === "session_sniper_metrics"
+      ? "Last saved Sniper / realtime session summary (session_sniper_metrics)."
+      : latest?.source === "recording"
+        ? "From the most recent homework recording (WPM / fillers / duration when Sniper row is absent)."
+        : "No snapshot yet. Completing a session with Sniper telemetry or a homework recording with WPM will populate this block.";
+
   return (
     <div className="space-y-6">
       <div>
@@ -353,6 +391,93 @@ export default function AdminStudentProfilePage({ params }: { params: { id: stri
           </button>
         </div>
       </div>
+
+      <SectionCard title="Measured parameters" description={measuredSourceHint}>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <MetricCard
+            label="WPM"
+            value={formatMeasuredInt(latest?.wpm)}
+            hint={
+              bl?.baseline_wpm != null && bl.baseline_wpm !== undefined
+                ? `Baseline EMA: ${formatMeasuredInt(bl.baseline_wpm)}`
+                : undefined
+            }
+          />
+          <MetricCard
+            label="Pause"
+            value={formatMeasuredInt(latest?.pause_ms)}
+            hint={
+              bl?.baseline_pause_ms != null
+                ? `Baseline EMA: ${formatMeasuredInt(bl.baseline_pause_ms)} ms`
+                : "ms (Sniper)"
+            }
+          />
+          <MetricCard
+            label="Dynamic range"
+            value={formatMeasured(latest?.dynamic_db, 1)}
+            hint={
+              bl?.baseline_dynamic_db != null ? `Baseline EMA: ${formatMeasured(bl.baseline_dynamic_db, 1)} dB` : "dB (Sniper)"
+            }
+          />
+          <MetricCard
+            label="Emphasis"
+            value={formatMeasured(latest?.emphasis_per_min, 1)}
+            hint={
+              bl?.baseline_emphasis_per_min != null
+                ? `Baseline EMA: ${formatMeasured(bl.baseline_emphasis_per_min, 1)} / min`
+                : "Peaks per minute (Sniper)"
+            }
+          />
+          <MetricCard
+            label="Energy ratio"
+            value={formatMeasured(latest?.energy_ratio, 3)}
+            hint={
+              bl?.baseline_energy_ratio != null
+                ? `Baseline EMA: ${formatMeasured(bl.baseline_energy_ratio, 3)}`
+                : "Voiced energy balance (0–1)"
+            }
+          />
+          <MetricCard
+            label="Pitch center"
+            value={formatMeasured(latest?.pitch_center_st, 1)}
+            hint={
+              [
+                latest?.pitch_frame_count != null ? `${formatMeasuredInt(latest.pitch_frame_count)} frames` : null,
+                bl?.realtime_pitch_baseline_st != null
+                  ? `baseline ${formatMeasured(bl.realtime_pitch_baseline_st, 1)} st`
+                  : null,
+              ]
+                .filter(Boolean)
+                .join(" · ") || "semitones (Sniper)"
+            }
+          />
+          <MetricCard
+            label="Stage score"
+            value={formatMeasured(latest?.stage_score, 2)}
+            hint={
+              latest?.student_rating_1_10 != null
+                ? `Student rating: ${formatMeasuredInt(latest.student_rating_1_10)}/10`
+                : undefined
+            }
+          />
+          <MetricCard
+            label="Fillers (recording)"
+            value={formatMeasuredInt(latest?.filler_words_count)}
+            hint="From recording row when present"
+          />
+          <MetricCard
+            label="Duration"
+            value={
+              latest?.duration_ms != null && !Number.isNaN(Number(latest.duration_ms))
+                ? `${Math.round(Number(latest.duration_ms) / 1000)} s`
+                : latest?.voiced_duration_sec != null
+                  ? `${formatMeasured(latest.voiced_duration_sec, 1)} s voiced`
+                  : "—"
+            }
+            hint="Recording duration or voiced seconds (Sniper)"
+          />
+        </div>
+      </SectionCard>
 
       <SectionCard
         title="Warm-up tasks"

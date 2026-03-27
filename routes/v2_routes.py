@@ -427,6 +427,7 @@ def v2_admin_student_profile(user_id):
         last_report = db.v2_get_last_report_for_user(user_id)
         sessions = db.v2_get_sessions_with_previews(user_id, limit=50)
         delivered_sessions = [s for s in sessions if s.get("report_delivered")]
+        measured_metrics = db.v2_get_admin_measured_metrics_snapshot(user_id)
         return jsonify({
             "user_id": user_id,
             "email": email,
@@ -439,6 +440,7 @@ def v2_admin_student_profile(user_id):
             "coaching_memory": coaching_memory,
             "realtime_level": sniper_profile.get("realtime_level"),
             "realtime_step": sniper_profile.get("realtime_step"),
+            "measured_metrics": measured_metrics,
             "task_warm_up": task_warm_up,
             "task_focus": task_focus,
             "post_recording_questions": post_recording_questions,

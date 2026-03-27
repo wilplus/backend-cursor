@@ -35,9 +35,45 @@ export interface StudentListItem {
   user_id: string;
 }
 
+/** Latest measured speech metrics for admin dashboard (GET /v2/admin/students/:id → measured_metrics). */
+export interface MeasuredMetricsLatest {
+  source: "session_sniper_metrics" | "recording" | null;
+  session_id: string | null;
+  captured_at: string | null;
+  wpm: number | null;
+  pause_ms: number | null;
+  dynamic_db: number | null;
+  emphasis_per_min: number | null;
+  energy_ratio: number | null;
+  voiced_duration_sec: number | null;
+  pitch_center_st: number | null;
+  pitch_frame_count: number | null;
+  stage_score: number | null;
+  student_rating_1_10: number | null;
+  recording_id: string | null;
+  filler_words_count: number | null;
+  duration_ms: number | null;
+}
+
+export interface MeasuredMetricsBaselines {
+  baseline_wpm?: number | null;
+  baseline_pause_ms?: number | null;
+  baseline_dynamic_db?: number | null;
+  baseline_emphasis_per_min?: number | null;
+  baseline_energy_ratio?: number | null;
+  baseline_fatigue_sec?: number | null;
+  realtime_pitch_baseline_st?: number | null;
+}
+
+export interface MeasuredMetricsPayload {
+  latest: MeasuredMetricsLatest;
+  baselines: MeasuredMetricsBaselines | null;
+}
+
 export interface StudentProfile {
   user_id: string;
   email: string | null;
+  measured_metrics?: MeasuredMetricsPayload;
   overrides: {
     show_exercise_step?: boolean;
     skip_metric_questions?: boolean;

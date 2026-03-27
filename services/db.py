@@ -1613,6 +1613,149 @@ class DatabaseService:
         out["sessions_with_pitch_count"] = max(0, as_int(out.get("sessions_with_pitch_count"), 0))
         return out
 
+    def v2_get_admin_measured_metrics_snapshot(self, user_id: str) -> Dict[str, Any]:
+        """Admin UI: latest measured speech metrics (Sniper session) + optional baselines.
+
+        ``latest`` prefers ``session_sniper_metrics`` (realtime/session-complete payload).
+        Falls back to ``recordings.words_per_minute`` from the most recent v2 session
+        recording when no Sniper row exists (homework-only path).
+        """
+        baselines: Dict[str, Any] = {}
+        try:
+            raw_profile = self.get_sniper_profile(user_id) or {}
+            for key in (
+                "baseline_wpm",
+                "baseline_pause_ms",
+                "baseline_dynamic_db",
+                "baseline_emphasis_per_min",
+                "baseline_energy_ratio",
+                "baseline_fatigue_sec",
+                "realtime_pitch_baseline_st",
+            ):
+                if key in raw_profile and raw_profile.get(key) is not None:
+                    baselines[key] = raw_profile.get(key)
+        except Exception:
+            pass
+
+        latest: Dict[str, Any] = {
+            "source": None,
+            "session_id": None,
+            "captured_at": None,
+            "wpm": None,
+            "pause_ms": None,
+            "dynamic_db": None,
+            "emphasis_per_min": None,
+            "energy_ratio": None,
+            "voiced_duration_sec": None,
+            "pitch_center_st": None,
+            "pitch_frame_count": None,
+            "stage_score": None,
+            "student_rating_1_10": None,
+            "recording_id": None,
+            "filler_words_count": None,
+            "duration_ms": None,
+        }
+
+        try:
+            sm_res = (
+                self.client.table("session_sniper_metrics")
+                .select(
+                    "session_id, user_id, wpm, pause_ms, dynamic_db, emphasis_per_min, "
+                    "energy_ratio, voiced_duration_sec, pitch_center_st, pitch_frame_count, "
+                    "stage_score, student_rating_1_10, created_at"
+                )
+                .eq("user_id", user_id)
+                .order("created_at", desc=True)
+                .limit(1)
+                .execute()
+            )
+            row = sm_res.data[0] if sm_res.data else None
+            if row and any(
+                row.get(k) is not None
+                for k in (
+                    "wpm",
+                    "pause_ms",
+                    "dynamic_db",
+                    "emphasis_per_min",
+                    "energy_ratio",
+                    "pitch_center_st",
+                    "stage_score",
+                    "voiced_duration_sec",
+                )
+            ):
+                latest["source"] = "session_sniper_metrics"
+                latest["session_id"] = row.get("session_id")
+                latest["captured_at"] = row.get("created_at")
+                for k in (
+                    "wpm",
+                    "pause_ms",
+                    "dynamic_db",
+                    "emphasis_per_min",
+                    "energy_ratio",
+                    "voiced_duration_sec",
+                    "pitch_center_st",
+                    "pitch_frame_count",
+                    "stage_score",
+                    "student_rating_1_10",
+                ):
+                    latest[k] = row.get(k)
+                return {"latest": latest, "baselines": baselines or None}
+        except Exception as e:
+            msg = str(e).lower()
+            if "session_sniper_metrics" in msg and (
+                "permission denied" in msg or "42501" in msg
+            ):
+                logger.warning(
+                    "v2_get_admin_measured_metrics_snapshot: session_sniper_metrics not readable: %s",
+                    e,
+                )
+            else:
+                logger.debug("v2_get_admin_measured_metrics_snapshot: sniper read failed: %s", e)
+
+        try:
+            sess_res = (
+                self.client.table("v2_sessions")
+                .select("id, completed_at, recording_1_id, recording_2_id")
+                .eq("user_id", user_id)
+                .order("completed_at", desc=True)
+                .limit(40)
+                .execute()
+            )
+            for s in sess_res.data or []:
+                rid = s.get("recording_2_id") or s.get("recording_1_id")
+                if not rid:
+                    continue
+                rec_res = (
+                    self.client.table("recordings")
+                    .select("id, words_per_minute, filler_words_count, duration_ms, created_at")
+                    .eq("id", rid)
+                    .limit(1)
+                    .execute()
+                )
+                if not rec_res.data:
+                    continue
+                r = rec_res.data[0]
+                if (
+                    r.get("words_per_minute") is None
+                    and r.get("filler_words_count") is None
+                    and r.get("duration_ms") is None
+                ):
+                    continue
+                latest["source"] = "recording"
+                latest["session_id"] = s.get("id")
+                latest["recording_id"] = r.get("id")
+                latest["captured_at"] = r.get("created_at") or s.get("completed_at")
+                latest["wpm"] = r.get("words_per_minute")
+                latest["filler_words_count"] = r.get("filler_words_count")
+                latest["duration_ms"] = r.get("duration_ms")
+                break
+        except Exception as e:
+            logger.debug("v2_get_admin_measured_metrics_snapshot: recording fallback failed: %s", e)
+
+        if not latest.get("source"):
+            latest = {**latest, "source": None}
+        return {"latest": latest, "baselines": baselines or None}
+
     def upsert_sniper_profile(
         self,
         user_id: str,
