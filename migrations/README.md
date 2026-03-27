@@ -51,3 +51,4 @@
 ## Permissions (if you see 42501 / permission denied)
 
 - **`grant_sniper_tables_service_role.sql`** — grants `service_role` full access to `user_sniper_profile` and `session_sniper_metrics`. Run in Supabase SQL Editor if GET /user/sniper-profile or POST .../self-rating returns 500 with "permission denied for table ...".
+- **`grant_v2_student_coaching_memory_service_role.sql`** — grants `service_role` full access to `v2_student_coaching_memory`. Run if the admin student profile page or `GET /v2/admin/students/<id>` fails with **42501** / `permission denied for table v2_student_coaching_memory` (often after `enable_rls_public_tables.sql` if the table was created without default grants).
