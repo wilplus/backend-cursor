@@ -277,6 +277,16 @@ def homework_session_start():
                 "task": _task_text(task.get("text") if task else None),
             }), 200
 
+        # Block if last session is completed but coach hasn't sent feedback yet (review pending).
+        last_completed = db.v2_get_last_completed_session(user_id)
+        if last_completed and last_completed.get("status") == "completed":
+            feedback_sent_at = last_completed.get("tutor_feedback_sent_at")
+            if feedback_sent_at is None:
+                return jsonify({
+                    "code": "REVIEW_PENDING",
+                    "message": "Your coach is reviewing your last homework. You'll be able to start a new lesson once they send you feedback.",
+                }), 403
+
         # Block only at zero balance. Completion charges 5 (floored at 0); 1–5 credits is still enough for one lesson.
         student_details = db.v2_get_student_details(user_id) or {}
         current_credits = student_details.get("credits")
