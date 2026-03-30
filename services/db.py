@@ -2655,6 +2655,116 @@ class DatabaseService:
                 inserted.append(new_row)
         return inserted
 
+    def v2_create_warm_up_pool_task_and_assign_student(
+        self,
+        user_id: str,
+        text: str,
+        order_index: int = 0,
+        max_performance_score: float = 1.0,
+        insert_at: Any = "end",
+    ) -> Dict[str, Any]:
+        """
+        Insert a row into v2_warm_up_task_pool, then sync this student's warm-ups to
+        (existing pool_task_ids in current order) + new pool id. Student-only rows
+        without pool_task_id are replaced (same as any full sync).
+        insert_at: "end" / None to append; or int index 0..len(existing) to insert before that slot.
+        On sync failure after pool insert, deletes the new pool row best-effort.
+        """
+        text_clean = (text or "").strip()
+        if not text_clean:
+            raise ValueError("text is required")
+        rows = self.v2_get_warm_up_tasks(user_id)
+        existing_ids = [str(r["pool_task_id"]) for r in rows if r.get("pool_task_id")]
+        dropped_non_pool = sum(1 for r in rows if not r.get("pool_task_id"))
+        try:
+            mps = float(max_performance_score)
+        except (TypeError, ValueError):
+            mps = 1.0
+        pool_row = self.v2_insert_warm_up_task_pool(
+            {
+                "text": text_clean,
+                "order_index": int(order_index),
+                "max_performance_score": mps,
+            }
+        )
+        if not pool_row:
+            raise RuntimeError("Failed to insert warm-up pool task")
+        new_id = str(pool_row["id"])
+        if insert_at == "end" or insert_at is None:
+            final_ids = existing_ids + [new_id]
+        else:
+            try:
+                idx = int(insert_at)
+            except (TypeError, ValueError):
+                idx = len(existing_ids)
+            idx = max(0, min(idx, len(existing_ids)))
+            final_ids = existing_ids[:idx] + [new_id] + existing_ids[idx:]
+        try:
+            assigned = self.v2_sync_student_warm_up_tasks_from_pool(user_id, final_ids)
+        except Exception:
+            try:
+                self.v2_delete_warm_up_task_pool(new_id)
+            except Exception:
+                pass
+            raise
+        return {
+            "task_warm_up_pool": pool_row,
+            "task_warm_up": assigned,
+            "dropped_non_pool_tasks": dropped_non_pool,
+        }
+
+    def v2_create_focus_pool_task_and_assign_student(
+        self,
+        user_id: str,
+        text: str,
+        order_index: int = 0,
+        max_performance_score: float = 1.0,
+        insert_at: Any = "end",
+    ) -> Dict[str, Any]:
+        """Same as warm-up variant for v2_focus_task_pool + v2_focus_tasks."""
+        text_clean = (text or "").strip()
+        if not text_clean:
+            raise ValueError("text is required")
+        rows = self.v2_get_focus_tasks(user_id)
+        existing_ids = [str(r["pool_task_id"]) for r in rows if r.get("pool_task_id")]
+        dropped_non_pool = sum(1 for r in rows if not r.get("pool_task_id"))
+        try:
+            mps = float(max_performance_score)
+        except (TypeError, ValueError):
+            mps = 1.0
+        pool_row = self.v2_insert_focus_task_pool(
+            {
+                "text": text_clean,
+                "order_index": int(order_index),
+                "max_performance_score": mps,
+            }
+        )
+        if not pool_row:
+            raise RuntimeError("Failed to insert focus pool task")
+        new_id = str(pool_row["id"])
+        if insert_at == "end" or insert_at is None:
+            final_ids = existing_ids + [new_id]
+        else:
+            try:
+                idx = int(insert_at)
+            except (TypeError, ValueError):
+                idx = len(existing_ids)
+            idx = max(0, min(idx, len(existing_ids)))
+            final_ids = existing_ids[:idx] + [new_id] + existing_ids[idx:]
+        try:
+            assigned = self.v2_sync_student_focus_tasks_from_pool(user_id, final_ids)
+        except Exception:
+            try:
+                self.v2_delete_focus_task_pool(new_id)
+            except Exception:
+                pass
+            raise
+        return {
+            "task_focus_pool": pool_row,
+            "task_focus": assigned,
+            "dropped_non_pool_tasks": dropped_non_pool,
+        }
+
     def v2_get_last_homework_performance_score(self, user_id: str):
         """Last completed homework session's performance_score_end (0-1), or None if no completed session."""
         result = (
@@ -3460,6 +3570,51 @@ class DatabaseService:
             result["auth_user_deleted"] = True
             return result
         raise RuntimeError(f"auth_delete_failed status={resp.status_code} body={resp.text[:300]}")
+
+    # ---------- Coach AI Conversations ----------
+
+    def get_coach_ai_conversation(self, user_id: str) -> dict | None:
+        """Get the coach AI conversation history for a student."""
+        try:
+            result = (
+                self.client.table("coach_ai_conversations")
+                .select("*")
+                .eq("user_id", user_id)
+                .execute()
+            )
+            return result.data[0] if result.data else None
+        except Exception as e:
+            logger.warning("get_coach_ai_conversation failed for %s: %s", user_id, e)
+            return None
+
+    def upsert_coach_ai_conversation(self, user_id: str, messages: list) -> dict | None:
+        """Save/update the coach AI conversation history for a student.
+        messages: list of {role, content, timestamp} dicts."""
+        now = datetime.now(timezone.utc).isoformat()
+        payload = {
+            "user_id": user_id,
+            "messages": json.dumps(messages) if isinstance(messages, list) else messages,
+            "updated_at": now,
+        }
+        try:
+            result = (
+                self.client.table("coach_ai_conversations")
+                .upsert(payload, on_conflict="user_id")
+                .execute()
+            )
+            return result.data[0] if result.data else None
+        except Exception as e:
+            logger.error("upsert_coach_ai_conversation failed for %s: %s", user_id, e)
+            raise
+
+    def clear_coach_ai_conversation(self, user_id: str) -> bool:
+        """Clear (delete) the coach AI conversation for a student."""
+        try:
+            self.client.table("coach_ai_conversations").delete().eq("user_id", user_id).execute()
+            return True
+        except Exception as e:
+            logger.warning("clear_coach_ai_conversation failed for %s: %s", user_id, e)
+            return False
 
 # Singleton instance
 db = DatabaseService()

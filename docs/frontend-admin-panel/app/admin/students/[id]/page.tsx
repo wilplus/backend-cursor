@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { ChevronLeft, FileText, Send } from "lucide-react";
 import SectionCard from "@/components/admin/SectionCard";
-import { adminApi, type StudentProfile, type Exercise, type PostQuestion, type WarmUpTask } from "@/lib/api/admin-client";
+import { adminApi, type StudentProfile, type Exercise, type PostQuestion, type WarmUpTask, type CoachSuggestionResponse } from "@/lib/api/admin-client";
 import { toast } from "sonner";
 
 function formatMeasured(n: number | null | undefined, decimals = 1): string {
@@ -81,6 +81,13 @@ export default function AdminStudentProfilePage({ params }: { params: { id: stri
   const [savingGradeSessionId, setSavingGradeSessionId] = useState<string | null>(null);
   const sessionGradeSelectRefs = useRef<Record<string, HTMLSelectElement | null>>({});
 
+  // AI Coach Suggestions state
+  const [aiMessage, setAiMessage] = useState("");
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiSuggestion, setAiSuggestion] = useState<CoachSuggestionResponse | null>(null);
+  const [aiHistory, setAiHistory] = useState<Array<{ role: "user" | "assistant"; content: string; timestamp: string }>>([]);
+  const [aiHistoryOpen, setAiHistoryOpen] = useState(false);
+
   const load = useCallback(() => {
     setLoading(true);
     Promise.allSettled([
@@ -104,6 +111,41 @@ export default function AdminStudentProfilePage({ params }: { params: { id: stri
   }, [id]);
 
   useEffect(() => load(), [load]);
+
+  // Load AI conversation history on mount
+  useEffect(() => {
+    adminApi.getCoachSuggestionHistory(id).then((res) => {
+      setAiHistory(res.messages || []);
+    }).catch(() => {});
+  }, [id]);
+
+  const sendAiMessage = async () => {
+    if (!aiMessage.trim() || aiLoading) return;
+    setAiLoading(true);
+    try {
+      const res = await adminApi.sendCoachSuggestion(id, aiMessage.trim());
+      setAiSuggestion(res);
+      // Refresh history
+      const hist = await adminApi.getCoachSuggestionHistory(id);
+      setAiHistory(hist.messages || []);
+      setAiMessage("");
+    } catch (e) {
+      toast.error((e as Error)?.message ?? "AI suggestion failed");
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  const clearAiHistory = async () => {
+    try {
+      await adminApi.clearCoachSuggestionHistory(id);
+      setAiHistory([]);
+      setAiSuggestion(null);
+      toast.success("AI conversation cleared.");
+    } catch (e) {
+      toast.error((e as Error)?.message ?? "Failed to clear history");
+    }
+  };
 
   const [overridesDraft, setOverridesDraft] = useState({
     show_exercise_step: true,
@@ -272,9 +314,18 @@ export default function AdminStudentProfilePage({ params }: { params: { id: stri
         .catch((e) => toast.error(e.message));
     } else {
       adminApi
-        .createWarmUpTask(id, { text: warmUpFormText.trim(), order_index: warmUpTasks.length, max_performance_score: score })
-        .then(() => {
-          toast.success("Warm-up task added");
+        .createWarmUpPoolTaskAndAssign(id, {
+          text: warmUpFormText.trim(),
+          order_index: warmUpTasks.length,
+          max_performance_score: score,
+        })
+        .then((res) => {
+          toast.success("Warm-up added to pool and assigned");
+          if (res.dropped_non_pool_tasks > 0) {
+            toast.message(
+              `${res.dropped_non_pool_tasks} student-only warm-up(s) were removed (not linked to the pool).`
+            );
+          }
           setWarmUpModalOpen(false);
           load();
         })
@@ -956,6 +1007,105 @@ export default function AdminStudentProfilePage({ params }: { params: { id: stri
               ? `Send Homework to ${1 + selectedSimilarIds.size} students`
               : "Send Homework"}
           </button>
+        </div>
+      </SectionCard>
+
+      {/* ── AI Coach Assistant ── */}
+      <SectionCard title="AI Coach Assistant" description="Get AI-powered suggestions for homework, tasks, and video scripts based on this student's profile and metrics.">
+        <div className="space-y-4">
+          {/* Chat input */}
+          <div className="flex gap-2">
+            <textarea
+              value={aiMessage}
+              onChange={(e) => setAiMessage(e.target.value)}
+              placeholder="Ask the AI for homework suggestions, task ideas, or video scripts for this student..."
+              className="flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm resize-none"
+              rows={3}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) sendAiMessage();
+              }}
+            />
+            <div className="flex flex-col gap-1">
+              <button
+                type="button"
+                onClick={sendAiMessage}
+                disabled={aiLoading || !aiMessage.trim()}
+                className="rounded-md bg-[hsl(24_95%_53%)] px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
+              >
+                {aiLoading ? "Thinking…" : "Ask AI"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setAiHistoryOpen(!aiHistoryOpen)}
+                className="text-xs text-muted-foreground hover:text-foreground"
+              >
+                {aiHistoryOpen ? "Hide history" : `History (${aiHistory.length})`}
+              </button>
+            </div>
+          </div>
+
+          {/* Latest suggestion */}
+          {aiSuggestion && (
+            <div className="space-y-3">
+              {aiSuggestion.homework_message && (
+                <div className="rounded-lg border border-orange-200 bg-orange-50 dark:border-orange-800 dark:bg-orange-950/20 p-4">
+                  <p className="text-xs font-medium uppercase tracking-wide text-orange-600 dark:text-orange-400 mb-1">Homework Message</p>
+                  <p className="text-sm whitespace-pre-wrap">{aiSuggestion.homework_message}</p>
+                </div>
+              )}
+              {aiSuggestion.task_suggestion && (
+                <div className="rounded-lg border border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950/20 p-4">
+                  <p className="text-xs font-medium uppercase tracking-wide text-blue-600 dark:text-blue-400 mb-1">Task Suggestion</p>
+                  <p className="text-sm whitespace-pre-wrap">{aiSuggestion.task_suggestion}</p>
+                </div>
+              )}
+              {aiSuggestion.video_script && (
+                <div className="rounded-lg border border-emerald-200 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/20 p-4">
+                  <p className="text-xs font-medium uppercase tracking-wide text-emerald-600 dark:text-emerald-400 mb-1">Video Script</p>
+                  <p className="text-sm whitespace-pre-wrap">{aiSuggestion.video_script}</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Conversation history */}
+          {aiHistoryOpen && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-medium text-muted-foreground">Conversation History</p>
+                {aiHistory.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={clearAiHistory}
+                    className="text-xs text-red-500 hover:text-red-700"
+                  >
+                    Clear history
+                  </button>
+                )}
+              </div>
+              <div className="max-h-96 overflow-y-auto space-y-2 rounded-lg border border-border p-3">
+                {aiHistory.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No conversation yet.</p>
+                ) : (
+                  aiHistory.map((msg, i) => (
+                    <div
+                      key={i}
+                      className={`rounded-lg px-3 py-2 text-sm ${
+                        msg.role === "user"
+                          ? "bg-muted/40 ml-8"
+                          : "bg-background border border-border mr-8"
+                      }`}
+                    >
+                      <p className="text-[10px] font-medium text-muted-foreground mb-1">
+                        {msg.role === "user" ? "You" : "AI"} · {new Date(msg.timestamp).toLocaleString()}
+                      </p>
+                      <p className="whitespace-pre-wrap">{msg.content}</p>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </SectionCard>
 

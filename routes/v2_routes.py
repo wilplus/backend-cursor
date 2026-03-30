@@ -1737,6 +1737,49 @@ def v2_admin_task_warm_up_create(user_id):
         return jsonify({"error": "Failed to create warm-up task. Check v2_warm_up_tasks table exists.", "detail": str(err)}), 503
 
 
+@v2_bp.route("/admin/students/<user_id>/task-warm-up/create-pool-and-assign", methods=["POST"])
+@require_admin
+def v2_admin_task_warm_up_create_pool_and_assign(user_id):
+    """
+    Create a v2_warm_up_task_pool row and assign it to this student in one step.
+    Body: { "text", "order_index"?, "max_performance_score"?, "insert_at"? }
+    insert_at: omit or "end" to append; or integer index (0 = before first pool-linked task).
+    Student rows without pool_task_id are dropped when syncing (see dropped_non_pool_tasks).
+    """
+    data = request.get_json() or {}
+    text = (data.get("text") or "").strip()
+    if not text:
+        return jsonify({"error": "text is required"}), 400
+    insert_at = data.get("insert_at", "end")
+    if insert_at != "end" and insert_at is not None:
+        try:
+            insert_at = int(insert_at)
+        except (TypeError, ValueError):
+            insert_at = "end"
+    try:
+        order_index = int(data.get("order_index", 0))
+    except (TypeError, ValueError):
+        order_index = 0
+    try:
+        mps = float(data.get("max_performance_score", 1.0))
+    except (TypeError, ValueError):
+        mps = 1.0
+    try:
+        result = db.v2_create_warm_up_pool_task_and_assign_student(
+            user_id,
+            text=text,
+            order_index=order_index,
+            max_performance_score=mps,
+            insert_at=insert_at,
+        )
+        return jsonify(result), 201
+    except ValueError as ve:
+        return jsonify({"error": str(ve)}), 400
+    except Exception as err:
+        logger.warning("task-warm-up create-pool-and-assign failed for user %s: %s", user_id, err, exc_info=True)
+        return jsonify({"error": "create-pool-and-assign failed", "detail": str(err)}), 503
+
+
 @v2_bp.route("/admin/students/<user_id>/task-warm-up/<task_id>", methods=["PUT"])
 @require_admin
 def v2_admin_task_warm_up_update(user_id, task_id):
@@ -1893,6 +1936,44 @@ def v2_admin_task_focus_create(user_id):
             "detail": detail,
             "message": f"{msg} Server said: {detail}",
         }), 503
+
+
+@v2_bp.route("/admin/students/<user_id>/task-focus/create-pool-and-assign", methods=["POST"])
+@require_admin
+def v2_admin_task_focus_create_pool_and_assign(user_id):
+    """Create v2_focus_task_pool row and sync student focus tasks (same contract as warm-up variant)."""
+    data = request.get_json() or {}
+    text = (data.get("text") or "").strip()
+    if not text:
+        return jsonify({"error": "text is required"}), 400
+    insert_at = data.get("insert_at", "end")
+    if insert_at != "end" and insert_at is not None:
+        try:
+            insert_at = int(insert_at)
+        except (TypeError, ValueError):
+            insert_at = "end"
+    try:
+        order_index = int(data.get("order_index", 0))
+    except (TypeError, ValueError):
+        order_index = 0
+    try:
+        mps = float(data.get("max_performance_score", 1.0))
+    except (TypeError, ValueError):
+        mps = 1.0
+    try:
+        result = db.v2_create_focus_pool_task_and_assign_student(
+            user_id,
+            text=text,
+            order_index=order_index,
+            max_performance_score=mps,
+            insert_at=insert_at,
+        )
+        return jsonify(result), 201
+    except ValueError as ve:
+        return jsonify({"error": str(ve)}), 400
+    except Exception as err:
+        logger.warning("task-focus create-pool-and-assign failed for user %s: %s", user_id, err, exc_info=True)
+        return jsonify({"error": "create-pool-and-assign failed", "detail": str(err)}), 503
 
 
 @v2_bp.route("/admin/students/<user_id>/task-focus/<task_id>", methods=["PUT"])
@@ -2124,3 +2205,184 @@ def v2_admin_metrics_put():
             continue
         db.v2_upsert_metric_definition(code, item.get("left_label", ""), item.get("right_label", ""))
     return jsonify({"status": "ok"}), 200
+
+
+# ---------- Admin: AI Coach Suggestions (per-student ChatGPT-like assistant) ----------
+
+def _build_student_context_for_ai(user_id: str) -> str:
+    """Gather all available student data into a text block for the AI system prompt."""
+    parts = []
+
+    # Basic info
+    email = db.get_user_email_from_auth(user_id)
+    details = db.v2_get_student_details(user_id) or {}
+    name = details.get("name") or email or user_id
+    parts.append(f"Student: {name} ({email})")
+
+    # Speaker profile
+    sp = db.v2_get_speaker_profile(user_id)
+    if sp:
+        sp_lines = []
+        for key in ("main_goal", "motivation", "strong_points", "weak_points", "charismatic_traits", "hobbies_interests", "personality_type", "coach_notes"):
+            val = sp.get(key)
+            if val:
+                sp_lines.append(f"  {key}: {val}")
+        if sp_lines:
+            parts.append("Speaker Profile:\n" + "\n".join(sp_lines))
+
+    # Measured metrics
+    metrics = db.v2_get_admin_measured_metrics_snapshot(user_id)
+    if metrics:
+        latest = metrics.get("latest") or {}
+        baselines = metrics.get("baselines") or {}
+        m_lines = []
+        for key in ("wpm", "pause_ms", "dynamic_db", "emphasis_per_min", "energy_ratio", "pitch_center_st", "voiced_duration_sec"):
+            val = latest.get(key)
+            if val is not None:
+                baseline_key = f"baseline_{key}"
+                baseline_val = baselines.get(baseline_key)
+                line = f"  {key}: {val}"
+                if baseline_val is not None:
+                    line += f" (baseline: {baseline_val})"
+                m_lines.append(line)
+        if metrics.get("wpm_high"):
+            m_lines.append("  ⚠ WPM > 110 (speaking too fast)")
+        if m_lines:
+            parts.append("Latest Metrics:\n" + "\n".join(m_lines))
+
+    # Coaching memory
+    cm = db.v2_get_student_coaching_memory(user_id)
+    if cm:
+        cm_lines = []
+        scores = cm.get("last_5_scores")
+        if scores:
+            cm_lines.append(f"  Last 5 scores: {scores}")
+        issues = cm.get("recurring_issues")
+        if issues:
+            cm_lines.append(f"  Recurring issues: {', '.join(issues)}")
+        if cm_lines:
+            parts.append("Coaching Memory:\n" + "\n".join(cm_lines))
+
+    # Recent sessions (last 5)
+    sessions = db.v2_get_sessions_with_previews(user_id, limit=5)
+    if sessions:
+        s_lines = []
+        for s in sessions[:5]:
+            date = s.get("created_at", "")[:10]
+            score = s.get("performance_score_end")
+            status = s.get("status", "")
+            task = s.get("selected_task_title") or s.get("selected_task_id") or ""
+            preview = s.get("recording_preview") or {}
+            wpm = preview.get("words_per_minute")
+            line = f"  {date}: status={status}"
+            if score is not None:
+                line += f", score={score}"
+            if task:
+                line += f", task={task}"
+            if wpm:
+                line += f", wpm={wpm}"
+            s_lines.append(line)
+        parts.append("Recent Sessions:\n" + "\n".join(s_lines))
+
+    # Sniper profile (realtime level/step)
+    sniper = db.get_sniper_profile_payload(user_id)
+    if sniper:
+        level = sniper.get("realtime_level")
+        step = sniper.get("realtime_step")
+        if level is not None or step is not None:
+            parts.append(f"Sniper Profile: level={level}, step={step}")
+
+    return "\n\n".join(parts) if parts else f"Student ID: {user_id} (no profile data available yet)"
+
+
+@v2_bp.route("/admin/students/<user_id>/coach-suggestions", methods=["POST"])
+@require_admin
+def v2_admin_coach_suggestions(user_id):
+    """AI coach assistant: send a message, get suggestions for homework/task/video.
+    Body: { "message": "..." }
+    Returns: { homework_message, task_suggestion, video_script, raw_text }
+    Conversation history is stored per-student."""
+    try:
+        from services.openai_service import openai_service
+
+        body = request.get_json(silent=True) or {}
+        user_message = (body.get("message") or "").strip()
+        if not user_message:
+            return jsonify({"code": "INVALID_INPUT", "error": "message is required"}), 400
+        if len(user_message) > 5000:
+            return jsonify({"code": "INVALID_INPUT", "error": "message must be at most 5000 characters"}), 400
+
+        # Load existing conversation history
+        conv = db.get_coach_ai_conversation(user_id)
+        history = []
+        if conv and conv.get("messages"):
+            messages_raw = conv["messages"]
+            if isinstance(messages_raw, str):
+                history = json.loads(messages_raw)
+            else:
+                history = messages_raw
+
+        # Build student context
+        student_context = _build_student_context_for_ai(user_id)
+
+        # Generate suggestions
+        result = openai_service.generate_coach_suggestions(
+            student_context=student_context,
+            conversation_history=history,
+            user_message=user_message,
+        )
+
+        if result.get("error"):
+            return jsonify({"code": "AI_ERROR", "error": result["error"]}), 500
+
+        # Append user message + assistant response to history
+        now = datetime.now(timezone.utc).isoformat()
+        history.append({"role": "user", "content": user_message, "timestamp": now})
+        history.append({"role": "assistant", "content": result["raw_text"], "timestamp": now})
+
+        # Save conversation
+        db.upsert_coach_ai_conversation(user_id, history)
+
+        return jsonify({
+            "status": "ok",
+            "homework_message": result["homework_message"],
+            "task_suggestion": result["task_suggestion"],
+            "video_script": result["video_script"],
+            "raw_text": result["raw_text"],
+        }), 200
+
+    except Exception as e:
+        logger.error("coach-suggestions failed for %s: %s", user_id, e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "INTERNAL_ERROR", "error": str(e)}), 500
+
+
+@v2_bp.route("/admin/students/<user_id>/coach-suggestions/history", methods=["GET", "DELETE"])
+@require_admin
+def v2_admin_coach_suggestions_history(user_id):
+    """GET: return conversation history. DELETE: clear conversation history."""
+    try:
+        if request.method == "DELETE":
+            db.clear_coach_ai_conversation(user_id)
+            return jsonify({"status": "ok", "message": "Conversation cleared"}), 200
+
+        conv = db.get_coach_ai_conversation(user_id)
+        messages = []
+        if conv and conv.get("messages"):
+            messages_raw = conv["messages"]
+            if isinstance(messages_raw, str):
+                messages = json.loads(messages_raw)
+            else:
+                messages = messages_raw
+
+        return jsonify({
+            "status": "ok",
+            "user_id": user_id,
+            "messages": messages,
+            "updated_at": conv.get("updated_at") if conv else None,
+        }), 200
+
+    except Exception as e:
+        logger.error("coach-suggestions/history failed for %s: %s", user_id, e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "INTERNAL_ERROR", "error": str(e)}), 500

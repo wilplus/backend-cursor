@@ -951,5 +951,91 @@ Respond with valid JSON array:
             sentry_sdk.capture_exception(e)
             return []
 
+    def generate_coach_suggestions(
+        self,
+        student_context: str,
+        conversation_history: list[dict],
+        user_message: str,
+    ) -> dict:
+        """Generate AI coaching suggestions (homework message, task, video script) for a student.
+
+        Args:
+            student_context: Pre-built string with student metrics, speaker profile, coaching memory, recent sessions.
+            conversation_history: List of prior {role, content} messages for this student.
+            user_message: The coach's current request/question.
+
+        Returns:
+            dict with keys: homework_message, task_suggestion, video_script, raw_text
+        """
+        if not self.client:
+            return {"error": "OpenAI client not initialized", "homework_message": "", "task_suggestion": "", "video_script": "", "raw_text": ""}
+
+        import logging
+        logger = logging.getLogger(__name__)
+
+        system_prompt = (
+            "You are an AI assistant for a speech coaching platform called Willab. "
+            "You help the coach (Artur) craft personalized homework for students.\n\n"
+            "Given the student's profile and metrics, you suggest:\n"
+            "1. **Homework message** — a short, warm message to the student explaining what to work on next and why.\n"
+            "2. **Task suggestion** — a concrete practice task description (what the student should record, how long, what to focus on).\n"
+            "3. **Video script** — a brief script/outline for the coach's video feedback to the student.\n\n"
+            "Guidelines:\n"
+            "- Be specific — reference the student's actual metrics and patterns.\n"
+            "- Keep the homework message warm but concise (2-4 sentences).\n"
+            "- The task should be actionable and measurable.\n"
+            "- The video script should be natural and conversational (bullet points are fine).\n"
+            "- Always write in English unless the coach asks otherwise.\n"
+            "- If the coach asks a general question or for advice, respond helpfully — you don't always have to output all 3 sections.\n\n"
+            "Format your response with these exact headers:\n"
+            "## Homework Message\n(message text)\n\n"
+            "## Task Suggestion\n(task text)\n\n"
+            "## Video Script\n(script text)\n\n"
+            "If the coach's message doesn't require all three, only include the relevant sections.\n\n"
+            f"--- STUDENT CONTEXT ---\n{student_context}"
+        )
+
+        messages = [{"role": "system", "content": system_prompt}]
+        # Add conversation history (cap to last 20 turns to stay within context)
+        for msg in conversation_history[-20:]:
+            messages.append({"role": msg["role"], "content": msg["content"]})
+        messages.append({"role": "user", "content": user_message})
+
+        try:
+            response = self.client.chat.completions.create(
+                model="gpt-4o",
+                messages=messages,
+                temperature=0.7,
+                max_tokens=1500,
+            )
+            raw_text = response.choices[0].message.content or ""
+
+            # Parse sections from the response
+            homework_message = ""
+            task_suggestion = ""
+            video_script = ""
+
+            import re as _re
+            sections = _re.split(r"##\s+", raw_text)
+            for section in sections:
+                lower = section.lower()
+                if lower.startswith("homework message"):
+                    homework_message = section.split("\n", 1)[1].strip() if "\n" in section else ""
+                elif lower.startswith("task suggestion"):
+                    task_suggestion = section.split("\n", 1)[1].strip() if "\n" in section else ""
+                elif lower.startswith("video script"):
+                    video_script = section.split("\n", 1)[1].strip() if "\n" in section else ""
+
+            return {
+                "homework_message": homework_message,
+                "task_suggestion": task_suggestion,
+                "video_script": video_script,
+                "raw_text": raw_text,
+            }
+        except Exception as e:
+            logger.error("generate_coach_suggestions failed: %s", e)
+            sentry_sdk.capture_exception(e)
+            return {"error": str(e), "homework_message": "", "task_suggestion": "", "video_script": "", "raw_text": ""}
+
 # Singleton instance
 openai_service = OpenAIService()

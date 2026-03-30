@@ -139,6 +139,26 @@ export interface WarmUpTask {
   text: string;
   order_index: number;
   max_performance_score?: number;
+  pool_task_id?: string | null;
+  created_at?: string;
+}
+
+/** Row in v2_warm_up_task_pool / v2_focus_task_pool (no user_id). */
+export interface TaskPoolRow {
+  id: string;
+  text: string;
+  order_index: number;
+  max_performance_score?: number;
+  created_at?: string;
+}
+
+export interface FocusTask {
+  id: string;
+  user_id: string;
+  text: string;
+  order_index: number;
+  max_performance_score?: number;
+  pool_task_id?: string | null;
   created_at?: string;
 }
 
@@ -194,18 +214,47 @@ export const adminApi = {
   deletePostQuestion: (id: string) =>
     adminFetch<{ status: string }>(`/post-recording-questions/${id}`, { method: "DELETE" }),
 
-  // Homework flow: warm-up tasks (per student)
+  // Homework flow: warm-up tasks (per student). Backend returns task_warm_up (array or single on POST/PUT).
   getWarmUpTasks: (userId: string) =>
-    adminFetch<{ warm_up_tasks: WarmUpTask[] }>(`/students/${userId}/warm-up-tasks`).then((r) => r.warm_up_tasks),
+    adminFetch<{ warm_up_tasks?: WarmUpTask[]; task_warm_up?: WarmUpTask[] }>(
+      `/students/${userId}/warm-up-tasks`
+    ).then((r) => r.task_warm_up ?? r.warm_up_tasks ?? []),
 
   createWarmUpTask: (userId: string, data: { text: string; order_index?: number; max_performance_score?: number }) =>
-    adminFetch<{ warm_up_task: WarmUpTask }>(`/students/${userId}/warm-up-tasks`, { method: "POST", body: data }),
+    adminFetch<{ warm_up_task?: WarmUpTask; task_warm_up?: WarmUpTask }>(
+      `/students/${userId}/warm-up-tasks`,
+      { method: "POST", body: data }
+    ),
+
+  /** One call: pool row + sync to student (preferred over createWarmUpTask when tasks should live in the pool). */
+  createWarmUpPoolTaskAndAssign: (
+    userId: string,
+    data: { text: string; order_index?: number; max_performance_score?: number; insert_at?: "end" | number }
+  ) =>
+    adminFetch<{
+      task_warm_up_pool: TaskPoolRow;
+      task_warm_up: WarmUpTask[];
+      dropped_non_pool_tasks: number;
+    }>(`/students/${userId}/warm-up-tasks/create-pool-and-assign`, { method: "POST", body: data }),
 
   updateWarmUpTask: (userId: string, taskId: string, data: { text?: string; order_index?: number; max_performance_score?: number }) =>
-    adminFetch<{ warm_up_task: WarmUpTask }>(`/students/${userId}/warm-up-tasks/${taskId}`, { method: "PUT", body: data }),
+    adminFetch<{ warm_up_task?: WarmUpTask; task_warm_up?: WarmUpTask }>(
+      `/students/${userId}/warm-up-tasks/${taskId}`,
+      { method: "PUT", body: data }
+    ),
 
   deleteWarmUpTask: (userId: string, taskId: string) =>
     adminFetch<{ status: string }>(`/students/${userId}/warm-up-tasks/${taskId}`, { method: "DELETE" }),
+
+  createFocusPoolTaskAndAssign: (
+    userId: string,
+    data: { text: string; order_index?: number; max_performance_score?: number; insert_at?: "end" | number }
+  ) =>
+    adminFetch<{
+      task_focus_pool: TaskPoolRow;
+      task_focus: FocusTask[];
+      dropped_non_pool_tasks: number;
+    }>(`/students/${userId}/focus-tasks/create-pool-and-assign`, { method: "POST", body: data }),
 
   // Homework flow: metric questions (metric_question_1, metric_question_2)
   getMetricQuestions: () =>
@@ -225,4 +274,32 @@ export const adminApi = {
       `/students/${userId}/sessions/${sessionId}`,
       { method: "PATCH", body: data }
     ),
+
+  // AI Coach Suggestions
+  sendCoachSuggestion: (userId: string, message: string) =>
+    adminFetch<CoachSuggestionResponse>(
+      `/students/${userId}/coach-suggestions`,
+      { method: "POST", body: { message } }
+    ),
+
+  getCoachSuggestionHistory: (userId: string) =>
+    adminFetch<CoachSuggestionHistory>(`/students/${userId}/coach-suggestions/history`),
+
+  clearCoachSuggestionHistory: (userId: string) =>
+    adminFetch<{ status: string }>(`/students/${userId}/coach-suggestions/history`, { method: "DELETE" }),
 };
+
+export interface CoachSuggestionResponse {
+  status: string;
+  homework_message: string;
+  task_suggestion: string;
+  video_script: string;
+  raw_text: string;
+}
+
+export interface CoachSuggestionHistory {
+  status: string;
+  user_id: string;
+  messages: Array<{ role: "user" | "assistant"; content: string; timestamp: string }>;
+  updated_at: string | null;
+}

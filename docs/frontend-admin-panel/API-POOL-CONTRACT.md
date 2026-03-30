@@ -6,6 +6,12 @@ When copying BFF routes from this folder, the **backend** paths must match. Use 
   **Not** `warm-up-task-pool`.
 - **Per-student warm-up:** `GET/POST/PUT/DELETE /v2/admin/students/<id>/task-warm-up` (and `.../task-warm-up/<task_id>` for PUT/DELETE).  
   **Not** `warm-up-tasks`.
+- **Per-student warm-up (atomic pool + assign):** `POST /v2/admin/students/<id>/task-warm-up/create-pool-and-assign`  
+  Body: JSON with required `text`; optional `order_index`, `max_performance_score`, `insert_at`.  
+  - `insert_at`: omit or `"end"` to append after existing pool-linked tasks; or an integer `0..n` to insert before that index in the current pool-id order.  
+  - Response **201:** `task_warm_up_pool`, `task_warm_up` (array), `dropped_non_pool_tasks` (number).  
+  - `dropped_non_pool_tasks`: count of prior student rows **without** `pool_task_id` removed by sync (same as a full PUT sync from pool ids).
+- **Per-student focus (atomic pool + assign):** `POST /v2/admin/students/<id>/task-focus/create-pool-and-assign` — same body and semantics; returns `task_focus_pool`, `task_focus`, `dropped_non_pool_tasks`.
 - **Focus pool:** `GET/POST/PUT/DELETE /v2/admin/task-focus-pool` (and `.../task-focus-pool/<pool_id>` for PUT/DELETE).
 
 ---
