@@ -568,9 +568,23 @@ def homework_self_rating(session_id):
 
         # Completion depends on self-rating: build report, mark completed, send coach email when job is done.
         session_completed = False
-        if status == STATUS_COMPLETING_FROM_RECORDING_1 and session.get("recording_1_processing_status") == "completed":
+        proc_status = session.get("recording_1_processing_status")
+
+        # If still pending, re-read in case the background job just finished
+        if status == STATUS_COMPLETING_FROM_RECORDING_1 and proc_status == "pending":
+            time.sleep(1)
+            fresh = db.v2_get_session(session_id, user_id)
+            if fresh:
+                proc_status = fresh.get("recording_1_processing_status")
+                status = fresh.get("status") or status
+                logger.info(
+                    "homework_self_rating: re-read session after pending proc_status=%s status=%s session_id=%s",
+                    proc_status, status, session_id,
+                )
+
+        if status == STATUS_COMPLETING_FROM_RECORDING_1 and proc_status == "completed":
             # #region agent log
-            _agent_log("POST self-rating attempting completion", {"session_id": session_id, "recording_1_processing_status": session.get("recording_1_processing_status")}, "H4")
+            _agent_log("POST self-rating attempting completion", {"session_id": session_id, "recording_1_processing_status": proc_status}, "H4")
             # #endregion
             payload_out = complete_session_recording_1_only(
                 session_id,
@@ -585,8 +599,13 @@ def homework_self_rating(session_id):
             # #region agent log
             _agent_log("POST self-rating completion result", {"session_id": session_id, "session_completed": session_completed}, "H4")
             # #endregion
-        elif status == STATUS_COMPLETING_FROM_RECORDING_1 and session.get("recording_1_processing_status") == "failed":
-            # Recovery: job failed; give the user a completed session with a minimal report.
+        elif status == STATUS_COMPLETING_FROM_RECORDING_1 and proc_status in ("failed", "pending"):
+            # Recovery: job failed or was lost (pending after re-read = process restart lost the job).
+            # Give the user a completed session with a minimal report so they're not stuck.
+            logger.warning(
+                "homework_self_rating: proc_status=%s at self-rating time, running minimal fallback session_id=%s",
+                proc_status, session_id,
+            )
             try:
                 if minimal_complete_and_notify(
                     session_id,
@@ -1124,10 +1143,10 @@ def homework_get_report(session_id):
                         # #endregion
                 except Exception as fallback_err:
                     logger.warning("homework_get_report: fallback completion failed: %s", fallback_err)
-            elif session.get("status") == STATUS_COMPLETING_FROM_RECORDING_1 and session.get("recording_1_processing_status") == "failed":
-                # Recovery: job failed and its own minimal_complete_and_notify may also have failed.
+            elif session.get("status") == STATUS_COMPLETING_FROM_RECORDING_1 and session.get("recording_1_processing_status") in ("failed", "pending"):
+                # Recovery: job failed or was lost (pending = process restart lost the in-memory queue).
                 # Polling GET report is a second-chance to complete the session so the user isn't stuck forever.
-                _agent_log("GET report running minimal fallback for failed job", {"session_id": session_id}, "H2")
+                _agent_log("GET report running minimal fallback for %s job" % session.get("recording_1_processing_status"), {"session_id": session_id}, "H2")
                 try:
                     if minimal_complete_and_notify(
                         session_id,
@@ -1135,7 +1154,7 @@ def homework_get_report(session_id):
                         preferred_student_email=preferred_student_email,
                     ):
                         session = db.v2_get_session(session_id, user_id)
-                        logger.info("homework_get_report: minimal fallback completion ran session_id=%s", session_id)
+                        logger.info("homework_get_report: minimal fallback completion ran (proc_status=%s) session_id=%s", session.get("recording_1_processing_status"), session_id)
                 except Exception as fallback_err:
                     logger.warning("homework_get_report: minimal fallback completion failed: %s", fallback_err)
             if session.get("status") != STATUS_COMPLETED:
