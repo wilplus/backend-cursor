@@ -1715,12 +1715,14 @@ class DatabaseService:
                 logger.debug("v2_get_admin_measured_metrics_snapshot: sniper read failed: %s", e)
 
         try:
+            # Include active/in-progress sessions too. Admin should see recording
+            # metrics soon after upload, not only after session completion.
             sess_res = (
                 self.client.table("v2_sessions")
-                .select("id, completed_at, recording_1_id, recording_2_id")
+                .select("id, created_at, completed_at, recording_1_id, recording_2_id")
                 .eq("user_id", user_id)
-                .order("completed_at", desc=True)
-                .limit(40)
+                .order("created_at", desc=True)
+                .limit(60)
                 .execute()
             )
             for s in sess_res.data or []:
