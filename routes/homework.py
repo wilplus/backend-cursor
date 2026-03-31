@@ -563,6 +563,12 @@ def homework_self_rating(session_id):
             db.v2_update_session(session_id, user_id, {
                 "self_rating_submitted_at": utc_now_iso()
             })
+            # Re-fetch session so recording_1_processing_status reflects the latest DB state.
+            # Closes the race window where the background job finishes between the initial session
+            # read above and saving self_rating_submitted_at: without this, session still holds
+            # the stale "pending" status and the completion check below would be skipped even
+            # though the job already set recording_1_processing_status="completed".
+            session = db.v2_get_session(session_id, user_id) or session
         except Exception as flag_err:
             logger.warning("homework_self_rating: could not set self_rating_submitted_at: %s", flag_err)
 
