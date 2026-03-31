@@ -266,7 +266,10 @@ def _complete_session_from_recording(
     performance_score_end = _compute_performance_score_end(session, session_id, base_score_key, filler_count)
     report_text = _build_session_report(transcript=transcript, wpm=wpm, filler_count=filler_count, metrics=final["metrics"])
 
-    db.v2_append_context_long_entry(session_id, user_id, report_text)
+    try:
+        db.v2_append_context_long_entry(session_id, user_id, report_text)
+    except Exception as ctx_err:
+        logger.warning("_complete_session_from_recording: context_long append failed (non-blocking): %s", ctx_err)
     primary_recording_id = recording_id if recording_count == 1 else (recording_id or session.get("recording_1_id"))
     report_row = db.v2_create_report(session_id, primary_recording_id, report_text)
 
