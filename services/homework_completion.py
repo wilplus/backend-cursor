@@ -144,12 +144,23 @@ def _persist_recording_metrics(recording_id: str, recording: dict, final: dict) 
 
 
 def _compute_performance_score_end(session: dict, session_id: str, base_score_key: str, filler_count: int) -> float:
-    """Clamp performance score; prefer Sniper stage score when available; penalise filler words."""
+    """Compute final performance score.
+
+    Priority:
+    1. Sniper stage_score (real-time metric from the wheel) — this is the primary base.
+    2. Backend-computed performance_score_1 (from WPM/center_hold) — fallback when no sniper data.
+
+    Filler penalty: -3 percentage points per filler word, applied to the base.
+    """
+    # Fallback: backend-computed score from recording_1_job
     performance_score_end = max(0.0, min(1.0, float(session.get(base_score_key) or 0)))
+    score_source = "backend_" + base_score_key
     logger.info(
-        "_compute_performance_score_end: base %s=%s → %.4f session_id=%s",
+        "_compute_performance_score_end: backend %s=%s → %.4f session_id=%s",
         base_score_key, session.get(base_score_key), performance_score_end, session_id,
     )
+
+    # Primary: real-time stage_score from the sniper wheel (written by frontend)
     try:
         sniper = db.get_session_sniper_metrics(session_id)
         logger.info(
@@ -159,15 +170,28 @@ def _compute_performance_score_end(session: dict, session_id: str, base_score_ke
         )
         if sniper and sniper.get("stage_score") is not None:
             raw = float(sniper["stage_score"])
-            performance_score_end = max(0.0, min(1.0, raw / 100.0 if raw > 1.0 else raw))
+            # stage_score is 0-100 from the frontend wheel
+            base_100 = max(0.0, min(100.0, raw if raw > 1.0 else raw * 100.0))
+            score_source = "sniper_stage_score"
+            # Apply filler penalty: -3 points per filler word
+            filler_penalty = 3 * int(filler_count)
+            final_100 = max(0.0, base_100 - filler_penalty)
+            performance_score_end = final_100 / 100.0
             logger.info(
-                "_compute_performance_score_end: using sniper stage_score=%s → %.4f session_id=%s",
-                raw, performance_score_end, session_id,
+                "_compute_performance_score_end: stage_score=%.1f - filler_penalty=%d (fillers=%d) → %.4f session_id=%s",
+                base_100, filler_penalty, filler_count, performance_score_end, session_id,
             )
     except Exception as sniper_err:
         logger.warning("_compute_performance_score_end: sniper read failed: %s session_id=%s", sniper_err, session_id)
+
+    # Hard cap: any fillers → never 100%
     if int(filler_count) > 0 and performance_score_end >= 1.0:
         performance_score_end = 0.99
+
+    logger.info(
+        "_compute_performance_score_end: final=%.4f source=%s session_id=%s",
+        performance_score_end, score_source, session_id,
+    )
     return performance_score_end
 
 
@@ -457,14 +481,16 @@ def minimal_complete_and_notify(
         db.v2_append_context_long_entry(session_id, user_id, report_text)
         report_row = db.v2_create_report(session_id, recording_1_id, report_text)
         completed_at_iso = utc_now_iso()
+        # Start with backend-computed score (may be 0 if job was lost)
         performance_score_end = max(0.0, min(1.0, float(session.get("performance_score_1") or 0)))
         logger.info(
-            "minimal_complete_and_notify: base performance_score_1=%s → performance_score_end=%s session_id=%s",
+            "minimal_complete_and_notify: backend performance_score_1=%s → %.4f session_id=%s",
             session.get("performance_score_1"), performance_score_end, session_id,
         )
         rec = db.get_recording(recording_1_id, user_id)
         filler_data = rec.get("filler_words_count") if isinstance(rec, dict) else {}
         filler_count = int((filler_data or {}).get("total", 0)) if isinstance(filler_data, dict) else 0
+        # Primary: use real-time stage_score from sniper wheel, with filler penalty
         try:
             sniper = db.get_session_sniper_metrics(session_id)
             logger.info(
@@ -474,10 +500,13 @@ def minimal_complete_and_notify(
             )
             if sniper and sniper.get("stage_score") is not None:
                 raw = float(sniper["stage_score"])
-                performance_score_end = max(0.0, min(1.0, raw / 100.0 if raw > 1.0 else raw))
+                base_100 = max(0.0, min(100.0, raw if raw > 1.0 else raw * 100.0))
+                filler_penalty = 3 * int(filler_count)
+                final_100 = max(0.0, base_100 - filler_penalty)
+                performance_score_end = final_100 / 100.0
                 logger.info(
-                    "minimal_complete_and_notify: using sniper stage_score=%s → performance_score_end=%s session_id=%s",
-                    raw, performance_score_end, session_id,
+                    "minimal_complete_and_notify: stage_score=%.1f - filler_penalty=%d → %.4f session_id=%s",
+                    base_100, filler_penalty, performance_score_end, session_id,
                 )
         except Exception as sniper_err:
             logger.warning("minimal_complete_and_notify: sniper read failed: %s session_id=%s", sniper_err, session_id)
