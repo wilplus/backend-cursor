@@ -146,13 +146,26 @@ def _persist_recording_metrics(recording_id: str, recording: dict, final: dict) 
 def _compute_performance_score_end(session: dict, session_id: str, base_score_key: str, filler_count: int) -> float:
     """Clamp performance score; prefer Sniper stage score when available; penalise filler words."""
     performance_score_end = max(0.0, min(1.0, float(session.get(base_score_key) or 0)))
+    logger.info(
+        "_compute_performance_score_end: base %s=%s → %.4f session_id=%s",
+        base_score_key, session.get(base_score_key), performance_score_end, session_id,
+    )
     try:
         sniper = db.get_session_sniper_metrics(session_id)
+        logger.info(
+            "_compute_performance_score_end: sniper row=%s session_id=%s",
+            {k: sniper.get(k) for k in ("stage_score", "wpm")} if sniper else None,
+            session_id,
+        )
         if sniper and sniper.get("stage_score") is not None:
             raw = float(sniper["stage_score"])
             performance_score_end = max(0.0, min(1.0, raw / 100.0 if raw > 1.0 else raw))
+            logger.info(
+                "_compute_performance_score_end: using sniper stage_score=%s → %.4f session_id=%s",
+                raw, performance_score_end, session_id,
+            )
     except Exception as sniper_err:
-        logger.debug("No sniper metrics for session %s: %s", session_id, sniper_err)
+        logger.warning("_compute_performance_score_end: sniper read failed: %s session_id=%s", sniper_err, session_id)
     if int(filler_count) > 0 and performance_score_end >= 1.0:
         performance_score_end = 0.99
     return performance_score_end
@@ -445,16 +458,29 @@ def minimal_complete_and_notify(
         report_row = db.v2_create_report(session_id, recording_1_id, report_text)
         completed_at_iso = utc_now_iso()
         performance_score_end = max(0.0, min(1.0, float(session.get("performance_score_1") or 0)))
+        logger.info(
+            "minimal_complete_and_notify: base performance_score_1=%s → performance_score_end=%s session_id=%s",
+            session.get("performance_score_1"), performance_score_end, session_id,
+        )
         rec = db.get_recording(recording_1_id, user_id)
         filler_data = rec.get("filler_words_count") if isinstance(rec, dict) else {}
         filler_count = int((filler_data or {}).get("total", 0)) if isinstance(filler_data, dict) else 0
         try:
             sniper = db.get_session_sniper_metrics(session_id)
+            logger.info(
+                "minimal_complete_and_notify: sniper row=%s session_id=%s",
+                {k: sniper.get(k) for k in ("stage_score", "wpm", "pause_ms", "voiced_duration_sec")} if sniper else None,
+                session_id,
+            )
             if sniper and sniper.get("stage_score") is not None:
                 raw = float(sniper["stage_score"])
                 performance_score_end = max(0.0, min(1.0, raw / 100.0 if raw > 1.0 else raw))
-        except Exception:
-            pass
+                logger.info(
+                    "minimal_complete_and_notify: using sniper stage_score=%s → performance_score_end=%s session_id=%s",
+                    raw, performance_score_end, session_id,
+                )
+        except Exception as sniper_err:
+            logger.warning("minimal_complete_and_notify: sniper read failed: %s session_id=%s", sniper_err, session_id)
         if int(filler_count) > 0 and performance_score_end >= 1.0:
             performance_score_end = 0.99
         db.v2_update_session(session_id, user_id, {
