@@ -198,7 +198,7 @@ def _process_one(payload: dict):
             "performance_metrics_v2": merged_metrics,
         })
         db.v2_update_session(session_id, user_id, {
-            "performance_score_2": performance_score_2,
+            "score": performance_score_2,
             "recording_2_processing_status": "completed",
         })
 

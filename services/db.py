@@ -1511,7 +1511,7 @@ class DatabaseService:
         # Fetch only the columns we need for this upsert (faster than full session)
         result = (
             self.client.table("v2_sessions")
-            .select("status, performance_score_end, selected_task_id, recording_1_performance_profile")
+            .select("status, score, selected_task_id, recording_1_performance_profile")
             .eq("id", session_id)
             .eq("user_id", user_id)
             .execute()
@@ -1519,14 +1519,20 @@ class DatabaseService:
         session = result.data[0] if result.data else None
         if not session or (session.get("status") or "").strip().lower() != "completed":
             return
-        current_score = session.get("performance_score_end")
+        current_score = session.get("score")
+        if current_score is None:
+            current_score = session.get("performance_score_end")
+        if current_score is None:
+            current_score = session.get("performance_score_1")
+        if current_score is None:
+            current_score = session.get("performance_score_2")
         current_task_id = session.get("selected_task_id")
         current_profile = session.get("recording_1_performance_profile")
 
         # Last 4 OTHER completed sessions (exclude current session_id); include profile for recurring_issues
         result = (
             self.client.table("v2_sessions")
-            .select("performance_score_end, selected_task_id, recording_1_performance_profile")
+            .select("score, selected_task_id, recording_1_performance_profile")
             .eq("user_id", user_id)
             .eq("status", "completed")
             .neq("id", session_id)
@@ -1540,7 +1546,13 @@ class DatabaseService:
         recent_focus_task_ids = []
         last_5_profiles = []
         for row in others:
-            s = row.get("performance_score_end")
+            s = row.get("score")
+            if s is None:
+                s = row.get("performance_score_end")
+            if s is None:
+                s = row.get("performance_score_1")
+            if s is None:
+                s = row.get("performance_score_2")
             if s is not None:
                 try:
                     last_5_scores.append(float(s))
@@ -2769,10 +2781,10 @@ class DatabaseService:
         }
 
     def v2_get_last_homework_performance_score(self, user_id: str):
-        """Last completed homework session's performance_score_end (0-1), or None if no completed session."""
+        """Last completed homework session's canonical score (0-1), or None if no completed session."""
         result = (
             self.client.table("v2_sessions")
-            .select("performance_score_end")
+            .select("score")
             .eq("user_id", user_id)
             .eq("status", "completed")
             .order("created_at", desc=True)
@@ -2781,19 +2793,25 @@ class DatabaseService:
         )
         if not result.data:
             return None
-        score = result.data[0].get("performance_score_end")
+        row = result.data[0]
+        score = row.get("score")
+        if score is None:
+            score = row.get("performance_score_end")
+        if score is None:
+            score = row.get("performance_score_1")
+        if score is None:
+            score = row.get("performance_score_2")
         if score is None:
             return None
         return float(score)
 
     def v2_get_performance_history(self, user_id: str, limit: int = 5) -> List[dict]:
-        """Last N completed homework sessions: session_id, created_at, performance_score_end (0-1). Oldest first for chart S1..SN."""
+        """Last N completed homework sessions: session_id, created_at, score (0-1). Oldest first for chart S1..SN."""
         result = (
             self.client.table("v2_sessions")
-            .select("id, created_at, performance_score_end")
+            .select("id, created_at, score")
             .eq("user_id", user_id)
             .eq("status", "completed")
-            .not_.is_("performance_score_end", "null")
             .order("created_at", desc=True)
             .limit(limit)
             .execute()
@@ -2801,14 +2819,28 @@ class DatabaseService:
         if not result.data:
             return []
         rows = list(reversed(result.data))
-        return [
-            {
-                "session_id": str(r["id"]) if r.get("id") else None,
-                "created_at": r.get("created_at"),
-                "performance_score_end": float(r.get("performance_score_end") or 0),
-            }
-            for r in rows
-        ]
+        out = []
+        for r in rows:
+            s = r.get("score")
+            if s is None:
+                s = r.get("performance_score_end")
+            if s is None:
+                s = r.get("performance_score_1")
+            if s is None:
+                s = r.get("performance_score_2")
+            if s is None:
+                continue
+            s01 = float(s or 0)
+            out.append(
+                {
+                    "session_id": str(r["id"]) if r.get("id") else None,
+                    "created_at": r.get("created_at"),
+                    "score": s01,
+                    # Backward compatibility for existing callers.
+                    "performance_score_end": s01,
+                }
+            )
+        return out
 
     def v2_get_assigned_warm_up_task(self, user_id: str):
         """
@@ -3240,7 +3272,7 @@ class DatabaseService:
         select_columns = (
             "id, created_at, completed_at, status, recording_1_id, recording_2_id, report_id, "
             "report_grade, student_completion_email_sent_at, "
-            "performance_score_1, performance_score_2, performance_score_end, task_score, "
+            "score, task_score, "
             "question_1_score, question_2_score, question_3_score, "
             "realtime_level_at_session, realtime_step_at_session, "
             "ai_task_score, ai_scoring_justification, coach_override_score"
@@ -3249,7 +3281,7 @@ class DatabaseService:
             "id", "created_at", "completed_at", "status",
             "recording_1_id", "recording_2_id", "report_id", "report_grade",
             "student_completion_email_sent_at",
-            "performance_score_1", "performance_score_2", "performance_score_end", "task_score",
+            "score", "task_score",
             "question_1_score", "question_2_score", "question_3_score",
             "realtime_level_at_session", "realtime_step_at_session",
             "ai_task_score", "ai_scoring_justification", "coach_override_score",
@@ -3268,7 +3300,7 @@ class DatabaseService:
             if "42703" in msg or "does not exist" in msg or "undefined_column" in msg:
                 # Columns may not exist yet if migration hasn't run
                 missing_cols = []
-                for col in ("task_score", "ai_task_score", "ai_scoring_justification", "coach_override_score"):
+                for col in ("score", "task_score", "ai_task_score", "ai_scoring_justification", "coach_override_score"):
                     if col in msg:
                         missing_cols.append(col)
                 if not missing_cols:

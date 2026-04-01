@@ -283,7 +283,7 @@ def _process_one(payload: dict):
             "performance_metrics_v2": merged_metrics,
         })
         db.v2_update_session(session_id, user_id, {
-            "performance_score_1": performance_score_1,
+            "score": performance_score_1,
             "context_short": context_short,
             "selected_task_id": focus_task["id"] if focus_task else None,
             "recording_1_processing_status": "completed",

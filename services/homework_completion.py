@@ -144,45 +144,19 @@ def _persist_recording_metrics(recording_id: str, recording: dict, final: dict) 
 
 
 def _compute_performance_score_end(session: dict, session_id: str, base_score_key: str, filler_count: int) -> float:
-    """Compute final performance score.
+    """Final session score (0–1): same as the backend recording job score (performance_score_1 or _2).
 
-    Priority:
-    1. Sniper stage_score (real-time metric from the wheel) — this is the primary base.
-    2. Backend-computed performance_score_1 (from WPM/center_hold) — fallback when no sniper data.
-
-    Filler penalty: -3 percentage points per filler word, applied to the base.
+    Single-recording homework flow uses only this; we do not override with Sniper ``stage_score`` (often 0 or unset).
     """
-    # Fallback: backend-computed score from recording_1_job
     performance_score_end = max(0.0, min(1.0, float(session.get(base_score_key) or 0)))
     score_source = "backend_" + base_score_key
     logger.info(
-        "_compute_performance_score_end: backend %s=%s → %.4f session_id=%s",
-        base_score_key, session.get(base_score_key), performance_score_end, session_id,
+        "_compute_performance_score_end: %s=%s → %.4f session_id=%s",
+        base_score_key,
+        session.get(base_score_key),
+        performance_score_end,
+        session_id,
     )
-
-    # Primary: real-time stage_score from the sniper wheel (written by frontend)
-    try:
-        sniper = db.get_session_sniper_metrics(session_id)
-        logger.info(
-            "_compute_performance_score_end: sniper row=%s session_id=%s",
-            {k: sniper.get(k) for k in ("stage_score", "wpm")} if sniper else None,
-            session_id,
-        )
-        if sniper and sniper.get("stage_score") is not None:
-            raw = float(sniper["stage_score"])
-            # stage_score is 0-100 from the frontend wheel
-            base_100 = max(0.0, min(100.0, raw if raw > 1.0 else raw * 100.0))
-            score_source = "sniper_stage_score"
-            # Apply filler penalty: -3 points per filler word
-            filler_penalty = 3 * int(filler_count)
-            final_100 = max(0.0, base_100 - filler_penalty)
-            performance_score_end = final_100 / 100.0
-            logger.info(
-                "_compute_performance_score_end: stage_score=%.1f - filler_penalty=%d (fillers=%d) → %.4f session_id=%s",
-                base_100, filler_penalty, filler_count, performance_score_end, session_id,
-            )
-    except Exception as sniper_err:
-        logger.warning("_compute_performance_score_end: sniper read failed: %s session_id=%s", sniper_err, session_id)
 
     # Hard cap: any fillers → never 100%
     if int(filler_count) > 0 and performance_score_end >= 1.0:
@@ -190,7 +164,9 @@ def _compute_performance_score_end(session: dict, session_id: str, base_score_ke
 
     logger.info(
         "_compute_performance_score_end: final=%.4f source=%s session_id=%s",
-        performance_score_end, score_source, session_id,
+        performance_score_end,
+        score_source,
+        session_id,
     )
     return performance_score_end
 
@@ -213,7 +189,7 @@ def _run_optional_enrichment(
         history_scores = []
         try:
             history_rows = db.v2_get_performance_history(user_id, limit=3)
-            history_scores = [float(r.get("performance_score_end") or 0) for r in (history_rows or [])]
+            history_scores = [float(r.get("score", r.get("performance_score_end", 0)) or 0) for r in (history_rows or [])]
         except Exception as hist_err:
             logger.debug("Coach insight history unavailable session_id=%s: %s", session_id, hist_err)
         speaker_profile_context = ""
@@ -392,7 +368,7 @@ def _complete_session_from_recording(
     db.v2_update_session(session_id, user_id, {
         "post_answers": post_answers,
         "report_id": report_row["id"] if report_row else None,
-        "performance_score_end": performance_score_end,
+        "score": performance_score_end,
         "status": STATUS_COMPLETED,
         "completed_at": completed_at_iso,
         "question_1_analysis": "",
@@ -448,6 +424,8 @@ def _complete_session_from_recording(
 
     result = {
         "report_text": report_text,
+        "score": performance_score_end,
+        # Backward compatibility for older clients.
         "performance_score_end": performance_score_end,
         "recording_count": recording_count,
         "performance_metrics": final["metrics"],
@@ -495,7 +473,7 @@ def complete_session_recording_1_only(
         session_id=session_id,
         user_id=user_id,
         recording_id=recording_1_id,
-        base_score_key="performance_score_1",
+        base_score_key="score",
         preferred_student_email=preferred_student_email,
         recording_count=1,
     )
@@ -533,7 +511,7 @@ def complete_session_recording_2_only(
         session_id=session_id,
         user_id=user_id,
         recording_id=recording_2_id,
-        base_score_key="performance_score_2",
+        base_score_key="score",
         preferred_student_email=preferred_student_email,
         recording_count=2,
     )
@@ -564,40 +542,23 @@ def minimal_complete_and_notify(
         report_row = db.v2_create_report(session_id, recording_1_id, report_text)
         completed_at_iso = utc_now_iso()
         # Start with backend-computed score (may be 0 if job was lost)
-        performance_score_end = max(0.0, min(1.0, float(session.get("performance_score_1") or 0)))
+        performance_score_end = max(
+            0.0,
+            min(1.0, float(session.get("score") or session.get("performance_score_1") or 0)),
+        )
         logger.info(
-            "minimal_complete_and_notify: backend performance_score_1=%s → %.4f session_id=%s",
-            session.get("performance_score_1"), performance_score_end, session_id,
+            "minimal_complete_and_notify: backend score=%s → %.4f session_id=%s",
+            session.get("score"), performance_score_end, session_id,
         )
         rec = db.get_recording(recording_1_id, user_id)
         filler_data = rec.get("filler_words_count") if isinstance(rec, dict) else {}
         filler_count = int((filler_data or {}).get("total", 0)) if isinstance(filler_data, dict) else 0
-        # Primary: use real-time stage_score from sniper wheel, with filler penalty
-        try:
-            sniper = db.get_session_sniper_metrics(session_id)
-            logger.info(
-                "minimal_complete_and_notify: sniper row=%s session_id=%s",
-                {k: sniper.get(k) for k in ("stage_score", "wpm", "pause_ms", "voiced_duration_sec")} if sniper else None,
-                session_id,
-            )
-            if sniper and sniper.get("stage_score") is not None:
-                raw = float(sniper["stage_score"])
-                base_100 = max(0.0, min(100.0, raw if raw > 1.0 else raw * 100.0))
-                filler_penalty = 3 * int(filler_count)
-                final_100 = max(0.0, base_100 - filler_penalty)
-                performance_score_end = final_100 / 100.0
-                logger.info(
-                    "minimal_complete_and_notify: stage_score=%.1f - filler_penalty=%d → %.4f session_id=%s",
-                    base_100, filler_penalty, performance_score_end, session_id,
-                )
-        except Exception as sniper_err:
-            logger.warning("minimal_complete_and_notify: sniper read failed: %s session_id=%s", sniper_err, session_id)
         if int(filler_count) > 0 and performance_score_end >= 1.0:
             performance_score_end = 0.99
         db.v2_update_session(session_id, user_id, {
             "post_answers": [],
             "report_id": report_row["id"] if report_row else None,
-            "performance_score_end": performance_score_end,
+            "score": performance_score_end,
             "status": STATUS_COMPLETED,
             "completed_at": completed_at_iso,
             "recording_1_processing_status": "completed",
@@ -654,7 +615,7 @@ def ensure_student_completion_email(
             pass
         logger.warning("ensure_student_completion_email: no email for user_id=%s session_id=%s", user_id, session_id)
         return False
-    score_end = float(session.get("performance_score_end") or 0.0)
+    score_end = float(session.get("score") or session.get("performance_score_end") or 0.0)
     report_text = _session_report_text(session)
     try:
         result = email_service.send_lesson_complete_to_student(

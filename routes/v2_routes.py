@@ -706,7 +706,11 @@ def v2_admin_send_completion_email(user_id):
         if not student_email:
             return jsonify({"code": "NO_EMAIL", "error": "Student has no email in auth"}), 400
         last_completed = db.v2_get_last_completed_session(user_id) or {}
-        perf_end = last_completed.get("performance_score_end")
+        perf_end = (
+            last_completed.get("score")
+            if last_completed.get("score") is not None
+            else last_completed.get("performance_score_end")
+        )
         last_report = db.v2_get_last_report_for_user(user_id) or {}
         report_preview = (last_report.get("report_preview") or last_report.get("report_text") or "")
         result = email_service.send_lesson_complete_to_student(
@@ -970,7 +974,27 @@ def v2_admin_student_session_report_get(user_id, session_id):
                 pass
 
         has_rec_2 = bool(session.get("recording_2_id"))
-        perf_end = float(session.get("performance_score_end") or 0)
+        perf_end = float(session.get("score") or 0)
+        if perf_end <= 0:
+            perf_end = float(
+                session.get("performance_score_end")
+                or session.get("performance_score_1")
+                or session.get("performance_score_2")
+                or 0
+            )
+        if perf_end > 0 and (session.get("score") is None or float(session.get("score") or 0) <= 0):
+            perf_end = max(0.0, min(1.0, perf_end))
+            try:
+                db.v2_update_session(session_id, user_id, {"score": perf_end})
+                logger.info(
+                    "admin GET report: healed score → %.3f session_id=%s",
+                    perf_end,
+                    session_id,
+                )
+            except Exception as heal_err:
+                logger.warning("admin GET report: could not heal score: %s", heal_err)
+        else:
+            perf_end = max(0.0, min(1.0, perf_end))
         filler_count_for_cap = 0
         try:
             cap_recording_id = session.get("recording_2_id") or session.get("recording_1_id")
@@ -985,11 +1009,6 @@ def v2_admin_student_session_report_get(user_id, session_id):
         session_sniper = None
         try:
             session_sniper = db.get_session_sniper_metrics(session_id)
-            if session_sniper and session_sniper.get("stage_score") is not None:
-                raw = float(session_sniper["stage_score"])
-                score_for_display_100 = round(raw) if raw > 1 else round(raw * 100)
-                score_for_display_100 = max(0, min(100, score_for_display_100))
-                perf_end = score_for_display_100 / 100.0
         except Exception:
             pass
         if filler_count_for_cap > 0 and score_for_display_100 >= 100:
@@ -999,7 +1018,7 @@ def v2_admin_student_session_report_get(user_id, session_id):
         performance_history = []
         for row in history_rows:
             created_at = row.get("created_at")
-            score_01 = row.get("performance_score_end", 0) or 0
+            score_01 = row.get("score", row.get("performance_score_end", 0)) or 0
             row_session_id = row.get("session_id")
             bar_score = score_for_display_100 if row_session_id == session_id else round(float(score_01) * 100)
             if isinstance(created_at, str) and len(created_at) >= 10:
@@ -1053,6 +1072,7 @@ def v2_admin_student_session_report_get(user_id, session_id):
             "report_text": report_text,
             # Backward-compat alias: some admin UIs still read scores.overall.
             "scores": {"overall": score_for_display_100},
+            "score": perf_end,
             "performance_score_end": perf_end,
             "recording_count": 2 if has_rec_2 else 1,
             "final_recording": final_recording,
@@ -2287,7 +2307,7 @@ def _build_student_context_for_ai(user_id: str) -> str:
         s_lines = []
         for s in sessions[:5]:
             date = s.get("created_at", "")[:10]
-            score = s.get("performance_score_end")
+            score = s.get("score", s.get("performance_score_end"))
             status = s.get("status", "")
             task = s.get("selected_task_title") or s.get("selected_task_id") or ""
             preview = s.get("recording_preview") or {}

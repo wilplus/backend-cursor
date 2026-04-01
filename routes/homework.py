@@ -1180,9 +1180,28 @@ def homework_get_report(session_id):
                 pass
 
         has_rec_2 = bool(session.get("recording_2_id"))
-        perf_1 = float(session.get("performance_score_1") or 0)
-        perf_2 = float(session.get("performance_score_2") or 0) if has_rec_2 else perf_1
-        perf_end = float(session.get("performance_score_end") or 0)
+        perf_end = float(session.get("score") or 0)
+        # Legacy: old sessions may have performance_score_end/performance_score_1 but no score.
+        if perf_end <= 0:
+            perf_end = float(
+                session.get("performance_score_end")
+                or session.get("performance_score_1")
+                or session.get("performance_score_2")
+                or 0
+            )
+        if perf_end > 0 and (session.get("score") is None or float(session.get("score") or 0) <= 0):
+            perf_end = max(0.0, min(1.0, perf_end))
+            try:
+                db.v2_update_session(session_id, user_id, {"score": perf_end})
+                logger.info(
+                    "homework_get_report: healed score → %.3f session_id=%s",
+                    perf_end,
+                    session_id,
+                )
+            except Exception as heal_err:
+                logger.warning("homework_get_report: could not heal score: %s", heal_err)
+        else:
+            perf_end = max(0.0, min(1.0, perf_end))
         filler_count_for_cap = 0
         try:
             cap_recording_id = session.get("recording_2_id") or session.get("recording_1_id")
@@ -1193,43 +1212,24 @@ def homework_get_report(session_id):
                     filler_count_for_cap = int(cap_fillers.get("total", 0) or 0)
         except Exception:
             filler_count_for_cap = 0
-        # Prefer Sniper (Voice Alignment) as the single display score when available
         score_for_display_100 = round(perf_end * 100)
         session_sniper = None
         try:
             session_sniper = db.get_session_sniper_metrics(session_id)
-            if session_sniper and session_sniper.get("stage_score") is not None:
-                raw = float(session_sniper["stage_score"])
-                score_for_display_100 = round(raw) if raw > 1 else round(raw * 100)
-                score_for_display_100 = max(0, min(100, score_for_display_100))
-                new_perf_end = score_for_display_100 / 100.0
-                # Self-heal: if stored performance_score_end differs significantly from sniper score
-                # (race condition: minimal_complete_and_notify ran before sniper metrics reached DB),
-                # update the stored value so future performance_history queries show the correct score.
-                if abs(perf_end - new_perf_end) > 0.02:
-                    try:
-                        db.v2_update_session(session_id, user_id, {"performance_score_end": new_perf_end})
-                        logger.info(
-                            "homework_get_report: corrected performance_score_end %.3f→%.3f session_id=%s",
-                            perf_end, new_perf_end, session_id,
-                        )
-                    except Exception as heal_err:
-                        logger.warning("homework_get_report: could not correct performance_score_end: %s", heal_err)
-                perf_end = new_perf_end
         except Exception:
             pass
         if filler_count_for_cap > 0 and score_for_display_100 >= 100:
             score_for_display_100 = 99
             perf_end = min(perf_end, 0.99)
-        # Frontend: use score_for_display (Sniper Voice Alignment when available) for "your result" and the chart.
+        # Display score matches stored performance_score_end (recording job); Sniper stage_score is diagnostic only.
 
         history_rows = db.v2_get_performance_history(user_id, limit=5)
         performance_history = []
         for row in history_rows:
             created_at = row.get("created_at")
-            score_01 = row.get("performance_score_end", 0) or 0
+            score_01 = row.get("score", row.get("performance_score_end", 0)) or 0
             row_session_id = row.get("session_id")
-            # Use Sniper score for current session so chart matches Voice Alignment
+            # Current session bar uses the same score as the report header (recording-based end score).
             if row_session_id == session_id:
                 bar_score = score_for_display_100
             else:
@@ -1329,11 +1329,12 @@ def homework_get_report(session_id):
             "report_text": report_text,
             # Backward-compat alias: some UIs still read scores.overall.
             "scores": {"overall": score_for_display_100},
+            "score": perf_end,
             "performance_score_end": perf_end,
             "recording_count": 2 if has_rec_2 else 1,
             "final_recording": final_recording,
             "performance_history": performance_history,
-            # Single canonical score (0-100): Sniper Voice Alignment when available. Same as last bar on chart.
+            # Single canonical score (0-100): performance_score_end (recording job), same as last bar on chart.
             "score_for_display": score_for_display_100,
             "report_grade": session.get("report_grade"),
             "report_comment": (session.get("report_comment") or "").strip() or None,
