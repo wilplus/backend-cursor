@@ -570,17 +570,27 @@ def homework_self_rating(session_id):
         session_completed = False
         proc_status = session.get("recording_1_processing_status")
 
-        # If still pending, re-read in case the background job just finished
+        # Wait for recording_1 job when still pending (avoid completing with score=0 while Whisper/scoring runs).
         if status == STATUS_COMPLETING_FROM_RECORDING_1 and proc_status == "pending":
-            time.sleep(1)
-            fresh = db.v2_get_session(session_id, user_id)
-            if fresh:
+            max_wait_s = 40
+            interval_s = 1.0
+            deadline = time.time() + max_wait_s
+            while time.time() < deadline:
+                time.sleep(interval_s)
+                fresh = db.v2_get_session(session_id, user_id)
+                if not fresh:
+                    proc_status = "failed"
+                    break
                 proc_status = fresh.get("recording_1_processing_status")
                 status = fresh.get("status") or status
-                logger.info(
-                    "homework_self_rating: re-read session after pending proc_status=%s status=%s session_id=%s",
-                    proc_status, status, session_id,
-                )
+                if proc_status != "pending":
+                    break
+            logger.info(
+                "homework_self_rating: after wait proc_status=%s status=%s session_id=%s",
+                proc_status,
+                status,
+                session_id,
+            )
 
         if status == STATUS_COMPLETING_FROM_RECORDING_1 and proc_status == "completed":
             # #region agent log

@@ -365,6 +365,18 @@ def _complete_session_from_recording(
     _persist_recording_metrics(recording_id, recording, final)
 
     performance_score_end = _compute_performance_score_end(session, session_id, base_score_key, filler_count)
+    # Do not overwrite a higher score the recording job may have written after our session snapshot.
+    fresh_now = db.v2_get_session(session_id, user_id) or {}
+    score_candidates = [performance_score_end]
+    for k in ("score", "performance_score_1", "performance_score_2"):
+        v = fresh_now.get(k)
+        if v is not None:
+            try:
+                score_candidates.append(float(v))
+            except (TypeError, ValueError):
+                pass
+    performance_score_end = max(0.0, min(1.0, max(score_candidates)))
+
     report_text = _build_session_report(transcript=transcript, wpm=wpm, filler_count=filler_count, metrics=final["metrics"])
 
     try:
@@ -571,6 +583,15 @@ def minimal_complete_and_notify(
         filler_count = int((filler_data or {}).get("total", 0)) if isinstance(filler_data, dict) else 0
         if int(filler_count) > 0 and performance_score_end >= 1.0:
             performance_score_end = 0.99
+        fresh_now = db.v2_get_session(session_id, user_id) or {}
+        for k in ("score", "performance_score_1"):
+            v = fresh_now.get(k)
+            if v is not None:
+                try:
+                    performance_score_end = max(performance_score_end, float(v))
+                except (TypeError, ValueError):
+                    pass
+        performance_score_end = max(0.0, min(1.0, performance_score_end))
         db.v2_update_session(session_id, user_id, {
             "post_answers": [],
             "report_id": report_row["id"] if report_row else None,
