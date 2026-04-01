@@ -185,7 +185,20 @@ class DatabaseService:
         result = query.execute()
         
         return result.data[0] if result.data else None
-    
+
+    def get_recording_for_homework_session(self, recording_id, user_id: str, session: dict):
+        """Load recording for report UI: prefer owner match, else id-only if linked from session."""
+        if not recording_id or not session:
+            return None
+        rec = self.get_recording(recording_id, user_id)
+        if rec:
+            return rec
+        rid = str(recording_id)
+        allowed = {str(x) for x in (session.get("recording_1_id"), session.get("recording_2_id")) if x}
+        if rid not in allowed:
+            return None
+        return self.get_recording(recording_id, None)
+
     def get_user_recordings(self, user_id: str, limit: int = 10, offset: int = 0):
         """Get recordings for a user with pagination"""
         # Get paginated recordings with count

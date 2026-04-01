@@ -1207,7 +1207,7 @@ def homework_get_report(session_id):
             rid = session.get("recording_2_id") or session.get("recording_1_id")
             if rid:
                 try:
-                    rec_for_score = db.get_recording(rid, user_id)
+                    rec_for_score = db.get_recording_for_homework_session(rid, user_id, session)
                     recovered = score_01_from_recording_row(rec_for_score or {})
                     if recovered is not None and recovered > 0:
                         perf_end = recovered
@@ -1233,7 +1233,7 @@ def homework_get_report(session_id):
         try:
             cap_recording_id = session.get("recording_2_id") or session.get("recording_1_id")
             if cap_recording_id:
-                cap_rec = db.get_recording(cap_recording_id, user_id)
+                cap_rec = db.get_recording_for_homework_session(cap_recording_id, user_id, session)
                 cap_fillers = cap_rec.get("filler_words_count") if isinstance(cap_rec, dict) else {}
                 if isinstance(cap_fillers, dict):
                     filler_count_for_cap = int(cap_fillers.get("total", 0) or 0)
@@ -1277,7 +1277,7 @@ def homework_get_report(session_id):
         final_recording = {"id": None, "audio_url": None}
         recording_payload = None  # full transcript, fillers, playback for report view
         if display_recording_id:
-            rec = db.get_recording(display_recording_id, user_id)
+            rec = db.get_recording_for_homework_session(display_recording_id, user_id, session)
             if rec:
                 storage_path = (rec.get("storage_path") or "").strip()
                 audio_url = None
@@ -1316,10 +1316,12 @@ def homework_get_report(session_id):
                 filler_data = rec.get("filler_words_count") or {}
                 if not isinstance(filler_data, dict):
                     filler_data = {}
+                tt = (rec.get("transcription_text") or "").strip()
                 recording_payload = {
                     "id": str(display_recording_id) if display_recording_id is not None else None,
                     "audio_url": audio_url if (audio_url is None or isinstance(audio_url, str)) else str(audio_url),
-                    "transcription_text": (rec.get("transcription_text") or "").strip(),
+                    "transcription_text": tt,
+                    "transcript": tt,
                     "filler_words_count": {
                         "total": int(filler_data.get("total", 0) or 0),
                         "breakdown": dict(filler_data.get("breakdown") or {}),
@@ -1373,6 +1375,9 @@ def homework_get_report(session_id):
             payload["sniper_metrics"] = sniper_metrics
         if recording_payload is not None:
             payload["recording"] = recording_payload
+            _tt = recording_payload.get("transcription_text") or recording_payload.get("transcript") or ""
+            payload["transcription_text"] = _tt
+            payload["transcript"] = _tt
         context_short = (session.get("context_short") or "").strip()
         if context_short:
             payload["context_short"] = context_short

@@ -344,7 +344,7 @@ def _complete_session_from_recording(
     send coach email, run optional enrichment. Used by both recording-1 and recording-2 paths.
     Returns the result dict.
     """
-    recording = db.get_recording(recording_id, user_id)
+    recording = db.get_recording_for_homework_session(recording_id, user_id, session)
     if not recording:
         logger.warning("_complete_session_from_recording: recording not found recording_id=%s", recording_id)
         return None
@@ -553,7 +553,7 @@ def minimal_complete_and_notify(
         db.v2_append_context_long_entry(session_id, user_id, report_text)
         report_row = db.v2_create_report(session_id, recording_1_id, report_text)
         completed_at_iso = utc_now_iso()
-        rec = db.get_recording(recording_1_id, user_id)
+        rec = db.get_recording_for_homework_session(recording_1_id, user_id, session)
         # Start with session score; recover from recording job debug if session row never got score.
         performance_score_end = max(
             0.0,
