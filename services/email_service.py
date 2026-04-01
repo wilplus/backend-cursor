@@ -205,13 +205,13 @@ class EmailService:
         session_id: str,
         report_preview: str = "",
         student_email: str | None = None,
-        performance_score_end: float | None = None,
+        score: float | None = None,
         student_name: str = "",
     ) -> dict:
         """
         Notify the coach (ADMIN_EMAIL) that a student completed a homework lesson.
-        performance_score_end is the single end score (0-1) stored on the session — Sniper Voice Alignment
-        when available — the only score measured and saved. Shown in email as "End score: X%".
+        score is the canonical end score (0-1) stored on the session.
+        Shown in email as "End score: X%".
         Returns dict with status "sent" | "pending" (emails off) | "failed".
         """
         if not config.SEND_EMAILS:
@@ -231,8 +231,8 @@ class EmailService:
         if preview and len(preview) > 280:
             preview = preview[:280].rstrip() + "..."
         score_str = ""
-        if performance_score_end is not None:
-            pct = round(float(performance_score_end) * 100)
+        if score is not None:
+            pct = round(float(score) * 100)
             score_str = f"Final performance score: {pct}%."
         who = (student_email or user_id).strip() or user_id
 
@@ -245,7 +245,7 @@ class EmailService:
 
         html = build_admin_homework_completed_email_html(
             student_email=who,
-            score=performance_score_end,
+            score=score,
             profile_url=admin_student_url,
             transcript_excerpt=preview or report_preview or "",
             pace_wpm=None,
@@ -335,7 +335,7 @@ class EmailService:
         self,
         to_email: str,
         frontend_url: str,
-        performance_score_end: float | None = None,
+        score: float | None = None,
         report_preview: str = "",
         student_name: str = "there",
         session_id: str = "",
@@ -380,7 +380,7 @@ class EmailService:
             filler_breakdown = "see full report"
         html = build_student_homework_submitted_email_html(
             student_first_name=student_name or "there",
-            score=performance_score_end,
+            score=score,
             recording_url=report_link,
             transcript_excerpt=preview,
             filler_total=filler_total,
@@ -394,8 +394,8 @@ class EmailService:
 
         subject = "Your lesson report is ready"
         text = "Your lesson is complete and your report is ready.\n\n"
-        if performance_score_end is not None:
-            pct = round(float(performance_score_end) * 100)
+        if score is not None:
+            pct = round(float(score) * 100)
             text += f"Your final performance score is {pct}%.\n\n"
         if preview:
             text += f"Report preview: {preview}\n\n"

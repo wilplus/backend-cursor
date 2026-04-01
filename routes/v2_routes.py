@@ -707,17 +707,13 @@ def v2_admin_send_completion_email(user_id):
         if not student_email:
             return jsonify({"code": "NO_EMAIL", "error": "Student has no email in auth"}), 400
         last_completed = db.v2_get_last_completed_session(user_id) or {}
-        perf_end = (
-            last_completed.get("score")
-            if last_completed.get("score") is not None
-            else last_completed.get("performance_score_end")
-        )
+        perf_end = last_completed.get("score")
         last_report = db.v2_get_last_report_for_user(user_id) or {}
         report_preview = (last_report.get("report_preview") or last_report.get("report_text") or "")
         result = email_service.send_lesson_complete_to_student(
             to_email=student_email,
             frontend_url=config.FRONTEND_URL,
-            performance_score_end=perf_end,
+            score=perf_end,
             report_preview=report_preview,
             student_name=student_email.split("@")[0] if "@" in student_email else "there",
         )
@@ -976,13 +972,6 @@ def v2_admin_student_session_report_get(user_id, session_id):
 
         has_rec_2 = bool(session.get("recording_2_id"))
         perf_end = float(session.get("score") or 0)
-        if perf_end <= 0:
-            perf_end = float(
-                session.get("performance_score_end")
-                or session.get("performance_score_1")
-                or session.get("performance_score_2")
-                or 0
-            )
         if perf_end > 0 and (session.get("score") is None or float(session.get("score") or 0) <= 0):
             perf_end = max(0.0, min(1.0, perf_end))
             try:
@@ -1046,7 +1035,7 @@ def v2_admin_student_session_report_get(user_id, session_id):
         performance_history = []
         for row in history_rows:
             created_at = row.get("created_at")
-            score_01 = row.get("score", row.get("performance_score_end", 0)) or 0
+            score_01 = row.get("score", 0) or 0
             row_session_id = row.get("session_id")
             bar_score = score_for_display_100 if row_session_id == session_id else round(float(score_01) * 100)
             if isinstance(created_at, str) and len(created_at) >= 10:
@@ -2382,7 +2371,7 @@ def _build_student_context_for_ai(user_id: str) -> str:
         s_lines = []
         for s in sessions[:5]:
             date = s.get("created_at", "")[:10]
-            score = s.get("score", s.get("performance_score_end"))
+            score = s.get("score")
             status = s.get("status", "")
             task = s.get("selected_task_title") or s.get("selected_task_id") or ""
             preview = s.get("recording_preview") or {}

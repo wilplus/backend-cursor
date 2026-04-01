@@ -1533,12 +1533,6 @@ class DatabaseService:
         if not session or (session.get("status") or "").strip().lower() != "completed":
             return
         current_score = session.get("score")
-        if current_score is None:
-            current_score = session.get("performance_score_end")
-        if current_score is None:
-            current_score = session.get("performance_score_1")
-        if current_score is None:
-            current_score = session.get("performance_score_2")
         current_task_id = session.get("selected_task_id")
         current_profile = session.get("recording_1_performance_profile")
 
@@ -1560,12 +1554,6 @@ class DatabaseService:
         last_5_profiles = []
         for row in others:
             s = row.get("score")
-            if s is None:
-                s = row.get("performance_score_end")
-            if s is None:
-                s = row.get("performance_score_1")
-            if s is None:
-                s = row.get("performance_score_2")
             if s is not None:
                 try:
                     last_5_scores.append(float(s))
@@ -2239,7 +2227,7 @@ class DatabaseService:
         user_id: str,
         recording_wpm: Optional[float] = None,
         recording_duration_sec: Optional[float] = None,
-        performance_score_end: Optional[float] = None,
+        score: Optional[float] = None,
     ):
         """
         After session completes: merge session_sniper_metrics + recording into user_sniper_profile (EMA).
@@ -2250,8 +2238,8 @@ class DatabaseService:
         stage_score_100 = None
         if metrics and metrics.get("stage_score") is not None:
             stage_score_100 = float(metrics["stage_score"])
-        elif performance_score_end is not None:
-            stage_score_100 = float(performance_score_end) * 100.0
+        elif score is not None:
+            stage_score_100 = float(score) * 100.0
         voiced_sec = (metrics or {}).get("voiced_duration_sec")
         duration_sec = voiced_sec if voiced_sec is not None else recording_duration_sec
         if stage_score_100 is None or stage_score_100 < 60:
@@ -2300,10 +2288,10 @@ class DatabaseService:
             baseline_energy_ratio=new_energy_ratio,
         )
 
-    def v2_select_student_focus_task_for_score(self, user_id: str, performance_score_1: float):
+    def v2_select_student_focus_task_for_score(self, user_id: str, score: float):
         """
         Per-student focus task for homework flow. Returns one task from v2_focus_tasks where
-        max_performance_score >= performance_score_1 (student's score within task range).
+        max_performance_score >= score (student's score within task range).
         Excludes tasks used in recent completed sessions (anti-repeat): uses coaching memory
         recent_focus_task_ids (up to 5) when available, else last 2 sessions. Order by order_index;
         if multiple eligible, pick first. Returns normalized dict { id, title, prompt_text }, or None.
@@ -2316,7 +2304,7 @@ class DatabaseService:
             exclude_task_ids = set(str(t) for t in (memory["recent_focus_task_ids"] or [])[:5] if t)
         else:
             exclude_task_ids = set(self.v2_get_last_completed_session_task_ids(user_id, limit=2))
-        score = float(performance_score_1)
+        score = float(score)
         eligible = [r for r in rows if float(r.get("max_performance_score", 1.0)) >= score]
         if not eligible:
             eligible = [max(rows, key=lambda r: float(r.get("max_performance_score", 1.0)))]
@@ -2332,7 +2320,7 @@ class DatabaseService:
                 chosen = score_and_pick_focus_task(
                     pick_list,
                     memory["recurring_issues"],
-                    performance_score_1,
+                    score,
                 )
                 if chosen:
                     row = chosen
@@ -2846,12 +2834,6 @@ class DatabaseService:
         row = result.data[0]
         score = row.get("score")
         if score is None:
-            score = row.get("performance_score_end")
-        if score is None:
-            score = row.get("performance_score_1")
-        if score is None:
-            score = row.get("performance_score_2")
-        if score is None:
             return None
         return float(score)
 
@@ -2874,12 +2856,6 @@ class DatabaseService:
         out = []
         for r in rows:
             s = r.get("score")
-            if s is None:
-                s = r.get("performance_score_end")
-            if s is None:
-                s = r.get("performance_score_1")
-            if s is None:
-                s = r.get("performance_score_2")
             if s is None:
                 continue
             s01 = float(s or 0)

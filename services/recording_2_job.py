@@ -169,14 +169,14 @@ def _process_one(payload: dict):
             center_hold_ratio = None
 
         score_result = compute_recording_performance_score(center_hold_ratio, filler_count, wpm)
-        performance_score_2 = score_result["score_01"]
+        score = score_result["score_01"]
         logger.info(
             "recording_2_job: score source=%s base_score_100=%s filler_count=%s penalty_points=%s final_score_01=%.4f session_id=%s recording_id=%s",
             score_result["score_source"],
             score_result["base_score_100"],
             filler_count,
             score_result["penalty_points"],
-            performance_score_2,
+            score,
             session_id,
             recording_id,
         )
@@ -198,7 +198,7 @@ def _process_one(payload: dict):
             "performance_metrics_v2": merged_metrics,
         })
         db.v2_update_session(session_id, user_id, {
-            "score": performance_score_2,
+            "score": score,
             "recording_2_processing_status": "completed",
         })
 

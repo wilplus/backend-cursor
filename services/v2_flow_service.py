@@ -114,7 +114,7 @@ WEAKNESS_MATCH_BONUS = 2.0
 def score_and_pick_focus_task(
     candidates: List[Dict],
     recurring_issues: List[str],
-    performance_score_1: float,
+    score: float,
 ) -> Optional[Dict]:
     """
     Multi-factor pick: choose task that best matches recurring_issues (weakness match).
@@ -163,16 +163,16 @@ def score_and_pick_focus_task(
     return chosen
 
 
-def select_focus_task_for_performance_score_1(
+def select_focus_task_for_score(
     tasks: List[Dict],
-    performance_score_1: float,
+    score: float,
     assigned_task_ids: Optional[List[str]] = None,
 ) -> Optional[Dict]:
     """
-    Homework flow: pick one focus task where min_task_score <= performance_score_1.
+    Homework flow: pick one focus task where min_task_score <= score.
     If assigned_task_ids is set, only consider those tasks; else consider all active.
     If several match, shuffle and return one.
-    If no task is eligible (score_1 below all min_task_scores), pick easiest so flow never blocks:
+    If no task is eligible (score below all min_task_scores), pick easiest so flow never blocks:
     easiest = task with smallest min_task_score.
     """
     import random
@@ -187,7 +187,7 @@ def select_focus_task_for_performance_score_1(
     matching = []
     for t in active:
         mn = float(t.get("min_task_score", 0))
-        if mn <= performance_score_1:
+        if mn <= score:
             matching.append(t)
     if matching:
         random.shuffle(matching)

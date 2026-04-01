@@ -14,7 +14,7 @@ import sentry_sdk
 from config import Config
 from services.db import db
 from services.openai_service import openai_service
-from services.v2_flow_service import select_focus_task_for_performance_score_1
+from services.v2_flow_service import select_focus_task_for_score
 from utils.metrics import count_fillers, compute_wpm
 from services.metrics_v2 import (
     build_recording_1_performance_profile,
@@ -191,14 +191,14 @@ def _process_one(payload: dict):
         base_score_100 = score_result["base_score_100"]
         penalty_points = score_result["penalty_points"]
         final_score_100 = score_result["final_score_01"] * 100.0
-        performance_score_1 = score_result["score_01"]
+        score = score_result["score_01"]
         logger.info(
             "recording_1_job: score source=%s base_score_100=%s filler_count=%s penalty_points=%s final_score_01=%.4f session_id=%s recording_id=%s",
             score_source,
             base_score_100,
             filler_count,
             penalty_points,
-            performance_score_1,
+            score,
             session_id,
             recording_id,
         )
@@ -215,13 +215,13 @@ def _process_one(payload: dict):
                 logger.warning("recording_1_job: minimal_complete_and_notify failed: %s", fallback_err)
             return
 
-        focus_task = db.v2_select_student_focus_task_for_score(user_id, performance_score_1)
+        focus_task = db.v2_select_student_focus_task_for_score(user_id, score)
         if not focus_task:
             overrides = db.v2_get_student_overrides(user_id)
             assigned_task_ids = (overrides.get("assigned_next_task_ids") or []) if overrides else None
             all_tasks = db.v2_get_active_tasks()
-            focus_task = select_focus_task_for_performance_score_1(
-                all_tasks, performance_score_1, assigned_task_ids
+            focus_task = select_focus_task_for_score(
+                all_tasks, score, assigned_task_ids
             )
         if not focus_task:
             focus_task = {"id": None, "title": db.DEFAULT_FOCUS_TASK_TEXT, "prompt_text": db.DEFAULT_FOCUS_TASK_TEXT}
@@ -283,7 +283,7 @@ def _process_one(payload: dict):
             "performance_metrics_v2": merged_metrics,
         })
         db.v2_update_session(session_id, user_id, {
-            "score": performance_score_1,
+            "score": score,
             "context_short": context_short,
             "selected_task_id": focus_task["id"] if focus_task else None,
             "recording_1_processing_status": "completed",

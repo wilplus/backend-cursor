@@ -794,8 +794,8 @@ def _submit_recording(session_id: str, slot: str):
                 "status": PUBLIC_STATUS_REPORT_GENERATING if status != STATUS_COMPLETED else PUBLIC_STATUS_COMPLETED,
                 "recording_id": existing_recording_id,
             }
-            if slot == "2" and session.get("performance_score_2") is not None:
-                existing_payload["performance_score_2"] = session.get("performance_score_2")
+            if slot == "2" and session.get("score") is not None:
+                existing_payload["performance_score_end"] = session.get("score")
             return jsonify(existing_payload), 200
         _agent_log(f"{label}: wrong status", {"session_id": session_id, "status": status}, "H1")
         return jsonify({
@@ -826,8 +826,8 @@ def _submit_recording(session_id: str, slot: str):
                 "recording_id": existing["id"],
                 "status": PUBLIC_STATUS_REPORT_GENERATING,
             }
-            if slot == "2" and session.get("performance_score_2") is not None:
-                payload["performance_score_2"] = session.get("performance_score_2")
+            if slot == "2" and session.get("score") is not None:
+                payload["performance_score_end"] = session.get("score")
             return jsonify(payload), 200
 
     client_transcript = (data.get("transcript_text") or "").strip() if isinstance(data, dict) else ""
@@ -876,8 +876,8 @@ def _submit_recording(session_id: str, slot: str):
         "status": PUBLIC_STATUS_REPORT_GENERATING,
         "recording_id": recording["id"],
     }
-    if slot == "2" and session.get("performance_score_2") is not None:
-        payload["performance_score_2"] = session.get("performance_score_2")
+    if slot == "2" and session.get("score") is not None:
+        payload["performance_score_end"] = session.get("score")
     return jsonify(payload), 200
 
 
@@ -1191,14 +1191,6 @@ def homework_get_report(session_id):
 
         has_rec_2 = bool(session.get("recording_2_id"))
         perf_end = float(session.get("score") or 0)
-        # Legacy: old sessions may have performance_score_end/performance_score_1 but no score.
-        if perf_end <= 0:
-            perf_end = float(
-                session.get("performance_score_end")
-                or session.get("performance_score_1")
-                or session.get("performance_score_2")
-                or 0
-            )
         if perf_end > 0 and (session.get("score") is None or float(session.get("score") or 0) <= 0):
             perf_end = max(0.0, min(1.0, perf_end))
             try:
@@ -1264,7 +1256,7 @@ def homework_get_report(session_id):
         performance_history = []
         for row in history_rows:
             created_at = row.get("created_at")
-            score_01 = row.get("score", row.get("performance_score_end", 0)) or 0
+            score_01 = row.get("score", 0) or 0
             row_session_id = row.get("session_id")
             # Current session bar uses the same score as the report header (recording-based end score).
             if row_session_id == session_id:

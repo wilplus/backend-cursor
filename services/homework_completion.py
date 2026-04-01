@@ -145,32 +145,32 @@ def _persist_recording_metrics(recording_id: str, recording: dict, final: dict) 
     })
 
 
-def _compute_performance_score_end(session: dict, session_id: str, base_score_key: str, filler_count: int) -> float:
-    """Final session score (0–1): same as the backend recording job score (performance_score_1 or _2).
+def _compute_score(session: dict, session_id: str, base_score_key: str, filler_count: int) -> float:
+    """Final session score (0–1): same as the backend recording job score.
 
     Single-recording homework flow uses only this; we do not override with Sniper ``stage_score`` (often 0 or unset).
     """
-    performance_score_end = max(0.0, min(1.0, float(session.get(base_score_key) or 0)))
+    score = max(0.0, min(1.0, float(session.get(base_score_key) or 0)))
     score_source = "backend_" + base_score_key
     logger.info(
-        "_compute_performance_score_end: %s=%s → %.4f session_id=%s",
+        "_compute_score: %s=%s → %.4f session_id=%s",
         base_score_key,
         session.get(base_score_key),
-        performance_score_end,
+        score,
         session_id,
     )
 
     # Hard cap: any fillers → never 100%
-    if int(filler_count) > 0 and performance_score_end >= 1.0:
-        performance_score_end = 0.99
+    if int(filler_count) > 0 and score >= 1.0:
+        score = 0.99
 
     logger.info(
-        "_compute_performance_score_end: final=%.4f source=%s session_id=%s",
-        performance_score_end,
+        "_compute_score: final=%.4f source=%s session_id=%s",
+        score,
         score_source,
         session_id,
     )
-    return performance_score_end
+    return score
 
 
 def _run_optional_enrichment(
@@ -180,7 +180,7 @@ def _run_optional_enrichment(
     transcript: str,
     filler_count: int,
     filler_data: dict,
-    performance_score_end: float,
+    score: float,
 ) -> tuple[str, dict, dict, dict]:
     """Run coach insight + custom question analysis (non-blocking). Returns (coach_insight, r1, r2, r3)."""
     coach_insight = ""
@@ -191,7 +191,7 @@ def _run_optional_enrichment(
         history_scores = []
         try:
             history_rows = db.v2_get_performance_history(user_id, limit=3)
-            history_scores = [float(r.get("score", r.get("performance_score_end", 0)) or 0) for r in (history_rows or [])]
+            history_scores = [float(r.get("score", 0) or 0) for r in (history_rows or [])]
         except Exception as hist_err:
             logger.debug("Coach insight history unavailable session_id=%s: %s", session_id, hist_err)
         speaker_profile_context = ""
@@ -223,7 +223,7 @@ def _run_optional_enrichment(
             transcript_excerpt=transcript_excerpt,
             filler_breakdown=filler_breakdown,
             filler_count=filler_count,
-            performance_score=performance_score_end,
+            performance_score=score,
             performance_history_scores=history_scores,
             speaker_profile_context=speaker_profile_context,
             self_rating_1_10=self_rating_1_10,
@@ -368,17 +368,16 @@ def _complete_session_from_recording(
     transcript, wpm, filler_count, filler_data, final = _compute_recording_metrics(recording)
     _persist_recording_metrics(recording_id, recording, final)
 
-    performance_score_end = _compute_performance_score_end(session, session_id, base_score_key, filler_count)
+    performance_score_end = _compute_score(session, session_id, base_score_key, filler_count)
     # Do not overwrite a higher score the recording job may have written after our session snapshot.
     fresh_now = db.v2_get_session(session_id, user_id) or {}
     score_candidates = [performance_score_end]
-    for k in ("score", "performance_score_1", "performance_score_2"):
-        v = fresh_now.get(k)
-        if v is not None:
-            try:
-                score_candidates.append(float(v))
-            except (TypeError, ValueError):
-                pass
+    v = fresh_now.get("score")
+    if v is not None:
+        try:
+            score_candidates.append(float(v))
+        except (TypeError, ValueError):
+            pass
     performance_score_end = max(0.0, min(1.0, max(score_candidates)))
 
     report_text = _build_session_report(transcript=transcript, wpm=wpm, filler_count=filler_count, metrics=final["metrics"])
@@ -418,7 +417,7 @@ def _complete_session_from_recording(
         coach_result = email_service.send_lesson_complete_to_admin(
             user_id, session_id, report_text,
             student_email=student_email or None,
-            performance_score_end=performance_score_end,
+            score=performance_score_end,
             student_name=_resolve_student_name(user_id, student_email) if student_email else "",
         )
         if coach_result.get("status") != "sent":
@@ -436,7 +435,7 @@ def _complete_session_from_recording(
         transcript=transcript,
         filler_count=filler_count,
         filler_data=filler_data,
-        performance_score_end=performance_score_end,
+        score=performance_score_end,
     )
 
     try:
@@ -465,10 +464,6 @@ def _complete_session_from_recording(
         "question_3_score": float(r3.get("score", 0)),
         "completed_at_iso": completed_at_iso,
     }
-    if recording_count == 1:
-        result["performance_score_1"] = performance_score_end
-    else:
-        result["performance_score_2"] = float(session.get("performance_score_2") or 0)
     return result
 
 
@@ -573,7 +568,7 @@ def minimal_complete_and_notify(
         # Start with session score; recover from recording job debug if session row never got score.
         performance_score_end = max(
             0.0,
-            min(1.0, float(session.get("score") or session.get("performance_score_1") or 0)),
+            min(1.0, float(session.get("score") or 0)),
         )
         if performance_score_end <= 0:
             recovered = score_01_from_recording_row(rec or {})
@@ -588,13 +583,12 @@ def minimal_complete_and_notify(
         if int(filler_count) > 0 and performance_score_end >= 1.0:
             performance_score_end = 0.99
         fresh_now = db.v2_get_session(session_id, user_id) or {}
-        for k in ("score", "performance_score_1"):
-            v = fresh_now.get(k)
-            if v is not None:
-                try:
-                    performance_score_end = max(performance_score_end, float(v))
-                except (TypeError, ValueError):
-                    pass
+        v = fresh_now.get("score")
+        if v is not None:
+            try:
+                performance_score_end = max(performance_score_end, float(v))
+            except (TypeError, ValueError):
+                pass
         performance_score_end = max(0.0, min(1.0, performance_score_end))
         db.v2_update_session(session_id, user_id, {
             "post_answers": [],
@@ -620,7 +614,7 @@ def minimal_complete_and_notify(
             coach_result = email_service.send_lesson_complete_to_admin(
                 user_id, session_id, report_text,
                 student_email=student_email or None,
-                performance_score_end=performance_score_end,
+                score=performance_score_end,
             )
             if coach_result.get("status") != "sent":
                 logger.warning(
@@ -656,13 +650,13 @@ def ensure_student_completion_email(
             pass
         logger.warning("ensure_student_completion_email: no email for user_id=%s session_id=%s", user_id, session_id)
         return False
-    score_end = float(session.get("score") or session.get("performance_score_end") or 0.0)
+    score_end = float(session.get("score") or 0.0)
     report_text = _session_report_text(session)
     try:
         result = email_service.send_lesson_complete_to_student(
             to_email=student_email,
             frontend_url=config.FRONTEND_URL,
-            performance_score_end=score_end,
+            score=score_end,
             report_preview=report_text,
             student_name=_resolve_student_name(user_id, student_email),
             session_id=session_id,
