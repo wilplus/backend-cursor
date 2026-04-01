@@ -1066,6 +1066,11 @@ def v2_admin_student_session_report_get(user_id, session_id):
         recording_payload = None
         if display_recording_id:
             rec = db.get_recording_for_homework_session(display_recording_id, user_id, session)
+            if rec and (
+                not (rec.get("transcription_text") or "").strip()
+                or rec.get("words_per_minute") is None
+            ):
+                rec = db.get_recording(str(display_recording_id), None) or rec
             if rec:
                 storage_path = (rec.get("storage_path") or "").strip()
                 audio_url = None
@@ -1086,6 +1091,7 @@ def v2_admin_student_session_report_get(user_id, session_id):
                 if not isinstance(filler_data, dict):
                     filler_data = {}
                 tt = (rec.get("transcription_text") or "").strip()
+                _rec_wpm = rec.get("words_per_minute")
                 recording_payload = {
                     "id": str(display_recording_id) if display_recording_id is not None else None,
                     "audio_url": audio_url if (audio_url is None or isinstance(audio_url, str)) else str(audio_url),
@@ -1095,8 +1101,37 @@ def v2_admin_student_session_report_get(user_id, session_id):
                         "total": int(filler_data.get("total", 0) or 0),
                         "breakdown": dict(filler_data.get("breakdown") or {}),
                     },
-                    "words_per_minute": round(float(rec.get("words_per_minute") or 0), 1),
+                    "words_per_minute": round(float(_rec_wpm), 1) if _rec_wpm is not None else None,
                 }
+
+        sniper_profile = db.get_sniper_profile_payload(user_id)
+        sniper_metrics = None
+        if session_sniper:
+
+            def _safe_float_adm(v, decimals=1):
+                if v is None:
+                    return None
+                try:
+                    return round(float(v), decimals)
+                except (TypeError, ValueError):
+                    return None
+
+            sniper_metrics = {
+                "wpm": _safe_float_adm(session_sniper.get("wpm")),
+                "pause_ms": _safe_float_adm(session_sniper.get("pause_ms"), 0),
+                "dynamic_db": _safe_float_adm(session_sniper.get("dynamic_db")),
+                "emphasis_per_min": _safe_float_adm(session_sniper.get("emphasis_per_min")),
+                "energy_ratio": _safe_float_adm(session_sniper.get("energy_ratio"), 2),
+                "pitch_center_st": _safe_float_adm(session_sniper.get("pitch_center_st")),
+                "pitch_frame_count": int(session_sniper["pitch_frame_count"]) if session_sniper.get("pitch_frame_count") is not None else None,
+                "stage_score": _safe_float_adm(session_sniper.get("stage_score")),
+                "voiced_duration_sec": _safe_float_adm(session_sniper.get("voiced_duration_sec")),
+            }
+            if sniper_metrics["wpm"] is None and recording_payload and recording_payload.get("words_per_minute") is not None:
+                sniper_metrics["wpm"] = round(float(recording_payload["words_per_minute"]), 1)
+        elif recording_payload and recording_payload.get("words_per_minute") is not None:
+            # Homework-only path: no session_sniper_metrics row; UIs often read sniper_metrics.wpm only.
+            sniper_metrics = {"wpm": round(float(recording_payload["words_per_minute"]), 1)}
 
         payload = {
             "report_text": report_text,
@@ -1110,7 +1145,14 @@ def v2_admin_student_session_report_get(user_id, session_id):
             "score_for_display": score_for_display_100,
             "report_grade": session.get("report_grade"),
             "report_comment": (session.get("report_comment") or "").strip() or None,
+            "sniper_profile": sniper_profile,
+            "realtime_level": sniper_profile.get("realtime_level"),
+            "realtime_step": sniper_profile.get("realtime_step"),
         }
+        if sniper_metrics is not None:
+            payload["sniper_metrics"] = sniper_metrics
+        if recording_payload is not None and recording_payload.get("words_per_minute") is not None:
+            payload["words_per_minute"] = recording_payload["words_per_minute"]
         if recording_payload is not None:
             payload["recording"] = recording_payload
             _tt = recording_payload.get("transcription_text") or recording_payload.get("transcript") or ""

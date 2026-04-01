@@ -1288,6 +1288,11 @@ def homework_get_report(session_id):
         recording_payload = None  # full transcript, fillers, playback for report view
         if display_recording_id:
             rec = db.get_recording_for_homework_session(display_recording_id, user_id, session)
+            if rec and (
+                not (rec.get("transcription_text") or "").strip()
+                or rec.get("words_per_minute") is None
+            ):
+                rec = db.get_recording(str(display_recording_id), None) or rec
             if rec:
                 storage_path = (rec.get("storage_path") or "").strip()
                 audio_url = None

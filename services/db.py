@@ -1639,6 +1639,38 @@ class DatabaseService:
         out["sessions_with_pitch_count"] = max(0, as_int(out.get("sessions_with_pitch_count"), 0))
         return out
 
+    def _session_homework_recording_words_per_minute(self, session_id: str):
+        """Words per minute from the recording linked to a v2 session (recording_2 or recording_1)."""
+        if not session_id:
+            return None
+        try:
+            sess = (
+                self.client.table("v2_sessions")
+                .select("recording_1_id, recording_2_id")
+                .eq("id", session_id)
+                .limit(1)
+                .execute()
+            )
+            if not sess.data:
+                return None
+            s0 = sess.data[0]
+            rid = s0.get("recording_2_id") or s0.get("recording_1_id")
+            if not rid:
+                return None
+            rec_res = (
+                self.client.table("recordings")
+                .select("words_per_minute")
+                .eq("id", str(rid))
+                .limit(1)
+                .execute()
+            )
+            if not rec_res.data:
+                return None
+            return rec_res.data[0].get("words_per_minute")
+        except Exception as e:
+            logger.debug("_session_homework_recording_words_per_minute: %s", e)
+            return None
+
     def v2_get_admin_measured_metrics_snapshot(self, user_id: str) -> Dict[str, Any]:
         """Admin UI: latest measured speech metrics (Sniper session) + optional baselines.
 
@@ -1725,6 +1757,11 @@ class DatabaseService:
                     "student_rating_1_10",
                 ):
                     latest[k] = row.get(k)
+                # Sniper row can exist (pause, stage_score, etc.) while wpm stayed null; Whisper WPM is on recordings.
+                if latest.get("wpm") is None and row.get("session_id"):
+                    wpm_rec = self._session_homework_recording_words_per_minute(str(row["session_id"]))
+                    if wpm_rec is not None:
+                        latest["wpm"] = wpm_rec
                 wpm_val = latest.get("wpm")
                 wpm_high = bool(wpm_val is not None and float(wpm_val) > 110)
                 return {"latest": latest, "baselines": baselines or None, "wpm_high": wpm_high}
@@ -2820,9 +2857,11 @@ class DatabaseService:
 
     def v2_get_performance_history(self, user_id: str, limit: int = 5) -> List[dict]:
         """Last N completed homework sessions: session_id, created_at, score (0-1). Oldest first for chart S1..SN."""
+        from services.utils import score_01_from_recording_row
+
         result = (
             self.client.table("v2_sessions")
-            .select("id, created_at, score")
+            .select("id, created_at, score, recording_1_id")
             .eq("user_id", user_id)
             .eq("status", "completed")
             .order("created_at", desc=True)
@@ -2844,6 +2883,15 @@ class DatabaseService:
             if s is None:
                 continue
             s01 = float(s or 0)
+            # Stored score can be 0 while the recording job wrote the real value in scoring_debug only.
+            if s01 <= 0 and r.get("recording_1_id"):
+                try:
+                    rec = self.get_recording(str(r["recording_1_id"]), None)
+                    recovered = score_01_from_recording_row(rec or {})
+                    if recovered is not None and recovered > 0:
+                        s01 = recovered
+                except Exception:
+                    pass
             out.append(
                 {
                     "session_id": str(r["id"]) if r.get("id") else None,
@@ -3425,6 +3473,26 @@ class DatabaseService:
 
             rec["sniper_metrics"] = sniper_metrics_by_session.get(s["id"])
             rec["review"] = reviews_by_session.get(s["id"])
+
+            # Single field for admin tables: prefer Sniper wpm when set, else Whisper/recording job WPM.
+            _rwpm = (rec.get("recording_preview") or {}).get("words_per_minute")
+            _swpm = None
+            if rec.get("sniper_metrics") and isinstance(rec["sniper_metrics"], dict):
+                _swpm = rec["sniper_metrics"].get("wpm")
+            _merged_wpm = None
+            if _swpm is not None:
+                try:
+                    _merged_wpm = round(float(_swpm), 1)
+                except (TypeError, ValueError):
+                    pass
+            if _merged_wpm is None and _rwpm is not None:
+                try:
+                    _merged_wpm = round(float(_rwpm), 1)
+                except (TypeError, ValueError):
+                    pass
+            rec["words_per_minute"] = _merged_wpm
+            if isinstance(rec.get("sniper_metrics"), dict) and rec["sniper_metrics"].get("wpm") is None and _merged_wpm is not None:
+                rec["sniper_metrics"] = {**rec["sniper_metrics"], "wpm": _merged_wpm}
 
             report_text = None
             if s.get("report_id"):

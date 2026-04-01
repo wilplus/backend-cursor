@@ -131,7 +131,9 @@ def _compute_recording_metrics(recording: dict) -> tuple[str, float, int, dict, 
 
 def _persist_recording_metrics(recording_id: str, recording: dict, final: dict) -> None:
     """Merge new metrics with any existing scoring_debug and update the recording row."""
-    existing = recording.get("performance_metrics_v2") if isinstance(recording.get("performance_metrics_v2"), dict) else {}
+    # Re-read row so we never drop job-written scoring_debug / nested metrics on a stale snapshot.
+    fresh = db.get_recording(str(recording_id), None) or recording
+    existing = fresh.get("performance_metrics_v2") if isinstance(fresh.get("performance_metrics_v2"), dict) else {}
     scoring_debug = existing.get("scoring_debug") if isinstance(existing, dict) else None
     merged = dict(final["metrics"])
     if isinstance(scoring_debug, dict):
@@ -348,6 +350,8 @@ def _complete_session_from_recording(
     if not recording:
         logger.warning("_complete_session_from_recording: recording not found recording_id=%s", recording_id)
         return None
+    # Latest row: job may have just written transcript + scoring_debug; avoid 0% score and empty transcript.
+    recording = db.get_recording(str(recording_id), None) or recording
 
     session = dict(session)
     if float(session.get(base_score_key) or 0) <= 0:
