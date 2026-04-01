@@ -13,7 +13,7 @@ from services.db import db
 from services.openai_service import openai_service
 from services.email_service import email_service
 from services.metrics_v2 import compute_metrics_v2
-from services.utils import utc_now_iso
+from services.utils import utc_now_iso, score_01_from_recording_row
 
 logger = logging.getLogger(__name__)
 config = Config()
@@ -349,6 +349,18 @@ def _complete_session_from_recording(
         logger.warning("_complete_session_from_recording: recording not found recording_id=%s", recording_id)
         return None
 
+    session = dict(session)
+    if float(session.get(base_score_key) or 0) <= 0:
+        recovered = score_01_from_recording_row(recording)
+        if recovered is not None and recovered > 0:
+            session[base_score_key] = recovered
+            logger.info(
+                "_complete_session_from_recording: recovered %s=%.4f from recording scoring_debug session_id=%s",
+                base_score_key,
+                recovered,
+                session_id,
+            )
+
     transcript, wpm, filler_count, filler_data, final = _compute_recording_metrics(recording)
     _persist_recording_metrics(recording_id, recording, final)
 
@@ -541,16 +553,20 @@ def minimal_complete_and_notify(
         db.v2_append_context_long_entry(session_id, user_id, report_text)
         report_row = db.v2_create_report(session_id, recording_1_id, report_text)
         completed_at_iso = utc_now_iso()
-        # Start with backend-computed score (may be 0 if job was lost)
+        rec = db.get_recording(recording_1_id, user_id)
+        # Start with session score; recover from recording job debug if session row never got score.
         performance_score_end = max(
             0.0,
             min(1.0, float(session.get("score") or session.get("performance_score_1") or 0)),
         )
+        if performance_score_end <= 0:
+            recovered = score_01_from_recording_row(rec or {})
+            if recovered is not None and recovered > 0:
+                performance_score_end = recovered
         logger.info(
             "minimal_complete_and_notify: backend score=%s → %.4f session_id=%s",
             session.get("score"), performance_score_end, session_id,
         )
-        rec = db.get_recording(recording_1_id, user_id)
         filler_data = rec.get("filler_words_count") if isinstance(rec, dict) else {}
         filler_count = int((filler_data or {}).get("total", 0)) if isinstance(filler_data, dict) else 0
         if int(filler_count) > 0 and performance_score_end >= 1.0:

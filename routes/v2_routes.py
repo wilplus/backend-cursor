@@ -9,6 +9,7 @@ from routes.admin import require_admin, is_admin
 from services.db import db
 from services.email_service import email_service
 from services.video_url_validation import validate_video_url
+from services.utils import score_01_from_recording_row
 import logging
 import sentry_sdk
 import json
@@ -995,6 +996,33 @@ def v2_admin_student_session_report_get(user_id, session_id):
                 logger.warning("admin GET report: could not heal score: %s", heal_err)
         else:
             perf_end = max(0.0, min(1.0, perf_end))
+
+        if perf_end <= 0:
+            rid = session.get("recording_2_id") or session.get("recording_1_id")
+            if rid:
+                try:
+                    rec_for_score = db.get_recording(rid, user_id)
+                    recovered = score_01_from_recording_row(rec_for_score or {})
+                    if recovered is not None and recovered > 0:
+                        perf_end = recovered
+                        try:
+                            db.v2_update_session(session_id, user_id, {"score": perf_end})
+                            logger.info(
+                                "admin GET report: recovered score %.3f from recording scoring_debug session_id=%s",
+                                perf_end,
+                                session_id,
+                            )
+                        except Exception as rec_heal_err:
+                            logger.warning(
+                                "admin GET report: could not persist recovered score: %s",
+                                rec_heal_err,
+                            )
+                except Exception as rec_score_err:
+                    logger.debug(
+                        "admin GET report: recording score recovery skipped: %s",
+                        rec_score_err,
+                    )
+
         filler_count_for_cap = 0
         try:
             cap_recording_id = session.get("recording_2_id") or session.get("recording_1_id")

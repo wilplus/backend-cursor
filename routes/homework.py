@@ -13,7 +13,7 @@ from services.homework_completion import (
     ensure_student_completion_email,
 )
 from services.sniper_realtime import clear_sniper_session
-from services.utils import utc_now_iso
+from services.utils import utc_now_iso, score_01_from_recording_row
 import logging
 import os
 import time
@@ -1202,6 +1202,33 @@ def homework_get_report(session_id):
                 logger.warning("homework_get_report: could not heal score: %s", heal_err)
         else:
             perf_end = max(0.0, min(1.0, perf_end))
+
+        if perf_end <= 0:
+            rid = session.get("recording_2_id") or session.get("recording_1_id")
+            if rid:
+                try:
+                    rec_for_score = db.get_recording(rid, user_id)
+                    recovered = score_01_from_recording_row(rec_for_score or {})
+                    if recovered is not None and recovered > 0:
+                        perf_end = recovered
+                        try:
+                            db.v2_update_session(session_id, user_id, {"score": perf_end})
+                            logger.info(
+                                "homework_get_report: recovered score %.3f from recording scoring_debug session_id=%s",
+                                perf_end,
+                                session_id,
+                            )
+                        except Exception as rec_heal_err:
+                            logger.warning(
+                                "homework_get_report: could not persist recovered score: %s",
+                                rec_heal_err,
+                            )
+                except Exception as rec_score_err:
+                    logger.debug(
+                        "homework_get_report: recording score recovery skipped: %s",
+                        rec_score_err,
+                    )
+
         filler_count_for_cap = 0
         try:
             cap_recording_id = session.get("recording_2_id") or session.get("recording_1_id")
