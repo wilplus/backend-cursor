@@ -80,6 +80,8 @@ export default function AdminStudentProfilePage({ params }: { params: { id: stri
   const [postQuestionFormAnswerType, setPostQuestionFormAnswerType] = useState<"yes_no" | "scale_1_5" | "text">("text");
   const [savingGradeSessionId, setSavingGradeSessionId] = useState<string | null>(null);
   const sessionGradeSelectRefs = useRef<Record<string, HTMLSelectElement | null>>({});
+  const [savingOverrideSessionId, setSavingOverrideSessionId] = useState<string | null>(null);
+  const sessionOverrideInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
   // AI Coach Suggestions state
   const [aiMessage, setAiMessage] = useState("");
@@ -1140,6 +1142,15 @@ export default function AdminStudentProfilePage({ params }: { params: { id: stri
                         Performance: {Math.round((s.recording_preview.performance_score_v2 ?? 0) * 100)}%
                       </span>
                     )}
+                    {s.coach_override_score != null ? (
+                      <span className="rounded-md border border-orange-300 bg-orange-50 px-2 py-0.5 text-xs font-medium text-orange-700">
+                        Override: {s.coach_override_score}/100
+                      </span>
+                    ) : s.ai_task_score != null ? (
+                      <span className="rounded-md border border-blue-200 bg-blue-50 px-2 py-0.5 text-xs text-blue-700">
+                        AI: {s.ai_task_score}/100
+                      </span>
+                    ) : null}
                   </div>
                   <FileText
                     className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${expandedSessionId === s.id ? "rotate-180" : ""}`}
@@ -1165,41 +1176,107 @@ export default function AdminStudentProfilePage({ params }: { params: { id: stri
                         </p>
                       </div>
                     )}
+
+                    {/* AI Task Score (shadow mode) */}
+                    {s.ai_task_score != null && (
+                      <div className="rounded-lg border border-blue-200 bg-blue-50/60 p-3 space-y-1">
+                        <div className="flex items-center gap-2">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">AI Score (shadow)</p>
+                          <span className="rounded-md bg-blue-100 px-2 py-0.5 text-xs font-bold text-blue-800">
+                            {s.ai_task_score}/100
+                          </span>
+                          {s.coach_override_score != null && (
+                            <span className="rounded-md bg-orange-100 px-2 py-0.5 text-xs font-bold text-orange-700">
+                              Overridden → {s.coach_override_score}/100
+                            </span>
+                          )}
+                        </div>
+                        {s.ai_scoring_justification && (
+                          <p className="text-xs text-blue-800/80 italic">{s.ai_scoring_justification}</p>
+                        )}
+                      </div>
+                    )}
+
                     {s.status === "completed" && (
-                      <div className="flex flex-wrap items-center gap-2">
-                        <label className="text-sm font-medium">Grade (1–10):</label>
-                        <select
-                          ref={(el) => { sessionGradeSelectRefs.current[s.id] = el; }}
-                          className="rounded-md border border-border bg-background px-2 py-1.5 text-sm"
-                          defaultValue={s.coach_grade ?? ""}
-                        >
-                          <option value="">Not graded</option>
-                          {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
-                            <option key={n} value={n}>{n}</option>
-                          ))}
-                        </select>
-                        <button
-                          type="button"
-                          disabled={savingGradeSessionId === s.id}
-                          className="rounded-md bg-[hsl(24_95%_53%)] px-3 py-1.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
-                          onClick={async () => {
-                            setSavingGradeSessionId(s.id);
-                            try {
-                              const selectEl = sessionGradeSelectRefs.current[s.id];
-                              const raw = selectEl?.value ?? "";
-                              const grade = raw === "" ? null : parseInt(raw, 10);
-                              await adminApi.patchSession(id, s.id, { coach_grade: grade });
-                              toast.success("Grade saved.");
-                              load();
-                            } catch (e) {
-                              toast.error((e as Error)?.message ?? "Failed to save grade");
-                            } finally {
-                              setSavingGradeSessionId(null);
-                            }
-                          }}
-                        >
-                          {savingGradeSessionId === s.id ? "Saving…" : "Save grade"}
-                        </button>
+                      <div className="space-y-3">
+                        {/* Coach grade (1–10) */}
+                        <div className="flex flex-wrap items-center gap-2">
+                          <label className="text-sm font-medium">Grade (1–10):</label>
+                          <select
+                            ref={(el) => { sessionGradeSelectRefs.current[s.id] = el; }}
+                            className="rounded-md border border-border bg-background px-2 py-1.5 text-sm"
+                            defaultValue={s.coach_grade ?? ""}
+                          >
+                            <option value="">Not graded</option>
+                            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
+                              <option key={n} value={n}>{n}</option>
+                            ))}
+                          </select>
+                          <button
+                            type="button"
+                            disabled={savingGradeSessionId === s.id}
+                            className="rounded-md bg-[hsl(24_95%_53%)] px-3 py-1.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
+                            onClick={async () => {
+                              setSavingGradeSessionId(s.id);
+                              try {
+                                const selectEl = sessionGradeSelectRefs.current[s.id];
+                                const raw = selectEl?.value ?? "";
+                                const grade = raw === "" ? null : parseInt(raw, 10);
+                                await adminApi.patchSession(id, s.id, { coach_grade: grade });
+                                toast.success("Grade saved.");
+                                load();
+                              } catch (e) {
+                                toast.error((e as Error)?.message ?? "Failed to save grade");
+                              } finally {
+                                setSavingGradeSessionId(null);
+                              }
+                            }}
+                          >
+                            {savingGradeSessionId === s.id ? "Saving…" : "Save grade"}
+                          </button>
+                        </div>
+
+                        {/* Coach override score (0–100, RLHF) */}
+                        <div className="flex flex-wrap items-center gap-2">
+                          <label className="text-sm font-medium text-muted-foreground">
+                            AI Score Override (0–100):
+                          </label>
+                          <input
+                            ref={(el) => { sessionOverrideInputRefs.current[s.id] = el; }}
+                            type="number"
+                            min={0}
+                            max={100}
+                            step={1}
+                            placeholder="—"
+                            defaultValue={s.coach_override_score ?? ""}
+                            className="w-20 rounded-md border border-border bg-background px-2 py-1.5 text-sm"
+                          />
+                          <button
+                            type="button"
+                            disabled={savingOverrideSessionId === s.id}
+                            className="rounded-md border border-blue-300 bg-blue-50 px-3 py-1.5 text-sm font-medium text-blue-700 hover:bg-blue-100 disabled:opacity-50"
+                            onClick={async () => {
+                              setSavingOverrideSessionId(s.id);
+                              try {
+                                const inputEl = sessionOverrideInputRefs.current[s.id];
+                                const raw = inputEl?.value ?? "";
+                                const score = raw === "" ? null : parseInt(raw, 10);
+                                await adminApi.patchSession(id, s.id, { coach_override_score: score });
+                                toast.success("Override score saved.");
+                                load();
+                              } catch (e) {
+                                toast.error((e as Error)?.message ?? "Failed to save override score");
+                              } finally {
+                                setSavingOverrideSessionId(null);
+                              }
+                            }}
+                          >
+                            {savingOverrideSessionId === s.id ? "Saving…" : "Save override"}
+                          </button>
+                          <span className="text-xs text-muted-foreground">
+                            Clears to reset to AI score
+                          </span>
+                        </div>
                       </div>
                     )}
                   </div>

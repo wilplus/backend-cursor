@@ -746,18 +746,22 @@ def v2_admin_student_session_detail(user_id, session_id):
             session["recording_review"] = db.v2_get_recording_review(session_id)
             session["review_annotations_count"] = len(db.v2_list_recording_review_annotations(session_id))
             return jsonify({"session": session}), 200
-        # PATCH: report_grade / report_comment
+        # PATCH: report_grade / report_comment / coach_override_score
         data = request.get_json() or {}
         updates = {}
-        report_grade = data.get("report_grade")
-        if report_grade is not None:
+        # Accept coach_grade (admin client alias) or report_grade (legacy)
+        raw_grade = data.get("coach_grade") if "coach_grade" in data else data.get("report_grade")
+        if raw_grade is not None:
             try:
-                g = int(report_grade)
+                g = int(raw_grade)
                 if g < 1 or g > 10:
                     return jsonify({"code": "INVALID_INPUT", "error": "report_grade must be between 1 and 10"}), 400
             except (TypeError, ValueError):
                 return jsonify({"code": "INVALID_INPUT", "error": "report_grade must be an integer 1-10"}), 400
             updates["report_grade"] = g
+        elif "coach_grade" in data or "report_grade" in data:
+            # Explicit null → clear grade
+            updates["report_grade"] = None
         # Accept both field names: coach_message (admin client) and report_comment (legacy)
         raw_comment = data.get("coach_message") if "coach_message" in data else data.get("report_comment")
         if "report_comment" in data or "coach_message" in data:
@@ -765,8 +769,21 @@ def v2_admin_student_session_detail(user_id, session_id):
                 updates["report_comment"] = _parse_report_comment(raw_comment)
             except ValueError as ve:
                 return jsonify({"code": "INVALID_INPUT", "error": str(ve)}), 400
+        # coach_override_score: 0-100 integer (RLHF pipeline — overrides AI shadow score)
+        if "coach_override_score" in data:
+            raw_cos = data.get("coach_override_score")
+            if raw_cos is None:
+                updates["coach_override_score"] = None
+            else:
+                try:
+                    cos = int(raw_cos)
+                    if cos < 0 or cos > 100:
+                        return jsonify({"code": "INVALID_INPUT", "error": "coach_override_score must be 0-100"}), 400
+                except (TypeError, ValueError):
+                    return jsonify({"code": "INVALID_INPUT", "error": "coach_override_score must be an integer 0-100"}), 400
+                updates["coach_override_score"] = cos
         if not updates:
-            return jsonify({"code": "INVALID_INPUT", "error": "Provide report_grade and/or report_comment"}), 400
+            return jsonify({"code": "INVALID_INPUT", "error": "Provide report_grade, report_comment, and/or coach_override_score"}), 400
         updated = db.v2_update_session(session_id, user_id, updates)
         if not updated:
             return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found"}), 404
@@ -774,6 +791,7 @@ def v2_admin_student_session_detail(user_id, session_id):
             "status": "ok",
             "report_grade": updated.get("report_grade"),
             "report_comment": updated.get("report_comment"),
+            "coach_override_score": updated.get("coach_override_score"),
         }), 200
     except Exception as e:
         sentry_sdk.capture_exception(e)

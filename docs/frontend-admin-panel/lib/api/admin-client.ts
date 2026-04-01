@@ -103,6 +103,12 @@ export interface StudentProfile {
     report_id?: string;
     task_score?: number;
     coach_grade?: number | null;
+    /** Shadow AI score 0-100 from GPT-4o-mini (RLHF pipeline, not shown to students). */
+    ai_task_score?: number | null;
+    /** LLM justification for ai_task_score. */
+    ai_scoring_justification?: string | null;
+    /** Manual coach override 0-100 (authoritative over AI score when set). */
+    coach_override_score?: number | null;
     recording_preview?: { performance_score_v2?: number; transcription_preview?: string };
     report_preview?: { report_text_preview?: string };
   }>;
@@ -269,8 +275,12 @@ export const adminApi = {
   deleteMetricQuestion: (id: string) =>
     adminFetch<{ status: string }>(`/metric-questions/${id}`, { method: "DELETE" }),
 
-  patchSession: (userId: string, sessionId: string, data: { coach_grade?: number | null }) =>
-    adminFetch<{ status: string; coach_grade?: number | null }>(
+  patchSession: (
+    userId: string,
+    sessionId: string,
+    data: { coach_grade?: number | null; coach_override_score?: number | null }
+  ) =>
+    adminFetch<{ status: string; report_grade?: number | null; coach_override_score?: number | null }>(
       `/students/${userId}/sessions/${sessionId}`,
       { method: "PATCH", body: data }
     ),
