@@ -951,6 +951,113 @@ Respond with valid JSON array:
             sentry_sdk.capture_exception(e)
             return []
 
+    def generate_ai_task_score(
+        self,
+        task_description: str,
+        transcript: str,
+        metrics: dict,
+    ) -> dict:
+        """Shadow-mode AI task evaluation: score transcript against the assigned task.
+
+        Uses GPT-4o-mini to evaluate how well the student executed the specific
+        homework task, considering both the transcript content and speech metrics.
+
+        Args:
+            task_description: The homework task prompt the student was given.
+            transcript: The student's transcribed speech.
+            metrics: Dict with wpm, filler_count, pause_ms, dynamic_db, energy_ratio, stage_score, etc.
+
+        Returns:
+            {"ai_task_score": int 0-100, "justification": str} or {"error": str} on failure.
+        """
+        if not self.client:
+            return {"error": "OpenAI client not initialized"}
+
+        import logging
+        logger = logging.getLogger(__name__)
+
+        # Cap transcript to avoid excessive tokens
+        transcript_excerpt = (transcript or "")[:3000]
+        if not transcript_excerpt.strip():
+            return {"error": "empty_transcript", "ai_task_score": None, "justification": "No transcript available for evaluation."}
+
+        # Build metrics summary
+        m_lines = []
+        for key, label in [
+            ("wpm", "Words per minute"),
+            ("filler_count", "Filler words"),
+            ("pause_ms", "Average pause (ms)"),
+            ("dynamic_db", "Dynamic range (dB)"),
+            ("energy_ratio", "Energy ratio"),
+            ("stage_score", "Real-time stage score (0-100)"),
+            ("voiced_duration_sec", "Voiced duration (sec)"),
+        ]:
+            val = metrics.get(key)
+            if val is not None:
+                m_lines.append(f"- {label}: {val}")
+        metrics_block = "\n".join(m_lines) if m_lines else "No metrics available."
+
+        system_prompt = (
+            "You are an expert communication coach evaluating a student's homework recording.\n\n"
+            "You will be given:\n"
+            "1. The TASK the student was assigned (what they were asked to practice)\n"
+            "2. The TRANSCRIPT of what they actually said\n"
+            "3. Their SPEECH METRICS (pace, fillers, energy, etc.)\n\n"
+            "Your job: evaluate how well the student executed the specific task.\n\n"
+            "Scoring guidelines:\n"
+            "- 80-100: Excellent. Student clearly addressed the task, good delivery.\n"
+            "- 60-79: Good effort. Partially addressed the task or had noticeable delivery issues.\n"
+            "- 40-59: Mediocre. Task was weakly addressed, or significant delivery problems.\n"
+            "- 20-39: Poor. Student mostly ignored the task or had severe delivery issues.\n"
+            "- 0-19: Off-topic or near-silent recording.\n\n"
+            "Important:\n"
+            "- A student who speaks fluently but IGNORES the task should score LOW.\n"
+            "- A student who addresses the task well but has some fillers should still score decently.\n"
+            "- The task description is the primary evaluation criterion. Metrics are secondary.\n"
+            "- Be strict but fair. Most students should land between 40-75.\n\n"
+            "Respond with ONLY valid JSON, no markdown, no explanation outside the JSON:\n"
+            '{"ai_task_score": <integer 0-100>, "justification": "<1-2 sentences>"}'
+        )
+
+        user_prompt = (
+            f"## TASK ASSIGNED\n{task_description}\n\n"
+            f"## TRANSCRIPT\n{transcript_excerpt}\n\n"
+            f"## SPEECH METRICS\n{metrics_block}"
+        )
+
+        try:
+            response = self.client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+                temperature=0.3,
+                max_tokens=200,
+            )
+            raw = (response.choices[0].message.content or "").strip()
+
+            # Parse JSON response
+            parsed = json.loads(raw)
+            score = parsed.get("ai_task_score")
+            justification = parsed.get("justification", "")
+
+            if not isinstance(score, (int, float)) or score < 0 or score > 100:
+                logger.warning("generate_ai_task_score: invalid score=%s raw=%s", score, raw[:200])
+                return {"error": "invalid_score", "ai_task_score": None, "justification": raw[:500]}
+
+            return {
+                "ai_task_score": int(round(score)),
+                "justification": str(justification)[:1000],
+            }
+        except json.JSONDecodeError as je:
+            logger.warning("generate_ai_task_score: JSON parse failed: %s raw=%s", je, raw[:200] if 'raw' in dir() else "N/A")
+            return {"error": f"json_parse_error: {je}", "ai_task_score": None, "justification": ""}
+        except Exception as e:
+            logger.warning("generate_ai_task_score: failed: %s", e)
+            sentry_sdk.capture_exception(e)
+            return {"error": str(e), "ai_task_score": None, "justification": ""}
+
     def generate_coach_suggestions(
         self,
         student_context: str,

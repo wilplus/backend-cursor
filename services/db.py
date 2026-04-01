@@ -4,6 +4,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from datetime import datetime, timedelta, timezone
 import json
 import logging
+import re
 import time
 
 import sentry_sdk
@@ -3241,7 +3242,8 @@ class DatabaseService:
             "report_grade, student_completion_email_sent_at, "
             "performance_score_1, performance_score_2, performance_score_end, task_score, "
             "question_1_score, question_2_score, question_3_score, "
-            "realtime_level_at_session, realtime_step_at_session"
+            "realtime_level_at_session, realtime_step_at_session, "
+            "ai_task_score, ai_scoring_justification, coach_override_score"
         )
         session_fields = (
             "id", "created_at", "completed_at", "status",
@@ -3250,6 +3252,7 @@ class DatabaseService:
             "performance_score_1", "performance_score_2", "performance_score_end", "task_score",
             "question_1_score", "question_2_score", "question_3_score",
             "realtime_level_at_session", "realtime_step_at_session",
+            "ai_task_score", "ai_scoring_justification", "coach_override_score",
         )
         try:
             result = (
@@ -3262,15 +3265,23 @@ class DatabaseService:
             )
         except Exception as e:
             msg = str(e).lower()
-            if "task_score" in msg and (
-                "42703" in msg or "does not exist" in msg or "undefined_column" in msg
-            ):
+            if "42703" in msg or "does not exist" in msg or "undefined_column" in msg:
+                # Columns may not exist yet if migration hasn't run
+                missing_cols = []
+                for col in ("task_score", "ai_task_score", "ai_scoring_justification", "coach_override_score"):
+                    if col in msg:
+                        missing_cols.append(col)
+                if not missing_cols:
+                    raise
                 logger.warning(
-                    "v2_get_sessions_with_previews: task_score column missing, retrying without it: %s",
-                    e,
+                    "v2_get_sessions_with_previews: columns missing %s, retrying without them: %s",
+                    missing_cols, e,
                 )
-                select_columns = select_columns.replace("task_score, ", "", 1)
-                session_fields = tuple(f for f in session_fields if f != "task_score")
+                for col in missing_cols:
+                    select_columns = select_columns.replace(f"{col}, ", "").replace(f", {col}", "").replace(col, "")
+                    session_fields = tuple(f for f in session_fields if f != col)
+                # Clean up any trailing/leading commas or double commas
+                select_columns = re.sub(r',\s*,', ',', select_columns).strip().strip(',').strip()
                 result = (
                     self.client.table("v2_sessions")
                     .select(select_columns)

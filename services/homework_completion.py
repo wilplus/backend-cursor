@@ -278,6 +278,82 @@ def _run_optional_enrichment(
     return coach_insight, r1, r2, r3
 
 
+def _compute_and_save_ai_task_score(
+    session: dict,
+    session_id: str,
+    user_id: str,
+    transcript: str,
+    wpm: float,
+    filler_count: int,
+    filler_data: dict,
+    legacy_score: float,
+):
+    """SHADOW MODE: compute AI task score via GPT-4o-mini and save to v2_sessions.
+
+    Evaluates how well the student's transcript addresses the assigned task.
+    Non-blocking — failures are logged but never affect the student-facing score.
+    """
+    # Get the task description the student was assigned
+    task_id = session.get("selected_task_id")
+    task_description = None
+    if task_id:
+        task = db.v2_get_focus_task_by_id(task_id)
+        if task:
+            task_description = task.get("prompt_text") or task.get("title") or ""
+    # Also include tutor video description as context if available
+    tutor_desc = (session.get("tutor_video_description") or "").strip()
+    if not task_description and not tutor_desc:
+        logger.info("ai_task_score: no task description available, skipping session_id=%s", session_id)
+        return
+    full_task = ""
+    if task_description:
+        full_task += f"Focus task: {task_description}"
+    if tutor_desc:
+        full_task += f"\nCoach message: {tutor_desc}"
+
+    # Build metrics dict for the LLM
+    sniper = None
+    try:
+        sniper = db.get_session_sniper_metrics(session_id)
+    except Exception:
+        pass
+    metrics = {
+        "wpm": wpm,
+        "filler_count": filler_count,
+        "stage_score": sniper.get("stage_score") if sniper else None,
+        "pause_ms": sniper.get("pause_ms") if sniper else None,
+        "dynamic_db": sniper.get("dynamic_db") if sniper else None,
+        "energy_ratio": sniper.get("energy_ratio") if sniper else None,
+        "voiced_duration_sec": sniper.get("voiced_duration_sec") if sniper else None,
+    }
+
+    result = openai_service.generate_ai_task_score(
+        task_description=full_task.strip(),
+        transcript=transcript,
+        metrics=metrics,
+    )
+
+    ai_score = result.get("ai_task_score")
+    justification = result.get("justification", "")
+
+    if ai_score is not None:
+        try:
+            db.v2_update_session(session_id, user_id, {
+                "ai_task_score": int(ai_score),
+                "ai_scoring_justification": justification[:2000],
+            })
+        except Exception as save_err:
+            # Column might not exist yet (migration not run) — log and move on
+            logger.warning("ai_task_score: DB save failed (column may not exist yet): %s", save_err)
+            return
+
+    logger.info(
+        "ai_task_score: shadow score=%s legacy=%.0f%% justification=%s session_id=%s",
+        ai_score, legacy_score * 100, (justification[:80] + "...") if len(justification) > 80 else justification,
+        session_id,
+    )
+
+
 def _complete_session_from_recording(
     session: dict,
     session_id: str,
@@ -363,6 +439,12 @@ def _complete_session_from_recording(
         db.v2_upsert_student_coaching_memory(user_id, session_id)
     except Exception as cm_err:
         logger.warning("Coaching memory upsert failed: %s", cm_err)
+
+    # ── SHADOW MODE: AI Task Score (non-blocking, never affects student-facing score) ──
+    try:
+        _compute_and_save_ai_task_score(session, session_id, user_id, transcript, wpm, filler_count, filler_data, performance_score_end)
+    except Exception as ai_err:
+        logger.warning("AI task score (shadow) failed session_id=%s: %s", session_id, ai_err)
 
     result = {
         "report_text": report_text,
