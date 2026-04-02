@@ -271,23 +271,16 @@ def _compute_and_save_ai_task_score(
     Evaluates how well the student's transcript addresses the assigned task.
     Non-blocking — failures are logged but never affect the student-facing score.
     """
-    # Get the task description the student was assigned
-    task_id = session.get("selected_task_id")
-    task_description = None
-    if task_id:
-        task = db.v2_get_focus_task_by_id(task_id)
-        if task:
-            task_description = task.get("prompt_text") or task.get("title") or ""
-    # Also include tutor video description as context if available
-    tutor_desc = (session.get("tutor_video_description") or "").strip()
-    if not task_description and not tutor_desc:
-        logger.info("ai_task_score: no task description available, skipping session_id=%s", session_id)
+    # Get the student's warm-up tasks as the task description
+    warm_up_tasks = db.v2_get_warm_up_tasks(user_id)
+    if not warm_up_tasks:
+        logger.info("ai_task_score: no warm-up tasks found, skipping session_id=%s", session_id)
         return
-    full_task = ""
-    if task_description:
-        full_task += f"Focus task: {task_description}"
-    if tutor_desc:
-        full_task += f"\nCoach message: {tutor_desc}"
+    # Combine all warm-up task texts
+    task_description = " / ".join(t.get("text", "").strip() for t in warm_up_tasks if t.get("text", "").strip())
+    if not task_description:
+        logger.info("ai_task_score: empty warm-up task texts, skipping session_id=%s", session_id)
+        return
 
     # Build metrics dict for the LLM
     sniper = None
@@ -306,7 +299,7 @@ def _compute_and_save_ai_task_score(
     }
 
     result = openai_service.generate_ai_task_score(
-        task_description=full_task.strip(),
+        task_description=task_description,
         transcript=transcript,
         metrics=metrics,
     )

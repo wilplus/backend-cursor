@@ -9,8 +9,6 @@ import time
 
 import sentry_sdk
 
-from services.v2_flow_service import score_and_pick_focus_task
-
 config = Config()
 logger = logging.getLogger(__name__)
 
@@ -1464,29 +1462,6 @@ class DatabaseService:
         result = self.client.table("v2_tasks").select("*").eq("id", task_id).execute()
         return result.data[0] if result.data else None
 
-    def v2_get_focus_task_by_id(self, task_id: str):
-        """Single row from v2_focus_tasks by id, or None."""
-        result = self.client.table("v2_focus_tasks").select("*").eq("id", task_id).execute()
-        return result.data[0] if result.data else None
-
-    def v2_get_last_completed_session_task_ids(self, user_id: str, limit: int = 2):
-        """Return selected_task_id from the last N completed sessions (for anti-repeat in focus task selection)."""
-        result = (
-            self.client.table("v2_sessions")
-            .select("selected_task_id")
-            .eq("user_id", user_id)
-            .eq("status", "completed")
-            .order("created_at", desc=True)
-            .limit(limit)
-            .execute()
-        )
-        out = []
-        for row in (result.data or []):
-            tid = row.get("selected_task_id")
-            if tid and str(tid).strip() and str(tid) not in out:
-                out.append(str(tid))
-        return out
-
     def v2_get_student_coaching_memory(self, user_id: str):
         """Return the coaching memory row for the user, or None.
 
@@ -1524,7 +1499,7 @@ class DatabaseService:
         # Fetch only the columns we need for this upsert (faster than full session)
         result = (
             self.client.table("v2_sessions")
-            .select("status, score, selected_task_id, recording_1_performance_profile")
+            .select("status, score, recording_1_performance_profile")
             .eq("id", session_id)
             .eq("user_id", user_id)
             .execute()
@@ -1533,13 +1508,12 @@ class DatabaseService:
         if not session or (session.get("status") or "").strip().lower() != "completed":
             return
         current_score = session.get("score")
-        current_task_id = session.get("selected_task_id")
         current_profile = session.get("recording_1_performance_profile")
 
         # Last 4 OTHER completed sessions (exclude current session_id); include profile for recurring_issues
         result = (
             self.client.table("v2_sessions")
-            .select("score, selected_task_id, recording_1_performance_profile")
+            .select("score, recording_1_performance_profile")
             .eq("user_id", user_id)
             .eq("status", "completed")
             .neq("id", session_id)
@@ -1550,7 +1524,6 @@ class DatabaseService:
         others = list(reversed(result.data or []))  # oldest first
 
         last_5_scores = []
-        recent_focus_task_ids = []
         last_5_profiles = []
         for row in others:
             s = row.get("score")
@@ -1559,9 +1532,6 @@ class DatabaseService:
                     last_5_scores.append(float(s))
                 except (TypeError, ValueError):
                     pass
-            tid = row.get("selected_task_id")
-            if tid and str(tid).strip():
-                recent_focus_task_ids.append(str(tid))
             prof = row.get("recording_1_performance_profile")
             last_5_profiles.append(prof if isinstance(prof, dict) else None)
 
@@ -1570,12 +1540,9 @@ class DatabaseService:
                 last_5_scores.append(float(current_score))
             except (TypeError, ValueError):
                 pass
-        if current_task_id and str(current_task_id).strip():
-            recent_focus_task_ids.append(str(current_task_id))
         last_5_profiles.append(current_profile if isinstance(current_profile, dict) else None)
 
         last_5_scores = last_5_scores[-5:]
-        recent_focus_task_ids = recent_focus_task_ids[-5:]
         last_5_profiles = last_5_profiles[-5:]
 
         # Recurring issues: if a pattern appears in >=3 of last 5 profiles, add it (cap at 3 issues)
@@ -1594,7 +1561,6 @@ class DatabaseService:
         payload = {
             "user_id": user_id,
             "last_5_scores": last_5_scores,
-            "recent_focus_task_ids": recent_focus_task_ids,
             "recurring_issues": recurring_issues,
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }
@@ -2288,75 +2254,6 @@ class DatabaseService:
             baseline_energy_ratio=new_energy_ratio,
         )
 
-    def v2_select_student_focus_task_for_score(self, user_id: str, score: float):
-        """
-        Per-student focus task for homework flow. Returns one task from v2_focus_tasks where
-        max_performance_score >= score (student's score within task range).
-        Excludes tasks used in recent completed sessions (anti-repeat): uses coaching memory
-        recent_focus_task_ids (up to 5) when available, else last 2 sessions. Order by order_index;
-        if multiple eligible, pick first. Returns normalized dict { id, title, prompt_text }, or None.
-        """
-        rows = self.v2_get_focus_tasks(user_id)
-        if not rows:
-            return None
-        memory = self.v2_get_student_coaching_memory(user_id)
-        if memory and isinstance(memory.get("recent_focus_task_ids"), list) and memory["recent_focus_task_ids"]:
-            exclude_task_ids = set(str(t) for t in (memory["recent_focus_task_ids"] or [])[:5] if t)
-        else:
-            exclude_task_ids = set(self.v2_get_last_completed_session_task_ids(user_id, limit=2))
-        score = float(score)
-        eligible = [r for r in rows if float(r.get("max_performance_score", 1.0)) >= score]
-        if not eligible:
-            eligible = [max(rows, key=lambda r: float(r.get("max_performance_score", 1.0)))]
-        # Prefer tasks not used in recent sessions (from memory or last 2)
-        not_recent = [r for r in eligible if str(r.get("id")) not in exclude_task_ids]
-        if not_recent:
-            eligible = not_recent
-        # Multi-factor: when we have recurring_issues and any task has targets, score by weakness match
-        pick_list = eligible
-        if memory and isinstance(memory.get("recurring_issues"), list) and memory["recurring_issues"]:
-            has_targets = any((r.get("targets") or []) for r in pick_list)
-            if has_targets:
-                chosen = score_and_pick_focus_task(
-                    pick_list,
-                    memory["recurring_issues"],
-                    score,
-                )
-                if chosen:
-                    row = chosen
-                else:
-                    row = pick_list[0]
-            else:
-                row = pick_list[0]
-        else:
-            row = pick_list[0]
-        text = (row.get("text") or "").strip()
-        return {
-            "id": row["id"],
-            "title": text,
-            "prompt_text": text,
-        }
-
-    def v2_get_task_or_focus_task(self, task_id: str):
-        """
-        Resolve task from either v2_focus_tasks or v2_tasks (so selected_task_id can
-        refer to either). Returns normalized dict { id, title, prompt_text } or None.
-        """
-        if not task_id:
-            return None
-        focus = self.v2_get_focus_task_by_id(task_id)
-        if focus:
-            text = (focus.get("text") or "").strip()
-            return {"id": focus["id"], "title": text, "prompt_text": text}
-        task = self.v2_get_task(task_id)
-        if task:
-            return {
-                "id": task["id"],
-                "title": (task.get("title") or "").strip(),
-                "prompt_text": (task.get("prompt_text") or "").strip(),
-            }
-        return None
-
     def v2_get_post_questions_by_ids(self, ids: List[str]):
         """Fetch pool questions by id list (for snapshot)."""
         if not ids:
@@ -2472,7 +2369,6 @@ class DatabaseService:
 
     # ---------- Warm-up tasks (per student; homework flow) ----------
     DEFAULT_WARM_UP_TASK_TEXT = "How was your day so far?"
-    DEFAULT_FOCUS_TASK_TEXT = "Pay attention to your breathing"
 
     def v2_ensure_default_warm_up_task(self, user_id: str) -> bool:
         """If user has no warm-up tasks, create the default one. Idempotent. Returns True if ok, False on failure (caller returns 422)."""
@@ -2570,104 +2466,6 @@ class DatabaseService:
     def v2_delete_warm_up_task_pool(self, pool_id: str):
         self.client.table("v2_warm_up_task_pool").delete().eq("id", pool_id).execute()
 
-    # ---------- Focus tasks (per student; same pattern as warm-up) ----------
-    def v2_get_focus_tasks(self, user_id: str):
-        result = (
-            self.client.table("v2_focus_tasks")
-            .select("*")
-            .eq("user_id", user_id)
-            .order("order_index")
-            .order("created_at")
-            .execute()
-        )
-        return result.data or []
-
-    def v2_insert_focus_task(self, data: dict):
-        result = self.client.table("v2_focus_tasks").insert(data).execute()
-        return result.data[0] if result.data else None
-
-    def v2_update_focus_task(self, task_id: str, data: dict):
-        payload = {}
-        if "text" in data:
-            payload["text"] = data["text"]
-        if "order_index" in data:
-            payload["order_index"] = int(data["order_index"])
-        if "max_performance_score" in data:
-            try:
-                payload["max_performance_score"] = float(data["max_performance_score"])
-            except (TypeError, ValueError):
-                payload["max_performance_score"] = 1.0
-        if not payload:
-            result = self.client.table("v2_focus_tasks").select("*").eq("id", task_id).execute()
-            return result.data[0] if result.data else None
-        result = self.client.table("v2_focus_tasks").update(payload).eq("id", task_id).execute()
-        return result.data[0] if result.data else None
-
-    def v2_delete_focus_task(self, task_id: str):
-        self.client.table("v2_focus_tasks").delete().eq("id", task_id).execute()
-
-    def v2_get_focus_task_pool(self):
-        result = (
-            self.client.table("v2_focus_task_pool")
-            .select("*")
-            .order("order_index")
-            .order("created_at")
-            .execute()
-        )
-        return result.data or []
-
-    def v2_get_focus_task_pool_by_id(self, pool_id: str):
-        result = self.client.table("v2_focus_task_pool").select("*").eq("id", pool_id).execute()
-        return result.data[0] if result.data else None
-
-    def v2_insert_focus_task_pool(self, data: dict):
-        data = dict(data)
-        data.setdefault("order_index", 0)
-        data.setdefault("max_performance_score", 1.0)
-        result = self.client.table("v2_focus_task_pool").insert(data).execute()
-        return result.data[0] if result.data else None
-
-    def v2_update_focus_task_pool(self, pool_id: str, data: dict):
-        payload = {}
-        if "text" in data:
-            payload["text"] = data["text"]
-        if "order_index" in data:
-            payload["order_index"] = int(data["order_index"])
-        if "max_performance_score" in data:
-            try:
-                payload["max_performance_score"] = float(data["max_performance_score"])
-            except (TypeError, ValueError):
-                payload["max_performance_score"] = 1.0
-        if not payload:
-            return self.v2_get_focus_task_pool_by_id(pool_id)
-        result = self.client.table("v2_focus_task_pool").update(payload).eq("id", pool_id).execute()
-        return result.data[0] if result.data else None
-
-    def v2_delete_focus_task_pool(self, pool_id: str):
-        self.client.table("v2_focus_task_pool").delete().eq("id", pool_id).execute()
-
-    def v2_sync_student_focus_tasks_from_pool(self, user_id: str, pool_task_ids: list):
-        """Replace student's focus tasks with copies from the pool. pool_task_ids = list of v2_focus_task_pool ids in display order."""
-        self.client.table("v2_focus_tasks").delete().eq("user_id", user_id).execute()
-        if not pool_task_ids:
-            return []
-        inserted = []
-        for idx, pool_id in enumerate(pool_task_ids):
-            row = self.v2_get_focus_task_pool_by_id(pool_id)
-            if not row:
-                continue
-            data = {
-                "user_id": user_id,
-                "pool_task_id": pool_id,
-                "text": row["text"],
-                "order_index": idx,
-                "max_performance_score": float(row.get("max_performance_score", 1.0)),
-            }
-            new_row = self.v2_insert_focus_task(data)
-            if new_row:
-                inserted.append(new_row)
-        return inserted
-
     def v2_sync_student_warm_up_tasks_from_pool(self, user_id: str, pool_task_ids: list):
         """Replace student's warm-up tasks with copies from the pool. pool_task_ids = list of v2_warm_up_task_pool ids in display order."""
         # #region agent log
@@ -2763,58 +2561,6 @@ class DatabaseService:
         return {
             "task_warm_up_pool": pool_row,
             "task_warm_up": assigned,
-            "dropped_non_pool_tasks": dropped_non_pool,
-        }
-
-    def v2_create_focus_pool_task_and_assign_student(
-        self,
-        user_id: str,
-        text: str,
-        order_index: int = 0,
-        max_performance_score: float = 1.0,
-        insert_at: Any = "end",
-    ) -> Dict[str, Any]:
-        """Same as warm-up variant for v2_focus_task_pool + v2_focus_tasks."""
-        text_clean = (text or "").strip()
-        if not text_clean:
-            raise ValueError("text is required")
-        rows = self.v2_get_focus_tasks(user_id)
-        existing_ids = [str(r["pool_task_id"]) for r in rows if r.get("pool_task_id")]
-        dropped_non_pool = sum(1 for r in rows if not r.get("pool_task_id"))
-        try:
-            mps = float(max_performance_score)
-        except (TypeError, ValueError):
-            mps = 1.0
-        pool_row = self.v2_insert_focus_task_pool(
-            {
-                "text": text_clean,
-                "order_index": int(order_index),
-                "max_performance_score": mps,
-            }
-        )
-        if not pool_row:
-            raise RuntimeError("Failed to insert focus pool task")
-        new_id = str(pool_row["id"])
-        if insert_at == "end" or insert_at is None:
-            final_ids = existing_ids + [new_id]
-        else:
-            try:
-                idx = int(insert_at)
-            except (TypeError, ValueError):
-                idx = len(existing_ids)
-            idx = max(0, min(idx, len(existing_ids)))
-            final_ids = existing_ids[:idx] + [new_id] + existing_ids[idx:]
-        try:
-            assigned = self.v2_sync_student_focus_tasks_from_pool(user_id, final_ids)
-        except Exception:
-            try:
-                self.v2_delete_focus_task_pool(new_id)
-            except Exception:
-                pass
-            raise
-        return {
-            "task_focus_pool": pool_row,
-            "task_focus": assigned,
             "dropped_non_pool_tasks": dropped_non_pool,
         }
 
@@ -3631,7 +3377,6 @@ class DatabaseService:
             "overrides_deleted": False,
             "speaker_profile_deleted": False,
             "warm_up_tasks_deleted": False,
-            "focus_tasks_deleted": False,
             "post_questions_deleted": False,
             "sessions_deleted": False,
             "auth_user_deleted": False,
@@ -3646,8 +3391,6 @@ class DatabaseService:
         result["speaker_profile_deleted"] = True
         self.client.table("v2_warm_up_tasks").delete().eq("user_id", user_id).execute()
         result["warm_up_tasks_deleted"] = True
-        self.client.table("v2_focus_tasks").delete().eq("user_id", user_id).execute()
-        result["focus_tasks_deleted"] = True
         self.client.table("v2_student_post_recording_questions").delete().eq("user_id", user_id).execute()
         result["post_questions_deleted"] = True
         self.client.table("v2_sessions").delete().eq("user_id", user_id).execute()
