@@ -773,8 +773,12 @@ def v2_admin_student_session_detail(user_id, session_id):
                 except (TypeError, ValueError):
                     return jsonify({"code": "INVALID_INPUT", "error": "coach_override_score must be an integer 0-100"}), 400
                 updates["coach_override_score"] = cos
+        # coach_override_justification: why the coach overrode the AI (DPO training signal)
+        if "coach_override_justification" in data:
+            raw_coj = data.get("coach_override_justification")
+            updates["coach_override_justification"] = (str(raw_coj).strip()[:2000] if raw_coj else None)
         if not updates:
-            return jsonify({"code": "INVALID_INPUT", "error": "Provide report_grade, report_comment, and/or coach_override_score"}), 400
+            return jsonify({"code": "INVALID_INPUT", "error": "Provide report_grade, report_comment, coach_override_score, and/or coach_override_justification"}), 400
         updated = db.v2_update_session(session_id, user_id, updates)
         if not updated:
             return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found"}), 404
@@ -783,6 +787,7 @@ def v2_admin_student_session_detail(user_id, session_id):
             "report_grade": updated.get("report_grade"),
             "report_comment": updated.get("report_comment"),
             "coach_override_score": updated.get("coach_override_score"),
+            "coach_override_justification": updated.get("coach_override_justification"),
         }), 200
     except Exception as e:
         sentry_sdk.capture_exception(e)

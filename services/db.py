@@ -3058,7 +3058,7 @@ class DatabaseService:
             "score, task_score, "
             "question_1_score, question_2_score, question_3_score, "
             "realtime_level_at_session, realtime_step_at_session, "
-            "ai_task_score, ai_scoring_justification, coach_override_score"
+            "ai_task_score, ai_scoring_justification, coach_override_score, coach_override_justification"
         )
         session_fields = (
             "id", "created_at", "completed_at", "status",
@@ -3067,7 +3067,7 @@ class DatabaseService:
             "score", "task_score",
             "question_1_score", "question_2_score", "question_3_score",
             "realtime_level_at_session", "realtime_step_at_session",
-            "ai_task_score", "ai_scoring_justification", "coach_override_score",
+            "ai_task_score", "ai_scoring_justification", "coach_override_score", "coach_override_justification",
         )
         try:
             result = (
@@ -3083,7 +3083,7 @@ class DatabaseService:
             if "42703" in msg or "does not exist" in msg or "undefined_column" in msg:
                 # Columns may not exist yet if migration hasn't run
                 missing_cols = []
-                for col in ("score", "task_score", "ai_task_score", "ai_scoring_justification", "coach_override_score"):
+                for col in ("score", "task_score", "ai_task_score", "ai_scoring_justification", "coach_override_score", "coach_override_justification"):
                     if col in msg:
                         missing_cols.append(col)
                 if not missing_cols:
