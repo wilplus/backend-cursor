@@ -647,10 +647,6 @@ def v2_admin_send_assignment(user_id):
         # Treat successful coach action as the unlock trigger for the student UI,
         # even if email delivery is pending/disabled in this environment.
         db.v2_mark_tutor_feedback_sent_for_user(user_id)
-        try:
-            db.v2_set_video_shown(user_id, 1)
-        except Exception as vs_err:
-            logger.warning("send-assignment: video_shown not set user_id=%s: %s", user_id, vs_err)
 
         # Send to additional (similar) students
         additional_results = []
@@ -673,10 +669,6 @@ def v2_admin_send_assignment(user_id):
                     student_name=extra_email.strip(),
                 )
                 db.v2_mark_tutor_feedback_sent_for_user(extra_uid)
-                try:
-                    db.v2_set_video_shown(extra_uid, 1)
-                except Exception:
-                    pass
                 additional_results.append({"user_id": extra_uid, "status": extra_result.get("status", "unknown"), "email": extra_email.strip()})
             except Exception as extra_err:
                 logger.warning("send-assignment: additional user %s failed: %s", extra_uid, extra_err)
