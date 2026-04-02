@@ -1,5 +1,5 @@
 # Railway / Nixpacks: install ffmpeg for recording-pipeline audio analysis.
-# Without it, jobs that shell out to ffmpeg are skipped silently.
 # https://nixpacks.com/docs/configuration/file
 [phases.setup]
 nixPkgs = ["ffmpeg"]
+aptPkgs = ["ffmpeg"]
