@@ -785,7 +785,7 @@ Focus task: {focus_task}"""
 
     def analyze_custom_questions(self, transcript: str, questions: list) -> list:
         """
-        Analyze transcript against each custom question. Returns list of 3 items: { "analysis": str, "score": float } (0-10).
+        Analyze transcript against each custom question. Returns list of 3 items: { "analysis": str, "score": float } (0-1).
         Empty questions get {"analysis": "", "score": 0}.
         """
         import json
@@ -834,7 +834,7 @@ Respond in JSON format only: {{"analysis": "...", "score": N}}'''
                     score = float(score)
                 except (TypeError, ValueError):
                     score = 0
-                score = max(0, min(10, score))
+                score = max(0.0, min(1.0, score / 10.0))
                 results.append({"analysis": analysis, "score": score})
             except Exception as e:
                 sentry_sdk.capture_exception(e)
