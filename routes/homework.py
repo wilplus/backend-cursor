@@ -795,6 +795,7 @@ def _submit_recording(session_id: str, slot: str):
                 "recording_id": existing_recording_id,
             }
             if slot == "2" and session.get("score") is not None:
+                existing_payload["score"] = session.get("score")
                 existing_payload["performance_score_end"] = session.get("score")
             return jsonify(existing_payload), 200
         _agent_log(f"{label}: wrong status", {"session_id": session_id, "status": status}, "H1")
@@ -827,6 +828,7 @@ def _submit_recording(session_id: str, slot: str):
                 "status": PUBLIC_STATUS_REPORT_GENERATING,
             }
             if slot == "2" and session.get("score") is not None:
+                payload["score"] = session.get("score")
                 payload["performance_score_end"] = session.get("score")
             return jsonify(payload), 200
 
@@ -877,6 +879,7 @@ def _submit_recording(session_id: str, slot: str):
         "recording_id": recording["id"],
     }
     if slot == "2" and session.get("score") is not None:
+        payload["score"] = session.get("score")
         payload["performance_score_end"] = session.get("score")
     return jsonify(payload), 200
 
