@@ -43,7 +43,7 @@ def decode_audio_to_pcm(audio_bytes: bytes) -> Optional[np.ndarray]:
             timeout=30,
         )
         if proc.returncode != 0:
-            logger.warning("ffmpeg decode failed: %s", proc.stderr[:200])
+            logger.warning("ffmpeg decode failed returncode=%d stderr=%s", proc.returncode, proc.stderr[:500].decode("utf-8", errors="replace"))
             return None
         raw = proc.stdout
         if len(raw) < 2:
@@ -174,7 +174,11 @@ def analyze_audio(audio_bytes: bytes, transcript: str = "", duration_sec: float 
     or None if audio can't be decoded.
     """
     sig = decode_audio_to_pcm(audio_bytes)
-    if sig is None or len(sig) < SAMPLE_RATE:
+    if sig is None:
+        logger.warning("analyze_audio: decode_audio_to_pcm returned None (ffmpeg failed or not installed) audio_bytes=%d", len(audio_bytes) if audio_bytes else 0)
+        return None
+    if len(sig) < SAMPLE_RATE:
+        logger.warning("analyze_audio: audio too short (%d samples < %d) — skipping metrics", len(sig), SAMPLE_RATE)
         return None
 
     if duration_sec <= 0:
