@@ -1244,7 +1244,22 @@ def homework_get_report(session_id):
                     filler_count_for_cap = int(cap_fillers.get("total", 0) or 0)
         except Exception:
             filler_count_for_cap = 0
-        score_for_display_100 = round(perf_end * 100)
+        # Triple Sanity Check: Layer 3 → Layer 2 → Layer 1
+        # coach_override_score (HITL) > ai_task_score (LLM judge) > score (deterministic baseline)
+        coach_override = session.get("coach_override_score")
+        ai_task = session.get("ai_task_score")
+        if coach_override is not None:
+            try:
+                score_for_display_100 = max(0, min(100, int(coach_override)))
+            except (TypeError, ValueError):
+                score_for_display_100 = round(perf_end * 100)
+        elif ai_task is not None:
+            try:
+                score_for_display_100 = max(0, min(100, int(ai_task)))
+            except (TypeError, ValueError):
+                score_for_display_100 = round(perf_end * 100)
+        else:
+            score_for_display_100 = round(perf_end * 100)
         session_sniper = None
         try:
             session_sniper = db.get_session_sniper_metrics(session_id)
@@ -1253,7 +1268,6 @@ def homework_get_report(session_id):
         if filler_count_for_cap > 0 and score_for_display_100 >= 100:
             score_for_display_100 = 99
             perf_end = min(perf_end, 0.99)
-        # Display score matches stored performance_score_end (recording job); Sniper stage_score is diagnostic only.
 
         history_rows = db.v2_get_performance_history(user_id, limit=5)
         performance_history = []

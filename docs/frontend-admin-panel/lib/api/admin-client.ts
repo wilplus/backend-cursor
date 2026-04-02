@@ -109,6 +109,8 @@ export interface StudentProfile {
     ai_scoring_justification?: string | null;
     /** Manual coach override 0-100 (authoritative over AI score when set). */
     coach_override_score?: number | null;
+    /** Why the coach overrode the AI — DPO training signal. */
+    coach_override_justification?: string | null;
     recording_preview?: { performance_score_v2?: number; transcription_preview?: string };
     report_preview?: { report_text_preview?: string };
   }>;
@@ -278,7 +280,7 @@ export const adminApi = {
   patchSession: (
     userId: string,
     sessionId: string,
-    data: { coach_grade?: number | null; coach_override_score?: number | null }
+    data: { coach_grade?: number | null; coach_override_score?: number | null; coach_override_justification?: string | null }
   ) =>
     adminFetch<{ status: string; report_grade?: number | null; coach_override_score?: number | null }>(
       `/students/${userId}/sessions/${sessionId}`,

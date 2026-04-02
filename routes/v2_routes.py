@@ -1017,7 +1017,21 @@ def v2_admin_student_session_report_get(user_id, session_id):
                     filler_count_for_cap = int(cap_fillers.get("total", 0) or 0)
         except Exception:
             filler_count_for_cap = 0
-        score_for_display_100 = round(perf_end * 100)
+        # Triple Sanity Check: Layer 3 → Layer 2 → Layer 1
+        coach_override = session.get("coach_override_score")
+        ai_task = session.get("ai_task_score")
+        if coach_override is not None:
+            try:
+                score_for_display_100 = max(0, min(100, int(coach_override)))
+            except (TypeError, ValueError):
+                score_for_display_100 = round(perf_end * 100)
+        elif ai_task is not None:
+            try:
+                score_for_display_100 = max(0, min(100, int(ai_task)))
+            except (TypeError, ValueError):
+                score_for_display_100 = round(perf_end * 100)
+        else:
+            score_for_display_100 = round(perf_end * 100)
         session_sniper = None
         try:
             session_sniper = db.get_session_sniper_metrics(session_id)

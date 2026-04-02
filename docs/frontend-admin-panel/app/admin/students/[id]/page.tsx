@@ -1177,28 +1177,116 @@ export default function AdminStudentProfilePage({ params }: { params: { id: stri
                       </div>
                     )}
 
-                    {/* AI Task Score (shadow mode) */}
+                    {/* Triple Sanity Check — Layer 2: AI Evaluation */}
                     {s.ai_task_score != null && (
-                      <div className="rounded-lg border border-blue-200 bg-blue-50/60 p-3 space-y-1">
-                        <div className="flex items-center gap-2">
-                          <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">AI Score (shadow)</p>
-                          <span className="rounded-md bg-blue-100 px-2 py-0.5 text-xs font-bold text-blue-800">
-                            {s.ai_task_score}/100
-                          </span>
-                          {s.coach_override_score != null && (
+                      <div className="rounded-lg border border-blue-200 bg-blue-50/60 p-4 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">Layer 2 — AI Evaluation</p>
+                          {s.coach_override_score != null ? (
                             <span className="rounded-md bg-orange-100 px-2 py-0.5 text-xs font-bold text-orange-700">
                               Overridden → {s.coach_override_score}/100
                             </span>
+                          ) : (
+                            <span className="rounded-md bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
+                              Active score
+                            </span>
                           )}
                         </div>
-                        {s.ai_scoring_justification && (
-                          <p className="text-xs text-blue-800/80 italic">{s.ai_scoring_justification}</p>
+                        <div className="flex items-center gap-3">
+                          <span className="text-2xl font-bold text-blue-900">{s.ai_task_score}/100</span>
+                          {s.ai_scoring_justification && (
+                            <p className="text-xs text-blue-800/80 italic flex-1">&ldquo;{s.ai_scoring_justification}&rdquo;</p>
+                          )}
+                        </div>
+                        {/* HITL: Approve or Override */}
+                        {s.status === "completed" && s.coach_override_score == null && (
+                          <div className="flex items-center gap-2 pt-1">
+                            <button
+                              type="button"
+                              disabled={savingOverrideSessionId === s.id}
+                              className="rounded-md bg-green-600 px-3 py-1.5 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-50"
+                              onClick={async () => {
+                                setSavingOverrideSessionId(s.id);
+                                try {
+                                  await adminApi.patchSession(id, s.id, {
+                                    coach_override_score: s.ai_task_score!,
+                                    coach_override_justification: "Approved — AI score confirmed by coach.",
+                                  });
+                                  toast.success("AI score approved.");
+                                  load();
+                                } catch (e) {
+                                  toast.error((e as Error)?.message ?? "Failed");
+                                } finally {
+                                  setSavingOverrideSessionId(null);
+                                }
+                              }}
+                            >
+                              {savingOverrideSessionId === s.id ? "Saving…" : "✓ Approve AI Score"}
+                            </button>
+                            <span className="text-xs text-muted-foreground">or override below →</span>
+                          </div>
                         )}
                       </div>
                     )}
 
                     {s.status === "completed" && (
                       <div className="space-y-3">
+                        {/* Layer 3: Coach Override (HITL + DPO training signal) */}
+                        <div className="rounded-lg border border-orange-200 bg-orange-50/40 p-4 space-y-3">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-orange-700">Layer 3 — Coach Override</p>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <input
+                              ref={(el) => { sessionOverrideInputRefs.current[s.id] = el; }}
+                              type="number"
+                              min={0}
+                              max={100}
+                              step={1}
+                              placeholder="Score 0–100"
+                              defaultValue={s.coach_override_score ?? ""}
+                              className="w-28 rounded-md border border-border bg-background px-2 py-1.5 text-sm"
+                            />
+                            <input
+                              ref={(el) => { if (el) (sessionOverrideInputRefs.current as Record<string, unknown>)[s.id + "_justification"] = el; }}
+                              type="text"
+                              placeholder="Why the AI was wrong… (saved for DPO training)"
+                              defaultValue={(s as {coach_override_justification?: string}).coach_override_justification ?? ""}
+                              className="flex-1 min-w-[200px] rounded-md border border-border bg-background px-2 py-1.5 text-sm"
+                            />
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              disabled={savingOverrideSessionId === s.id}
+                              className="rounded-md bg-orange-600 px-3 py-1.5 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-50"
+                              onClick={async () => {
+                                setSavingOverrideSessionId(s.id);
+                                try {
+                                  const inputEl = sessionOverrideInputRefs.current[s.id] as HTMLInputElement | null;
+                                  const justEl = (sessionOverrideInputRefs.current as Record<string, unknown>)[s.id + "_justification"] as HTMLInputElement | null;
+                                  const raw = inputEl?.value ?? "";
+                                  const score = raw === "" ? null : parseInt(raw, 10);
+                                  const justification = justEl?.value?.trim() || null;
+                                  await adminApi.patchSession(id, s.id, {
+                                    coach_override_score: score,
+                                    coach_override_justification: justification,
+                                  });
+                                  toast.success(score == null ? "Override cleared." : "Override saved — DPO pair captured.");
+                                  load();
+                                } catch (e) {
+                                  toast.error((e as Error)?.message ?? "Failed to save override");
+                                } finally {
+                                  setSavingOverrideSessionId(null);
+                                }
+                              }}
+                            >
+                              {savingOverrideSessionId === s.id ? "Saving…" : "⚡ Submit Override"}
+                            </button>
+                            {s.coach_override_score != null && (
+                              <span className="text-xs text-muted-foreground">Clear score field and save to remove override</span>
+                            )}
+                          </div>
+                        </div>
+
                         {/* Coach grade (1–10) */}
                         <div className="flex flex-wrap items-center gap-2">
                           <label className="text-sm font-medium">Grade (1–10):</label>
@@ -1234,48 +1322,6 @@ export default function AdminStudentProfilePage({ params }: { params: { id: stri
                           >
                             {savingGradeSessionId === s.id ? "Saving…" : "Save grade"}
                           </button>
-                        </div>
-
-                        {/* Coach override score (0–100, RLHF) */}
-                        <div className="flex flex-wrap items-center gap-2">
-                          <label className="text-sm font-medium text-muted-foreground">
-                            AI Score Override (0–100):
-                          </label>
-                          <input
-                            ref={(el) => { sessionOverrideInputRefs.current[s.id] = el; }}
-                            type="number"
-                            min={0}
-                            max={100}
-                            step={1}
-                            placeholder="—"
-                            defaultValue={s.coach_override_score ?? ""}
-                            className="w-20 rounded-md border border-border bg-background px-2 py-1.5 text-sm"
-                          />
-                          <button
-                            type="button"
-                            disabled={savingOverrideSessionId === s.id}
-                            className="rounded-md border border-blue-300 bg-blue-50 px-3 py-1.5 text-sm font-medium text-blue-700 hover:bg-blue-100 disabled:opacity-50"
-                            onClick={async () => {
-                              setSavingOverrideSessionId(s.id);
-                              try {
-                                const inputEl = sessionOverrideInputRefs.current[s.id];
-                                const raw = inputEl?.value ?? "";
-                                const score = raw === "" ? null : parseInt(raw, 10);
-                                await adminApi.patchSession(id, s.id, { coach_override_score: score });
-                                toast.success("Override score saved.");
-                                load();
-                              } catch (e) {
-                                toast.error((e as Error)?.message ?? "Failed to save override score");
-                              } finally {
-                                setSavingOverrideSessionId(null);
-                              }
-                            }}
-                          >
-                            {savingOverrideSessionId === s.id ? "Saving…" : "Save override"}
-                          </button>
-                          <span className="text-xs text-muted-foreground">
-                            Clears to reset to AI score
-                          </span>
                         </div>
                       </div>
                     )}
