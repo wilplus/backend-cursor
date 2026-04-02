@@ -1017,17 +1017,28 @@ def v2_admin_student_session_report_get(user_id, session_id):
                     filler_count_for_cap = int(cap_fillers.get("total", 0) or 0)
         except Exception:
             filler_count_for_cap = 0
-        # Triple Sanity Check: Layer 3 → Layer 2 → Layer 1
+        # Triple Sanity Check: Layer 3 → Layer 2+mechanical blend → Layer 1
         coach_override = session.get("coach_override_score")
         ai_task = session.get("ai_task_score")
+        mechanical = session.get("mechanical_score")
         if coach_override is not None:
             try:
                 score_for_display_100 = max(0, min(100, int(coach_override)))
             except (TypeError, ValueError):
                 score_for_display_100 = round(perf_end * 100)
+        elif ai_task is not None and mechanical is not None:
+            try:
+                score_for_display_100 = round(int(mechanical) * 0.5 + int(ai_task) * 0.5)
+            except (TypeError, ValueError):
+                score_for_display_100 = round(perf_end * 100)
         elif ai_task is not None:
             try:
                 score_for_display_100 = max(0, min(100, int(ai_task)))
+            except (TypeError, ValueError):
+                score_for_display_100 = round(perf_end * 100)
+        elif mechanical is not None:
+            try:
+                score_for_display_100 = max(0, min(100, int(mechanical)))
             except (TypeError, ValueError):
                 score_for_display_100 = round(perf_end * 100)
         else:

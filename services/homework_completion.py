@@ -256,6 +256,37 @@ def _run_optional_enrichment(
     return coach_insight, r1, r2, r3
 
 
+def calculate_mechanical_score(stage_score, dynamic_db, filler_count) -> int:
+    """Layer 1: pure deterministic mechanical score (0-100).
+
+    Combines frontend sniper wheel (pace+flow), vocal dynamic range, and filler penalty.
+    Zero AI involved — always produces a result even if OpenAI is down.
+    """
+    base = float(stage_score or 0)
+    # Convert 0-1 to 0-100 if needed
+    if base <= 1.0:
+        base *= 100.0
+    base = max(0.0, min(100.0, base))
+
+    # Vocal variety modifier
+    vocal_modifier = 0
+    if dynamic_db is not None:
+        try:
+            ddb = float(dynamic_db)
+            if ddb < 12:
+                vocal_modifier = -10  # monotone/robotic penalty
+            elif ddb > 20:
+                vocal_modifier = 5    # high energy bonus
+        except (TypeError, ValueError):
+            pass
+
+    # Filler penalty
+    filler_penalty = int(filler_count or 0) * 3
+
+    raw = base + vocal_modifier - filler_penalty
+    return max(0, min(100, round(raw)))
+
+
 def _compute_and_save_ai_task_score(
     session: dict,
     session_id: str,
@@ -266,42 +297,42 @@ def _compute_and_save_ai_task_score(
     filler_data: dict,
     legacy_score: float,
 ):
-    """SHADOW MODE: compute AI task score via GPT-4o-mini and save to v2_sessions.
+    """Dual-engine scoring: mechanical (pure math) + context (GPT task judge).
 
-    Evaluates how well the student's transcript addresses the assigned task.
-    Non-blocking — failures are logged but never affect the student-facing score.
+    - mechanical_score: stage_score + dynamic_db modifier - filler penalty (deterministic)
+    - ai_task_score: GPT-4o-mini judges transcript against warm-up task text only
+    Non-blocking — failures never affect the student-facing score.
     """
-    # Get the student's warm-up tasks as the task description
-    warm_up_tasks = db.v2_get_warm_up_tasks(user_id)
-    if not warm_up_tasks:
-        logger.info("ai_task_score: no warm-up tasks found, skipping session_id=%s", session_id)
-        return
-    # Combine all warm-up task texts
-    task_description = " / ".join(t.get("text", "").strip() for t in warm_up_tasks if t.get("text", "").strip())
-    if not task_description:
-        logger.info("ai_task_score: empty warm-up task texts, skipping session_id=%s", session_id)
-        return
-
-    # Build metrics dict for the LLM
+    # --- Layer 1: Mechanical Score (pure math, always computed) ---
     sniper = None
     try:
         sniper = db.get_session_sniper_metrics(session_id)
     except Exception:
         pass
-    metrics = {
-        "wpm": wpm,
-        "filler_count": filler_count,
-        "stage_score": sniper.get("stage_score") if sniper else None,
-        "pause_ms": sniper.get("pause_ms") if sniper else None,
-        "dynamic_db": sniper.get("dynamic_db") if sniper else None,
-        "energy_ratio": sniper.get("energy_ratio") if sniper else None,
-        "voiced_duration_sec": sniper.get("voiced_duration_sec") if sniper else None,
-    }
+    stage_score = sniper.get("stage_score") if sniper else None
+    dynamic_db = sniper.get("dynamic_db") if sniper else None
+    mech = calculate_mechanical_score(stage_score, dynamic_db, filler_count)
+    try:
+        db.v2_update_session(session_id, user_id, {"mechanical_score": mech})
+        logger.info("mechanical_score: %d session_id=%s", mech, session_id)
+    except Exception as mech_err:
+        logger.warning("mechanical_score: DB save failed: %s", mech_err)
 
+    # --- Layer 2: Context Score (GPT judges task completion — transcript only) ---
+    warm_up_tasks = db.v2_get_warm_up_tasks(user_id)
+    if not warm_up_tasks:
+        logger.info("ai_task_score: no warm-up tasks, skipping context score session_id=%s", session_id)
+        return
+    task_description = " / ".join(t.get("text", "").strip() for t in warm_up_tasks if t.get("text", "").strip())
+    if not task_description:
+        logger.info("ai_task_score: empty warm-up task texts, skipping session_id=%s", session_id)
+        return
+
+    # GPT only sees transcript + task — no acoustic metrics (pure semantic judgment)
     result = openai_service.generate_ai_task_score(
         task_description=task_description,
         transcript=transcript,
-        metrics=metrics,
+        metrics={},  # intentionally empty — acoustics handled by mechanical_score
     )
 
     ai_score = result.get("ai_task_score")
@@ -314,13 +345,12 @@ def _compute_and_save_ai_task_score(
                 "ai_scoring_justification": justification[:2000],
             })
         except Exception as save_err:
-            # Column might not exist yet (migration not run) — log and move on
-            logger.warning("ai_task_score: DB save failed (column may not exist yet): %s", save_err)
+            logger.warning("ai_task_score: DB save failed: %s", save_err)
             return
 
     logger.info(
-        "ai_task_score: shadow score=%s legacy=%.0f%% justification=%s session_id=%s",
-        ai_score, legacy_score * 100, (justification[:80] + "...") if len(justification) > 80 else justification,
+        "ai_task_score: context=%s mechanical=%d justification=%s session_id=%s",
+        ai_score, mech, (justification[:80] + "...") if len(justification) > 80 else justification,
         session_id,
     )
 

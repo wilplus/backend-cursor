@@ -981,39 +981,22 @@ Respond with valid JSON array:
         if not transcript_excerpt.strip():
             return {"error": "empty_transcript", "ai_task_score": None, "justification": "No transcript available for evaluation."}
 
-        # Build metrics summary
-        m_lines = []
-        for key, label in [
-            ("wpm", "Words per minute"),
-            ("filler_count", "Filler words"),
-            ("pause_ms", "Average pause (ms)"),
-            ("dynamic_db", "Dynamic range (dB)"),
-            ("energy_ratio", "Energy ratio"),
-            ("stage_score", "Real-time stage score (0-100)"),
-            ("voiced_duration_sec", "Voiced duration (sec)"),
-        ]:
-            val = metrics.get(key)
-            if val is not None:
-                m_lines.append(f"- {label}: {val}")
-        metrics_block = "\n".join(m_lines) if m_lines else "No metrics available."
-
         system_prompt = (
             "You are an expert communication coach evaluating a student's homework recording.\n\n"
             "You will be given:\n"
             "1. The TASK the student was assigned (what they were asked to practice)\n"
-            "2. The TRANSCRIPT of what they actually said\n"
-            "3. Their SPEECH METRICS (pace, fillers, energy, etc.)\n\n"
-            "Your job: evaluate how well the student executed the specific task.\n\n"
+            "2. The TRANSCRIPT of what they actually said\n\n"
+            "Your ONLY job: evaluate how well the student addressed the specific topic requested.\n"
+            "Ignore delivery speed, pauses, or filler words — those are scored separately by a physics-based engine.\n\n"
             "Scoring guidelines:\n"
-            "- 80-100: Excellent. Student clearly addressed the task, good delivery.\n"
-            "- 60-79: Good effort. Partially addressed the task or had noticeable delivery issues.\n"
-            "- 40-59: Mediocre. Task was weakly addressed, or significant delivery problems.\n"
-            "- 20-39: Poor. Student mostly ignored the task or had severe delivery issues.\n"
+            "- 80-100: Excellent. Student clearly and thoroughly addressed the assigned task.\n"
+            "- 60-79: Good effort. Partially addressed the task or stayed on-topic with minor gaps.\n"
+            "- 40-59: Mediocre. Task was weakly addressed or content was vague/generic.\n"
+            "- 20-39: Poor. Student mostly ignored the task or went off-topic.\n"
             "- 0-19: Off-topic or near-silent recording.\n\n"
             "Important:\n"
             "- A student who speaks fluently but IGNORES the task should score LOW.\n"
-            "- A student who addresses the task well but has some fillers should still score decently.\n"
-            "- The task description is the primary evaluation criterion. Metrics are secondary.\n"
+            "- A student who addresses the task well but speaks imperfectly should still score high.\n"
             "- Be strict but fair. Most students should land between 40-75.\n\n"
             "Respond with ONLY valid JSON, no markdown, no explanation outside the JSON:\n"
             '{"ai_task_score": <integer 0-100>, "justification": "<1-2 sentences>"}'
@@ -1021,8 +1004,7 @@ Respond with valid JSON array:
 
         user_prompt = (
             f"## TASK ASSIGNED\n{task_description}\n\n"
-            f"## TRANSCRIPT\n{transcript_excerpt}\n\n"
-            f"## SPEECH METRICS\n{metrics_block}"
+            f"## TRANSCRIPT\n{transcript_excerpt}"
         )
 
         try:
