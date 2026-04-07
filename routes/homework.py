@@ -1319,6 +1319,16 @@ def homework_get_report(session_id):
                         live_ball_score_100 = round(raw if raw > 1 else raw * 100)
                     except (TypeError, ValueError):
                         live_ball_score_100 = None
+            context_fit_01 = None
+            try:
+                score_components = session.get("score_components")
+                if isinstance(score_components, dict):
+                    ctx_component = ((score_components.get("components") or {}).get("context") or {})
+                    raw_fit = ctx_component.get("normalized")
+                    if raw_fit is not None:
+                        context_fit_01 = max(0.0, min(1.0, float(raw_fit)))
+            except (TypeError, ValueError):
+                context_fit_01 = None
             coach_insight = openai_service.build_coach_insight_fallback(
                 context_short=context_short,
                 transcript_excerpt=transcript_excerpt,
@@ -1329,6 +1339,7 @@ def homework_get_report(session_id):
                 speaker_profile_context=speaker_profile_context,
                 self_rating_1_10=self_rating,
                 live_ball_score_100=live_ball_score_100,
+                context_fit_01=context_fit_01,
             )
         if coach_insight:
             payload["coach_insight"] = coach_insight

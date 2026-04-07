@@ -378,6 +378,17 @@ def _run_optional_enrichment(
             self_rating_1_10 = int(self_rating_1_10) if self_rating_1_10 is not None else None
         except (TypeError, ValueError):
             self_rating_1_10 = None
+        context_fit_01 = None
+        try:
+            session_latest = db.v2_get_session(session_id, user_id) or {}
+            score_components = session_latest.get("score_components")
+            if isinstance(score_components, dict):
+                ctx_component = ((score_components.get("components") or {}).get("context") or {})
+                raw_fit = ctx_component.get("normalized")
+                if raw_fit is not None:
+                    context_fit_01 = max(0.0, min(1.0, float(raw_fit)))
+        except Exception:
+            context_fit_01 = None
         coach_insight = openai_service.generate_coach_insight(
             context_short=context_short,
             transcript_excerpt=transcript_excerpt,
@@ -388,6 +399,7 @@ def _run_optional_enrichment(
             speaker_profile_context=speaker_profile_context,
             self_rating_1_10=self_rating_1_10,
             live_ball_score_100=live_ball_score_100,
+            context_fit_01=context_fit_01,
         )
         db.v2_update_session(session_id, user_id, {"coach_insight": coach_insight or None})
     except Exception as ci_err:

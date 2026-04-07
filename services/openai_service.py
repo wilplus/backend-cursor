@@ -88,6 +88,7 @@ def _build_coach_insight_fallback(
     speaker_profile_context: str = "",
     self_rating_1_10: int | None = None,
     live_ball_score_100: int | None = None,
+    context_fit_01: float | None = None,
 ) -> str:
     """Deterministic 3-sentence coach insight that works with partial data."""
     context = _sanitize_context_short(context_short) or _sanitize_context_short(transcript_excerpt)
@@ -97,6 +98,26 @@ def _build_coach_insight_fallback(
     final_score_100 = round(float(performance_score or 0) * 100)
     live_ball_text = str(live_ball_score_100) if live_ball_score_100 is not None else None
     rating_text = str(self_rating_1_10) if self_rating_1_10 is not None else None
+    fit_text = None
+    if context_fit_01 is not None:
+        try:
+            fit_01 = max(0.0, min(1.0, float(context_fit_01)))
+            if fit_01 >= 0.67:
+                fit_text = (
+                    "You mentioned points that directly correspond with the task context, "
+                    "which makes this a strong answer and keeps a clear storyline."
+                )
+            elif fit_01 >= 0.40:
+                fit_text = (
+                    "Parts of your answer match the task context, and with a more consistent storyline "
+                    "the fit can become even stronger."
+                )
+            else:
+                fit_text = (
+                    "Your answer drifted from the task context in key moments, so the storyline felt less consistent."
+                )
+        except (TypeError, ValueError):
+            fit_text = None
 
     sentence1_parts = []
     if context:
@@ -107,6 +128,8 @@ def _build_coach_insight_fallback(
         sentence1_parts.append(f"with filler usage noted as {filler_str}")
     if profile_ctx:
         sentence1_parts.append(f"which can be compared with your coach notes: {profile_ctx[:120]}")
+    if fit_text:
+        sentence1_parts.append(fit_text)
     sentence1 = " ".join(sentence1_parts).strip()
     if not sentence1:
         sentence1 = f"Your final review score is {final_score_100}/100, based on the data available so far."
@@ -580,6 +603,7 @@ Generate the report:"""
         speaker_profile_context: str = "",
         self_rating_1_10: int | None = None,
         live_ball_score_100: int | None = None,
+        context_fit_01: float | None = None,
     ) -> str:
         """Three short sentences for report view: context+fillers vs speaker profile, self-reflection, and coach handoff."""
         fallback = _build_coach_insight_fallback(
@@ -592,6 +616,7 @@ Generate the report:"""
             speaker_profile_context=speaker_profile_context,
             self_rating_1_10=self_rating_1_10,
             live_ball_score_100=live_ball_score_100,
+            context_fit_01=context_fit_01,
         )
         if not self.client:
             return fallback
@@ -616,6 +641,12 @@ Generate the report:"""
                 prompt_lines.append(f"Student self-rating (1-5): {self_rating_text}")
             if live_ball_score_100 is not None:
                 prompt_lines.append(f"Live ball summary score (pace/flow only, 0-100): {live_ball_text}")
+            if context_fit_01 is not None:
+                try:
+                    context_fit_clean = max(0.0, min(1.0, float(context_fit_01)))
+                    prompt_lines.append(f"Task-context fit score from transcript/context overlap (0-1): {context_fit_clean:.2f}")
+                except (TypeError, ValueError):
+                    pass
             if history_str:
                 prompt_lines.append(f"Recent session scores (oldest to newest, 0-100): {history_str}")
             system = (
@@ -623,7 +654,9 @@ Generate the report:"""
                 "Address the learner directly: use only 'you' and 'your' when talking about them (e.g. 'You covered…', 'You have effectively…', 'Your score reflects…'). "
                 "Never use third person: no 'the student', 'the speaker', 'they', or 'their' for the learner. "
                 "Use whatever data fields are provided and ignore fields that are missing. "
-                "Sentence 1: reference the context/summary, filler words, and any coach notes when available; point out at least one discrepancy or alignment when possible. "
+                "Sentence 1: reference the context/summary, filler words, and any coach notes when available; point out at least one discrepancy or alignment when possible, and mention task-context fit when that score is provided. "
+                "When fit data is provided and fit is strong, prefer wording close to: "
+                "'you mentioned points that correspond with the task context, which makes this a strong answer and keeps the storyline clear'. "
                 "Sentence 2: explain the score result using only the available score/self-rating/history inputs; if some are missing, do not mention them. "
                 "Sentence 3 must be exactly: Let's see what your human coach Artur will say in the next video. "
                 "Be specific, supportive, and concrete. No bullet points, no extra lines. Output only the 3 sentences."
@@ -656,6 +689,7 @@ Generate the report:"""
         speaker_profile_context: str = "",
         self_rating_1_10: int | None = None,
         live_ball_score_100: int | None = None,
+        context_fit_01: float | None = None,
     ) -> str:
         return _build_coach_insight_fallback(
             context_short=context_short,
@@ -667,6 +701,7 @@ Generate the report:"""
             speaker_profile_context=speaker_profile_context,
             self_rating_1_10=self_rating_1_10,
             live_ball_score_100=live_ball_score_100,
+            context_fit_01=context_fit_01,
         )
 
     def generate_final_task(
