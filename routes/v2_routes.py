@@ -970,6 +970,16 @@ def v2_admin_student_session_report_get(user_id, session_id):
             score_for_display_100 = int(score_for_display_100) if score_for_display_100 is not None else None
         except (TypeError, ValueError):
             score_for_display_100 = None
+        # Legacy rows (pre-migration) or edge cases: student route stays strict; admin must not 409 forever.
+        if score_for_display_100 is None:
+            try:
+                s01 = float(session.get("score") or 0)
+                if s01 > 1:
+                    score_for_display_100 = max(0, min(100, int(round(s01))))
+                else:
+                    score_for_display_100 = max(0, min(100, int(round(s01 * 100))))
+            except (TypeError, ValueError):
+                score_for_display_100 = None
         if score_for_display_100 is None:
             return jsonify({
                 "code": "REPORT_NOT_READY",
@@ -1059,12 +1069,18 @@ def v2_admin_student_session_report_get(user_id, session_id):
                     "words_per_minute": round(float(_rec_wpm), 1) if _rec_wpm is not None else None,
                 }
 
-        if not (session.get("context_short") or "").strip() or not recording_payload or not (recording_payload.get("transcription_text") or "").strip():
-            return jsonify({
-                "code": "REPORT_NOT_READY",
-                "error": "Transcript and context are still processing.",
-                "status": session.get("status"),
-            }), 409
+        has_context = bool((session.get("context_short") or "").strip())
+        has_transcript = bool(
+            recording_payload and (recording_payload.get("transcription_text") or "").strip()
+        )
+        if not has_context or not recording_payload or not has_transcript:
+            # Student GET report blocks until ready; admin polling must terminate for completed sessions.
+            if not report_text:
+                return jsonify({
+                    "code": "REPORT_NOT_READY",
+                    "error": "Transcript and context are still processing.",
+                    "status": session.get("status"),
+                }), 409
 
         sniper_profile = db.get_sniper_profile_payload(user_id)
         sniper_metrics = None

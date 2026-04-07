@@ -1061,6 +1061,32 @@ def homework_get_report(session_id):
                         # #endregion
                 except Exception as fallback_err:
                     logger.warning("homework_get_report: fallback completion failed: %s", fallback_err)
+            elif session.get("status") == STATUS_COMPLETING_FROM_RECORDING_1 and session.get("recording_1_processing_status") == "pending":
+                # Self-heal for in-process worker restarts: re-enqueue the processing job from persisted storage_path.
+                try:
+                    from services.recording_1_job import enqueue_recording_1_job
+                    rec_id = session.get("recording_1_id")
+                    rec = db.get_recording(rec_id, user_id) if rec_id else None
+                    storage_path = (rec or {}).get("storage_path")
+                    if rec_id and storage_path:
+                        enqueue_recording_1_job(
+                            session_id=session_id,
+                            recording_id=str(rec_id),
+                            storage_path=storage_path,
+                            user_id=user_id,
+                            duration_seconds=(rec or {}).get("duration_seconds"),
+                        )
+                        _agent_log("GET report re-enqueued pending recording job", {"session_id": session_id, "recording_id": str(rec_id)}, "H2")
+                except Exception as requeue_err:
+                    logger.warning("homework_get_report: pending job re-enqueue failed: %s", requeue_err)
+            elif session.get("status") == STATUS_COMPLETING_FROM_RECORDING_1 and session.get("recording_1_processing_status") == "failed":
+                return jsonify({
+                    "code": "RECORDING_PROCESSING_FAILED",
+                    "error": "Recording processing failed. Please retry the recording.",
+                    "status": session.get("status"),
+                    "recording_1_processing_status": session.get("recording_1_processing_status"),
+                    "recording_1_processing_error_code": session.get("recording_1_processing_error_code"),
+                }), 409
             if session.get("status") != STATUS_COMPLETED:
                 # #region agent log
                 _agent_log("GET report returning 409", {"session_id": session_id, "status": session.get("status")}, "H1")
