@@ -10,3 +10,4 @@ openai==1.59.2
 sentry-sdk[flask]==2.19.0
 resend==2.4.0
 numpy>=1.24.0
+imageio-ffmpeg

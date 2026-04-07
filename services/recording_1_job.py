@@ -220,7 +220,7 @@ def _process_one(payload: dict):
 
         focus_task = None
 
-        # ── Sniper audio metrics (best-effort; never blocks the job) ──
+        # ── Sniper audio metrics (graceful fallback when ffmpeg is unavailable) ──
         try:
             from services.audio_metrics import analyze_audio
             audio_analysis = analyze_audio(
@@ -229,46 +229,63 @@ def _process_one(payload: dict):
                 duration_sec=duration_seconds,
                 fallback_wpm=wpm,
             )
-            if audio_analysis:
-                db.save_session_sniper_metrics(
-                    session_id=session_id,
-                    user_id=user_id,
-                    wpm=audio_analysis.get("wpm"),
-                    pause_ms=audio_analysis.get("pause_ms"),
-                    dynamic_db=audio_analysis.get("dynamic_db"),
-                    emphasis_per_min=audio_analysis.get("emphasis_per_min"),
-                    energy_ratio=audio_analysis.get("energy_ratio"),
-                    voiced_duration_sec=audio_analysis.get("voiced_duration_sec"),
-                    recording_id=recording_id,
-                    duration_seconds=duration_seconds,
-                    pitch_center_st=audio_analysis.get("pitch_center_st"),
-                    pitch_frame_count=audio_analysis.get("pitch_frame_count"),
-                )
-                logger.info(
-                    "recording_1_job: sniper metrics saved wpm=%.0f pause=%s dyn=%s emph=%s energy=%s pitch=%s session_id=%s",
-                    audio_analysis.get("wpm") or 0,
-                    audio_analysis.get("pause_ms"),
-                    audio_analysis.get("dynamic_db"),
-                    audio_analysis.get("emphasis_per_min"),
-                    audio_analysis.get("energy_ratio"),
-                    audio_analysis.get("pitch_center_st"),
-                    session_id,
-                )
-                logger.info(
-                    "recording_1_job: stage=metrics_ready session_id=%s elapsed_ms=%d",
-                    session_id,
-                    int((time.monotonic() - job_started) * 1000),
-                )
-            else:
-                _mark_failed(
-                    session_id,
-                    user_id,
-                    ERROR_AUDIO_METRICS,
-                    ValueError("audio metrics unavailable"),
-                )
-                return
         except Exception as metrics_err:
-            _mark_failed(session_id, user_id, ERROR_AUDIO_METRICS, metrics_err)
+            logger.warning("recording_1_job: analyze_audio crashed, using fallback metrics session_id=%s: %s", session_id, metrics_err)
+            audio_analysis = None
+
+        # Railway environments without ffmpeg can still finish homework by persisting
+        # minimal metrics (including stage_score) from deterministic backend scoring.
+        if not audio_analysis:
+            audio_analysis = {
+                "wpm": wpm,
+                "pause_ms": None,
+                "dynamic_db": None,
+                "emphasis_per_min": None,
+                "energy_ratio": None,
+                "pitch_center_st": None,
+                "pitch_frame_count": None,
+                "voiced_duration_sec": round(float(duration_seconds or 0.0), 1) if duration_seconds is not None else None,
+            }
+            logger.warning(
+                "recording_1_job: ffmpeg metrics unavailable; using fallback sniper metrics session_id=%s recording_id=%s",
+                session_id,
+                recording_id,
+            )
+
+        try:
+            db.save_session_sniper_metrics(
+                session_id=session_id,
+                user_id=user_id,
+                wpm=audio_analysis.get("wpm"),
+                pause_ms=audio_analysis.get("pause_ms"),
+                dynamic_db=audio_analysis.get("dynamic_db"),
+                emphasis_per_min=audio_analysis.get("emphasis_per_min"),
+                energy_ratio=audio_analysis.get("energy_ratio"),
+                stage_score=round(float(score), 4),
+                voiced_duration_sec=audio_analysis.get("voiced_duration_sec"),
+                recording_id=recording_id,
+                duration_seconds=duration_seconds,
+                pitch_center_st=audio_analysis.get("pitch_center_st"),
+                pitch_frame_count=audio_analysis.get("pitch_frame_count"),
+            )
+            logger.info(
+                "recording_1_job: sniper metrics saved wpm=%.0f pause=%s dyn=%s emph=%s energy=%s pitch=%s stage=%.4f session_id=%s",
+                audio_analysis.get("wpm") or 0,
+                audio_analysis.get("pause_ms"),
+                audio_analysis.get("dynamic_db"),
+                audio_analysis.get("emphasis_per_min"),
+                audio_analysis.get("energy_ratio"),
+                audio_analysis.get("pitch_center_st"),
+                float(score),
+                session_id,
+            )
+            logger.info(
+                "recording_1_job: stage=metrics_ready session_id=%s elapsed_ms=%d",
+                session_id,
+                int((time.monotonic() - job_started) * 1000),
+            )
+        except Exception as metrics_save_err:
+            _mark_failed(session_id, user_id, ERROR_AUDIO_METRICS, metrics_save_err)
             return
 
         duration_int = int(round(duration_seconds))

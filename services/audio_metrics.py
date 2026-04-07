@@ -7,6 +7,7 @@ Used by recording_1_job (automatic) and backfill script.
 import logging
 import math
 import subprocess
+import shutil
 from typing import Dict, Optional, Tuple
 
 import numpy as np
@@ -28,12 +29,33 @@ PITCH_WINDOW = 2048
 PITCH_REF_HZ = 100.0
 
 
+def _resolve_ffmpeg_executable() -> Optional[str]:
+    """Resolve ffmpeg executable from PATH or bundled fallback."""
+    ffmpeg_path = shutil.which("ffmpeg")
+    if ffmpeg_path:
+        return ffmpeg_path
+    try:
+        import imageio_ffmpeg
+
+        bundled = imageio_ffmpeg.get_ffmpeg_exe()
+        if bundled:
+            logger.warning("ffmpeg not found on PATH; using bundled imageio-ffmpeg binary")
+            return bundled
+    except Exception as e:
+        logger.warning("ffmpeg fallback resolution failed: %s", e)
+    return None
+
+
 def decode_audio_to_pcm(audio_bytes: bytes) -> Optional[np.ndarray]:
     """Decode webm/any audio → 16kHz mono float32 PCM via ffmpeg."""
+    ffmpeg_exe = _resolve_ffmpeg_executable()
+    if not ffmpeg_exe:
+        logger.warning("ffmpeg not found (PATH and bundled fallback unavailable)")
+        return None
     try:
         proc = subprocess.run(
             [
-                "ffmpeg", "-i", "pipe:0",
+                ffmpeg_exe, "-i", "pipe:0",
                 "-f", "s16le", "-acodec", "pcm_s16le",
                 "-ar", str(SAMPLE_RATE), "-ac", "1",
                 "pipe:1",
@@ -50,9 +72,6 @@ def decode_audio_to_pcm(audio_bytes: bytes) -> Optional[np.ndarray]:
             return None
         samples = np.frombuffer(raw, dtype=np.int16)
         return samples.astype(np.float32) / 32768.0
-    except FileNotFoundError:
-        logger.warning("ffmpeg not found — audio metrics will be skipped")
-        return None
     except Exception as e:
         logger.warning("decode_audio_to_pcm error: %s", e)
         return None
