@@ -565,31 +565,11 @@ def homework_self_rating(session_id):
 
         # Completion depends on self-rating: build report, mark completed, send coach email when job is done.
         session_completed = False
+        processing = False
         proc_status = session.get("recording_1_processing_status")
 
-        # Wait for recording_1 job when still pending (avoid completing with score=0 while Whisper/scoring runs).
-        if status == STATUS_COMPLETING_FROM_RECORDING_1 and proc_status == "pending":
-            max_wait_s = 40
-            interval_s = 1.0
-            deadline = time.time() + max_wait_s
-            while time.time() < deadline:
-                time.sleep(interval_s)
-                fresh = db.v2_get_session(session_id, user_id)
-                if not fresh:
-                    proc_status = "failed"
-                    break
-                proc_status = fresh.get("recording_1_processing_status")
-                status = fresh.get("status") or status
-                if proc_status != "pending":
-                    break
-            logger.info(
-                "homework_self_rating: after wait proc_status=%s status=%s session_id=%s",
-                proc_status,
-                status,
-                session_id,
-            )
-
         if status == STATUS_COMPLETING_FROM_RECORDING_1 and proc_status == "completed":
+            # Job already finished before self-rating arrived — complete now.
             # #region agent log
             _agent_log("POST self-rating attempting completion", {"session_id": session_id, "recording_1_processing_status": proc_status}, "H4")
             # #endregion
@@ -606,11 +586,15 @@ def homework_self_rating(session_id):
             # #region agent log
             _agent_log("POST self-rating completion result", {"session_id": session_id, "session_completed": session_completed}, "H4")
             # #endregion
-        elif status == STATUS_COMPLETING_FROM_RECORDING_1 and proc_status in ("failed", "pending"):
-            # Recovery: job failed or was lost (pending after re-read = process restart lost the job).
-            # Give the user a completed session with a minimal report so they're not stuck.
+        elif status == STATUS_COMPLETING_FROM_RECORDING_1 and proc_status == "pending":
+            # Job still running — return immediately; job will call complete_session_recording_1_only
+            # when it finishes and sees self_rating_submitted_at is set.
+            processing = True
+            logger.info("homework_self_rating: job still pending, deferring completion to job session_id=%s", session_id)
+        elif status == STATUS_COMPLETING_FROM_RECORDING_1 and proc_status == "failed":
+            # Job failed — run minimal fallback so user is not stuck.
             logger.warning(
-                "homework_self_rating: proc_status=%s at self-rating time, running minimal fallback session_id=%s",
+                "homework_self_rating: proc_status=failed at self-rating time, running minimal fallback session_id=%s",
                 proc_status, session_id,
             )
             try:
@@ -637,6 +621,7 @@ def homework_self_rating(session_id):
         out = {
             "status": "ok",
             "session_completed": session_completed,
+            "processing": processing,
             "sniper_profile": sniper_profile,
             "realtime_level": sniper_profile.get("realtime_level"),
             "realtime_step": sniper_profile.get("realtime_step"),
