@@ -1748,7 +1748,7 @@ class DatabaseService:
                     continue
                 rec_res = (
                     self.client.table("recordings")
-                    .select("id, words_per_minute, filler_words_count, duration_ms, created_at")
+                    .select("id, words_per_minute, filler_words_count, duration, created_at")
                     .eq("id", rid)
                     .limit(1)
                     .execute()
@@ -1759,7 +1759,7 @@ class DatabaseService:
                 if (
                     r.get("words_per_minute") is None
                     and r.get("filler_words_count") is None
-                    and r.get("duration_ms") is None
+                    and r.get("duration") is None
                 ):
                     continue
                 latest["source"] = "recording"
@@ -1768,7 +1768,7 @@ class DatabaseService:
                 latest["captured_at"] = r.get("created_at") or s.get("completed_at")
                 latest["wpm"] = r.get("words_per_minute")
                 latest["filler_words_count"] = r.get("filler_words_count")
-                latest["duration_ms"] = r.get("duration_ms")
+                latest["duration_ms"] = r.get("duration")
                 break
         except Exception as e:
             logger.debug("v2_get_admin_measured_metrics_snapshot: recording fallback failed: %s", e)
