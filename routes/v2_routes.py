@@ -1925,6 +1925,125 @@ def v2_admin_task_warm_up_delete(user_id, task_id):
         return jsonify({"error": "Delete failed.", "detail": str(err)}), 503
 
 
+# ---------- Admin: task-focus (per student) ----------
+def _v2_get_focus_tasks_for_student(user_id: str):
+    rows = (
+        db.client.table("v2_focus_tasks")
+        .select("id, user_id, text, order_index, max_performance_score, pool_task_id, created_at")
+        .eq("user_id", user_id)
+        .order("order_index")
+        .order("created_at")
+        .execute()
+    )
+    return rows.data or []
+
+
+@v2_bp.route("/admin/students/<user_id>/task-focus", methods=["GET"])
+@v2_bp.route("/admin/students/<user_id>/focus-tasks", methods=["GET"])
+@require_admin
+def v2_admin_task_focus_list(user_id):
+    try:
+        rows = _v2_get_focus_tasks_for_student(user_id)
+        return jsonify({"task_focus": rows, "focus_tasks": rows}), 200
+    except Exception as err:
+        logger.warning("task-focus GET failed for user %s: %s", user_id, err, exc_info=True)
+        # Keep admin page usable even if focus tables are not migrated yet.
+        return jsonify({"task_focus": [], "focus_tasks": []}), 200
+
+
+@v2_bp.route("/admin/students/<user_id>/task-focus/create-pool-and-assign", methods=["POST"])
+@v2_bp.route("/admin/students/<user_id>/focus-tasks/create-pool-and-assign", methods=["POST"])
+@require_admin
+def v2_admin_task_focus_create_pool_and_assign(user_id):
+    """
+    Backward-compatible alias for frontend routes expecting task-focus.
+    Creates one pool row and syncs this student's focus list to pool-linked rows.
+    """
+    data = request.get_json() or {}
+    text = (data.get("text") or "").strip()
+    if not text:
+        return jsonify({"error": "text is required"}), 400
+
+    insert_at = data.get("insert_at", "end")
+    if insert_at != "end" and insert_at is not None:
+        try:
+            insert_at = int(insert_at)
+        except (TypeError, ValueError):
+            insert_at = "end"
+    try:
+        order_index = int(data.get("order_index", 0))
+    except (TypeError, ValueError):
+        order_index = 0
+    try:
+        mps = float(data.get("max_performance_score", 1.0))
+    except (TypeError, ValueError):
+        mps = 1.0
+
+    try:
+        pool_insert = (
+            db.client.table("v2_focus_task_pool")
+            .insert(
+                {
+                    "text": text,
+                    "order_index": order_index,
+                    "max_performance_score": mps,
+                }
+            )
+            .execute()
+        )
+        pool_row = (pool_insert.data or [{}])[0]
+        new_pool_id = pool_row.get("id")
+        if not new_pool_id:
+            return jsonify({"error": "Failed to create focus pool task"}), 503
+
+        existing = _v2_get_focus_tasks_for_student(user_id)
+        dropped_non_pool_tasks = sum(1 for r in existing if not r.get("pool_task_id"))
+        existing_pool_ids = [str(r.get("pool_task_id")) for r in existing if r.get("pool_task_id")]
+
+        pool_order_ids = list(existing_pool_ids)
+        if insert_at == "end":
+            pool_order_ids.append(str(new_pool_id))
+        else:
+            idx = max(0, min(int(insert_at), len(pool_order_ids)))
+            pool_order_ids.insert(idx, str(new_pool_id))
+
+        pool_rows = (
+            db.client.table("v2_focus_task_pool")
+            .select("id, text, max_performance_score, created_at")
+            .in_("id", pool_order_ids)
+            .execute()
+        )
+        by_id = {str(r["id"]): r for r in (pool_rows.data or []) if r.get("id")}
+        ordered_pool = [by_id[pid] for pid in pool_order_ids if pid in by_id]
+
+        db.client.table("v2_focus_tasks").delete().eq("user_id", user_id).execute()
+        new_rows = [
+            {
+                "user_id": user_id,
+                "text": r.get("text"),
+                "order_index": i,
+                "pool_task_id": r.get("id"),
+                "max_performance_score": r.get("max_performance_score"),
+            }
+            for i, r in enumerate(ordered_pool)
+        ]
+        if new_rows:
+            db.client.table("v2_focus_tasks").insert(new_rows).execute()
+
+        assigned_rows = _v2_get_focus_tasks_for_student(user_id)
+        return jsonify(
+            {
+                "task_focus_pool": pool_row,
+                "task_focus": assigned_rows,
+                "focus_tasks": assigned_rows,
+                "dropped_non_pool_tasks": dropped_non_pool_tasks,
+            }
+        ), 201
+    except Exception as err:
+        logger.warning("task-focus create-pool-and-assign failed for user %s: %s", user_id, err, exc_info=True)
+        return jsonify({"error": "create-pool-and-assign failed", "detail": str(err)}), 503
+
+
 # ---------- Admin: post-recording questions (per student) ----------
 @v2_bp.route("/admin/students/<user_id>/post-recording-questions", methods=["GET"])
 @require_admin

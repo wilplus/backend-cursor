@@ -19,6 +19,8 @@ class DatabaseService:
             config.SUPABASE_URL,
             config.SUPABASE_SERVICE_ROLE_KEY
         )
+        # Cache missing optional columns discovered at runtime on older schemas.
+        self._v2_sessions_missing_columns: set[str] = set()
     
     def get_active_session(self, user_id: str):
         """Get the active (non-completed) session for a user"""
@@ -3050,15 +3052,7 @@ class DatabaseService:
 
     def v2_get_sessions_with_previews(self, user_id: str, limit: int = 50):
         """Get v2 sessions for a user with full report text and all analytics previews for admin session history."""
-        select_columns = (
-            "id, created_at, completed_at, status, recording_1_id, report_id, "
-            "report_grade, student_completion_email_sent_at, "
-            "score, task_score, "
-            "question_1_score, question_2_score, question_3_score, "
-            "realtime_level_at_session, realtime_step_at_session, "
-            "ai_task_score, ai_scoring_justification, coach_override_score, coach_override_justification"
-        )
-        session_fields = (
+        all_session_columns = [
             "id", "created_at", "completed_at", "status",
             "recording_1_id", "report_id", "report_grade",
             "student_completion_email_sent_at",
@@ -3066,7 +3060,10 @@ class DatabaseService:
             "question_1_score", "question_2_score", "question_3_score",
             "realtime_level_at_session", "realtime_step_at_session",
             "ai_task_score", "ai_scoring_justification", "coach_override_score", "coach_override_justification",
-        )
+        ]
+        session_columns = [c for c in all_session_columns if c not in self._v2_sessions_missing_columns]
+        select_columns = ", ".join(session_columns)
+        session_fields = tuple(session_columns)
         try:
             result = (
                 self.client.table("v2_sessions")
@@ -3085,16 +3082,22 @@ class DatabaseService:
                     if col in msg:
                         missing_cols.append(col)
                 if not missing_cols:
+                    # Try to parse: "column v2_sessions.<name> does not exist"
+                    m = re.search(r"column\s+v2_sessions\.([a-z0-9_]+)\s+does not exist", msg)
+                    if m:
+                        missing_cols = [m.group(1)]
+                if not missing_cols:
                     raise
-                logger.warning(
-                    "v2_get_sessions_with_previews: columns missing %s, retrying without them: %s",
-                    missing_cols, e,
-                )
-                for col in missing_cols:
-                    select_columns = select_columns.replace(f"{col}, ", "").replace(f", {col}", "").replace(col, "")
-                    session_fields = tuple(f for f in session_fields if f != col)
-                # Clean up any trailing/leading commas or double commas
-                select_columns = re.sub(r',\s*,', ',', select_columns).strip().strip(',').strip()
+                new_missing = [c for c in missing_cols if c not in self._v2_sessions_missing_columns]
+                self._v2_sessions_missing_columns.update(missing_cols)
+                if new_missing:
+                    logger.warning(
+                        "v2_get_sessions_with_previews: columns missing %s, retrying without them: %s",
+                        new_missing, e,
+                    )
+                session_columns = [c for c in all_session_columns if c not in self._v2_sessions_missing_columns]
+                select_columns = ", ".join(session_columns)
+                session_fields = tuple(session_columns)
                 result = (
                     self.client.table("v2_sessions")
                     .select(select_columns)
@@ -3161,12 +3164,26 @@ class DatabaseService:
         recordings_by_id: dict = {}
         if recording_ids:
             try:
-                recs = (
-                    self.client.table("recordings")
-                    .select("id, performance_score_v2, transcription_text, words_per_minute, filler_words_count, performance_metrics_v2, duration_ms")
-                    .in_("id", recording_ids)
-                    .execute()
-                )
+                rec_select = "id, performance_score_v2, transcription_text, words_per_minute, filler_words_count, performance_metrics_v2, duration_ms"
+                try:
+                    recs = (
+                        self.client.table("recordings")
+                        .select(rec_select)
+                        .in_("id", recording_ids)
+                        .execute()
+                    )
+                except Exception as rec_err:
+                    # Legacy schema uses `duration` (seconds) instead of `duration_ms`.
+                    rec_msg = str(rec_err).lower()
+                    if "duration_ms" in rec_msg and ("does not exist" in rec_msg or "42703" in rec_msg or "undefined_column" in rec_msg):
+                        recs = (
+                            self.client.table("recordings")
+                            .select("id, performance_score_v2, transcription_text, words_per_minute, filler_words_count, performance_metrics_v2, duration")
+                            .in_("id", recording_ids)
+                            .execute()
+                        )
+                    else:
+                        raise
                 for row in (recs.data or []):
                     recordings_by_id[row["id"]] = row
             except Exception:
@@ -3182,13 +3199,19 @@ class DatabaseService:
             recording_id = s.get("recording_1_id")
             if recording_id and recording_id in recordings_by_id:
                 row = recordings_by_id[recording_id]
+                raw_duration_ms = row.get("duration_ms")
+                if raw_duration_ms is None and row.get("duration") is not None:
+                    try:
+                        raw_duration_ms = int(float(row.get("duration")) * 1000.0)
+                    except (TypeError, ValueError):
+                        raw_duration_ms = None
                 rec["recording_preview"] = {
                     "performance_score_v2": row.get("performance_score_v2"),
                     "transcription_preview": (row.get("transcription_text") or "")[:300],
                     "words_per_minute": row.get("words_per_minute"),
                     "filler_words_count": row.get("filler_words_count"),
                     "performance_metrics_v2": row.get("performance_metrics_v2"),
-                    "duration_ms": row.get("duration_ms"),
+                    "duration_ms": raw_duration_ms,
                 }
 
             rec["sniper_metrics"] = sniper_metrics_by_session.get(s["id"])
@@ -3213,6 +3236,31 @@ class DatabaseService:
             rec["words_per_minute"] = _merged_wpm
             if isinstance(rec.get("sniper_metrics"), dict) and rec["sniper_metrics"].get("wpm") is None and _merged_wpm is not None:
                 rec["sniper_metrics"] = {**rec["sniper_metrics"], "wpm": _merged_wpm}
+
+            # Backward-compat aliases for older admin panels that read flat keys.
+            rec["wpm"] = rec.get("words_per_minute")
+            filler_total = None
+            filler_obj = (rec.get("recording_preview") or {}).get("filler_words_count")
+            if isinstance(filler_obj, dict):
+                filler_total = filler_obj.get("total")
+            elif isinstance(filler_obj, (int, float)):
+                filler_total = filler_obj
+            rec["filler_words_count"] = filler_total
+            rec["duration_seconds"] = None
+            duration_ms_val = (rec.get("recording_preview") or {}).get("duration_ms")
+            if duration_ms_val is not None:
+                try:
+                    rec["duration_seconds"] = round(float(duration_ms_val) / 1000.0, 1)
+                except (TypeError, ValueError):
+                    rec["duration_seconds"] = None
+            sm = rec.get("sniper_metrics") if isinstance(rec.get("sniper_metrics"), dict) else {}
+            rec["pause_ms"] = sm.get("pause_ms")
+            rec["dynamic_db"] = sm.get("dynamic_db")
+            rec["pitch_center_st"] = sm.get("pitch_center_st")
+            rec["energy_ratio"] = sm.get("energy_ratio")
+            rec["student_rating_1_10"] = sm.get("student_rating_1_10")
+            review = rec.get("review") if isinstance(rec.get("review"), dict) else {}
+            rec["ml_quality"] = review.get("overall_quality")
 
             report_text = None
             if s.get("report_id"):
