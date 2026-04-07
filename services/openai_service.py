@@ -161,10 +161,12 @@ class OpenAIService:
             logger.info("transcribe_audio: filename=%s size=%d bytes", filename, len(audio_data))
 
             # Transcribe
+            # Disfluent prompt conditions Whisper to preserve filler words instead of cleaning them.
             transcript_response = self.client.audio.transcriptions.create(
                 model="whisper-1",
                 file=(filename, audio_data, "audio/webm"),
-                response_format="verbose_json"
+                response_format="verbose_json",
+                prompt="Umm, let me think like, hmm... Okay, so, uh, yeah. I mean, you know, it's like, um, well..."
             )
 
             # Extract duration from segments (use last segment end time)
