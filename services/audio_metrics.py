@@ -6,6 +6,7 @@ Used by recording_1_job (automatic) and backfill script.
 """
 import logging
 import math
+import os
 import subprocess
 import shutil
 from typing import Dict, Optional, Tuple
@@ -30,7 +31,10 @@ PITCH_REF_HZ = 100.0
 
 
 def _resolve_ffmpeg_executable() -> Optional[str]:
-    """Resolve ffmpeg executable from PATH or bundled fallback."""
+    """Resolve ffmpeg: FFMPEG_PATH env, then PATH, then bundled imageio-ffmpeg."""
+    env_path = (os.environ.get("FFMPEG_PATH") or "").strip()
+    if env_path and os.path.isfile(env_path) and os.access(env_path, os.X_OK):
+        return env_path
     ffmpeg_path = shutil.which("ffmpeg")
     if ffmpeg_path:
         return ffmpeg_path

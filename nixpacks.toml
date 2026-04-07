@@ -1,5 +1,8 @@
 # Railway / Nixpacks: install ffmpeg for recording-pipeline audio analysis.
 # https://nixpacks.com/docs/configuration/file
+#
+# Runtime: gunicorn must see Nix profile on PATH (see Procfile), or shutil.which("ffmpeg")
+# fails and Python falls back to imageio-ffmpeg.
 [phases.setup]
 nixPkgs = ["ffmpeg"]
 aptPkgs = ["ffmpeg"]
