@@ -188,8 +188,6 @@ def get_sniper_profile():
             recording_id = str(payload["recording_id"]).strip() if payload.get("recording_id") else None
             allowed_recording_ids = {
                 str(session.get("recording_1_id")) for _ in [0] if session.get("recording_1_id")
-            } | {
-                str(session.get("recording_2_id")) for _ in [0] if session.get("recording_2_id")
             }
             if recording_id and allowed_recording_ids and recording_id not in allowed_recording_ids:
                 return jsonify({"code": "INVALID_INPUT", "error": "recording_id must belong to this session"}), 400

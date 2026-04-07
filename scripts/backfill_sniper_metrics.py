@@ -261,7 +261,7 @@ def get_sessions_needing_backfill(user_id: Optional[str], limit: int) -> List[di
     """Get sessions that have recordings but no session_sniper_metrics."""
     query = (
         db.client.table("v2_sessions")
-        .select("id, user_id, recording_1_id, recording_2_id, completed_at, status")
+        .select("id, user_id, recording_1_id, completed_at, status")
         .eq("status", "completed")
         .order("completed_at", desc=True)
         .limit(limit)
@@ -289,7 +289,7 @@ def get_sessions_needing_backfill(user_id: Optional[str], limit: int) -> List[di
         for row in sm.data or []:
             existing.add(row["session_id"])
 
-    return [s for s in sessions if s["id"] not in existing and (s.get("recording_1_id") or s.get("recording_2_id"))]
+    return [s for s in sessions if s["id"] not in existing and s.get("recording_1_id")]
 
 
 def get_recording_info(recording_id: str) -> Optional[dict]:
@@ -309,7 +309,7 @@ def backfill_session(session: dict, dry_run: bool) -> bool:
     """Backfill one session. Returns True on success."""
     session_id = session["id"]
     user_id = session["user_id"]
-    recording_id = session.get("recording_2_id") or session.get("recording_1_id")
+    recording_id = session.get("recording_1_id")
 
     if not recording_id:
         logger.info("  skip %s — no recording", session_id[:8])

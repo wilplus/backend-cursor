@@ -182,7 +182,7 @@ def _parse_admin_import_review_patch(data: dict):
 
 def _allowed_session_recording_ids(session: dict) -> set[str]:
     ids = set()
-    for key in ("recording_1_id", "recording_2_id"):
+    for key in ("recording_1_id",):
         value = session.get(key)
         if value:
             ids.add(str(value))
@@ -942,7 +942,7 @@ def v2_admin_student_session_grade(user_id, session_id):
 @v2_bp.route("/admin/students/<user_id>/sessions/<session_id>/report", methods=["GET", "POST"])
 @require_admin
 def v2_admin_student_session_report_get(user_id, session_id):
-    """Get report for a completed session. Same payload as student GET report: report_text, scores, final_recording (recording_2 or recording_1), recording (transcript, fillers, wpm), context_short, coach_insight, performance_history, score_for_display. Supports GET and POST."""
+    """Get report for a completed session. Same payload as student GET report: report_text, scores, final_recording (recording_1), recording (transcript, fillers, wpm), context_short, coach_insight, performance_history, score_for_display. Supports GET and POST."""
     try:
         from config import Config
         config = Config()
@@ -965,7 +965,7 @@ def v2_admin_student_session_report_get(user_id, session_id):
             except Exception:
                 pass
 
-        has_rec_2 = bool(session.get("recording_2_id"))
+        has_rec_2 = False
         perf_end = float(session.get("score") or 0)
         if perf_end > 0 and (session.get("score") is None or float(session.get("score") or 0) <= 0):
             perf_end = max(0.0, min(1.0, perf_end))
@@ -982,7 +982,7 @@ def v2_admin_student_session_report_get(user_id, session_id):
             perf_end = max(0.0, min(1.0, perf_end))
 
         if perf_end <= 0:
-            rid = session.get("recording_2_id") or session.get("recording_1_id")
+            rid = session.get("recording_1_id")
             if rid:
                 try:
                     rec_for_score = db.get_recording_for_homework_session(rid, user_id, session)
@@ -1009,7 +1009,7 @@ def v2_admin_student_session_report_get(user_id, session_id):
 
         filler_count_for_cap = 0
         try:
-            cap_recording_id = session.get("recording_2_id") or session.get("recording_1_id")
+            cap_recording_id = session.get("recording_1_id")
             if cap_recording_id:
                 cap_rec = db.get_recording_for_homework_session(cap_recording_id, user_id, session)
                 cap_fillers = cap_rec.get("filler_words_count") if isinstance(cap_rec, dict) else {}
@@ -1069,8 +1069,8 @@ def v2_admin_student_session_report_get(user_id, session_id):
             if date_str:
                 performance_history.append({"date": date_str, "score": bar_score})
 
-        # Same as student report: recording_2 if present, else recording_1 (for recording-1-only flow)
-        display_recording_id = session.get("recording_2_id") or session.get("recording_1_id")
+        # Same as student report: recording_1 (for recording-1-only flow)
+        display_recording_id = session.get("recording_1_id")
         final_recording = {"id": None, "audio_url": None}
         recording_payload = None
         if display_recording_id:
@@ -1148,7 +1148,7 @@ def v2_admin_student_session_report_get(user_id, session_id):
             "scores": {"overall": score_for_display_100},
             "score": perf_end,
             "performance_score_end": perf_end,
-            "recording_count": 2 if has_rec_2 else 1,
+            "recording_count": 1,
             "final_recording": final_recording,
             "performance_history": performance_history,
             "score_for_display": score_for_display_100,

@@ -65,8 +65,6 @@ STATUS_POST_QUESTIONS = "post_questions"
 STATUS_COMPLETED = "completed"
 # No focus tasks: skip step 2 and 3; job will complete session from recording 1 only
 STATUS_COMPLETING_FROM_RECORDING_1 = "completing_from_recording_1"
-# Recording 2 submitted; job will complete session from recording 2
-STATUS_COMPLETING_FROM_RECORDING_2 = "completing_from_recording_2"
 
 # Public API status vocabulary. Frontend uses ONLY top-level "status"; never derive from session.status.
 PUBLIC_STATUS_NONE = "none"
@@ -88,7 +86,6 @@ def _public_status(db_status):
         STATUS_POST_QUESTIONS: PUBLIC_STATUS_REPORT_GENERATING,
         STATUS_COMPLETED: PUBLIC_STATUS_COMPLETED,
         STATUS_COMPLETING_FROM_RECORDING_1: PUBLIC_STATUS_REPORT_GENERATING,
-        STATUS_COMPLETING_FROM_RECORDING_2: PUBLIC_STATUS_REPORT_GENERATING,
     }
     return m.get(db_status, PUBLIC_STATUS_NONE)
 
@@ -143,7 +140,7 @@ def _parse_isoish_datetime(value):
 def _public_recording_id(session: dict):
     if not session:
         return None
-    recording_id = session.get("recording_2_id") or session.get("recording_1_id")
+    recording_id = session.get("recording_1_id")
     return str(recording_id) if recording_id else None
 
 
@@ -685,14 +682,6 @@ def _recording_slot_fields(slot: str) -> dict:
             "completing_status": STATUS_COMPLETING_FROM_RECORDING_1,
             "already_submitted_statuses": (STATUS_COMPLETING_FROM_RECORDING_1, STATUS_COMPLETED),
         }
-    return {
-        "label": "recording-2",
-        "session_field": "recording_2_id",
-        "processing_field": "recording_2_processing_status",
-        "allowed_status": STATUS_FINAL_TASK_READY,
-        "completing_status": STATUS_COMPLETING_FROM_RECORDING_2,
-        "already_submitted_statuses": (STATUS_COMPLETING_FROM_RECORDING_2, STATUS_COMPLETED),
-    }
 
 
 def _parse_recording_submission(session_id: str, user_id: str, require_duration: bool = False):
@@ -748,29 +737,8 @@ def _parse_recording_submission(session_id: str, user_id: str, require_duration:
     return data, storage_path, duration_seconds, center_hold_ratio, None
 
 
-def _validate_recording_2_duration(duration_seconds):
-    if duration_seconds is None:
-        return jsonify({"code": "INVALID_INPUT", "error": "duration_seconds is required for recording-2"}), 400
-    min_seconds = 60
-    max_seconds = 300
-    effective_min_seconds = 58
-    if float(duration_seconds) < effective_min_seconds or float(duration_seconds) > max_seconds:
-        return jsonify({
-            "code": "RECORDING_DURATION_OUT_OF_RANGE",
-            "error": "Recording 2 must be between 60 and 300 seconds.",
-            "message": "Recording 2 must be between 60 and 300 seconds.",
-            "details": {
-                "min_seconds": min_seconds,
-                "max_seconds": max_seconds,
-                "duration_seconds": float(duration_seconds),
-            },
-        }), 422
-    return None
-
-
 def _submit_recording(session_id: str, slot: str):
     from services.recording_1_job import enqueue_recording_1_job
-    from services.recording_2_job import enqueue_recording_2_job
 
     user_id = request.user_id
     session = db.v2_get_session(session_id, user_id)
@@ -794,9 +762,6 @@ def _submit_recording(session_id: str, slot: str):
                 "status": PUBLIC_STATUS_REPORT_GENERATING if status != STATUS_COMPLETED else PUBLIC_STATUS_COMPLETED,
                 "recording_id": existing_recording_id,
             }
-            if slot == "2" and session.get("score") is not None:
-                existing_payload["score"] = session.get("score")
-                existing_payload["performance_score_end"] = session.get("score")
             return jsonify(existing_payload), 200
         _agent_log(f"{label}: wrong status", {"session_id": session_id, "status": status}, "H1")
         return jsonify({
@@ -805,14 +770,10 @@ def _submit_recording(session_id: str, slot: str):
             "status": status,
         }), 409
 
-    parsed = _parse_recording_submission(session_id, user_id, require_duration=(slot == "2"))
+    parsed = _parse_recording_submission(session_id, user_id, require_duration=False)
     if len(parsed) == 2:
         return parsed
     data, storage_path, duration_seconds, center_hold_ratio, audio_upload = parsed
-    if slot == "2":
-        duration_error = _validate_recording_2_duration(duration_seconds)
-        if duration_error is not None:
-            return duration_error
 
     if audio_upload is not None:
         audio_data, content_type = audio_upload
@@ -827,9 +788,6 @@ def _submit_recording(session_id: str, slot: str):
                 "recording_id": existing["id"],
                 "status": PUBLIC_STATUS_REPORT_GENERATING,
             }
-            if slot == "2" and session.get("score") is not None:
-                payload["score"] = session.get("score")
-                payload["performance_score_end"] = session.get("score")
             return jsonify(payload), 200
 
     client_transcript = (data.get("transcript_text") or "").strip() if isinstance(data, dict) else ""
@@ -855,32 +813,19 @@ def _submit_recording(session_id: str, slot: str):
         processing_field: "pending",
     })
 
-    if slot == "1":
-        enqueue_recording_1_job(
-            session_id,
-            str(recording["id"]),
-            storage_path,
-            user_id,
-            duration_seconds,
-            center_hold_ratio=center_hold_ratio,
-        )
-    else:
-        enqueue_recording_2_job(
-            session_id,
-            str(recording["id"]),
-            storage_path,
-            user_id,
-            duration_seconds,
-            center_hold_ratio=center_hold_ratio,
-        )
+    enqueue_recording_1_job(
+        session_id,
+        str(recording["id"]),
+        storage_path,
+        user_id,
+        duration_seconds,
+        center_hold_ratio=center_hold_ratio,
+    )
 
     payload = {
         "status": PUBLIC_STATUS_REPORT_GENERATING,
         "recording_id": recording["id"],
     }
-    if slot == "2" and session.get("score") is not None:
-        payload["score"] = session.get("score")
-        payload["performance_score_end"] = session.get("score")
     return jsonify(payload), 200
 
 
@@ -967,20 +912,6 @@ def homework_submit_recording_1(session_id):
     except Exception as e:
         _agent_log("recording-1: exception", {"error": str(e), "type": type(e).__name__}, "H5")
         logger.error(f"Homework recording-1: {str(e)}")
-        sentry_sdk.capture_exception(e)
-        return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
-
-
-@homework_bp.route("/session/<session_id>/recording-2", methods=["POST"])
-@require_auth
-def homework_submit_recording_2(session_id):
-    """Upload recording 2 and return the report-generating state."""
-    try:
-        _agent_log("recording-2: entry", {"session_id": session_id}, "H2")
-        return _submit_recording(session_id, "2")
-    except Exception as e:
-        _agent_log("recording-2: exception", {"error": str(e), "type": type(e).__name__}, "H5")
-        logger.error(f"Homework recording-2: {str(e)}")
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
 
@@ -1192,7 +1123,7 @@ def homework_get_report(session_id):
             except Exception:
                 pass
 
-        has_rec_2 = bool(session.get("recording_2_id"))
+        has_rec_2 = False
         perf_end = float(session.get("score") or 0)
         if perf_end > 0 and (session.get("score") is None or float(session.get("score") or 0) <= 0):
             perf_end = max(0.0, min(1.0, perf_end))
@@ -1209,7 +1140,7 @@ def homework_get_report(session_id):
             perf_end = max(0.0, min(1.0, perf_end))
 
         if perf_end <= 0:
-            rid = session.get("recording_2_id") or session.get("recording_1_id")
+            rid = session.get("recording_1_id")
             if rid:
                 try:
                     rec_for_score = db.get_recording_for_homework_session(rid, user_id, session)
@@ -1236,7 +1167,7 @@ def homework_get_report(session_id):
 
         filler_count_for_cap = 0
         try:
-            cap_recording_id = session.get("recording_2_id") or session.get("recording_1_id")
+            cap_recording_id = session.get("recording_1_id")
             if cap_recording_id:
                 cap_rec = db.get_recording_for_homework_session(cap_recording_id, user_id, session)
                 cap_fillers = cap_rec.get("filler_words_count") if isinstance(cap_rec, dict) else {}
@@ -1304,8 +1235,8 @@ def homework_get_report(session_id):
             if date_str:
                 performance_history.append({"date": date_str, "score": bar_score})
 
-        # Display recording: recording_2 if present, else recording_1 (for playback, transcript, fillers)
-        display_recording_id = session.get("recording_2_id") or session.get("recording_1_id")
+        # Display recording: recording_1 (for playback, transcript, fillers)
+        display_recording_id = session.get("recording_1_id")
         final_recording = {"id": None, "audio_url": None}
         recording_payload = None  # full transcript, fillers, playback for report view
         if display_recording_id:
@@ -1397,7 +1328,7 @@ def homework_get_report(session_id):
             "scores": {"overall": score_for_display_100},
             "score": perf_end,
             "performance_score_end": perf_end,
-            "recording_count": 2 if has_rec_2 else 1,
+            "recording_count": 1,
             "final_recording": final_recording,
             "performance_history": performance_history,
             # Single canonical score (0-100): performance_score_end (recording job), same as last bar on chart.

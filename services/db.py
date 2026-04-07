@@ -192,7 +192,7 @@ class DatabaseService:
         if rec:
             return rec
         rid = str(recording_id)
-        allowed = {str(x) for x in (session.get("recording_1_id"), session.get("recording_2_id")) if x}
+        allowed = {str(x) for x in (session.get("recording_1_id"),) if x}
         if rid not in allowed:
             return None
         return self.get_recording(recording_id, None)
@@ -1128,13 +1128,12 @@ class DatabaseService:
           v2_reports.session_v2_id → v2_sessions(id) ON DELETE CASCADE
         PostgreSQL can raise a constraint-cycle error when both fire in the same transaction.
         We break the cycle first by nulling out the FK columns on v2_sessions before deleting.
-        Same precaution for recording_1_id / recording_2_id (bidirectional with recordings table).
+        Same precaution for recording_1_id (bidirectional with recordings table).
         """
         # Step 1: Break circular FK references to avoid PostgreSQL constraint-cycle errors.
         try:
             self.client.table("v2_sessions").update({
                 "recording_1_id": None,
-                "recording_2_id": None,
                 "report_id": None,
             }).eq("id", session_id).eq("user_id", user_id).execute()
         except Exception:
@@ -1594,13 +1593,13 @@ class DatabaseService:
         return out
 
     def _session_homework_recording_words_per_minute(self, session_id: str):
-        """Words per minute from the recording linked to a v2 session (recording_2 or recording_1)."""
+        """Words per minute from the recording linked to a v2 session (recording_1)."""
         if not session_id:
             return None
         try:
             sess = (
                 self.client.table("v2_sessions")
-                .select("recording_1_id, recording_2_id")
+                .select("recording_1_id")
                 .eq("id", session_id)
                 .limit(1)
                 .execute()
@@ -1608,7 +1607,7 @@ class DatabaseService:
             if not sess.data:
                 return None
             s0 = sess.data[0]
-            rid = s0.get("recording_2_id") or s0.get("recording_1_id")
+            rid = s0.get("recording_1_id")
             if not rid:
                 return None
             rec_res = (
@@ -1736,14 +1735,14 @@ class DatabaseService:
             # metrics soon after upload, not only after session completion.
             sess_res = (
                 self.client.table("v2_sessions")
-                .select("id, created_at, completed_at, recording_1_id, recording_2_id")
+                .select("id, created_at, completed_at, recording_1_id")
                 .eq("user_id", user_id)
                 .order("created_at", desc=True)
                 .limit(60)
                 .execute()
             )
             for s in sess_res.data or []:
-                rid = s.get("recording_2_id") or s.get("recording_1_id")
+                rid = s.get("recording_1_id")
                 if not rid:
                     continue
                 rec_res = (
@@ -2654,7 +2653,6 @@ class DatabaseService:
             "final_task_ready",
             "post_questions",
             "completing_from_recording_1",
-            "completing_from_recording_2",
         )
         result = (
             self.client.table("v2_sessions")
@@ -3020,7 +3018,7 @@ class DatabaseService:
         """Optional stats for admin students list: sessions_count, last_session_at (ISO), avg_performance (0-100)."""
         sessions = (
             self.client.table("v2_sessions")
-            .select("id, created_at, recording_1_id, recording_2_id")
+            .select("id, created_at, recording_1_id")
             .eq("user_id", user_id)
             .order("created_at", desc=True)
             .limit(1000)
@@ -3053,7 +3051,7 @@ class DatabaseService:
     def v2_get_sessions_with_previews(self, user_id: str, limit: int = 50):
         """Get v2 sessions for a user with full report text and all analytics previews for admin session history."""
         select_columns = (
-            "id, created_at, completed_at, status, recording_1_id, recording_2_id, report_id, "
+            "id, created_at, completed_at, status, recording_1_id, report_id, "
             "report_grade, student_completion_email_sent_at, "
             "score, task_score, "
             "question_1_score, question_2_score, question_3_score, "
@@ -3062,7 +3060,7 @@ class DatabaseService:
         )
         session_fields = (
             "id", "created_at", "completed_at", "status",
-            "recording_1_id", "recording_2_id", "report_id", "report_grade",
+            "recording_1_id", "report_id", "report_grade",
             "student_completion_email_sent_at",
             "score", "task_score",
             "question_1_score", "question_2_score", "question_3_score",
@@ -3159,7 +3157,7 @@ class DatabaseService:
                 pass
 
         # Batch: recordings (keyed by recording id)
-        recording_ids = list({s.get("recording_2_id") or s.get("recording_1_id") for s in sessions if s.get("recording_2_id") or s.get("recording_1_id")})
+        recording_ids = list({s.get("recording_1_id") for s in sessions if s.get("recording_1_id")})
         recordings_by_id: dict = {}
         if recording_ids:
             try:
@@ -3177,11 +3175,11 @@ class DatabaseService:
         out = []
         for s in sessions:
             rec = {k: v for k, v in s.items() if k in session_fields}
-            rec["recording_id"] = s.get("recording_2_id") or s.get("recording_1_id")
+            rec["recording_id"] = s.get("recording_1_id")
             rec["recording_preview"] = None
             rec["report_preview"] = None
 
-            recording_id = s.get("recording_2_id") or s.get("recording_1_id")
+            recording_id = s.get("recording_1_id")
             if recording_id and recording_id in recordings_by_id:
                 row = recordings_by_id[recording_id]
                 rec["recording_preview"] = {
