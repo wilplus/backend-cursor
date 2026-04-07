@@ -9,11 +9,10 @@ from services.db import db
 from services.email_service import email_service
 from services.homework_completion import (
     complete_session_recording_1_only,
-    minimal_complete_and_notify,
     ensure_student_completion_email,
 )
 from services.sniper_realtime import clear_sniper_session
-from services.utils import utc_now_iso, score_01_from_recording_row
+from services.utils import utc_now_iso
 import logging
 import os
 import time
@@ -592,23 +591,13 @@ def homework_self_rating(session_id):
             processing = True
             logger.info("homework_self_rating: job still pending, deferring completion to job session_id=%s", session_id)
         elif status == STATUS_COMPLETING_FROM_RECORDING_1 and proc_status == "failed":
-            # Job failed — run minimal fallback so user is not stuck.
-            logger.warning(
-                "homework_self_rating: proc_status=failed at self-rating time, running minimal fallback session_id=%s",
-                proc_status, session_id,
-            )
-            try:
-                if minimal_complete_and_notify(
-                    session_id,
-                    user_id,
-                    preferred_student_email=preferred_student_email,
-                ):
-                    session_completed = True
-                    logger.info("homework_self_rating: minimal fallback completion ran session_id=%s", session_id)
-                else:
-                    logger.warning("homework_self_rating: minimal fallback returned False session_id=%s", session_id)
-            except Exception as sr_fallback_err:
-                logger.warning("homework_self_rating: minimal fallback failed session_id=%s: %s", session_id, sr_fallback_err)
+            return jsonify({
+                "code": "RECORDING_PROCESSING_FAILED",
+                "error": "Recording processing failed. Please retry the recording.",
+                "status": status,
+                "recording_1_processing_status": proc_status,
+                "recording_1_processing_error_code": session.get("recording_1_processing_error_code"),
+            }), 409
         elif status == STATUS_COMPLETED:
             session_completed = True
             ensure_student_completion_email(
@@ -1054,7 +1043,7 @@ def homework_get_report(session_id):
         if not session:
             return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found"}), 404
         if session.get("status") != STATUS_COMPLETED:
-            # Fallback: if job is done but frontend never triggered completion (e.g. self-rating was called too early and not retried), run completion once so polling GET report eventually succeeds.
+            # If job is done but frontend never triggered completion, run completion once.
             if session.get("status") == STATUS_COMPLETING_FROM_RECORDING_1 and session.get("recording_1_processing_status") == "completed":
                 # #region agent log
                 _agent_log("GET report running fallback completion", {"session_id": session_id}, "H2")
@@ -1072,26 +1061,18 @@ def homework_get_report(session_id):
                         # #endregion
                 except Exception as fallback_err:
                     logger.warning("homework_get_report: fallback completion failed: %s", fallback_err)
-            elif session.get("status") == STATUS_COMPLETING_FROM_RECORDING_1 and session.get("recording_1_processing_status") in ("failed", "pending"):
-                # Recovery: job failed or was lost (pending = process restart lost the in-memory queue).
-                # Polling GET report is a second-chance to complete the session so the user isn't stuck forever.
-                _agent_log("GET report running minimal fallback for %s job" % session.get("recording_1_processing_status"), {"session_id": session_id}, "H2")
-                try:
-                    if minimal_complete_and_notify(
-                        session_id,
-                        user_id,
-                        preferred_student_email=preferred_student_email,
-                    ):
-                        session = db.v2_get_session(session_id, user_id)
-                        logger.info("homework_get_report: minimal fallback completion ran (proc_status=%s) session_id=%s", session.get("recording_1_processing_status"), session_id)
-                except Exception as fallback_err:
-                    logger.warning("homework_get_report: minimal fallback completion failed: %s", fallback_err)
             if session.get("status") != STATUS_COMPLETED:
                 # #region agent log
                 _agent_log("GET report returning 409", {"session_id": session_id, "status": session.get("status")}, "H1")
                 # #endregion
                 # 409 so frontend can distinguish "not ready yet, retry" from "session not found" (404)
-                return jsonify({"code": "REPORT_NOT_READY", "error": "Report is only available for completed sessions", "status": session.get("status")}), 409
+                return jsonify({
+                    "code": "REPORT_NOT_READY",
+                    "error": "Report is only available for completed sessions",
+                    "status": session.get("status"),
+                    "recording_1_processing_status": session.get("recording_1_processing_status"),
+                    "recording_1_processing_error_code": session.get("recording_1_processing_error_code"),
+                }), 409
         else:
             ensure_student_completion_email(
                 session_id,
@@ -1109,46 +1090,19 @@ def homework_get_report(session_id):
                 pass
 
         has_rec_2 = False
-        perf_end = float(session.get("score") or 0)
-        if perf_end > 0 and (session.get("score") is None or float(session.get("score") or 0) <= 0):
-            perf_end = max(0.0, min(1.0, perf_end))
-            try:
-                db.v2_update_session(session_id, user_id, {"score": perf_end})
-                logger.info(
-                    "homework_get_report: healed score → %.3f session_id=%s",
-                    perf_end,
-                    session_id,
-                )
-            except Exception as heal_err:
-                logger.warning("homework_get_report: could not heal score: %s", heal_err)
-        else:
-            perf_end = max(0.0, min(1.0, perf_end))
-
-        if perf_end <= 0:
-            rid = session.get("recording_1_id")
-            if rid:
-                try:
-                    rec_for_score = db.get_recording_for_homework_session(rid, user_id, session)
-                    recovered = score_01_from_recording_row(rec_for_score or {})
-                    if recovered is not None and recovered > 0:
-                        perf_end = recovered
-                        try:
-                            db.v2_update_session(session_id, user_id, {"score": perf_end})
-                            logger.info(
-                                "homework_get_report: recovered score %.3f from recording scoring_debug session_id=%s",
-                                perf_end,
-                                session_id,
-                            )
-                        except Exception as rec_heal_err:
-                            logger.warning(
-                                "homework_get_report: could not persist recovered score: %s",
-                                rec_heal_err,
-                            )
-                except Exception as rec_score_err:
-                    logger.debug(
-                        "homework_get_report: recording score recovery skipped: %s",
-                        rec_score_err,
-                    )
+        score_for_display_100 = session.get("score_for_display")
+        try:
+            score_for_display_100 = int(score_for_display_100) if score_for_display_100 is not None else None
+        except (TypeError, ValueError):
+            score_for_display_100 = None
+        if score_for_display_100 is None:
+            return jsonify({
+                "code": "REPORT_NOT_READY",
+                "error": "Report score is not finalized yet.",
+                "status": session.get("status"),
+            }), 409
+        score_for_display_100 = max(0, min(100, score_for_display_100))
+        perf_end = round(score_for_display_100 / 100.0, 4)
 
         filler_count_for_cap = 0
         try:
@@ -1160,35 +1114,6 @@ def homework_get_report(session_id):
                     filler_count_for_cap = int(cap_fillers.get("total", 0) or 0)
         except Exception:
             filler_count_for_cap = 0
-        # Triple Sanity Check resolution:
-        # Layer 3: coach_override_score (HITL ground truth) — overrides everything
-        # Layer 2: blend of mechanical_score (pure math) + ai_task_score (GPT semantic) 50/50
-        # Layer 1: raw score (WPM + fillers baseline) — fallback
-        coach_override = session.get("coach_override_score")
-        ai_task = session.get("ai_task_score")
-        mechanical = session.get("mechanical_score")
-        if coach_override is not None:
-            try:
-                score_for_display_100 = max(0, min(100, int(coach_override)))
-            except (TypeError, ValueError):
-                score_for_display_100 = round(perf_end * 100)
-        elif ai_task is not None and mechanical is not None:
-            try:
-                score_for_display_100 = round(int(mechanical) * 0.5 + int(ai_task) * 0.5)
-            except (TypeError, ValueError):
-                score_for_display_100 = round(perf_end * 100)
-        elif ai_task is not None:
-            try:
-                score_for_display_100 = max(0, min(100, int(ai_task)))
-            except (TypeError, ValueError):
-                score_for_display_100 = round(perf_end * 100)
-        elif mechanical is not None:
-            try:
-                score_for_display_100 = max(0, min(100, int(mechanical)))
-            except (TypeError, ValueError):
-                score_for_display_100 = round(perf_end * 100)
-        else:
-            score_for_display_100 = round(perf_end * 100)
         session_sniper = None
         try:
             session_sniper = db.get_session_sniper_metrics(session_id)
@@ -1281,6 +1206,13 @@ def homework_get_report(session_id):
                     },
                     "words_per_minute": round(float(rec.get("words_per_minute") or 0), 1),
                 }
+
+        if not (session.get("context_short") or "").strip() or not recording_payload or not (recording_payload.get("transcription_text") or "").strip():
+            return jsonify({
+                "code": "REPORT_NOT_READY",
+                "error": "Transcript and context are still processing.",
+                "status": session.get("status"),
+            }), 409
 
         sniper_profile = db.get_sniper_profile_payload(user_id)
         # Build sniper_metrics from session_sniper_metrics for frontend display

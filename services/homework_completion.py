@@ -6,6 +6,7 @@ Legacy `post_questions` handling remains only as a compatibility fallback for ol
 import json
 import logging
 import time
+import re
 from datetime import datetime, timezone
 
 from config import Config
@@ -171,6 +172,165 @@ def _compute_score(session: dict, session_id: str, base_score_key: str, filler_c
         session_id,
     )
     return score
+
+
+def _clamp(value: float, low: float, high: float) -> float:
+    return max(low, min(high, value))
+
+
+def _to_float(value):
+    try:
+        if value is None:
+            return None
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _tokenize_for_overlap(text: str) -> set[str]:
+    if not text:
+        return set()
+    words = re.findall(r"[a-zA-Z0-9']+", text.lower())
+    return {w for w in words if len(w) >= 4}
+
+
+def _score_ffmpeg_components(sniper_row: dict | None) -> tuple[float, dict]:
+    """Build a deterministic 0..1 acoustic score from ffmpeg/sniper fields."""
+    if not isinstance(sniper_row, dict):
+        return 0.0, {"available": False}
+    parts = []
+    pause_ms = _to_float(sniper_row.get("pause_ms"))
+    if pause_ms is not None:
+        # Best around ~450ms average pause.
+        pause_n = _clamp(1.0 - abs(pause_ms - 450.0) / 450.0, 0.0, 1.0)
+        parts.append(pause_n)
+    dynamic_db = _to_float(sniper_row.get("dynamic_db"))
+    if dynamic_db is not None:
+        # 14-20dB is generally expressive but stable.
+        dyn_n = _clamp(1.0 - abs(dynamic_db - 17.0) / 10.0, 0.0, 1.0)
+        parts.append(dyn_n)
+    energy_ratio = _to_float(sniper_row.get("energy_ratio"))
+    if energy_ratio is not None:
+        # Penalize very low/high voiced-energy ratio.
+        energy_n = _clamp(1.0 - abs(energy_ratio - 0.72) / 0.35, 0.0, 1.0)
+        parts.append(energy_n)
+    pitch_frames = _to_float(sniper_row.get("pitch_frame_count"))
+    if pitch_frames is not None:
+        # Confidence proxy: enough voiced pitch evidence.
+        pitch_conf_n = _clamp(pitch_frames / 40.0, 0.0, 1.0)
+        parts.append(pitch_conf_n)
+    if not parts:
+        return 0.0, {"available": False}
+    score = sum(parts) / len(parts)
+    return score, {
+        "available": True,
+        "pause_ms": pause_ms,
+        "dynamic_db": dynamic_db,
+        "energy_ratio": energy_ratio,
+        "pitch_frame_count": pitch_frames,
+        "normalized": round(score, 4),
+    }
+
+
+def _build_unified_score_payload(
+    *,
+    session: dict,
+    session_id: str,
+    user_id: str,
+    recording: dict,
+    transcript: str,
+    context_short: str,
+    filler_count: int,
+) -> tuple[int, float, dict]:
+    """Canonical scoring model used for display and storage."""
+    base_01 = _to_float(session.get("score"))
+    if base_01 is None or base_01 <= 0:
+        recovered = score_01_from_recording_row(recording or {})
+        if recovered is not None and recovered > 0:
+            base_01 = float(recovered)
+    if base_01 is None:
+        base_01 = 0.0
+    base_01 = _clamp(base_01, 0.0, 1.0)
+
+    sniper = {}
+    try:
+        sniper = db.get_session_sniper_metrics(session_id) or {}
+    except Exception:
+        sniper = {}
+
+    stage_raw = _to_float(sniper.get("stage_score"))
+    stage_01 = None
+    if stage_raw is not None:
+        stage_01 = _clamp(stage_raw if stage_raw <= 1.0 else (stage_raw / 100.0), 0.0, 1.0)
+
+    ffmpeg_01, ffmpeg_meta = _score_ffmpeg_components(sniper)
+
+    transcript_tokens = _tokenize_for_overlap(transcript)
+    context_tokens = _tokenize_for_overlap(context_short)
+    context_01 = None
+    if transcript_tokens and context_tokens:
+        inter = len(transcript_tokens.intersection(context_tokens))
+        denom = max(1, len(context_tokens))
+        context_01 = _clamp(inter / denom, 0.0, 1.0)
+
+    rating_raw = _to_float(sniper.get("student_rating_1_10"))
+    step_01 = None
+    if rating_raw is not None:
+        # Legacy field name; value is currently 1-5 scale.
+        step_01 = _clamp(rating_raw / 5.0, 0.0, 1.0)
+    elif session.get("self_rating_submitted_at"):
+        step_01 = 0.6
+
+    weights = {
+        "base": 0.45,
+        "sniper": 0.20,
+        "ffmpeg": 0.20,
+        "context": 0.10,
+        "step_following": 0.05,
+    }
+    components = {
+        "base": {"available": True, "normalized": round(base_01, 4), "raw": round(base_01 * 100.0, 2)},
+        "sniper": {"available": stage_01 is not None, "normalized": round(stage_01, 4) if stage_01 is not None else None, "raw": stage_raw},
+        "ffmpeg": ffmpeg_meta,
+        "context": {
+            "available": context_01 is not None,
+            "normalized": round(context_01, 4) if context_01 is not None else None,
+            "context_tokens": len(context_tokens),
+            "transcript_tokens": len(transcript_tokens),
+        },
+        "step_following": {"available": step_01 is not None, "normalized": round(step_01, 4) if step_01 is not None else None, "raw": rating_raw},
+    }
+
+    weighted_sum = 0.0
+    weighted_total = 0.0
+    values = {
+        "base": base_01,
+        "sniper": stage_01,
+        "ffmpeg": ffmpeg_01 if ffmpeg_meta.get("available") else None,
+        "context": context_01,
+        "step_following": step_01,
+    }
+    for key, weight in weights.items():
+        v = values.get(key)
+        if v is None:
+            continue
+        weighted_sum += float(v) * weight
+        weighted_total += weight
+
+    score_01 = _clamp((weighted_sum / weighted_total) if weighted_total > 0 else base_01, 0.0, 1.0)
+    score_100 = int(round(score_01 * 100.0))
+    if int(filler_count or 0) > 0 and score_100 >= 100:
+        score_100 = 99
+        score_01 = min(score_01, 0.99)
+
+    meta = {
+        "version": 1,
+        "weights": weights,
+        "components": components,
+        "canonical": {"score_for_display": score_100, "score_01": round(score_01, 4)},
+        "computed_at": utc_now_iso(),
+    }
+    return score_100, round(score_01, 4), meta
 
 
 def _run_optional_enrichment(
@@ -391,17 +551,34 @@ def _complete_session_from_recording(
     transcript, wpm, filler_count, filler_data, final = _compute_recording_metrics(recording)
     _persist_recording_metrics(recording_id, recording, final)
 
-    performance_score_end = _compute_score(session, session_id, base_score_key, filler_count)
-    # Do not overwrite a higher score the recording job may have written after our session snapshot.
     fresh_now = db.v2_get_session(session_id, user_id) or {}
-    score_candidates = [performance_score_end]
-    v = fresh_now.get("score")
-    if v is not None:
-        try:
-            score_candidates.append(float(v))
-        except (TypeError, ValueError):
-            pass
-    performance_score_end = max(0.0, min(1.0, max(score_candidates)))
+    context_short = (fresh_now.get("context_short") or session.get("context_short") or "").strip()
+    if not transcript.strip():
+        logger.warning("_complete_session_from_recording: transcript missing, postponing completion session_id=%s", session_id)
+        return None
+    if not context_short:
+        logger.warning("_complete_session_from_recording: context_short missing, postponing completion session_id=%s", session_id)
+        return None
+    sniper_now = {}
+    try:
+        sniper_now = db.get_session_sniper_metrics(session_id) or {}
+    except Exception:
+        sniper_now = {}
+    if not isinstance(sniper_now, dict) or not any(
+        sniper_now.get(k) is not None for k in ("stage_score", "pause_ms", "dynamic_db", "energy_ratio")
+    ):
+        logger.warning("_complete_session_from_recording: sniper/ffmpeg metrics missing, postponing completion session_id=%s", session_id)
+        return None
+
+    score_for_display_100, performance_score_end, score_components = _build_unified_score_payload(
+        session={**session, **fresh_now},
+        session_id=session_id,
+        user_id=user_id,
+        recording=recording,
+        transcript=transcript,
+        context_short=context_short,
+        filler_count=filler_count,
+    )
 
     report_text = _build_session_report(transcript=transcript, wpm=wpm, filler_count=filler_count, metrics=final["metrics"])
 
@@ -419,6 +596,9 @@ def _complete_session_from_recording(
         "post_answers": post_answers,
         "report_id": report_row["id"] if report_row else None,
         "score": performance_score_end,
+        "score_for_display": score_for_display_100,
+        "score_ready_at": utc_now_iso(),
+        "score_components": score_components,
         "status": STATUS_COMPLETED,
         "completed_at": completed_at_iso,
         "question_1_analysis": "",
@@ -477,6 +657,8 @@ def _complete_session_from_recording(
         "score": performance_score_end,
         # Backward compatibility for older clients.
         "performance_score_end": performance_score_end,
+        "score_for_display": score_for_display_100,
+        "score_components": score_components,
         "recording_count": recording_count,
         "performance_metrics": final["metrics"],
         "question_1_analysis": r1.get("analysis") or "",

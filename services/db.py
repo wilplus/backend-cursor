@@ -2590,7 +2590,7 @@ class DatabaseService:
 
         result = (
             self.client.table("v2_sessions")
-            .select("id, created_at, score, recording_1_id")
+            .select("id, created_at, score, score_for_display, recording_1_id")
             .eq("user_id", user_id)
             .eq("status", "completed")
             .order("created_at", desc=True)
@@ -2602,10 +2602,17 @@ class DatabaseService:
         rows = list(reversed(result.data))
         out = []
         for r in rows:
-            s = r.get("score")
-            if s is None:
-                continue
-            s01 = float(s or 0)
+            s01 = None
+            if r.get("score_for_display") is not None:
+                try:
+                    s01 = max(0.0, min(1.0, float(r.get("score_for_display")) / 100.0))
+                except (TypeError, ValueError):
+                    s01 = None
+            if s01 is None:
+                s = r.get("score")
+                if s is None:
+                    continue
+                s01 = float(s or 0)
             # Stored score can be 0 while the recording job wrote the real value in scoring_debug only.
             if s01 <= 0 and r.get("recording_1_id"):
                 try:

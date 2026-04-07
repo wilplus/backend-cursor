@@ -9,7 +9,6 @@ from routes.admin import require_admin, is_admin
 from services.db import db
 from services.email_service import email_service
 from services.video_url_validation import validate_video_url
-from services.utils import score_01_from_recording_row
 import logging
 import sentry_sdk
 import json
@@ -954,7 +953,7 @@ def v2_admin_student_session_report_get(user_id, session_id):
                 "code": "REPORT_NOT_READY",
                 "error": "Report is only available for completed sessions",
                 "status": session.get("status"),
-            }), 404
+            }), 409
 
         report_text = (session.get("context_long") or "").strip()
         if session.get("report_id"):
@@ -966,46 +965,19 @@ def v2_admin_student_session_report_get(user_id, session_id):
                 pass
 
         has_rec_2 = False
-        perf_end = float(session.get("score") or 0)
-        if perf_end > 0 and (session.get("score") is None or float(session.get("score") or 0) <= 0):
-            perf_end = max(0.0, min(1.0, perf_end))
-            try:
-                db.v2_update_session(session_id, user_id, {"score": perf_end})
-                logger.info(
-                    "admin GET report: healed score → %.3f session_id=%s",
-                    perf_end,
-                    session_id,
-                )
-            except Exception as heal_err:
-                logger.warning("admin GET report: could not heal score: %s", heal_err)
-        else:
-            perf_end = max(0.0, min(1.0, perf_end))
-
-        if perf_end <= 0:
-            rid = session.get("recording_1_id")
-            if rid:
-                try:
-                    rec_for_score = db.get_recording_for_homework_session(rid, user_id, session)
-                    recovered = score_01_from_recording_row(rec_for_score or {})
-                    if recovered is not None and recovered > 0:
-                        perf_end = recovered
-                        try:
-                            db.v2_update_session(session_id, user_id, {"score": perf_end})
-                            logger.info(
-                                "admin GET report: recovered score %.3f from recording scoring_debug session_id=%s",
-                                perf_end,
-                                session_id,
-                            )
-                        except Exception as rec_heal_err:
-                            logger.warning(
-                                "admin GET report: could not persist recovered score: %s",
-                                rec_heal_err,
-                            )
-                except Exception as rec_score_err:
-                    logger.debug(
-                        "admin GET report: recording score recovery skipped: %s",
-                        rec_score_err,
-                    )
+        score_for_display_100 = session.get("score_for_display")
+        try:
+            score_for_display_100 = int(score_for_display_100) if score_for_display_100 is not None else None
+        except (TypeError, ValueError):
+            score_for_display_100 = None
+        if score_for_display_100 is None:
+            return jsonify({
+                "code": "REPORT_NOT_READY",
+                "error": "Report score is not finalized yet.",
+                "status": session.get("status"),
+            }), 409
+        score_for_display_100 = max(0, min(100, score_for_display_100))
+        perf_end = round(score_for_display_100 / 100.0, 4)
 
         filler_count_for_cap = 0
         try:
@@ -1017,32 +989,6 @@ def v2_admin_student_session_report_get(user_id, session_id):
                     filler_count_for_cap = int(cap_fillers.get("total", 0) or 0)
         except Exception:
             filler_count_for_cap = 0
-        # Triple Sanity Check: Layer 3 → Layer 2+mechanical blend → Layer 1
-        coach_override = session.get("coach_override_score")
-        ai_task = session.get("ai_task_score")
-        mechanical = session.get("mechanical_score")
-        if coach_override is not None:
-            try:
-                score_for_display_100 = max(0, min(100, int(coach_override)))
-            except (TypeError, ValueError):
-                score_for_display_100 = round(perf_end * 100)
-        elif ai_task is not None and mechanical is not None:
-            try:
-                score_for_display_100 = round(int(mechanical) * 0.5 + int(ai_task) * 0.5)
-            except (TypeError, ValueError):
-                score_for_display_100 = round(perf_end * 100)
-        elif ai_task is not None:
-            try:
-                score_for_display_100 = max(0, min(100, int(ai_task)))
-            except (TypeError, ValueError):
-                score_for_display_100 = round(perf_end * 100)
-        elif mechanical is not None:
-            try:
-                score_for_display_100 = max(0, min(100, int(mechanical)))
-            except (TypeError, ValueError):
-                score_for_display_100 = round(perf_end * 100)
-        else:
-            score_for_display_100 = round(perf_end * 100)
         session_sniper = None
         try:
             session_sniper = db.get_session_sniper_metrics(session_id)
@@ -1112,6 +1058,13 @@ def v2_admin_student_session_report_get(user_id, session_id):
                     },
                     "words_per_minute": round(float(_rec_wpm), 1) if _rec_wpm is not None else None,
                 }
+
+        if not (session.get("context_short") or "").strip() or not recording_payload or not (recording_payload.get("transcription_text") or "").strip():
+            return jsonify({
+                "code": "REPORT_NOT_READY",
+                "error": "Transcript and context are still processing.",
+                "status": session.get("status"),
+            }), 409
 
         sniper_profile = db.get_sniper_profile_payload(user_id)
         sniper_metrics = None
