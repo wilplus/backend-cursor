@@ -1552,6 +1552,7 @@ def _admin_tasks_pool_row_payload(row):
 
 
 @v2_bp.route("/admin/tasks-pool", methods=["GET"])
+@v2_bp.route("/admin/task-pool", methods=["GET"])
 @require_admin
 def v2_admin_tasks_pool_list():
     try:
@@ -1562,6 +1563,7 @@ def v2_admin_tasks_pool_list():
 
 
 @v2_bp.route("/admin/tasks-pool", methods=["POST"])
+@v2_bp.route("/admin/task-pool", methods=["POST"])
 @require_admin
 def v2_admin_tasks_pool_create():
     data = request.get_json() or {}
@@ -1586,6 +1588,7 @@ def v2_admin_tasks_pool_create():
 
 
 @v2_bp.route("/admin/tasks-pool/<pool_id>", methods=["PUT"])
+@v2_bp.route("/admin/task-pool/<pool_id>", methods=["PUT"])
 @require_admin
 def v2_admin_tasks_pool_update(pool_id):
     data = request.get_json() or {}
@@ -1605,6 +1608,7 @@ def v2_admin_tasks_pool_update(pool_id):
 
 
 @v2_bp.route("/admin/tasks-pool/<pool_id>", methods=["DELETE"])
+@v2_bp.route("/admin/task-pool/<pool_id>", methods=["DELETE"])
 @require_admin
 def v2_admin_tasks_pool_delete(pool_id):
     try:
@@ -2185,7 +2189,58 @@ def v2_admin_stage_override(user_id):
         return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
 
 
+@v2_bp.route("/admin/copilot/annotation-chips", methods=["GET"])
+@require_admin
+def v2_admin_copilot_annotation_chips():
+    """Reason chips used by copilot audit/override actions."""
+    chips = [
+        {"id": "misread_context", "label": "Misread context", "section": "insight"},
+        {"id": "overly_generic", "label": "Too generic", "section": "insight"},
+        {"id": "missed_specific_issue", "label": "Missed specific issue", "section": "insight"},
+        {"id": "tone_mismatch", "label": "Tone mismatch", "section": "insight"},
+        {"id": "profile_incorrect", "label": "Profile incorrect", "section": "classification"},
+        {"id": "stage_incorrect", "label": "Stage incorrect", "section": "classification"},
+    ]
+    return jsonify({"annotation_chips": chips, "chips": chips}), 200
+
+
+@v2_bp.route("/admin/copilot/next-clips", methods=["GET"])
+@require_admin
+def v2_admin_copilot_next_clips():
+    """Pending copilot inbox items derived from admin_student_send_drafts."""
+    try:
+        limit_raw = request.args.get("limit")
+        try:
+            limit = max(1, min(200, int(limit_raw))) if limit_raw is not None else 50
+        except (TypeError, ValueError):
+            limit = 50
+        rows = db.list_admin_student_send_drafts(status="pending")
+        items = []
+        for row in rows[:limit]:
+            uid = str(row.get("user_id") or "")
+            items.append(
+                {
+                    "id": row.get("id"),
+                    "draft_id": row.get("id"),
+                    "user_id": uid,
+                    "email": db.get_user_email_from_auth(uid) if uid else None,
+                    "session_id": row.get("session_id"),
+                    "cohort_profile": row.get("cohort_profile"),
+                    "cohort_stage": row.get("cohort_stage"),
+                    "master_task_text": row.get("master_task_text"),
+                    "status": row.get("status"),
+                    "updated_at": row.get("updated_at"),
+                    "created_at": row.get("created_at"),
+                }
+            )
+        return jsonify({"next_clips": items, "clips": items, "count": len(items)}), 200
+    except Exception as e:
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
+
+
 @v2_bp.route("/admin/cohorts", methods=["GET"])
+@v2_bp.route("/admin/copilot/cohorts", methods=["GET"])
 @require_admin
 def v2_admin_cohorts():
     try:
@@ -2231,6 +2286,7 @@ def v2_admin_cohorts():
 
 
 @v2_bp.route("/admin/cohorts/<profile>/<int:stage>/approve-task", methods=["POST"])
+@v2_bp.route("/admin/copilot/cohorts/<profile>/<int:stage>/approve-task", methods=["POST"])
 @require_admin
 def v2_admin_cohort_approve_task(profile, stage):
     try:
