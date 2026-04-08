@@ -1553,6 +1553,7 @@ def _admin_tasks_pool_row_payload(row):
 
 @v2_bp.route("/admin/tasks-pool", methods=["GET"])
 @v2_bp.route("/admin/task-pool", methods=["GET"])
+@v2_bp.route("/admin/task-warm-up-pool", methods=["GET"])
 @require_admin
 def v2_admin_tasks_pool_list():
     try:
@@ -1564,6 +1565,7 @@ def v2_admin_tasks_pool_list():
 
 @v2_bp.route("/admin/tasks-pool", methods=["POST"])
 @v2_bp.route("/admin/task-pool", methods=["POST"])
+@v2_bp.route("/admin/task-warm-up-pool", methods=["POST"])
 @require_admin
 def v2_admin_tasks_pool_create():
     data = request.get_json() or {}
@@ -1589,6 +1591,7 @@ def v2_admin_tasks_pool_create():
 
 @v2_bp.route("/admin/tasks-pool/<pool_id>", methods=["PUT"])
 @v2_bp.route("/admin/task-pool/<pool_id>", methods=["PUT"])
+@v2_bp.route("/admin/task-warm-up-pool/<pool_id>", methods=["PUT"])
 @require_admin
 def v2_admin_tasks_pool_update(pool_id):
     data = request.get_json() or {}
@@ -1609,6 +1612,7 @@ def v2_admin_tasks_pool_update(pool_id):
 
 @v2_bp.route("/admin/tasks-pool/<pool_id>", methods=["DELETE"])
 @v2_bp.route("/admin/task-pool/<pool_id>", methods=["DELETE"])
+@v2_bp.route("/admin/task-warm-up-pool/<pool_id>", methods=["DELETE"])
 @require_admin
 def v2_admin_tasks_pool_delete(pool_id):
     try:
@@ -1619,6 +1623,7 @@ def v2_admin_tasks_pool_delete(pool_id):
 
 
 @v2_bp.route("/admin/students/<user_id>/tasks", methods=["GET"])
+@v2_bp.route("/admin/students/<user_id>/task-warm-up", methods=["GET"])
 @require_admin
 def v2_admin_student_tasks_list(user_id):
     try:
@@ -1630,6 +1635,7 @@ def v2_admin_student_tasks_list(user_id):
 
 
 @v2_bp.route("/admin/students/<user_id>/tasks", methods=["PUT"])
+@v2_bp.route("/admin/students/<user_id>/task-warm-up", methods=["PUT"])
 @require_admin
 def v2_admin_student_tasks_sync(user_id):
     """Body: { "pool_task_ids": [uuid, ...] } display order."""
@@ -1654,6 +1660,7 @@ def v2_admin_student_tasks_sync(user_id):
 
 
 @v2_bp.route("/admin/students/<user_id>/tasks", methods=["POST"])
+@v2_bp.route("/admin/students/<user_id>/task-warm-up", methods=["POST"])
 @require_admin
 def v2_admin_student_tasks_create(user_id):
     data = request.get_json() or {}
@@ -1673,6 +1680,7 @@ def v2_admin_student_tasks_create(user_id):
 
 
 @v2_bp.route("/admin/students/<user_id>/tasks/create-pool-and-assign", methods=["POST"])
+@v2_bp.route("/admin/students/<user_id>/task-warm-up/create-pool-and-assign", methods=["POST"])
 @require_admin
 def v2_admin_student_tasks_create_pool_and_assign(user_id):
     data = request.get_json() or {}
@@ -1710,6 +1718,7 @@ def v2_admin_student_tasks_create_pool_and_assign(user_id):
 
 
 @v2_bp.route("/admin/students/<user_id>/tasks/<task_id>", methods=["PUT"])
+@v2_bp.route("/admin/students/<user_id>/task-warm-up/<task_id>", methods=["PUT"])
 @require_admin
 def v2_admin_student_tasks_update(user_id, task_id):
     data = request.get_json() or {}
@@ -1722,6 +1731,7 @@ def v2_admin_student_tasks_update(user_id, task_id):
 
 
 @v2_bp.route("/admin/students/<user_id>/tasks/<task_id>", methods=["DELETE"])
+@v2_bp.route("/admin/students/<user_id>/task-warm-up/<task_id>", methods=["DELETE"])
 @require_admin
 def v2_admin_student_tasks_delete(user_id, task_id):
     try:
