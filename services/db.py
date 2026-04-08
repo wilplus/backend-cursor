@@ -3485,5 +3485,84 @@ class DatabaseService:
         )
         return res.data[0] if res.data else None
 
+    def v2_get_last_completed_session_full(self, user_id: str) -> Optional[Dict[str, Any]]:
+        """Latest completed homework session row (wide select) for copilot / admin seeding."""
+        try:
+            res = (
+                self.client.table("v2_sessions")
+                .select("*")
+                .eq("user_id", user_id)
+                .eq("status", "completed")
+                .order("completed_at", desc=True)
+                .limit(1)
+                .execute()
+            )
+            return res.data[0] if res.data else None
+        except Exception as e:
+            logger.warning("v2_get_last_completed_session_full failed for %s: %s", user_id, e)
+            return None
+
+    def v2_user_has_pending_copilot_draft(self, user_id: str) -> bool:
+        try:
+            r = (
+                self.client.table("admin_student_send_drafts")
+                .select("id")
+                .eq("user_id", user_id)
+                .eq("status", "pending")
+                .limit(1)
+                .execute()
+            )
+            return bool(r.data)
+        except Exception:
+            return False
+
+    def v2_list_all_auth_user_ids(self, cap: int = 2000) -> List[str]:
+        """Paginate GoTrue admin users; return ids (up to cap). Same pool as admin student list."""
+        try:
+            import httpx
+
+            base = f"{config.SUPABASE_URL.rstrip('/')}/auth/v1/admin/users"
+            out: List[str] = []
+            seen: set[str] = set()
+            page = 1
+            per_page = min(1000, max(1, cap))
+            while len(out) < cap:
+                resp = httpx.get(
+                    base,
+                    params={"per_page": per_page, "page": page},
+                    headers={
+                        "Authorization": f"Bearer {config.SUPABASE_SERVICE_ROLE_KEY}",
+                        "apikey": config.SUPABASE_SERVICE_ROLE_KEY,
+                    },
+                    timeout=30,
+                )
+                if resp.status_code != 200:
+                    logger.warning(
+                        "v2_list_all_auth_user_ids: auth list page %s failed: %s %s",
+                        page,
+                        resp.status_code,
+                        resp.text[:200],
+                    )
+                    break
+                data = resp.json()
+                users = data.get("users") or (data.get("data") or {}).get("users") or []
+                if not users:
+                    break
+                for u in users:
+                    uid = u.get("id")
+                    if not uid or uid in seen:
+                        continue
+                    seen.add(uid)
+                    out.append(str(uid))
+                    if len(out) >= cap:
+                        break
+                if len(users) < per_page:
+                    break
+                page += 1
+            return out
+        except Exception as e:
+            logger.warning("v2_list_all_auth_user_ids: %s", e)
+            return []
+
 # Singleton instance
 db = DatabaseService()

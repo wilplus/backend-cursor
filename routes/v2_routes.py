@@ -2274,6 +2274,98 @@ def _parse_cohort_id(raw: str):
         return profile, None
 
 
+def _copilot_backfill_draft_row_for_user(user_id: str) -> dict:
+    """Build one admin_student_send_drafts insert dict from profile + last completed session."""
+    from services.student_profile_service import refresh_student_profile_state
+
+    refresh_student_profile_state(user_id)
+    sp = db.get_sniper_profile(user_id) or {}
+    profile = (
+        (sp.get("coach_override_profile") or "").strip()
+        or (sp.get("behavioral_profile") or "").strip()
+        or "Unclassified"
+    )
+    try:
+        raw_stage = sp.get("coach_override_stage")
+        if raw_stage is None:
+            raw_stage = sp.get("computed_stage")
+        stage = int(raw_stage) if raw_stage is not None else 1
+    except (TypeError, ValueError):
+        stage = 1
+    stage = max(1, min(5, stage))
+
+    sess = db.v2_get_last_completed_session_full(user_id)
+    session_id = str(sess["id"]) if sess and sess.get("id") else None
+
+    coach_insight = ""
+    report_comment = ""
+    report_grade = None
+    score_for_display = None
+    if sess:
+        coach_insight = (sess.get("coach_insight") or "").strip()
+        report_comment = (sess.get("report_comment") or "").strip()
+        report_grade = sess.get("report_grade")
+        score_for_display = sess.get("score_for_display")
+
+    task_text = ""
+    if sess:
+        task_text = (sess.get("session_task_text") or sess.get("warm_up_task_text") or "").strip()
+    if not task_text and sess and sess.get("selected_task_id"):
+        try:
+            t = (
+                db.client.table("tasks")
+                .select("text")
+                .eq("id", sess["selected_task_id"])
+                .limit(1)
+                .execute()
+            )
+            if t.data:
+                task_text = (t.data[0].get("text") or "").strip()
+        except Exception:
+            pass
+    if not task_text:
+        lr = db.v2_get_last_report_for_user(user_id)
+        if lr and lr.get("report_text"):
+            rt = (lr["report_text"] or "").strip()
+            task_text = (rt[:240] + "...") if len(rt) > 240 else rt
+    if not task_text:
+        task_text = (
+            "Follow-up: review your last homework feedback and continue with your next speaking task."
+        )
+
+    master_task_text = task_text[:8000]
+
+    meta = {
+        "backfilled_at": datetime.now(timezone.utc).isoformat(),
+        "session_id": session_id,
+    }
+    if score_for_display is not None:
+        try:
+            meta["score_for_display"] = float(score_for_display)
+        except (TypeError, ValueError):
+            meta["score_for_display"] = score_for_display
+
+    payload = {
+        "state": "Draft",
+        "ai_insight": coach_insight or None,
+        "grade_draft": report_grade,
+        "comment_draft": report_comment or None,
+        "task_draft": master_task_text,
+        "metadata": meta,
+    }
+
+    return {
+        "user_id": user_id,
+        "session_id": session_id,
+        "cohort_profile": profile,
+        "cohort_stage": stage,
+        "master_task_text": master_task_text,
+        "draft_payload": payload,
+        "status": "pending",
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
 @v2_bp.route("/admin/copilot/annotation-chips", methods=["GET", "POST"])
 @v2_bp.route("/admin/acoustic-dojo/annotation-chips", methods=["GET"])
 @require_admin
@@ -2431,6 +2523,96 @@ def v2_admin_copilot_next_clips():
                 }
             )
         return jsonify({"next_clips": items, "clips": items, "count": len(items)}), 200
+    except Exception as e:
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
+
+
+@v2_bp.route("/admin/copilot/backfill-drafts", methods=["POST"])
+@v2_bp.route("/admin/cohorts/backfill-drafts", methods=["POST"])
+@require_admin
+def v2_admin_copilot_backfill_drafts():
+    """Seed admin_student_send_drafts from Supabase Auth users + last session so Training Studio cohorts populate.
+
+    Body (optional): ``user_ids`` (list) — only these users; else all auth users up to ``max_users`` (default 2000).
+    ``skip_if_pending`` (bool, default true) — skip users who already have a pending draft.
+    ``dry_run`` (bool, default false) — return counts and sample rows without inserting.
+    """
+    try:
+        body = request.get_json(silent=True) or {}
+        dry_run = str(body.get("dry_run", False)).lower() in ("1", "true", "yes")
+        skip_if_pending = body.get("skip_if_pending", True)
+        if isinstance(skip_if_pending, str):
+            skip_if_pending = skip_if_pending.strip().lower() in ("1", "true", "yes")
+        else:
+            skip_if_pending = bool(skip_if_pending)
+
+        raw_ids = body.get("user_ids")
+        if raw_ids is not None:
+            if not isinstance(raw_ids, list):
+                return jsonify({"code": "INVALID_INPUT", "error": "user_ids must be an array"}), 400
+            targets = [str(x).strip() for x in raw_ids if str(x).strip()]
+        else:
+            try:
+                cap = int(body.get("max_users", 2000))
+            except (TypeError, ValueError):
+                cap = 2000
+            cap = max(1, min(5000, cap))
+            targets = db.v2_list_all_auth_user_ids(cap=cap)
+
+        inserted_preview: list = []
+        skipped: list = []
+        to_insert: list = []
+
+        for uid in targets:
+            if skip_if_pending and db.v2_user_has_pending_copilot_draft(uid):
+                skipped.append({"user_id": uid, "reason": "pending_exists"})
+                continue
+            try:
+                row = _copilot_backfill_draft_row_for_user(uid)
+            except Exception as ex:
+                logger.warning("copilot backfill: skip %s: %s", uid, ex)
+                skipped.append({"user_id": uid, "reason": f"error:{ex}"})
+                continue
+            to_insert.append(row)
+            if len(inserted_preview) < 5:
+                inserted_preview.append(
+                    {
+                        "user_id": row["user_id"],
+                        "cohort_profile": row["cohort_profile"],
+                        "cohort_stage": row["cohort_stage"],
+                        "session_id": row["session_id"],
+                        "master_task_text_preview": (row["master_task_text"] or "")[:120],
+                    }
+                )
+
+        if dry_run:
+            return (
+                jsonify(
+                    {
+                        "status": "ok",
+                        "dry_run": True,
+                        "would_insert": len(to_insert),
+                        "skipped_count": len(skipped),
+                        "sample": inserted_preview,
+                    }
+                ),
+                200,
+            )
+
+        inserted = db.insert_admin_student_send_drafts(to_insert) if to_insert else []
+        return (
+            jsonify(
+                {
+                    "status": "ok",
+                    "inserted_count": len(inserted),
+                    "skipped_count": len(skipped),
+                    "skipped": skipped[:100],
+                    "sample": inserted_preview,
+                }
+            ),
+            201,
+        )
     except Exception as e:
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
