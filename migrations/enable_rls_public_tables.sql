@@ -40,7 +40,11 @@ DECLARE
     'recording_sessions',
     'v2_student_details',
     'recording_reviews',
-    'recording_review_annotations'
+    'recording_review_annotations',
+    'student_profile',
+    'acoustic_labels',
+    'admin_annotation_events',
+    'admin_student_send_drafts'
   ];
   t text;
 BEGIN

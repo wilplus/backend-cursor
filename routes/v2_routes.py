@@ -410,6 +410,11 @@ def v2_admin_student_profile(user_id):
 
         if not is_admin(request.user_id) and user_id != request.user_id:
             return jsonify({"code": "FORBIDDEN", "error": "You can only access your own profile"}), 403
+        try:
+            from services.student_profile_service import refresh_student_profile_state
+            refresh_student_profile_state(user_id)
+        except Exception:
+            pass
         email = db.get_user_email_from_auth(user_id)
         details = db.v2_get_student_details(user_id) or {}
         raw_overrides = db.v2_get_student_overrides(user_id)
@@ -2443,3 +2448,244 @@ def v2_admin_coach_suggestions_history(user_id):
         logger.error("coach-suggestions/history failed for %s: %s", user_id, e, exc_info=True)
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "INTERNAL_ERROR", "error": str(e)}), 500
+
+
+@v2_bp.route("/admin/students/<user_id>/sessions/<session_id>/insight-audit", methods=["PATCH"])
+@require_admin
+def v2_admin_insight_audit(user_id, session_id):
+    try:
+        body = request.get_json(silent=True) or {}
+        is_audited = body.get("is_insight_audited")
+        corrected = body.get("coach_corrected_insight")
+        reason_chip = (body.get("reason_chip") or "").strip() or None
+        custom_reason = (body.get("custom_reason") or "").strip() or None
+        session = db.v2_get_session(session_id, user_id)
+        if not session:
+            return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found"}), 404
+        updates = {}
+        if is_audited is not None:
+            updates["is_insight_audited"] = bool(is_audited)
+        if corrected is not None:
+            updates["coach_corrected_insight"] = (corrected or "").strip() or None
+        if not updates:
+            return jsonify({"code": "INVALID_INPUT", "error": "Nothing to update"}), 400
+        db.v2_update_session(session_id, user_id, updates)
+        if reason_chip or custom_reason or corrected is not None:
+            db.create_admin_annotation_event(
+                user_id=user_id,
+                session_id=session_id,
+                section_type="post_hoc_audit",
+                field_name="coach_insight",
+                ai_original_text=(session.get("coach_insight") or "").strip() or None,
+                coach_final_text=(updates.get("coach_corrected_insight") or "").strip() or None,
+                reason_chip=reason_chip,
+                custom_reason=custom_reason,
+                created_by=request.user_id,
+            )
+        return jsonify({"status": "ok", "session_id": session_id, **updates}), 200
+    except Exception as e:
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
+
+
+@v2_bp.route("/admin/students/<user_id>/profile-classification", methods=["PATCH"])
+@require_admin
+def v2_admin_profile_classification_override(user_id):
+    try:
+        from services.student_profile_service import refresh_student_profile_state
+
+        body = request.get_json(silent=True) or {}
+        override_profile = (body.get("coach_override_profile") or "").strip() or None
+        justification = (body.get("profile_override_justification") or "").strip() or None
+        reason_chip = (body.get("reason_chip") or "").strip() or None
+        refresh_student_profile_state(user_id)
+        updated = db.upsert_student_profile_fields(
+            user_id,
+            {
+                "coach_override_profile": override_profile,
+                "profile_override_justification": justification,
+            },
+        )
+        db.create_admin_annotation_event(
+            user_id=user_id,
+            session_id=None,
+            section_type="classification",
+            field_name="behavioral_profile",
+            ai_original_text=(updated.get("behavioral_profile") or "").strip() or None,
+            coach_final_text=override_profile,
+            reason_chip=reason_chip,
+            custom_reason=justification,
+            created_by=request.user_id,
+        )
+        display_profile = (updated.get("coach_override_profile") or "").strip() or (updated.get("behavioral_profile") or "").strip() or "Unclassified"
+        return jsonify({"status": "ok", "display_profile": display_profile, "profile": updated}), 200
+    except Exception as e:
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
+
+
+@v2_bp.route("/admin/students/<user_id>/stage-override", methods=["PATCH"])
+@require_admin
+def v2_admin_stage_override(user_id):
+    try:
+        from services.student_profile_service import refresh_student_profile_state
+
+        body = request.get_json(silent=True) or {}
+        raw_stage = body.get("coach_override_stage")
+        justification = (body.get("stage_override_justification") or "").strip() or None
+        reason_chip = (body.get("reason_chip") or "").strip() or None
+        if raw_stage is None:
+            override_stage = None
+        else:
+            try:
+                override_stage = int(raw_stage)
+            except (TypeError, ValueError):
+                return jsonify({"code": "INVALID_INPUT", "error": "coach_override_stage must be integer 1..5 or null"}), 400
+            if override_stage < 1 or override_stage > 5:
+                return jsonify({"code": "INVALID_INPUT", "error": "coach_override_stage must be integer 1..5 or null"}), 400
+        refresh_student_profile_state(user_id)
+        updated = db.upsert_student_profile_fields(
+            user_id,
+            {
+                "coach_override_stage": override_stage,
+                "stage_override_justification": justification,
+            },
+        )
+        db.create_admin_annotation_event(
+            user_id=user_id,
+            session_id=None,
+            section_type="classification",
+            field_name="stage",
+            ai_original_text=str(updated.get("computed_stage")) if updated.get("computed_stage") is not None else None,
+            coach_final_text=str(override_stage) if override_stage is not None else None,
+            reason_chip=reason_chip,
+            custom_reason=justification,
+            created_by=request.user_id,
+        )
+        display_stage = override_stage or updated.get("computed_stage") or 1
+        return jsonify({"status": "ok", "display_stage": int(display_stage), "profile": updated}), 200
+    except Exception as e:
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
+
+
+@v2_bp.route("/admin/cohorts", methods=["GET"])
+@require_admin
+def v2_admin_cohorts():
+    try:
+        from services.student_profile_service import refresh_student_profile_state
+
+        only_pending = str(request.args.get("only_pending", "false")).strip().lower() in ("1", "true", "yes")
+        user_ids = db.list_recent_student_ids(limit=600)
+        pending_rows = db.list_admin_student_send_drafts(status="pending")
+        pending_by_user: dict[str, int] = {}
+        for row in pending_rows:
+            uid = str(row.get("user_id") or "")
+            if uid:
+                pending_by_user[uid] = pending_by_user.get(uid, 0) + 1
+
+        groups: dict[tuple[str, int], dict] = {}
+        for uid in user_ids:
+            state = refresh_student_profile_state(uid)
+            display_profile = (state.get("coach_override_profile") or "").strip() or (state.get("behavioral_profile") or "").strip() or "Unclassified"
+            display_stage = int(state.get("coach_override_stage") or state.get("computed_stage") or 1)
+            pending_count = int(pending_by_user.get(uid, 0))
+            if only_pending and pending_count <= 0:
+                continue
+            key = (display_profile, display_stage)
+            if key not in groups:
+                groups[key] = {
+                    "profile": display_profile,
+                    "stage": display_stage,
+                    "pending_count": 0,
+                    "students": [],
+                }
+            email = db.get_user_email_from_auth(uid)
+            groups[key]["students"].append(
+                {"user_id": uid, "email": email, "pending_count": pending_count}
+            )
+            groups[key]["pending_count"] += pending_count
+
+        out = list(groups.values())
+        out.sort(key=lambda g: (-int(g["pending_count"]), str(g["profile"]), int(g["stage"])))
+        return jsonify({"cohorts": out, "count": len(out)}), 200
+    except Exception as e:
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
+
+
+@v2_bp.route("/admin/cohorts/<profile>/<int:stage>/approve-task", methods=["POST"])
+@require_admin
+def v2_admin_cohort_approve_task(profile, stage):
+    try:
+        body = request.get_json(silent=True) or {}
+        master_task_text = (body.get("master_task_text") or "").strip()
+        if not master_task_text:
+            return jsonify({"code": "INVALID_INPUT", "error": "master_task_text is required"}), 400
+        target_ids = body.get("user_ids")
+        if target_ids is not None and not isinstance(target_ids, list):
+            return jsonify({"code": "INVALID_INPUT", "error": "user_ids must be an array"}), 400
+        target_ids = {str(x) for x in (target_ids or []) if str(x).strip()}
+
+        rows = []
+        all_ids = db.list_recent_student_ids(limit=600)
+        for uid in all_ids:
+            sp = db.get_sniper_profile(uid) or {}
+            display_profile = (sp.get("coach_override_profile") or "").strip() or (sp.get("behavioral_profile") or "").strip() or "Unclassified"
+            display_stage = int(sp.get("coach_override_stage") or sp.get("computed_stage") or 1)
+            if display_profile != profile or display_stage != int(stage):
+                continue
+            if target_ids and uid not in target_ids:
+                continue
+            latest_session = db.v2_get_last_completed_session(uid) or {}
+            rows.append(
+                {
+                    "user_id": uid,
+                    "session_id": latest_session.get("id"),
+                    "cohort_profile": profile,
+                    "cohort_stage": int(stage),
+                    "master_task_text": master_task_text,
+                    "draft_payload": {
+                        "task_text": master_task_text,
+                        "email_message": (body.get("email_message") or "").strip() or None,
+                        "video_script": (body.get("video_script") or "").strip() or None,
+                        "homework_comment": (body.get("homework_comment") or "").strip() or None,
+                    },
+                    "status": "pending",
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                }
+            )
+
+        inserted = db.insert_admin_student_send_drafts(rows)
+        return jsonify({"status": "ok", "inserted_count": len(inserted), "drafts": inserted}), 201
+    except Exception as e:
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
+
+
+@v2_bp.route("/admin/students/<user_id>/drafts/<draft_id>/approve-send", methods=["POST"])
+@require_admin
+def v2_admin_student_draft_approve_send(user_id, draft_id):
+    try:
+        row = db.get_admin_student_send_draft(draft_id, user_id)
+        if not row:
+            return jsonify({"code": "DRAFT_NOT_FOUND", "error": "Draft not found"}), 404
+        if row.get("status") == "sent":
+            return jsonify({"status": "ok", "already_sent": True, "draft_id": draft_id}), 200
+        payload = row.get("draft_payload") if isinstance(row.get("draft_payload"), dict) else {}
+        student_email = (db.get_user_email_from_auth(user_id) or "").strip()
+        if not student_email:
+            return jsonify({"code": "NO_EMAIL", "error": "Student has no email in auth"}), 400
+        send_result = email_service.send_assignment_to_student(
+            to_email=student_email,
+            frontend_url=config.FRONTEND_URL,
+            video_description=(payload.get("email_message") or payload.get("homework_comment") or ""),
+            student_name=student_email,
+        )
+        if send_result.get("status") == "failed":
+            return jsonify({"code": "EMAIL_FAILED", "error": send_result.get("error", "send failed")}), 500
+        updated = db.mark_admin_student_send_draft_sent(draft_id, user_id, request.user_id)
+        return jsonify({"status": "ok", "draft": updated, "email": send_result}), 200
+    except Exception as e:
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": str(e)}), 500

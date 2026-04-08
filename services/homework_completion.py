@@ -658,6 +658,13 @@ def _complete_session_from_recording(
     except Exception as cm_err:
         logger.warning("Coaching memory upsert failed: %s", cm_err)
 
+    # Keep student_profile progression/classification in sync with latest completed session.
+    try:
+        from services.student_profile_service import refresh_student_profile_state
+        refresh_student_profile_state(user_id)
+    except Exception as sp_err:
+        logger.warning("Student profile refresh failed: %s", sp_err)
+
     # ── SHADOW MODE: AI Task Score (non-blocking, never affects student-facing score) ──
     try:
         _compute_and_save_ai_task_score(session, session_id, user_id, transcript, wpm, filler_count, filler_data, performance_score_end)

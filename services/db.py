@@ -21,6 +21,39 @@ class DatabaseService:
         )
         # Cache missing optional columns discovered at runtime on older schemas.
         self._v2_sessions_missing_columns: set[str] = set()
+        self._student_profile_table = "student_profile"
+        self._legacy_student_profile_table = "user_sniper_profile"
+
+    def _is_relation_missing_error(self, err: Exception) -> bool:
+        msg = str(err).lower()
+        return ("42p01" in msg) or ("does not exist" in msg) or ("undefined_table" in msg)
+
+    def _select_student_profile_row(self, user_id: str) -> Optional[dict]:
+        """Read profile from new table first; fallback to legacy table during migration."""
+        try:
+            res = (
+                self.client.table(self._student_profile_table)
+                .select("*")
+                .eq("user_id", user_id)
+                .limit(1)
+                .execute()
+            )
+            if res.data:
+                return res.data[0]
+        except Exception as e:
+            if not self._is_relation_missing_error(e):
+                raise
+        try:
+            res = (
+                self.client.table(self._legacy_student_profile_table)
+                .select("*")
+                .eq("user_id", user_id)
+                .limit(1)
+                .execute()
+            )
+            return res.data[0] if res.data else None
+        except Exception:
+            return None
     
     def get_active_session(self, user_id: str):
         """Get the active (non-completed) session for a user"""
@@ -1572,9 +1605,8 @@ class DatabaseService:
     # ---------- Sniper adaptive (user_sniper_profile, session_sniper_metrics) ----------
 
     def get_sniper_profile(self, user_id: str) -> Optional[dict]:
-        """Get user_sniper_profile row or None."""
-        result = self.client.table("user_sniper_profile").select("*").eq("user_id", user_id).execute()
-        return result.data[0] if result.data else None
+        """Get student profile row or None (fallback to legacy user_sniper_profile)."""
+        return self._select_student_profile_row(user_id)
 
     def get_sniper_profile_payload(self, user_id: str) -> dict:
         """Return the sniper profile with frontend-safe realtime progression defaults."""
@@ -1805,7 +1837,7 @@ class DatabaseService:
         sessions_with_pitch_count: Optional[int] = None,
         realtime_last_completed_session_id: Optional[str] = None,
     ):
-        """Insert or update user_sniper_profile. Pass only fields to set; None leaves existing."""
+        """Insert or update student_profile (fallback-compatible with legacy table)."""
         now = datetime.now(timezone.utc).isoformat()
         payload = {
             "user_id": user_id,
@@ -1835,7 +1867,16 @@ class DatabaseService:
             payload["sessions_with_pitch_count"] = sessions_with_pitch_count
         if realtime_last_completed_session_id is not None:
             payload["realtime_last_completed_session_id"] = realtime_last_completed_session_id
-        self.client.table("user_sniper_profile").upsert(payload, on_conflict="user_id").execute()
+        wrote_primary = False
+        try:
+            self.client.table(self._student_profile_table).upsert(payload, on_conflict="user_id").execute()
+            wrote_primary = True
+        except Exception as e:
+            if not self._is_relation_missing_error(e):
+                raise
+        # Backward compatibility during migration window.
+        if not wrote_primary:
+            self.client.table(self._legacy_student_profile_table).upsert(payload, on_conflict="user_id").execute()
 
     def set_sniper_realtime_progression(
         self,
@@ -3524,6 +3565,116 @@ class DatabaseService:
         except Exception as e:
             logger.warning("clear_coach_ai_conversation failed for %s: %s", user_id, e)
             return False
+
+    # ---------- Admin Copilot Inbox ----------
+
+    def upsert_student_profile_fields(self, user_id: str, fields: Dict[str, Any]) -> dict:
+        payload = {"user_id": user_id, "updated_at": datetime.now(timezone.utc).isoformat()}
+        payload.update(fields or {})
+        try:
+            res = (
+                self.client.table(self._student_profile_table)
+                .upsert(payload, on_conflict="user_id")
+                .execute()
+            )
+            return res.data[0] if res.data else payload
+        except Exception as e:
+            if self._is_relation_missing_error(e):
+                res = (
+                    self.client.table(self._legacy_student_profile_table)
+                    .upsert(payload, on_conflict="user_id")
+                    .execute()
+                )
+                return res.data[0] if res.data else payload
+            raise
+
+    def list_recent_student_ids(self, limit: int = 500) -> List[str]:
+        try:
+            rows = (
+                self.client.table("v2_sessions")
+                .select("user_id, created_at")
+                .order("created_at", desc=True)
+                .limit(limit)
+                .execute()
+            )
+            ids: List[str] = []
+            seen = set()
+            for row in (rows.data or []):
+                uid = str(row.get("user_id") or "").strip()
+                if not uid or uid in seen:
+                    continue
+                seen.add(uid)
+                ids.append(uid)
+            return ids
+        except Exception:
+            return []
+
+    def create_admin_annotation_event(
+        self,
+        *,
+        user_id: str,
+        session_id: Optional[str],
+        section_type: str,
+        field_name: str,
+        ai_original_text: Optional[str],
+        coach_final_text: Optional[str],
+        reason_chip: Optional[str],
+        custom_reason: Optional[str],
+        created_by: str,
+    ) -> None:
+        payload = {
+            "user_id": user_id,
+            "session_id": session_id,
+            "section_type": section_type,
+            "field_name": field_name,
+            "ai_original_text": ai_original_text,
+            "coach_final_text": coach_final_text,
+            "reason_chip": reason_chip,
+            "custom_reason": custom_reason,
+            "created_by": created_by,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+        self.client.table("admin_annotation_events").insert(payload).execute()
+
+    def insert_admin_student_send_drafts(self, rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        if not rows:
+            return []
+        res = self.client.table("admin_student_send_drafts").insert(rows).execute()
+        return res.data or []
+
+    def list_admin_student_send_drafts(self, *, status: Optional[str] = None) -> List[Dict[str, Any]]:
+        q = self.client.table("admin_student_send_drafts").select("*").order("created_at", desc=True)
+        if status:
+            q = q.eq("status", status)
+        res = q.execute()
+        return res.data or []
+
+    def get_admin_student_send_draft(self, draft_id: str, user_id: str) -> Optional[Dict[str, Any]]:
+        res = (
+            self.client.table("admin_student_send_drafts")
+            .select("*")
+            .eq("id", draft_id)
+            .eq("user_id", user_id)
+            .limit(1)
+            .execute()
+        )
+        return res.data[0] if res.data else None
+
+    def mark_admin_student_send_draft_sent(self, draft_id: str, user_id: str, approved_by: str) -> Optional[Dict[str, Any]]:
+        payload = {
+            "status": "sent",
+            "approved_by": approved_by,
+            "sent_at": datetime.now(timezone.utc).isoformat(),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+        res = (
+            self.client.table("admin_student_send_drafts")
+            .update(payload)
+            .eq("id", draft_id)
+            .eq("user_id", user_id)
+            .execute()
+        )
+        return res.data[0] if res.data else None
 
 # Singleton instance
 db = DatabaseService()
