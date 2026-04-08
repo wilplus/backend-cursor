@@ -472,7 +472,7 @@ def _compute_and_save_ai_task_score(
     """Dual-engine scoring: mechanical (pure math) + context (GPT task judge).
 
     - mechanical_score: stage_score + dynamic_db modifier - filler penalty (deterministic)
-    - ai_task_score: GPT-4o-mini judges transcript against warm-up task text only
+    - ai_task_score: GPT-4o-mini judges transcript against homework task text only
     Non-blocking — failures never affect the student-facing score.
     """
     # --- Layer 1: Mechanical Score (pure math, always computed) ---
@@ -491,13 +491,13 @@ def _compute_and_save_ai_task_score(
         logger.warning("mechanical_score: DB save failed: %s", mech_err)
 
     # --- Layer 2: Context Score (GPT judges task completion — transcript only) ---
-    warm_up_tasks = db.v2_get_warm_up_tasks(user_id)
-    if not warm_up_tasks:
-        logger.info("ai_task_score: no warm-up tasks, skipping context score session_id=%s", session_id)
+    student_tasks = db.v2_get_student_tasks(user_id)
+    if not student_tasks:
+        logger.info("ai_task_score: no student tasks, skipping context score session_id=%s", session_id)
         return
-    task_description = " / ".join(t.get("text", "").strip() for t in warm_up_tasks if t.get("text", "").strip())
+    task_description = " / ".join(t.get("text", "").strip() for t in student_tasks if t.get("text", "").strip())
     if not task_description:
-        logger.info("ai_task_score: empty warm-up task texts, skipping session_id=%s", session_id)
+        logger.info("ai_task_score: empty task texts, skipping session_id=%s", session_id)
         return
 
     # GPT only sees transcript + task — no acoustic metrics (pure semantic judgment)

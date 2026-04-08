@@ -218,8 +218,6 @@ def _process_one(payload: dict):
             int((time.monotonic() - job_started) * 1000),
         )
 
-        focus_task = None
-
         # ── Sniper audio metrics (graceful fallback when ffmpeg is unavailable) ──
         try:
             from services.audio_metrics import analyze_audio
@@ -308,7 +306,6 @@ def _process_one(payload: dict):
         db.v2_update_session(session_id, user_id, {
             "score": score,
             "context_short": context_short,
-            "selected_task_id": None,
             "recording_1_processing_status": "completed",
             "recording_1_performance_profile": performance_profile,
         })

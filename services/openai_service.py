@@ -412,7 +412,7 @@ Respond with ONLY valid JSON in this exact format:
         if homework_context_short or homework_metric_answers:
             homework_section = "\n**Homework flow (two recordings):**\n"
             if homework_context_short:
-                homework_section += f"- First recording (warm-up) summary: {homework_context_short}\n"
+                homework_section += f"- First recording (task) summary: {homework_context_short}\n"
             if homework_metric_answers:
                 a1 = homework_metric_answers.get("answer_1") or homework_metric_answers.get("metric_answer_1") or ""
                 a2 = homework_metric_answers.get("answer_2") or homework_metric_answers.get("metric_answer_2") or ""
@@ -574,14 +574,14 @@ Generate the report:"""
             return "Analysis pending, check back soon."
 
     def generate_context_short(self, transcript: str) -> str:
-        """Homework flow: 2–3 sentence summary of the warm-up recording for task context."""
+        """Homework flow: 2–3 sentence summary of the first recording for task context."""
         if not self.client:
             return (transcript or "")[:400]
         try:
             response = self.client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=[
-                    {"role": "system", "content": "Summarize the speaker's warm-up in 2-3 short sentences. Focus on tone, pacing, and main point. Be concise."},
+                    {"role": "system", "content": "Summarize the speaker's first recording in 2-3 short sentences. Focus on tone, pacing, and main point. Be concise."},
                     {"role": "user", "content": (transcript or "")[:3000]}
                 ],
                 temperature=0.3,

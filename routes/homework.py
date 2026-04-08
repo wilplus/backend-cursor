@@ -1,5 +1,5 @@
 """
-Homework flow (TEMPORARY: steps 2–4 removed): warm_up + recording_1 → report only.
+Homework flow (TEMPORARY: steps 2–4 removed): task step + recording_1 → report only.
 All routes under /v2/homework, require auth. Restore steps 2–4 from docs/TEMPORARY-REMOVED-STEPS-2-3-4-BACKUP.md or git history.
 """
 from flask import Blueprint, request, jsonify
@@ -56,7 +56,8 @@ def _agent_log(msg, data=None, hypothesis_id=None):
 # #endregion
 
 # Homework session statuses (internal DB values)
-STATUS_WARM_UP = "warm_up"
+STATUS_TASK = "task"
+_LEGACY_STATUS_TASK = "warm_up"  # pre-migration rows; see rename_homework_session_status_warm_up_to_task.sql
 STATUS_TASK_BLOCK = "task_block"
 STATUS_FINAL_TASK_READY = "final_task_ready"
 # Legacy compatibility only; the current web client does not use the post-questions step.
@@ -77,7 +78,8 @@ def _public_status(db_status):
     if db_status is None:
         return PUBLIC_STATUS_NONE
     m = {
-        STATUS_WARM_UP: PUBLIC_STATUS_RECORDING_1_REQUIRED,
+        STATUS_TASK: PUBLIC_STATUS_RECORDING_1_REQUIRED,
+        _LEGACY_STATUS_TASK: PUBLIC_STATUS_RECORDING_1_REQUIRED,
         STATUS_TASK_BLOCK: PUBLIC_STATUS_REPORT_GENERATING,
         STATUS_FINAL_TASK_READY: PUBLIC_STATUS_REPORT_GENERATING,
         # Old sessions may still exist in this state, but the public API should
@@ -119,6 +121,10 @@ def _task_text(text):
     return text or None
 
 
+def _session_status_allows_task_step(status) -> bool:
+    return status == STATUS_TASK or status == _LEGACY_STATUS_TASK
+
+
 def _parse_isoish_datetime(value):
     if not value:
         return None
@@ -142,6 +148,18 @@ def _public_recording_id(session: dict):
     recording_id = session.get("recording_1_id")
     return str(recording_id) if recording_id else None
 
+
+def _session_snap_task_id(session: dict):
+    """session_task_id; unmigrated snapshots may still use warm_up_task_id columns."""
+    return session.get("session_task_id") or session.get("warm_up_task_id")
+
+
+def _session_snap_task_text(session: dict) -> str:
+    return (session.get("session_task_text") or session.get("warm_up_task_text") or "").strip()
+
+
+def _persist_session_task(task_row_id, text: str) -> dict:
+    return {"session_task_id": task_row_id, "session_task_text": text}
 
 
 def _build_step0_payload(user_id: str) -> dict:
@@ -235,27 +253,24 @@ def homework_session_start():
             db.v2_delete_session(active["id"], user_id)
             active = None
         if active:
-            wid = active.get("warm_up_task_id")
-            wtext = (active.get("warm_up_task_text") or "").strip()
+            wid = _session_snap_task_id(active)
+            wtext = _session_snap_task_text(active)
 
             task = _task_payload(wid, wtext)
             if task is None:
-                db.v2_ensure_default_warm_up_task(user_id)
-                warm_up = db.v2_get_assigned_warm_up_task(user_id)
-                if not warm_up:
+                db.v2_ensure_default_student_task(user_id)
+                hw_task = db.v2_get_assigned_task_for_user(user_id)
+                if not hw_task:
                     return jsonify({
-                        "code": "NO_WARMUP_CONFIGURED",
+                        "code": "NO_TASK_CONFIGURED",
                         "message": "No task is configured for your account. Please contact your coach to get started.",
                         "details": {},
                     }), 422
-                text = (warm_up.get("text") or "").strip()
+                text = (hw_task.get("text") or "").strip()
                 if not text:
                     return jsonify({"code": "INVALID_STATE", "error": "Task has empty text"}), 500
-                db.v2_update_session(active["id"], user_id, {
-                    "warm_up_task_id": warm_up.get("id"),
-                    "warm_up_task_text": text,
-                })
-                task = _task_payload(warm_up.get("id"), text)
+                db.v2_update_session(active["id"], user_id, _persist_session_task(hw_task.get("id"), text))
+                task = _task_payload(hw_task.get("id"), text)
 
             return jsonify({
                 "session_id": active["id"],
@@ -284,16 +299,16 @@ def homework_session_start():
                 "credits": int(current_credits),
             }), 402
 
-        db.v2_ensure_default_warm_up_task(user_id)
-        warm_up = db.v2_get_assigned_warm_up_task(user_id)
-        if not warm_up:
+        db.v2_ensure_default_student_task(user_id)
+        hw_task = db.v2_get_assigned_task_for_user(user_id)
+        if not hw_task:
             return jsonify({
-                "code": "NO_WARMUP_CONFIGURED",
+                "code": "NO_TASK_CONFIGURED",
                 "message": "No task is configured for your account. Please contact your coach to get started.",
                 "details": {},
             }), 422
 
-        text = (warm_up.get("text") or "").strip()
+        text = (hw_task.get("text") or "").strip()
         if not text:
             return jsonify({"code": "INVALID_STATE", "error": "Task has empty text"}), 500
 
@@ -307,8 +322,7 @@ def homework_session_start():
             "session_metric_question_1": (prefs.get("metric_question_1") or "").strip(),
             "session_metric_question_2": (prefs.get("metric_question_2") or "").strip(),
             "session_metric_question_3": (prefs.get("metric_question_3") or "").strip(),
-            "warm_up_task_id": warm_up.get("id"),
-            "warm_up_task_text": text,
+            **_persist_session_task(hw_task.get("id"), text),
         }
         if pending_video_url:
             session_update["tutor_video_url"] = pending_video_url
@@ -358,21 +372,18 @@ def homework_session_status():
             return jsonify(_build_step0_payload(user_id)), 200
 
         task = None
-        wid = active.get("warm_up_task_id")
-        wtext = (active.get("warm_up_task_text") or "").strip()
+        wid = _session_snap_task_id(active)
+        wtext = _session_snap_task_text(active)
 
         if wtext:
             task = _task_payload(wid, wtext)
-        elif active.get("status") == STATUS_WARM_UP:
-            db.v2_ensure_default_warm_up_task(user_id)
-            warm_up = db.v2_get_assigned_warm_up_task(user_id)
-            if warm_up and (warm_up.get("text") or "").strip():
-                text = (warm_up.get("text") or "").strip()
-                db.v2_update_session(active["id"], user_id, {
-                    "warm_up_task_id": warm_up.get("id"),
-                    "warm_up_task_text": text,
-                })
-                task = _task_payload(warm_up.get("id"), text)
+        elif _session_status_allows_task_step(active.get("status")):
+            db.v2_ensure_default_student_task(user_id)
+            hw_task = db.v2_get_assigned_task_for_user(user_id)
+            if hw_task and (hw_task.get("text") or "").strip():
+                text = (hw_task.get("text") or "").strip()
+                db.v2_update_session(active["id"], user_id, _persist_session_task(hw_task.get("id"), text))
+                task = _task_payload(hw_task.get("id"), text)
 
         # #region agent log
         _sid = str(active.get("id") or "")
@@ -384,11 +395,12 @@ def homework_session_status():
         credits_active = student_details_active.get("credits")
         if credits_active is None:
             credits_active = 15
+        _tw = _task_text(task.get("text") if task else None)
         resp = {
             "status": public_status,
             "session_id": str(active["id"]),
             "recording_id": _public_recording_id(active),
-            "task": _task_text(task.get("text") if task else None),
+            "task": _tw,
             "assigned_exercises": [],
             "tutor_feedback_deadline": None,
             "tutor_feedback_message": None,
@@ -461,45 +473,41 @@ def homework_list_sessions():
 
 
 # ---------- Step 1: task (GET) + recording_1 (POST) ----------
-@homework_bp.route("/session/<session_id>/warm-up-task", methods=["GET"])
+@homework_bp.route("/session/<session_id>/task", methods=["GET"])
 @require_auth
-def homework_get_warm_up_task(session_id):
-    """Get the step-1 task for this session. Snapshot-first for deterministic resume."""
+def homework_get_session_task(session_id):
+    """Get the homework task for this session. Snapshot-first for deterministic resume."""
     try:
         user_id = request.user_id
         session = db.v2_get_session(session_id, user_id)
         if not session:
             return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found"}), 404
-        if session.get("status") != STATUS_WARM_UP:
+        if not _session_status_allows_task_step(session.get("status")):
             return jsonify({
                 "code": "INVALID_SESSION_STATE",
                 "error": "Session must be in task",
                 "status": session.get("status"),
             }), 409
 
-        wid = session.get("warm_up_task_id")
-        wtext = (session.get("warm_up_task_text") or "").strip()
+        wtext = _session_snap_task_text(session)
 
         if wtext:
             return jsonify({"task": _task_text(wtext)}), 200
 
-        db.v2_ensure_default_warm_up_task(user_id)
-        warm_up = db.v2_get_assigned_warm_up_task(user_id)
-        if not warm_up:
+        db.v2_ensure_default_student_task(user_id)
+        hw_task = db.v2_get_assigned_task_for_user(user_id)
+        if not hw_task:
             return jsonify({
-                "code": "NO_WARMUP_CONFIGURED",
+                "code": "NO_TASK_CONFIGURED",
                 "message": "No task is configured for your account. Please contact your coach to get started.",
                 "details": {},
             }), 422
 
-        text = (warm_up.get("text") or "").strip()
+        text = (hw_task.get("text") or "").strip()
         if not text:
             return jsonify({"code": "INVALID_STATE", "error": "Task has empty text"}), 500
 
-        db.v2_update_session(session_id, user_id, {
-            "warm_up_task_id": warm_up.get("id"),
-            "warm_up_task_text": text,
-        })
+        db.v2_update_session(session_id, user_id, _persist_session_task(hw_task.get("id"), text))
         return jsonify({"task": _task_text(text)}), 200
 
     except Exception as e:
@@ -641,7 +649,7 @@ def _recording_slot_fields(slot: str) -> dict:
             "label": "recording-1",
             "session_field": "recording_1_id",
             "processing_field": "recording_1_processing_status",
-            "allowed_status": STATUS_WARM_UP,
+            "allowed_statuses": (STATUS_TASK, _LEGACY_STATUS_TASK),
             "completing_status": STATUS_COMPLETING_FROM_RECORDING_1,
             "already_submitted_statuses": (STATUS_COMPLETING_FROM_RECORDING_1, STATUS_COMPLETED),
         }
@@ -709,7 +717,7 @@ def _submit_recording(session_id: str, slot: str):
     label = fields["label"]
     session_field = fields["session_field"]
     processing_field = fields["processing_field"]
-    allowed_status = fields["allowed_status"]
+    allowed_statuses = fields["allowed_statuses"]
     completing_status = fields["completing_status"]
     already_submitted_statuses = fields["already_submitted_statuses"]
     if not session:
@@ -717,7 +725,7 @@ def _submit_recording(session_id: str, slot: str):
         return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found"}), 404
 
     status = session.get("status")
-    if status != allowed_status:
+    if status not in allowed_statuses:
         if status in already_submitted_statuses:
             existing_recording_id = session.get(session_field)
             existing_payload = {
@@ -729,7 +737,7 @@ def _submit_recording(session_id: str, slot: str):
         _agent_log(f"{label}: wrong status", {"session_id": session_id, "status": status}, "H1")
         return jsonify({
             "code": "INVALID_SESSION_STATE",
-            "error": f"Session not found or not in {allowed_status}",
+            "error": f"Session not found or not in one of {allowed_statuses}",
             "status": status,
         }), 409
 
@@ -815,7 +823,7 @@ def homework_recording_upload_url(session_id):
         if not session:
             return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found"}), 404
         status = session.get("status")
-        if status != fields["allowed_status"]:
+        if status not in fields["allowed_statuses"]:
             if status in fields["already_submitted_statuses"]:
                 return jsonify({
                     "already_submitted": True,
@@ -826,7 +834,7 @@ def homework_recording_upload_url(session_id):
             _agent_log("recording-upload-url: wrong status", {"session_id": session_id, "status": status, "recording": recording_slot}, "H_upload")
             return jsonify({
                 "code": "INVALID_SESSION_STATE",
-                "error": f"Session must be in {fields['allowed_status']} for {fields['label']}",
+                "error": f"Session must be in one of {fields['allowed_statuses']} for {fields['label']}",
                 "status": status,
             }), 409
 
@@ -1020,7 +1028,7 @@ def homework_sniper_metrics_chunk(session_id):
 @homework_bp.route("/session/<session_id>/report", methods=["GET"])
 @require_auth
 def homework_get_report(session_id):
-    """Get report data for a completed session (step 5). Returns report_text, scores (warmup, final, overall 0-100), final_recording { id, audio_url } with fresh signed URL, and performance_history (last 5 completed sessions: date, score 0-100, oldest first). Owner-only; session must be completed."""
+    """Get report data for a completed session (step 5). Returns report_text, scores (task step, final, overall 0-100), final_recording { id, audio_url } with fresh signed URL, and performance_history (last 5 completed sessions: date, score 0-100, oldest first). Owner-only; session must be completed."""
     try:
         user_id = request.user_id
         token_payload = getattr(request, "token_payload", {}) or {}

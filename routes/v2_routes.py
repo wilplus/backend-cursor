@@ -352,7 +352,7 @@ def v2_admin_students():
 @require_auth
 def v2_admin_student_profile(user_id):
     """Student profile: admin can get any user's profile; authenticated user can get own profile (user_id === token sub).
-    Same contract: user_id, email, overrides, speaker_profile, task_warm_up[], sessions (reports list)."""
+    Same contract: user_id, email, overrides, speaker_profile, tasks[], sessions (reports list)."""
     try:
         if request.method == "DELETE":
             if not is_admin(request.user_id):
@@ -419,13 +419,12 @@ def v2_admin_student_profile(user_id):
         details = db.v2_get_student_details(user_id) or {}
         raw_overrides = db.v2_get_student_overrides(user_id)
         overrides = dict(raw_overrides) if raw_overrides else {}
-        overrides["assigned_next_task_ids"] = overrides.get("assigned_next_task_ids") or []
         # Ensure skip flags are always booleans for consistent admin UI (false when never set)
         overrides["skip_metric_questions"] = bool(raw_overrides.get("skip_metric_questions") if raw_overrides else False)
         speaker_profile = db.v2_get_speaker_profile(user_id)
         sniper_profile = db.get_sniper_profile_payload(user_id)
         coaching_memory = db.v2_get_student_coaching_memory(user_id)
-        task_warm_up = db.v2_get_warm_up_tasks(user_id)
+        tasks = db.v2_get_student_tasks(user_id)
         last_report = db.v2_get_last_report_for_user(user_id)
         sessions = db.v2_get_sessions_with_previews(user_id, limit=50)
         delivered_sessions = [s for s in sessions if s.get("report_delivered")]
@@ -449,7 +448,7 @@ def v2_admin_student_profile(user_id):
             "realtime_level": sniper_profile.get("realtime_level"),
             "realtime_step": sniper_profile.get("realtime_step"),
             "measured_metrics": measured_metrics,
-            "task_warm_up": task_warm_up,
+            "tasks": tasks,
             "last_report": last_report.get("report_text") if last_report else None,
             "last_report_preview": last_report.get("report_preview") if last_report else None,
             "last_report_delivered": bool(last_report.get("report_delivered")) if last_report else False,
@@ -557,7 +556,7 @@ def v2_admin_student_sniper_profile(user_id):
 @v2_bp.route("/admin/students/<user_id>/overrides", methods=["PUT"])
 @require_admin
 def v2_admin_student_overrides(user_id):
-    """Set prompts, skip_metric_questions, assigned task/warm-up ids, pending tutor video fields."""
+    """Set prompts, skip_metric_questions, assigned_task_id, pending tutor video fields."""
     try:
         data = request.get_json() or {}
         # #region agent log
@@ -1539,78 +1538,32 @@ def v2_admin_recording_review_patch(recording_id):
         return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
 
 
-# ---------- Admin CRUD: tasks ----------
-_TASKS_HEADER = ("X-Backend-Route", "v2-admin-tasks")
+# ---------- Admin: tasks_pool (global pool) + tasks (per student) ----------
 
 
-@v2_bp.route("/admin/tasks", methods=["GET"])
+def _admin_tasks_pool_list_payload(data: list):
+    return {"tasks_pool": data}
+
+
+def _admin_tasks_pool_row_payload(row):
+    if row is None:
+        return {"tasks_pool": None}
+    return {"tasks_pool": row}
+
+
+@v2_bp.route("/admin/tasks-pool", methods=["GET"])
 @require_admin
-def v2_admin_tasks_list():
-    result = db.client.table("v2_tasks").select("*").order("created_at", desc=True).execute()
-    resp = jsonify({"tasks": result.data or []})
-    resp.headers[_TASKS_HEADER[0]] = _TASKS_HEADER[1]
-    return resp, 200
-
-
-@v2_bp.route("/admin/tasks", methods=["POST"])
-@require_admin
-def v2_admin_tasks_create():
-    data = request.get_json() or {}
-    title = (data.get("title") or "").strip()
-    if not title:
-        resp = jsonify({"code": "INVALID_INPUT", "error": "title is required", "_debug": {"stage": "validation", "message": "body.title missing or empty"}})
-        resp.headers[_TASKS_HEADER[0]] = _TASKS_HEADER[1]
-        return resp, 400
-    # DB has prompt_text NOT NULL; default to title so "Add" with one field works
-    prompt_text = (data.get("prompt_text") or title).strip() or title
-    payload = {
-        "title": title,
-        "prompt_text": prompt_text,
-        "min_task_score": data.get("min_task_score") if "min_task_score" in data else 0,
-        "max_task_score": data.get("max_task_score") if "max_task_score" in data else 1,
-        "is_active": data.get("is_active", True),
-    }
-    row = db.v2_insert_task(payload)
-    if not row:
-        resp = jsonify({"code": "V2_ERROR", "error": "Failed to create task", "_debug": {"stage": "v2_insert_task", "message": "insert returned no row"}})
-        resp.headers[_TASKS_HEADER[0]] = _TASKS_HEADER[1]
-        return resp, 500
-    resp = jsonify({"task": row})
-    resp.headers[_TASKS_HEADER[0]] = _TASKS_HEADER[1]
-    return resp, 201
-
-
-@v2_bp.route("/admin/tasks/<task_id>", methods=["PUT"])
-@require_admin
-def v2_admin_tasks_update(task_id):
-    data = request.get_json() or {}
-    row = db.v2_update_task(task_id, data)
-    return jsonify({"task": row}), 200
-
-
-@v2_bp.route("/admin/tasks/<task_id>", methods=["DELETE"])
-@require_admin
-def v2_admin_tasks_delete(task_id):
-    """Soft-delete: set is_active=False so task no longer appears in student flow."""
-    db.v2_delete_task(task_id)
-    return jsonify({"status": "ok"}), 200
-
-
-# ---------- Admin: task-warm-up pool (same mechanism as task_focus) ----------
-@v2_bp.route("/admin/task-warm-up-pool", methods=["GET"])
-@require_admin
-def v2_admin_task_warm_up_pool_list():
+def v2_admin_tasks_pool_list():
     try:
-        result = db.client.table("v2_warm_up_task_pool").select("*").order("order_index").order("created_at").execute()
-        data = result.data or []
+        data = db.v2_get_task_pool()
     except Exception:
         data = []
-    return jsonify({"task_warm_up_pool": data}), 200
+    return jsonify(_admin_tasks_pool_list_payload(data)), 200
 
 
-@v2_bp.route("/admin/task-warm-up-pool", methods=["POST"])
+@v2_bp.route("/admin/tasks-pool", methods=["POST"])
 @require_admin
-def v2_admin_task_warm_up_pool_create():
+def v2_admin_tasks_pool_create():
     data = request.get_json() or {}
     text = (data.get("text") or "").strip()
     if not text:
@@ -1621,21 +1574,20 @@ def v2_admin_task_warm_up_pool_create():
     except (TypeError, ValueError):
         payload["max_performance_score"] = 1.0
     try:
-        result = db.client.table("v2_warm_up_task_pool").insert(payload).execute()
-        row = result.data[0] if result.data else None
-        return jsonify({"task_warm_up": row}), 201
+        row = db.v2_insert_task_pool(payload)
+        return jsonify(_admin_tasks_pool_row_payload(row)), 201
     except Exception as e:
         err = str(e).lower()
-        hint = "Run migrations/v2_warm_up_task_pool.sql to create the table." if ("relation" in err or "does not exist" in err or "42p01" in err) else None
+        hint = "Run migrations/rename_warmup_to_tasks_and_drop_focus.sql if public.tasks / public.tasks_pool are missing." if ("relation" in err or "does not exist" in err or "42p01" in err) else None
         out = {"error": str(e)}
         if hint:
             out["hint"] = hint
         return jsonify(out), 500
 
 
-@v2_bp.route("/admin/task-warm-up-pool/<pool_id>", methods=["PUT"])
+@v2_bp.route("/admin/tasks-pool/<pool_id>", methods=["PUT"])
 @require_admin
-def v2_admin_task_warm_up_pool_update(pool_id):
+def v2_admin_tasks_pool_update(pool_id):
     data = request.get_json() or {}
     payload = {k: data[k] for k in ("text", "order_index", "max_performance_score") if k in data}
     if "max_performance_score" in payload:
@@ -1644,48 +1596,39 @@ def v2_admin_task_warm_up_pool_update(pool_id):
         except (TypeError, ValueError):
             payload["max_performance_score"] = 1.0
     if not payload:
-        try:
-            result = db.client.table("v2_warm_up_task_pool").select("*").eq("id", pool_id).execute()
-            row = result.data[0] if result.data else None
-        except Exception:
-            row = None
+        row = db.v2_get_task_pool_by_id(pool_id)
     else:
-        try:
-            result = db.client.table("v2_warm_up_task_pool").update(payload).eq("id", pool_id).execute()
-            row = result.data[0] if result.data else None
-        except Exception:
-            row = None
+        row = db.v2_update_task_pool(pool_id, payload)
     if not row:
         return jsonify({"error": "Pool task not found"}), 404
-    return jsonify({"task_warm_up": row}), 200
+    return jsonify(_admin_tasks_pool_row_payload(row)), 200
 
 
-@v2_bp.route("/admin/task-warm-up-pool/<pool_id>", methods=["DELETE"])
+@v2_bp.route("/admin/tasks-pool/<pool_id>", methods=["DELETE"])
 @require_admin
-def v2_admin_task_warm_up_pool_delete(pool_id):
+def v2_admin_tasks_pool_delete(pool_id):
     try:
-        db.client.table("v2_warm_up_task_pool").delete().eq("id", pool_id).execute()
+        db.v2_delete_task_pool(pool_id)
     except Exception:
         pass
     return jsonify({"status": "ok"}), 200
 
 
-# ---------- Admin: task-warm-up (per student) ----------
-@v2_bp.route("/admin/students/<user_id>/task-warm-up", methods=["GET"])
+@v2_bp.route("/admin/students/<user_id>/tasks", methods=["GET"])
 @require_admin
-def v2_admin_task_warm_up_list(user_id):
+def v2_admin_student_tasks_list(user_id):
     try:
-        rows = db.v2_get_warm_up_tasks(user_id)
-        return jsonify({"task_warm_up": rows}), 200
+        rows = db.v2_get_student_tasks(user_id)
+        return jsonify({"tasks": rows}), 200
     except Exception as err:
-        logger.warning("task-warm-up GET failed for user %s: %s", user_id, err, exc_info=True)
-        return jsonify({"task_warm_up": []}), 200
+        logger.warning("student tasks GET failed for user %s: %s", user_id, err, exc_info=True)
+        return jsonify({"tasks": []}), 200
 
 
-@v2_bp.route("/admin/students/<user_id>/task-warm-up", methods=["PUT"])
+@v2_bp.route("/admin/students/<user_id>/tasks", methods=["PUT"])
 @require_admin
-def v2_admin_task_warm_up_sync(user_id):
-    """Set this student's warm-up tasks from the pool. Body: { "pool_task_ids": [uuid, ...] } (order = display order)."""
+def v2_admin_student_tasks_sync(user_id):
+    """Body: { "pool_task_ids": [uuid, ...] } display order."""
     data = request.get_json() or {}
     pool_task_ids = data.get("pool_task_ids")
     if pool_task_ids is None:
@@ -1693,47 +1636,22 @@ def v2_admin_task_warm_up_sync(user_id):
     if not isinstance(pool_task_ids, list):
         return jsonify({"error": "pool_task_ids must be a list"}), 400
     pool_task_ids = [str(x) for x in pool_task_ids]
-    # #region agent log
     try:
-        import json
-        import os
-        import time
-        _log_path = os.path.join(os.path.dirname(__file__), "..", ".cursor", "debug.log")
-        _log_path = os.path.abspath(_log_path)
-        with open(_log_path, "a") as _f:
-            _f.write(json.dumps({"location": "v2_routes.py:v2_admin_task_warm_up_sync", "message": "PUT task-warm-up entry", "data": {"user_id": user_id, "pool_task_ids": pool_task_ids}, "timestamp": int(time.time() * 1000), "hypothesisId": "entry"}) + "\n")
-    except Exception:
-        pass
-    # #endregion
-    try:
-        rows = db.v2_sync_student_warm_up_tasks_from_pool(user_id, pool_task_ids)
-        return jsonify({"task_warm_up": rows}), 200
+        rows = db.v2_sync_student_tasks_from_pool(user_id, pool_task_ids)
+        return jsonify({"tasks": rows}), 200
     except Exception as err:
-        # #region agent log
-        try:
-            import json
-            import os
-            import time
-            err_msg = str(err)
-            _log_path = os.path.join(os.path.dirname(__file__), "..", ".cursor", "debug.log")
-            _log_path = os.path.abspath(_log_path)
-            with open(_log_path, "a") as _f:
-                _f.write(json.dumps({"location": "v2_routes.py:v2_admin_task_warm_up_sync", "message": "PUT task-warm-up exception", "data": {"err_type": type(err).__name__, "err_message": err_msg, "user_id": user_id}, "timestamp": int(time.time() * 1000), "hypothesisId": "exception"}) + "\n")
-        except Exception:
-            pass
-        # #endregion
-        logger.warning("task-warm-up PUT sync failed for user %s: %s", user_id, err, exc_info=True)
+        logger.warning("student tasks PUT sync failed for user %s: %s", user_id, err, exc_info=True)
         detail = str(err)
         return jsonify({
-            "error": "v2_warm_up_tasks table missing or sync failed.",
+            "error": "tasks sync failed (run DB migration rename_warmup_to_tasks_and_drop_focus.sql).",
             "detail": detail,
             "message": f"Confirm selection failed. Server said: {detail}",
         }), 503
 
 
-@v2_bp.route("/admin/students/<user_id>/task-warm-up", methods=["POST"])
+@v2_bp.route("/admin/students/<user_id>/tasks", methods=["POST"])
 @require_admin
-def v2_admin_task_warm_up_create(user_id):
+def v2_admin_student_tasks_create(user_id):
     data = request.get_json() or {}
     text = (data.get("text") or "").strip()
     if not text:
@@ -1743,22 +1661,16 @@ def v2_admin_task_warm_up_create(user_id):
     data.setdefault("order_index", int(data.get("order_index", 0)))
     data.setdefault("max_performance_score", float(data.get("max_performance_score", 1.0)))
     try:
-        row = db.v2_insert_warm_up_task(data)
-        return jsonify({"task_warm_up": row}), 201
+        row = db.v2_insert_student_task(data)
+        return jsonify({"task": row}), 201
     except Exception as err:
-        logger.warning("task-warm-up POST failed for user %s: %s", user_id, err, exc_info=True)
-        return jsonify({"error": "Failed to create warm-up task. Check v2_warm_up_tasks table exists.", "detail": str(err)}), 503
+        logger.warning("student tasks POST failed for user %s: %s", user_id, err, exc_info=True)
+        return jsonify({"error": "Failed to create task.", "detail": str(err)}), 503
 
 
-@v2_bp.route("/admin/students/<user_id>/task-warm-up/create-pool-and-assign", methods=["POST"])
+@v2_bp.route("/admin/students/<user_id>/tasks/create-pool-and-assign", methods=["POST"])
 @require_admin
-def v2_admin_task_warm_up_create_pool_and_assign(user_id):
-    """
-    Create a v2_warm_up_task_pool row and assign it to this student in one step.
-    Body: { "text", "order_index"?, "max_performance_score"?, "insert_at"? }
-    insert_at: omit or "end" to append; or integer index (0 = before first pool-linked task).
-    Student rows without pool_task_id are dropped when syncing (see dropped_non_pool_tasks).
-    """
+def v2_admin_student_tasks_create_pool_and_assign(user_id):
     data = request.get_json() or {}
     text = (data.get("text") or "").strip()
     if not text:
@@ -1778,7 +1690,7 @@ def v2_admin_task_warm_up_create_pool_and_assign(user_id):
     except (TypeError, ValueError):
         mps = 1.0
     try:
-        result = db.v2_create_warm_up_pool_task_and_assign_student(
+        result = db.v2_create_task_pool_entry_and_assign_student(
             user_id,
             text=text,
             order_index=order_index,
@@ -1789,170 +1701,50 @@ def v2_admin_task_warm_up_create_pool_and_assign(user_id):
     except ValueError as ve:
         return jsonify({"error": str(ve)}), 400
     except Exception as err:
-        logger.warning("task-warm-up create-pool-and-assign failed for user %s: %s", user_id, err, exc_info=True)
+        logger.warning("create-pool-and-assign failed for user %s: %s", user_id, err, exc_info=True)
         return jsonify({"error": "create-pool-and-assign failed", "detail": str(err)}), 503
 
 
-@v2_bp.route("/admin/students/<user_id>/task-warm-up/<task_id>", methods=["PUT"])
+@v2_bp.route("/admin/students/<user_id>/tasks/<task_id>", methods=["PUT"])
 @require_admin
-def v2_admin_task_warm_up_update(user_id, task_id):
+def v2_admin_student_tasks_update(user_id, task_id):
     data = request.get_json() or {}
     try:
-        row = db.v2_update_warm_up_task(task_id, data)
-        return jsonify({"task_warm_up": row}), 200
+        row = db.v2_update_student_task(task_id, data)
+        return jsonify({"task": row}), 200
     except Exception as err:
-        logger.warning("task-warm-up PUT update failed: %s", err, exc_info=True)
+        logger.warning("student tasks PUT update failed: %s", err, exc_info=True)
         return jsonify({"error": "Update failed.", "detail": str(err)}), 503
 
 
-@v2_bp.route("/admin/students/<user_id>/task-warm-up/<task_id>", methods=["DELETE"])
+@v2_bp.route("/admin/students/<user_id>/tasks/<task_id>", methods=["DELETE"])
 @require_admin
-def v2_admin_task_warm_up_delete(user_id, task_id):
+def v2_admin_student_tasks_delete(user_id, task_id):
     try:
-        db.v2_delete_warm_up_task(task_id)
+        db.v2_delete_student_task(task_id)
         return jsonify({"status": "ok"}), 200
     except Exception as err:
-        logger.warning("task-warm-up DELETE failed: %s", err, exc_info=True)
+        logger.warning("student tasks DELETE failed: %s", err, exc_info=True)
         return jsonify({"error": "Delete failed.", "detail": str(err)}), 503
-
-
-# ---------- Admin: task-focus (per student) ----------
-def _v2_is_pg_permission_denied(err: Exception) -> bool:
-    if "42501" in str(err):
-        return True
-    if "permission denied" in str(err).lower():
-        return True
-    arg0 = err.args[0] if getattr(err, "args", None) else None
-    if isinstance(arg0, dict) and arg0.get("code") == "42501":
-        return True
-    return False
-
-
-def _v2_get_focus_tasks_for_student(user_id: str):
-    try:
-        rows = (
-            db.client.table("v2_focus_tasks")
-            .select("id, user_id, text, order_index, max_performance_score, pool_task_id, created_at")
-            .eq("user_id", user_id)
-            .order("order_index")
-            .order("created_at")
-            .execute()
-        )
-        return rows.data or []
-    except Exception as e:
-        if _v2_is_pg_permission_denied(e):
-            logger.warning(
-                "v2_focus_tasks: permission denied (run migrations/grant_v2_focus_tables_service_role.sql): %s",
-                e,
-            )
-            return []
-        raise
 
 
 @v2_bp.route("/admin/students/<user_id>/task-focus", methods=["GET"])
 @v2_bp.route("/admin/students/<user_id>/focus-tasks", methods=["GET"])
 @require_admin
-def v2_admin_task_focus_list(user_id):
-    try:
-        rows = _v2_get_focus_tasks_for_student(user_id)
-        return jsonify({"task_focus": rows, "focus_tasks": rows}), 200
-    except Exception as err:
-        logger.warning("task-focus GET failed for user %s: %s", user_id, err, exc_info=True)
-        # Keep admin page usable even if focus tables are not migrated yet.
-        return jsonify({"task_focus": [], "focus_tasks": []}), 200
+def v2_admin_task_focus_removed(user_id):
+    """Focus tasks removed; returns empty lists so older admin clients do not crash."""
+    _ = user_id
+    return jsonify({"task_focus": [], "focus_tasks": []}), 200
 
 
 @v2_bp.route("/admin/students/<user_id>/task-focus/create-pool-and-assign", methods=["POST"])
 @v2_bp.route("/admin/students/<user_id>/focus-tasks/create-pool-and-assign", methods=["POST"])
 @require_admin
-def v2_admin_task_focus_create_pool_and_assign(user_id):
-    """
-    Backward-compatible alias for frontend routes expecting task-focus.
-    Creates one pool row and syncs this student's focus list to pool-linked rows.
-    """
-    data = request.get_json() or {}
-    text = (data.get("text") or "").strip()
-    if not text:
-        return jsonify({"error": "text is required"}), 400
-
-    insert_at = data.get("insert_at", "end")
-    if insert_at != "end" and insert_at is not None:
-        try:
-            insert_at = int(insert_at)
-        except (TypeError, ValueError):
-            insert_at = "end"
-    try:
-        order_index = int(data.get("order_index", 0))
-    except (TypeError, ValueError):
-        order_index = 0
-    try:
-        mps = float(data.get("max_performance_score", 1.0))
-    except (TypeError, ValueError):
-        mps = 1.0
-
-    try:
-        pool_insert = (
-            db.client.table("v2_focus_task_pool")
-            .insert(
-                {
-                    "text": text,
-                    "order_index": order_index,
-                    "max_performance_score": mps,
-                }
-            )
-            .execute()
-        )
-        pool_row = (pool_insert.data or [{}])[0]
-        new_pool_id = pool_row.get("id")
-        if not new_pool_id:
-            return jsonify({"error": "Failed to create focus pool task"}), 503
-
-        existing = _v2_get_focus_tasks_for_student(user_id)
-        dropped_non_pool_tasks = sum(1 for r in existing if not r.get("pool_task_id"))
-        existing_pool_ids = [str(r.get("pool_task_id")) for r in existing if r.get("pool_task_id")]
-
-        pool_order_ids = list(existing_pool_ids)
-        if insert_at == "end":
-            pool_order_ids.append(str(new_pool_id))
-        else:
-            idx = max(0, min(int(insert_at), len(pool_order_ids)))
-            pool_order_ids.insert(idx, str(new_pool_id))
-
-        pool_rows = (
-            db.client.table("v2_focus_task_pool")
-            .select("id, text, max_performance_score, created_at")
-            .in_("id", pool_order_ids)
-            .execute()
-        )
-        by_id = {str(r["id"]): r for r in (pool_rows.data or []) if r.get("id")}
-        ordered_pool = [by_id[pid] for pid in pool_order_ids if pid in by_id]
-
-        db.client.table("v2_focus_tasks").delete().eq("user_id", user_id).execute()
-        new_rows = [
-            {
-                "user_id": user_id,
-                "text": r.get("text"),
-                "order_index": i,
-                "pool_task_id": r.get("id"),
-                "max_performance_score": r.get("max_performance_score"),
-            }
-            for i, r in enumerate(ordered_pool)
-        ]
-        if new_rows:
-            db.client.table("v2_focus_tasks").insert(new_rows).execute()
-
-        assigned_rows = _v2_get_focus_tasks_for_student(user_id)
-        return jsonify(
-            {
-                "task_focus_pool": pool_row,
-                "task_focus": assigned_rows,
-                "focus_tasks": assigned_rows,
-                "dropped_non_pool_tasks": dropped_non_pool_tasks,
-            }
-        ), 201
-    except Exception as err:
-        logger.warning("task-focus create-pool-and-assign failed for user %s: %s", user_id, err, exc_info=True)
-        return jsonify({"error": "create-pool-and-assign failed", "detail": str(err)}), 503
+def v2_admin_task_focus_create_removed(user_id):
+    return jsonify({
+        "error": "removed",
+        "message": "Focus tasks were removed. Use POST .../tasks/create-pool-and-assign instead.",
+    }), 410
 
 
 # ---------- Admin: metric questions (legacy 2-question table) ----------
@@ -2151,7 +1943,13 @@ def _build_student_context_for_ai(user_id: str) -> str:
             date = s.get("created_at", "")[:10]
             score = s.get("score")
             status = s.get("status", "")
-            task = s.get("selected_task_title") or s.get("selected_task_id") or ""
+            task = (
+                s.get("session_task_text")
+                or s.get("warm_up_task_text")  # legacy preview column name on old rows
+                or s.get("selected_task_title")
+                or s.get("selected_task_id")
+                or ""
+            )
             preview = s.get("recording_preview") or {}
             wpm = preview.get("words_per_minute")
             line = f"  {date}: status={status}"

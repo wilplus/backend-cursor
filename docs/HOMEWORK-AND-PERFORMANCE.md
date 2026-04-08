@@ -283,10 +283,10 @@ There is **no tutor feedback countdown/message on step 0 anymore**. After the re
 
 ---
 
-## 8. Default warm-up
+## 8. Default task
 
 - **Backend:** Creates default task “How was your day so far?” for users with none. API returns `task: { id, text }` from start/status (legacy alias `warm_up_task` is still present).
-- **Frontend:** If warm-up is missing or empty, show **“How was your day so far?”** so the flow never blocks. On 422 `NO_WARMUP_CONFIGURED`, show message and step 0 (contact coach).
+- **Frontend:** If task text is missing or empty, show **“How was your day so far?”** so the flow never blocks. On 422 `NO_TASK_CONFIGURED`, show message and step 0 (contact coach).
 
 ---
 

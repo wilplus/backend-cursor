@@ -1107,11 +1107,6 @@ class DatabaseService:
         result = self.client.table("v2_universal_questions").select("*").order("position").execute()
         return result.data or []
 
-    def v2_get_active_tasks(self):
-        """All active tasks."""
-        result = self.client.table("v2_tasks").select("*").eq("is_active", True).execute()
-        return result.data or []
-
     def v2_get_metric_definitions(self):
         """All 5 metric definitions (code, left_label, right_label)."""
         result = self.client.table("v2_metric_definitions").select("*").execute()
@@ -1438,10 +1433,6 @@ class DatabaseService:
         if not last:
             return
         self.v2_mark_tutor_feedback_sent(last["id"], user_id)
-
-    def v2_get_task(self, task_id: str):
-        result = self.client.table("v2_tasks").select("*").eq("id", task_id).execute()
-        return result.data[0] if result.data else None
 
     def v2_get_student_coaching_memory(self, user_id: str):
         """Return the coaching memory row for the user, or None.
@@ -2252,44 +2243,32 @@ class DatabaseService:
             baseline_energy_ratio=new_energy_ratio,
         )
 
-    def v2_insert_task(self, data: dict):
-        result = self.client.table("v2_tasks").insert(data).execute()
-        return result.data[0] if result.data else None
+    # ---------- Homework tasks (per-student public.tasks; pool public.tasks_pool) ----------
+    DEFAULT_STUDENT_TASK_TEXT = "How was your day so far?"
 
-    def v2_update_task(self, task_id: str, data: dict):
-        result = self.client.table("v2_tasks").update(data).eq("id", task_id).execute()
-        return result.data[0] if result.data else None
-
-    def v2_delete_task(self, task_id: str):
-        """Soft-delete: set is_active=False so task no longer appears in student flow."""
-        self.client.table("v2_tasks").update({"is_active": False}).eq("id", task_id).execute()
-
-    # ---------- Warm-up tasks (per student; homework flow) ----------
-    DEFAULT_WARM_UP_TASK_TEXT = "How was your day so far?"
-
-    def v2_ensure_default_warm_up_task(self, user_id: str) -> bool:
-        """If user has no warm-up tasks, create the default one. Idempotent. Returns True if ok, False on failure (caller returns 422)."""
+    def v2_ensure_default_student_task(self, user_id: str) -> bool:
+        """If user has no homework tasks, create the default one. Idempotent."""
         import logging
         log = logging.getLogger(__name__)
-        tasks = self.v2_get_warm_up_tasks(user_id)
+        tasks = self.v2_get_student_tasks(user_id)
         if tasks:
             return True
         data = {
             "user_id": user_id,
-            "text": self.DEFAULT_WARM_UP_TASK_TEXT,
+            "text": self.DEFAULT_STUDENT_TASK_TEXT,
             "order_index": 0,
             "max_performance_score": 1,
         }
         try:
-            self.v2_insert_warm_up_task(data)
+            self.v2_insert_student_task(data)
             return True
         except Exception as e:
-            log.warning("v2_ensure_default_warm_up_task insert failed for user_id=%s: %s", user_id, e)
+            log.warning("v2_ensure_default_student_task insert failed for user_id=%s: %s", user_id, e)
             return False
 
-    def v2_get_warm_up_tasks(self, user_id: str):
+    def v2_get_student_tasks(self, user_id: str):
         result = (
-            self.client.table("v2_warm_up_tasks")
+            self.client.table("tasks")
             .select("*")
             .eq("user_id", user_id)
             .order("order_index")
@@ -2298,11 +2277,11 @@ class DatabaseService:
         )
         return result.data or []
 
-    def v2_insert_warm_up_task(self, data: dict):
-        result = self.client.table("v2_warm_up_tasks").insert(data).execute()
+    def v2_insert_student_task(self, data: dict):
+        result = self.client.table("tasks").insert(data).execute()
         return result.data[0] if result.data else None
 
-    def v2_update_warm_up_task(self, task_id: str, data: dict):
+    def v2_update_student_task(self, task_id: str, data: dict):
         payload = {}
         if "text" in data:
             payload["text"] = data["text"]
@@ -2314,18 +2293,17 @@ class DatabaseService:
             except (TypeError, ValueError):
                 payload["max_performance_score"] = 1.0
         if not payload:
-            result = self.client.table("v2_warm_up_tasks").select("*").eq("id", task_id).execute()
+            result = self.client.table("tasks").select("*").eq("id", task_id).execute()
             return result.data[0] if result.data else None
-        result = self.client.table("v2_warm_up_tasks").update(payload).eq("id", task_id).execute()
+        result = self.client.table("tasks").update(payload).eq("id", task_id).execute()
         return result.data[0] if result.data else None
 
-    def v2_delete_warm_up_task(self, task_id: str):
-        self.client.table("v2_warm_up_tasks").delete().eq("id", task_id).execute()
+    def v2_delete_student_task(self, task_id: str):
+        self.client.table("tasks").delete().eq("id", task_id).execute()
 
-    # ---------- Warm-up task pool (global pool; assign to students via modal) ----------
-    def v2_get_warm_up_task_pool(self):
+    def v2_get_task_pool(self):
         result = (
-            self.client.table("v2_warm_up_task_pool")
+            self.client.table("tasks_pool")
             .select("*")
             .order("order_index")
             .order("created_at")
@@ -2333,18 +2311,18 @@ class DatabaseService:
         )
         return result.data or []
 
-    def v2_get_warm_up_task_pool_by_id(self, pool_id: str):
-        result = self.client.table("v2_warm_up_task_pool").select("*").eq("id", pool_id).execute()
+    def v2_get_task_pool_by_id(self, pool_id: str):
+        result = self.client.table("tasks_pool").select("*").eq("id", pool_id).execute()
         return result.data[0] if result.data else None
 
-    def v2_insert_warm_up_task_pool(self, data: dict):
+    def v2_insert_task_pool(self, data: dict):
         data = dict(data)
         data.setdefault("order_index", 0)
         data.setdefault("max_performance_score", 1.0)
-        result = self.client.table("v2_warm_up_task_pool").insert(data).execute()
+        result = self.client.table("tasks_pool").insert(data).execute()
         return result.data[0] if result.data else None
 
-    def v2_update_warm_up_task_pool(self, pool_id: str, data: dict):
+    def v2_update_task_pool(self, pool_id: str, data: dict):
         payload = {}
         if "text" in data:
             payload["text"] = data["text"]
@@ -2356,15 +2334,15 @@ class DatabaseService:
             except (TypeError, ValueError):
                 payload["max_performance_score"] = 1.0
         if not payload:
-            return self.v2_get_warm_up_task_pool_by_id(pool_id)
-        result = self.client.table("v2_warm_up_task_pool").update(payload).eq("id", pool_id).execute()
+            return self.v2_get_task_pool_by_id(pool_id)
+        result = self.client.table("tasks_pool").update(payload).eq("id", pool_id).execute()
         return result.data[0] if result.data else None
 
-    def v2_delete_warm_up_task_pool(self, pool_id: str):
-        self.client.table("v2_warm_up_task_pool").delete().eq("id", pool_id).execute()
+    def v2_delete_task_pool(self, pool_id: str):
+        self.client.table("tasks_pool").delete().eq("id", pool_id).execute()
 
-    def v2_sync_student_warm_up_tasks_from_pool(self, user_id: str, pool_task_ids: list):
-        """Replace student's warm-up tasks with copies from the pool. pool_task_ids = list of v2_warm_up_task_pool ids in display order."""
+    def v2_sync_student_tasks_from_pool(self, user_id: str, pool_task_ids: list):
+        """Replace student's tasks from tasks_pool ids (display order)."""
         # #region agent log
         try:
             import json
@@ -2373,19 +2351,18 @@ class DatabaseService:
             _log_path = os.path.join(os.path.dirname(__file__), "..", ".cursor", "debug.log")
             _log_path = os.path.abspath(_log_path)
             with open(_log_path, "a") as _f:
-                _f.write(json.dumps({"location": "db.py:v2_sync_student_warm_up_tasks_from_pool", "message": "sync entry before delete", "data": {"user_id": user_id, "pool_task_ids": pool_task_ids}, "timestamp": int(time.time() * 1000), "hypothesisId": "sync_entry"}) + "\n")
+                _f.write(json.dumps({"location": "db.py:v2_sync_student_tasks_from_pool", "message": "sync entry before delete", "data": {"user_id": user_id, "pool_task_ids": pool_task_ids}, "timestamp": int(time.time() * 1000), "hypothesisId": "sync_entry"}) + "\n")
         except Exception:
             pass
         # #endregion
-        self.client.table("v2_warm_up_tasks").delete().eq("user_id", user_id).execute()
+        self.client.table("tasks").delete().eq("user_id", user_id).execute()
         if not pool_task_ids:
             return []
         inserted = []
         for idx, pool_id in enumerate(pool_task_ids):
-            row = self.v2_get_warm_up_task_pool_by_id(pool_id)
+            row = self.v2_get_task_pool_by_id(pool_id)
             if not row:
                 continue
-            # order_index must be int; max_performance_score must be numeric (DB: DECIMAL(3,2); if INTEGER, run fix_v2_warm_up_tasks_max_performance_score_type.sql)
             raw_score = row.get("max_performance_score", 1.0)
             try:
                 score = round(float(raw_score), 2)
@@ -2398,12 +2375,12 @@ class DatabaseService:
                 "order_index": int(idx),
                 "max_performance_score": score,
             }
-            new_row = self.v2_insert_warm_up_task(data)
+            new_row = self.v2_insert_student_task(data)
             if new_row:
                 inserted.append(new_row)
         return inserted
 
-    def v2_create_warm_up_pool_task_and_assign_student(
+    def v2_create_task_pool_entry_and_assign_student(
         self,
         user_id: str,
         text: str,
@@ -2411,24 +2388,18 @@ class DatabaseService:
         max_performance_score: float = 1.0,
         insert_at: Any = "end",
     ) -> Dict[str, Any]:
-        """
-        Insert a row into v2_warm_up_task_pool, then sync this student's warm-ups to
-        (existing pool_task_ids in current order) + new pool id. Student-only rows
-        without pool_task_id are replaced (same as any full sync).
-        insert_at: "end" / None to append; or int index 0..len(existing) to insert before that slot.
-        On sync failure after pool insert, deletes the new pool row best-effort.
-        """
+        """Insert tasks_pool row, then sync student's tasks from pool selection."""
         text_clean = (text or "").strip()
         if not text_clean:
             raise ValueError("text is required")
-        rows = self.v2_get_warm_up_tasks(user_id)
+        rows = self.v2_get_student_tasks(user_id)
         existing_ids = [str(r["pool_task_id"]) for r in rows if r.get("pool_task_id")]
         dropped_non_pool = sum(1 for r in rows if not r.get("pool_task_id"))
         try:
             mps = float(max_performance_score)
         except (TypeError, ValueError):
             mps = 1.0
-        pool_row = self.v2_insert_warm_up_task_pool(
+        pool_row = self.v2_insert_task_pool(
             {
                 "text": text_clean,
                 "order_index": int(order_index),
@@ -2436,7 +2407,7 @@ class DatabaseService:
             }
         )
         if not pool_row:
-            raise RuntimeError("Failed to insert warm-up pool task")
+            raise RuntimeError("Failed to insert task pool row")
         new_id = str(pool_row["id"])
         if insert_at == "end" or insert_at is None:
             final_ids = existing_ids + [new_id]
@@ -2448,16 +2419,16 @@ class DatabaseService:
             idx = max(0, min(idx, len(existing_ids)))
             final_ids = existing_ids[:idx] + [new_id] + existing_ids[idx:]
         try:
-            assigned = self.v2_sync_student_warm_up_tasks_from_pool(user_id, final_ids)
+            assigned = self.v2_sync_student_tasks_from_pool(user_id, final_ids)
         except Exception:
             try:
-                self.v2_delete_warm_up_task_pool(new_id)
+                self.v2_delete_task_pool(new_id)
             except Exception:
                 pass
             raise
         return {
-            "task_warm_up_pool": pool_row,
-            "task_warm_up": assigned,
+            "tasks_pool": pool_row,
+            "tasks": assigned,
             "dropped_non_pool_tasks": dropped_non_pool,
         }
 
@@ -2529,14 +2500,10 @@ class DatabaseService:
             )
         return out
 
-    def v2_get_assigned_warm_up_task(self, user_id: str):
-        """
-        Strict taskmaster: no auto-creation of warm-up tasks.
-        If user has 0 warm-up tasks => return None (caller returns 422 NO_WARMUP_CONFIGURED).
-        Deterministic selection: first by order_index, then created_at.
-        """
+    def v2_get_assigned_task_for_user(self, user_id: str):
+        """First homework task by order_index (no auto-create). None if none configured."""
         result = (
-            self.client.table("v2_warm_up_tasks")
+            self.client.table("tasks")
             .select("*")
             .eq("user_id", user_id)
             .order("order_index")
@@ -2553,7 +2520,8 @@ class DatabaseService:
         the current web client should not depend on that state.
         """
         statuses = (
-            "warm_up",
+            "task",
+            "warm_up",  # legacy rows until rename_homework_session_status_warm_up_to_task.sql
             "task_block",
             "final_task_ready",
             "post_questions",
@@ -2571,8 +2539,8 @@ class DatabaseService:
         return result.data[0] if result.data else None
 
     def v2_create_homework_session(self, user_id: str):
-        """Create new homework flow session (status=warm_up)."""
-        result = self.client.table("v2_sessions").insert({"user_id": user_id, "status": "warm_up"}).execute()
+        """Create new homework flow session (status=task: first recording step)."""
+        result = self.client.table("v2_sessions").insert({"user_id": user_id, "status": "task"}).execute()
         return result.data[0] if result.data else None
 
     # Context fields: context_short (session summary), context_long (report text), coach_notes (speaker_profile). See docs/CONTEXT-FIELDS.md.
@@ -2652,8 +2620,7 @@ class DatabaseService:
 
     _V2_OVERRIDES_COLUMNS = {
         "intended_emotion_prompt", "keywords_prompt", "emotion_check_question_text",
-        "assigned_next_task_ids",
-        "assigned_warm_up_task_id",
+        "assigned_task_id",
         "pitch_variance_ideal", "pending_tutor_video_url", "pending_tutor_video_description",
         "skip_metric_questions",
     }
@@ -2699,6 +2666,8 @@ class DatabaseService:
                 merged[col] = None
         if merged.get("skip_metric_questions") is None:
             merged["skip_metric_questions"] = False
+        if merged.get("assigned_task_id") == "":
+            merged["assigned_task_id"] = None
         payload = {k: v for k, v in merged.items() if v is not None or k == "skip_metric_questions"}
         payload["user_id"] = user_id
         payload["updated_at"] = datetime.now(timezone.utc).isoformat()
@@ -2956,6 +2925,7 @@ class DatabaseService:
             "question_1_score", "question_2_score", "question_3_score",
             "realtime_level_at_session", "realtime_step_at_session",
             "ai_task_score", "ai_scoring_justification", "coach_override_score", "coach_override_justification",
+            "session_task_text", "warm_up_task_text",
         ]
         session_columns = [c for c in all_session_columns if c not in self._v2_sessions_missing_columns]
         select_columns = ", ".join(session_columns)
@@ -3320,7 +3290,7 @@ class DatabaseService:
             "details_deleted": False,
             "overrides_deleted": False,
             "speaker_profile_deleted": False,
-            "warm_up_tasks_deleted": False,
+            "student_tasks_deleted": False,
             "post_questions_deleted": False,
             "sessions_deleted": False,
             "auth_user_deleted": False,
@@ -3333,8 +3303,8 @@ class DatabaseService:
         result["overrides_deleted"] = True
         self.client.table("v2_speaker_profiles").delete().eq("user_id", user_id).execute()
         result["speaker_profile_deleted"] = True
-        self.client.table("v2_warm_up_tasks").delete().eq("user_id", user_id).execute()
-        result["warm_up_tasks_deleted"] = True
+        self.client.table("tasks").delete().eq("user_id", user_id).execute()
+        result["student_tasks_deleted"] = True
         self.client.table("v2_student_post_recording_questions").delete().eq("user_id", user_id).execute()
         result["post_questions_deleted"] = True
         self.client.table("v2_sessions").delete().eq("user_id", user_id).execute()

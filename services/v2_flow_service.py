@@ -1,5 +1,5 @@
 """
-V2 flow helpers: task_score and warm-up / focus task selection by score bands.
+V2 flow helpers: task_score and optional task selection by score bands (not wired in current flow).
 """
 from typing import Dict, List, Any, Optional
 
@@ -28,21 +28,21 @@ def compute_task_score(mood: float, readiness: int, mode_preference: int) -> flo
     return max(0.0, min(1.0, raw))
 
 
-def select_warm_up_task(
+def select_task_by_score_band(
     student_last_score: Optional[float],
-    available_warm_ups: List[Dict],
+    available_tasks: List[Dict],
 ) -> Optional[Dict]:
     """
-    Select warm-up task based on student's last performance_score_end.
-    Rule 1: Eligible = warm-ups with max_performance_score >= student's last score.
+    Pick a task row from `available_tasks` using max_performance_score vs student's last score.
+    Rule 1: Eligible = tasks with max_performance_score >= student's last score.
     Rule 2: Among eligible, closest max_performance_score to student's score (within ±0.03).
     Rule 3: Random choice if multiple within tolerance.
     Rule 4: First-time (no score): easiest = highest max_performance_score (typically 1.0).
-    Fallback: if student scored above all warm-ups, return hardest (lowest max).
+    Fallback: if student scored above all tasks, return hardest (lowest max).
     """
     import random
     TOLERANCE = 0.03
-    if not available_warm_ups:
+    if not available_tasks:
         return None
 
     def _max_score(w: Dict) -> float:
@@ -53,20 +53,20 @@ def select_warm_up_task(
 
     # CASE 1: First-time student (no previous score)
     if student_last_score is None:
-        return max(available_warm_ups, key=_max_score)
+        return max(available_tasks, key=_max_score)
 
     # CASE 2: Returning student — filter eligible (max_score >= student's score)
-    eligible = [w for w in available_warm_ups if _max_score(w) >= student_last_score]
+    eligible = [w for w in available_tasks if _max_score(w) >= student_last_score]
 
-    # Fallback: student scored too high for all warm-ups → hardest (lowest max)
+    # Fallback: student scored too high for all tasks → hardest (lowest max)
     if not eligible:
-        return min(available_warm_ups, key=_max_score)
+        return min(available_tasks, key=_max_score)
 
     # Closest match score among eligible
     closest_w = min(eligible, key=lambda w: abs(_max_score(w) - student_last_score))
     closest_score = _max_score(closest_w)
 
-    # All warm-ups within ±3% of closest score
+    # All tasks within ±3% of closest score
     within_tolerance = [
         w for w in eligible
         if abs(_max_score(w) - closest_score) <= TOLERANCE

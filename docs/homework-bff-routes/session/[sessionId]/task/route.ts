@@ -1,6 +1,6 @@
 /**
- * Copy to: src/app/api/homework/session/[sessionId]/warm-up-task/route.ts
- * Optional: get warm-up task text for step 1 (may also come from GET status). Passes through 4xx/5xx body.
+ * Copy to: src/app/api/homework/session/[sessionId]/task/route.ts
+ * Optional: get homework task text for step 1 (may also come from GET status). Passes through 4xx/5xx body.
  */
 import { NextResponse } from "next/server";
 import { getV2AccessToken, getBackendUrl } from "../../../../getAuth";
@@ -14,7 +14,7 @@ export async function GET(
   if (!token) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { sessionId } = params;
   if (!sessionId) return NextResponse.json({ error: "Missing sessionId" }, { status: 400 });
-  const upstreamRes = await fetch(`${getBackendUrl()}/v2/homework/session/${sessionId}/warm-up-task`, {
+  const upstreamRes = await fetch(`${getBackendUrl()}/v2/homework/session/${sessionId}/task`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   return proxyResponse(upstreamRes);
