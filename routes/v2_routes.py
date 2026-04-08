@@ -2274,6 +2274,24 @@ def _parse_cohort_id(raw: str):
         return profile, None
 
 
+def _student_cohort_from_state(state: dict | None) -> tuple[str, int]:
+    """Profile bucket and stage (1–5) from student_profile / sniper row or refresh payload."""
+    state = state or {}
+    p = (
+        (state.get("coach_override_profile") or "").strip()
+        or (state.get("behavioral_profile") or "").strip()
+        or "Unclassified"
+    )
+    try:
+        raw = state.get("coach_override_stage")
+        if raw is None:
+            raw = state.get("computed_stage")
+        stg = int(raw) if raw is not None else 1
+    except (TypeError, ValueError):
+        stg = 1
+    return p, max(1, min(5, stg))
+
+
 def _copilot_backfill_draft_row_for_user(user_id: str) -> dict:
     """Build one admin_student_send_drafts insert dict from profile + last completed session."""
     from services.student_profile_service import refresh_student_profile_state
@@ -2629,9 +2647,52 @@ def v2_admin_cohorts():
         only_pending = str(request.args.get("only_pending", "false")).strip().lower() in ("1", "true", "yes")
         profile_bucket = (request.args.get("profile_bucket") or "").strip()
         stage_key = (request.args.get("stage_key") or "").strip()
+        try:
+            cap_ms = int(request.args.get("max_students", 2500))
+        except (TypeError, ValueError):
+            cap_ms = 2500
+        cap_ms = max(50, min(5000, cap_ms))
+
         rows = db.list_admin_student_send_drafts(status=None)
-        profile_cache = {}
+        profile_cache: dict[str, dict] = {}
         groups: dict[tuple[str, int], dict] = {}
+
+        def _ensure_group(profile: str, stage: int):
+            key = (profile, int(stage))
+            if key not in groups:
+                groups[key] = {
+                    "id": _cohort_id(profile, int(stage)),
+                    "profile_bucket": profile,
+                    "stage_key": str(int(stage)),
+                    "profile": profile,
+                    "stage": int(stage),
+                    "pending_count": 0,
+                    "students": {},
+                    "metadata": None,
+                }
+            return groups[key]
+
+        # Baseline: same student pool as Admin → Students (Auth). Fallback if Auth admin list fails.
+        baseline_uids = db.v2_list_all_auth_user_ids(cap=cap_ms)
+        if not baseline_uids:
+            baseline_uids = db.list_recent_student_ids(limit=cap_ms)
+        for uid in baseline_uids:
+            if not uid:
+                continue
+            sp = db.get_sniper_profile(uid) or {}
+            draft_profile, draft_stage = _student_cohort_from_state(sp)
+            if profile_bucket and draft_profile != profile_bucket:
+                continue
+            if stage_key and str(draft_stage) != str(stage_key):
+                continue
+            g = _ensure_group(draft_profile, draft_stage)
+            if uid not in g["students"]:
+                g["students"][uid] = {
+                    "user_id": uid,
+                    "email": db.get_user_email_from_auth(uid),
+                    "pending_count": 0,
+                }
+
         for row in rows:
             uid = str(row.get("user_id") or "")
             if not uid:
@@ -2645,25 +2706,14 @@ def v2_admin_cohorts():
                 if uid not in profile_cache:
                     profile_cache[uid] = refresh_student_profile_state(uid)
                 state = profile_cache[uid] or {}
-                draft_profile = (state.get("coach_override_profile") or "").strip() or (state.get("behavioral_profile") or "").strip() or "Unclassified"
-                draft_stage = int(state.get("coach_override_stage") or state.get("computed_stage") or 1)
+                draft_profile, draft_stage = _student_cohort_from_state(state)
+            else:
+                draft_stage = max(1, min(5, int(draft_stage)))
             if profile_bucket and draft_profile != profile_bucket:
                 continue
             if stage_key and str(draft_stage) != str(stage_key):
                 continue
-            key = (draft_profile, int(draft_stage))
-            if key not in groups:
-                groups[key] = {
-                    "id": _cohort_id(draft_profile, int(draft_stage)),
-                    "profile_bucket": draft_profile,
-                    "stage_key": str(int(draft_stage)),
-                    "profile": draft_profile,
-                    "stage": int(draft_stage),
-                    "pending_count": 0,
-                    "students": {},
-                    "metadata": None,
-                }
-            g = groups[key]
+            g = _ensure_group(draft_profile, int(draft_stage))
             if str(row.get("status") or "").lower() == "pending":
                 g["pending_count"] += 1
             email = db.get_user_email_from_auth(uid)
@@ -2674,7 +2724,8 @@ def v2_admin_cohorts():
         out = []
         for g in groups.values():
             if only_pending and int(g["pending_count"]) <= 0:
-                continue
+                if not g.get("students"):
+                    continue
             g["students"] = list((g.get("students") or {}).values())
             out.append(g)
         out.sort(key=lambda g: (-int(g["pending_count"]), str(g["profile"]), int(g["stage"])))
@@ -2694,6 +2745,12 @@ def v2_admin_copilot_cohort_students(cohort_id):
         profile, stage = _parse_cohort_id(cohort_id)
         if stage is None:
             return jsonify({"code": "INVALID_INPUT", "error": "cohortId must be '<profile>::<stage>'"}), 400
+        try:
+            cap_ms = int(request.args.get("max_students", 2500))
+        except (TypeError, ValueError):
+            cap_ms = 2500
+        cap_ms = max(50, min(5000, cap_ms))
+
         rows = db.list_admin_student_send_drafts(status=None)
         profile_cache = {}
         filtered = []
@@ -2710,8 +2767,9 @@ def v2_admin_copilot_cohort_students(cohort_id):
                 if uid not in profile_cache:
                     profile_cache[uid] = refresh_student_profile_state(uid)
                 st_prof = profile_cache[uid] or {}
-                p = (st_prof.get("coach_override_profile") or "").strip() or (st_prof.get("behavioral_profile") or "").strip() or "Unclassified"
-                s = int(st_prof.get("coach_override_stage") or st_prof.get("computed_stage") or 1)
+                p, s = _student_cohort_from_state(st_prof)
+            else:
+                s = max(1, min(5, int(s)))
             if p == profile and int(s) == int(stage):
                 filtered.append(row)
 
@@ -2751,6 +2809,42 @@ def v2_admin_copilot_cohort_students(cohort_id):
                     },
                 }
             )
+
+        uids_in_queue = {str(it["student_id"]) for it in items}
+        extra_uids = db.v2_list_all_auth_user_ids(cap=cap_ms)
+        if not extra_uids:
+            extra_uids = db.list_recent_student_ids(limit=cap_ms)
+        for uid in extra_uids:
+            if not uid or uid in uids_in_queue:
+                continue
+            sp = db.get_sniper_profile(uid) or {}
+            p, stg = _student_cohort_from_state(sp)
+            if p != profile or int(stg) != int(stage):
+                continue
+            details = db.v2_get_student_details(uid) or {}
+            email = db.get_user_email_from_auth(uid)
+            latest_session = db.v2_get_last_completed_session(uid) or {}
+            profile_row = db.get_sniper_profile(uid) or {}
+            items.append(
+                {
+                    "student_id": uid,
+                    "session_id": None,
+                    "queue_position": len(items),
+                    "state": "Draft",
+                    "draft_count": 0,
+                    "ready_count": 0,
+                    "sent_count": 0,
+                    "profile": {
+                        "name": details.get("name"),
+                        "email": email,
+                        "stage": str(stage),
+                        "justification": profile_row.get("behavioral_profile_justification"),
+                        "canonical_score_for_display": latest_session.get("score_for_display"),
+                    },
+                }
+            )
+            uids_in_queue.add(uid)
+
         return jsonify({"students": items, "count": len(items)}), 200
     except Exception as e:
         sentry_sdk.capture_exception(e)

@@ -1408,16 +1408,33 @@ class DatabaseService:
 
     def v2_get_last_completed_session(self, user_id: str):
         """Return the most recent completed session for the user (for tutor_feedback_deadline when no active session). Includes tutor_feedback_sent_at so deadline is omitted once feedback is sent."""
-        result = (
-            self.client.table("v2_sessions")
-            .select("id, report_id, completed_at, created_at, tutor_feedback_sent_at, student_completion_email_sent_at")
-            .eq("user_id", user_id)
-            .eq("status", "completed")
-            .order("completed_at", desc=True)
-            .limit(1)
-            .execute()
-        )
-        return result.data[0] if result.data else None
+        wide = "id, report_id, completed_at, created_at, tutor_feedback_sent_at, student_completion_email_sent_at, score_for_display"
+        base = "id, report_id, completed_at, created_at, tutor_feedback_sent_at, student_completion_email_sent_at"
+        try:
+            result = (
+                self.client.table("v2_sessions")
+                .select(wide)
+                .eq("user_id", user_id)
+                .eq("status", "completed")
+                .order("completed_at", desc=True)
+                .limit(1)
+                .execute()
+            )
+            return result.data[0] if result.data else None
+        except Exception as e:
+            msg = str(e).lower()
+            if "score_for_display" in msg or "42703" in msg or "does not exist" in msg:
+                result = (
+                    self.client.table("v2_sessions")
+                    .select(base)
+                    .eq("user_id", user_id)
+                    .eq("status", "completed")
+                    .order("completed_at", desc=True)
+                    .limit(1)
+                    .execute()
+                )
+                return result.data[0] if result.data else None
+            raise
 
     def v2_mark_tutor_feedback_sent(self, session_id: str, user_id: str):
         """Set tutor_feedback_sent_at to now for this session (idempotent)."""
