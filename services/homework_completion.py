@@ -814,10 +814,20 @@ def minimal_complete_and_notify(
             except (TypeError, ValueError):
                 pass
         performance_score_end = max(0.0, min(1.0, performance_score_end))
+        score_for_display_100 = fresh_now.get("score_for_display")
+        try:
+            score_for_display_100 = int(score_for_display_100) if score_for_display_100 is not None else None
+        except (TypeError, ValueError):
+            score_for_display_100 = None
+        if score_for_display_100 is None:
+            score_for_display_100 = int(round(performance_score_end * 100.0))
+        score_for_display_100 = max(0, min(100, int(score_for_display_100)))
         db.v2_update_session(session_id, user_id, {
             "post_answers": [],
             "report_id": report_row["id"] if report_row else None,
             "score": performance_score_end,
+            "score_for_display": score_for_display_100,
+            "score_ready_at": utc_now_iso(),
             "status": STATUS_COMPLETED,
             "completed_at": completed_at_iso,
             "recording_1_processing_status": "completed",
@@ -847,6 +857,12 @@ def minimal_complete_and_notify(
                 )
         except Exception as mail_err:
             logger.warning("Minimal-complete coach email failed: %s", mail_err)
+
+        try:
+            from services.student_profile_service import refresh_student_profile_state
+            refresh_student_profile_state(user_id)
+        except Exception:
+            pass
 
         logger.info("minimal_complete_and_notify: done session_id=%s", session_id)
         return True

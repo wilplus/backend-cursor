@@ -2199,24 +2199,209 @@ def v2_admin_stage_override(user_id):
         return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
 
 
-@v2_bp.route("/admin/copilot/annotation-chips", methods=["GET"])
+def _draft_payload(row):
+    payload = row.get("draft_payload")
+    return payload if isinstance(payload, dict) else {}
+
+
+def _draft_state_ui(row):
+    payload = _draft_payload(row)
+    state = payload.get("state")
+    if state in ("Draft", "Ready", "Sent"):
+        return state
+    status = str(row.get("status") or "").lower()
+    if status == "sent":
+        return "Sent"
+    if payload.get("approved_at") or payload.get("good_as_is") is True or payload.get("corrected_insight"):
+        return "Ready"
+    return "Draft"
+
+
+def _serialize_copilot_draft(row):
+    payload = _draft_payload(row)
+    return {
+        "id": str(row.get("id") or ""),
+        "student_id": str(row.get("user_id") or ""),
+        "session_id": row.get("session_id"),
+        "status": _draft_state_ui(row),
+        "ai_insight": payload.get("ai_insight"),
+        "corrected_insight": payload.get("corrected_insight"),
+        "good_as_is": payload.get("good_as_is"),
+        "grade_draft": payload.get("grade_draft"),
+        "comment_draft": payload.get("comment_draft"),
+        "task_draft": payload.get("task_draft") or payload.get("task_text") or row.get("master_task_text"),
+        "email_draft": payload.get("email_draft") or payload.get("email_message") or payload.get("homework_comment"),
+        "script_draft": payload.get("script_draft") or payload.get("video_script"),
+        "reason_chip_required": bool(payload.get("reason_chip_required", False)),
+        "metadata": payload.get("metadata") if isinstance(payload.get("metadata"), dict) else None,
+    }
+
+
+def _pick_student_draft(user_id: str, *, session_id: str | None = None, draft_id: str | None = None, include_sent: bool = False):
+    if draft_id:
+        row = db.get_admin_student_send_draft(draft_id, user_id)
+        if row and (include_sent or str(row.get("status") or "").lower() != "sent"):
+            return row
+        if row and include_sent:
+            return row
+    q = db.client.table("admin_student_send_drafts").select("*").eq("user_id", user_id).order("updated_at", desc=True).order("created_at", desc=True)
+    if session_id:
+        q = q.eq("session_id", session_id)
+    rows = q.limit(20).execute().data or []
+    if include_sent and rows:
+        return rows[0]
+    for row in rows:
+        if str(row.get("status") or "").lower() != "sent":
+            return row
+    return None
+
+
+def _cohort_id(profile: str, stage: int) -> str:
+    return f"{profile}::{int(stage)}"
+
+
+def _parse_cohort_id(raw: str):
+    text = (raw or "").strip()
+    if "::" in text:
+        profile, stage = text.rsplit("::", 1)
+    elif "__" in text:
+        profile, stage = text.rsplit("__", 1)
+    else:
+        return text, None
+    try:
+        return profile, int(stage)
+    except (TypeError, ValueError):
+        return profile, None
+
+
+@v2_bp.route("/admin/copilot/annotation-chips", methods=["GET", "POST"])
 @v2_bp.route("/admin/acoustic-dojo/annotation-chips", methods=["GET"])
 @require_admin
 def v2_admin_copilot_annotation_chips():
     """Reason chips used by copilot audit/override actions."""
     chips = [
-        {"id": "misread_context", "label": "Misread context", "section": "insight"},
-        {"id": "overly_generic", "label": "Too generic", "section": "insight"},
-        {"id": "missed_specific_issue", "label": "Missed specific issue", "section": "insight"},
-        {"id": "tone_mismatch", "label": "Tone mismatch", "section": "insight"},
-        {"id": "profile_incorrect", "label": "Profile incorrect", "section": "classification"},
-        {"id": "stage_incorrect", "label": "Stage incorrect", "section": "classification"},
+        {"chip_key": "misread_context", "label": "Misread context", "section": "insight"},
+        {"chip_key": "overly_generic", "label": "Too generic", "section": "insight"},
+        {"chip_key": "missed_specific_issue", "label": "Missed specific issue", "section": "insight"},
+        {"chip_key": "tone_mismatch", "label": "Tone mismatch", "section": "insight"},
+        {"chip_key": "profile_incorrect", "label": "Profile incorrect", "section": "classification"},
+        {"chip_key": "stage_incorrect", "label": "Stage incorrect", "section": "classification"},
     ]
+    if request.method == "POST":
+        body = request.get_json(silent=True) or {}
+        chip_key = (body.get("chip_key") or "").strip()
+        label = (body.get("label") or "").strip()
+        if not chip_key or not label:
+            return jsonify({"code": "INVALID_INPUT", "error": "chip_key and label are required"}), 400
+        chip = {
+            "chip_key": chip_key,
+            "label": label,
+            "description": (body.get("description") or "").strip() or None,
+            "is_active": bool(body.get("is_active", True)),
+        }
+        return jsonify({"status": "ok", "chip": chip}), 201
     return jsonify({"annotation_chips": chips, "chips": chips}), 200
 
 
-@v2_bp.route("/admin/copilot/next-clips", methods=["GET"])
 @v2_bp.route("/admin/acoustic-dojo/next-clips", methods=["GET"])
+@require_admin
+def v2_admin_acoustic_dojo_next_clips():
+    """Audio-only queue for acoustic dojo (latest recordings as clips)."""
+    try:
+        limit_raw = request.args.get("limit")
+        source_type = str(request.args.get("source_type", "student")).strip().lower()
+        try:
+            limit = max(1, min(200, int(limit_raw))) if limit_raw is not None else 6
+        except (TypeError, ValueError):
+            limit = 6
+        if source_type == "external":
+            return jsonify({"clips": [], "count": 0, "streak": 0, "today_count": 0, "leaderboard": []}), 200
+        rows = (
+            db.client.table("recordings")
+            .select("id, user_id, session_v2_id, audio_url, duration, duration_seconds, created_at")
+            .order("created_at", desc=True)
+            .limit(limit)
+            .execute()
+            .data
+            or []
+        )
+        clips = []
+        for row in rows:
+            dur = row.get("duration_seconds")
+            if dur is None:
+                dur = row.get("duration")
+            try:
+                dur_f = float(dur) if dur is not None else None
+            except (TypeError, ValueError):
+                dur_f = None
+            end_sec = dur_f if dur_f is not None else 10.0
+            start_sec = max(0.0, end_sec - 10.0)
+            clips.append(
+                {
+                    "clip_id": str(row.get("id") or ""),
+                    "source_type": "student",
+                    "audio_url": row.get("audio_url"),
+                    "duration_sec": dur_f,
+                    "student_id": row.get("user_id"),
+                    "session_id": row.get("session_v2_id"),
+                    "source_metadata": {
+                        "recording_id": row.get("id"),
+                        "created_at": row.get("created_at"),
+                        "clip_start_sec": round(start_sec, 2),
+                        "clip_end_sec": round(end_sec, 2),
+                    },
+                }
+            )
+        return jsonify({"clips": clips, "count": len(clips), "streak": 0, "today_count": 0, "leaderboard": []}), 200
+    except Exception as e:
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
+
+
+@v2_bp.route("/admin/acoustic-dojo/labels", methods=["POST"])
+@require_admin
+def v2_admin_acoustic_dojo_labels():
+    try:
+        body = request.get_json(silent=True) or {}
+        clip_id = (body.get("clip_id") or "").strip()
+        if not clip_id:
+            return jsonify({"code": "INVALID_INPUT", "error": "clip_id is required"}), 400
+        source_meta = body.get("source_metadata") if isinstance(body.get("source_metadata"), dict) else {}
+        start_sec = source_meta.get("clip_start_sec", source_meta.get("start_sec", 0))
+        end_sec = source_meta.get("clip_end_sec", source_meta.get("end_sec", 10))
+        try:
+            start_ms = int(max(0, float(start_sec) * 1000))
+        except (TypeError, ValueError):
+            start_ms = 0
+        try:
+            end_ms = int(max(start_ms + 1, float(end_sec) * 1000))
+        except (TypeError, ValueError):
+            end_ms = max(start_ms + 1, 10000)
+        conf_raw = body.get("confidence")
+        try:
+            confidence = int(round(float(conf_raw))) if conf_raw is not None else 2
+        except (TypeError, ValueError):
+            confidence = 2
+        confidence = max(1, min(3, confidence))
+        payload = {
+            "clip_source": "student_recording",
+            "recording_id": clip_id,
+            "start_ms": start_ms,
+            "end_ms": end_ms,
+            "external_url": None,
+            "label_stress": bool(body.get("label_stress", False)),
+            "label_charisma": bool(body.get("label_charisma", False)),
+            "confidence": confidence,
+            "labeled_by": request.user_id,
+        }
+        db.client.table("acoustic_labels").insert(payload).execute()
+        return jsonify({"status": "ok", "accepted": True, "next_clip_id": None}), 200
+    except Exception as e:
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
+
+
+@v2_bp.route("/admin/copilot/next-clips", methods=["GET"])
 @require_admin
 def v2_admin_copilot_next_clips():
     """Pending copilot inbox items derived from admin_student_send_drafts."""
@@ -2260,39 +2445,277 @@ def v2_admin_cohorts():
         from services.student_profile_service import refresh_student_profile_state
 
         only_pending = str(request.args.get("only_pending", "false")).strip().lower() in ("1", "true", "yes")
-        user_ids = db.list_recent_student_ids(limit=600)
-        pending_rows = db.list_admin_student_send_drafts(status="pending")
-        pending_by_user: dict[str, int] = {}
-        for row in pending_rows:
-            uid = str(row.get("user_id") or "")
-            if uid:
-                pending_by_user[uid] = pending_by_user.get(uid, 0) + 1
-
+        profile_bucket = (request.args.get("profile_bucket") or "").strip()
+        stage_key = (request.args.get("stage_key") or "").strip()
+        rows = db.list_admin_student_send_drafts(status=None)
+        profile_cache = {}
         groups: dict[tuple[str, int], dict] = {}
-        for uid in user_ids:
-            state = refresh_student_profile_state(uid)
-            display_profile = (state.get("coach_override_profile") or "").strip() or (state.get("behavioral_profile") or "").strip() or "Unclassified"
-            display_stage = int(state.get("coach_override_stage") or state.get("computed_stage") or 1)
-            pending_count = int(pending_by_user.get(uid, 0))
-            if only_pending and pending_count <= 0:
+        for row in rows:
+            uid = str(row.get("user_id") or "")
+            if not uid:
                 continue
-            key = (display_profile, display_stage)
+            draft_profile = (row.get("cohort_profile") or "").strip()
+            try:
+                draft_stage = int(row.get("cohort_stage")) if row.get("cohort_stage") is not None else None
+            except (TypeError, ValueError):
+                draft_stage = None
+            if not draft_profile or draft_stage is None:
+                if uid not in profile_cache:
+                    profile_cache[uid] = refresh_student_profile_state(uid)
+                state = profile_cache[uid] or {}
+                draft_profile = (state.get("coach_override_profile") or "").strip() or (state.get("behavioral_profile") or "").strip() or "Unclassified"
+                draft_stage = int(state.get("coach_override_stage") or state.get("computed_stage") or 1)
+            if profile_bucket and draft_profile != profile_bucket:
+                continue
+            if stage_key and str(draft_stage) != str(stage_key):
+                continue
+            key = (draft_profile, int(draft_stage))
             if key not in groups:
                 groups[key] = {
-                    "profile": display_profile,
-                    "stage": display_stage,
+                    "id": _cohort_id(draft_profile, int(draft_stage)),
+                    "profile_bucket": draft_profile,
+                    "stage_key": str(int(draft_stage)),
+                    "profile": draft_profile,
+                    "stage": int(draft_stage),
                     "pending_count": 0,
-                    "students": [],
+                    "students": {},
+                    "metadata": None,
                 }
+            g = groups[key]
+            if str(row.get("status") or "").lower() == "pending":
+                g["pending_count"] += 1
             email = db.get_user_email_from_auth(uid)
-            groups[key]["students"].append(
-                {"user_id": uid, "email": email, "pending_count": pending_count}
-            )
-            groups[key]["pending_count"] += pending_count
+            st = g["students"].setdefault(uid, {"user_id": uid, "email": email, "pending_count": 0})
+            if str(row.get("status") or "").lower() == "pending":
+                st["pending_count"] += 1
 
-        out = list(groups.values())
+        out = []
+        for g in groups.values():
+            if only_pending and int(g["pending_count"]) <= 0:
+                continue
+            g["students"] = list((g.get("students") or {}).values())
+            out.append(g)
         out.sort(key=lambda g: (-int(g["pending_count"]), str(g["profile"]), int(g["stage"])))
         return jsonify({"cohorts": out, "count": len(out)}), 200
+    except Exception as e:
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
+
+
+@v2_bp.route("/admin/copilot/cohorts/<cohort_id>/students", methods=["GET"])
+@v2_bp.route("/admin/acoustic-dojo/cohorts/<cohort_id>/students", methods=["GET"])
+@require_admin
+def v2_admin_copilot_cohort_students(cohort_id):
+    try:
+        from services.student_profile_service import refresh_student_profile_state
+
+        profile, stage = _parse_cohort_id(cohort_id)
+        if stage is None:
+            return jsonify({"code": "INVALID_INPUT", "error": "cohortId must be '<profile>::<stage>'"}), 400
+        rows = db.list_admin_student_send_drafts(status=None)
+        profile_cache = {}
+        filtered = []
+        for row in rows:
+            uid = str(row.get("user_id") or "")
+            if not uid:
+                continue
+            p = (row.get("cohort_profile") or "").strip()
+            try:
+                s = int(row.get("cohort_stage")) if row.get("cohort_stage") is not None else None
+            except (TypeError, ValueError):
+                s = None
+            if not p or s is None:
+                if uid not in profile_cache:
+                    profile_cache[uid] = refresh_student_profile_state(uid)
+                st_prof = profile_cache[uid] or {}
+                p = (st_prof.get("coach_override_profile") or "").strip() or (st_prof.get("behavioral_profile") or "").strip() or "Unclassified"
+                s = int(st_prof.get("coach_override_stage") or st_prof.get("computed_stage") or 1)
+            if p == profile and int(s) == int(stage):
+                filtered.append(row)
+
+        counts = {}
+        latest_by_key = {}
+        for row in filtered:
+            uid = str(row.get("user_id") or "")
+            state = _draft_state_ui(row)
+            c = counts.setdefault(uid, {"Draft": 0, "Ready": 0, "Sent": 0})
+            c[state] = c.get(state, 0) + 1
+            key = f"{uid}:{str(row.get('session_id') or '')}"
+            if key not in latest_by_key:
+                latest_by_key[key] = row
+
+        items = []
+        for i, row in enumerate(latest_by_key.values()):
+            uid = str(row.get("user_id") or "")
+            details = db.v2_get_student_details(uid) or {}
+            email = db.get_user_email_from_auth(uid)
+            latest_session = db.v2_get_last_completed_session(uid) or {}
+            profile_row = db.get_sniper_profile(uid) or {}
+            items.append(
+                {
+                    "student_id": uid,
+                    "session_id": row.get("session_id"),
+                    "queue_position": i,
+                    "state": _draft_state_ui(row),
+                    "draft_count": int((counts.get(uid) or {}).get("Draft", 0)),
+                    "ready_count": int((counts.get(uid) or {}).get("Ready", 0)),
+                    "sent_count": int((counts.get(uid) or {}).get("Sent", 0)),
+                    "profile": {
+                        "name": details.get("name"),
+                        "email": email,
+                        "stage": str(stage),
+                        "justification": profile_row.get("behavioral_profile_justification"),
+                        "canonical_score_for_display": latest_session.get("score_for_display"),
+                    },
+                }
+            )
+        return jsonify({"students": items, "count": len(items)}), 200
+    except Exception as e:
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
+
+
+@v2_bp.route("/admin/copilot/students/<user_id>/drafts", methods=["GET", "PUT"])
+@require_admin
+def v2_admin_copilot_student_drafts(user_id):
+    try:
+        if request.method == "GET":
+            session_id = (request.args.get("session_id") or "").strip() or None
+            q = db.client.table("admin_student_send_drafts").select("*").eq("user_id", user_id).order("updated_at", desc=True).order("created_at", desc=True)
+            if session_id:
+                q = q.eq("session_id", session_id)
+            rows = q.limit(50).execute().data or []
+            return jsonify({"drafts": [_serialize_copilot_draft(r) for r in rows]}), 200
+
+        body = request.get_json(silent=True) or {}
+        session_id = (body.get("session_id") or "").strip() or None
+        draft_id = (body.get("draft_id") or "").strip() or None
+        row = _pick_student_draft(user_id, session_id=session_id, draft_id=draft_id, include_sent=False)
+        if not row:
+            return jsonify({"code": "DRAFT_NOT_FOUND", "error": "No editable draft found for student"}), 404
+        payload = _draft_payload(row)
+        for k in ("grade_draft", "comment_draft", "task_draft", "email_draft", "script_draft", "metadata"):
+            if k in body:
+                payload[k] = body.get(k)
+        if "reason_chips" in body:
+            payload["reason_chips"] = body.get("reason_chips")
+        if "reason_chip_custom" in body:
+            payload["reason_chip_custom"] = body.get("reason_chip_custom")
+        updated = (
+            db.client.table("admin_student_send_drafts")
+            .update({"draft_payload": payload, "updated_at": datetime.now(timezone.utc).isoformat()})
+            .eq("id", row.get("id"))
+            .eq("user_id", user_id)
+            .execute()
+        )
+        out = updated.data[0] if updated.data else row
+        return jsonify({"status": "ok", "draft": _serialize_copilot_draft(out)}), 200
+    except Exception as e:
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
+
+
+@v2_bp.route("/admin/copilot/students/<user_id>/audit", methods=["GET", "PUT"])
+@require_admin
+def v2_admin_copilot_student_audit(user_id):
+    try:
+        if request.method == "GET":
+            session_id = (request.args.get("session_id") or "").strip() or None
+            row = _pick_student_draft(user_id, session_id=session_id, include_sent=True)
+            return jsonify({"audit": _serialize_copilot_draft(row) if row else None}), 200
+
+        body = request.get_json(silent=True) or {}
+        session_id = (body.get("session_id") or "").strip() or None
+        draft_id = (body.get("draft_id") or "").strip() or None
+        row = _pick_student_draft(user_id, session_id=session_id, draft_id=draft_id, include_sent=True)
+        if not row:
+            return jsonify({"code": "DRAFT_NOT_FOUND", "error": "Draft not found"}), 404
+        payload = _draft_payload(row)
+        if "good_as_is" in body:
+            payload["good_as_is"] = bool(body.get("good_as_is"))
+        if "corrected_insight" in body:
+            payload["corrected_insight"] = body.get("corrected_insight")
+        if "reason_chips" in body:
+            payload["reason_chips"] = body.get("reason_chips")
+        if "reason_chip_custom" in body:
+            payload["reason_chip_custom"] = body.get("reason_chip_custom")
+        payload["approved_at"] = datetime.now(timezone.utc).isoformat()
+        payload["state"] = "Ready" if str(row.get("status") or "").lower() != "sent" else "Sent"
+        updated = (
+            db.client.table("admin_student_send_drafts")
+            .update({"draft_payload": payload, "updated_at": datetime.now(timezone.utc).isoformat()})
+            .eq("id", row.get("id"))
+            .eq("user_id", user_id)
+            .execute()
+        )
+        out = updated.data[0] if updated.data else row
+        if out.get("session_id"):
+            try:
+                db.v2_update_session(str(out.get("session_id")), user_id, {
+                    "is_insight_audited": True,
+                    "coach_corrected_insight": payload.get("corrected_insight"),
+                })
+            except Exception:
+                pass
+        return jsonify({"status": "ok", "audit": _serialize_copilot_draft(out)}), 200
+    except Exception as e:
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
+
+
+@v2_bp.route("/admin/copilot/students/<user_id>/approve", methods=["POST"])
+@require_admin
+def v2_admin_copilot_student_approve(user_id):
+    try:
+        body = request.get_json(silent=True) or {}
+        session_id = (body.get("session_id") or "").strip() or None
+        draft_id = (body.get("draft_id") or "").strip() or None
+        row = _pick_student_draft(user_id, session_id=session_id, draft_id=draft_id, include_sent=False)
+        if not row:
+            return jsonify({"code": "DRAFT_NOT_FOUND", "error": "Draft not found"}), 404
+        payload = _draft_payload(row)
+        payload["state"] = "Ready"
+        payload["approved_at"] = datetime.now(timezone.utc).isoformat()
+        updated = (
+            db.client.table("admin_student_send_drafts")
+            .update({"draft_payload": payload, "updated_at": datetime.now(timezone.utc).isoformat()})
+            .eq("id", row.get("id"))
+            .eq("user_id", user_id)
+            .execute()
+        )
+        out = updated.data[0] if updated.data else row
+        return jsonify({"status": "ok", "state": "Ready", "draft": _serialize_copilot_draft(out)}), 200
+    except Exception as e:
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
+
+
+@v2_bp.route("/admin/copilot/students/<user_id>/send", methods=["POST"])
+@require_admin
+def v2_admin_copilot_student_send(user_id):
+    try:
+        body = request.get_json(silent=True) or {}
+        session_id = (body.get("session_id") or "").strip() or None
+        draft_id = (body.get("draft_id") or "").strip() or None
+        row = _pick_student_draft(user_id, session_id=session_id, draft_id=draft_id, include_sent=True)
+        if not row:
+            return jsonify({"code": "DRAFT_NOT_FOUND", "error": "Draft not found"}), 404
+        if str(row.get("status") or "").lower() == "sent":
+            return jsonify({"status": "ok", "state": "Sent", "sent_at": row.get("sent_at")}), 200
+        payload = _draft_payload(row)
+        student_email = (db.get_user_email_from_auth(user_id) or "").strip()
+        if not student_email:
+            return jsonify({"code": "NO_EMAIL", "error": "Student has no email in auth"}), 400
+        send_result = email_service.send_assignment_to_student(
+            to_email=student_email,
+            frontend_url=config.FRONTEND_URL,
+            video_description=(payload.get("email_draft") or payload.get("email_message") or payload.get("homework_comment") or ""),
+            student_name=student_email,
+        )
+        if send_result.get("status") == "failed":
+            return jsonify({"code": "EMAIL_FAILED", "error": send_result.get("error", "send failed")}), 500
+        updated = db.mark_admin_student_send_draft_sent(str(row.get("id")), user_id, request.user_id) or row
+        return jsonify({"status": "ok", "state": "Sent", "sent_at": updated.get("sent_at"), "draft": _serialize_copilot_draft(updated)}), 200
     except Exception as e:
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
