@@ -282,12 +282,10 @@ class EmailService:
         frontend_url: str,
         video_url: str = None,
         video_description: str = None,
-        has_assigned_exercise: bool = False,
         student_name: str = "there",
     ) -> dict:
         """
-        Send "you have new homework" email. Uses assignment_email.build_assignment_email_html
-        (video block: play button or orange gradient; coach message; assigned exercise line).
+        Send "you have new homework" email (coach message / homework link).
         Returns dict with status "sent" | "pending" (emails off) | "failed".
         """
         if not config.SEND_EMAILS:

@@ -202,18 +202,7 @@ def _build_step0_payload(user_id: str) -> dict:
             payload["tutor_feedback_message"] = payload["main_screen_message"]
     except Exception:
         pass
-    if not review_pending:
-        try:
-            payload["assigned_exercises"] = db.v2_get_assigned_exercises_for_user(user_id)
-            for ex in payload.get("assigned_exercises") or []:
-                if (ex.get("title") or "").strip().lower() == "0-intro":
-                    if not (ex.get("video_url") or "").strip() and getattr(config, "INTRO_0_VIDEO_URL", None):
-                        ex["video_url"] = config.INTRO_0_VIDEO_URL
-                    if not (ex.get("description") or "").strip() and getattr(config, "INTRO_0_DESCRIPTION", None):
-                        ex["description"] = config.INTRO_0_DESCRIPTION
-                    break
-        except Exception:
-            payload["assigned_exercises"] = []
+    # assigned_exercises removed: step-0 media comes from tutor_video_* (send-assignment) only.
     # Pending coach video is for the *next* homework. Do not show it while the student is still in
     # review_pending (coach analysing the submission). Otherwise send-assignment sets
     # tutor_feedback_sent_at on the last completed session and we would expose the new video

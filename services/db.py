@@ -1107,19 +1107,9 @@ class DatabaseService:
         result = self.client.table("v2_universal_questions").select("*").order("position").execute()
         return result.data or []
 
-    def v2_get_active_exercises(self):
-        """All active exercises."""
-        result = self.client.table("v2_exercises").select("*").eq("is_active", True).execute()
-        return result.data or []
-
     def v2_get_active_tasks(self):
         """All active tasks."""
         result = self.client.table("v2_tasks").select("*").eq("is_active", True).execute()
-        return result.data or []
-
-    def v2_get_post_questions_pool(self):
-        """All active post-recording questions (from v2_post_recording_questions table)."""
-        result = self.client.table("v2_post_recording_questions").select("*").eq("is_active", True).execute()
         return result.data or []
 
     def v2_get_metric_definitions(self):
@@ -1128,7 +1118,7 @@ class DatabaseService:
         return result.data or []
 
     def v2_get_student_overrides(self, user_id: str):
-        """Overrides for user (assigned post Qs, next exercise/task, prompt overrides)."""
+        """Overrides for user (tasks, prompts, metric/skip flags, pending tutor video)."""
         result = self.client.table("v2_student_overrides").select("*").eq("user_id", user_id).execute()
         return result.data[0] if result.data else None
 
@@ -1448,49 +1438,6 @@ class DatabaseService:
         if not last:
             return
         self.v2_mark_tutor_feedback_sent(last["id"], user_id)
-
-    def v2_get_exercise(self, exercise_id: str):
-        result = self.client.table("v2_exercises").select("*").eq("id", exercise_id).execute()
-        return result.data[0] if result.data else None
-
-    def v2_get_exercise_by_title(self, title: str):
-        """First active exercise with this title (case-insensitive), or None. Used for default '0-intro'."""
-        if not (title or "").strip():
-            return None
-        result = (
-            self.client.table("v2_exercises")
-            .select("*")
-            .eq("is_active", True)
-            .ilike("title", (title or "").strip())
-            .limit(1)
-            .execute()
-        )
-        return result.data[0] if result.data else None
-
-    def _format_exercise_for_step0(self, ex: dict) -> dict:
-        return {
-            "id": str(ex["id"]) if ex.get("id") else None,
-            "title": (ex.get("title") or "").strip() or "Exercise",
-            "video_url": (ex.get("video_url") or "").strip() or None,
-            "description": (ex.get("description") or "").strip() or None,
-        }
-
-    def v2_get_assigned_exercises_for_user(self, user_id: str):
-        """Exercises for step 0 (no active session). Always returns at least one: assigned_next_exercise_id, else last_assigned_exercise_id, else 0-intro by title, else placeholder."""
-        overrides = self.v2_get_student_overrides(user_id) or {}
-        # Prefer current assignment, then last assigned (so old exercise stays visible until new one is set)
-        exercise_id = overrides.get("assigned_next_exercise_id") or overrides.get("last_assigned_exercise_id")
-        ex = None
-        if exercise_id:
-            ex = self.v2_get_exercise(str(exercise_id))
-            if ex and ex.get("is_active") is True:
-                return [self._format_exercise_for_step0(ex)]
-        # No assignment or exercise inactive: fall back to 0-intro (by title)
-        ex = self.v2_get_exercise_by_title("0-intro")
-        if ex:
-            return [self._format_exercise_for_step0(ex)]
-        # No 0-intro row: return placeholder (run migrations/seed_intro_0_exercise.sql so admin can set video_url)
-        return [{"id": None, "title": "0-intro", "video_url": None, "description": None}]
 
     def v2_get_task(self, task_id: str):
         result = self.client.table("v2_tasks").select("*").eq("id", task_id).execute()
@@ -2305,28 +2252,6 @@ class DatabaseService:
             baseline_energy_ratio=new_energy_ratio,
         )
 
-    def v2_get_post_questions_by_ids(self, ids: List[str]):
-        """Fetch pool questions by id list (for snapshot)."""
-        if not ids:
-            return []
-        result = self.client.table("v2_post_recording_questions").select("*").in_("id", ids).execute()
-        order = {str(x): i for i, x in enumerate(ids)}
-        rows = result.data or []
-        rows.sort(key=lambda r: order.get(str(r["id"]), 999))
-        return rows
-
-    def v2_insert_exercise(self, data: dict):
-        result = self.client.table("v2_exercises").insert(data).execute()
-        return result.data[0] if result.data else None
-
-    def v2_update_exercise(self, exercise_id: str, data: dict):
-        result = self.client.table("v2_exercises").update(data).eq("id", exercise_id).execute()
-        return result.data[0] if result.data else None
-
-    def v2_delete_exercise(self, exercise_id: str):
-        """Soft-delete: set is_active=False. Or hard delete if preferred."""
-        self.client.table("v2_exercises").update({"is_active": False}).eq("id", exercise_id).execute()
-
     def v2_insert_task(self, data: dict):
         result = self.client.table("v2_tasks").insert(data).execute()
         return result.data[0] if result.data else None
@@ -2338,85 +2263,6 @@ class DatabaseService:
     def v2_delete_task(self, task_id: str):
         """Soft-delete: set is_active=False so task no longer appears in student flow."""
         self.client.table("v2_tasks").update({"is_active": False}).eq("id", task_id).execute()
-
-    def v2_insert_post_question_pool(self, data: dict):
-        result = self.client.table("v2_post_recording_questions").insert(data).execute()
-        return result.data[0] if result.data else None
-
-    def v2_update_post_question_pool(self, question_id: str, data: dict):
-        result = self.client.table("v2_post_recording_questions").update(data).eq("id", question_id).execute()
-        return result.data[0] if result.data else None
-
-    def v2_delete_post_question_pool(self, question_id: str):
-        self.client.table("v2_post_recording_questions").delete().eq("id", question_id).execute()
-
-    def v2_get_post_question_pool_by_id(self, question_id: str):
-        result = self.client.table("v2_post_recording_questions").select("*").eq("id", question_id).execute()
-        return result.data[0] if result.data else None
-
-    # ---------- Per-student post-recording questions (same mechanism as focus_tasks) ----------
-    def v2_get_student_post_recording_questions(self, user_id: str):
-        result = (
-            self.client.table("v2_student_post_recording_questions")
-            .select("*")
-            .eq("user_id", user_id)
-            .order("order_index")
-            .order("created_at")
-            .execute()
-        )
-        return result.data or []
-
-    def v2_insert_student_post_recording_question(self, data: dict):
-        result = self.client.table("v2_student_post_recording_questions").insert(data).execute()
-        return result.data[0] if result.data else None
-
-    def v2_update_student_post_recording_question(self, question_id: str, data: dict):
-        payload = {}
-        for k in ("text", "order_index", "answer_type", "code"):
-            if k in data:
-                payload[k] = data[k]
-        if not payload:
-            result = self.client.table("v2_student_post_recording_questions").select("*").eq("id", question_id).execute()
-            return result.data[0] if result.data else None
-        result = self.client.table("v2_student_post_recording_questions").update(payload).eq("id", question_id).execute()
-        return result.data[0] if result.data else None
-
-    def v2_delete_student_post_recording_question(self, question_id: str):
-        self.client.table("v2_student_post_recording_questions").delete().eq("id", question_id).execute()
-
-    def v2_get_student_post_recording_questions_by_ids(self, ids: list):
-        """Fetch per-student post-recording questions by row ids (e.g. session post_question_ids)."""
-        if not ids:
-            return []
-        ids = [str(x) for x in ids]
-        result = self.client.table("v2_student_post_recording_questions").select("*").in_("id", ids).execute()
-        order = {str(x): i for i, x in enumerate(ids)}
-        rows = result.data or []
-        rows.sort(key=lambda r: order.get(str(r["id"]), 999))
-        return rows
-
-    def v2_sync_student_post_recording_questions_from_pool(self, user_id: str, pool_question_ids: list):
-        """Replace student's post-recording questions with copies from the pool. Same pattern as focus_tasks sync."""
-        self.client.table("v2_student_post_recording_questions").delete().eq("user_id", user_id).execute()
-        if not pool_question_ids:
-            return []
-        inserted = []
-        for idx, pool_id in enumerate(pool_question_ids):
-            row = self.v2_get_post_question_pool_by_id(pool_id)
-            if not row:
-                continue
-            data = {
-                "user_id": user_id,
-                "pool_question_id": pool_id,
-                "text": row["text"],
-                "order_index": idx,
-                "answer_type": row.get("answer_type", "text"),
-                "code": row.get("code"),
-            }
-            new_row = self.v2_insert_student_post_recording_question(data)
-            if new_row:
-                inserted.append(new_row)
-        return inserted
 
     # ---------- Warm-up tasks (per student; homework flow) ----------
     DEFAULT_WARM_UP_TASK_TEXT = "How was your day so far?"
@@ -2806,10 +2652,10 @@ class DatabaseService:
 
     _V2_OVERRIDES_COLUMNS = {
         "intended_emotion_prompt", "keywords_prompt", "emotion_check_question_text",
-        "assigned_post_question_ids", "assigned_next_exercise_id", "last_assigned_exercise_id", "assigned_next_task_ids",
-        "show_exercise_step", "assigned_warm_up_task_id",
+        "assigned_next_task_ids",
+        "assigned_warm_up_task_id",
         "pitch_variance_ideal", "pending_tutor_video_url", "pending_tutor_video_description",
-        "skip_metric_questions", "skip_post_questions",
+        "skip_metric_questions",
     }
 
     def v2_get_user_metric_questions(self, user_id: str):
@@ -2841,7 +2687,7 @@ class DatabaseService:
         return self.v2_get_user_metric_questions(user_id)
 
     def v2_upsert_student_overrides(self, user_id: str, data: dict):
-        """Merge request data with existing overrides so partial PUTs do not clear other fields (e.g. skip_metric_questions, skip_post_questions)."""
+        """Merge request data with existing overrides so partial PUTs do not clear other fields (e.g. skip_metric_questions)."""
         existing = self.v2_get_student_overrides(user_id) or {}
         merged = {}
         for col in self._V2_OVERRIDES_COLUMNS:
@@ -2851,21 +2697,14 @@ class DatabaseService:
                 merged[col] = existing[col]
             else:
                 merged[col] = None
-        for key in ("skip_metric_questions", "skip_post_questions"):
-            if merged.get(key) is None:
-                merged[key] = False
-        # Empty string for UUID columns: treat as null so clearing "assigned exercise" persists
-        if merged.get("assigned_next_exercise_id") == "":
-            merged["assigned_next_exercise_id"] = None
-        # When admin assigns an exercise, remember it so step 0 can show it until a new one is assigned
-        if merged.get("assigned_next_exercise_id"):
-            merged["last_assigned_exercise_id"] = merged["assigned_next_exercise_id"]
-        payload = {k: v for k, v in merged.items() if v is not None or k in ("skip_metric_questions", "skip_post_questions")}
+        if merged.get("skip_metric_questions") is None:
+            merged["skip_metric_questions"] = False
+        payload = {k: v for k, v in merged.items() if v is not None or k == "skip_metric_questions"}
         payload["user_id"] = user_id
         payload["updated_at"] = datetime.now(timezone.utc).isoformat()
         # #region agent log
         try:
-            open("/Users/arturwillonski/Documents/backend-cursor/.cursor/debug.log", "a").write(json.dumps({"message": "DB upsert overrides", "data": {"data_keys": list(data.keys()), "existing_keys": list(existing.keys()), "merged_skip_metric": merged.get("skip_metric_questions"), "merged_skip_post": merged.get("skip_post_questions"), "payload_has_skip_metric": "skip_metric_questions" in payload, "payload_has_skip_post": "skip_post_questions" in payload, "payload_skip_metric": payload.get("skip_metric_questions"), "payload_skip_post": payload.get("skip_post_questions")}, "hypothesisId": "H2,H5", "location": "db.py:v2_upsert_student_overrides", "timestamp": int(time.time() * 1000)}) + "\n")
+            open("/Users/arturwillonski/Documents/backend-cursor/.cursor/debug.log", "a").write(json.dumps({"message": "DB upsert overrides", "data": {"data_keys": list(data.keys()), "existing_keys": list(existing.keys()), "merged_skip_metric": merged.get("skip_metric_questions"), "payload_has_skip_metric": "skip_metric_questions" in payload, "payload_skip_metric": payload.get("skip_metric_questions")}, "hypothesisId": "H2,H5", "location": "db.py:v2_upsert_student_overrides", "timestamp": int(time.time() * 1000)}) + "\n")
         except Exception:
             pass
         # #endregion
@@ -2873,7 +2712,7 @@ class DatabaseService:
         # #region agent log
         try:
             out = result.data[0] if result.data else None
-            open("/Users/arturwillonski/Documents/backend-cursor/.cursor/debug.log", "a").write(json.dumps({"message": "DB upsert result", "data": {"result_keys": list(out.keys()) if out else None, "result_skip_metric": out.get("skip_metric_questions") if out else None, "result_skip_post": out.get("skip_post_questions") if out else None}, "hypothesisId": "H2,H4", "location": "db.py:v2_upsert_student_overrides after execute", "timestamp": int(time.time() * 1000)}) + "\n")
+            open("/Users/arturwillonski/Documents/backend-cursor/.cursor/debug.log", "a").write(json.dumps({"message": "DB upsert result", "data": {"result_keys": list(out.keys()) if out else None, "result_skip_metric": out.get("skip_metric_questions") if out else None}, "hypothesisId": "H2,H4", "location": "db.py:v2_upsert_student_overrides after execute", "timestamp": int(time.time() * 1000)}) + "\n")
         except Exception:
             pass
         # #endregion

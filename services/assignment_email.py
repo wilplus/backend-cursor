@@ -315,7 +315,6 @@ def build_assignment_email_html(
     *,
     video_url: str | None = None,
     coach_message: str | None = None,
-    has_assigned_exercise: bool = False,
     homework_link: str,
     student_name: str = "there",
     meta_label: str = "Session Recap",
@@ -328,7 +327,7 @@ def build_assignment_email_html(
     preferences_link: str = "#",
     logo_url: str | None = None,
 ) -> str:
-    _ = (video_url, has_assigned_exercise, meta_label, homework_title, homework_subtitle, coach_image_url, unsubscribe_link, preferences_link)
+    _ = (video_url, meta_label, homework_title, homework_subtitle, coach_image_url, unsubscribe_link, preferences_link)
     return build_student_new_homework_email_html(
         student_first_name=student_name,
         coach_message=coach_message or DEFAULT_COACH_MESSAGE,

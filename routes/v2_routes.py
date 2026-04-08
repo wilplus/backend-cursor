@@ -352,7 +352,7 @@ def v2_admin_students():
 @require_auth
 def v2_admin_student_profile(user_id):
     """Student profile: admin can get any user's profile; authenticated user can get own profile (user_id === token sub).
-    Same contract: user_id, email, overrides, speaker_profile, task_warm_up[], task_focus[], post_recording_questions[], sessions (reports list)."""
+    Same contract: user_id, email, overrides, speaker_profile, task_warm_up[], sessions (reports list)."""
     try:
         if request.method == "DELETE":
             if not is_admin(request.user_id):
@@ -422,12 +422,10 @@ def v2_admin_student_profile(user_id):
         overrides["assigned_next_task_ids"] = overrides.get("assigned_next_task_ids") or []
         # Ensure skip flags are always booleans for consistent admin UI (false when never set)
         overrides["skip_metric_questions"] = bool(raw_overrides.get("skip_metric_questions") if raw_overrides else False)
-        overrides["skip_post_questions"] = bool(raw_overrides.get("skip_post_questions") if raw_overrides else False)
         speaker_profile = db.v2_get_speaker_profile(user_id)
         sniper_profile = db.get_sniper_profile_payload(user_id)
         coaching_memory = db.v2_get_student_coaching_memory(user_id)
         task_warm_up = db.v2_get_warm_up_tasks(user_id)
-        post_recording_questions = db.v2_get_student_post_recording_questions(user_id)
         last_report = db.v2_get_last_report_for_user(user_id)
         sessions = db.v2_get_sessions_with_previews(user_id, limit=50)
         delivered_sessions = [s for s in sessions if s.get("report_delivered")]
@@ -452,7 +450,6 @@ def v2_admin_student_profile(user_id):
             "realtime_step": sniper_profile.get("realtime_step"),
             "measured_metrics": measured_metrics,
             "task_warm_up": task_warm_up,
-            "post_recording_questions": post_recording_questions,
             "last_report": last_report.get("report_text") if last_report else None,
             "last_report_preview": last_report.get("report_preview") if last_report else None,
             "last_report_delivered": bool(last_report.get("report_delivered")) if last_report else False,
@@ -478,7 +475,7 @@ def v2_admin_student_speaker_profile(user_id):
 
 
 def _coerce_override_bool(value, key: str):
-    """Coerce a value to bool for skip_metric_questions / skip_post_questions. Returns (bool, None) or (None, error_msg)."""
+    """Coerce a value to bool for skip_metric_questions. Returns (bool, None) or (None, error_msg)."""
     if value is True or value is False:
         return (value, None)
     if value in ("true", "1", 1):
@@ -560,30 +557,25 @@ def v2_admin_student_sniper_profile(user_id):
 @v2_bp.route("/admin/students/<user_id>/overrides", methods=["PUT"])
 @require_admin
 def v2_admin_student_overrides(user_id):
-    """Set prompts, assigned post Qs, skip_metric_questions, skip_post_questions, next exercise/task."""
+    """Set prompts, skip_metric_questions, assigned task/warm-up ids, pending tutor video fields."""
     try:
         data = request.get_json() or {}
         # #region agent log
         _log_path = "/Users/arturwillonski/Documents/backend-cursor/.cursor/debug.log"
         try:
             with open(_log_path, "a") as _f:
-                _f.write(json.dumps({"message": "PUT overrides request body", "data": {"body_keys": list(data.keys()), "skip_metric_questions": data.get("skip_metric_questions"), "skip_post_questions": data.get("skip_post_questions")}, "hypothesisId": "H1", "location": "v2_routes.py:PUT overrides", "timestamp": int(time.time() * 1000)}) + "\n")
+                _f.write(json.dumps({"message": "PUT overrides request body", "data": {"body_keys": list(data.keys()), "skip_metric_questions": data.get("skip_metric_questions")}, "hypothesisId": "H1", "location": "v2_routes.py:PUT overrides", "timestamp": int(time.time() * 1000)}) + "\n")
         except Exception as _e:
             try:
                 with open("/Users/arturwillonski/Documents/backend-cursor/debug_override.log", "a") as _f:
-                    _f.write(json.dumps({"message": "PUT overrides request body", "data": {"body_keys": list(data.keys()), "skip_metric_questions": data.get("skip_metric_questions"), "skip_post_questions": data.get("skip_post_questions")}, "hypothesisId": "H1", "location": "v2_routes.py:PUT overrides", "timestamp": int(time.time() * 1000), "primary_log_error": str(_e)}) + "\n")
+                    _f.write(json.dumps({"message": "PUT overrides request body", "data": {"body_keys": list(data.keys()), "skip_metric_questions": data.get("skip_metric_questions")}, "hypothesisId": "H1", "location": "v2_routes.py:PUT overrides", "timestamp": int(time.time() * 1000), "primary_log_error": str(_e)}) + "\n")
             except Exception:
                 pass
         # #endregion
         # Normalize camelCase from frontend to snake_case
         if "skipMetricQuestions" in data and "skip_metric_questions" not in data:
             data["skip_metric_questions"] = data.pop("skipMetricQuestions", None)
-        if "skipPostQuestions" in data and "skip_post_questions" not in data:
-            data["skip_post_questions"] = data.pop("skipPostQuestions", None)
-        ids = data.get("assigned_post_question_ids")
-        if ids is not None and not isinstance(ids, list):
-            return jsonify({"code": "INVALID_INPUT", "error": "assigned_post_question_ids must be an array"}), 400
-        for key in ("skip_metric_questions", "skip_post_questions"):
+        for key in ("skip_metric_questions",):
             if key in data:
                 val, err = _coerce_override_bool(data[key], key)
                 if err:
@@ -633,14 +625,11 @@ def v2_admin_send_assignment(user_id):
         # Store coach message (and optional video URL) so GET session/status can return tutor_video_description
         if video_url is not None or video_description is not None:
             db.v2_set_pending_tutor_video(user_id, video_url, video_description)
-        overrides = db.v2_get_student_overrides(user_id) or {}
-        has_assigned_exercise = bool(overrides.get("assigned_next_exercise_id"))
         result = email_service.send_assignment_to_student(
             to_email=student_email.strip(),
             frontend_url=config.FRONTEND_URL,
             video_url=video_url,
             video_description=video_description,
-            has_assigned_exercise=has_assigned_exercise,
             student_name=student_email.strip(),
         )
         if result.get("status") == "failed":
@@ -660,14 +649,11 @@ def v2_admin_send_assignment(user_id):
                     continue
                 if video_url is not None or video_description is not None:
                     db.v2_set_pending_tutor_video(extra_uid, video_url, video_description)
-                extra_overrides = db.v2_get_student_overrides(extra_uid) or {}
-                extra_has_exercise = bool(extra_overrides.get("assigned_next_exercise_id"))
                 extra_result = email_service.send_assignment_to_student(
                     to_email=extra_email.strip(),
                     frontend_url=config.FRONTEND_URL,
                     video_url=video_url,
                     video_description=video_description,
-                    has_assigned_exercise=extra_has_exercise,
                     student_name=extra_email.strip(),
                 )
                 db.v2_mark_tutor_feedback_sent_for_user(extra_uid)
@@ -1553,51 +1539,6 @@ def v2_admin_recording_review_patch(recording_id):
         return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
 
 
-# ---------- Admin CRUD: exercises ----------
-@v2_bp.route("/admin/exercises", methods=["GET"])
-@require_admin
-def v2_admin_exercises_list():
-    result = db.client.table("v2_exercises").select("*").order("created_at", desc=True).execute()
-    return jsonify({"exercises": result.data or []}), 200
-
-
-@v2_bp.route("/admin/exercises", methods=["POST"])
-@require_admin
-def v2_admin_exercises_create():
-    data = request.get_json() or {}
-    title = (data.get("title") or "").strip()
-    if not title:
-        return jsonify({"code": "INVALID_INPUT", "error": "title is required"}), 400
-    payload = {
-        "title": title,
-        "video_url": (data.get("video_url") or "").strip() or None,
-        "description": (data.get("description") or "").strip() or None,
-        "is_active": data.get("is_active") if "is_active" in data else True,
-    }
-    if "min_task_score" in data:
-        payload["min_task_score"] = data.get("min_task_score")
-    if "max_task_score" in data:
-        payload["max_task_score"] = data.get("max_task_score")
-    row = db.v2_insert_exercise(payload)
-    return jsonify({"exercise": row}), 201
-
-
-@v2_bp.route("/admin/exercises/<exercise_id>", methods=["PUT"])
-@require_admin
-def v2_admin_exercises_update(exercise_id):
-    data = request.get_json() or {}
-    row = db.v2_update_exercise(exercise_id, data)
-    return jsonify({"exercise": row}), 200
-
-
-@v2_bp.route("/admin/exercises/<exercise_id>", methods=["DELETE"])
-@require_admin
-def v2_admin_exercises_delete(exercise_id):
-    """Soft-delete: sets is_active=False so exercise no longer appears in student flow."""
-    db.v2_delete_exercise(exercise_id)
-    return jsonify({"status": "ok"}), 200
-
-
 # ---------- Admin CRUD: tasks ----------
 _TASKS_HEADER = ("X-Backend-Route", "v2-admin-tasks")
 
@@ -1653,53 +1594,6 @@ def v2_admin_tasks_delete(task_id):
     """Soft-delete: set is_active=False so task no longer appears in student flow."""
     db.v2_delete_task(task_id)
     return jsonify({"status": "ok"}), 200
-
-
-# ---------- Admin: post-recording questions pool (pool only; per-student below) ----------
-@v2_bp.route("/admin/post-recording-questions-pool", methods=["GET"])
-@require_admin
-def v2_admin_post_recording_questions_pool_list():
-    try:
-        result = db.client.table("v2_post_recording_questions").select("*").execute()
-        return jsonify({"post_recording_questions_pool": result.data or []}), 200
-    except Exception as err:
-        logger.warning("post-recording-questions-pool GET failed: %s", err, exc_info=True)
-        return jsonify({"post_recording_questions_pool": []}), 200
-
-
-@v2_bp.route("/admin/post-recording-questions-pool", methods=["POST"])
-@require_admin
-def v2_admin_post_recording_questions_pool_create():
-    data = request.get_json() or {}
-    try:
-        row = db.v2_insert_post_question_pool(data)
-        return jsonify({"post_recording_question": row}), 201
-    except Exception as err:
-        logger.warning("post-recording-questions-pool POST failed: %s", err, exc_info=True)
-        return jsonify({"error": "Failed to create post-recording question.", "detail": str(err)}), 503
-
-
-@v2_bp.route("/admin/post-recording-questions-pool/<question_id>", methods=["PUT"])
-@require_admin
-def v2_admin_post_recording_questions_pool_update(question_id):
-    data = request.get_json() or {}
-    try:
-        row = db.v2_update_post_question_pool(question_id, data)
-        return jsonify({"post_recording_question": row}), 200
-    except Exception as err:
-        logger.warning("post-recording-questions-pool PUT failed for %s: %s", question_id, err, exc_info=True)
-        return jsonify({"error": "Update failed.", "detail": str(err)}), 503
-
-
-@v2_bp.route("/admin/post-recording-questions-pool/<question_id>", methods=["DELETE"])
-@require_admin
-def v2_admin_post_recording_questions_pool_delete(question_id):
-    try:
-        db.v2_delete_post_question_pool(question_id)
-        return jsonify({"status": "ok"}), 200
-    except Exception as err:
-        logger.warning("post-recording-questions-pool DELETE failed for %s: %s", question_id, err, exc_info=True)
-        return jsonify({"error": "Delete failed.", "detail": str(err)}), 503
 
 
 # ---------- Admin: task-warm-up pool (same mechanism as task_focus) ----------
@@ -2059,82 +1953,6 @@ def v2_admin_task_focus_create_pool_and_assign(user_id):
     except Exception as err:
         logger.warning("task-focus create-pool-and-assign failed for user %s: %s", user_id, err, exc_info=True)
         return jsonify({"error": "create-pool-and-assign failed", "detail": str(err)}), 503
-
-
-# ---------- Admin: post-recording questions (per student) ----------
-@v2_bp.route("/admin/students/<user_id>/post-recording-questions", methods=["GET"])
-@require_admin
-def v2_admin_student_post_recording_questions_list(user_id):
-    try:
-        rows = db.v2_get_student_post_recording_questions(user_id)
-        return jsonify({"post_recording_questions": rows}), 200
-    except Exception as err:
-        logger.warning("post-recording-questions GET failed for user %s: %s", user_id, err, exc_info=True)
-        return jsonify({"post_recording_questions": []}), 200
-
-
-@v2_bp.route("/admin/students/<user_id>/post-recording-questions", methods=["PUT"])
-@require_admin
-def v2_admin_student_post_recording_questions_sync(user_id):
-    """Set this student's post-recording questions from the pool. Body: { "pool_question_ids": [uuid, ...] } (order = display order)."""
-    data = request.get_json() or {}
-    pool_question_ids = data.get("pool_question_ids")
-    if pool_question_ids is None:
-        return jsonify({"error": "pool_question_ids is required"}), 400
-    if not isinstance(pool_question_ids, list):
-        return jsonify({"error": "pool_question_ids must be a list"}), 400
-    pool_question_ids = [str(x) for x in pool_question_ids]
-    try:
-        rows = db.v2_sync_student_post_recording_questions_from_pool(user_id, pool_question_ids)
-        return jsonify({"post_recording_questions": rows}), 200
-    except Exception as err:
-        logger.warning("post-recording-questions PUT sync failed for user %s: %s", user_id, err, exc_info=True)
-        return jsonify({
-            "error": "v2_student_post_recording_questions sync failed.",
-            "detail": str(err),
-        }), 503
-
-
-@v2_bp.route("/admin/students/<user_id>/post-recording-questions", methods=["POST"])
-@require_admin
-def v2_admin_student_post_recording_questions_create(user_id):
-    data = request.get_json() or {}
-    text = (data.get("text") or "").strip()
-    if not text:
-        return jsonify({"error": "text is required"}), 400
-    data["user_id"] = user_id
-    data["text"] = text
-    data.setdefault("order_index", 0)
-    data.setdefault("answer_type", "text")
-    try:
-        row = db.v2_insert_student_post_recording_question(data)
-        return jsonify({"post_recording_question": row}), 201
-    except Exception as err:
-        logger.warning("post-recording-questions POST failed for user %s: %s", user_id, err, exc_info=True)
-        return jsonify({"error": "Failed to create post-recording question.", "detail": str(err)}), 503
-
-
-@v2_bp.route("/admin/students/<user_id>/post-recording-questions/<question_id>", methods=["PUT"])
-@require_admin
-def v2_admin_student_post_recording_questions_update(user_id, question_id):
-    data = request.get_json() or {}
-    try:
-        row = db.v2_update_student_post_recording_question(question_id, data)
-        return jsonify({"post_recording_question": row}), 200
-    except Exception as err:
-        logger.warning("post-recording-questions PUT update failed: %s", err, exc_info=True)
-        return jsonify({"error": "Update failed.", "detail": str(err)}), 503
-
-
-@v2_bp.route("/admin/students/<user_id>/post-recording-questions/<question_id>", methods=["DELETE"])
-@require_admin
-def v2_admin_student_post_recording_questions_delete(user_id, question_id):
-    try:
-        db.v2_delete_student_post_recording_question(question_id)
-        return jsonify({"status": "ok"}), 200
-    except Exception as err:
-        logger.warning("post-recording-questions DELETE failed: %s", err, exc_info=True)
-        return jsonify({"error": "Delete failed.", "detail": str(err)}), 503
 
 
 # ---------- Admin: metric questions (legacy 2-question table) ----------
