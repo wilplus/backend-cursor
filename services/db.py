@@ -1694,6 +1694,7 @@ class DatabaseService:
                     "pitch_center_st",
                     "stage_score",
                     "voiced_duration_sec",
+                    "student_rating_1_10",
                 )
             ):
                 latest["source"] = "session_sniper_metrics"
@@ -1770,6 +1771,12 @@ class DatabaseService:
                 latest["wpm"] = r.get("words_per_minute")
                 latest["filler_words_count"] = r.get("filler_words_count")
                 latest["duration_ms"] = r.get("duration")
+                try:
+                    sm_sess = self.get_session_sniper_metrics(str(s.get("id")))
+                    if sm_sess and sm_sess.get("student_rating_1_10") is not None:
+                        latest["student_rating_1_10"] = sm_sess.get("student_rating_1_10")
+                except Exception:
+                    pass
                 break
         except Exception as e:
             logger.debug("v2_get_admin_measured_metrics_snapshot: recording fallback failed: %s", e)

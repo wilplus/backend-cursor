@@ -1251,6 +1251,11 @@ def homework_get_report(session_id):
                     return round(float(v), decimals)
                 except (TypeError, ValueError):
                     return None
+            _sr = session_sniper.get("student_rating_1_10")
+            try:
+                student_rating_out = int(_sr) if _sr is not None else None
+            except (TypeError, ValueError):
+                student_rating_out = None
             sniper_metrics = {
                 "wpm": _safe_float(session_sniper.get("wpm")),
                 "pause_ms": _safe_float(session_sniper.get("pause_ms"), 0),
@@ -1261,10 +1266,19 @@ def homework_get_report(session_id):
                 "pitch_frame_count": int(session_sniper["pitch_frame_count"]) if session_sniper.get("pitch_frame_count") is not None else None,
                 "stage_score": _safe_float(session_sniper.get("stage_score")),
                 "voiced_duration_sec": _safe_float(session_sniper.get("voiced_duration_sec")),
+                "student_rating_1_10": student_rating_out,
             }
             # Also fall back to recording WPM if sniper wpm is missing
             if sniper_metrics["wpm"] is None and recording_payload and recording_payload.get("words_per_minute"):
                 sniper_metrics["wpm"] = round(float(recording_payload["words_per_minute"]), 1)
+        elif recording_payload and recording_payload.get("words_per_minute") is not None:
+            sniper_metrics = {"wpm": round(float(recording_payload["words_per_minute"]), 1)}
+            try:
+                smx = db.get_session_sniper_metrics(session_id)
+                if smx and smx.get("student_rating_1_10") is not None:
+                    sniper_metrics["student_rating_1_10"] = int(smx["student_rating_1_10"])
+            except Exception:
+                pass
         payload = {
             "report_text": report_text,
             # Backward-compat alias: some UIs still read scores.overall.
