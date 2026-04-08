@@ -110,6 +110,14 @@ BEGIN
       DROP CONSTRAINT IF EXISTS v2_sessions_warm_up_task_id_fkey;
     ALTER TABLE public.v2_sessions
       DROP CONSTRAINT IF EXISTS v2_sessions_session_task_id_fkey;
+    -- Legacy rows can still point to archived/deleted task ids.
+    -- Null them before re-attaching FK to public.tasks.
+    UPDATE public.v2_sessions s
+    SET session_task_id = NULL
+    WHERE s.session_task_id IS NOT NULL
+      AND NOT EXISTS (
+        SELECT 1 FROM public.tasks t WHERE t.id = s.session_task_id
+      );
     ALTER TABLE public.v2_sessions
       ADD CONSTRAINT v2_sessions_session_task_id_fkey
       FOREIGN KEY (session_task_id) REFERENCES public.tasks(id) ON DELETE SET NULL;
@@ -144,6 +152,13 @@ BEGIN
   ) THEN
     ALTER TABLE public.v2_student_overrides
       DROP CONSTRAINT IF EXISTS v2_student_overrides_assigned_task_id_fkey;
+    -- Same cleanup for stale override ids from pre-rename datasets.
+    UPDATE public.v2_student_overrides o
+    SET assigned_task_id = NULL
+    WHERE o.assigned_task_id IS NOT NULL
+      AND NOT EXISTS (
+        SELECT 1 FROM public.tasks t WHERE t.id = o.assigned_task_id
+      );
     ALTER TABLE public.v2_student_overrides
       ADD CONSTRAINT v2_student_overrides_assigned_task_id_fkey
       FOREIGN KEY (assigned_task_id) REFERENCES public.tasks(id) ON DELETE SET NULL;
