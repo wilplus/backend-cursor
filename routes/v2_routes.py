@@ -1918,16 +1918,36 @@ def v2_admin_task_warm_up_delete(user_id, task_id):
 
 
 # ---------- Admin: task-focus (per student) ----------
+def _v2_is_pg_permission_denied(err: Exception) -> bool:
+    if "42501" in str(err):
+        return True
+    if "permission denied" in str(err).lower():
+        return True
+    arg0 = err.args[0] if getattr(err, "args", None) else None
+    if isinstance(arg0, dict) and arg0.get("code") == "42501":
+        return True
+    return False
+
+
 def _v2_get_focus_tasks_for_student(user_id: str):
-    rows = (
-        db.client.table("v2_focus_tasks")
-        .select("id, user_id, text, order_index, max_performance_score, pool_task_id, created_at")
-        .eq("user_id", user_id)
-        .order("order_index")
-        .order("created_at")
-        .execute()
-    )
-    return rows.data or []
+    try:
+        rows = (
+            db.client.table("v2_focus_tasks")
+            .select("id, user_id, text, order_index, max_performance_score, pool_task_id, created_at")
+            .eq("user_id", user_id)
+            .order("order_index")
+            .order("created_at")
+            .execute()
+        )
+        return rows.data or []
+    except Exception as e:
+        if _v2_is_pg_permission_denied(e):
+            logger.warning(
+                "v2_focus_tasks: permission denied (run migrations/grant_v2_focus_tables_service_role.sql): %s",
+                e,
+            )
+            return []
+        raise
 
 
 @v2_bp.route("/admin/students/<user_id>/task-focus", methods=["GET"])

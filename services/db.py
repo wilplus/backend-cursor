@@ -2058,21 +2058,23 @@ class DatabaseService:
     def update_or_set_session_sniper_rating(
         self, session_id: str, user_id: str, student_rating_1_10: int
     ) -> bool:
-        """Set the legacy student_rating_1_10 column for a session using the current 1-5 self-rating scale."""
+        """Persist 1-5 self-rating on session_sniper_metrics.
+
+        PostgREST ``update()`` often returns an empty ``data`` array even when rows were
+        updated, so update-then-insert could duplicate-key fail after the recording job
+        had already upserted metrics. Always upsert on ``session_id`` instead.
+        """
         session = self.v2_get_session(session_id, user_id)
         if not session:
             return False
-        r = (
-            self.client.table("session_sniper_metrics")
-            .update({"student_rating_1_10": student_rating_1_10})
-            .eq("session_id", session_id)
-            .eq("user_id", user_id)
-            .execute()
-        )
-        if r.data and len(r.data) > 0:
-            return True
-        self.client.table("session_sniper_metrics").insert(
-            {"session_id": session_id, "user_id": user_id, "student_rating_1_10": student_rating_1_10}
+        payload = {
+            "session_id": session_id,
+            "user_id": user_id,
+            "student_rating_1_10": int(student_rating_1_10),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+        self.client.table("session_sniper_metrics").upsert(
+            payload, on_conflict="session_id"
         ).execute()
         return True
 
@@ -3273,6 +3275,8 @@ class DatabaseService:
             rec["pitch_center_st"] = sm.get("pitch_center_st")
             rec["energy_ratio"] = sm.get("energy_ratio")
             rec["student_rating_1_10"] = sm.get("student_rating_1_10")
+            # Alias for admin UIs that map "Self rating" to a different key
+            rec["self_rating"] = sm.get("student_rating_1_10")
             review = rec.get("review") if isinstance(rec.get("review"), dict) else {}
             rec["ml_quality"] = review.get("overall_quality")
 
