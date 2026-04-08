@@ -2190,6 +2190,7 @@ def v2_admin_stage_override(user_id):
 
 
 @v2_bp.route("/admin/copilot/annotation-chips", methods=["GET"])
+@v2_bp.route("/admin/acoustic-dojo/annotation-chips", methods=["GET"])
 @require_admin
 def v2_admin_copilot_annotation_chips():
     """Reason chips used by copilot audit/override actions."""
@@ -2205,6 +2206,7 @@ def v2_admin_copilot_annotation_chips():
 
 
 @v2_bp.route("/admin/copilot/next-clips", methods=["GET"])
+@v2_bp.route("/admin/acoustic-dojo/next-clips", methods=["GET"])
 @require_admin
 def v2_admin_copilot_next_clips():
     """Pending copilot inbox items derived from admin_student_send_drafts."""
@@ -2241,6 +2243,7 @@ def v2_admin_copilot_next_clips():
 
 @v2_bp.route("/admin/cohorts", methods=["GET"])
 @v2_bp.route("/admin/copilot/cohorts", methods=["GET"])
+@v2_bp.route("/admin/acoustic-dojo/cohorts", methods=["GET"])
 @require_admin
 def v2_admin_cohorts():
     try:
@@ -2287,6 +2290,7 @@ def v2_admin_cohorts():
 
 @v2_bp.route("/admin/cohorts/<profile>/<int:stage>/approve-task", methods=["POST"])
 @v2_bp.route("/admin/copilot/cohorts/<profile>/<int:stage>/approve-task", methods=["POST"])
+@v2_bp.route("/admin/acoustic-dojo/cohorts/<profile>/<int:stage>/approve-task", methods=["POST"])
 @require_admin
 def v2_admin_cohort_approve_task(profile, stage):
     try:
