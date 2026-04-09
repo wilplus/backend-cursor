@@ -1163,5 +1163,70 @@ Respond with valid JSON array:
             sentry_sdk.capture_exception(e)
             return {"error": str(e), "homework_message": "", "task_suggestion": "", "video_script": "", "raw_text": ""}
 
+    def generate_admin_grade_comment_draft(
+        self,
+        *,
+        context_short: str,
+        coach_insight: str,
+        score_for_display_100: int | None,
+    ) -> dict:
+        """Generate suggested admin grade/comment for session review.
+
+        Returns: {"grade": int(1-10), "comment": str}
+        """
+        try:
+            score_100 = int(score_for_display_100) if score_for_display_100 is not None else None
+        except (TypeError, ValueError):
+            score_100 = None
+        if score_100 is None:
+            score_100 = 60
+        score_100 = max(0, min(100, score_100))
+        fallback_grade = max(1, min(10, int(round(score_100 / 10.0))))
+        fallback_comment = (
+            f"Great effort. Current score is {score_100}/100; keep building consistency in pacing and clarity."
+        )
+        if not self.client:
+            return {"grade": fallback_grade, "comment": fallback_comment}
+        try:
+            prompt = (
+                f"Context short:\n{(context_short or '').strip()[:500]}\n\n"
+                f"Coach insight:\n{(coach_insight or '').strip()[:700]}\n\n"
+                f"Canonical score_for_display (0-100): {score_100}\n\n"
+                "Return JSON only with keys grade (integer 1-10) and comment (max 280 chars). "
+                "Tone: concise, supportive, specific."
+            )
+            response = self.client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "You are an assistant drafting coach review fields. Respond with valid JSON only.",
+                    },
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=0.2,
+                max_tokens=180,
+            )
+            raw = (response.choices[0].message.content or "").strip()
+            if raw.startswith("```"):
+                raw = re.sub(r"^```(?:json)?\s*", "", raw)
+                raw = re.sub(r"\s*```$", "", raw)
+            obj = json.loads(raw)
+            grade = obj.get("grade")
+            try:
+                grade = int(round(float(grade)))
+            except (TypeError, ValueError):
+                grade = fallback_grade
+            grade = max(1, min(10, grade))
+            comment = (obj.get("comment") or "").strip()
+            if not comment:
+                comment = fallback_comment
+            if len(comment) > 280:
+                comment = comment[:280].rstrip()
+            return {"grade": grade, "comment": comment}
+        except Exception as e:
+            sentry_sdk.capture_exception(e)
+            return {"grade": fallback_grade, "comment": fallback_comment}
+
 # Singleton instance
 openai_service = OpenAIService()

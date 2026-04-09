@@ -621,18 +621,70 @@ def v2_admin_send_assignment(user_id):
         student_email = db.get_user_email_from_auth(user_id)
         if not student_email or not student_email.strip():
             return jsonify({"code": "NO_EMAIL", "error": "Student has no email in auth"}), 400
+        ai_prefill = _generate_assignment_prefill_for_user(user_id, fallback_task_text="")
+        ai_message = (ai_prefill.get("ai_draft_message") or "").strip() or None
+        ai_task = (ai_prefill.get("ai_suggested_task_text") or "").strip() or None
+        ai_script = (ai_prefill.get("ai_draft_video_script") or "").strip() or None
+        final_video_description = video_description if video_description is not None else ai_message
         # Store coach message (and optional video URL) so GET session/status can return tutor_video_description
-        if video_url is not None or video_description is not None:
-            db.v2_set_pending_tutor_video(user_id, video_url, video_description)
+        if video_url is not None or final_video_description is not None:
+            db.v2_set_pending_tutor_video(user_id, video_url, final_video_description)
         result = email_service.send_assignment_to_student(
             to_email=student_email.strip(),
             frontend_url=config.FRONTEND_URL,
             video_url=video_url,
-            video_description=video_description,
+            video_description=final_video_description,
             student_name=student_email.strip(),
         )
         if result.get("status") == "failed":
             return jsonify({"code": "EMAIL_FAILED", "error": result.get("error", "Failed to send email")}), 500
+        try:
+            last_completed = db.v2_get_last_completed_session(user_id) or {}
+            sent_row = {
+                "user_id": user_id,
+                "session_id": last_completed.get("id"),
+                "cohort_profile": (db.get_sniper_profile(user_id) or {}).get("behavioral_profile") or "Unclassified",
+                "cohort_stage": int((db.get_sniper_profile(user_id) or {}).get("computed_stage") or 1),
+                "master_task_text": (ai_task or "Homework follow-up from coach")[:8000],
+                "ai_suggested_task_text": ai_task,
+                "ai_draft_message": ai_message,
+                "ai_draft_video_script": ai_script,
+                "draft_payload": {
+                    "ai_task_suggestion": ai_task,
+                    "ai_email_draft": ai_message,
+                    "ai_script_draft": ai_script,
+                    "task_text": ai_task,
+                    "email_message": final_video_description,
+                    "video_script": ai_script,
+                    "state": "Sent",
+                },
+                "status": "sent",
+                "approved_by": request.user_id,
+                "sent_at": datetime.now(timezone.utc).isoformat(),
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }
+            try:
+                db.insert_admin_student_send_drafts([sent_row])
+            except Exception:
+                # Backward-compatible insert if ai_* columns are not migrated yet.
+                sent_row.pop("ai_suggested_task_text", None)
+                sent_row.pop("ai_draft_message", None)
+                sent_row.pop("ai_draft_video_script", None)
+                db.insert_admin_student_send_drafts([sent_row])
+            if ai_message and final_video_description and ai_message.strip() != final_video_description.strip():
+                db.create_admin_annotation_event(
+                    user_id=user_id,
+                    session_id=last_completed.get("id"),
+                    section_type="assignment",
+                    field_name="email_message",
+                    ai_original_text=ai_message,
+                    coach_final_text=final_video_description,
+                    reason_chip="manual_edit",
+                    custom_reason=None,
+                    created_by=request.user_id,
+                )
+        except Exception as prefill_err:
+            logger.warning("send-assignment: draft provenance save failed for %s: %s", user_id, prefill_err)
         sniper_profile = db.get_sniper_profile_payload(user_id)
         # Treat successful coach action as the unlock trigger for the student UI,
         # even if email delivery is pending/disabled in this environment.
@@ -646,13 +698,13 @@ def v2_admin_send_assignment(user_id):
                 if not extra_email or not extra_email.strip():
                     additional_results.append({"user_id": extra_uid, "status": "skipped", "reason": "no_email"})
                     continue
-                if video_url is not None or video_description is not None:
-                    db.v2_set_pending_tutor_video(extra_uid, video_url, video_description)
+                if video_url is not None or final_video_description is not None:
+                    db.v2_set_pending_tutor_video(extra_uid, video_url, final_video_description)
                 extra_result = email_service.send_assignment_to_student(
                     to_email=extra_email.strip(),
                     frontend_url=config.FRONTEND_URL,
                     video_url=video_url,
-                    video_description=video_description,
+                    video_description=final_video_description,
                     student_name=extra_email.strip(),
                 )
                 db.v2_mark_tutor_feedback_sent_for_user(extra_uid)
@@ -728,6 +780,9 @@ def v2_admin_student_session_detail(user_id, session_id):
             return jsonify({"session": session}), 200
         # PATCH: report_grade / report_comment / coach_override_score
         data = request.get_json() or {}
+        current = db.v2_get_session(session_id, user_id)
+        if not current:
+            return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found"}), 404
         updates = {}
         # Accept coach_grade (admin client alias) or report_grade (legacy)
         raw_grade = data.get("coach_grade") if "coach_grade" in data else data.get("report_grade")
@@ -771,6 +826,45 @@ def v2_admin_student_session_detail(user_id, session_id):
         updated = db.v2_update_session(session_id, user_id, updates)
         if not updated:
             return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found"}), 404
+        try:
+            if "coach_override_score" in updates:
+                db.create_admin_annotation_event(
+                    user_id=user_id,
+                    session_id=session_id,
+                    section_type="scoring",
+                    field_name="coach_override_score",
+                    ai_original_text=str(current.get("ai_task_score")) if current.get("ai_task_score") is not None else None,
+                    coach_final_text=str(updates.get("coach_override_score")) if updates.get("coach_override_score") is not None else None,
+                    reason_chip=(data.get("reason_chip") or "manual_override"),
+                    custom_reason=updates.get("coach_override_justification"),
+                    created_by=request.user_id,
+                )
+            if "report_grade" in updates:
+                db.create_admin_annotation_event(
+                    user_id=user_id,
+                    session_id=session_id,
+                    section_type="report",
+                    field_name="report_grade",
+                    ai_original_text=str(current.get("ai_draft_grade")) if current.get("ai_draft_grade") is not None else None,
+                    coach_final_text=str(updates.get("report_grade")) if updates.get("report_grade") is not None else None,
+                    reason_chip=(data.get("reason_chip") or "manual_grade"),
+                    custom_reason=None,
+                    created_by=request.user_id,
+                )
+            if "report_comment" in updates:
+                db.create_admin_annotation_event(
+                    user_id=user_id,
+                    session_id=session_id,
+                    section_type="report",
+                    field_name="report_comment",
+                    ai_original_text=(current.get("ai_draft_comment") or "").strip() or None,
+                    coach_final_text=(updates.get("report_comment") or "").strip() or None,
+                    reason_chip=(data.get("reason_chip") or "manual_comment"),
+                    custom_reason=None,
+                    created_by=request.user_id,
+                )
+        except Exception as ann_err:
+            logger.warning("session patch annotation event failed: %s", ann_err)
         return jsonify({
             "status": "ok",
             "report_grade": updated.get("report_grade"),
@@ -918,6 +1012,32 @@ def v2_admin_student_session_grade(user_id, session_id):
         })
         if not updated:
             return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found"}), 404
+        try:
+            db.create_admin_annotation_event(
+                user_id=user_id,
+                session_id=session_id,
+                section_type="report",
+                field_name="report_grade",
+                ai_original_text=str(session.get("ai_draft_grade")) if session.get("ai_draft_grade") is not None else None,
+                coach_final_text=str(g),
+                reason_chip=(data.get("reason_chip") or "manual_grade"),
+                custom_reason=None,
+                created_by=request.user_id,
+            )
+            if "report_comment" in data:
+                db.create_admin_annotation_event(
+                    user_id=user_id,
+                    session_id=session_id,
+                    section_type="report",
+                    field_name="report_comment",
+                    ai_original_text=(session.get("ai_draft_comment") or "").strip() or None,
+                    coach_final_text=(report_comment or "").strip() or None,
+                    reason_chip=(data.get("reason_chip") or "manual_comment"),
+                    custom_reason=None,
+                    created_by=request.user_id,
+                )
+        except Exception as ann_err:
+            logger.warning("session grade annotation event failed: %s", ann_err)
         return jsonify({
             "status": "ok",
             "report_grade": g,
@@ -1987,6 +2107,42 @@ def _build_student_context_for_ai(user_id: str) -> str:
     return "\n\n".join(parts) if parts else f"Student ID: {user_id} (no profile data available yet)"
 
 
+def _generate_assignment_prefill_for_user(user_id: str, fallback_task_text: str) -> dict:
+    """Best-effort AI prefill for task/email/script drafts; deterministic fallback on errors."""
+    fallback_task = (fallback_task_text or "").strip() or "Continue with your next speaking task based on recent feedback."
+    fallback_message = "Short update: keep building clarity and pacing using your latest report guidance."
+    fallback_script = "1) Praise one improvement. 2) Name one focus for next recording. 3) Encourage consistency."
+    try:
+        from services.openai_service import openai_service
+
+        student_context = _build_student_context_for_ai(user_id)
+        result = openai_service.generate_coach_suggestions(
+            student_context=student_context,
+            conversation_history=[],
+            user_message=(
+                "Create the next assignment for this student. "
+                "Return all three sections: homework message, task suggestion, video script."
+            ),
+        )
+        ai_message = (result.get("homework_message") or "").strip()
+        ai_task = (result.get("task_suggestion") or "").strip()
+        ai_script = (result.get("video_script") or "").strip()
+        return {
+            "ai_draft_message": ai_message or fallback_message,
+            "ai_suggested_task_text": ai_task or fallback_task,
+            "ai_draft_video_script": ai_script or fallback_script,
+            "raw_text": (result.get("raw_text") or "").strip() or None,
+        }
+    except Exception as e:
+        logger.warning("AI assignment prefill failed for user=%s: %s", user_id, e)
+        return {
+            "ai_draft_message": fallback_message,
+            "ai_suggested_task_text": fallback_task,
+            "ai_draft_video_script": fallback_script,
+            "raw_text": None,
+        }
+
+
 @v2_bp.route("/admin/students/<user_id>/coach-suggestions", methods=["POST"])
 @require_admin
 def v2_admin_coach_suggestions(user_id):
@@ -2232,6 +2388,11 @@ def _serialize_copilot_draft(row):
         "task_draft": payload.get("task_draft") or payload.get("task_text") or row.get("master_task_text"),
         "email_draft": payload.get("email_draft") or payload.get("email_message") or payload.get("homework_comment"),
         "script_draft": payload.get("script_draft") or payload.get("video_script"),
+        "ai_task_suggestion": payload.get("ai_task_suggestion") or row.get("ai_suggested_task_text"),
+        "ai_email_draft": payload.get("ai_email_draft") or row.get("ai_draft_message"),
+        "ai_script_draft": payload.get("ai_script_draft") or row.get("ai_draft_video_script"),
+        "ai_grade_draft": payload.get("ai_grade_draft"),
+        "ai_comment_draft": payload.get("ai_comment_draft"),
         "reason_chip_required": bool(payload.get("reason_chip_required", False)),
         "metadata": payload.get("metadata") if isinstance(payload.get("metadata"), dict) else None,
     }
@@ -2870,6 +3031,16 @@ def v2_admin_copilot_student_drafts(user_id):
         if not row:
             return jsonify({"code": "DRAFT_NOT_FOUND", "error": "No editable draft found for student"}), 404
         payload = _draft_payload(row)
+        old_grade = payload.get("grade_draft")
+        old_comment = (payload.get("comment_draft") or "").strip()
+        old_task = (
+            (payload.get("task_draft") or payload.get("task_text") or row.get("master_task_text") or "").strip()
+        )
+        ai_grade_baseline = payload.get("ai_grade_draft")
+        ai_comment_baseline = (payload.get("ai_comment_draft") or "").strip() or None
+        ai_task_baseline = (
+            (payload.get("ai_task_suggestion") or row.get("ai_suggested_task_text") or "").strip() or None
+        )
         for k in ("grade_draft", "comment_draft", "task_draft", "email_draft", "script_draft", "metadata"):
             if k in body:
                 payload[k] = body.get(k)
@@ -2877,14 +3048,61 @@ def v2_admin_copilot_student_drafts(user_id):
             payload["reason_chips"] = body.get("reason_chips")
         if "reason_chip_custom" in body:
             payload["reason_chip_custom"] = body.get("reason_chip_custom")
+        new_task = (
+            (payload.get("task_draft") or payload.get("task_text") or row.get("master_task_text") or "").strip()
+        )
+        update_body = {"draft_payload": payload, "updated_at": datetime.now(timezone.utc).isoformat()}
+        if "task_draft" in body and new_task:
+            update_body["master_task_text"] = new_task
         updated = (
             db.client.table("admin_student_send_drafts")
-            .update({"draft_payload": payload, "updated_at": datetime.now(timezone.utc).isoformat()})
+            .update(update_body)
             .eq("id", row.get("id"))
             .eq("user_id", user_id)
             .execute()
         )
         out = updated.data[0] if updated.data else row
+        try:
+            new_grade = payload.get("grade_draft")
+            new_comment = (payload.get("comment_draft") or "").strip()
+            if "grade_draft" in body and str(old_grade) != str(new_grade):
+                db.create_admin_annotation_event(
+                    user_id=user_id,
+                    session_id=row.get("session_id"),
+                    section_type="report",
+                    field_name="report_grade",
+                    ai_original_text=str(ai_grade_baseline) if ai_grade_baseline is not None else (str(old_grade) if old_grade is not None else None),
+                    coach_final_text=str(new_grade) if new_grade is not None else None,
+                    reason_chip=(body.get("reason_chip") or "manual_grade"),
+                    custom_reason=(body.get("reason_chip_custom") or None),
+                    created_by=request.user_id,
+                )
+            if "comment_draft" in body and old_comment != new_comment:
+                db.create_admin_annotation_event(
+                    user_id=user_id,
+                    session_id=row.get("session_id"),
+                    section_type="report",
+                    field_name="report_comment",
+                    ai_original_text=ai_comment_baseline or old_comment or None,
+                    coach_final_text=new_comment or None,
+                    reason_chip=(body.get("reason_chip") or "manual_comment"),
+                    custom_reason=(body.get("reason_chip_custom") or None),
+                    created_by=request.user_id,
+                )
+            if "task_draft" in body and old_task != new_task:
+                db.create_admin_annotation_event(
+                    user_id=user_id,
+                    session_id=row.get("session_id"),
+                    section_type="assignment",
+                    field_name="task_text",
+                    ai_original_text=ai_task_baseline or old_task,
+                    coach_final_text=new_task or None,
+                    reason_chip=(body.get("reason_chip") or "task_swap"),
+                    custom_reason=(body.get("reason_chip_custom") or None),
+                    created_by=request.user_id,
+                )
+        except Exception as ann_err:
+            logger.warning("task swap annotation failed: %s", ann_err)
         return jsonify({"status": "ok", "draft": _serialize_copilot_draft(out)}), 200
     except Exception as e:
         sentry_sdk.capture_exception(e)
@@ -2907,6 +3125,9 @@ def v2_admin_copilot_student_audit(user_id):
         if not row:
             return jsonify({"code": "DRAFT_NOT_FOUND", "error": "Draft not found"}), 404
         payload = _draft_payload(row)
+        old_corrected = (payload.get("corrected_insight") or "").strip()
+        old_good_as_is = bool(payload.get("good_as_is"))
+        ai_insight = (payload.get("ai_insight") or "").strip() or None
         if "good_as_is" in body:
             payload["good_as_is"] = bool(body.get("good_as_is"))
         if "corrected_insight" in body:
@@ -2933,6 +3154,35 @@ def v2_admin_copilot_student_audit(user_id):
                 })
             except Exception:
                 pass
+        try:
+            new_corrected = (payload.get("corrected_insight") or "").strip()
+            new_good_as_is = bool(payload.get("good_as_is"))
+            if "corrected_insight" in body and old_corrected != new_corrected:
+                db.create_admin_annotation_event(
+                    user_id=user_id,
+                    session_id=row.get("session_id"),
+                    section_type="post_hoc_audit",
+                    field_name="coach_insight",
+                    ai_original_text=ai_insight,
+                    coach_final_text=new_corrected or None,
+                    reason_chip=((body.get("reason_chips") or [None])[0] if isinstance(body.get("reason_chips"), list) else body.get("reason_chip")),
+                    custom_reason=body.get("reason_chip_custom"),
+                    created_by=request.user_id,
+                )
+            elif "good_as_is" in body and (not old_good_as_is and new_good_as_is):
+                db.create_admin_annotation_event(
+                    user_id=user_id,
+                    session_id=row.get("session_id"),
+                    section_type="post_hoc_audit",
+                    field_name="coach_insight",
+                    ai_original_text=ai_insight,
+                    coach_final_text=ai_insight,
+                    reason_chip="good_as_is",
+                    custom_reason=None,
+                    created_by=request.user_id,
+                )
+        except Exception as ann_err:
+            logger.warning("copilot audit annotation event failed: %s", ann_err)
         return jsonify({"status": "ok", "audit": _serialize_copilot_draft(out)}), 200
     except Exception as e:
         sentry_sdk.capture_exception(e)
@@ -2979,18 +3229,46 @@ def v2_admin_copilot_student_send(user_id):
         if str(row.get("status") or "").lower() == "sent":
             return jsonify({"status": "ok", "state": "Sent", "sent_at": row.get("sent_at")}), 200
         payload = _draft_payload(row)
+        final_message = (
+            payload.get("email_draft")
+            or payload.get("email_message")
+            or payload.get("homework_comment")
+            or payload.get("ai_email_draft")
+            or row.get("ai_draft_message")
+            or ""
+        )
         student_email = (db.get_user_email_from_auth(user_id) or "").strip()
         if not student_email:
             return jsonify({"code": "NO_EMAIL", "error": "Student has no email in auth"}), 400
         send_result = email_service.send_assignment_to_student(
             to_email=student_email,
             frontend_url=config.FRONTEND_URL,
-            video_description=(payload.get("email_draft") or payload.get("email_message") or payload.get("homework_comment") or ""),
+            video_description=final_message,
             student_name=student_email,
         )
         if send_result.get("status") == "failed":
             return jsonify({"code": "EMAIL_FAILED", "error": send_result.get("error", "send failed")}), 500
         updated = db.mark_admin_student_send_draft_sent(str(row.get("id")), user_id, request.user_id) or row
+        try:
+            ai_message = (
+                payload.get("ai_email_draft")
+                or row.get("ai_draft_message")
+                or ""
+            )
+            if (ai_message or "").strip() and (final_message or "").strip() and ai_message.strip() != final_message.strip():
+                db.create_admin_annotation_event(
+                    user_id=user_id,
+                    session_id=row.get("session_id"),
+                    section_type="assignment",
+                    field_name="email_message",
+                    ai_original_text=ai_message,
+                    coach_final_text=final_message,
+                    reason_chip="manual_edit",
+                    custom_reason=None,
+                    created_by=request.user_id,
+                )
+        except Exception as ann_err:
+            logger.warning("copilot send annotation event failed: %s", ann_err)
         return jsonify({"status": "ok", "state": "Sent", "sent_at": updated.get("sent_at"), "draft": _serialize_copilot_draft(updated)}), 200
     except Exception as e:
         sentry_sdk.capture_exception(e)
@@ -3007,12 +3285,18 @@ def v2_admin_cohort_approve_task(profile, stage):
         master_task_text = (body.get("master_task_text") or "").strip()
         if not master_task_text:
             return jsonify({"code": "INVALID_INPUT", "error": "master_task_text is required"}), 400
+        try:
+            ai_prefill_limit = int(body.get("ai_prefill_limit", 25))
+        except (TypeError, ValueError):
+            ai_prefill_limit = 25
+        ai_prefill_limit = max(0, min(500, ai_prefill_limit))
         target_ids = body.get("user_ids")
         if target_ids is not None and not isinstance(target_ids, list):
             return jsonify({"code": "INVALID_INPUT", "error": "user_ids must be an array"}), 400
         target_ids = {str(x) for x in (target_ids or []) if str(x).strip()}
 
         rows = []
+        ai_prefill_count = 0
         all_ids = db.list_recent_student_ids(limit=600)
         for uid in all_ids:
             sp = db.get_sniper_profile(uid) or {}
@@ -3023,6 +3307,13 @@ def v2_admin_cohort_approve_task(profile, stage):
             if target_ids and uid not in target_ids:
                 continue
             latest_session = db.v2_get_last_completed_session(uid) or {}
+            prefill = {}
+            if ai_prefill_count < ai_prefill_limit:
+                prefill = _generate_assignment_prefill_for_user(uid, master_task_text)
+                ai_prefill_count += 1
+            ai_task = (prefill.get("ai_suggested_task_text") or "").strip() or master_task_text
+            ai_message = (prefill.get("ai_draft_message") or "").strip() or None
+            ai_script = (prefill.get("ai_draft_video_script") or "").strip() or None
             rows.append(
                 {
                     "user_id": uid,
@@ -3030,7 +3321,13 @@ def v2_admin_cohort_approve_task(profile, stage):
                     "cohort_profile": profile,
                     "cohort_stage": int(stage),
                     "master_task_text": master_task_text,
+                    "ai_suggested_task_text": ai_task,
+                    "ai_draft_message": ai_message,
+                    "ai_draft_video_script": ai_script,
                     "draft_payload": {
+                        "ai_task_suggestion": ai_task,
+                        "ai_email_draft": ai_message,
+                        "ai_script_draft": ai_script,
                         "task_text": master_task_text,
                         "email_message": (body.get("email_message") or "").strip() or None,
                         "video_script": (body.get("video_script") or "").strip() or None,
@@ -3041,7 +3338,18 @@ def v2_admin_cohort_approve_task(profile, stage):
                 }
             )
 
-        inserted = db.insert_admin_student_send_drafts(rows)
+        try:
+            inserted = db.insert_admin_student_send_drafts(rows)
+        except Exception:
+            # Backward-compatible insert if ai_* columns are not migrated yet.
+            rows_legacy = []
+            for r in rows:
+                rr = dict(r)
+                rr.pop("ai_suggested_task_text", None)
+                rr.pop("ai_draft_message", None)
+                rr.pop("ai_draft_video_script", None)
+                rows_legacy.append(rr)
+            inserted = db.insert_admin_student_send_drafts(rows_legacy)
         return jsonify({"status": "ok", "inserted_count": len(inserted), "drafts": inserted}), 201
     except Exception as e:
         sentry_sdk.capture_exception(e)
@@ -3058,18 +3366,46 @@ def v2_admin_student_draft_approve_send(user_id, draft_id):
         if row.get("status") == "sent":
             return jsonify({"status": "ok", "already_sent": True, "draft_id": draft_id}), 200
         payload = row.get("draft_payload") if isinstance(row.get("draft_payload"), dict) else {}
+        final_message = (
+            payload.get("email_message")
+            or payload.get("homework_comment")
+            or payload.get("email_draft")
+            or payload.get("ai_email_draft")
+            or row.get("ai_draft_message")
+            or ""
+        )
         student_email = (db.get_user_email_from_auth(user_id) or "").strip()
         if not student_email:
             return jsonify({"code": "NO_EMAIL", "error": "Student has no email in auth"}), 400
         send_result = email_service.send_assignment_to_student(
             to_email=student_email,
             frontend_url=config.FRONTEND_URL,
-            video_description=(payload.get("email_message") or payload.get("homework_comment") or ""),
+            video_description=final_message,
             student_name=student_email,
         )
         if send_result.get("status") == "failed":
             return jsonify({"code": "EMAIL_FAILED", "error": send_result.get("error", "send failed")}), 500
         updated = db.mark_admin_student_send_draft_sent(draft_id, user_id, request.user_id)
+        try:
+            ai_message = (
+                payload.get("ai_email_draft")
+                or row.get("ai_draft_message")
+                or ""
+            )
+            if (ai_message or "").strip() and (final_message or "").strip() and ai_message.strip() != final_message.strip():
+                db.create_admin_annotation_event(
+                    user_id=user_id,
+                    session_id=row.get("session_id"),
+                    section_type="assignment",
+                    field_name="email_message",
+                    ai_original_text=ai_message,
+                    coach_final_text=final_message,
+                    reason_chip="manual_edit",
+                    custom_reason=None,
+                    created_by=request.user_id,
+                )
+        except Exception as ann_err:
+            logger.warning("approve-send annotation event failed: %s", ann_err)
         return jsonify({"status": "ok", "draft": updated, "email": send_result}), 200
     except Exception as e:
         sentry_sdk.capture_exception(e)

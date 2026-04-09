@@ -416,7 +416,27 @@ def _run_optional_enrichment(
         except Exception as cq_err:
             logger.warning("Custom questions analysis failed: %s", cq_err)
 
-    db.v2_update_session(session_id, user_id, {
+    ai_grade = None
+    ai_comment = None
+    try:
+        latest = db.v2_get_session(session_id, user_id) or {}
+        score_100 = latest.get("score_for_display")
+        if score_100 is None:
+            try:
+                score_100 = int(round(float(score or 0) * 100.0))
+            except (TypeError, ValueError):
+                score_100 = None
+        draft = openai_service.generate_admin_grade_comment_draft(
+            context_short=context_short,
+            coach_insight=coach_insight,
+            score_for_display_100=score_100,
+        )
+        ai_grade = draft.get("grade")
+        ai_comment = draft.get("comment")
+    except Exception as gc_err:
+        logger.warning("AI grade/comment draft generation failed: %s", gc_err)
+
+    update_payload = {
         "question_1_analysis": r1.get("analysis") or "",
         "question_1_score": float(r1.get("score", 0)),
         "question_2_analysis": r2.get("analysis") or "",
@@ -424,7 +444,21 @@ def _run_optional_enrichment(
         "question_3_analysis": r3.get("analysis") or "",
         "question_3_score": float(r3.get("score", 0)),
         "coach_insight": coach_insight or None,
-    })
+    }
+    if ai_grade is not None:
+        update_payload["ai_draft_grade"] = ai_grade
+    if ai_comment:
+        update_payload["ai_draft_comment"] = ai_comment
+    try:
+        db.v2_update_session(session_id, user_id, update_payload)
+    except Exception as upd_err:
+        # Older DBs may not have ai_draft_* columns yet.
+        if "ai_draft_" in str(upd_err):
+            update_payload.pop("ai_draft_grade", None)
+            update_payload.pop("ai_draft_comment", None)
+            db.v2_update_session(session_id, user_id, update_payload)
+        else:
+            raise
     return coach_insight, r1, r2, r3
 
 
@@ -822,7 +856,11 @@ def minimal_complete_and_notify(
         if score_for_display_100 is None:
             score_for_display_100 = int(round(performance_score_end * 100.0))
         score_for_display_100 = max(0, min(100, int(score_for_display_100)))
-        db.v2_update_session(session_id, user_id, {
+        ai_grade = max(1, min(10, int(round(score_for_display_100 / 10.0))))
+        ai_comment = (
+            f"Current score is {score_for_display_100}/100. Keep refining pacing and clarity in your next task."
+        )
+        update_payload = {
             "post_answers": [],
             "report_id": report_row["id"] if report_row else None,
             "score": performance_score_end,
@@ -838,7 +876,18 @@ def minimal_complete_and_notify(
             "question_3_analysis": "",
             "question_3_score": 0,
             "coach_insight": None,
-        })
+            "ai_draft_grade": ai_grade,
+            "ai_draft_comment": ai_comment,
+        }
+        try:
+            db.v2_update_session(session_id, user_id, update_payload)
+        except Exception as upd_err:
+            if "ai_draft_" in str(upd_err):
+                update_payload.pop("ai_draft_grade", None)
+                update_payload.pop("ai_draft_comment", None)
+                db.v2_update_session(session_id, user_id, update_payload)
+            else:
+                raise
         try:
             db.v2_charge_homework_completion_credits_once(session_id, user_id, amount=5)
         except Exception as credit_err:

@@ -2939,6 +2939,7 @@ class DatabaseService:
             "recording_1_id", "report_id", "report_grade",
             "student_completion_email_sent_at",
             "score", "task_score",
+            "ai_draft_grade", "ai_draft_comment",
             "question_1_score", "question_2_score", "question_3_score",
             "realtime_level_at_session", "realtime_step_at_session",
             "ai_task_score", "ai_scoring_justification", "coach_override_score", "coach_override_justification",
