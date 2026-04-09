@@ -2959,13 +2959,40 @@ def _draft_state_ui(row):
     return "Draft"
 
 
+def _effective_session_id_for_copilot_draft(row: dict | None, user_id: str | None = None) -> str | None:
+    """Draft rows may omit session_id; Training Studio clients require a session id to send.
+
+    Resolution order: draft column → draft_payload.metadata.session_id → last completed session
+    → active homework session → any latest session by created_at.
+    """
+    if row and row.get("session_id"):
+        return str(row["session_id"])
+    uid = user_id or (str(row.get("user_id")) if row and row.get("user_id") else None)
+    if not uid:
+        return None
+    if row:
+        p = _draft_payload(row)
+        meta = p.get("metadata") if isinstance(p.get("metadata"), dict) else {}
+        mid = meta.get("session_id")
+        if mid and _is_valid_uuid(str(mid)):
+            return str(mid)
+    last_done = db.v2_get_last_completed_session(uid) or {}
+    if last_done.get("id"):
+        return str(last_done["id"])
+    active = db.v2_get_active_homework_session(uid)
+    if active and active.get("id"):
+        return str(active["id"])
+    return db.v2_get_latest_session_id_for_user(uid)
+
+
 def _serialize_copilot_draft(row):
     payload = _normalize_copilot_payload(row)
     meta = payload.get("metadata") if isinstance(payload.get("metadata"), dict) else {}
+    uid = str(row.get("user_id") or "") or None
     return {
         "id": str(row.get("id") or ""),
         "student_id": str(row.get("user_id") or ""),
-        "session_id": row.get("session_id"),
+        "session_id": _effective_session_id_for_copilot_draft(row, uid),
         "status": _draft_state_ui(row),
         "cohort_profile": row.get("cohort_profile"),
         "cohort_stage": row.get("cohort_stage"),
@@ -3000,9 +3027,14 @@ def _pick_student_draft(user_id: str, *, session_id: str | None = None, draft_id
         if row and include_sent:
             return row
     q = db.client.table("admin_student_send_drafts").select("*").eq("user_id", user_id).order("updated_at", desc=True).order("created_at", desc=True)
-    if session_id:
-        q = q.eq("session_id", session_id)
     rows = q.limit(20).execute().data or []
+    if session_id:
+        rows = [
+            r
+            for r in rows
+            if str(r.get("session_id") or "") == session_id
+            or _effective_session_id_for_copilot_draft(r, user_id) == session_id
+        ]
     if include_sent and rows:
         return rows[0]
     for row in rows:
@@ -3380,7 +3412,7 @@ def v2_admin_copilot_next_clips():
                     "draft_id": row.get("id"),
                     "user_id": uid,
                     "email": db.get_user_email_from_auth(uid) if uid else None,
-                    "session_id": row.get("session_id"),
+                    "session_id": draft.get("session_id"),
                     "cohort_profile": row.get("cohort_profile"),
                     "cohort_stage": row.get("cohort_stage"),
                     "master_task_text": row.get("master_task_text"),
@@ -3838,7 +3870,7 @@ def v2_admin_copilot_cohort_students(cohort_id):
             items.append(
                 {
                     "student_id": uid,
-                    "session_id": row.get("session_id"),
+                    "session_id": _effective_session_id_for_copilot_draft(row, uid),
                     "queue_position": i,
                     "state": _draft_state_ui(row),
                     "draft_count": int((counts.get(uid) or {}).get("Draft", 0)),
@@ -3872,7 +3904,7 @@ def v2_admin_copilot_cohort_students(cohort_id):
             items.append(
                 {
                     "student_id": uid,
-                    "session_id": None,
+                    "session_id": latest_session.get("id"),
                     "queue_position": len(items),
                     "state": "Draft",
                     "draft_count": 0,
@@ -3937,7 +3969,12 @@ def v2_admin_copilot_student_drafts(user_id):
             session_id = (request.args.get("session_id") or "").strip() or None
             rows = _ensure_draft_exists_for_user(user_id)
             if session_id:
-                rows = [r for r in rows if str(r.get("session_id") or "") == session_id]
+                rows = [
+                    r
+                    for r in rows
+                    if str(r.get("session_id") or "") == session_id
+                    or _effective_session_id_for_copilot_draft(r, user_id) == session_id
+                ]
             return jsonify({"drafts": [_serialize_copilot_draft(r) for r in rows]}), 200
 
         body = request.get_json(silent=True) or {}

@@ -1536,6 +1536,25 @@ class DatabaseService:
                 return result.data[0] if result.data else None
             raise
 
+    def v2_get_latest_session_id_for_user(self, user_id: str) -> Optional[str]:
+        """Most recent v2_sessions.id by created_at (any status). For admin UI when no completed row exists."""
+        try:
+            result = (
+                self.client.table("v2_sessions")
+                .select("id")
+                .eq("user_id", user_id)
+                .order("created_at", desc=True)
+                .limit(1)
+                .execute()
+            )
+            if not result.data:
+                return None
+            sid = result.data[0].get("id")
+            return str(sid) if sid else None
+        except Exception as e:
+            logger.warning("v2_get_latest_session_id_for_user failed user_id=%s: %s", user_id, e)
+            return None
+
     def v2_mark_tutor_feedback_sent(self, session_id: str, user_id: str):
         """Set tutor_feedback_sent_at to now for this session (idempotent)."""
         from datetime import datetime, timezone
