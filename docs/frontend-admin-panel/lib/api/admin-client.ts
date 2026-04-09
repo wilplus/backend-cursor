@@ -177,6 +177,38 @@ export interface MetricQuestion {
   created_at?: string;
 }
 
+export interface StressSnippet {
+  id: string;
+  recording_id: string;
+  session_id?: string | null;
+  user_id?: string | null;
+  source_type: "student" | "internet";
+  scenario: "after_pause" | "before_pause" | "high_filler_density" | "low_filler_density" | "uncertain";
+  start_ms: number;
+  end_ms: number;
+  duration_ms: number;
+  classifier_stress_probability?: number | null;
+  classifier_confidence?: number | null;
+  transcript_excerpt?: string | null;
+  coach_label?: "stress" | "no_stress" | null;
+  coach_label_notes?: string | null;
+  created_at?: string;
+  audio_url?: string | null;
+  recording?: {
+    id: string;
+    recording_origin?: string | null;
+    user_id?: string | null;
+    session_v2_id?: string | null;
+    created_at?: string;
+  } | null;
+}
+
+export interface StressSnippetSettings {
+  auto_extract_enabled: boolean;
+  runtime_key: string;
+  raw_value?: string | null;
+}
+
 export const adminApi = {
   getStudents: (params?: { limit?: number; offset?: number }) =>
     adminFetch<{ students: StudentListItem[]; limit: number; offset: number }>(
@@ -299,6 +331,41 @@ export const adminApi = {
 
   clearCoachSuggestionHistory: (userId: string) =>
     adminFetch<{ status: string }>(`/students/${userId}/coach-suggestions/history`, { method: "DELETE" }),
+
+  getStressSnippetSettings: () =>
+    adminFetch<{ settings: StressSnippetSettings }>("/stress-snippets/settings").then((r) => r.settings),
+
+  updateStressSnippetSettings: (autoExtractEnabled: boolean) =>
+    adminFetch<{ status: string; settings: StressSnippetSettings }>("/stress-snippets/settings", {
+      method: "PUT",
+      body: { auto_extract_enabled: autoExtractEnabled },
+    }),
+
+  listStressSnippets: (params?: {
+    source_type?: "all" | "student" | "internet";
+    label_state?: "all" | "labeled" | "unlabeled";
+    recording_id?: string;
+    limit?: number;
+    offset?: number;
+  }) =>
+    adminFetch<{ snippets: StressSnippet[]; count: number }>(
+      `/stress-snippets?${new URLSearchParams(params as Record<string, string>).toString()}`
+    ),
+
+  generateStressSnippets: (
+    recordingId: string,
+    data?: { max_snippets?: number; clip_seconds?: number; clear_existing?: boolean }
+  ) =>
+    adminFetch<{ status: string; generated_count: number; snippets: StressSnippet[] }>(
+      `/recordings/${recordingId}/stress-snippets/generate`,
+      { method: "POST", body: data ?? {} }
+    ),
+
+  labelStressSnippet: (snippetId: string, data: { label: "stress" | "no_stress"; notes?: string | null }) =>
+    adminFetch<{ status: string; snippet: StressSnippet }>(
+      `/stress-snippets/${snippetId}/label`,
+      { method: "PATCH", body: data }
+    ),
 };
 
 export interface CoachSuggestionResponse {

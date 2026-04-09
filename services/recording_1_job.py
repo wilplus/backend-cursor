@@ -44,6 +44,17 @@ _pending_recording_ids = set()
 _pending_lock = threading.Lock()
 
 
+def _runtime_bool(key: str, default: bool) -> bool:
+    raw = (db.get_runtime_config(key) or "").strip().lower()
+    if not raw:
+        return default
+    if raw in {"1", "true", "yes", "on"}:
+        return True
+    if raw in {"0", "false", "no", "off"}:
+        return False
+    return default
+
+
 def enqueue_recording_1_job(
     session_id: str,
     recording_id: str,
@@ -311,16 +322,22 @@ def _process_one(payload: dict):
             "recording_1_performance_profile": performance_profile,
         })
         # Generate candidate stress snippets (best-effort, non-blocking for completion).
-        try:
-            generate_stress_snippets_for_recording(
-                str(recording_id),
-                source_type="student",
-                max_snippets=8,
-                clip_seconds=10,
-                clear_existing=True,
+        if _runtime_bool("stress_snippets_auto_extract_enabled", True):
+            try:
+                generate_stress_snippets_for_recording(
+                    str(recording_id),
+                    source_type="student",
+                    max_snippets=8,
+                    clip_seconds=10,
+                    clear_existing=True,
+                )
+            except Exception as snippet_err:
+                logger.warning("recording_1_job: stress snippet generation failed recording_id=%s err=%s", recording_id, snippet_err)
+        else:
+            logger.info(
+                "recording_1_job: stress snippet auto-extract disabled by runtime_config recording_id=%s",
+                recording_id,
             )
-        except Exception as snippet_err:
-            logger.warning("recording_1_job: stress snippet generation failed recording_id=%s err=%s", recording_id, snippet_err)
         logger.info(
             "recording_1_job: stage=score_ready session_id=%s elapsed_ms=%d",
             session_id,

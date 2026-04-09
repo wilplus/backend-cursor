@@ -199,6 +199,17 @@ def _stress_snippet_payload(row: dict) -> dict:
     return payload
 
 
+def _runtime_bool(key: str, default: bool) -> bool:
+    raw = (db.get_runtime_config(key) or "").strip().lower()
+    if not raw:
+        return default
+    if raw in {"1", "true", "yes", "on"}:
+        return True
+    if raw in {"0", "false", "no", "off"}:
+        return False
+    return default
+
+
 def _build_admin_import_source_metadata(*, source_kind: str, source_url, source_title, speaker_label, language_code, transcript_text, import_notes, reviewer_id: str):
     return {
         "recording_origin": "admin_import",
@@ -1876,6 +1887,50 @@ def v2_admin_label_stress_snippet(snippet_id):
             notes=cleaned_notes,
         )
         return jsonify({"status": "ok", "snippet": _stress_snippet_payload(updated or snippet)}), 200
+    except Exception as e:
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
+
+
+@v2_bp.route("/admin/stress-snippets/settings", methods=["GET", "PUT"])
+@require_admin
+def v2_admin_stress_snippets_settings():
+    runtime_key = "stress_snippets_auto_extract_enabled"
+    try:
+        if request.method == "GET":
+            raw = db.get_runtime_config(runtime_key)
+            return jsonify(
+                {
+                    "settings": {
+                        "auto_extract_enabled": _runtime_bool(runtime_key, True),
+                        "runtime_key": runtime_key,
+                        "raw_value": raw,
+                    }
+                }
+            ), 200
+
+        data = request.get_json(silent=True) or {}
+        if "auto_extract_enabled" not in data:
+            return jsonify({"code": "INVALID_INPUT", "error": "auto_extract_enabled is required"}), 400
+        value = data.get("auto_extract_enabled")
+        if not isinstance(value, bool):
+            return jsonify({"code": "INVALID_INPUT", "error": "auto_extract_enabled must be boolean"}), 400
+        saved = db.upsert_runtime_config(
+            key=runtime_key,
+            value="true" if value else "false",
+            updated_by=str(request.user_id),
+            metadata={"source": "v2_admin_stress_snippets_settings"},
+        )
+        return jsonify(
+            {
+                "status": "ok",
+                "settings": {
+                    "auto_extract_enabled": bool(value),
+                    "runtime_key": runtime_key,
+                    "saved": saved,
+                },
+            }
+        ), 200
     except Exception as e:
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR", "error": str(e)}), 500

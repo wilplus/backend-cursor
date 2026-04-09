@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Users } from "lucide-react";
+import { Users, AudioLines } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // Only Students tab. Tasks, questions, metrics are managed inside each student profile (modals), not as separate tabs.
 const nav = [
   { href: "/admin/students", label: "Students", icon: Users },
+  { href: "/admin/voice-labeling", label: "Voice Labeling", icon: AudioLines },
 ];
 
 export default function AdminShell({
