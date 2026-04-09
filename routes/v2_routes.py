@@ -51,6 +51,7 @@ _COPILOT_DRAFT_EDITABLE_FIELDS = {
     "comment_draft",
     "corrected_insight",
     "metadata",
+    "video_url",
 }
 _COPILOT_DRAFT_CONTROL_FIELDS = {
     "session_id",
@@ -699,6 +700,34 @@ def v2_admin_student_overrides(user_id):
         return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
 
 
+def _deliver_homework_assignment_core(
+    user_id: str,
+    student_email: str,
+    *,
+    video_url: str | None,
+    video_description: str | None,
+):
+    """Shared path for student homework unlock: pending tutor media + email + tutor_feedback_sent.
+
+    Matches POST /admin/students/<id>/send-assignment delivery semantics (not the draft provenance insert).
+    Returns (success_payload, None) or (None, error_string) on email failure.
+    """
+    if video_url is not None or video_description is not None:
+        db.v2_set_pending_tutor_video(user_id, video_url, video_description)
+    result = email_service.send_assignment_to_student(
+        to_email=student_email.strip(),
+        frontend_url=config.FRONTEND_URL,
+        video_url=video_url,
+        video_description=video_description,
+        student_name=student_email.strip(),
+    )
+    if result.get("status") == "failed":
+        return None, result.get("error", "Failed to send email")
+    db.v2_mark_tutor_feedback_sent_for_user(user_id)
+    sniper_profile = db.get_sniper_profile_payload(user_id)
+    return {"email": result, "sniper_profile": sniper_profile}, None
+
+
 @v2_bp.route("/admin/students/<user_id>/send-assignment", methods=["POST"])
 @require_admin
 def v2_admin_send_assignment(user_id):
@@ -727,18 +756,16 @@ def v2_admin_send_assignment(user_id):
         ai_task = (ai_prefill.get("ai_suggested_task_text") or "").strip() or None
         ai_script = (ai_prefill.get("ai_draft_video_script") or "").strip() or None
         final_video_description = video_description if video_description is not None else ai_message
-        # Store coach message (and optional video URL) so GET session/status can return tutor_video_description
-        if video_url is not None or final_video_description is not None:
-            db.v2_set_pending_tutor_video(user_id, video_url, final_video_description)
-        result = email_service.send_assignment_to_student(
-            to_email=student_email.strip(),
-            frontend_url=config.FRONTEND_URL,
+        delivery, send_err = _deliver_homework_assignment_core(
+            user_id,
+            student_email.strip(),
             video_url=video_url,
             video_description=final_video_description,
-            student_name=student_email.strip(),
         )
-        if result.get("status") == "failed":
-            return jsonify({"code": "EMAIL_FAILED", "error": result.get("error", "Failed to send email")}), 500
+        if send_err:
+            return jsonify({"code": "EMAIL_FAILED", "error": send_err}), 500
+        result = delivery["email"]
+        sniper_profile = delivery["sniper_profile"]
         try:
             last_completed = db.v2_get_last_completed_session(user_id) or {}
             sent_row = {
@@ -786,10 +813,6 @@ def v2_admin_send_assignment(user_id):
                 )
         except Exception as prefill_err:
             logger.warning("send-assignment: draft provenance save failed for %s: %s", user_id, prefill_err)
-        sniper_profile = db.get_sniper_profile_payload(user_id)
-        # Treat successful coach action as the unlock trigger for the student UI,
-        # even if email delivery is pending/disabled in this environment.
-        db.v2_mark_tutor_feedback_sent_for_user(user_id)
 
         # Send to additional (similar) students
         additional_results = []
@@ -799,17 +822,19 @@ def v2_admin_send_assignment(user_id):
                 if not extra_email or not extra_email.strip():
                     additional_results.append({"user_id": extra_uid, "status": "skipped", "reason": "no_email"})
                     continue
-                if video_url is not None or final_video_description is not None:
-                    db.v2_set_pending_tutor_video(extra_uid, video_url, final_video_description)
-                extra_result = email_service.send_assignment_to_student(
-                    to_email=extra_email.strip(),
-                    frontend_url=config.FRONTEND_URL,
+                extra_delivery, extra_err = _deliver_homework_assignment_core(
+                    extra_uid,
+                    extra_email.strip(),
                     video_url=video_url,
                     video_description=final_video_description,
-                    student_name=extra_email.strip(),
                 )
-                db.v2_mark_tutor_feedback_sent_for_user(extra_uid)
-                additional_results.append({"user_id": extra_uid, "status": extra_result.get("status", "unknown"), "email": extra_email.strip()})
+                if extra_err:
+                    additional_results.append({"user_id": extra_uid, "status": "failed", "reason": extra_err})
+                else:
+                    er = extra_delivery["email"]
+                    additional_results.append(
+                        {"user_id": extra_uid, "status": er.get("status", "unknown"), "email": extra_email.strip()}
+                    )
             except Exception as extra_err:
                 logger.warning("send-assignment: additional user %s failed: %s", extra_uid, extra_err)
                 additional_results.append({"user_id": extra_uid, "status": "failed", "reason": str(extra_err)})
@@ -2889,6 +2914,9 @@ def _normalize_copilot_payload(row: dict, payload: dict | None = None) -> dict:
     base["script_draft"] = script_draft
     # Keep alias in sync for older clients that still read/write video_script.
     base["video_script"] = script_draft
+    # Optional coach video link (same as send-assignment video_url for step-0 media).
+    if "video_url" in base:
+        base["video_url"] = validate_video_url(base.get("video_url"))
     return base
 
 
@@ -2955,6 +2983,7 @@ def _serialize_copilot_draft(row):
         "task_draft": payload.get("task_draft"),
         "email_draft": payload.get("email_draft"),
         "script_draft": payload.get("script_draft"),
+        "video_url": payload.get("video_url"),
         # Audit state
         "corrected_insight": payload.get("corrected_insight"),
         "good_as_is": payload.get("good_as_is"),
@@ -3983,7 +4012,16 @@ def v2_admin_copilot_student_drafts(user_id):
         )
         old_corrected_insight = (payload.get("corrected_insight") or "").strip()
         ai_insight_baseline = (payload.get("ai_insight") or "").strip() or None
-        for k in ("grade_draft", "comment_draft", "task_draft", "email_draft", "script_draft", "corrected_insight", "metadata"):
+        for k in (
+            "grade_draft",
+            "comment_draft",
+            "task_draft",
+            "email_draft",
+            "script_draft",
+            "corrected_insight",
+            "metadata",
+            "video_url",
+        ):
             if k in body:
                 payload[k] = body.get(k)
         if "reason_chips" in body:
@@ -4247,7 +4285,13 @@ def v2_admin_copilot_student_send(user_id):
             return jsonify({"code": "DRAFT_NOT_FOUND", "error": "Draft not found"}), 404
         if str(row.get("status") or "").lower() == "sent":
             return jsonify({"status": "ok", "state": "Sent", "sent_at": row.get("sent_at")}), 200
-        payload = _draft_payload(row)
+        payload = _normalize_copilot_payload(row, _draft_payload(row))
+        video_url_raw = body.get("video_url")
+        if video_url_raw is None or (isinstance(video_url_raw, str) and not str(video_url_raw).strip()):
+            video_url_raw = payload.get("video_url")
+        video_url = validate_video_url(video_url_raw) if video_url_raw is not None and str(video_url_raw).strip() else None
+        if video_url_raw is not None and str(video_url_raw).strip() and video_url is None:
+            return jsonify({"code": "INVALID_VIDEO_URL", "error": "video_url must be a valid URL (http/https, max 2048 chars)"}), 400
         final_message = (
             payload.get("email_draft")
             or payload.get("email_message")
@@ -4259,14 +4303,17 @@ def v2_admin_copilot_student_send(user_id):
         student_email = (db.get_user_email_from_auth(user_id) or "").strip()
         if not student_email:
             return jsonify({"code": "NO_EMAIL", "error": "Student has no email in auth"}), 400
-        send_result = email_service.send_assignment_to_student(
-            to_email=student_email,
-            frontend_url=config.FRONTEND_URL,
-            video_description=final_message,
-            student_name=student_email,
+        desc = (final_message or "").strip() or None
+        delivery, send_err = _deliver_homework_assignment_core(
+            user_id,
+            student_email,
+            video_url=video_url,
+            video_description=desc,
         )
-        if send_result.get("status") == "failed":
-            return jsonify({"code": "EMAIL_FAILED", "error": send_result.get("error", "send failed")}), 500
+        if send_err:
+            return jsonify({"code": "EMAIL_FAILED", "error": send_err}), 500
+        send_result = delivery["email"]
+        sniper_profile = delivery["sniper_profile"]
         updated = db.mark_admin_student_send_draft_sent(str(row.get("id")), user_id, request.user_id) or row
         try:
             ai_message = (
@@ -4288,7 +4335,18 @@ def v2_admin_copilot_student_send(user_id):
                 )
         except Exception as ann_err:
             logger.warning("copilot send annotation event failed: %s", ann_err)
-        return jsonify({"status": "ok", "state": "Sent", "sent_at": updated.get("sent_at"), "draft": _serialize_copilot_draft(updated)}), 200
+        return jsonify(
+            {
+                "status": "ok",
+                "state": "Sent",
+                "sent_at": updated.get("sent_at"),
+                "sent": send_result.get("sent", False),
+                "sniper_profile": sniper_profile,
+                "realtime_level": sniper_profile.get("realtime_level"),
+                "realtime_step": sniper_profile.get("realtime_step"),
+                "draft": _serialize_copilot_draft(updated),
+            }
+        ), 200
     except Exception as e:
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
@@ -4382,16 +4440,24 @@ def v2_admin_cohort_approve_task(profile, stage):
 @require_admin
 def v2_admin_student_draft_approve_send(user_id, draft_id):
     try:
+        body = request.get_json(silent=True) or {}
         row = db.get_admin_student_send_draft(draft_id, user_id)
         if not row:
             return jsonify({"code": "DRAFT_NOT_FOUND", "error": "Draft not found"}), 404
         if row.get("status") == "sent":
             return jsonify({"status": "ok", "already_sent": True, "draft_id": draft_id}), 200
-        payload = row.get("draft_payload") if isinstance(row.get("draft_payload"), dict) else {}
+        raw_payload = row.get("draft_payload") if isinstance(row.get("draft_payload"), dict) else {}
+        payload = _normalize_copilot_payload(row, raw_payload)
+        video_url_raw = body.get("video_url")
+        if video_url_raw is None or (isinstance(video_url_raw, str) and not str(video_url_raw).strip()):
+            video_url_raw = payload.get("video_url")
+        video_url = validate_video_url(video_url_raw) if video_url_raw is not None and str(video_url_raw).strip() else None
+        if video_url_raw is not None and str(video_url_raw).strip() and video_url is None:
+            return jsonify({"code": "INVALID_VIDEO_URL", "error": "video_url must be a valid URL (http/https, max 2048 chars)"}), 400
         final_message = (
-            payload.get("email_message")
+            payload.get("email_draft")
+            or payload.get("email_message")
             or payload.get("homework_comment")
-            or payload.get("email_draft")
             or payload.get("ai_email_draft")
             or row.get("ai_draft_message")
             or ""
@@ -4399,14 +4465,17 @@ def v2_admin_student_draft_approve_send(user_id, draft_id):
         student_email = (db.get_user_email_from_auth(user_id) or "").strip()
         if not student_email:
             return jsonify({"code": "NO_EMAIL", "error": "Student has no email in auth"}), 400
-        send_result = email_service.send_assignment_to_student(
-            to_email=student_email,
-            frontend_url=config.FRONTEND_URL,
-            video_description=final_message,
-            student_name=student_email,
+        desc = (final_message or "").strip() or None
+        delivery, send_err = _deliver_homework_assignment_core(
+            user_id,
+            student_email,
+            video_url=video_url,
+            video_description=desc,
         )
-        if send_result.get("status") == "failed":
-            return jsonify({"code": "EMAIL_FAILED", "error": send_result.get("error", "send failed")}), 500
+        if send_err:
+            return jsonify({"code": "EMAIL_FAILED", "error": send_err}), 500
+        send_result = delivery["email"]
+        sniper_profile = delivery["sniper_profile"]
         updated = db.mark_admin_student_send_draft_sent(draft_id, user_id, request.user_id)
         try:
             ai_message = (
@@ -4428,7 +4497,17 @@ def v2_admin_student_draft_approve_send(user_id, draft_id):
                 )
         except Exception as ann_err:
             logger.warning("approve-send annotation event failed: %s", ann_err)
-        return jsonify({"status": "ok", "draft": updated, "email": send_result}), 200
+        return jsonify(
+            {
+                "status": "ok",
+                "draft": updated,
+                "email": send_result,
+                "sent": send_result.get("sent", False),
+                "sniper_profile": sniper_profile,
+                "realtime_level": sniper_profile.get("realtime_level"),
+                "realtime_step": sniper_profile.get("realtime_step"),
+            }
+        ), 200
     except Exception as e:
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
