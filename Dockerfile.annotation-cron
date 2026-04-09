@@ -12,5 +12,4 @@
 FROM curlimages/curl:8.11.1
 WORKDIR /app
 COPY bin/railway-annotation-export-cron.sh /app/run.sh
-RUN chmod +x /app/run.sh
 ENTRYPOINT ["/bin/sh", "/app/run.sh"]
