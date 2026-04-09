@@ -722,10 +722,24 @@ def _deliver_homework_assignment_core(
         student_name=student_email.strip(),
     )
     if result.get("status") == "failed":
+        if getattr(config, "HOMEWORK_UNLOCK_WHEN_EMAIL_FAILS", False):
+            logger.warning(
+                "homework delivery: email failed but unlock applied (HOMEWORK_UNLOCK_WHEN_EMAIL_FAILS=true) user_id=%s err=%s",
+                user_id,
+                result.get("error"),
+            )
+            db.v2_mark_tutor_feedback_sent_for_user(user_id)
+            sniper_profile = db.get_sniper_profile_payload(user_id)
+            return {
+                "email": result,
+                "sniper_profile": sniper_profile,
+                "email_failed_but_unlocked": True,
+                "email_error": result.get("error"),
+            }, None
         return None, result.get("error", "Failed to send email")
     db.v2_mark_tutor_feedback_sent_for_user(user_id)
     sniper_profile = db.get_sniper_profile_payload(user_id)
-    return {"email": result, "sniper_profile": sniper_profile}, None
+    return {"email": result, "sniper_profile": sniper_profile, "email_failed_but_unlocked": False}, None
 
 
 @v2_bp.route("/admin/students/<user_id>/send-assignment", methods=["POST"])
@@ -763,6 +777,15 @@ def v2_admin_send_assignment(user_id):
             video_description=final_video_description,
         )
         if send_err:
+            err_lower = (send_err or "").lower()
+            if "resend api key" in err_lower or "api key not set" in err_lower:
+                return jsonify(
+                    {
+                        "code": "EMAIL_NOT_CONFIGURED",
+                        "error": send_err,
+                        "hint": "Set RESEND_API_KEY and RESEND_FROM_EMAIL with SEND_EMAILS=true, or use SEND_EMAILS=false to unlock without sending email. For staging, HOMEWORK_UNLOCK_WHEN_EMAIL_FAILS=true still unlocks if email fails.",
+                    }
+                ), 503
             return jsonify({"code": "EMAIL_FAILED", "error": send_err}), 500
         result = delivery["email"]
         sniper_profile = delivery["sniper_profile"]
@@ -843,6 +866,8 @@ def v2_admin_send_assignment(user_id):
             "status": "ok",
             "message": "Assignment sent",
             "sent": result.get("sent", False),
+            "email_status": result.get("status"),
+            "email_failed_but_unlocked": bool(delivery.get("email_failed_but_unlocked")),
             "sniper_profile": sniper_profile,
             "realtime_level": sniper_profile.get("realtime_level"),
             "realtime_step": sniper_profile.get("realtime_step"),
@@ -4348,6 +4373,15 @@ def v2_admin_copilot_student_send(user_id):
             video_description=desc,
         )
         if send_err:
+            err_lower = (send_err or "").lower()
+            if "resend api key" in err_lower or "api key not set" in err_lower:
+                return jsonify(
+                    {
+                        "code": "EMAIL_NOT_CONFIGURED",
+                        "error": send_err,
+                        "hint": "Set RESEND_API_KEY and RESEND_FROM_EMAIL with SEND_EMAILS=true, or use SEND_EMAILS=false to unlock without sending email. For staging, HOMEWORK_UNLOCK_WHEN_EMAIL_FAILS=true still unlocks if email fails.",
+                    }
+                ), 503
             return jsonify({"code": "EMAIL_FAILED", "error": send_err}), 500
         send_result = delivery["email"]
         sniper_profile = delivery["sniper_profile"]
@@ -4378,6 +4412,8 @@ def v2_admin_copilot_student_send(user_id):
                 "state": "Sent",
                 "sent_at": updated.get("sent_at"),
                 "sent": send_result.get("sent", False),
+                "email_status": send_result.get("status"),
+                "email_failed_but_unlocked": bool(delivery.get("email_failed_but_unlocked")),
                 "sniper_profile": sniper_profile,
                 "realtime_level": sniper_profile.get("realtime_level"),
                 "realtime_step": sniper_profile.get("realtime_step"),
@@ -4510,6 +4546,15 @@ def v2_admin_student_draft_approve_send(user_id, draft_id):
             video_description=desc,
         )
         if send_err:
+            err_lower = (send_err or "").lower()
+            if "resend api key" in err_lower or "api key not set" in err_lower:
+                return jsonify(
+                    {
+                        "code": "EMAIL_NOT_CONFIGURED",
+                        "error": send_err,
+                        "hint": "Set RESEND_API_KEY and RESEND_FROM_EMAIL with SEND_EMAILS=true, or use SEND_EMAILS=false to unlock without sending email. For staging, HOMEWORK_UNLOCK_WHEN_EMAIL_FAILS=true still unlocks if email fails.",
+                    }
+                ), 503
             return jsonify({"code": "EMAIL_FAILED", "error": send_err}), 500
         send_result = delivery["email"]
         sniper_profile = delivery["sniper_profile"]
@@ -4540,6 +4585,8 @@ def v2_admin_student_draft_approve_send(user_id, draft_id):
                 "draft": updated,
                 "email": send_result,
                 "sent": send_result.get("sent", False),
+                "email_status": send_result.get("status"),
+                "email_failed_but_unlocked": bool(delivery.get("email_failed_but_unlocked")),
                 "sniper_profile": sniper_profile,
                 "realtime_level": sniper_profile.get("realtime_level"),
                 "realtime_step": sniper_profile.get("realtime_step"),
