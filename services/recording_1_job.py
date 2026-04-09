@@ -21,6 +21,7 @@ from services.metrics_v2 import (
     compute_recording_performance_score,
 )
 from services.homework_completion import complete_session_recording_1_only
+from services.stress_snippet_service import generate_stress_snippets_for_recording
 
 logger = logging.getLogger(__name__)
 
@@ -309,6 +310,17 @@ def _process_one(payload: dict):
             "recording_1_processing_status": "completed",
             "recording_1_performance_profile": performance_profile,
         })
+        # Generate candidate stress snippets (best-effort, non-blocking for completion).
+        try:
+            generate_stress_snippets_for_recording(
+                str(recording_id),
+                source_type="student",
+                max_snippets=8,
+                clip_seconds=10,
+                clear_existing=True,
+            )
+        except Exception as snippet_err:
+            logger.warning("recording_1_job: stress snippet generation failed recording_id=%s err=%s", recording_id, snippet_err)
         logger.info(
             "recording_1_job: stage=score_ready session_id=%s elapsed_ms=%d",
             session_id,

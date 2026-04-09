@@ -6,8 +6,10 @@ from flask import Blueprint, request, jsonify
 from config import Config
 from auth import require_auth
 from routes.admin import require_admin, is_admin
+from services.annotation_export import result_to_dict, run_annotation_export
 from services.db import db
 from services.email_service import email_service
+from services.stress_snippet_service import generate_stress_snippets_for_recording
 from services.video_url_validation import validate_video_url
 import logging
 import sentry_sdk
@@ -16,6 +18,7 @@ import time
 import mimetypes
 import os
 import uuid
+import hashlib
 from datetime import datetime, timezone
 from urllib.parse import urlparse
 from werkzeug.utils import secure_filename
@@ -28,6 +31,45 @@ _IMPORT_ALLOWED_SOURCE_KINDS = {"internet", "coach_upload", "manual_import"}
 _IMPORT_ALLOWED_OVERALL_QUALITY = {"good", "bad", "unclear"}
 _IMPORT_ALLOWED_EXTENSIONS = {
     ".mp3", ".wav", ".m4a", ".webm", ".mp4", ".mpeg", ".mpga", ".ogg", ".oga", ".aac", ".flac"
+}
+_STRESS_ALLOWED_SOURCE_TYPES = {"student", "internet"}
+_STRESS_ALLOWED_LABELS = {"stress", "no_stress"}
+_TASK_TEMPLATE_ALLOWED_PROFILES = {
+    "The Overwhelmed",
+    "The Stressor",
+    "The Drifter",
+    "The Master",
+}
+_TASK_TEMPLATE_DEFAULT_PROFILE = "The Overwhelmed"
+_TASK_TEMPLATE_DEFAULT_LEVEL = 1
+_TASK_TEMPLATE_DEFAULT_STEP = 1
+_COPILOT_DRAFT_EDITABLE_FIELDS = {
+    "email_draft",
+    "task_draft",
+    "script_draft",
+    "grade_draft",
+    "comment_draft",
+    "corrected_insight",
+    "metadata",
+}
+_COPILOT_DRAFT_CONTROL_FIELDS = {
+    "session_id",
+    "draft_id",
+    "reason_chip",
+    "reason_chips",
+    "reason_chip_custom",
+    "video_script",  # legacy alias -> script_draft
+}
+_COPILOT_DRAFT_IMMUTABLE_FIELDS = {
+    "ai_email_draft",
+    "ai_task_suggestion",
+    "ai_script_draft",
+    "ai_grade_draft",
+    "ai_comment_draft",
+    "ai_insight",
+    "ai_suggested_task_text",
+    "ai_draft_message",
+    "ai_draft_video_script",
 }
 
 
@@ -137,6 +179,24 @@ def _public_storage_url(bucket: str, path: str):
     if not supabase_url or not bucket or not path:
         return ""
     return f"{supabase_url}/storage/v1/object/public/{bucket}/{path}"
+
+
+def _infer_stress_source_type(recording: dict) -> str:
+    origin = (recording or {}).get("recording_origin")
+    return "internet" if origin == "admin_import" else "student"
+
+
+def _stress_snippet_payload(row: dict) -> dict:
+    storage_path = (row.get("storage_path") or "").strip()
+    audio_url = None
+    if storage_path:
+        try:
+            audio_url = db.create_signed_url(config.AUDIO_BUCKET_NAME, storage_path, config.SIGNED_URL_EXPIRY_SECONDS)
+        except Exception:
+            audio_url = _public_storage_url(config.AUDIO_BUCKET_NAME, storage_path) or None
+    payload = dict(row)
+    payload["audio_url"] = audio_url
+    return payload
 
 
 def _build_admin_import_source_metadata(*, source_kind: str, source_url, source_title, speaker_label, language_code, transcript_text, import_notes, reviewer_id: str):
@@ -271,6 +331,34 @@ def _parse_report_comment(value):
     if len(comment) > 2000:
         raise ValueError("report_comment must be at most 2000 characters")
     return comment
+
+
+def _learning_profile_payload(row: dict | None) -> dict:
+    """Expose AI vs coach learning-profile fields and what the UI should show by default."""
+    row = row or {}
+    ai_profile = (row.get("behavioral_profile") or "").strip() or None
+    ai_justification = (row.get("behavioral_profile_justification") or "").strip() or None
+    coach_profile = (row.get("coach_override_profile") or "").strip() or None
+    coach_justification = (row.get("profile_override_justification") or "").strip() or None
+    display_profile = coach_profile or ai_profile or "Unclassified"
+    display_justification = coach_justification or ai_justification or ""
+    return {
+        "behavioral_profile": ai_profile,
+        "behavioral_profile_justification": ai_justification,
+        "coach_override_profile": coach_profile,
+        "profile_override_justification": coach_justification,
+        "display_profile": display_profile,
+        "display_justification": display_justification,
+    }
+
+
+def _display_learning_profile_justification(profile_row: dict | None) -> str | None:
+    row = profile_row or {}
+    coach_j = (row.get("profile_override_justification") or "").strip()
+    if coach_j:
+        return coach_j
+    ai_j = (row.get("behavioral_profile_justification") or "").strip()
+    return ai_j or None
 
 
 # ---------- Admin ----------
@@ -423,6 +511,7 @@ def v2_admin_student_profile(user_id):
         overrides["skip_metric_questions"] = bool(raw_overrides.get("skip_metric_questions") if raw_overrides else False)
         speaker_profile = db.v2_get_speaker_profile(user_id)
         sniper_profile = db.get_sniper_profile_payload(user_id)
+        learning_profile = _learning_profile_payload(sniper_profile)
         coaching_memory = db.v2_get_student_coaching_memory(user_id)
         tasks = db.v2_get_student_tasks(user_id)
         last_report = db.v2_get_last_report_for_user(user_id)
@@ -444,6 +533,7 @@ def v2_admin_student_profile(user_id):
             "overrides": overrides,
             "speaker_profile": speaker_profile,
             "sniper_profile": sniper_profile,
+            "learning_profile": learning_profile,
             "coaching_memory": coaching_memory,
             "realtime_level": sniper_profile.get("realtime_level"),
             "realtime_step": sniper_profile.get("realtime_step"),
@@ -1567,6 +1657,18 @@ def v2_admin_recordings_import():
         except Exception as queue_err:
             logger.warning("Admin recording import queue failed: %s", queue_err, exc_info=True)
 
+        generated_snippets = []
+        try:
+            generated_snippets = generate_stress_snippets_for_recording(
+                recording_id,
+                source_type="internet",
+                max_snippets=8,
+                clip_seconds=10,
+                clear_existing=True,
+            )
+        except Exception as snippet_err:
+            logger.warning("Admin recording import snippet generation failed: %s", snippet_err, exc_info=True)
+
         message = (
             "Recording imported and queued for processing."
             if queued else
@@ -1577,6 +1679,7 @@ def v2_admin_recordings_import():
             "recording_id": recording_id,
             "review_id": review.get("id") if isinstance(review, dict) else None,
             "playback_url": playback_url,
+            "generated_snippets_count": len(generated_snippets),
             "message": message,
         }), 201
     except Exception as e:
@@ -1658,6 +1761,126 @@ def v2_admin_recording_review_patch(recording_id):
         return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
 
 
+# ---------- Admin: stress snippets (binary stress/no_stress labeling) ----------
+@v2_bp.route("/admin/recordings/<recording_id>/stress-snippets/generate", methods=["POST"])
+@require_admin
+def v2_admin_generate_stress_snippets(recording_id):
+    try:
+        if not _is_valid_uuid(recording_id):
+            return jsonify({"code": "INVALID_INPUT", "error": "Invalid recording ID"}), 400
+        recording = db.get_recording(recording_id, None)
+        if not recording:
+            return jsonify({"code": "RECORDING_NOT_FOUND", "error": "Recording not found"}), 404
+
+        data = request.get_json(silent=True) or {}
+        max_snippets = data.get("max_snippets", 8)
+        clip_seconds = data.get("clip_seconds", 10)
+        clear_existing = data.get("clear_existing", True)
+        try:
+            max_snippets = int(max_snippets)
+            clip_seconds = int(clip_seconds)
+        except (TypeError, ValueError):
+            return jsonify({"code": "INVALID_INPUT", "error": "max_snippets and clip_seconds must be integers"}), 400
+        max_snippets = max(1, min(max_snippets, 16))
+        clip_seconds = max(6, min(clip_seconds, 20))
+
+        source_type = _infer_stress_source_type(recording)
+        created = generate_stress_snippets_for_recording(
+            recording_id,
+            source_type=source_type,
+            max_snippets=max_snippets,
+            clip_seconds=clip_seconds,
+            clear_existing=bool(clear_existing),
+        )
+        return jsonify(
+            {
+                "status": "ok",
+                "recording_id": recording_id,
+                "source_type": source_type,
+                "generated_count": len(created),
+                "snippets": [_stress_snippet_payload(r) for r in created],
+            }
+        ), 200
+    except Exception as e:
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
+
+
+@v2_bp.route("/admin/stress-snippets", methods=["GET"])
+@require_admin
+def v2_admin_list_stress_snippets():
+    try:
+        source_type = (request.args.get("source_type", "all") or "all").strip().lower()
+        if source_type != "all" and source_type not in _STRESS_ALLOWED_SOURCE_TYPES:
+            return jsonify({"code": "INVALID_INPUT", "error": "source_type must be one of: all, student, internet"}), 400
+        label_state = (request.args.get("label_state", "all") or "all").strip().lower()
+        if label_state not in {"all", "labeled", "unlabeled"}:
+            return jsonify({"code": "INVALID_INPUT", "error": "label_state must be one of: all, labeled, unlabeled"}), 400
+        recording_id = (request.args.get("recording_id") or "").strip() or None
+        if recording_id and not _is_valid_uuid(recording_id):
+            return jsonify({"code": "INVALID_INPUT", "error": "recording_id must be a valid UUID"}), 400
+        try:
+            limit = int(request.args.get("limit", 50))
+            offset = int(request.args.get("offset", 0))
+        except (TypeError, ValueError):
+            return jsonify({"code": "INVALID_INPUT", "error": "limit and offset must be integers"}), 400
+        limit = max(1, min(limit, 200))
+        offset = max(0, offset)
+
+        rows = db.v2_list_stress_snippets(
+            source_type=None if source_type == "all" else source_type,
+            recording_id=recording_id,
+            label_state=label_state,
+            limit=limit,
+            offset=offset,
+        )
+        snippets = [_stress_snippet_payload(r) for r in rows]
+        return jsonify(
+            {
+                "snippets": snippets,
+                "source_type": source_type,
+                "label_state": label_state,
+                "limit": limit,
+                "offset": offset,
+                "count": len(snippets),
+            }
+        ), 200
+    except Exception as e:
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
+
+
+@v2_bp.route("/admin/stress-snippets/<snippet_id>/label", methods=["PATCH"])
+@require_admin
+def v2_admin_label_stress_snippet(snippet_id):
+    try:
+        if not _is_valid_uuid(snippet_id):
+            return jsonify({"code": "INVALID_INPUT", "error": "Invalid snippet ID"}), 400
+        snippet = db.v2_get_stress_snippet(snippet_id)
+        if not snippet:
+            return jsonify({"code": "SNIPPET_NOT_FOUND", "error": "Snippet not found"}), 404
+        data = request.get_json(silent=True) or {}
+        label = (data.get("label") or "").strip().lower()
+        if label not in _STRESS_ALLOWED_LABELS:
+            return jsonify({"code": "INVALID_INPUT", "error": "label must be one of: stress, no_stress"}), 422
+        notes = data.get("notes")
+        if notes is not None and not isinstance(notes, str):
+            return jsonify({"code": "INVALID_INPUT", "error": "notes must be a string or null"}), 422
+        cleaned_notes = notes.strip() if isinstance(notes, str) else None
+        if isinstance(cleaned_notes, str) and len(cleaned_notes) > 2000:
+            return jsonify({"code": "INVALID_INPUT", "error": "notes must be <= 2000 chars"}), 422
+        updated = db.v2_set_stress_snippet_label(
+            snippet_id,
+            reviewer_id=str(request.user_id),
+            label=label,
+            notes=cleaned_notes,
+        )
+        return jsonify({"status": "ok", "snippet": _stress_snippet_payload(updated or snippet)}), 200
+    except Exception as e:
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
+
+
 # ---------- Admin: tasks_pool (global pool) + tasks (per student) ----------
 
 
@@ -1671,13 +1894,87 @@ def _admin_tasks_pool_row_payload(row):
     return {"tasks_pool": row}
 
 
+def _task_template_validation_error(code: str, field: str, message: str):
+    return jsonify({"code": code, "error": message, "details": {field: message}}), 400
+
+
+def _is_duplicate_active_slot_error(err: Exception) -> bool:
+    text = str(err).lower()
+    return ("idx_tasks_pool_active_slot_unique" in text) or (
+        "duplicate key value violates unique constraint" in text and "target_profile" in text and "step_in_level" in text
+    )
+
+
+def _normalize_task_template_payload(data: dict, *, is_create: bool, allow_partial: bool = False):
+    payload = {}
+    if is_create or "text" in data:
+        text = (data.get("text") or "").strip()
+        if not text:
+            return None, _task_template_validation_error("INVALID_TEXT", "text", "text is required and must be non-empty")
+        payload["text"] = text
+    if "order_index" in data:
+        try:
+            payload["order_index"] = int(data.get("order_index"))
+        except (TypeError, ValueError):
+            payload["order_index"] = 0
+    if "max_performance_score" in data:
+        try:
+            payload["max_performance_score"] = float(data.get("max_performance_score"))
+        except (TypeError, ValueError):
+            payload["max_performance_score"] = 1.0
+
+    needs_profile = is_create or (not allow_partial) or ("target_profile" in data)
+    if needs_profile:
+        target_profile = (data.get("target_profile") or _TASK_TEMPLATE_DEFAULT_PROFILE).strip()
+        if target_profile not in _TASK_TEMPLATE_ALLOWED_PROFILES:
+            return None, _task_template_validation_error(
+                "INVALID_TARGET_PROFILE",
+                "target_profile",
+                "target_profile must be one of: The Overwhelmed, The Stressor, The Drifter, The Master",
+            )
+        payload["target_profile"] = target_profile
+
+    needs_level = is_create or (not allow_partial) or ("level" in data)
+    if needs_level:
+        raw_level = data.get("level", _TASK_TEMPLATE_DEFAULT_LEVEL)
+        try:
+            level = int(raw_level)
+        except (TypeError, ValueError):
+            return None, _task_template_validation_error("INVALID_LEVEL", "level", "level must be an integer >= 1")
+        if level < 1:
+            return None, _task_template_validation_error("INVALID_LEVEL", "level", "level must be an integer >= 1")
+        payload["level"] = level
+
+    needs_step = is_create or (not allow_partial) or ("step_in_level" in data)
+    if needs_step:
+        raw_step = data.get("step_in_level", _TASK_TEMPLATE_DEFAULT_STEP)
+        try:
+            step_in_level = int(raw_step)
+        except (TypeError, ValueError):
+            return None, _task_template_validation_error("INVALID_STEP_IN_LEVEL", "step_in_level", "step_in_level must be an integer in [1..10]")
+        if step_in_level < 1 or step_in_level > 10:
+            return None, _task_template_validation_error("INVALID_STEP_IN_LEVEL", "step_in_level", "step_in_level must be an integer in [1..10]")
+        payload["step_in_level"] = step_in_level
+
+    if is_create:
+        payload["is_active"] = bool(data.get("is_active", True))
+    elif "is_active" in data:
+        payload["is_active"] = bool(data.get("is_active"))
+
+    if is_create or "replaces_task_id" in data:
+        payload["replaces_task_id"] = data.get("replaces_task_id") or None
+
+    return payload, None
+
+
 @v2_bp.route("/admin/tasks-pool", methods=["GET"])
 @v2_bp.route("/admin/task-pool", methods=["GET"])
 @v2_bp.route("/admin/task-warm-up-pool", methods=["GET"])
 @require_admin
 def v2_admin_tasks_pool_list():
     try:
-        data = db.v2_get_task_pool()
+        include_inactive = (request.args.get("include_inactive") or "").strip().lower() in ("1", "true", "yes")
+        data = db.v2_get_task_pool(include_inactive=include_inactive)
     except Exception:
         data = []
     return jsonify(_admin_tasks_pool_list_payload(data)), 200
@@ -1689,18 +1986,38 @@ def v2_admin_tasks_pool_list():
 @require_admin
 def v2_admin_tasks_pool_create():
     data = request.get_json() or {}
-    text = (data.get("text") or "").strip()
-    if not text:
-        return jsonify({"error": "text is required", "hint": "Send JSON body: { \"text\": \"your task text\" }"}), 400
-    payload = {"text": text, "order_index": int(data.get("order_index", 0))}
+    payload, err_resp = _normalize_task_template_payload(data, is_create=True, allow_partial=False)
+    if err_resp:
+        return err_resp
+    payload = payload or {}
     try:
-        payload["max_performance_score"] = float(data.get("max_performance_score", 1.0))
+        payload.setdefault("order_index", int(data.get("order_index", 0)))
     except (TypeError, ValueError):
-        payload["max_performance_score"] = 1.0
+        payload.setdefault("order_index", 0)
+    try:
+        payload.setdefault("max_performance_score", float(data.get("max_performance_score", 1.0)))
+    except (TypeError, ValueError):
+        payload.setdefault("max_performance_score", 1.0)
+    replaces_task_id = payload.get("replaces_task_id")
+    if replaces_task_id:
+        if not _is_valid_uuid(replaces_task_id):
+            return jsonify({"code": "INVALID_INPUT", "error": "replaces_task_id must be a valid UUID", "details": {"replaces_task_id": "invalid uuid"}}), 400
+        if not db.v2_get_task_pool_by_id(replaces_task_id):
+            return jsonify({"code": "INVALID_INPUT", "error": "replaces_task_id not found", "details": {"replaces_task_id": "not found"}}), 400
     try:
         row = db.v2_insert_task_pool(payload)
         return jsonify(_admin_tasks_pool_row_payload(row)), 201
     except Exception as e:
+        if _is_duplicate_active_slot_error(e):
+            return jsonify({
+                "code": "DUPLICATE_ACTIVE_SLOT",
+                "error": "Active template for this target_profile/level/step_in_level already exists",
+                "details": {
+                    "target_profile": payload.get("target_profile"),
+                    "level": payload.get("level"),
+                    "step_in_level": payload.get("step_in_level"),
+                },
+            }), 400
         err = str(e).lower()
         hint = "Run migrations/rename_warmup_to_tasks_and_drop_focus.sql if public.tasks / public.tasks_pool are missing." if ("relation" in err or "does not exist" in err or "42p01" in err) else None
         out = {"error": str(e)}
@@ -1715,16 +2032,41 @@ def v2_admin_tasks_pool_create():
 @require_admin
 def v2_admin_tasks_pool_update(pool_id):
     data = request.get_json() or {}
-    payload = {k: data[k] for k in ("text", "order_index", "max_performance_score") if k in data}
+    payload, err_resp = _normalize_task_template_payload(data, is_create=False, allow_partial=True)
+    if err_resp:
+        return err_resp
+    payload = payload or {}
+    for key in ("order_index", "max_performance_score"):
+        if key in data and key not in payload:
+            payload[key] = data[key]
     if "max_performance_score" in payload:
         try:
             payload["max_performance_score"] = float(payload["max_performance_score"])
         except (TypeError, ValueError):
             payload["max_performance_score"] = 1.0
+    if "replaces_task_id" in payload and payload.get("replaces_task_id"):
+        rid = payload.get("replaces_task_id")
+        if not _is_valid_uuid(rid):
+            return jsonify({"code": "INVALID_INPUT", "error": "replaces_task_id must be a valid UUID", "details": {"replaces_task_id": "invalid uuid"}}), 400
+        if not db.v2_get_task_pool_by_id(rid):
+            return jsonify({"code": "INVALID_INPUT", "error": "replaces_task_id not found", "details": {"replaces_task_id": "not found"}}), 400
     if not payload:
         row = db.v2_get_task_pool_by_id(pool_id)
     else:
-        row = db.v2_update_task_pool(pool_id, payload)
+        try:
+            row = db.v2_update_task_pool(pool_id, payload)
+        except Exception as e:
+            if _is_duplicate_active_slot_error(e):
+                return jsonify({
+                    "code": "DUPLICATE_ACTIVE_SLOT",
+                    "error": "Active template for this target_profile/level/step_in_level already exists",
+                    "details": {
+                        "target_profile": payload.get("target_profile"),
+                        "level": payload.get("level"),
+                        "step_in_level": payload.get("step_in_level"),
+                    },
+                }), 400
+            raise
     if not row:
         return jsonify({"error": "Pool task not found"}), 404
     return jsonify(_admin_tasks_pool_row_payload(row)), 200
@@ -1736,10 +2078,14 @@ def v2_admin_tasks_pool_update(pool_id):
 @require_admin
 def v2_admin_tasks_pool_delete(pool_id):
     try:
-        db.v2_delete_task_pool(pool_id)
-    except Exception:
-        pass
-    return jsonify({"status": "ok"}), 200
+        row = db.v2_get_task_pool_by_id(pool_id)
+        if not row:
+            return jsonify({"error": "Pool task not found"}), 404
+        row = db.v2_update_task_pool(pool_id, {"is_active": False})
+        return jsonify({"status": "ok", "tasks_pool": row, "soft_deleted": True}), 200
+    except Exception as err:
+        logger.warning("task pool delete soft-delete failed for pool_id=%s: %s", pool_id, err, exc_info=True)
+        return jsonify({"error": "Delete failed.", "detail": str(err)}), 503
 
 
 @v2_bp.route("/admin/students/<user_id>/tasks", methods=["GET"])
@@ -1804,9 +2150,16 @@ def v2_admin_student_tasks_create(user_id):
 @require_admin
 def v2_admin_student_tasks_create_pool_and_assign(user_id):
     data = request.get_json() or {}
-    text = (data.get("text") or "").strip()
-    if not text:
-        return jsonify({"error": "text is required"}), 400
+    payload, err_resp = _normalize_task_template_payload(data, is_create=True, allow_partial=False)
+    if err_resp:
+        return err_resp
+    text = payload["text"]
+    replaces_task_id = payload.get("replaces_task_id")
+    if replaces_task_id:
+        if not _is_valid_uuid(replaces_task_id):
+            return jsonify({"code": "INVALID_INPUT", "error": "replaces_task_id must be a valid UUID", "details": {"replaces_task_id": "invalid uuid"}}), 400
+        if not db.v2_get_task_pool_by_id(replaces_task_id):
+            return jsonify({"code": "INVALID_INPUT", "error": "replaces_task_id not found", "details": {"replaces_task_id": "not found"}}), 400
     insert_at = data.get("insert_at", "end")
     if insert_at != "end" and insert_at is not None:
         try:
@@ -1828,11 +2181,36 @@ def v2_admin_student_tasks_create_pool_and_assign(user_id):
             order_index=order_index,
             max_performance_score=mps,
             insert_at=insert_at,
+            target_profile=payload.get("target_profile", _TASK_TEMPLATE_DEFAULT_PROFILE),
+            level=payload.get("level", _TASK_TEMPLATE_DEFAULT_LEVEL),
+            step_in_level=payload.get("step_in_level", _TASK_TEMPLATE_DEFAULT_STEP),
+            is_active=payload.get("is_active", True),
+            replaces_task_id=payload.get("replaces_task_id"),
         )
         return jsonify(result), 201
     except ValueError as ve:
+        code = str(ve)
+        if code in ("INVALID_TARGET_PROFILE", "INVALID_LEVEL", "INVALID_STEP_IN_LEVEL", "INVALID_TEXT"):
+            field_map = {
+                "INVALID_TARGET_PROFILE": "target_profile",
+                "INVALID_LEVEL": "level",
+                "INVALID_STEP_IN_LEVEL": "step_in_level",
+                "INVALID_TEXT": "text",
+            }
+            field = field_map.get(code, "field")
+            return jsonify({"code": code, "error": code, "details": {field: code}}), 400
         return jsonify({"error": str(ve)}), 400
     except Exception as err:
+        if _is_duplicate_active_slot_error(err):
+            return jsonify({
+                "code": "DUPLICATE_ACTIVE_SLOT",
+                "error": "Active template for this target_profile/level/step_in_level already exists",
+                "details": {
+                    "target_profile": payload.get("target_profile"),
+                    "level": payload.get("level"),
+                    "step_in_level": payload.get("step_in_level"),
+                },
+            }), 400
         logger.warning("create-pool-and-assign failed for user %s: %s", user_id, err, exc_info=True)
         return jsonify({"error": "create-pool-and-assign failed", "detail": str(err)}), 503
 
@@ -2281,10 +2659,29 @@ def v2_admin_profile_classification_override(user_id):
         from services.student_profile_service import refresh_student_profile_state
 
         body = request.get_json(silent=True) or {}
-        override_profile = (body.get("coach_override_profile") or "").strip() or None
-        justification = (body.get("profile_override_justification") or "").strip() or None
         reason_chip = (body.get("reason_chip") or "").strip() or None
         refresh_student_profile_state(user_id)
+        current = db.get_sniper_profile(user_id) or {}
+
+        # Partial updates: omitting a key preserves the existing DB value (do not clear override by accident).
+        override_profile = current.get("coach_override_profile")
+        if "coach_override_profile" in body:
+            raw = body.get("coach_override_profile")
+            if raw is None:
+                override_profile = None
+            else:
+                s = str(raw).strip()
+                override_profile = s or None
+
+        justification = current.get("profile_override_justification")
+        if "profile_override_justification" in body:
+            raw_j = body.get("profile_override_justification")
+            if raw_j is None:
+                justification = None
+            else:
+                sj = str(raw_j).strip()
+                justification = sj or None
+
         updated = db.upsert_student_profile_fields(
             user_id,
             {
@@ -2303,8 +2700,16 @@ def v2_admin_profile_classification_override(user_id):
             custom_reason=justification,
             created_by=request.user_id,
         )
-        display_profile = (updated.get("coach_override_profile") or "").strip() or (updated.get("behavioral_profile") or "").strip() or "Unclassified"
-        return jsonify({"status": "ok", "display_profile": display_profile, "profile": updated}), 200
+        lp = _learning_profile_payload(updated)
+        return jsonify(
+            {
+                "status": "ok",
+                "display_profile": lp["display_profile"],
+                "display_justification": lp["display_justification"],
+                "learning_profile": lp,
+                "profile": updated,
+            }
+        ), 200
     except Exception as e:
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
@@ -2360,6 +2765,104 @@ def _draft_payload(row):
     return payload if isinstance(payload, dict) else {}
 
 
+def _first_non_empty(*values):
+    for value in values:
+        if value is None:
+            continue
+        text = str(value).strip()
+        if text:
+            return text
+    return None
+
+
+def _value_hash(value: str | None) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def _normalize_copilot_payload(row: dict, payload: dict | None = None) -> dict:
+    """Canonical payload contract for Training Studio drafts.
+
+    Editable fields:
+      - email_draft
+      - task_draft
+      - script_draft
+    Immutable AI baselines:
+      - ai_email_draft
+      - ai_task_suggestion
+      - ai_script_draft
+    Back-compat aliases:
+      - video_script mirrors script_draft
+    """
+    base = dict(payload if isinstance(payload, dict) else _draft_payload(row))
+
+    ai_email = _first_non_empty(base.get("ai_email_draft"), row.get("ai_draft_message"))
+    ai_task = _first_non_empty(
+        base.get("ai_task_suggestion"),
+        row.get("ai_suggested_task_text"),
+        row.get("master_task_text"),
+    )
+    ai_script = _first_non_empty(base.get("ai_script_draft"), row.get("ai_draft_video_script"))
+
+    email_draft = _first_non_empty(
+        base.get("email_draft"),
+        base.get("email_message"),
+        base.get("homework_comment"),
+        ai_email,
+    )
+    task_draft = _first_non_empty(
+        base.get("task_draft"),
+        base.get("task_text"),
+        ai_task,
+        row.get("master_task_text"),
+    )
+    script_draft = _first_non_empty(
+        base.get("script_draft"),
+        base.get("video_script"),
+        ai_script,
+    )
+
+    base["ai_email_draft"] = ai_email
+    base["ai_task_suggestion"] = ai_task
+    base["ai_script_draft"] = ai_script
+    base["email_draft"] = email_draft
+    base["task_draft"] = task_draft
+    base["script_draft"] = script_draft
+    # Keep alias in sync for older clients that still read/write video_script.
+    base["video_script"] = script_draft
+    return base
+
+
+def _normalize_draft_rows_in_db(rows: list[dict]) -> list[dict]:
+    """Idempotently normalize existing draft rows to canonical payload shape."""
+    normalized_rows = []
+    for row in rows:
+        original = _draft_payload(row)
+        normalized = _normalize_copilot_payload(row, original)
+        if normalized != original:
+            try:
+                update_body = {
+                    "draft_payload": normalized,
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                }
+                task_text = _first_non_empty(normalized.get("task_draft"))
+                if task_text:
+                    update_body["master_task_text"] = task_text
+                db.client.table("admin_student_send_drafts").update(update_body).eq("id", row.get("id")).execute()
+                row = dict(row)
+                row["draft_payload"] = normalized
+                if task_text:
+                    row["master_task_text"] = task_text
+            except Exception as norm_err:
+                logger.warning("copilot normalize row failed id=%s: %s", row.get("id"), norm_err)
+        normalized_rows.append(row)
+    return normalized_rows
+
+
 def _draft_state_ui(row):
     payload = _draft_payload(row)
     state = payload.get("state")
@@ -2374,27 +2877,34 @@ def _draft_state_ui(row):
 
 
 def _serialize_copilot_draft(row):
-    payload = _draft_payload(row)
+    payload = _normalize_copilot_payload(row)
+    meta = payload.get("metadata") if isinstance(payload.get("metadata"), dict) else {}
     return {
         "id": str(row.get("id") or ""),
         "student_id": str(row.get("user_id") or ""),
         "session_id": row.get("session_id"),
         "status": _draft_state_ui(row),
+        "cohort_profile": row.get("cohort_profile"),
+        "cohort_stage": row.get("cohort_stage"),
+        "score_for_display": meta.get("score_for_display") if meta else None,
+        # AI originals (baselines for DPO — what the AI suggested)
         "ai_insight": payload.get("ai_insight"),
-        "corrected_insight": payload.get("corrected_insight"),
-        "good_as_is": payload.get("good_as_is"),
-        "grade_draft": payload.get("grade_draft"),
-        "comment_draft": payload.get("comment_draft"),
-        "task_draft": payload.get("task_draft") or payload.get("task_text") or row.get("master_task_text"),
-        "email_draft": payload.get("email_draft") or payload.get("email_message") or payload.get("homework_comment"),
-        "script_draft": payload.get("script_draft") or payload.get("video_script"),
-        "ai_task_suggestion": payload.get("ai_task_suggestion") or row.get("ai_suggested_task_text"),
-        "ai_email_draft": payload.get("ai_email_draft") or row.get("ai_draft_message"),
-        "ai_script_draft": payload.get("ai_script_draft") or row.get("ai_draft_video_script"),
         "ai_grade_draft": payload.get("ai_grade_draft"),
         "ai_comment_draft": payload.get("ai_comment_draft"),
+        "ai_email_draft": payload.get("ai_email_draft") or row.get("ai_draft_message"),
+        "ai_task_suggestion": payload.get("ai_task_suggestion") or row.get("ai_suggested_task_text"),
+        "ai_script_draft": payload.get("ai_script_draft") or row.get("ai_draft_video_script"),
+        # Current draft values (admin-editable — start as AI draft, change on override)
+        "grade_draft": payload.get("grade_draft"),
+        "comment_draft": payload.get("comment_draft"),
+        "task_draft": payload.get("task_draft"),
+        "email_draft": payload.get("email_draft"),
+        "script_draft": payload.get("script_draft"),
+        # Audit state
+        "corrected_insight": payload.get("corrected_insight"),
+        "good_as_is": payload.get("good_as_is"),
         "reason_chip_required": bool(payload.get("reason_chip_required", False)),
-        "metadata": payload.get("metadata") if isinstance(payload.get("metadata"), dict) else None,
+        "metadata": meta or None,
     }
 
 
@@ -2480,11 +2990,17 @@ def _copilot_backfill_draft_row_for_user(user_id: str) -> dict:
     report_comment = ""
     report_grade = None
     score_for_display = None
+    ai_draft_grade = None
+    ai_draft_comment = None
+    context_short = ""
     if sess:
         coach_insight = (sess.get("coach_insight") or "").strip()
         report_comment = (sess.get("report_comment") or "").strip()
         report_grade = sess.get("report_grade")
         score_for_display = sess.get("score_for_display")
+        ai_draft_grade = sess.get("ai_draft_grade")
+        ai_draft_comment = (sess.get("ai_draft_comment") or "").strip() or None
+        context_short = (sess.get("context_short") or "").strip()
 
     task_text = ""
     if sess:
@@ -2514,6 +3030,81 @@ def _copilot_backfill_draft_row_for_user(user_id: str) -> dict:
 
     master_task_text = task_text[:8000]
 
+    # --- Generate AI pre-fills for all draft fields ---
+    from services.openai_service import openai_service
+
+    # AI grade + comment: prefer session values, generate if missing
+    if ai_draft_grade is None or not ai_draft_comment:
+        try:
+            score_100 = None
+            if score_for_display is not None:
+                try:
+                    score_100 = int(score_for_display)
+                except (TypeError, ValueError):
+                    pass
+            gc = openai_service.generate_admin_grade_comment_draft(
+                context_short=context_short,
+                coach_insight=coach_insight,
+                score_for_display_100=score_100,
+            )
+            if ai_draft_grade is None:
+                ai_draft_grade = gc.get("grade")
+            if not ai_draft_comment:
+                ai_draft_comment = gc.get("comment")
+        except Exception:
+            pass
+
+    # Use AI draft as the starting draft value (admin can override)
+    grade_draft = report_grade if report_grade is not None else ai_draft_grade
+    comment_draft = report_comment or ai_draft_comment or None
+
+    student_details = db.v2_get_student_details(user_id) or {}
+    student_name = (student_details.get("name") or "").strip() or (db.get_user_email_from_auth(user_id) or "Student")
+    score_int = int(score_for_display) if score_for_display is not None else None
+
+    # AI task suggestion first — email + script should reference this, not only the legacy session task.
+    ai_task_suggestion = None
+    try:
+        ai_task_suggestion = openai_service.generate_next_task_suggestion(
+            context_short=context_short,
+            coach_insight=coach_insight,
+            current_task_text=master_task_text,
+            score_for_display_100=score_int,
+            behavioral_profile=profile,
+            stage=stage,
+        )
+    except Exception:
+        pass
+
+    display_task = (ai_task_suggestion or "").strip() or master_task_text
+    display_task = display_task[:8000]
+
+    # AI email draft (after task so body matches suggested homework)
+    ai_email_draft = None
+    try:
+        ai_email_draft = openai_service.generate_student_email_draft(
+            student_name=student_name,
+            coach_insight=coach_insight,
+            score_for_display_100=score_int,
+            grade=ai_draft_grade,
+            comment=ai_draft_comment or "",
+            task_text=display_task,
+        )
+    except Exception:
+        pass
+
+    # AI video script — was missing from draft_payload before, so Training Studio showed empty script fields.
+    ai_script_draft = None
+    try:
+        ai_script_draft = openai_service.generate_video_script_draft(
+            student_name=student_name,
+            coach_insight=coach_insight,
+            task_text=display_task,
+            score_for_display_100=score_int,
+        )
+    except Exception:
+        pass
+
     meta = {
         "backfilled_at": datetime.now(timezone.utc).isoformat(),
         "session_id": session_id,
@@ -2527,9 +3118,18 @@ def _copilot_backfill_draft_row_for_user(user_id: str) -> dict:
     payload = {
         "state": "Draft",
         "ai_insight": coach_insight or None,
-        "grade_draft": report_grade,
-        "comment_draft": report_comment or None,
-        "task_draft": master_task_text,
+        "grade_draft": grade_draft,
+        "comment_draft": comment_draft,
+        # Editable fields start as AI output so corrections become DPO pairs vs ai_* baselines.
+        "task_draft": display_task,
+        "email_draft": ai_email_draft,
+        "script_draft": ai_script_draft,
+        "video_script": ai_script_draft,
+        "ai_grade_draft": ai_draft_grade,
+        "ai_comment_draft": ai_draft_comment,
+        "ai_email_draft": ai_email_draft,
+        "ai_task_suggestion": ai_task_suggestion or display_task,
+        "ai_script_draft": ai_script_draft,
         "metadata": meta,
     }
 
@@ -2538,7 +3138,10 @@ def _copilot_backfill_draft_row_for_user(user_id: str) -> dict:
         "session_id": session_id,
         "cohort_profile": profile,
         "cohort_stage": stage,
-        "master_task_text": master_task_text,
+        "master_task_text": display_task,
+        "ai_suggested_task_text": ai_task_suggestion or display_task,
+        "ai_draft_message": ai_email_draft,
+        "ai_draft_video_script": ai_script_draft,
         "draft_payload": payload,
         "status": "pending",
         "updated_at": datetime.now(timezone.utc).isoformat(),
@@ -2686,6 +3289,7 @@ def v2_admin_copilot_next_clips():
         items = []
         for row in rows[:limit]:
             uid = str(row.get("user_id") or "")
+            draft = _serialize_copilot_draft(row)
             items.append(
                 {
                     "id": row.get("id"),
@@ -2699,6 +3303,13 @@ def v2_admin_copilot_next_clips():
                     "status": row.get("status"),
                     "updated_at": row.get("updated_at"),
                     "created_at": row.get("created_at"),
+                    "email_draft": draft.get("email_draft"),
+                    "task_draft": draft.get("task_draft"),
+                    "script_draft": draft.get("script_draft"),
+                    "ai_email_draft": draft.get("ai_email_draft"),
+                    "ai_task_suggestion": draft.get("ai_task_suggestion"),
+                    "ai_script_draft": draft.get("ai_script_draft"),
+                    "draft": draft,
                 }
             )
         return jsonify({"next_clips": items, "clips": items, "count": len(items)}), 200
@@ -2792,6 +3403,194 @@ def v2_admin_copilot_backfill_drafts():
             ),
             201,
         )
+    except Exception as e:
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
+
+
+@v2_bp.route("/admin/copilot/normalize-drafts", methods=["POST"])
+@require_admin
+def v2_admin_copilot_normalize_drafts():
+    """One-time/idempotent contract normalization for existing draft rows."""
+    try:
+        body = request.get_json(silent=True) or {}
+        dry_run = str(body.get("dry_run", False)).lower() in ("1", "true", "yes")
+        status = (body.get("status") or "").strip().lower() or None
+        raw_ids = body.get("user_ids")
+        user_ids = None
+        if raw_ids is not None:
+            if not isinstance(raw_ids, list):
+                return jsonify({"code": "INVALID_INPUT", "error": "user_ids must be an array"}), 400
+            user_ids = {str(x).strip() for x in raw_ids if str(x).strip()}
+        try:
+            limit = int(body.get("limit", 3000))
+        except (TypeError, ValueError):
+            limit = 3000
+        limit = max(1, min(10000, limit))
+
+        rows = db.list_admin_student_send_drafts(status=status)[:limit]
+        if user_ids is not None:
+            rows = [r for r in rows if str(r.get("user_id") or "") in user_ids]
+
+        changed = []
+        skipped_count = 0
+        failed_count = 0
+        for row in rows:
+            original = _draft_payload(row)
+            normalized = _normalize_copilot_payload(row, original)
+            if normalized == original:
+                skipped_count += 1
+                continue
+            changed.append(
+                {
+                    "id": row.get("id"),
+                    "user_id": row.get("user_id"),
+                    "session_id": row.get("session_id"),
+                    "task_preview": (_first_non_empty(normalized.get("task_draft")) or "")[:120],
+                }
+            )
+            if not dry_run:
+                try:
+                    update_body = {
+                        "draft_payload": normalized,
+                        "updated_at": datetime.now(timezone.utc).isoformat(),
+                    }
+                    task_text = _first_non_empty(normalized.get("task_draft"))
+                    if task_text:
+                        update_body["master_task_text"] = task_text
+                    db.client.table("admin_student_send_drafts").update(update_body).eq("id", row.get("id")).execute()
+                except Exception:
+                    failed_count += 1
+
+        return jsonify(
+            {
+                "status": "ok",
+                "dry_run": dry_run,
+                "scanned_count": len(rows),
+                "normalized_count": len(changed),
+                "skipped_count": skipped_count,
+                "failed_count": failed_count,
+                "sample": changed[:20],
+            }
+        ), 200
+    except Exception as e:
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
+
+
+@v2_bp.route("/admin/copilot/learning-health", methods=["GET"])
+@require_admin
+def v2_admin_copilot_learning_health():
+    """Operational health for annotation-event -> dataset export pipeline."""
+    try:
+        now = datetime.now(timezone.utc)
+        runs = (
+            db.client.table("admin_annotation_export_runs")
+            .select("*")
+            .order("started_at", desc=True)
+            .limit(100)
+            .execute()
+            .data
+            or []
+        )
+        last_success = next((r for r in runs if str(r.get("status") or "").lower() == "success"), None)
+        last_failure = next((r for r in runs if str(r.get("status") or "").lower() == "failed"), None)
+        checkpoint = last_success.get("checkpoint_created_at") if last_success else None
+
+        unprocessed_query = db.client.table("admin_annotation_events").select("id", count="exact")
+        if checkpoint:
+            unprocessed_query = unprocessed_query.gt("created_at", checkpoint)
+        unprocessed = unprocessed_query.limit(1).execute()
+        unprocessed_count = int(unprocessed.count or 0)
+
+        oldest_pending_at = None
+        if unprocessed_count > 0:
+            oldest_rows = db.client.table("admin_annotation_events").select("created_at")
+            if checkpoint:
+                oldest_rows = oldest_rows.gt("created_at", checkpoint)
+            oldest = oldest_rows.order("created_at", desc=False).limit(1).execute().data or []
+            if oldest:
+                oldest_pending_at = oldest[0].get("created_at")
+
+        ingestion_lag_minutes = 0
+        if oldest_pending_at:
+            parsed = datetime.fromisoformat(str(oldest_pending_at).replace("Z", "+00:00"))
+            ingestion_lag_minutes = max(0, int((now - parsed).total_seconds() // 60))
+
+        failed_last_24h = 0
+        since_24h = (now.timestamp() - 86400)
+        for run in runs:
+            if str(run.get("status") or "").lower() != "failed":
+                continue
+            started_at = run.get("started_at")
+            if not started_at:
+                continue
+            try:
+                parsed = datetime.fromisoformat(str(started_at).replace("Z", "+00:00"))
+            except Exception:
+                continue
+            if parsed.timestamp() >= since_24h:
+                failed_last_24h += 1
+
+        return jsonify(
+            {
+                "status": "ok",
+                "pipeline": {
+                    "sla_minutes": 24 * 60,
+                    "checkpoint_created_at": checkpoint,
+                    "unprocessed_events": unprocessed_count,
+                    "oldest_unprocessed_created_at": oldest_pending_at,
+                    "ingestion_lag_minutes": ingestion_lag_minutes,
+                },
+                "last_successful_export": last_success,
+                "last_failed_export": last_failure,
+                "failed_runs_last_24h": failed_last_24h,
+            }
+        ), 200
+    except Exception as e:
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
+
+
+@v2_bp.route("/admin/copilot/export-annotation-events", methods=["POST"])
+@require_admin
+def v2_admin_copilot_export_annotation_events():
+    """Run annotation export (same job as scripts/export_annotation_events.py).
+
+    Body JSON (optional): ``limit``, ``dry_run``, ``upload_bucket``, ``upload_prefix``, ``output_dir``
+    Env defaults: ``ANNOTATION_EXPORT_BUCKET``, ``ANNOTATION_EXPORT_PREFIX``, ``ANNOTATION_EXPORT_OUTPUT_DIR``
+    """
+    try:
+        body = request.get_json(silent=True) or {}
+        try:
+            limit = int(body.get("limit", 5000))
+        except (TypeError, ValueError):
+            return jsonify({"code": "INVALID_INPUT", "error": "limit must be an integer"}), 400
+        dry_raw = body.get("dry_run", False)
+        dry_run = str(dry_raw).lower() in ("1", "true", "yes")
+
+        bucket = (body.get("upload_bucket") or getattr(config, "ANNOTATION_EXPORT_BUCKET", None) or "").strip() or None
+        output_dir = (body.get("output_dir") or getattr(config, "ANNOTATION_EXPORT_OUTPUT_DIR", None) or "").strip() or None
+        prefix = (body.get("upload_prefix") or getattr(config, "ANNOTATION_EXPORT_PREFIX", None) or "annotation-events").strip()
+
+        if not dry_run and not bucket and not output_dir:
+            return jsonify(
+                {
+                    "code": "EXPORT_SINK_MISSING",
+                    "error": "Set ANNOTATION_EXPORT_BUCKET and/or ANNOTATION_EXPORT_OUTPUT_DIR on the server, "
+                    "or pass upload_bucket / output_dir in the body.",
+                }
+            ), 400
+
+        result = run_annotation_export(
+            limit=limit,
+            output_dir=None if dry_run else output_dir,
+            dry_run=dry_run,
+            created_by=f"admin:{request.user_id}",
+            upload_bucket=bucket,
+            upload_prefix=prefix,
+        )
+        return jsonify({"status": "ok", **result_to_dict(result)}), 200
     except Exception as e:
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
@@ -2965,7 +3764,7 @@ def v2_admin_copilot_cohort_students(cohort_id):
                         "name": details.get("name"),
                         "email": email,
                         "stage": str(stage),
-                        "justification": profile_row.get("behavioral_profile_justification"),
+                        "justification": _display_learning_profile_justification(profile_row),
                         "canonical_score_for_display": latest_session.get("score_for_display"),
                     },
                 }
@@ -2999,7 +3798,7 @@ def v2_admin_copilot_cohort_students(cohort_id):
                         "name": details.get("name"),
                         "email": email,
                         "stage": str(stage),
-                        "justification": profile_row.get("behavioral_profile_justification"),
+                        "justification": _display_learning_profile_justification(profile_row),
                         "canonical_score_for_display": latest_session.get("score_for_display"),
                     },
                 }
@@ -3012,45 +3811,152 @@ def v2_admin_copilot_cohort_students(cohort_id):
         return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
 
 
+def _ensure_draft_exists_for_user(user_id: str) -> list:
+    """Create-on-missing: if a cohort-visible student has no draft row, backfill one now.
+
+    Returns the (possibly newly-created) list of draft rows.
+    """
+    rows = (
+        db.client.table("admin_student_send_drafts")
+        .select("*")
+        .eq("user_id", user_id)
+        .order("updated_at", desc=True)
+        .limit(50)
+        .execute()
+        .data or []
+    )
+    if rows:
+        return _normalize_draft_rows_in_db(rows)
+    # No rows — create one on the fly (same logic as backfill)
+    try:
+        insert_dict = _copilot_backfill_draft_row_for_user(user_id)
+        try:
+            inserted = db.insert_admin_student_send_drafts([insert_dict])
+        except Exception:
+            legacy = dict(insert_dict)
+            legacy.pop("ai_suggested_task_text", None)
+            legacy.pop("ai_draft_message", None)
+            legacy.pop("ai_draft_video_script", None)
+            inserted = db.insert_admin_student_send_drafts([legacy])
+        logger.info("create-on-missing: auto-created draft for user_id=%s", user_id)
+        return inserted if inserted else [insert_dict]
+    except Exception as auto_err:
+        logger.warning("create-on-missing failed for user_id=%s: %s", user_id, auto_err)
+        return []
+
+
 @v2_bp.route("/admin/copilot/students/<user_id>/drafts", methods=["GET", "PUT"])
 @require_admin
 def v2_admin_copilot_student_drafts(user_id):
     try:
         if request.method == "GET":
             session_id = (request.args.get("session_id") or "").strip() or None
-            q = db.client.table("admin_student_send_drafts").select("*").eq("user_id", user_id).order("updated_at", desc=True).order("created_at", desc=True)
+            rows = _ensure_draft_exists_for_user(user_id)
             if session_id:
-                q = q.eq("session_id", session_id)
-            rows = q.limit(50).execute().data or []
+                rows = [r for r in rows if str(r.get("session_id") or "") == session_id]
             return jsonify({"drafts": [_serialize_copilot_draft(r) for r in rows]}), 200
 
         body = request.get_json(silent=True) or {}
+        immutable_fields = sorted(
+            k for k in body.keys() if k in _COPILOT_DRAFT_IMMUTABLE_FIELDS or k.startswith("ai_")
+        )
+        if immutable_fields:
+            return jsonify(
+                {
+                    "code": "IMMUTABLE_FIELD",
+                    "error": "AI baseline fields are immutable and cannot be edited.",
+                    "fields": immutable_fields,
+                }
+            ), 400
+        unknown_fields = sorted(
+            k
+            for k in body.keys()
+            if k not in _COPILOT_DRAFT_EDITABLE_FIELDS and k not in _COPILOT_DRAFT_CONTROL_FIELDS
+        )
+        if unknown_fields:
+            return jsonify(
+                {
+                    "code": "INVALID_FIELD",
+                    "error": "Request contains unsupported fields for draft updates.",
+                    "fields": unknown_fields,
+                }
+            ), 400
         session_id = (body.get("session_id") or "").strip() or None
         draft_id = (body.get("draft_id") or "").strip() or None
         row = _pick_student_draft(user_id, session_id=session_id, draft_id=draft_id, include_sent=False)
         if not row:
+            # Create-on-missing for PUT: auto-create then retry
+            created = _ensure_draft_exists_for_user(user_id)
+            if created:
+                row = _pick_student_draft(user_id, session_id=session_id, draft_id=draft_id, include_sent=False)
+        if not row:
             return jsonify({"code": "DRAFT_NOT_FOUND", "error": "No editable draft found for student"}), 404
-        payload = _draft_payload(row)
+        payload = _normalize_copilot_payload(row)
         old_grade = payload.get("grade_draft")
         old_comment = (payload.get("comment_draft") or "").strip()
         old_task = (
             (payload.get("task_draft") or payload.get("task_text") or row.get("master_task_text") or "").strip()
         )
+        old_email = (
+            (
+                payload.get("email_draft")
+                or payload.get("ai_email_draft")
+                or payload.get("email_message")
+                or payload.get("homework_comment")
+                or row.get("ai_draft_message")
+                or ""
+            )
+        ).strip()
+        old_script = (
+            (
+                payload.get("script_draft")
+                or payload.get("video_script")
+                or row.get("ai_draft_video_script")
+                or ""
+            )
+        ).strip()
         ai_grade_baseline = payload.get("ai_grade_draft")
         ai_comment_baseline = (payload.get("ai_comment_draft") or "").strip() or None
         ai_task_baseline = (
             (payload.get("ai_task_suggestion") or row.get("ai_suggested_task_text") or "").strip() or None
         )
-        for k in ("grade_draft", "comment_draft", "task_draft", "email_draft", "script_draft", "metadata"):
+        ai_email_baseline = (
+            (payload.get("ai_email_draft") or (row.get("ai_draft_message") or "")).strip() or None
+        )
+        ai_script_baseline = (
+            (payload.get("ai_script_draft") or (row.get("ai_draft_video_script") or "")).strip() or None
+        )
+        old_corrected_insight = (payload.get("corrected_insight") or "").strip()
+        ai_insight_baseline = (payload.get("ai_insight") or "").strip() or None
+        for k in ("grade_draft", "comment_draft", "task_draft", "email_draft", "script_draft", "corrected_insight", "metadata"):
             if k in body:
                 payload[k] = body.get(k)
         if "reason_chips" in body:
             payload["reason_chips"] = body.get("reason_chips")
         if "reason_chip_custom" in body:
             payload["reason_chip_custom"] = body.get("reason_chip_custom")
+        # Canonical write target is script_draft; video_script remains alias.
+        if "video_script" in body and "script_draft" not in body:
+            payload["script_draft"] = body.get("video_script")
+        if "script_draft" in body or "video_script" in body:
+            payload["video_script"] = payload.get("script_draft")
+        payload = _normalize_copilot_payload(row, payload)
         new_task = (
             (payload.get("task_draft") or payload.get("task_text") or row.get("master_task_text") or "").strip()
         )
+        new_email = (
+            (
+                payload.get("email_draft")
+                or payload.get("ai_email_draft")
+                or payload.get("email_message")
+                or payload.get("homework_comment")
+                or ""
+            )
+        ).strip()
+        new_script = (
+            (payload.get("script_draft") or payload.get("video_script") or "").strip()
+        )
+        new_corrected_insight = (payload.get("corrected_insight") or "").strip()
         update_body = {"draft_payload": payload, "updated_at": datetime.now(timezone.utc).isoformat()}
         if "task_draft" in body and new_task:
             update_body["master_task_text"] = new_task
@@ -3094,12 +4000,60 @@ def v2_admin_copilot_student_drafts(user_id):
                     user_id=user_id,
                     session_id=row.get("session_id"),
                     section_type="assignment",
-                    field_name="task_text",
+                    field_name="task_draft",
                     ai_original_text=ai_task_baseline or old_task,
                     coach_final_text=new_task or None,
                     reason_chip=(body.get("reason_chip") or "task_swap"),
                     custom_reason=(body.get("reason_chip_custom") or None),
                     created_by=request.user_id,
+                    draft_id=str(row.get("id") or "") or None,
+                    previous_value_hash=_value_hash(ai_task_baseline or old_task),
+                    new_value_hash=_value_hash(new_task),
+                )
+            if "email_draft" in body and old_email != new_email:
+                db.create_admin_annotation_event(
+                    user_id=user_id,
+                    session_id=row.get("session_id"),
+                    section_type="assignment",
+                    field_name="email_draft",
+                    ai_original_text=ai_email_baseline or old_email or None,
+                    coach_final_text=new_email or None,
+                    reason_chip=(body.get("reason_chip") or "manual_edit"),
+                    custom_reason=(body.get("reason_chip_custom") or None),
+                    created_by=request.user_id,
+                    draft_id=str(row.get("id") or "") or None,
+                    previous_value_hash=_value_hash(ai_email_baseline or old_email or None),
+                    new_value_hash=_value_hash(new_email or None),
+                )
+            if ("script_draft" in body or "video_script" in body) and old_script != new_script:
+                db.create_admin_annotation_event(
+                    user_id=user_id,
+                    session_id=row.get("session_id"),
+                    section_type="assignment",
+                    field_name="script_draft",
+                    ai_original_text=ai_script_baseline or old_script or None,
+                    coach_final_text=new_script or None,
+                    reason_chip=(body.get("reason_chip") or "manual_edit"),
+                    custom_reason=(body.get("reason_chip_custom") or None),
+                    created_by=request.user_id,
+                    draft_id=str(row.get("id") or "") or None,
+                    previous_value_hash=_value_hash(ai_script_baseline or old_script or None),
+                    new_value_hash=_value_hash(new_script or None),
+                )
+            if "corrected_insight" in body and old_corrected_insight != new_corrected_insight:
+                db.create_admin_annotation_event(
+                    user_id=user_id,
+                    session_id=row.get("session_id"),
+                    section_type="insight",
+                    field_name="corrected_insight",
+                    ai_original_text=ai_insight_baseline,
+                    coach_final_text=new_corrected_insight or None,
+                    reason_chip=(body.get("reason_chip") or "manual_insight"),
+                    custom_reason=(body.get("reason_chip_custom") or None),
+                    created_by=request.user_id,
+                    draft_id=str(row.get("id") or "") or None,
+                    previous_value_hash=_value_hash(ai_insight_baseline),
+                    new_value_hash=_value_hash(new_corrected_insight or None),
                 )
         except Exception as ann_err:
             logger.warning("task swap annotation failed: %s", ann_err)
@@ -3122,6 +4076,10 @@ def v2_admin_copilot_student_audit(user_id):
         session_id = (body.get("session_id") or "").strip() or None
         draft_id = (body.get("draft_id") or "").strip() or None
         row = _pick_student_draft(user_id, session_id=session_id, draft_id=draft_id, include_sent=True)
+        if not row:
+            # Create-on-missing: auto-create draft row, then retry
+            _ensure_draft_exists_for_user(user_id)
+            row = _pick_student_draft(user_id, session_id=session_id, draft_id=draft_id, include_sent=True)
         if not row:
             return jsonify({"code": "DRAFT_NOT_FOUND", "error": "Draft not found"}), 404
         payload = _draft_payload(row)
@@ -3198,6 +4156,9 @@ def v2_admin_copilot_student_approve(user_id):
         draft_id = (body.get("draft_id") or "").strip() or None
         row = _pick_student_draft(user_id, session_id=session_id, draft_id=draft_id, include_sent=False)
         if not row:
+            _ensure_draft_exists_for_user(user_id)
+            row = _pick_student_draft(user_id, session_id=session_id, draft_id=draft_id, include_sent=False)
+        if not row:
             return jsonify({"code": "DRAFT_NOT_FOUND", "error": "Draft not found"}), 404
         payload = _draft_payload(row)
         payload["state"] = "Ready"
@@ -3224,6 +4185,9 @@ def v2_admin_copilot_student_send(user_id):
         session_id = (body.get("session_id") or "").strip() or None
         draft_id = (body.get("draft_id") or "").strip() or None
         row = _pick_student_draft(user_id, session_id=session_id, draft_id=draft_id, include_sent=True)
+        if not row:
+            _ensure_draft_exists_for_user(user_id)
+            row = _pick_student_draft(user_id, session_id=session_id, draft_id=draft_id, include_sent=True)
         if not row:
             return jsonify({"code": "DRAFT_NOT_FOUND", "error": "Draft not found"}), 404
         if str(row.get("status") or "").lower() == "sent":
@@ -3328,9 +4292,12 @@ def v2_admin_cohort_approve_task(profile, stage):
                         "ai_task_suggestion": ai_task,
                         "ai_email_draft": ai_message,
                         "ai_script_draft": ai_script,
+                        "task_draft": ai_task,
+                        "email_draft": (body.get("email_message") or "").strip() or ai_message or None,
+                        "script_draft": (body.get("video_script") or "").strip() or ai_script or None,
+                        "video_script": (body.get("video_script") or "").strip() or ai_script or None,
                         "task_text": master_task_text,
-                        "email_message": (body.get("email_message") or "").strip() or None,
-                        "video_script": (body.get("video_script") or "").strip() or None,
+                        "email_message": (body.get("email_message") or "").strip() or ai_message or None,
                         "homework_comment": (body.get("homework_comment") or "").strip() or None,
                     },
                     "status": "pending",

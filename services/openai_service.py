@@ -2,7 +2,10 @@ import openai
 from config import Config
 import json
 import re
+import os
+import time
 import sentry_sdk
+from services.db import db
 
 config = Config()
 
@@ -157,6 +160,24 @@ class OpenAIService:
         if config.OPENAI_API_KEY:
             openai.api_key = config.OPENAI_API_KEY
         self.client = openai.OpenAI(api_key=config.OPENAI_API_KEY) if config.OPENAI_API_KEY else None
+        self._model_cache: dict[str, tuple[float, str]] = {}
+
+    def _chat_model(self, purpose: str = "default") -> str:
+        """Resolve model from runtime_config, then env, then hard default."""
+        base_default = "gpt-4o-mini"
+        env_fallback = (
+            os.getenv("OPENAI_COPILOT_MODEL")
+            if purpose == "copilot"
+            else os.getenv("OPENAI_CHAT_MODEL")
+        ) or os.getenv("OPENAI_COPILOT_MODEL") or os.getenv("OPENAI_CHAT_MODEL")
+        now = time.time()
+        cached = self._model_cache.get(purpose)
+        if cached and (now - cached[0]) < 60:
+            return cached[1]
+        key = "openai_copilot_model" if purpose == "copilot" else "openai_chat_model"
+        model = (db.get_runtime_config(key) or env_fallback or base_default).strip()
+        self._model_cache[purpose] = (now, model)
+        return model
     
     def transcribe_audio(self, audio_file, filename: str = "audio.webm"):
         """
@@ -261,7 +282,7 @@ Respond with ONLY valid JSON in this exact format:
         for attempt in range(max_retries + 1):
             try:
                 response = self.client.chat.completions.create(
-                    model="gpt-4o-mini",
+                    model=self._chat_model(),
                     messages=[
                         {"role": "system", "content": "You are a speech analysis assistant. Respond with valid JSON only."},
                         {"role": "user", "content": prompt}
@@ -551,7 +572,7 @@ Generate the report:"""
             )
             
             response = self.client.chat.completions.create(
-                model="gpt-4o-mini",
+                model=self._chat_model(),
                 messages=[
                     {"role": "system", "content": system_message},
                     {"role": "user", "content": prompt}
@@ -579,7 +600,7 @@ Generate the report:"""
             return (transcript or "")[:400]
         try:
             response = self.client.chat.completions.create(
-                model="gpt-4o-mini",
+                model=self._chat_model(),
                 messages=[
                     {"role": "system", "content": "Summarize the speaker's first recording in 2-3 short sentences. Focus on tone, pacing, and main point. Be concise."},
                     {"role": "user", "content": (transcript or "")[:3000]}
@@ -663,7 +684,7 @@ Generate the report:"""
             )
             user = "\n".join(prompt_lines + ["Important: The live ball does not detect filler words; filler impact is applied in transcript-based review."])
             response = self.client.chat.completions.create(
-                model="gpt-4o-mini",
+                model=self._chat_model(),
                 messages=[
                     {"role": "system", "content": system},
                     {"role": "user", "content": user},
@@ -751,7 +772,7 @@ Rules: sentence1 = Based on [context], your task is [focus]. sentence2 = Focus e
         def _call() -> str | None:
             try:
                 response = self.client.chat.completions.create(
-                    model="gpt-4o-mini",
+                    model=self._chat_model(),
                     messages=[
                         {"role": "system", "content": system},
                         {"role": "user", "content": user_content},
@@ -794,7 +815,7 @@ Context: {ctx}
 Focus task: {focus_task}"""
         try:
             response = self.client.chat.completions.create(
-                model="gpt-4o-mini",
+                model=self._chat_model(),
                 messages=[
                     {"role": "system", "content": system},
                     {"role": "user", "content": user_content},
@@ -849,7 +870,7 @@ Respond in JSON format only: {{"analysis": "...", "score": N}}'''
                     results.append(fallback)
                     continue
                 response = self.client.chat.completions.create(
-                    model="gpt-4o-mini",
+                    model=self._chat_model(),
                     messages=[
                         {"role": "system", "content": "You respond only with valid JSON: {\"analysis\": \"...\", \"score\": N}. No other text."},
                         {"role": "user", "content": prompt},
@@ -958,7 +979,7 @@ Respond with valid JSON array:
         
         try:
             response = self.client.chat.completions.create(
-                model="gpt-4o-mini",
+                model=self._chat_model(),
                 messages=[
                     {"role": "system", "content": "You are a speech coaching assistant. Generate relevant follow-up questions."},
                     {"role": "user", "content": prompt}
@@ -1046,7 +1067,7 @@ Respond with valid JSON array:
 
         try:
             response = self.client.chat.completions.create(
-                model="gpt-4o-mini",
+                model=self._chat_model(),
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt},
@@ -1196,7 +1217,7 @@ Respond with valid JSON array:
                 "Tone: concise, supportive, specific."
             )
             response = self.client.chat.completions.create(
-                model="gpt-4o-mini",
+                model=self._chat_model("copilot"),
                 messages=[
                     {
                         "role": "system",
@@ -1227,6 +1248,165 @@ Respond with valid JSON array:
         except Exception as e:
             sentry_sdk.capture_exception(e)
             return {"grade": fallback_grade, "comment": fallback_comment}
+
+    def generate_student_email_draft(
+        self,
+        *,
+        student_name: str,
+        coach_insight: str,
+        score_for_display_100: int | None,
+        grade: int | None,
+        comment: str,
+        task_text: str,
+    ) -> str:
+        """Generate a short, supportive email message to send the student with their feedback.
+
+        Returns a string (the email body, 2-4 sentences, max 500 chars).
+        """
+        score_str = f"{score_for_display_100}/100" if score_for_display_100 is not None else "pending"
+        grade_str = f"{grade}/10" if grade is not None else "pending"
+        fallback = (
+            f"Hi {student_name or 'there'},\n\n"
+            f"Your latest session scored {score_str}. "
+            f"{(comment or 'Keep up the good work!').strip()}\n\n"
+            f"Your next task: {(task_text or 'Continue practicing').strip()[:120]}"
+        )
+        if not self.client:
+            return fallback
+        try:
+            prompt = (
+                f"Student name: {(student_name or 'Student').strip()}\n"
+                f"Score: {score_str}\n"
+                f"Grade: {grade_str}\n"
+                f"Coach comment: {(comment or '').strip()[:300]}\n"
+                f"Coach insight: {(coach_insight or '').strip()[:500]}\n"
+                f"Next task: {(task_text or '').strip()[:300]}\n\n"
+                "Write a short, warm email (2-4 sentences, max 500 chars) to the student. "
+                "Include their score, one specific encouragement based on the insight, "
+                "and mention their next task. Sign off as 'Your coach'. "
+                "Return ONLY the email text, no JSON, no subject line."
+            )
+            response = self.client.chat.completions.create(
+                model=self._chat_model("copilot"),
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "You are a supportive communication coach writing brief student feedback emails. Be warm, specific, and encouraging.",
+                    },
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=0.4,
+                max_tokens=250,
+            )
+            text = (response.choices[0].message.content or "").strip()
+            if not text:
+                return fallback
+            return text[:500]
+        except Exception as e:
+            sentry_sdk.capture_exception(e)
+            return fallback
+
+    def generate_next_task_suggestion(
+        self,
+        *,
+        context_short: str,
+        coach_insight: str,
+        current_task_text: str,
+        score_for_display_100: int | None,
+        behavioral_profile: str,
+        stage: int,
+    ) -> str:
+        """Suggest the next practice task based on the student's performance and profile.
+
+        Returns a string (the task text, 1-3 sentences, max 300 chars).
+        """
+        score_str = f"{score_for_display_100}/100" if score_for_display_100 is not None else "unknown"
+        fallback = (
+            f"Continue building on your last session. "
+            f"Focus on the areas highlighted in your feedback and aim for more consistent delivery."
+        )
+        if not self.client:
+            return fallback
+        try:
+            prompt = (
+                f"Student profile: {(behavioral_profile or 'Unknown').strip()} (stage {stage})\n"
+                f"Context: {(context_short or '').strip()[:400]}\n"
+                f"Last task: {(current_task_text or '').strip()[:300]}\n"
+                f"Coach insight: {(coach_insight or '').strip()[:500]}\n"
+                f"Last score: {score_str}\n\n"
+                "Suggest the next practice task (1-3 sentences, max 300 chars). "
+                "The task should address the student's weaknesses from the insight, "
+                "be progressively harder if score > 75, or reinforce fundamentals if score < 60. "
+                "Be specific and actionable. Return ONLY the task text."
+            )
+            response = self.client.chat.completions.create(
+                model=self._chat_model("copilot"),
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "You are an expert communication coach designing targeted practice tasks. Be specific and actionable.",
+                    },
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=0.4,
+                max_tokens=150,
+            )
+            text = (response.choices[0].message.content or "").strip()
+            if not text:
+                return fallback
+            return text[:300]
+        except Exception as e:
+            sentry_sdk.capture_exception(e)
+            return fallback
+
+    def generate_video_script_draft(
+        self,
+        *,
+        student_name: str,
+        coach_insight: str,
+        task_text: str,
+        score_for_display_100: int | None,
+    ) -> str:
+        """Short coach-facing video outline for the student's next assignment (bullets ok, max ~600 chars)."""
+        score_str = f"{score_for_display_100}/100" if score_for_display_100 is not None else "n/a"
+        nm = (student_name or "the student").strip()
+        fallback = (
+            f"1) Greet {nm} and reference their last score ({score_str}).\n"
+            f"2) Pick one strength from the insight, one improvement area.\n"
+            f"3) Walk through the next task: {(task_text or 'next practice')[:120]}\n"
+            f"4) Encourage one concrete repetition before next session."
+        )
+        if not self.client:
+            return fallback
+        try:
+            prompt = (
+                f"Student: {nm}\n"
+                f"Score: {score_str}\n"
+                f"Next task for the student:\n{(task_text or '').strip()[:400]}\n\n"
+                f"Coach insight about their last recording:\n{(coach_insight or '').strip()[:500]}\n\n"
+                "Write a short outline for the coach's personal video message to this student. "
+                "Use 4–6 short bullet lines or numbered steps. Warm, specific, under 600 characters. "
+                "No JSON. No subject line."
+            )
+            response = self.client.chat.completions.create(
+                model=self._chat_model("copilot"),
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "You write concise video scripts for speech coaches. Be warm and actionable.",
+                    },
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=0.4,
+                max_tokens=220,
+            )
+            text = (response.choices[0].message.content or "").strip()
+            if not text:
+                return fallback
+            return text[:600]
+        except Exception as e:
+            sentry_sdk.capture_exception(e)
+            return fallback
 
 # Singleton instance
 openai_service = OpenAIService()

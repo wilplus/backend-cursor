@@ -1348,6 +1348,106 @@ class DatabaseService:
             out.append(rec)
         return out
 
+    def v2_delete_stress_snippets_for_recording(self, recording_id: str) -> int:
+        """Delete previously generated snippet candidates for one recording."""
+        result = (
+            self.client.table("stress_snippets")
+            .delete()
+            .eq("recording_id", recording_id)
+            .execute()
+        )
+        return len(result.data or [])
+
+    def v2_insert_stress_snippets(self, snippets: list[dict]) -> list[dict]:
+        """Bulk insert snippet candidates."""
+        if not snippets:
+            return []
+        result = (
+            self.client.table("stress_snippets")
+            .insert(snippets)
+            .execute()
+        )
+        return result.data or []
+
+    def v2_get_stress_snippet(self, snippet_id: str) -> Optional[dict]:
+        """Return one stress snippet row by id."""
+        result = (
+            self.client.table("stress_snippets")
+            .select("*")
+            .eq("id", snippet_id)
+            .limit(1)
+            .execute()
+        )
+        return result.data[0] if result.data else None
+
+    def v2_set_stress_snippet_label(self, snippet_id: str, reviewer_id: str, label: str, notes: Optional[str]) -> Optional[dict]:
+        """Set coach binary label (stress/no_stress) for one snippet."""
+        payload = {
+            "coach_label": label,
+            "coach_label_notes": notes,
+            "labeled_by": reviewer_id,
+            "labeled_at": datetime.now(timezone.utc).isoformat(),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+        result = (
+            self.client.table("stress_snippets")
+            .update(payload)
+            .eq("id", snippet_id)
+            .execute()
+        )
+        return result.data[0] if result.data else None
+
+    def v2_list_stress_snippets(
+        self,
+        *,
+        source_type: Optional[str] = None,
+        recording_id: Optional[str] = None,
+        label_state: str = "all",
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[dict]:
+        """List generated snippets with source-side recording metadata."""
+        query = (
+            self.client.table("stress_snippets")
+            .select("*")
+            .order("created_at", desc=True)
+            .range(offset, max(offset + limit - 1, offset))
+        )
+        if source_type:
+            query = query.eq("source_type", source_type)
+        if recording_id:
+            query = query.eq("recording_id", recording_id)
+        if label_state == "unlabeled":
+            query = query.is_("coach_label", "null")
+        result = query.execute()
+        rows = result.data or []
+        if label_state == "labeled":
+            rows = [r for r in rows if r.get("coach_label") is not None]
+        if not rows:
+            return []
+
+        recording_ids = [r.get("recording_id") for r in rows if r.get("recording_id")]
+        recordings_map: dict[str, dict] = {}
+        if recording_ids:
+            try:
+                recs = (
+                    self.client.table("recordings")
+                    .select("id, recording_origin, source_metadata, user_id, session_v2_id, created_at, storage_path")
+                    .in_("id", recording_ids)
+                    .execute()
+                )
+                recordings_map = {str(r["id"]): r for r in (recs.data or []) if r.get("id")}
+            except Exception:
+                recordings_map = {}
+
+        out = []
+        for row in rows:
+            item = dict(row)
+            rid = str(item.get("recording_id")) if item.get("recording_id") else None
+            item["recording"] = recordings_map.get(rid)
+            out.append(item)
+        return out
+
     def v2_list_recording_review_annotations(self, session_id: str):
         """Admin-only time-span review labels for a session."""
         result = (
@@ -2262,6 +2362,15 @@ class DatabaseService:
 
     # ---------- Homework tasks (per-student public.tasks; pool public.tasks_pool) ----------
     DEFAULT_STUDENT_TASK_TEXT = "How was your day so far?"
+    TASK_TEMPLATE_ALLOWED_PROFILES = {
+        "The Overwhelmed",
+        "The Stressor",
+        "The Drifter",
+        "The Master",
+    }
+    TASK_TEMPLATE_DEFAULT_PROFILE = "The Overwhelmed"
+    TASK_TEMPLATE_DEFAULT_LEVEL = 1
+    TASK_TEMPLATE_DEFAULT_STEP = 1
 
     def v2_ensure_default_student_task(self, user_id: str) -> bool:
         """If user has no homework tasks, create the default one. Idempotent."""
@@ -2318,15 +2427,63 @@ class DatabaseService:
     def v2_delete_student_task(self, task_id: str):
         self.client.table("tasks").delete().eq("id", task_id).execute()
 
-    def v2_get_task_pool(self):
-        result = (
-            self.client.table("tasks_pool")
-            .select("*")
-            .order("order_index")
-            .order("created_at")
-            .execute()
-        )
-        return result.data or []
+    def _normalize_task_template_fields(self, data: dict, *, partial: bool = False) -> dict:
+        payload = {}
+        if "target_profile" in data or not partial:
+            raw_profile = data.get("target_profile", self.TASK_TEMPLATE_DEFAULT_PROFILE)
+            profile = (raw_profile or "").strip()
+            if profile not in self.TASK_TEMPLATE_ALLOWED_PROFILES:
+                raise ValueError("INVALID_TARGET_PROFILE")
+            payload["target_profile"] = profile
+        if "level" in data or not partial:
+            raw_level = data.get("level", self.TASK_TEMPLATE_DEFAULT_LEVEL)
+            try:
+                level = int(raw_level)
+            except (TypeError, ValueError):
+                raise ValueError("INVALID_LEVEL")
+            if level < 1:
+                raise ValueError("INVALID_LEVEL")
+            payload["level"] = level
+        if "step_in_level" in data or not partial:
+            raw_step = data.get("step_in_level", self.TASK_TEMPLATE_DEFAULT_STEP)
+            try:
+                step = int(raw_step)
+            except (TypeError, ValueError):
+                raise ValueError("INVALID_STEP_IN_LEVEL")
+            if step < 1 or step > 10:
+                raise ValueError("INVALID_STEP_IN_LEVEL")
+            payload["step_in_level"] = step
+        if "is_active" in data or not partial:
+            payload["is_active"] = bool(data.get("is_active", True))
+        if "replaces_task_id" in data:
+            payload["replaces_task_id"] = data.get("replaces_task_id") or None
+        return payload
+
+    def v2_get_task_pool(self, *, include_inactive: bool = False):
+        try:
+            q = self.client.table("tasks_pool").select("*")
+            if not include_inactive:
+                q = q.eq("is_active", True)
+            result = (
+                q.order("is_active", desc=True)
+                .order("target_profile")
+                .order("level")
+                .order("step_in_level")
+                .order("order_index")
+                .order("created_at")
+                .execute()
+            )
+            return result.data or []
+        except Exception:
+            # Backward compatibility with older schemas that do not yet have new columns.
+            result = (
+                self.client.table("tasks_pool")
+                .select("*")
+                .order("order_index")
+                .order("created_at")
+                .execute()
+            )
+            return result.data or []
 
     def v2_get_task_pool_by_id(self, pool_id: str):
         result = self.client.table("tasks_pool").select("*").eq("id", pool_id).execute()
@@ -2336,6 +2493,8 @@ class DatabaseService:
         data = dict(data)
         data.setdefault("order_index", 0)
         data.setdefault("max_performance_score", 1.0)
+        data.setdefault("updated_at", datetime.now(timezone.utc).isoformat())
+        data.update(self._normalize_task_template_fields(data, partial=False))
         result = self.client.table("tasks_pool").insert(data).execute()
         return result.data[0] if result.data else None
 
@@ -2350,13 +2509,29 @@ class DatabaseService:
                 payload["max_performance_score"] = float(data["max_performance_score"])
             except (TypeError, ValueError):
                 payload["max_performance_score"] = 1.0
+        payload.update(self._normalize_task_template_fields(data, partial=True))
+        if payload:
+            payload["updated_at"] = datetime.now(timezone.utc).isoformat()
         if not payload:
             return self.v2_get_task_pool_by_id(pool_id)
         result = self.client.table("tasks_pool").update(payload).eq("id", pool_id).execute()
         return result.data[0] if result.data else None
 
-    def v2_delete_task_pool(self, pool_id: str):
-        self.client.table("tasks_pool").delete().eq("id", pool_id).execute()
+    def v2_delete_task_pool(self, pool_id: str, *, hard_delete: bool = False):
+        if hard_delete:
+            self.client.table("tasks_pool").delete().eq("id", pool_id).execute()
+            return
+        try:
+            self.client.table("tasks_pool").update(
+                {
+                    "is_active": False,
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                }
+            ).eq("id", pool_id).execute()
+            return
+        except Exception:
+            # Backward compatibility for old schema (no is_active).
+            self.client.table("tasks_pool").delete().eq("id", pool_id).execute()
 
     def v2_sync_student_tasks_from_pool(self, user_id: str, pool_task_ids: list):
         """Replace student's tasks from tasks_pool ids (display order)."""
@@ -2404,6 +2579,11 @@ class DatabaseService:
         order_index: int = 0,
         max_performance_score: float = 1.0,
         insert_at: Any = "end",
+        target_profile: str = TASK_TEMPLATE_DEFAULT_PROFILE,
+        level: int = TASK_TEMPLATE_DEFAULT_LEVEL,
+        step_in_level: int = TASK_TEMPLATE_DEFAULT_STEP,
+        is_active: bool = True,
+        replaces_task_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Insert tasks_pool row, then sync student's tasks from pool selection."""
         text_clean = (text or "").strip()
@@ -2421,6 +2601,11 @@ class DatabaseService:
                 "text": text_clean,
                 "order_index": int(order_index),
                 "max_performance_score": mps,
+                "target_profile": target_profile,
+                "level": level,
+                "step_in_level": step_in_level,
+                "is_active": bool(is_active),
+                "replaces_task_id": replaces_task_id,
             }
         )
         if not pool_row:
@@ -2439,7 +2624,7 @@ class DatabaseService:
             assigned = self.v2_sync_student_tasks_from_pool(user_id, final_ids)
         except Exception:
             try:
-                self.v2_delete_task_pool(new_id)
+                self.v2_delete_task_pool(new_id, hard_delete=True)
             except Exception:
                 pass
             raise
@@ -2448,6 +2633,32 @@ class DatabaseService:
             "tasks": assigned,
             "dropped_non_pool_tasks": dropped_non_pool,
         }
+
+    def v2_get_next_active_task_pool_template(
+        self,
+        *,
+        target_profile: str,
+        level: int,
+        exclude_pool_task_ids: Optional[List[str]] = None,
+        limit: int = 1,
+    ) -> List[dict]:
+        """Deterministic template lookup: active rows ordered by step_in_level then creation."""
+        q = (
+            self.client.table("tasks_pool")
+            .select("*")
+            .eq("is_active", True)
+            .eq("target_profile", target_profile)
+            .eq("level", int(level))
+            .order("step_in_level")
+            .order("created_at")
+            .limit(max(1, int(limit)))
+        )
+        result = q.execute()
+        rows = result.data or []
+        if exclude_pool_task_ids:
+            excluded = {str(x) for x in exclude_pool_task_ids if x}
+            rows = [r for r in rows if str(r.get("id")) not in excluded]
+        return rows
 
     def v2_get_last_homework_performance_score(self, user_id: str):
         """Last completed homework session's canonical score (0-1), or None if no completed session."""
@@ -3448,6 +3659,9 @@ class DatabaseService:
         reason_chip: Optional[str],
         custom_reason: Optional[str],
         created_by: str,
+        draft_id: Optional[str] = None,
+        previous_value_hash: Optional[str] = None,
+        new_value_hash: Optional[str] = None,
     ) -> None:
         payload = {
             "user_id": user_id,
@@ -3460,8 +3674,18 @@ class DatabaseService:
             "custom_reason": custom_reason,
             "created_by": created_by,
             "created_at": datetime.now(timezone.utc).isoformat(),
+            "draft_id": draft_id,
+            "previous_value_hash": previous_value_hash,
+            "new_value_hash": new_value_hash,
         }
-        self.client.table("admin_annotation_events").insert(payload).execute()
+        try:
+            self.client.table("admin_annotation_events").insert(payload).execute()
+        except Exception:
+            # Backward compatibility for DBs without hash/draft_id columns.
+            payload.pop("draft_id", None)
+            payload.pop("previous_value_hash", None)
+            payload.pop("new_value_hash", None)
+            self.client.table("admin_annotation_events").insert(payload).execute()
 
     def insert_admin_student_send_drafts(self, rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         if not rows:
@@ -3502,6 +3726,58 @@ class DatabaseService:
             .execute()
         )
         return res.data[0] if res.data else None
+
+    # ---------- Runtime config ----------
+
+    def get_runtime_config(self, key: str) -> Optional[str]:
+        try:
+            res = (
+                self.client.table("runtime_config")
+                .select("value")
+                .eq("key", key)
+                .limit(1)
+                .execute()
+            )
+            if not res.data:
+                return None
+            value = res.data[0].get("value")
+            if value is None:
+                return None
+            text = str(value).strip()
+            return text or None
+        except Exception as e:
+            if self._is_relation_missing_error(e):
+                return None
+            logger.warning("get_runtime_config failed for key=%s: %s", key, e)
+            return None
+
+    def upsert_runtime_config(
+        self,
+        *,
+        key: str,
+        value: str,
+        updated_by: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> Optional[Dict[str, Any]]:
+        payload = {
+            "key": key,
+            "value": value,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "updated_by": updated_by,
+            "metadata": metadata or {},
+        }
+        try:
+            res = (
+                self.client.table("runtime_config")
+                .upsert(payload, on_conflict="key")
+                .execute()
+            )
+            return res.data[0] if res.data else payload
+        except Exception as e:
+            if self._is_relation_missing_error(e):
+                logger.warning("runtime_config table missing; run migrations/add_runtime_model_config.sql")
+                return None
+            raise
 
     def v2_get_last_completed_session_full(self, user_id: str) -> Optional[Dict[str, Any]]:
         """Latest completed homework session row (wide select) for copilot / admin seeding."""

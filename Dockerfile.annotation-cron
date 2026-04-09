@@ -1,0 +1,16 @@
+# Minimal image for a Railway *cron-only* service (not the web app).
+#
+# Railway: New service → connect repo → Settings:
+#   Builder: Dockerfile
+#   Dockerfile path: Dockerfile.annotation-cron
+#   Cron Schedule: 0 6 * * *   (daily 06:00 UTC)
+# Variables for this service:
+#   ANNOTATION_EXPORT_BACKEND_URL  https://<your-web-service>.up.railway.app
+#   ANNOTATION_EXPORT_CRON_SECRET  same as on the Flask web service
+# Optional: ANNOTATION_EXPORT_LIMIT (default 20000)
+
+FROM curlimages/curl:8.11.1
+WORKDIR /app
+COPY bin/railway-annotation-export-cron.sh /app/run.sh
+RUN chmod +x /app/run.sh
+ENTRYPOINT ["/bin/sh", "/app/run.sh"]

@@ -462,6 +462,146 @@ def _run_optional_enrichment(
     return coach_insight, r1, r2, r3
 
 
+def _auto_create_copilot_draft(
+    *,
+    user_id: str,
+    session_id: str,
+    coach_insight: str,
+    score_for_display_100: int | None,
+    task_text: str,
+    context_short: str,
+):
+    """Auto-create a Training Studio draft row with AI pre-fills after session completion.
+
+    Called at the end of _complete_session_from_recording so the admin sees
+    a fully pre-filled draft (grade, comment, email, task suggestion) in the
+    Training Studio without needing a manual backfill.
+    """
+    # Read the latest session to get AI draft grade/comment from enrichment
+    sess = db.v2_get_session(session_id, user_id) or {}
+    ai_draft_grade = sess.get("ai_draft_grade")
+    ai_draft_comment = (sess.get("ai_draft_comment") or "").strip() or None
+
+    # If enrichment didn't generate them, create now
+    if ai_draft_grade is None or not ai_draft_comment:
+        try:
+            gc = openai_service.generate_admin_grade_comment_draft(
+                context_short=context_short,
+                coach_insight=coach_insight,
+                score_for_display_100=score_for_display_100,
+            )
+            if ai_draft_grade is None:
+                ai_draft_grade = gc.get("grade")
+            if not ai_draft_comment:
+                ai_draft_comment = gc.get("comment")
+        except Exception:
+            pass
+
+    # Get student profile for cohort grouping
+    sp = db.get_sniper_profile(user_id) or {}
+    profile = (
+        (sp.get("coach_override_profile") or "").strip()
+        or (sp.get("behavioral_profile") or "").strip()
+        or "Unclassified"
+    )
+    try:
+        raw_stage = sp.get("coach_override_stage") or sp.get("computed_stage")
+        stage = int(raw_stage) if raw_stage is not None else 1
+    except (TypeError, ValueError):
+        stage = 1
+    stage = max(1, min(5, stage))
+
+    student_details = db.v2_get_student_details(user_id) or {}
+    student_name = (student_details.get("name") or "").strip() or (db.get_user_email_from_auth(user_id) or "Student")
+    base_task = (task_text or "Continue with your next speaking task.")[:8000]
+
+    # Task suggestion first so email + video script reference the same "next homework".
+    ai_task_suggestion = None
+    try:
+        ai_task_suggestion = openai_service.generate_next_task_suggestion(
+            context_short=context_short,
+            coach_insight=coach_insight,
+            current_task_text=base_task,
+            score_for_display_100=score_for_display_100,
+            behavioral_profile=profile,
+            stage=stage,
+        )
+    except Exception:
+        pass
+
+    display_task = (ai_task_suggestion or "").strip() or base_task
+    display_task = display_task[:8000]
+
+    ai_email_draft = None
+    try:
+        ai_email_draft = openai_service.generate_student_email_draft(
+            student_name=student_name,
+            coach_insight=coach_insight,
+            score_for_display_100=score_for_display_100,
+            grade=ai_draft_grade,
+            comment=ai_draft_comment or "",
+            task_text=display_task,
+        )
+    except Exception:
+        pass
+
+    ai_script_draft = None
+    try:
+        ai_script_draft = openai_service.generate_video_script_draft(
+            student_name=student_name,
+            coach_insight=coach_insight,
+            task_text=display_task,
+            score_for_display_100=score_for_display_100,
+        )
+    except Exception:
+        pass
+
+    draft_payload = {
+        "state": "Draft",
+        "ai_insight": coach_insight or None,
+        "grade_draft": ai_draft_grade,
+        "comment_draft": ai_draft_comment,
+        "task_draft": display_task,
+        "email_draft": ai_email_draft,
+        "script_draft": ai_script_draft,
+        "video_script": ai_script_draft,
+        "ai_grade_draft": ai_draft_grade,
+        "ai_comment_draft": ai_draft_comment,
+        "ai_email_draft": ai_email_draft,
+        "ai_task_suggestion": ai_task_suggestion or display_task,
+        "ai_script_draft": ai_script_draft,
+        "metadata": {
+            "auto_created_at": utc_now_iso(),
+            "session_id": session_id,
+            "score_for_display": score_for_display_100,
+        },
+    }
+
+    row = {
+        "user_id": user_id,
+        "session_id": session_id,
+        "cohort_profile": profile,
+        "cohort_stage": stage,
+        "master_task_text": display_task,
+        "ai_suggested_task_text": ai_task_suggestion or display_task,
+        "ai_draft_message": ai_email_draft,
+        "ai_draft_video_script": ai_script_draft,
+        "draft_payload": draft_payload,
+        "status": "pending",
+        "updated_at": utc_now_iso(),
+    }
+
+    try:
+        db.insert_admin_student_send_drafts([row])
+    except Exception:
+        row.pop("ai_suggested_task_text", None)
+        row.pop("ai_draft_message", None)
+        row.pop("ai_draft_video_script", None)
+        db.insert_admin_student_send_drafts([row])
+    logger.info("Auto-created copilot draft for user_id=%s session_id=%s profile=%s stage=%s",
+                user_id, session_id, profile, stage)
+
+
 def calculate_mechanical_score(stage_score, dynamic_db, filler_count) -> int:
     """Layer 1: pure deterministic mechanical score (0-100).
 
@@ -704,6 +844,19 @@ def _complete_session_from_recording(
         _compute_and_save_ai_task_score(session, session_id, user_id, transcript, wpm, filler_count, filler_data, performance_score_end)
     except Exception as ai_err:
         logger.warning("AI task score (shadow) failed session_id=%s: %s", session_id, ai_err)
+
+    # ── AUTO-CREATE COPILOT DRAFT ROW for Training Studio ──
+    try:
+        _auto_create_copilot_draft(
+            user_id=user_id,
+            session_id=session_id,
+            coach_insight=coach_insight,
+            score_for_display_100=score_for_display_100,
+            task_text=(session.get("session_task_text") or session.get("warm_up_task_text") or "").strip(),
+            context_short=(session.get("context_short") or "").strip(),
+        )
+    except Exception as draft_err:
+        logger.warning("Auto copilot draft creation failed session_id=%s: %s", session_id, draft_err)
 
     result = {
         "report_text": report_text,

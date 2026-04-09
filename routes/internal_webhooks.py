@@ -1,18 +1,33 @@
 """
-Server-to-server hooks (no student JWT). Protected by INTERNAL_CREDITS_WEBHOOK_SECRET.
-Call from Next.js Stripe webhook or automation after verifying Stripe's signature there.
+Server-to-server hooks (no student JWT).
+
+- POST /v2/internal/student-credits/increment — X-Internal-Secret: INTERNAL_CREDITS_WEBHOOK_SECRET
+- POST /v2/internal/annotation-export — X-Internal-Secret: ANNOTATION_EXPORT_CRON_SECRET
+- POST /v2/internal/stress-model/train — X-Internal-Secret: STRESS_MODEL_TRAIN_SECRET
 """
 import logging
+import os
+import subprocess
+from datetime import datetime, timezone
 
 from flask import Blueprint, jsonify, request
 
 from config import Config
+from services.annotation_export import result_to_dict, run_annotation_export
 from services.db import db
 
 logger = logging.getLogger(__name__)
 config = Config()
 
 internal_webhooks_bp = Blueprint("internal_webhooks", __name__)
+
+
+def _parse_bool(value, default=False) -> bool:
+    if value is None:
+        return bool(default)
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in ("1", "true", "yes", "on")
 
 
 @internal_webhooks_bp.route("/v2/internal/student-credits/increment", methods=["POST"])
@@ -50,3 +65,238 @@ def internal_increment_student_credits():
         return jsonify({"code": "V2_ERROR", "error": "Could not update credits"}), 500
     logger.info("internal_increment_student_credits user_id=%s delta=%s new_credits=%s", user_id, d, new_bal)
     return jsonify({"status": "ok", "user_id": user_id.strip(), "credits": new_bal, "delta_applied": d}), 200
+
+
+@internal_webhooks_bp.route("/v2/internal/annotation-export", methods=["POST"])
+def internal_annotation_export():
+    """Cron-friendly export of admin_annotation_events → JSONL (+ optional Supabase Storage).
+
+    Header: X-Internal-Secret: <ANNOTATION_EXPORT_CRON_SECRET>
+    Body JSON (optional): { "limit": 5000, "dry_run": false }
+
+    Configure ANNOTATION_EXPORT_BUCKET (recommended on Railway) and/or ANNOTATION_EXPORT_OUTPUT_DIR.
+    """
+    secret = (getattr(config, "ANNOTATION_EXPORT_CRON_SECRET", None) or "").strip()
+    if not secret:
+        return jsonify({"code": "DISABLED", "error": "ANNOTATION_EXPORT_CRON_SECRET not configured"}), 503
+    if (request.headers.get("X-Internal-Secret") or "").strip() != secret:
+        return jsonify({"code": "UNAUTHORIZED", "error": "Invalid or missing X-Internal-Secret"}), 401
+
+    data = request.get_json(silent=True) or {}
+    try:
+        limit = int(data.get("limit", 5000))
+    except (TypeError, ValueError):
+        return jsonify({"code": "INVALID_INPUT", "error": "limit must be an integer"}), 400
+    dry_raw = data.get("dry_run", False)
+    dry_run = str(dry_raw).lower() in ("1", "true", "yes")
+
+    bucket = (data.get("upload_bucket") or getattr(config, "ANNOTATION_EXPORT_BUCKET", None) or "").strip() or None
+    output_dir = (data.get("output_dir") or getattr(config, "ANNOTATION_EXPORT_OUTPUT_DIR", None) or "").strip() or None
+    prefix = (data.get("upload_prefix") or getattr(config, "ANNOTATION_EXPORT_PREFIX", None) or "annotation-events").strip()
+
+    if not dry_run and not bucket and not output_dir:
+        return jsonify(
+            {
+                "code": "EXPORT_SINK_MISSING",
+                "error": "Set ANNOTATION_EXPORT_BUCKET and/or ANNOTATION_EXPORT_OUTPUT_DIR, or pass them in the body.",
+            }
+        ), 400
+
+    try:
+        result = run_annotation_export(
+            limit=limit,
+            output_dir=None if dry_run else output_dir,
+            dry_run=dry_run,
+            created_by="cron:internal_annotation_export",
+            upload_bucket=bucket,
+            upload_prefix=prefix,
+        )
+        logger.info(
+            "internal_annotation_export run_id=%s exported=%s checkpoint=%s",
+            result.run_id,
+            result.exported_count,
+            result.checkpoint_created_at,
+        )
+        return jsonify({"status": "ok", **result_to_dict(result)}), 200
+    except Exception as exc:
+        logger.warning("internal_annotation_export failed: %s", exc)
+        return jsonify({"code": "EXPORT_FAILED", "error": str(exc)}), 500
+
+
+@internal_webhooks_bp.route("/v2/internal/stress-model/train", methods=["POST"])
+def internal_stress_model_train():
+    """
+    One-click pipeline:
+      1) export stress snippet dataset JSONL
+      2) train baseline stress classifier
+      3) optionally promote model path into runtime_config
+
+    Header:
+      X-Internal-Secret: STRESS_MODEL_TRAIN_SECRET
+
+    Optional JSON body:
+      {
+        "source_type": "all" | "student" | "internet",
+        "limit": 20000,
+        "max_train_rows": 5000,
+        "min_samples": 80,
+        "epochs": 350,
+        "learning_rate": 0.08,
+        "l2": 0.002,
+        "train_ratio": 0.8,
+        "seed": 42,
+        "auto_promote": true,
+        "export_with_audio_url": false
+      }
+    """
+    secret = (getattr(config, "STRESS_MODEL_TRAIN_SECRET", None) or "").strip()
+    if not secret:
+        return jsonify({"code": "DISABLED", "error": "STRESS_MODEL_TRAIN_SECRET not configured"}), 503
+    if (request.headers.get("X-Internal-Secret") or "").strip() != secret:
+        return jsonify({"code": "UNAUTHORIZED", "error": "Invalid or missing X-Internal-Secret"}), 401
+
+    data = request.get_json(silent=True) or {}
+    source_type = (data.get("source_type") or "all").strip().lower()
+    if source_type not in ("all", "student", "internet"):
+        return jsonify({"code": "INVALID_INPUT", "error": "source_type must be one of: all, student, internet"}), 400
+
+    try:
+        limit = int(data.get("limit", 20000))
+        max_train_rows = int(data.get("max_train_rows", 5000))
+        min_samples = int(data.get("min_samples", 80))
+        epochs = int(data.get("epochs", 350))
+        seed = int(data.get("seed", 42))
+        lr = float(data.get("learning_rate", data.get("lr", 0.08)))
+        l2 = float(data.get("l2", 0.002))
+        train_ratio = float(data.get("train_ratio", 0.8))
+    except (TypeError, ValueError):
+        return jsonify({"code": "INVALID_INPUT", "error": "Invalid numeric training parameters"}), 400
+
+    auto_promote = _parse_bool(data.get("auto_promote"), True)
+    export_with_audio_url = _parse_bool(data.get("export_with_audio_url"), False)
+
+    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    exports_dir = os.path.join(repo_root, "exports")
+    os.makedirs(exports_dir, exist_ok=True)
+    run_id = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    dataset_path = os.path.join(exports_dir, f"stress-dataset-{source_type}-{run_id}.jsonl")
+    model_path = os.path.join(exports_dir, f"stress-model-{source_type}-{run_id}.json")
+    metrics_path = os.path.join(exports_dir, f"stress-model-{source_type}-{run_id}-metrics.json")
+
+    export_cmd = [
+        "python3",
+        "scripts/export_stress_snippets_dataset.py",
+        "-o",
+        dataset_path,
+        "--source-type",
+        source_type,
+    ]
+    if export_with_audio_url:
+        export_cmd.append("--with-audio-url")
+
+    train_cmd = [
+        "python3",
+        "scripts/train_stress_classifier_baseline.py",
+        "--model-out",
+        model_path,
+        "--metrics-out",
+        metrics_path,
+        "--source-type",
+        source_type,
+        "--limit",
+        str(max(1, limit)),
+        "--max-train-rows",
+        str(max(1, max_train_rows)),
+        "--min-samples",
+        str(max(20, min_samples)),
+        "--epochs",
+        str(max(10, epochs)),
+        "--lr",
+        str(max(0.0001, lr)),
+        "--l2",
+        str(max(0.0, l2)),
+        "--train-ratio",
+        str(max(0.5, min(0.95, train_ratio))),
+        "--seed",
+        str(seed),
+    ]
+
+    try:
+        export_proc = subprocess.run(
+            export_cmd,
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+            timeout=900,
+        )
+        if export_proc.returncode != 0:
+            return jsonify(
+                {
+                    "code": "EXPORT_FAILED",
+                    "error": "Stress dataset export failed",
+                    "stdout": export_proc.stdout[-4000:],
+                    "stderr": export_proc.stderr[-4000:],
+                }
+            ), 500
+
+        train_proc = subprocess.run(
+            train_cmd,
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+            timeout=1800,
+        )
+        if train_proc.returncode != 0:
+            return jsonify(
+                {
+                    "code": "TRAIN_FAILED",
+                    "error": "Stress model training failed",
+                    "stdout": train_proc.stdout[-6000:],
+                    "stderr": train_proc.stderr[-6000:],
+                    "dataset_path": dataset_path,
+                }
+            ), 500
+
+        metrics_payload = None
+        try:
+            with open(metrics_path, "r", encoding="utf-8") as fh:
+                import json as _json
+
+                metrics_payload = _json.load(fh)
+        except Exception:
+            metrics_payload = None
+
+        promoted = None
+        if auto_promote:
+            promoted = db.upsert_runtime_config(
+                key="stress_baseline_model_path",
+                value=model_path,
+                updated_by="internal:stress-model-train",
+                metadata={
+                    "source_type": source_type,
+                    "run_id": run_id,
+                    "dataset_path": dataset_path,
+                    "metrics_path": metrics_path,
+                },
+            )
+
+        return jsonify(
+            {
+                "status": "ok",
+                "run_id": run_id,
+                "source_type": source_type,
+                "dataset_path": dataset_path,
+                "model_path": model_path,
+                "metrics_path": metrics_path,
+                "auto_promote": auto_promote,
+                "runtime_config": promoted,
+                "metrics": metrics_payload,
+                "export_stdout": export_proc.stdout[-2000:],
+                "train_stdout": train_proc.stdout[-2000:],
+            }
+        ), 200
+    except subprocess.TimeoutExpired as te:
+        return jsonify({"code": "TIMEOUT", "error": f"Pipeline timed out: {te}"}), 504
+    except Exception as exc:
+        logger.warning("internal_stress_model_train failed: %s", exc, exc_info=True)
+        return jsonify({"code": "PIPELINE_FAILED", "error": str(exc)}), 500
