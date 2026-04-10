@@ -3031,6 +3031,62 @@ def _effective_session_id_for_copilot_draft(row: dict | None, user_id: str | Non
     return db.v2_get_latest_session_id_for_user(uid)
 
 
+def _draft_has_prefill_content(row: dict | None) -> bool:
+    if not row:
+        return False
+    payload = _normalize_copilot_payload(row)
+    for key in ("task_draft", "email_draft", "script_draft", "ai_task_suggestion", "ai_email_draft", "ai_script_draft"):
+        value = payload.get(key)
+        if isinstance(value, str) and value.strip():
+            return True
+    return False
+
+
+def _copilot_draft_generation_status(user_id: str, rows: list[dict]) -> dict:
+    """Expose draft generation state so UI can differentiate pending vs truly empty."""
+    latest_completed = db.v2_get_last_completed_session_full(user_id) or {}
+    latest_completed_id = str(latest_completed.get("id") or "").strip() or None
+    latest_proc_status = str(latest_completed.get("recording_1_processing_status") or "").strip().lower() or None
+
+    if latest_completed_id:
+        matching = [
+            r for r in (rows or [])
+            if _effective_session_id_for_copilot_draft(r, user_id) == latest_completed_id
+        ]
+        if matching:
+            return {
+                "draft_generation_status": "ready" if _draft_has_prefill_content(matching[0]) else "pending",
+                "draft_generation_session_id": latest_completed_id,
+            }
+        if latest_proc_status == "failed":
+            return {
+                "draft_generation_status": "failed",
+                "draft_generation_session_id": latest_completed_id,
+            }
+        return {
+            "draft_generation_status": "pending",
+            "draft_generation_session_id": latest_completed_id,
+        }
+
+    active = db.v2_get_active_homework_session(user_id) or {}
+    active_status = str(active.get("status") or "").strip().lower()
+    if active_status in {"completing_from_recording_1", "task_block", "final_task_ready", "post_questions"}:
+        return {
+            "draft_generation_status": "pending",
+            "draft_generation_session_id": str(active.get("id") or "") or None,
+        }
+
+    if rows and _draft_has_prefill_content(rows[0]):
+        return {
+            "draft_generation_status": "ready",
+            "draft_generation_session_id": _effective_session_id_for_copilot_draft(rows[0], user_id),
+        }
+    return {
+        "draft_generation_status": "not_started",
+        "draft_generation_session_id": None,
+    }
+
+
 def _serialize_copilot_draft(row):
     payload = _normalize_copilot_payload(row)
     meta = payload.get("metadata") if isinstance(payload.get("metadata"), dict) else {}
@@ -4044,7 +4100,8 @@ def v2_admin_copilot_student_drafts(user_id):
                 ]
                 # Stale or UI-mismatched session_id must not return an empty list while rows exist.
                 rows = filtered if filtered else rows
-            return jsonify({"drafts": [_serialize_copilot_draft(r) for r in rows]}), 200
+            status_meta = _copilot_draft_generation_status(user_id, rows)
+            return jsonify({"drafts": [_serialize_copilot_draft(r) for r in rows], **status_meta}), 200
 
         body = request.get_json(silent=True) or {}
         immutable_fields = sorted(

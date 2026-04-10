@@ -1071,6 +1071,20 @@ def minimal_complete_and_notify(
         except Exception:
             pass
 
+        # Ensure Training Studio has a draft even on fallback completion paths.
+        try:
+            latest = db.v2_get_session(session_id, user_id) or {}
+            _auto_create_copilot_draft(
+                user_id=user_id,
+                session_id=session_id,
+                coach_insight=(latest.get("coach_insight") or "").strip(),
+                score_for_display_100=score_for_display_100,
+                task_text=(latest.get("session_task_text") or latest.get("warm_up_task_text") or "").strip(),
+                context_short=(latest.get("context_short") or "").strip(),
+            )
+        except Exception as draft_err:
+            logger.warning("minimal completion: auto copilot draft creation failed session_id=%s: %s", session_id, draft_err)
+
         logger.info("minimal_complete_and_notify: done session_id=%s", session_id)
         return True
     except Exception as e:
