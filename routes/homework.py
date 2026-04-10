@@ -567,7 +567,47 @@ def homework_self_rating(session_id):
         processing = False
         proc_status = session.get("recording_1_processing_status")
 
-        if status == STATUS_COMPLETING_FROM_RECORDING_1 and proc_status == "completed":
+        if status == STATUS_TASK_BLOCK and session.get("recording_1_id"):
+            # Legacy / edge: recording submitted but status still task_block — same completion rules as report_generating.
+            if proc_status == "completed":
+                payload_out = complete_session_recording_1_only(
+                    session_id,
+                    user_id,
+                    allow_task_block=True,
+                    preferred_student_email=preferred_student_email,
+                )
+                if payload_out:
+                    session_completed = True
+                    logger.info("homework_self_rating: completed from task_block after self-rating session_id=%s", session_id)
+                else:
+                    logger.warning(
+                        "homework_self_rating: complete_session_recording_1_only returned None (task_block) session_id=%s",
+                        session_id,
+                    )
+            elif proc_status == "pending":
+                processing = True
+                logger.info("homework_self_rating: task_block job still pending session_id=%s", session_id)
+            elif proc_status == "failed":
+                recovered = False
+                try:
+                    recovered = minimal_complete_and_notify(
+                        session_id,
+                        user_id,
+                        preferred_student_email=preferred_student_email,
+                    )
+                except Exception as fallback_err:
+                    logger.warning("homework_self_rating: minimal fallback failed (task_block): %s", fallback_err)
+                if recovered:
+                    session_completed = True
+                else:
+                    return jsonify({
+                        "code": "RECORDING_PROCESSING_FAILED",
+                        "error": "Recording processing failed. Please retry the recording.",
+                        "status": status,
+                        "recording_1_processing_status": proc_status,
+                        "recording_1_processing_error_code": session.get("recording_1_processing_error_code"),
+                    }), 409
+        elif status == STATUS_COMPLETING_FROM_RECORDING_1 and proc_status == "completed":
             # Job already finished before self-rating arrived — complete now.
             # #region agent log
             _agent_log("POST self-rating attempting completion", {"session_id": session_id, "recording_1_processing_status": proc_status}, "H4")
@@ -1058,7 +1098,13 @@ def homework_get_report(session_id):
             return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found"}), 404
         if session.get("status") != STATUS_COMPLETED:
             # If job is done but frontend never triggered completion, run completion once.
-            if session.get("status") == STATUS_COMPLETING_FROM_RECORDING_1 and session.get("recording_1_processing_status") == "completed":
+            _st = session.get("status")
+            _proc = session.get("recording_1_processing_status")
+            _can_fallback_complete = _proc == "completed" and (
+                _st == STATUS_COMPLETING_FROM_RECORDING_1
+                or (_st == STATUS_TASK_BLOCK and session.get("recording_1_id"))
+            )
+            if _can_fallback_complete:
                 # #region agent log
                 _agent_log("GET report running fallback completion", {"session_id": session_id}, "H2")
                 # #endregion
@@ -1066,6 +1112,7 @@ def homework_get_report(session_id):
                     if complete_session_recording_1_only(
                         session_id,
                         user_id,
+                        allow_task_block=(_st == STATUS_TASK_BLOCK),
                         preferred_student_email=preferred_student_email,
                     ):
                         session = db.v2_get_session(session_id, user_id)
@@ -1148,6 +1195,16 @@ def homework_get_report(session_id):
             score_for_display_100 = int(score_for_display_100) if score_for_display_100 is not None else None
         except (TypeError, ValueError):
             score_for_display_100 = None
+        if score_for_display_100 is None:
+            raw_score = session.get("score")
+            if raw_score is not None:
+                try:
+                    s01 = float(raw_score)
+                    if s01 > 1.0:
+                        s01 = max(0.0, min(1.0, s01 / 100.0))
+                    score_for_display_100 = max(0, min(100, int(round(s01 * 100.0))))
+                except (TypeError, ValueError):
+                    pass
         if score_for_display_100 is None:
             return jsonify({
                 "code": "REPORT_NOT_READY",

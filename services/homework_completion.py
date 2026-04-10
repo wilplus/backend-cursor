@@ -750,11 +750,25 @@ def _complete_session_from_recording(
         sniper_now = db.get_session_sniper_metrics(session_id) or {}
     except Exception:
         sniper_now = {}
-    if not isinstance(sniper_now, dict) or not any(
+    has_sniper_anchor = isinstance(sniper_now, dict) and any(
         sniper_now.get(k) is not None for k in ("stage_score", "pause_ms", "dynamic_db", "energy_ratio")
-    ):
-        logger.warning("_complete_session_from_recording: sniper/ffmpeg metrics missing, postponing completion session_id=%s", session_id)
-        return None
+    )
+    job_done = fresh_now.get("recording_1_processing_status") == "completed"
+    job_score_01 = float(fresh_now.get("score") or session.get("score") or 0)
+    rec_score_01 = score_01_from_recording_row(recording)
+    has_score_anchor = job_score_01 > 0 or (rec_score_01 is not None and rec_score_01 > 0)
+    if not has_sniper_anchor:
+        if job_done and has_score_anchor:
+            logger.info(
+                "_complete_session_from_recording: no sniper row but job completed with score; continuing session_id=%s",
+                session_id,
+            )
+        else:
+            logger.warning(
+                "_complete_session_from_recording: sniper/ffmpeg metrics missing, postponing completion session_id=%s",
+                session_id,
+            )
+            return None
 
     score_for_display_100, performance_score_end, score_components = _build_unified_score_payload(
         session={**session, **fresh_now},

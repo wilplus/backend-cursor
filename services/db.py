@@ -2178,16 +2178,39 @@ class DatabaseService:
         PostgREST ``update()`` often returns an empty ``data`` array even when rows were
         updated, so update-then-insert could duplicate-key fail after the recording job
         had already upserted metrics. Always upsert on ``session_id`` instead.
+
+        Merge with any existing row so we never drop ``stage_score`` / ffmpeg fields
+        written by the recording-1 job (defense-in-depth vs partial upsert behavior).
         """
         session = self.v2_get_session(session_id, user_id)
         if not session:
             return False
+        existing = self.get_session_sniper_metrics(session_id) or {}
         payload = {
             "session_id": session_id,
             "user_id": user_id,
             "student_rating_1_10": int(student_rating_1_10),
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }
+        for key in (
+            "wpm",
+            "pause_ms",
+            "dynamic_db",
+            "emphasis_per_min",
+            "energy_ratio",
+            "stage_score",
+            "voiced_duration_sec",
+            "recording_id",
+            "duration_seconds",
+            "pitch_center_st",
+            "pitch_frame_count",
+            "frontend_level",
+            "frontend_step",
+            "completed",
+            "valid_for_progression",
+        ):
+            if existing.get(key) is not None:
+                payload[key] = existing[key]
         self.client.table("session_sniper_metrics").upsert(
             payload, on_conflict="session_id"
         ).execute()
