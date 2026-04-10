@@ -529,6 +529,8 @@ def v2_admin_student_profile(user_id):
         last_report = db.v2_get_last_report_for_user(user_id)
         sessions = db.v2_get_sessions_with_previews(user_id, limit=50)
         delivered_sessions = [s for s in sessions if s.get("report_delivered")]
+        latest_assignment_row = _pick_student_draft(user_id, include_sent=True)
+        latest_assignment = _serialize_copilot_draft(latest_assignment_row) if latest_assignment_row else None
         measured_metrics = db.v2_get_admin_measured_metrics_snapshot(user_id)
         similar_students = []
         try:
@@ -554,6 +556,7 @@ def v2_admin_student_profile(user_id):
             "last_report": last_report.get("report_text") if last_report else None,
             "last_report_preview": last_report.get("report_preview") if last_report else None,
             "last_report_delivered": bool(last_report.get("report_delivered")) if last_report else False,
+            "latest_assignment_draft": latest_assignment,
             "sessions": delivered_sessions,
             "similar_students_by_wpm": similar_students,
         }), 200
@@ -808,6 +811,9 @@ def v2_admin_send_assignment(user_id):
                     "ai_task_suggestion": ai_task,
                     "ai_email_draft": ai_message,
                     "ai_script_draft": ai_script,
+                    "task_draft": ai_task,
+                    "email_draft": final_video_description,
+                    "script_draft": ai_script,
                     "task_text": ai_task,
                     "email_message": final_video_description,
                     "video_script": ai_script,
@@ -876,6 +882,12 @@ def v2_admin_send_assignment(user_id):
             "sent": result.get("sent", False),
             "email_status": result.get("status"),
             "email_failed_but_unlocked": bool(delivery.get("email_failed_but_unlocked")),
+            "homework_message": final_video_description,
+            "task_suggestion": ai_task,
+            "video_script": ai_script,
+            "ai_draft_message": ai_message,
+            "ai_suggested_task_text": ai_task,
+            "ai_draft_video_script": ai_script,
             "sniper_profile": sniper_profile,
             "realtime_level": sniper_profile.get("realtime_level"),
             "realtime_step": sniper_profile.get("realtime_step"),
@@ -1998,6 +2010,7 @@ def v2_admin_stress_snippets_settings():
 
 
 def _admin_tasks_pool_list_payload(data: list):
+    """JSON key matches DB table name public.tasks_pool (plural)."""
     return {"tasks_pool": data}
 
 
@@ -3061,16 +3074,19 @@ def _pick_student_draft(user_id: str, *, session_id: str | None = None, draft_id
             return row
     q = db.client.table("admin_student_send_drafts").select("*").eq("user_id", user_id).order("updated_at", desc=True).order("created_at", desc=True)
     rows = q.limit(20).execute().data or []
+    search_space = rows
     if session_id:
-        rows = [
+        filtered = [
             r
             for r in rows
             if str(r.get("session_id") or "") == session_id
             or _effective_session_id_for_copilot_draft(r, user_id) == session_id
         ]
-    if include_sent and rows:
-        return rows[0]
-    for row in rows:
+        # Stale/wrong session_id from the client must not hide editable drafts.
+        search_space = filtered if filtered else rows
+    if include_sent and search_space:
+        return search_space[0]
+    for row in search_space:
         if str(row.get("status") or "").lower() != "sent":
             return row
     return None
@@ -3960,10 +3976,27 @@ def v2_admin_copilot_cohort_students(cohort_id):
         return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
 
 
-def _ensure_draft_exists_for_user(user_id: str) -> list:
-    """Create-on-missing: if a cohort-visible student has no draft row, backfill one now.
+def _insert_copilot_backfill_draft(user_id: str) -> list:
+    """Insert one backfilled admin_student_send_drafts row; returns inserted rows or [dict] on failure."""
+    insert_dict = _copilot_backfill_draft_row_for_user(user_id)
+    try:
+        inserted = db.insert_admin_student_send_drafts([insert_dict])
+    except Exception:
+        legacy = dict(insert_dict)
+        legacy.pop("ai_suggested_task_text", None)
+        legacy.pop("ai_draft_message", None)
+        legacy.pop("ai_draft_video_script", None)
+        inserted = db.insert_admin_student_send_drafts([legacy])
+    return inserted if inserted else [insert_dict]
 
-    Returns the (possibly newly-created) list of draft rows.
+
+def _ensure_draft_exists_for_user(user_id: str) -> list:
+    """Ensure there is at least one draft row usable for Training Studio (pending or editable).
+
+    - No rows → backfill one.
+    - Only ``sent`` rows (previous homework already emailed) → add a fresh pending draft for the next cycle.
+
+    Returns the (possibly extended) list of draft rows.
     """
     rows = (
         db.client.table("admin_student_send_drafts")
@@ -3974,24 +4007,25 @@ def _ensure_draft_exists_for_user(user_id: str) -> list:
         .execute()
         .data or []
     )
-    if rows:
-        return _normalize_draft_rows_in_db(rows)
-    # No rows — create one on the fly (same logic as backfill)
-    try:
-        insert_dict = _copilot_backfill_draft_row_for_user(user_id)
+    if not rows:
         try:
-            inserted = db.insert_admin_student_send_drafts([insert_dict])
-        except Exception:
-            legacy = dict(insert_dict)
-            legacy.pop("ai_suggested_task_text", None)
-            legacy.pop("ai_draft_message", None)
-            legacy.pop("ai_draft_video_script", None)
-            inserted = db.insert_admin_student_send_drafts([legacy])
-        logger.info("create-on-missing: auto-created draft for user_id=%s", user_id)
-        return inserted if inserted else [insert_dict]
-    except Exception as auto_err:
-        logger.warning("create-on-missing failed for user_id=%s: %s", user_id, auto_err)
-        return []
+            out = _insert_copilot_backfill_draft(user_id)
+            logger.info("create-on-missing: auto-created draft for user_id=%s", user_id)
+            return out
+        except Exception as auto_err:
+            logger.warning("create-on-missing failed for user_id=%s: %s", user_id, auto_err)
+            return []
+
+    rows = _normalize_draft_rows_in_db(rows)
+    all_sent = rows and all(str(r.get("status") or "").lower() == "sent" for r in rows)
+    if all_sent:
+        try:
+            new_rows = _insert_copilot_backfill_draft(user_id)
+            logger.info("create-after-all-sent: auto-created draft for user_id=%s", user_id)
+            return rows + new_rows
+        except Exception as auto_err:
+            logger.warning("create-after-all-sent failed for user_id=%s: %s", user_id, auto_err)
+    return rows
 
 
 @v2_bp.route("/admin/copilot/students/<user_id>/drafts", methods=["GET", "PUT"])
@@ -4002,12 +4036,14 @@ def v2_admin_copilot_student_drafts(user_id):
             session_id = (request.args.get("session_id") or "").strip() or None
             rows = _ensure_draft_exists_for_user(user_id)
             if session_id:
-                rows = [
+                filtered = [
                     r
                     for r in rows
                     if str(r.get("session_id") or "") == session_id
                     or _effective_session_id_for_copilot_draft(r, user_id) == session_id
                 ]
+                # Stale or UI-mismatched session_id must not return an empty list while rows exist.
+                rows = filtered if filtered else rows
             return jsonify({"drafts": [_serialize_copilot_draft(r) for r in rows]}), 200
 
         body = request.get_json(silent=True) or {}

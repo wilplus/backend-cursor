@@ -794,6 +794,9 @@ def _complete_session_from_recording(
         "question_3_analysis": "",
         "question_3_score": 0,
         "coach_insight": None,
+        # After each completion the student should see waiting until coach sends
+        # the next homework assignment (which sets tutor_feedback_sent_at).
+        "tutor_feedback_sent_at": None,
     })
 
     try:
@@ -1031,6 +1034,8 @@ def minimal_complete_and_notify(
             "coach_insight": None,
             "ai_draft_grade": ai_grade,
             "ai_draft_comment": ai_comment,
+            # Enforce waiting state after completion until coach releases next homework.
+            "tutor_feedback_sent_at": None,
         }
         try:
             db.v2_update_session(session_id, user_id, update_payload)

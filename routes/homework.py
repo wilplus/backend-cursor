@@ -10,6 +10,7 @@ from services.email_service import email_service
 from services.homework_completion import (
     complete_session_recording_1_only,
     ensure_student_completion_email,
+    minimal_complete_and_notify,
 )
 from services.sniper_realtime import clear_sniper_session
 from services.utils import utc_now_iso
@@ -220,6 +221,7 @@ def _build_step0_payload(user_id: str) -> dict:
             payload["tutor_feedback_message"] = payload["main_screen_message"]
     except Exception:
         pass
+
     # assigned_exercises removed: step-0 media comes from tutor_video_* (send-assignment) only.
     # Pending coach video is for the *next* homework. Do not show it while the student is still in
     # review_pending (coach analysing the submission). Otherwise send-assignment sets
@@ -237,6 +239,7 @@ def _build_step0_payload(user_id: str) -> dict:
                     payload["tutor_video_description"] = msg
         except Exception:
             pass
+
     return payload
 
 
@@ -588,13 +591,27 @@ def homework_self_rating(session_id):
             processing = True
             logger.info("homework_self_rating: job still pending, deferring completion to job session_id=%s", session_id)
         elif status == STATUS_COMPLETING_FROM_RECORDING_1 and proc_status == "failed":
-            return jsonify({
-                "code": "RECORDING_PROCESSING_FAILED",
-                "error": "Recording processing failed. Please retry the recording.",
-                "status": status,
-                "recording_1_processing_status": proc_status,
-                "recording_1_processing_error_code": session.get("recording_1_processing_error_code"),
-            }), 409
+            # Last-resort recovery: finalize with a minimal report so the student
+            # can still see a score and complete the lesson.
+            recovered = False
+            try:
+                recovered = minimal_complete_and_notify(
+                    session_id,
+                    user_id,
+                    preferred_student_email=preferred_student_email,
+                )
+            except Exception as fallback_err:
+                logger.warning("homework_self_rating: minimal fallback failed: %s", fallback_err)
+            if recovered:
+                session_completed = True
+            else:
+                return jsonify({
+                    "code": "RECORDING_PROCESSING_FAILED",
+                    "error": "Recording processing failed. Please retry the recording.",
+                    "status": status,
+                    "recording_1_processing_status": proc_status,
+                    "recording_1_processing_error_code": session.get("recording_1_processing_error_code"),
+                }), 409
         elif status == STATUS_COMPLETED:
             session_completed = True
             ensure_student_completion_email(
@@ -1077,13 +1094,26 @@ def homework_get_report(session_id):
                 except Exception as requeue_err:
                     logger.warning("homework_get_report: pending job re-enqueue failed: %s", requeue_err)
             elif session.get("status") == STATUS_COMPLETING_FROM_RECORDING_1 and session.get("recording_1_processing_status") == "failed":
-                return jsonify({
-                    "code": "RECORDING_PROCESSING_FAILED",
-                    "error": "Recording processing failed. Please retry the recording.",
-                    "status": session.get("status"),
-                    "recording_1_processing_status": session.get("recording_1_processing_status"),
-                    "recording_1_processing_error_code": session.get("recording_1_processing_error_code"),
-                }), 409
+                recovered = False
+                try:
+                    recovered = minimal_complete_and_notify(
+                        session_id,
+                        user_id,
+                        preferred_student_email=preferred_student_email,
+                    )
+                    if recovered:
+                        session = db.v2_get_session(session_id, user_id)
+                        logger.info("homework_get_report: minimal fallback completion ran session_id=%s", session_id)
+                except Exception as fallback_err:
+                    logger.warning("homework_get_report: minimal fallback failed: %s", fallback_err)
+                if not recovered:
+                    return jsonify({
+                        "code": "RECORDING_PROCESSING_FAILED",
+                        "error": "Recording processing failed. Please retry the recording.",
+                        "status": session.get("status"),
+                        "recording_1_processing_status": session.get("recording_1_processing_status"),
+                        "recording_1_processing_error_code": session.get("recording_1_processing_error_code"),
+                    }), 409
             if session.get("status") != STATUS_COMPLETED:
                 # #region agent log
                 _agent_log("GET report returning 409", {"session_id": session_id, "status": session.get("status")}, "H1")
