@@ -2411,6 +2411,35 @@ class DatabaseService:
             log.warning("v2_ensure_default_student_task insert failed for user_id=%s: %s", user_id, e)
             return False
 
+    def v2_apply_coach_homework_task_text(self, user_id: str, task_text: str | None) -> None:
+        """After coach sends assignment, persist task text to public.tasks so session/start sees NO_TASK_CONFIGURED=false.
+
+        Updates the student's first task by order_index; inserts one row if none exist.
+        No-op if task_text is empty.
+        """
+        text = (task_text or "").strip()
+        if not text:
+            return
+        text = text[:8000]
+        try:
+            rows = self.v2_get_student_tasks(user_id)
+            if not rows:
+                self.v2_insert_student_task(
+                    {
+                        "user_id": user_id,
+                        "text": text,
+                        "order_index": 0,
+                        "max_performance_score": 1,
+                    }
+                )
+                return
+            first = rows[0]
+            tid = first.get("id")
+            if tid and (first.get("text") or "").strip() != text:
+                self.v2_update_student_task(str(tid), {"text": text})
+        except Exception as e:
+            logger.warning("v2_apply_coach_homework_task_text failed user_id=%s: %s", user_id, e)
+
     def v2_get_student_tasks(self, user_id: str):
         result = (
             self.client.table("tasks")

@@ -790,6 +790,10 @@ def v2_admin_send_assignment(user_id):
         result = delivery["email"]
         sniper_profile = delivery["sniper_profile"]
         try:
+            db.v2_apply_coach_homework_task_text(user_id, ai_task)
+        except Exception as task_sync_err:
+            logger.warning("send-assignment: task sync failed for %s: %s", user_id, task_sync_err)
+        try:
             last_completed = db.v2_get_last_completed_session(user_id) or {}
             sent_row = {
                 "user_id": user_id,
@@ -854,6 +858,10 @@ def v2_admin_send_assignment(user_id):
                 if extra_err:
                     additional_results.append({"user_id": extra_uid, "status": "failed", "reason": extra_err})
                 else:
+                    try:
+                        db.v2_apply_coach_homework_task_text(extra_uid, ai_task)
+                    except Exception as extra_task_err:
+                        logger.warning("send-assignment: task sync failed for %s: %s", extra_uid, extra_task_err)
                     er = extra_delivery["email"]
                     additional_results.append(
                         {"user_id": extra_uid, "status": er.get("status", "unknown"), "email": extra_email.strip()}
@@ -4385,6 +4393,17 @@ def v2_admin_copilot_student_send(user_id):
             return jsonify({"code": "EMAIL_FAILED", "error": send_err}), 500
         send_result = delivery["email"]
         sniper_profile = delivery["sniper_profile"]
+        task_sync = _first_non_empty(
+            payload.get("task_draft"),
+            payload.get("task_text"),
+            row.get("master_task_text"),
+            payload.get("ai_task_suggestion"),
+            row.get("ai_suggested_task_text"),
+        )
+        try:
+            db.v2_apply_coach_homework_task_text(user_id, task_sync)
+        except Exception as task_sync_err:
+            logger.warning("copilot send: task sync failed user_id=%s: %s", user_id, task_sync_err)
         updated = db.mark_admin_student_send_draft_sent(str(row.get("id")), user_id, request.user_id) or row
         try:
             ai_message = (
@@ -4418,6 +4437,7 @@ def v2_admin_copilot_student_send(user_id):
                 "realtime_level": sniper_profile.get("realtime_level"),
                 "realtime_step": sniper_profile.get("realtime_step"),
                 "draft": _serialize_copilot_draft(updated),
+                "synced_task_to_student": bool((task_sync or "").strip()),
             }
         ), 200
     except Exception as e:
@@ -4558,6 +4578,17 @@ def v2_admin_student_draft_approve_send(user_id, draft_id):
             return jsonify({"code": "EMAIL_FAILED", "error": send_err}), 500
         send_result = delivery["email"]
         sniper_profile = delivery["sniper_profile"]
+        task_sync = _first_non_empty(
+            payload.get("task_draft"),
+            payload.get("task_text"),
+            row.get("master_task_text"),
+            payload.get("ai_task_suggestion"),
+            row.get("ai_suggested_task_text"),
+        )
+        try:
+            db.v2_apply_coach_homework_task_text(user_id, task_sync)
+        except Exception as task_sync_err:
+            logger.warning("approve-send: task sync failed user_id=%s: %s", user_id, task_sync_err)
         updated = db.mark_admin_student_send_draft_sent(draft_id, user_id, request.user_id)
         try:
             ai_message = (
@@ -4590,6 +4621,7 @@ def v2_admin_student_draft_approve_send(user_id, draft_id):
                 "sniper_profile": sniper_profile,
                 "realtime_level": sniper_profile.get("realtime_level"),
                 "realtime_step": sniper_profile.get("realtime_step"),
+                "synced_task_to_student": bool((task_sync or "").strip()),
             }
         ), 200
     except Exception as e:
