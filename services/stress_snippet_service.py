@@ -214,26 +214,61 @@ def _overlap_ratio(a: tuple[float, float], b: tuple[float, float]) -> float:
 
 
 def _select_diverse(candidates: list[CandidateWindow], max_snippets: int) -> list[CandidateWindow]:
+    """Pick clips in global score order while prioritising the four labelled scenarios.
+
+    Phase 1 ensures **at least one** window per scenario when that bucket is non-empty
+    (so Voice Pipeline gets before-pause / after-pause / high- vs low-filler coverage
+    when the recording supports it). Overlap is avoided when possible; otherwise the
+    best-ranked candidate in the bucket is still kept.
+    """
     out: list[CandidateWindow] = []
     by_scenario = {name: [] for name in _SCENARIOS}
     for c in candidates:
         if c.scenario in by_scenario:
             by_scenario[c.scenario].append(c)
 
+    def _overlap_conflict(c: CandidateWindow) -> bool:
+        return any(_overlap_ratio((c.start_sec, c.end_sec), (x.start_sec, x.end_sec)) > 0.7 for x in out)
+
+    # Phase 1: one representative per core scenario (buckets are in score order).
     for scenario in _SCENARIOS:
-        taken = 0
-        for c in by_scenario[scenario]:
-            if taken >= 2 or len(out) >= max_snippets:
+        if len(out) >= max_snippets:
+            break
+        bucket = by_scenario.get(scenario) or []
+        if not bucket:
+            continue
+        chosen = None
+        for c in bucket:
+            if not _overlap_conflict(c):
+                chosen = c
                 break
-            if any(_overlap_ratio((c.start_sec, c.end_sec), (x.start_sec, x.end_sec)) > 0.7 for x in out):
+        out.append(chosen if chosen is not None else bucket[0])
+
+    # Phase 2: optional second non-overlapping clip per scenario (cap2 per scenario).
+    for scenario in _SCENARIOS:
+        if len(out) >= max_snippets:
+            break
+        bucket = by_scenario.get(scenario) or []
+        if len(bucket) < 2:
+            continue
+        taken = sum(1 for x in out if x.scenario == scenario)
+        if taken >= 2:
+            continue
+        for c in bucket:
+            if any(x is c for x in out):
+                continue
+            if _overlap_conflict(c):
                 continue
             out.append(c)
-            taken += 1
+            break
 
+    # Phase 3: fill remaining slots from global score order (includes uncertain, extras).
     for c in candidates:
         if len(out) >= max_snippets:
             break
-        if any(_overlap_ratio((c.start_sec, c.end_sec), (x.start_sec, x.end_sec)) > 0.7 for x in out):
+        if any(x is c for x in out):
+            continue
+        if _overlap_conflict(c):
             continue
         out.append(c)
     return out[:max_snippets]
