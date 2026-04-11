@@ -10,6 +10,7 @@ from services.email_service import email_service
 from services.homework_completion import (
     complete_session_recording_1_only,
     ensure_student_completion_email,
+    best_effort_backfill_recording_1_transcript,
     minimal_complete_and_notify,
 )
 from services.sniper_realtime import clear_sniper_session
@@ -1317,12 +1318,52 @@ def homework_get_report(session_id):
                     "words_per_minute": round(float(rec.get("words_per_minute") or 0), 1),
                 }
 
-        if not (session.get("context_short") or "").strip() or not recording_payload or not (recording_payload.get("transcription_text") or "").strip():
+        if (
+            session.get("status") == STATUS_COMPLETED
+            and recording_payload is not None
+            and not (recording_payload.get("transcription_text") or "").strip()
+        ):
+            # Recovery path for old fallback-completed sessions where Whisper failed earlier.
+            # Try a one-shot transcript backfill from stored audio.
+            recovered = best_effort_backfill_recording_1_transcript(session_id, user_id)
+            if recovered:
+                session = db.v2_get_session(session_id, user_id) or session
+                rec2 = db.get_recording_for_homework_session(display_recording_id, user_id, session) or db.get_recording(str(display_recording_id), None)
+                if rec2:
+                    filler_data2 = rec2.get("filler_words_count") or {}
+                    if not isinstance(filler_data2, dict):
+                        filler_data2 = {}
+                    tt2 = (rec2.get("transcription_text") or "").strip()
+                    recording_payload["transcription_text"] = tt2
+                    recording_payload["transcript"] = tt2
+                    recording_payload["words_per_minute"] = round(float(rec2.get("words_per_minute") or 0), 1)
+                    recording_payload["filler_words_count"] = {
+                        "total": int(filler_data2.get("total", 0) or 0),
+                        "breakdown": dict(filler_data2.get("breakdown") or {}),
+                    }
+
+        context_ready = bool((session.get("context_short") or "").strip())
+        transcript_ready = bool(recording_payload and (recording_payload.get("transcription_text") or "").strip())
+        degraded_missing_transcript = False
+        if not context_ready or not recording_payload:
             return jsonify({
                 "code": "REPORT_NOT_READY",
                 "error": "Transcript and context are still processing.",
                 "status": session.get("status"),
             }), 409
+        if not transcript_ready:
+            # Never trap completed sessions in infinite loading when fallback completion
+            # produced a report without transcript.
+            if session.get("status") == STATUS_COMPLETED and report_text:
+                degraded_missing_transcript = True
+                recording_payload["transcription_text"] = ""
+                recording_payload["transcript"] = ""
+            else:
+                return jsonify({
+                    "code": "REPORT_NOT_READY",
+                    "error": "Transcript and context are still processing.",
+                    "status": session.get("status"),
+                }), 409
 
         sniper_profile = db.get_sniper_profile_payload(user_id)
         # Build sniper_metrics from session_sniper_metrics for frontend display
@@ -1387,6 +1428,9 @@ def homework_get_report(session_id):
             _tt = recording_payload.get("transcription_text") or recording_payload.get("transcript") or ""
             payload["transcription_text"] = _tt
             payload["transcript"] = _tt
+        if degraded_missing_transcript:
+            payload["report_quality"] = "degraded_missing_transcript"
+            payload["transcript_available"] = False
         context_short = (session.get("context_short") or "").strip()
         if context_short:
             payload["context_short"] = context_short

@@ -196,14 +196,36 @@ class DatabaseService:
                 .update(data)\
                 .eq("id", recording_id)\
                 .execute()
-            
+
             return result.data[0] if result.data else None
         except Exception as e:
-            # Log the error but don't fail silently
-            # This helps identify missing columns or other schema issues
+            err_low = str(e).lower()
+            # PostgREST PGRST204: column absent from schema cache / table (e.g. task_id before migration).
+            if (
+                "task_id" in data
+                and (
+                    "pgrst204" in err_low
+                    or "could not find the 'task_id' column" in err_low
+                    or ("task_id" in err_low and "schema" in err_low)
+                )
+            ):
+                retry_payload = {k: v for k, v in data.items() if k != "task_id"}
+                try:
+                    result = self.client.table("recordings")\
+                        .update(retry_payload)\
+                        .eq("id", recording_id)\
+                        .execute()
+                    logger.warning(
+                        "update_recording: recordings.task_id not in schema; updated without task_id recording_id=%s",
+                        recording_id,
+                    )
+                    return result.data[0] if result.data else None
+                except Exception as e2:
+                    sentry_sdk.capture_exception(e2)
+                    raise e2
+
             sentry_sdk.capture_exception(e)
             error_msg = str(e)
-            # If it's a column doesn't exist error, provide helpful message
             if "column" in error_msg.lower() and "does not exist" in error_msg.lower():
                 raise Exception(f"Database schema error: {error_msg}. Please ensure all required columns exist in the recordings table.")
             raise

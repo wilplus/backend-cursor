@@ -7,6 +7,7 @@ import json
 import logging
 import time
 import re
+from io import BytesIO
 from datetime import datetime, timezone
 
 from config import Config
@@ -15,6 +16,7 @@ from services.openai_service import openai_service
 from services.email_service import email_service
 from services.metrics_v2 import compute_metrics_v2
 from services.utils import utc_now_iso, score_01_from_recording_row
+from utils.metrics import compute_wpm, count_fillers
 
 logger = logging.getLogger(__name__)
 config = Config()
@@ -29,6 +31,75 @@ MINIMAL_REPORT_FALLBACK = (
     "**Report**\n\nHomework recording was submitted. Full report could not be generated. "
     "Your coach has 24 hours to review and send you feedback."
 )
+
+
+def best_effort_backfill_recording_1_transcript(session_id: str, user_id: str) -> bool:
+    """
+    Try to restore missing recording_1 transcript from stored audio.
+    Used as a recovery path for sessions that were completed via fallback.
+    """
+    try:
+        session = db.v2_get_session(session_id, user_id)
+        if not session:
+            return False
+        recording_id = session.get("recording_1_id")
+        if not recording_id:
+            return False
+        rec = db.get_recording_for_homework_session(recording_id, user_id, session)
+        if not rec:
+            return False
+        if (rec.get("transcription_text") or "").strip():
+            return True
+        storage_path = (rec.get("storage_path") or "").strip()
+        if not storage_path:
+            logger.warning("transcript_backfill: missing storage_path session_id=%s", session_id)
+            return False
+
+        audio_bytes = db.download_audio(config.AUDIO_BUCKET_NAME, storage_path)
+        if not audio_bytes:
+            logger.warning("transcript_backfill: empty audio bytes session_id=%s", session_id)
+            return False
+
+        tr = openai_service.transcribe_audio(BytesIO(audio_bytes), "audio.webm")
+        transcript = (tr.get("text") or "").strip()
+        if not transcript:
+            logger.warning("transcript_backfill: empty transcript from Whisper session_id=%s", session_id)
+            return False
+
+        duration_seconds = tr.get("duration") or rec.get("duration_seconds") or rec.get("duration") or 60.0
+        try:
+            duration_seconds = max(1.0, float(duration_seconds))
+        except (TypeError, ValueError):
+            duration_seconds = 60.0
+
+        wpm = compute_wpm(transcript, duration_seconds)
+        filler_data = count_fillers(transcript)
+        update_payload = {
+            "transcription_text": transcript,
+            "words_per_minute": wpm,
+            "filler_words_count": {
+                "breakdown": filler_data.get("breakdown", {}),
+                "total": int(filler_data.get("total", 0)),
+            },
+            "duration_seconds": duration_seconds,
+            "duration": int(round(duration_seconds)),
+        }
+        db.update_recording(str(recording_id), update_payload)
+
+        # Backfill context_short when missing so report endpoint can proceed.
+        if not (session.get("context_short") or "").strip():
+            try:
+                context_short = (openai_service.generate_context_short(transcript) or "").strip()
+                if context_short:
+                    db.v2_update_session(session_id, user_id, {"context_short": context_short})
+            except Exception as ctx_err:
+                logger.warning("transcript_backfill: context_short regeneration failed session_id=%s: %s", session_id, ctx_err)
+
+        logger.info("transcript_backfill: recovered recording_1 transcript session_id=%s", session_id)
+        return True
+    except Exception as err:
+        logger.warning("transcript_backfill failed session_id=%s: %s", session_id, err)
+        return False
 
 
 def _normalize_email(value) -> str:
@@ -1038,7 +1109,10 @@ def minimal_complete_and_notify(
             "score_ready_at": utc_now_iso(),
             "status": STATUS_COMPLETED,
             "completed_at": completed_at_iso,
-            "recording_1_processing_status": "completed",
+            # Keep processing diagnostics truthful on fallback completion paths.
+            # If the job failed and we recovered with a minimal report, do not rewrite
+            # processing status to "completed" because transcript/audio analysis may still be missing.
+            "recording_1_processing_status": str(session.get("recording_1_processing_status") or "failed"),
             "question_1_analysis": "",
             "question_1_score": 0,
             "question_2_analysis": "",

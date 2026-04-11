@@ -9,6 +9,7 @@ import queue
 import threading
 import time
 from io import BytesIO
+from typing import Optional
 
 import sentry_sdk
 
@@ -103,6 +104,17 @@ def _worker_loop():
         except Exception as e:
             logger.exception("recording_1_job: worker loop error: %s", e)
             sentry_sdk.capture_exception(e)
+
+
+def _session_homework_task_id(session: Optional[dict]) -> Optional[str]:
+    """UUID string of the homework task row (public.tasks) from session snapshot, if any."""
+    if not session:
+        return None
+    tid = session.get("session_task_id") or session.get("warm_up_task_id")
+    if tid is None:
+        return None
+    s = str(tid).strip()
+    return s or None
 
 
 def _mark_failed(session_id: str, user_id: str, error_code: str, exc: Exception):
@@ -305,16 +317,19 @@ def _process_one(payload: dict):
         scoring_debug = score_result
         merged_metrics = dict(existing_metrics)
         merged_metrics["scoring_debug"] = scoring_debug
-        db.update_recording(recording_id, {
+        recording_update = {
             "transcription_text": transcript_text,
             "words_per_minute": wpm,
             "filler_words_count": {"breakdown": filler_data.get("breakdown", {}), "total": filler_count},
             "audio_url": audio_url,
             "duration": duration_int,
             "duration_seconds": duration_seconds,
-            "task_id": None,
             "performance_metrics_v2": merged_metrics,
-        })
+        }
+        hw_task_id = _session_homework_task_id(session)
+        if hw_task_id:
+            recording_update["task_id"] = hw_task_id
+        db.update_recording(recording_id, recording_update)
         db.v2_update_session(session_id, user_id, {
             "score": score,
             "context_short": context_short,
