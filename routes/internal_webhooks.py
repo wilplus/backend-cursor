@@ -2,6 +2,7 @@
 Server-to-server hooks (no student JWT).
 
 - POST /v2/internal/student-credits/increment — X-Internal-Secret: INTERNAL_CREDITS_WEBHOOK_SECRET
+- POST /v2/internal/stripe/webhook — Stripe-Signature (STRIPE_WEBHOOK_SECRET); credits from STRIPE_CHECKOUT_PRICE_CREDITS_JSON
 - POST /v2/internal/annotation-export — X-Internal-Secret: ANNOTATION_EXPORT_CRON_SECRET
 - POST /v2/internal/stress-model/train — X-Internal-Secret: STRESS_MODEL_TRAIN_SECRET
 """
@@ -15,6 +16,11 @@ from flask import Blueprint, jsonify, request
 from config import Config
 from services.annotation_export import result_to_dict, run_annotation_export
 from services.db import db
+from services.stripe_checkout_webhook import (
+    checkout_user_id,
+    parse_price_credits_map,
+    total_credits_for_checkout_session,
+)
 
 logger = logging.getLogger(__name__)
 config = Config()
@@ -65,6 +71,98 @@ def internal_increment_student_credits():
         return jsonify({"code": "V2_ERROR", "error": "Could not update credits"}), 500
     logger.info("internal_increment_student_credits user_id=%s delta=%s new_credits=%s", user_id, d, new_bal)
     return jsonify({"status": "ok", "user_id": user_id.strip(), "credits": new_bal, "delta_applied": d}), 200
+
+
+@internal_webhooks_bp.route("/v2/internal/stripe/webhook", methods=["POST"])
+def stripe_checkout_webhook():
+    """
+    Stripe webhook for Checkout (payment mode). On checkout.session.completed, adds credits to v2_student_details.
+
+    Configure in Stripe: endpoint URL, events checkout.session.completed.
+    Env: STRIPE_WEBHOOK_SECRET, STRIPE_SECRET_KEY, STRIPE_CHECKOUT_PRICE_CREDITS_JSON (Price id → credits).
+
+    Checkout Session must include client_reference_id or metadata.user_id = Supabase auth user id (uuid).
+    Credit amount is derived only from paid line item Price IDs present in STRIPE_CHECKOUT_PRICE_CREDITS_JSON.
+    """
+    import stripe
+
+    wh_secret = (getattr(config, "STRIPE_WEBHOOK_SECRET", None) or "").strip()
+    api_key = (getattr(config, "STRIPE_SECRET_KEY", None) or "").strip()
+    if not wh_secret or not api_key:
+        return jsonify({"code": "DISABLED", "error": "STRIPE_WEBHOOK_SECRET and STRIPE_SECRET_KEY required"}), 503
+
+    payload = request.get_data(cache=False, as_text=False)
+    sig_header = request.headers.get("Stripe-Signature") or ""
+    stripe.api_key = api_key
+    try:
+        event = stripe.Webhook.construct_event(payload, sig_header, wh_secret)
+    except ValueError as e:
+        logger.warning("stripe webhook invalid payload: %s", e)
+        return jsonify({"code": "INVALID_PAYLOAD", "error": "Invalid payload"}), 400
+    except stripe.error.SignatureVerificationError as e:
+        logger.warning("stripe webhook bad signature: %s", e)
+        return jsonify({"code": "INVALID_SIGNATURE", "error": "Invalid signature"}), 400
+
+    if event.get("type") != "checkout.session.completed":
+        return jsonify({"received": True}), 200
+
+    obj = (event.get("data") or {}).get("object") or {}
+    session_id = obj.get("id")
+    if not session_id:
+        return jsonify({"code": "INVALID_EVENT", "error": "missing session id"}), 400
+
+    if obj.get("payment_status") != "paid":
+        return jsonify({"received": True, "skipped": "not_paid"}), 200
+
+    if obj.get("mode") != "payment":
+        return jsonify({"received": True, "skipped": "not_payment_mode"}), 200
+
+    price_map = parse_price_credits_map(getattr(config, "STRIPE_CHECKOUT_PRICE_CREDITS_JSON", "") or "")
+    if not price_map:
+        logger.error("stripe webhook: STRIPE_CHECKOUT_PRICE_CREDITS_JSON missing or empty")
+        return jsonify({"code": "MISCONFIGURED", "error": "STRIPE_CHECKOUT_PRICE_CREDITS_JSON not configured"}), 500
+
+    try:
+        full = stripe.checkout.Session.retrieve(session_id, expand=["line_items.data.price"])
+    except Exception as e:
+        logger.warning("stripe Session.retrieve failed: %s", e)
+        return jsonify({"code": "STRIPE_API_ERROR", "error": str(e)}), 500
+
+    user_id = checkout_user_id(full)
+    if not user_id:
+        logger.error("stripe webhook: missing user id checkout_session_id=%s", session_id)
+        return jsonify(
+            {"code": "INVALID_SESSION", "error": "Set client_reference_id or metadata.user_id to Supabase user id"}
+        ), 500
+
+    total, map_err = total_credits_for_checkout_session(full, price_map)
+    if map_err or total is None:
+        logger.error("stripe webhook: credit mapping failed session=%s detail=%s", session_id, map_err)
+        return jsonify({"code": "UNMAPPED_CHECKOUT", "error": map_err or "mapping failed"}), 500
+
+    try:
+        claimed = db.stripe_checkout_grant_claim(session_id)
+    except Exception as e:
+        logger.warning("stripe_checkout_grant_claim error: %s", e)
+        return jsonify({"code": "DB_ERROR", "error": "idempotency claim failed"}), 500
+
+    if not claimed:
+        return jsonify({"received": True, "duplicate": True}), 200
+
+    new_bal = db.v2_increment_student_credits(user_id, total)
+    if new_bal is None:
+        db.stripe_checkout_grant_release(session_id)
+        logger.error("stripe webhook: increment failed user=%s session=%s", user_id, session_id)
+        return jsonify({"code": "V2_ERROR", "error": "Could not update credits"}), 500
+
+    logger.info(
+        "stripe_checkout_webhook user_id=%s session=%s delta=%s new_credits=%s",
+        user_id,
+        session_id,
+        total,
+        new_bal,
+    )
+    return jsonify({"received": True, "user_id": user_id, "credits": new_bal, "delta": total}), 200
 
 
 @internal_webhooks_bp.route("/v2/internal/annotation-export", methods=["POST"])
@@ -286,15 +384,38 @@ def internal_stress_model_train():
 
         promoted = None
         if auto_promote:
+            promote_value = model_path
+            bucket = (getattr(config, "STRESS_MODEL_BUCKET", None) or "stress_models").strip() or "stress_models"
+            storage_key = f"baseline/{source_type}/{run_id}.json"
+            try:
+                with open(model_path, "rb") as mf:
+                    model_bytes = mf.read()
+                db.upload_audio(bucket, storage_key, model_bytes, "application/json")
+                promote_value = f"storage://{bucket}/{storage_key}"
+                logger.info(
+                    "internal_stress_model_train uploaded model bucket=%s key=%s",
+                    bucket,
+                    storage_key,
+                )
+            except Exception as upload_exc:
+                logger.warning(
+                    "internal_stress_model_train: storage upload failed, using local path (set up bucket %s): %s",
+                    bucket,
+                    upload_exc,
+                )
+
             promoted = db.upsert_runtime_config(
                 key="stress_baseline_model_path",
-                value=model_path,
+                value=promote_value,
                 updated_by="internal:stress-model-train",
                 metadata={
                     "source_type": source_type,
                     "run_id": run_id,
                     "dataset_path": dataset_path,
                     "metrics_path": metrics_path,
+                    "local_model_path": model_path,
+                    "storage_bucket": bucket,
+                    "storage_key": storage_key if promote_value.startswith("storage://") else None,
                 },
             )
 

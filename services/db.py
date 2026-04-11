@@ -3038,6 +3038,30 @@ class DatabaseService:
         except Exception:
             return None
 
+    def stripe_checkout_grant_claim(self, checkout_session_id: str) -> bool:
+        """Insert idempotency row for a Stripe Checkout Session. True if newly claimed."""
+        sid = (checkout_session_id or "").strip()
+        if not sid:
+            return False
+        try:
+            result = self.client.table("stripe_checkout_credit_grants").insert({"checkout_session_id": sid}).execute()
+            return bool(result.data)
+        except Exception as e:
+            msg = str(e).lower()
+            if "duplicate" in msg or "unique" in msg or "23505" in msg or "already exists" in msg:
+                return False
+            logger.warning("stripe_checkout_grant_claim failed session=%s: %s", sid, e)
+            raise
+
+    def stripe_checkout_grant_release(self, checkout_session_id: str) -> None:
+        sid = (checkout_session_id or "").strip()
+        if not sid:
+            return
+        try:
+            self.client.table("stripe_checkout_credit_grants").delete().eq("checkout_session_id", sid).execute()
+        except Exception as e:
+            logger.warning("stripe_checkout_grant_release failed session=%s: %s", sid, e)
+
     def v2_charge_homework_completion_credits_once(self, session_id: str, user_id: str, amount: int = 5) -> None:
         """
         Deduct `amount` credits once per session when homework completes with a report.

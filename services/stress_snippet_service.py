@@ -8,7 +8,7 @@ import subprocess
 import json
 import uuid
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Tuple
 
 import numpy as np
 import sentry_sdk
@@ -71,6 +71,21 @@ def _sigmoid(z: float) -> float:
     return 1.0 / (1.0 + math.exp(-z))
 
 
+def _parse_storage_uri(uri: str) -> Optional[Tuple[str, str]]:
+    raw = (uri or "").strip()
+    prefix = "storage://"
+    if not raw.startswith(prefix):
+        return None
+    rest = raw[len(prefix) :].lstrip("/")
+    if "/" not in rest:
+        return None
+    bucket, _, obj_key = rest.partition("/")
+    bucket, obj_key = bucket.strip(), obj_key.strip()
+    if not bucket or not obj_key:
+        return None
+    return bucket, obj_key
+
+
 def _load_baseline_model() -> Optional[dict]:
     runtime_path = (db.get_runtime_config("stress_baseline_model_path") or "").strip()
     path = runtime_path or (getattr(config, "STRESS_BASELINE_MODEL_PATH", None) or "").strip()
@@ -79,9 +94,14 @@ def _load_baseline_model() -> Optional[dict]:
     if path in _MODEL_CACHE:
         return _MODEL_CACHE[path]
     try:
-        with open(path, "r", encoding="utf-8") as fh:
-            data = json.load(fh)
-        # Basic shape check.
+        storage = _parse_storage_uri(path)
+        if storage:
+            bucket, obj_key = storage
+            raw = db.download_audio(bucket, obj_key)
+            data = json.loads(raw.decode("utf-8"))
+        else:
+            with open(path, "r", encoding="utf-8") as fh:
+                data = json.load(fh)
         if not isinstance(data, dict) or "weights" not in data or "norm_mean" not in data or "norm_std" not in data:
             return None
         _MODEL_CACHE[path] = data

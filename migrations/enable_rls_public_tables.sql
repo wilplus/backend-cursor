@@ -42,7 +42,8 @@ DECLARE
     'student_profile',
     'acoustic_labels',
     'admin_annotation_events',
-    'admin_student_send_drafts'
+    'admin_student_send_drafts',
+    'stripe_checkout_credit_grants'
   ];
   t text;
 BEGIN
