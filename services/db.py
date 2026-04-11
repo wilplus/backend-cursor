@@ -1268,12 +1268,21 @@ class DatabaseService:
         )
         return result.data[0] if result.data else None
 
-    def v2_set_stress_snippet_label(self, snippet_id: str, reviewer_id: str, label: str, notes: Optional[str]) -> Optional[dict]:
+    def v2_set_stress_snippet_label(
+        self,
+        snippet_id: str,
+        reviewer_id: str,
+        label: str,
+        notes: Optional[str],
+        reviewer_email: Optional[str] = None,
+    ) -> Optional[dict]:
         """Set coach binary label (stress/no_stress) for one snippet."""
         payload = {
             "coach_label": label,
             "coach_label_notes": notes,
             "labeled_by": reviewer_id,
+            "labeled_by_admin_id": reviewer_id,
+            "labeled_by_admin_email": (reviewer_email or "").strip() or None,
             "labeled_at": datetime.now(timezone.utc).isoformat(),
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }
@@ -1291,6 +1300,8 @@ class DatabaseService:
             "coach_label": None,
             "coach_label_notes": None,
             "labeled_by": None,
+            "labeled_by_admin_id": None,
+            "labeled_by_admin_email": None,
             "labeled_at": None,
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }

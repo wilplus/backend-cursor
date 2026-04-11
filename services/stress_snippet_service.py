@@ -38,6 +38,13 @@ _GLOBAL_ASSIGN_DIV_WEIGHT = 0.92
 _GLOBAL_TOP_K_PER_SCENARIO = 6
 _UTTERANCE_MIN_SEC = 0.15
 
+# Student snippets: drop near-duplicates after selection (same speaker → similar embeddings).
+# High pairwise penalty = more similar (IoU + acoustic proxy). Prefer none; allow at most
+# `replica_budget` keeps that exceed `strict` but stay under `relaxed`.
+_STUDENT_PAIR_STRICT = 0.34
+_STUDENT_PAIR_RELAXED = 0.66
+_STUDENT_REPLICA_BUDGET = 2
+
 
 @dataclass
 class CandidateWindow:
@@ -564,7 +571,46 @@ def _mmr_greedy_extend(
             covered.add(sc)
 
 
-def _select_clip_indices(items: list[ScoredClip], max_snippets: int) -> list[int]:
+def _worst_penalty_to_indices(items: list[ScoredClip], i: int, kept: list[int]) -> float:
+    if not kept:
+        return 0.0
+    return max(
+        _pair_diversity_penalty(items[i].cand, items[i].emb, items[j].cand, items[j].emb) for j in kept
+    )
+
+
+def _dedupe_ordered_clip_indices(
+    ordered: list[int],
+    items: list[ScoredClip],
+    *,
+    strict: float,
+    relaxed: float,
+    replica_budget: int,
+) -> list[int]:
+    """Keep selection order; skip clips that are too similar to already kept (student pipeline)."""
+    out: list[int] = []
+    replicas_used = 0
+    for i in ordered:
+        if i < 0 or i >= len(items):
+            continue
+        if not out:
+            out.append(i)
+            continue
+        w = _worst_penalty_to_indices(items, i, out)
+        if w <= strict:
+            out.append(i)
+        elif w <= relaxed and replicas_used < replica_budget:
+            out.append(i)
+            replicas_used += 1
+    return out
+
+
+def _select_clip_indices(
+    items: list[ScoredClip],
+    max_snippets: int,
+    *,
+    source_type: str = "",
+) -> list[int]:
     """Global scenario assignment (small search) + Maximum Marginal Relevance for remaining slots."""
     n = len(items)
     if n == 0 or max_snippets <= 0:
@@ -578,7 +624,23 @@ def _select_clip_indices(items: list[ScoredClip], max_snippets: int) -> list[int
             selected.append(i)
             seen.add(i)
     _mmr_greedy_extend(items, rel, selected, max_snippets, seen)
-    return selected[:max_snippets]
+    out = selected[:max_snippets]
+    if (source_type or "").strip().lower() == "student":
+        before = len(out)
+        out = _dedupe_ordered_clip_indices(
+            out,
+            items,
+            strict=_STUDENT_PAIR_STRICT,
+            relaxed=_STUDENT_PAIR_RELAXED,
+            replica_budget=_STUDENT_REPLICA_BUDGET,
+        )
+        if len(out) < before:
+            logger.info(
+                "stress_snippet_service: student dedupe removed %s near-duplicate clip(s) (kept %s)",
+                before - len(out),
+                len(out),
+            )
+    return out
 
 
 def _feature_vector_for_model(
@@ -752,7 +814,7 @@ def generate_stress_snippets_for_recording(
                 )
             )
 
-        pick_idx = _select_clip_indices(scored_items, max_snippets=max_snippets)
+        pick_idx = _select_clip_indices(scored_items, max_snippets=max_snippets, source_type=source_type)
         selected = [scored_items[i] for i in pick_idx]
 
         if clear_existing:

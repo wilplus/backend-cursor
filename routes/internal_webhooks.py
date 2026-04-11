@@ -144,7 +144,11 @@ def internal_stress_model_train():
         "learning_rate": 0.08,
         "l2": 0.002,
         "train_ratio": 0.8,
+        "split_group": "user_id",
         "seed": 42,
+        "target_recall_stress": 0.85,
+        "target_precision_stress": 0.75,
+        "target_fpr_no_stress": 0.30,
         "auto_promote": true,
         "export_with_audio_url": false
       }
@@ -169,11 +173,17 @@ def internal_stress_model_train():
         lr = float(data.get("learning_rate", data.get("lr", 0.08)))
         l2 = float(data.get("l2", 0.002))
         train_ratio = float(data.get("train_ratio", 0.8))
+        target_recall_stress = float(data.get("target_recall_stress", 0.85))
+        target_precision_stress = float(data.get("target_precision_stress", 0.75))
+        target_fpr_no_stress = float(data.get("target_fpr_no_stress", 0.30))
     except (TypeError, ValueError):
         return jsonify({"code": "INVALID_INPUT", "error": "Invalid numeric training parameters"}), 400
 
     auto_promote = _parse_bool(data.get("auto_promote"), True)
     export_with_audio_url = _parse_bool(data.get("export_with_audio_url"), False)
+    split_group = (data.get("split_group") or "user_id").strip().lower()
+    if split_group not in ("user_id", "session_id", "recording_id"):
+        return jsonify({"code": "INVALID_INPUT", "error": "split_group must be one of: user_id, session_id, recording_id"}), 400
 
     repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     exports_dir = os.path.join(repo_root, "exports")
@@ -219,6 +229,14 @@ def internal_stress_model_train():
         str(max(0.5, min(0.95, train_ratio))),
         "--seed",
         str(seed),
+        "--split-group",
+        split_group,
+        "--target-recall-stress",
+        str(max(0.0, min(1.0, target_recall_stress))),
+        "--target-precision-stress",
+        str(max(0.0, min(1.0, target_precision_stress))),
+        "--target-fpr-no-stress",
+        str(max(0.0, min(1.0, target_fpr_no_stress))),
     ]
 
     try:

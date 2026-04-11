@@ -5,7 +5,7 @@ Train a baseline binary stress classifier from labeled stress snippets.
 Model:
   - Feature extraction from clip audio (numpy + ffmpeg)
   - Logistic regression (implemented in numpy, no extra deps)
-  - Group-aware split by recording_id to reduce leakage
+  - Group-aware split by user_id (default) to reduce leakage
 
 Output:
   - JSON model artifact with normalization stats + weights
@@ -43,6 +43,8 @@ SR = 16000
 class Example:
     snippet_id: str
     recording_id: str
+    session_id: str
+    user_id: str
     source_type: str
     y: int
     x: np.ndarray
@@ -164,7 +166,7 @@ def _extract_features(signal: np.ndarray, scenario: str, snippet_features: dict,
             pause_strength,
             filler_density,
             energy_std_hint,
-            clip_duration_s / 10.0,
+            clip_duration_s / 3.5,
             *scenario_one_hot,
         ],
         dtype=np.float32,
@@ -222,6 +224,8 @@ def _build_examples(rows: list[dict], ffmpeg_exe: str, max_rows: int) -> list[Ex
             Example(
                 snippet_id=str(row.get("id")),
                 recording_id=str(row.get("recording_id") or ""),
+                session_id=str(row.get("session_id") or ""),
+                user_id=str(row.get("user_id") or ""),
                 source_type=str(row.get("source_type") or ""),
                 y=y,
                 x=feats,
@@ -230,11 +234,27 @@ def _build_examples(rows: list[dict], ffmpeg_exe: str, max_rows: int) -> list[Ex
     return out
 
 
-def _split_grouped(examples: list[Example], train_ratio: float, seed: int) -> tuple[list[Example], list[Example]]:
+def _group_key(ex: Example, split_group: str) -> str:
+    mode = (split_group or "user_id").strip().lower()
+    if mode == "session_id":
+        return ex.session_id or ex.recording_id or ex.user_id or ex.snippet_id
+    if mode == "recording_id":
+        return ex.recording_id or ex.session_id or ex.user_id or ex.snippet_id
+    if mode == "user_id":
+        return ex.user_id or ex.session_id or ex.recording_id or ex.snippet_id
+    raise ValueError("split_group must be one of: user_id, session_id, recording_id")
+
+
+def _split_grouped(
+    examples: list[Example],
+    train_ratio: float,
+    seed: int,
+    split_group: str,
+) -> tuple[list[Example], list[Example]]:
     random.seed(seed)
     groups: dict[str, list[Example]] = {}
     for ex in examples:
-        groups.setdefault(ex.recording_id or ex.snippet_id, []).append(ex)
+        groups.setdefault(_group_key(ex, split_group), []).append(ex)
     keys = list(groups.keys())
     random.shuffle(keys)
     pivot = max(1, int(round(len(keys) * train_ratio)))
@@ -318,9 +338,18 @@ def main() -> None:
     parser.add_argument("--min-samples", type=int, default=80, help="Minimum labeled snippets to train")
     parser.add_argument("--train-ratio", type=float, default=0.8)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument(
+        "--split-group",
+        choices=["user_id", "session_id", "recording_id"],
+        default="user_id",
+        help="Leakage guard: keep each group key entirely in train or val (default user_id)",
+    )
     parser.add_argument("--epochs", type=int, default=350)
     parser.add_argument("--lr", type=float, default=0.08)
     parser.add_argument("--l2", type=float, default=0.002)
+    parser.add_argument("--target-recall-stress", type=float, default=0.85)
+    parser.add_argument("--target-precision-stress", type=float, default=0.75)
+    parser.add_argument("--target-fpr-no-stress", type=float, default=0.30)
     args = parser.parse_args()
 
     ffmpeg_exe = _resolve_ffmpeg_executable()
@@ -349,6 +378,7 @@ def main() -> None:
         examples,
         train_ratio=max(0.5, min(0.95, float(args.train_ratio))),
         seed=int(args.seed),
+        split_group=args.split_group,
     )
     x_train, y_train = _as_matrix(train_ex)
     x_val, y_val = _as_matrix(val_ex)
@@ -371,6 +401,27 @@ def main() -> None:
     p_val = _sigmoid(x_val_n @ w + b)
     train_metrics = _metrics(y_train, p_train)
     val_metrics = _metrics(y_val, p_val)
+    val_fpr = float(val_metrics["fp"]) / max(
+        1.0, float(val_metrics["fp"]) + float(val_metrics["tn"])
+    )
+    quality_gate = {
+        "targets": {
+            "recall_stress_min": round(float(args.target_recall_stress), 4),
+            "precision_stress_min": round(float(args.target_precision_stress), 4),
+            "fpr_no_stress_max": round(float(args.target_fpr_no_stress), 4),
+        },
+        "actual": {
+            "recall_stress": round(float(val_metrics["recall"]), 4),
+            "precision_stress": round(float(val_metrics["precision"]), 4),
+            "fpr_no_stress": round(val_fpr, 4),
+        },
+        "passes": {
+            "recall_stress": float(val_metrics["recall"]) >= float(args.target_recall_stress),
+            "precision_stress": float(val_metrics["precision"]) >= float(args.target_precision_stress),
+            "fpr_no_stress": val_fpr <= float(args.target_fpr_no_stress),
+        },
+    }
+    quality_gate["ok"] = bool(all(quality_gate["passes"].values()))
 
     feature_names = [
         "energy_mean",
@@ -403,6 +454,7 @@ def main() -> None:
         "bias": b,
         "training": {
             "source_type": args.source_type,
+            "split_group": args.split_group,
             "epochs": int(args.epochs),
             "learning_rate": float(args.lr),
             "l2": float(args.l2),
@@ -415,6 +467,7 @@ def main() -> None:
         "metrics": {
             "train": train_metrics,
             "val": val_metrics,
+            "quality_gate": quality_gate,
             "final_train_loss": float(history["train_loss"][-1]),
             "final_val_loss": float(history["val_loss"][-1]),
         },
@@ -427,6 +480,7 @@ def main() -> None:
     metrics_obj = {
         "train": train_metrics,
         "val": val_metrics,
+        "quality_gate": quality_gate,
         "train_size": len(train_ex),
         "val_size": len(val_ex),
         "total_examples": len(examples),
@@ -443,6 +497,14 @@ def main() -> None:
         f"precision={val_metrics['precision']} "
         f"recall={val_metrics['recall']} "
         f"f1={val_metrics['f1']}"
+    )
+    print(
+        "Quality gate: "
+        f"ok={quality_gate['ok']} "
+        f"recall_min={quality_gate['targets']['recall_stress_min']} "
+        f"precision_min={quality_gate['targets']['precision_stress_min']} "
+        f"fpr_max={quality_gate['targets']['fpr_no_stress_max']} "
+        f"fpr_actual={quality_gate['actual']['fpr_no_stress']}"
     )
 
 

@@ -21,6 +21,7 @@ import sentry_sdk
 import json
 import time
 import hashlib
+import random
 import mimetypes
 import os
 import uuid
@@ -1640,6 +1641,56 @@ def v2_admin_stress_snippets_settings():
         return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
 
 
+@v2_bp.route("/admin/stress-snippets/audit-sample", methods=["GET"])
+@require_admin
+def v2_admin_stress_snippets_audit_sample():
+    """Return a random sample of labeled snippets for weekly QA audit."""
+    try:
+        source_type = (request.args.get("source_type", "all") or "all").strip().lower()
+        if source_type != "all" and source_type not in _STRESS_ALLOWED_SOURCE_TYPES:
+            return jsonify({"code": "INVALID_INPUT", "error": "source_type must be one of: all, student, internet"}), 400
+        try:
+            sample_rate = float(request.args.get("sample_rate", 0.1))
+            max_pool = int(request.args.get("max_pool", 1000))
+            limit = int(request.args.get("limit", 100))
+            seed = int(request.args.get("seed", int(time.time())))
+        except (TypeError, ValueError):
+            return jsonify({"code": "INVALID_INPUT", "error": "sample_rate, max_pool, limit, seed must be numeric"}), 400
+        sample_rate = max(0.01, min(sample_rate, 1.0))
+        max_pool = max(50, min(max_pool, 5000))
+        limit = max(1, min(limit, 500))
+        rows = db.v2_list_stress_snippets(
+            source_type=None if source_type == "all" else source_type,
+            label_state="labeled",
+            limit=max_pool,
+            offset=0,
+            sort_created_desc=True,
+            exclude_queue_skipped=False,
+        )
+        if not rows:
+            return jsonify({"status": "ok", "snippets": [], "count": 0, "sample_rate": sample_rate}), 200
+        rng = random.Random(seed)
+        pool = list(rows)
+        rng.shuffle(pool)
+        target = max(1, int(round(len(pool) * sample_rate)))
+        target = min(target, limit)
+        picked = pool[:target]
+        return jsonify(
+            {
+                "status": "ok",
+                "source_type": source_type,
+                "sample_rate": sample_rate,
+                "seed": seed,
+                "pool_count": len(pool),
+                "count": len(picked),
+                "snippets": [_stress_snippet_payload(r) for r in picked],
+            }
+        ), 200
+    except Exception as e:
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
+
+
 @v2_bp.route("/admin/stress-snippets/<snippet_id>", methods=["GET"])
 @require_admin
 def v2_admin_get_stress_snippet(snippet_id):
@@ -1682,13 +1733,19 @@ def v2_admin_label_stress_snippet(snippet_id):
         if notes is not None and not isinstance(notes, str):
             return jsonify({"code": "INVALID_INPUT", "error": "notes must be a string or null"}), 422
         cleaned_notes = notes.strip() if isinstance(notes, str) else None
+        if label == "stress" and not cleaned_notes:
+            return jsonify({"code": "INVALID_INPUT", "error": "notes are required when label=stress"}), 422
         if isinstance(cleaned_notes, str) and len(cleaned_notes) > 2000:
             return jsonify({"code": "INVALID_INPUT", "error": "notes must be <= 2000 chars"}), 422
+        reviewer_email = (getattr(request, "token_payload", {}) or {}).get("email")
+        if not reviewer_email:
+            reviewer_email = db.get_user_email_from_auth(str(request.user_id))
         updated = db.v2_set_stress_snippet_label(
             snippet_id,
             reviewer_id=str(request.user_id),
             label=label,
             notes=cleaned_notes,
+            reviewer_email=reviewer_email,
         )
         return jsonify({"status": "ok", "snippet": _stress_snippet_payload(updated or snippet)}), 200
     except Exception as e:
