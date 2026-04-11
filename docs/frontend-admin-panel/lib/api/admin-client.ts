@@ -272,8 +272,8 @@ export const adminApi = {
     data: { text: string; order_index?: number; max_performance_score?: number; insert_at?: "end" | number }
   ) =>
     adminFetch<{
-      task_warm_up_pool: TaskPoolRow;
-      task_warm_up: WarmUpTask[];
+      tasks_pool: TaskPoolRow;
+      tasks: WarmUpTask[];
       dropped_non_pool_tasks: number;
     }>(`/students/${userId}/warm-up-tasks/create-pool-and-assign`, { method: "POST", body: data }),
 

@@ -103,9 +103,9 @@ All under **`/v2/admin/*`** with admin JWT. Admin = email in `admin_users` with 
 
 **Session/report (admin):** `GET /v2/admin/students/<id>/sessions/<session_id>` (full session, context_long_entries). `PATCH .../sessions/<session_id>/report` body `{ action: "append"|"replace", text?, entries? }`.
 
-**Pools:** Homework task pool: **`GET/POST/PUT/DELETE /v2/admin/tasks-pool`** and `.../tasks-pool/<pool_id>`. Admin JSON uses **`tasks_pool`** (list or single row). Legacy global “prompt” pool was archived as `v2_deprecated_prompt_tasks_archive` by `rename_warmup_to_tasks_and_drop_focus.sql`. Metric questions, metrics: existing `metric-questions`, `metrics` routes. **Focus tasks** product paths return empty / 410.
+**Pools:** Homework task pool: **`GET/POST/PUT/DELETE /v2/admin/tasks-pool`** and `.../tasks-pool/<pool_id>`. Admin JSON uses **`tasks_pool`** (list or single row; same plural as DB table `public.tasks_pool`). Legacy global “prompt” pool was archived as `v2_deprecated_prompt_tasks_archive` by `rename_warmup_to_tasks_and_drop_focus.sql`. Metric questions, metrics: existing `metric-questions`, `metrics` routes. **Focus tasks** product paths return empty / 410.
 
-**Mockup alignment:** One student profile page — Homework Configuration (Send Homework, Save overrides, **tasks** list, **tasks_pool**, metrics), Speaker Profile (Context → coach_notes), Last Report / Reports history from sessions.
+**Mockup alignment:** One student profile page — Homework Configuration (Send Homework, Save overrides, **tasks** list, **tasks_pool** (API + DB), metrics), Speaker Profile (Context → coach_notes), Last Report / Reports history from sessions.
 
 ---
 

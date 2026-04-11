@@ -15,3 +15,6 @@ ENV/
 *.swp
 *.swo
 *~
+
+# Local Claude / IDE worktrees (nested git repos; do not commit as submodule)
+.claude/
