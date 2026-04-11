@@ -114,19 +114,25 @@ def _decode_audio_to_pcm(audio_bytes: bytes, ffmpeg_exe: str) -> Optional[np.nda
 
 
 def _extract_clip_mp3(audio_bytes: bytes, ffmpeg_exe: str, start_sec: float, duration_sec: float) -> Optional[bytes]:
+    """Cut a segment from in-memory audio.
+
+    Input is a pipe, so **-ss must come after -i**. Seeking before -i does not work on
+    non-seekable stdin and often yields empty or unplayable MP3s for later segments.
+    """
     try:
+        dur = max(0.25, float(duration_sec))
         proc = subprocess.run(
             [
                 ffmpeg_exe,
                 "-hide_banner",
                 "-loglevel",
                 "error",
+                "-i",
+                "pipe:0",
                 "-ss",
                 f"{max(0.0, start_sec):.3f}",
                 "-t",
-                f"{max(0.1, duration_sec):.3f}",
-                "-i",
-                "pipe:0",
+                f"{dur:.3f}",
                 "-f",
                 "mp3",
                 "-ar",
@@ -137,9 +143,18 @@ def _extract_clip_mp3(audio_bytes: bytes, ffmpeg_exe: str, start_sec: float, dur
             ],
             input=audio_bytes,
             capture_output=True,
-            timeout=45,
+            timeout=120,
         )
         if proc.returncode != 0 or not proc.stdout:
+            if proc.stderr:
+                logger.warning(
+                    "stress_snippet_service: ffmpeg clip failed rc=%s stderr=%s",
+                    proc.returncode,
+                    proc.stderr.decode("utf-8", errors="replace")[:500],
+                )
+            return None
+        if len(proc.stdout) < 256:
+            logger.warning("stress_snippet_service: ffmpeg produced very small mp3 (%s bytes)", len(proc.stdout))
             return None
         return proc.stdout
     except Exception:
@@ -206,25 +221,25 @@ def _clip_bounds(center_sec: float, clip_sec: float, total_sec: float) -> tuple[
     return start, end
 
 
-def _normalize_clip_window(
+def _floor_clip_window(
     start_sec: float,
     end_sec: float,
     duration_sec: float,
-    clip_sec: float,
+    *,
+    min_span_sec: float = 0.85,
 ) -> tuple[float, float]:
-    """Expand [start, end] toward the target clip length, capped by the full recording."""
+    """Only widen windows that are too short for a stable cut (~1s+). Keeps natural 1–3s variety."""
     if duration_sec <= 0:
         return start_sec, end_sec
     span = max(0.0, float(end_sec) - float(start_sec))
-    target = max(6.0, min(float(clip_sec), 20.0))
-    target = min(target, float(duration_sec))
-    if span >= target - 1e-3:
+    cap = min(float(min_span_sec), float(duration_sec))
+    if span >= cap - 1e-3:
         return start_sec, end_sec
     center = (float(start_sec) + float(end_sec)) / 2.0
-    half = target / 2.0
+    half = cap / 2.0
     ns = max(0.0, center - half)
-    ne = min(float(duration_sec), ns + target)
-    ns = max(0.0, ne - target)
+    ne = min(float(duration_sec), ns + cap)
+    ns = max(0.0, ne - cap)
     return ns, ne
 
 
@@ -595,9 +610,9 @@ def generate_stress_snippets_for_recording(
 
         rows = []
         for selection_score, confidence, prob, c in selected:
-            ns, ne = _normalize_clip_window(c.start_sec, c.end_sec, duration_sec, float(clip_seconds))
+            ns, ne = _floor_clip_window(c.start_sec, c.end_sec, duration_sec, min_span_sec=0.85)
             c.start_sec, c.end_sec = ns, ne
-            duration = max(0.5, c.end_sec - c.start_sec)
+            duration = max(0.25, c.end_sec - c.start_sec)
             clip_bytes = _extract_clip_mp3(audio_bytes, ffmpeg_exe, c.start_sec, duration)
             if not clip_bytes:
                 continue
