@@ -1,3 +1,4 @@
+import itertools
 import logging
 import math
 import os
@@ -22,7 +23,20 @@ _FILLER_WORDS = {
     "um", "uh", "erm", "hmm", "like", "you know", "i mean", "sort of", "kind of",
 }
 _SCENARIOS = ("after_pause", "before_pause", "high_filler_density", "low_filler_density")
+# Each exported clip is trimmed to at most this many seconds (product cap).
+STRESS_SNIPPET_CLIP_SEC_DEFAULT = 3.5
+STRESS_SNIPPET_CLIP_SEC_MIN = 0.5
+STRESS_SNIPPET_CLIP_SEC_MAX = 3.5
 _MODEL_CACHE: dict[str, dict] = {}
+
+# MMR / diversity (time IoU + acoustic embedding). Global assignment = exhaustive on top-K per scenario.
+_MMR_LAMBDA = 0.62
+_IOU_DIV_WEIGHT = 0.58
+_EMB_DIV_WEIGHT = 0.42
+_SCENARIO_COVER_BONUS = 0.2
+_GLOBAL_ASSIGN_DIV_WEIGHT = 0.92
+_GLOBAL_TOP_K_PER_SCENARIO = 6
+_UTTERANCE_MIN_SEC = 0.15
 
 
 @dataclass
@@ -34,6 +48,15 @@ class CandidateWindow:
     pause_strength: float
     energy_std: float
     transcript_excerpt: str
+
+
+@dataclass
+class ScoredClip:
+    selection_score: float
+    confidence: float
+    prob: float
+    cand: CandidateWindow
+    emb: np.ndarray
 
 
 def _sigmoid(z: float) -> float:
@@ -226,9 +249,9 @@ def _floor_clip_window(
     end_sec: float,
     duration_sec: float,
     *,
-    min_span_sec: float = 0.85,
+    min_span_sec: float = 0.5,
 ) -> tuple[float, float]:
-    """Only widen windows that are too short for a stable cut (~1s+). Keeps natural 1–3s variety."""
+    """Widen windows shorter than min_span_sec (stable cut); does not exceed recording bounds."""
     if duration_sec <= 0:
         return start_sec, end_sec
     span = max(0.0, float(end_sec) - float(start_sec))
@@ -243,72 +266,48 @@ def _floor_clip_window(
     return ns, ne
 
 
-def _overlap_ratio(a: tuple[float, float], b: tuple[float, float]) -> float:
-    i = max(0.0, min(a[1], b[1]) - max(a[0], b[0]))
-    if i <= 0:
+def _time_iou(a: tuple[float, float], b: tuple[float, float]) -> float:
+    """Intersection-over-union on time intervals (object-detection style overlap)."""
+    s1, e1 = float(a[0]), float(a[1])
+    s2, e2 = float(b[0]), float(b[1])
+    inter = max(0.0, min(e1, e2) - max(s1, s2))
+    if inter <= 0:
         return 0.0
-    return i / max(1e-6, min(a[1] - a[0], b[1] - b[0]))
+    union = (e1 - s1) + (e2 - s2) - inter
+    return inter / max(union, 1e-9)
 
 
-def _select_diverse(candidates: list[CandidateWindow], max_snippets: int) -> list[CandidateWindow]:
-    """Pick clips in global score order while prioritising the four labelled scenarios.
+def _utterance_regions_from_pauses(
+    pauses: list[tuple[float, float]], duration_sec: float
+) -> list[tuple[float, float]]:
+    """Speech segments between VAD-style pauses (natural acoustic boundaries)."""
+    if duration_sec <= 0:
+        return []
+    if not pauses:
+        return [(0.0, duration_sec)]
+    pauses = sorted(pauses, key=lambda x: x[0])
+    regions: list[tuple[float, float]] = []
+    t = 0.0
+    for ps, pe in pauses:
+        if ps > t + 1e-4:
+            regions.append((t, min(ps, duration_sec)))
+        t = max(t, pe)
+    if t < duration_sec - 1e-4:
+        regions.append((t, duration_sec))
+    out = [(a, b) for a, b in regions if (b - a) >= _UTTERANCE_MIN_SEC]
+    return out if out else [(0.0, duration_sec)]
 
-    Phase 1 ensures **at least one** window per scenario when that bucket is non-empty
-    (so Voice Pipeline gets before-pause / after-pause / high- vs low-filler coverage
-    when the recording supports it). Overlap is avoided when possible; otherwise the
-    best-ranked candidate in the bucket is still kept.
-    """
-    out: list[CandidateWindow] = []
-    by_scenario = {name: [] for name in _SCENARIOS}
-    for c in candidates:
-        if c.scenario in by_scenario:
-            by_scenario[c.scenario].append(c)
 
-    def _overlap_conflict(c: CandidateWindow) -> bool:
-        return any(_overlap_ratio((c.start_sec, c.end_sec), (x.start_sec, x.end_sec)) > 0.7 for x in out)
-
-    # Phase 1: one representative per core scenario (buckets are in score order).
-    for scenario in _SCENARIOS:
-        if len(out) >= max_snippets:
-            break
-        bucket = by_scenario.get(scenario) or []
-        if not bucket:
-            continue
-        chosen = None
-        for c in bucket:
-            if not _overlap_conflict(c):
-                chosen = c
-                break
-        out.append(chosen if chosen is not None else bucket[0])
-
-    # Phase 2: optional second non-overlapping clip per scenario (cap2 per scenario).
-    for scenario in _SCENARIOS:
-        if len(out) >= max_snippets:
-            break
-        bucket = by_scenario.get(scenario) or []
-        if len(bucket) < 2:
-            continue
-        taken = sum(1 for x in out if x.scenario == scenario)
-        if taken >= 2:
-            continue
-        for c in bucket:
-            if any(x is c for x in out):
-                continue
-            if _overlap_conflict(c):
-                continue
-            out.append(c)
-            break
-
-    # Phase 3: fill remaining slots from global score order (includes uncertain, extras).
-    for c in candidates:
-        if len(out) >= max_snippets:
-            break
-        if any(x is c for x in out):
-            continue
-        if _overlap_conflict(c):
-            continue
-        out.append(c)
-    return out[:max_snippets]
+def _clip_bounds_utterance(
+    center: float, clip_sec: float, u0: float, u1: float, total_sec: float
+) -> tuple[float, float]:
+    """Place a clip preferentially inside a speech utterance (reduces sliding-window bleed)."""
+    u0, u1 = float(u0), float(u1)
+    if (u1 - u0) >= clip_sec:
+        c = min(max(center, u0 + clip_sec * 0.5), u1 - clip_sec * 0.5)
+        return _clip_bounds(c, clip_sec, total_sec)
+    c = (u0 + u1) * 0.5
+    return _clip_bounds(c, clip_sec, total_sec)
 
 
 def _build_candidates(
@@ -318,6 +317,7 @@ def _build_candidates(
     clip_sec: float,
 ) -> list[CandidateWindow]:
     pause_regions = _detect_pause_regions(dbs)
+    utterances = _utterance_regions_from_pauses(pause_regions, duration_sec)
     sentence_chunks = _split_sentences(transcript)
     candidates: list[CandidateWindow] = []
 
@@ -350,18 +350,18 @@ def _build_candidates(
             )
         )
 
-    # Filler-density scenarios by uniformly mapping sentence chunks across duration.
-    if sentence_chunks:
-        chunk_len = duration_sec / max(1, len(sentence_chunks))
+    # Filler-density scenarios: map each sentence to a VAD-derived utterance (not uniform time slicing).
+    if sentence_chunks and utterances:
+        nu = len(utterances)
         chunk_stats = []
         for i, sent in enumerate(sentence_chunks):
-            start = i * chunk_len
-            end = min(duration_sec, (i + 1) * chunk_len)
+            u_idx = min(nu - 1, int((i + 0.5) / max(1, len(sentence_chunks)) * nu))
+            u0, u1 = utterances[u_idx]
             fillers = _count_fillers(sent)
             words = max(1, len(re.findall(r"\b[\w']+\b", sent)))
             density = min(1.0, fillers / max(1.0, words * 0.3))
-            center = (start + end) / 2.0
-            clip_start, clip_end = _clip_bounds(center, clip_sec, duration_sec)
+            center = (u0 + u1) * 0.5
+            clip_start, clip_end = _clip_bounds_utterance(center, clip_sec, u0, u1, duration_sec)
             chunk_stats.append((density, sent[:300], clip_start, clip_end))
 
         high = sorted(chunk_stats, key=lambda x: x[0], reverse=True)[:6]
@@ -433,6 +433,154 @@ def _extract_window_signal(signal: np.ndarray, start_sec: float, end_sec: float,
     return signal[s:e]
 
 
+def _acoustic_diversity_embedding(
+    signal: np.ndarray, start_sec: float, end_sec: float, sr: int = 16000
+) -> np.ndarray:
+    """Lightweight normalized embedding for acoustic diversity (proxy for submodular / clustering ideas)."""
+    w = _extract_window_signal(signal, start_sec, end_sec, sr)
+    if w.size < 320:
+        return np.zeros((13,), dtype=np.float32)
+    frame = 320
+    n = max(1, len(w) // frame)
+    chunk = w[: n * frame].reshape(n, frame)
+    eps = 1e-9
+    rms = np.sqrt(np.mean(chunk * chunk, axis=1) + eps)
+    log_rms = np.log1p(rms.astype(np.float64)).astype(np.float32)
+    lo, hi = float(log_rms.min()), float(log_rms.max())
+    if hi <= lo + 1e-9:
+        hist = np.zeros((8,), dtype=np.float32)
+    else:
+        hist, _ = np.histogram(log_rms, bins=8, range=(lo, hi + 1e-6))
+        hist = hist.astype(np.float32)
+    d = np.diff(rms)
+    if d.size == 0:
+        dmean, dstd = 0.0, 0.0
+    else:
+        dmean, dstd = float(np.mean(d)), float(np.std(d))
+    stats = np.array(
+        [
+            float(np.mean(rms)),
+            float(np.std(rms)),
+            dmean,
+            dstd,
+            float(np.mean(rms < 0.02)),
+        ],
+        dtype=np.float32,
+    )
+    out = np.concatenate([hist, stats]).astype(np.float32)
+    nrm = float(np.linalg.norm(out))
+    if nrm < 1e-6:
+        return out
+    return (out / nrm).astype(np.float32)
+
+
+def _pair_diversity_penalty(
+    a: CandidateWindow, ea: np.ndarray, b: CandidateWindow, eb: np.ndarray
+) -> float:
+    iou = _time_iou((a.start_sec, a.end_sec), (b.start_sec, b.end_sec))
+    cos = float(np.clip(np.dot(ea, eb), -1.0, 1.0))
+    emb01 = (cos + 1.0) * 0.5
+    return _IOU_DIV_WEIGHT * iou + _EMB_DIV_WEIGHT * emb01
+
+
+def _rel_scores_normalized(items: list[ScoredClip]) -> np.ndarray:
+    raw = np.array([it.selection_score for it in items], dtype=np.float64)
+    if raw.size == 0:
+        return raw
+    lo, hi = float(np.min(raw)), float(np.max(raw))
+    if hi <= lo + 1e-12:
+        return np.ones_like(raw)
+    return ((raw - lo) / (hi - lo)).astype(np.float64)
+
+
+def _global_scenario_assignment(items: list[ScoredClip], rel: np.ndarray) -> list[int]:
+    """Exhaustive search over top-K per scenario: maximizes relevance minus diversity penalty."""
+    by_s: dict[str, list[int]] = {name: [] for name in _SCENARIOS}
+    for i, it in enumerate(items):
+        if it.cand.scenario in by_s:
+            by_s[it.cand.scenario].append(i)
+    for name in _SCENARIOS:
+        by_s[name].sort(key=lambda idx: rel[idx], reverse=True)
+        by_s[name] = by_s[name][: _GLOBAL_TOP_K_PER_SCENARIO]
+    lists = [by_s[name] if by_s[name] else [None] for name in _SCENARIOS]
+    best_picked: list[int] = []
+    best_total = -1e18
+    for combo in itertools.product(*lists):
+        picked = [x for x in combo if x is not None]
+        if len(picked) != len(set(picked)):
+            continue
+        rel_sum = sum(float(rel[i]) for i in picked)
+        pen = 0.0
+        for xa in range(len(picked)):
+            for xb in range(xa + 1, len(picked)):
+                ia, ib = picked[xa], picked[xb]
+                pen += _pair_diversity_penalty(items[ia].cand, items[ia].emb, items[ib].cand, items[ib].emb)
+        total = rel_sum - _GLOBAL_ASSIGN_DIV_WEIGHT * pen
+        if total > best_total:
+            best_total = total
+            best_picked = list(picked)
+    return best_picked
+
+
+def _mmr_greedy_extend(
+    items: list[ScoredClip],
+    rel: np.ndarray,
+    selected: list[int],
+    max_snippets: int,
+    seen: set[int],
+) -> None:
+    covered = {
+        items[i].cand.scenario for i in selected if items[i].cand.scenario in _SCENARIOS
+    }
+    n = len(items)
+    while len(selected) < max_snippets:
+        best_i: Optional[int] = None
+        best_mmr = -1e18
+        for i in range(n):
+            if i in seen:
+                continue
+            r = float(rel[i])
+            if items[i].cand.scenario in _SCENARIOS and items[i].cand.scenario not in covered:
+                r += _SCENARIO_COVER_BONUS
+            if not selected:
+                div = 0.0
+            else:
+                div = max(
+                    _pair_diversity_penalty(
+                        items[i].cand, items[i].emb, items[j].cand, items[j].emb
+                    )
+                    for j in selected
+                )
+            mmr = _MMR_LAMBDA * r - (1.0 - _MMR_LAMBDA) * div
+            if mmr > best_mmr:
+                best_mmr = mmr
+                best_i = i
+        if best_i is None:
+            break
+        selected.append(best_i)
+        seen.add(best_i)
+        sc = items[best_i].cand.scenario
+        if sc in _SCENARIOS:
+            covered.add(sc)
+
+
+def _select_clip_indices(items: list[ScoredClip], max_snippets: int) -> list[int]:
+    """Global scenario assignment (small search) + Maximum Marginal Relevance for remaining slots."""
+    n = len(items)
+    if n == 0 or max_snippets <= 0:
+        return []
+    rel = _rel_scores_normalized(items)
+    seed = _global_scenario_assignment(items, rel)
+    selected: list[int] = []
+    seen: set[int] = set()
+    for i in seed:
+        if 0 <= i < n and i not in seen:
+            selected.append(i)
+            seen.add(i)
+    _mmr_greedy_extend(items, rel, selected, max_snippets, seen)
+    return selected[:max_snippets]
+
+
 def _feature_vector_for_model(
     window_signal: np.ndarray,
     scenario: str,
@@ -487,7 +635,7 @@ def _feature_vector_for_model(
             pause_strength,
             filler_density,
             energy_std_hint,
-            clip_duration_s / 10.0,
+            clip_duration_s / max(0.1, float(STRESS_SNIPPET_CLIP_SEC_MAX)),
             *scenario_one_hot,
         ],
         dtype=np.float32,
@@ -516,14 +664,24 @@ def generate_stress_snippets_for_recording(
     *,
     source_type: str,
     max_snippets: int = 8,
-    clip_seconds: int = 10,
+    clip_seconds: float = STRESS_SNIPPET_CLIP_SEC_DEFAULT,
     clear_existing: bool = True,
 ) -> list[dict]:
     """
     Generate and persist up to max_snippets candidate clips for binary stress labeling.
-    Uses heuristics + uncertainty proxy (confidence < 0.95 preferred).
+    Selection uses VAD-aligned utterance windows, time IoU + acoustic embedding diversity,
+    a small exhaustive assignment across the four scenario buckets, then MMR for extras.
     """
     try:
+        try:
+            clip_sec = float(clip_seconds)
+        except (TypeError, ValueError):
+            clip_sec = float(STRESS_SNIPPET_CLIP_SEC_DEFAULT)
+        clip_sec = max(
+            float(STRESS_SNIPPET_CLIP_SEC_MIN),
+            min(clip_sec, float(STRESS_SNIPPET_CLIP_SEC_MAX)),
+        )
+
         rec = db.get_recording(recording_id, None)
         if not rec:
             raise ValueError("recording not found")
@@ -545,10 +703,10 @@ def generate_stress_snippets_for_recording(
         duration_sec = float(len(signal) / 16000.0)
         dbs = _frame_db(signal)
         transcript = (rec.get("transcription_text") or "").strip()
-        candidates = _build_candidates(transcript, duration_sec, dbs, float(clip_seconds))
+        candidates = _build_candidates(transcript, duration_sec, dbs, clip_sec)
 
         baseline_model = _load_baseline_model()
-        scored = []
+        scored_items: list[ScoredClip] = []
         for c in candidates:
             energy_std = _energy_std_for_window(signal, c.start_sec, c.end_sec)
             energy_norm = min(1.0, energy_std / 0.08) if energy_std > 0 else 0.0
@@ -573,34 +731,29 @@ def generate_stress_snippets_for_recording(
                 if pred is not None:
                     prob, confidence = pred
             uncertainty = 1.0 - confidence
-            # Prefer suspicious but uncertain windows.
             selection_score = 0.6 * suspicion + 0.4 * uncertainty
-            scored.append(
-                (
-                    selection_score,
-                    confidence,
-                    prob,
-                    CandidateWindow(
-                        scenario=c.scenario,
-                        start_sec=c.start_sec,
-                        end_sec=c.end_sec,
-                        filler_density=c.filler_density,
-                        pause_strength=c.pause_strength,
-                        energy_std=energy_std,
-                        transcript_excerpt=c.transcript_excerpt,
-                    ),
+            emb = _acoustic_diversity_embedding(signal, c.start_sec, c.end_sec)
+            cand = CandidateWindow(
+                scenario=c.scenario,
+                start_sec=c.start_sec,
+                end_sec=c.end_sec,
+                filler_density=c.filler_density,
+                pause_strength=c.pause_strength,
+                energy_std=energy_std,
+                transcript_excerpt=c.transcript_excerpt,
+            )
+            scored_items.append(
+                ScoredClip(
+                    selection_score=selection_score,
+                    confidence=confidence,
+                    prob=prob,
+                    cand=cand,
+                    emb=emb,
                 )
             )
 
-        scored.sort(key=lambda x: (x[1] < 0.95, x[0]), reverse=True)
-        diverse = _select_diverse([x[3] for x in scored], max_snippets=max_snippets)
-        selected: list[tuple[float, float, float, CandidateWindow]] = []
-        for d in diverse:
-            for row in scored:
-                if row[3] is d:
-                    selected.append(row)
-                    break
-        selected = selected[:max_snippets]
+        pick_idx = _select_clip_indices(scored_items, max_snippets=max_snippets)
+        selected = [scored_items[i] for i in pick_idx]
 
         if clear_existing:
             try:
@@ -609,8 +762,14 @@ def generate_stress_snippets_for_recording(
                 logger.warning("stress_snippet_service: cleanup existing snippets failed: %s", del_err)
 
         rows = []
-        for selection_score, confidence, prob, c in selected:
-            ns, ne = _floor_clip_window(c.start_sec, c.end_sec, duration_sec, min_span_sec=0.85)
+        for sc in selected:
+            selection_score = sc.selection_score
+            confidence = sc.confidence
+            prob = sc.prob
+            c = sc.cand
+            ns, ne = _floor_clip_window(
+                c.start_sec, c.end_sec, duration_sec, min_span_sec=min(0.5, clip_sec * 0.99)
+            )
             c.start_sec, c.end_sec = ns, ne
             if ne <= ns + 1e-4:
                 logger.warning(
@@ -619,7 +778,15 @@ def generate_stress_snippets_for_recording(
                     c.scenario,
                 )
                 continue
-            duration = max(0.25, c.end_sec - c.start_sec)
+            span = max(0.0, c.end_sec - c.start_sec)
+            if span > clip_sec + 1e-4:
+                center = (c.start_sec + c.end_sec) / 2.0
+                half = clip_sec / 2.0
+                ns2 = max(0.0, center - half)
+                ne2 = min(duration_sec, ns2 + clip_sec)
+                ns2 = max(0.0, ne2 - clip_sec)
+                c.start_sec, c.end_sec = ns2, ne2
+            duration = min(clip_sec, max(0.25, c.end_sec - c.start_sec))
             clip_bytes = _extract_clip_mp3(audio_bytes, ffmpeg_exe, c.start_sec, duration)
             if not clip_bytes:
                 continue

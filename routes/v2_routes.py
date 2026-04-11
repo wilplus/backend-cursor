@@ -9,7 +9,12 @@ from routes.admin import require_admin, is_admin
 from services.annotation_export import result_to_dict, run_annotation_export
 from services.db import db
 from services.email_service import email_service
-from services.stress_snippet_service import generate_stress_snippets_for_recording
+from services.stress_snippet_service import (
+    STRESS_SNIPPET_CLIP_SEC_DEFAULT,
+    STRESS_SNIPPET_CLIP_SEC_MAX,
+    STRESS_SNIPPET_CLIP_SEC_MIN,
+    generate_stress_snippets_for_recording,
+)
 from services.video_url_validation import validate_video_url
 import logging
 import sentry_sdk
@@ -1392,7 +1397,7 @@ def v2_admin_recordings_import():
                 recording_id,
                 source_type="internet",
                 max_snippets=8,
-                clip_seconds=10,
+                clip_seconds=STRESS_SNIPPET_CLIP_SEC_DEFAULT,
                 clear_existing=True,
             )
         except Exception as snippet_err:
@@ -1492,15 +1497,21 @@ def v2_admin_generate_stress_snippets(recording_id):
 
         data = request.get_json(silent=True) or {}
         max_snippets = data.get("max_snippets", 8)
-        clip_seconds = data.get("clip_seconds", 10)
+        clip_seconds = data.get("clip_seconds", STRESS_SNIPPET_CLIP_SEC_DEFAULT)
         clear_existing = data.get("clear_existing", True)
         try:
             max_snippets = int(max_snippets)
-            clip_seconds = int(clip_seconds)
         except (TypeError, ValueError):
-            return jsonify({"code": "INVALID_INPUT", "error": "max_snippets and clip_seconds must be integers"}), 400
+            return jsonify({"code": "INVALID_INPUT", "error": "max_snippets must be an integer"}), 400
+        try:
+            clip_seconds = float(clip_seconds)
+        except (TypeError, ValueError):
+            return jsonify({"code": "INVALID_INPUT", "error": "clip_seconds must be a number"}), 400
         max_snippets = max(1, min(max_snippets, 16))
-        clip_seconds = max(6, min(clip_seconds, 20))
+        clip_seconds = max(
+            float(STRESS_SNIPPET_CLIP_SEC_MIN),
+            min(clip_seconds, float(STRESS_SNIPPET_CLIP_SEC_MAX)),
+        )
 
         source_type = _infer_stress_source_type(recording)
         created = generate_stress_snippets_for_recording(
