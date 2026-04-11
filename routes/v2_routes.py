@@ -179,6 +179,8 @@ def _stress_snippet_payload(row: dict) -> dict:
     payload["durationSec"] = duration_sec
     payload["audio_url"] = audio_url
     payload["playable"] = bool(audio_url and storage_path)
+    feats = row.get("features") if isinstance(row.get("features"), dict) else {}
+    payload["queue_skipped"] = bool(feats.get("queue_skipped"))
     return payload
 
 
@@ -1543,12 +1545,27 @@ def v2_admin_list_stress_snippets():
         limit = max(1, min(limit, 200))
         offset = max(0, offset)
 
+        sort_raw = (request.args.get("sort") or "newest").strip().lower()
+        if sort_raw not in {"newest", "oldest"}:
+            return jsonify({"code": "INVALID_INPUT", "error": "sort must be newest or oldest"}), 400
+        sort_created_desc = sort_raw != "oldest"
+
+        ex_raw = (request.args.get("exclude_queue_skipped") or "").strip().lower()
+        if ex_raw in ("0", "false", "no"):
+            exclude_queue_skipped = False
+        elif ex_raw in ("1", "true", "yes"):
+            exclude_queue_skipped = True
+        else:
+            exclude_queue_skipped = label_state == "unlabeled"
+
         rows = db.v2_list_stress_snippets(
             source_type=None if source_type == "all" else source_type,
             recording_id=recording_id,
             label_state=label_state,
             limit=limit,
             offset=offset,
+            sort_created_desc=sort_created_desc,
+            exclude_queue_skipped=exclude_queue_skipped,
         )
         snippets = [_stress_snippet_payload(r) for r in rows]
         return jsonify(
@@ -1556,42 +1573,13 @@ def v2_admin_list_stress_snippets():
                 "snippets": snippets,
                 "source_type": source_type,
                 "label_state": label_state,
+                "sort": sort_raw,
+                "exclude_queue_skipped": exclude_queue_skipped,
                 "limit": limit,
                 "offset": offset,
                 "count": len(snippets),
             }
         ), 200
-    except Exception as e:
-        sentry_sdk.capture_exception(e)
-        return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
-
-
-@v2_bp.route("/admin/stress-snippets/<snippet_id>/label", methods=["PATCH"])
-@require_admin
-def v2_admin_label_stress_snippet(snippet_id):
-    try:
-        if not _is_valid_uuid(snippet_id):
-            return jsonify({"code": "INVALID_INPUT", "error": "Invalid snippet ID"}), 400
-        snippet = db.v2_get_stress_snippet(snippet_id)
-        if not snippet:
-            return jsonify({"code": "SNIPPET_NOT_FOUND", "error": "Snippet not found"}), 404
-        data = request.get_json(silent=True) or {}
-        label = (data.get("label") or "").strip().lower()
-        if label not in _STRESS_ALLOWED_LABELS:
-            return jsonify({"code": "INVALID_INPUT", "error": "label must be one of: stress, no_stress"}), 422
-        notes = data.get("notes")
-        if notes is not None and not isinstance(notes, str):
-            return jsonify({"code": "INVALID_INPUT", "error": "notes must be a string or null"}), 422
-        cleaned_notes = notes.strip() if isinstance(notes, str) else None
-        if isinstance(cleaned_notes, str) and len(cleaned_notes) > 2000:
-            return jsonify({"code": "INVALID_INPUT", "error": "notes must be <= 2000 chars"}), 422
-        updated = db.v2_set_stress_snippet_label(
-            snippet_id,
-            reviewer_id=str(request.user_id),
-            label=label,
-            notes=cleaned_notes,
-        )
-        return jsonify({"status": "ok", "snippet": _stress_snippet_payload(updated or snippet)}), 200
     except Exception as e:
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
@@ -1636,6 +1624,111 @@ def v2_admin_stress_snippets_settings():
                 },
             }
         ), 200
+    except Exception as e:
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
+
+
+@v2_bp.route("/admin/stress-snippets/<snippet_id>", methods=["GET"])
+@require_admin
+def v2_admin_get_stress_snippet(snippet_id):
+    try:
+        if not _is_valid_uuid(snippet_id):
+            return jsonify({"code": "INVALID_INPUT", "error": "Invalid snippet ID"}), 400
+        row = db.v2_get_stress_snippet(snippet_id)
+        if not row:
+            return jsonify({"code": "SNIPPET_NOT_FOUND", "error": "Snippet not found"}), 404
+        return jsonify({"status": "ok", "snippet": _stress_snippet_payload(row)}), 200
+    except Exception as e:
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
+
+
+@v2_bp.route("/admin/stress-snippets/<snippet_id>/label", methods=["PATCH", "DELETE"])
+@require_admin
+def v2_admin_label_stress_snippet(snippet_id):
+    """Set label (PATCH), clear label (DELETE or PATCH { clear: true })."""
+    try:
+        if not _is_valid_uuid(snippet_id):
+            return jsonify({"code": "INVALID_INPUT", "error": "Invalid snippet ID"}), 400
+        snippet = db.v2_get_stress_snippet(snippet_id)
+        if not snippet:
+            return jsonify({"code": "SNIPPET_NOT_FOUND", "error": "Snippet not found"}), 404
+        if request.method == "DELETE":
+            updated = db.v2_clear_stress_snippet_label(snippet_id)
+            return jsonify({"status": "ok", "cleared": True, "snippet": _stress_snippet_payload(updated or snippet)}), 200
+        data = request.get_json(silent=True) or {}
+        if data.get("clear") is True:
+            updated = db.v2_clear_stress_snippet_label(snippet_id)
+            return jsonify({"status": "ok", "cleared": True, "snippet": _stress_snippet_payload(updated or snippet)}), 200
+        label = data.get("label")
+        if label is None:
+            return jsonify({"code": "INVALID_INPUT", "error": "label is required (or pass clear: true)"}), 422
+        label = str(label).strip().lower()
+        if label not in _STRESS_ALLOWED_LABELS:
+            return jsonify({"code": "INVALID_INPUT", "error": "label must be one of: stress, no_stress"}), 422
+        notes = data.get("notes")
+        if notes is not None and not isinstance(notes, str):
+            return jsonify({"code": "INVALID_INPUT", "error": "notes must be a string or null"}), 422
+        cleaned_notes = notes.strip() if isinstance(notes, str) else None
+        if isinstance(cleaned_notes, str) and len(cleaned_notes) > 2000:
+            return jsonify({"code": "INVALID_INPUT", "error": "notes must be <= 2000 chars"}), 422
+        updated = db.v2_set_stress_snippet_label(
+            snippet_id,
+            reviewer_id=str(request.user_id),
+            label=label,
+            notes=cleaned_notes,
+        )
+        return jsonify({"status": "ok", "snippet": _stress_snippet_payload(updated or snippet)}), 200
+    except Exception as e:
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
+
+
+@v2_bp.route("/admin/stress-snippets/<snippet_id>/queue-skip", methods=["POST"])
+@require_admin
+def v2_admin_stress_snippet_queue_skip(snippet_id):
+    """Defer this clip in the unlabeled queue (hidden when exclude_queue_skipped is on)."""
+    try:
+        if not _is_valid_uuid(snippet_id):
+            return jsonify({"code": "INVALID_INPUT", "error": "Invalid snippet ID"}), 400
+        snippet = db.v2_get_stress_snippet(snippet_id)
+        if not snippet:
+            return jsonify({"code": "SNIPPET_NOT_FOUND", "error": "Snippet not found"}), 404
+        now = datetime.now(timezone.utc).isoformat()
+        updated = db.v2_merge_stress_snippet_features(
+            snippet_id,
+            {
+                "queue_skipped": True,
+                "queue_skipped_at": now,
+                "queue_skipped_by": str(request.user_id),
+            },
+        )
+        return jsonify({"status": "ok", "snippet": _stress_snippet_payload(updated or snippet)}), 200
+    except Exception as e:
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
+
+
+@v2_bp.route("/admin/stress-snippets/<snippet_id>/queue-unskip", methods=["POST"])
+@require_admin
+def v2_admin_stress_snippet_queue_unskip(snippet_id):
+    """Bring a deferred clip back into the default unlabeled queue."""
+    try:
+        if not _is_valid_uuid(snippet_id):
+            return jsonify({"code": "INVALID_INPUT", "error": "Invalid snippet ID"}), 400
+        snippet = db.v2_get_stress_snippet(snippet_id)
+        if not snippet:
+            return jsonify({"code": "SNIPPET_NOT_FOUND", "error": "Snippet not found"}), 404
+        updated = db.v2_merge_stress_snippet_features(
+            snippet_id,
+            {
+                "queue_skipped": None,
+                "queue_skipped_at": None,
+                "queue_skipped_by": None,
+            },
+        )
+        return jsonify({"status": "ok", "snippet": _stress_snippet_payload(updated or snippet)}), 200
     except Exception as e:
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR", "error": str(e)}), 500

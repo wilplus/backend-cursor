@@ -1285,6 +1285,45 @@ class DatabaseService:
         )
         return result.data[0] if result.data else None
 
+    def v2_clear_stress_snippet_label(self, snippet_id: str) -> Optional[dict]:
+        """Remove coach label so the snippet returns to the unlabeled queue."""
+        payload = {
+            "coach_label": None,
+            "coach_label_notes": None,
+            "labeled_by": None,
+            "labeled_at": None,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+        result = (
+            self.client.table("stress_snippets")
+            .update(payload)
+            .eq("id", snippet_id)
+            .execute()
+        )
+        return result.data[0] if result.data else None
+
+    def v2_merge_stress_snippet_features(self, snippet_id: str, patch: dict) -> Optional[dict]:
+        """Shallow-merge ``patch`` into ``features`` JSONB."""
+        row = self.v2_get_stress_snippet(snippet_id)
+        if not row:
+            return None
+        features = dict(row.get("features") or {})
+        for k, v in (patch or {}).items():
+            if v is None:
+                features.pop(k, None)
+            else:
+                features[k] = v
+        result = (
+            self.client.table("stress_snippets")
+            .update({
+                "features": features,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            })
+            .eq("id", snippet_id)
+            .execute()
+        )
+        return result.data[0] if result.data else None
+
     def v2_list_stress_snippets(
         self,
         *,
@@ -1293,14 +1332,13 @@ class DatabaseService:
         label_state: str = "all",
         limit: int = 50,
         offset: int = 0,
+        sort_created_desc: bool = True,
+        exclude_queue_skipped: bool = False,
     ) -> list[dict]:
         """List generated snippets with source-side recording metadata."""
-        query = (
-            self.client.table("stress_snippets")
-            .select("*")
-            .order("created_at", desc=True)
-            .range(offset, max(offset + limit - 1, offset))
-        )
+        query = self.client.table("stress_snippets").select("*")
+        query = query.order("created_at", desc=sort_created_desc)
+        query = query.range(offset, max(offset + limit - 1, offset))
         if source_type:
             query = query.eq("source_type", source_type)
         if recording_id:
@@ -1311,6 +1349,12 @@ class DatabaseService:
         rows = result.data or []
         if label_state == "labeled":
             rows = [r for r in rows if r.get("coach_label") is not None]
+        if exclude_queue_skipped:
+            rows = [
+                r
+                for r in rows
+                if not (isinstance(r.get("features"), dict) and r.get("features", {}).get("queue_skipped") is True)
+            ]
         if not rows:
             return []
 
