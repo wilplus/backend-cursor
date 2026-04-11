@@ -67,7 +67,7 @@ export default function VoiceLabelingPage() {
     }
     setGenerateBusy(true);
     try {
-      const out = await adminApi.generateStressSnippets(rid, { max_snippets: 8, clip_seconds: 3.5, clear_existing: true });
+      const out = await adminApi.generateStressSnippets(rid, { max_snippets: 8, clip_seconds: 5, clear_existing: true });
       toast.success(`Generated ${out.generated_count} snippet(s)`);
       await load();
     } catch (e) {

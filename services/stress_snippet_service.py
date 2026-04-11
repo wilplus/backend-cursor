@@ -24,9 +24,9 @@ _FILLER_WORDS = {
 }
 _SCENARIOS = ("after_pause", "before_pause", "high_filler_density", "low_filler_density")
 # Each exported clip is trimmed to at most this many seconds (product cap).
-STRESS_SNIPPET_CLIP_SEC_DEFAULT = 3.5
+STRESS_SNIPPET_CLIP_SEC_DEFAULT = 5.0
 STRESS_SNIPPET_CLIP_SEC_MIN = 0.5
-STRESS_SNIPPET_CLIP_SEC_MAX = 3.5
+STRESS_SNIPPET_CLIP_SEC_MAX = 5.0
 _MODEL_CACHE: dict[str, dict] = {}
 
 # MMR / diversity (time IoU + acoustic embedding). Global assignment = exhaustive on top-K per scenario.
