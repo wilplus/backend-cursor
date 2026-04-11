@@ -554,6 +554,14 @@ def homework_self_rating(session_id):
             if not ok:
                 return jsonify({"code": "V2_ERROR", "error": "Could not save rating"}), 500
             saved_rating = r
+            try:
+                db.v2_update_session(session_id, user_id, {"student_self_rating": r})
+            except Exception as snap_err:
+                msg = str(snap_err).lower()
+                if "student_self_rating" in msg or "42703" in msg or "does not exist" in msg:
+                    pass  # optional column until migration runs
+                else:
+                    logger.warning("homework_self_rating: student_self_rating snapshot failed: %s", snap_err)
         else:
             saved_rating = None
         try:

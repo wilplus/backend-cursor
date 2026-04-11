@@ -2119,6 +2119,15 @@ class DatabaseService:
             payload["completed"] = completed
         if valid_for_progression is not None:
             payload["valid_for_progression"] = valid_for_progression
+        # Recording-1 job upserts without student_rating_1_10; some PostgREST/merge paths
+        # can clear the column if the student already saved a self-rating while the job was running.
+        if "student_rating_1_10" not in payload:
+            try:
+                existing_sm = self.get_session_sniper_metrics(session_id) or {}
+                if existing_sm.get("student_rating_1_10") is not None:
+                    payload["student_rating_1_10"] = existing_sm["student_rating_1_10"]
+            except Exception:
+                pass
         payload["updated_at"] = datetime.now(timezone.utc).isoformat()
         try:
             self.client.table("session_sniper_metrics").upsert(payload, on_conflict="session_id").execute()
@@ -3242,11 +3251,14 @@ class DatabaseService:
             "id", "created_at", "completed_at", "status",
             "recording_1_id", "report_id", "report_grade",
             "student_completion_email_sent_at",
+            "self_rating_submitted_at",
+            "student_self_rating",
             "score", "task_score",
             "ai_draft_grade", "ai_draft_comment",
             "question_1_score", "question_2_score", "question_3_score",
             "realtime_level_at_session", "realtime_step_at_session",
             "ai_task_score", "ai_scoring_justification", "coach_override_score", "coach_override_justification",
+            "session_task_id", "warm_up_task_id",
             "session_task_text", "warm_up_task_text",
         ]
         session_columns = [c for c in all_session_columns if c not in self._v2_sessions_missing_columns]
@@ -3446,9 +3458,27 @@ class DatabaseService:
             rec["dynamic_db"] = sm.get("dynamic_db")
             rec["pitch_center_st"] = sm.get("pitch_center_st")
             rec["energy_ratio"] = sm.get("energy_ratio")
-            rec["student_rating_1_10"] = sm.get("student_rating_1_10")
-            # Alias for admin UIs that map "Self rating" to a different key
-            rec["self_rating"] = sm.get("student_rating_1_10")
+            _sr = sm.get("student_rating_1_10")
+            if _sr is None and s.get("student_self_rating") is not None:
+                try:
+                    _sr = int(s["student_self_rating"])
+                except (TypeError, ValueError):
+                    _sr = sm.get("student_rating_1_10")
+            rec["student_rating_1_10"] = _sr
+            rec["self_rating"] = _sr
+            # Skip does not write student_rating_1_10; self_rating_submitted_at is still set on v2_sessions.
+            _sub_at = s.get("self_rating_submitted_at")
+            rec["self_rating_skipped"] = bool(_sub_at) and _sr is None
+            # Single string for tables that only show one cell (optional for admin UI).
+            if _sr is not None:
+                try:
+                    rec["self_rating_label"] = str(int(_sr))
+                except (TypeError, ValueError):
+                    rec["self_rating_label"] = str(_sr)
+            elif rec["self_rating_skipped"]:
+                rec["self_rating_label"] = "Skipped"
+            else:
+                rec["self_rating_label"] = None
             review = rec.get("review") if isinstance(rec.get("review"), dict) else {}
             rec["ml_quality"] = review.get("overall_quality")
 
