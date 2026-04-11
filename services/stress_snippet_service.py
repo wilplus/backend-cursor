@@ -206,6 +206,28 @@ def _clip_bounds(center_sec: float, clip_sec: float, total_sec: float) -> tuple[
     return start, end
 
 
+def _normalize_clip_window(
+    start_sec: float,
+    end_sec: float,
+    duration_sec: float,
+    clip_sec: float,
+) -> tuple[float, float]:
+    """Expand [start, end] toward the target clip length, capped by the full recording."""
+    if duration_sec <= 0:
+        return start_sec, end_sec
+    span = max(0.0, float(end_sec) - float(start_sec))
+    target = max(6.0, min(float(clip_sec), 20.0))
+    target = min(target, float(duration_sec))
+    if span >= target - 1e-3:
+        return start_sec, end_sec
+    center = (float(start_sec) + float(end_sec)) / 2.0
+    half = target / 2.0
+    ns = max(0.0, center - half)
+    ne = min(float(duration_sec), ns + target)
+    ns = max(0.0, ne - target)
+    return ns, ne
+
+
 def _overlap_ratio(a: tuple[float, float], b: tuple[float, float]) -> float:
     i = max(0.0, min(a[1], b[1]) - max(a[0], b[0]))
     if i <= 0:
@@ -573,6 +595,8 @@ def generate_stress_snippets_for_recording(
 
         rows = []
         for selection_score, confidence, prob, c in selected:
+            ns, ne = _normalize_clip_window(c.start_sec, c.end_sec, duration_sec, float(clip_seconds))
+            c.start_sec, c.end_sec = ns, ne
             duration = max(0.5, c.end_sec - c.start_sec)
             clip_bytes = _extract_clip_mp3(audio_bytes, ffmpeg_exe, c.start_sec, duration)
             if not clip_bytes:

@@ -16,7 +16,12 @@ import sentry_sdk
 import json
 import time
 import hashlib
+import mimetypes
+import os
+import uuid
 from datetime import datetime, timezone
+from urllib.parse import urlparse
+from werkzeug.utils import secure_filename
 
 logger = logging.getLogger(__name__)
 v2_bp = Blueprint("v2", __name__, url_prefix="/v2")
@@ -79,6 +84,60 @@ def _public_storage_url(bucket: str, path: str):
 def _infer_stress_source_type(recording: dict) -> str:
     origin = (recording or {}).get("recording_origin")
     return "internet" if origin == "admin_import" else "student"
+
+
+_IMPORT_ALLOWED_EXTENSIONS = {".mp3", ".wav", ".webm", ".m4a", ".ogg", ".flac"}
+_IMPORT_SOURCE_KINDS = {"upload", "youtube", "podcast", "external", "other"}
+
+
+def _admin_import_clean_text(val, max_len: int) -> str:
+    if val is None:
+        return ""
+    if not isinstance(val, str):
+        return ""
+    return val.strip()[:max_len]
+
+
+def _admin_import_validate_audio_file(file_storage):
+    if file_storage is None or not (getattr(file_storage, "filename", "") or "").strip():
+        raise ValueError("audio_file is required")
+    original_name = secure_filename(file_storage.filename or "")
+    ext = os.path.splitext(original_name)[1].lower()
+    if ext not in _IMPORT_ALLOWED_EXTENSIONS:
+        raise ValueError("unsupported audio format")
+    return original_name, ext
+
+
+def _admin_import_storage_path(recording_id: str, original_filename: str) -> str:
+    safe_name = secure_filename(original_filename or "") or "audio"
+    ext = os.path.splitext(safe_name)[1].lower() or ".bin"
+    now = datetime.now(timezone.utc)
+    return f"admin_imports/{now:%Y/%m}/{recording_id}/{uuid.uuid4().hex}{ext}"
+
+
+def _admin_import_source_metadata(
+    *,
+    source_kind: str,
+    source_url,
+    source_title,
+    speaker_label,
+    language_code,
+    transcript_text,
+    import_notes,
+    reviewer_id: str,
+):
+    return {
+        "recording_origin": "admin_import",
+        "source_kind": source_kind,
+        "source_url": source_url,
+        "source_title": source_title,
+        "speaker_label": speaker_label,
+        "language_code": language_code,
+        "transcript_text": transcript_text,
+        "import_notes": import_notes,
+        "imported_by": reviewer_id,
+        "imported_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+    }
 
 
 def _stress_snippet_payload(row: dict) -> dict:
@@ -1182,6 +1241,141 @@ def v2_admin_student_session_report(user_id, session_id):
     except Exception as e:
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
+
+
+@v2_bp.route("/admin/recordings/import", methods=["POST"])
+@require_admin
+def v2_admin_recordings_import():
+    """Multipart admin upload for Voice Pipeline (internet source_type stress snippets).
+
+    Must stay **above** ``/admin/recordings/<recording_id>`` so ``import`` is not captured as an id
+    (otherwise POST hits the GET-only detail route →405).
+    """
+    try:
+        if "audio_file" not in request.files:
+            return jsonify({"code": "AUDIO_FILE_REQUIRED", "error": "audio_file is required"}), 400
+        audio_file = request.files.get("audio_file")
+        try:
+            original_name, _ext = _admin_import_validate_audio_file(audio_file)
+        except ValueError as ve:
+            msg = str(ve)
+            if msg == "unsupported audio format":
+                return jsonify({"code": "UNSUPPORTED_AUDIO_FORMAT", "error": "unsupported audio format"}), 415
+            return jsonify({"code": "AUDIO_FILE_REQUIRED", "error": msg}), 400
+
+        max_bytes = int((getattr(config, "MAX_AUDIO_SIZE_MB", 25) or 25) * 1024 * 1024)
+        cl = request.content_length or 0
+        if cl and cl > max_bytes:
+            return jsonify({"code": "FILE_TOO_LARGE", "error": f"audio_file exceeds {config.MAX_AUDIO_SIZE_MB}MB limit"}), 413
+
+        file_bytes = audio_file.read()
+        if not file_bytes:
+            return jsonify({"code": "INVALID_MULTIPART", "error": "audio_file is empty"}), 400
+        if len(file_bytes) > max_bytes:
+            return jsonify({"code": "FILE_TOO_LARGE", "error": f"audio_file exceeds {config.MAX_AUDIO_SIZE_MB}MB limit"}), 413
+
+        form = request.form or {}
+        source_kind = _admin_import_clean_text(form.get("source_kind"), 64).lower() or "upload"
+        if source_kind not in _IMPORT_SOURCE_KINDS:
+            return jsonify({"code": "INVALID_INPUT", "error": f"source_kind must be one of: {', '.join(sorted(_IMPORT_SOURCE_KINDS))}"}), 400
+        source_url_raw = _admin_import_clean_text(form.get("source_url"), 2048)
+        source_url = None
+        if source_url_raw:
+            parsed = urlparse(source_url_raw)
+            if parsed.scheme not in ("http", "https") or not parsed.netloc:
+                return jsonify({"code": "INVALID_INPUT", "error": "source_url must be a valid http/https URL"}), 400
+            source_url = source_url_raw
+
+        source_title = _admin_import_clean_text(form.get("source_title"), 500) or None
+        speaker_label = _admin_import_clean_text(form.get("speaker_label"), 200) or None
+        language_code = _admin_import_clean_text(form.get("language_code"), 32) or None
+        transcript_text = _admin_import_clean_text(form.get("transcript_text"), 12000) or None
+        import_notes = _admin_import_clean_text(form.get("import_notes"), 4000) or None
+
+        recording_id = str(uuid.uuid4())
+        storage_path = _admin_import_storage_path(recording_id, original_name)
+        content_type = (audio_file.mimetype or mimetypes.guess_type(original_name)[0] or "application/octet-stream").strip()
+        if content_type in ("True", "False"):
+            content_type = "application/octet-stream"
+
+        try:
+            db.upload_audio(config.AUDIO_BUCKET_NAME, storage_path, file_bytes, content_type=content_type)
+        except Exception as upload_err:
+            logger.warning("Admin recording import upload failed: %s", upload_err, exc_info=True)
+            return jsonify({"code": "IMPORT_UPLOAD_FAILED", "error": "Failed to store uploaded audio"}), 500
+
+        public_audio_url = _public_storage_url(config.AUDIO_BUCKET_NAME, storage_path)
+        source_metadata = _admin_import_source_metadata(
+            source_kind=source_kind,
+            source_url=source_url,
+            source_title=source_title,
+            speaker_label=speaker_label,
+            language_code=language_code,
+            transcript_text=transcript_text,
+            import_notes=import_notes,
+            reviewer_id=str(request.user_id),
+        )
+
+        insert_payload = {
+            "id": recording_id,
+            "user_id": None,
+            "session_id": None,
+            "audio_url": public_audio_url or "",
+            "duration": 0,
+            "duration_seconds": None,
+            "transcription_text": transcript_text,
+            "storage_path": storage_path,
+            "recording_origin": "admin_import",
+            "source_metadata": source_metadata,
+        }
+        recording = None
+        try:
+            recording = db.create_recording(insert_payload)
+        except Exception as create_err:
+            err_low = str(create_err).lower()
+            if "recording_origin" in err_low or "source_metadata" in err_low or "pgrst204" in err_low:
+                fallback = {k: v for k, v in insert_payload.items() if k not in ("recording_origin", "source_metadata")}
+                try:
+                    recording = db.create_recording(fallback)
+                except Exception as e2:
+                    logger.warning("Admin recording import create_recording failed: %s", e2, exc_info=True)
+                    return jsonify({"code": "IMPORT_RECORDING_CREATE_FAILED", "error": str(e2)}), 500
+            else:
+                logger.warning("Admin recording import create_recording failed: %s", create_err, exc_info=True)
+                return jsonify({"code": "IMPORT_RECORDING_CREATE_FAILED", "error": str(create_err)}), 500
+
+        if not recording:
+            return jsonify({"code": "IMPORT_RECORDING_CREATE_FAILED", "error": "Failed to create recording row"}), 500
+
+        playback_url = None
+        try:
+            playback_url = db.create_signed_url(config.AUDIO_BUCKET_NAME, storage_path, config.SIGNED_URL_EXPIRY_SECONDS)
+        except Exception as playback_err:
+            logger.warning("Admin recording import signed URL failed: %s", playback_err)
+            playback_url = public_audio_url or None
+
+        generated_snippets = []
+        try:
+            generated_snippets = generate_stress_snippets_for_recording(
+                recording_id,
+                source_type="internet",
+                max_snippets=8,
+                clip_seconds=10,
+                clear_existing=True,
+            )
+        except Exception as snippet_err:
+            logger.warning("Admin recording import snippet generation failed: %s", snippet_err, exc_info=True)
+
+        return jsonify({
+            "status": "ok",
+            "recording_id": recording_id,
+            "playback_url": playback_url,
+            "generated_snippets_count": len(generated_snippets),
+            "message": "Recording imported; stress snippets generated when ffmpeg and audio decode succeed.",
+        }), 201
+    except Exception as e:
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "IMPORT_FAILED", "error": str(e)}), 500
 
 
 @v2_bp.route("/admin/recordings/<recording_id>/playback-url", methods=["GET"])
