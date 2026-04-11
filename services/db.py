@@ -1236,140 +1236,6 @@ class DatabaseService:
         """Get v2 session by id only (no user filter). For debugging 404: check if session exists and which user_id owns it."""
         return self.v2_get_session(session_id, None)
 
-    def v2_get_recording_review(self, session_id: str):
-        """Admin-only ML review labels for a session."""
-        result = (
-            self.client.table("recording_reviews")
-            .select("*")
-            .eq("session_id", session_id)
-            .limit(1)
-            .execute()
-        )
-        return result.data[0] if result.data else None
-
-    def v2_get_recording_review_by_recording(self, recording_id: str):
-        """Admin-only ML review labels for an imported or standalone recording."""
-        result = (
-            self.client.table("recording_reviews")
-            .select("*")
-            .eq("recording_id", recording_id)
-            .order("updated_at", desc=True)
-            .limit(1)
-            .execute()
-        )
-        return result.data[0] if result.data else None
-
-    def v2_update_recording_review(self, review_id: str, reviewer_id: str, data: dict):
-        """Update an existing admin-only ML review row by id."""
-        payload = {
-            "reviewer_id": reviewer_id,
-            "updated_at": datetime.now(timezone.utc).isoformat(),
-        }
-        for key in (
-            "session_id",
-            "recording_id",
-            "overall_quality",
-            "confidence_score",
-            "coach_style_score",
-            "notes",
-            "rubric_version",
-        ):
-            if key in data:
-                payload[key] = data.get(key)
-        result = (
-            self.client.table("recording_reviews")
-            .update(payload)
-            .eq("id", review_id)
-            .execute()
-        )
-        return result.data[0] if result.data else None
-
-    def v2_upsert_recording_review(self, session_id: str, reviewer_id: str, data: dict):
-        """Upsert admin-only ML review labels for a session."""
-        now = datetime.now(timezone.utc).isoformat()
-        payload = {
-            "session_id": session_id,
-            "reviewer_id": reviewer_id,
-            "updated_at": now,
-        }
-        for key in (
-            "recording_id",
-            "overall_quality",
-            "confidence_score",
-            "coach_style_score",
-            "notes",
-            "rubric_version",
-        ):
-            if key in data:
-                payload[key] = data.get(key)
-        result = self.client.table("recording_reviews").upsert(payload, on_conflict="session_id").execute()
-        return result.data[0] if result.data else self.v2_get_recording_review(session_id)
-
-    def v2_create_recording_review_for_recording(self, recording_id: str, reviewer_id: str, data: dict):
-        """Create admin-only ML review labels for a standalone recording import."""
-        now = datetime.now(timezone.utc).isoformat()
-        payload = {
-            "recording_id": recording_id,
-            "reviewer_id": reviewer_id,
-            "updated_at": now,
-        }
-        for key in (
-            "session_id",
-            "overall_quality",
-            "confidence_score",
-            "coach_style_score",
-            "notes",
-            "rubric_version",
-        ):
-            if key in data:
-                payload[key] = data.get(key)
-        result = self.client.table("recording_reviews").insert(payload).execute()
-        return result.data[0] if result.data else self.v2_get_recording_review_by_recording(recording_id)
-
-    def v2_upsert_recording_review_for_recording(self, recording_id: str, reviewer_id: str, data: dict):
-        """Update the latest review for a standalone recording or create one if it does not exist."""
-        existing = self.v2_get_recording_review_by_recording(recording_id)
-        if existing and existing.get("id"):
-            return self.v2_update_recording_review(existing["id"], reviewer_id, data)
-        return self.v2_create_recording_review_for_recording(recording_id, reviewer_id, data)
-
-    def v2_list_admin_import_recordings(self, limit: int = 50, offset: int = 0):
-        """List imported recordings for the admin ML page."""
-        result = (
-            self.client.table("recordings")
-            .select("*")
-            .eq("recording_origin", "admin_import")
-            .order("created_at", desc=True)
-            .range(offset, max(offset + limit - 1, offset))
-            .execute()
-        )
-        rows = result.data or []
-        if not rows:
-            return []
-        recording_ids = [row.get("id") for row in rows if row.get("id")]
-        reviews_by_recording = {}
-        if recording_ids:
-            try:
-                reviews_result = (
-                    self.client.table("recording_reviews")
-                    .select("*")
-                    .in_("recording_id", recording_ids)
-                    .order("updated_at", desc=True)
-                    .execute()
-                )
-                for row in reviews_result.data or []:
-                    rid = row.get("recording_id")
-                    if rid and rid not in reviews_by_recording:
-                        reviews_by_recording[rid] = row
-            except Exception:
-                reviews_by_recording = {}
-        out = []
-        for row in rows:
-            rec = dict(row)
-            rec["review"] = reviews_by_recording.get(row.get("id"))
-            out.append(rec)
-        return out
-
     def v2_delete_stress_snippets_for_recording(self, recording_id: str) -> int:
         """Delete previously generated snippet candidates for one recording."""
         result = (
@@ -1469,64 +1335,6 @@ class DatabaseService:
             item["recording"] = recordings_map.get(rid)
             out.append(item)
         return out
-
-    def v2_list_recording_review_annotations(self, session_id: str):
-        """Admin-only time-span review labels for a session."""
-        result = (
-            self.client.table("recording_review_annotations")
-            .select("*")
-            .eq("session_id", session_id)
-            .order("start_ms")
-            .order("created_at")
-            .execute()
-        )
-        return result.data or []
-
-    def v2_get_recording_review_annotation(self, annotation_id: str):
-        """Get one review annotation by id."""
-        result = (
-            self.client.table("recording_review_annotations")
-            .select("*")
-            .eq("id", annotation_id)
-            .limit(1)
-            .execute()
-        )
-        return result.data[0] if result.data else None
-
-    def v2_create_recording_review_annotation(self, session_id: str, reviewer_id: str, data: dict):
-        """Create a new time-span review annotation."""
-        payload = {
-            "session_id": session_id,
-            "recording_id": data["recording_id"],
-            "start_ms": data["start_ms"],
-            "end_ms": data["end_ms"],
-            "label": data["label"],
-            "reviewer_id": reviewer_id,
-            "rubric_version": data["rubric_version"],
-        }
-        if "notes" in data:
-            payload["notes"] = data.get("notes")
-        result = self.client.table("recording_review_annotations").insert(payload).execute()
-        return result.data[0] if result.data else None
-
-    def v2_update_recording_review_annotation(self, annotation_id: str, reviewer_id: str, data: dict):
-        """Update an existing time-span review annotation."""
-        payload = {"reviewer_id": reviewer_id, "updated_at": datetime.now(timezone.utc).isoformat()}
-        for key in ("recording_id", "start_ms", "end_ms", "label", "notes", "rubric_version"):
-            if key in data:
-                payload[key] = data.get(key)
-        result = (
-            self.client.table("recording_review_annotations")
-            .update(payload)
-            .eq("id", annotation_id)
-            .execute()
-        )
-        return result.data[0] if result.data else None
-
-    def v2_delete_recording_review_annotation(self, annotation_id: str) -> bool:
-        """Delete a review annotation by id."""
-        self.client.table("recording_review_annotations").delete().eq("id", annotation_id).execute()
-        return True
 
     def v2_get_last_completed_session(self, user_id: str):
         """Return the most recent completed session for the user (for tutor_feedback_deadline when no active session). Includes tutor_feedback_sent_at so deadline is omitted once feedback is sent."""
@@ -3344,21 +3152,6 @@ class DatabaseService:
             except Exception:
                 pass
 
-        # Batch: recording_reviews
-        reviews_by_session: dict = {}
-        if session_ids:
-            try:
-                rv = (
-                    self.client.table("recording_reviews")
-                    .select("session_id, overall_quality, confidence_score, coach_style_score")
-                    .in_("session_id", session_ids)
-                    .execute()
-                )
-                for row in (rv.data or []):
-                    reviews_by_session[row["session_id"]] = row
-            except Exception:
-                pass
-
         # Batch: recordings (keyed by recording id)
         recording_ids = list({s.get("recording_1_id") for s in sessions if s.get("recording_1_id")})
         recordings_by_id: dict = {}
@@ -3415,7 +3208,6 @@ class DatabaseService:
                 }
 
             rec["sniper_metrics"] = sniper_metrics_by_session.get(s["id"])
-            rec["review"] = reviews_by_session.get(s["id"])
 
             # Single field for admin tables: prefer Sniper wpm when set, else Whisper/recording job WPM.
             _rwpm = (rec.get("recording_preview") or {}).get("words_per_minute")
@@ -3479,8 +3271,6 @@ class DatabaseService:
                 rec["self_rating_label"] = "Skipped"
             else:
                 rec["self_rating_label"] = None
-            review = rec.get("review") if isinstance(rec.get("review"), dict) else {}
-            rec["ml_quality"] = review.get("overall_quality")
 
             report_text = None
             if s.get("report_id"):
