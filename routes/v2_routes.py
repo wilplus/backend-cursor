@@ -87,7 +87,8 @@ def _infer_stress_source_type(recording: dict) -> str:
 
 
 _IMPORT_ALLOWED_EXTENSIONS = {".mp3", ".wav", ".webm", ".m4a", ".ogg", ".flac"}
-_IMPORT_SOURCE_KINDS = {"upload", "youtube", "podcast", "external", "other"}
+# `student` is sent by some Training Studio uploads (Student recordings tab); stored in source_metadata only.
+_IMPORT_SOURCE_KINDS = {"upload", "youtube", "podcast", "external", "other", "student"}
 
 
 def _admin_import_clean_text(val, max_len: int) -> str:
@@ -1305,7 +1306,8 @@ def v2_admin_recordings_import():
         form = request.form or {}
         source_kind = _admin_import_clean_text(form.get("source_kind"), 64).lower() or "upload"
         if source_kind not in _IMPORT_SOURCE_KINDS:
-            return jsonify({"code": "INVALID_INPUT", "error": f"source_kind must be one of: {', '.join(sorted(_IMPORT_SOURCE_KINDS))}"}), 400
+            logger.info("admin import: unknown source_kind=%r; using upload", source_kind)
+            source_kind = "upload"
         source_url_raw = _admin_import_clean_text(form.get("source_url"), 2048)
         source_url = None
         if source_url_raw:
