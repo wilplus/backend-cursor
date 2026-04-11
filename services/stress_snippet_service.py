@@ -612,6 +612,13 @@ def generate_stress_snippets_for_recording(
         for selection_score, confidence, prob, c in selected:
             ns, ne = _floor_clip_window(c.start_sec, c.end_sec, duration_sec, min_span_sec=0.85)
             c.start_sec, c.end_sec = ns, ne
+            if ne <= ns + 1e-4:
+                logger.warning(
+                    "stress_snippet_service: skip degenerate window recording_id=%s scenario=%s",
+                    recording_id,
+                    c.scenario,
+                )
+                continue
             duration = max(0.25, c.end_sec - c.start_sec)
             clip_bytes = _extract_clip_mp3(audio_bytes, ffmpeg_exe, c.start_sec, duration)
             if not clip_bytes:

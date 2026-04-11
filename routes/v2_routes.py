@@ -149,7 +149,35 @@ def _stress_snippet_payload(row: dict) -> dict:
         except Exception:
             audio_url = _public_storage_url(config.AUDIO_BUCKET_NAME, storage_path) or None
     payload = dict(row)
+    try:
+        sm = int(row.get("start_ms") or 0)
+    except (TypeError, ValueError):
+        sm = 0
+    try:
+        em = int(row.get("end_ms") or 0)
+    except (TypeError, ValueError):
+        em = 0
+    try:
+        dm = int(row.get("duration_ms") or 0)
+    except (TypeError, ValueError):
+        dm = 0
+    if em <= sm and dm > 0:
+        em = sm + dm
+    start_sec = round(sm / 1000.0, 3)
+    end_sec = round(em / 1000.0, 3)
+    duration_sec = max(0.0, round((em - sm) / 1000.0, 3))
+    if duration_sec <= 0 and dm > 0:
+        duration_sec = round(dm / 1000.0, 3)
+        end_sec = round(start_sec + duration_sec, 3)
+    payload["start_sec"] = start_sec
+    payload["end_sec"] = end_sec
+    payload["duration_sec"] = duration_sec
+    # Common client shapes (Training Studio / Next may expect camelCase).
+    payload["startSec"] = start_sec
+    payload["endSec"] = end_sec
+    payload["durationSec"] = duration_sec
     payload["audio_url"] = audio_url
+    payload["playable"] = bool(audio_url and storage_path)
     return payload
 
 
