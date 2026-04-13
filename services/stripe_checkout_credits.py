@@ -22,6 +22,16 @@ def _session_field(session: Any, key: str, default: Any = None) -> Any:
     return getattr(session, key, default)
 
 
+def _line_price_ids(line_data: list[Any]) -> list[str]:
+    out: list[str] = []
+    for row in line_data or []:
+        price = row.get("price") if isinstance(row, dict) else getattr(row, "price", None)
+        pid = price.get("id") if isinstance(price, dict) else getattr(price, "id", None)
+        if pid:
+            out.append(str(pid))
+    return out
+
+
 @dataclass
 class CheckoutCreditsApplyResult:
     ok: bool
@@ -47,7 +57,8 @@ def apply_paid_checkout_session_credits(
 ) -> CheckoutCreditsApplyResult:
     """
     Idempotent credit grant for a Checkout Session (same rules as the Stripe webhook).
-    If auth_user_id is set, the session must carry that Supabase user id (metadata / client_reference_id).
+    For authenticated student-initiated claim (auth_user_id set), fallback to auth_user_id
+    when Checkout session omitted metadata.user_id/client_reference_id.
     """
     import stripe
 
@@ -78,17 +89,18 @@ def apply_paid_checkout_session_credits(
         return CheckoutCreditsApplyResult.success(200, skipped="not_payment_mode")
 
     session_user = checkout_user_id(full)
-    if not session_user:
+    if not session_user and not auth_user_id:
         return CheckoutCreditsApplyResult.error(
             400,
             "INVALID_SESSION",
             "Set client_reference_id or metadata.user_id to Supabase user id on Checkout Session",
         )
 
-    if auth_user_id and session_user.strip().lower() != auth_user_id.strip().lower():
+    if auth_user_id and session_user and session_user.strip().lower() != auth_user_id.strip().lower():
         return CheckoutCreditsApplyResult.error(403, "FORBIDDEN", "Checkout session does not belong to this account")
 
     db_user_id = auth_user_id.strip() if auth_user_id else session_user.strip()
+    used_auth_fallback = bool(auth_user_id and not session_user)
 
     line_data = _line_items_data(full)
     if not line_data:
@@ -102,10 +114,24 @@ def apply_paid_checkout_session_credits(
         logger.error("stripe checkout credits: no line items session=%s", sid)
         return CheckoutCreditsApplyResult.error(400, "NO_LINE_ITEMS", "Checkout session has no line items to map")
 
+    checkout_price_ids = _line_price_ids(line_data)
     total, map_err = total_credits_for_checkout_session({"line_items": {"data": line_data}}, price_map)
     if map_err or total is None:
-        logger.error("stripe checkout credits: mapping failed session=%s detail=%s", sid, map_err)
-        return CheckoutCreditsApplyResult.error(400, "UNMAPPED_CHECKOUT", map_err or "mapping failed")
+        configured_ids = list(price_map.keys())
+        logger.error(
+            "stripe checkout credits: mapping failed session=%s detail=%s checkout_prices=%s configured_count=%s",
+            sid,
+            map_err,
+            checkout_price_ids,
+            len(configured_ids),
+        )
+        return CheckoutCreditsApplyResult.error(
+            400,
+            "UNMAPPED_CHECKOUT",
+            map_err or "mapping failed",
+            checkout_price_ids=checkout_price_ids,
+            configured_price_ids=configured_ids,
+        )
 
     try:
         claimed = db.stripe_checkout_grant_claim(sid)
@@ -119,7 +145,13 @@ def apply_paid_checkout_session_credits(
         if cur is None:
             cur = 15
         logger.info("stripe checkout credits duplicate session=%s user=%s credits=%s", sid, db_user_id, cur)
-        return CheckoutCreditsApplyResult.success(200, credits=int(cur), duplicate=True, delta_applied=0)
+        return CheckoutCreditsApplyResult.success(
+            200,
+            credits=int(cur),
+            duplicate=True,
+            delta_applied=0,
+            used_auth_fallback=used_auth_fallback,
+        )
 
     new_bal = db.v2_increment_student_credits(db_user_id, total)
     if new_bal is None:
@@ -140,4 +172,5 @@ def apply_paid_checkout_session_credits(
         duplicate=False,
         delta_applied=int(total),
         user_id=db_user_id,
+        used_auth_fallback=used_auth_fallback,
     )
