@@ -16,11 +16,7 @@ from flask import Blueprint, jsonify, request
 from config import Config
 from services.annotation_export import result_to_dict, run_annotation_export
 from services.db import db
-from services.stripe_checkout_webhook import (
-    checkout_user_id,
-    parse_price_credits_map,
-    total_credits_for_checkout_session,
-)
+from services.stripe_checkout_credits import apply_paid_checkout_session_credits
 
 logger = logging.getLogger(__name__)
 config = Config()
@@ -111,58 +107,11 @@ def stripe_checkout_webhook():
     if not session_id:
         return jsonify({"code": "INVALID_EVENT", "error": "missing session id"}), 400
 
-    if obj.get("payment_status") != "paid":
-        return jsonify({"received": True, "skipped": "not_paid"}), 200
-
-    if obj.get("mode") != "payment":
-        return jsonify({"received": True, "skipped": "not_payment_mode"}), 200
-
-    price_map = parse_price_credits_map(getattr(config, "STRIPE_CHECKOUT_PRICE_CREDITS_JSON", "") or "")
-    if not price_map:
-        logger.error("stripe webhook: STRIPE_CHECKOUT_PRICE_CREDITS_JSON missing or empty")
-        return jsonify({"code": "MISCONFIGURED", "error": "STRIPE_CHECKOUT_PRICE_CREDITS_JSON not configured"}), 500
-
-    try:
-        full = stripe.checkout.Session.retrieve(session_id, expand=["line_items.data.price"])
-    except Exception as e:
-        logger.warning("stripe Session.retrieve failed: %s", e)
-        return jsonify({"code": "STRIPE_API_ERROR", "error": str(e)}), 500
-
-    user_id = checkout_user_id(full)
-    if not user_id:
-        logger.error("stripe webhook: missing user id checkout_session_id=%s", session_id)
-        return jsonify(
-            {"code": "INVALID_SESSION", "error": "Set client_reference_id or metadata.user_id to Supabase user id"}
-        ), 500
-
-    total, map_err = total_credits_for_checkout_session(full, price_map)
-    if map_err or total is None:
-        logger.error("stripe webhook: credit mapping failed session=%s detail=%s", session_id, map_err)
-        return jsonify({"code": "UNMAPPED_CHECKOUT", "error": map_err or "mapping failed"}), 500
-
-    try:
-        claimed = db.stripe_checkout_grant_claim(session_id)
-    except Exception as e:
-        logger.warning("stripe_checkout_grant_claim error: %s", e)
-        return jsonify({"code": "DB_ERROR", "error": "idempotency claim failed"}), 500
-
-    if not claimed:
-        return jsonify({"received": True, "duplicate": True}), 200
-
-    new_bal = db.v2_increment_student_credits(user_id, total)
-    if new_bal is None:
-        db.stripe_checkout_grant_release(session_id)
-        logger.error("stripe webhook: increment failed user=%s session=%s", user_id, session_id)
-        return jsonify({"code": "V2_ERROR", "error": "Could not update credits"}), 500
-
-    logger.info(
-        "stripe_checkout_webhook user_id=%s session=%s delta=%s new_credits=%s",
-        user_id,
-        session_id,
-        total,
-        new_bal,
-    )
-    return jsonify({"received": True, "user_id": user_id, "credits": new_bal, "delta": total}), 200
+    result = apply_paid_checkout_session_credits(str(session_id), auth_user_id=None, app_config=config)
+    payload = dict(result.payload)
+    if result.ok:
+        payload["received"] = True
+    return jsonify(payload), result.http_status
 
 
 @internal_webhooks_bp.route("/v2/internal/annotation-export", methods=["POST"])

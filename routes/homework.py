@@ -14,6 +14,7 @@ from services.homework_completion import (
     minimal_complete_and_notify,
 )
 from services.sniper_realtime import clear_sniper_session
+from services.stripe_checkout_credits import apply_paid_checkout_session_credits
 from services.utils import utc_now_iso
 import logging
 import os
@@ -433,6 +434,23 @@ def homework_session_status():
         # #region agent log
         _agent_log("session/status exception", {"type": type(e).__name__, "message": str(e)}, "ALL")
         # #endregion
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
+
+
+@homework_bp.route("/stripe/claim-checkout", methods=["POST"])
+@require_auth
+def homework_stripe_claim_checkout():
+    """Apply credits for a completed Checkout Session immediately after redirect (idempotent; same as webhook)."""
+    try:
+        body = request.get_json(silent=True) or {}
+        sid = (body.get("checkout_session_id") or body.get("session_id") or "").strip()
+        if not sid:
+            return jsonify({"code": "INVALID_INPUT", "error": "checkout_session_id is required"}), 400
+        result = apply_paid_checkout_session_credits(sid, auth_user_id=request.user_id, app_config=config)
+        return jsonify(result.payload), result.http_status
+    except Exception as e:
+        logger.error("stripe claim-checkout: %s", e, exc_info=True)
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
 
