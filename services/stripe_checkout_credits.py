@@ -136,8 +136,19 @@ def apply_paid_checkout_session_credits(
     try:
         claimed = db.stripe_checkout_grant_claim(sid)
     except Exception as e:
-        logger.warning("stripe_checkout_grant_claim error: %s", e)
-        return CheckoutCreditsApplyResult.error(500, "DB_ERROR", "idempotency claim failed")
+        msg = str(e)
+        low = msg.lower()
+        logger.warning("stripe_checkout_grant_claim error: %s", e, exc_info=True)
+        hint = None
+        if "stripe_checkout_credit_grants" in low or "42p01" in low or ("relation" in low and "does not exist" in low):
+            hint = "Run migrations/add_stripe_checkout_credit_grants.sql in Supabase (table missing)."
+        return CheckoutCreditsApplyResult.error(
+            500,
+            "DB_ERROR",
+            "idempotency claim failed",
+            detail=msg[:800],
+            hint=hint,
+        )
 
     if not claimed:
         details = db.v2_get_student_details(db_user_id) or {}
@@ -157,7 +168,12 @@ def apply_paid_checkout_session_credits(
     if new_bal is None:
         db.stripe_checkout_grant_release(sid)
         logger.error("stripe checkout credits: increment failed user=%s session=%s", db_user_id, sid)
-        return CheckoutCreditsApplyResult.error(500, "V2_ERROR", "Could not update credits")
+        return CheckoutCreditsApplyResult.error(
+            500,
+            "V2_ERROR",
+            "Could not update credits (Supabase upsert failed — check Railway logs).",
+            hint="Ensure public.v2_student_details has a credits column (migrations/add_v2_student_details_credits.sql) and service_role can write the table.",
+        )
 
     logger.info(
         "stripe checkout credits applied user_id=%s session=%s delta=%s new_credits=%s",
