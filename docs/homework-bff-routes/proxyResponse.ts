@@ -17,7 +17,10 @@ export async function proxyResponse(upstreamRes: Response): Promise<NextResponse
   } catch {
     data = text ? { error: text } : null;
   }
-  const headers: Record<string, string> = {};
+  const headers: Record<string, string> = {
+    "Cache-Control": "private, no-store, max-age=0, must-revalidate",
+    Vary: "Authorization, Cookie",
+  };
   if (BFF_DEBUG) {
     headers["X-BFF-ProxyResponse"] = "1";
     headers["X-Upstream-Status"] = String(upstreamRes.status);

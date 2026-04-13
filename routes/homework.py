@@ -2,7 +2,7 @@
 Homework flow (TEMPORARY: steps 2–4 removed): task step + recording_1 → report only.
 All routes under /v2/homework, require auth. Restore steps 2–4 from docs/TEMPORARY-REMOVED-STEPS-2-3-4-BACKUP.md or git history.
 """
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, make_response
 from auth import require_auth
 from config import Config
 from services.db import db
@@ -26,6 +26,15 @@ from datetime import datetime, timedelta, timezone
 logger = logging.getLogger(__name__)
 config = Config()
 homework_bp = Blueprint("homework", __name__, url_prefix="/v2/homework")
+
+
+def _json_homework_no_store(payload, status=200):
+    """Credits and session state must never be served from SW/browser disk cache."""
+    r = make_response(jsonify(payload), status)
+    r.headers["Cache-Control"] = "private, no-store, max-age=0, must-revalidate"
+    r.headers["Vary"] = "Authorization"
+    return r
+
 
 # #region agent log
 import json as _json
@@ -374,7 +383,7 @@ def homework_session_status():
             active = None
         if not active:
             _agent_log("session/status no active, building step0 payload", {}, "A")
-            return jsonify(_build_step0_payload(user_id)), 200
+            return _json_homework_no_store(_build_step0_payload(user_id))
 
         task = None
         wid = _session_snap_task_id(active)
@@ -428,14 +437,14 @@ def homework_session_status():
                 resp["tutor_video_url"] = url
             if msg:
                 resp["tutor_video_description"] = msg
-        return jsonify(resp), 200
+        return _json_homework_no_store(resp)
 
     except Exception as e:
         # #region agent log
         _agent_log("session/status exception", {"type": type(e).__name__, "message": str(e)}, "ALL")
         # #endregion
         sentry_sdk.capture_exception(e)
-        return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
+        return _json_homework_no_store({"code": "V2_ERROR", "error": str(e)}, 500)
 
 
 @homework_bp.route("/stripe/claim-checkout", methods=["POST"])
@@ -446,21 +455,21 @@ def homework_stripe_claim_checkout():
         body = request.get_json(silent=True) or {}
         sid = (body.get("checkout_session_id") or body.get("session_id") or "").strip()
         if not sid:
-            return jsonify({"code": "INVALID_INPUT", "error": "checkout_session_id is required"}), 400
+            return _json_homework_no_store({"code": "INVALID_INPUT", "error": "checkout_session_id is required"}, 400)
         result = apply_paid_checkout_session_credits(sid, auth_user_id=request.user_id, app_config=config)
         if result.ok:
             sk = result.payload.get("skipped")
             if sk in ("not_paid", "not_payment_mode"):
-                return jsonify({
+                return _json_homework_no_store({
                     "code": "CHECKOUT_NOT_CREDITABLE",
                     "error": "Checkout is not a completed one-time payment, or line items are not ready yet. Retry in a few seconds.",
                     "skipped": sk,
-                }), 422
-        return jsonify(result.payload), result.http_status
+                }, 422)
+        return _json_homework_no_store(result.payload, result.http_status)
     except Exception as e:
         logger.error("stripe claim-checkout: %s", e, exc_info=True)
         sentry_sdk.capture_exception(e)
-        return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
+        return _json_homework_no_store({"code": "V2_ERROR", "error": str(e)}, 500)
 
 
 @homework_bp.route("/session/<session_id>/abandon", methods=["POST"])
