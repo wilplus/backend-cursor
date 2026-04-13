@@ -3035,7 +3035,14 @@ class DatabaseService:
                 .execute()
             )
             return (result.data[0] or {}).get("credits") if result.data else new_credits
-        except Exception:
+        except Exception as e:
+            logger.warning(
+                "v2_increment_student_credits failed user_id=%s delta=%s: %s",
+                user_id,
+                d,
+                e,
+                exc_info=True,
+            )
             return None
 
     def stripe_checkout_grant_claim(self, checkout_session_id: str) -> bool:

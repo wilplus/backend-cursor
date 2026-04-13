@@ -448,6 +448,14 @@ def homework_stripe_claim_checkout():
         if not sid:
             return jsonify({"code": "INVALID_INPUT", "error": "checkout_session_id is required"}), 400
         result = apply_paid_checkout_session_credits(sid, auth_user_id=request.user_id, app_config=config)
+        if result.ok:
+            sk = result.payload.get("skipped")
+            if sk in ("not_paid", "not_payment_mode"):
+                return jsonify({
+                    "code": "CHECKOUT_NOT_CREDITABLE",
+                    "error": "Checkout is not a completed one-time payment, or line items are not ready yet. Retry in a few seconds.",
+                    "skipped": sk,
+                }), 422
         return jsonify(result.payload), result.http_status
     except Exception as e:
         logger.error("stripe claim-checkout: %s", e, exc_info=True)
