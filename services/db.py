@@ -3879,6 +3879,55 @@ class DatabaseService:
         res = q.execute()
         return res.data or []
 
+    def list_reference_transcripts_for_copilot(
+        self,
+        *,
+        user_id: str,
+        limit: int = 6,
+    ) -> List[Dict[str, Any]]:
+        cap = max(1, min(50, int(limit)))
+        out: List[Dict[str, Any]] = []
+        seen: set[str] = set()
+        try:
+            user_rows = (
+                self.client.table("admin_uploaded_reference_videos")
+                .select("*")
+                .eq("is_active", True)
+                .eq("user_id", user_id)
+                .eq("transcription_status", "done")
+                .order("created_at", desc=True)
+                .limit(cap)
+                .execute()
+            ).data or []
+        except Exception:
+            user_rows = []
+        try:
+            universal_rows = (
+                self.client.table("admin_uploaded_reference_videos")
+                .select("*")
+                .eq("is_active", True)
+                .eq("is_universal", True)
+                .eq("transcription_status", "done")
+                .order("created_at", desc=True)
+                .limit(cap)
+                .execute()
+            ).data or []
+        except Exception:
+            universal_rows = []
+
+        for row in (user_rows + universal_rows):
+            rid = str(row.get("id") or "").strip()
+            if not rid or rid in seen:
+                continue
+            transcript = (row.get("transcript_text") or "").strip()
+            if not transcript:
+                continue
+            seen.add(rid)
+            out.append(row)
+            if len(out) >= cap:
+                break
+        return out
+
     def list_admin_uploaded_reference_videos(
         self,
         *,

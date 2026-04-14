@@ -18,8 +18,11 @@ if config.SENTRY_DSN:
     )
 
 app = Flask(__name__)
-# Allow request bodies up to MAX_AUDIO_SIZE_MB (e.g. 25MB) so recording uploads don't get 413
-app.config["MAX_CONTENT_LENGTH"] = config.MAX_AUDIO_SIZE_MB * 1024 * 1024
+# Global request cap: must allow both recording uploads and larger admin reference video uploads.
+app.config["MAX_CONTENT_LENGTH"] = max(
+    int(getattr(config, "MAX_AUDIO_SIZE_MB", 25)),
+    int(getattr(config, "MAX_REFERENCE_VIDEO_SIZE_MB", 200)),
+) * 1024 * 1024
 CORS(app, origins=config.CORS_ORIGINS, supports_credentials=True)
 
 # Register blueprints (v2 / taskmaster MVP only)
@@ -43,7 +46,16 @@ app.register_blueprint(internal_webhooks_bp)
 @app.errorhandler(RequestEntityTooLarge)
 @app.errorhandler(413)
 def handle_413(e):
-    """Return JSON when request body exceeds MAX_CONTENT_LENGTH (e.g. recording upload > 25MB)."""
+    """Return JSON when request body exceeds MAX_CONTENT_LENGTH."""
+    path = (request.path or "").strip()
+    if "/v2/admin/copilot/reference-videos/upload" in path:
+        return jsonify({
+            "code": "PAYLOAD_TOO_LARGE",
+            "error": (
+                f"Reference video is too large. Max allowed is "
+                f"{int(getattr(config, 'MAX_REFERENCE_VIDEO_SIZE_MB', 200))}MB."
+            ),
+        }), 413
     return jsonify({
         "code": "PAYLOAD_TOO_LARGE",
         "error": f"Request body exceeds {config.MAX_AUDIO_SIZE_MB}MB limit. Keep recording under {config.MAX_AUDIO_SIZE_MB}MB.",

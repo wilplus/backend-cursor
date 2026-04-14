@@ -32,6 +32,8 @@ class Config:
     # Audio limits
     MAX_AUDIO_SIZE_MB = 25
     MAX_RECORDING_DURATION_SECONDS = 300
+    # Admin reference video upload limit (Training Studio)
+    MAX_REFERENCE_VIDEO_SIZE_MB = int(os.getenv("MAX_REFERENCE_VIDEO_SIZE_MB", "500"))
     
     # Storage
     AUDIO_BUCKET_NAME = "audio_recordings"

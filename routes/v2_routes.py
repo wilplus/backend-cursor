@@ -3183,6 +3183,21 @@ def _copilot_backfill_draft_row_for_user(user_id: str) -> dict:
 
     master_task_text = task_text[:8000]
 
+    reference_examples = db.list_reference_transcripts_for_copilot(user_id=user_id, limit=4)
+    reference_lines = []
+    reference_ids = []
+    for ref in reference_examples:
+        rid = str(ref.get("id") or "").strip()
+        if rid:
+            reference_ids.append(rid)
+        title = (ref.get("title") or "").strip() or "Reference video"
+        tags = ref.get("tags") if isinstance(ref.get("tags"), list) else []
+        tag_text = f" [{', '.join([str(t).strip() for t in tags if str(t).strip()])}]" if tags else ""
+        transcript = (ref.get("transcript_text") or "").strip()
+        if transcript:
+            reference_lines.append(f"- {title}{tag_text}: {transcript[:360]}")
+    reference_transcript_context = "\n".join(reference_lines).strip()
+
     # --- Generate AI pre-fills for all draft fields ---
     from services.openai_service import openai_service
 
@@ -3225,6 +3240,7 @@ def _copilot_backfill_draft_row_for_user(user_id: str) -> dict:
             score_for_display_100=score_int,
             behavioral_profile=profile,
             stage=stage,
+            reference_transcript_context=reference_transcript_context,
         )
     except Exception:
         pass
@@ -3242,6 +3258,7 @@ def _copilot_backfill_draft_row_for_user(user_id: str) -> dict:
             grade=ai_draft_grade,
             comment=ai_draft_comment or "",
             task_text=display_task,
+            reference_transcript_context=reference_transcript_context,
         )
     except Exception:
         pass
@@ -3254,6 +3271,7 @@ def _copilot_backfill_draft_row_for_user(user_id: str) -> dict:
             coach_insight=coach_insight,
             task_text=display_task,
             score_for_display_100=score_int,
+            reference_transcript_context=reference_transcript_context,
         )
     except Exception:
         pass
@@ -3267,6 +3285,9 @@ def _copilot_backfill_draft_row_for_user(user_id: str) -> dict:
             meta["score_for_display"] = float(score_for_display)
         except (TypeError, ValueError):
             meta["score_for_display"] = score_for_display
+    if reference_ids:
+        meta["reference_video_ids"] = reference_ids
+        meta["reference_transcript_context_used"] = True
 
     payload = {
         "state": "Draft",
@@ -4290,6 +4311,16 @@ def v2_admin_copilot_reference_videos_list():
 @require_admin
 def v2_admin_copilot_reference_videos_upload():
     try:
+        max_video_mb = max(1, int(getattr(config, "MAX_REFERENCE_VIDEO_SIZE_MB", 200)))
+        max_video_bytes = max_video_mb * 1024 * 1024
+        content_length = request.content_length or 0
+        if content_length and content_length > max_video_bytes:
+            return jsonify(
+                {
+                    "code": "PAYLOAD_TOO_LARGE",
+                    "error": f"Reference video is too large. Max allowed is {max_video_mb}MB.",
+                }
+            ), 413
         video_file = request.files.get("video_file")
         if video_file is None or not (video_file.filename or "").strip():
             return jsonify({"code": "INVALID_INPUT", "error": "video_file is required"}), 400
@@ -4305,6 +4336,13 @@ def v2_admin_copilot_reference_videos_upload():
         video_bytes = video_file.read() or b""
         if not video_bytes:
             return jsonify({"code": "INVALID_INPUT", "error": "video_file is empty"}), 400
+        if len(video_bytes) > max_video_bytes:
+            return jsonify(
+                {
+                    "code": "PAYLOAD_TOO_LARGE",
+                    "error": f"Reference video is too large. Max allowed is {max_video_mb}MB.",
+                }
+            ), 413
 
         student_user_id = (request.form.get("user_id") or "").strip() or request.user_id
         session_id = (request.form.get("session_id") or "").strip() or None
@@ -4356,6 +4394,24 @@ def v2_admin_copilot_reference_videos_upload():
                     "transcription_error": None,
                 },
             ) or created
+            if transcript_text:
+                try:
+                    db.create_admin_annotation_event(
+                        user_id=student_user_id,
+                        session_id=session_id,
+                        section_type="assignment",
+                        field_name="reference_video_transcript",
+                        ai_original_text=None,
+                        coach_final_text=transcript_text[:4000],
+                        reason_chip="video_upload",
+                        custom_reason=f"reference_video_id={created.get('id')}",
+                        created_by=request.user_id,
+                        draft_id=draft_id,
+                        previous_value_hash=None,
+                        new_value_hash=_value_hash(transcript_text[:4000]),
+                    )
+                except Exception as ann_err:
+                    logger.warning("reference video upload annotation failed: %s", ann_err)
         except Exception as tr_err:
             created = db.update_admin_uploaded_reference_video(
                 str(created.get("id")),
@@ -4439,6 +4495,27 @@ def v2_admin_copilot_attach_reference_video(user_id, draft_id):
             .execute()
         )
         out = updated.data[0] if updated.data else row
+        transcript_text = (ref.get("transcript_text") or "").strip()
+        if transcript_text:
+            try:
+                db.create_admin_annotation_event(
+                    user_id=user_id,
+                    session_id=row.get("session_id"),
+                    section_type="assignment",
+                    field_name="reference_video_transcript",
+                    ai_original_text=(
+                        (_normalize_copilot_payload(row).get("ai_script_draft") or row.get("ai_draft_video_script") or "")
+                    )[:4000] or None,
+                    coach_final_text=transcript_text[:4000],
+                    reason_chip="video_override",
+                    custom_reason=f"reference_video_id={reference_video_id}",
+                    created_by=request.user_id,
+                    draft_id=str(row.get("id") or "") or None,
+                    previous_value_hash=None,
+                    new_value_hash=_value_hash(transcript_text[:4000]),
+                )
+            except Exception as ann_err:
+                logger.warning("attach reference video annotation failed: %s", ann_err)
         return jsonify({"status": "ok", "draft": _serialize_copilot_draft(out), "reference_video": ref}), 200
     except Exception as e:
         sentry_sdk.capture_exception(e)

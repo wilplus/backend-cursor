@@ -1258,6 +1258,7 @@ Respond with valid JSON array:
         grade: int | None,
         comment: str,
         task_text: str,
+        reference_transcript_context: str = "",
     ) -> str:
         """Generate a short, supportive email message to send the student with their feedback.
 
@@ -1281,6 +1282,7 @@ Respond with valid JSON array:
                 f"Coach comment: {(comment or '').strip()[:300]}\n"
                 f"Coach insight: {(coach_insight or '').strip()[:500]}\n"
                 f"Next task: {(task_text or '').strip()[:300]}\n\n"
+                f"Coach reference transcript examples:\n{(reference_transcript_context or '').strip()[:1200]}\n\n"
                 "Write a short, warm email (2-4 sentences, max 500 chars) to the student. "
                 "Include their score, one specific encouragement based on the insight, "
                 "and mention their next task. Sign off as 'Your coach'. "
@@ -1315,6 +1317,7 @@ Respond with valid JSON array:
         score_for_display_100: int | None,
         behavioral_profile: str,
         stage: int,
+        reference_transcript_context: str = "",
     ) -> str:
         """Suggest the next practice task based on the student's performance and profile.
 
@@ -1333,6 +1336,7 @@ Respond with valid JSON array:
                 f"Context: {(context_short or '').strip()[:400]}\n"
                 f"Last task: {(current_task_text or '').strip()[:300]}\n"
                 f"Coach insight: {(coach_insight or '').strip()[:500]}\n"
+                f"Coach reference transcript examples:\n{(reference_transcript_context or '').strip()[:1200]}\n"
                 f"Last score: {score_str}\n\n"
                 "Suggest the next practice task (1-3 sentences, max 300 chars). "
                 "The task should address the student's weaknesses from the insight, "
@@ -1366,6 +1370,7 @@ Respond with valid JSON array:
         coach_insight: str,
         task_text: str,
         score_for_display_100: int | None,
+        reference_transcript_context: str = "",
     ) -> str:
         """Short coach-facing video outline for the student's next assignment (bullets ok, max ~600 chars)."""
         score_str = f"{score_for_display_100}/100" if score_for_display_100 is not None else "n/a"
@@ -1384,6 +1389,7 @@ Respond with valid JSON array:
                 f"Score: {score_str}\n"
                 f"Next task for the student:\n{(task_text or '').strip()[:400]}\n\n"
                 f"Coach insight about their last recording:\n{(coach_insight or '').strip()[:500]}\n\n"
+                f"Coach reference transcript examples:\n{(reference_transcript_context or '').strip()[:1600]}\n\n"
                 "Write a short outline for the coach's personal video message to this student. "
                 "Use 4–6 short bullet lines or numbered steps. Warm, specific, under 600 characters. "
                 "No JSON. No subject line."
