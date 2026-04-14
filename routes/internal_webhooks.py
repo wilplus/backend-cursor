@@ -5,12 +5,14 @@ Server-to-server hooks (no student JWT).
 - POST /v2/internal/stripe/webhook — Stripe-Signature (STRIPE_WEBHOOK_SECRET); credits from STRIPE_CHECKOUT_PRICE_CREDITS_JSON
 - POST /v2/internal/annotation-export — X-Internal-Secret: ANNOTATION_EXPORT_CRON_SECRET
 - POST /v2/internal/stress-model/train — X-Internal-Secret: STRESS_MODEL_TRAIN_SECRET
+- POST /v2/internal/copilot-video/retrain — X-Internal-Secret: COPILOT_VIDEO_RETRAIN_SECRET
 """
 import logging
 import os
 import subprocess
 from datetime import datetime, timezone
 
+import httpx
 from flask import Blueprint, jsonify, request
 
 from config import Config
@@ -388,3 +390,157 @@ def internal_stress_model_train():
     except Exception as exc:
         logger.warning("internal_stress_model_train failed: %s", exc, exc_info=True)
         return jsonify({"code": "PIPELINE_FAILED", "error": str(exc)}), 500
+
+
+@internal_webhooks_bp.route("/v2/internal/copilot-video/retrain", methods=["POST"])
+def internal_copilot_video_retrain():
+    """
+    Trigger scheduled speech/video retraining from uploaded override videos.
+
+    Header:
+      X-Internal-Secret: COPILOT_VIDEO_RETRAIN_SECRET
+
+    Optional JSON body:
+      {
+        "limit": 500,
+        "dry_run": false,
+        "run_interval_days": 14
+      }
+    """
+    secret = (getattr(config, "COPILOT_VIDEO_RETRAIN_SECRET", None) or "").strip()
+    if not secret:
+        return jsonify({"code": "DISABLED", "error": "COPILOT_VIDEO_RETRAIN_SECRET not configured"}), 503
+    if (request.headers.get("X-Internal-Secret") or "").strip() != secret:
+        return jsonify({"code": "UNAUTHORIZED", "error": "Invalid or missing X-Internal-Secret"}), 401
+
+    data = request.get_json(silent=True) or {}
+    try:
+        limit = int(data.get("limit", 500))
+        run_interval_days = int(data.get("run_interval_days", 14))
+    except (TypeError, ValueError):
+        return jsonify({"code": "INVALID_INPUT", "error": "limit and run_interval_days must be integers"}), 400
+    dry_run = _parse_bool(data.get("dry_run"), False)
+    limit = max(1, min(5000, limit))
+    run_interval_days = max(1, min(60, run_interval_days))
+
+    run_type = "speech_video_retrain"
+    latest_run = db.get_latest_model_training_run(run_type)
+    since_iso = None
+    if latest_run and latest_run.get("finished_at"):
+        since_iso = latest_run.get("finished_at")
+
+    refs = db.list_admin_uploaded_reference_videos_for_training(since_iso=since_iso, limit=limit)
+    now = datetime.now(timezone.utc)
+    if latest_run and latest_run.get("finished_at"):
+        try:
+            finished_at = datetime.fromisoformat(str(latest_run.get("finished_at")).replace("Z", "+00:00"))
+            if (now - finished_at).days < run_interval_days and not dry_run:
+                skipped = db.create_model_training_run(
+                    run_type=run_type,
+                    status="skipped",
+                    input_count=0,
+                    metadata={
+                        "reason": "interval_not_reached",
+                        "last_finished_at": latest_run.get("finished_at"),
+                        "run_interval_days": run_interval_days,
+                    },
+                    created_by="internal:copilot-video-retrain",
+                )
+                return jsonify(
+                    {
+                        "status": "ok",
+                        "skipped": True,
+                        "reason": "interval_not_reached",
+                        "run": skipped,
+                    }
+                ), 200
+        except Exception:
+            pass
+
+    if not refs:
+        skipped = db.create_model_training_run(
+            run_type=run_type,
+            status="skipped",
+            input_count=0,
+            metadata={"reason": "no_new_reference_videos", "since": since_iso},
+            created_by="internal:copilot-video-retrain",
+        )
+        return jsonify({"status": "ok", "skipped": True, "reason": "no_new_reference_videos", "run": skipped}), 200
+
+    run = db.create_model_training_run(
+        run_type=run_type,
+        status="running",
+        input_count=len(refs),
+        metadata={
+            "since": since_iso,
+            "dry_run": dry_run,
+            "reference_video_ids": [r.get("id") for r in refs],
+            "reference_count": len(refs),
+        },
+        created_by="internal:copilot-video-retrain",
+    )
+    if not run:
+        return jsonify({"code": "RUN_CREATE_FAILED", "error": "Could not create training run"}), 500
+
+    try:
+        retrain_url = (getattr(config, "COPILOT_VIDEO_RETRAIN_WEBHOOK_URL", None) or "").strip()
+        output_ref = None
+        provider_response = None
+        if not dry_run and retrain_url:
+            payload = {
+                "run_id": run.get("id"),
+                "run_type": run_type,
+                "reference_videos": [
+                    {
+                        "id": r.get("id"),
+                        "user_id": r.get("user_id"),
+                        "session_id": r.get("session_id"),
+                        "storage_path": r.get("storage_path"),
+                        "tags": r.get("tags") or [],
+                        "feature_metadata": r.get("feature_metadata") or {},
+                        "created_at": r.get("created_at"),
+                    }
+                    for r in refs
+                ],
+            }
+            webhook_resp = httpx.post(retrain_url, json=payload, timeout=180)
+            webhook_resp.raise_for_status()
+            provider_response = webhook_resp.json() if "application/json" in (webhook_resp.headers.get("content-type") or "").lower() else {"status_code": webhook_resp.status_code}
+            output_ref = (
+                str(provider_response.get("model_version") or "").strip()
+                or str(provider_response.get("job_id") or "").strip()
+                or str(provider_response.get("artifact_ref") or "").strip()
+                or None
+            )
+
+        completed = db.update_model_training_run(
+            run_id=str(run.get("id")),
+            status="completed",
+            input_count=len(refs),
+            output_artifact_ref=output_ref,
+            metadata={
+                "since": since_iso,
+                "dry_run": dry_run,
+                "reference_count": len(refs),
+                "provider_response": provider_response,
+            },
+            error=None,
+        )
+        return jsonify(
+            {
+                "status": "ok",
+                "run": completed,
+                "reference_count": len(refs),
+                "dry_run": dry_run,
+            }
+        ), 200
+    except Exception as exc:
+        db.update_model_training_run(
+            run_id=str(run.get("id")),
+            status="failed",
+            input_count=len(refs),
+            metadata={"since": since_iso, "dry_run": dry_run, "reference_count": len(refs)},
+            error=str(exc)[:1000],
+        )
+        logger.warning("internal_copilot_video_retrain failed: %s", exc, exc_info=True)
+        return jsonify({"code": "TRAIN_FAILED", "error": str(exc), "run_id": run.get("id")}), 500

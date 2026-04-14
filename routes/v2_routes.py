@@ -9,6 +9,15 @@ from routes.admin import require_admin, is_admin
 from services.annotation_export import result_to_dict, run_annotation_export
 from services.db import db
 from services.email_service import email_service
+from services.copilot_video_pipeline import (
+    build_feedback_video_storage_path,
+    build_script_manifest,
+    fetch_override_video_bytes,
+    generate_video_from_script,
+    parse_bool,
+    parse_reference_tags,
+    resolve_script_mode,
+)
 from services.stress_snippet_service import (
     STRESS_SNIPPET_CLIP_SEC_DEFAULT,
     STRESS_SNIPPET_CLIP_SEC_MAX,
@@ -28,6 +37,7 @@ import uuid
 from datetime import datetime, timezone
 from urllib.parse import urlparse
 from werkzeug.utils import secure_filename
+from io import BytesIO
 
 logger = logging.getLogger(__name__)
 v2_bp = Blueprint("v2", __name__, url_prefix="/v2")
@@ -53,6 +63,15 @@ _COPILOT_DRAFT_EDITABLE_FIELDS = {
     "corrected_insight",
     "metadata",
     "video_url",
+    "script_mode",
+    "full_override_video_url",
+    "full_override_video_storage_path",
+    "reference_tags",
+    "is_universal_video",
+    "reference_transcript_text",
+    "universal_blocks",
+    "personalized_blocks",
+    "coach_override_blocks",
 }
 _COPILOT_DRAFT_CONTROL_FIELDS = {
     "session_id",
@@ -73,6 +92,9 @@ _COPILOT_DRAFT_IMMUTABLE_FIELDS = {
     "ai_draft_message",
     "ai_draft_video_script",
 }
+
+_PIPELINE_RUNNING_STATES = {"queued", "running_tts", "running_video", "uploading"}
+_REFERENCE_VIDEO_ALLOWED_EXTENSIONS = {".mp4", ".mov", ".webm", ".m4v", ".avi", ".mkv"}
 
 
 def _is_valid_uuid(val):
@@ -2687,6 +2709,112 @@ def _draft_payload(row):
     return payload if isinstance(payload, dict) else {}
 
 
+def _video_pipeline_enabled() -> bool:
+    return bool(getattr(config, "COPILOT_VIDEO_PIPELINE_ENABLED", False))
+
+
+def _pipeline_secret_matches() -> bool:
+    secret = (getattr(config, "COPILOT_VIDEO_PIPELINE_SECRET", None) or "").strip()
+    if not secret:
+        return False
+    provided = (request.headers.get("X-Internal-Secret") or "").strip()
+    return provided == secret
+
+
+def _pipeline_phase_from_mode(script_mode: str) -> str:
+    return "uploading" if script_mode == "full_video_override" else "running_tts"
+
+
+def _is_pipeline_running(row: dict | None) -> bool:
+    if not row:
+        return False
+    return str(row.get("pipeline_status") or "").strip().lower() in _PIPELINE_RUNNING_STATES
+
+
+def _queue_video_pipeline_for_draft(row: dict, *, user_id: str, actor_id: str | None) -> tuple[dict | None, str]:
+    payload = _normalize_copilot_payload(row)
+    script_mode = resolve_script_mode(payload)
+    manifest = build_script_manifest(row, payload, script_mode)
+    pipeline_job_id = str(uuid.uuid4())
+    updated = db.queue_admin_student_send_draft_pipeline(
+        draft_id=str(row.get("id") or ""),
+        user_id=user_id,
+        pipeline_job_id=pipeline_job_id,
+        script_mode=script_mode,
+        script_manifest=manifest,
+        created_by=actor_id,
+    )
+    return updated, pipeline_job_id
+
+
+def _signed_feedback_video_url(storage_path: str, expires_in: int | None = None) -> str | None:
+    if not storage_path:
+        return None
+    ttl = int(expires_in or (48 * 3600))
+    return db.create_signed_url(config.COACH_FEEDBACK_VIDEO_BUCKET, storage_path, ttl)
+
+
+def _storage_uri(bucket: str, path: str) -> str:
+    return f"storage://{bucket}/{path.lstrip('/')}"
+
+
+def _finalize_pipeline_delivery_for_row(
+    *,
+    row: dict,
+    storage_path: str,
+    script_manifest: dict | None,
+    approved_by: str,
+) -> tuple[dict | None, dict, str | None]:
+    payload = _normalize_copilot_payload(row)
+    final_message = (
+        payload.get("email_draft")
+        or payload.get("email_message")
+        or payload.get("homework_comment")
+        or payload.get("ai_email_draft")
+        or row.get("ai_draft_message")
+        or ""
+    )
+    student_email = (db.get_user_email_from_auth(row.get("user_id")) or "").strip()
+    if not student_email:
+        raise ValueError("Student has no email in auth")
+    signed_video_url = _signed_feedback_video_url(storage_path, expires_in=48 * 3600)
+    internal_storage_uri = _storage_uri(config.COACH_FEEDBACK_VIDEO_BUCKET, storage_path)
+    delivery, send_err = _deliver_homework_assignment_core(
+        row.get("user_id"),
+        student_email,
+        video_url=signed_video_url,
+        video_description=(final_message or "").strip() or None,
+    )
+    if send_err:
+        raise RuntimeError(send_err)
+    # Keep email link clickable (signed URL), but ensure app playback always resolves from internal storage.
+    db.v2_set_pending_tutor_video(
+        row.get("user_id"),
+        video_url=internal_storage_uri,
+        video_description=(final_message or "").strip() or None,
+    )
+
+    task_sync = _first_non_empty(
+        payload.get("task_draft"),
+        payload.get("task_text"),
+        row.get("master_task_text"),
+        payload.get("ai_task_suggestion"),
+        row.get("ai_suggested_task_text"),
+    )
+    try:
+        db.v2_apply_coach_homework_task_text(row.get("user_id"), task_sync)
+    except Exception as task_sync_err:
+        logger.warning("pipeline finalize: task sync failed user_id=%s: %s", row.get("user_id"), task_sync_err)
+    updated = db.mark_admin_student_send_draft_pipeline_sent(
+        draft_id=str(row.get("id") or ""),
+        user_id=str(row.get("user_id") or ""),
+        approved_by=approved_by,
+        feedback_video_storage_path=storage_path,
+        script_manifest=script_manifest or {},
+    )
+    return updated, delivery.get("email") or {}, task_sync
+
+
 def _first_non_empty(*values):
     for value in values:
         if value is None:
@@ -2914,6 +3042,14 @@ def _serialize_copilot_draft(row):
         "good_as_is": payload.get("good_as_is"),
         "reason_chip_required": bool(payload.get("reason_chip_required", False)),
         "metadata": meta or None,
+        "script_mode": row.get("script_mode") or payload.get("script_mode"),
+        "script_manifest": row.get("script_manifest") if isinstance(row.get("script_manifest"), dict) else {},
+        "feedback_video_storage_path": row.get("feedback_video_storage_path"),
+        "pipeline_status": row.get("pipeline_status"),
+        "pipeline_error": row.get("pipeline_error"),
+        "pipeline_job_id": row.get("pipeline_job_id"),
+        "pipeline_started_at": row.get("pipeline_started_at"),
+        "pipeline_finished_at": row.get("pipeline_finished_at"),
     }
 
 
@@ -3980,6 +4116,15 @@ def v2_admin_copilot_student_drafts(user_id):
             "corrected_insight",
             "metadata",
             "video_url",
+            "script_mode",
+            "full_override_video_url",
+            "full_override_video_storage_path",
+            "reference_tags",
+            "is_universal_video",
+            "reference_transcript_text",
+            "universal_blocks",
+            "personalized_blocks",
+            "coach_override_blocks",
         ):
             if k in body:
                 payload[k] = body.get(k)
@@ -4110,6 +4255,191 @@ def v2_admin_copilot_student_drafts(user_id):
         except Exception as ann_err:
             logger.warning("task swap annotation failed: %s", ann_err)
         return jsonify({"status": "ok", "draft": _serialize_copilot_draft(out)}), 200
+    except Exception as e:
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
+
+
+@v2_bp.route("/admin/copilot/reference-videos", methods=["GET"])
+@require_admin
+def v2_admin_copilot_reference_videos_list():
+    try:
+        try:
+            limit = int(request.args.get("limit", 50))
+        except (TypeError, ValueError):
+            limit = 50
+        try:
+            offset = int(request.args.get("offset", 0))
+        except (TypeError, ValueError):
+            offset = 0
+        include_preview = str(request.args.get("include_preview_url", "false")).strip().lower() in ("1", "true", "yes")
+        rows = db.list_admin_uploaded_reference_videos(limit=max(1, min(200, limit)), offset=max(0, offset), is_active=True)
+        if include_preview:
+            for row in rows:
+                storage_path = (row.get("storage_path") or "").strip()
+                meta = row.get("feature_metadata") if isinstance(row.get("feature_metadata"), dict) else {}
+                bucket = (meta.get("bucket") or config.COACH_FEEDBACK_VIDEO_BUCKET).strip()
+                row["preview_url"] = db.create_signed_url(bucket, storage_path, 3600) if storage_path else None
+        return jsonify({"status": "ok", "items": rows, "limit": limit, "offset": offset}), 200
+    except Exception as e:
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
+
+
+@v2_bp.route("/admin/copilot/reference-videos/upload", methods=["POST"])
+@require_admin
+def v2_admin_copilot_reference_videos_upload():
+    try:
+        video_file = request.files.get("video_file")
+        if video_file is None or not (video_file.filename or "").strip():
+            return jsonify({"code": "INVALID_INPUT", "error": "video_file is required"}), 400
+        safe_name = secure_filename(video_file.filename or "")
+        ext = os.path.splitext(safe_name)[1].lower()
+        if ext not in _REFERENCE_VIDEO_ALLOWED_EXTENSIONS:
+            return jsonify(
+                {
+                    "code": "INVALID_VIDEO_FORMAT",
+                    "error": "Supported formats: .mp4, .mov, .webm, .m4v, .avi, .mkv",
+                }
+            ), 400
+        video_bytes = video_file.read() or b""
+        if not video_bytes:
+            return jsonify({"code": "INVALID_INPUT", "error": "video_file is empty"}), 400
+
+        student_user_id = (request.form.get("user_id") or "").strip() or request.user_id
+        session_id = (request.form.get("session_id") or "").strip() or None
+        draft_id = (request.form.get("draft_id") or "").strip() or None
+        title = (request.form.get("title") or "").strip() or None
+        tags_raw = (request.form.get("reference_tags") or request.form.get("tags") or "").strip()
+        tags = [x.strip() for x in tags_raw.split(",") if x.strip()]
+        is_universal = str(request.form.get("is_universal_video", "false")).strip().lower() in ("1", "true", "yes")
+        bucket = config.COACH_FEEDBACK_VIDEO_BUCKET
+        ref_id = str(uuid.uuid4())
+        now = datetime.now(timezone.utc)
+        storage_path = f"copilot/reference_videos/{now:%Y/%m}/{ref_id}{ext}"
+        content_type = mimetypes.guess_type(safe_name)[0] or "video/mp4"
+        db.upload_audio(bucket, storage_path, video_bytes, content_type)
+
+        created = db.create_admin_uploaded_reference_video(
+            draft_id=draft_id,
+            user_id=student_user_id,
+            session_id=session_id,
+            storage_path=storage_path,
+            source_video_url=None,
+            transcript_text=None,
+            feature_metadata={
+                "bucket": bucket,
+                "content_type": content_type,
+                "size_bytes": len(video_bytes),
+                "original_filename": safe_name,
+                "uploaded_by_admin_id": request.user_id,
+            },
+            tags=tags,
+            is_universal=is_universal,
+            created_by=request.user_id,
+            transcription_status="processing",
+            transcription_error=None,
+            title=title,
+        )
+        if not created:
+            return jsonify({"code": "UPLOAD_FAILED", "error": "Could not store reference video metadata"}), 500
+
+        try:
+            from services.openai_service import openai_service
+            tr = openai_service.transcribe_audio(BytesIO(video_bytes), safe_name or "reference-video.mp4")
+            transcript_text = (tr.get("text") or "").strip()
+            created = db.update_admin_uploaded_reference_video(
+                str(created.get("id")),
+                {
+                    "transcript_text": transcript_text or None,
+                    "transcription_status": "done",
+                    "transcription_error": None,
+                },
+            ) or created
+        except Exception as tr_err:
+            created = db.update_admin_uploaded_reference_video(
+                str(created.get("id")),
+                {
+                    "transcription_status": "failed",
+                    "transcription_error": str(tr_err)[:1000],
+                },
+            ) or created
+
+        preview_url = db.create_signed_url(bucket, storage_path, 3600)
+        return jsonify({"status": "ok", "reference_video": created, "preview_url": preview_url}), 201
+    except Exception as e:
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
+
+
+@v2_bp.route("/admin/copilot/reference-videos/<reference_video_id>/playback-url", methods=["GET"])
+@require_admin
+def v2_admin_copilot_reference_video_playback_url(reference_video_id):
+    try:
+        row = db.get_admin_uploaded_reference_video(reference_video_id)
+        if not row:
+            return jsonify({"code": "REFERENCE_VIDEO_NOT_FOUND", "error": "Reference video not found"}), 404
+        meta = row.get("feature_metadata") if isinstance(row.get("feature_metadata"), dict) else {}
+        bucket = (meta.get("bucket") or config.COACH_FEEDBACK_VIDEO_BUCKET).strip()
+        storage_path = (row.get("storage_path") or "").strip()
+        if not storage_path:
+            return jsonify({"code": "INVALID_STATE", "error": "Reference video has no storage path"}), 500
+        try:
+            expires_in = int(request.args.get("expires_in", 48 * 3600))
+        except (TypeError, ValueError):
+            expires_in = 48 * 3600
+        expires_in = max(60, min(172800, expires_in))
+        signed_url = db.create_signed_url(bucket, storage_path, expires_in)
+        return jsonify(
+            {
+                "status": "ok",
+                "reference_video_id": reference_video_id,
+                "storage_path": storage_path,
+                "signed_url": signed_url,
+                "expires_in": expires_in,
+            }
+        ), 200
+    except Exception as e:
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
+
+
+@v2_bp.route("/admin/copilot/students/<user_id>/drafts/<draft_id>/attach-reference-video", methods=["POST"])
+@require_admin
+def v2_admin_copilot_attach_reference_video(user_id, draft_id):
+    try:
+        body = request.get_json(silent=True) or {}
+        reference_video_id = (body.get("reference_video_id") or "").strip()
+        if not reference_video_id:
+            return jsonify({"code": "INVALID_INPUT", "error": "reference_video_id is required"}), 400
+        row = db.get_admin_student_send_draft(draft_id, user_id)
+        if not row:
+            return jsonify({"code": "DRAFT_NOT_FOUND", "error": "Draft not found"}), 404
+        ref = db.get_admin_uploaded_reference_video(reference_video_id)
+        if not ref:
+            return jsonify({"code": "REFERENCE_VIDEO_NOT_FOUND", "error": "Reference video not found"}), 404
+        meta = ref.get("feature_metadata") if isinstance(ref.get("feature_metadata"), dict) else {}
+        bucket = (meta.get("bucket") or config.COACH_FEEDBACK_VIDEO_BUCKET).strip()
+        storage_uri = _storage_uri(bucket, str(ref.get("storage_path") or "").strip())
+
+        payload = _normalize_copilot_payload(row)
+        payload["script_mode"] = "full_video_override"
+        payload["full_override_video_storage_path"] = storage_uri
+        payload["full_override_video_url"] = None
+        payload["reference_transcript_text"] = ref.get("transcript_text")
+        payload["reference_tags"] = ref.get("tags") or []
+        payload["is_universal_video"] = bool(ref.get("is_universal"))
+        payload["reference_video_id"] = reference_video_id
+        payload = _normalize_copilot_payload(row, payload)
+        updated = (
+            db.client.table("admin_student_send_drafts")
+            .update({"draft_payload": payload, "updated_at": datetime.now(timezone.utc).isoformat()})
+            .eq("id", draft_id)
+            .eq("user_id", user_id)
+            .execute()
+        )
+        out = updated.data[0] if updated.data else row
+        return jsonify({"status": "ok", "draft": _serialize_copilot_draft(out), "reference_video": ref}), 200
     except Exception as e:
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
@@ -4428,6 +4758,53 @@ def v2_admin_student_draft_approve_send(user_id, draft_id):
             return jsonify({"code": "DRAFT_NOT_FOUND", "error": "Draft not found"}), 404
         if row.get("status") == "sent":
             return jsonify({"status": "ok", "already_sent": True, "draft_id": draft_id}), 200
+        if _video_pipeline_enabled():
+            if _is_pipeline_running(row):
+                return jsonify(
+                    {
+                        "status": "ok",
+                        "queued": True,
+                        "already_processing": True,
+                        "pipeline_job_id": row.get("pipeline_job_id"),
+                        "pipeline_status": row.get("pipeline_status"),
+                        "draft": _serialize_copilot_draft(row),
+                    }
+                ), 202
+            updated, pipeline_job_id = _queue_video_pipeline_for_draft(
+                row,
+                user_id=user_id,
+                actor_id=getattr(request, "user_id", None),
+            )
+            payload = _normalize_copilot_payload(updated or row)
+            ai_script = (payload.get("ai_script_draft") or row.get("ai_draft_video_script") or "").strip()
+            final_script = (payload.get("script_draft") or payload.get("video_script") or "").strip()
+            if ai_script and final_script and ai_script != final_script:
+                try:
+                    db.create_admin_annotation_event(
+                        user_id=user_id,
+                        session_id=row.get("session_id"),
+                        section_type="assignment",
+                        field_name="script_draft",
+                        ai_original_text=ai_script,
+                        coach_final_text=final_script,
+                        reason_chip="manual_edit",
+                        custom_reason=None,
+                        created_by=request.user_id,
+                        draft_id=str(row.get("id") or "") or None,
+                        previous_value_hash=_value_hash(ai_script),
+                        new_value_hash=_value_hash(final_script),
+                    )
+                except Exception as ann_err:
+                    logger.warning("pipeline enqueue annotation failed: %s", ann_err)
+            return jsonify(
+                {
+                    "status": "ok",
+                    "queued": True,
+                    "pipeline_job_id": pipeline_job_id,
+                    "pipeline_status": (updated or {}).get("pipeline_status") or "queued",
+                    "draft": _serialize_copilot_draft(updated or row),
+                }
+            ), 202
         raw_payload = row.get("draft_payload") if isinstance(row.get("draft_payload"), dict) else {}
         payload = _normalize_copilot_payload(row, raw_payload)
         video_url_raw = body.get("video_url")
@@ -4516,3 +4893,206 @@ def v2_admin_student_draft_approve_send(user_id, draft_id):
     except Exception as e:
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
+
+
+@v2_bp.route("/admin/students/<user_id>/drafts/<draft_id>/pipeline-status", methods=["GET"])
+@require_admin
+def v2_admin_student_draft_pipeline_status(user_id, draft_id):
+    try:
+        row = db.get_admin_student_send_draft(draft_id, user_id)
+        if not row:
+            return jsonify({"code": "DRAFT_NOT_FOUND", "error": "Draft not found"}), 404
+        return jsonify(
+            {
+                "status": "ok",
+                "pipeline_status": row.get("pipeline_status"),
+                "pipeline_error": row.get("pipeline_error"),
+                "pipeline_job_id": row.get("pipeline_job_id"),
+                "pipeline_started_at": row.get("pipeline_started_at"),
+                "pipeline_finished_at": row.get("pipeline_finished_at"),
+                "feedback_video_storage_path": row.get("feedback_video_storage_path"),
+                "draft": _serialize_copilot_draft(row),
+            }
+        ), 200
+    except Exception as e:
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
+
+
+@v2_bp.route("/admin/students/<user_id>/drafts/<draft_id>/feedback-video-url", methods=["GET"])
+@require_admin
+def v2_admin_student_draft_feedback_video_url(user_id, draft_id):
+    try:
+        row = db.get_admin_student_send_draft(draft_id, user_id)
+        if not row:
+            return jsonify({"code": "DRAFT_NOT_FOUND", "error": "Draft not found"}), 404
+        storage_path = (row.get("feedback_video_storage_path") or "").strip()
+        if not storage_path:
+            return jsonify({"code": "VIDEO_NOT_READY", "error": "No generated feedback video yet"}), 409
+        try:
+            expires_in = int(request.args.get("expires_in", 48 * 3600))
+        except (TypeError, ValueError):
+            expires_in = 48 * 3600
+        expires_in = max(60, min(172800, expires_in))
+        signed_url = _signed_feedback_video_url(storage_path, expires_in=expires_in)
+        if not signed_url:
+            return jsonify({"code": "SIGNED_URL_FAILED", "error": "Could not create signed URL"}), 500
+        return jsonify(
+            {
+                "status": "ok",
+                "storage_path": storage_path,
+                "signed_url": signed_url,
+                "expires_in": expires_in,
+            }
+        ), 200
+    except Exception as e:
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
+
+
+@v2_bp.route("/admin/internal/copilot/drafts/<draft_id>/pipeline/finalize", methods=["POST"])
+def v2_admin_internal_copilot_pipeline_finalize(draft_id):
+    try:
+        if not _pipeline_secret_matches():
+            return jsonify({"code": "UNAUTHORIZED", "error": "Invalid or missing X-Internal-Secret"}), 401
+        body = request.get_json(silent=True) or {}
+        row_res = db.client.table("admin_student_send_drafts").select("*").eq("id", draft_id).limit(1).execute()
+        row = row_res.data[0] if row_res.data else None
+        if not row:
+            return jsonify({"code": "DRAFT_NOT_FOUND", "error": "Draft not found"}), 404
+        storage_path = (body.get("feedback_video_storage_path") or row.get("feedback_video_storage_path") or "").strip()
+        if not storage_path:
+            return jsonify({"code": "INVALID_INPUT", "error": "feedback_video_storage_path is required"}), 400
+        script_manifest = body.get("script_manifest") if isinstance(body.get("script_manifest"), dict) else (
+            row.get("script_manifest") if isinstance(row.get("script_manifest"), dict) else {}
+        )
+        db.update_admin_student_send_draft_pipeline_status(
+            draft_id=str(row.get("id") or ""),
+            user_id=str(row.get("user_id") or ""),
+            status="uploading",
+            error=None,
+        )
+        updated, email_result, task_sync = _finalize_pipeline_delivery_for_row(
+            row=row,
+            storage_path=storage_path,
+            script_manifest=script_manifest,
+            approved_by=str(body.get("approved_by") or "internal:copilot-video-pipeline"),
+        )
+        if str((row.get("script_mode") or "")).strip().lower() == "full_video_override":
+            payload = _normalize_copilot_payload(row)
+            db.create_admin_uploaded_reference_video(
+                draft_id=str(row.get("id") or ""),
+                user_id=str(row.get("user_id") or ""),
+                session_id=row.get("session_id"),
+                storage_path=storage_path,
+                source_video_url=payload.get("full_override_video_url"),
+                transcript_text=payload.get("reference_transcript_text"),
+                feature_metadata={"script_manifest": script_manifest or {}},
+                tags=parse_reference_tags(payload),
+                is_universal=parse_bool(payload.get("is_universal_video"), False),
+                created_by=None,
+            )
+        return jsonify(
+            {
+                "status": "ok",
+                "draft": _serialize_copilot_draft(updated or row),
+                "email": email_result,
+                "synced_task_to_student": bool((task_sync or "").strip()),
+            }
+        ), 200
+    except Exception as e:
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
+
+
+@v2_bp.route("/admin/internal/copilot/drafts/<draft_id>/pipeline/process", methods=["POST"])
+def v2_admin_internal_copilot_pipeline_process(draft_id):
+    try:
+        if not _pipeline_secret_matches():
+            return jsonify({"code": "UNAUTHORIZED", "error": "Invalid or missing X-Internal-Secret"}), 401
+        row_res = db.client.table("admin_student_send_drafts").select("*").eq("id", draft_id).limit(1).execute()
+        row = row_res.data[0] if row_res.data else None
+        if not row:
+            return jsonify({"code": "DRAFT_NOT_FOUND", "error": "Draft not found"}), 404
+        if str(row.get("status") or "").lower() == "sent":
+            return jsonify({"status": "ok", "already_sent": True, "draft": _serialize_copilot_draft(row)}), 200
+
+        payload = _normalize_copilot_payload(row)
+        script_mode = str(row.get("script_mode") or resolve_script_mode(payload)).strip().lower()
+        script_manifest = row.get("script_manifest") if isinstance(row.get("script_manifest"), dict) else {}
+        if not script_manifest:
+            script_manifest = build_script_manifest(row, payload, script_mode)
+            db.queue_admin_student_send_draft_pipeline(
+                draft_id=str(row.get("id") or ""),
+                user_id=str(row.get("user_id") or ""),
+                pipeline_job_id=str(row.get("pipeline_job_id") or uuid.uuid4()),
+                script_mode=script_mode,
+                script_manifest=script_manifest,
+                created_by=str(row.get("approved_by") or ""),
+            )
+
+        db.update_admin_student_send_draft_pipeline_status(
+            draft_id=str(row.get("id") or ""),
+            user_id=str(row.get("user_id") or ""),
+            status=_pipeline_phase_from_mode(script_mode),
+            error=None,
+        )
+
+        if script_mode == "full_video_override":
+            video_bytes = fetch_override_video_bytes(script_manifest)
+        else:
+            video_bytes = generate_video_from_script(script_manifest)
+
+        db.update_admin_student_send_draft_pipeline_status(
+            draft_id=str(row.get("id") or ""),
+            user_id=str(row.get("user_id") or ""),
+            status="uploading",
+            error=None,
+        )
+        storage_path = build_feedback_video_storage_path(str(row.get("user_id") or ""), row.get("session_id"))
+        db.upload_audio(config.COACH_FEEDBACK_VIDEO_BUCKET, storage_path, video_bytes, "video/mp4")
+
+        updated, email_result, task_sync = _finalize_pipeline_delivery_for_row(
+            row=row,
+            storage_path=storage_path,
+            script_manifest=script_manifest,
+            approved_by=str(row.get("approved_by") or "internal:copilot-video-pipeline"),
+        )
+        if script_mode == "full_video_override":
+            db.create_admin_uploaded_reference_video(
+                draft_id=str(row.get("id") or ""),
+                user_id=str(row.get("user_id") or ""),
+                session_id=row.get("session_id"),
+                storage_path=storage_path,
+                source_video_url=payload.get("full_override_video_url"),
+                transcript_text=payload.get("reference_transcript_text"),
+                feature_metadata={"script_manifest": script_manifest or {}},
+                tags=parse_reference_tags(payload),
+                is_universal=parse_bool(payload.get("is_universal_video"), False),
+                created_by=None,
+            )
+        return jsonify(
+            {
+                "status": "ok",
+                "draft": _serialize_copilot_draft(updated or row),
+                "email": email_result,
+                "synced_task_to_student": bool((task_sync or "").strip()),
+            }
+        ), 200
+    except Exception as e:
+        logger.warning("copilot video pipeline process failed for draft_id=%s: %s", draft_id, e, exc_info=True)
+        row = None
+        try:
+            row_res = db.client.table("admin_student_send_drafts").select("id,user_id").eq("id", draft_id).limit(1).execute()
+            row = row_res.data[0] if row_res.data else None
+            if row:
+                db.update_admin_student_send_draft_pipeline_status(
+                    draft_id=str(row.get("id") or ""),
+                    user_id=str(row.get("user_id") or ""),
+                    status="failed",
+                    error=str(e)[:1000],
+                )
+        except Exception:
+            pass
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "PIPELINE_FAILED", "error": str(e)}), 500

@@ -36,6 +36,7 @@ class Config:
     # Storage
     AUDIO_BUCKET_NAME = "audio_recordings"
     SIGNED_URL_EXPIRY_SECONDS = 3600
+    COACH_FEEDBACK_VIDEO_BUCKET = (os.getenv("COACH_FEEDBACK_VIDEO_BUCKET") or "coach_feedback_videos").strip() or "coach_feedback_videos"
     
     # Frontend URL (for email links)
     FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
@@ -67,6 +68,21 @@ class Config:
 
     # Tutor feedback window: time the tutor has to send feedback and assign new homework after a lesson is completed (hours)
     TUTOR_FEEDBACK_WINDOW_HOURS = float(os.getenv("TUTOR_FEEDBACK_WINDOW_HOURS", "24"))
+
+    # Agentic video pipeline (admin copilot async generation)
+    COPILOT_VIDEO_PIPELINE_ENABLED = (os.getenv("COPILOT_VIDEO_PIPELINE_ENABLED") or "false").strip().lower() == "true"
+    COPILOT_VIDEO_PIPELINE_SECRET = (os.getenv("COPILOT_VIDEO_PIPELINE_SECRET") or "").strip()
+    COPILOT_VIDEO_RETRAIN_SECRET = (os.getenv("COPILOT_VIDEO_RETRAIN_SECRET") or "").strip()
+    COPILOT_VIDEO_RETRAIN_WEBHOOK_URL = (os.getenv("COPILOT_VIDEO_RETRAIN_WEBHOOK_URL") or "").strip() or None
+
+    METAVOICE_API_URL = (os.getenv("METAVOICE_API_URL") or "").strip() or None
+    METAVOICE_API_KEY = (os.getenv("METAVOICE_API_KEY") or "").strip() or None
+    METAVOICE_VOICE_ID = (os.getenv("METAVOICE_VOICE_ID") or "").strip() or None
+    METAVOICE_OUTPUT_FORMAT = (os.getenv("METAVOICE_OUTPUT_FORMAT") or "wav").strip() or "wav"
+
+    BYTEDANCE_API_URL = (os.getenv("BYTEDANCE_API_URL") or "").strip() or None
+    BYTEDANCE_API_KEY = (os.getenv("BYTEDANCE_API_KEY") or "").strip() or None
+    ARTUR_BASE_AVATAR_URL = (os.getenv("ARTUR_BASE_AVATAR_URL") or "").strip() or None
 
     @property
     def is_production(self):

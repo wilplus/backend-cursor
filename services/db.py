@@ -3726,6 +3726,267 @@ class DatabaseService:
         )
         return res.data[0] if res.data else None
 
+    def queue_admin_student_send_draft_pipeline(
+        self,
+        *,
+        draft_id: str,
+        user_id: str,
+        pipeline_job_id: str,
+        script_mode: str,
+        script_manifest: Dict[str, Any],
+        created_by: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        payload = {
+            "pipeline_job_id": pipeline_job_id,
+            "pipeline_status": "queued",
+            "pipeline_error": None,
+            "pipeline_started_at": None,
+            "pipeline_finished_at": None,
+            "script_mode": script_mode,
+            "script_manifest": script_manifest or {},
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+        if created_by:
+            payload["approved_by"] = created_by
+        res = (
+            self.client.table("admin_student_send_drafts")
+            .update(payload)
+            .eq("id", draft_id)
+            .eq("user_id", user_id)
+            .execute()
+        )
+        return res.data[0] if res.data else None
+
+    def get_admin_student_send_draft_by_pipeline_job(self, pipeline_job_id: str) -> Optional[Dict[str, Any]]:
+        res = (
+            self.client.table("admin_student_send_drafts")
+            .select("*")
+            .eq("pipeline_job_id", pipeline_job_id)
+            .limit(1)
+            .execute()
+        )
+        return res.data[0] if res.data else None
+
+    def update_admin_student_send_draft_pipeline_status(
+        self,
+        *,
+        draft_id: str,
+        user_id: str,
+        status: str,
+        error: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        now = datetime.now(timezone.utc).isoformat()
+        payload: Dict[str, Any] = {
+            "pipeline_status": status,
+            "pipeline_error": (error or None),
+            "updated_at": now,
+        }
+        if status in ("running_tts", "running_video", "uploading"):
+            payload["pipeline_started_at"] = now
+            payload["pipeline_finished_at"] = None
+        elif status in ("sent", "failed"):
+            payload["pipeline_finished_at"] = now
+        res = (
+            self.client.table("admin_student_send_drafts")
+            .update(payload)
+            .eq("id", draft_id)
+            .eq("user_id", user_id)
+            .execute()
+        )
+        return res.data[0] if res.data else None
+
+    def mark_admin_student_send_draft_pipeline_sent(
+        self,
+        *,
+        draft_id: str,
+        user_id: str,
+        approved_by: str,
+        feedback_video_storage_path: str,
+        script_manifest: Optional[Dict[str, Any]] = None,
+    ) -> Optional[Dict[str, Any]]:
+        payload: Dict[str, Any] = {
+            "status": "sent",
+            "pipeline_status": "sent",
+            "pipeline_error": None,
+            "feedback_video_storage_path": feedback_video_storage_path,
+            "approved_by": approved_by,
+            "sent_at": datetime.now(timezone.utc).isoformat(),
+            "pipeline_finished_at": datetime.now(timezone.utc).isoformat(),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+        if script_manifest is not None:
+            payload["script_manifest"] = script_manifest
+        res = (
+            self.client.table("admin_student_send_drafts")
+            .update(payload)
+            .eq("id", draft_id)
+            .eq("user_id", user_id)
+            .execute()
+        )
+        return res.data[0] if res.data else None
+
+    def create_admin_uploaded_reference_video(
+        self,
+        *,
+        draft_id: Optional[str],
+        user_id: str,
+        session_id: Optional[str],
+        storage_path: str,
+        source_video_url: Optional[str],
+        transcript_text: Optional[str],
+        feature_metadata: Optional[Dict[str, Any]],
+        tags: Optional[List[str]],
+        is_universal: bool,
+        created_by: Optional[str],
+        transcription_status: Optional[str] = None,
+        transcription_error: Optional[str] = None,
+        title: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        payload = {
+            "draft_id": draft_id,
+            "user_id": user_id,
+            "session_id": session_id,
+            "storage_path": storage_path,
+            "source_video_url": source_video_url,
+            "transcript_text": transcript_text,
+            "feature_metadata": feature_metadata or {},
+            "tags": tags or [],
+            "is_universal": bool(is_universal),
+            "created_by": created_by,
+            "transcription_status": (transcription_status or "pending"),
+            "transcription_error": transcription_error,
+            "title": (title or "").strip() or None,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+        res = self.client.table("admin_uploaded_reference_videos").insert(payload).execute()
+        return res.data[0] if res.data else None
+
+    def list_admin_uploaded_reference_videos_for_training(
+        self,
+        *,
+        since_iso: Optional[str] = None,
+        limit: int = 500,
+    ) -> List[Dict[str, Any]]:
+        q = (
+            self.client.table("admin_uploaded_reference_videos")
+            .select("*")
+            .eq("is_active", True)
+            .order("created_at", desc=False)
+            .limit(max(1, min(5000, int(limit))))
+        )
+        if since_iso:
+            q = q.gt("created_at", since_iso)
+        res = q.execute()
+        return res.data or []
+
+    def list_admin_uploaded_reference_videos(
+        self,
+        *,
+        limit: int = 50,
+        offset: int = 0,
+        is_active: Optional[bool] = None,
+    ) -> List[Dict[str, Any]]:
+        q = (
+            self.client.table("admin_uploaded_reference_videos")
+            .select("*")
+            .order("created_at", desc=True)
+            .range(max(0, int(offset)), max(0, int(offset)) + max(1, min(500, int(limit))) - 1)
+        )
+        if is_active is not None:
+            q = q.eq("is_active", bool(is_active))
+        res = q.execute()
+        return res.data or []
+
+    def get_admin_uploaded_reference_video(self, reference_video_id: str) -> Optional[Dict[str, Any]]:
+        res = (
+            self.client.table("admin_uploaded_reference_videos")
+            .select("*")
+            .eq("id", reference_video_id)
+            .limit(1)
+            .execute()
+        )
+        return res.data[0] if res.data else None
+
+    def update_admin_uploaded_reference_video(
+        self,
+        reference_video_id: str,
+        fields: Dict[str, Any],
+    ) -> Optional[Dict[str, Any]]:
+        payload = dict(fields or {})
+        payload["updated_at"] = datetime.now(timezone.utc).isoformat()
+        res = (
+            self.client.table("admin_uploaded_reference_videos")
+            .update(payload)
+            .eq("id", reference_video_id)
+            .execute()
+        )
+        return res.data[0] if res.data else None
+
+    def create_model_training_run(
+        self,
+        *,
+        run_type: str,
+        status: str,
+        input_count: int = 0,
+        metadata: Optional[Dict[str, Any]] = None,
+        created_by: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        now = datetime.now(timezone.utc).isoformat()
+        payload = {
+            "run_type": run_type,
+            "status": status,
+            "input_count": max(0, int(input_count)),
+            "metadata": metadata or {},
+            "created_by": created_by,
+            "created_at": now,
+            "updated_at": now,
+        }
+        if status == "running":
+            payload["started_at"] = now
+        if status in ("completed", "failed", "skipped"):
+            payload["finished_at"] = now
+        res = self.client.table("model_training_runs").insert(payload).execute()
+        return res.data[0] if res.data else None
+
+    def update_model_training_run(
+        self,
+        run_id: str,
+        *,
+        status: str,
+        input_count: Optional[int] = None,
+        output_artifact_ref: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        error: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        now = datetime.now(timezone.utc).isoformat()
+        payload: Dict[str, Any] = {"status": status, "updated_at": now}
+        if status == "running":
+            payload["started_at"] = now
+            payload["finished_at"] = None
+        if status in ("completed", "failed", "skipped"):
+            payload["finished_at"] = now
+        if input_count is not None:
+            payload["input_count"] = max(0, int(input_count))
+        if output_artifact_ref is not None:
+            payload["output_artifact_ref"] = output_artifact_ref
+        if metadata is not None:
+            payload["metadata"] = metadata
+        if error is not None:
+            payload["error"] = error
+        res = self.client.table("model_training_runs").update(payload).eq("id", run_id).execute()
+        return res.data[0] if res.data else None
+
+    def get_latest_model_training_run(self, run_type: str) -> Optional[Dict[str, Any]]:
+        res = (
+            self.client.table("model_training_runs")
+            .select("*")
+            .eq("run_type", run_type)
+            .order("created_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+        return res.data[0] if res.data else None
+
     # ---------- Runtime config ----------
 
     def get_runtime_config(self, key: str) -> Optional[str]:

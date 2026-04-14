@@ -121,6 +121,37 @@ def _session_for_json(obj):
     return obj
 
 
+def _parse_storage_uri(uri: str):
+    text = (uri or "").strip()
+    prefix = "storage://"
+    if not text.startswith(prefix):
+        return None
+    rest = text[len(prefix):]
+    parts = rest.split("/", 1)
+    if len(parts) != 2:
+        return None
+    bucket = parts[0].strip()
+    path = parts[1].strip()
+    if not bucket or not path:
+        return None
+    return bucket, path
+
+
+def _resolve_tutor_video_url(raw_url: str) -> str | None:
+    text = (raw_url or "").strip()
+    if not text:
+        return None
+    parsed = _parse_storage_uri(text)
+    if not parsed:
+        return text
+    bucket, path = parsed
+    try:
+        return db.create_signed_url(bucket, path, 48 * 3600)
+    except Exception:
+        logger.warning("resolve tutor storage uri failed bucket=%s path=%s", bucket, path, exc_info=True)
+        return None
+
+
 def _task_payload(task_id, text):
     text = (text or "").strip()
     if not text:
@@ -241,7 +272,7 @@ def _build_step0_payload(user_id: str) -> dict:
     if not review_pending:
         try:
             overrides = db.v2_get_student_overrides(user_id) or {}
-            url = (overrides.get("pending_tutor_video_url") or "").strip()
+            url = _resolve_tutor_video_url(overrides.get("pending_tutor_video_url") or "")
             msg = (overrides.get("pending_tutor_video_description") or "").strip()
             if feedback_sent_at is not None:
                 if url:
@@ -430,7 +461,7 @@ def homework_session_status():
         )
         # Once the session is completed, the frontend should transition to the report/reviewing
         # screen instead of continuing to show the pre-homework coach message block.
-        url = (active.get("tutor_video_url") or "").strip()
+        url = _resolve_tutor_video_url(active.get("tutor_video_url") or "")
         msg = (active.get("tutor_video_description") or "").strip()
         if public_status != PUBLIC_STATUS_COMPLETED and not hide_tutor_video:
             if url:
@@ -1536,5 +1567,52 @@ def homework_get_report(session_id):
         return jsonify(payload), 200
     except Exception as e:
         logger.exception("Homework get report: %s", e)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
+
+
+@homework_bp.route("/feedback-video-url", methods=["GET"])
+@require_auth
+def homework_feedback_video_url():
+    """Return a short-lived signed URL for the latest generated coach feedback video."""
+    try:
+        user_id = request.user_id
+        try:
+            expires_in = int(request.args.get("expires_in", 48 * 3600))
+        except (TypeError, ValueError):
+            expires_in = 48 * 3600
+        expires_in = max(60, min(172800, expires_in))
+        row_res = (
+            db.client.table("admin_student_send_drafts")
+            .select("id, feedback_video_storage_path, sent_at")
+            .eq("user_id", user_id)
+            .eq("status", "sent")
+            .order("sent_at", desc=True)
+            .limit(20)
+            .execute()
+        )
+        row = None
+        for item in (row_res.data or []):
+            if str(item.get("feedback_video_storage_path") or "").strip():
+                row = item
+                break
+        if not row:
+            return jsonify({"code": "VIDEO_NOT_FOUND", "error": "No coach feedback video available"}), 404
+        storage_path = (row.get("feedback_video_storage_path") or "").strip()
+        if not storage_path:
+            return jsonify({"code": "VIDEO_NOT_FOUND", "error": "No coach feedback video available"}), 404
+        signed_url = db.create_signed_url(config.COACH_FEEDBACK_VIDEO_BUCKET, storage_path, expires_in)
+        if not signed_url:
+            return jsonify({"code": "SIGNED_URL_FAILED", "error": "Could not create signed URL"}), 500
+        return jsonify(
+            {
+                "status": "ok",
+                "storage_path": storage_path,
+                "signed_url": signed_url,
+                "expires_in": expires_in,
+            }
+        ), 200
+    except Exception as e:
+        logger.exception("Homework feedback video url failed: %s", e)
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
