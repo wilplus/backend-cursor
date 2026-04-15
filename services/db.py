@@ -3155,43 +3155,16 @@ class DatabaseService:
             "session_task_id", "warm_up_task_id",
             "session_task_text", "warm_up_task_text",
         ]
+        result = None
         session_columns = [c for c in all_session_columns if c not in self._v2_sessions_missing_columns]
-        select_columns = ", ".join(session_columns)
         session_fields = tuple(session_columns)
-        try:
-            result = (
-                self.client.table("v2_sessions")
-                .select(select_columns)
-                .eq("user_id", user_id)
-                .order("completed_at", desc=True)
-                .limit(limit)
-                .execute()
-            )
-        except Exception as e:
-            msg = str(e).lower()
-            if "42703" in msg or "does not exist" in msg or "undefined_column" in msg:
-                # Columns may not exist yet if migration hasn't run
-                missing_cols = []
-                for col in ("score", "task_score", "ai_task_score", "ai_scoring_justification", "coach_override_score", "coach_override_justification"):
-                    if col in msg:
-                        missing_cols.append(col)
-                if not missing_cols:
-                    # Try to parse: "column v2_sessions.<name> does not exist"
-                    m = re.search(r"column\s+v2_sessions\.([a-z0-9_]+)\s+does not exist", msg)
-                    if m:
-                        missing_cols = [m.group(1)]
-                if not missing_cols:
-                    raise
-                new_missing = [c for c in missing_cols if c not in self._v2_sessions_missing_columns]
-                self._v2_sessions_missing_columns.update(missing_cols)
-                if new_missing:
-                    logger.warning(
-                        "v2_get_sessions_with_previews: columns missing %s, retrying without them: %s",
-                        new_missing, e,
-                    )
-                session_columns = [c for c in all_session_columns if c not in self._v2_sessions_missing_columns]
-                select_columns = ", ".join(session_columns)
-                session_fields = tuple(session_columns)
+        max_attempts = max(1, len(all_session_columns))
+        for _ in range(max_attempts):
+            if not session_columns:
+                raise Exception("v2_get_sessions_with_previews: no selectable v2_sessions columns available")
+            select_columns = ", ".join(session_columns)
+            session_fields = tuple(session_columns)
+            try:
                 result = (
                     self.client.table("v2_sessions")
                     .select(select_columns)
@@ -3200,8 +3173,37 @@ class DatabaseService:
                     .limit(limit)
                     .execute()
                 )
-            else:
-                raise
+                break
+            except Exception as e:
+                msg = str(e).lower()
+                if not ("42703" in msg or "does not exist" in msg or "undefined_column" in msg):
+                    raise
+
+                missing_cols = []
+                for col in all_session_columns:
+                    if f"v2_sessions.{col}" in msg or f"column {col}" in msg:
+                        missing_cols.append(col)
+
+                if not missing_cols:
+                    # Try to parse: "column v2_sessions.<name> does not exist"
+                    m = re.search(r"column\s+v2_sessions\.([a-z0-9_]+)\s+does not exist", msg)
+                    if m:
+                        missing_cols = [m.group(1)]
+
+                if not missing_cols:
+                    raise
+
+                new_missing = [c for c in missing_cols if c not in self._v2_sessions_missing_columns]
+                self._v2_sessions_missing_columns.update(missing_cols)
+                if new_missing:
+                    logger.warning(
+                        "v2_get_sessions_with_previews: columns missing %s, retrying without them: %s",
+                        new_missing,
+                        e,
+                    )
+                session_columns = [c for c in all_session_columns if c not in self._v2_sessions_missing_columns]
+        if result is None:
+            raise Exception("v2_get_sessions_with_previews: failed to query sessions after schema fallback retries")
         sessions = result.data or []
         session_ids = [s["id"] for s in sessions]
 
