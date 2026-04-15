@@ -4351,7 +4351,7 @@ def v2_admin_copilot_reference_videos_list():
 @require_admin
 def v2_admin_copilot_reference_videos_upload():
     try:
-        max_video_mb = max(1, int(getattr(config, "MAX_REFERENCE_VIDEO_SIZE_MB", 200)))
+        max_video_mb = max(1, int(getattr(config, "MAX_REFERENCE_VIDEO_SIZE_MB", 500)))
         max_video_bytes = max_video_mb * 1024 * 1024
         content_length = request.content_length or 0
         if content_length and content_length > max_video_bytes:

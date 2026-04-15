@@ -21,9 +21,16 @@ app = Flask(__name__)
 # Global request cap: must allow both recording uploads and larger admin reference video uploads.
 app.config["MAX_CONTENT_LENGTH"] = max(
     int(getattr(config, "MAX_AUDIO_SIZE_MB", 25)),
-    int(getattr(config, "MAX_REFERENCE_VIDEO_SIZE_MB", 200)),
+    int(getattr(config, "MAX_REFERENCE_VIDEO_SIZE_MB", 500)),
 ) * 1024 * 1024
-CORS(app, origins=config.CORS_ORIGINS, supports_credentials=True)
+# Explicit headers so browser uploads from Next admin (Bearer + multipart) pass preflight.
+CORS(
+    app,
+    origins=config.CORS_ORIGINS,
+    supports_credentials=True,
+    allow_headers=["Authorization", "Content-Type", "X-Internal-Secret"],
+    methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+)
 
 # Register blueprints (v2 / taskmaster MVP only)
 from routes.auth import auth_bp
@@ -53,7 +60,7 @@ def handle_413(e):
             "code": "PAYLOAD_TOO_LARGE",
             "error": (
                 f"Reference video is too large. Max allowed is "
-                f"{int(getattr(config, 'MAX_REFERENCE_VIDEO_SIZE_MB', 200))}MB."
+                f"{int(getattr(config, 'MAX_REFERENCE_VIDEO_SIZE_MB', 500))}MB."
             ),
         }), 413
     return jsonify({
