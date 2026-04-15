@@ -2814,7 +2814,11 @@ class DatabaseService:
     _V2_OVERRIDES_COLUMNS = {
         "intended_emotion_prompt", "keywords_prompt", "emotion_check_question_text",
         "assigned_task_id",
-        "pitch_variance_ideal", "pending_tutor_video_url", "pending_tutor_video_description",
+        "pitch_variance_ideal",
+        "pending_tutor_video_url",
+        "pending_tutor_video_description",
+        "pending_tutor_video_bucket",
+        "pending_tutor_video_storage_path",
         "skip_metric_questions",
     }
 
@@ -2880,35 +2884,64 @@ class DatabaseService:
         # #endregion
         return result.data[0] if result.data else None
 
-    def v2_set_pending_tutor_video(self, user_id: str, video_url: str = None, video_description: str = None):
+    def v2_set_pending_tutor_video(
+        self,
+        user_id: str,
+        video_url: str = None,
+        video_description: str = None,
+        video_bucket: str = None,
+        video_storage_path: str = None,
+    ):
         """Store coach message and/or video URL for the next session. Call when admin sends assignment. Message is returned as tutor_video_description in GET session/status (homework flow is text-only; no video)."""
         payload = {}
         if video_url is not None:
             payload["pending_tutor_video_url"] = (video_url or "").strip() or None
         if video_description is not None:
             payload["pending_tutor_video_description"] = (video_description or "").strip() or None
+        if video_bucket is not None:
+            payload["pending_tutor_video_bucket"] = (video_bucket or "").strip() or None
+        if video_storage_path is not None:
+            payload["pending_tutor_video_storage_path"] = (video_storage_path or "").strip() or None
         if payload:
             self.v2_upsert_student_overrides(user_id, payload)
         return True
 
     def v2_get_and_clear_pending_tutor_video(self, user_id: str):
-        """Return (url, description) for the pending tutor video and clear both. Used on session/start to attach to the new session."""
-        row = self.client.table("v2_student_overrides").select("pending_tutor_video_url, pending_tutor_video_description").eq("user_id", user_id).execute()
+        """Return (url, description, bucket, storage_path) for the pending tutor video and clear all. Used on session/start to attach to the new session."""
+        row = (
+            self.client.table("v2_student_overrides")
+            .select(
+                "pending_tutor_video_url, pending_tutor_video_description, "
+                "pending_tutor_video_bucket, pending_tutor_video_storage_path"
+            )
+            .eq("user_id", user_id)
+            .execute()
+        )
         url = None
         description = None
+        bucket = None
+        storage_path = None
         if row.data:
             r = row.data[0]
             if r.get("pending_tutor_video_url"):
                 url = (r["pending_tutor_video_url"] or "").strip() or None
             if r.get("pending_tutor_video_description"):
                 description = (r["pending_tutor_video_description"] or "").strip() or None
-        if url is not None or description is not None:
-            self.client.table("v2_student_overrides").update({
-                "pending_tutor_video_url": None,
-                "pending_tutor_video_description": None,
-                "updated_at": datetime.now(timezone.utc).isoformat(),
-            }).eq("user_id", user_id).execute()
-        return (url, description)
+            if r.get("pending_tutor_video_bucket"):
+                bucket = (r["pending_tutor_video_bucket"] or "").strip() or None
+            if r.get("pending_tutor_video_storage_path"):
+                storage_path = (r["pending_tutor_video_storage_path"] or "").strip() or None
+        if url is not None or description is not None or bucket is not None or storage_path is not None:
+            self.client.table("v2_student_overrides").update(
+                {
+                    "pending_tutor_video_url": None,
+                    "pending_tutor_video_description": None,
+                    "pending_tutor_video_bucket": None,
+                    "pending_tutor_video_storage_path": None,
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                }
+            ).eq("user_id", user_id).execute()
+        return (url, description, bucket, storage_path)
 
     def v2_create_report(self, session_v2_id: str, recording_id: str, report_text: str):
         result = self.client.table("v2_reports").insert({

@@ -16,6 +16,7 @@ from services.homework_completion import (
 from services.sniper_realtime import clear_sniper_session
 from services.stripe_checkout_credits import apply_paid_checkout_session_credits
 from services.utils import utc_now_iso
+from services.tutor_video_url import resolve_tutor_video_playable_url
 import logging
 import os
 import time
@@ -121,37 +122,6 @@ def _session_for_json(obj):
     return obj
 
 
-def _parse_storage_uri(uri: str):
-    text = (uri or "").strip()
-    prefix = "storage://"
-    if not text.startswith(prefix):
-        return None
-    rest = text[len(prefix):]
-    parts = rest.split("/", 1)
-    if len(parts) != 2:
-        return None
-    bucket = parts[0].strip()
-    path = parts[1].strip()
-    if not bucket or not path:
-        return None
-    return bucket, path
-
-
-def _resolve_tutor_video_url(raw_url: str) -> str | None:
-    text = (raw_url or "").strip()
-    if not text:
-        return None
-    parsed = _parse_storage_uri(text)
-    if not parsed:
-        return text
-    bucket, path = parsed
-    try:
-        return db.create_signed_url(bucket, path, 48 * 3600)
-    except Exception:
-        logger.warning("resolve tutor storage uri failed bucket=%s path=%s", bucket, path, exc_info=True)
-        return None
-
-
 def _task_payload(task_id, text):
     text = (text or "").strip()
     if not text:
@@ -225,6 +195,8 @@ def _build_step0_payload(user_id: str) -> dict:
         "tutor_feedback_message": None,
         "tutor_video_url": None,
         "tutor_video_description": None,
+        "tutor_video_bucket": None,
+        "tutor_video_storage_path": None,
         "review_pending": False,
         "report_delivered": False,
         "main_screen_state": "assignment_ready",
@@ -273,11 +245,20 @@ def _build_step0_payload(user_id: str) -> dict:
     if not review_pending:
         try:
             overrides = db.v2_get_student_overrides(user_id) or {}
-            url = _resolve_tutor_video_url(overrides.get("pending_tutor_video_url") or "")
+            playable, tb, tp = resolve_tutor_video_playable_url(
+                db=db,
+                explicit_video_url=overrides.get("pending_tutor_video_url"),
+                video_bucket=overrides.get("pending_tutor_video_bucket"),
+                video_storage_path=overrides.get("pending_tutor_video_storage_path"),
+            )
             msg = (overrides.get("pending_tutor_video_description") or "").strip()
             if feedback_sent_at is not None:
-                if url:
-                    payload["tutor_video_url"] = url
+                if playable:
+                    payload["tutor_video_url"] = playable
+                if tb:
+                    payload["tutor_video_bucket"] = tb
+                if tp:
+                    payload["tutor_video_storage_path"] = tp
                 if msg:
                     payload["tutor_video_description"] = msg
         except Exception:
@@ -362,7 +343,9 @@ def homework_session_start():
         if not session:
             return jsonify({"code": "V2_ERROR", "error": "Failed to create session"}), 500
 
-        pending_video_url, pending_video_description = db.v2_get_and_clear_pending_tutor_video(user_id)
+        pending_video_url, pending_video_description, pending_bucket, pending_path = db.v2_get_and_clear_pending_tutor_video(
+            user_id
+        )
         prefs = db.v2_get_user_metric_questions(user_id)
         session_update = {
             "session_metric_question_1": (prefs.get("metric_question_1") or "").strip(),
@@ -374,6 +357,10 @@ def homework_session_start():
             session_update["tutor_video_url"] = pending_video_url
         if pending_video_description is not None:
             session_update["tutor_video_description"] = pending_video_description
+        if pending_bucket:
+            session_update["tutor_video_bucket"] = pending_bucket
+        if pending_path:
+            session_update["tutor_video_storage_path"] = pending_path
         db.v2_update_session(session["id"], user_id, session_update)
 
         return jsonify({
@@ -452,6 +439,8 @@ def homework_session_status():
             "tutor_feedback_message": None,
             "tutor_video_url": None,
             "tutor_video_description": None,
+            "tutor_video_bucket": None,
+            "tutor_video_storage_path": None,
             "has_active_session": True,
             "credits": int(credits_active),
         }
@@ -462,11 +451,20 @@ def homework_session_status():
         )
         # Once the session is completed, the frontend should transition to the report/reviewing
         # screen instead of continuing to show the pre-homework coach message block.
-        url = _resolve_tutor_video_url(active.get("tutor_video_url") or "")
+        playable, tb, tp = resolve_tutor_video_playable_url(
+            db=db,
+            explicit_video_url=active.get("tutor_video_url"),
+            video_bucket=active.get("tutor_video_bucket"),
+            video_storage_path=active.get("tutor_video_storage_path"),
+        )
         msg = (active.get("tutor_video_description") or "").strip()
         if public_status != PUBLIC_STATUS_COMPLETED and not hide_tutor_video:
-            if url:
-                resp["tutor_video_url"] = url
+            if playable:
+                resp["tutor_video_url"] = playable
+            if tb:
+                resp["tutor_video_bucket"] = tb
+            if tp:
+                resp["tutor_video_storage_path"] = tp
             if msg:
                 resp["tutor_video_description"] = msg
         return _json_homework_no_store(resp)

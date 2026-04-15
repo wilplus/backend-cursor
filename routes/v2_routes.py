@@ -25,6 +25,7 @@ from services.stress_snippet_service import (
     generate_stress_snippets_for_recording,
 )
 from services.video_url_validation import validate_video_url
+from services.tutor_video_url import parse_storage_uri
 import logging
 import sentry_sdk
 import json
@@ -622,18 +623,50 @@ def _deliver_homework_assignment_core(
     *,
     video_url: str | None,
     video_description: str | None,
+    video_bucket: str | None = None,
+    video_storage_path: str | None = None,
 ):
     """Shared path for student homework unlock: pending tutor media + email + tutor_feedback_sent.
 
     Matches POST /admin/students/<id>/send-assignment delivery semantics (not the draft provenance insert).
     Returns (success_payload, None) or (None, error_string) on email failure.
     """
-    if video_url is not None or video_description is not None:
-        db.v2_set_pending_tutor_video(user_id, video_url, video_description)
+    vb = (video_bucket or "").strip() or None
+    sp = (video_storage_path or "").strip().lstrip("/") or None
+    vu = (video_url or "").strip() if video_url else None
+
+    email_link = vu
+    pending_uri: str | None = None
+    if vb and sp:
+        pending_uri = f"storage://{vb}/{sp}"
+        if not email_link:
+            try:
+                email_link = db.create_signed_url(vb, sp, 48 * 3600)
+            except Exception:
+                email_link = None
+    elif vu and vu.startswith("storage://"):
+        pending_uri = vu
+        parsed = parse_storage_uri(vu)
+        if parsed and not email_link:
+            try:
+                email_link = db.create_signed_url(parsed[0], parsed[1], 48 * 3600)
+            except Exception:
+                email_link = None
+    else:
+        pending_uri = vu
+
+    if pending_uri is not None or video_description is not None or (vb and sp):
+        db.v2_set_pending_tutor_video(
+            user_id,
+            video_url=pending_uri,
+            video_description=video_description,
+            video_bucket=vb,
+            video_storage_path=sp,
+        )
     result = email_service.send_assignment_to_student(
         to_email=student_email.strip(),
         frontend_url=config.FRONTEND_URL,
-        video_url=video_url,
+        video_url=email_link,
         video_description=video_description,
         student_name=student_email.strip(),
     )
@@ -661,14 +694,28 @@ def _deliver_homework_assignment_core(
 @v2_bp.route("/admin/students/<user_id>/send-assignment", methods=["POST"])
 @require_admin
 def v2_admin_send_assignment(user_id):
-    """Send homework email to the student. Body: optional { \"video_url\": \"https://...\", \"video_description\": \"...\" }. Requires student to have an email in Supabase Auth."""
+    """Send homework email to the student. Body optional: video_url (https or storage://bucket/path), video_bucket + video_storage_path, video_description. Requires student email in Supabase Auth."""
     try:
         from config import Config
         config = Config()
         body = request.get_json(silent=True) or {}
-        video_url = validate_video_url(body.get("video_url"))
-        if body.get("video_url") is not None and video_url is None:
-            return jsonify({"code": "INVALID_VIDEO_URL", "error": "video_url must be a valid URL (http/https, max 2048 chars)"}), 400
+        raw_vu = body.get("video_url")
+        video_url = None
+        if raw_vu is not None:
+            s = str(raw_vu).strip()
+            if s.startswith("storage://"):
+                video_url = s if parse_storage_uri(s) else None
+            else:
+                video_url = validate_video_url(raw_vu)
+        video_bucket = (body.get("video_bucket") or "").strip() or None
+        video_storage_path = (body.get("video_storage_path") or "").strip().lstrip("/") or None
+        if raw_vu is not None and video_url is None and not (video_bucket and video_storage_path):
+            return jsonify(
+                {
+                    "code": "INVALID_VIDEO_URL",
+                    "error": "video_url must be https URL or storage://bucket/path, or pass video_bucket + video_storage_path",
+                }
+            ), 400
         video_description = (body.get("video_description") or "").strip() if body.get("video_description") is not None else None
         if video_description is not None and len(video_description) > 2000:
             return jsonify({"code": "INVALID_VIDEO_DESCRIPTION", "error": "video_description must be at most 2000 characters"}), 400
@@ -691,6 +738,8 @@ def v2_admin_send_assignment(user_id):
             student_email.strip(),
             video_url=video_url,
             video_description=final_video_description,
+            video_bucket=video_bucket,
+            video_storage_path=video_storage_path,
         )
         if send_err:
             err_lower = (send_err or "").lower()
@@ -773,6 +822,8 @@ def v2_admin_send_assignment(user_id):
                     extra_email.strip(),
                     video_url=video_url,
                     video_description=final_video_description,
+                    video_bucket=video_bucket,
+                    video_storage_path=video_storage_path,
                 )
                 if extra_err:
                     additional_results.append({"user_id": extra_uid, "status": "failed", "reason": extra_err})
@@ -2839,21 +2890,16 @@ def _finalize_pipeline_delivery_for_row(
     if not student_email:
         raise ValueError("Student has no email in auth")
     signed_video_url = _signed_feedback_video_url(storage_path, expires_in=48 * 3600)
-    internal_storage_uri = _storage_uri(config.COACH_FEEDBACK_VIDEO_BUCKET, storage_path)
     delivery, send_err = _deliver_homework_assignment_core(
         row.get("user_id"),
         student_email,
         video_url=signed_video_url,
         video_description=(final_message or "").strip() or None,
+        video_bucket=config.COACH_FEEDBACK_VIDEO_BUCKET,
+        video_storage_path=storage_path.lstrip("/"),
     )
     if send_err:
         raise RuntimeError(send_err)
-    # Keep email link clickable (signed URL), but ensure app playback always resolves from internal storage.
-    db.v2_set_pending_tutor_video(
-        row.get("user_id"),
-        video_url=internal_storage_uri,
-        video_description=(final_message or "").strip() or None,
-    )
 
     task_sync = _first_non_empty(
         payload.get("task_draft"),
