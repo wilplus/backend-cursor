@@ -252,15 +252,16 @@ def _build_step0_payload(user_id: str) -> dict:
                 video_storage_path=overrides.get("pending_tutor_video_storage_path"),
             )
             msg = (overrides.get("pending_tutor_video_description") or "").strip()
-            if feedback_sent_at is not None:
-                if playable:
-                    payload["tutor_video_url"] = playable
-                if tb:
-                    payload["tutor_video_bucket"] = tb
-                if tp:
-                    payload["tutor_video_storage_path"] = tp
-                if msg:
-                    payload["tutor_video_description"] = msg
+            # Show pending media whenever not in review_pending (gate above). Do not require
+            # tutor_feedback_sent_at — students with no completed session still need the coach video.
+            if playable:
+                payload["tutor_video_url"] = playable
+            if tb:
+                payload["tutor_video_bucket"] = tb
+            if tp:
+                payload["tutor_video_storage_path"] = tp
+            if msg:
+                payload["tutor_video_description"] = msg
         except Exception:
             pass
 
