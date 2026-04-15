@@ -4879,6 +4879,25 @@ def v2_admin_copilot_student_send(user_id):
         video_url = validate_video_url(video_url_raw) if video_url_raw is not None and str(video_url_raw).strip() else None
         if video_url_raw is not None and str(video_url_raw).strip() and video_url is None:
             return jsonify({"code": "INVALID_VIDEO_URL", "error": "video_url must be a valid URL (http/https, max 2048 chars)"}), 400
+        # Same fallback as approve-send: when no plain video_url is set, use the reference-video
+        # storage URI that /attach-reference-video wrote into the draft payload. See the matching
+        # comment block in v2_admin_student_draft_approve_send for details.
+        video_bucket_override: str | None = None
+        video_storage_path_override: str | None = None
+        if not video_url:
+            override_storage = payload.get("full_override_video_storage_path")
+            if isinstance(override_storage, str):
+                s_override = override_storage.strip()
+                if s_override.startswith("storage://"):
+                    parsed_override = parse_storage_uri(s_override)
+                    if parsed_override:
+                        video_bucket_override, video_storage_path_override = parsed_override
+            if not (video_bucket_override and video_storage_path_override):
+                override_url = payload.get("full_override_video_url")
+                if isinstance(override_url, str) and override_url.strip():
+                    validated_override = validate_video_url(override_url.strip())
+                    if validated_override:
+                        video_url = validated_override
         final_message = (
             payload.get("email_draft")
             or payload.get("email_message")
@@ -4896,6 +4915,8 @@ def v2_admin_copilot_student_send(user_id):
             student_email,
             video_url=video_url,
             video_description=desc,
+            video_bucket=video_bucket_override,
+            video_storage_path=video_storage_path_override,
         )
         if send_err:
             err_lower = (send_err or "").lower()
@@ -5112,6 +5133,30 @@ def v2_admin_student_draft_approve_send(user_id, draft_id):
         video_url = validate_video_url(video_url_raw) if video_url_raw is not None and str(video_url_raw).strip() else None
         if video_url_raw is not None and str(video_url_raw).strip() and video_url is None:
             return jsonify({"code": "INVALID_VIDEO_URL", "error": "video_url must be a valid URL (http/https, max 2048 chars)"}), 400
+        # If no plain video_url was set, fall back to the reference-video the coach attached from
+        # Training Studio. POST /admin/copilot/students/<id>/drafts/<id>/attach-reference-video
+        # writes the upload's location into draft_payload.full_override_video_storage_path as a
+        # "storage://bucket/path" URI (see _storage_uri() / attach handler). We parse it here and
+        # pass bucket+path explicitly so _deliver_homework_assignment_core persists all three
+        # fields atomically into v2_student_overrides (matching the pipeline finalize path); the
+        # student's step-0 screen then resolves a signed playable URL via
+        # services.tutor_video_url.resolve_tutor_video_playable_url.
+        video_bucket_override: str | None = None
+        video_storage_path_override: str | None = None
+        if not video_url:
+            override_storage = payload.get("full_override_video_storage_path")
+            if isinstance(override_storage, str):
+                s_override = override_storage.strip()
+                if s_override.startswith("storage://"):
+                    parsed_override = parse_storage_uri(s_override)
+                    if parsed_override:
+                        video_bucket_override, video_storage_path_override = parsed_override
+            if not (video_bucket_override and video_storage_path_override):
+                override_url = payload.get("full_override_video_url")
+                if isinstance(override_url, str) and override_url.strip():
+                    validated_override = validate_video_url(override_url.strip())
+                    if validated_override:
+                        video_url = validated_override
         final_message = (
             payload.get("email_draft")
             or payload.get("email_message")
@@ -5129,6 +5174,8 @@ def v2_admin_student_draft_approve_send(user_id, draft_id):
             student_email,
             video_url=video_url,
             video_description=desc,
+            video_bucket=video_bucket_override,
+            video_storage_path=video_storage_path_override,
         )
         if send_err:
             err_lower = (send_err or "").lower()
