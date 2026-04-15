@@ -38,6 +38,9 @@ from datetime import datetime, timedelta, timezone
 from urllib.parse import urlparse
 from werkzeug.utils import secure_filename
 from io import BytesIO
+import threading
+
+from services.reference_video_upload_worker import run_reference_video_upload
 
 logger = logging.getLogger(__name__)
 v2_bp = Blueprint("v2", __name__, url_prefix="/v2")
@@ -95,8 +98,6 @@ _COPILOT_DRAFT_IMMUTABLE_FIELDS = {
 
 _PIPELINE_RUNNING_STATES = {"queued", "running_tts", "running_video", "uploading"}
 _REFERENCE_VIDEO_ALLOWED_EXTENSIONS = {".mp4", ".mov", ".webm", ".m4v", ".avi", ".mkv"}
-# Containers Whisper-1 accepts (see OpenAI docs); others upload OK but skip auto-transcribe.
-_REFERENCE_VIDEO_WHISPER_EXTENSIONS = {".mp4", ".webm", ".m4v"}
 
 
 def _resolve_reference_upload_user_id(form_user_id: str, fallback_admin_id: str):
@@ -4425,95 +4426,158 @@ def v2_admin_copilot_reference_videos_upload():
         tags_raw = (request.form.get("reference_tags") or request.form.get("tags") or "").strip()
         tags = [x.strip() for x in tags_raw.split(",") if x.strip()]
         is_universal = str(request.form.get("is_universal_video", "false")).strip().lower() in ("1", "true", "yes")
-        bucket = config.COACH_FEEDBACK_VIDEO_BUCKET
-        ref_id = str(uuid.uuid4())
-        now = datetime.now(timezone.utc)
-        storage_path = f"copilot/reference_videos/{now:%Y/%m}/{ref_id}{ext}"
-        content_type = mimetypes.guess_type(safe_name)[0] or "video/mp4"
-        db.upload_audio(bucket, storage_path, video_bytes, content_type)
 
-        created = db.create_admin_uploaded_reference_video(
-            draft_id=draft_id,
-            user_id=student_user_id,
-            session_id=session_id,
-            storage_path=storage_path,
-            source_video_url=None,
-            transcript_text=None,
-            feature_metadata={
-                "bucket": bucket,
-                "content_type": content_type,
-                "size_bytes": len(video_bytes),
-                "original_filename": safe_name,
-                "uploaded_by_admin_id": request.user_id,
-            },
-            tags=tags,
-            is_universal=is_universal,
-            created_by=request.user_id,
-            transcription_status="processing",
-            transcription_error=None,
-            title=title,
-        )
-        if not created:
-            return jsonify({"code": "UPLOAD_FAILED", "error": "Could not store reference video metadata"}), 500
+        track_raw = (request.form.get("track_progress") or request.args.get("track_progress") or "").strip().lower()
+        track_progress = track_raw in ("1", "true", "yes")
 
-        if ext in _REFERENCE_VIDEO_WHISPER_EXTENSIONS:
+        def _fail_upload_job(jid: str | None, err: Exception) -> None:
+            if not jid:
+                return
             try:
-                from services.openai_service import openai_service
-
-                tr = openai_service.transcribe_audio(BytesIO(video_bytes), safe_name or "reference-video.mp4")
-                transcript_text = (tr.get("text") or "").strip()
-                created = db.update_admin_uploaded_reference_video(
-                    str(created.get("id")),
+                db.update_copilot_reference_upload_job(
+                    jid,
                     {
-                        "transcript_text": transcript_text or None,
-                        "transcription_status": "done",
-                        "transcription_error": None,
+                        "stage": "failed",
+                        "percent": 0,
+                        "error": str(err)[:2000],
+                        "message": "Processing failed",
                     },
-                ) or created
-                if transcript_text:
+                )
+            except Exception:
+                pass
+
+        if track_progress:
+            job_row = None
+            try:
+                job_row = db.create_copilot_reference_upload_job(
+                    created_by=request.user_id,
+                    student_user_id=student_user_id,
+                )
+            except Exception as job_err:
+                logger.warning(
+                    "reference upload async job unavailable (did you run migrations/add_copilot_reference_upload_jobs.sql?): %s",
+                    job_err,
+                )
+                job_row = None
+            if job_row:
+                jid = str(job_row["id"])
+                db.update_copilot_reference_upload_job(
+                    jid,
+                    {
+                        "stage": "received",
+                        "percent": 5,
+                        "message": "File received; processing on server (storage → database → transcription if applicable)…",
+                    },
+                )
+
+                def _run_async_upload() -> None:
                     try:
-                        db.create_admin_annotation_event(
-                            user_id=student_user_id,
+                        run_reference_video_upload(
+                            job_id=jid,
+                            video_bytes=video_bytes,
+                            safe_name=safe_name,
+                            ext=ext,
+                            student_user_id=student_user_id,
                             session_id=session_id,
-                            section_type="assignment",
-                            field_name="reference_video_transcript",
-                            ai_original_text=None,
-                            coach_final_text=transcript_text[:4000],
-                            reason_chip="video_upload",
-                            custom_reason=f"reference_video_id={created.get('id')}",
-                            created_by=request.user_id,
                             draft_id=draft_id,
-                            previous_value_hash=None,
-                            new_value_hash=_value_hash(transcript_text[:4000]),
+                            title=title,
+                            tags=tags,
+                            is_universal=is_universal,
+                            admin_user_id=request.user_id,
                         )
-                    except Exception as ann_err:
-                        logger.warning("reference video upload annotation failed: %s", ann_err)
-            except Exception as tr_err:
-                created = db.update_admin_uploaded_reference_video(
-                    str(created.get("id")),
-                    {
-                        "transcription_status": "failed",
-                        "transcription_error": str(tr_err)[:1000],
-                    },
-                ) or created
-        else:
-            created = db.update_admin_uploaded_reference_video(
-                str(created.get("id")),
-                {
-                    "transcription_status": "failed",
-                    "transcription_error": (
-                        "Automatic transcription is skipped for this container; "
-                        "use .mp4, .webm, or .m4v for Whisper, or attach a transcript manually."
-                    )[:1000],
-                },
-            ) or created
+                    except Exception as e:
+                        sentry_sdk.capture_exception(e)
+                        _fail_upload_job(jid, e)
 
-        preview_url = None
+                threading.Thread(
+                    target=_run_async_upload,
+                    daemon=True,
+                    name=f"refvid-{jid[:8]}",
+                ).start()
+                return (
+                    jsonify(
+                        {
+                            "status": "accepted",
+                            "job_id": jid,
+                            "poll_url": f"/v2/admin/copilot/reference-videos/upload-jobs/{jid}",
+                            "message": "Poll GET poll_url until job.stage is completed or failed.",
+                        }
+                    ),
+                    202,
+                )
+
         try:
-            preview_url = db.create_signed_url(bucket, storage_path, 3600)
-        except Exception as sign_err:
-            logger.warning("reference video upload signed URL failed: %s", sign_err)
-        return jsonify({"status": "ok", "reference_video": created, "preview_url": preview_url}), 201
+            out = run_reference_video_upload(
+                job_id=None,
+                video_bytes=video_bytes,
+                safe_name=safe_name,
+                ext=ext,
+                student_user_id=student_user_id,
+                session_id=session_id,
+                draft_id=draft_id,
+                title=title,
+                tags=tags,
+                is_universal=is_universal,
+                admin_user_id=request.user_id,
+            )
+        except Exception as e:
+            sentry_sdk.capture_exception(e)
+            return jsonify({"code": "UPLOAD_FAILED", "error": str(e)}), 500
+        return (
+            jsonify(
+                {
+                    "status": "ok",
+                    "reference_video": out["reference_video"],
+                    "preview_url": out.get("preview_url"),
+                }
+            ),
+            201,
+        )
+    except Exception as e:
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
+
+
+def _json_safe_row(row: dict | None) -> dict | None:
+    if not row:
+        return None
+    out: dict = {}
+    for k, v in row.items():
+        if hasattr(v, "isoformat") and callable(getattr(v, "isoformat", None)):
+            dt = v
+            if getattr(dt, "tzinfo", None) is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            out[k] = dt.isoformat().replace("+00:00", "Z")
+        else:
+            out[k] = v
+    return out
+
+
+@v2_bp.route("/admin/copilot/reference-videos/upload-jobs/<job_id>", methods=["GET"])
+@require_admin
+def v2_admin_copilot_reference_upload_job_status(job_id):
+    try:
+        job = db.get_copilot_reference_upload_job(job_id)
+        if not job:
+            return jsonify({"code": "JOB_NOT_FOUND", "error": "Upload job not found"}), 404
+        payload = _json_safe_row(job) or {}
+        rid = payload.get("reference_video_id")
+        ref_row = None
+        preview_url = None
+        if rid:
+            ref_row = db.get_admin_uploaded_reference_video(str(rid))
+            if ref_row:
+                storage_path = (ref_row.get("storage_path") or "").strip()
+                meta = ref_row.get("feature_metadata") if isinstance(ref_row.get("feature_metadata"), dict) else {}
+                bucket = (meta.get("bucket") or config.COACH_FEEDBACK_VIDEO_BUCKET).strip()
+                if storage_path:
+                    try:
+                        preview_url = db.create_signed_url(bucket, storage_path, 3600)
+                    except Exception:
+                        preview_url = None
+        payload["reference_video"] = _json_safe_row(ref_row) if ref_row else None
+        payload["preview_url"] = preview_url
+        return jsonify({"status": "ok", "job": payload}), 200
     except Exception as e:
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
@@ -4917,6 +4981,7 @@ def v2_admin_cohort_approve_task(profile, stage):
 
 
 @v2_bp.route("/admin/students/<user_id>/drafts/<draft_id>/approve-send", methods=["POST"])
+@v2_bp.route("/admin/copilot/students/<user_id>/drafts/<draft_id>/approve-send", methods=["POST"])
 @require_admin
 def v2_admin_student_draft_approve_send(user_id, draft_id):
     try:
@@ -5064,6 +5129,7 @@ def v2_admin_student_draft_approve_send(user_id, draft_id):
 
 
 @v2_bp.route("/admin/students/<user_id>/drafts/<draft_id>/pipeline-status", methods=["GET"])
+@v2_bp.route("/admin/copilot/students/<user_id>/drafts/<draft_id>/pipeline-status", methods=["GET"])
 @require_admin
 def v2_admin_student_draft_pipeline_status(user_id, draft_id):
     try:
@@ -5088,6 +5154,7 @@ def v2_admin_student_draft_pipeline_status(user_id, draft_id):
 
 
 @v2_bp.route("/admin/students/<user_id>/drafts/<draft_id>/feedback-video-url", methods=["GET"])
+@v2_bp.route("/admin/copilot/students/<user_id>/drafts/<draft_id>/feedback-video-url", methods=["GET"])
 @require_admin
 def v2_admin_student_draft_feedback_video_url(user_id, draft_id):
     try:

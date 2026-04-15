@@ -3973,6 +3973,50 @@ class DatabaseService:
         )
         return res.data[0] if res.data else None
 
+    def create_copilot_reference_upload_job(
+        self,
+        *,
+        created_by: Optional[str],
+        student_user_id: str,
+    ) -> Optional[Dict[str, Any]]:
+        now = datetime.now(timezone.utc).isoformat()
+        payload: Dict[str, Any] = {
+            "student_user_id": student_user_id,
+            "stage": "queued",
+            "percent": 0,
+            "message": "Queued",
+            "updated_at": now,
+        }
+        if created_by:
+            payload["created_by"] = created_by
+        res = self.client.table("copilot_reference_upload_jobs").insert(payload).execute()
+        return res.data[0] if res.data else None
+
+    def update_copilot_reference_upload_job(
+        self,
+        job_id: str,
+        fields: Dict[str, Any],
+    ) -> Optional[Dict[str, Any]]:
+        payload = dict(fields or {})
+        payload["updated_at"] = datetime.now(timezone.utc).isoformat()
+        res = (
+            self.client.table("copilot_reference_upload_jobs")
+            .update(payload)
+            .eq("id", job_id)
+            .execute()
+        )
+        return res.data[0] if res.data else None
+
+    def get_copilot_reference_upload_job(self, job_id: str) -> Optional[Dict[str, Any]]:
+        res = (
+            self.client.table("copilot_reference_upload_jobs")
+            .select("*")
+            .eq("id", job_id)
+            .limit(1)
+            .execute()
+        )
+        return res.data[0] if res.data else None
+
     def create_model_training_run(
         self,
         *,
