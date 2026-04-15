@@ -86,6 +86,12 @@ class Config:
     BYTEDANCE_API_KEY = (os.getenv("BYTEDANCE_API_KEY") or "").strip() or None
     ARTUR_BASE_AVATAR_URL = (os.getenv("ARTUR_BASE_AVATAR_URL") or "").strip() or None
 
+    # Reference video → Whisper: for .mov/.avi/.mkv, extract audio via ffmpeg (must be on PATH or FFMPEG_PATH).
+    FFMPEG_PATH = (os.getenv("FFMPEG_PATH") or "ffmpeg").strip() or "ffmpeg"
+    REFERENCE_VIDEO_FFMPEG_EXTRACT = (os.getenv("REFERENCE_VIDEO_FFMPEG_EXTRACT", "true").strip().lower() == "true")
+    # Cap extracted audio length for Whisper (API max ~25MB); first N seconds only if longer.
+    REFERENCE_VIDEO_WHISPER_MAX_AUDIO_SECONDS = int(os.getenv("REFERENCE_VIDEO_WHISPER_MAX_AUDIO_SECONDS", "3600"))
+
     @property
     def is_production(self):
         return self.ENV == "production"

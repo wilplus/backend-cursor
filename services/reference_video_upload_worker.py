@@ -16,11 +16,13 @@ import sentry_sdk
 
 from config import Config
 from services.db import db
+from services.ffmpeg_audio_extract import extract_audio_mp3_for_whisper, ffmpeg_available
 
 config = Config()
 logger = logging.getLogger(__name__)
 
-REFERENCE_VIDEO_WHISPER_EXTENSIONS = {".mp4", ".webm", ".m4v"}
+# Containers we send to Whisper as-is (API accepts these).
+REFERENCE_VIDEO_WHISPER_DIRECT_EXTENSIONS = {".mp4", ".webm", ".m4v"}
 
 
 def _value_hash(value: str | None) -> str | None:
@@ -114,25 +116,69 @@ def run_reference_video_upload(
     rid = str(created.get("id"))
     _job_progress(job_id, stage="database", percent=48, message="Metadata saved", reference_video_id=rid)
 
-    if ext in REFERENCE_VIDEO_WHISPER_EXTENSIONS:
+    whisper_bytes: bytes = video_bytes
+    whisper_filename = safe_name or "reference-video.mp4"
+    audio_source = "direct"
+
+    if ext not in REFERENCE_VIDEO_WHISPER_DIRECT_EXTENSIONS:
         _job_progress(
             job_id,
             stage="transcription",
-            percent=55,
-            message="Transcribing with Whisper (no per-second progress from API; may take 1–3 min for long files)…",
+            percent=52,
+            message="Extracting audio with ffmpeg for Whisper…",
+            reference_video_id=rid,
+        )
+        extracted = extract_audio_mp3_for_whisper(
+            video_bytes,
+            max_seconds=config.REFERENCE_VIDEO_WHISPER_MAX_AUDIO_SECONDS,
+        )
+        if not extracted:
+            err_txt = (
+                "ffmpeg is not available on this server; add it (apt.txt / image) or upload .mp4/.webm/.m4v."
+                if not ffmpeg_available()
+                else "ffmpeg could not decode audio from this file (codec missing or no audio track?)."
+            )
+            created = db.update_admin_uploaded_reference_video(
+                rid,
+                {"transcription_status": "failed", "transcription_error": err_txt[:1000]},
+            ) or created
+            _job_progress(
+                job_id,
+                stage="transcription",
+                percent=80,
+                message="Transcription skipped after audio extract failure",
+                reference_video_id=rid,
+            )
+        else:
+            whisper_bytes = extracted
+            whisper_filename = "reference-extracted-audio.mp3"
+            audio_source = "ffmpeg_mp3"
+
+    if (created.get("transcription_status") or "") != "failed":
+        _job_progress(
+            job_id,
+            stage="transcription",
+            percent=58 if audio_source == "ffmpeg_mp3" else 55,
+            message=(
+                "Transcribing with Whisper (API has no per-second progress; "
+                f"after extract, at most first {config.REFERENCE_VIDEO_WHISPER_MAX_AUDIO_SECONDS}s of audio)…"
+            ),
             reference_video_id=rid,
         )
         try:
             from services.openai_service import openai_service
 
-            tr = openai_service.transcribe_audio(BytesIO(video_bytes), safe_name or "reference-video.mp4")
+            tr = openai_service.transcribe_audio(BytesIO(whisper_bytes), whisper_filename)
             transcript_text = (tr.get("text") or "").strip()
+            fm = dict(created.get("feature_metadata") or {})
+            fm["whisper_audio_source"] = audio_source
             created = db.update_admin_uploaded_reference_video(
                 rid,
                 {
                     "transcript_text": transcript_text or None,
                     "transcription_status": "done",
                     "transcription_error": None,
+                    "feature_metadata": fm,
                 },
             ) or created
             if transcript_text:
@@ -176,24 +222,6 @@ def run_reference_video_upload(
                 message="Transcription failed; video is still saved",
                 reference_video_id=rid,
             )
-    else:
-        created = db.update_admin_uploaded_reference_video(
-            rid,
-            {
-                "transcription_status": "failed",
-                "transcription_error": (
-                    "Automatic transcription is skipped for this container; "
-                    "use .mp4, .webm, or .m4v for Whisper, or attach a transcript manually."
-                )[:1000],
-            },
-        ) or created
-        _job_progress(
-            job_id,
-            stage="transcription",
-            percent=80,
-            message="Skipped automatic transcription for this file type",
-            reference_video_id=rid,
-        )
 
     _job_progress(job_id, stage="finalize", percent=92, message="Preparing preview…", reference_video_id=rid)
     preview_url = None
