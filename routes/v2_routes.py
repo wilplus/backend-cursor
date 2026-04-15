@@ -4522,7 +4522,27 @@ def v2_admin_copilot_reference_videos_upload():
             )
         except Exception as e:
             sentry_sdk.capture_exception(e)
-            return jsonify({"code": "UPLOAD_FAILED", "error": str(e)}), 500
+            emsg = str(e)
+            emsg_l = emsg.lower()
+            if (
+                "payload too large" in emsg_l
+                or "exceeded the maximum allowed size" in emsg_l
+                or "object exceeded the maximum allowed size" in emsg_l
+            ):
+                return (
+                    jsonify(
+                        {
+                            "code": "PAYLOAD_TOO_LARGE",
+                            "error": (
+                                f"Storage bucket rejected file size. Increase Supabase bucket "
+                                f"`{config.COACH_FEEDBACK_VIDEO_BUCKET}` file size limit to at least "
+                                f"{max_video_mb}MB."
+                            ),
+                        }
+                    ),
+                    413,
+                )
+            return jsonify({"code": "UPLOAD_FAILED", "error": emsg}), 500
         return (
             jsonify(
                 {
