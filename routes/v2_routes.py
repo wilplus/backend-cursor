@@ -34,7 +34,7 @@ import random
 import mimetypes
 import os
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from urllib.parse import urlparse
 from werkzeug.utils import secure_filename
 from io import BytesIO
@@ -1723,6 +1723,46 @@ def v2_admin_get_stress_snippet(snippet_id):
         if not row:
             return jsonify({"code": "SNIPPET_NOT_FOUND", "error": "Snippet not found"}), 404
         return jsonify({"status": "ok", "snippet": _stress_snippet_payload(row)}), 200
+    except Exception as e:
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
+
+
+@v2_bp.route("/admin/stress-snippets/<snippet_id>/playback-url", methods=["GET"])
+@require_admin
+def v2_admin_stress_snippet_playback_url(snippet_id):
+    """Mint a fresh 1h signed URL for this snippet's audio, Just-In-Time.
+
+    Frontend calls this when the audio component renders so it never plays a
+    stale/expired URL from a long-lived list payload.
+    """
+    try:
+        if not _is_valid_uuid(snippet_id):
+            return jsonify({"code": "INVALID_INPUT", "error": "Invalid snippet ID"}), 400
+        row = db.v2_get_stress_snippet(snippet_id)
+        if not row:
+            return jsonify({"code": "SNIPPET_NOT_FOUND", "error": "Snippet not found"}), 404
+        storage_path = (row.get("storage_path") or "").strip()
+        if not storage_path:
+            return jsonify({"code": "SNIPPET_NO_AUDIO", "error": "Snippet has no audio file"}), 400
+        ttl_seconds = 3600
+        try:
+            playback_url = db.create_signed_url(config.AUDIO_BUCKET_NAME, storage_path, ttl_seconds)
+        except Exception as sign_err:
+            sentry_sdk.capture_exception(sign_err)
+            playback_url = _public_storage_url(config.AUDIO_BUCKET_NAME, storage_path) or None
+        if not playback_url:
+            return jsonify({"code": "SIGN_FAILED", "error": "Could not mint signed URL"}), 500
+        expires_at = (
+            datetime.now(timezone.utc) + timedelta(seconds=ttl_seconds)
+        ).isoformat().replace("+00:00", "Z")
+        return jsonify(
+            {
+                "playback_url": playback_url,
+                "expires_at": expires_at,
+                "snippet_id": snippet_id,
+            }
+        ), 200
     except Exception as e:
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
