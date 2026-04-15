@@ -940,7 +940,7 @@ def _complete_session_from_recording(
             session_id=session_id,
             coach_insight=coach_insight,
             score_for_display_100=score_for_display_100,
-            task_text=(session.get("session_task_text") or session.get("warm_up_task_text") or "").strip(),
+            task_text=(session.get("session_task_text") or "").strip(),
             context_short=(session.get("context_short") or "").strip(),
         )
     except Exception as draft_err:
@@ -1167,7 +1167,7 @@ def minimal_complete_and_notify(
                 session_id=session_id,
                 coach_insight=(latest.get("coach_insight") or "").strip(),
                 score_for_display_100=score_for_display_100,
-                task_text=(latest.get("session_task_text") or latest.get("warm_up_task_text") or "").strip(),
+                task_text=(latest.get("session_task_text") or "").strip(),
                 context_short=(latest.get("context_short") or "").strip(),
             )
         except Exception as draft_err:

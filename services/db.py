@@ -3152,8 +3152,8 @@ class DatabaseService:
             "question_1_score", "question_2_score", "question_3_score",
             "realtime_level_at_session", "realtime_step_at_session",
             "ai_task_score", "ai_scoring_justification", "coach_override_score", "coach_override_justification",
-            "session_task_id", "warm_up_task_id",
-            "session_task_text", "warm_up_task_text",
+            "session_task_id",
+            "session_task_text",
         ]
         result = None
         session_columns = [c for c in all_session_columns if c not in self._v2_sessions_missing_columns]

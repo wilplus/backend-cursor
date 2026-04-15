@@ -193,12 +193,13 @@ def _public_recording_id(session: dict):
 
 
 def _session_snap_task_id(session: dict):
-    """session_task_id; unmigrated snapshots may still use warm_up_task_id columns."""
-    return session.get("session_task_id") or session.get("warm_up_task_id")
+    """Homework task row id snapshot on v2_sessions (public.tasks)."""
+    tid = session.get("session_task_id")
+    return tid
 
 
 def _session_snap_task_text(session: dict) -> str:
-    return (session.get("session_task_text") or session.get("warm_up_task_text") or "").strip()
+    return (session.get("session_task_text") or "").strip()
 
 
 def _persist_session_task(task_row_id, text: str) -> dict:

@@ -113,7 +113,7 @@ def _session_homework_task_id(session: Optional[dict]) -> Optional[str]:
     """UUID string of the homework task row (public.tasks) from session snapshot, if any."""
     if not session:
         return None
-    tid = session.get("session_task_id") or session.get("warm_up_task_id")
+    tid = session.get("session_task_id")
     if tid is None:
         return None
     s = str(tid).strip()

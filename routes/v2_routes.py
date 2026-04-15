@@ -2462,7 +2462,6 @@ def _build_student_context_for_ai(user_id: str) -> str:
             status = s.get("status", "")
             task = (
                 s.get("session_task_text")
-                or s.get("warm_up_task_text")  # legacy preview column name on old rows
                 or s.get("selected_task_title")
                 or s.get("selected_task_id")
                 or ""
@@ -3218,7 +3217,7 @@ def _copilot_backfill_draft_row_for_user(user_id: str) -> dict:
 
     task_text = ""
     if sess:
-        task_text = (sess.get("session_task_text") or sess.get("warm_up_task_text") or "").strip()
+        task_text = (sess.get("session_task_text") or "").strip()
     if not task_text and sess and sess.get("selected_task_id"):
         try:
             t = (
