@@ -3,6 +3,7 @@ from config import Config
 import json
 import re
 import os
+import mimetypes
 import time
 import sentry_sdk
 from services.db import db
@@ -179,10 +180,12 @@ class OpenAIService:
         self._model_cache[purpose] = (now, model)
         return model
     
-    def transcribe_audio(self, audio_file, filename: str = "audio.webm"):
+    def transcribe_audio(self, audio_file, filename: str = "audio.webm", content_type: str | None = None):
         """
         Transcribe audio using Whisper-1.
         Returns transcript and duration (from Whisper response).
+
+        content_type: optional MIME for the multipart file tuple; defaults from filename (not hard-coded webm).
         """
         # Dev mode mock response (COMMENTED OUT - using real OpenAI)
         # if not config.is_production:
@@ -204,11 +207,28 @@ class OpenAIService:
             audio_file.seek(0)
             logger.info("transcribe_audio: filename=%s size=%d bytes", filename, len(audio_data))
 
+            ext = os.path.splitext(filename or "")[1].lower()
+            ct = (content_type or "").strip() or None
+            if not ct:
+                ct = mimetypes.guess_type(filename or "")[0]
+            if not ct:
+                ct = {
+                    ".webm": "audio/webm",
+                    ".wav": "audio/wav",
+                    ".mp3": "audio/mpeg",
+                    ".m4a": "audio/mp4",
+                    ".mp4": "video/mp4",
+                    ".mpeg": "audio/mpeg",
+                    ".mpga": "audio/mpeg",
+                    ".ogg": "audio/ogg",
+                    ".opus": "audio/opus",
+                }.get(ext, "application/octet-stream")
+
             # Transcribe
             # Disfluent prompt conditions Whisper to preserve filler words instead of cleaning them.
             transcript_response = self.client.audio.transcriptions.create(
                 model="whisper-1",
-                file=(filename, audio_data, "audio/webm"),
+                file=(filename or "audio.bin", audio_data, ct),
                 response_format="verbose_json",
                 prompt="Umm, let me think like, hmm... Okay, so, uh, yeah. I mean, you know, it's like, um, well..."
             )

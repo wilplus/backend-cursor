@@ -4119,6 +4119,45 @@ class DatabaseService:
         except Exception:
             return False
 
+    def get_auth_user_id_by_email(self, email: str) -> Optional[str]:
+        """Resolve Supabase auth user UUID from email (admin API list). Case-insensitive match."""
+        needle = (email or "").strip().lower()
+        if not needle or "@" not in needle:
+            return None
+        try:
+            import httpx
+
+            base = f"{config.SUPABASE_URL.rstrip('/')}/auth/v1/admin/users"
+            page = 1
+            per_page = 1000
+            while page <= 50:
+                resp = httpx.get(
+                    base,
+                    params={"per_page": per_page, "page": page},
+                    headers={
+                        "Authorization": f"Bearer {config.SUPABASE_SERVICE_ROLE_KEY}",
+                        "apikey": config.SUPABASE_SERVICE_ROLE_KEY,
+                    },
+                    timeout=15,
+                )
+                if resp.status_code != 200:
+                    return None
+                data = resp.json()
+                users = data.get("users") or (data.get("data") or {}).get("users") or []
+                if not users:
+                    return None
+                for u in users:
+                    em = (u.get("email") or "").strip().lower()
+                    if em == needle:
+                        uid = u.get("id")
+                        return str(uid).strip() if uid else None
+                if len(users) < per_page:
+                    return None
+                page += 1
+            return None
+        except Exception:
+            return None
+
     def v2_list_all_auth_user_ids(self, cap: int = 2000) -> List[str]:
         """Paginate GoTrue admin users; return ids (up to cap). Same pool as admin student list."""
         try:

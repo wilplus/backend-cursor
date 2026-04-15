@@ -95,6 +95,27 @@ _COPILOT_DRAFT_IMMUTABLE_FIELDS = {
 
 _PIPELINE_RUNNING_STATES = {"queued", "running_tts", "running_video", "uploading"}
 _REFERENCE_VIDEO_ALLOWED_EXTENSIONS = {".mp4", ".mov", ".webm", ".m4v", ".avi", ".mkv"}
+# Containers Whisper-1 accepts (see OpenAI docs); others upload OK but skip auto-transcribe.
+_REFERENCE_VIDEO_WHISPER_EXTENSIONS = {".mp4", ".webm", ".m4v"}
+
+
+def _resolve_reference_upload_user_id(form_user_id: str, fallback_admin_id: str):
+    raw = (form_user_id or "").strip()
+    if not raw:
+        try:
+            return str(uuid.UUID(str(fallback_admin_id).strip())), None
+        except (ValueError, TypeError, AttributeError):
+            return None, "user_id is required"
+    try:
+        return str(uuid.UUID(raw)), None
+    except (ValueError, TypeError, AttributeError):
+        pass
+    if "@" in raw:
+        uid = db.get_auth_user_id_by_email(raw)
+        if uid:
+            return uid, None
+        return None, "No Supabase user found for that email"
+    return None, "user_id must be a UUID or student email"
 
 
 def _is_valid_uuid(val):
@@ -4384,9 +4405,23 @@ def v2_admin_copilot_reference_videos_upload():
                 }
             ), 413
 
-        student_user_id = (request.form.get("user_id") or "").strip() or request.user_id
+        student_user_id, uid_err = _resolve_reference_upload_user_id(
+            (request.form.get("user_id") or "").strip(), request.user_id
+        )
+        if uid_err:
+            return jsonify({"code": "INVALID_USER_ID", "error": uid_err}), 400
         session_id = (request.form.get("session_id") or "").strip() or None
         draft_id = (request.form.get("draft_id") or "").strip() or None
+        if session_id:
+            try:
+                session_id = str(uuid.UUID(session_id))
+            except (ValueError, TypeError, AttributeError):
+                return jsonify({"code": "INVALID_INPUT", "error": "session_id must be a UUID"}), 400
+        if draft_id:
+            try:
+                draft_id = str(uuid.UUID(draft_id))
+            except (ValueError, TypeError, AttributeError):
+                return jsonify({"code": "INVALID_INPUT", "error": "draft_id must be a UUID"}), 400
         title = (request.form.get("title") or "").strip() or None
         tags_raw = (request.form.get("reference_tags") or request.form.get("tags") or "").strip()
         tags = [x.strip() for x in tags_raw.split(",") if x.strip()]
@@ -4422,46 +4457,63 @@ def v2_admin_copilot_reference_videos_upload():
         if not created:
             return jsonify({"code": "UPLOAD_FAILED", "error": "Could not store reference video metadata"}), 500
 
-        try:
-            from services.openai_service import openai_service
-            tr = openai_service.transcribe_audio(BytesIO(video_bytes), safe_name or "reference-video.mp4")
-            transcript_text = (tr.get("text") or "").strip()
-            created = db.update_admin_uploaded_reference_video(
-                str(created.get("id")),
-                {
-                    "transcript_text": transcript_text or None,
-                    "transcription_status": "done",
-                    "transcription_error": None,
-                },
-            ) or created
-            if transcript_text:
-                try:
-                    db.create_admin_annotation_event(
-                        user_id=student_user_id,
-                        session_id=session_id,
-                        section_type="assignment",
-                        field_name="reference_video_transcript",
-                        ai_original_text=None,
-                        coach_final_text=transcript_text[:4000],
-                        reason_chip="video_upload",
-                        custom_reason=f"reference_video_id={created.get('id')}",
-                        created_by=request.user_id,
-                        draft_id=draft_id,
-                        previous_value_hash=None,
-                        new_value_hash=_value_hash(transcript_text[:4000]),
-                    )
-                except Exception as ann_err:
-                    logger.warning("reference video upload annotation failed: %s", ann_err)
-        except Exception as tr_err:
+        if ext in _REFERENCE_VIDEO_WHISPER_EXTENSIONS:
+            try:
+                from services.openai_service import openai_service
+
+                tr = openai_service.transcribe_audio(BytesIO(video_bytes), safe_name or "reference-video.mp4")
+                transcript_text = (tr.get("text") or "").strip()
+                created = db.update_admin_uploaded_reference_video(
+                    str(created.get("id")),
+                    {
+                        "transcript_text": transcript_text or None,
+                        "transcription_status": "done",
+                        "transcription_error": None,
+                    },
+                ) or created
+                if transcript_text:
+                    try:
+                        db.create_admin_annotation_event(
+                            user_id=student_user_id,
+                            session_id=session_id,
+                            section_type="assignment",
+                            field_name="reference_video_transcript",
+                            ai_original_text=None,
+                            coach_final_text=transcript_text[:4000],
+                            reason_chip="video_upload",
+                            custom_reason=f"reference_video_id={created.get('id')}",
+                            created_by=request.user_id,
+                            draft_id=draft_id,
+                            previous_value_hash=None,
+                            new_value_hash=_value_hash(transcript_text[:4000]),
+                        )
+                    except Exception as ann_err:
+                        logger.warning("reference video upload annotation failed: %s", ann_err)
+            except Exception as tr_err:
+                created = db.update_admin_uploaded_reference_video(
+                    str(created.get("id")),
+                    {
+                        "transcription_status": "failed",
+                        "transcription_error": str(tr_err)[:1000],
+                    },
+                ) or created
+        else:
             created = db.update_admin_uploaded_reference_video(
                 str(created.get("id")),
                 {
                     "transcription_status": "failed",
-                    "transcription_error": str(tr_err)[:1000],
+                    "transcription_error": (
+                        "Automatic transcription is skipped for this container; "
+                        "use .mp4, .webm, or .m4v for Whisper, or attach a transcript manually."
+                    )[:1000],
                 },
             ) or created
 
-        preview_url = db.create_signed_url(bucket, storage_path, 3600)
+        preview_url = None
+        try:
+            preview_url = db.create_signed_url(bucket, storage_path, 3600)
+        except Exception as sign_err:
+            logger.warning("reference video upload signed URL failed: %s", sign_err)
         return jsonify({"status": "ok", "reference_video": created, "preview_url": preview_url}), 201
     except Exception as e:
         sentry_sdk.capture_exception(e)
