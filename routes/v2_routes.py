@@ -4571,7 +4571,9 @@ def v2_admin_copilot_reference_videos_upload():
                     413,
                 )
             logger.error("Reference video upload failed: %s", emsg)
-            return jsonify({"code": "UPLOAD_FAILED", "error": "Reference video upload failed"}), 500
+            return jsonify(
+                {"code": "UPLOAD_FAILED", "error": emsg[:2000] or "Reference video upload failed"}
+            ), 500
         return (
             jsonify(
                 {
@@ -4755,8 +4757,11 @@ def v2_admin_copilot_reference_videos_register_from_storage():
             )
         except Exception as e:
             sentry_sdk.capture_exception(e)
-            logger.error("register-from-storage processing failed: %s", e)
-            return jsonify({"code": "PROCESSING_FAILED", "error": "Reference video processing failed"}), 500
+            emsg = str(e)
+            logger.error("register-from-storage processing failed: %s", emsg)
+            return jsonify(
+                {"code": "PROCESSING_FAILED", "error": emsg[:2000] or "Reference video processing failed"}
+            ), 500
         return jsonify({
             "status": "ok",
             "reference_video": out["reference_video"],

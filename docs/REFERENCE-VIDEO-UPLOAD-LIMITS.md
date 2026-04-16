@@ -69,3 +69,15 @@ Unchanged: admin JWT **`Authorization: Bearer <token>`** on the upload route.
 ## Storage / database
 
 No API contract change: file bytes go to Supabase Storage; metadata row supports large files (size in `feature_metadata` only; path is a string).
+
+**Supabase bucket limit:** In Dashboard → Storage → your bucket (`COACH_FEEDBACK_VIDEO_BUCKET`, default `coach_feedback_videos`) → **file size limit** must be ≥ your largest reference file (and ≥ `MAX_REFERENCE_VIDEO_SIZE_MB`). If Storage rejects the upload, the API may return **`413`** with a message mentioning **object exceeded the maximum allowed size** — that is **Supabase**, not Railway.
+
+## What usually breaks (not “duplication”)
+
+- **Duplicate uploads** are not the model here: each file gets a **new storage path** (`…/uuid.ext`), so Postgres is not deduplicating your file away.
+- **Transcription (Whisper/ffmpeg)** runs **after** the file is in Storage and the **`admin_uploaded_reference_videos`** row exists. If transcription fails, the row should still show **`transcription_status: failed`** and the video remains in the bucket — the UI should still treat the file as “loaded” for playback; only the transcript is missing.
+- **Railway:** There is **no small hard body cap** like 50MB on the platform; a **~15 minute** request timeout applies. Huge uploads that run longer can fail with a timeout (often seen as network / `502` / closed connection), not a JSON `PAYLOAD_TOO_LARGE` from Flask.
+- **Flask / Gunicorn:** `MAX_CONTENT_LENGTH` and **`GUNICORN_TIMEOUT`** (see above). Oversize vs app config → **`413`** + `PAYLOAD_TOO_LARGE` from this API.
+- **Next.js admin BFF:** If the browser sends the **multipart file through** a Route Handler / Server Action on **Vercel** (or similar), the **hosting provider’s serverless body limit** may reject large bodies **before** Railway. Prefer **`POST /v2/admin/copilot/reference-videos/upload-url`** (signed URL) → **browser PUT directly to Supabase** → **`POST .../register-from-storage`** so the heavy bytes **never** pass through Next or Flask.
+
+API responses for failed synchronous uploads now include a detailed **`error`** string (admin-only routes) so you can see Storage vs DB vs other failures in the Network tab.

@@ -781,7 +781,7 @@ class DatabaseService:
         except Exception as e:
             logger.error("Upload failed for %s/%s: %s", bucket, path, type(e).__name__)
             sentry_sdk.capture_exception(e)
-            raise Exception(f"Failed to upload to {bucket}/{path}")
+            raise Exception(f"Failed to upload to {bucket}/{path}: {e}") from e
 
     def download_audio(self, bucket: str, path: str) -> bytes:
         """Download audio file from Supabase Storage. Used when client uploads by URL (storage_path) and backend fetches for transcription."""
@@ -802,7 +802,7 @@ class DatabaseService:
         except Exception as e:
             logger.error("Download failed for %s/%s: %s", bucket, path, type(e).__name__)
             sentry_sdk.capture_exception(e)
-            raise Exception(f"Failed to download from {bucket}/{path}")
+            raise Exception(f"Failed to download from {bucket}/{path}: {e}") from e
 
     def save_admin_notification(self, data: dict):
         """Save admin notification record"""
