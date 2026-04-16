@@ -5709,53 +5709,58 @@ def v2_admin_student_draft_approve_send(user_id, draft_id):
             return jsonify({"code": "DRAFT_NOT_FOUND", "error": "Draft not found"}), 404
         if row.get("status") == "sent":
             return jsonify({"status": "ok", "already_sent": True, "draft_id": draft_id}), 200
+        payload_for_mode = _normalize_copilot_payload(row)
+        script_mode = resolve_script_mode(payload_for_mode)
         if _video_pipeline_enabled():
-            if _is_pipeline_running(row):
+            # full_video_override already points to a coach-selected video; no render job is needed,
+            # so send immediately instead of queueing a pipeline job.
+            if script_mode != "full_video_override":
+                if _is_pipeline_running(row):
+                    return jsonify(
+                        {
+                            "status": "ok",
+                            "queued": True,
+                            "already_processing": True,
+                            "pipeline_job_id": row.get("pipeline_job_id"),
+                            "pipeline_status": row.get("pipeline_status"),
+                            "draft": _serialize_copilot_draft(row),
+                        }
+                    ), 202
+                updated, pipeline_job_id = _queue_video_pipeline_for_draft(
+                    row,
+                    user_id=user_id,
+                    actor_id=getattr(request, "user_id", None),
+                )
+                payload = _normalize_copilot_payload(updated or row)
+                ai_script = (payload.get("ai_script_draft") or row.get("ai_draft_video_script") or "").strip()
+                final_script = (payload.get("script_draft") or payload.get("video_script") or "").strip()
+                if ai_script and final_script and ai_script != final_script:
+                    try:
+                        db.create_admin_annotation_event(
+                            user_id=user_id,
+                            session_id=row.get("session_id"),
+                            section_type="assignment",
+                            field_name="script_draft",
+                            ai_original_text=ai_script,
+                            coach_final_text=final_script,
+                            reason_chip="manual_edit",
+                            custom_reason=None,
+                            created_by=request.user_id,
+                            draft_id=str(row.get("id") or "") or None,
+                            previous_value_hash=_value_hash(ai_script),
+                            new_value_hash=_value_hash(final_script),
+                        )
+                    except Exception as ann_err:
+                        logger.warning("pipeline enqueue annotation failed: %s", ann_err)
                 return jsonify(
                     {
                         "status": "ok",
                         "queued": True,
-                        "already_processing": True,
-                        "pipeline_job_id": row.get("pipeline_job_id"),
-                        "pipeline_status": row.get("pipeline_status"),
-                        "draft": _serialize_copilot_draft(row),
+                        "pipeline_job_id": pipeline_job_id,
+                        "pipeline_status": (updated or {}).get("pipeline_status") or "queued",
+                        "draft": _serialize_copilot_draft(updated or row),
                     }
                 ), 202
-            updated, pipeline_job_id = _queue_video_pipeline_for_draft(
-                row,
-                user_id=user_id,
-                actor_id=getattr(request, "user_id", None),
-            )
-            payload = _normalize_copilot_payload(updated or row)
-            ai_script = (payload.get("ai_script_draft") or row.get("ai_draft_video_script") or "").strip()
-            final_script = (payload.get("script_draft") or payload.get("video_script") or "").strip()
-            if ai_script and final_script and ai_script != final_script:
-                try:
-                    db.create_admin_annotation_event(
-                        user_id=user_id,
-                        session_id=row.get("session_id"),
-                        section_type="assignment",
-                        field_name="script_draft",
-                        ai_original_text=ai_script,
-                        coach_final_text=final_script,
-                        reason_chip="manual_edit",
-                        custom_reason=None,
-                        created_by=request.user_id,
-                        draft_id=str(row.get("id") or "") or None,
-                        previous_value_hash=_value_hash(ai_script),
-                        new_value_hash=_value_hash(final_script),
-                    )
-                except Exception as ann_err:
-                    logger.warning("pipeline enqueue annotation failed: %s", ann_err)
-            return jsonify(
-                {
-                    "status": "ok",
-                    "queued": True,
-                    "pipeline_job_id": pipeline_job_id,
-                    "pipeline_status": (updated or {}).get("pipeline_status") or "queued",
-                    "draft": _serialize_copilot_draft(updated or row),
-                }
-            ), 202
         raw_payload = row.get("draft_payload") if isinstance(row.get("draft_payload"), dict) else {}
         payload = _normalize_copilot_payload(row, raw_payload)
         video_url_raw = body.get("video_url")
