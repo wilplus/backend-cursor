@@ -26,6 +26,10 @@ from services.stress_snippet_service import (
     STRESS_SNIPPET_CLIP_SEC_DEFAULT,
     generate_stress_snippets_for_recording,
 )
+from services.charisma_snippet_service import (
+    CHARISMA_SNIPPET_CLIP_SEC_DEFAULT,
+    generate_charisma_snippets_for_recording,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -354,6 +358,23 @@ def _process_one(payload: dict):
         else:
             logger.info(
                 "recording_1_job: stress snippet auto-extract disabled by runtime_config recording_id=%s",
+                recording_id,
+            )
+        # Generate candidate charisma snippets (best-effort, non-blocking for completion).
+        if _runtime_bool("charisma_snippets_auto_extract_enabled", True):
+            try:
+                generate_charisma_snippets_for_recording(
+                    str(recording_id),
+                    source_type="student",
+                    max_snippets=8,
+                    clip_seconds=CHARISMA_SNIPPET_CLIP_SEC_DEFAULT,
+                    clear_existing=True,
+                )
+            except Exception as charisma_err:
+                logger.warning("recording_1_job: charisma snippet generation failed recording_id=%s err=%s", recording_id, charisma_err)
+        else:
+            logger.info(
+                "recording_1_job: charisma snippet auto-extract disabled by runtime_config recording_id=%s",
                 recording_id,
             )
         logger.info(

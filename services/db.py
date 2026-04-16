@@ -1365,6 +1365,163 @@ class DatabaseService:
             out.append(item)
         return out
 
+    # ------------------------------------------------------------------
+    # Charisma snippets
+    # ------------------------------------------------------------------
+
+    def v2_delete_charisma_snippets_for_recording(self, recording_id: str) -> int:
+        """Delete all charisma snippet candidates for one recording."""
+        result = (
+            self.client.table("charisma_snippets")
+            .delete()
+            .eq("recording_id", recording_id)
+            .execute()
+        )
+        return len(result.data or [])
+
+    def v2_insert_charisma_snippets(self, snippets: list[dict]) -> list[dict]:
+        """Bulk insert charisma snippet candidates."""
+        if not snippets:
+            return []
+        result = (
+            self.client.table("charisma_snippets")
+            .insert(snippets)
+            .execute()
+        )
+        return result.data or []
+
+    def v2_get_charisma_snippet(self, snippet_id: str) -> Optional[dict]:
+        """Return one charisma snippet row by id."""
+        result = (
+            self.client.table("charisma_snippets")
+            .select("*")
+            .eq("id", snippet_id)
+            .limit(1)
+            .execute()
+        )
+        return result.data[0] if result.data else None
+
+    def v2_set_charisma_snippet_label(
+        self,
+        snippet_id: str,
+        reviewer_id: str,
+        label: str,
+        notes: Optional[str],
+        reviewer_email: Optional[str] = None,
+    ) -> Optional[dict]:
+        """Set coach_label (charisma/no_charisma) for one snippet."""
+        payload = {
+            "coach_label": label,
+            "coach_label_notes": notes,
+            "labeled_by": reviewer_id,
+            "labeled_by_admin_id": reviewer_id,
+            "labeled_by_admin_email": (reviewer_email or "").strip() or None,
+            "labeled_at": datetime.now(timezone.utc).isoformat(),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+        result = (
+            self.client.table("charisma_snippets")
+            .update(payload)
+            .eq("id", snippet_id)
+            .execute()
+        )
+        return result.data[0] if result.data else None
+
+    def v2_clear_charisma_snippet_label(self, snippet_id: str) -> Optional[dict]:
+        """Remove coach label so the snippet returns to the unlabeled queue."""
+        payload = {
+            "coach_label": None,
+            "coach_label_notes": None,
+            "labeled_by": None,
+            "labeled_by_admin_id": None,
+            "labeled_by_admin_email": None,
+            "labeled_at": None,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+        result = (
+            self.client.table("charisma_snippets")
+            .update(payload)
+            .eq("id", snippet_id)
+            .execute()
+        )
+        return result.data[0] if result.data else None
+
+    def v2_merge_charisma_snippet_features(self, snippet_id: str, patch: dict) -> Optional[dict]:
+        """Shallow-merge patch into features JSONB."""
+        row = self.v2_get_charisma_snippet(snippet_id)
+        if not row:
+            return None
+        features = dict(row.get("features") or {})
+        for k, v in (patch or {}).items():
+            if v is None:
+                features.pop(k, None)
+            else:
+                features[k] = v
+        result = (
+            self.client.table("charisma_snippets")
+            .update({
+                "features": features,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            })
+            .eq("id", snippet_id)
+            .execute()
+        )
+        return result.data[0] if result.data else None
+
+    def v2_list_charisma_snippets(
+        self,
+        *,
+        source_type: Optional[str] = None,
+        recording_id: Optional[str] = None,
+        label_state: str = "all",
+        limit: int = 50,
+        offset: int = 0,
+        sort_created_desc: bool = True,
+        exclude_queue_skipped: bool = False,
+    ) -> list[dict]:
+        """List charisma snippets with optional filtering and recording metadata."""
+        query = self.client.table("charisma_snippets").select("*")
+        query = query.order("created_at", desc=sort_created_desc)
+        query = query.range(offset, max(offset + limit - 1, offset))
+        if source_type:
+            query = query.eq("source_type", source_type)
+        if recording_id:
+            query = query.eq("recording_id", recording_id)
+        if label_state == "unlabeled":
+            query = query.is_("coach_label", "null")
+        result = query.execute()
+        rows = result.data or []
+        if label_state == "labeled":
+            rows = [r for r in rows if r.get("coach_label") is not None]
+        if exclude_queue_skipped:
+            rows = [
+                r
+                for r in rows
+                if not (isinstance(r.get("features"), dict) and r.get("features", {}).get("queue_skipped") is True)
+            ]
+        if not rows:
+            return []
+        recording_ids = [r.get("recording_id") for r in rows if r.get("recording_id")]
+        recordings_map: dict[str, dict] = {}
+        if recording_ids:
+            try:
+                recs = (
+                    self.client.table("recordings")
+                    .select("id, recording_origin, source_metadata, user_id, session_v2_id, created_at, storage_path")
+                    .in_("id", recording_ids)
+                    .execute()
+                )
+                recordings_map = {str(r["id"]): r for r in (recs.data or []) if r.get("id")}
+            except Exception:
+                recordings_map = {}
+        out = []
+        for row in rows:
+            item = dict(row)
+            rid = str(item.get("recording_id")) if item.get("recording_id") else None
+            item["recording"] = recordings_map.get(rid)
+            out.append(item)
+        return out
+
     def v2_get_last_completed_session(self, user_id: str):
         """Return the most recent completed session for the user (for tutor_feedback_deadline when no active session). Includes tutor_feedback_sent_at so deadline is omitted once feedback is sent."""
         wide = "id, report_id, completed_at, created_at, tutor_feedback_sent_at, student_completion_email_sent_at, score_for_display"

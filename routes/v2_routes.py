@@ -24,6 +24,12 @@ from services.stress_snippet_service import (
     STRESS_SNIPPET_CLIP_SEC_MIN,
     generate_stress_snippets_for_recording,
 )
+from services.charisma_snippet_service import (
+    CHARISMA_SNIPPET_CLIP_SEC_DEFAULT,
+    CHARISMA_SNIPPET_CLIP_SEC_MAX,
+    CHARISMA_SNIPPET_CLIP_SEC_MIN,
+    generate_charisma_snippets_for_recording,
+)
 from services.video_url_validation import validate_video_url
 from services.tutor_video_url import parse_r2_uri, parse_storage_uri
 from services.coach_video_storage import (
@@ -59,6 +65,7 @@ config = Config()
 
 _STRESS_ALLOWED_SOURCE_TYPES = {"student", "internet"}
 _STRESS_ALLOWED_LABELS = {"stress", "no_stress"}
+_CHARISMA_ALLOWED_LABELS = {"charisma", "no_charisma"}
 _TASK_TEMPLATE_ALLOWED_PROFILES = {
     "The Overwhelmed",
     "The Stressor",
@@ -1945,6 +1952,354 @@ def v2_admin_stress_snippet_queue_unskip(snippet_id):
             },
         )
         return jsonify({"status": "ok", "snippet": _stress_snippet_payload(updated or snippet)}), 200
+    except Exception as e:
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
+
+
+# ---------- Admin: charisma snippets (binary charisma/no_charisma labeling) ----------
+
+def _charisma_snippet_payload(row: dict) -> dict:
+    storage_path = (row.get("storage_path") or "").strip()
+    audio_url = None
+    if storage_path:
+        try:
+            audio_url = db.create_signed_url(config.AUDIO_BUCKET_NAME, storage_path, config.SIGNED_URL_EXPIRY_SECONDS)
+        except Exception:
+            audio_url = _public_storage_url(config.AUDIO_BUCKET_NAME, storage_path) or None
+    payload = dict(row)
+    try:
+        sm = int(row.get("start_ms") or 0)
+    except (TypeError, ValueError):
+        sm = 0
+    try:
+        em = int(row.get("end_ms") or 0)
+    except (TypeError, ValueError):
+        em = 0
+    try:
+        dm = int(row.get("duration_ms") or 0)
+    except (TypeError, ValueError):
+        dm = 0
+    if em <= sm and dm > 0:
+        em = sm + dm
+    start_sec = round(sm / 1000.0, 3)
+    end_sec = round(em / 1000.0, 3)
+    duration_sec = max(0.0, round((em - sm) / 1000.0, 3))
+    if duration_sec <= 0 and dm > 0:
+        duration_sec = round(dm / 1000.0, 3)
+        end_sec = round(start_sec + duration_sec, 3)
+    payload["start_sec"] = start_sec
+    payload["end_sec"] = end_sec
+    payload["duration_sec"] = duration_sec
+    payload["startSec"] = start_sec
+    payload["endSec"] = end_sec
+    payload["durationSec"] = duration_sec
+    payload["audio_url"] = audio_url
+    payload["playable"] = bool(audio_url and storage_path)
+    feats = row.get("features") if isinstance(row.get("features"), dict) else {}
+    payload["queue_skipped"] = bool(feats.get("queue_skipped"))
+    return payload
+
+
+@v2_bp.route("/admin/recordings/<recording_id>/charisma-snippets/generate", methods=["POST"])
+@require_admin
+def v2_admin_generate_charisma_snippets(recording_id):
+    try:
+        if not _is_valid_uuid(recording_id):
+            return jsonify({"code": "INVALID_INPUT", "error": "Invalid recording ID"}), 400
+        recording = db.get_recording(recording_id, None)
+        if not recording:
+            return jsonify({"code": "RECORDING_NOT_FOUND", "error": "Recording not found"}), 404
+        data = request.get_json(silent=True) or {}
+        max_snippets = data.get("max_snippets", 8)
+        clip_seconds = data.get("clip_seconds", CHARISMA_SNIPPET_CLIP_SEC_DEFAULT)
+        clear_existing = data.get("clear_existing", True)
+        try:
+            max_snippets = int(max_snippets)
+        except (TypeError, ValueError):
+            return jsonify({"code": "INVALID_INPUT", "error": "max_snippets must be an integer"}), 400
+        try:
+            clip_seconds = float(clip_seconds)
+        except (TypeError, ValueError):
+            return jsonify({"code": "INVALID_INPUT", "error": "clip_seconds must be a number"}), 400
+        max_snippets = max(1, min(max_snippets, 16))
+        clip_seconds = max(
+            float(CHARISMA_SNIPPET_CLIP_SEC_MIN),
+            min(clip_seconds, float(CHARISMA_SNIPPET_CLIP_SEC_MAX)),
+        )
+        source_type = _infer_stress_source_type(recording)
+        created = generate_charisma_snippets_for_recording(
+            recording_id,
+            source_type=source_type,
+            max_snippets=max_snippets,
+            clip_seconds=clip_seconds,
+            clear_existing=bool(clear_existing),
+        )
+        return jsonify(
+            {
+                "status": "ok",
+                "recording_id": recording_id,
+                "source_type": source_type,
+                "generated_count": len(created),
+                "snippets": [_charisma_snippet_payload(r) for r in created],
+            }
+        ), 200
+    except Exception as e:
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
+
+
+@v2_bp.route("/admin/charisma-snippets", methods=["GET"])
+@require_admin
+def v2_admin_list_charisma_snippets():
+    try:
+        source_type = request.args.get("source_type", "all")
+        if source_type not in ("all", "student", "internet"):
+            return jsonify({"code": "INVALID_INPUT", "error": "source_type must be all, student, or internet"}), 400
+        label_state = request.args.get("label_state", "all")
+        if label_state not in ("all", "labeled", "unlabeled"):
+            return jsonify({"code": "INVALID_INPUT", "error": "label_state must be all, labeled, or unlabeled"}), 400
+        recording_id = request.args.get("recording_id")
+        if recording_id and not _is_valid_uuid(recording_id):
+            return jsonify({"code": "INVALID_INPUT", "error": "Invalid recording_id"}), 400
+        try:
+            limit = max(1, min(int(request.args.get("limit", 50)), 200))
+        except (TypeError, ValueError):
+            return jsonify({"code": "INVALID_INPUT", "error": "limit must be an integer"}), 400
+        try:
+            offset = max(0, int(request.args.get("offset", 0)))
+        except (TypeError, ValueError):
+            return jsonify({"code": "INVALID_INPUT", "error": "offset must be an integer"}), 400
+        sort = request.args.get("sort", "newest")
+        sort_desc = sort != "oldest"
+        exclude_skipped_raw = request.args.get("exclude_queue_skipped")
+        if exclude_skipped_raw is None:
+            exclude_queue_skipped = label_state == "unlabeled"
+        else:
+            exclude_queue_skipped = exclude_skipped_raw.lower() in ("1", "true", "yes")
+        rows = db.v2_list_charisma_snippets(
+            source_type=source_type if source_type != "all" else None,
+            recording_id=recording_id,
+            label_state=label_state,
+            limit=limit,
+            offset=offset,
+            sort_created_desc=sort_desc,
+            exclude_queue_skipped=exclude_queue_skipped,
+        )
+        return jsonify(
+            {
+                "status": "ok",
+                "source_type": source_type,
+                "label_state": label_state,
+                "limit": limit,
+                "offset": offset,
+                "count": len(rows),
+                "snippets": [_charisma_snippet_payload(r) for r in rows],
+            }
+        ), 200
+    except Exception as e:
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
+
+
+@v2_bp.route("/admin/charisma-snippets/settings", methods=["GET", "PUT"])
+@require_admin
+def v2_admin_charisma_snippets_settings():
+    runtime_key = "charisma_snippets_auto_extract_enabled"
+    try:
+        if request.method == "GET":
+            enabled = _runtime_bool(runtime_key, True)
+            raw = (db.get_runtime_config(runtime_key) or "").strip()
+            return jsonify({"status": "ok", "settings": {"auto_extract_enabled": enabled}, "runtime_key": runtime_key, "raw_value": raw or None}), 200
+        data = request.get_json(silent=True) or {}
+        if "auto_extract_enabled" not in data:
+            return jsonify({"code": "INVALID_INPUT", "error": "auto_extract_enabled is required"}), 422
+        val = data["auto_extract_enabled"]
+        if not isinstance(val, bool):
+            return jsonify({"code": "INVALID_INPUT", "error": "auto_extract_enabled must be a boolean"}), 422
+        db.set_runtime_config(runtime_key, "true" if val else "false")
+        return jsonify({"status": "ok", "settings": {"auto_extract_enabled": val}, "runtime_key": runtime_key}), 200
+    except Exception as e:
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
+
+
+@v2_bp.route("/admin/charisma-snippets/audit-sample", methods=["GET"])
+@require_admin
+def v2_admin_charisma_snippets_audit_sample():
+    try:
+        source_type = request.args.get("source_type")
+        try:
+            sample_rate = max(0.01, min(1.0, float(request.args.get("sample_rate", 0.10))))
+        except (TypeError, ValueError):
+            sample_rate = 0.10
+        try:
+            seed = int(request.args.get("seed", 0))
+        except (TypeError, ValueError):
+            seed = 0
+        rows = db.v2_list_charisma_snippets(
+            source_type=source_type if source_type in ("student", "internet") else None,
+            label_state="labeled",
+            limit=200,
+            offset=0,
+            sort_created_desc=False,
+        )
+        import random
+        rng = random.Random(seed or None)
+        k = max(1, int(len(rows) * sample_rate))
+        picked = rng.sample(rows, min(k, len(rows)))
+        return jsonify(
+            {
+                "status": "ok",
+                "source_type": source_type,
+                "sample_rate": sample_rate,
+                "seed": seed,
+                "pool_count": len(rows),
+                "count": len(picked),
+                "snippets": [_charisma_snippet_payload(r) for r in picked],
+            }
+        ), 200
+    except Exception as e:
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
+
+
+@v2_bp.route("/admin/charisma-snippets/<snippet_id>", methods=["GET"])
+@require_admin
+def v2_admin_get_charisma_snippet(snippet_id):
+    try:
+        if not _is_valid_uuid(snippet_id):
+            return jsonify({"code": "INVALID_INPUT", "error": "Invalid snippet ID"}), 400
+        row = db.v2_get_charisma_snippet(snippet_id)
+        if not row:
+            return jsonify({"code": "SNIPPET_NOT_FOUND", "error": "Snippet not found"}), 404
+        return jsonify({"status": "ok", "snippet": _charisma_snippet_payload(row)}), 200
+    except Exception as e:
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
+
+
+@v2_bp.route("/admin/charisma-snippets/<snippet_id>/playback-url", methods=["GET"])
+@require_admin
+def v2_admin_charisma_snippet_playback_url(snippet_id):
+    """Mint a fresh 1h signed URL for this snippet's audio, Just-In-Time."""
+    try:
+        if not _is_valid_uuid(snippet_id):
+            return jsonify({"code": "INVALID_INPUT", "error": "Invalid snippet ID"}), 400
+        row = db.v2_get_charisma_snippet(snippet_id)
+        if not row:
+            return jsonify({"code": "SNIPPET_NOT_FOUND", "error": "Snippet not found"}), 404
+        storage_path = (row.get("storage_path") or "").strip()
+        if not storage_path:
+            return jsonify({"code": "SNIPPET_NO_AUDIO", "error": "Snippet has no audio file"}), 400
+        ttl_seconds = 3600
+        try:
+            playback_url = db.create_signed_url(config.AUDIO_BUCKET_NAME, storage_path, ttl_seconds)
+        except Exception as sign_err:
+            sentry_sdk.capture_exception(sign_err)
+            playback_url = _public_storage_url(config.AUDIO_BUCKET_NAME, storage_path) or None
+        if not playback_url:
+            return jsonify({"code": "SIGN_FAILED", "error": "Could not mint signed URL"}), 500
+        expires_at = (
+            datetime.now(timezone.utc) + timedelta(seconds=ttl_seconds)
+        ).isoformat().replace("+00:00", "Z")
+        return jsonify({"playback_url": playback_url, "expires_at": expires_at, "snippet_id": snippet_id}), 200
+    except Exception as e:
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
+
+
+@v2_bp.route("/admin/charisma-snippets/<snippet_id>/label", methods=["PATCH", "DELETE"])
+@require_admin
+def v2_admin_label_charisma_snippet(snippet_id):
+    """Set label (PATCH), clear label (DELETE or PATCH { clear: true })."""
+    try:
+        if not _is_valid_uuid(snippet_id):
+            return jsonify({"code": "INVALID_INPUT", "error": "Invalid snippet ID"}), 400
+        snippet = db.v2_get_charisma_snippet(snippet_id)
+        if not snippet:
+            return jsonify({"code": "SNIPPET_NOT_FOUND", "error": "Snippet not found"}), 404
+        if request.method == "DELETE":
+            updated = db.v2_clear_charisma_snippet_label(snippet_id)
+            return jsonify({"status": "ok", "cleared": True, "snippet": _charisma_snippet_payload(updated or snippet)}), 200
+        data = request.get_json(silent=True) or {}
+        if data.get("clear") is True:
+            updated = db.v2_clear_charisma_snippet_label(snippet_id)
+            return jsonify({"status": "ok", "cleared": True, "snippet": _charisma_snippet_payload(updated or snippet)}), 200
+        label = data.get("label")
+        if label is None:
+            return jsonify({"code": "INVALID_INPUT", "error": "label is required (or pass clear: true)"}), 422
+        label = str(label).strip().lower()
+        if label not in _CHARISMA_ALLOWED_LABELS:
+            return jsonify({"code": "INVALID_INPUT", "error": "label must be one of: charisma, no_charisma"}), 422
+        notes = data.get("notes")
+        if notes is not None and not isinstance(notes, str):
+            return jsonify({"code": "INVALID_INPUT", "error": "notes must be a string or null"}), 422
+        cleaned_notes = notes.strip() if isinstance(notes, str) else None
+        if label == "charisma" and not cleaned_notes:
+            return jsonify({"code": "INVALID_INPUT", "error": "notes are required when label=charisma"}), 422
+        if isinstance(cleaned_notes, str) and len(cleaned_notes) > 2000:
+            return jsonify({"code": "INVALID_INPUT", "error": "notes must be <= 2000 chars"}), 422
+        reviewer_email = (getattr(request, "token_payload", {}) or {}).get("email")
+        if not reviewer_email:
+            reviewer_email = db.get_user_email_from_auth(str(request.user_id))
+        updated = db.v2_set_charisma_snippet_label(
+            snippet_id,
+            reviewer_id=str(request.user_id),
+            label=label,
+            notes=cleaned_notes,
+            reviewer_email=reviewer_email,
+        )
+        return jsonify({"status": "ok", "snippet": _charisma_snippet_payload(updated or snippet)}), 200
+    except Exception as e:
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
+
+
+@v2_bp.route("/admin/charisma-snippets/<snippet_id>/queue-skip", methods=["POST"])
+@require_admin
+def v2_admin_charisma_snippet_queue_skip(snippet_id):
+    """Defer this clip in the unlabeled queue."""
+    try:
+        if not _is_valid_uuid(snippet_id):
+            return jsonify({"code": "INVALID_INPUT", "error": "Invalid snippet ID"}), 400
+        snippet = db.v2_get_charisma_snippet(snippet_id)
+        if not snippet:
+            return jsonify({"code": "SNIPPET_NOT_FOUND", "error": "Snippet not found"}), 404
+        now = datetime.now(timezone.utc).isoformat()
+        updated = db.v2_merge_charisma_snippet_features(
+            snippet_id,
+            {
+                "queue_skipped": True,
+                "queue_skipped_at": now,
+                "queue_skipped_by": str(request.user_id),
+            },
+        )
+        return jsonify({"status": "ok", "snippet": _charisma_snippet_payload(updated or snippet)}), 200
+    except Exception as e:
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
+
+
+@v2_bp.route("/admin/charisma-snippets/<snippet_id>/queue-unskip", methods=["POST"])
+@require_admin
+def v2_admin_charisma_snippet_queue_unskip(snippet_id):
+    """Restore a deferred clip to the unlabeled queue."""
+    try:
+        if not _is_valid_uuid(snippet_id):
+            return jsonify({"code": "INVALID_INPUT", "error": "Invalid snippet ID"}), 400
+        snippet = db.v2_get_charisma_snippet(snippet_id)
+        if not snippet:
+            return jsonify({"code": "SNIPPET_NOT_FOUND", "error": "Snippet not found"}), 404
+        updated = db.v2_merge_charisma_snippet_features(
+            snippet_id,
+            {
+                "queue_skipped": None,
+                "queue_skipped_at": None,
+                "queue_skipped_by": None,
+            },
+        )
+        return jsonify({"status": "ok", "snippet": _charisma_snippet_payload(updated or snippet)}), 200
     except Exception as e:
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
