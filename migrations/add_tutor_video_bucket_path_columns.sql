@@ -1,35 +1,14 @@
--- Optional bucket + object path for tutor video when URL alone is not playable (e.g. only internal refs).
--- Run in Supabase SQL Editor. Idempotent.
+-- Tutor video from Supabase Storage (bucket + path). Run once in Supabase SQL Editor.
+-- Fixes: 42703 column v2_student_overrides.pending_tutor_video_bucket does not exist
+-- After running: Dashboard → Settings → API → Reload schema (if PostgREST cache is stale).
 
-DO $$ BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM information_schema.columns
-    WHERE table_schema = 'public' AND table_name = 'v2_student_overrides' AND column_name = 'pending_tutor_video_bucket'
-  ) THEN
-    ALTER TABLE public.v2_student_overrides ADD COLUMN pending_tutor_video_bucket TEXT;
-  END IF;
-  IF NOT EXISTS (
-    SELECT 1 FROM information_schema.columns
-    WHERE table_schema = 'public' AND table_name = 'v2_student_overrides' AND column_name = 'pending_tutor_video_storage_path'
-  ) THEN
-    ALTER TABLE public.v2_student_overrides ADD COLUMN pending_tutor_video_storage_path TEXT;
-  END IF;
-END $$;
+ALTER TABLE public.v2_student_overrides
+  ADD COLUMN IF NOT EXISTS pending_tutor_video_bucket TEXT,
+  ADD COLUMN IF NOT EXISTS pending_tutor_video_storage_path TEXT;
 
-DO $$ BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM information_schema.columns
-    WHERE table_schema = 'public' AND table_name = 'v2_sessions' AND column_name = 'tutor_video_bucket'
-  ) THEN
-    ALTER TABLE public.v2_sessions ADD COLUMN tutor_video_bucket TEXT;
-  END IF;
-  IF NOT EXISTS (
-    SELECT 1 FROM information_schema.columns
-    WHERE table_schema = 'public' AND table_name = 'v2_sessions' AND column_name = 'tutor_video_storage_path'
-  ) THEN
-    ALTER TABLE public.v2_sessions ADD COLUMN tutor_video_storage_path TEXT;
-  END IF;
-END $$;
+ALTER TABLE public.v2_sessions
+  ADD COLUMN IF NOT EXISTS tutor_video_bucket TEXT,
+  ADD COLUMN IF NOT EXISTS tutor_video_storage_path TEXT;
 
 COMMENT ON COLUMN public.v2_student_overrides.pending_tutor_video_bucket IS 'Supabase Storage bucket for pending coach video (optional if pending_tutor_video_url is storage:// or https).';
 COMMENT ON COLUMN public.v2_student_overrides.pending_tutor_video_storage_path IS 'Object path within bucket for pending coach video.';
