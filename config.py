@@ -1,7 +1,27 @@
 import os
+from urllib.parse import urlparse
+
 from dotenv import load_dotenv
 
 load_dotenv()
+
+
+def _merge_cors_origins() -> list:
+    """Comma-separated CORS_ORIGINS plus FRONTEND_URL origin (so admin browsers can poll the API when only FRONTEND_URL is set)."""
+    raw = os.getenv("CORS_ORIGINS", "http://localhost:3000")
+    origins = [o.strip().rstrip("/") for o in raw.split(",") if o.strip()]
+    fe = (os.getenv("FRONTEND_URL") or "").strip()
+    if fe:
+        try:
+            p = urlparse(fe)
+            if p.scheme and p.netloc:
+                origin = f"{p.scheme}://{p.netloc}".rstrip("/")
+                if origin not in origins:
+                    origins.append(origin)
+        except Exception:
+            pass
+    return origins or ["http://localhost:3000"]
+
 
 class Config:
     ENV = os.getenv("ENV", "development")
@@ -26,8 +46,8 @@ class Config:
     # Sentry
     SENTRY_DSN = os.getenv("SENTRY_DSN")
     
-    # CORS
-    CORS_ORIGINS = os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",")
+    # CORS (browser admin UI → backend; include production app origin or set CORS_ORIGINS explicitly)
+    CORS_ORIGINS = _merge_cors_origins()
     
     # Audio limits
     MAX_AUDIO_SIZE_MB = 25
