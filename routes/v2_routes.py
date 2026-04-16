@@ -25,7 +25,17 @@ from services.stress_snippet_service import (
     generate_stress_snippets_for_recording,
 )
 from services.video_url_validation import validate_video_url
-from services.tutor_video_url import parse_storage_uri
+from services.tutor_video_url import parse_r2_uri, parse_storage_uri
+from services.coach_video_storage import (
+    coach_media_public_url,
+    coach_videos_use_r2,
+    guess_video_content_type,
+    presigned_get_coach_object,
+    presigned_put_coach_object,
+    put_coach_object_bytes,
+    get_coach_object_bytes,
+    r2_bucket_name,
+)
 import logging
 import sentry_sdk
 import json
@@ -619,7 +629,7 @@ def _deliver_homework_assignment_core(
         pending_uri = f"storage://{vb}/{sp}"
         if not email_link:
             try:
-                email_link = db.create_signed_url(vb, sp, 48 * 3600)
+                email_link = presigned_get_coach_object(vb, sp, 48 * 3600, supabase_db=db)
             except Exception:
                 email_link = None
     elif vu and vu.startswith("storage://"):
@@ -627,7 +637,15 @@ def _deliver_homework_assignment_core(
         parsed = parse_storage_uri(vu)
         if parsed and not email_link:
             try:
-                email_link = db.create_signed_url(parsed[0], parsed[1], 48 * 3600)
+                email_link = presigned_get_coach_object(parsed[0], parsed[1], 48 * 3600, supabase_db=db)
+            except Exception:
+                email_link = None
+    elif vu and vu.startswith("r2://"):
+        pending_uri = vu
+        parsed = parse_r2_uri(vu)
+        if parsed and not email_link:
+            try:
+                email_link = presigned_get_coach_object(parsed[0], parsed[1], 48 * 3600, supabase_db=db)
             except Exception:
                 email_link = None
     else:
@@ -672,7 +690,7 @@ def _deliver_homework_assignment_core(
 @v2_bp.route("/admin/students/<user_id>/send-assignment", methods=["POST"])
 @require_admin
 def v2_admin_send_assignment(user_id):
-    """Send homework email to the student. Body optional: video_url (https or storage://bucket/path), video_bucket + video_storage_path, video_description. Requires student email in Supabase Auth."""
+    """Send homework email to the student. Body optional: video_url (https, storage://, r2://), video_bucket + video_storage_path, video_description. Requires student email in Supabase Auth."""
     try:
         from config import Config
         config = Config()
@@ -683,6 +701,8 @@ def v2_admin_send_assignment(user_id):
             s = str(raw_vu).strip()
             if s.startswith("storage://"):
                 video_url = s if parse_storage_uri(s) else None
+            elif s.startswith("r2://"):
+                video_url = s if parse_r2_uri(s) else None
             else:
                 video_url = validate_video_url(raw_vu)
         video_bucket = (body.get("video_bucket") or "").strip() or None
@@ -691,7 +711,7 @@ def v2_admin_send_assignment(user_id):
             return jsonify(
                 {
                     "code": "INVALID_VIDEO_URL",
-                    "error": "video_url must be https URL or storage://bucket/path, or pass video_bucket + video_storage_path",
+                    "error": "video_url must be https URL, storage://bucket/path, r2://bucket/key, or pass video_bucket + video_storage_path",
                 }
             ), 400
         video_description = (body.get("video_description") or "").strip() if body.get("video_description") is not None else None
@@ -2841,7 +2861,7 @@ def _signed_feedback_video_url(storage_path: str, expires_in: int | None = None)
     if not storage_path:
         return None
     ttl = int(expires_in or (48 * 3600))
-    return db.create_signed_url(config.COACH_FEEDBACK_VIDEO_BUCKET, storage_path, ttl)
+    return presigned_get_coach_object(config.COACH_FEEDBACK_VIDEO_BUCKET, storage_path, ttl, supabase_db=db)
 
 
 def _storage_uri(bucket: str, path: str) -> str:
@@ -4386,7 +4406,9 @@ def v2_admin_copilot_reference_videos_list():
                 meta = row.get("feature_metadata") if isinstance(row.get("feature_metadata"), dict) else {}
                 bucket = (meta.get("bucket") or config.COACH_FEEDBACK_VIDEO_BUCKET).strip()
                 try:
-                    row["preview_url"] = db.create_signed_url(bucket, storage_path, 3600) if storage_path else None
+                    row["preview_url"] = (
+                        presigned_get_coach_object(bucket, storage_path, 3600, supabase_db=db) if storage_path else None
+                    )
                 except Exception:
                     row["preview_url"] = None
         return jsonify({"status": "ok", "items": rows, "limit": limit, "offset": offset}), 200
@@ -4593,8 +4615,9 @@ def v2_admin_copilot_reference_videos_upload():
 @v2_bp.route("/admin/copilot/reference-videos/upload-url", methods=["POST"])
 @require_admin
 def v2_admin_copilot_reference_videos_upload_url():
-    """Mint a signed Supabase Storage upload URL so the frontend can upload
-    large reference videos directly (bypasses Railway's body-size limit)."""
+    """Mint a signed upload URL (Cloudflare R2 presigned PUT if configured, else Supabase).
+
+    Client must upload raw bytes: PUT upload_url with body=file and Content-Type matching upload_headers."""
     try:
         body = request.get_json(silent=True) or {}
         filename = (body.get("filename") or "").strip()
@@ -4608,17 +4631,38 @@ def v2_admin_copilot_reference_videos_upload_url():
                 "error": "Supported formats: .mp4, .mov, .webm, .m4v, .avi, .mkv",
             }), 400
 
-        bucket = config.COACH_FEEDBACK_VIDEO_BUCKET
+        bucket = r2_bucket_name() if coach_videos_use_r2() else config.COACH_FEEDBACK_VIDEO_BUCKET
         now = datetime.now(timezone.utc)
         ref_id = uuid.uuid4().hex
         storage_path = f"copilot/reference_videos/{now:%Y/%m}/{ref_id}{ext}"
+        content_type = (body.get("content_type") or "").strip() or guess_video_content_type(safe_name)
+
+        if coach_videos_use_r2():
+            try:
+                put_url = presigned_put_coach_object(bucket, storage_path, content_type, expires_in=3600)
+            except Exception as ex:
+                logger.error("reference-videos/upload-url R2 presign failed: %s", ex)
+                return jsonify({"code": "SIGNED_URL_FAILED", "error": "Could not create R2 signed upload URL"}), 500
+            resp: dict = {
+                "status": "ok",
+                "storage_provider": "r2",
+                "upload_method": "PUT",
+                "bucket": bucket,
+                "storage_path": storage_path,
+                "upload_url": put_url,
+                "upload_headers": {"Content-Type": content_type},
+                "file_url": coach_media_public_url(storage_path),
+                "signed_url_available": True,
+            }
+            return jsonify(resp), 200
 
         upload_info = db.create_signed_upload_url(bucket, storage_path)
         if not isinstance(upload_info, dict) or not upload_info.get("signed_url"):
             return jsonify({"code": "SIGNED_URL_FAILED", "error": "Could not create signed upload URL"}), 500
 
-        resp: dict = {
+        resp = {
             "status": "ok",
+            "storage_provider": "supabase",
             "bucket": bucket,
             "storage_path": storage_path,
             "upload_url": upload_info["signed_url"],
@@ -4636,12 +4680,14 @@ def v2_admin_copilot_reference_videos_upload_url():
 @v2_bp.route("/admin/copilot/reference-videos/register-from-storage", methods=["POST"])
 @require_admin
 def v2_admin_copilot_reference_videos_register_from_storage():
-    """After the frontend uploads directly to Supabase Storage via a signed URL,
+    """After direct-to-storage upload (Supabase signed URL or R2 presigned PUT),
     call this endpoint to create the DB record and trigger Whisper transcription."""
     try:
         body = request.get_json(silent=True) or {}
         storage_path = (body.get("storage_path") or "").strip()
         bucket = (body.get("bucket") or config.COACH_FEEDBACK_VIDEO_BUCKET).strip()
+        sp_raw = (body.get("storage_provider") or "").strip().lower()
+        storage_provider = sp_raw if sp_raw in ("r2", "supabase") else ("r2" if coach_videos_use_r2() else "supabase")
         if not storage_path:
             return jsonify({"code": "INVALID_INPUT", "error": "storage_path is required"}), 400
 
@@ -4679,7 +4725,10 @@ def v2_admin_copilot_reference_videos_register_from_storage():
 
         # Download from storage to get bytes for Whisper transcription
         try:
-            video_bytes = db.download_audio(bucket, storage_path)
+            if storage_provider == "r2":
+                video_bytes = get_coach_object_bytes(bucket, storage_path)
+            else:
+                video_bytes = db.download_audio(bucket, storage_path)
         except Exception as dl_err:
             logger.error("register-from-storage: download failed %s/%s: %s", bucket, storage_path, dl_err)
             return jsonify({"code": "STORAGE_DOWNLOAD_FAILED", "error": "Could not download the uploaded file from storage"}), 400
@@ -4807,7 +4856,7 @@ def v2_admin_copilot_reference_upload_job_status(job_id):
                 bucket = (meta.get("bucket") or config.COACH_FEEDBACK_VIDEO_BUCKET).strip()
                 if storage_path:
                     try:
-                        preview_url = db.create_signed_url(bucket, storage_path, 3600)
+                        preview_url = presigned_get_coach_object(bucket, storage_path, 3600, supabase_db=db)
                     except Exception:
                         preview_url = None
         payload["reference_video"] = _json_safe_row(ref_row) if ref_row else None
@@ -4836,7 +4885,9 @@ def v2_admin_copilot_reference_video_playback_url(reference_video_id):
         except (TypeError, ValueError):
             expires_in = 48 * 3600
         expires_in = max(60, min(172800, expires_in))
-        signed_url = db.create_signed_url(bucket, storage_path, expires_in)
+        signed_url = presigned_get_coach_object(bucket, storage_path, expires_in, supabase_db=db)
+        if not signed_url:
+            return jsonify({"code": "SIGNED_URL_FAILED", "error": "Could not create playback URL"}), 500
         return jsonify(
             {
                 "status": "ok",
@@ -4868,7 +4919,11 @@ def v2_admin_copilot_attach_reference_video(user_id, draft_id):
             return jsonify({"code": "REFERENCE_VIDEO_NOT_FOUND", "error": "Reference video not found"}), 404
         meta = ref.get("feature_metadata") if isinstance(ref.get("feature_metadata"), dict) else {}
         bucket = (meta.get("bucket") or config.COACH_FEEDBACK_VIDEO_BUCKET).strip()
-        storage_uri = _storage_uri(bucket, str(ref.get("storage_path") or "").strip())
+        path_clean = str(ref.get("storage_path") or "").strip().lstrip("/")
+        if str(meta.get("storage_provider") or "").strip().lower() == "r2" and path_clean:
+            storage_uri = f"r2://{bucket}/{path_clean}"
+        else:
+            storage_uri = _storage_uri(bucket, path_clean)
 
         payload = _normalize_copilot_payload(row)
         payload["script_mode"] = "full_video_override"
@@ -5047,7 +5102,14 @@ def v2_admin_copilot_student_send(user_id):
         video_url_raw = body.get("video_url")
         if video_url_raw is None or (isinstance(video_url_raw, str) and not str(video_url_raw).strip()):
             video_url_raw = payload.get("video_url")
-        video_url = validate_video_url(video_url_raw) if video_url_raw is not None and str(video_url_raw).strip() else None
+        video_url = None
+        if video_url_raw is not None and str(video_url_raw).strip():
+            s2 = str(video_url_raw).strip()
+            video_url = validate_video_url(video_url_raw)
+            if video_url is None and s2.startswith("storage://") and parse_storage_uri(s2):
+                video_url = s2
+            if video_url is None and s2.startswith("r2://") and parse_r2_uri(s2):
+                video_url = s2
         if video_url_raw is not None and str(video_url_raw).strip() and video_url is None:
             return jsonify({"code": "INVALID_VIDEO_URL", "error": "video_url must be a valid URL (http/https, max 2048 chars)"}), 400
         # Same fallback as approve-send: when no plain video_url is set, use the reference-video
@@ -5059,7 +5121,9 @@ def v2_admin_copilot_student_send(user_id):
             override_storage = payload.get("full_override_video_storage_path")
             if isinstance(override_storage, str):
                 s_override = override_storage.strip()
-                if s_override.startswith("storage://"):
+                if s_override.startswith("r2://") and parse_r2_uri(s_override):
+                    video_url = s_override
+                elif s_override.startswith("storage://"):
                     parsed_override = parse_storage_uri(s_override)
                     if parsed_override:
                         video_bucket_override, video_storage_path_override = parsed_override
@@ -5301,7 +5365,14 @@ def v2_admin_student_draft_approve_send(user_id, draft_id):
         video_url_raw = body.get("video_url")
         if video_url_raw is None or (isinstance(video_url_raw, str) and not str(video_url_raw).strip()):
             video_url_raw = payload.get("video_url")
-        video_url = validate_video_url(video_url_raw) if video_url_raw is not None and str(video_url_raw).strip() else None
+        video_url = None
+        if video_url_raw is not None and str(video_url_raw).strip():
+            s2 = str(video_url_raw).strip()
+            video_url = validate_video_url(video_url_raw)
+            if video_url is None and s2.startswith("storage://") and parse_storage_uri(s2):
+                video_url = s2
+            if video_url is None and s2.startswith("r2://") and parse_r2_uri(s2):
+                video_url = s2
         if video_url_raw is not None and str(video_url_raw).strip() and video_url is None:
             return jsonify({"code": "INVALID_VIDEO_URL", "error": "video_url must be a valid URL (http/https, max 2048 chars)"}), 400
         # If no plain video_url was set, fall back to the reference-video the coach attached from
@@ -5318,7 +5389,9 @@ def v2_admin_student_draft_approve_send(user_id, draft_id):
             override_storage = payload.get("full_override_video_storage_path")
             if isinstance(override_storage, str):
                 s_override = override_storage.strip()
-                if s_override.startswith("storage://"):
+                if s_override.startswith("r2://") and parse_r2_uri(s_override):
+                    video_url = s_override
+                elif s_override.startswith("storage://"):
                     parsed_override = parse_storage_uri(s_override)
                     if parsed_override:
                         video_bucket_override, video_storage_path_override = parsed_override
@@ -5569,7 +5642,7 @@ def v2_admin_internal_copilot_pipeline_process(draft_id):
             error=None,
         )
         storage_path = build_feedback_video_storage_path(str(row.get("user_id") or ""), row.get("session_id"))
-        db.upload_audio(config.COACH_FEEDBACK_VIDEO_BUCKET, storage_path, video_bytes, "video/mp4")
+        put_coach_object_bytes(config.COACH_FEEDBACK_VIDEO_BUCKET, storage_path, video_bytes, "video/mp4")
 
         updated, email_result, task_sync = _finalize_pipeline_delivery_for_row(
             row=row,
@@ -5583,9 +5656,13 @@ def v2_admin_internal_copilot_pipeline_process(draft_id):
                 user_id=str(row.get("user_id") or ""),
                 session_id=row.get("session_id"),
                 storage_path=storage_path,
-                source_video_url=payload.get("full_override_video_url"),
+                source_video_url=payload.get("full_override_video_url") or coach_media_public_url(storage_path),
                 transcript_text=payload.get("reference_transcript_text"),
-                feature_metadata={"script_manifest": script_manifest or {}},
+                feature_metadata={
+                    "script_manifest": script_manifest or {},
+                    "storage_provider": "r2" if coach_videos_use_r2() else "supabase",
+                    "bucket": r2_bucket_name() if coach_videos_use_r2() else config.COACH_FEEDBACK_VIDEO_BUCKET,
+                },
                 tags=parse_reference_tags(payload),
                 is_universal=parse_bool(payload.get("is_universal_video"), False),
                 created_by=None,

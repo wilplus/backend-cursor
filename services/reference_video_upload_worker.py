@@ -15,6 +15,13 @@ from typing import Any, Dict, List, Optional
 import sentry_sdk
 
 from config import Config
+from services.coach_video_storage import (
+    coach_media_public_url,
+    coach_videos_use_r2,
+    presigned_get_coach_object,
+    put_coach_object_bytes,
+    r2_bucket_name,
+)
 from services.db import db
 from services.ffmpeg_audio_extract import extract_audio_mp3_for_whisper, ffmpeg_available
 
@@ -82,11 +89,12 @@ def run_reference_video_upload(
     Returns {"reference_video": dict, "preview_url": str | None}.
     Raises on hard failures (storage/DB insert).
 
-    When *existing_storage_path* is set the file is already in Supabase
-    Storage (uploaded via signed URL) — skip the upload step.
+    When *existing_storage_path* is set the file is already in object storage
+    (Supabase signed upload or R2 presigned PUT) — skip the upload step.
     """
     bucket = (existing_bucket or "").strip() or config.COACH_FEEDBACK_VIDEO_BUCKET
     content_type = mimetypes.guess_type(safe_name)[0] or "video/mp4"
+    meta_bucket = r2_bucket_name() if coach_videos_use_r2() else bucket
 
     if existing_storage_path:
         storage_path = existing_storage_path
@@ -96,7 +104,9 @@ def run_reference_video_upload(
         ref_storage_id = str(uuid.uuid4())
         now = datetime.now(timezone.utc)
         storage_path = f"copilot/reference_videos/{now:%Y/%m}/{ref_storage_id}{ext}"
-        db.upload_audio(bucket, storage_path, video_bytes, content_type)
+        put_coach_object_bytes(bucket, storage_path, video_bytes, content_type)
+
+    stable_public = coach_media_public_url(storage_path) if coach_videos_use_r2() else None
 
     _job_progress(job_id, stage="database", percent=38, message="Saving database record…")
     created = db.create_admin_uploaded_reference_video(
@@ -104,10 +114,11 @@ def run_reference_video_upload(
         user_id=student_user_id,
         session_id=session_id,
         storage_path=storage_path,
-        source_video_url=None,
+        source_video_url=stable_public,
         transcript_text=None,
         feature_metadata={
-            "bucket": bucket,
+            "bucket": meta_bucket,
+            "storage_provider": "r2" if coach_videos_use_r2() else "supabase",
             "content_type": content_type,
             "size_bytes": len(video_bytes),
             "original_filename": safe_name,
@@ -236,7 +247,7 @@ def run_reference_video_upload(
     _job_progress(job_id, stage="finalize", percent=92, message="Preparing preview…", reference_video_id=rid)
     preview_url = None
     try:
-        preview_url = db.create_signed_url(bucket, storage_path, 3600)
+        preview_url = presigned_get_coach_object(bucket, storage_path, 3600, supabase_db=db)
     except Exception as sign_err:
         logger.warning("reference video signed URL failed: %s", sign_err)
 

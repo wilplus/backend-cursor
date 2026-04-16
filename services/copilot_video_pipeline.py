@@ -121,6 +121,15 @@ def fetch_override_video_bytes(script_manifest: Dict[str, Any]) -> bytes:
         override_storage_path = str(sections.get("override_video_storage_path") or "").strip()
         if not override_storage_path:
             raise ValueError("full_video_override requires sections.override_video_url or sections.override_video_storage_path")
+        if override_storage_path.startswith("r2://"):
+            from services.tutor_video_url import parse_r2_uri
+            from services.coach_video_storage import get_coach_object_bytes
+
+            pr = parse_r2_uri(override_storage_path)
+            if not pr:
+                raise ValueError("Invalid r2 URI for override video")
+            b, path = pr
+            return get_coach_object_bytes(b, path)
         bucket = config.COACH_FEEDBACK_VIDEO_BUCKET
         path = override_storage_path
         if override_storage_path.startswith("storage://"):

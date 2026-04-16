@@ -14,6 +14,12 @@ from urllib.parse import unquote, urlparse
 
 from config import Config
 
+from services.coach_video_storage import (
+    coach_media_public_url,
+    coach_videos_use_r2,
+    presigned_get_coach_object,
+)
+
 config = Config()
 
 
@@ -27,6 +33,22 @@ def _trim(v: Any) -> Optional[str]:
 def parse_storage_uri(uri: str) -> Optional[Tuple[str, str]]:
     text = (uri or "").strip()
     prefix = "storage://"
+    if not text.startswith(prefix):
+        return None
+    rest = text[len(prefix) :]
+    parts = rest.split("/", 1)
+    if len(parts) != 2:
+        return None
+    bucket = parts[0].strip()
+    path = parts[1].strip()
+    if not bucket or not path:
+        return None
+    return bucket, path
+
+
+def parse_r2_uri(uri: str) -> Optional[Tuple[str, str]]:
+    text = (uri or "").strip()
+    prefix = "r2://"
     if not text.startswith(prefix):
         return None
     rest = text[len(prefix) :]
@@ -124,11 +146,32 @@ def resolve_tutor_video_playable_url(
                 ttl = 86400
             ttl = max(60, min(604800, ttl))
             try:
-                signed = db.create_signed_url(bucket, path, ttl)
-                return signed, bucket, path
+                signed = presigned_get_coach_object(bucket, path, ttl, supabase_db=db)
+                if signed:
+                    return signed, bucket, path
             except Exception:
                 pass
         return direct, b_meta, p_meta
+
+    if direct and direct.startswith("r2://"):
+        parsed = parse_r2_uri(direct)
+        if parsed:
+            bucket, path = parsed
+            try:
+                ttl = int(os.getenv("TUTOR_VIDEO_SIGNED_URL_TTL_SEC", "86400"))
+            except (TypeError, ValueError):
+                ttl = 86400
+            ttl = max(60, min(604800, ttl))
+            try:
+                if coach_videos_use_r2():
+                    signed = presigned_get_coach_object(bucket, path, ttl, supabase_db=db)
+                else:
+                    signed = None
+                if signed:
+                    return signed, bucket, path
+            except Exception:
+                return None, bucket, path
+        return None, b_meta, p_meta
 
     if direct and direct.startswith("storage://"):
         parsed = parse_storage_uri(direct)
@@ -140,8 +183,9 @@ def resolve_tutor_video_playable_url(
                 ttl = 86400
             ttl = max(60, min(604800, ttl))
             try:
-                signed = db.create_signed_url(bucket, path, ttl)
-                return signed, bucket, path
+                signed = presigned_get_coach_object(bucket, path, ttl, supabase_db=db)
+                if signed:
+                    return signed, bucket, path
             except Exception:
                 return None, bucket, path
         return None, b_meta, p_meta
@@ -155,7 +199,14 @@ def resolve_tutor_video_playable_url(
 
     is_public = os.getenv("HOMEWORK_VIDEO_BUCKET_PUBLIC", "false").strip().lower() == "true"
     if is_public:
-        return _public_object_url(bucket, path), bucket, path
+        if coach_videos_use_r2():
+            pub = coach_media_public_url(path)
+            if pub:
+                return pub, bucket, path
+        else:
+            supa_pub = _public_object_url(bucket, path)
+            if supa_pub:
+                return supa_pub, bucket, path
 
     try:
         ttl = int(os.getenv("TUTOR_VIDEO_SIGNED_URL_TTL_SEC", "86400"))
@@ -163,7 +214,9 @@ def resolve_tutor_video_playable_url(
         ttl = 86400
     ttl = max(60, min(604800, ttl))
     try:
-        signed = db.create_signed_url(bucket, path.lstrip("/"), ttl)
-        return signed, bucket, path.lstrip("/")
+        signed = presigned_get_coach_object(bucket, path.lstrip("/"), ttl, supabase_db=db)
+        if signed:
+            return signed, bucket, path.lstrip("/")
     except Exception:
-        return None, bucket, path.lstrip("/")
+        pass
+    return None, bucket, path.lstrip("/")

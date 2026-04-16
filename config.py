@@ -59,6 +59,14 @@ class Config:
     AUDIO_BUCKET_NAME = "audio_recordings"
     SIGNED_URL_EXPIRY_SECONDS = 3600
     COACH_FEEDBACK_VIDEO_BUCKET = (os.getenv("COACH_FEEDBACK_VIDEO_BUCKET") or "coach_feedback_videos").strip() or "coach_feedback_videos"
+    # Cloudflare R2 (S3 API) for coach/reference/feedback videos — set all four to use R2 instead of Supabase Storage.
+    R2_ACCOUNT_ID = (os.getenv("R2_ACCOUNT_ID") or "").strip()
+    R2_ACCESS_KEY_ID = (os.getenv("R2_ACCESS_KEY_ID") or "").strip()
+    R2_SECRET_ACCESS_KEY = (os.getenv("R2_SECRET_ACCESS_KEY") or "").strip()
+    # Optional; defaults to COACH_FEEDBACK_VIDEO_BUCKET (e.g. coach-feedback-videos).
+    R2_BUCKET_NAME = (os.getenv("R2_BUCKET_NAME") or "").strip()
+    # Optional public or custom domain base for stable <video src> URLs, no trailing slash (e.g. https://videos.example.com).
+    R2_PUBLIC_BASE_URL = (os.getenv("R2_PUBLIC_BASE_URL") or "").strip()
     
     # Frontend URL (for email links)
     FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")

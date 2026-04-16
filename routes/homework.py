@@ -1601,7 +1601,11 @@ def homework_feedback_video_url():
         storage_path = (row.get("feedback_video_storage_path") or "").strip()
         if not storage_path:
             return jsonify({"code": "VIDEO_NOT_FOUND", "error": "No coach feedback video available"}), 404
-        signed_url = db.create_signed_url(config.COACH_FEEDBACK_VIDEO_BUCKET, storage_path, expires_in)
+        from services.coach_video_storage import presigned_get_coach_object
+
+        signed_url = presigned_get_coach_object(
+            config.COACH_FEEDBACK_VIDEO_BUCKET, storage_path, expires_in, supabase_db=db
+        )
         if not signed_url:
             return jsonify({"code": "SIGNED_URL_FAILED", "error": "Could not create signed URL"}), 500
         return jsonify(
