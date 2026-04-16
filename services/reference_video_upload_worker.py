@@ -75,18 +75,28 @@ def run_reference_video_upload(
     tags: List[str],
     is_universal: bool,
     admin_user_id: str,
+    existing_storage_path: Optional[str] = None,
+    existing_bucket: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Returns {"reference_video": dict, "preview_url": str | None}.
     Raises on hard failures (storage/DB insert).
+
+    When *existing_storage_path* is set the file is already in Supabase
+    Storage (uploaded via signed URL) — skip the upload step.
     """
-    _job_progress(job_id, stage="storage", percent=12, message="Uploading file to storage…")
-    bucket = config.COACH_FEEDBACK_VIDEO_BUCKET
-    ref_storage_id = str(uuid.uuid4())
-    now = datetime.now(timezone.utc)
-    storage_path = f"copilot/reference_videos/{now:%Y/%m}/{ref_storage_id}{ext}"
+    bucket = (existing_bucket or "").strip() or config.COACH_FEEDBACK_VIDEO_BUCKET
     content_type = mimetypes.guess_type(safe_name)[0] or "video/mp4"
-    db.upload_audio(bucket, storage_path, video_bytes, content_type)
+
+    if existing_storage_path:
+        storage_path = existing_storage_path
+        _job_progress(job_id, stage="storage", percent=20, message="File already in storage (direct upload)")
+    else:
+        _job_progress(job_id, stage="storage", percent=12, message="Uploading file to storage…")
+        ref_storage_id = str(uuid.uuid4())
+        now = datetime.now(timezone.utc)
+        storage_path = f"copilot/reference_videos/{now:%Y/%m}/{ref_storage_id}{ext}"
+        db.upload_audio(bucket, storage_path, video_bytes, content_type)
 
     _job_progress(job_id, stage="database", percent=38, message="Saving database record…")
     created = db.create_admin_uploaded_reference_video(

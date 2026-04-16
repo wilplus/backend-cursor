@@ -169,5 +169,22 @@ def health_jwks():
             "supabase_url": config.SUPABASE_URL
         }, 503
 
+def _startup_cleanup():
+    """One-time housekeeping on first request: recover stale upload jobs left by prior restarts."""
+    import logging
+    _logger = logging.getLogger(__name__)
+    try:
+        from services.db import db
+        n = db.mark_stale_upload_jobs_failed(stale_minutes=30)
+        if n:
+            _logger.info("Startup: marked %d stale upload job(s) as failed", n)
+    except Exception as exc:
+        _logger.warning("Startup cleanup skipped: %s", exc)
+
+
+with app.app_context():
+    _startup_cleanup()
+
+
 if __name__ == "__main__":
     app.run(debug=not config.is_production, host="0.0.0.0", port=5000)

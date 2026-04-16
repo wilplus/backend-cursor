@@ -11,9 +11,6 @@ from config import Config
 logger = logging.getLogger(__name__)
 config = Config()
 
-COACH_FEEDBACK_VIDEO_BUCKET = "coach_feedback_videos"
-
-
 def resolve_script_mode(payload: Dict[str, Any]) -> str:
     mode = str(payload.get("script_mode") or "").strip().lower()
     if mode in ("ai_only", "ai_edited", "full_video_override"):
@@ -83,7 +80,32 @@ def build_feedback_video_storage_path(user_id: str, session_id: Optional[str] = 
     return f"{user_id}_{safe_session}_{ts}_{uuid4().hex[:8]}.mp4"
 
 
+def _is_private_ip(hostname: str) -> bool:
+    """Reject private/reserved IPs to prevent SSRF."""
+    import ipaddress
+    import socket
+    try:
+        infos = socket.getaddrinfo(hostname, None, socket.AF_UNSPEC, socket.SOCK_STREAM)
+    except socket.gaierror:
+        return True  # unresolvable → block
+    for _family, _type, _proto, _canonname, sockaddr in infos:
+        ip = ipaddress.ip_address(sockaddr[0])
+        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
+            return True
+    return False
+
+
 def _download_binary_from_url(url: str, *, timeout: int = 120) -> bytes:
+    from urllib.parse import urlparse
+    parsed = urlparse(url)
+    hostname = (parsed.hostname or "").lower()
+    if not hostname:
+        raise ValueError("URL has no hostname")
+    blocked_hosts = {"localhost", "metadata.google.internal"}
+    if hostname in blocked_hosts or hostname.endswith(".internal"):
+        raise ValueError(f"Blocked hostname: {hostname}")
+    if _is_private_ip(hostname):
+        raise ValueError(f"URL resolves to a private/reserved IP: {hostname}")
     with httpx.Client(timeout=timeout, follow_redirects=True) as client:
         resp = client.get(url)
         resp.raise_for_status()

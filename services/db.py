@@ -593,14 +593,10 @@ class DatabaseService:
                 path, expires_in
             )
             
-            # Log the response for debugging
-            logger.info(f"Signed URL response type: {type(response)}, response: {response}")
-            
-            # Supabase Python SDK returns dict with 'signedUrl' key (camelCase)
-            # Format: {'signedUrl': 'https://...'}
+            logger.debug("create_signed_url bucket=%s path=%s response_type=%s", bucket, path, type(response).__name__)
+
             signed_url = None
-            
-            # Try direct dict access first (most common)
+
             if isinstance(response, dict):
                 signed_url = response.get("signedUrl") or response.get("signedURL") or response.get("signed_url") or response.get("url")
             # Try accessing .data attribute if it exists
@@ -617,31 +613,19 @@ class DatabaseService:
             else:
                 signed_url = getattr(response, "signedUrl", None) or getattr(response, "signedURL", None) or getattr(response, "signed_url", None) or getattr(response, "url", None)
             
-            # If still no URL, try to inspect the response more deeply
             if not signed_url:
-                logger.warning(f"Could not extract signed URL, response structure: {dir(response) if hasattr(response, '__dict__') else 'N/A'}")
-                # Last resort: try to convert to string and parse
-                response_str = str(response)
-                if "http" in response_str:
-                    # Try to extract URL from string representation
-                    import re
-                    urls = re.findall(r'https?://[^\s<>"{}|\\^`\[\]]+', response_str)
-                    if urls:
-                        signed_url = urls[0]
-            
-            if not signed_url:
-                raise Exception(f"Could not extract signed URL from response: {response} (type: {type(response)})")
-            
-            # Ensure it's a full URL
+                logger.warning("Could not extract signed URL for %s/%s (response_type=%s)", bucket, path, type(response).__name__)
+                raise Exception(f"Could not extract signed URL for {bucket}/{path}")
+
             if not signed_url.startswith("http"):
-                raise Exception(f"Signed URL is not a full URL: {signed_url}")
-            
-            logger.info(f"Successfully created signed URL for {bucket}/{path}: {signed_url[:80]}...")
+                raise Exception(f"Signed URL for {bucket}/{path} is not a full URL")
+
+            logger.debug("Signed URL created for %s/%s (expires_in=%s)", bucket, path, expires_in)
             return signed_url
         except Exception as e:
-            logger.error(f"Error creating signed URL for {bucket}/{path}: {str(e)}")
+            logger.error("Error creating signed URL for %s/%s: %s", bucket, path, type(e).__name__)
             sentry_sdk.capture_exception(e)
-            raise Exception(f"Failed to create signed URL: {str(e)}")
+            raise Exception(f"Failed to create signed URL for {bucket}/{path}")
 
     def _absolute_signed_upload_url(self, raw: str | None) -> str | None:
         """Storage may return a host-relative path; browsers must PUT the full Supabase URL or the app origin gets 404."""
@@ -784,20 +768,10 @@ class DatabaseService:
                     raise ValueError(f"content_type cannot be a boolean. Got: {type(content_type)}, value: {content_type}")
                 content_type = str(content_type) if content_type else "audio/webm"
             
-            # Log parameters for debugging
-            logger.info(f"Uploading audio: bucket={bucket} (type: {type(bucket)}), path={path} (type: {type(path)}), content_type={content_type} (type: {type(content_type)}), file_data size={len(file_data)} bytes (type: {type(file_data)})")
-            
-            # Ensure file_options values are correct types
-            # Only include content-type in file_options (upsert might cause encoding issues)
-            file_options = {
-                "content-type": str(content_type)
-            }
-            
-            logger.info(f"file_options: {file_options}")
-            
-            # Supabase Python client expects: upload(path, file=file_data, file_options={...})
-            # Use keyword argument for 'file' parameter
-            # Note: If file already exists, it will be overwritten by default
+            logger.debug("upload_audio bucket=%s path=%s size=%d content_type=%s", bucket, path, len(file_data), content_type)
+
+            file_options = {"content-type": str(content_type)}
+
             result = self.client.storage.from_(bucket).upload(
                 path=path,
                 file=file_data,
@@ -805,9 +779,9 @@ class DatabaseService:
             )
             return result
         except Exception as e:
-            logger.error(f"Upload error details: {str(e)}, type: {type(e)}")
+            logger.error("Upload failed for %s/%s: %s", bucket, path, type(e).__name__)
             sentry_sdk.capture_exception(e)
-            raise Exception(f"Failed to upload audio: {str(e)}")
+            raise Exception(f"Failed to upload to {bucket}/{path}")
 
     def download_audio(self, bucket: str, path: str) -> bytes:
         """Download audio file from Supabase Storage. Used when client uploads by URL (storage_path) and backend fetches for transcription."""
@@ -826,9 +800,9 @@ class DatabaseService:
                 return data if isinstance(data, bytes) else bytes(data)
             raise Exception(f"Unexpected download result type: {type(result)}")
         except Exception as e:
-            logger.error(f"Download error for {bucket}/{path}: {str(e)}")
+            logger.error("Download failed for %s/%s: %s", bucket, path, type(e).__name__)
             sentry_sdk.capture_exception(e)
-            raise Exception(f"Failed to download audio: {str(e)}")
+            raise Exception(f"Failed to download from {bucket}/{path}")
 
     def save_admin_notification(self, data: dict):
         """Save admin notification record"""
@@ -2500,18 +2474,6 @@ class DatabaseService:
 
     def v2_sync_student_tasks_from_pool(self, user_id: str, pool_task_ids: list):
         """Replace student's tasks from tasks_pool ids (display order)."""
-        # #region agent log
-        try:
-            import json
-            import os
-            import time
-            _log_path = os.path.join(os.path.dirname(__file__), "..", ".cursor", "debug.log")
-            _log_path = os.path.abspath(_log_path)
-            with open(_log_path, "a") as _f:
-                _f.write(json.dumps({"location": "db.py:v2_sync_student_tasks_from_pool", "message": "sync entry before delete", "data": {"user_id": user_id, "pool_task_ids": pool_task_ids}, "timestamp": int(time.time() * 1000), "hypothesisId": "sync_entry"}) + "\n")
-        except Exception:
-            pass
-        # #endregion
         self.client.table("tasks").delete().eq("user_id", user_id).execute()
         if not pool_task_ids:
             return []
@@ -2851,37 +2813,28 @@ class DatabaseService:
         return self.v2_get_user_metric_questions(user_id)
 
     def v2_upsert_student_overrides(self, user_id: str, data: dict):
-        """Merge request data with existing overrides so partial PUTs do not clear other fields (e.g. skip_metric_questions)."""
-        existing = self.v2_get_student_overrides(user_id) or {}
-        merged = {}
+        """Atomic column-specific upsert — only touches columns present in *data*.
+
+        PostgREST ``ON CONFLICT (user_id) DO UPDATE`` only sets the columns
+        included in the payload, so untouched columns keep their current
+        value.  This removes the old read-merge-write cycle that was
+        vulnerable to concurrent-write races.
+        """
+        payload: dict = {}
         for col in self._V2_OVERRIDES_COLUMNS:
-            if col in data:
-                merged[col] = data[col]
-            elif col in existing:
-                merged[col] = existing[col]
-            else:
-                merged[col] = None
-        if merged.get("skip_metric_questions") is None:
-            merged["skip_metric_questions"] = False
-        if merged.get("assigned_task_id") == "":
-            merged["assigned_task_id"] = None
-        payload = {k: v for k, v in merged.items() if v is not None or k == "skip_metric_questions"}
+            if col not in data:
+                continue
+            val = data[col]
+            if col == "assigned_task_id" and val == "":
+                val = None
+            payload[col] = val
+        if "skip_metric_questions" in payload and payload["skip_metric_questions"] is None:
+            payload["skip_metric_questions"] = False
+        if not payload:
+            return self.v2_get_student_overrides(user_id)
         payload["user_id"] = user_id
         payload["updated_at"] = datetime.now(timezone.utc).isoformat()
-        # #region agent log
-        try:
-            open("/Users/arturwillonski/Documents/backend-cursor/.cursor/debug.log", "a").write(json.dumps({"message": "DB upsert overrides", "data": {"data_keys": list(data.keys()), "existing_keys": list(existing.keys()), "merged_skip_metric": merged.get("skip_metric_questions"), "payload_has_skip_metric": "skip_metric_questions" in payload, "payload_skip_metric": payload.get("skip_metric_questions")}, "hypothesisId": "H2,H5", "location": "db.py:v2_upsert_student_overrides", "timestamp": int(time.time() * 1000)}) + "\n")
-        except Exception:
-            pass
-        # #endregion
         result = self.client.table("v2_student_overrides").upsert(payload, on_conflict="user_id").execute()
-        # #region agent log
-        try:
-            out = result.data[0] if result.data else None
-            open("/Users/arturwillonski/Documents/backend-cursor/.cursor/debug.log", "a").write(json.dumps({"message": "DB upsert result", "data": {"result_keys": list(out.keys()) if out else None, "result_skip_metric": out.get("skip_metric_questions") if out else None}, "hypothesisId": "H2,H4", "location": "db.py:v2_upsert_student_overrides after execute", "timestamp": int(time.time() * 1000)}) + "\n")
-        except Exception:
-            pass
-        # #endregion
         return result.data[0] if result.data else None
 
     def v2_set_pending_tutor_video(
@@ -4049,6 +4002,39 @@ class DatabaseService:
             .execute()
         )
         return res.data[0] if res.data else None
+
+    def mark_stale_upload_jobs_failed(self, stale_minutes: int = 30) -> int:
+        """Mark upload jobs stuck in a non-terminal state as failed.
+
+        Should be called on app startup to recover from worker restarts
+        that killed in-flight daemon threads.  Returns count of affected rows.
+        """
+        from datetime import timedelta
+        cutoff = (datetime.now(timezone.utc) - timedelta(minutes=max(5, stale_minutes))).isoformat()
+        try:
+            res = (
+                self.client.table("copilot_reference_upload_jobs")
+                .select("id, stage, updated_at")
+                .lt("updated_at", cutoff)
+                .neq("stage", "completed")
+                .neq("stage", "failed")
+                .limit(200)
+                .execute()
+            )
+            stale = res.data or []
+            for row in stale:
+                self.update_copilot_reference_upload_job(
+                    str(row["id"]),
+                    {
+                        "stage": "failed",
+                        "error": "Server restarted while job was in progress",
+                        "message": "Interrupted — please retry the upload",
+                    },
+                )
+            return len(stale)
+        except Exception as e:
+            logger.warning("mark_stale_upload_jobs_failed: %s", e)
+            return 0
 
     def create_model_training_run(
         self,
