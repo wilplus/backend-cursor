@@ -5046,7 +5046,7 @@ def v2_admin_copilot_reference_videos_upload_url():
                 "upload_url": put_url,
                 "storage_path": storage_path,
                 "content_type": content_type,
-            "bucket": bucket,
+                "bucket": bucket,
             }
         ), 200
     except Exception as e:
@@ -5058,7 +5058,11 @@ def v2_admin_copilot_reference_videos_upload_url():
 @v2_bp.route("/admin/copilot/reference-videos/register-from-storage", methods=["POST"])
 @require_admin
 def v2_admin_copilot_reference_videos_register_from_storage():
-    """After direct R2 PUT upload, register object and process transcription asynchronously."""
+    """After direct R2 PUT upload, register object and run Whisper.
+
+    Uses async job + 202 when ``copilot_reference_upload_jobs`` exists; otherwise
+    processes synchronously and returns 201 with ``reference_video`` (no ``job_id``).
+    """
     try:
         body = request.get_json(silent=True) or {}
         storage_path = (body.get("storage_path") or "").strip()
@@ -5115,63 +5119,99 @@ def v2_admin_copilot_reference_videos_register_from_storage():
         # track_progress is accepted for compatibility; processing is async in all cases.
         _ = str(body.get("track_progress", "true")).strip().lower() in ("1", "true", "yes")
 
+        job_row = None
         try:
             job_row = db.create_copilot_reference_upload_job(
                 created_by=request.user_id,
                 student_user_id=student_user_id,
             )
         except Exception as job_err:
-            logger.error("register-from-storage: job tracking unavailable: %s", job_err)
-            return jsonify({
-                "code": "UPLOAD_JOBS_UNAVAILABLE",
-                "error": "Upload job tracking table is unavailable",
-                "message": "Run migrations/add_copilot_reference_upload_jobs.sql",
-            }), 503
-        if not job_row:
-            return jsonify({
-                "code": "UPLOAD_JOBS_UNAVAILABLE",
-                "error": "Could not create upload job",
-            }), 503
+            logger.warning(
+                "register-from-storage: job tracking unavailable (%s); processing synchronously",
+                job_err,
+            )
 
-        jid = str(job_row["id"])
-        db.update_copilot_reference_upload_job(
-            jid,
-            {"stage": "received", "percent": 20, "message": "File in storage; creating record + transcribing..."},
-        )
+        if job_row:
+            jid = str(job_row["id"])
+            db.update_copilot_reference_upload_job(
+                jid,
+                {"stage": "received", "percent": 20, "message": "File in storage; creating record + transcribing..."},
+            )
 
-        def _run_async_register() -> None:
-            try:
-                video_bytes = get_coach_object_bytes(bucket, storage_path)
-                run_reference_video_upload(
-                    job_id=jid,
-                    video_bytes=video_bytes,
-                    safe_name=safe_name,
-                    ext=ext,
-                    student_user_id=student_user_id,
-                    session_id=session_id,
-                    draft_id=draft_id,
-                    title=title,
-                    tags=tags,
-                    is_universal=is_universal,
-                    admin_user_id=request.user_id,
-                    existing_storage_path=storage_path,
-                    existing_bucket=bucket,
-                )
-            except Exception as e:
-                sentry_sdk.capture_exception(e)
+            def _run_async_register() -> None:
                 try:
-                    db.update_copilot_reference_upload_job(
-                        jid, {"stage": "failed", "percent": 0, "error": str(e)[:2000], "message": "Processing failed"},
+                    video_bytes = get_coach_object_bytes(bucket, storage_path)
+                    run_reference_video_upload(
+                        job_id=jid,
+                        video_bytes=video_bytes,
+                        safe_name=safe_name,
+                        ext=ext,
+                        student_user_id=student_user_id,
+                        session_id=session_id,
+                        draft_id=draft_id,
+                        title=title,
+                        tags=tags,
+                        is_universal=is_universal,
+                        admin_user_id=request.user_id,
+                        existing_storage_path=storage_path,
+                        existing_bucket=bucket,
                     )
-                except Exception:
-                    pass
+                except Exception as e:
+                    sentry_sdk.capture_exception(e)
+                    try:
+                        db.update_copilot_reference_upload_job(
+                            jid,
+                            {"stage": "failed", "percent": 0, "error": str(e)[:2000], "message": "Processing failed"},
+                        )
+                    except Exception:
+                        pass
 
-        threading.Thread(target=_run_async_register, daemon=True, name=f"refvid-reg-{jid[:8]}").start()
-        return jsonify({
-            "job_id": jid,
-            "poll_url": f"/v2/admin/copilot/reference-videos/upload-jobs/{jid}",
-            "message": "File registered from storage. Poll GET poll_url for progress.",
-        }), 202
+            threading.Thread(target=_run_async_register, daemon=True, name=f"refvid-reg-{jid[:8]}").start()
+            return jsonify({
+                "job_id": jid,
+                "poll_url": f"/v2/admin/copilot/reference-videos/upload-jobs/{jid}",
+                "message": "File registered from storage. Poll GET poll_url for progress.",
+            }), 202
+
+        try:
+            video_bytes = get_coach_object_bytes(bucket, storage_path)
+            out = run_reference_video_upload(
+                job_id=None,
+                video_bytes=video_bytes,
+                safe_name=safe_name,
+                ext=ext,
+                student_user_id=student_user_id,
+                session_id=session_id,
+                draft_id=draft_id,
+                title=title,
+                tags=tags,
+                is_universal=is_universal,
+                admin_user_id=request.user_id,
+                existing_storage_path=storage_path,
+                existing_bucket=bucket,
+            )
+        except Exception as e:
+            sentry_sdk.capture_exception(e)
+            emsg = str(e)
+            logger.error("register-from-storage sync processing failed: %s", emsg)
+            return jsonify(
+                {
+                    "code": "PROCESSING_FAILED",
+                    "error": emsg[:2000] or "Reference video processing failed",
+                }
+            ), 500
+
+        return jsonify(
+            {
+                "status": "ok",
+                "reference_video": out["reference_video"],
+                "preview_url": out.get("preview_url"),
+                "message": (
+                    "Processed without upload job tracking. "
+                    "Run migrations/add_copilot_reference_upload_jobs.sql for async jobs + polling."
+                ),
+            }
+        ), 201
     except Exception as e:
         sentry_sdk.capture_exception(e)
         logger.error("register-from-storage unexpected error: %s", e)

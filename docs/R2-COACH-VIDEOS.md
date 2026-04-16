@@ -46,10 +46,13 @@ Adjust origins for your admin / Training Studio host.
    - Request JSON:
      - `storage_path` (required), `storage_provider: "r2"`, `bucket` (optional)
      - optional: `session_id`, `user_id`, `draft_id`, `title`, `reference_tags`, `is_universal_video`, `track_progress`
-   - Response `202` JSON:
+   - Response when `copilot_reference_upload_jobs` exists — **`202`** JSON:
      - `job_id`
      - `poll_url`
      - `message`
+   - If that table is **not** migrated — **`201`** JSON (sync, no polling):
+     - `status`: `"ok"`
+     - `reference_video`, `preview_url`, `message`
 4. **GET** `/v2/admin/copilot/reference-videos/upload-jobs/<job_id>` until:
    - `job.stage = "completed"` (includes `reference_video`, optional `preview_url`)
    - or `job.stage = "failed"` (includes `error` / `message`)
