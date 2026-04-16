@@ -111,6 +111,21 @@ _PIPELINE_RUNNING_STATES = {"queued", "running_tts", "running_video", "uploading
 _REFERENCE_VIDEO_ALLOWED_EXTENSIONS = {".mp4", ".mov", ".webm", ".m4v", ".avi", ".mkv"}
 
 
+def _normalize_upload_content_type(raw: str, fallback_filename: str) -> str:
+    """
+    Normalize client-provided content type for signed PUT:
+    - strip parameters (e.g. '; codecs=...; charset=...')
+    - lowercase + trim
+    - fallback from filename when missing/invalid
+    """
+    base = ""
+    if isinstance(raw, str):
+        base = raw.split(";", 1)[0].strip().lower()
+    if not base or "/" not in base:
+        base = guess_video_content_type(fallback_filename).strip().lower()
+    return base or "application/octet-stream"
+
+
 def _resolve_reference_upload_user_id(form_user_id: str, fallback_admin_id: str):
     raw = (form_user_id or "").strip()
     if not raw:
@@ -4615,81 +4630,100 @@ def v2_admin_copilot_reference_videos_upload():
 @v2_bp.route("/admin/copilot/reference-videos/upload-url", methods=["POST"])
 @require_admin
 def v2_admin_copilot_reference_videos_upload_url():
-    """Mint a signed upload URL (Cloudflare R2 presigned PUT if configured, else Supabase).
-
-    Client must upload raw bytes: PUT upload_url with body=file and Content-Type matching upload_headers."""
+    """Mint a Cloudflare R2 presigned PUT URL for direct browser upload."""
     try:
         body = request.get_json(silent=True) or {}
         filename = (body.get("filename") or "").strip()
         if not filename:
-            return jsonify({"code": "INVALID_INPUT", "error": "filename is required"}), 400
+            return jsonify({"code": "INVALID_INPUT", "error": "filename is required", "message": "Missing required field: filename"}), 400
         safe_name = secure_filename(filename)
         ext = os.path.splitext(safe_name)[1].lower()
         if ext not in _REFERENCE_VIDEO_ALLOWED_EXTENSIONS:
             return jsonify({
                 "code": "INVALID_VIDEO_FORMAT",
                 "error": "Supported formats: .mp4, .mov, .webm, .m4v, .avi, .mkv",
+                "details": {"ext": ext},
             }), 400
 
-        bucket = r2_bucket_name() if coach_videos_use_r2() else config.COACH_FEEDBACK_VIDEO_BUCKET
+        requested_provider = (body.get("storage_provider") or "r2").strip().lower()
+        if requested_provider != "r2":
+            return jsonify({
+                "code": "UNSUPPORTED_STORAGE_PROVIDER",
+                "error": "Only storage_provider='r2' is supported by this endpoint",
+                "details": {"storage_provider": requested_provider},
+            }), 400
+        if not coach_videos_use_r2():
+            return jsonify({
+                "code": "STORAGE_PROVIDER_NOT_CONFIGURED",
+                "error": "Cloudflare R2 credentials are not configured on backend",
+                "message": "Set R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, and R2_SECRET_ACCESS_KEY",
+            }), 503
+
+        file_size_bytes = body.get("file_size_bytes")
+        if file_size_bytes is not None:
+            try:
+                if int(file_size_bytes) <= 0:
+                    raise ValueError("must be > 0")
+            except Exception:
+                return jsonify({
+                    "code": "INVALID_INPUT",
+                    "error": "file_size_bytes must be a positive integer",
+                    "details": {"file_size_bytes": file_size_bytes},
+                }), 400
+
+        bucket = r2_bucket_name()
         now = datetime.now(timezone.utc)
         ref_id = uuid.uuid4().hex
         storage_path = f"copilot/reference_videos/{now:%Y/%m}/{ref_id}{ext}"
-        content_type = (body.get("content_type") or "").strip() or guess_video_content_type(safe_name)
+        content_type = _normalize_upload_content_type((body.get("content_type") or "").strip(), safe_name)
 
-        if coach_videos_use_r2():
-            try:
-                put_url = presigned_put_coach_object(bucket, storage_path, content_type, expires_in=3600)
-            except Exception as ex:
-                logger.error("reference-videos/upload-url R2 presign failed: %s", ex)
-                return jsonify({"code": "SIGNED_URL_FAILED", "error": "Could not create R2 signed upload URL"}), 500
-            resp: dict = {
-                "status": "ok",
-                "storage_provider": "r2",
-                "upload_method": "PUT",
-                "bucket": bucket,
-                "storage_path": storage_path,
+        try:
+            put_url = presigned_put_coach_object(bucket, storage_path, content_type, expires_in=3600)
+        except Exception as ex:
+            logger.error("reference-videos/upload-url R2 presign failed: %s", ex)
+            return jsonify({
+                "code": "SIGNED_URL_FAILED",
+                "error": "Could not create R2 signed upload URL",
+                "details": {"provider": "r2"},
+            }), 500
+        return jsonify(
+            {
                 "upload_url": put_url,
-                "upload_headers": {"Content-Type": content_type},
-                "file_url": coach_media_public_url(storage_path),
-                "signed_url_available": True,
-            }
-            return jsonify(resp), 200
-
-        upload_info = db.create_signed_upload_url(bucket, storage_path)
-        if not isinstance(upload_info, dict) or not upload_info.get("signed_url"):
-            return jsonify({"code": "SIGNED_URL_FAILED", "error": "Could not create signed upload URL"}), 500
-
-        resp = {
-            "status": "ok",
-            "storage_provider": "supabase",
+                "storage_path": storage_path,
+                "content_type": content_type,
             "bucket": bucket,
-            "storage_path": storage_path,
-            "upload_url": upload_info["signed_url"],
-            "signed_url_available": True,
-        }
-        if upload_info.get("token"):
-            resp["upload_token"] = upload_info["token"]
-        return jsonify(resp), 200
+            }
+        ), 200
     except Exception as e:
         sentry_sdk.capture_exception(e)
         logger.error("reference-videos/upload-url error: %s", e)
-        return jsonify({"code": "V2_ERROR", "error": "Internal server error"}), 500
+        return jsonify({"code": "V2_ERROR", "error": "Internal server error", "message": str(e)}), 500
 
 
 @v2_bp.route("/admin/copilot/reference-videos/register-from-storage", methods=["POST"])
 @require_admin
 def v2_admin_copilot_reference_videos_register_from_storage():
-    """After direct-to-storage upload (Supabase signed URL or R2 presigned PUT),
-    call this endpoint to create the DB record and trigger Whisper transcription."""
+    """After direct R2 PUT upload, register object and process transcription asynchronously."""
     try:
         body = request.get_json(silent=True) or {}
         storage_path = (body.get("storage_path") or "").strip()
-        bucket = (body.get("bucket") or config.COACH_FEEDBACK_VIDEO_BUCKET).strip()
-        sp_raw = (body.get("storage_provider") or "").strip().lower()
-        storage_provider = sp_raw if sp_raw in ("r2", "supabase") else ("r2" if coach_videos_use_r2() else "supabase")
+        bucket = (body.get("bucket") or r2_bucket_name()).strip()
+        sp_raw = (body.get("storage_provider") or "r2").strip().lower()
+        storage_provider = sp_raw if sp_raw in ("r2", "supabase") else "r2"
+        if storage_provider != "r2":
+            return jsonify({
+                "code": "UNSUPPORTED_STORAGE_PROVIDER",
+                "error": "Only storage_provider='r2' is supported by this endpoint",
+                "details": {"storage_provider": storage_provider},
+            }), 400
+        if not coach_videos_use_r2():
+            return jsonify({
+                "code": "STORAGE_PROVIDER_NOT_CONFIGURED",
+                "error": "Cloudflare R2 credentials are not configured on backend",
+                "message": "Set R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, and R2_SECRET_ACCESS_KEY",
+            }), 503
         if not storage_path:
-            return jsonify({"code": "INVALID_INPUT", "error": "storage_path is required"}), 400
+            return jsonify({"code": "INVALID_INPUT", "error": "storage_path is required", "message": "Missing required field: storage_path"}), 400
 
         safe_name = os.path.basename(storage_path)
         ext = os.path.splitext(safe_name)[1].lower()
@@ -4697,6 +4731,7 @@ def v2_admin_copilot_reference_videos_register_from_storage():
             return jsonify({
                 "code": "INVALID_VIDEO_FORMAT",
                 "error": "Supported formats: .mp4, .mov, .webm, .m4v, .avi, .mkv",
+                "details": {"ext": ext},
             }), 400
 
         student_user_id, uid_err = _resolve_reference_upload_user_id(
@@ -4722,104 +4757,70 @@ def v2_admin_copilot_reference_videos_register_from_storage():
         if isinstance(body.get("reference_tags"), list):
             tags = [str(x).strip() for x in body["reference_tags"] if str(x).strip()]
         is_universal = str(body.get("is_universal_video", "false")).strip().lower() in ("1", "true", "yes")
+        # track_progress is accepted for compatibility; processing is async in all cases.
+        _ = str(body.get("track_progress", "true")).strip().lower() in ("1", "true", "yes")
 
-        # Download from storage to get bytes for Whisper transcription
         try:
-            if storage_provider == "r2":
-                video_bytes = get_coach_object_bytes(bucket, storage_path)
-            else:
-                video_bytes = db.download_audio(bucket, storage_path)
-        except Exception as dl_err:
-            logger.error("register-from-storage: download failed %s/%s: %s", bucket, storage_path, dl_err)
-            return jsonify({"code": "STORAGE_DOWNLOAD_FAILED", "error": "Could not download the uploaded file from storage"}), 400
-
-        # Check for track_progress (async with job polling)
-        track_raw = str(body.get("track_progress", "false")).strip().lower()
-        track_progress = track_raw in ("1", "true", "yes")
-
-        if track_progress:
-            job_row = None
-            try:
-                job_row = db.create_copilot_reference_upload_job(
-                    created_by=request.user_id,
-                    student_user_id=student_user_id,
-                )
-            except Exception as job_err:
-                logger.warning("register-from-storage: job tracking unavailable: %s", job_err)
-            if job_row:
-                jid = str(job_row["id"])
-                db.update_copilot_reference_upload_job(
-                    jid,
-                    {"stage": "received", "percent": 20, "message": "File in storage; creating record + transcribing..."},
-                )
-
-                def _run_async_register() -> None:
-                    try:
-                        run_reference_video_upload(
-                            job_id=jid,
-                            video_bytes=video_bytes,
-                            safe_name=safe_name,
-                            ext=ext,
-                            student_user_id=student_user_id,
-                            session_id=session_id,
-                            draft_id=draft_id,
-                            title=title,
-                            tags=tags,
-                            is_universal=is_universal,
-                            admin_user_id=request.user_id,
-                            existing_storage_path=storage_path,
-                            existing_bucket=bucket,
-                        )
-                    except Exception as e:
-                        sentry_sdk.capture_exception(e)
-                        try:
-                            db.update_copilot_reference_upload_job(
-                                jid, {"stage": "failed", "percent": 0, "error": str(e)[:2000], "message": "Processing failed"},
-                            )
-                        except Exception:
-                            pass
-
-                threading.Thread(target=_run_async_register, daemon=True, name=f"refvid-reg-{jid[:8]}").start()
-                return jsonify({
-                    "status": "accepted",
-                    "job_id": jid,
-                    "poll_url": f"/v2/admin/copilot/reference-videos/upload-jobs/{jid}",
-                    "message": "File registered from storage. Poll GET poll_url for progress.",
-                }), 202
-
-        # Synchronous path
-        try:
-            out = run_reference_video_upload(
-                job_id=None,
-                video_bytes=video_bytes,
-                safe_name=safe_name,
-                ext=ext,
+            job_row = db.create_copilot_reference_upload_job(
+                created_by=request.user_id,
                 student_user_id=student_user_id,
-                session_id=session_id,
-                draft_id=draft_id,
-                title=title,
-                tags=tags,
-                is_universal=is_universal,
-                admin_user_id=request.user_id,
-                existing_storage_path=storage_path,
-                existing_bucket=bucket,
             )
-        except Exception as e:
-            sentry_sdk.capture_exception(e)
-            emsg = str(e)
-            logger.error("register-from-storage processing failed: %s", emsg)
-            return jsonify(
-                {"code": "PROCESSING_FAILED", "error": emsg[:2000] or "Reference video processing failed"}
-            ), 500
+        except Exception as job_err:
+            logger.error("register-from-storage: job tracking unavailable: %s", job_err)
+            return jsonify({
+                "code": "UPLOAD_JOBS_UNAVAILABLE",
+                "error": "Upload job tracking table is unavailable",
+                "message": "Run migrations/add_copilot_reference_upload_jobs.sql",
+            }), 503
+        if not job_row:
+            return jsonify({
+                "code": "UPLOAD_JOBS_UNAVAILABLE",
+                "error": "Could not create upload job",
+            }), 503
+
+        jid = str(job_row["id"])
+        db.update_copilot_reference_upload_job(
+            jid,
+            {"stage": "received", "percent": 20, "message": "File in storage; creating record + transcribing..."},
+        )
+
+        def _run_async_register() -> None:
+            try:
+                video_bytes = get_coach_object_bytes(bucket, storage_path)
+                run_reference_video_upload(
+                    job_id=jid,
+                    video_bytes=video_bytes,
+                    safe_name=safe_name,
+                    ext=ext,
+                    student_user_id=student_user_id,
+                    session_id=session_id,
+                    draft_id=draft_id,
+                    title=title,
+                    tags=tags,
+                    is_universal=is_universal,
+                    admin_user_id=request.user_id,
+                    existing_storage_path=storage_path,
+                    existing_bucket=bucket,
+                )
+            except Exception as e:
+                sentry_sdk.capture_exception(e)
+                try:
+                    db.update_copilot_reference_upload_job(
+                        jid, {"stage": "failed", "percent": 0, "error": str(e)[:2000], "message": "Processing failed"},
+                    )
+                except Exception:
+                    pass
+
+        threading.Thread(target=_run_async_register, daemon=True, name=f"refvid-reg-{jid[:8]}").start()
         return jsonify({
-            "status": "ok",
-            "reference_video": out["reference_video"],
-            "preview_url": out.get("preview_url"),
-        }), 201
+            "job_id": jid,
+            "poll_url": f"/v2/admin/copilot/reference-videos/upload-jobs/{jid}",
+            "message": "File registered from storage. Poll GET poll_url for progress.",
+        }), 202
     except Exception as e:
         sentry_sdk.capture_exception(e)
         logger.error("register-from-storage unexpected error: %s", e)
-        return jsonify({"code": "V2_ERROR", "error": "Internal server error"}), 500
+        return jsonify({"code": "V2_ERROR", "error": "Internal server error", "message": str(e)}), 500
 
 
 def _json_safe_row(row: dict | None) -> dict | None:

@@ -29,16 +29,30 @@ Adjust origins for your admin / Training Studio host.
 
 ## Flow: mint URL → PUT raw file → register
 
-1. **POST** `/v2/admin/copilot/reference-videos/upload-url` with JSON `{ "filename": "clip.mov", "content_type": "video/quicktime" }` (optional `content_type`; server guesses from extension if omitted).
-2. Response when R2 is enabled includes:
-   - `storage_provider`: `"r2"`
-   - `upload_method`: `"PUT"`
-   - `upload_url`: presigned URL
-   - `upload_headers`: e.g. `{ "Content-Type": "video/quicktime" }` — **must** match the PUT
-   - `bucket`, `storage_path`
-   - `file_url`: public URL if `R2_PUBLIC_BASE_URL` is set, else `null`
-3. **Browser**: `fetch(upload_url, { method: 'PUT', headers: upload_headers, body: file })` — **raw `File` / `Blob`**, not `FormData`.
-4. **POST** `/v2/admin/copilot/reference-videos/register-from-storage` with JSON including `storage_path`, `bucket`, `storage_provider: "r2"`, plus existing fields (`user_id`, etc.).
+1. **POST** `/v2/admin/copilot/reference-videos/upload-url`
+   - Request JSON:
+     - `filename` (required)
+     - `file_size_bytes` (optional)
+     - `content_type` (optional, codec suffix is stripped)
+     - `storage_provider` (`"r2"`, optional; defaults to `r2`)
+   - Response `200` JSON:
+     - `upload_url`
+     - `storage_path`
+     - `content_type` (exact value used for signature; use this on PUT)
+     - `bucket`
+2. **Browser upload**: `PUT upload_url` with raw file bytes and header `Content-Type: <response.content_type>`.
+   - **Do not use `FormData` / multipart**.
+3. **POST** `/v2/admin/copilot/reference-videos/register-from-storage`
+   - Request JSON:
+     - `storage_path` (required), `storage_provider: "r2"`, `bucket` (optional)
+     - optional: `session_id`, `user_id`, `draft_id`, `title`, `reference_tags`, `is_universal_video`, `track_progress`
+   - Response `202` JSON:
+     - `job_id`
+     - `poll_url`
+     - `message`
+4. **GET** `/v2/admin/copilot/reference-videos/upload-jobs/<job_id>` until:
+   - `job.stage = "completed"` (includes `reference_video`, optional `preview_url`)
+   - or `job.stage = "failed"` (includes `error` / `message`)
 
 Draft attach uses **`r2://bucket/key`** in `full_override_video_storage_path` when the reference row is R2-backed; homework resolution and pipeline fetch support that URI.
 
