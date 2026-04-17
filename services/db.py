@@ -3989,10 +3989,14 @@ class DatabaseService:
     ) -> Optional[Dict[str, Any]]:
         clean_title = (title or "").strip() or None
         fm = dict(feature_metadata or {})
-        # Mirror title into feature_metadata so it works even if the `title` top-level
-        # column is missing from the deployed schema (some prod DBs skip the migration).
+        # Mirror fields that may be missing at top-level into feature_metadata.
+        # Some prod DBs pre-date migrations adding title/transcription_status/transcription_error.
         if clean_title and "title" not in fm:
             fm["title"] = clean_title
+        if transcription_status and "transcription_status" not in fm:
+            fm["transcription_status"] = transcription_status
+        if transcription_error and "transcription_error" not in fm:
+            fm["transcription_error"] = transcription_error
         payload = {
             "draft_id": draft_id,
             "user_id": user_id,
@@ -4009,19 +4013,33 @@ class DatabaseService:
             "title": clean_title,
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }
-        try:
-            res = self.client.table("admin_uploaded_reference_videos").insert(payload).execute()
-        except Exception as e:
-            # PostgREST schema cache may not know about the `title` column on
-            # deployments that pre-date the migration. Retry without it —
-            # title lives in feature_metadata.title in that case.
-            msg = str(e)
-            if "title" in msg and ("PGRST204" in msg or "schema cache" in msg or "column" in msg.lower()):
-                payload.pop("title", None)
+        # Columns that may be absent from older prod schemas. Retry without them
+        # when PostgREST reports PGRST204 "could not find column" for any of these.
+        _OPTIONAL_COLS = ("title", "transcription_status", "transcription_error", "updated_at")
+        import re as _re
+        res = None
+        for _attempt in range(len(_OPTIONAL_COLS) + 1):
+            try:
                 res = self.client.table("admin_uploaded_reference_videos").insert(payload).execute()
-            else:
-                raise
-        return res.data[0] if res.data else None
+                break
+            except Exception as e:
+                msg = str(e)
+                if "PGRST204" not in msg and "schema cache" not in msg:
+                    raise
+                dropped = False
+                for col in _OPTIONAL_COLS:
+                    if col in payload and f"'{col}'" in msg:
+                        payload.pop(col, None)
+                        dropped = True
+                        break
+                if not dropped:
+                    m = _re.search(r"'([A-Za-z_][A-Za-z0-9_]*)'", msg)
+                    if m and m.group(1) in payload:
+                        payload.pop(m.group(1), None)
+                        dropped = True
+                if not dropped:
+                    raise
+        return res.data[0] if (res and res.data) else None
 
     def list_admin_uploaded_reference_videos_for_training(
         self,
