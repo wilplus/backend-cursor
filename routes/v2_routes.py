@@ -5891,6 +5891,26 @@ def v2_admin_student_draft_approve_send(user_id, draft_id):
                 )
         except Exception as ref_check_err:
             logger.warning("approve-send: ref video pre-check failed: %s", ref_check_err)
+        # If we're skipping the pipeline because the admin uploaded a real
+        # video, clear any stale pipeline_status on the draft so the frontend
+        # polling loop terminates (otherwise the UI keeps GET'ing
+        # /pipeline-status forever because it sees "queued" on the old row).
+        if has_uploaded_ref_video:
+            stale_status = (row.get("pipeline_status") or "").strip().lower()
+            if stale_status and stale_status not in ("sent", "failed", ""):
+                try:
+                    db.update_admin_student_send_draft_pipeline_status(
+                        draft_id=str(row.get("id")),
+                        user_id=user_id,
+                        status="sent",
+                        error=None,
+                    )
+                    logger.info(
+                        "approve-send: cleared stale pipeline_status=%s on draft=%s (using uploaded ref video)",
+                        stale_status, row.get("id"),
+                    )
+                except Exception as clear_err:
+                    logger.warning("approve-send: could not clear stale pipeline_status: %s", clear_err)
         if _video_pipeline_enabled() and not has_uploaded_ref_video:
             # full_video_override already points to a coach-selected video; no render job is needed,
             # so send immediately instead of queueing a pipeline job.
