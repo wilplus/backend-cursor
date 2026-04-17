@@ -265,6 +265,46 @@ def _build_step0_payload(user_id: str) -> dict:
         except Exception:
             pass
 
+    # Fallback: if no personal coach video is queued for this student (first
+    # login, never been assigned homework), show the most recent universal
+    # welcome video uploaded by an admin in Training Studio (is_universal=true).
+    if not payload.get("tutor_video_url") and not review_pending:
+        try:
+            uni = db.get_latest_universal_welcome_video()
+        except Exception:
+            uni = None
+        if uni:
+            uni_src_url = (uni.get("source_video_url") or "").strip() or None
+            uni_fm = uni.get("feature_metadata") if isinstance(uni.get("feature_metadata"), dict) else {}
+            uni_bucket = (uni.get("bucket") or uni_fm.get("bucket") or "").strip() or None
+            uni_path = (uni.get("storage_path") or "").strip().lstrip("/") or None
+            if uni_src_url and (uni_src_url.startswith("http://") or uni_src_url.startswith("https://")):
+                payload["tutor_video_url"] = uni_src_url
+            else:
+                try:
+                    pl, _b, _p = resolve_tutor_video_playable_url(
+                        db=db,
+                        explicit_video_url=None,
+                        video_bucket=uni_bucket,
+                        video_storage_path=uni_path,
+                    )
+                    if pl:
+                        payload["tutor_video_url"] = pl
+                        if _b:
+                            payload["tutor_video_bucket"] = _b
+                        if _p:
+                            payload["tutor_video_storage_path"] = _p
+                except Exception:
+                    pass
+            # Generic welcome copy (coach sets this in the upload form's title/description).
+            welcome_desc = (
+                (uni.get("title") or "").strip()
+                or (uni_fm.get("title") or "").strip()
+                or "Welcome! Your coach recorded this intro to get you started."
+            )
+            payload.setdefault("tutor_video_description", welcome_desc)
+            payload["tutor_video_is_universal"] = True
+
     return payload
 
 

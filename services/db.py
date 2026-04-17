@@ -4127,6 +4127,30 @@ class DatabaseService:
         res = q.execute()
         return res.data or []
 
+    def get_latest_universal_welcome_video(self) -> Optional[Dict[str, Any]]:
+        """Return the most recent reference video flagged is_universal=true.
+
+        Used as a fallback "welcome video" on the student's step-0 screen when
+        the coach has not yet sent a personal assignment. Admins mark a video
+        as universal by checking the "Universal video" box in Training Studio
+        on upload (body field `is_universal_video=true`).
+
+        Returns None if no universal video exists or the table is missing.
+        """
+        try:
+            res = (
+                self.client.table("admin_uploaded_reference_videos")
+                .select("*")
+                .eq("is_universal", True)
+                .order("created_at", desc=True)
+                .limit(1)
+                .execute()
+            )
+            return (res.data or [None])[0]
+        except Exception as e:
+            logger.warning("get_latest_universal_welcome_video: %s", e)
+            return None
+
     def find_duplicate_admin_uploaded_reference_video(
         self,
         user_id: str,
