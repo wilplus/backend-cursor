@@ -4126,6 +4126,41 @@ class DatabaseService:
         res = q.execute()
         return res.data or []
 
+    def get_latest_admin_uploaded_reference_video_for_user(
+        self,
+        user_id: str,
+        *,
+        session_id: Optional[str] = None,
+        draft_id: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """Most-recent admin-uploaded reference video for this student.
+
+        Preference order: (draft_id match) → (session_id match) → any row for user.
+        Used as a fallback on "Approve & Send" when the draft has no explicit
+        video attached — so the Training-Studio upload still surfaces on the
+        student's step-0 screen.
+        """
+        def _query(filters: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+            try:
+                q = self.client.table("admin_uploaded_reference_videos").select("*")
+                for k, v in filters.items():
+                    q = q.eq(k, v)
+                q = q.order("created_at", desc=True).limit(1)
+                res = q.execute()
+                return res.data[0] if res.data else None
+            except Exception as e:
+                logger.warning("get_latest_admin_uploaded_reference_video_for_user filter=%s: %s", filters, e)
+                return None
+        if draft_id:
+            hit = _query({"user_id": user_id, "draft_id": draft_id})
+            if hit:
+                return hit
+        if session_id:
+            hit = _query({"user_id": user_id, "session_id": session_id})
+            if hit:
+                return hit
+        return _query({"user_id": user_id})
+
     def get_admin_uploaded_reference_video(self, reference_video_id: str) -> Optional[Dict[str, Any]]:
         res = (
             self.client.table("admin_uploaded_reference_videos")

@@ -645,6 +645,33 @@ def _deliver_homework_assignment_core(
     sp = (video_storage_path or "").strip().lstrip("/") or None
     vu = (video_url or "").strip() if video_url else None
 
+    # Fallback B: if the caller didn't pass any video reference, use the most
+    # recent admin-uploaded reference video for this student (Training Studio
+    # upload). Without this the student's step-0 screen shows "No video" even
+    # when the coach just uploaded one, because the draft row never had the
+    # storage path attached.
+    if not vu and not (vb and sp):
+        try:
+            ref = db.get_latest_admin_uploaded_reference_video_for_user(user_id)
+        except Exception as ref_err:
+            logger.warning("deliver: reference-video fallback lookup failed user_id=%s: %s", user_id, ref_err)
+            ref = None
+        if ref:
+            ref_storage_path = (ref.get("storage_path") or "").strip().lstrip("/") or None
+            ref_fm = ref.get("feature_metadata") or {}
+            ref_bucket = (
+                (ref.get("bucket") or "").strip()
+                or (ref_fm.get("bucket") or "").strip()
+                or config.COACH_FEEDBACK_VIDEO_BUCKET
+            ) if isinstance(ref_fm, dict) else ((ref.get("bucket") or "").strip() or config.COACH_FEEDBACK_VIDEO_BUCKET)
+            if ref_storage_path:
+                sp = ref_storage_path
+                vb = ref_bucket or None
+                logger.info(
+                    "deliver: falling back to admin_uploaded_reference_videos id=%s for user_id=%s",
+                    ref.get("id"), user_id,
+                )
+
     email_link = vu
     pending_uri: str | None = None
     if vb and sp:
@@ -681,13 +708,53 @@ def _deliver_homework_assignment_core(
             video_bucket=vb,
             video_storage_path=sp,
         )
-    result = email_service.send_assignment_to_student(
-        to_email=student_email.strip(),
-        frontend_url=config.FRONTEND_URL,
-        video_url=email_link,
-        video_description=video_description,
-        student_name=student_email.strip(),
-    )
+
+    # Fix A: send the email off the request path. The admin UI only needs the
+    # 202 to flip "Sending…" → "Sent"; SMTP can take 3–10s which blocks the
+    # approve-send request unnecessarily. We unlock the student optimistically
+    # (same semantics as HOMEWORK_UNLOCK_WHEN_EMAIL_FAILS=true) and log+Sentry
+    # on background failure.
+    send_email_async = str(getattr(config, "HOMEWORK_SEND_EMAIL_ASYNC", "true")).strip().lower() not in ("0", "false", "no")
+
+    def _send_email_sync():
+        return email_service.send_assignment_to_student(
+            to_email=student_email.strip(),
+            frontend_url=config.FRONTEND_URL,
+            video_url=email_link,
+            video_description=video_description,
+            student_name=student_email.strip(),
+        )
+
+    if send_email_async:
+        db.v2_mark_tutor_feedback_sent_for_user(user_id)
+        sniper_profile = db.get_sniper_profile_payload(user_id)
+
+        def _bg_email():
+            try:
+                r = _send_email_sync()
+                if (r or {}).get("status") == "failed":
+                    err = r.get("error")
+                    logger.error("deliver (async email): send failed user_id=%s err=%s", user_id, err)
+                    sentry_sdk.capture_message(f"assignment email failed (async) user_id={user_id}: {err}")
+            except Exception as e:
+                logger.error("deliver (async email): unexpected error user_id=%s: %s", user_id, e)
+                sentry_sdk.capture_exception(e)
+
+        try:
+            import threading
+            threading.Thread(target=_bg_email, daemon=True, name=f"send-assignment-{user_id[:8]}").start()
+        except Exception as th_err:
+            logger.warning("deliver: could not spawn email thread, sending inline: %s", th_err)
+            r = _send_email_sync()
+            return {"email": r, "sniper_profile": sniper_profile, "email_failed_but_unlocked": (r or {}).get("status") == "failed"}, None
+        return {
+            "email": {"status": "queued"},
+            "sniper_profile": sniper_profile,
+            "email_failed_but_unlocked": False,
+        }, None
+
+    # Legacy synchronous path (HOMEWORK_SEND_EMAIL_ASYNC=false)
+    result = _send_email_sync()
     if result.get("status") == "failed":
         if getattr(config, "HOMEWORK_UNLOCK_WHEN_EMAIL_FAILS", False):
             logger.warning(
