@@ -5362,8 +5362,43 @@ def _json_safe_row(row: dict | None) -> dict | None:
 @require_admin
 def v2_admin_copilot_reference_upload_job_status(job_id):
     try:
-        job = db.get_copilot_reference_upload_job(job_id)
+        try:
+            job = db.get_copilot_reference_upload_job(job_id)
+        except Exception as job_err:
+            # Jobs table may not exist in this deployment; fall back to treating
+            # the id as a reference_video id (sync-fallback path returns that).
+            logger.info("upload-jobs status: jobs table unavailable (%s) — trying reference_video lookup", job_err)
+            job = None
         if not job:
+            # Sync-fallback synthetic job_id == reference_video.id. If that row
+            # exists, the upload is effectively "completed" — synthesize a job
+            # payload so the frontend polling loop terminates successfully.
+            ref_row = None
+            try:
+                ref_row = db.get_admin_uploaded_reference_video(job_id)
+            except Exception:
+                ref_row = None
+            if ref_row:
+                storage_path = (ref_row.get("storage_path") or "").strip()
+                meta = ref_row.get("feature_metadata") if isinstance(ref_row.get("feature_metadata"), dict) else {}
+                bucket = (meta.get("bucket") or config.COACH_FEEDBACK_VIDEO_BUCKET).strip()
+                preview_url = None
+                if storage_path:
+                    try:
+                        preview_url = presigned_get_coach_object(bucket, storage_path, 3600, supabase_db=db)
+                    except Exception:
+                        preview_url = None
+                synthetic_job = {
+                    "id": job_id,
+                    "stage": "completed",
+                    "percent": 100,
+                    "message": "Processed inline (upload-jobs table missing).",
+                    "reference_video_id": ref_row.get("id"),
+                    "reference_video": _json_safe_row(ref_row),
+                    "preview_url": preview_url,
+                    "synthetic": True,
+                }
+                return jsonify({"status": "ok", "job": synthetic_job}), 200
             return jsonify({"code": "JOB_NOT_FOUND", "error": "Upload job not found"}), 404
         payload = _json_safe_row(job) or {}
         rid = payload.get("reference_video_id")
