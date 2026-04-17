@@ -765,7 +765,11 @@ def _deliver_homework_assignment_core(
             r = _send_email_sync()
             return {"email": r, "sniper_profile": sniper_profile, "email_failed_but_unlocked": (r or {}).get("status") == "failed"}, None
         return {
-            "email": {"status": "queued"},
+            # Optimistic "sent" so the admin UI flips to Sent immediately.
+            # Real delivery happens in the daemon thread; failures are logged +
+            # Sentry-reported. If you need strict semantics, set
+            # HOMEWORK_SEND_EMAIL_ASYNC=false.
+            "email": {"status": "sent", "sent": True, "async": True},
             "sniper_profile": sniper_profile,
             "email_failed_but_unlocked": False,
         }, None
@@ -5871,7 +5875,23 @@ def v2_admin_student_draft_approve_send(user_id, draft_id):
             return jsonify({"status": "ok", "already_sent": True, "draft_id": draft_id}), 200
         payload_for_mode = _normalize_copilot_payload(row)
         script_mode = resolve_script_mode(payload_for_mode)
-        if _video_pipeline_enabled():
+        # If the coach already uploaded a reference video for this draft via
+        # Training Studio, skip the AI pipeline entirely — we have a real
+        # video, no need to generate one. Treat it as full_video_override.
+        has_uploaded_ref_video = False
+        try:
+            _ref_preview = db.get_latest_admin_uploaded_reference_video_for_user(
+                user_id, draft_id=str(row.get("id") or "") or None,
+            )
+            if _ref_preview and (_ref_preview.get("storage_path") or _ref_preview.get("source_video_url")):
+                has_uploaded_ref_video = True
+                logger.info(
+                    "approve-send: skipping pipeline — admin uploaded reference video id=%s for draft=%s",
+                    _ref_preview.get("id"), row.get("id"),
+                )
+        except Exception as ref_check_err:
+            logger.warning("approve-send: ref video pre-check failed: %s", ref_check_err)
+        if _video_pipeline_enabled() and not has_uploaded_ref_video:
             # full_video_override already points to a coach-selected video; no render job is needed,
             # so send immediately instead of queueing a pipeline job.
             if script_mode != "full_video_override":
