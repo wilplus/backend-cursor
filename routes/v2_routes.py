@@ -731,7 +731,11 @@ def _deliver_homework_assignment_core(
     # approve-send request unnecessarily. We unlock the student optimistically
     # (same semantics as HOMEWORK_UNLOCK_WHEN_EMAIL_FAILS=true) and log+Sentry
     # on background failure.
-    send_email_async = str(getattr(config, "HOMEWORK_SEND_EMAIL_ASYNC", "true")).strip().lower() not in ("0", "false", "no")
+    # Default: synchronous. Resend API call takes ~0.5–2s which is fine for an
+    # admin action done a few times per day, and the admin gets an honest
+    # "sent" status (email was actually accepted by Resend, not just queued).
+    # Set HOMEWORK_SEND_EMAIL_ASYNC=true to restore background-thread behavior.
+    send_email_async = str(getattr(config, "HOMEWORK_SEND_EMAIL_ASYNC", "false")).strip().lower() in ("1", "true", "yes")
 
     def _send_email_sync():
         return email_service.send_assignment_to_student(
