@@ -3987,6 +3987,12 @@ class DatabaseService:
         transcription_error: Optional[str] = None,
         title: Optional[str] = None,
     ) -> Optional[Dict[str, Any]]:
+        clean_title = (title or "").strip() or None
+        fm = dict(feature_metadata or {})
+        # Mirror title into feature_metadata so it works even if the `title` top-level
+        # column is missing from the deployed schema (some prod DBs skip the migration).
+        if clean_title and "title" not in fm:
+            fm["title"] = clean_title
         payload = {
             "draft_id": draft_id,
             "user_id": user_id,
@@ -3994,16 +4000,27 @@ class DatabaseService:
             "storage_path": storage_path,
             "source_video_url": source_video_url,
             "transcript_text": transcript_text,
-            "feature_metadata": feature_metadata or {},
+            "feature_metadata": fm,
             "tags": tags or [],
             "is_universal": bool(is_universal),
             "created_by": created_by,
             "transcription_status": (transcription_status or "pending"),
             "transcription_error": transcription_error,
-            "title": (title or "").strip() or None,
+            "title": clean_title,
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }
-        res = self.client.table("admin_uploaded_reference_videos").insert(payload).execute()
+        try:
+            res = self.client.table("admin_uploaded_reference_videos").insert(payload).execute()
+        except Exception as e:
+            # PostgREST schema cache may not know about the `title` column on
+            # deployments that pre-date the migration. Retry without it —
+            # title lives in feature_metadata.title in that case.
+            msg = str(e)
+            if "title" in msg and ("PGRST204" in msg or "schema cache" in msg or "column" in msg.lower()):
+                payload.pop("title", None)
+                res = self.client.table("admin_uploaded_reference_videos").insert(payload).execute()
+            else:
+                raise
         return res.data[0] if res.data else None
 
     def list_admin_uploaded_reference_videos_for_training(
