@@ -656,21 +656,38 @@ def _deliver_homework_assignment_core(
         except Exception as ref_err:
             logger.warning("deliver: reference-video fallback lookup failed user_id=%s: %s", user_id, ref_err)
             ref = None
+        if not ref:
+            logger.warning(
+                "deliver: no reference video found for user_id=%s — student will see 'No video'. "
+                "Likely the admin_uploaded_reference_videos insert failed (check PGRST204 retry logs).",
+                user_id,
+            )
         if ref:
-            ref_storage_path = (ref.get("storage_path") or "").strip().lstrip("/") or None
             ref_fm = ref.get("feature_metadata") or {}
-            ref_bucket = (
-                (ref.get("bucket") or "").strip()
-                or (ref_fm.get("bucket") or "").strip()
-                or config.COACH_FEEDBACK_VIDEO_BUCKET
-            ) if isinstance(ref_fm, dict) else ((ref.get("bucket") or "").strip() or config.COACH_FEEDBACK_VIDEO_BUCKET)
-            if ref_storage_path:
-                sp = ref_storage_path
-                vb = ref_bucket or None
+            ref_fm = ref_fm if isinstance(ref_fm, dict) else {}
+            # Prefer the stable public URL (R2 CDN URL written by the upload
+            # worker) when present — no presigning needed, plays directly.
+            ref_src_url = (ref.get("source_video_url") or "").strip() or None
+            if ref_src_url and (ref_src_url.startswith("http://") or ref_src_url.startswith("https://")):
+                vu = ref_src_url
                 logger.info(
-                    "deliver: falling back to admin_uploaded_reference_videos id=%s for user_id=%s",
-                    ref.get("id"), user_id,
+                    "deliver: falling back to reference_video.source_video_url id=%s url=%s for user_id=%s",
+                    ref.get("id"), ref_src_url[:80], user_id,
                 )
+            else:
+                ref_storage_path = (ref.get("storage_path") or "").strip().lstrip("/") or None
+                ref_bucket = (
+                    (ref.get("bucket") or "").strip()
+                    or (ref_fm.get("bucket") or "").strip()
+                    or config.COACH_FEEDBACK_VIDEO_BUCKET
+                )
+                if ref_storage_path:
+                    sp = ref_storage_path
+                    vb = ref_bucket or None
+                    logger.info(
+                        "deliver: falling back to reference_video storage_path id=%s bucket=%s for user_id=%s",
+                        ref.get("id"), ref_bucket, user_id,
+                    )
 
     email_link = vu
     pending_uri: str | None = None
