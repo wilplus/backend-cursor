@@ -4,6 +4,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from datetime import datetime, timedelta, timezone
 import json
 import logging
+import os
 import re
 import time
 
@@ -4125,6 +4126,60 @@ class DatabaseService:
             q = q.eq("is_active", bool(is_active))
         res = q.execute()
         return res.data or []
+
+    def find_duplicate_admin_uploaded_reference_video(
+        self,
+        user_id: str,
+        *,
+        original_filename: str,
+        draft_id: Optional[str] = None,
+        session_id: Optional[str] = None,
+        within_minutes: int = 60,
+    ) -> Optional[Dict[str, Any]]:
+        """Return an existing reference video row that looks like a duplicate of
+        the one the admin is about to upload. Used to short-circuit re-uploads
+        of the same file for the same student/draft within *within_minutes*.
+
+        Match rules (all must hold):
+          - same user_id
+          - same original_filename (stored in feature_metadata.original_filename
+            AND/OR the tail of storage_path)
+          - created within the last *within_minutes*
+          - same draft_id if provided, else same session_id if provided
+        """
+        try:
+            from datetime import timedelta
+            cutoff = (datetime.now(timezone.utc) - timedelta(minutes=max(1, within_minutes))).isoformat()
+            q = (
+                self.client.table("admin_uploaded_reference_videos")
+                .select("*")
+                .eq("user_id", user_id)
+                .gte("created_at", cutoff)
+                .order("created_at", desc=True)
+                .limit(20)
+            )
+            if draft_id:
+                q = q.eq("draft_id", draft_id)
+            elif session_id:
+                q = q.eq("session_id", session_id)
+            res = q.execute()
+            rows = res.data or []
+        except Exception as e:
+            logger.warning("find_duplicate_admin_uploaded_reference_video: %s", e)
+            return None
+        needle = (original_filename or "").strip()
+        if not needle:
+            return None
+        for row in rows:
+            fm = row.get("feature_metadata") or {}
+            fm_name = (fm.get("original_filename") or "").strip() if isinstance(fm, dict) else ""
+            sp_tail = os.path.basename((row.get("storage_path") or "").strip())
+            # storage_path tail is "{uuid}{ext}", so compare extensions only there.
+            if fm_name and fm_name == needle:
+                return row
+            if sp_tail and os.path.splitext(sp_tail)[1].lower() == os.path.splitext(needle)[1].lower() and fm_name == needle:
+                return row
+        return None
 
     def get_latest_admin_uploaded_reference_video_for_user(
         self,

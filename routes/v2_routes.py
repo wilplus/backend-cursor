@@ -5186,6 +5186,41 @@ def v2_admin_copilot_reference_videos_register_from_storage():
         # track_progress is accepted for compatibility; processing is async in all cases.
         _ = str(body.get("track_progress", "true")).strip().lower() in ("1", "true", "yes")
 
+        # Duplicate-upload short-circuit: if the admin just uploaded the same
+        # filename for this student (optionally scoped to draft/session) within
+        # the last hour, return that existing row instead of creating a second
+        # admin_uploaded_reference_videos entry + re-running Whisper.
+        original_filename = (body.get("original_filename") or "").strip() or safe_name
+        allow_duplicate = str(body.get("allow_duplicate", "false")).strip().lower() in ("1", "true", "yes")
+        if not allow_duplicate:
+            try:
+                existing = db.find_duplicate_admin_uploaded_reference_video(
+                    student_user_id,
+                    original_filename=original_filename,
+                    draft_id=draft_id,
+                    session_id=session_id,
+                    within_minutes=60,
+                )
+            except Exception as dup_err:
+                logger.warning("register-from-storage: duplicate-check failed: %s", dup_err)
+                existing = None
+            if existing:
+                logger.info(
+                    "register-from-storage: duplicate detected for user_id=%s filename=%s id=%s",
+                    student_user_id, original_filename, existing.get("id"),
+                )
+                return jsonify({
+                    "status": "duplicate",
+                    "duplicate": True,
+                    "reference_video": existing,
+                    "job_id": str(existing.get("id")),
+                    "message": (
+                        "A reference video with the same filename was already uploaded "
+                        "for this student in the last hour. Using the existing one. "
+                        "Pass allow_duplicate=true to force a new upload."
+                    ),
+                }), 200
+
         job_row = None
         try:
             job_row = db.create_copilot_reference_upload_job(
@@ -5268,14 +5303,20 @@ def v2_admin_copilot_reference_videos_register_from_storage():
                 }
             ), 500
 
+        # Sync fallback: frontend expects a job_id. Reuse the reference_video id
+        # so polling the (non-existent) job endpoint just shows "completed".
+        ref_row = out.get("reference_video") or {}
+        synthetic_job_id = str(ref_row.get("id") or uuid.uuid4())
         return jsonify(
             {
                 "status": "ok",
-                "reference_video": out["reference_video"],
+                "job_id": synthetic_job_id,
+                "sync": True,
+                "reference_video": ref_row,
                 "preview_url": out.get("preview_url"),
                 "message": (
-                    "Processed without upload job tracking. "
-                    "Run migrations/add_copilot_reference_upload_jobs.sql for async jobs + polling."
+                    "Processed inline (upload-jobs table missing). "
+                    "Run migrations/add_copilot_reference_upload_jobs.sql for async polling."
                 ),
             }
         ), 201
