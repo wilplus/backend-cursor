@@ -2429,7 +2429,7 @@ class DatabaseService:
         )
 
     # ---------- Homework tasks (per-student public.tasks; pool public.tasks_pool) ----------
-    DEFAULT_STUDENT_TASK_TEXT = "How was your day so far?"
+    DEFAULT_STUDENT_TASK_TEXT = "Do you think you are a good communicator? Why?"
     TASK_TEMPLATE_ALLOWED_PROFILES = {
         "The Overwhelmed",
         "The Stressor",
