@@ -3119,17 +3119,17 @@ class DatabaseService:
             return None
 
     def v2_get_student_details(self, user_id: str):
-        """Get student details row (name, price_per_live_lesson, credits) or None."""
+        """Get student details row (name, price_per_live_lesson, credits, is_archived) or None."""
         result = (
             self.client.table("v2_student_details")
-            .select("user_id, name, price_per_live_lesson, credits")
+            .select("user_id, name, price_per_live_lesson, credits, is_archived")
             .eq("user_id", user_id)
             .execute()
         )
         return result.data[0] if result.data else None
 
     def v2_upsert_student_details(self, user_id: str, data: dict):
-        """Create/update student details. Allowed keys: name, price_per_live_lesson, credits."""
+        """Create/update student details. Allowed keys: name, price_per_live_lesson, credits, is_archived."""
         payload = {"user_id": user_id, "updated_at": datetime.now(timezone.utc).isoformat()}
         if "name" in data:
             name_val = data.get("name")
@@ -3141,8 +3141,23 @@ class DatabaseService:
             payload["price_per_live_lesson"] = data.get("price_per_live_lesson")
         if "credits" in data:
             payload["credits"] = data.get("credits")
+        if "is_archived" in data:
+            payload["is_archived"] = bool(data.get("is_archived"))
         result = self.client.table("v2_student_details").upsert(payload, on_conflict="user_id").execute()
         return result.data[0] if result.data else None
+
+    def v2_get_archived_user_ids(self) -> set:
+        """Return set of user_id strings that have is_archived = true in v2_student_details."""
+        try:
+            res = (
+                self.client.table("v2_student_details")
+                .select("user_id")
+                .eq("is_archived", True)
+                .execute()
+            )
+            return {str(row["user_id"]) for row in (res.data or [])}
+        except Exception:
+            return set()
 
     def v2_deduct_session_credits(self, user_id: str, amount: int = 5) -> int | None:
         """Deduct credits from a student's balance. Returns new credits value or None on failure."""

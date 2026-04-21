@@ -443,6 +443,8 @@ def v2_admin_student_profile(user_id):
                     if c < 0:
                         return jsonify({"code": "INVALID_INPUT", "error": "credits must be non-negative"}), 400
                     payload["credits"] = c
+            if "is_archived" in data:
+                payload["is_archived"] = bool(data.get("is_archived"))
             if not payload:
                 return jsonify({"code": "INVALID_INPUT", "error": "No updatable fields provided"}), 400
             row = db.v2_upsert_student_details(user_id, payload)
@@ -452,6 +454,7 @@ def v2_admin_student_profile(user_id):
                 "name": row.get("name") if row else payload.get("name"),
                 "price_per_live_lesson": row.get("price_per_live_lesson") if row else payload.get("price_per_live_lesson"),
                 "credits": row.get("credits") if row else payload.get("credits"),
+                "is_archived": row.get("is_archived") if row else payload.get("is_archived"),
             }), 200
 
         if not is_admin(request.user_id) and user_id != request.user_id:
@@ -4374,11 +4377,12 @@ def v2_admin_cohorts():
             return groups[key]
 
         # Baseline: same student pool as Admin → Students (Auth). Fallback if Auth admin list fails.
+        archived_ids = db.v2_get_archived_user_ids()
         baseline_uids = db.v2_list_all_auth_user_ids(cap=cap_ms)
         if not baseline_uids:
             baseline_uids = db.list_recent_student_ids(limit=cap_ms)
         for uid in baseline_uids:
-            if not uid:
+            if not uid or uid in archived_ids:
                 continue
             sp = db.get_sniper_profile(uid) or {}
             draft_profile, draft_stage = _student_cohort_from_state(sp)
@@ -4396,7 +4400,7 @@ def v2_admin_cohorts():
 
         for row in rows:
             uid = str(row.get("user_id") or "")
-            if not uid:
+            if not uid or uid in archived_ids:
                 continue
             draft_profile = (row.get("cohort_profile") or "").strip()
             try:
@@ -4452,12 +4456,13 @@ def v2_admin_copilot_cohort_students(cohort_id):
             cap_ms = 2500
         cap_ms = max(50, min(5000, cap_ms))
 
+        archived_ids = db.v2_get_archived_user_ids()
         rows = db.list_admin_student_send_drafts(status=None)
         profile_cache = {}
         filtered = []
         for row in rows:
             uid = str(row.get("user_id") or "")
-            if not uid:
+            if not uid or uid in archived_ids:
                 continue
             p = (row.get("cohort_profile") or "").strip()
             try:
@@ -4516,7 +4521,7 @@ def v2_admin_copilot_cohort_students(cohort_id):
         if not extra_uids:
             extra_uids = db.list_recent_student_ids(limit=cap_ms)
         for uid in extra_uids:
-            if not uid or uid in uids_in_queue:
+            if not uid or uid in uids_in_queue or uid in archived_ids:
                 continue
             sp = db.get_sniper_profile(uid) or {}
             p, stg = _student_cohort_from_state(sp)
