@@ -1192,7 +1192,11 @@ class DatabaseService:
     def v2_get_student_overrides(self, user_id: str):
         """Overrides for user (tasks, prompts, metric/skip flags, pending tutor video)."""
         result = self.client.table("v2_student_overrides").select("*").eq("user_id", user_id).execute()
-        return result.data[0] if result.data else None
+        rows = result.data or []
+        for row in rows:
+            if str(row.get("user_id") or "") == str(user_id):
+                return row
+        return None
 
     def v2_get_active_session(self, user_id: str):
         """Active v2 session (status != completed)."""
@@ -3073,7 +3077,11 @@ class DatabaseService:
         payload["user_id"] = user_id
         payload["updated_at"] = datetime.now(timezone.utc).isoformat()
         result = self.client.table("v2_student_overrides").upsert(payload, on_conflict="user_id").execute()
-        return result.data[0] if result.data else None
+        rows = result.data or []
+        for row in rows:
+            if str(row.get("user_id") or "") == str(user_id):
+                return row
+        return self.v2_get_student_overrides(user_id)
 
     def v2_set_pending_tutor_video(
         self,

@@ -637,7 +637,15 @@ def v2_admin_student_overrides(user_id):
                     return jsonify({"code": "INVALID_INPUT", "error": err}), 400
                 data[key] = val
         db.v2_upsert_student_overrides(user_id, data)
-        return jsonify({"status": "ok"}), 200
+        overrides = db.v2_get_student_overrides(user_id) or {"user_id": user_id}
+        if str(overrides.get("user_id") or "") != str(user_id):
+            logger.error(
+                "overrides mismatch after update: path_user_id=%s row_user_id=%s",
+                user_id,
+                overrides.get("user_id"),
+            )
+            return jsonify({"code": "OVERRIDES_MISMATCH", "error": "Updated overrides user mismatch"}), 500
+        return _json_admin_no_store({"status": "ok", "user_id": user_id, "overrides": overrides}, 200)
     except Exception as e:
         sentry_sdk.capture_exception(e)
         logger.error("PUT overrides error for user_id=%s: %s", user_id, e)
@@ -3661,6 +3669,12 @@ def _pick_student_draft(user_id: str, *, session_id: str | None = None, draft_id
     for row in search_space:
         if str(row.get("status") or "").lower() != "sent":
             return row
+    # If session-filtered rows exist but are all sent, fall back to any editable draft.
+    # This avoids false DRAFT_NOT_FOUND when client session_id is stale.
+    if search_space is not rows:
+        for row in rows:
+            if str(row.get("status") or "").lower() != "sent":
+                return row
     return None
 
 
@@ -4639,7 +4653,7 @@ def v2_admin_copilot_student_drafts(user_id):
                 # Stale or UI-mismatched session_id must not return an empty list while rows exist.
                 rows = filtered if filtered else rows
             status_meta = _copilot_draft_generation_status(user_id, rows)
-            return jsonify({"drafts": [_serialize_copilot_draft(r) for r in rows], **status_meta}), 200
+            return _json_admin_no_store({"drafts": [_serialize_copilot_draft(r) for r in rows], **status_meta}, 200)
 
         body = request.get_json(silent=True) or {}
         immutable_fields = sorted(
@@ -4771,6 +4785,14 @@ def v2_admin_copilot_student_drafts(user_id):
             .execute()
         )
         out = updated.data[0] if updated.data else row
+        if str((out or {}).get("user_id") or "") != str(user_id):
+            logger.error(
+                "draft mismatch after update: path_user_id=%s row_user_id=%s draft_id=%s",
+                user_id,
+                (out or {}).get("user_id"),
+                row.get("id"),
+            )
+            return jsonify({"code": "DRAFT_MISMATCH", "error": "Updated draft user mismatch"}), 500
         try:
             new_grade = payload.get("grade_draft")
             new_comment = (payload.get("comment_draft") or "").strip()
@@ -4860,7 +4882,7 @@ def v2_admin_copilot_student_drafts(user_id):
                 )
         except Exception as ann_err:
             logger.warning("task swap annotation failed: %s", ann_err)
-        return jsonify({"status": "ok", "draft": _serialize_copilot_draft(out)}), 200
+        return _json_admin_no_store({"status": "ok", "user_id": user_id, "draft": _serialize_copilot_draft(out)}, 200)
     except Exception as e:
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
