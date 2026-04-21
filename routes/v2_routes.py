@@ -2,7 +2,7 @@
 V2: admin CRUD only. Student flow is homework only (routes/homework.py).
 All /v2/admin/* require auth + admin.
 """
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, make_response
 from config import Config
 from auth import require_auth
 from routes.admin import require_admin, is_admin
@@ -62,6 +62,15 @@ from services.reference_video_upload_worker import run_reference_video_upload
 logger = logging.getLogger(__name__)
 v2_bp = Blueprint("v2", __name__, url_prefix="/v2")
 config = Config()
+
+
+def _json_admin_no_store(payload, status=200):
+    """Admin profile responses must not be served from stale caches."""
+    response = make_response(jsonify(payload), status)
+    response.headers["Cache-Control"] = "private, no-store, max-age=0, must-revalidate"
+    response.headers["Vary"] = "Authorization"
+    return response
+
 
 _STRESS_ALLOWED_SOURCE_TYPES = {"student", "internet"}
 _STRESS_ALLOWED_LABELS = {"stress", "no_stress"}
@@ -484,7 +493,7 @@ def v2_admin_student_profile(user_id):
                 similar_students = db.get_similar_students_by_wpm(user_id)
         except Exception as sim_err:
             logger.warning("admin profile: similar_students_by_wpm failed: %s", sim_err)
-        return jsonify({
+        return _json_admin_no_store({
             "user_id": user_id,
             "email": email,
             "name": details.get("name"),
@@ -505,7 +514,7 @@ def v2_admin_student_profile(user_id):
             "latest_assignment_draft": latest_assignment,
             "sessions": delivered_sessions,
             "similar_students_by_wpm": similar_students,
-        }), 200
+        }, 200)
     except Exception as e:
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
@@ -518,7 +527,15 @@ def v2_admin_student_speaker_profile(user_id):
     try:
         data = request.get_json() or {}
         db.v2_upsert_speaker_profile(user_id, data)
-        return jsonify({"status": "ok"}), 200
+        speaker_profile = db.v2_get_speaker_profile(user_id) or {"user_id": user_id}
+        if str(speaker_profile.get("user_id") or "") != str(user_id):
+            logger.error(
+                "speaker-profile mismatch after update: path_user_id=%s row_user_id=%s",
+                user_id,
+                speaker_profile.get("user_id"),
+            )
+            return jsonify({"code": "PROFILE_MISMATCH", "error": "Updated profile user mismatch"}), 500
+        return _json_admin_no_store({"status": "ok", "user_id": user_id, "speaker_profile": speaker_profile}, 200)
     except Exception as e:
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR", "error": str(e)}), 500

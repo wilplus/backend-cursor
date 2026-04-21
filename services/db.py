@@ -1,6 +1,6 @@
 from supabase import create_client, Client
 from config import Config
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Callable
 from datetime import datetime, timedelta, timezone
 import json
 import logging
@@ -16,14 +16,93 @@ logger = logging.getLogger(__name__)
 
 class DatabaseService:
     def __init__(self):
-        self.client: Client = create_client(
-            config.SUPABASE_URL,
-            config.SUPABASE_SERVICE_ROLE_KEY
-        )
+        self.client: Client = self._build_supabase_client()
         # Cache missing optional columns discovered at runtime on older schemas.
         self._v2_sessions_missing_columns: set[str] = set()
         self._student_profile_table = "student_profile"
         self._legacy_student_profile_table = "user_sniper_profile"
+
+    def _build_supabase_client(self) -> Client:
+        """Create Supabase client and prefer HTTP/1.1 transport to avoid flaky HTTP/2 disconnects."""
+        try:
+            import httpx
+            ClientOptions = None
+            try:
+                from supabase.lib.client_options import ClientOptions as _ClientOptions
+                ClientOptions = _ClientOptions
+            except Exception:
+                try:
+                    from supabase.client_options import ClientOptions as _ClientOptions
+                    ClientOptions = _ClientOptions
+                except Exception:
+                    try:
+                        from supabase import ClientOptions as _ClientOptions
+                        ClientOptions = _ClientOptions
+                    except Exception:
+                        ClientOptions = None
+
+            if ClientOptions is not None:
+                http_client = httpx.Client(http2=False, timeout=httpx.Timeout(20.0))
+                options = ClientOptions(http_client=http_client)
+                try:
+                    return create_client(
+                        config.SUPABASE_URL,
+                        config.SUPABASE_SERVICE_ROLE_KEY,
+                        options=options,
+                    )
+                except TypeError:
+                    # Older supabase-py may expect positional options arg.
+                    return create_client(
+                        config.SUPABASE_URL,
+                        config.SUPABASE_SERVICE_ROLE_KEY,
+                        options,
+                    )
+        except Exception as e:
+            logger.warning("Supabase HTTP/1.1 transport setup failed; falling back to default client: %s", e)
+
+        return create_client(
+            config.SUPABASE_URL,
+            config.SUPABASE_SERVICE_ROLE_KEY,
+        )
+
+    def _is_transient_postgrest_disconnect(self, err: Exception) -> bool:
+        msg = str(err).lower()
+        if "remoteprotocolerror" in msg and "server disconnected" in msg:
+            return True
+        if "server disconnected" in msg:
+            return True
+        if "connection reset by peer" in msg:
+            return True
+        if "http2" in msg and "disconnected" in msg:
+            return True
+        return False
+
+    def _execute_with_retry(self, query_factory: Callable[[], Any], *, label: str, max_attempts: int = 3):
+        """Execute a PostgREST query with reconnect + backoff on transient transport drops."""
+        attempt = 1
+        while True:
+            try:
+                query = query_factory()
+                return query.execute()
+            except Exception as e:
+                if attempt >= max_attempts or not self._is_transient_postgrest_disconnect(e):
+                    raise
+                sleep_s = 0.2 * (2 ** (attempt - 1))
+                logger.warning(
+                    "%s transient DB disconnect (attempt %s/%s): %s; retrying in %.1fs",
+                    label,
+                    attempt,
+                    max_attempts,
+                    e,
+                    sleep_s,
+                )
+                # Recreate client to avoid reusing a broken pooled connection/session.
+                try:
+                    self.client = self._build_supabase_client()
+                except Exception:
+                    pass
+                time.sleep(sleep_s)
+                attempt += 1
 
     def _is_relation_missing_error(self, err: Exception) -> bool:
         msg = str(err).lower()
@@ -233,12 +312,13 @@ class DatabaseService:
     
     def get_recording(self, recording_id: str, user_id: str = None):
         """Get a recording by ID, optionally verifying ownership"""
-        query = self.client.table("recordings").select("*").eq("id", recording_id)
-        
-        if user_id:
-            query = query.eq("user_id", user_id)
-        
-        result = query.execute()
+        def _query():
+            query = self.client.table("recordings").select("*").eq("id", recording_id)
+            if user_id:
+                query = query.eq("user_id", user_id)
+            return query
+
+        result = self._execute_with_retry(_query, label="get_recording")
         
         return result.data[0] if result.data else None
 
@@ -3569,7 +3649,11 @@ class DatabaseService:
     def v2_get_speaker_profile(self, user_id: str):
         """Get speaker profile for admin panel (main_goal, motivation, coach_notes, etc.)."""
         result = self.client.table("v2_speaker_profiles").select("*").eq("user_id", user_id).execute()
-        return result.data[0] if result.data else None
+        rows = result.data or []
+        for row in rows:
+            if str(row.get("user_id") or "") == str(user_id):
+                return row
+        return None
 
     def v2_upsert_speaker_profile(self, user_id: str, data: dict):
         """Create or update speaker profile. Keys: main_goal, motivation, strong_points, weak_points, charismatic_traits, hobbies_interests, personality_type, coach_notes."""
@@ -3578,7 +3662,11 @@ class DatabaseService:
         payload["user_id"] = user_id
         payload["updated_at"] = datetime.now(timezone.utc).isoformat()
         result = self.client.table("v2_speaker_profiles").upsert(payload, on_conflict="user_id").execute()
-        return result.data[0] if result.data else None
+        rows = result.data or []
+        for row in rows:
+            if str(row.get("user_id") or "") == str(user_id):
+                return row
+        return self.v2_get_speaker_profile(user_id)
 
     def get_user_name_from_auth(self, user_id: str) -> str | None:
         """Fetch user display name from Supabase Auth user_metadata. Returns None if not found or on error."""
