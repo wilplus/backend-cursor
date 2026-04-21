@@ -4621,6 +4621,7 @@ def _ensure_draft_exists_for_user(user_id: str) -> list:
     return rows
 
 
+@v2_bp.route("/admin/students/<user_id>/drafts", methods=["GET", "PUT"])
 @v2_bp.route("/admin/copilot/students/<user_id>/drafts", methods=["GET", "PUT"])
 @require_admin
 def v2_admin_copilot_student_drafts(user_id):
@@ -5550,14 +5551,18 @@ def v2_admin_copilot_attach_reference_video(user_id, draft_id):
         return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
 
 
-@v2_bp.route("/admin/copilot/students/<user_id>/audit", methods=["GET", "PUT"])
+@v2_bp.route("/admin/students/<user_id>/drafts/audit", methods=["GET", "PUT", "PATCH", "POST"])
+@v2_bp.route("/admin/copilot/students/<user_id>/drafts/audit", methods=["GET", "PUT", "PATCH", "POST"])
+@v2_bp.route("/admin/students/<user_id>/audit", methods=["GET", "PUT", "PATCH", "POST"])
+@v2_bp.route("/admin/copilot/students/<user_id>/audit", methods=["GET", "PUT", "PATCH", "POST"])
 @require_admin
 def v2_admin_copilot_student_audit(user_id):
     try:
         if request.method == "GET":
             session_id = (request.args.get("session_id") or "").strip() or None
             row = _pick_student_draft(user_id, session_id=session_id, include_sent=True)
-            return jsonify({"audit": _serialize_copilot_draft(row) if row else None}), 200
+            audit = _serialize_copilot_draft(row) if row else None
+            return jsonify({"audit": audit, "session_id": (audit or {}).get("session_id")}), 200
 
         body = request.get_json(silent=True) or {}
         session_id = (body.get("session_id") or "").strip() or None
@@ -5628,7 +5633,8 @@ def v2_admin_copilot_student_audit(user_id):
                 )
         except Exception as ann_err:
             logger.warning("copilot audit annotation event failed: %s", ann_err)
-        return jsonify({"status": "ok", "audit": _serialize_copilot_draft(out)}), 200
+        audit = _serialize_copilot_draft(out)
+        return jsonify({"status": "ok", "audit": audit, "session_id": audit.get("session_id")}), 200
     except Exception as e:
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
