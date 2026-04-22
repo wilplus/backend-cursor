@@ -1,13 +1,14 @@
 """
 Extract a compressed audio track from video bytes for OpenAI Whisper (25MB file limit).
-Uses ffmpeg stdin/stdout; requires ffmpeg installed on the host (see apt.txt for Railway).
+Uses ffmpeg temp input/output files; requires ffmpeg installed on the host (see apt.txt for Railway).
 """
 from __future__ import annotations
 
 import logging
+import os
 import shutil
 import subprocess
-from typing import Optional
+import tempfile
 
 from config import Config
 
@@ -30,63 +31,94 @@ _WHISPER_TARGET_AUDIO_ARGS = [
 ]
 
 
+class FfmpegAudioExtractError(RuntimeError):
+    """Raised when ffmpeg extraction cannot produce a valid Whisper input."""
+
+
+class FfmpegAudioTooLargeError(FfmpegAudioExtractError):
+    """Raised when extracted audio still exceeds the Whisper request size limit."""
+
+    def __init__(self, size_bytes: int, max_bytes: int):
+        self.size_bytes = int(size_bytes)
+        self.max_bytes = int(max_bytes)
+        super().__init__(f"Extracted audio is too large ({self.size_bytes} bytes > {self.max_bytes} bytes)")
+
+
 def ffmpeg_available() -> bool:
     path = config.FFMPEG_PATH
     return bool(path and shutil.which(path))
 
 
-def extract_audio_mp3_for_whisper(video_bytes: bytes, *, max_seconds: int) -> Optional[bytes]:
+def extract_audio_mp3_for_whisper(
+    video_bytes: bytes,
+    *,
+    max_seconds: int,
+    max_output_bytes: int = 24 * 1024 * 1024,
+) -> bytes:
     """
-    Decode video from memory and return MP3 bytes suitable for whisper-1.
-    Returns None if ffmpeg is missing or fails.
+    Decode container bytes and return MP3 bytes suitable for whisper-1.
+    Uses temporary files (input + output) and cleans them up automatically.
+    Raises FfmpegAudioExtractError / FfmpegAudioTooLargeError on failure.
     """
     if not video_bytes:
-        return None
+        raise FfmpegAudioExtractError("Input file is empty; cannot extract audio.")
     if not config.REFERENCE_VIDEO_FFMPEG_EXTRACT:
-        return None
+        raise FfmpegAudioExtractError(
+            "ffmpeg extraction is disabled (REFERENCE_VIDEO_FFMPEG_EXTRACT=false)."
+        )
     exe = config.FFMPEG_PATH
     if not shutil.which(exe):
-        logger.warning("ffmpeg not found at %s; cannot extract audio for Whisper", exe)
-        return None
+        raise FfmpegAudioExtractError(f"ffmpeg not found on PATH (FFMPEG_PATH={exe!r}).")
 
     cap = max(30, min(24 * 3600, int(max_seconds)))
-    cmd = [
-        exe,
-        "-hide_banner",
-        "-loglevel",
-        "error",
-        "-i",
-        "pipe:0",
-        "-t",
-        str(cap),
-        *_WHISPER_TARGET_AUDIO_ARGS,
-        "pipe:1",
-    ]
+    timeout_s = max(120.0, min(3600.0, cap * 0.15 + 60.0))
     try:
-        proc = subprocess.run(
-            cmd,
-            input=video_bytes,
-            capture_output=True,
-            timeout=max(120.0, min(3600.0, cap * 0.15 + 60.0)),
-        )
-    except subprocess.TimeoutExpired:
-        logger.error("ffmpeg audio extract timed out (cap_s=%s)", cap)
-        return None
+        with tempfile.TemporaryDirectory(prefix="whisper-audio-") as tmp_dir:
+            input_path = os.path.join(tmp_dir, "input-container.bin")
+            output_path = os.path.join(tmp_dir, "output-audio.mp3")
+            with open(input_path, "wb") as in_file:
+                in_file.write(video_bytes)
+
+            cmd = [
+                exe,
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-y",
+                "-i",
+                input_path,
+                "-t",
+                str(cap),
+                *_WHISPER_TARGET_AUDIO_ARGS,
+                output_path,
+            ]
+            proc = subprocess.run(
+                cmd,
+                capture_output=True,
+                timeout=timeout_s,
+            )
+            if proc.returncode != 0:
+                err = (proc.stderr or b"").decode("utf-8", errors="replace")[:2000]
+                raise FfmpegAudioExtractError(f"ffmpeg exited with code {proc.returncode}: {err}")
+
+            if not os.path.exists(output_path):
+                raise FfmpegAudioExtractError("ffmpeg reported success but produced no output file.")
+            out_size = os.path.getsize(output_path)
+            if out_size < 256:
+                raise FfmpegAudioExtractError(
+                    f"ffmpeg output is too small ({out_size} bytes); likely no audio track."
+                )
+            if out_size > int(max_output_bytes):
+                raise FfmpegAudioTooLargeError(out_size, int(max_output_bytes))
+
+            with open(output_path, "rb") as out_file:
+                return out_file.read()
+    except subprocess.TimeoutExpired as timeout_err:
+        raise FfmpegAudioExtractError(
+            f"ffmpeg audio extraction timed out after {int(timeout_s)}s."
+        ) from timeout_err
+    except FfmpegAudioExtractError:
+        raise
     except Exception as e:
-        logger.error("ffmpeg audio extract failed: %s", e, exc_info=True)
-        return None
-
-    if proc.returncode != 0:
-        err = (proc.stderr or b"").decode("utf-8", errors="replace")[:2000]
-        logger.warning("ffmpeg exited %s: %s", proc.returncode, err)
-        return None
-
-    out = proc.stdout or b""
-    if len(out) < 256:
-        logger.warning("ffmpeg produced very small output (%s bytes); likely no audio", len(out))
-        return None
-    # OpenAI Whisper limit ~25MB
-    if len(out) > 25 * 1024 * 1024:
-        logger.warning("extracted audio still exceeds 25MB (%s bytes); increase compression or lower max_seconds", len(out))
-        return None
-    return out
+        logger.error("ffmpeg audio extract failed unexpectedly: %s", e, exc_info=True)
+        raise FfmpegAudioExtractError(str(e)) from e

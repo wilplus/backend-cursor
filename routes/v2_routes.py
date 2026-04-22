@@ -124,7 +124,7 @@ _COPILOT_DRAFT_IMMUTABLE_FIELDS = {
 }
 
 _PIPELINE_RUNNING_STATES = {"queued", "running_tts", "running_video", "uploading"}
-_REFERENCE_VIDEO_ALLOWED_EXTENSIONS = {".mp4", ".mov", ".webm", ".m4v", ".avi", ".mkv"}
+_REFERENCE_VIDEO_ALLOWED_EXTENSIONS = {".mp4", ".mov", ".webm", ".m4v", ".avi", ".mkv", ".m4a"}
 
 
 def _normalize_upload_content_type(raw: str, fallback_filename: str) -> str:
@@ -5116,7 +5116,7 @@ def v2_admin_copilot_reference_videos_upload():
             return jsonify(
                 {
                     "code": "INVALID_VIDEO_FORMAT",
-                    "error": "Supported formats: .mp4, .mov, .webm, .m4v, .avi, .mkv",
+                    "error": "Supported formats: .mp4, .mov, .webm, .m4v, .avi, .mkv, .m4a",
                 }
             ), 400
         video_bytes = video_file.read() or b""
@@ -5301,7 +5301,7 @@ def v2_admin_copilot_reference_videos_upload_url():
         if ext not in _REFERENCE_VIDEO_ALLOWED_EXTENSIONS:
             return jsonify({
                 "code": "INVALID_VIDEO_FORMAT",
-                "error": "Supported formats: .mp4, .mov, .webm, .m4v, .avi, .mkv",
+                "error": "Supported formats: .mp4, .mov, .webm, .m4v, .avi, .mkv, .m4a",
                 "details": {"ext": ext},
             }), 400
 
@@ -5394,7 +5394,7 @@ def v2_admin_copilot_reference_videos_register_from_storage():
         if ext not in _REFERENCE_VIDEO_ALLOWED_EXTENSIONS:
             return jsonify({
                 "code": "INVALID_VIDEO_FORMAT",
-                "error": "Supported formats: .mp4, .mov, .webm, .m4v, .avi, .mkv",
+                "error": "Supported formats: .mp4, .mov, .webm, .m4v, .avi, .mkv, .m4a",
                 "details": {"ext": ext},
             }), 400
 

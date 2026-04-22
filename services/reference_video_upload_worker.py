@@ -23,13 +23,20 @@ from services.coach_video_storage import (
     r2_bucket_name,
 )
 from services.db import db
-from services.ffmpeg_audio_extract import extract_audio_mp3_for_whisper, ffmpeg_available
+from services.ffmpeg_audio_extract import (
+    FfmpegAudioExtractError,
+    FfmpegAudioTooLargeError,
+    extract_audio_mp3_for_whisper,
+    ffmpeg_available,
+)
 
 config = Config()
 logger = logging.getLogger(__name__)
 
-# Containers we send to Whisper as-is (API accepts these).
-REFERENCE_VIDEO_WHISPER_DIRECT_EXTENSIONS = {".mp4", ".webm", ".m4v"}
+# OpenAI Whisper request payload guard (service limit ~25MB; keep below with headroom).
+WHISPER_MAX_INPUT_BYTES = 24 * 1024 * 1024
+# Force extract for common video/audio containers we accept on upload.
+REFERENCE_VIDEO_EXTRACT_EXTENSIONS = {".mp4", ".mov", ".webm", ".m4v", ".avi", ".mkv", ".m4a"}
 
 
 def _value_hash(value: str | None) -> str | None:
@@ -140,8 +147,12 @@ def run_reference_video_upload(
     whisper_bytes: bytes = video_bytes
     whisper_filename = safe_name or "reference-video.mp4"
     audio_source = "direct"
+    source_ext = (ext or "").strip().lower()
+    should_extract_for_whisper = (source_ext in REFERENCE_VIDEO_EXTRACT_EXTENSIONS) or (
+        len(video_bytes) > WHISPER_MAX_INPUT_BYTES
+    )
 
-    if ext not in REFERENCE_VIDEO_WHISPER_DIRECT_EXTENSIONS:
+    if should_extract_for_whisper:
         _job_progress(
             job_id,
             stage="transcription",
@@ -149,15 +160,43 @@ def run_reference_video_upload(
             message="Extracting audio with ffmpeg for Whisper…",
             reference_video_id=rid,
         )
-        extracted = extract_audio_mp3_for_whisper(
-            video_bytes,
-            max_seconds=config.REFERENCE_VIDEO_WHISPER_MAX_AUDIO_SECONDS,
-        )
-        if not extracted:
+        try:
+            extracted = extract_audio_mp3_for_whisper(
+                video_bytes,
+                max_seconds=config.REFERENCE_VIDEO_WHISPER_MAX_AUDIO_SECONDS,
+                max_output_bytes=WHISPER_MAX_INPUT_BYTES,
+            )
+            whisper_bytes = extracted
+            whisper_filename = "reference-extracted-audio.mp3"
+            audio_source = "ffmpeg_mp3"
+        except FfmpegAudioTooLargeError as extract_err:
             err_txt = (
-                "ffmpeg is not available on this server; add it (apt.txt / image) or upload .mp4/.webm/.m4v."
+                "File too long for transcription after audio extraction; "
+                "trim or split and upload again."
+            )
+            logger.warning(
+                "reference video extract too large id=%s size=%s max=%s: %s",
+                rid,
+                extract_err.size_bytes,
+                extract_err.max_bytes,
+                extract_err,
+            )
+            created = db.update_admin_uploaded_reference_video(
+                rid,
+                {"transcription_status": "failed", "transcription_error": err_txt[:1000]},
+            ) or created
+            _job_progress(
+                job_id,
+                stage="transcription",
+                percent=80,
+                message=err_txt,
+                reference_video_id=rid,
+            )
+        except FfmpegAudioExtractError as extract_err:
+            err_txt = (
+                "ffmpeg is not available on this server; add it (apt.txt / image)."
                 if not ffmpeg_available()
-                else "ffmpeg could not decode audio from this file (codec missing or no audio track?)."
+                else f"Audio extraction failed: {str(extract_err)[:800]}"
             )
             created = db.update_admin_uploaded_reference_video(
                 rid,
@@ -170,10 +209,20 @@ def run_reference_video_upload(
                 message="Transcription skipped after audio extract failure",
                 reference_video_id=rid,
             )
-        else:
-            whisper_bytes = extracted
-            whisper_filename = "reference-extracted-audio.mp3"
-            audio_source = "ffmpeg_mp3"
+
+    if (created.get("transcription_status") or "") != "failed" and len(whisper_bytes) > WHISPER_MAX_INPUT_BYTES:
+        err_txt = "File too long for transcription; trim or split and upload again."
+        created = db.update_admin_uploaded_reference_video(
+            rid,
+            {"transcription_status": "failed", "transcription_error": err_txt[:1000]},
+        ) or created
+        _job_progress(
+            job_id,
+            stage="transcription",
+            percent=80,
+            message=err_txt,
+            reference_video_id=rid,
+        )
 
     if (created.get("transcription_status") or "") != "failed":
         _job_progress(
