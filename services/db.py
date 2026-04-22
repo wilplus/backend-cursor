@@ -3853,6 +3853,40 @@ class DatabaseService:
         res = self.client.table("admin_student_send_drafts").insert(rows).execute()
         return res.data or []
 
+    def archive_copilot_queue_row(self, user_id: str, session_id: str, admin_user_id: Optional[str] = None) -> bool:
+        payload = {
+            "user_id": user_id,
+            "session_id": session_id,
+            "archived_at": datetime.now(timezone.utc).isoformat(),
+            "archived_by": admin_user_id,
+        }
+        self.client.table("admin_copilot_queue_archives").upsert(
+            payload, on_conflict="user_id,session_id"
+        ).execute()
+        return True
+
+    def unarchive_copilot_queue_row(self, user_id: str, session_id: str) -> bool:
+        (
+            self.client.table("admin_copilot_queue_archives")
+            .delete()
+            .eq("user_id", user_id)
+            .eq("session_id", session_id)
+            .execute()
+        )
+        return True
+
+    def get_copilot_queue_archived_pairs(self) -> set:
+        """Return set of (user_id, session_id) string tuples that are archived."""
+        try:
+            res = (
+                self.client.table("admin_copilot_queue_archives")
+                .select("user_id, session_id")
+                .execute()
+            )
+            return {(str(r["user_id"]), str(r["session_id"])) for r in (res.data or [])}
+        except Exception:
+            return set()
+
     def list_admin_student_send_drafts(self, *, status: Optional[str] = None) -> List[Dict[str, Any]]:
         q = self.client.table("admin_student_send_drafts").select("*").order("created_at", desc=True)
         if status:
