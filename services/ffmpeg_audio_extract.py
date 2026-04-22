@@ -1,9 +1,11 @@
 """
 Extract a compressed audio track from video bytes for OpenAI Whisper (25MB file limit).
-Uses ffmpeg temp input/output files; requires ffmpeg installed on the host (see apt.txt for Railway).
+Uses ffmpeg temp input/output files; resolve_ffmpeg_executable() uses system PATH or
+imageio-ffmpeg's bundled binary (see requirements.txt) when the host has no system ffmpeg.
 """
 from __future__ import annotations
 
+import functools
 import logging
 import os
 import shutil
@@ -44,9 +46,40 @@ class FfmpegAudioTooLargeError(FfmpegAudioExtractError):
         super().__init__(f"Extracted audio is too large ({self.size_bytes} bytes > {self.max_bytes} bytes)")
 
 
+def _try_executable_path(candidate: str | None) -> str | None:
+    if not candidate or not str(candidate).strip():
+        return None
+    c = str(candidate).strip()
+    if os.path.isabs(c) and os.path.isfile(c) and os.access(c, os.X_OK):
+        return c
+    w = shutil.which(c)
+    return w if w and os.path.isfile(w) and os.access(w, os.X_OK) else None
+
+
+@functools.lru_cache(maxsize=1)
+def resolve_ffmpeg_executable() -> str | None:
+    """
+    System ffmpeg (PATH / FFMPEG_PATH), then common install paths, then imageio-ffmpeg
+    (bundled binary from requirements; works when the host has no system ffmpeg e.g. Railway).
+    """
+    for probe in (config.FFMPEG_PATH, "ffmpeg", "/usr/bin/ffmpeg", "/usr/local/bin/ffmpeg"):
+        p = _try_executable_path(probe)
+        if p:
+            return p
+    try:
+        import imageio_ffmpeg  # type: ignore[import-untyped]
+
+        p = _try_executable_path(imageio_ffmpeg.get_ffmpeg_exe())
+        if p:
+            logger.info("using imageio-ffmpeg binary at %s", p)
+        return p
+    except Exception as e:
+        logger.debug("imageio-ffmpeg not available: %s", e)
+    return None
+
+
 def ffmpeg_available() -> bool:
-    path = config.FFMPEG_PATH
-    return bool(path and shutil.which(path))
+    return bool(resolve_ffmpeg_executable())
 
 
 def extract_audio_mp3_for_whisper(
@@ -66,9 +99,11 @@ def extract_audio_mp3_for_whisper(
         raise FfmpegAudioExtractError(
             "ffmpeg extraction is disabled (REFERENCE_VIDEO_FFMPEG_EXTRACT=false)."
         )
-    exe = config.FFMPEG_PATH
-    if not shutil.which(exe):
-        raise FfmpegAudioExtractError(f"ffmpeg not found on PATH (FFMPEG_PATH={exe!r}).")
+    exe = resolve_ffmpeg_executable()
+    if not exe:
+        raise FfmpegAudioExtractError(
+            f"ffmpeg not found (FFMPEG_PATH={config.FFMPEG_PATH!r}; no imageio-ffmpeg binary)."
+        )
 
     cap = max(30, min(24 * 3600, int(max_seconds)))
     timeout_s = max(120.0, min(3600.0, cap * 0.15 + 60.0))

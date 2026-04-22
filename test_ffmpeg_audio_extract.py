@@ -1,3 +1,4 @@
+import os
 import unittest
 
 try:
@@ -19,18 +20,37 @@ class FfmpegAudioExtractTests(unittest.TestCase):
     def setUp(self):
         self._orig_run = ffmpeg_extract.subprocess.run
         self._orig_which = ffmpeg_extract.shutil.which
+        self._orig_isfile = ffmpeg_extract.os.path.isfile
+        self._orig_access = ffmpeg_extract.os.access
         self._orig_path = ffmpeg_extract.config.FFMPEG_PATH
         self._orig_enabled = ffmpeg_extract.config.REFERENCE_VIDEO_FFMPEG_EXTRACT
 
+        ffmpeg_extract.resolve_ffmpeg_executable.cache_clear()
         ffmpeg_extract.config.FFMPEG_PATH = "ffmpeg"
         ffmpeg_extract.config.REFERENCE_VIDEO_FFMPEG_EXTRACT = True
         ffmpeg_extract.shutil.which = lambda _exe: "/usr/bin/ffmpeg"
 
+        def _fake_isfile(p):
+            if str(p) == "/usr/bin/ffmpeg":
+                return True
+            return self._orig_isfile(p)
+
+        def _fake_access(p, mode):
+            if str(p) == "/usr/bin/ffmpeg" and mode == os.X_OK:
+                return True
+            return self._orig_access(p, mode)
+
+        ffmpeg_extract.os.path.isfile = _fake_isfile
+        ffmpeg_extract.os.access = _fake_access
+
     def tearDown(self):
         ffmpeg_extract.subprocess.run = self._orig_run
         ffmpeg_extract.shutil.which = self._orig_which
+        ffmpeg_extract.os.path.isfile = self._orig_isfile
+        ffmpeg_extract.os.access = self._orig_access
         ffmpeg_extract.config.FFMPEG_PATH = self._orig_path
         ffmpeg_extract.config.REFERENCE_VIDEO_FFMPEG_EXTRACT = self._orig_enabled
+        ffmpeg_extract.resolve_ffmpeg_executable.cache_clear()
 
     def test_extract_audio_success_reads_temp_output(self):
         def _fake_run(cmd, capture_output=True, timeout=0):

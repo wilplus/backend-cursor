@@ -27,7 +27,6 @@ from services.ffmpeg_audio_extract import (
     FfmpegAudioExtractError,
     FfmpegAudioTooLargeError,
     extract_audio_mp3_for_whisper,
-    ffmpeg_available,
 )
 
 config = Config()
@@ -193,11 +192,7 @@ def run_reference_video_upload(
                 reference_video_id=rid,
             )
         except FfmpegAudioExtractError as extract_err:
-            err_txt = (
-                "ffmpeg is not available on this server; add it (apt.txt / image)."
-                if not ffmpeg_available()
-                else f"Audio extraction failed: {str(extract_err)[:800]}"
-            )
+            err_txt = f"Audio extraction failed: {str(extract_err)[:800]}"
             created = db.update_admin_uploaded_reference_video(
                 rid,
                 {"transcription_status": "failed", "transcription_error": err_txt[:1000]},
