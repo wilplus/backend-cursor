@@ -3984,7 +3984,12 @@ class DatabaseService:
             return set()
 
     def list_admin_student_send_drafts(self, *, status: Optional[str] = None) -> List[Dict[str, Any]]:
-        q = self.client.table("admin_student_send_drafts").select("*").order("created_at", desc=True)
+        q = (
+            self.client.table("admin_student_send_drafts")
+            .select("*")
+            .order("updated_at", desc=True)
+            .order("created_at", desc=True)
+        )
         if status:
             q = q.eq("status", status)
         res = q.execute()

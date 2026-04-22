@@ -4598,14 +4598,27 @@ def v2_admin_copilot_queue_archive(user_id):
     """
     try:
         data = request.get_json(silent=True) or {}
-        session_id = str(data.get("session_id") or "").strip()
+        session_id = str(
+            data.get("session_id")
+            or data.get("sessionId")
+            or data.get("draft_generation_session_id")
+            or data.get("draftGenerationSessionId")
+            or ""
+        ).strip()
+        draft_id = str(data.get("draft_id") or data.get("draftId") or "").strip() or None
+        if not session_id and draft_id:
+            row = _pick_student_draft(user_id, draft_id=draft_id, include_sent=True)
+            session_id = str(_effective_session_id_for_copilot_draft(row, user_id) or "").strip()
+        if not session_id:
+            row = _pick_student_draft(user_id, include_sent=True)
+            session_id = str(_effective_session_id_for_copilot_draft(row, user_id) or "").strip()
         if not session_id:
             return jsonify({"code": "INVALID_INPUT", "error": "session_id required"}), 400
         if request.method == "DELETE":
             db.unarchive_copilot_queue_row(user_id, session_id)
-            return jsonify({"archived": False}), 200
+            return _json_admin_no_store({"user_id": user_id, "session_id": session_id, "archived": False}, 200)
         db.archive_copilot_queue_row(user_id, session_id, request.user_id)
-        return jsonify({"archived": True}), 200
+        return _json_admin_no_store({"user_id": user_id, "session_id": session_id, "archived": True}, 200)
     except Exception as e:
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
@@ -4659,14 +4672,17 @@ def v2_admin_copilot_cohort_students(cohort_id):
             state = _draft_state_ui(row)
             c = counts.setdefault(uid, {"Draft": 0, "Ready": 0, "Sent": 0})
             c[state] = c.get(state, 0) + 1
-            key = f"{uid}:{str(row.get('session_id') or '')}"
+            effective_session_id = _effective_session_id_for_copilot_draft(row, uid)
+            key = f"{uid}:{str(effective_session_id or '')}"
             if key not in latest_by_key:
-                latest_by_key[key] = row
+                row_copy = dict(row)
+                row_copy["_effective_session_id"] = effective_session_id
+                latest_by_key[key] = row_copy
 
         items = []
         for i, row in enumerate(latest_by_key.values()):
             uid = str(row.get("user_id") or "")
-            session_id = _effective_session_id_for_copilot_draft(row, uid)
+            session_id = row.get("_effective_session_id") or _effective_session_id_for_copilot_draft(row, uid)
             is_archived = (uid, str(session_id or "")) in archived_pairs
             if is_archived and not include_archived:
                 continue

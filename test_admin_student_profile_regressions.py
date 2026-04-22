@@ -34,11 +34,13 @@ class AdminStudentProfileRegressionsTests(unittest.TestCase):
             self.student_a: {
                 "id": "draft-a",
                 "user_id": self.student_a,
+                "session_id": None,
                 "status": "pending",
                 "draft_payload": {
                     "task_draft": "task A before",
                     "script_draft": "script A before",
                     "video_script": "script A before",
+                    "metadata": {"session_id": "11111111-1111-4111-8111-111111111111"},
                 },
                 "master_task_text": "task A before",
                 "ai_draft_video_script": "script A ai",
@@ -46,16 +48,19 @@ class AdminStudentProfileRegressionsTests(unittest.TestCase):
             self.student_b: {
                 "id": "draft-b",
                 "user_id": self.student_b,
+                "session_id": None,
                 "status": "pending",
                 "draft_payload": {
                     "task_draft": "task B before",
                     "script_draft": "script B before",
                     "video_script": "script B before",
+                    "metadata": {"session_id": "22222222-2222-4222-8222-222222222222"},
                 },
                 "master_task_text": "task B before",
                 "ai_draft_video_script": "script B ai",
             },
         }
+        self.queue_archived = set()
         self.originals = {}
         self._patch("is_admin", lambda _uid: True)
         self._patch("_pick_student_draft", self._fake_pick_student_draft)
@@ -80,8 +85,13 @@ class AdminStudentProfileRegressionsTests(unittest.TestCase):
         self._patch_db("get_user_name_from_auth", lambda _uid: "Student")
         self._patch_db("get_sniper_profile", lambda _uid: {})
         self._patch_db("v2_get_last_completed_session_full", lambda _uid: None)
+        self._patch_db("v2_get_last_completed_session", lambda _uid: None)
+        self._patch_db("v2_get_active_homework_session", lambda _uid: None)
+        self._patch_db("v2_get_latest_session_id_for_user", lambda _uid: None)
         self._patch_db("v2_get_last_completed_sessions", lambda _uid, limit=4: [])
         self._patch_db("v2_get_student_feedback_drafts", lambda _uid, limit=4: [])
+        self._patch_db("archive_copilot_queue_row", self._fake_archive_copilot_queue_row)
+        self._patch_db("unarchive_copilot_queue_row", self._fake_unarchive_copilot_queue_row)
         self._patch_db("client", self._FakeClient(self))
 
     def tearDown(self):
@@ -149,6 +159,14 @@ class AdminStudentProfileRegressionsTests(unittest.TestCase):
         if str(row.get("id")) != str(draft_id):
             return None
         return copy.deepcopy(row)
+
+    def _fake_archive_copilot_queue_row(self, user_id, session_id, admin_user_id=None):
+        self.queue_archived.add((str(user_id), str(session_id)))
+        return True
+
+    def _fake_unarchive_copilot_queue_row(self, user_id, session_id):
+        self.queue_archived.discard((str(user_id), str(session_id)))
+        return True
 
     class _FakeClient:
         def __init__(self, outer):
@@ -283,6 +301,51 @@ class AdminStudentProfileRegressionsTests(unittest.TestCase):
             "Monotone-Expert",
         )
         self.assertIsNone((self.learning_profiles.get(self.student_b) or {}).get("coach_override_profile"))
+
+    def test_queue_archive_accepts_session_id_alias_and_persists(self):
+        session_id = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+        with self.app.test_request_context(
+            f"/v2/admin/copilot/students/{self.student_a}/queue-archive",
+            method="POST",
+            json={"sessionId": session_id},
+        ):
+            v2.request.user_id = self.admin_id
+            response, status = v2.v2_admin_copilot_queue_archive.__wrapped__(self.student_a)
+            payload = response.get_json()
+
+        self.assertEqual(status, 200)
+        self.assertEqual(payload.get("user_id"), self.student_a)
+        self.assertEqual(payload.get("session_id"), session_id)
+        self.assertTrue(payload.get("archived"))
+        self.assertIn((self.student_a, session_id), self.queue_archived)
+        self.assertIn("no-store", response.headers.get("Cache-Control", ""))
+
+        with self.app.test_request_context(
+            f"/v2/admin/copilot/students/{self.student_a}/queue-archive",
+            method="DELETE",
+            json={"sessionId": session_id},
+        ):
+            v2.request.user_id = self.admin_id
+            response_del, status_del = v2.v2_admin_copilot_queue_archive.__wrapped__(self.student_a)
+            payload_del = response_del.get_json()
+
+        self.assertEqual(status_del, 200)
+        self.assertFalse(payload_del.get("archived"))
+        self.assertNotIn((self.student_a, session_id), self.queue_archived)
+
+    def test_queue_archive_falls_back_to_draft_metadata_session(self):
+        with self.app.test_request_context(
+            f"/v2/admin/copilot/students/{self.student_a}/queue-archive",
+            method="POST",
+            json={},
+        ):
+            v2.request.user_id = self.admin_id
+            response, status = v2.v2_admin_copilot_queue_archive.__wrapped__(self.student_a)
+            payload = response.get_json()
+
+        self.assertEqual(status, 200)
+        self.assertEqual(payload.get("session_id"), "11111111-1111-4111-8111-111111111111")
+        self.assertIn((self.student_a, "11111111-1111-4111-8111-111111111111"), self.queue_archived)
 
 
 if __name__ == "__main__":
