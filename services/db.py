@@ -2513,7 +2513,7 @@ class DatabaseService:
         )
 
     # ---------- Homework tasks (per-student public.tasks; pool public.tasks_pool) ----------
-    DEFAULT_STUDENT_TASK_TEXT = "How was your day so far?"
+    DEFAULT_STUDENT_TASK_TEXT = "Do you think you are a good communicator? Why?"
     TASK_TEMPLATE_ALLOWED_PROFILES = {
         "The Overwhelmed",
         "The Stressor",
@@ -3207,17 +3207,17 @@ class DatabaseService:
             return None
 
     def v2_get_student_details(self, user_id: str):
-        """Get student details row (name, price_per_live_lesson, credits) or None."""
+        """Get student details row (name, price_per_live_lesson, credits, is_archived) or None."""
         result = (
             self.client.table("v2_student_details")
-            .select("user_id, name, price_per_live_lesson, credits")
+            .select("user_id, name, price_per_live_lesson, credits, is_archived")
             .eq("user_id", user_id)
             .execute()
         )
         return result.data[0] if result.data else None
 
     def v2_upsert_student_details(self, user_id: str, data: dict):
-        """Create/update student details. Allowed keys: name, price_per_live_lesson, credits."""
+        """Create/update student details. Allowed keys: name, price_per_live_lesson, credits, is_archived."""
         payload = {"user_id": user_id, "updated_at": datetime.now(timezone.utc).isoformat()}
         if "name" in data:
             name_val = data.get("name")
@@ -3229,8 +3229,23 @@ class DatabaseService:
             payload["price_per_live_lesson"] = data.get("price_per_live_lesson")
         if "credits" in data:
             payload["credits"] = data.get("credits")
+        if "is_archived" in data:
+            payload["is_archived"] = bool(data.get("is_archived"))
         result = self.client.table("v2_student_details").upsert(payload, on_conflict="user_id").execute()
         return result.data[0] if result.data else None
+
+    def v2_get_archived_user_ids(self) -> set:
+        """Return set of user_id strings that have is_archived = true in v2_student_details."""
+        try:
+            res = (
+                self.client.table("v2_student_details")
+                .select("user_id")
+                .eq("is_archived", True)
+                .execute()
+            )
+            return {str(row["user_id"]) for row in (res.data or [])}
+        except Exception:
+            return set()
 
     def v2_deduct_session_credits(self, user_id: str, amount: int = 5) -> int | None:
         """Deduct credits from a student's balance. Returns new credits value or None on failure."""
@@ -3933,6 +3948,40 @@ class DatabaseService:
             return []
         res = self.client.table("admin_student_send_drafts").insert(rows).execute()
         return res.data or []
+
+    def archive_copilot_queue_row(self, user_id: str, session_id: str, admin_user_id: Optional[str] = None) -> bool:
+        payload = {
+            "user_id": user_id,
+            "session_id": session_id,
+            "archived_at": datetime.now(timezone.utc).isoformat(),
+            "archived_by": admin_user_id,
+        }
+        self.client.table("admin_copilot_queue_archives").upsert(
+            payload, on_conflict="user_id,session_id"
+        ).execute()
+        return True
+
+    def unarchive_copilot_queue_row(self, user_id: str, session_id: str) -> bool:
+        (
+            self.client.table("admin_copilot_queue_archives")
+            .delete()
+            .eq("user_id", user_id)
+            .eq("session_id", session_id)
+            .execute()
+        )
+        return True
+
+    def get_copilot_queue_archived_pairs(self) -> set:
+        """Return set of (user_id, session_id) string tuples that are archived."""
+        try:
+            res = (
+                self.client.table("admin_copilot_queue_archives")
+                .select("user_id, session_id")
+                .execute()
+            )
+            return {(str(r["user_id"]), str(r["session_id"])) for r in (res.data or [])}
+        except Exception:
+            return set()
 
     def list_admin_student_send_drafts(self, *, status: Optional[str] = None) -> List[Dict[str, Any]]:
         q = self.client.table("admin_student_send_drafts").select("*").order("created_at", desc=True)

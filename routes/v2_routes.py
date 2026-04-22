@@ -452,6 +452,8 @@ def v2_admin_student_profile(user_id):
                     if c < 0:
                         return jsonify({"code": "INVALID_INPUT", "error": "credits must be non-negative"}), 400
                     payload["credits"] = c
+            if "is_archived" in data:
+                payload["is_archived"] = bool(data.get("is_archived"))
             if not payload:
                 return jsonify({"code": "INVALID_INPUT", "error": "No updatable fields provided"}), 400
             row = db.v2_upsert_student_details(user_id, payload)
@@ -461,6 +463,7 @@ def v2_admin_student_profile(user_id):
                 "name": row.get("name") if row else payload.get("name"),
                 "price_per_live_lesson": row.get("price_per_live_lesson") if row else payload.get("price_per_live_lesson"),
                 "credits": row.get("credits") if row else payload.get("credits"),
+                "is_archived": row.get("is_archived") if row else payload.get("is_archived"),
             }), 200
 
         if not is_admin(request.user_id) and user_id != request.user_id:
@@ -4405,11 +4408,12 @@ def v2_admin_cohorts():
             return groups[key]
 
         # Baseline: same student pool as Admin → Students (Auth). Fallback if Auth admin list fails.
+        archived_ids = db.v2_get_archived_user_ids()
         baseline_uids = db.v2_list_all_auth_user_ids(cap=cap_ms)
         if not baseline_uids:
             baseline_uids = db.list_recent_student_ids(limit=cap_ms)
         for uid in baseline_uids:
-            if not uid:
+            if not uid or uid in archived_ids:
                 continue
             sp = db.get_sniper_profile(uid) or {}
             draft_profile, draft_stage = _student_cohort_from_state(sp)
@@ -4427,7 +4431,7 @@ def v2_admin_cohorts():
 
         for row in rows:
             uid = str(row.get("user_id") or "")
-            if not uid:
+            if not uid or uid in archived_ids:
                 continue
             draft_profile = (row.get("cohort_profile") or "").strip()
             try:
@@ -4467,6 +4471,29 @@ def v2_admin_cohorts():
         return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
 
 
+@v2_bp.route("/admin/copilot/students/<user_id>/queue-archive", methods=["POST", "DELETE"])
+@require_admin
+def v2_admin_copilot_queue_archive(user_id):
+    """Persist per-(student, session) archive flag for the Training Studio queue.
+
+    POST   body { session_id }  → archived:true
+    DELETE body { session_id }  → archived:false
+    """
+    try:
+        data = request.get_json(silent=True) or {}
+        session_id = str(data.get("session_id") or "").strip()
+        if not session_id:
+            return jsonify({"code": "INVALID_INPUT", "error": "session_id required"}), 400
+        if request.method == "DELETE":
+            db.unarchive_copilot_queue_row(user_id, session_id)
+            return jsonify({"archived": False}), 200
+        db.archive_copilot_queue_row(user_id, session_id, request.user_id)
+        return jsonify({"archived": True}), 200
+    except Exception as e:
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
+
+
 @v2_bp.route("/admin/copilot/cohorts/<cohort_id>/students", methods=["GET"])
 @v2_bp.route("/admin/acoustic-dojo/cohorts/<cohort_id>/students", methods=["GET"])
 @require_admin
@@ -4482,13 +4509,16 @@ def v2_admin_copilot_cohort_students(cohort_id):
         except (TypeError, ValueError):
             cap_ms = 2500
         cap_ms = max(50, min(5000, cap_ms))
+        include_archived = (request.args.get("include_archived") or "").strip().lower() in ("1", "true", "yes")
 
+        archived_ids = db.v2_get_archived_user_ids()
+        archived_pairs = db.get_copilot_queue_archived_pairs()
         rows = db.list_admin_student_send_drafts(status=None)
         profile_cache = {}
         filtered = []
         for row in rows:
             uid = str(row.get("user_id") or "")
-            if not uid:
+            if not uid or uid in archived_ids:
                 continue
             p = (row.get("cohort_profile") or "").strip()
             try:
@@ -4519,6 +4549,10 @@ def v2_admin_copilot_cohort_students(cohort_id):
         items = []
         for i, row in enumerate(latest_by_key.values()):
             uid = str(row.get("user_id") or "")
+            session_id = _effective_session_id_for_copilot_draft(row, uid)
+            is_archived = (uid, str(session_id or "")) in archived_pairs
+            if is_archived and not include_archived:
+                continue
             details = db.v2_get_student_details(uid) or {}
             email = db.get_user_email_from_auth(uid)
             latest_session = db.v2_get_last_completed_session(uid) or {}
@@ -4526,12 +4560,13 @@ def v2_admin_copilot_cohort_students(cohort_id):
             items.append(
                 {
                     "student_id": uid,
-                    "session_id": _effective_session_id_for_copilot_draft(row, uid),
+                    "session_id": session_id,
                     "queue_position": i,
                     "state": _draft_state_ui(row),
                     "draft_count": int((counts.get(uid) or {}).get("Draft", 0)),
                     "ready_count": int((counts.get(uid) or {}).get("Ready", 0)),
                     "sent_count": int((counts.get(uid) or {}).get("Sent", 0)),
+                    "queue_archived": is_archived,
                     "profile": {
                         "name": details.get("name"),
                         "email": email,
@@ -4547,7 +4582,7 @@ def v2_admin_copilot_cohort_students(cohort_id):
         if not extra_uids:
             extra_uids = db.list_recent_student_ids(limit=cap_ms)
         for uid in extra_uids:
-            if not uid or uid in uids_in_queue:
+            if not uid or uid in uids_in_queue or uid in archived_ids:
                 continue
             sp = db.get_sniper_profile(uid) or {}
             p, stg = _student_cohort_from_state(sp)
@@ -4557,15 +4592,20 @@ def v2_admin_copilot_cohort_students(cohort_id):
             email = db.get_user_email_from_auth(uid)
             latest_session = db.v2_get_last_completed_session(uid) or {}
             profile_row = db.get_sniper_profile(uid) or {}
+            session_id = latest_session.get("id")
+            is_archived = (uid, str(session_id or "")) in archived_pairs
+            if is_archived and not include_archived:
+                continue
             items.append(
                 {
                     "student_id": uid,
-                    "session_id": latest_session.get("id"),
+                    "session_id": session_id,
                     "queue_position": len(items),
                     "state": "Draft",
                     "draft_count": 0,
                     "ready_count": 0,
                     "sent_count": 0,
+                    "queue_archived": is_archived,
                     "profile": {
                         "name": details.get("name"),
                         "email": email,
