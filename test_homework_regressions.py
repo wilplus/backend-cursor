@@ -256,6 +256,73 @@ class HomeworkRouteRegressionsTests(unittest.TestCase):
             hw.ensure_student_completion_email = original_ensure_student_completion_email
             hw.best_effort_backfill_recording_1_transcript = original_backfill
 
+    def test_step0_prefers_student_reference_video_over_universal(self):
+        original_get_sniper_profile_payload = hw.db.get_sniper_profile_payload
+        original_v2_get_student_details = hw.db.v2_get_student_details
+        original_v2_get_last_completed_session = hw.db.v2_get_last_completed_session
+        original_v2_get_student_overrides = hw.db.v2_get_student_overrides
+        original_get_latest_ref = hw.db.get_latest_admin_uploaded_reference_video_for_user
+        original_get_latest_uni = hw.db.get_latest_universal_welcome_video
+        try:
+            hw.db.get_sniper_profile_payload = lambda _uid: {"realtime_level": 1, "realtime_step": 1}
+            hw.db.v2_get_student_details = lambda _uid: {"credits": 20}
+            hw.db.v2_get_last_completed_session = lambda _uid: None
+            hw.db.v2_get_student_overrides = lambda _uid: {}
+            hw.db.get_latest_admin_uploaded_reference_video_for_user = lambda _uid: {
+                "source_video_url": "https://cdn.example.com/student-video.mp4",
+                "is_universal": False,
+                "title": "Student specific video",
+            }
+            hw.db.get_latest_universal_welcome_video = lambda: {
+                "source_video_url": "https://cdn.example.com/universal-video.mp4",
+                "title": "Universal welcome",
+            }
+
+            payload = hw._build_step0_payload("u1")
+
+            self.assertEqual(payload.get("tutor_video_url"), "https://cdn.example.com/student-video.mp4")
+            self.assertEqual(payload.get("tutor_video_description"), "Student specific video")
+            self.assertFalse(payload.get("tutor_video_is_universal"))
+        finally:
+            hw.db.get_sniper_profile_payload = original_get_sniper_profile_payload
+            hw.db.v2_get_student_details = original_v2_get_student_details
+            hw.db.v2_get_last_completed_session = original_v2_get_last_completed_session
+            hw.db.v2_get_student_overrides = original_v2_get_student_overrides
+            hw.db.get_latest_admin_uploaded_reference_video_for_user = original_get_latest_ref
+            hw.db.get_latest_universal_welcome_video = original_get_latest_uni
+
+    def test_step0_uses_universal_when_student_reference_missing(self):
+        original_get_sniper_profile_payload = hw.db.get_sniper_profile_payload
+        original_v2_get_student_details = hw.db.v2_get_student_details
+        original_v2_get_last_completed_session = hw.db.v2_get_last_completed_session
+        original_v2_get_student_overrides = hw.db.v2_get_student_overrides
+        original_get_latest_ref = hw.db.get_latest_admin_uploaded_reference_video_for_user
+        original_get_latest_uni = hw.db.get_latest_universal_welcome_video
+        try:
+            hw.db.get_sniper_profile_payload = lambda _uid: {"realtime_level": 1, "realtime_step": 1}
+            hw.db.v2_get_student_details = lambda _uid: {"credits": 20}
+            hw.db.v2_get_last_completed_session = lambda _uid: None
+            hw.db.v2_get_student_overrides = lambda _uid: {}
+            hw.db.get_latest_admin_uploaded_reference_video_for_user = lambda _uid: None
+            hw.db.get_latest_universal_welcome_video = lambda: {
+                "source_video_url": "https://cdn.example.com/universal-video.mp4",
+                "title": "Universal welcome",
+                "is_universal": True,
+            }
+
+            payload = hw._build_step0_payload("u1")
+
+            self.assertEqual(payload.get("tutor_video_url"), "https://cdn.example.com/universal-video.mp4")
+            self.assertEqual(payload.get("tutor_video_description"), "Universal welcome")
+            self.assertTrue(payload.get("tutor_video_is_universal"))
+        finally:
+            hw.db.get_sniper_profile_payload = original_get_sniper_profile_payload
+            hw.db.v2_get_student_details = original_v2_get_student_details
+            hw.db.v2_get_last_completed_session = original_v2_get_last_completed_session
+            hw.db.v2_get_student_overrides = original_v2_get_student_overrides
+            hw.db.get_latest_admin_uploaded_reference_video_for_user = original_get_latest_ref
+            hw.db.get_latest_universal_welcome_video = original_get_latest_uni
+
 
 @unittest.skipIf(_DB_IMPORT_ERROR is not None, f"db tests require full app deps: {_DB_IMPORT_ERROR}")
 class SessionSniperRatingUpsertTests(unittest.TestCase):

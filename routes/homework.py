@@ -265,8 +265,46 @@ def _build_step0_payload(user_id: str) -> dict:
         except Exception:
             pass
 
-    # Fallback: if no personal coach video is queued for this student (first
-    # login, never been assigned homework), show the most recent universal
+    # Fallback A: if no pending coach video is queued, prefer the latest
+    # student-specific Training Studio upload for this user.
+    if not payload.get("tutor_video_url") and not review_pending:
+        try:
+            ref = db.get_latest_admin_uploaded_reference_video_for_user(user_id)
+        except Exception:
+            ref = None
+        if ref:
+            ref_src_url = (ref.get("source_video_url") or "").strip() or None
+            ref_fm = ref.get("feature_metadata") if isinstance(ref.get("feature_metadata"), dict) else {}
+            ref_bucket = (ref.get("bucket") or ref_fm.get("bucket") or "").strip() or None
+            ref_path = (ref.get("storage_path") or "").strip().lstrip("/") or None
+            if ref_src_url and (ref_src_url.startswith("http://") or ref_src_url.startswith("https://")):
+                payload["tutor_video_url"] = ref_src_url
+            else:
+                try:
+                    pl, _b, _p = resolve_tutor_video_playable_url(
+                        db=db,
+                        explicit_video_url=None,
+                        video_bucket=ref_bucket,
+                        video_storage_path=ref_path,
+                    )
+                    if pl:
+                        payload["tutor_video_url"] = pl
+                        if _b:
+                            payload["tutor_video_bucket"] = _b
+                        if _p:
+                            payload["tutor_video_storage_path"] = _p
+                except Exception:
+                    pass
+            if payload.get("tutor_video_url"):
+                desc = (
+                    (ref.get("title") or "").strip()
+                    or (ref_fm.get("title") or "").strip()
+                )
+                if desc:
+                    payload.setdefault("tutor_video_description", desc)
+                payload["tutor_video_is_universal"] = bool(ref.get("is_universal"))
+
+    # Fallback B: if there is no student-specific video, show the most recent universal
     # welcome video uploaded by an admin in Training Studio (is_universal=true).
     if not payload.get("tutor_video_url") and not review_pending:
         try:

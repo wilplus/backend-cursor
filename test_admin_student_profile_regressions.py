@@ -22,6 +22,10 @@ class AdminStudentProfileRegressionsTests(unittest.TestCase):
             self.student_a: {"user_id": self.student_a, "coach_notes": "A before"},
             self.student_b: {"user_id": self.student_b, "coach_notes": "B before"},
         }
+        self.learning_profiles = {
+            self.student_a: {"user_id": self.student_a, "behavioral_profile": "Anxious-Rusher", "coach_override_profile": None},
+            self.student_b: {"user_id": self.student_b, "behavioral_profile": "Confident-Unfocused", "coach_override_profile": None},
+        }
         self.overrides = {
             self.student_a: {"user_id": self.student_a, "assigned_task_id": "task-a-before"},
             self.student_b: {"user_id": self.student_b, "assigned_task_id": "task-b-before"},
@@ -61,7 +65,8 @@ class AdminStudentProfileRegressionsTests(unittest.TestCase):
         self._patch_db("v2_get_student_details", lambda _uid: {})
         self._patch_db("v2_get_student_overrides", self._fake_get_student_overrides)
         self._patch_db("v2_upsert_student_overrides", self._fake_upsert_student_overrides)
-        self._patch_db("get_sniper_profile_payload", lambda _uid: {"realtime_level": None, "realtime_step": None})
+        self._patch_db("get_sniper_profile_payload", self._fake_get_sniper_profile_payload)
+        self._patch_db("upsert_student_profile_fields", self._fake_upsert_student_profile_fields)
         self._patch_db("v2_get_student_coaching_memory", lambda _uid: None)
         self._patch_db("v2_get_student_tasks", lambda _uid: [])
         self._patch_db("v2_get_last_report_for_user", lambda _uid: None)
@@ -102,6 +107,20 @@ class AdminStudentProfileRegressionsTests(unittest.TestCase):
         if "coach_notes" in data:
             existing["coach_notes"] = data.get("coach_notes")
         self.profiles[user_id] = existing
+        return dict(existing)
+
+    def _fake_get_sniper_profile_payload(self, user_id):
+        row = dict(self.learning_profiles.get(user_id) or {"user_id": user_id})
+        row["user_id"] = user_id
+        row["realtime_level"] = row.get("realtime_level", 1)
+        row["realtime_step"] = row.get("realtime_step", 1)
+        return row
+
+    def _fake_upsert_student_profile_fields(self, user_id, fields):
+        existing = dict(self.learning_profiles.get(user_id) or {"user_id": user_id})
+        for key, value in (fields or {}).items():
+            existing[key] = value
+        self.learning_profiles[user_id] = existing
         return dict(existing)
 
     def _fake_get_student_overrides(self, user_id):
@@ -246,6 +265,24 @@ class AdminStudentProfileRegressionsTests(unittest.TestCase):
         self.assertIn("no-store", response.headers.get("Cache-Control", ""))
         self.assertEqual(self.drafts[self.student_b]["draft_payload"]["task_draft"], "task B before")
         self.assertEqual(self.drafts[self.student_b]["draft_payload"]["script_draft"], "script B before")
+
+    def test_learning_profile_alias_persists_via_speaker_profile_put(self):
+        with self.app.test_request_context(
+            f"/v2/admin/students/{self.student_a}/speaker-profile",
+            method="PUT",
+            json={"selectedArchetype": "Monotone-Expert"},
+        ):
+            response, status = v2.v2_admin_student_speaker_profile.__wrapped__(self.student_a)
+            payload = response.get_json()
+
+        self.assertEqual(status, 200)
+        self.assertEqual(payload["user_id"], self.student_a)
+        self.assertEqual((payload.get("learning_profile") or {}).get("coach_override_profile"), "Monotone-Expert")
+        self.assertEqual(
+            (self.learning_profiles.get(self.student_a) or {}).get("coach_override_profile"),
+            "Monotone-Expert",
+        )
+        self.assertIsNone((self.learning_profiles.get(self.student_b) or {}).get("coach_override_profile"))
 
 
 if __name__ == "__main__":

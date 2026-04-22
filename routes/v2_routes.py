@@ -328,6 +328,97 @@ def _display_learning_profile_justification(profile_row: dict | None) -> str | N
     return ai_j or None
 
 
+def _extract_learning_profile_update(data: dict | None) -> dict:
+    """Accept legacy/frontend aliases and map them to student_profile override fields."""
+    data = data if isinstance(data, dict) else {}
+    nested = data.get("learning_profile")
+    nested = nested if isinstance(nested, dict) else {}
+
+    def _first(*keys):
+        for key in keys:
+            if key in data:
+                return data.get(key)
+            if key in nested:
+                return nested.get(key)
+        return None
+
+    fields: dict = {}
+
+    if any(
+        k in data or k in nested
+        for k in (
+            "coach_override_profile",
+            "selectedArchetype",
+            "selected_archetype",
+            "display_profile",
+            "learning_profile_name",
+        )
+    ):
+        raw = _first(
+            "coach_override_profile",
+            "selectedArchetype",
+            "selected_archetype",
+            "display_profile",
+            "learning_profile_name",
+        )
+        if raw is None:
+            fields["coach_override_profile"] = None
+        else:
+            s = str(raw).strip()
+            fields["coach_override_profile"] = s or None
+
+    if any(
+        k in data or k in nested
+        for k in (
+            "profile_override_justification",
+            "learning_profile_justification",
+            "justification",
+            "display_justification",
+        )
+    ):
+        raw = _first(
+            "profile_override_justification",
+            "learning_profile_justification",
+            "justification",
+            "display_justification",
+        )
+        if raw is None:
+            fields["profile_override_justification"] = None
+        else:
+            s = str(raw).strip()
+            fields["profile_override_justification"] = s or None
+
+    if any(k in data or k in nested for k in ("coach_override_stage", "selectedStage", "selected_stage", "display_stage")):
+        raw = _first("coach_override_stage", "selectedStage", "selected_stage", "display_stage")
+        if raw in (None, ""):
+            fields["coach_override_stage"] = None
+        else:
+            try:
+                stage = int(raw)
+            except (TypeError, ValueError):
+                raise ValueError("coach_override_stage must be integer 1..5 or null")
+            if stage < 1 or stage > 5:
+                raise ValueError("coach_override_stage must be integer 1..5 or null")
+            fields["coach_override_stage"] = stage
+
+    if any(
+        k in data or k in nested
+        for k in (
+            "stage_override_justification",
+            "stageJustification",
+            "stage_justification",
+        )
+    ):
+        raw = _first("stage_override_justification", "stageJustification", "stage_justification")
+        if raw is None:
+            fields["stage_override_justification"] = None
+        else:
+            s = str(raw).strip()
+            fields["stage_override_justification"] = s or None
+
+    return fields
+
+
 # ---------- Admin ----------
 @v2_bp.route("/admin/health", methods=["GET"])
 @require_admin
@@ -529,8 +620,13 @@ def v2_admin_student_speaker_profile(user_id):
     """Update speaker profile (main_goal, motivation, strong_points, weak_points, charismatic_traits, hobbies_interests, personality_type, coach_notes)."""
     try:
         data = request.get_json() or {}
+        learning_update = _extract_learning_profile_update(data)
         db.v2_upsert_speaker_profile(user_id, data)
+        if learning_update:
+            db.upsert_student_profile_fields(user_id, learning_update)
         speaker_profile = db.v2_get_speaker_profile(user_id) or {"user_id": user_id}
+        sniper_profile = db.get_sniper_profile_payload(user_id) or {}
+        learning_profile = _learning_profile_payload(sniper_profile)
         if str(speaker_profile.get("user_id") or "") != str(user_id):
             logger.error(
                 "speaker-profile mismatch after update: path_user_id=%s row_user_id=%s",
@@ -538,7 +634,17 @@ def v2_admin_student_speaker_profile(user_id):
                 speaker_profile.get("user_id"),
             )
             return jsonify({"code": "PROFILE_MISMATCH", "error": "Updated profile user mismatch"}), 500
-        return _json_admin_no_store({"status": "ok", "user_id": user_id, "speaker_profile": speaker_profile}, 200)
+        return _json_admin_no_store(
+            {
+                "status": "ok",
+                "user_id": user_id,
+                "speaker_profile": speaker_profile,
+                "learning_profile": learning_profile,
+            },
+            200,
+        )
+    except ValueError as e:
+        return jsonify({"code": "INVALID_INPUT", "error": str(e)}), 400
     except Exception as e:
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
@@ -594,8 +700,11 @@ def v2_admin_student_sniper_profile(user_id):
         if "current_realtime_step" in data and "realtime_step" not in data:
             data["realtime_step"] = data.pop("current_realtime_step")
 
-        if "realtime_level" not in data and "realtime_step" not in data:
-            return jsonify({"code": "INVALID_INPUT", "error": "realtime_level or realtime_step is required"}), 400
+        learning_update = _extract_learning_profile_update(data)
+        if "realtime_level" not in data and "realtime_step" not in data and not learning_update:
+            return jsonify(
+                {"code": "INVALID_INPUT", "error": "realtime_level/realtime_step or learning-profile override fields are required"},
+            ), 400
 
         realtime_level = None
         realtime_step = None
@@ -608,17 +717,25 @@ def v2_admin_student_sniper_profile(user_id):
             if err:
                 return jsonify({"code": "INVALID_INPUT", "error": err}), 400
 
-        sniper_profile = db.set_sniper_realtime_progression(
-            user_id,
-            realtime_level=realtime_level,
-            realtime_step=realtime_step,
-        )
-        return jsonify({
+        if "realtime_level" in data or "realtime_step" in data:
+            db.set_sniper_realtime_progression(
+                user_id,
+                realtime_level=realtime_level,
+                realtime_step=realtime_step,
+            )
+        if learning_update:
+            db.upsert_student_profile_fields(user_id, learning_update)
+        sniper_profile = db.get_sniper_profile_payload(user_id)
+        return _json_admin_no_store({
             "status": "ok",
+            "user_id": user_id,
             "sniper_profile": sniper_profile,
+            "learning_profile": _learning_profile_payload(sniper_profile),
             "realtime_level": sniper_profile.get("realtime_level"),
             "realtime_step": sniper_profile.get("realtime_step"),
-        }), 200
+        }, 200)
+    except ValueError as e:
+        return jsonify({"code": "INVALID_INPUT", "error": str(e)}), 400
     except Exception as e:
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
