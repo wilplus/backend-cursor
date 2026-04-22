@@ -142,13 +142,34 @@ def _normalize_upload_content_type(raw: str, fallback_filename: str) -> str:
     return base or "application/octet-stream"
 
 
-def _resolve_reference_upload_user_id(form_user_id: str, fallback_admin_id: str):
-    raw = (form_user_id or "").strip()
-    if not raw:
+_REFERENCE_UPLOAD_USER_KEYS = (
+    "user_id",
+    "student_user_id",
+    "context_user_id",
+    "selected_user_id",
+    "selected_context_user_id",
+    "user_email",
+    "student_email",
+    "context_user_email",
+    "selected_user_email",
+)
+
+
+def _extract_reference_upload_user_value(getter):
+    for key in _REFERENCE_UPLOAD_USER_KEYS:
         try:
-            return str(uuid.UUID(str(fallback_admin_id).strip())), None
-        except (ValueError, TypeError, AttributeError):
-            return None, "user_id is required"
+            raw = (getter(key) or "").strip()
+        except Exception:
+            raw = ""
+        if raw:
+            return raw
+    return ""
+
+
+def _resolve_reference_upload_user_id(raw_user_value: str):
+    raw = (raw_user_value or "").strip()
+    if not raw:
+        return None, "user_id is required (UUID or student email)"
     try:
         return str(uuid.UUID(raw)), None
     except (ValueError, TypeError, AttributeError):
@@ -5086,7 +5107,7 @@ def v2_admin_copilot_reference_videos_list():
                     )
                 except Exception:
                     row["preview_url"] = None
-        return jsonify({"status": "ok", "items": rows, "limit": limit, "offset": offset}), 200
+        return _json_admin_no_store({"status": "ok", "items": rows, "limit": limit, "offset": offset}, 200)
     except Exception as e:
         sentry_sdk.capture_exception(e)
         logger.error("reference-videos list error: %s", e)
@@ -5130,9 +5151,8 @@ def v2_admin_copilot_reference_videos_upload():
                 }
             ), 413
 
-        student_user_id, uid_err = _resolve_reference_upload_user_id(
-            (request.form.get("user_id") or "").strip(), request.user_id
-        )
+        student_user_raw = _extract_reference_upload_user_value(lambda k: request.form.get(k))
+        student_user_id, uid_err = _resolve_reference_upload_user_id(student_user_raw)
         if uid_err:
             return jsonify({"code": "INVALID_USER_ID", "error": uid_err}), 400
         session_id = (request.form.get("session_id") or "").strip() or None
@@ -5398,9 +5418,10 @@ def v2_admin_copilot_reference_videos_register_from_storage():
                 "details": {"ext": ext},
             }), 400
 
-        student_user_id, uid_err = _resolve_reference_upload_user_id(
-            (body.get("user_id") or "").strip(), request.user_id
+        student_user_raw = _extract_reference_upload_user_value(
+            lambda k: (body.get(k) if isinstance(body, dict) else "")
         )
+        student_user_id, uid_err = _resolve_reference_upload_user_id(student_user_raw)
         if uid_err:
             return jsonify({"code": "INVALID_USER_ID", "error": uid_err}), 400
         session_id = (body.get("session_id") or "").strip() or None
@@ -5619,7 +5640,7 @@ def v2_admin_copilot_reference_upload_job_status(job_id):
                     "preview_url": preview_url,
                     "synthetic": True,
                 }
-                return jsonify({"status": "ok", "job": synthetic_job}), 200
+                return _json_admin_no_store({"status": "ok", "job": synthetic_job}, 200)
             return jsonify({"code": "JOB_NOT_FOUND", "error": "Upload job not found"}), 404
         payload = _json_safe_row(job) or {}
         rid = payload.get("reference_video_id")
@@ -5638,7 +5659,7 @@ def v2_admin_copilot_reference_upload_job_status(job_id):
                         preview_url = None
         payload["reference_video"] = _json_safe_row(ref_row) if ref_row else None
         payload["preview_url"] = preview_url
-        return jsonify({"status": "ok", "job": payload}), 200
+        return _json_admin_no_store({"status": "ok", "job": payload}, 200)
     except Exception as e:
         sentry_sdk.capture_exception(e)
         logger.error("upload-jobs status error: %s", e)
