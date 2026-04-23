@@ -4032,13 +4032,26 @@ class DatabaseService:
         )
         return res.data[0] if res.data else None
 
-    def mark_admin_student_send_draft_sent(self, draft_id: str, user_id: str, approved_by: str) -> Optional[Dict[str, Any]]:
-        payload = {
+    def mark_admin_student_send_draft_sent(
+        self,
+        draft_id: str,
+        user_id: str,
+        approved_by: str,
+        *,
+        delivery_email_soft_failed: bool = False,
+        draft_payload: Optional[Dict[str, Any]] = None,
+    ) -> Optional[Dict[str, Any]]:
+        payload: Dict[str, Any] = {
             "status": "sent",
             "approved_by": approved_by,
             "sent_at": datetime.now(timezone.utc).isoformat(),
             "updated_at": datetime.now(timezone.utc).isoformat(),
+            "delivery_lifecycle": "delivered",
+            "delivery_email_soft_failed": bool(delivery_email_soft_failed),
+            "delivery_failed_step": None,
         }
+        if draft_payload is not None:
+            payload["draft_payload"] = draft_payload
         res = (
             self.client.table("admin_student_send_drafts")
             .update(payload)
@@ -4058,6 +4071,7 @@ class DatabaseService:
         script_manifest: Dict[str, Any],
         created_by: Optional[str] = None,
     ) -> Optional[Dict[str, Any]]:
+        now = datetime.now(timezone.utc).isoformat()
         payload = {
             "pipeline_job_id": pipeline_job_id,
             "pipeline_status": "queued",
@@ -4066,7 +4080,11 @@ class DatabaseService:
             "pipeline_finished_at": None,
             "script_mode": script_mode,
             "script_manifest": script_manifest or {},
-            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "updated_at": now,
+            "delivery_lifecycle": "delivering",
+            "delivery_started_at": now,
+            "delivery_failed_step": None,
+            "delivery_email_soft_failed": False,
         }
         if created_by:
             payload["approved_by"] = created_by
@@ -4103,6 +4121,11 @@ class DatabaseService:
             "pipeline_error": (error or None),
             "updated_at": now,
         }
+        if status == "failed":
+            payload["delivery_lifecycle"] = "failed"
+            payload["delivery_failed_step"] = "render"
+        elif status in ("queued", "running_tts", "running_video", "uploading"):
+            payload["delivery_lifecycle"] = "delivering"
         if status in ("running_tts", "running_video", "uploading"):
             payload["pipeline_started_at"] = now
             payload["pipeline_finished_at"] = None
@@ -4125,6 +4148,8 @@ class DatabaseService:
         approved_by: str,
         feedback_video_storage_path: str,
         script_manifest: Optional[Dict[str, Any]] = None,
+        delivery_email_soft_failed: bool = False,
+        draft_payload: Optional[Dict[str, Any]] = None,
     ) -> Optional[Dict[str, Any]]:
         payload: Dict[str, Any] = {
             "status": "sent",
@@ -4135,12 +4160,73 @@ class DatabaseService:
             "sent_at": datetime.now(timezone.utc).isoformat(),
             "pipeline_finished_at": datetime.now(timezone.utc).isoformat(),
             "updated_at": datetime.now(timezone.utc).isoformat(),
+            "delivery_lifecycle": "delivered",
+            "delivery_email_soft_failed": bool(delivery_email_soft_failed),
+            "delivery_failed_step": None,
         }
         if script_manifest is not None:
             payload["script_manifest"] = script_manifest
+        if draft_payload is not None:
+            payload["draft_payload"] = draft_payload
         res = (
             self.client.table("admin_student_send_drafts")
             .update(payload)
+            .eq("id", draft_id)
+            .eq("user_id", user_id)
+            .execute()
+        )
+        return res.data[0] if res.data else None
+
+    def try_claim_admin_send_draft_delivery_in_progress(self, draft_id: str, user_id: str) -> Optional[Dict[str, Any]]:
+        """Atomically move lifecycle idle|failed → delivering. Returns row if claim succeeded."""
+        now = datetime.now(timezone.utc).isoformat()
+        try:
+            res = (
+                self.client.table("admin_student_send_drafts")
+                .update(
+                    {
+                        "delivery_lifecycle": "delivering",
+                        "delivery_started_at": now,
+                        "delivery_failed_step": None,
+                        "updated_at": now,
+                    }
+                )
+                .eq("id", draft_id)
+                .eq("user_id", user_id)
+                .in_("delivery_lifecycle", ["idle", "failed"])
+                .execute()
+            )
+            return res.data[0] if res.data else None
+        except Exception as e:
+            logger.warning("try_claim_admin_send_draft_delivery_in_progress: %s", e)
+            return None
+
+    def reset_admin_send_draft_delivery_idle(self, draft_id: str, user_id: str) -> Optional[Dict[str, Any]]:
+        now = datetime.now(timezone.utc).isoformat()
+        res = (
+            self.client.table("admin_student_send_drafts")
+            .update(
+                {
+                    "delivery_lifecycle": "idle",
+                    "delivery_started_at": None,
+                    "updated_at": now,
+                }
+            )
+            .eq("id", draft_id)
+            .eq("user_id", user_id)
+            .execute()
+        )
+        return res.data[0] if res.data else None
+
+    def clear_admin_send_draft_email_soft_failure(self, draft_id: str, user_id: str) -> Optional[Dict[str, Any]]:
+        res = (
+            self.client.table("admin_student_send_drafts")
+            .update(
+                {
+                    "delivery_email_soft_failed": False,
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                }
+            )
             .eq("id", draft_id)
             .eq("user_id", user_id)
             .execute()

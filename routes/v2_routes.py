@@ -58,6 +58,11 @@ from io import BytesIO
 import threading
 
 from services.reference_video_upload_worker import run_reference_video_upload
+from services.draft_delivery import (
+    auto_approve_payload_for_send,
+    infer_delivery_lifecycle,
+    log_rlhf_auto_accept_events,
+)
 
 logger = logging.getLogger(__name__)
 v2_bp = Blueprint("v2", __name__, url_prefix="/v2")
@@ -894,9 +899,8 @@ def _deliver_homework_assignment_core(
 
     # Fix A: send the email off the request path. The admin UI only needs the
     # 202 to flip "Sending…" → "Sent"; SMTP can take 3–10s which blocks the
-    # approve-send request unnecessarily. We unlock the student optimistically
-    # (same semantics as HOMEWORK_UNLOCK_WHEN_EMAIL_FAILS=true) and log+Sentry
-    # on background failure.
+    # approve-send request unnecessarily. We unlock the student before the
+    # background thread runs; email failures are logged + Sentry-reported.
     # Default: synchronous. Resend API call takes ~0.5–2s which is fine for an
     # admin action done a few times per day, and the admin gets an honest
     # "sent" status (email was actually accepted by Resend, not just queued).
@@ -944,26 +948,23 @@ def _deliver_homework_assignment_core(
             "email_failed_but_unlocked": False,
         }, None
 
-    # Legacy synchronous path (HOMEWORK_SEND_EMAIL_ASYNC=false)
+    # Synchronous path: always unlock the student after attempting email so
+    # enterprise spam filters / Resend outages never block dashboard access.
     result = _send_email_sync()
-    if result.get("status") == "failed":
-        if getattr(config, "HOMEWORK_UNLOCK_WHEN_EMAIL_FAILS", False):
-            logger.warning(
-                "homework delivery: email failed but unlock applied (HOMEWORK_UNLOCK_WHEN_EMAIL_FAILS=true) user_id=%s err=%s",
-                user_id,
-                result.get("error"),
-            )
-            db.v2_mark_tutor_feedback_sent_for_user(user_id)
-            sniper_profile = db.get_sniper_profile_payload(user_id)
-            return {
-                "email": result,
-                "sniper_profile": sniper_profile,
-                "email_failed_but_unlocked": True,
-                "email_error": result.get("error"),
-            }, None
-        return None, result.get("error", "Failed to send email")
     db.v2_mark_tutor_feedback_sent_for_user(user_id)
     sniper_profile = db.get_sniper_profile_payload(user_id)
+    if result.get("status") == "failed":
+        logger.warning(
+            "homework delivery: email failed but student unlocked user_id=%s err=%s",
+            user_id,
+            result.get("error"),
+        )
+        return {
+            "email": result,
+            "sniper_profile": sniper_profile,
+            "email_failed_but_unlocked": True,
+            "email_error": result.get("error"),
+        }, None
     return {"email": result, "sniper_profile": sniper_profile, "email_failed_but_unlocked": False}, None
 
 
@@ -1020,16 +1021,7 @@ def v2_admin_send_assignment(user_id):
             video_storage_path=video_storage_path,
         )
         if send_err:
-            err_lower = (send_err or "").lower()
-            if "resend api key" in err_lower or "api key not set" in err_lower:
-                return jsonify(
-                    {
-                        "code": "EMAIL_NOT_CONFIGURED",
-                        "error": send_err,
-                        "hint": "Set RESEND_API_KEY and RESEND_FROM_EMAIL with SEND_EMAILS=true, or use SEND_EMAILS=false to unlock without sending email. For staging, HOMEWORK_UNLOCK_WHEN_EMAIL_FAILS=true still unlocks if email fails.",
-                    }
-                ), 503
-            return jsonify({"code": "EMAIL_FAILED", "error": send_err}), 500
+            return jsonify({"code": "DELIVERY_ERROR", "error": send_err}), 500
         result = delivery["email"]
         sniper_profile = delivery["sniper_profile"]
         try:
@@ -1060,6 +1052,8 @@ def v2_admin_send_assignment(user_id):
                     "state": "Sent",
                 },
                 "status": "sent",
+                "delivery_lifecycle": "delivered",
+                "delivery_email_soft_failed": bool(delivery.get("email_failed_but_unlocked")),
                 "approved_by": request.user_id,
                 "sent_at": datetime.now(timezone.utc).isoformat(),
                 "updated_at": datetime.now(timezone.utc).isoformat(),
@@ -1067,11 +1061,16 @@ def v2_admin_send_assignment(user_id):
             try:
                 db.insert_admin_student_send_drafts([sent_row])
             except Exception:
-                # Backward-compatible insert if ai_* columns are not migrated yet.
-                sent_row.pop("ai_suggested_task_text", None)
-                sent_row.pop("ai_draft_message", None)
-                sent_row.pop("ai_draft_video_script", None)
-                db.insert_admin_student_send_drafts([sent_row])
+                sent_row.pop("delivery_lifecycle", None)
+                sent_row.pop("delivery_email_soft_failed", None)
+                try:
+                    db.insert_admin_student_send_drafts([sent_row])
+                except Exception:
+                    # Backward-compatible insert if ai_* columns are not migrated yet.
+                    sent_row.pop("ai_suggested_task_text", None)
+                    sent_row.pop("ai_draft_message", None)
+                    sent_row.pop("ai_draft_video_script", None)
+                    db.insert_admin_student_send_drafts([sent_row])
             if ai_message and final_video_description and ai_message.strip() != final_video_description.strip():
                 db.create_admin_annotation_event(
                     user_id=user_id,
@@ -1105,15 +1104,20 @@ def v2_admin_send_assignment(user_id):
                 )
                 if extra_err:
                     additional_results.append({"user_id": extra_uid, "status": "failed", "reason": extra_err})
-                else:
-                    try:
-                        db.v2_apply_coach_homework_task_text(extra_uid, ai_task)
-                    except Exception as extra_task_err:
-                        logger.warning("send-assignment: task sync failed for %s: %s", extra_uid, extra_task_err)
-                    er = extra_delivery["email"]
-                    additional_results.append(
-                        {"user_id": extra_uid, "status": er.get("status", "unknown"), "email": extra_email.strip()}
-                    )
+                    continue
+                try:
+                    db.v2_apply_coach_homework_task_text(extra_uid, ai_task)
+                except Exception as extra_task_err:
+                    logger.warning("send-assignment: task sync failed for %s: %s", extra_uid, extra_task_err)
+                er = extra_delivery["email"]
+                additional_results.append(
+                    {
+                        "user_id": extra_uid,
+                        "status": er.get("status", "unknown"),
+                        "email": extra_email.strip(),
+                        "email_failed_but_unlocked": bool(extra_delivery.get("email_failed_but_unlocked")),
+                    }
+                )
             except Exception as extra_err:
                 logger.warning("send-assignment: additional user %s failed: %s", extra_uid, extra_err)
                 additional_results.append({"user_id": extra_uid, "status": "failed", "reason": str(extra_err)})
@@ -3502,6 +3506,48 @@ def _storage_uri(bucket: str, path: str) -> str:
     return f"storage://{bucket}/{path.lstrip('/')}"
 
 
+def _copilot_row_video_for_delivery(
+    row: dict, payload: dict, body: dict | None = None
+) -> tuple[str | None, str | None, str | None]:
+    """Resolve video_url (+ optional bucket/path) for send-assignment / copilot send / email retry."""
+    body = body or {}
+    video_url_raw = body.get("video_url")
+    if video_url_raw is None or (isinstance(video_url_raw, str) and not str(video_url_raw).strip()):
+        video_url_raw = payload.get("video_url")
+    video_url = None
+    if video_url_raw is not None and str(video_url_raw).strip():
+        s2 = str(video_url_raw).strip()
+        video_url = validate_video_url(video_url_raw)
+        if video_url is None and s2.startswith("storage://") and parse_storage_uri(s2):
+            video_url = s2
+        if video_url is None and s2.startswith("r2://") and parse_r2_uri(s2):
+            video_url = s2
+    video_bucket_override: str | None = None
+    video_storage_path_override: str | None = None
+    if not video_url:
+        override_storage = payload.get("full_override_video_storage_path")
+        if isinstance(override_storage, str):
+            s_override = override_storage.strip()
+            if s_override.startswith("r2://") and parse_r2_uri(s_override):
+                video_url = s_override
+            elif s_override.startswith("storage://"):
+                parsed_override = parse_storage_uri(s_override)
+                if parsed_override:
+                    video_bucket_override, video_storage_path_override = parsed_override
+        if not (video_bucket_override and video_storage_path_override):
+            override_url = payload.get("full_override_video_url")
+            if isinstance(override_url, str) and override_url.strip():
+                validated_override = validate_video_url(override_url.strip())
+                if validated_override:
+                    video_url = validated_override
+    sp = (row.get("feedback_video_storage_path") or "").strip()
+    if not video_url and not (video_bucket_override and video_storage_path_override) and sp:
+        video_url = _signed_feedback_video_url(sp, expires_in=48 * 3600)
+        video_bucket_override = config.COACH_FEEDBACK_VIDEO_BUCKET
+        video_storage_path_override = sp.lstrip("/")
+    return video_url, video_bucket_override, video_storage_path_override
+
+
 def _finalize_pipeline_delivery_for_row(
     *,
     row: dict,
@@ -3532,6 +3578,7 @@ def _finalize_pipeline_delivery_for_row(
     )
     if send_err:
         raise RuntimeError(send_err)
+    email_soft_failed = bool(delivery.get("email_failed_but_unlocked"))
 
     task_sync = _first_non_empty(
         payload.get("task_draft"),
@@ -3544,13 +3591,28 @@ def _finalize_pipeline_delivery_for_row(
         db.v2_apply_coach_homework_task_text(row.get("user_id"), task_sync)
     except Exception as task_sync_err:
         logger.warning("pipeline finalize: task sync failed user_id=%s: %s", row.get("user_id"), task_sync_err)
+    merged_payload = auto_approve_payload_for_send(_normalize_copilot_payload(row))
     updated = db.mark_admin_student_send_draft_pipeline_sent(
         draft_id=str(row.get("id") or ""),
         user_id=str(row.get("user_id") or ""),
         approved_by=approved_by,
         feedback_video_storage_path=storage_path,
         script_manifest=script_manifest or {},
+        delivery_email_soft_failed=email_soft_failed,
+        draft_payload=merged_payload,
     )
+    try:
+        log_rlhf_auto_accept_events(
+            db=db,
+            user_id=str(row.get("user_id") or ""),
+            session_id=row.get("session_id"),
+            draft_id=str(row.get("id") or "") or None,
+            row=row,
+            payload=merged_payload,
+            created_by=str(approved_by or "system"),
+        )
+    except Exception as rlhf_err:
+        logger.warning("pipeline finalize RLHF auto-accept log failed: %s", rlhf_err)
     return updated, delivery.get("email") or {}, task_sync
 
 
@@ -3789,6 +3851,9 @@ def _serialize_copilot_draft(row):
         "pipeline_job_id": row.get("pipeline_job_id"),
         "pipeline_started_at": row.get("pipeline_started_at"),
         "pipeline_finished_at": row.get("pipeline_finished_at"),
+        "delivery_lifecycle": infer_delivery_lifecycle(row),
+        "delivery_failed_step": row.get("delivery_failed_step"),
+        "delivery_email_soft_failed": bool(row.get("delivery_email_soft_failed")),
     }
 
 
@@ -5907,41 +5972,22 @@ def v2_admin_copilot_student_send(user_id):
             return jsonify({"code": "DRAFT_NOT_FOUND", "error": "Draft not found"}), 404
         if str(row.get("status") or "").lower() == "sent":
             return jsonify({"status": "ok", "state": "Sent", "sent_at": row.get("sent_at")}), 200
+        if infer_delivery_lifecycle(row) == "delivering":
+            return jsonify(
+                {
+                    "code": "DELIVERY_IN_PROGRESS",
+                    "error": "Delivery already in progress. Wait for the pipeline or refresh.",
+                }
+            ), 409
         payload = _normalize_copilot_payload(row, _draft_payload(row))
         video_url_raw = body.get("video_url")
         if video_url_raw is None or (isinstance(video_url_raw, str) and not str(video_url_raw).strip()):
             video_url_raw = payload.get("video_url")
-        video_url = None
-        if video_url_raw is not None and str(video_url_raw).strip():
-            s2 = str(video_url_raw).strip()
-            video_url = validate_video_url(video_url_raw)
-            if video_url is None and s2.startswith("storage://") and parse_storage_uri(s2):
-                video_url = s2
-            if video_url is None and s2.startswith("r2://") and parse_r2_uri(s2):
-                video_url = s2
+        video_url, video_bucket_override, video_storage_path_override = _copilot_row_video_for_delivery(
+            row, payload, body,
+        )
         if video_url_raw is not None and str(video_url_raw).strip() and video_url is None:
             return jsonify({"code": "INVALID_VIDEO_URL", "error": "video_url must be a valid URL (http/https, max 2048 chars)"}), 400
-        # Same fallback as approve-send: when no plain video_url is set, use the reference-video
-        # storage URI that /attach-reference-video wrote into the draft payload. See the matching
-        # comment block in v2_admin_student_draft_approve_send for details.
-        video_bucket_override: str | None = None
-        video_storage_path_override: str | None = None
-        if not video_url:
-            override_storage = payload.get("full_override_video_storage_path")
-            if isinstance(override_storage, str):
-                s_override = override_storage.strip()
-                if s_override.startswith("r2://") and parse_r2_uri(s_override):
-                    video_url = s_override
-                elif s_override.startswith("storage://"):
-                    parsed_override = parse_storage_uri(s_override)
-                    if parsed_override:
-                        video_bucket_override, video_storage_path_override = parsed_override
-            if not (video_bucket_override and video_storage_path_override):
-                override_url = payload.get("full_override_video_url")
-                if isinstance(override_url, str) and override_url.strip():
-                    validated_override = validate_video_url(override_url.strip())
-                    if validated_override:
-                        video_url = validated_override
         final_message = (
             payload.get("email_draft")
             or payload.get("email_message")
@@ -5953,60 +5999,89 @@ def v2_admin_copilot_student_send(user_id):
         student_email = (db.get_user_email_from_auth(user_id) or "").strip()
         if not student_email:
             return jsonify({"code": "NO_EMAIL", "error": "Student has no email in auth"}), 400
+        draft_pk = str(row.get("id") or "").strip()
+        if not draft_pk:
+            return jsonify({"code": "INVALID_STATE", "error": "Draft has no id"}), 500
+        claimed_send = db.try_claim_admin_send_draft_delivery_in_progress(draft_pk, user_id)
+        if not claimed_send:
+            return jsonify(
+                {
+                    "code": "DELIVERY_CONFLICT",
+                    "error": "Could not start delivery (concurrent request or invalid lifecycle state).",
+                }
+            ), 409
         desc = (final_message or "").strip() or None
-        delivery, send_err = _deliver_homework_assignment_core(
-            user_id,
-            student_email,
-            video_url=video_url,
-            video_description=desc,
-            video_bucket=video_bucket_override,
-            video_storage_path=video_storage_path_override,
-        )
-        if send_err:
-            err_lower = (send_err or "").lower()
-            if "resend api key" in err_lower or "api key not set" in err_lower:
-                return jsonify(
-                    {
-                        "code": "EMAIL_NOT_CONFIGURED",
-                        "error": send_err,
-                        "hint": "Set RESEND_API_KEY and RESEND_FROM_EMAIL with SEND_EMAILS=true, or use SEND_EMAILS=false to unlock without sending email. For staging, HOMEWORK_UNLOCK_WHEN_EMAIL_FAILS=true still unlocks if email fails.",
-                    }
-                ), 503
-            return jsonify({"code": "EMAIL_FAILED", "error": send_err}), 500
-        send_result = delivery["email"]
-        sniper_profile = delivery["sniper_profile"]
-        task_sync = _first_non_empty(
-            payload.get("task_draft"),
-            payload.get("task_text"),
-            row.get("master_task_text"),
-            payload.get("ai_task_suggestion"),
-            row.get("ai_suggested_task_text"),
-        )
         try:
-            db.v2_apply_coach_homework_task_text(user_id, task_sync)
-        except Exception as task_sync_err:
-            logger.warning("copilot send: task sync failed user_id=%s: %s", user_id, task_sync_err)
-        updated = db.mark_admin_student_send_draft_sent(str(row.get("id")), user_id, request.user_id) or row
-        try:
-            ai_message = (
-                payload.get("ai_email_draft")
-                or row.get("ai_draft_message")
-                or ""
+            delivery, send_err = _deliver_homework_assignment_core(
+                user_id,
+                student_email,
+                video_url=video_url,
+                video_description=desc,
+                video_bucket=video_bucket_override,
+                video_storage_path=video_storage_path_override,
             )
-            if (ai_message or "").strip() and (final_message or "").strip() and ai_message.strip() != final_message.strip():
-                db.create_admin_annotation_event(
+            if send_err:
+                raise RuntimeError(send_err)
+            send_result = delivery["email"]
+            sniper_profile = delivery["sniper_profile"]
+            email_soft_failed = bool(delivery.get("email_failed_but_unlocked"))
+            task_sync = _first_non_empty(
+                payload.get("task_draft"),
+                payload.get("task_text"),
+                row.get("master_task_text"),
+                payload.get("ai_task_suggestion"),
+                row.get("ai_suggested_task_text"),
+            )
+            try:
+                db.v2_apply_coach_homework_task_text(user_id, task_sync)
+            except Exception as task_sync_err:
+                logger.warning("copilot send: task sync failed user_id=%s: %s", user_id, task_sync_err)
+            merged_payload = auto_approve_payload_for_send(payload)
+            updated = (
+                db.mark_admin_student_send_draft_sent(
+                    draft_pk,
+                    user_id,
+                    request.user_id,
+                    delivery_email_soft_failed=email_soft_failed,
+                    draft_payload=merged_payload,
+                )
+                or row
+            )
+            try:
+                log_rlhf_auto_accept_events(
+                    db=db,
                     user_id=user_id,
                     session_id=row.get("session_id"),
-                    section_type="assignment",
-                    field_name="email_message",
-                    ai_original_text=ai_message,
-                    coach_final_text=final_message,
-                    reason_chip="manual_edit",
-                    custom_reason=None,
-                    created_by=request.user_id,
+                    draft_id=draft_pk,
+                    row=row,
+                    payload=merged_payload,
+                    created_by=str(getattr(request, "user_id", "") or "system"),
                 )
-        except Exception as ann_err:
-            logger.warning("copilot send annotation event failed: %s", ann_err)
+            except Exception as rlhf_err:
+                logger.warning("copilot send RLHF auto-accept log failed: %s", rlhf_err)
+            try:
+                ai_message = (
+                    payload.get("ai_email_draft")
+                    or row.get("ai_draft_message")
+                    or ""
+                )
+                if (ai_message or "").strip() and (final_message or "").strip() and ai_message.strip() != final_message.strip():
+                    db.create_admin_annotation_event(
+                        user_id=user_id,
+                        session_id=row.get("session_id"),
+                        section_type="assignment",
+                        field_name="email_message",
+                        ai_original_text=ai_message,
+                        coach_final_text=final_message,
+                        reason_chip="manual_edit",
+                        custom_reason=None,
+                        created_by=request.user_id,
+                    )
+            except Exception as ann_err:
+                logger.warning("copilot send annotation event failed: %s", ann_err)
+        except Exception:
+            db.reset_admin_send_draft_delivery_idle(draft_pk, user_id)
+            raise
         return jsonify(
             {
                 "status": "ok",
@@ -6122,6 +6197,13 @@ def v2_admin_student_draft_approve_send(user_id, draft_id):
             return jsonify({"code": "DRAFT_NOT_FOUND", "error": "Draft not found"}), 404
         if row.get("status") == "sent":
             return jsonify({"status": "ok", "already_sent": True, "draft_id": draft_id}), 200
+        if infer_delivery_lifecycle(row) == "delivering":
+            return jsonify(
+                {
+                    "code": "DELIVERY_IN_PROGRESS",
+                    "error": "Delivery already in progress. Wait for the pipeline or refresh.",
+                }
+            ), 409
         payload_for_mode = _normalize_copilot_payload(row)
         script_mode = resolve_script_mode(payload_for_mode)
         # If the coach already uploaded a reference video for this draft via
@@ -6154,6 +6236,7 @@ def v2_admin_student_draft_approve_send(user_id, draft_id):
                         status="sent",
                         error=None,
                     )
+                    db.reset_admin_send_draft_delivery_idle(str(row.get("id")), user_id)
                     logger.info(
                         "approve-send: cleared stale pipeline_status=%s on draft=%s (using uploaded ref video)",
                         stale_status, row.get("id"),
@@ -6175,11 +6258,23 @@ def v2_admin_student_draft_approve_send(user_id, draft_id):
                             "draft": _serialize_copilot_draft(row),
                         }
                     ), 202
-                updated, pipeline_job_id = _queue_video_pipeline_for_draft(
-                    row,
-                    user_id=user_id,
-                    actor_id=getattr(request, "user_id", None),
-                )
+                claimed = db.try_claim_admin_send_draft_delivery_in_progress(draft_id, user_id)
+                if not claimed:
+                    return jsonify(
+                        {
+                            "code": "DELIVERY_CONFLICT",
+                            "error": "Could not start delivery (concurrent request or invalid lifecycle state).",
+                        }
+                    ), 409
+                try:
+                    updated, pipeline_job_id = _queue_video_pipeline_for_draft(
+                        row,
+                        user_id=user_id,
+                        actor_id=getattr(request, "user_id", None),
+                    )
+                except Exception as queue_err:
+                    db.reset_admin_send_draft_delivery_idle(draft_id, user_id)
+                    raise queue_err
                 payload = _normalize_copilot_payload(updated or row)
                 ai_script = (payload.get("ai_script_draft") or row.get("ai_draft_video_script") or "").strip()
                 final_script = (payload.get("script_draft") or payload.get("video_script") or "").strip()
@@ -6215,42 +6310,11 @@ def v2_admin_student_draft_approve_send(user_id, draft_id):
         video_url_raw = body.get("video_url")
         if video_url_raw is None or (isinstance(video_url_raw, str) and not str(video_url_raw).strip()):
             video_url_raw = payload.get("video_url")
-        video_url = None
-        if video_url_raw is not None and str(video_url_raw).strip():
-            s2 = str(video_url_raw).strip()
-            video_url = validate_video_url(video_url_raw)
-            if video_url is None and s2.startswith("storage://") and parse_storage_uri(s2):
-                video_url = s2
-            if video_url is None and s2.startswith("r2://") and parse_r2_uri(s2):
-                video_url = s2
+        video_url, video_bucket_override, video_storage_path_override = _copilot_row_video_for_delivery(
+            row, payload, body,
+        )
         if video_url_raw is not None and str(video_url_raw).strip() and video_url is None:
             return jsonify({"code": "INVALID_VIDEO_URL", "error": "video_url must be a valid URL (http/https, max 2048 chars)"}), 400
-        # If no plain video_url was set, fall back to the reference-video the coach attached from
-        # Training Studio. POST /admin/copilot/students/<id>/drafts/<id>/attach-reference-video
-        # writes the upload's location into draft_payload.full_override_video_storage_path as a
-        # "storage://bucket/path" URI (see _storage_uri() / attach handler). We parse it here and
-        # pass bucket+path explicitly so _deliver_homework_assignment_core persists all three
-        # fields atomically into v2_student_overrides (matching the pipeline finalize path); the
-        # student's step-0 screen then resolves a signed playable URL via
-        # services.tutor_video_url.resolve_tutor_video_playable_url.
-        video_bucket_override: str | None = None
-        video_storage_path_override: str | None = None
-        if not video_url:
-            override_storage = payload.get("full_override_video_storage_path")
-            if isinstance(override_storage, str):
-                s_override = override_storage.strip()
-                if s_override.startswith("r2://") and parse_r2_uri(s_override):
-                    video_url = s_override
-                elif s_override.startswith("storage://"):
-                    parsed_override = parse_storage_uri(s_override)
-                    if parsed_override:
-                        video_bucket_override, video_storage_path_override = parsed_override
-            if not (video_bucket_override and video_storage_path_override):
-                override_url = payload.get("full_override_video_url")
-                if isinstance(override_url, str) and override_url.strip():
-                    validated_override = validate_video_url(override_url.strip())
-                    if validated_override:
-                        video_url = validated_override
         final_message = (
             payload.get("email_draft")
             or payload.get("email_message")
@@ -6262,60 +6326,83 @@ def v2_admin_student_draft_approve_send(user_id, draft_id):
         student_email = (db.get_user_email_from_auth(user_id) or "").strip()
         if not student_email:
             return jsonify({"code": "NO_EMAIL", "error": "Student has no email in auth"}), 400
+        claimed_sync = db.try_claim_admin_send_draft_delivery_in_progress(draft_id, user_id)
+        if not claimed_sync:
+            return jsonify(
+                {
+                    "code": "DELIVERY_CONFLICT",
+                    "error": "Could not start delivery (concurrent request or invalid lifecycle state).",
+                }
+            ), 409
         desc = (final_message or "").strip() or None
-        delivery, send_err = _deliver_homework_assignment_core(
-            user_id,
-            student_email,
-            video_url=video_url,
-            video_description=desc,
-            video_bucket=video_bucket_override,
-            video_storage_path=video_storage_path_override,
-        )
-        if send_err:
-            err_lower = (send_err or "").lower()
-            if "resend api key" in err_lower or "api key not set" in err_lower:
-                return jsonify(
-                    {
-                        "code": "EMAIL_NOT_CONFIGURED",
-                        "error": send_err,
-                        "hint": "Set RESEND_API_KEY and RESEND_FROM_EMAIL with SEND_EMAILS=true, or use SEND_EMAILS=false to unlock without sending email. For staging, HOMEWORK_UNLOCK_WHEN_EMAIL_FAILS=true still unlocks if email fails.",
-                    }
-                ), 503
-            return jsonify({"code": "EMAIL_FAILED", "error": send_err}), 500
-        send_result = delivery["email"]
-        sniper_profile = delivery["sniper_profile"]
-        task_sync = _first_non_empty(
-            payload.get("task_draft"),
-            payload.get("task_text"),
-            row.get("master_task_text"),
-            payload.get("ai_task_suggestion"),
-            row.get("ai_suggested_task_text"),
-        )
         try:
-            db.v2_apply_coach_homework_task_text(user_id, task_sync)
-        except Exception as task_sync_err:
-            logger.warning("approve-send: task sync failed user_id=%s: %s", user_id, task_sync_err)
-        updated = db.mark_admin_student_send_draft_sent(draft_id, user_id, request.user_id)
-        try:
-            ai_message = (
-                payload.get("ai_email_draft")
-                or row.get("ai_draft_message")
-                or ""
+            delivery, send_err = _deliver_homework_assignment_core(
+                user_id,
+                student_email,
+                video_url=video_url,
+                video_description=desc,
+                video_bucket=video_bucket_override,
+                video_storage_path=video_storage_path_override,
             )
-            if (ai_message or "").strip() and (final_message or "").strip() and ai_message.strip() != final_message.strip():
-                db.create_admin_annotation_event(
+            if send_err:
+                raise RuntimeError(send_err)
+            send_result = delivery["email"]
+            sniper_profile = delivery["sniper_profile"]
+            email_soft_failed = bool(delivery.get("email_failed_but_unlocked"))
+            task_sync = _first_non_empty(
+                payload.get("task_draft"),
+                payload.get("task_text"),
+                row.get("master_task_text"),
+                payload.get("ai_task_suggestion"),
+                row.get("ai_suggested_task_text"),
+            )
+            try:
+                db.v2_apply_coach_homework_task_text(user_id, task_sync)
+            except Exception as task_sync_err:
+                logger.warning("approve-send: task sync failed user_id=%s: %s", user_id, task_sync_err)
+            merged_payload = auto_approve_payload_for_send(payload)
+            updated = db.mark_admin_student_send_draft_sent(
+                draft_id,
+                user_id,
+                request.user_id,
+                delivery_email_soft_failed=email_soft_failed,
+                draft_payload=merged_payload,
+            )
+            try:
+                log_rlhf_auto_accept_events(
+                    db=db,
                     user_id=user_id,
                     session_id=row.get("session_id"),
-                    section_type="assignment",
-                    field_name="email_message",
-                    ai_original_text=ai_message,
-                    coach_final_text=final_message,
-                    reason_chip="manual_edit",
-                    custom_reason=None,
-                    created_by=request.user_id,
+                    draft_id=draft_id,
+                    row=row,
+                    payload=merged_payload,
+                    created_by=str(getattr(request, "user_id", "") or "system"),
                 )
-        except Exception as ann_err:
-            logger.warning("approve-send annotation event failed: %s", ann_err)
+            except Exception as rlhf_err:
+                logger.warning("approve-send RLHF auto-accept log failed: %s", rlhf_err)
+            try:
+                ai_message = (
+                    payload.get("ai_email_draft")
+                    or row.get("ai_draft_message")
+                    or ""
+                )
+                if (ai_message or "").strip() and (final_message or "").strip() and ai_message.strip() != final_message.strip():
+                    db.create_admin_annotation_event(
+                        user_id=user_id,
+                        session_id=row.get("session_id"),
+                        section_type="assignment",
+                        field_name="email_message",
+                        ai_original_text=ai_message,
+                        coach_final_text=final_message,
+                        reason_chip="manual_edit",
+                        custom_reason=None,
+                        created_by=request.user_id,
+                    )
+            except Exception as ann_err:
+                logger.warning("approve-send annotation event failed: %s", ann_err)
+        except Exception:
+            db.reset_admin_send_draft_delivery_idle(draft_id, user_id)
+            raise
         return jsonify(
             {
                 "status": "ok",
@@ -6328,6 +6415,65 @@ def v2_admin_student_draft_approve_send(user_id, draft_id):
                 "realtime_level": sniper_profile.get("realtime_level"),
                 "realtime_step": sniper_profile.get("realtime_step"),
                 "synced_task_to_student": bool((task_sync or "").strip()),
+            }
+        ), 200
+    except Exception as e:
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
+
+
+@v2_bp.route("/admin/students/<user_id>/drafts/<draft_id>/retry-assignment-email", methods=["POST"])
+@v2_bp.route("/admin/copilot/students/<user_id>/drafts/<draft_id>/retry-assignment-email", methods=["POST"])
+@require_admin
+def v2_admin_retry_assignment_email(user_id, draft_id):
+    """Re-send assignment email only (no video re-render). For drafts with delivery_email_soft_failed."""
+    try:
+        row = db.get_admin_student_send_draft(draft_id, user_id)
+        if not row:
+            return jsonify({"code": "DRAFT_NOT_FOUND", "error": "Draft not found"}), 404
+        if str(row.get("status") or "").lower() != "sent":
+            return jsonify({"code": "INVALID_STATE", "error": "Can only retry email for a sent draft"}), 400
+        if not bool(row.get("delivery_email_soft_failed")):
+            return jsonify(
+                {"code": "NO_EMAIL_RETRY", "error": "No prior email soft failure recorded for this draft."}
+            ), 400
+        if infer_delivery_lifecycle(row) == "delivering":
+            return jsonify({"code": "DELIVERY_IN_PROGRESS", "error": "Delivery in progress"}), 409
+        student_email = (db.get_user_email_from_auth(user_id) or "").strip()
+        if not student_email:
+            return jsonify({"code": "NO_EMAIL", "error": "Student has no email in auth"}), 400
+        raw_payload = row.get("draft_payload") if isinstance(row.get("draft_payload"), dict) else {}
+        payload = _normalize_copilot_payload(row, raw_payload)
+        video_url, video_bucket_override, video_storage_path_override = _copilot_row_video_for_delivery(
+            row, payload, {},
+        )
+        final_message = (
+            payload.get("email_draft")
+            or payload.get("email_message")
+            or payload.get("homework_comment")
+            or payload.get("ai_email_draft")
+            or row.get("ai_draft_message")
+            or ""
+        )
+        desc = (final_message or "").strip() or None
+        delivery, send_err = _deliver_homework_assignment_core(
+            user_id,
+            student_email,
+            video_url=video_url,
+            video_description=desc,
+            video_bucket=video_bucket_override,
+            video_storage_path=video_storage_path_override,
+        )
+        if send_err:
+            return jsonify({"code": "DELIVERY_ERROR", "error": send_err}), 500
+        er = delivery.get("email") or {}
+        if not bool(delivery.get("email_failed_but_unlocked")) and (er.get("status") in ("sent", "pending")):
+            db.clear_admin_send_draft_email_soft_failure(draft_id, user_id)
+        return jsonify(
+            {
+                "status": "ok",
+                "email": er,
+                "email_failed_but_unlocked": bool(delivery.get("email_failed_but_unlocked")),
             }
         ), 200
     except Exception as e:
@@ -6352,6 +6498,9 @@ def v2_admin_student_draft_pipeline_status(user_id, draft_id):
                 "pipeline_started_at": row.get("pipeline_started_at"),
                 "pipeline_finished_at": row.get("pipeline_finished_at"),
                 "feedback_video_storage_path": row.get("feedback_video_storage_path"),
+                "delivery_lifecycle": infer_delivery_lifecycle(row),
+                "delivery_failed_step": row.get("delivery_failed_step"),
+                "delivery_email_soft_failed": bool(row.get("delivery_email_soft_failed")),
                 "draft": _serialize_copilot_draft(row),
             }
         ), 200

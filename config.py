@@ -27,7 +27,7 @@ class Config:
     ENV = os.getenv("ENV", "development")
     # When true, coach receives email at ADMIN_EMAIL when a student completes homework; assignment emails are sent. Set SEND_EMAILS=true to receive reports.
     SEND_EMAILS = os.getenv("SEND_EMAILS", "false").lower() == "true"
-    # Staging only: if Resend send fails, still run v2_mark_tutor_feedback_sent so the student can open homework (no real email).
+    # Deprecated: homework delivery always unlocks after the email attempt (see _deliver_homework_assignment_core).
     HOMEWORK_UNLOCK_WHEN_EMAIL_FAILS = os.getenv("HOMEWORK_UNLOCK_WHEN_EMAIL_FAILS", "false").lower() == "true"
 
     # Supabase
