@@ -76,3 +76,95 @@ def diagnose_session_state(
         return BehavioralProfile.DRIFTER
 
     return BehavioralProfile.MASTER
+
+
+# ---------------------------------------------------------------------------
+# Phase 3 hook: diagnose a completed session and persist the suggestion.
+# Gated upstream by Config.DIAGNOSE_SESSION_STATE_ENABLED.
+# ---------------------------------------------------------------------------
+
+
+def _coerce_float(value: object) -> Optional[float]:
+    if value is None:
+        return None
+    try:
+        return float(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None
+
+
+def _coerce_int(value: object) -> Optional[int]:
+    if value is None:
+        return None
+    try:
+        return int(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None
+
+
+def build_session_metrics(
+    *,
+    wpm: Optional[float],
+    sniper_metrics: Optional[dict],
+    filler_count: Optional[int],
+) -> SessionMetrics:
+    """Assemble a `SessionMetrics` from the values available at completion time.
+
+    `sniper_metrics` is the dict returned by `db.get_session_sniper_metrics`;
+    missing or non-numeric fields are coerced to None without raising.
+    """
+    sniper = sniper_metrics or {}
+    return SessionMetrics(
+        wpm=_coerce_float(wpm),
+        pause_ms=_coerce_float(sniper.get("pause_ms")),
+        filler_count=_coerce_int(filler_count),
+        dynamic_db=_coerce_float(sniper.get("dynamic_db")),
+    )
+
+
+def diagnose_and_persist_session(
+    *,
+    session_id: str,
+    user_id: str,
+    wpm: Optional[float],
+    sniper_metrics: Optional[dict],
+    filler_count: Optional[int],
+    db=None,
+) -> Optional[BehavioralProfile]:
+    """Diagnose a completed session and persist `ai_suggested_*` on v2_sessions.
+
+    Returns the diagnosed profile. Caller is responsible for gating on the
+    `DIAGNOSE_SESSION_STATE_ENABLED` config flag and swallowing exceptions;
+    this function raises on DB errors so the caller can log appropriately.
+
+    `db` is injectable for tests. In production the shared singleton from
+    `services.db` is used.
+    """
+    if db is None:
+        from services.db import db as _db  # lazy to avoid bootstrap coupling
+        db = _db
+
+    metrics = build_session_metrics(
+        wpm=wpm,
+        sniper_metrics=sniper_metrics,
+        filler_count=filler_count,
+    )
+    profile = diagnose_session_state(metrics)
+
+    task_id: Optional[str] = None
+    rows = db.v2_get_next_active_task_pool_template(
+        target_profile=profile.value,
+        level=1,
+        limit=1,
+        is_behavioral=True,
+    )
+    if rows:
+        raw_id = rows[0].get("id")
+        if raw_id:
+            task_id = str(raw_id)
+
+    db.v2_update_session(session_id, user_id, {
+        "ai_suggested_profile": profile.value,
+        "ai_suggested_task_id": task_id,
+    })
+    return profile

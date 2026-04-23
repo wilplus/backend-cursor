@@ -121,6 +121,12 @@ class Config:
     # Cap extracted audio length for Whisper (API max ~25MB); first N seconds only if longer.
     REFERENCE_VIDEO_WHISPER_MAX_AUDIO_SECONDS = int(os.getenv("REFERENCE_VIDEO_WHISPER_MAX_AUDIO_SECONDS", "3600"))
 
+    # Recommendation engine v1 hook: when true, _complete_session_from_recording
+    # runs diagnose_session_state() and persists ai_suggested_profile /
+    # ai_suggested_task_id on v2_sessions. Failures are logged and swallowed
+    # (never abort session completion).
+    DIAGNOSE_SESSION_STATE_ENABLED = (os.getenv("DIAGNOSE_SESSION_STATE_ENABLED") or "false").strip().lower() == "true"
+
     @property
     def is_production(self):
         return self.ENV == "production"
