@@ -2583,8 +2583,14 @@ def _task_template_validation_error(code: str, field: str, message: str):
 
 def _is_duplicate_active_slot_error(err: Exception) -> bool:
     text = str(err).lower()
-    return ("idx_tasks_pool_active_slot_unique" in text) or (
-        "duplicate key value violates unique constraint" in text and "target_profile" in text and "step_in_level" in text
+    return (
+        "idx_tasks_pool_active_slot_unique" in text
+        or "ux_tasks_pool_active_slot" in text
+        or (
+            "duplicate key value violates unique constraint" in text
+            and "target_profile" in text
+            and "step_in_level" in text
+        )
     )
 
 

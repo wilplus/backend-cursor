@@ -2640,11 +2640,26 @@ class DatabaseService:
             payload["replaces_task_id"] = data.get("replaces_task_id") or None
         return payload
 
-    def v2_get_task_pool(self, *, include_inactive: bool = False):
+    def v2_get_task_pool(
+        self,
+        *,
+        include_inactive: bool = False,
+        include_behavioral: bool = False,
+    ):
+        """Return rows from `tasks_pool`.
+
+        `include_behavioral` defaults to False so the legacy admin warm-up
+        modal stays uncluttered after the 12 canonical behavioral tasks are
+        seeded. The diagnose-and-prescribe engine should opt in via
+        `include_behavioral=True` (or use `v2_get_next_active_task_pool_template`
+        with `is_behavioral=True`).
+        """
         try:
             q = self.client.table("tasks_pool").select("*")
             if not include_inactive:
                 q = q.eq("is_active", True)
+            if not include_behavioral:
+                q = q.eq("is_behavioral", False)
             result = (
                 q.order("is_active", desc=True)
                 .order("target_profile")
@@ -2810,15 +2825,26 @@ class DatabaseService:
         level: int,
         exclude_pool_task_ids: Optional[List[str]] = None,
         limit: int = 1,
+        is_behavioral: Optional[bool] = None,
     ) -> List[dict]:
-        """Deterministic template lookup: active rows ordered by step_in_level then creation."""
+        """Deterministic template lookup: active rows ordered by step_in_level then creation.
+
+        `is_behavioral` scopes the lookup to one partition of `tasks_pool`:
+          * True  -> only the 12 canonical behavioral recommendation-engine tasks
+          * False -> only legacy warm-up tasks
+          * None  -> no filter (historical behavior; may return mixed rows)
+        """
         q = (
             self.client.table("tasks_pool")
             .select("*")
             .eq("is_active", True)
             .eq("target_profile", target_profile)
             .eq("level", int(level))
-            .order("step_in_level")
+        )
+        if is_behavioral is not None:
+            q = q.eq("is_behavioral", bool(is_behavioral))
+        q = (
+            q.order("step_in_level")
             .order("created_at")
             .limit(max(1, int(limit)))
         )

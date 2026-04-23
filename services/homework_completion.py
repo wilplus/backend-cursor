@@ -884,6 +884,25 @@ def _complete_session_from_recording(
         "tutor_feedback_sent_at": None,
     })
 
+    # Recommendation engine v1: diagnose behavioral profile and persist the
+    # AI-suggested task on v2_sessions. Flag-gated and non-blocking — any
+    # failure here is swallowed so session completion is never aborted.
+    if config.DIAGNOSE_SESSION_STATE_ENABLED:
+        try:
+            from services.session_diagnosis import diagnose_and_persist_session
+            diagnose_and_persist_session(
+                session_id=session_id,
+                user_id=user_id,
+                wpm=wpm,
+                sniper_metrics=sniper_now,
+                filler_count=filler_count,
+            )
+        except Exception as diag_err:
+            logger.warning(
+                "diagnose_and_persist_session failed (non-blocking) session_id=%s: %s",
+                session_id, diag_err,
+            )
+
     try:
         db.v2_charge_homework_completion_credits_once(session_id, user_id, amount=5)
     except Exception as credit_err:
