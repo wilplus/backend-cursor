@@ -7,6 +7,7 @@ from config import Config
 from auth import require_auth
 from routes.admin import require_admin, is_admin
 from services.annotation_export import result_to_dict, run_annotation_export
+from services.behavioral_profiles import PROFILE_VALUES
 from services.db import db
 from services.email_service import email_service
 from services.copilot_video_pipeline import (
@@ -1236,8 +1237,54 @@ def v2_admin_student_session_detail(user_id, session_id):
         if "coach_override_justification" in data:
             raw_coj = data.get("coach_override_justification")
             updates["coach_override_justification"] = (str(raw_coj).strip()[:2000] if raw_coj else None)
+        # Phase 4: coach-approved behavioral profile (must be one of 4 valid labels, or null to clear)
+        profile_touched = "coach_approved_profile" in data
+        if profile_touched:
+            raw_profile = data.get("coach_approved_profile")
+            if raw_profile is None:
+                updates["coach_approved_profile"] = None
+            elif isinstance(raw_profile, str) and raw_profile in PROFILE_VALUES:
+                updates["coach_approved_profile"] = raw_profile
+            else:
+                return jsonify({
+                    "code": "INVALID_INPUT",
+                    "error": f"coach_approved_profile must be one of {sorted(PROFILE_VALUES)} or null",
+                }), 400
+        # Phase 4: coach-approved behavioral task (must reference a behavioral task aligned with the effective profile)
+        task_touched = "coach_approved_task_id" in data
+        task_row = None
+        if task_touched:
+            raw_task_id = data.get("coach_approved_task_id")
+            if raw_task_id is None:
+                updates["coach_approved_task_id"] = None
+            else:
+                task_id_str = str(raw_task_id).strip()
+                if not task_id_str:
+                    updates["coach_approved_task_id"] = None
+                else:
+                    task_row = db.v2_get_task_pool_by_id(task_id_str)
+                    if not task_row or not task_row.get("is_behavioral"):
+                        return jsonify({
+                            "code": "INVALID_INPUT",
+                            "error": "coach_approved_task_id must reference a behavioral task in tasks_pool (is_behavioral = TRUE)",
+                        }), 400
+                    effective_profile = (
+                        updates.get("coach_approved_profile")
+                        if profile_touched
+                        else current.get("coach_approved_profile")
+                    )
+                    task_profile = task_row.get("target_profile")
+                    if effective_profile and task_profile and effective_profile != task_profile:
+                        return jsonify({
+                            "code": "INVALID_INPUT",
+                            "error": f"coach_approved_task_id belongs to profile '{task_profile}' but coach_approved_profile is '{effective_profile}'",
+                        }), 400
+                    updates["coach_approved_task_id"] = task_id_str
+        # Stamp approval timestamp when either field is touched (lets the dashboard show "approved 2h ago").
+        if profile_touched or task_touched:
+            updates["coach_approved_at"] = datetime.now(timezone.utc).isoformat()
         if not updates:
-            return jsonify({"code": "INVALID_INPUT", "error": "Provide report_grade, report_comment, coach_override_score, and/or coach_override_justification"}), 400
+            return jsonify({"code": "INVALID_INPUT", "error": "Provide report_grade, report_comment, coach_override_score, coach_override_justification, coach_approved_profile, and/or coach_approved_task_id"}), 400
         updated = db.v2_update_session(session_id, user_id, updates)
         if not updated:
             return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found"}), 404
@@ -1278,6 +1325,45 @@ def v2_admin_student_session_detail(user_id, session_id):
                     custom_reason=None,
                     created_by=request.user_id,
                 )
+            # Phase 4: RLHF capture for profile/task approvals. reason_chip distinguishes
+            # approve (coach kept AI suggestion) from override (coach changed it) so the
+            # training-data pipeline can weigh disagreements separately.
+            if "coach_approved_profile" in updates:
+                ai_profile = current.get("ai_suggested_profile")
+                new_profile = updates.get("coach_approved_profile")
+                chip = data.get("reason_chip")
+                if not chip:
+                    chip = "approve" if new_profile == ai_profile else "override"
+                db.create_admin_annotation_event(
+                    user_id=user_id,
+                    session_id=session_id,
+                    section_type="profile_approval",
+                    field_name="coach_approved_profile",
+                    ai_original_text=ai_profile,
+                    coach_final_text=new_profile,
+                    reason_chip=chip,
+                    custom_reason=data.get("coach_approved_justification"),
+                    created_by=request.user_id,
+                )
+            if "coach_approved_task_id" in updates:
+                ai_task = current.get("ai_suggested_task_id")
+                new_task = updates.get("coach_approved_task_id")
+                ai_task_str = str(ai_task) if ai_task else None
+                new_task_str = str(new_task) if new_task else None
+                chip = data.get("reason_chip")
+                if not chip:
+                    chip = "approve" if new_task_str == ai_task_str else "override"
+                db.create_admin_annotation_event(
+                    user_id=user_id,
+                    session_id=session_id,
+                    section_type="profile_approval",
+                    field_name="coach_approved_task_id",
+                    ai_original_text=ai_task_str,
+                    coach_final_text=new_task_str,
+                    reason_chip=chip,
+                    custom_reason=data.get("coach_approved_justification"),
+                    created_by=request.user_id,
+                )
         except Exception as ann_err:
             logger.warning("session patch annotation event failed: %s", ann_err)
         return jsonify({
@@ -1286,6 +1372,9 @@ def v2_admin_student_session_detail(user_id, session_id):
             "report_comment": updated.get("report_comment"),
             "coach_override_score": updated.get("coach_override_score"),
             "coach_override_justification": updated.get("coach_override_justification"),
+            "coach_approved_profile": updated.get("coach_approved_profile"),
+            "coach_approved_task_id": updated.get("coach_approved_task_id"),
+            "coach_approved_at": updated.get("coach_approved_at"),
         }), 200
     except Exception as e:
         sentry_sdk.capture_exception(e)
