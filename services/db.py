@@ -4404,6 +4404,7 @@ class DatabaseService:
                 self.client.table("admin_uploaded_reference_videos")
                 .select("*")
                 .eq("is_universal", True)
+                .eq("is_active", True)
                 .order("created_at", desc=True)
                 .limit(1)
                 .execute()

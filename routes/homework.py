@@ -332,8 +332,17 @@ def _build_step0_payload(user_id: str) -> dict:
                             payload["tutor_video_bucket"] = _b
                         if _p:
                             payload["tutor_video_storage_path"] = _p
-                except Exception:
-                    pass
+                    else:
+                        logger.warning(
+                            "universal welcome video id=%s could not be resolved to a playable URL "
+                            "(bucket=%s path=%s src_url=%s)",
+                            uni.get("id"), uni_bucket, uni_path, uni_src_url,
+                        )
+                except Exception as _uni_exc:
+                    logger.warning(
+                        "universal welcome video id=%s URL resolution raised: %s",
+                        uni.get("id"), _uni_exc,
+                    )
             # Generic welcome copy (coach sets this in the upload form's title/description).
             welcome_desc = (
                 (uni.get("title") or "").strip()
