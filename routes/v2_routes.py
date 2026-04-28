@@ -1184,6 +1184,144 @@ def v2_admin_send_completion_email(user_id):
         return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
 
 
+_HOMEWORK_STATUS_COMPLETING_FROM_RECORDING_1 = "completing_from_recording_1"
+
+
+@v2_bp.route("/admin/students/<user_id>/sessions/upload-recording", methods=["POST"])
+@require_admin
+def v2_admin_upload_session_recording(user_id):
+    """Admin uploads a pre-recorded audio file as if it were a student's live homework recording.
+
+    Creates a fresh v2 homework session for the target student, stores the audio in the
+    standard homework storage path, and enqueues the recording-1 background job. The job
+    runs the same pipeline as a live recording — Whisper transcription, WPM/filler/sniper
+    metrics, and (when DIAGNOSE_SESSION_STATE_ENABLED) `diagnose_and_persist_session`,
+    which writes ai_suggested_profile + ai_suggested_task_id to the new session.
+
+    Used to calibrate the recommendation engine with curated reference speeches.
+    """
+    from services.recording_1_job import enqueue_recording_1_job
+
+    try:
+        if not _is_valid_uuid(user_id):
+            return jsonify({"code": "INVALID_INPUT", "error": "Invalid user_id"}), 400
+
+        if "audio_file" not in request.files:
+            return jsonify({"code": "AUDIO_FILE_REQUIRED", "error": "audio_file is required"}), 400
+        audio_file = request.files.get("audio_file")
+        try:
+            original_name, ext = _admin_import_validate_audio_file(audio_file)
+        except ValueError as ve:
+            msg = str(ve)
+            if msg == "unsupported audio format":
+                return jsonify({"code": "UNSUPPORTED_AUDIO_FORMAT", "error": "unsupported audio format"}), 415
+            return jsonify({"code": "AUDIO_FILE_REQUIRED", "error": msg}), 400
+
+        max_bytes = int((getattr(config, "MAX_AUDIO_SIZE_MB", 25) or 25) * 1024 * 1024)
+        cl = request.content_length or 0
+        if cl and cl > max_bytes:
+            return jsonify({"code": "FILE_TOO_LARGE", "error": f"audio_file exceeds {config.MAX_AUDIO_SIZE_MB}MB limit"}), 413
+        file_bytes = audio_file.read()
+        if not file_bytes:
+            return jsonify({"code": "INVALID_MULTIPART", "error": "audio_file is empty"}), 400
+        if len(file_bytes) > max_bytes:
+            return jsonify({"code": "FILE_TOO_LARGE", "error": f"audio_file exceeds {config.MAX_AUDIO_SIZE_MB}MB limit"}), 413
+
+        try:
+            db.v2_ensure_default_student_task(user_id)
+        except Exception:
+            pass
+        hw_task = db.v2_get_assigned_task_for_user(user_id) or {}
+        task_id = hw_task.get("id")
+        task_text = (hw_task.get("text") or "").strip() or "Admin recommendation-engine calibration upload."
+
+        session = db.v2_create_homework_session(user_id)
+        if not session:
+            return jsonify({"code": "V2_ERROR", "error": "Failed to create session"}), 500
+        session_id = session["id"]
+
+        duration_raw = (request.form or {}).get("duration_seconds")
+        try:
+            duration_seconds = float(duration_raw) if duration_raw not in (None, "") else None
+        except (TypeError, ValueError):
+            duration_seconds = None
+
+        storage_path = f"{user_id}/{session_id}/admin_{uuid.uuid4().hex}{ext}"
+        content_type = (audio_file.mimetype or mimetypes.guess_type(original_name)[0] or "application/octet-stream").strip()
+        if content_type in ("True", "False"):
+            content_type = "application/octet-stream"
+
+        try:
+            db.upload_audio(config.AUDIO_BUCKET_NAME, storage_path, file_bytes, content_type=content_type)
+        except Exception as upload_err:
+            logger.warning("Admin upload-recording: storage upload failed: %s", upload_err, exc_info=True)
+            return jsonify({"code": "UPLOAD_FAILED", "error": "Failed to store uploaded audio"}), 500
+
+        minimal_recording = {
+            "user_id": user_id,
+            "session_id": None,
+            "session_v2_id": session_id,
+            "storage_path": storage_path,
+            "audio_url": "",
+            "duration": 0,
+            "recording_origin": "admin_upload",
+        }
+        if duration_seconds is not None:
+            minimal_recording["duration_seconds"] = duration_seconds
+
+        recording = None
+        try:
+            recording = db.create_recording(minimal_recording)
+        except Exception as create_err:
+            err_low = str(create_err).lower()
+            if "recording_origin" in err_low or "pgrst204" in err_low:
+                fallback = {k: v for k, v in minimal_recording.items() if k != "recording_origin"}
+                try:
+                    recording = db.create_recording(fallback)
+                except Exception as e2:
+                    logger.warning("Admin upload-recording: create_recording failed: %s", e2, exc_info=True)
+                    return jsonify({"code": "RECORDING_CREATE_FAILED", "error": str(e2)}), 500
+            else:
+                logger.warning("Admin upload-recording: create_recording failed: %s", create_err, exc_info=True)
+                return jsonify({"code": "RECORDING_CREATE_FAILED", "error": str(create_err)}), 500
+
+        if not recording:
+            return jsonify({"code": "RECORDING_CREATE_FAILED", "error": "Failed to create recording row"}), 500
+
+        # Mark the session as already self-rated so recording_1_job auto-completes
+        # and runs `diagnose_and_persist_session` without waiting for a student step.
+        session_update = {
+            "session_task_id": task_id,
+            "session_task_text": task_text,
+            "recording_1_id": recording["id"],
+            "status": _HOMEWORK_STATUS_COMPLETING_FROM_RECORDING_1,
+            "recording_1_processing_status": "pending",
+            "self_rating_submitted_at": datetime.now(timezone.utc).isoformat(),
+        }
+        db.v2_update_session(session_id, user_id, session_update)
+
+        enqueue_recording_1_job(
+            session_id,
+            str(recording["id"]),
+            storage_path,
+            user_id,
+            duration_seconds,
+        )
+
+        return jsonify({
+            "status": "ok",
+            "session_id": session_id,
+            "recording_id": recording["id"],
+            "storage_path": storage_path,
+            "message": "Audio uploaded; recording-1 pipeline enqueued. Poll session detail for ai_suggested_* fields.",
+        }), 201
+
+    except Exception as e:
+        logger.error(f"Admin upload-recording failed: {e}", exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
+
+
 @v2_bp.route("/admin/students/<user_id>/sessions/<session_id>", methods=["GET", "PATCH"])
 @require_admin
 def v2_admin_student_session_detail(user_id, session_id):
