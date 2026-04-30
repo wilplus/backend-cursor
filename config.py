@@ -127,6 +127,21 @@ class Config:
     # (never abort session completion).
     DIAGNOSE_SESSION_STATE_ENABLED = (os.getenv("DIAGNOSE_SESSION_STATE_ENABLED") or "false").strip().lower() == "true"
 
+    # Curiosity Gate (anonymous-first acquisition funnel). When true, exposes
+    # POST /v2/public/shaky-voice/{upload,claim}. Anonymous uploads only store
+    # bytes + a v2_sessions row; the paid Whisper / OpenAI pipeline does NOT
+    # run until the user signs in and claims the session.
+    GUEST_FUNNEL_ENABLED = (os.getenv("GUEST_FUNNEL_ENABLED") or "false").strip().lower() == "true"
+    # Per-IP cap (uploads/hour). Cheap insurance against scripted abuse.
+    GUEST_FUNNEL_RATE_LIMIT_PER_IP_PER_HOUR = int(os.getenv("GUEST_FUNNEL_RATE_LIMIT_PER_IP_PER_HOUR", "5"))
+    # Global cap across all IPs (uploads/hour). Stops a botnet from saturating.
+    GUEST_FUNNEL_RATE_LIMIT_GLOBAL_PER_HOUR = int(os.getenv("GUEST_FUNNEL_RATE_LIMIT_GLOBAL_PER_HOUR", "200"))
+    # Hard size cap on the anonymous upload (smaller than admin's 25 MB —
+    # the funnel is 15 seconds of speech, not a TED talk).
+    GUEST_FUNNEL_MAX_AUDIO_SIZE_MB = int(os.getenv("GUEST_FUNNEL_MAX_AUDIO_SIZE_MB", "5"))
+    # TTL for unclaimed guest sessions before the daily cleanup job purges them.
+    GUEST_FUNNEL_TTL_HOURS = int(os.getenv("GUEST_FUNNEL_TTL_HOURS", "24"))
+
     @property
     def is_production(self):
         return self.ENV == "production"
