@@ -2966,6 +2966,94 @@ class DatabaseService:
         result = self.client.table("v2_sessions").insert({"user_id": user_id, "status": "task"}).execute()
         return result.data[0] if result.data else None
 
+    # ------------------------------------------------------------------
+    # Curiosity Gate funnel (anonymous-first acquisition)
+    # ------------------------------------------------------------------
+
+    def v2_create_guest_session(
+        self,
+        guest_session_id: str,
+        *,
+        recording_id: str,
+    ) -> Optional[dict]:
+        """Create an unclaimed funnel session (user_id=NULL) for the Curiosity Gate.
+
+        The row is keyed by `guest_session_id` (UUID handed to the browser via
+        an httpOnly cookie). On claim, user_id is bound — see v2_claim_guest_session.
+        Storage path lives on the recordings row, not duplicated here.
+        """
+        payload = {
+            "id": guest_session_id,
+            "user_id": None,
+            "status": "guest_pending_claim",
+            "recording_1_id": recording_id,
+            "session_task_text": "Curiosity Gate: 15-second voice trial.",
+        }
+        result = self.client.table("v2_sessions").insert(payload).execute()
+        return result.data[0] if result.data else None
+
+    def v2_claim_guest_session(self, guest_session_id: str, user_id: str) -> Optional[dict]:
+        """Bind an unclaimed funnel session to an authenticated user.
+
+        Atomic: the UPDATE is conditional on user_id IS NULL, so two concurrent
+        claims (e.g., a double-clicked magic link) cannot both succeed. The
+        loser receives None and the caller resolves it as "already claimed".
+
+        Side effect: also writes user_id back to the recordings row so the
+        analysis pipeline (which queries recordings by user_id) can find it.
+
+        Returns the updated v2_sessions row on success, or None if the
+        session was not found OR was already claimed.
+        """
+        from datetime import datetime, timezone
+        now_iso = datetime.now(timezone.utc).isoformat()
+        update = {
+            "user_id": user_id,
+            "guest_claimed_at": now_iso,
+            "status": "completing_from_recording_1",
+            "recording_1_processing_status": "pending",
+            # Stamp self_rating so recording_1_job auto-completes after analysis;
+            # the funnel UX does not include a self-rating step.
+            "self_rating_submitted_at": now_iso,
+        }
+        result = (
+            self.client.table("v2_sessions")
+            .update(update)
+            .eq("id", guest_session_id)
+            .is_("user_id", "null")
+            .execute()
+        )
+        if not result.data:
+            return None
+        row = result.data[0]
+        rec_id = row.get("recording_1_id")
+        if rec_id:
+            try:
+                self.client.table("recordings").update({"user_id": user_id}).eq("id", rec_id).execute()
+            except Exception:
+                # Don't unwind the claim if the recordings update fails;
+                # the pipeline can still find the recording via session_v2_id.
+                pass
+        return row
+
+    def v2_delete_expired_guest_sessions(self, ttl_hours: int = 24) -> int:
+        """Daily cleanup: purge unclaimed funnel rows older than `ttl_hours`.
+
+        Returns the number of rows deleted. Audio blobs in storage are
+        unaffected (storage TTL is governed separately to avoid cascading
+        failures from a transient storage outage).
+        """
+        from datetime import datetime, timedelta, timezone
+        cutoff = (datetime.now(timezone.utc) - timedelta(hours=ttl_hours)).isoformat()
+        result = (
+            self.client.table("v2_sessions")
+            .delete()
+            .is_("user_id", "null")
+            .lt("created_at", cutoff)
+            .execute()
+        )
+        return len(result.data or [])
+
     # Context fields: context_short (session summary), context_long (report text), coach_notes (speaker_profile). See docs/CONTEXT-FIELDS.md.
 
     def v2_append_context_long_entry(self, session_id: str, user_id: str, text: str):

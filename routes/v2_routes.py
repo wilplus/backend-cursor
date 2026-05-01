@@ -6780,3 +6780,292 @@ def v2_admin_internal_copilot_pipeline_process(draft_id):
             pass
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "PIPELINE_FAILED", "error": str(e)}), 500
+
+
+# =============================================================================
+# Curiosity Gate funnel — anonymous-first acquisition
+# =============================================================================
+# Two endpoints:
+#   POST /v2/public/shaky-voice/upload  (no auth, rate-limited per IP)
+#     Stores audio bytes, creates an unclaimed v2_sessions row (user_id=NULL).
+#     Returns guest_session_id which the BFF stores in an httpOnly cookie.
+#     Does NOT enqueue the analysis pipeline — paid Whisper / OpenAI calls
+#     never run on anonymous traffic.
+#
+#   POST /v2/public/shaky-voice/claim  (auth required)
+#     Binds an unclaimed session to auth.uid() and enqueues recording_1_job.
+#     Idempotent: if the same user re-claims, returns 200; if a different
+#     user attempts to claim a taken session, returns 409.
+# =============================================================================
+
+# In-process rate limiter: (ip_or_global) -> [unix_timestamps].
+# Lost on restart, which is fine — these are anti-abuse caps, not auth.
+_guest_funnel_rate_limit: dict = {}
+_GUEST_FUNNEL_GLOBAL_KEY = "__global__"
+
+
+def _guest_funnel_rate_limit_check(client_ip: str) -> tuple[bool, str]:
+    """Return (allowed, reason). Sliding 1-hour window per IP and global."""
+    import time as _time
+    now = _time.time()
+    window_start = now - 3600.0
+    per_ip_cap = int(getattr(config, "GUEST_FUNNEL_RATE_LIMIT_PER_IP_PER_HOUR", 5) or 5)
+    global_cap = int(getattr(config, "GUEST_FUNNEL_RATE_LIMIT_GLOBAL_PER_HOUR", 200) or 200)
+    # Trim the IP bucket
+    bucket = [t for t in _guest_funnel_rate_limit.get(client_ip, []) if t >= window_start]
+    if len(bucket) >= per_ip_cap:
+        _guest_funnel_rate_limit[client_ip] = bucket
+        return False, "per_ip"
+    # Trim the global bucket
+    g_bucket = [t for t in _guest_funnel_rate_limit.get(_GUEST_FUNNEL_GLOBAL_KEY, []) if t >= window_start]
+    if len(g_bucket) >= global_cap:
+        _guest_funnel_rate_limit[_GUEST_FUNNEL_GLOBAL_KEY] = g_bucket
+        return False, "global"
+    bucket.append(now)
+    g_bucket.append(now)
+    _guest_funnel_rate_limit[client_ip] = bucket
+    _guest_funnel_rate_limit[_GUEST_FUNNEL_GLOBAL_KEY] = g_bucket
+    return True, ""
+
+
+def _client_ip_from_request() -> str:
+    """Best-effort client IP. Trusts X-Forwarded-For first (Railway/CDN), then remote_addr."""
+    xff = (request.headers.get("X-Forwarded-For") or "").strip()
+    if xff:
+        # First entry is the original client per RFC 7239 conventions.
+        return xff.split(",")[0].strip() or (request.remote_addr or "0.0.0.0")
+    return request.remote_addr or "0.0.0.0"
+
+
+@v2_bp.route("/public/shaky-voice/upload", methods=["POST"])
+def v2_public_shaky_voice_upload():
+    """Anonymous upload for the Curiosity Gate funnel.
+
+    Stores audio in `guest_funnel/<guest_session_id>/...` and creates an
+    unclaimed v2_sessions row. The analysis pipeline is NOT enqueued here —
+    it fires only on POST /claim after the user signs in. This keeps paid
+    compute (Whisper / OpenAI) off the anonymous surface.
+    """
+    if not getattr(config, "GUEST_FUNNEL_ENABLED", False):
+        return jsonify({"code": "GUEST_FUNNEL_DISABLED", "error": "Guest funnel is disabled"}), 503
+
+    try:
+        client_ip = _client_ip_from_request()
+        allowed, reason = _guest_funnel_rate_limit_check(client_ip)
+        if not allowed:
+            logger.info("guest_funnel: rate limited ip=%s reason=%s", client_ip, reason)
+            return jsonify({
+                "code": "RATE_LIMITED",
+                "error": "Too many trial uploads — please wait a few minutes and try again.",
+            }), 429
+
+        if "audio_file" not in request.files:
+            return jsonify({"code": "AUDIO_FILE_REQUIRED", "error": "audio_file is required"}), 400
+        audio_file = request.files.get("audio_file")
+        try:
+            original_name, ext = _admin_import_validate_audio_file(audio_file)
+        except ValueError as ve:
+            msg = str(ve)
+            if msg == "unsupported audio format":
+                return jsonify({"code": "UNSUPPORTED_AUDIO_FORMAT", "error": "unsupported audio format"}), 415
+            return jsonify({"code": "AUDIO_FILE_REQUIRED", "error": msg}), 400
+
+        max_mb_raw = getattr(config, "GUEST_FUNNEL_MAX_AUDIO_SIZE_MB", 5)
+        max_mb = int(max_mb_raw) if max_mb_raw is not None else 5
+        max_bytes = max_mb * 1024 * 1024
+        cl = request.content_length or 0
+        if cl and cl > max_bytes:
+            return jsonify({"code": "FILE_TOO_LARGE", "error": f"audio_file exceeds {max_mb}MB limit"}), 413
+        file_bytes = audio_file.read()
+        if not file_bytes:
+            return jsonify({"code": "INVALID_MULTIPART", "error": "audio_file is empty"}), 400
+        if len(file_bytes) > max_bytes:
+            return jsonify({"code": "FILE_TOO_LARGE", "error": f"audio_file exceeds {max_mb}MB limit"}), 413
+
+        guest_session_id = str(uuid.uuid4())
+        recording_id = str(uuid.uuid4())
+        storage_path = f"guest_funnel/{guest_session_id}/recording_{uuid.uuid4().hex}{ext}"
+        content_type = (audio_file.mimetype or mimetypes.guess_type(original_name)[0] or "application/octet-stream").strip()
+        if content_type in ("True", "False"):
+            content_type = "application/octet-stream"
+
+        try:
+            db.upload_audio(config.AUDIO_BUCKET_NAME, storage_path, file_bytes, content_type=content_type)
+        except Exception as upload_err:
+            logger.warning("guest_funnel: storage upload failed ip=%s: %s", client_ip, upload_err, exc_info=True)
+            return jsonify({"code": "UPLOAD_FAILED", "error": "Failed to store uploaded audio"}), 500
+
+        duration_raw = (request.form or {}).get("duration_seconds")
+        try:
+            duration_seconds = float(duration_raw) if duration_raw not in (None, "") else None
+        except (TypeError, ValueError):
+            duration_seconds = None
+
+        recording_payload = {
+            "id": recording_id,
+            "user_id": None,
+            "session_id": None,
+            "session_v2_id": guest_session_id,
+            "storage_path": storage_path,
+            "audio_url": "",
+            "duration": 0,
+            "recording_origin": "guest_funnel",
+        }
+        if duration_seconds is not None:
+            recording_payload["duration_seconds"] = duration_seconds
+
+        try:
+            db.create_recording(recording_payload)
+        except Exception as create_err:
+            err_low = str(create_err).lower()
+            if "recording_origin" in err_low or "pgrst204" in err_low:
+                fallback = {k: v for k, v in recording_payload.items() if k != "recording_origin"}
+                try:
+                    db.create_recording(fallback)
+                except Exception as e2:
+                    logger.warning("guest_funnel: create_recording failed: %s", e2, exc_info=True)
+                    return jsonify({"code": "RECORDING_CREATE_FAILED", "error": "Failed to create recording"}), 500
+            else:
+                logger.warning("guest_funnel: create_recording failed: %s", create_err, exc_info=True)
+                return jsonify({"code": "RECORDING_CREATE_FAILED", "error": "Failed to create recording"}), 500
+
+        try:
+            db.v2_create_guest_session(guest_session_id, recording_id=recording_id)
+        except Exception as session_err:
+            logger.warning("guest_funnel: v2_create_guest_session failed: %s", session_err, exc_info=True)
+            return jsonify({"code": "SESSION_CREATE_FAILED", "error": "Failed to create guest session"}), 500
+
+        logger.info(
+            "guest_funnel: upload ok ip=%s guest_session_id=%s storage_path=%s bytes=%d",
+            client_ip, guest_session_id, storage_path, len(file_bytes),
+        )
+        return jsonify({
+            "status": "ok",
+            "guest_session_id": guest_session_id,
+        }), 201
+
+    except Exception as e:
+        logger.error("guest_funnel: upload failed: %s", e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Upload failed"}), 500
+
+
+@v2_bp.route("/public/shaky-voice/claim", methods=["POST"])
+@require_auth
+def v2_public_shaky_voice_claim():
+    """Bind an unclaimed funnel session to the authenticated user and run analysis.
+
+    Idempotent semantics:
+      * Unclaimed → claim, enqueue pipeline, return 200 + session_id.
+      * Already claimed by same user → return 200 + session_id (no-op).
+      * Already claimed by other user → return 409 ALREADY_CLAIMED.
+      * Not found / expired → return 404 / 410.
+    """
+    from services.recording_1_job import enqueue_recording_1_job
+
+    if not getattr(config, "GUEST_FUNNEL_ENABLED", False):
+        return jsonify({"code": "GUEST_FUNNEL_DISABLED", "error": "Guest funnel is disabled"}), 503
+
+    try:
+        body = request.get_json(silent=True) or {}
+        guest_session_id = (body.get("guest_session_id") or "").strip()
+        if not _is_valid_uuid(guest_session_id):
+            return jsonify({"code": "INVALID_INPUT", "error": "guest_session_id must be a UUID"}), 400
+
+        user_id = request.user_id
+
+        # Probe the session's current state first so we can return precise error
+        # codes. The atomic claim happens in v2_claim_guest_session.
+        existing = db.v2_get_session_by_id(guest_session_id)
+        if not existing:
+            return jsonify({
+                "code": "GUEST_SESSION_NOT_FOUND",
+                "error": "That trial recording was not found. It may have expired — please record again.",
+            }), 404
+
+        existing_user = existing.get("user_id")
+        if existing_user and str(existing_user) != str(user_id):
+            return jsonify({
+                "code": "ALREADY_CLAIMED",
+                "error": "This trial recording was already claimed by a different account.",
+            }), 409
+        if existing_user and str(existing_user) == str(user_id):
+            # Idempotent re-claim: return the bound session_id without re-enqueueing.
+            return jsonify({
+                "status": "ok",
+                "session_id": str(existing.get("id")),
+                "analysis_status": "already_claimed",
+            }), 200
+
+        # TTL guard: even if the cleanup job hasn't run yet, refuse to claim
+        # a row older than the configured window.
+        try:
+            from datetime import datetime, timedelta, timezone
+            ttl_hours = int(getattr(config, "GUEST_FUNNEL_TTL_HOURS", 24) or 24)
+            created_raw = existing.get("created_at")
+            if created_raw:
+                if isinstance(created_raw, str):
+                    created_dt = datetime.fromisoformat(created_raw.replace("Z", "+00:00"))
+                else:
+                    created_dt = created_raw
+                if created_dt.tzinfo is None:
+                    created_dt = created_dt.replace(tzinfo=timezone.utc)
+                if datetime.now(timezone.utc) - created_dt > timedelta(hours=ttl_hours):
+                    return jsonify({
+                        "code": "GUEST_SESSION_EXPIRED",
+                        "error": "Your trial recording expired. Please record again.",
+                    }), 410
+        except Exception as ttl_err:
+            logger.warning("guest_funnel: ttl check failed (continuing): %s", ttl_err)
+
+        claimed = db.v2_claim_guest_session(guest_session_id, user_id)
+        if not claimed:
+            # Race lost: someone (or the same user via duplicate request) just
+            # bound the row between our probe and the atomic update.
+            after = db.v2_get_session_by_id(guest_session_id) or {}
+            after_user = after.get("user_id")
+            if after_user and str(after_user) == str(user_id):
+                return jsonify({
+                    "status": "ok",
+                    "session_id": str(after.get("id")),
+                    "analysis_status": "already_claimed",
+                }), 200
+            return jsonify({
+                "code": "ALREADY_CLAIMED",
+                "error": "This trial recording was already claimed.",
+            }), 409
+
+        # Pipeline: same recording_1_job that handles live student recordings
+        # and admin calibration uploads. The job will auto-complete because
+        # v2_claim_guest_session stamps self_rating_submitted_at.
+        rec_id = claimed.get("recording_1_id")
+        rec_row = db.get_recording(rec_id, user_id) if rec_id else None
+        storage_path = (rec_row or {}).get("storage_path")
+        duration_seconds = (rec_row or {}).get("duration_seconds")
+        if rec_id and storage_path:
+            try:
+                enqueue_recording_1_job(
+                    str(claimed.get("id")),
+                    str(rec_id),
+                    storage_path,
+                    user_id,
+                    duration_seconds,
+                )
+            except Exception as q_err:
+                logger.warning("guest_funnel: enqueue_recording_1_job failed: %s", q_err, exc_info=True)
+                # Don't unwind the claim — the row is bound; admin can retry.
+
+        logger.info(
+            "guest_funnel: claim ok user_id=%s guest_session_id=%s recording_id=%s",
+            user_id, guest_session_id, rec_id,
+        )
+        return jsonify({
+            "status": "ok",
+            "session_id": str(claimed.get("id")),
+            "analysis_status": "queued",
+        }), 200
+
+    except Exception as e:
+        logger.error("guest_funnel: claim failed: %s", e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Claim failed"}), 500

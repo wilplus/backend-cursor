@@ -903,10 +903,20 @@ def _complete_session_from_recording(
                 session_id, diag_err,
             )
 
-    try:
-        db.v2_charge_homework_completion_credits_once(session_id, user_id, amount=5)
-    except Exception as credit_err:
-        logger.warning("Homework completion credit charge failed session_id=%s: %s", session_id, credit_err)
+    # Curiosity Gate funnel: the user's first session is the trial they
+    # recorded *before* signing up. Charging credits on it would be hostile
+    # UX (they may have signed up seconds ago with the default credit grant).
+    # Skip the charge for any session that originated from the funnel.
+    if session.get("guest_claimed_at"):
+        logger.info(
+            "Skipping credit charge for guest-funnel session session_id=%s user_id=%s",
+            session_id, user_id,
+        )
+    else:
+        try:
+            db.v2_charge_homework_completion_credits_once(session_id, user_id, amount=5)
+        except Exception as credit_err:
+            logger.warning("Homework completion credit charge failed session_id=%s: %s", session_id, credit_err)
 
     student_email = _resolve_student_email(preferred_student_email, user_id, context="completion")
     try:
@@ -1153,10 +1163,18 @@ def minimal_complete_and_notify(
                 db.v2_update_session(session_id, user_id, update_payload)
             else:
                 raise
-        try:
-            db.v2_charge_homework_completion_credits_once(session_id, user_id, amount=5)
-        except Exception as credit_err:
-            logger.warning("Minimal completion credit charge failed session_id=%s: %s", session_id, credit_err)
+        # Curiosity Gate funnel: skip credit charge on the user's trial session
+        # (see _complete_session_from_recording for rationale).
+        if session.get("guest_claimed_at"):
+            logger.info(
+                "Skipping credit charge for guest-funnel session (minimal completion) session_id=%s",
+                session_id,
+            )
+        else:
+            try:
+                db.v2_charge_homework_completion_credits_once(session_id, user_id, amount=5)
+            except Exception as credit_err:
+                logger.warning("Minimal completion credit charge failed session_id=%s: %s", session_id, credit_err)
         student_email = _resolve_student_email(preferred_student_email, user_id, context="minimal completion")
         try:
             coach_result = email_service.send_lesson_complete_to_admin(
