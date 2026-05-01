@@ -7079,3 +7079,103 @@ def v2_public_shaky_voice_claim():
         logger.error("guest_funnel: claim failed: %s", e, exc_info=True)
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR", "error": "Claim failed"}), 500
+
+
+@v2_bp.route("/admin/funnel/afterwards-video", methods=["POST"])
+@require_admin
+def v2_admin_funnel_afterwards_video_upload():
+    """Admin endpoint to upload and configure the afterwards video for Curiosity Gate funnel.
+
+    Accepts multipart form with video_file field, uploads to storage, and stores the URL
+    in the funnel_config table.
+    """
+    from services.coach_video_storage import coach_media_public_url, put_coach_object_bytes
+    from datetime import datetime
+    import os
+
+    try:
+        max_video_mb = max(1, int(getattr(config, "FUNNEL_AFTERWARDS_VIDEO_MAX_MB", 100)))
+        max_video_bytes = max_video_mb * 1024 * 1024
+        content_length = request.content_length or 0
+        if content_length and content_length > max_video_bytes:
+            return jsonify({
+                "code": "PAYLOAD_TOO_LARGE",
+                "error": f"Video is too large. Max allowed is {max_video_mb}MB.",
+            }), 413
+
+        video_file = request.files.get("video_file")
+        if video_file is None or not (video_file.filename or "").strip():
+            return jsonify({"code": "INVALID_INPUT", "error": "video_file is required"}), 400
+
+        safe_name = secure_filename(video_file.filename or "")
+        ext = os.path.splitext(safe_name)[1].lower()
+        if ext not in {".mp4", ".mov", ".webm", ".m4v"}:
+            return jsonify({
+                "code": "INVALID_VIDEO_FORMAT",
+                "error": "Supported formats: .mp4, .mov, .webm, .m4v",
+            }), 415
+
+        video_bytes = video_file.read() or b""
+        if not video_bytes:
+            return jsonify({"code": "INVALID_INPUT", "error": "video_file is empty"}), 400
+
+        if len(video_bytes) > max_video_bytes:
+            return jsonify({
+                "code": "PAYLOAD_TOO_LARGE",
+                "error": f"Video is too large. Max allowed is {max_video_mb}MB.",
+            }), 413
+
+        # Generate storage path with timestamp
+        timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+        storage_key = f"funnel/afterwards-video/{timestamp}{ext}"
+        bucket = getattr(config, "COACH_FEEDBACK_VIDEO_BUCKET", "coach_feedback_videos")
+
+        # Upload to storage (R2 or Supabase)
+        try:
+            put_coach_object_bytes(bucket, storage_key, video_bytes, video_file.content_type or "video/mp4")
+        except Exception as upload_err:
+            logger.error("funnel afterwards-video upload failed: %s", upload_err)
+            return jsonify({
+                "code": "UPLOAD_FAILED",
+                "error": "Failed to upload video to storage.",
+            }), 502
+
+        # Generate public URL
+        video_url = coach_media_public_url(storage_key)
+
+        # Store URL in funnel_config
+        config_row = db.set_funnel_config("afterwards_video_url", video_url)
+
+        logger.info("funnel: uploaded afterwards-video storage_key=%s url=%s", storage_key, video_url)
+
+        return jsonify({
+            "status": "ok",
+            "video_url": video_url,
+            "storage_key": storage_key,
+        }), 200
+
+    except Exception as e:
+        logger.error("funnel: afterwards-video admin upload failed: %s", e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Upload failed"}), 500
+
+
+@v2_bp.route("/public/funnel/afterwards-video", methods=["GET"])
+def v2_public_funnel_afterwards_video():
+    """Public endpoint to fetch the afterwards video URL for Curiosity Gate funnel.
+
+    Returns the configured video URL or null if not set.
+    No authentication required.
+    """
+    try:
+        config_row = db.get_funnel_config("afterwards_video_url")
+        video_url = (config_row or {}).get("value") if config_row else None
+
+        return jsonify({
+            "video_url": video_url,
+        }), 200
+
+    except Exception as e:
+        logger.error("funnel: afterwards-video public read failed: %s", e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to fetch video"}), 500

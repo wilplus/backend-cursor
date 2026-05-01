@@ -4947,5 +4947,37 @@ class DatabaseService:
             logger.warning("v2_list_all_auth_user_ids: %s", e)
             return []
 
+    def get_funnel_config(self, key: str) -> dict | None:
+        """Get a funnel configuration value by key."""
+        query = "SELECT id, key, value, updated_at FROM funnel_config WHERE key = %s"
+        row = self._query_one(query, [key])
+        if row:
+            return {
+                "id": row[0],
+                "key": row[1],
+                "value": row[2],
+                "updated_at": row[3],
+            }
+        return None
+
+    def set_funnel_config(self, key: str, value: str | None) -> dict:
+        """Set or update a funnel configuration value by key."""
+        query = """
+            INSERT INTO funnel_config (key, value, updated_at)
+            VALUES (%s, %s, CURRENT_TIMESTAMP)
+            ON CONFLICT (key) DO UPDATE
+            SET value = %s, updated_at = CURRENT_TIMESTAMP
+            RETURNING id, key, value, updated_at
+        """
+        row = self._query_one(query, [key, value, value])
+        if row:
+            return {
+                "id": row[0],
+                "key": row[1],
+                "value": row[2],
+                "updated_at": row[3],
+            }
+        return {"key": key, "value": value}
+
 # Singleton instance
 db = DatabaseService()
