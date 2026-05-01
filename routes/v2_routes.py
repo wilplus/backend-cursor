@@ -6901,6 +6901,15 @@ def v2_public_shaky_voice_upload():
         except (TypeError, ValueError):
             duration_seconds = None
 
+        # ORDER MATTERS: recordings.session_v2_id has FK -> v2_sessions(id), so the
+        # session row must exist BEFORE the recording row. We then update the
+        # session to set recording_1_id once the recording row exists.
+        try:
+            db.v2_create_guest_session(guest_session_id)
+        except Exception as session_err:
+            logger.warning("guest_funnel: v2_create_guest_session failed: %s", session_err, exc_info=True)
+            return jsonify({"code": "SESSION_CREATE_FAILED", "error": "Failed to create guest session"}), 500
+
         recording_payload = {
             "id": recording_id,
             "user_id": None,
@@ -6930,10 +6939,11 @@ def v2_public_shaky_voice_upload():
                 return jsonify({"code": "RECORDING_CREATE_FAILED", "error": "Failed to create recording"}), 500
 
         try:
-            db.v2_create_guest_session(guest_session_id, recording_id=recording_id)
-        except Exception as session_err:
-            logger.warning("guest_funnel: v2_create_guest_session failed: %s", session_err, exc_info=True)
-            return jsonify({"code": "SESSION_CREATE_FAILED", "error": "Failed to create guest session"}), 500
+            db.v2_set_guest_session_recording(guest_session_id, recording_id)
+        except Exception as link_err:
+            # Non-fatal: the recording row already carries session_v2_id, so the
+            # claim path can still find it. Log and continue.
+            logger.warning("guest_funnel: link recording_1_id failed (non-fatal): %s", link_err)
 
         logger.info(
             "guest_funnel: upload ok ip=%s guest_session_id=%s storage_path=%s bytes=%d",
