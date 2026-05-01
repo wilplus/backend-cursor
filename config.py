@@ -141,6 +141,8 @@ class Config:
     GUEST_FUNNEL_MAX_AUDIO_SIZE_MB = int(os.getenv("GUEST_FUNNEL_MAX_AUDIO_SIZE_MB", "5"))
     # TTL for unclaimed guest sessions before the daily cleanup job purges them.
     GUEST_FUNNEL_TTL_HOURS = int(os.getenv("GUEST_FUNNEL_TTL_HOURS", "24"))
+    # Max file size for afterwards funnel video upload
+    FUNNEL_AFTERWARDS_VIDEO_MAX_MB = int(os.getenv("FUNNEL_AFTERWARDS_VIDEO_MAX_MB", "100"))
 
     @property
     def is_production(self):
