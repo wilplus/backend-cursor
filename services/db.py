@@ -2974,22 +2974,42 @@ class DatabaseService:
         self,
         guest_session_id: str,
         *,
-        recording_id: str,
+        recording_id: Optional[str] = None,
     ) -> Optional[dict]:
         """Create an unclaimed funnel session (user_id=NULL) for the Curiosity Gate.
 
         The row is keyed by `guest_session_id` (UUID handed to the browser via
         an httpOnly cookie). On claim, user_id is bound — see v2_claim_guest_session.
-        Storage path lives on the recordings row, not duplicated here.
+
+        IMPORTANT ordering: the recordings table has FK
+        `recordings.session_v2_id REFERENCES v2_sessions(id)`, so this row must
+        be created BEFORE the recording row. recording_id is therefore optional
+        on insert and is set later via v2_set_guest_session_recording().
         """
         payload = {
             "id": guest_session_id,
             "user_id": None,
             "status": "guest_pending_claim",
-            "recording_1_id": recording_id,
             "session_task_text": "Curiosity Gate: 15-second voice trial.",
         }
+        if recording_id:
+            payload["recording_1_id"] = recording_id
         result = self.client.table("v2_sessions").insert(payload).execute()
+        return result.data[0] if result.data else None
+
+    def v2_set_guest_session_recording(self, guest_session_id: str, recording_id: str) -> Optional[dict]:
+        """Set v2_sessions.recording_1_id on an unclaimed funnel row.
+
+        Filtered to user_id IS NULL because at this point the row has not been
+        claimed; v2_update_session expects a real user_id and would refuse.
+        """
+        result = (
+            self.client.table("v2_sessions")
+            .update({"recording_1_id": recording_id})
+            .eq("id", guest_session_id)
+            .is_("user_id", "null")
+            .execute()
+        )
         return result.data[0] if result.data else None
 
     def v2_claim_guest_session(self, guest_session_id: str, user_id: str) -> Optional[dict]:

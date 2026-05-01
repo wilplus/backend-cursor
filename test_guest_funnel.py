@@ -51,6 +51,7 @@ class GuestFunnelUploadTests(unittest.TestCase):
         self._patch_db("upload_audio", self._fake_upload_audio)
         self._patch_db("create_recording", self._fake_create_recording)
         self._patch_db("v2_create_guest_session", self._fake_create_guest_session)
+        self._patch_db("v2_set_guest_session_recording", self._fake_set_guest_session_recording)
 
     def tearDown(self):
         for target, attr, original in reversed(self.originals.values()):
@@ -78,7 +79,7 @@ class GuestFunnelUploadTests(unittest.TestCase):
         self.recordings.append(row)
         return row
 
-    def _fake_create_guest_session(self, guest_session_id, *, recording_id):
+    def _fake_create_guest_session(self, guest_session_id, *, recording_id=None):
         row = {
             "id": guest_session_id,
             "user_id": None,
@@ -87,6 +88,13 @@ class GuestFunnelUploadTests(unittest.TestCase):
         }
         self.guest_sessions.append(row)
         return dict(row)
+
+    def _fake_set_guest_session_recording(self, guest_session_id, recording_id):
+        for row in self.guest_sessions:
+            if row["id"] == guest_session_id:
+                row["recording_1_id"] = recording_id
+                return dict(row)
+        return None
 
     def _build_audio(self, *, filename="trial.mp3", content=b"FAKE_15_SEC_MP3", mimetype="audio/mpeg"):
         return FileStorage(stream=io.BytesIO(content), filename=filename, content_type=mimetype)
@@ -181,12 +189,16 @@ class GuestFunnelClaimTests(unittest.TestCase):
         self.app = Flask(__name__)
         self.user_id = "11111111-1111-4111-8111-111111111111"
         self.guest_session_id = VALID_GUEST_SESSION_ID
+        from datetime import datetime, timedelta, timezone
+        # Create the row "1 hour ago" relative to whatever today is, so the
+        # 24h TTL check never fires under real wall-clock time.
+        recent = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
         self.session_row = {
             "id": self.guest_session_id,
             "user_id": None,
             "status": "guest_pending_claim",
             "recording_1_id": "rec-funnel-1",
-            "created_at": "2026-04-30T10:00:00+00:00",
+            "created_at": recent,
         }
         self.recording_row = {
             "id": "rec-funnel-1",
