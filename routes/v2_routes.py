@@ -7179,3 +7179,200 @@ def v2_public_funnel_afterwards_video():
         logger.error("funnel: afterwards-video public read failed: %s", e, exc_info=True)
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR", "error": "Failed to fetch video"}), 500
+
+
+@v2_bp.route("/admin/snippets/<snippet_id>/comment", methods=["POST"])
+@require_admin
+def v2_admin_update_snippet_comment(snippet_id):
+    """Admin endpoint to add/update a comment on a charisma snippet.
+
+    Allows admin to label snippets as charisma, stress, or unlabeled, and add text feedback.
+    """
+    try:
+        body = request.get_json(silent=True) or {}
+        admin_comment = (body.get("admin_comment") or "").strip() or None
+        snippet_type = (body.get("snippet_type") or "unlabeled").strip().lower()
+
+        if snippet_type not in ("charisma", "stress", "unlabeled"):
+            return jsonify({
+                "code": "INVALID_INPUT",
+                "error": "snippet_type must be 'charisma', 'stress', or 'unlabeled'",
+            }), 400
+
+        admin_user_id = request.user_id
+
+        updated = db.update_snippet_comment(
+            snippet_id=snippet_id,
+            admin_comment=admin_comment,
+            snippet_type=snippet_type,
+            admin_user_id=admin_user_id,
+        )
+
+        if not updated:
+            return jsonify({
+                "code": "NOT_FOUND",
+                "error": "Snippet not found",
+            }), 404
+
+        logger.info(
+            "admin: updated snippet comment snippet_id=%s admin_user_id=%s type=%s",
+            snippet_id, admin_user_id, snippet_type,
+        )
+
+        return jsonify({
+            "status": "ok",
+            "snippet": updated,
+        }), 200
+
+    except Exception as e:
+        logger.error("admin: update snippet comment failed: %s", e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to update snippet"}), 500
+
+
+@v2_bp.route("/admin/users/<user_id>/snippets", methods=["GET"])
+@require_admin
+def v2_admin_get_user_snippets(user_id):
+    """Admin endpoint to fetch all snippets for a specific user, paginated."""
+    try:
+        limit = request.args.get("limit", 100, type=int)
+        offset = request.args.get("offset", 0, type=int)
+
+        # Clamp to reasonable ranges
+        limit = max(1, min(limit, 500))
+        offset = max(0, offset)
+
+        snippets = db.get_snippets_by_user(user_id, limit=limit, offset=offset)
+
+        logger.info(
+            "admin: fetched snippets user_id=%s limit=%s offset=%s count=%s",
+            user_id, limit, offset, len(snippets),
+        )
+
+        return jsonify({
+            "status": "ok",
+            "snippets": snippets,
+            "limit": limit,
+            "offset": offset,
+            "count": len(snippets),
+        }), 200
+
+    except Exception as e:
+        logger.error("admin: get user snippets failed: %s", e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to fetch snippets"}), 500
+
+
+@v2_bp.route("/internal/publish-session-results", methods=["POST"])
+@require_admin
+def v2_internal_publish_session_results():
+    """Admin endpoint to publish (email) results for a completed session.
+
+    Sends "Charisma Snippets Ready" email with CTA to /results page.
+    """
+    from services.email_service import send_email_resend
+
+    try:
+        body = request.get_json(silent=True) or {}
+        session_id = (body.get("session_id") or "").strip()
+
+        if not _is_valid_uuid(session_id):
+            return jsonify({
+                "code": "INVALID_INPUT",
+                "error": "session_id must be a valid UUID",
+            }), 400
+
+        # Fetch session to get user email
+        session = db.v2_get_session_by_id(session_id)
+        if not session:
+            return jsonify({
+                "code": "NOT_FOUND",
+                "error": "Session not found",
+            }), 404
+
+        user_id = session.get("user_id")
+        if not user_id:
+            return jsonify({
+                "code": "NO_USER",
+                "error": "Session has no associated user (not yet claimed)",
+            }), 400
+
+        # Fetch user email from Supabase auth
+        try:
+            import httpx
+            auth_headers = {
+                "Authorization": f"Bearer {config.SUPABASE_SERVICE_ROLE_KEY}",
+                "apikey": config.SUPABASE_SERVICE_ROLE_KEY,
+            }
+            user_url = f"{config.SUPABASE_URL.rstrip('/')}/auth/v1/admin/users/{user_id}"
+            resp = httpx.get(user_url, headers=auth_headers, timeout=10)
+            if resp.status_code != 200:
+                logger.warning("publish-results: failed to fetch user %s from auth", user_id)
+                return jsonify({
+                    "code": "AUTH_ERROR",
+                    "error": "Could not fetch user email",
+                }), 502
+            user_data = resp.json()
+            user_email = user_data.get("email")
+        except Exception as fetch_err:
+            logger.error("publish-results: fetch user error: %s", fetch_err)
+            return jsonify({
+                "code": "AUTH_ERROR",
+                "error": "Could not fetch user email",
+            }), 502
+
+        if not user_email:
+            return jsonify({
+                "code": "NO_EMAIL",
+                "error": "User has no email",
+            }), 400
+
+        # Build email content
+        frontend_url = getattr(config, "FRONTEND_URL", "https://willonski.com").rstrip("/")
+        results_url = f"{frontend_url}/results/{session_id}"
+        subject = "Your Charisma Snippets Are Ready"
+        html_body = f"""
+        <html>
+            <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #333;">
+                <h2>Your Charisma Snippets Are Ready</h2>
+                <p>Hi,</p>
+                <p>Your voice analysis is complete. We've extracted your best moments and added detailed feedback.</p>
+                <p>
+                    <a href="{results_url}" style="display: inline-block; background-color: #000; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: 600;">
+                        View Your Charisma Snippets
+                    </a>
+                </p>
+                <p>—<br>Team</p>
+            </body>
+        </html>
+        """
+
+        # Send email via Resend
+        try:
+            send_email_resend(
+                to=user_email,
+                subject=subject,
+                html=html_body,
+            )
+        except Exception as email_err:
+            logger.error("publish-results: send email failed: %s", email_err)
+            return jsonify({
+                "code": "EMAIL_FAILED",
+                "error": "Failed to send email",
+            }), 502
+
+        logger.info(
+            "publish-results: email sent session_id=%s user_id=%s email=%s",
+            session_id, user_id, user_email,
+        )
+
+        return jsonify({
+            "status": "ok",
+            "email_sent_to": user_email,
+            "results_url": results_url,
+        }), 200
+
+    except Exception as e:
+        logger.error("publish-results: failed: %s", e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to publish results"}), 500

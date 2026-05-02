@@ -4979,5 +4979,122 @@ class DatabaseService:
             }
         return {"key": key, "value": value}
 
+    def create_charisma_snippet(
+        self,
+        session_id: str,
+        user_id: str,
+        recording_id: str,
+        start_offset_ms: int,
+        duration_ms: int,
+        audio_segment_path: str,
+    ) -> dict | None:
+        """Create a new charisma snippet record (unlabeled by default)."""
+        query = """
+            INSERT INTO charisma_snippets (
+                session_id, user_id, recording_id,
+                start_offset_ms, duration_ms, audio_segment_path,
+                snippet_type, created_at, updated_at
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            RETURNING id, session_id, user_id, recording_id, start_offset_ms, duration_ms,
+                      audio_segment_path, snippet_type, admin_comment, admin_user_id, created_at, updated_at
+        """
+        row = self._query_one(
+            query,
+            [session_id, user_id, recording_id, start_offset_ms, duration_ms, audio_segment_path, "unlabeled"],
+        )
+        if row:
+            return self._snippet_row_to_dict(row)
+        return None
+
+    def get_snippets_by_session(self, session_id: str) -> List[dict]:
+        """Get all snippets for a session, ordered by start time."""
+        query = """
+            SELECT id, session_id, user_id, recording_id, start_offset_ms, duration_ms,
+                   audio_segment_path, snippet_type, admin_comment, admin_user_id, created_at, updated_at
+            FROM charisma_snippets
+            WHERE session_id = %s
+            ORDER BY start_offset_ms ASC
+        """
+        rows = self._query_all(query, [session_id])
+        return [self._snippet_row_to_dict(row) for row in rows]
+
+    def get_snippets_by_user(self, user_id: str, limit: int = 100, offset: int = 0) -> List[dict]:
+        """Get all snippets for a user, paginated, ordered by creation date (newest first)."""
+        query = """
+            SELECT id, session_id, user_id, recording_id, start_offset_ms, duration_ms,
+                   audio_segment_path, snippet_type, admin_comment, admin_user_id, created_at, updated_at
+            FROM charisma_snippets
+            WHERE user_id = %s
+            ORDER BY created_at DESC
+            LIMIT %s OFFSET %s
+        """
+        rows = self._query_all(query, [user_id, limit, offset])
+        return [self._snippet_row_to_dict(row) for row in rows]
+
+    def get_snippets_with_comments_by_session(self, session_id: str) -> List[dict]:
+        """Get only snippets that have admin comments (used for /results page)."""
+        query = """
+            SELECT id, session_id, user_id, recording_id, start_offset_ms, duration_ms,
+                   audio_segment_path, snippet_type, admin_comment, admin_user_id, created_at, updated_at
+            FROM charisma_snippets
+            WHERE session_id = %s AND admin_comment IS NOT NULL
+            ORDER BY start_offset_ms ASC
+        """
+        rows = self._query_all(query, [session_id])
+        return [self._snippet_row_to_dict(row) for row in rows]
+
+    def update_snippet_comment(
+        self,
+        snippet_id: str,
+        admin_comment: str | None,
+        snippet_type: str,
+        admin_user_id: str | None,
+    ) -> dict | None:
+        """Update a snippet's comment, type, and admin user."""
+        query = """
+            UPDATE charisma_snippets
+            SET admin_comment = %s, snippet_type = %s, admin_user_id = %s, updated_at = CURRENT_TIMESTAMP
+            WHERE id = %s
+            RETURNING id, session_id, user_id, recording_id, start_offset_ms, duration_ms,
+                      audio_segment_path, snippet_type, admin_comment, admin_user_id, created_at, updated_at
+        """
+        row = self._query_one(query, [admin_comment, snippet_type, admin_user_id, snippet_id])
+        if row:
+            return self._snippet_row_to_dict(row)
+        return None
+
+    def update_snippets_user_id(self, session_id: str, user_id: str) -> int:
+        """Update all snippets for a session to have the newly authenticated user_id.
+
+        Called when a guest session is claimed post-signup.
+        Returns count of updated rows.
+        """
+        query = """
+            UPDATE charisma_snippets
+            SET user_id = %s, updated_at = CURRENT_TIMESTAMP
+            WHERE session_id = %s AND user_id IS NULL
+        """
+        self._execute(query, [user_id, session_id])
+        # Return count of affected rows (rough estimate from cursor)
+        return getattr(self._conn.cursor(), "rowcount", 0)
+
+    def _snippet_row_to_dict(self, row: tuple) -> dict:
+        """Convert a charisma_snippets row to dict."""
+        return {
+            "id": str(row[0]) if row[0] else None,
+            "session_id": str(row[1]) if row[1] else None,
+            "user_id": str(row[2]) if row[2] else None,
+            "recording_id": str(row[3]) if row[3] else None,
+            "start_offset_ms": row[4],
+            "duration_ms": row[5],
+            "audio_segment_path": row[6],
+            "snippet_type": row[7],
+            "admin_comment": row[8],
+            "admin_user_id": str(row[9]) if row[9] else None,
+            "created_at": row[10],
+            "updated_at": row[11],
+        }
+
 # Singleton instance
 db = DatabaseService()
