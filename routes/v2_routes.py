@@ -7065,6 +7065,20 @@ def v2_public_shaky_voice_claim():
                 logger.warning("guest_funnel: enqueue_recording_1_job failed: %s", q_err, exc_info=True)
                 # Don't unwind the claim — the row is bound; admin can retry.
 
+            # Extract charisma snippets from the recording (MVP: entire recording as one snippet)
+            try:
+                from services.snippet_extraction import extract_recording_snippets
+                extract_recording_snippets(
+                    session_id=str(claimed.get("id")),
+                    user_id=str(user_id),
+                    recording_id=str(rec_id),
+                    recording_path=storage_path,
+                    duration_seconds=duration_seconds,
+                )
+            except Exception as snippet_err:
+                logger.warning("guest_funnel: extract_recording_snippets failed: %s", snippet_err, exc_info=True)
+                # Non-fatal: admin can manually extract snippets later if needed
+
         logger.info(
             "guest_funnel: claim ok user_id=%s guest_session_id=%s recording_id=%s",
             user_id, guest_session_id, rec_id,
