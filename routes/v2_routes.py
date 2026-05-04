@@ -7344,22 +7344,35 @@ def v2_internal_publish_session_results():
         # Build email content
         frontend_url = getattr(config, "FRONTEND_URL", "https://willonski.com").rstrip("/")
         results_url = f"{frontend_url}/results/{session_id}"
-        subject = "Your Charisma Snippets Are Ready"
-        html_body = f"""
-        <html>
-            <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #333;">
-                <h2>Your Charisma Snippets Are Ready</h2>
-                <p>Hi,</p>
-                <p>Your voice analysis is complete. We've extracted your best moments and added detailed feedback.</p>
-                <p>
-                    <a href="{results_url}" style="display: inline-block; background-color: #000; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: 600;">
-                        View Your Charisma Snippets
-                    </a>
-                </p>
-                <p>—<br>Team</p>
-            </body>
-        </html>
-        """
+        subject = "Your Charisma Baseline Analysis is ready"
+        html_body = f"""<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #333; background-color: #f9fafb; margin: 0; padding: 0;">
+  <div style="max-width: 600px; margin: 0 auto; background-color: white; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+    <div style="background: linear-gradient(135deg, #000 0%, #333 100%); color: white; padding: 32px 24px; text-align: center;">
+      <h1 style="margin: 0; font-size: 22px; font-weight: 600;">Your Charisma Baseline Analysis is Ready</h1>
+    </div>
+    <div style="padding: 32px 24px;">
+      <p style="font-size: 16px; line-height: 1.6; margin: 16px 0;">Hi,</p>
+      <p style="font-size: 16px; line-height: 1.6; margin: 16px 0;">
+        Your voice analysis is complete. We've reviewed your recording and added personalized feedback from our coaches.
+      </p>
+      <div style="text-align: center; margin: 32px 0;">
+        <a href="{results_url}" style="display: inline-block; background-color: #000; color: white; padding: 14px 32px; border-radius: 6px; text-decoration: none; font-weight: 600; font-size: 16px;">
+          View Your Results
+        </a>
+      </div>
+      <p style="font-size: 14px; color: #6b7280; margin-top: 24px;">
+        Each snippet includes detailed feedback to help you understand what made that moment stand out.
+      </p>
+    </div>
+    <div style="background-color: #f9fafb; padding: 24px; text-align: center; border-top: 1px solid #e5e7eb; font-size: 12px; color: #6b7280;">
+      <p style="margin: 0;">&copy; {__import__('datetime').datetime.now().year} Willab. All rights reserved.</p>
+    </div>
+  </div>
+</body>
+</html>"""
 
         # Send email via Resend
         try:

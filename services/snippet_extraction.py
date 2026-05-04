@@ -2,12 +2,50 @@
 
 For the initial MVP, we extract the entire 15s recording as a single 10-15s snippet.
 Future: ML-based detection to extract multiple charisma moments within a longer recording.
+
+Acoustic metrics (WPM, pitch, dB, pause_ms, etc.) are computed ONCE during extraction
+and stored as JSONB in the charisma_snippets.metrics column. The admin panel reads
+pre-computed metrics from the DB — never re-triggers the Python analysis.
 """
 import logging
 import os
-from io import BytesIO
 
 logger = logging.getLogger(__name__)
+
+
+def _compute_snippet_metrics(audio_bytes: bytes, duration_seconds: float | None) -> dict | None:
+    """Compute acoustic metrics for a snippet's audio chunk.
+
+    Uses the same analyze_audio() pipeline that powers session-level metrics,
+    but scoped to the snippet's specific audio segment.
+
+    Returns dict with: wpm, pause_ms, dynamic_db, emphasis_per_min,
+    energy_ratio, pitch_center_st, pitch_frame_count, voiced_duration_sec.
+    Returns None if metrics can't be computed (missing ffmpeg, too short, etc.).
+    """
+    try:
+        from services.audio_metrics import analyze_audio
+
+        # analyze_audio handles decode, silence detection, pitch, etc.
+        # No transcript available for snippet-level WPM (would need Whisper),
+        # so WPM will be None unless we add transcription later.
+        metrics = analyze_audio(
+            audio_bytes=audio_bytes,
+            transcript="",  # no per-snippet transcript in MVP
+            duration_sec=duration_seconds or 0.0,
+        )
+
+        if metrics:
+            logger.info(
+                "snippet_metrics: computed pause_ms=%.0f dynamic_db=%.1f pitch_st=%.1f",
+                metrics.get("pause_ms") or 0,
+                metrics.get("dynamic_db") or 0,
+                metrics.get("pitch_center_st") or 0,
+            )
+        return metrics
+    except Exception as e:
+        logger.warning("snippet_metrics: compute failed (non-fatal): %s", e, exc_info=True)
+        return None
 
 
 def extract_recording_snippets(
@@ -21,18 +59,9 @@ def extract_recording_snippets(
     """Extract snippets from a guest funnel recording and create DB records.
 
     For MVP: Extract the entire recording as one snippet (assuming it's already 15s or less).
+    Computes acoustic metrics once and stores them in the snippet's metrics JSONB column.
+
     Returns list of created snippet dicts.
-
-    Args:
-        session_id: Guest session ID (maps to v2_sessions.id)
-        user_id: User ID (null for guest initially, set after claim)
-        recording_id: Recording ID (maps to recording_1.id)
-        recording_path: S3/Supabase Storage path to the audio file
-        duration_seconds: Duration of the recording in seconds (informational)
-        storage_bucket: Bucket to store snippet audio files
-
-    Returns:
-        List of created snippet dicts
     """
     from services.coach_video_storage import (
         get_coach_object_bytes,
@@ -44,7 +73,6 @@ def extract_recording_snippets(
 
     try:
         # For MVP: treat the entire 15s recording as one snippet
-        # In future, could use ffmpeg/librosa to detect multiple charisma moments
         duration_ms = int((duration_seconds or 15) * 1000)
         start_offset_ms = 0
 
@@ -57,7 +85,6 @@ def extract_recording_snippets(
             audio_bytes = get_coach_object_bytes("audio_recordings", recording_path)
         except Exception as e:
             logger.error(f"Failed to read recording {recording_path}: {e}")
-            # Return empty list if we can't read the file; don't fail the whole upload
             return []
 
         if not audio_bytes:
@@ -65,8 +92,15 @@ def extract_recording_snippets(
             return []
 
         # For MVP: use the entire audio as the snippet (no re-encoding/trimming)
-        # In production: use ffmpeg to extract exact time range and convert to MP3
         snippet_audio = audio_bytes
+
+        # --- Compute acoustic metrics ONCE during extraction ---
+        # These are saved to DB and served to admin panel from there.
+        # The admin panel NEVER re-triggers this computation.
+        snippet_metrics = _compute_snippet_metrics(
+            audio_bytes=snippet_audio,
+            duration_seconds=duration_seconds,
+        )
 
         # Generate storage path for the snippet
         timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S_%f")[:-3]
@@ -91,7 +125,7 @@ def extract_recording_snippets(
             logger.warning(f"Could not generate public URL for {snippet_storage_key}")
             snippet_url = f"s3://{storage_bucket}/{snippet_storage_key}"
 
-        # Create snippet record in DB
+        # Create snippet record in DB (metrics stored as JSONB)
         snippet_dict = db.create_charisma_snippet(
             session_id=session_id,
             user_id=user_id,
@@ -99,11 +133,13 @@ def extract_recording_snippets(
             start_offset_ms=start_offset_ms,
             duration_ms=duration_ms,
             audio_segment_path=snippet_url,
+            metrics=snippet_metrics,
         )
 
         if snippet_dict:
+            has_metrics = "with metrics" if snippet_metrics else "without metrics"
             logger.info(
-                f"Created charisma snippet: session={session_id} user={user_id} "
+                f"Created charisma snippet {has_metrics}: session={session_id} user={user_id} "
                 f"offset={start_offset_ms}ms duration={duration_ms}ms path={snippet_storage_key}"
             )
             return [snippet_dict]

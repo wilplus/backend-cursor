@@ -4986,20 +4986,30 @@ class DatabaseService:
         start_offset_ms: int,
         duration_ms: int,
         audio_segment_path: str,
+        metrics: dict | None = None,
     ) -> dict | None:
-        """Create a new charisma snippet record (unlabeled by default)."""
+        """Create a new charisma snippet record (unlabeled by default).
+
+        Args:
+            metrics: Optional JSONB dict of pre-computed acoustic metrics
+                     (wpm, pause_ms, dynamic_db, emphasis_per_min, energy_ratio,
+                      pitch_center_st, pitch_frame_count, voiced_duration_sec).
+        """
         try:
+            payload = {
+                "session_id": session_id,
+                "user_id": user_id,
+                "recording_id": recording_id,
+                "start_offset_ms": start_offset_ms,
+                "duration_ms": duration_ms,
+                "audio_segment_path": audio_segment_path,
+                "snippet_type": "unlabeled",
+            }
+            if metrics:
+                payload["metrics"] = metrics
             result = (
                 self.client.table("charisma_snippets")
-                .insert({
-                    "session_id": session_id,
-                    "user_id": user_id,
-                    "recording_id": recording_id,
-                    "start_offset_ms": start_offset_ms,
-                    "duration_ms": duration_ms,
-                    "audio_segment_path": audio_segment_path,
-                    "snippet_type": "unlabeled",
-                })
+                .insert(payload)
                 .execute()
             )
             if result.data and len(result.data) > 0:
