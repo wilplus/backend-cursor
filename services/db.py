@@ -5096,21 +5096,37 @@ class DatabaseService:
     def update_snippets_user_id(self, session_id: str, user_id: str) -> int:
         """Update all snippets for a session to have the newly authenticated user_id.
 
-        Called when a guest session is claimed post-signup.
+        Called when a guest session is claimed post-signup. Matches rows where
+        user_id is NULL or the placeholder UUID used during anonymous interview.
         Returns count of updated rows.
         """
+        PLACEHOLDER_UID = "00000000-0000-0000-0000-000000000000"
+        total = 0
         try:
-            result = (
+            # Match placeholder user_id (from interview flow)
+            r1 = (
+                self.client.table("charisma_snippets")
+                .update({"user_id": user_id})
+                .eq("session_id", session_id)
+                .eq("user_id", PLACEHOLDER_UID)
+                .execute()
+            )
+            total += len(r1.data) if r1.data else 0
+        except Exception as e:
+            logger.warning(f"update_snippets_user_id (placeholder): {e}")
+        try:
+            # Match NULL user_id (from legacy single-upload flow)
+            r2 = (
                 self.client.table("charisma_snippets")
                 .update({"user_id": user_id})
                 .eq("session_id", session_id)
                 .is_("user_id", None)
                 .execute()
             )
-            return len(result.data) if result.data else 0
-        except Exception as e:
-            logger.error(f"update_snippets_user_id failed: {e}")
-            return 0
+            total += len(r2.data) if r2.data else 0
+        except Exception:
+            pass
+        return total
 
 # Singleton instance
 db = DatabaseService()

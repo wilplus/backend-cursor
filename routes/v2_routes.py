@@ -6960,6 +6960,231 @@ def v2_public_shaky_voice_upload():
         return jsonify({"code": "V2_ERROR", "error": "Upload failed"}), 500
 
 
+############################################################################
+# Multi-Turn Interview endpoints
+############################################################################
+
+_INTERVIEW_QUESTIONS = {
+    "charisma": [
+        "Tell us, in your own words: do you think you're a good communicator? Why?",
+        "What's something you're genuinely passionate about?",
+        "Describe a moment in your life or career that you're really proud of.",
+        "If you could teach anyone one thing, what would it be and why?",
+        "What's the best piece of advice you've ever received?",
+        "What makes you unique compared to other people in your field?",
+    ],
+    "stress": [
+        "What's your biggest professional weakness, and how does it show up day-to-day?",
+        "Describe a time you completely failed at something that mattered to you.",
+        "If I told you your communication style sometimes puts people off, how would you respond?",
+        "Explain a complex topic from your field as if you're talking to a 10-year-old.",
+        "What would your harshest critic say about you — and would they be right?",
+        "Tell me about a decision you made that you still regret.",
+    ],
+}
+
+
+@v2_bp.route("/public/interview/next-question", methods=["POST"])
+def v2_public_interview_next_question():
+    """Return the next interview question, alternating charisma/stress tone.
+
+    Input:  { turn_number: int }
+    Output: { question: str, tone: "charisma"|"stress", turn_number: int }
+
+    Turn 1 → charisma, Turn 2 → stress, Turn 3 → charisma, etc.
+    Questions are drawn from a curated bank; no LLM call needed for MVP.
+    """
+    try:
+        body = request.get_json(silent=True) or {}
+        turn_number = int(body.get("turn_number", 1))
+        if turn_number < 1:
+            turn_number = 1
+
+        # Alternate: odd turns = charisma, even turns = stress
+        tone = "charisma" if turn_number % 2 == 1 else "stress"
+        pool = _INTERVIEW_QUESTIONS[tone]
+        # Cycle through questions if we have more turns than questions
+        question_index = ((turn_number - 1) // 2) % len(pool)
+        question = pool[question_index]
+
+        return jsonify({
+            "question": question,
+            "tone": tone,
+            "turn_number": turn_number,
+        }), 200
+
+    except Exception as e:
+        logger.error("interview/next-question failed: %s", e, exc_info=True)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to get question"}), 500
+
+
+@v2_bp.route("/public/interview/upload-answer", methods=["POST"])
+def v2_public_interview_upload_answer():
+    """Upload one interview answer (audio chunk) and attach it to a session.
+
+    First call (no guest_session_id): creates a new guest session.
+    Subsequent calls (with guest_session_id): appends to existing session.
+
+    Each chunk becomes a charisma_snippet with pre-computed acoustic metrics.
+
+    Returns: {
+        guest_session_id, snippet_id, duration_seconds,
+        total_session_duration_seconds, metrics
+    }
+    """
+    if not getattr(config, "GUEST_FUNNEL_ENABLED", False):
+        return jsonify({"code": "GUEST_FUNNEL_DISABLED", "error": "Guest funnel is disabled"}), 503
+
+    try:
+        client_ip = _client_ip_from_request()
+        allowed, reason = _guest_funnel_rate_limit_check(client_ip)
+        if not allowed:
+            return jsonify({"code": "RATE_LIMITED", "error": "Too many uploads — please wait."}), 429
+
+        if "audio_file" not in request.files:
+            return jsonify({"code": "AUDIO_FILE_REQUIRED", "error": "audio_file is required"}), 400
+        audio_file = request.files.get("audio_file")
+
+        try:
+            original_name, ext = _admin_import_validate_audio_file(audio_file)
+        except ValueError as ve:
+            msg = str(ve)
+            if msg == "unsupported audio format":
+                return jsonify({"code": "UNSUPPORTED_AUDIO_FORMAT", "error": msg}), 415
+            return jsonify({"code": "AUDIO_FILE_REQUIRED", "error": msg}), 400
+
+        max_mb = int(getattr(config, "GUEST_FUNNEL_MAX_AUDIO_SIZE_MB", 10) or 10)
+        max_bytes = max_mb * 1024 * 1024
+        file_bytes = audio_file.read()
+        if not file_bytes or len(file_bytes) > max_bytes:
+            return jsonify({"code": "FILE_TOO_LARGE", "error": f"File exceeds {max_mb}MB"}), 413
+
+        form = request.form or {}
+        guest_session_id = (form.get("guest_session_id") or "").strip() or None
+        turn_number = int(form.get("turn_number", 1) or 1)
+        question_tone = (form.get("question_tone") or "charisma").strip()
+
+        duration_raw = form.get("duration_seconds")
+        try:
+            duration_seconds = float(duration_raw) if duration_raw not in (None, "") else None
+        except (TypeError, ValueError):
+            duration_seconds = None
+
+        content_type = (audio_file.mimetype or mimetypes.guess_type(original_name)[0] or "application/octet-stream").strip()
+        if content_type in ("True", "False"):
+            content_type = "application/octet-stream"
+
+        # Create session on first turn, reuse on subsequent turns
+        is_first_turn = guest_session_id is None
+        if is_first_turn:
+            guest_session_id = str(uuid.uuid4())
+            try:
+                db.v2_create_guest_session(guest_session_id)
+            except Exception as session_err:
+                logger.warning("interview: create session failed: %s", session_err, exc_info=True)
+                return jsonify({"code": "SESSION_CREATE_FAILED", "error": "Failed to create session"}), 500
+
+        # Upload audio to storage
+        storage_path = f"guest_funnel/{guest_session_id}/turn_{turn_number}_{uuid.uuid4().hex[:8]}{ext}"
+        try:
+            db.upload_audio(config.AUDIO_BUCKET_NAME, storage_path, file_bytes, content_type=content_type)
+        except Exception as upload_err:
+            logger.warning("interview: storage upload failed: %s", upload_err, exc_info=True)
+            return jsonify({"code": "UPLOAD_FAILED", "error": "Failed to store audio"}), 500
+
+        # Create a recording_1 row on first turn (so claim flow works)
+        recording_id = str(uuid.uuid4())
+        if is_first_turn:
+            rec_payload = {
+                "id": recording_id,
+                "user_id": None,
+                "session_id": None,
+                "session_v2_id": guest_session_id,
+                "storage_path": storage_path,
+                "audio_url": "",
+                "duration": 0,
+                "recording_origin": "guest_funnel",
+            }
+            if duration_seconds is not None:
+                rec_payload["duration_seconds"] = duration_seconds
+            try:
+                db.create_recording(rec_payload)
+            except Exception as create_err:
+                err_low = str(create_err).lower()
+                if "recording_origin" in err_low:
+                    fallback = {k: v for k, v in rec_payload.items() if k != "recording_origin"}
+                    try:
+                        db.create_recording(fallback)
+                    except Exception:
+                        pass
+            try:
+                db.v2_set_guest_session_recording(guest_session_id, recording_id)
+            except Exception:
+                pass
+
+        # Compute acoustic metrics for this chunk
+        snippet_metrics = None
+        try:
+            from services.snippet_extraction import _compute_snippet_metrics
+            snippet_metrics = _compute_snippet_metrics(audio_bytes=file_bytes, duration_seconds=duration_seconds)
+        except Exception as m_err:
+            logger.warning("interview: metrics failed (non-fatal): %s", m_err)
+
+        # Generate public URL for the snippet audio
+        snippet_url = ""
+        try:
+            from services.coach_video_storage import coach_media_public_url
+            snippet_url = coach_media_public_url(storage_path) or ""
+        except Exception:
+            pass
+        if not snippet_url:
+            snippet_url = storage_path
+
+        # Create charisma_snippet row — one per interview turn
+        # Use a placeholder user_id (will be updated on claim)
+        snippet_dict = None
+        try:
+            snippet_dict = db.create_charisma_snippet(
+                session_id=guest_session_id,
+                user_id="00000000-0000-0000-0000-000000000000",  # placeholder until claim
+                recording_id=recording_id,
+                start_offset_ms=0,
+                duration_ms=int((duration_seconds or 10) * 1000),
+                audio_segment_path=snippet_url,
+                metrics=snippet_metrics,
+            )
+        except Exception as s_err:
+            logger.warning("interview: create snippet failed: %s", s_err, exc_info=True)
+
+        # Calculate total session duration across all snippets
+        total_duration = 0.0
+        try:
+            all_snippets = db.get_snippets_by_session(guest_session_id)
+            for s in all_snippets:
+                total_duration += (s.get("duration_ms") or 0) / 1000.0
+        except Exception:
+            total_duration = duration_seconds or 0.0
+
+        logger.info(
+            "interview: uploaded turn=%d tone=%s duration=%.1fs total=%.1fs session=%s",
+            turn_number, question_tone, duration_seconds or 0, total_duration, guest_session_id,
+        )
+
+        return jsonify({
+            "status": "ok",
+            "guest_session_id": guest_session_id,
+            "snippet_id": snippet_dict.get("id") if snippet_dict else None,
+            "duration_seconds": duration_seconds,
+            "total_session_duration_seconds": round(total_duration, 1),
+            "metrics": snippet_metrics,
+        }), 201
+
+    except Exception as e:
+        logger.error("interview: upload failed: %s", e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Upload failed"}), 500
+
+
 @v2_bp.route("/public/shaky-voice/claim", methods=["POST"])
 @require_auth
 def v2_public_shaky_voice_claim():
@@ -7078,6 +7303,14 @@ def v2_public_shaky_voice_claim():
             except Exception as snippet_err:
                 logger.warning("guest_funnel: extract_recording_snippets failed: %s", snippet_err, exc_info=True)
                 # Non-fatal: admin can manually extract snippets later if needed
+
+        # Update all interview snippets to point to the real user
+        try:
+            updated_count = db.update_snippets_user_id(guest_session_id, str(user_id))
+            if updated_count:
+                logger.info("guest_funnel: updated %d snippet user_ids", updated_count)
+        except Exception as uid_err:
+            logger.warning("guest_funnel: update_snippets_user_id failed: %s", uid_err)
 
         logger.info(
             "guest_funnel: claim ok user_id=%s guest_session_id=%s recording_id=%s",
