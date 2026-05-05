@@ -59,6 +59,7 @@ ALTER TABLE v2_sessions
   ADD COLUMN IF NOT EXISTS global_dynamic_db FLOAT DEFAULT NULL,
   ADD COLUMN IF NOT EXISTS global_pitch_center FLOAT DEFAULT NULL,
   ADD COLUMN IF NOT EXISTS global_energy FLOAT DEFAULT NULL,
+  ADD COLUMN IF NOT EXISTS kpi_score FLOAT DEFAULT NULL,
   ADD COLUMN IF NOT EXISTS ai_task_alignment_score FLOAT DEFAULT NULL,
   ADD COLUMN IF NOT EXISTS ai_task_alignment_comment TEXT DEFAULT NULL;
 
@@ -68,7 +69,8 @@ COMMENT ON COLUMN v2_sessions.global_pause_ms IS 'Average pause duration across 
 COMMENT ON COLUMN v2_sessions.global_dynamic_db IS 'Average dynamic range across the session.';
 COMMENT ON COLUMN v2_sessions.global_pitch_center IS 'Average pitch center across the session.';
 COMMENT ON COLUMN v2_sessions.global_energy IS 'Average energy ratio across the session.';
-COMMENT ON COLUMN v2_sessions.ai_task_alignment_score IS 'LLM-generated overall performance score (0-100).';
+COMMENT ON COLUMN v2_sessions.kpi_score IS 'Quantitative KPI (0-100) computed from energy, fillers, and WPM via metrics_v2 formula.';
+COMMENT ON COLUMN v2_sessions.ai_task_alignment_score IS 'LLM-generated overall performance score (0-100), incorporating the KPI.';
 COMMENT ON COLUMN v2_sessions.ai_task_alignment_comment IS 'LLM-generated summary of the user performance across the interview.';
 
 -- Index for efficient admin queries

@@ -8073,7 +8073,24 @@ def v2_admin_compute_session_metrics(session_id):
         global_pitch_center = round(sum(pitches) / len(pitches), 1) if pitches else None
         global_energy = round(sum(energies) / len(energies), 3) if energies else None
 
-        # Save global metrics
+        # Compute KPI score using existing performance formula
+        # Uses center_hold_ratio (energy as proxy) + filler count + WPM
+        kpi_score = None
+        kpi_debug = None
+        try:
+            from services.metrics_v2 import compute_recording_performance_score
+            # Use global energy as a proxy for center_hold_ratio (both are 0..1)
+            kpi_result = compute_recording_performance_score(
+                center_hold_ratio=global_energy,
+                filler_count=global_fillers or 0,
+                wpm=global_wpm or 140.0,
+            )
+            kpi_score = round(kpi_result["score_01"] * 100, 1)
+            kpi_debug = kpi_result
+        except Exception as kpi_err:
+            logger.warning("admin: KPI score compute failed: %s", kpi_err)
+
+        # Save global metrics + KPI
         db.update_session_global_metrics(
             session_id=session_id,
             global_wpm=global_wpm,
@@ -8082,9 +8099,11 @@ def v2_admin_compute_session_metrics(session_id):
             global_dynamic_db=global_dynamic_db,
             global_pitch_center=global_pitch_center,
             global_energy=global_energy,
+            kpi_score=kpi_score,
         )
 
         # AI alignment: evaluate the full interview transcript via LLM
+        # Includes KPI score as context so the LLM factors it in
         ai_score = None
         ai_comment = None
         try:
@@ -8104,13 +8123,25 @@ def v2_admin_compute_session_metrics(session_id):
                         f"Energy={s.get('energy', '?')}]"
                     )
 
+                # Include the KPI score for the LLM to reference
+                kpi_context = ""
+                if kpi_score is not None:
+                    kpi_context = (
+                        f"\n\nPERFORMANCE KPI: {kpi_score}/100 "
+                        f"(computed from vocal energy, filler count, and pacing). "
+                        f"Factor this into your evaluation — it represents the "
+                        f"quantitative delivery quality.\n"
+                    )
+
                 eval_prompt = (
                     "You are an expert speech and communication evaluator. "
                     "Review this interview session and provide:\n"
                     "1. A score from 0-100 representing overall communication quality "
-                    "(considering charisma, confidence, engagement, and vocal delivery).\n"
+                    "(considering charisma, confidence, engagement, vocal delivery, "
+                    "AND the KPI score provided below).\n"
                     "2. A 2-3 sentence comment summarizing strengths and areas for improvement.\n\n"
-                    "INTERVIEW TRANSCRIPT:\n" + "\n".join(transcript_parts) + "\n\n"
+                    "INTERVIEW TRANSCRIPT:\n" + "\n".join(transcript_parts) +
+                    kpi_context + "\n\n"
                     "Respond in JSON format: {\"score\": <number>, \"comment\": \"<text>\"}"
                 )
 
@@ -8145,6 +8176,10 @@ def v2_admin_compute_session_metrics(session_id):
                 "dynamic_db": global_dynamic_db,
                 "pitch_center": global_pitch_center,
                 "energy": global_energy,
+            },
+            "kpi": {
+                "score": kpi_score,
+                "debug": kpi_debug,
             },
             "ai_alignment": {
                 "score": ai_score,

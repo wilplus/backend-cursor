@@ -5227,19 +5227,23 @@ class DatabaseService:
         global_dynamic_db: float | None,
         global_pitch_center: float | None,
         global_energy: float | None,
+        kpi_score: float | None = None,
     ) -> Optional[dict]:
-        """Update v2_sessions with aggregated global acoustic metrics."""
+        """Update v2_sessions with aggregated global acoustic metrics + KPI."""
         try:
+            payload = {
+                "global_wpm": global_wpm,
+                "global_fillers": global_fillers,
+                "global_pause_ms": global_pause_ms,
+                "global_dynamic_db": global_dynamic_db,
+                "global_pitch_center": global_pitch_center,
+                "global_energy": global_energy,
+            }
+            if kpi_score is not None:
+                payload["kpi_score"] = kpi_score
             result = (
                 self.client.table("v2_sessions")
-                .update({
-                    "global_wpm": global_wpm,
-                    "global_fillers": global_fillers,
-                    "global_pause_ms": global_pause_ms,
-                    "global_dynamic_db": global_dynamic_db,
-                    "global_pitch_center": global_pitch_center,
-                    "global_energy": global_energy,
-                })
+                .update(payload)
                 .eq("id", session_id)
                 .execute()
             )
