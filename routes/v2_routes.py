@@ -6964,7 +6964,7 @@ def v2_public_shaky_voice_upload():
 # Multi-Turn Interview endpoints
 ############################################################################
 
-_INTERVIEW_QUESTIONS = {
+_INTERVIEW_QUESTIONS_FALLBACK = {
     "charisma": [
         "Tell us, in your own words: do you think you're a good communicator? Why?",
         "What's something you're genuinely passionate about?",
@@ -6983,16 +6983,91 @@ _INTERVIEW_QUESTIONS = {
     ],
 }
 
+_INTERVIEW_SYSTEM_PROMPT = """You are an interview coach conducting a voice charisma assessment.
+Your job is to ask questions that alternate between two tones:
+
+1. CHARISMA-PROVOKING questions: These let the interviewee shine — topics where they can show passion, storytelling ability, warmth, and vocal energy. Examples: achievements, passions, advice they'd give.
+
+2. STRESS-PROVOKING questions: These are challenging, slightly uncomfortable, or technical — designed to test how the person handles pressure, pauses, and uncertainty. Examples: failures, weaknesses, defending a controversial stance.
+
+RULES:
+- You MUST alternate tones: if the previous question was charisma, the next MUST be stress, and vice versa.
+- Keep questions concise (1-2 sentences max).
+- Never repeat a question you've already asked in this session.
+- Make follow-up questions contextual when possible (reference what the user said).
+- Never break character or explain what you're doing.
+- Return ONLY the question text, nothing else.
+"""
+
+
+def _generate_llm_question(
+    turn_number: int,
+    tone: str,
+    previous_turns: list | None = None,
+    user_id: str | None = None,
+) -> str | None:
+    """Call GPT-4o-mini to generate the next interview question.
+
+    Falls back to the hardcoded bank on failure.
+    Returns the question text, or None on error (caller uses fallback).
+    """
+    try:
+        from services.openai_service import OpenAIService
+        import openai
+
+        service = OpenAIService()
+        if not service.client:
+            return None
+
+        # Build system prompt with optional user-specific injection
+        system_prompt = _INTERVIEW_SYSTEM_PROMPT
+        if user_id:
+            settings = db.get_user_settings(user_id)
+            if settings and settings.get("custom_llm_instructions"):
+                system_prompt += f"\n\nADDITIONAL INSTRUCTIONS FOR THIS USER:\n{settings['custom_llm_instructions']}"
+
+        # Build conversation history for context
+        messages = [{"role": "system", "content": system_prompt}]
+
+        if previous_turns:
+            for turn in previous_turns:
+                messages.append({"role": "assistant", "content": turn.get("question", "")})
+                if turn.get("transcript"):
+                    messages.append({"role": "user", "content": turn["transcript"]})
+
+        # Request next question
+        messages.append({
+            "role": "user",
+            "content": f"Generate the next question. This is turn {turn_number}. Required tone: {tone}.",
+        })
+
+        response = service.client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=messages,
+            max_tokens=150,
+            temperature=0.8,
+        )
+
+        question = response.choices[0].message.content.strip()
+        # Strip quotes if the LLM wrapped it
+        if question.startswith('"') and question.endswith('"'):
+            question = question[1:-1]
+        return question if question else None
+
+    except Exception as e:
+        logger.warning("_generate_llm_question failed (will use fallback): %s", e)
+        return None
+
 
 @v2_bp.route("/public/interview/next-question", methods=["POST"])
 def v2_public_interview_next_question():
     """Return the next interview question, alternating charisma/stress tone.
 
-    Input:  { turn_number: int }
-    Output: { question: str, tone: "charisma"|"stress", turn_number: int }
+    Input:  { turn_number: int, user_id?: str, previous_turns?: [...] }
+    Output: { question: str, tone: "charisma"|"stress", turn_number: int, source: "llm"|"fallback" }
 
     Turn 1 → charisma, Turn 2 → stress, Turn 3 → charisma, etc.
-    Questions are drawn from a curated bank; no LLM call needed for MVP.
+    Tries LLM generation first; falls back to curated question bank.
     """
     try:
         body = request.get_json(silent=True) or {}
@@ -7002,15 +7077,31 @@ def v2_public_interview_next_question():
 
         # Alternate: odd turns = charisma, even turns = stress
         tone = "charisma" if turn_number % 2 == 1 else "stress"
-        pool = _INTERVIEW_QUESTIONS[tone]
-        # Cycle through questions if we have more turns than questions
-        question_index = ((turn_number - 1) // 2) % len(pool)
-        question = pool[question_index]
+
+        # Optional context for LLM
+        user_id = (body.get("user_id") or "").strip() or None
+        previous_turns = body.get("previous_turns") or None
+
+        # Try LLM generation
+        question = _generate_llm_question(
+            turn_number=turn_number,
+            tone=tone,
+            previous_turns=previous_turns,
+            user_id=user_id,
+        )
+        source = "llm" if question else "fallback"
+
+        # Fallback to curated bank
+        if not question:
+            pool = _INTERVIEW_QUESTIONS_FALLBACK[tone]
+            question_index = ((turn_number - 1) // 2) % len(pool)
+            question = pool[question_index]
 
         return jsonify({
             "question": question,
             "tone": tone,
             "turn_number": turn_number,
+            "source": source,
         }), 200
 
     except Exception as e:
@@ -7122,6 +7213,9 @@ def v2_public_interview_upload_answer():
             except Exception:
                 pass
 
+        # Read optional question_text from form (so we can store it with the snippet)
+        question_text = (form.get("question_text") or "").strip() or None
+
         # Compute acoustic metrics for this chunk
         snippet_metrics = None
         try:
@@ -7144,17 +7238,49 @@ def v2_public_interview_upload_answer():
         # Use a placeholder user_id (will be updated on claim)
         snippet_dict = None
         try:
-            snippet_dict = db.create_charisma_snippet(
-                session_id=guest_session_id,
-                user_id="00000000-0000-0000-0000-000000000000",  # placeholder until claim
-                recording_id=recording_id,
-                start_offset_ms=0,
-                duration_ms=int((duration_seconds or 10) * 1000),
-                audio_segment_path=snippet_url,
-                metrics=snippet_metrics,
-            )
+            snippet_payload = {
+                "session_id": guest_session_id,
+                "user_id": "00000000-0000-0000-0000-000000000000",  # placeholder until claim
+                "recording_id": recording_id,
+                "start_offset_ms": 0,
+                "duration_ms": int((duration_seconds or 10) * 1000),
+                "audio_segment_path": snippet_url,
+                "snippet_type": "unlabeled",
+                # New fields: boundaries, turn context, per-snippet metrics
+                "start_time": 0.0,
+                "end_time": duration_seconds or 10.0,
+                "turn_number": turn_number,
+                "question_text": question_text,
+                "question_tone": question_tone,
+            }
+            # Store individual metric columns + JSONB blob
+            if snippet_metrics:
+                snippet_payload["metrics"] = snippet_metrics
+                snippet_payload["wpm"] = snippet_metrics.get("wpm")
+                snippet_payload["pause_ms"] = snippet_metrics.get("pause_ms")
+                snippet_payload["dynamic_db"] = snippet_metrics.get("dynamic_db")
+                snippet_payload["pitch_center"] = snippet_metrics.get("pitch_center_st")
+                snippet_payload["energy"] = snippet_metrics.get("energy_ratio")
+                # fillers require transcript (done later via Whisper if available)
+                snippet_payload["fillers"] = None
+
+            result = db.client.table("charisma_snippets").insert(snippet_payload).execute()
+            snippet_dict = result.data[0] if result.data else None
         except Exception as s_err:
             logger.warning("interview: create snippet failed: %s", s_err, exc_info=True)
+            # Fallback to old create function (in case new columns don't exist yet)
+            try:
+                snippet_dict = db.create_charisma_snippet(
+                    session_id=guest_session_id,
+                    user_id="00000000-0000-0000-0000-000000000000",
+                    recording_id=recording_id,
+                    start_offset_ms=0,
+                    duration_ms=int((duration_seconds or 10) * 1000),
+                    audio_segment_path=snippet_url,
+                    metrics=snippet_metrics,
+                )
+            except Exception:
+                pass
 
         # Calculate total session duration across all snippets
         total_duration = 0.0
@@ -7636,3 +7762,398 @@ def v2_internal_publish_session_results():
         logger.error("publish-results: failed: %s", e, exc_info=True)
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR", "error": "Failed to publish results"}), 500
+
+
+############################################################################
+# Admin: Snippet boundary adjustment (the +/- 2s feature)
+############################################################################
+
+@v2_bp.route("/admin/snippets/<snippet_id>/boundaries", methods=["POST"])
+@require_admin
+def v2_admin_adjust_snippet_boundaries(snippet_id):
+    """Update a snippet's start_time/end_time and re-compute metrics for the new slice.
+
+    Input: { start_time: float, end_time: float }
+    On update: re-runs audio_metrics.py for the adjusted timeframe,
+    updates the snippet's metric columns.
+    """
+    try:
+        body = request.get_json(silent=True) or {}
+        start_time = body.get("start_time")
+        end_time = body.get("end_time")
+
+        if start_time is None or end_time is None:
+            return jsonify({"code": "MISSING_FIELDS", "error": "start_time and end_time are required"}), 400
+
+        start_time = float(start_time)
+        end_time = float(end_time)
+
+        if end_time <= start_time:
+            return jsonify({"code": "INVALID_BOUNDARIES", "error": "end_time must be greater than start_time"}), 400
+
+        # Update boundaries in DB
+        updated = db.update_snippet_boundaries(snippet_id, start_time, end_time)
+        if not updated:
+            return jsonify({"code": "NOT_FOUND", "error": "Snippet not found"}), 404
+
+        # Re-compute metrics for the new time range
+        # Fetch the snippet's audio, decode, slice, and analyze
+        recomputed_metrics = None
+        try:
+            snippet = updated
+            audio_path = snippet.get("audio_segment_path", "")
+            if audio_path:
+                from services.audio_metrics import analyze_audio, decode_audio_to_pcm, SAMPLE_RATE
+                from services.coach_video_storage import get_coach_object_bytes
+                import numpy as np
+
+                # Try to download audio
+                audio_bytes = None
+                try:
+                    audio_bytes = get_coach_object_bytes("coach_feedback_videos", audio_path)
+                except Exception:
+                    # Try the bucket name from audio_recordings
+                    try:
+                        audio_bytes = get_coach_object_bytes("audio_recordings", audio_path)
+                    except Exception:
+                        pass
+
+                if audio_bytes:
+                    # Decode full audio to PCM
+                    pcm = decode_audio_to_pcm(audio_bytes)
+                    if pcm is not None and len(pcm) > 0:
+                        # Slice to the new boundaries
+                        start_sample = int(start_time * SAMPLE_RATE)
+                        end_sample = int(end_time * SAMPLE_RATE)
+                        start_sample = max(0, min(start_sample, len(pcm)))
+                        end_sample = max(start_sample, min(end_sample, len(pcm)))
+                        sliced = pcm[start_sample:end_sample]
+
+                        if len(sliced) >= SAMPLE_RATE:
+                            # Re-encode sliced PCM to bytes for analyze_audio
+                            import subprocess
+                            sliced_int16 = (sliced * 32768.0).astype(np.int16)
+                            raw_bytes = sliced_int16.tobytes()
+
+                            # analyze_audio expects encoded audio, so use raw PCM via a minimal approach
+                            # We'll directly call the internal functions instead
+                            from services.audio_metrics import (
+                                _frame_rms_db, _compute_pause_ms, _compute_dynamic_db,
+                                _compute_emphasis_per_min, _compute_energy_ratio, _compute_pitch_center_st,
+                                SILENCE_DB_THRESHOLD
+                            )
+                            duration_sec = len(sliced) / float(SAMPLE_RATE)
+                            dbs = _frame_rms_db(sliced)
+
+                            recomputed_metrics = {
+                                "wpm": None,  # requires transcript
+                                "pause_ms": _compute_pause_ms(dbs),
+                                "dynamic_db": _compute_dynamic_db(dbs),
+                                "emphasis_per_min": _compute_emphasis_per_min(dbs, duration_sec),
+                                "energy_ratio": _compute_energy_ratio(sliced, dbs),
+                                "pitch_center_st": None,
+                                "pitch_frame_count": 0,
+                                "voiced_duration_sec": round(
+                                    float(np.sum(dbs >= SILENCE_DB_THRESHOLD)) * 0.02, 1
+                                ),
+                            }
+                            pitch_st, pitch_frames = _compute_pitch_center_st(sliced)
+                            recomputed_metrics["pitch_center_st"] = pitch_st
+                            recomputed_metrics["pitch_frame_count"] = pitch_frames
+
+                            # Update snippet metric columns
+                            db.update_snippet_metrics(
+                                snippet_id=snippet_id,
+                                wpm=recomputed_metrics.get("wpm"),
+                                fillers=None,
+                                pause_ms=recomputed_metrics.get("pause_ms"),
+                                dynamic_db=recomputed_metrics.get("dynamic_db"),
+                                pitch_center=recomputed_metrics.get("pitch_center_st"),
+                                energy=recomputed_metrics.get("energy_ratio"),
+                                metrics_json=recomputed_metrics,
+                            )
+        except Exception as metrics_err:
+            logger.warning("admin: re-compute metrics after boundary adjust failed: %s", metrics_err, exc_info=True)
+            # Non-fatal: boundaries are updated even if metrics re-computation fails
+
+        # Re-fetch the final state
+        final_snippet = db.client.table("charisma_snippets").select("*").eq("id", snippet_id).execute()
+        final = final_snippet.data[0] if final_snippet.data else updated
+
+        return jsonify({
+            "status": "ok",
+            "snippet": final,
+            "metrics_recomputed": recomputed_metrics is not None,
+        }), 200
+
+    except Exception as e:
+        logger.error("admin: adjust snippet boundaries failed: %s", e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to adjust boundaries"}), 500
+
+
+@v2_bp.route("/admin/snippets/<snippet_id>/skip", methods=["POST"])
+@require_admin
+def v2_admin_skip_snippet(snippet_id):
+    """Mark a snippet as skipped (hidden from user results).
+
+    Input: { is_skipped: bool }
+    """
+    try:
+        body = request.get_json(silent=True) or {}
+        is_skipped = bool(body.get("is_skipped", True))
+
+        updated = db.skip_snippet(snippet_id, is_skipped)
+        if not updated:
+            return jsonify({"code": "NOT_FOUND", "error": "Snippet not found"}), 404
+
+        return jsonify({"status": "ok", "snippet": updated}), 200
+
+    except Exception as e:
+        logger.error("admin: skip snippet failed: %s", e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to skip snippet"}), 500
+
+
+############################################################################
+# Admin: User settings (LLM instructions)
+############################################################################
+
+@v2_bp.route("/admin/users/<user_id>/settings", methods=["GET"])
+@require_admin
+def v2_admin_get_user_settings(user_id):
+    """Get user's custom LLM instructions and settings."""
+    try:
+        settings = db.get_user_settings(user_id)
+        return jsonify({
+            "status": "ok",
+            "settings": settings or {"user_id": user_id, "custom_llm_instructions": None},
+        }), 200
+    except Exception as e:
+        logger.error("admin: get user settings failed: %s", e, exc_info=True)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to fetch settings"}), 500
+
+
+@v2_bp.route("/admin/users/<user_id>/settings", methods=["POST"])
+@require_admin
+def v2_admin_update_user_settings(user_id):
+    """Update user's custom LLM instructions.
+
+    Input: { custom_llm_instructions: string | null }
+    """
+    try:
+        body = request.get_json(silent=True) or {}
+        instructions = body.get("custom_llm_instructions")
+
+        result = db.upsert_user_settings(user_id, instructions)
+        return jsonify({"status": "ok", "settings": result}), 200
+
+    except Exception as e:
+        logger.error("admin: update user settings failed: %s", e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to update settings"}), 500
+
+
+############################################################################
+# Admin: User interview timeline
+############################################################################
+
+@v2_bp.route("/admin/users/<user_id>/timeline", methods=["GET"])
+@require_admin
+def v2_admin_get_user_timeline(user_id):
+    """Fetch a user's complete interview timeline (chronological Q&A thread).
+
+    Returns an array sorted by time: [Bot Question] → [User Audio] → [Snippet Metrics].
+    Optional query param: ?session_id=UUID to filter to one session.
+    """
+    try:
+        session_id = request.args.get("session_id") or None
+
+        # Get all snippets in order
+        snippets = db.get_user_interview_timeline(user_id, session_id=session_id)
+
+        # Get session-level data if specific session requested
+        session_data = None
+        if session_id:
+            session_data = db.get_session_with_global_metrics(session_id)
+
+        # Build timeline: each snippet becomes a turn with question + answer + metrics
+        timeline = []
+        for snippet in snippets:
+            turn = {
+                "turn_number": snippet.get("turn_number"),
+                "question": {
+                    "text": snippet.get("question_text"),
+                    "tone": snippet.get("question_tone"),
+                },
+                "answer": {
+                    "snippet_id": snippet.get("id"),
+                    "audio_url": snippet.get("audio_segment_path"),
+                    "duration_ms": snippet.get("duration_ms"),
+                    "start_time": snippet.get("start_time"),
+                    "end_time": snippet.get("end_time"),
+                    "is_skipped": snippet.get("is_skipped", False),
+                },
+                "metrics": {
+                    "wpm": snippet.get("wpm"),
+                    "fillers": snippet.get("fillers"),
+                    "pause_ms": snippet.get("pause_ms"),
+                    "dynamic_db": snippet.get("dynamic_db"),
+                    "pitch_center": snippet.get("pitch_center"),
+                    "energy": snippet.get("energy"),
+                },
+                "admin": {
+                    "comment": snippet.get("admin_comment"),
+                    "snippet_type": snippet.get("snippet_type"),
+                },
+                "created_at": snippet.get("created_at"),
+            }
+            timeline.append(turn)
+
+        return jsonify({
+            "status": "ok",
+            "user_id": user_id,
+            "session": session_data,
+            "timeline": timeline,
+            "total_turns": len(timeline),
+        }), 200
+
+    except Exception as e:
+        logger.error("admin: get user timeline failed: %s", e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to fetch timeline"}), 500
+
+
+############################################################################
+# Admin: Compute global session metrics + AI alignment
+############################################################################
+
+@v2_bp.route("/admin/sessions/<session_id>/compute-metrics", methods=["POST"])
+@require_admin
+def v2_admin_compute_session_metrics(session_id):
+    """Trigger computation of global session metrics and AI alignment review.
+
+    1. Aggregates snippet-level metrics into session-level averages.
+    2. Calls LLM to evaluate the transcript and produce alignment score + comment.
+    """
+    try:
+        # Fetch all non-skipped snippets for this session
+        snippets = db.get_snippets_by_session(session_id)
+        active_snippets = [s for s in snippets if not s.get("is_skipped", False)]
+
+        if not active_snippets:
+            return jsonify({"code": "NO_SNIPPETS", "error": "No active snippets in this session"}), 404
+
+        # Aggregate metrics across snippets
+        wpms = [s.get("wpm") for s in active_snippets if s.get("wpm") is not None]
+        fillers_list = [s.get("fillers") for s in active_snippets if s.get("fillers") is not None]
+        pauses = [s.get("pause_ms") for s in active_snippets if s.get("pause_ms") is not None]
+        dynamics = [s.get("dynamic_db") for s in active_snippets if s.get("dynamic_db") is not None]
+        pitches = [s.get("pitch_center") for s in active_snippets if s.get("pitch_center") is not None]
+        energies = [s.get("energy") for s in active_snippets if s.get("energy") is not None]
+
+        # Also check JSONB metrics column as fallback
+        if not pauses:
+            pauses = [s["metrics"]["pause_ms"] for s in active_snippets
+                      if s.get("metrics") and s["metrics"].get("pause_ms") is not None]
+        if not dynamics:
+            dynamics = [s["metrics"]["dynamic_db"] for s in active_snippets
+                        if s.get("metrics") and s["metrics"].get("dynamic_db") is not None]
+        if not pitches:
+            pitches = [s["metrics"]["pitch_center_st"] for s in active_snippets
+                       if s.get("metrics") and s["metrics"].get("pitch_center_st") is not None]
+        if not energies:
+            energies = [s["metrics"]["energy_ratio"] for s in active_snippets
+                        if s.get("metrics") and s["metrics"].get("energy_ratio") is not None]
+
+        global_wpm = round(sum(wpms) / len(wpms), 1) if wpms else None
+        global_fillers = sum(fillers_list) if fillers_list else None
+        global_pause_ms = round(sum(pauses) / len(pauses), 1) if pauses else None
+        global_dynamic_db = round(sum(dynamics) / len(dynamics), 1) if dynamics else None
+        global_pitch_center = round(sum(pitches) / len(pitches), 1) if pitches else None
+        global_energy = round(sum(energies) / len(energies), 3) if energies else None
+
+        # Save global metrics
+        db.update_session_global_metrics(
+            session_id=session_id,
+            global_wpm=global_wpm,
+            global_fillers=global_fillers,
+            global_pause_ms=global_pause_ms,
+            global_dynamic_db=global_dynamic_db,
+            global_pitch_center=global_pitch_center,
+            global_energy=global_energy,
+        )
+
+        # AI alignment: evaluate the full interview transcript via LLM
+        ai_score = None
+        ai_comment = None
+        try:
+            from services.openai_service import OpenAIService
+            service = OpenAIService()
+            if service.client:
+                # Build transcript summary for the LLM
+                transcript_parts = []
+                for s in active_snippets:
+                    q = s.get("question_text") or "Unknown question"
+                    tone = s.get("question_tone") or "unknown"
+                    turn = s.get("turn_number") or "?"
+                    transcript_parts.append(
+                        f"Turn {turn} ({tone}): Q: {q}\n"
+                        f"  [Audio: {s.get('duration_ms', 0) / 1000:.1f}s, "
+                        f"WPM={s.get('wpm', '?')}, Pause={s.get('pause_ms', '?')}ms, "
+                        f"Energy={s.get('energy', '?')}]"
+                    )
+
+                eval_prompt = (
+                    "You are an expert speech and communication evaluator. "
+                    "Review this interview session and provide:\n"
+                    "1. A score from 0-100 representing overall communication quality "
+                    "(considering charisma, confidence, engagement, and vocal delivery).\n"
+                    "2. A 2-3 sentence comment summarizing strengths and areas for improvement.\n\n"
+                    "INTERVIEW TRANSCRIPT:\n" + "\n".join(transcript_parts) + "\n\n"
+                    "Respond in JSON format: {\"score\": <number>, \"comment\": \"<text>\"}"
+                )
+
+                response = service.client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=[{"role": "user", "content": eval_prompt}],
+                    max_tokens=300,
+                    temperature=0.5,
+                )
+
+                import json as json_module
+                raw_text = response.choices[0].message.content.strip()
+                # Try to parse JSON (handle code blocks)
+                if raw_text.startswith("```"):
+                    raw_text = raw_text.split("```")[1]
+                    if raw_text.startswith("json"):
+                        raw_text = raw_text[4:]
+                eval_result = json_module.loads(raw_text)
+                ai_score = float(eval_result.get("score", 0))
+                ai_comment = str(eval_result.get("comment", ""))
+
+                db.update_session_ai_alignment(session_id, ai_score, ai_comment)
+        except Exception as ai_err:
+            logger.warning("admin: AI alignment eval failed (non-fatal): %s", ai_err)
+
+        return jsonify({
+            "status": "ok",
+            "global_metrics": {
+                "wpm": global_wpm,
+                "fillers": global_fillers,
+                "pause_ms": global_pause_ms,
+                "dynamic_db": global_dynamic_db,
+                "pitch_center": global_pitch_center,
+                "energy": global_energy,
+            },
+            "ai_alignment": {
+                "score": ai_score,
+                "comment": ai_comment,
+            },
+            "snippets_analyzed": len(active_snippets),
+        }), 200
+
+    except Exception as e:
+        logger.error("admin: compute session metrics failed: %s", e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to compute metrics"}), 500

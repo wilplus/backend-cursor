@@ -5128,5 +5128,232 @@ class DatabaseService:
             pass
         return total
 
+    # ------------------------------------------------------------------
+    # Snippet boundary adjustment & per-snippet metrics
+    # ------------------------------------------------------------------
+
+    def update_snippet_boundaries(
+        self,
+        snippet_id: str,
+        start_time: float,
+        end_time: float,
+    ) -> Optional[dict]:
+        """Update a snippet's time boundaries (admin +/- 2s adjust).
+
+        Returns the updated snippet row.
+        """
+        try:
+            result = (
+                self.client.table("charisma_snippets")
+                .update({
+                    "start_time": start_time,
+                    "end_time": end_time,
+                })
+                .eq("id", snippet_id)
+                .execute()
+            )
+            if result.data and len(result.data) > 0:
+                return result.data[0]
+            return None
+        except Exception as e:
+            logger.error(f"update_snippet_boundaries failed: {e}")
+            return None
+
+    def update_snippet_metrics(
+        self,
+        snippet_id: str,
+        wpm: float | None,
+        fillers: int | None,
+        pause_ms: float | None,
+        dynamic_db: float | None,
+        pitch_center: float | None,
+        energy: float | None,
+        metrics_json: dict | None = None,
+    ) -> Optional[dict]:
+        """Update a snippet's individual acoustic metric columns.
+
+        Also updates the JSONB metrics column for backwards compat.
+        """
+        try:
+            payload: dict = {
+                "wpm": wpm,
+                "fillers": fillers,
+                "pause_ms": pause_ms,
+                "dynamic_db": dynamic_db,
+                "pitch_center": pitch_center,
+                "energy": energy,
+            }
+            if metrics_json is not None:
+                payload["metrics"] = metrics_json
+            result = (
+                self.client.table("charisma_snippets")
+                .update(payload)
+                .eq("id", snippet_id)
+                .execute()
+            )
+            if result.data and len(result.data) > 0:
+                return result.data[0]
+            return None
+        except Exception as e:
+            logger.error(f"update_snippet_metrics failed: {e}")
+            return None
+
+    def skip_snippet(self, snippet_id: str, is_skipped: bool = True) -> Optional[dict]:
+        """Mark a snippet as skipped (hidden from user results)."""
+        try:
+            result = (
+                self.client.table("charisma_snippets")
+                .update({"is_skipped": is_skipped})
+                .eq("id", snippet_id)
+                .execute()
+            )
+            if result.data and len(result.data) > 0:
+                return result.data[0]
+            return None
+        except Exception as e:
+            logger.error(f"skip_snippet failed: {e}")
+            return None
+
+    # ------------------------------------------------------------------
+    # Session-level global metrics & AI alignment
+    # ------------------------------------------------------------------
+
+    def update_session_global_metrics(
+        self,
+        session_id: str,
+        global_wpm: float | None,
+        global_fillers: int | None,
+        global_pause_ms: float | None,
+        global_dynamic_db: float | None,
+        global_pitch_center: float | None,
+        global_energy: float | None,
+    ) -> Optional[dict]:
+        """Update v2_sessions with aggregated global acoustic metrics."""
+        try:
+            result = (
+                self.client.table("v2_sessions")
+                .update({
+                    "global_wpm": global_wpm,
+                    "global_fillers": global_fillers,
+                    "global_pause_ms": global_pause_ms,
+                    "global_dynamic_db": global_dynamic_db,
+                    "global_pitch_center": global_pitch_center,
+                    "global_energy": global_energy,
+                })
+                .eq("id", session_id)
+                .execute()
+            )
+            if result.data and len(result.data) > 0:
+                return result.data[0]
+            return None
+        except Exception as e:
+            logger.error(f"update_session_global_metrics failed: {e}")
+            return None
+
+    def update_session_ai_alignment(
+        self,
+        session_id: str,
+        score: float | None,
+        comment: str | None,
+    ) -> Optional[dict]:
+        """Store the LLM's alignment score + comment for a session."""
+        try:
+            result = (
+                self.client.table("v2_sessions")
+                .update({
+                    "ai_task_alignment_score": score,
+                    "ai_task_alignment_comment": comment,
+                })
+                .eq("id", session_id)
+                .execute()
+            )
+            if result.data and len(result.data) > 0:
+                return result.data[0]
+            return None
+        except Exception as e:
+            logger.error(f"update_session_ai_alignment failed: {e}")
+            return None
+
+    # ------------------------------------------------------------------
+    # User settings (LLM instructions)
+    # ------------------------------------------------------------------
+
+    def get_user_settings(self, user_id: str) -> Optional[dict]:
+        """Get user_settings row (custom LLM instructions, etc)."""
+        try:
+            result = (
+                self.client.table("user_settings")
+                .select("*")
+                .eq("user_id", user_id)
+                .limit(1)
+                .execute()
+            )
+            if result.data and len(result.data) > 0:
+                return result.data[0]
+            return None
+        except Exception as e:
+            logger.warning(f"get_user_settings failed: {e}")
+            return None
+
+    def upsert_user_settings(self, user_id: str, custom_llm_instructions: str | None) -> Optional[dict]:
+        """Create or update user_settings.custom_llm_instructions."""
+        try:
+            result = (
+                self.client.table("user_settings")
+                .upsert({
+                    "user_id": user_id,
+                    "custom_llm_instructions": custom_llm_instructions,
+                    "updated_at": "now()",
+                })
+                .execute()
+            )
+            if result.data and len(result.data) > 0:
+                return result.data[0]
+            return None
+        except Exception as e:
+            logger.error(f"upsert_user_settings failed: {e}")
+            return None
+
+    # ------------------------------------------------------------------
+    # User timeline (admin: chronological interview view)
+    # ------------------------------------------------------------------
+
+    def get_user_interview_timeline(self, user_id: str, session_id: str | None = None) -> List[dict]:
+        """Fetch a user's interview snippets in chronological order.
+
+        Returns snippets (with question_text, turn_number, metrics) sorted by
+        turn_number. If session_id is provided, filters to that session only.
+        """
+        try:
+            query = (
+                self.client.table("charisma_snippets")
+                .select("*")
+                .eq("user_id", user_id)
+            )
+            if session_id:
+                query = query.eq("session_id", session_id)
+            result = query.order("turn_number", desc=False).order("created_at", desc=False).execute()
+            return result.data if result.data else []
+        except Exception as e:
+            logger.error(f"get_user_interview_timeline failed: {e}")
+            return []
+
+    def get_session_with_global_metrics(self, session_id: str) -> Optional[dict]:
+        """Get a session row including global metrics and AI alignment."""
+        try:
+            result = (
+                self.client.table("v2_sessions")
+                .select("*")
+                .eq("id", session_id)
+                .limit(1)
+                .execute()
+            )
+            if result.data and len(result.data) > 0:
+                return result.data[0]
+            return None
+        except Exception as e:
+            logger.error(f"get_session_with_global_metrics failed: {e}")
+            return None
+
 # Singleton instance
 db = DatabaseService()
