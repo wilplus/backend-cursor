@@ -23,6 +23,11 @@ CREATE TABLE IF NOT EXISTS user_settings (
 COMMENT ON TABLE user_settings IS 'Per-user settings including custom LLM prompt injections for interview sessions.';
 COMMENT ON COLUMN user_settings.custom_llm_instructions IS 'Admin-defined text appended to the LLM system prompt when generating questions for this user.';
 
+-- Add learning_profile to existing user_admin_context table
+ALTER TABLE user_admin_context
+  ADD COLUMN IF NOT EXISTS learning_profile VARCHAR(50) DEFAULT NULL;
+COMMENT ON COLUMN user_admin_context.learning_profile IS 'Admin-assigned profile type: stressor, racer, freezer, etc. Affects session tuning.';
+
 -- 2. Snippets: add start_time, end_time, is_skipped, and individual metric columns
 ALTER TABLE charisma_snippets
   ADD COLUMN IF NOT EXISTS start_time FLOAT DEFAULT NULL,
