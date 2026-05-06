@@ -7448,18 +7448,18 @@ def v2_public_interview_upload_answer():
             snippet_url = storage_path
 
         # Create charisma_snippet row — one per interview turn
-        # Use a placeholder user_id (will be updated on claim)
+        # user_id is NULL until guest signs up and claims the session.
+        # update_snippets_user_id() in the claim flow sets the real user_id.
         snippet_dict = None
         try:
             snippet_payload = {
                 "session_id": guest_session_id,
-                "user_id": "00000000-0000-0000-0000-000000000000",  # placeholder until claim
                 "recording_id": recording_id,
                 "start_offset_ms": 0,
                 "duration_ms": int((duration_seconds or 10) * 1000),
                 "audio_segment_path": snippet_url,
                 "snippet_type": "unlabeled",
-                # New fields: boundaries, turn context, per-snippet metrics
+                # Boundaries, turn context, per-snippet metrics
                 "start_time": 0.0,
                 "end_time": duration_seconds or 10.0,
                 "turn_number": turn_number,
@@ -7485,7 +7485,7 @@ def v2_public_interview_upload_answer():
             try:
                 snippet_dict = db.create_charisma_snippet(
                     session_id=guest_session_id,
-                    user_id="00000000-0000-0000-0000-000000000000",
+                    user_id=None,
                     recording_id=recording_id,
                     start_offset_ms=0,
                     duration_ms=int((duration_seconds or 10) * 1000),

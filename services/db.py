@@ -5048,7 +5048,7 @@ class DatabaseService:
     def create_charisma_snippet(
         self,
         session_id: str,
-        user_id: str,
+        user_id: str | None,
         recording_id: str,
         start_offset_ms: int,
         duration_ms: int,
@@ -5058,6 +5058,8 @@ class DatabaseService:
         """Create a new charisma snippet record (unlabeled by default).
 
         Args:
+            user_id: Real user UUID, or None for anonymous interview turns
+                     (updated via update_snippets_user_id on claim).
             metrics: Optional JSONB dict of pre-computed acoustic metrics
                      (wpm, pause_ms, dynamic_db, emphasis_per_min, energy_ratio,
                       pitch_center_st, pitch_frame_count, voiced_duration_sec).
@@ -5065,13 +5067,14 @@ class DatabaseService:
         try:
             payload = {
                 "session_id": session_id,
-                "user_id": user_id,
                 "recording_id": recording_id,
                 "start_offset_ms": start_offset_ms,
                 "duration_ms": duration_ms,
                 "audio_segment_path": audio_segment_path,
                 "snippet_type": "unlabeled",
             }
+            if user_id:
+                payload["user_id"] = user_id
             if metrics:
                 payload["metrics"] = metrics
             result = (
