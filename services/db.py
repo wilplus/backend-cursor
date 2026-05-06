@@ -1291,9 +1291,76 @@ class DatabaseService:
         result = q.execute()
         return result.data[0] if result.data else None
 
+    def v2_update_session_status_unscoped(self, session_id: str, status: str) -> Optional[dict]:
+        """Update v2_sessions.status without user_id scoping (admin/internal usage)."""
+        result = (
+            self.client.table("v2_sessions")
+            .update({"status": status, "updated_at": datetime.now(timezone.utc).isoformat()})
+            .eq("id", session_id)
+            .execute()
+        )
+        return result.data[0] if result.data else None
+
     def v2_get_session_by_id(self, session_id: str):
         """Get v2 session by id only (no user filter). For debugging 404: check if session exists and which user_id owns it."""
         return self.v2_get_session(session_id, None)
+
+    def v2_get_charisma_snippet_for_user(self, snippet_id: str, user_id: str) -> Optional[dict]:
+        """Fetch a charisma_snippets row, scoped to the authenticated owner."""
+        result = (
+            self.client.table("charisma_snippets")
+            .select("*")
+            .eq("id", snippet_id)
+            .eq("user_id", user_id)
+            .limit(1)
+            .execute()
+        )
+        return result.data[0] if result.data else None
+
+    def v2_get_results_snippets_for_session(self, session_id: str, user_id: str) -> List[dict]:
+        """Snippets for /results page (owner scoped, non-skipped), ordered by turn."""
+        result = (
+            self.client.table("charisma_snippets")
+            .select("*")
+            .eq("session_id", session_id)
+            .eq("user_id", user_id)
+            .eq("is_skipped", False)
+            .order("turn_number", desc=False)
+            .order("start_offset_ms", desc=False)
+            .execute()
+        )
+        return result.data or []
+
+    def v2_publish_session_results(self, session_id: str) -> Optional[dict]:
+        """Set results_published_at on a session (admin publish action).
+
+        This flag tells the user-facing /results page that snippets are ready.
+        """
+        from datetime import datetime, timezone
+        result = (
+            self.client.table("v2_sessions")
+            .update({"results_published_at": datetime.now(timezone.utc).isoformat()})
+            .eq("id", session_id)
+            .execute()
+        )
+        return result.data[0] if result.data else None
+
+    def v2_get_latest_published_session_for_user(self, user_id: str) -> Optional[dict]:
+        """Return the most recent session with results_published_at set (for /results landing)."""
+        try:
+            result = (
+                self.client.table("v2_sessions")
+                .select("*")
+                .eq("user_id", user_id)
+                .not_("results_published_at", "is", None)
+                .order("results_published_at", desc=True)
+                .limit(1)
+                .execute()
+            )
+            return result.data[0] if result.data else None
+        except Exception as e:
+            logger.warning("v2_get_latest_published_session_for_user failed: %s", e)
+            return None
 
     def v2_delete_stress_snippets_for_recording(self, recording_id: str) -> int:
         """Delete previously generated snippet candidates for one recording."""

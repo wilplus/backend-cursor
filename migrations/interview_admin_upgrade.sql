@@ -56,7 +56,12 @@ COMMENT ON COLUMN charisma_snippets.dynamic_db IS 'Dynamic range in dB (P95 - P5
 COMMENT ON COLUMN charisma_snippets.pitch_center IS 'Median pitch in semitones above 100Hz reference.';
 COMMENT ON COLUMN charisma_snippets.energy IS 'Voiced energy ratio (0-1).';
 
--- 3. Sessions: global acoustic metrics + AI alignment evaluation
+-- 2b. Snippets: transcript column for contextual retention-loop chat
+ALTER TABLE charisma_snippets
+  ADD COLUMN IF NOT EXISTS transcript TEXT DEFAULT NULL;
+COMMENT ON COLUMN charisma_snippets.transcript IS 'Whisper transcription of this snippet audio. Used for contextual chat init.';
+
+-- 3. Sessions: global acoustic metrics + AI alignment evaluation + publish flag
 ALTER TABLE v2_sessions
   ADD COLUMN IF NOT EXISTS global_wpm FLOAT DEFAULT NULL,
   ADD COLUMN IF NOT EXISTS global_fillers INTEGER DEFAULT NULL,
@@ -66,7 +71,8 @@ ALTER TABLE v2_sessions
   ADD COLUMN IF NOT EXISTS global_energy FLOAT DEFAULT NULL,
   ADD COLUMN IF NOT EXISTS kpi_score FLOAT DEFAULT NULL,
   ADD COLUMN IF NOT EXISTS ai_task_alignment_score FLOAT DEFAULT NULL,
-  ADD COLUMN IF NOT EXISTS ai_task_alignment_comment TEXT DEFAULT NULL;
+  ADD COLUMN IF NOT EXISTS ai_task_alignment_comment TEXT DEFAULT NULL,
+  ADD COLUMN IF NOT EXISTS results_published_at TIMESTAMPTZ DEFAULT NULL;
 
 COMMENT ON COLUMN v2_sessions.global_wpm IS 'Session-wide average WPM across all snippets.';
 COMMENT ON COLUMN v2_sessions.global_fillers IS 'Total filler word count across the entire session.';
@@ -77,6 +83,7 @@ COMMENT ON COLUMN v2_sessions.global_energy IS 'Average energy ratio across the 
 COMMENT ON COLUMN v2_sessions.kpi_score IS 'Quantitative KPI (0-100) computed from energy, fillers, and WPM via metrics_v2 formula.';
 COMMENT ON COLUMN v2_sessions.ai_task_alignment_score IS 'LLM-generated overall performance score (0-100), incorporating the KPI.';
 COMMENT ON COLUMN v2_sessions.ai_task_alignment_comment IS 'LLM-generated summary of the user performance across the interview.';
+COMMENT ON COLUMN v2_sessions.results_published_at IS 'Timestamp when admin published results to user (enables /results page).';
 
 -- Index for efficient admin queries
 CREATE INDEX IF NOT EXISTS idx_charisma_snippets_turn ON charisma_snippets(session_id, turn_number);

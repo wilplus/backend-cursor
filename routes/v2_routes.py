@@ -6999,12 +6999,16 @@ RULES:
 - Return ONLY the question text, nothing else.
 """
 
+_CONTEXTUAL_INTENTS = {"charisma", "stress"}
+
 
 def _generate_llm_question(
     turn_number: int,
     tone: str,
     previous_turns: list | None = None,
     user_id: str | None = None,
+    *,
+    contextual_init: dict | None = None,
 ) -> str | None:
     """Call GPT-4o-mini to generate the next interview question.
 
@@ -7018,6 +7022,44 @@ def _generate_llm_question(
         service = OpenAIService()
         if not service.client:
             return None
+
+        # Special: contextual "retention loop" init question (single deepening question)
+        if contextual_init and int(turn_number or 1) == 1:
+            intent = (contextual_init.get("intent") or "").strip().lower()
+            transcript = (contextual_init.get("transcript") or "").strip()
+            admin_comment = (contextual_init.get("admin_comment") or "").strip()
+            if intent in _CONTEXTUAL_INTENTS and transcript and admin_comment:
+                if intent == "charisma":
+                    system_prompt = (
+                        "You are a coaching assistant. "
+                        "The user clicked 'Understand your charisma' on a past recording. "
+                        f"In that recording, they said: '{transcript}'. "
+                        f"The human coach commented: '{admin_comment}'. "
+                        "Acknowledge this specific moment and ask ONE deepening question to help them deconstruct "
+                        "WHY they felt so confident and how they can replicate it. "
+                        "Return ONLY the question text, nothing else."
+                    )
+                else:
+                    system_prompt = (
+                        "You are a coaching assistant. "
+                        "The user clicked 'Release your stress'. "
+                        f"In that recording, they said: '{transcript}'. "
+                        f"The human coach commented: '{admin_comment}'. "
+                        "Acknowledge this moment with empathy and ask ONE deepening question to help them identify "
+                        "the root cause of that specific stress spike. "
+                        "Return ONLY the question text, nothing else."
+                    )
+
+                response = service.client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=[{"role": "system", "content": system_prompt}],
+                    max_tokens=150,
+                    temperature=0.7,
+                )
+                question = response.choices[0].message.content.strip()
+                if question.startswith('"') and question.endswith('"'):
+                    question = question[1:-1]
+                return question if question else None
 
         # Build system prompt with optional user-specific injection
         system_prompt = _INTERVIEW_SYSTEM_PROMPT
@@ -7057,6 +7099,177 @@ def _generate_llm_question(
     except Exception as e:
         logger.warning("_generate_llm_question failed (will use fallback): %s", e)
         return None
+
+
+@v2_bp.route("/user/results/<session_id>", methods=["GET"])
+@require_auth
+def v2_user_get_results(session_id):
+    """User results endpoint for /results dual-state page.
+
+    Always returns { session_id, status }. Status is determined by:
+      - results_published_at IS NOT NULL → "completed" (admin has reviewed & published)
+      - otherwise → "processing"
+
+    When completed, payload includes all non-skipped snippets with their
+    metrics, admin_comment, snippet_type, and audio URLs.
+    """
+    try:
+        if not _is_valid_uuid(session_id):
+            return jsonify({"code": "INVALID_INPUT", "error": "session_id must be a valid UUID"}), 400
+
+        user_id = request.user_id
+        session = db.v2_get_session(session_id, user_id)
+        if not session:
+            return jsonify({"code": "NOT_FOUND", "error": "Session not found"}), 404
+
+        # Dual-state: admin must explicitly publish before user sees results
+        is_published = bool(session.get("results_published_at"))
+        status = "completed" if is_published else "processing"
+
+        payload = {
+            "session_id": str(session_id),
+            "status": status,
+            "created_at": session.get("created_at"),
+        }
+
+        if status == "completed":
+            snippets = db.v2_get_results_snippets_for_session(session_id, user_id)
+            # Shape each snippet for frontend consumption
+            payload["snippets"] = [
+                {
+                    "id": s.get("id"),
+                    "snippet_type": s.get("snippet_type"),
+                    "admin_comment": s.get("admin_comment"),
+                    "audio_url": s.get("audio_segment_path"),
+                    "transcript": s.get("transcript"),
+                    "turn_number": s.get("turn_number"),
+                    "question_text": s.get("question_text"),
+                    "question_tone": s.get("question_tone"),
+                    "duration_ms": s.get("duration_ms"),
+                    "metrics": {
+                        "wpm": s.get("wpm"),
+                        "fillers": s.get("fillers"),
+                        "pause_ms": s.get("pause_ms"),
+                        "dynamic_db": s.get("dynamic_db"),
+                        "pitch_center": s.get("pitch_center"),
+                        "energy": s.get("energy"),
+                    },
+                }
+                for s in snippets
+            ]
+            # Include session-level summary if available
+            payload["ai_summary"] = session.get("ai_task_alignment_comment")
+            payload["ai_score"] = session.get("ai_task_alignment_score")
+            payload["kpi_score"] = session.get("kpi_score")
+
+        return jsonify(payload), 200
+
+    except Exception as e:
+        logger.error("user/results failed: %s", e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to fetch results"}), 500
+
+
+@v2_bp.route("/user/results/latest", methods=["GET"])
+@require_auth
+def v2_user_get_latest_results():
+    """Redirect helper: find the user's most recent published session.
+
+    Returns { session_id, status } so the frontend can redirect to
+    /results/<session_id> or show "no results yet".
+    """
+    try:
+        user_id = request.user_id
+        session = db.v2_get_latest_published_session_for_user(user_id)
+        if not session:
+            return jsonify({
+                "session_id": None,
+                "status": "no_results",
+            }), 200
+
+        return jsonify({
+            "session_id": str(session.get("id")),
+            "status": "completed",
+            "results_published_at": session.get("results_published_at"),
+        }), 200
+
+    except Exception as e:
+        logger.error("user/results/latest failed: %s", e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to fetch latest results"}), 500
+
+
+@v2_bp.route("/user/chat/first-question", methods=["POST"])
+@require_auth
+def v2_user_chat_first_question():
+    """Start a contextual chat by generating the first AI question.
+
+    Query params:
+      - sourceSnippetId (UUID)
+      - intent: charisma|stress
+    """
+    try:
+        user_id = request.user_id
+        source_snippet_id = (request.args.get("sourceSnippetId") or "").strip() or None
+        intent = (request.args.get("intent") or "").strip().lower() or None
+
+        contextual_init = None
+        if source_snippet_id or intent:
+            if not (source_snippet_id and intent):
+                return jsonify({"code": "INVALID_INPUT", "error": "sourceSnippetId and intent must be provided together"}), 400
+            if not _is_valid_uuid(source_snippet_id):
+                return jsonify({"code": "INVALID_INPUT", "error": "sourceSnippetId must be a valid UUID"}), 400
+            if intent not in _CONTEXTUAL_INTENTS:
+                return jsonify({"code": "INVALID_INPUT", "error": "intent must be 'charisma' or 'stress'"}), 400
+
+            snippet = db.v2_get_charisma_snippet_for_user(source_snippet_id, user_id)
+            if not snippet:
+                return jsonify({"code": "NOT_FOUND", "error": "Snippet not found"}), 404
+
+            transcript = (
+                (snippet.get("transcript") or "")
+                or (snippet.get("transcription_text") or "")
+                or (snippet.get("transcript_text") or "")
+            ).strip()
+            admin_comment = (snippet.get("admin_comment") or "").strip()
+            if not transcript or not admin_comment:
+                return jsonify({
+                    "code": "SNIPPET_CONTEXT_UNAVAILABLE",
+                    "error": "Snippet transcript/admin_comment is not available yet",
+                }), 422
+
+            contextual_init = {
+                "intent": intent,
+                "transcript": transcript,
+                "admin_comment": admin_comment,
+            }
+
+        # Generate the first question
+        tone = "charisma" if (intent != "stress") else "stress"
+        question = _generate_llm_question(
+            turn_number=1,
+            tone=tone,
+            previous_turns=None,
+            user_id=user_id,
+            contextual_init=contextual_init,
+        )
+        if not question:
+            # deterministic fallback, still 1 question
+            question = (
+                "When you think back to that moment, what exactly did you feel in your body right before you spoke?"
+                if intent == "stress"
+                else "In that moment, what did you believe about yourself that made your voice feel so easy and confident?"
+            )
+
+        return jsonify({
+            "status": "ok",
+            "question": question,
+        }), 200
+
+    except Exception as e:
+        logger.error("user/chat/first-question failed: %s", e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to generate first question"}), 500
 
 
 @v2_bp.route("/public/interview/next-question", methods=["POST"])
@@ -7663,6 +7876,12 @@ def v2_internal_publish_session_results():
                 "error": "Session not found",
             }), 404
 
+        # Flip results status so frontend transitions from waiting → results
+        try:
+            db.v2_update_session_status_unscoped(session_id, "completed")
+        except Exception as flip_err:
+            logger.warning("publish-results: status flip failed (non-fatal): %s", flip_err)
+
         user_id = session.get("user_id")
         if not user_id:
             return jsonify({
@@ -7733,6 +7952,9 @@ def v2_internal_publish_session_results():
 </body>
 </html>"""
 
+        # Flip the session status so /results page shows snippets
+        db.v2_publish_session_results(session_id)
+
         # Send email via Resend
         try:
             send_email_resend(
@@ -7742,10 +7964,14 @@ def v2_internal_publish_session_results():
             )
         except Exception as email_err:
             logger.error("publish-results: send email failed: %s", email_err)
+            # Results are still published even if email delivery fails —
+            # the user can reach /results via direct link.
             return jsonify({
-                "code": "EMAIL_FAILED",
-                "error": "Failed to send email",
-            }), 502
+                "status": "ok",
+                "email_sent_to": None,
+                "results_url": results_url,
+                "warning": "Results published but email delivery failed",
+            }), 200
 
         logger.info(
             "publish-results: email sent session_id=%s user_id=%s email=%s",
