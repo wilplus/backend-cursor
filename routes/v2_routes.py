@@ -3395,6 +3395,61 @@ def v2_admin_coach_suggestions_history(user_id):
         return jsonify({"code": "INTERNAL_ERROR", "error": str(e)}), 500
 
 
+@v2_bp.route("/admin/students/<user_id>/coach-suggestions/message/<int:message_index>", methods=["PATCH"])
+@require_admin
+def v2_admin_edit_coach_message(user_id, message_index):
+    """Human-in-the-Loop: edit a single AI message in the coach conversation history.
+
+    Updating the stored message content causes the LLM to adopt the admin's
+    preferred tone/terminology automatically on the next turn, because the full
+    history is passed as context on every call.
+
+    Body: { "content": "corrected text" }
+    Returns: { status, message_index, updated_message, total_messages }
+    """
+    try:
+        body = request.get_json(silent=True) or {}
+        new_content = (body.get("content") or "").strip()
+        if not new_content:
+            return jsonify({"code": "INVALID_INPUT", "error": "content is required and must not be empty"}), 400
+        if len(new_content) > 10_000:
+            return jsonify({"code": "INVALID_INPUT", "error": "content must be at most 10 000 characters"}), 400
+
+        updated_conv = db.update_coach_ai_message(user_id, message_index, new_content)
+        if updated_conv is None:
+            # Could be: user has no conversation yet, or index is out of range
+            conv = db.get_coach_ai_conversation(user_id)
+            if not conv:
+                return jsonify({"code": "NOT_FOUND", "error": "No conversation history found for this user"}), 404
+            raw = conv.get("messages") or "[]"
+            messages = json.loads(raw) if isinstance(raw, str) else raw
+            total = len(messages)
+            return jsonify({
+                "code": "OUT_OF_RANGE",
+                "error": f"message_index {message_index} is out of range (conversation has {total} messages)",
+            }), 422
+
+        raw = updated_conv.get("messages") or "[]"
+        messages = json.loads(raw) if isinstance(raw, str) else raw
+        updated_msg = messages[message_index] if 0 <= message_index < len(messages) else None
+
+        logger.info(
+            "admin HITL: edited message idx=%d for user=%s",
+            message_index, user_id,
+        )
+        return jsonify({
+            "status": "ok",
+            "message_index": message_index,
+            "updated_message": updated_msg,
+            "total_messages": len(messages),
+        }), 200
+
+    except Exception as e:
+        logger.error("admin/coach-suggestions/message PATCH failed for %s: %s", user_id, e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "INTERNAL_ERROR", "error": str(e)}), 500
+
+
 @v2_bp.route("/admin/students/<user_id>/sessions/<session_id>/insight-audit", methods=["PATCH"])
 @require_admin
 def v2_admin_insight_audit(user_id, session_id):
@@ -7131,6 +7186,90 @@ def _generate_ebcp_question(
         return None
 
 
+def _generate_snippet_follow_up_question(
+    snippet_type: str,
+    transcript: str,
+    admin_comment: str,
+) -> str | None:
+    """Generate a single follow-up question for the Infinite Retention Loop.
+
+    Called when an admin labels/comments on a snippet. The question is stored
+    on the snippet row so it can be served instantly when the user later clicks
+    the snippet — no latency at click time.
+
+    snippet_type: "charisma" | "stress" | "unlabeled"
+    transcript:   Whisper transcript of the snippet audio.
+    admin_comment: Coach's text note on the snippet.
+
+    Returns the generated question string, or None on failure.
+    """
+    try:
+        from services.openai_service import OpenAIService
+        service = OpenAIService()
+        if not service.client:
+            return None
+
+        if snippet_type == "charisma":
+            system_prompt = (
+                "You are a charisma coaching assistant. "
+                "An admin coach has flagged this audio snippet as a HIGH-CHARISMA moment "
+                "and left a comment about it. Your task is to write ONE powerful follow-up "
+                "question that helps the user deconstruct WHY they felt so confident in that "
+                "moment and how they can deliberately replicate that energy (e.g. in cold calls, "
+                "presentations, or negotiations). "
+                "The question must be:\n"
+                "- Specific to the transcript content (reference what they actually said)\n"
+                "- High-energy and motivating in tone\n"
+                "- Focused on replicability (how to trigger this state on demand)\n"
+                "- No longer than 2 sentences\n"
+                "Return ONLY the question text, nothing else."
+            )
+        elif snippet_type == "stress":
+            system_prompt = (
+                "You are a performance coaching assistant. "
+                "An admin coach has flagged this audio snippet as a HIGH-STRESS or VOCAL-STRAIN moment "
+                "and left a comment. Your task is to write ONE targeted follow-up question that "
+                "addresses the cognitive load or emotional trigger that caused the vocal stress spike. "
+                "The question must be:\n"
+                "- Specific to what the speaker was saying in the transcript\n"
+                "- Empathetic but direct (not dismissive)\n"
+                "- Focused on uncovering the root cause of that specific stress moment\n"
+                "- No longer than 2 sentences\n"
+                "Return ONLY the question text, nothing else."
+            )
+        else:
+            # unlabeled or unknown — generic deepening question
+            system_prompt = (
+                "You are a voice coaching assistant. "
+                "Based on this audio transcript and the coach's comment, write ONE insightful "
+                "follow-up question to help the speaker reflect on that specific moment. "
+                "Return ONLY the question text, nothing else."
+            )
+
+        user_content = (
+            f"Transcript: \"{transcript}\"\n"
+            f"Coach comment: \"{admin_comment}\""
+        )
+
+        response = service.client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_content},
+            ],
+            max_tokens=120,
+            temperature=0.7,
+        )
+        question = response.choices[0].message.content.strip()
+        if question.startswith('"') and question.endswith('"'):
+            question = question[1:-1]
+        return question if question else None
+
+    except Exception as e:
+        logger.warning("_generate_snippet_follow_up_question failed: %s", e)
+        return None
+
+
 def _generate_llm_question(
     turn_number: int,
     tone: str,
@@ -7355,10 +7494,24 @@ def v2_user_chat_first_question():
             if not snippet:
                 return jsonify({"code": "NOT_FOUND", "error": "Snippet not found"}), 404
 
+            # ── Infinite Retention Trigger: use stored follow_up_question first ──
+            # The admin pre-generated (and may have hand-edited) this question when
+            # labeling the snippet. Serving it directly avoids latency at click time
+            # and ensures the admin's wording is used verbatim.
+            stored_follow_up = (snippet.get("follow_up_question") or "").strip()
+            if stored_follow_up:
+                return jsonify({
+                    "status": "ok",
+                    "question": stored_follow_up,
+                    "source": "stored_follow_up",
+                }), 200
+
+            # No pre-stored question → fall back to dynamic LLM generation
             transcript = (
                 (snippet.get("transcript") or "")
                 or (snippet.get("transcription_text") or "")
                 or (snippet.get("transcript_text") or "")
+                or (snippet.get("transcript_excerpt") or "")
             ).strip()
             admin_comment = (snippet.get("admin_comment") or "").strip()
             if not transcript or not admin_comment:
@@ -7373,7 +7526,7 @@ def v2_user_chat_first_question():
                 "admin_comment": admin_comment,
             }
 
-        # Generate the first question
+        # Generate the first question dynamically
         tone = "charisma" if (intent != "stress") else "stress"
         question = _generate_llm_question(
             turn_number=1,
@@ -7383,7 +7536,6 @@ def v2_user_chat_first_question():
             contextual_init=contextual_init,
         )
         if not question:
-            # deterministic fallback, still 1 question
             question = (
                 "When you think back to that moment, what exactly did you feel in your body right before you spoke?"
                 if intent == "stress"
@@ -7393,6 +7545,7 @@ def v2_user_chat_first_question():
         return jsonify({
             "status": "ok",
             "question": question,
+            "source": "llm_generated",
         }), 200
 
     except Exception as e:
@@ -7934,12 +8087,29 @@ def v2_public_funnel_afterwards_video():
 def v2_admin_update_snippet_comment(snippet_id):
     """Admin endpoint to add/update a comment on a charisma snippet.
 
-    Allows admin to label snippets as charisma, stress, or unlabeled, and add text feedback.
+    Allows admin to label snippets as charisma, stress, or unlabeled, add text feedback,
+    and optionally override the pre-generated follow_up_question.
+
+    Body:
+      - admin_comment (str, optional)
+      - snippet_type  ("charisma"|"stress"|"unlabeled", default "unlabeled")
+      - follow_up_question (str, optional) — if omitted AND admin_comment is set,
+        the LLM auto-generates one based on snippet_type + transcript + comment.
+        Pass null explicitly to clear an existing follow_up_question.
+
+    Returns: { status, snippet, follow_up_question_source }
+      follow_up_question_source: "admin_provided" | "llm_generated" | "llm_failed" | "cleared" | "unchanged"
     """
     try:
         body = request.get_json(silent=True) or {}
         admin_comment = (body.get("admin_comment") or "").strip() or None
         snippet_type = (body.get("snippet_type") or "unlabeled").strip().lower()
+        # "follow_up_question" key present → honour it (including null to clear)
+        # key absent → auto-generate if admin_comment is being set
+        follow_up_key_present = "follow_up_question" in body
+        follow_up_from_body = body.get("follow_up_question")
+        if isinstance(follow_up_from_body, str):
+            follow_up_from_body = follow_up_from_body.strip() or None
 
         if snippet_type not in ("charisma", "stress", "unlabeled"):
             return jsonify({
@@ -7962,14 +8132,51 @@ def v2_admin_update_snippet_comment(snippet_id):
                 "error": "Snippet not found",
             }), 404
 
+        # ── follow_up_question resolution ─────────────────────────────────────
+        follow_up_source = "unchanged"
+        follow_up_question = updated.get("follow_up_question")
+
+        if follow_up_key_present:
+            # Admin explicitly provided (or nulled) the follow-up question
+            if follow_up_from_body != follow_up_question:
+                db.update_snippet_follow_up_question(snippet_id, follow_up_from_body)
+                follow_up_question = follow_up_from_body
+            follow_up_source = "cleared" if follow_up_from_body is None else "admin_provided"
+
+        elif admin_comment:
+            # No explicit override → auto-generate based on snippet type + transcript
+            transcript = (
+                (updated.get("transcript") or "")
+                or (updated.get("transcript_text") or "")
+                or (updated.get("transcript_excerpt") or "")
+            ).strip()
+
+            if transcript:
+                generated = _generate_snippet_follow_up_question(
+                    snippet_type=snippet_type,
+                    transcript=transcript,
+                    admin_comment=admin_comment,
+                )
+                if generated:
+                    db.update_snippet_follow_up_question(snippet_id, generated)
+                    follow_up_question = generated
+                    follow_up_source = "llm_generated"
+                else:
+                    follow_up_source = "llm_failed"
+            else:
+                follow_up_source = "llm_failed"  # no transcript available
+
         logger.info(
-            "admin: updated snippet comment snippet_id=%s admin_user_id=%s type=%s",
-            snippet_id, admin_user_id, snippet_type,
+            "admin: updated snippet comment snippet_id=%s admin_user_id=%s type=%s follow_up_source=%s",
+            snippet_id, admin_user_id, snippet_type, follow_up_source,
         )
 
+        # Return the snippet with updated follow_up_question reflected
+        final_snippet = {**updated, "follow_up_question": follow_up_question}
         return jsonify({
             "status": "ok",
-            "snippet": updated,
+            "snippet": final_snippet,
+            "follow_up_question_source": follow_up_source,
         }), 200
 
     except Exception as e:

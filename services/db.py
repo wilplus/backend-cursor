@@ -5163,6 +5163,63 @@ class DatabaseService:
             logger.error(f"update_snippet_comment failed: {e}")
             return None
 
+    def update_snippet_follow_up_question(
+        self,
+        snippet_id: str,
+        follow_up_question: str | None,
+    ) -> dict | None:
+        """Store (or clear) the pre-generated follow-up question on a snippet.
+
+        Called automatically after labeling, or manually from the admin panel.
+        Returns the updated row, or None on failure.
+        """
+        try:
+            result = (
+                self.client.table("charisma_snippets")
+                .update({
+                    "follow_up_question": follow_up_question,
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                })
+                .eq("id", snippet_id)
+                .execute()
+            )
+            return result.data[0] if result.data else None
+        except Exception as e:
+            logger.error("update_snippet_follow_up_question failed for %s: %s", snippet_id, e)
+            return None
+
+    def update_coach_ai_message(
+        self,
+        user_id: str,
+        message_index: int,
+        new_content: str,
+    ) -> dict | None:
+        """Edit the `content` of one message in the coach AI conversation history.
+
+        The messages array is stored as JSONB. We update the element at
+        `message_index` in-place and persist the full array back.
+
+        Returns the updated conversation row, or None on failure / out-of-range.
+        """
+        try:
+            conv = self.get_coach_ai_conversation(user_id)
+            if not conv:
+                return None
+            raw = conv.get("messages") or "[]"
+            messages = json.loads(raw) if isinstance(raw, str) else list(raw)
+            if not (0 <= message_index < len(messages)):
+                return None  # index out of range — caller should 404/422
+            messages[message_index] = {
+                **messages[message_index],
+                "content": new_content,
+                "edited_by_admin": True,
+                "edited_at": datetime.now(timezone.utc).isoformat(),
+            }
+            return self.upsert_coach_ai_conversation(user_id, messages)
+        except Exception as e:
+            logger.error("update_coach_ai_message failed for %s idx=%s: %s", user_id, message_index, e)
+            return None
+
     def update_snippets_user_id(self, session_id: str, user_id: str) -> int:
         """Update all snippets for a session to have the newly authenticated user_id.
 
