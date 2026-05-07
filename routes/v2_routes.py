@@ -7051,7 +7051,10 @@ RULES:
 - Never repeat a question you've already asked in this session.
 - Make follow-up questions contextual when possible (reference what the user said).
 - Never break character or explain what you're doing.
-- Return ONLY the question text, nothing else.
+- FORMATTING RULE: If you include a brief acknowledgment or validation before your question,
+  separate it from the question using the exact delimiter `|||`.
+  Example: `That was a vivid story! ||| Now tell me about a time you completely failed at something that mattered to you.`
+  If there is no acknowledgment, return ONLY the question text with no delimiter.
 """
 
 _CONTEXTUAL_INTENTS = {"charisma", "stress"}
@@ -7069,11 +7072,11 @@ Analyze their transcript to determine confidence level.
 
 IF the user indicated YES (confident, positive, eager — "yes", "love it", "pretty good", "great", "sure"):
 Return EXACTLY:
-"Love the confidence! Let's test that sales brain. Imagine you have a prospect on the phone. They want to buy 15 software licenses at $100 each, but they are demanding a 20% discount to close today. Walk me through your calculation out loud: What is the final deal size, and how would you deliver that number to the client?"
+"Love the confidence! ||| Let's test that sales brain. Imagine you have a prospect on the phone. They want to buy 15 software licenses at $100 each, but they are demanding a 20% discount to close today. Walk me through your calculation out loud: What is the final deal size, and how would you deliver that number to the client?"
 
 IF the user indicated NO (hesitant, unsure, negative — "no", "not really", "bad at math", "hate math", "not good"):
 Return EXACTLY:
-"No worries, that is exactly what CRM software and calculators are for! Let's keep it simple. Imagine you just closed a $3,000 deal, and your commission is 10%. Tell me: How much money did you just make, and what is the very first thing you are going to spend it on?"
+"No worries, that is exactly what CRM software and calculators are for! ||| Let's keep it simple. Imagine you just closed a $3,000 deal, and your commission is 10%. Tell me: How much money did you just make, and what is the very first thing you are going to spend it on?"
 
 GUARDRAIL — If the transcript is unclear or ambiguous: Default to the NO branch.
 
@@ -7081,19 +7084,24 @@ GUARDRAIL — If the transcript is unclear or ambiguous: Default to the NO branc
 The user just attempted a math challenge. Generate a response that:
 1. Opens with ONE brief warm acknowledgment sentence of their math effort (e.g. "Great job crunching those numbers! Let's leave the math behind us now.")
    — GUARDRAIL: If the user refused math or gave a clearly wrong/confused answer, open with "Math on the spot is tough, no worries!" instead.
-2. Immediately follows with EXACTLY this question:
+2. Separates the acknowledgment from the question using the exact delimiter `|||`.
+3. Immediately follows with EXACTLY this question:
 "Think about the most charismatic leader or salesperson you have ever worked with—someone who naturally inspires others. Hit record and tell me: What is the one specific trait they have that makes people instantly trust them? And how do you feel when you talk to them?"
    — GUARDRAIL: If the transcript reveals the user has never met a charismatic leader, append: " That's fair! Think of a public figure, a famous CEO, or anyone you admire from afar. What makes them so trustworthy?"
 
 === STAGE 3: FAMILIARITY FACTOR (Turn 4) ===
 The user just described a charismatic leader. Generate a response that:
 1. Opens with ONE brief validation sentence (e.g. "That's a great observation. It is definitely easier to buy from someone we naturally trust.")
-2. Immediately follows with EXACTLY this question:
+2. Separates the validation from the question using the exact delimiter `|||`.
+3. Immediately follows with EXACTLY this question:
 "Let's wrap up this baseline mapping with something a bit more fun. Think about your favorite movie, show, or book. If you could bring one fictional character with you to the toughest negotiation of your life to help you close the deal, who would it be and why? Hit record and tell me how they would handle a difficult client."
    — GUARDRAIL: If the transcript reveals the user doesn't watch movies or read books, append: " No problem at all. Just think of any historical figure or famous personality you'd want by your side in a tough negotiation. Who would it be and why?"
 
 === GLOBAL GUARDRAILS ===
-- Return ONLY the question/prompt text. No labels, no stage headers, no meta-commentary.
+- FORMATTING RULE: Separate your acknowledgment/validation from your question using the exact delimiter `|||`.
+  Example: `Math on the spot is tough, no worries! ||| Think about the most charismatic leader or salesperson you have ever worked with...`
+  Turn 1 has no acknowledgment prefix — return ONLY the question text with no `|||`.
+- Return ONLY the formatted text. No labels, no stage headers, no meta-commentary.
 - NEVER correct the user's math. NEVER force them to retry. NEVER argue.
 - Your primary goal: keep them speaking to collect their vocal baseline.
 - If any answer is unexpected, validate gracefully and advance the sequence.
@@ -7104,18 +7112,18 @@ The user just described a charismatic leader. Generate a response that:
 _EBCP_FALLBACKS: dict[int, str] = {
     1: "Are you good at math?",
     2: (
-        "No worries, that is exactly what CRM software and calculators are for! "
+        "No worries, that is exactly what CRM software and calculators are for! ||| "
         "Let's keep it simple. Imagine you just closed a $3,000 deal, and your commission is 10%. "
         "Tell me: How much money did you just make, and what is the very first thing you are going to spend it on?"
     ),
     3: (
-        "Great effort! Let's leave the math behind us now. "
+        "Great effort! Let's leave the math behind us now. ||| "
         "Think about the most charismatic leader or salesperson you have ever worked with—someone who naturally inspires others. "
         "Hit record and tell me: What is the one specific trait they have that makes people instantly trust them? "
         "And how do you feel when you talk to them?"
     ),
     4: (
-        "That's a great observation. It is definitely easier to buy from someone we naturally trust. "
+        "That's a great observation. It is definitely easier to buy from someone we naturally trust. ||| "
         "Let's wrap up this baseline mapping with something a bit more fun. "
         "Think about your favorite movie, show, or book. If you could bring one fictional character with you to the "
         "toughest negotiation of your life to help you close the deal, who would it be and why? "
@@ -7213,37 +7221,51 @@ def _generate_snippet_follow_up_question(
             system_prompt = (
                 "You are a charisma coaching assistant. "
                 "An admin coach has flagged this audio snippet as a HIGH-CHARISMA moment "
-                "and left a comment about it. Your task is to write ONE powerful follow-up "
-                "question that helps the user deconstruct WHY they felt so confident in that "
-                "moment and how they can deliberately replicate that energy (e.g. in cold calls, "
-                "presentations, or negotiations). "
+                "and left a comment about it. Your task is to write a response that:\n"
+                "1. Opens with ONE brief warm acknowledgment of this specific moment (1 sentence)\n"
+                "2. Follows with ONE powerful question that helps the user deconstruct WHY they "
+                "felt so confident and how they can deliberately replicate that energy "
+                "(e.g. in cold calls, presentations, or negotiations)\n"
                 "The question must be:\n"
                 "- Specific to the transcript content (reference what they actually said)\n"
                 "- High-energy and motivating in tone\n"
                 "- Focused on replicability (how to trigger this state on demand)\n"
                 "- No longer than 2 sentences\n"
-                "Return ONLY the question text, nothing else."
+                "FORMATTING RULE: Separate your acknowledgment from your question using the exact "
+                "delimiter `|||`. "
+                "Example: `That energy you described is magnetic! ||| What specific conditions were "
+                "present that day that let you access that state so easily?`\n"
+                "Return ONLY these two parts separated by `|||`, nothing else."
             )
         elif snippet_type == "stress":
             system_prompt = (
                 "You are a performance coaching assistant. "
                 "An admin coach has flagged this audio snippet as a HIGH-STRESS or VOCAL-STRAIN moment "
-                "and left a comment. Your task is to write ONE targeted follow-up question that "
-                "addresses the cognitive load or emotional trigger that caused the vocal stress spike. "
+                "and left a comment. Your task is to write a response that:\n"
+                "1. Opens with ONE brief empathetic acknowledgment of this specific moment (1 sentence)\n"
+                "2. Follows with ONE targeted question that addresses the cognitive load or emotional "
+                "trigger that caused the vocal stress spike\n"
                 "The question must be:\n"
                 "- Specific to what the speaker was saying in the transcript\n"
                 "- Empathetic but direct (not dismissive)\n"
                 "- Focused on uncovering the root cause of that specific stress moment\n"
                 "- No longer than 2 sentences\n"
-                "Return ONLY the question text, nothing else."
+                "FORMATTING RULE: Separate your acknowledgment from your question using the exact "
+                "delimiter `|||`. "
+                "Example: `That moment sounds genuinely tough. ||| What was running through your mind "
+                "right before your voice shifted?`\n"
+                "Return ONLY these two parts separated by `|||`, nothing else."
             )
         else:
             # unlabeled or unknown — generic deepening question
             system_prompt = (
                 "You are a voice coaching assistant. "
-                "Based on this audio transcript and the coach's comment, write ONE insightful "
-                "follow-up question to help the speaker reflect on that specific moment. "
-                "Return ONLY the question text, nothing else."
+                "Based on this audio transcript and the coach's comment, write a response that:\n"
+                "1. Opens with ONE brief acknowledgment of the moment (1 sentence)\n"
+                "2. Follows with ONE insightful question to help the speaker reflect on it\n"
+                "FORMATTING RULE: Separate your acknowledgment from your question using the exact "
+                "delimiter `|||`. "
+                "Return ONLY these two parts separated by `|||`, nothing else."
             )
 
         user_content = (
@@ -7303,9 +7325,14 @@ def _generate_llm_question(
                         "The user clicked 'Understand your charisma' on a past recording. "
                         f"In that recording, they said: '{transcript}'. "
                         f"The human coach commented: '{admin_comment}'. "
-                        "Acknowledge this specific moment and ask ONE deepening question to help them deconstruct "
-                        "WHY they felt so confident and how they can replicate it. "
-                        "Return ONLY the question text, nothing else."
+                        "Respond with two parts: (1) a brief warm acknowledgment of this specific moment, "
+                        "then (2) ONE deepening question to help them deconstruct WHY they felt so confident "
+                        "and how they can replicate it. "
+                        "FORMATTING RULE: Separate the acknowledgment from the question using the exact "
+                        "delimiter `|||`. "
+                        "Example: `That moment you described is exactly where charisma lives! ||| "
+                        "What were you thinking about right before you said that?` "
+                        "Return ONLY these two parts separated by `|||`, nothing else."
                     )
                 else:
                     system_prompt = (
@@ -7313,9 +7340,14 @@ def _generate_llm_question(
                         "The user clicked 'Release your stress'. "
                         f"In that recording, they said: '{transcript}'. "
                         f"The human coach commented: '{admin_comment}'. "
-                        "Acknowledge this moment with empathy and ask ONE deepening question to help them identify "
-                        "the root cause of that specific stress spike. "
-                        "Return ONLY the question text, nothing else."
+                        "Respond with two parts: (1) a brief empathetic acknowledgment of this moment, "
+                        "then (2) ONE deepening question to help them identify the root cause of that "
+                        "specific stress spike. "
+                        "FORMATTING RULE: Separate the acknowledgment from the question using the exact "
+                        "delimiter `|||`. "
+                        "Example: `That sounds like a genuinely pressured moment. ||| "
+                        "What was the thing you most feared would go wrong right then?` "
+                        "Return ONLY these two parts separated by `|||`, nothing else."
                     )
 
                 response = service.client.chat.completions.create(
