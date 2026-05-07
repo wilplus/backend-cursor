@@ -1362,6 +1362,54 @@ class DatabaseService:
             logger.warning("v2_get_latest_published_session_for_user failed: %s", e)
             return None
 
+    def v2_get_user_session_timeline(self, user_id: str) -> List[dict]:
+        """All sessions for a user, oldest-first, with non-skipped snippet counts.
+
+        Backs the no-id /results "Voice Journey" overview. Each row is the
+        minimum the timeline needs:
+          - id, created_at, raw status (lifecycle), results_published_at
+          - snippet_count: count of non-skipped charisma_snippets
+        """
+        sessions_resp = (
+            self.client.table("v2_sessions")
+            .select("id, created_at, status, results_published_at")
+            .eq("user_id", user_id)
+            .order("created_at", desc=False)
+            .execute()
+        )
+        sessions = sessions_resp.data or []
+        if not sessions:
+            return []
+
+        session_ids = [s["id"] for s in sessions]
+        snippet_counts: dict = {sid: 0 for sid in session_ids}
+        try:
+            snippets_resp = (
+                self.client.table("charisma_snippets")
+                .select("session_id")
+                .in_("session_id", session_ids)
+                .eq("user_id", user_id)
+                .eq("is_skipped", False)
+                .execute()
+            )
+            for row in snippets_resp.data or []:
+                sid = row.get("session_id")
+                if sid in snippet_counts:
+                    snippet_counts[sid] += 1
+        except Exception as e:
+            logger.warning("v2_get_user_session_timeline: snippet count query failed: %s", e)
+
+        return [
+            {
+                "id": str(s["id"]),
+                "created_at": s.get("created_at"),
+                "lifecycle_status": s.get("status"),
+                "results_published_at": s.get("results_published_at"),
+                "snippet_count": snippet_counts.get(s["id"], 0),
+            }
+            for s in sessions
+        ]
+
     def v2_delete_stress_snippets_for_recording(self, recording_id: str) -> int:
         """Delete previously generated snippet candidates for one recording."""
         result = (

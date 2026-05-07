@@ -7499,6 +7499,59 @@ def v2_user_get_latest_results():
         return jsonify({"code": "V2_ERROR", "error": "Failed to fetch latest results"}), 500
 
 
+@v2_bp.route("/user/results/me", methods=["GET"])
+@require_auth
+def v2_user_get_my_results_timeline():
+    """Voice Journey timeline for the authenticated user.
+
+    Drives the no-id /results overview. Returns every session the user has
+    ever started (oldest-first) with a derived per-session status and the
+    count of published snippets. Top-level status is the rollup the page
+    uses to choose between empty / processing / completed views.
+
+    Per-session status:
+      - results_published_at IS NOT NULL → "ready"
+      - otherwise                         → "processing"
+
+    Top-level status:
+      - 0 sessions             → "processing" (page maps total_sessions==0 to empty state)
+      - >=1 sessions, 0 ready  → "processing"
+      - >=1 ready              → "completed"
+    """
+    try:
+        user_id = request.user_id
+        rows = db.v2_get_user_session_timeline(user_id)
+
+        sessions_payload = []
+        ready_count = 0
+        for row in rows:
+            is_published = bool(row.get("results_published_at"))
+            if is_published:
+                ready_count += 1
+            sessions_payload.append({
+                "id": row["id"],
+                "created_at": row.get("created_at"),
+                "status": "ready" if is_published else "processing",
+                "lifecycle_status": row.get("lifecycle_status"),
+                "results_published_at": row.get("results_published_at"),
+                "snippet_count": row.get("snippet_count", 0),
+            })
+
+        top_status = "completed" if ready_count > 0 else "processing"
+
+        return jsonify({
+            "status": top_status,
+            "current_session_index": ready_count,
+            "total_sessions": len(sessions_payload),
+            "sessions": sessions_payload,
+        }), 200
+
+    except Exception as e:
+        logger.error("user/results/me failed: %s", e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to fetch user results timeline"}), 500
+
+
 @v2_bp.route("/user/chat/first-question", methods=["POST"])
 @require_auth
 def v2_user_chat_first_question():
