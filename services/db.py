@@ -5509,5 +5509,46 @@ class DatabaseService:
             logger.error(f"get_session_with_global_metrics failed: {e}")
             return None
 
+    # ------------------------------------------------------------------
+    # Legal consent
+    # ------------------------------------------------------------------
+
+    def record_user_consent(
+        self,
+        user_id: str,
+        terms_version: str = "1.0",
+        ip_address: str | None = None,
+        user_agent: str | None = None,
+    ) -> dict | None:
+        """Insert a consent record into user_consents.
+
+        Uses upsert with on-conflict-do-nothing so that calling this twice
+        for the same (user_id, terms_version) pair is safe and idempotent —
+        the original timestamp is preserved.
+
+        Returns the stored row dict, or None on failure (non-fatal: the
+        Supabase user has already been created by the time this is called,
+        so a logging failure must not block registration).
+        """
+        try:
+            from datetime import timezone, datetime
+            now_utc = datetime.now(timezone.utc).isoformat()
+            row = {
+                "user_id": user_id,
+                "terms_version": terms_version,
+                "terms_accepted_at": now_utc,
+                "ip_address": ip_address,
+                "user_agent": user_agent,
+            }
+            result = (
+                self.client.table("user_consents")
+                .upsert(row, on_conflict="user_id,terms_version", ignore_duplicates=True)
+                .execute()
+            )
+            return result.data[0] if result.data else row
+        except Exception as e:
+            logger.error(f"record_user_consent failed for user_id={user_id}: {e}")
+            return None
+
 # Singleton instance
 db = DatabaseService()
