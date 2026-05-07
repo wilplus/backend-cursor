@@ -7871,147 +7871,215 @@ def v2_public_interview_upload_answer():
         return jsonify({"code": "V2_ERROR", "error": "Upload failed"}), 500
 
 
-@v2_bp.route("/public/shaky-voice/claim", methods=["POST"])
-@require_auth
-def v2_public_shaky_voice_claim():
-    """Bind an unclaimed funnel session to the authenticated user and run analysis.
+def _merge_anonymous_session_into_user(session_id: str, user_id: str):
+    """Bind an unclaimed anonymous session to an authenticated user.
+
+    Shared between two endpoints that differ only in payload field name:
+      * POST /v2/public/shaky-voice/claim   (cold-start funnel, field=guest_session_id)
+      * POST /v2/auth/merge-session         (post-OAuth merge, field=anonymous_session_id)
 
     Idempotent semantics:
-      * Unclaimed → claim, enqueue pipeline, return 200 + session_id.
-      * Already claimed by same user → return 200 + session_id (no-op).
-      * Already claimed by other user → return 409 ALREADY_CLAIMED.
-      * Not found / expired → return 404 / 410.
+      * Unclaimed                          → claim, enqueue pipeline, 200 + session_id
+      * Already claimed by same user       → 200 + session_id (no-op)
+      * Already claimed by different user  → 409 ALREADY_CLAIMED
+      * Not found                          → 404 GUEST_SESSION_NOT_FOUND
+      * Older than TTL                     → 410 GUEST_SESSION_EXPIRED
+
+    Side effects on a successful first claim:
+      * UPDATE v2_sessions SET user_id, guest_claimed_at, status, ...
+      * UPDATE recording row's user_id
+      * Enqueue recording_1_job (analysis pipeline)
+      * Extract initial charisma snippets
+      * Re-stamp interview snippets with real user_id
+
+    Returns:
+        (response_body: dict, http_status: int)
     """
     from services.recording_1_job import enqueue_recording_1_job
 
     if not getattr(config, "GUEST_FUNNEL_ENABLED", False):
-        return jsonify({"code": "GUEST_FUNNEL_DISABLED", "error": "Guest funnel is disabled"}), 503
+        return ({"code": "GUEST_FUNNEL_DISABLED", "error": "Guest funnel is disabled"}, 503)
 
+    # Probe the session's current state first so we can return precise error
+    # codes. The atomic claim happens in v2_claim_guest_session.
+    existing = db.v2_get_session_by_id(session_id)
+    if not existing:
+        return ({
+            "code": "GUEST_SESSION_NOT_FOUND",
+            "error": "That trial recording was not found. It may have expired — please record again.",
+        }, 404)
+
+    existing_user = existing.get("user_id")
+    if existing_user and str(existing_user) != str(user_id):
+        return ({
+            "code": "ALREADY_CLAIMED",
+            "error": "This trial recording was already claimed by a different account.",
+        }, 409)
+    if existing_user and str(existing_user) == str(user_id):
+        # Idempotent re-claim: return the bound session_id without re-enqueueing.
+        return ({
+            "status": "ok",
+            "session_id": str(existing.get("id")),
+            "analysis_status": "already_claimed",
+        }, 200)
+
+    # TTL guard: even if the cleanup job hasn't run yet, refuse to claim
+    # a row older than the configured window.
+    try:
+        from datetime import datetime, timedelta, timezone
+        ttl_hours = int(getattr(config, "GUEST_FUNNEL_TTL_HOURS", 24) or 24)
+        created_raw = existing.get("created_at")
+        if created_raw:
+            if isinstance(created_raw, str):
+                created_dt = datetime.fromisoformat(created_raw.replace("Z", "+00:00"))
+            else:
+                created_dt = created_raw
+            if created_dt.tzinfo is None:
+                created_dt = created_dt.replace(tzinfo=timezone.utc)
+            if datetime.now(timezone.utc) - created_dt > timedelta(hours=ttl_hours):
+                return ({
+                    "code": "GUEST_SESSION_EXPIRED",
+                    "error": "Your trial recording expired. Please record again.",
+                }, 410)
+    except Exception as ttl_err:
+        logger.warning("guest_funnel: ttl check failed (continuing): %s", ttl_err)
+
+    claimed = db.v2_claim_guest_session(session_id, user_id)
+    if not claimed:
+        # Race lost: someone (or the same user via duplicate request) just
+        # bound the row between our probe and the atomic update.
+        after = db.v2_get_session_by_id(session_id) or {}
+        after_user = after.get("user_id")
+        if after_user and str(after_user) == str(user_id):
+            return ({
+                "status": "ok",
+                "session_id": str(after.get("id")),
+                "analysis_status": "already_claimed",
+            }, 200)
+        return ({
+            "code": "ALREADY_CLAIMED",
+            "error": "This trial recording was already claimed.",
+        }, 409)
+
+    # Pipeline: same recording_1_job that handles live student recordings
+    # and admin calibration uploads. The job will auto-complete because
+    # v2_claim_guest_session stamps self_rating_submitted_at.
+    rec_id = claimed.get("recording_1_id")
+    rec_row = db.get_recording(rec_id, user_id) if rec_id else None
+    storage_path = (rec_row or {}).get("storage_path")
+    duration_seconds = (rec_row or {}).get("duration_seconds")
+    if rec_id and storage_path:
+        try:
+            enqueue_recording_1_job(
+                str(claimed.get("id")),
+                str(rec_id),
+                storage_path,
+                user_id,
+                duration_seconds,
+            )
+        except Exception as q_err:
+            logger.warning("guest_funnel: enqueue_recording_1_job failed: %s", q_err, exc_info=True)
+            # Don't unwind the claim — the row is bound; admin can retry.
+
+        # Extract charisma snippets from the recording (MVP: entire recording as one snippet)
+        try:
+            from services.snippet_extraction import extract_recording_snippets
+            extract_recording_snippets(
+                session_id=str(claimed.get("id")),
+                user_id=str(user_id),
+                recording_id=str(rec_id),
+                recording_path=storage_path,
+                duration_seconds=duration_seconds,
+            )
+        except Exception as snippet_err:
+            logger.warning("guest_funnel: extract_recording_snippets failed: %s", snippet_err, exc_info=True)
+            # Non-fatal: admin can manually extract snippets later if needed
+
+    # Update all interview snippets to point to the real user
+    try:
+        updated_count = db.update_snippets_user_id(session_id, str(user_id))
+        if updated_count:
+            logger.info("guest_funnel: updated %d snippet user_ids", updated_count)
+    except Exception as uid_err:
+        logger.warning("guest_funnel: update_snippets_user_id failed: %s", uid_err)
+
+    logger.info(
+        "guest_funnel: claim ok user_id=%s session_id=%s recording_id=%s",
+        user_id, session_id, rec_id,
+    )
+    return ({
+        "status": "ok",
+        "session_id": str(claimed.get("id")),
+        "analysis_status": "queued",
+    }, 200)
+
+
+@v2_bp.route("/public/shaky-voice/claim", methods=["POST"])
+@require_auth
+def v2_public_shaky_voice_claim():
+    """Bind an unclaimed funnel session (cold-start funnel) to the authenticated user.
+
+    Thin wrapper around `_merge_anonymous_session_into_user`. Accepts
+    `guest_session_id` for backwards compatibility with the existing funnel
+    client. New OAuth callers should prefer POST /v2/auth/merge-session.
+    """
     try:
         body = request.get_json(silent=True) or {}
         guest_session_id = (body.get("guest_session_id") or "").strip()
         if not _is_valid_uuid(guest_session_id):
             return jsonify({"code": "INVALID_INPUT", "error": "guest_session_id must be a UUID"}), 400
 
-        user_id = request.user_id
-
-        # Probe the session's current state first so we can return precise error
-        # codes. The atomic claim happens in v2_claim_guest_session.
-        existing = db.v2_get_session_by_id(guest_session_id)
-        if not existing:
-            return jsonify({
-                "code": "GUEST_SESSION_NOT_FOUND",
-                "error": "That trial recording was not found. It may have expired — please record again.",
-            }), 404
-
-        existing_user = existing.get("user_id")
-        if existing_user and str(existing_user) != str(user_id):
-            return jsonify({
-                "code": "ALREADY_CLAIMED",
-                "error": "This trial recording was already claimed by a different account.",
-            }), 409
-        if existing_user and str(existing_user) == str(user_id):
-            # Idempotent re-claim: return the bound session_id without re-enqueueing.
-            return jsonify({
-                "status": "ok",
-                "session_id": str(existing.get("id")),
-                "analysis_status": "already_claimed",
-            }), 200
-
-        # TTL guard: even if the cleanup job hasn't run yet, refuse to claim
-        # a row older than the configured window.
-        try:
-            from datetime import datetime, timedelta, timezone
-            ttl_hours = int(getattr(config, "GUEST_FUNNEL_TTL_HOURS", 24) or 24)
-            created_raw = existing.get("created_at")
-            if created_raw:
-                if isinstance(created_raw, str):
-                    created_dt = datetime.fromisoformat(created_raw.replace("Z", "+00:00"))
-                else:
-                    created_dt = created_raw
-                if created_dt.tzinfo is None:
-                    created_dt = created_dt.replace(tzinfo=timezone.utc)
-                if datetime.now(timezone.utc) - created_dt > timedelta(hours=ttl_hours):
-                    return jsonify({
-                        "code": "GUEST_SESSION_EXPIRED",
-                        "error": "Your trial recording expired. Please record again.",
-                    }), 410
-        except Exception as ttl_err:
-            logger.warning("guest_funnel: ttl check failed (continuing): %s", ttl_err)
-
-        claimed = db.v2_claim_guest_session(guest_session_id, user_id)
-        if not claimed:
-            # Race lost: someone (or the same user via duplicate request) just
-            # bound the row between our probe and the atomic update.
-            after = db.v2_get_session_by_id(guest_session_id) or {}
-            after_user = after.get("user_id")
-            if after_user and str(after_user) == str(user_id):
-                return jsonify({
-                    "status": "ok",
-                    "session_id": str(after.get("id")),
-                    "analysis_status": "already_claimed",
-                }), 200
-            return jsonify({
-                "code": "ALREADY_CLAIMED",
-                "error": "This trial recording was already claimed.",
-            }), 409
-
-        # Pipeline: same recording_1_job that handles live student recordings
-        # and admin calibration uploads. The job will auto-complete because
-        # v2_claim_guest_session stamps self_rating_submitted_at.
-        rec_id = claimed.get("recording_1_id")
-        rec_row = db.get_recording(rec_id, user_id) if rec_id else None
-        storage_path = (rec_row or {}).get("storage_path")
-        duration_seconds = (rec_row or {}).get("duration_seconds")
-        if rec_id and storage_path:
-            try:
-                enqueue_recording_1_job(
-                    str(claimed.get("id")),
-                    str(rec_id),
-                    storage_path,
-                    user_id,
-                    duration_seconds,
-                )
-            except Exception as q_err:
-                logger.warning("guest_funnel: enqueue_recording_1_job failed: %s", q_err, exc_info=True)
-                # Don't unwind the claim — the row is bound; admin can retry.
-
-            # Extract charisma snippets from the recording (MVP: entire recording as one snippet)
-            try:
-                from services.snippet_extraction import extract_recording_snippets
-                extract_recording_snippets(
-                    session_id=str(claimed.get("id")),
-                    user_id=str(user_id),
-                    recording_id=str(rec_id),
-                    recording_path=storage_path,
-                    duration_seconds=duration_seconds,
-                )
-            except Exception as snippet_err:
-                logger.warning("guest_funnel: extract_recording_snippets failed: %s", snippet_err, exc_info=True)
-                # Non-fatal: admin can manually extract snippets later if needed
-
-        # Update all interview snippets to point to the real user
-        try:
-            updated_count = db.update_snippets_user_id(guest_session_id, str(user_id))
-            if updated_count:
-                logger.info("guest_funnel: updated %d snippet user_ids", updated_count)
-        except Exception as uid_err:
-            logger.warning("guest_funnel: update_snippets_user_id failed: %s", uid_err)
-
-        logger.info(
-            "guest_funnel: claim ok user_id=%s guest_session_id=%s recording_id=%s",
-            user_id, guest_session_id, rec_id,
-        )
-        return jsonify({
-            "status": "ok",
-            "session_id": str(claimed.get("id")),
-            "analysis_status": "queued",
-        }), 200
+        response, status = _merge_anonymous_session_into_user(guest_session_id, request.user_id)
+        return jsonify(response), status
 
     except Exception as e:
         logger.error("guest_funnel: claim failed: %s", e, exc_info=True)
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR", "error": "Claim failed"}), 500
+
+
+@v2_bp.route("/auth/merge-session", methods=["POST"])
+@require_auth
+def v2_auth_merge_session():
+    """Merge an anonymous cold-start session into the authenticated user account.
+
+    Built for the LinkedIn OAuth flow: the user records anonymously, the
+    frontend stashes the `anonymous_session_id`, the OAuth roundtrip
+    establishes a session, and the frontend posts the stashed id here so
+    the recording, messages, audio files, and snippets are linked to the
+    new (or returning) user.
+
+    Auth: required (Bearer token from Supabase session).
+
+    Body: { "anonymous_session_id": "<uuid>" }
+
+    Responses:
+        200 { status, session_id, analysis_status: "queued" | "already_claimed" }
+        400 INVALID_INPUT          — id missing / not a UUID
+        404 GUEST_SESSION_NOT_FOUND — id doesn't match any session
+        409 ALREADY_CLAIMED        — session belongs to a different user
+        410 GUEST_SESSION_EXPIRED  — older than GUEST_FUNNEL_TTL_HOURS
+        500 V2_ERROR               — unexpected server error
+        503 GUEST_FUNNEL_DISABLED  — feature flag off
+    """
+    try:
+        body = request.get_json(silent=True) or {}
+        anonymous_session_id = (body.get("anonymous_session_id") or "").strip()
+        if not _is_valid_uuid(anonymous_session_id):
+            return jsonify({
+                "code": "INVALID_INPUT",
+                "error": "anonymous_session_id must be a UUID",
+            }), 400
+
+        response, status = _merge_anonymous_session_into_user(
+            anonymous_session_id, request.user_id
+        )
+        return jsonify(response), status
+
+    except Exception as e:
+        logger.error("merge_session: merge failed: %s", e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Session merge failed"}), 500
 
 
 @v2_bp.route("/admin/funnel/afterwards-video", methods=["POST"])
