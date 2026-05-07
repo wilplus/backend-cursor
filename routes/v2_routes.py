@@ -7001,6 +7001,135 @@ RULES:
 
 _CONTEXTUAL_INTENTS = {"charisma", "stress"}
 
+# ---------------------------------------------------------------------------
+# EBCP Baseline Mapping — system prompt & generation
+# ---------------------------------------------------------------------------
+
+_EBCP_BASELINE_SYSTEM_PROMPT = """You are an EBCP Baseline Mapping coach conducting a structured 3-stage voice assessment for sales professionals.
+You MUST follow this EXACT sequential flow based on the turn number provided in the user message.
+
+=== STAGE 1: FRUSTRATION FACTOR (Turn 2) ===
+The user was just asked: "Are you good at math?"
+Analyze their transcript to determine confidence level.
+
+IF the user indicated YES (confident, positive, eager — "yes", "love it", "pretty good", "great", "sure"):
+Return EXACTLY:
+"Love the confidence! Let's test that sales brain. Imagine you have a prospect on the phone. They want to buy 15 software licenses at $100 each, but they are demanding a 20% discount to close today. Walk me through your calculation out loud: What is the final deal size, and how would you deliver that number to the client?"
+
+IF the user indicated NO (hesitant, unsure, negative — "no", "not really", "bad at math", "hate math", "not good"):
+Return EXACTLY:
+"No worries, that is exactly what CRM software and calculators are for! Let's keep it simple. Imagine you just closed a $3,000 deal, and your commission is 10%. Tell me: How much money did you just make, and what is the very first thing you are going to spend it on?"
+
+GUARDRAIL — If the transcript is unclear or ambiguous: Default to the NO branch.
+
+=== STAGE 2: RELIEF FACTOR (Turn 3) ===
+The user just attempted a math challenge. Generate a response that:
+1. Opens with ONE brief warm acknowledgment sentence of their math effort (e.g. "Great job crunching those numbers! Let's leave the math behind us now.")
+   — GUARDRAIL: If the user refused math or gave a clearly wrong/confused answer, open with "Math on the spot is tough, no worries!" instead.
+2. Immediately follows with EXACTLY this question:
+"Think about the most charismatic leader or salesperson you have ever worked with—someone who naturally inspires others. Hit record and tell me: What is the one specific trait they have that makes people instantly trust them? And how do you feel when you talk to them?"
+   — GUARDRAIL: If the transcript reveals the user has never met a charismatic leader, append: " That's fair! Think of a public figure, a famous CEO, or anyone you admire from afar. What makes them so trustworthy?"
+
+=== STAGE 3: FAMILIARITY FACTOR (Turn 4) ===
+The user just described a charismatic leader. Generate a response that:
+1. Opens with ONE brief validation sentence (e.g. "That's a great observation. It is definitely easier to buy from someone we naturally trust.")
+2. Immediately follows with EXACTLY this question:
+"Let's wrap up this baseline mapping with something a bit more fun. Think about your favorite movie, show, or book. If you could bring one fictional character with you to the toughest negotiation of your life to help you close the deal, who would it be and why? Hit record and tell me how they would handle a difficult client."
+   — GUARDRAIL: If the transcript reveals the user doesn't watch movies or read books, append: " No problem at all. Just think of any historical figure or famous personality you'd want by your side in a tough negotiation. Who would it be and why?"
+
+=== GLOBAL GUARDRAILS ===
+- Return ONLY the question/prompt text. No labels, no stage headers, no meta-commentary.
+- NEVER correct the user's math. NEVER force them to retry. NEVER argue.
+- Your primary goal: keep them speaking to collect their vocal baseline.
+- If any answer is unexpected, validate gracefully and advance the sequence.
+- Low temperature: be deterministic and stick closely to the exact wording specified above.
+"""
+
+# Deterministic fallbacks when the LLM fails — keyed by turn_number
+_EBCP_FALLBACKS: dict[int, str] = {
+    1: "Are you good at math?",
+    2: (
+        "No worries, that is exactly what CRM software and calculators are for! "
+        "Let's keep it simple. Imagine you just closed a $3,000 deal, and your commission is 10%. "
+        "Tell me: How much money did you just make, and what is the very first thing you are going to spend it on?"
+    ),
+    3: (
+        "Great effort! Let's leave the math behind us now. "
+        "Think about the most charismatic leader or salesperson you have ever worked with—someone who naturally inspires others. "
+        "Hit record and tell me: What is the one specific trait they have that makes people instantly trust them? "
+        "And how do you feel when you talk to them?"
+    ),
+    4: (
+        "That's a great observation. It is definitely easier to buy from someone we naturally trust. "
+        "Let's wrap up this baseline mapping with something a bit more fun. "
+        "Think about your favorite movie, show, or book. If you could bring one fictional character with you to the "
+        "toughest negotiation of your life to help you close the deal, who would it be and why? "
+        "Hit record and tell me how they would handle a difficult client."
+    ),
+}
+
+
+def _generate_ebcp_question(
+    turn_number: int,
+    previous_turns: list | None = None,
+) -> str | None:
+    """Generate the EBCP Baseline Mapping question for turns 1-4.
+
+    Turn 1 → fixed opener ("Are you good at math?"), no LLM needed.
+    Turn 2 → Math branching: LLM reads turn-1 transcript for YES/NO.
+    Turn 3 → Relief/Charisma: LLM acknowledges math effort, asks about charismatic leader.
+    Turn 4 → Familiarity: LLM acknowledges charisma response, asks about fictional character.
+    """
+    # Turn 1: hardcoded EBCP opener — no LLM call needed
+    if turn_number == 1:
+        return _EBCP_FALLBACKS[1]
+
+    # Turns 2-4: ask the LLM with EBCP system prompt + conversation history
+    if turn_number > 4:
+        return None  # caller should fall through to regular charisma/stress questions
+
+    try:
+        from services.openai_service import OpenAIService
+        service = OpenAIService()
+        if not service.client:
+            return None
+
+        messages: list[dict] = [{"role": "system", "content": _EBCP_BASELINE_SYSTEM_PROMPT}]
+
+        # Build conversation history so the LLM sees prior turns & transcripts
+        if previous_turns:
+            for turn in previous_turns:
+                q = (turn.get("question") or "").strip()
+                t = (turn.get("transcript") or "").strip()
+                if q:
+                    messages.append({"role": "assistant", "content": q})
+                if t:
+                    messages.append({"role": "user", "content": t})
+
+        messages.append({
+            "role": "user",
+            "content": (
+                f"This is turn {turn_number}. "
+                "Generate the appropriate EBCP stage response based on the conversation history above. "
+                "Return ONLY the question text, nothing else."
+            ),
+        })
+
+        response = service.client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=messages,
+            max_tokens=300,
+            temperature=0.25,  # Low temperature: deterministic EBCP wording
+        )
+        question = response.choices[0].message.content.strip()
+        if question.startswith('"') and question.endswith('"'):
+            question = question[1:-1]
+        return question if question else None
+
+    except Exception as e:
+        logger.warning("_generate_ebcp_question(turn=%d) failed (will use fallback): %s", turn_number, e)
+        return None
+
 
 def _generate_llm_question(
     turn_number: int,
@@ -7274,13 +7403,13 @@ def v2_user_chat_first_question():
 
 @v2_bp.route("/public/interview/next-question", methods=["POST"])
 def v2_public_interview_next_question():
-    """Return the next interview question, alternating charisma/stress tone.
+    """Return the next interview question.
 
-    Input:  { turn_number: int, user_id?: str, previous_turns?: [...] }
-    Output: { question: str, tone: "charisma"|"stress", turn_number: int, source: "llm"|"fallback" }
+    Turns 1-4: EBCP Baseline Mapping (Frustration → Relief → Familiarity factors).
+    Turns 5+:  Open-ended charisma/stress alternating questions.
 
-    Turn 1 → charisma, Turn 2 → stress, Turn 3 → charisma, etc.
-    Tries LLM generation first; falls back to curated question bank.
+    Input:  { turn_number: int, user_id?: str, previous_turns?: [{question, transcript?}] }
+    Output: { question: str, tone: "charisma"|"stress"|"ebcp", turn_number: int, source: str }
     """
     try:
         body = request.get_json(silent=True) or {}
@@ -7288,14 +7417,30 @@ def v2_public_interview_next_question():
         if turn_number < 1:
             turn_number = 1
 
-        # Alternate: odd turns = charisma, even turns = stress
-        tone = "charisma" if turn_number % 2 == 1 else "stress"
-
-        # Optional context for LLM
         user_id = (body.get("user_id") or "").strip() or None
         previous_turns = body.get("previous_turns") or None
 
-        # Try LLM generation
+        # ── EBCP Baseline Mapping: turns 1-4 ─────────────────────────────────
+        if turn_number <= 4:
+            question = _generate_ebcp_question(turn_number, previous_turns)
+            if not question:
+                question = _EBCP_FALLBACKS.get(turn_number, _EBCP_FALLBACKS[4])
+                source = "ebcp_fallback"
+            else:
+                source = "ebcp_llm"
+
+            return jsonify({
+                "question": question,
+                "tone": "charisma",  # EBCP turns register as charisma
+                "turn_number": turn_number,
+                "source": source,
+            }), 200
+
+        # ── Regular charisma/stress alternation: turns 5+ ────────────────────
+        # Offset so turn 5 is the first post-EBCP turn (charisma), turn 6 is stress, etc.
+        post_ebcp_index = turn_number - 4  # 1, 2, 3 …
+        tone = "charisma" if post_ebcp_index % 2 == 1 else "stress"
+
         question = _generate_llm_question(
             turn_number=turn_number,
             tone=tone,
@@ -7304,10 +7449,9 @@ def v2_public_interview_next_question():
         )
         source = "llm" if question else "fallback"
 
-        # Fallback to curated bank
         if not question:
             pool = _INTERVIEW_QUESTIONS_FALLBACK[tone]
-            question_index = ((turn_number - 1) // 2) % len(pool)
+            question_index = ((post_ebcp_index - 1) // 2) % len(pool)
             question = pool[question_index]
 
         return jsonify({
@@ -7437,6 +7581,22 @@ def v2_public_interview_upload_answer():
         except Exception as m_err:
             logger.warning("interview: metrics failed (non-fatal): %s", m_err)
 
+        # Transcribe audio via Whisper — used for EBCP branching logic in next-question
+        transcript_text = None
+        try:
+            import io as _io
+            from services.openai_service import OpenAIService as _OAI
+            _ai = _OAI()
+            if _ai.client:
+                _result = _ai.transcribe_audio(
+                    audio_file=_io.BytesIO(file_bytes),
+                    filename=original_name,
+                    content_type=content_type if content_type != "application/octet-stream" else None,
+                )
+                transcript_text = (_result.get("text") or "").strip() or None
+        except Exception as t_err:
+            logger.warning("interview: transcription failed (non-fatal): %s", t_err)
+
         # Generate public URL for the snippet audio
         snippet_url = ""
         try:
@@ -7453,6 +7613,7 @@ def v2_public_interview_upload_answer():
         snippet_dict = None
         try:
             snippet_payload = {
+                "transcript_text": transcript_text,  # Whisper output (may be None)
                 "session_id": guest_session_id,
                 "recording_id": recording_id,
                 "start_offset_ms": 0,
@@ -7516,6 +7677,7 @@ def v2_public_interview_upload_answer():
             "duration_seconds": duration_seconds,
             "total_session_duration_seconds": round(total_duration, 1),
             "metrics": snippet_metrics,
+            "transcript": transcript_text,  # Whisper transcript for EBCP branching
         }), 201
 
     except Exception as e:
