@@ -8619,6 +8619,81 @@ def v2_admin_get_user_timeline(user_id):
         return jsonify({"code": "V2_ERROR", "error": "Failed to fetch timeline"}), 500
 
 
+@v2_bp.route("/admin/turns/<turn_id>/question", methods=["PATCH"])
+@require_admin
+def v2_admin_patch_turn_question(turn_id):
+    """Human-in-the-Loop: edit the bot question text for a single interview turn.
+
+    A "turn" is a charisma_snippet row — its `question_text` field stores the
+    AI question that was shown to the user before they recorded that answer.
+    Editing it retunes the transcript display and improves LLM context on
+    subsequent sessions (because `previous_turns[].question` is passed to GPT).
+
+    Path param: turn_id — the UUID primary key of the charisma_snippets row.
+    Body: { "text": "corrected question text" }
+    Returns: { status, turn_id, turn } — turn shaped like the timeline object.
+    """
+    try:
+        if not _is_valid_uuid(turn_id):
+            return jsonify({"code": "INVALID_INPUT", "error": "turn_id must be a valid UUID"}), 400
+
+        body = request.get_json(silent=True) or {}
+        new_text = (body.get("text") or "").strip()
+        if not new_text:
+            return jsonify({"code": "INVALID_INPUT", "error": "text is required and must not be empty"}), 400
+        if len(new_text) > 5000:
+            return jsonify({"code": "INVALID_INPUT", "error": "text must be at most 5 000 characters"}), 400
+
+        updated = db.update_turn_question_text(turn_id, new_text)
+        if updated is None:
+            return jsonify({"code": "NOT_FOUND", "error": "Turn not found"}), 404
+
+        # Shape the response like the timeline endpoint so the admin UI can
+        # drop the updated object directly into its local state.
+        turn = {
+            "turn_number": updated.get("turn_number"),
+            "question": {
+                "text": updated.get("question_text"),
+                "tone": updated.get("question_tone"),
+            },
+            "answer": {
+                "snippet_id": updated.get("id"),
+                "audio_url": updated.get("audio_segment_path"),
+                "duration_ms": updated.get("duration_ms"),
+                "start_time": updated.get("start_time"),
+                "end_time": updated.get("end_time"),
+                "is_skipped": updated.get("is_skipped", False),
+            },
+            "metrics": {
+                "wpm": updated.get("wpm"),
+                "fillers": updated.get("fillers"),
+                "pause_ms": updated.get("pause_ms"),
+                "dynamic_db": updated.get("dynamic_db"),
+                "pitch_center": updated.get("pitch_center"),
+                "energy": updated.get("energy"),
+            },
+            "admin": {
+                "comment": updated.get("admin_comment"),
+                "snippet_type": updated.get("snippet_type"),
+                "follow_up_question": updated.get("follow_up_question"),
+            },
+            "created_at": updated.get("created_at"),
+            "updated_at": updated.get("updated_at"),
+        }
+
+        logger.info("admin HITL: edited question text for turn_id=%s", turn_id)
+        return jsonify({
+            "status": "ok",
+            "turn_id": turn_id,
+            "turn": turn,
+        }), 200
+
+    except Exception as e:
+        logger.error("admin: patch turn question failed turn_id=%s: %s", turn_id, e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to update turn"}), 500
+
+
 ############################################################################
 # Admin: Compute global session metrics + AI alignment
 ############################################################################

@@ -5469,6 +5469,29 @@ class DatabaseService:
             logger.error(f"get_user_interview_timeline failed: {e}")
             return []
 
+    def update_turn_question_text(self, turn_id: str, text: str) -> Optional[dict]:
+        """Update the question_text on a charisma_snippets row (admin HITL edit).
+
+        A "turn" is a charisma_snippet row — each interview answer audio chunk
+        stores the question asked in that turn as `question_text`.
+
+        Returns the updated row, or None if not found.
+        """
+        try:
+            result = (
+                self.client.table("charisma_snippets")
+                .update({
+                    "question_text": text,
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                })
+                .eq("id", turn_id)
+                .execute()
+            )
+            return result.data[0] if result.data else None
+        except Exception as e:
+            logger.error("update_turn_question_text failed for turn_id=%s: %s", turn_id, e)
+            return None
+
     def get_session_with_global_metrics(self, session_id: str) -> Optional[dict]:
         """Get a session row including global metrics and AI alignment."""
         try:
