@@ -7083,10 +7083,10 @@ GUARDRAIL — If the transcript is unclear or ambiguous: Default to the NO branc
 === STAGE 2: RELIEF FACTOR (Turn 3) ===
 The user just attempted a math challenge. Generate a response that:
 1. Opens with ONE brief warm acknowledgment sentence of their math effort (e.g. "Great job crunching those numbers! Let's leave the math behind us now.")
-   — GUARDRAIL: If the user refused math or gave a clearly wrong/confused answer, open with "Math on the spot is tough, no worries!" instead.
+   — GUARDRAIL: If the user refused math or gave a clearly wrong/confused answer, open with "OK, thanks for that a lot! Let's move on!" instead.
 2. Separates the acknowledgment from the question using the exact delimiter `|||`.
-3. Immediately follows with EXACTLY this question:
-"Think about the most charismatic leader or salesperson you have ever worked with—someone who naturally inspires others. Hit record and tell me: What is the one specific trait they have that makes people instantly trust them? And how do you feel when you talk to them?"
+3. Immediately follows with EXACTLY this question (note the `|||` between the setup sentence and the "Hit record" prompt — keep it):
+"Think about the most charismatic leader or salesperson you have ever worked with—someone who naturally inspires others. ||| Hit record and tell me: What is the one specific trait they have that makes people instantly trust them? And how do you feel when you talk to them?"
    — GUARDRAIL: If the transcript reveals the user has never met a charismatic leader, append: " That's fair! Think of a public figure, a famous CEO, or anyone you admire from afar. What makes them so trustworthy?"
 
 === STAGE 3: FAMILIARITY FACTOR (Turn 4) ===
@@ -7099,7 +7099,7 @@ The user just described a charismatic leader. Generate a response that:
 
 === GLOBAL GUARDRAILS ===
 - FORMATTING RULE: Separate your acknowledgment/validation from your question using the exact delimiter `|||`.
-  Example: `Math on the spot is tough, no worries! ||| Think about the most charismatic leader or salesperson you have ever worked with...`
+  Example: `OK, thanks for that a lot! Let's move on! ||| Think about the most charismatic leader or salesperson you have ever worked with...`
   Turn 1 has no acknowledgment prefix — return ONLY the question text with no `|||`.
 - Return ONLY the formatted text. No labels, no stage headers, no meta-commentary.
 - NEVER correct the user's math. NEVER force them to retry. NEVER argue.
@@ -7118,7 +7118,7 @@ _EBCP_FALLBACKS: dict[int, str] = {
     ),
     3: (
         "Great effort! Let's leave the math behind us now. ||| "
-        "Think about the most charismatic leader or salesperson you have ever worked with—someone who naturally inspires others. "
+        "Think about the most charismatic leader or salesperson you have ever worked with—someone who naturally inspires others. ||| "
         "Hit record and tell me: What is the one specific trait they have that makes people instantly trust them? "
         "And how do you feel when you talk to them?"
     ),
@@ -7497,6 +7497,264 @@ def v2_user_get_latest_results():
         logger.error("user/results/latest failed: %s", e, exc_info=True)
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR", "error": "Failed to fetch latest results"}), 500
+
+
+def _derive_session_status(session: dict, snippet_counts: dict) -> str:
+    """Compute a single user-facing status string from the raw session row.
+
+    Status values map to the frontend routing decisions on /results:
+        no_session     — user has zero sessions (caller handles)
+        processing     — recording exists but ML hasn't extracted snippets yet
+        pending_review — snippets exist, admin still labelling / writing comments
+        completed      — admin has clicked "Publish Results" (results_published_at set)
+        error          — recording_1_processing_status is "failed"
+
+    The transitions are deliberately one-way for the user-facing surface:
+    pending_review never goes back to processing once snippets exist; if the
+    admin un-publishes a session we leave it as pending_review.
+    """
+    if session.get("results_published_at"):
+        return "completed"
+
+    rec_status = (session.get("recording_1_processing_status") or "").lower()
+    if rec_status == "failed":
+        return "error"
+
+    total_snippets = snippet_counts.get("total", 0)
+    if total_snippets > 0:
+        # Snippets have been extracted; we're now waiting on the admin
+        # human-in-the-loop review. Note: we don't gate on
+        # `with_admin_comment > 0` here because a session can be
+        # legitimately published with no comments (rare but allowed).
+        return "pending_review"
+
+    # No snippets yet — still in the ML extraction / processing phase.
+    return "processing"
+
+
+@v2_bp.route("/user/sessions/current", methods=["GET"])
+@require_auth
+def v2_user_sessions_current():
+    """Rich session-state surface for post-auth routing decisions.
+
+    Replaces the narrow /user/results/latest by exposing every column the
+    frontend needs to decide where to send a freshly-authenticated user
+    (record screen, processing/waiting screen, results page) without
+    multiple round-trips.
+
+    Returns 200 with:
+        {
+            "has_session": bool,
+            "session_id": str | None,
+            "status": "no_session" | "processing" | "pending_review"
+                    | "completed" | "error",
+            "has_recordings": bool,
+            "turn_count": int,             # interview turns answered (rec'd snippets)
+            "snippet_count": int,          # total non-skipped snippets
+            "published_snippet_count": int,# snippets the admin has commented on
+            "results_published_at": str | None,
+            "recording_processing_status": str | None,  # raw ML pipeline state
+            "created_at": str | None
+        }
+
+    The endpoint NEVER returns mock data. When the user has no sessions the
+    response is { has_session: false, status: "no_session", ...zeros }.
+    """
+    try:
+        user_id = request.user_id
+        session = db.v2_get_latest_session_for_user(user_id)
+
+        if not session:
+            return jsonify({
+                "has_session": False,
+                "session_id": None,
+                "status": "no_session",
+                "has_recordings": False,
+                "turn_count": 0,
+                "snippet_count": 0,
+                "published_snippet_count": 0,
+                "results_published_at": None,
+                "recording_processing_status": None,
+                "created_at": None,
+            }), 200
+
+        session_id = str(session.get("id"))
+        snippet_counts = db.v2_count_session_snippets(session_id)
+        status = _derive_session_status(session, snippet_counts)
+
+        # `has_recordings` is true iff the session has a bound recording.
+        # We check the recording_1 link rather than counting rows on the
+        # recordings table — same answer, one fewer query.
+        has_recordings = bool(session.get("recording_1_id"))
+
+        return jsonify({
+            "has_session": True,
+            "session_id": session_id,
+            "status": status,
+            "has_recordings": has_recordings,
+            # Each charisma_snippet row corresponds to one interview turn
+            # the user actually answered, so total snippet count == turn count.
+            "turn_count": snippet_counts.get("total", 0),
+            "snippet_count": snippet_counts.get("total", 0),
+            "published_snippet_count": snippet_counts.get("with_admin_comment", 0),
+            "results_published_at": session.get("results_published_at"),
+            "recording_processing_status": session.get("recording_1_processing_status"),
+            "created_at": session.get("created_at"),
+        }), 200
+
+    except Exception as e:
+        logger.error("user/sessions/current failed: %s", e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to fetch session state"}), 500
+
+
+def _format_duration(duration_ms: int | None) -> str:
+    """Format a duration in ms as M:SS for the timeline UI (e.g. 12000 -> '0:12')."""
+    if not duration_ms or duration_ms < 0:
+        return "0:00"
+    total_seconds = int(duration_ms // 1000)
+    minutes = total_seconds // 60
+    seconds = total_seconds % 60
+    return f"{minutes}:{seconds:02d}"
+
+
+def _snippet_to_journey_card(snippet: dict) -> dict:
+    """Map a charisma_snippets row into the `Snippet` shape the
+    /results Voice-Journey page expects (lib/results/types.ts).
+
+    The page's existing typed interface is the contract; we transform once
+    here on the backend so the frontend can drop its mock without inventing
+    a translation layer.
+    """
+    coach_label = (snippet.get("coach_label") or "").lower()
+    snippet_type = "charisma" if coach_label == "charisma" else "stress"
+
+    badge_label = (
+        "Charisma Moment" if snippet_type == "charisma" else "Stress Pattern"
+    )
+    cta_label = (
+        "Understand your charisma"
+        if snippet_type == "charisma"
+        else "Work on this stress"
+    )
+
+    # Build the metrics list — we omit any metric whose value is null so
+    # the UI accordion doesn't render empty rows.
+    metrics_src = snippet.get("metrics") or {}
+    raw_metrics = [
+        ("WPM", metrics_src.get("wpm"), lambda v: f"{int(v)}"),
+        ("Pitch", metrics_src.get("pitch_center"), lambda v: f"{int(v)} Hz"),
+        ("Pause", metrics_src.get("pause_ms"), lambda v: f"{(v / 1000):.1f}s"),
+        ("Energy", metrics_src.get("energy"), lambda v: f"{int(v * 100)}%"),
+        ("Fillers", metrics_src.get("fillers"), lambda v: f"{int(v)}"),
+        ("Dynamic dB", metrics_src.get("dynamic_db"), lambda v: f"{int(v)}"),
+    ]
+    metrics: list[dict] = []
+    for label, value, fmt in raw_metrics:
+        if value is None:
+            continue
+        try:
+            metrics.append({"label": label, "value": fmt(value)})
+        except Exception:
+            # Defensive — never let a formatting error blank out a snippet.
+            continue
+
+    return {
+        "id": str(snippet.get("id")),
+        "type": snippet_type,
+        "duration": _format_duration(snippet.get("duration_ms")),
+        "badgeLabel": badge_label,
+        "insight": snippet.get("admin_comment") or "",
+        "ctaLabel": cta_label,
+        "metrics": metrics,
+        "audioUrl": snippet.get("audio_url"),
+    }
+
+
+@v2_bp.route("/user/results/me", methods=["GET"])
+@require_auth
+def v2_user_results_me():
+    """The Voice-Journey timeline: every published session for the user.
+
+    Returns the `VoiceJourneyPayload` shape consumed by /results/page.tsx
+    (lib/results/types.ts). The endpoint NEVER returns mock data — when
+    the user has no published sessions the response is a status-aware
+    empty payload the page can render as a "record your first session"
+    state.
+
+    Response (200):
+        {
+            "status": "processing" | "ready" | "completed",
+            "current_session_index": int,   # 1-based
+            "total_sessions": int,
+            "sessions": [
+                {
+                    "id": str,
+                    "title": str,            # "Session N: Baseline Audio"
+                    "snippets": [Snippet]    # see _snippet_to_journey_card
+                }
+            ],
+            "ai_summary": str | None
+        }
+
+    Status semantics:
+        completed — at least one published session, snippets to show
+        ready     — alias for completed (kept for legacy frontend code)
+        processing — user has a session but admin hasn't published yet
+                    (or no session at all — the page handles both with the
+                    same waiting screen)
+    """
+    try:
+        user_id = request.user_id
+        sessions = db.v2_get_published_sessions_for_user(user_id)
+
+        if not sessions:
+            # Determine whether they have ANY session (in flight) so the
+            # frontend can pick between the founder-video waiting screen
+            # and the "record your first session" empty state.
+            latest = db.v2_get_latest_session_for_user(user_id)
+            return jsonify({
+                "status": "processing" if latest else "processing",
+                "current_session_index": 0,
+                "total_sessions": 0,
+                "sessions": [],
+                "ai_summary": None,
+            }), 200
+
+        total = len(sessions)
+        journey_sessions = []
+        for idx, session in enumerate(sessions):
+            session_id = str(session.get("id"))
+            raw_snippets = db.v2_get_results_snippets_for_session(session_id, user_id)
+            # Show every published snippet (admin_comment present). The
+            # admin can hide individual snippets by toggling is_skipped,
+            # which the DB query already filters out.
+            visible = [s for s in raw_snippets if s.get("admin_comment")]
+            journey_sessions.append({
+                "id": session_id,
+                # Index oldest → newest for the user-facing label so
+                # "Session 1" is their baseline.
+                "title": f"Session {total - idx}: " + (
+                    "Baseline Audio" if (total - idx) == 1 else "Follow-up"
+                ),
+                "snippets": [_snippet_to_journey_card(s) for s in visible],
+            })
+
+        # The UI shows newest first, but its progress tracker is 1-based
+        # over the total count of published sessions. current = total here
+        # because we always surface the most recent on top.
+        return jsonify({
+            "status": "completed",
+            "current_session_index": total,
+            "total_sessions": total,
+            "sessions": journey_sessions,
+            "ai_summary": (sessions[0] or {}).get("ai_task_alignment_comment"),
+        }), 200
+
+    except Exception as e:
+        logger.error("user/results/me failed: %s", e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to fetch voice journey"}), 500
 
 
 @v2_bp.route("/user/chat/first-question", methods=["POST"])

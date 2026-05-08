@@ -1362,6 +1362,84 @@ class DatabaseService:
             logger.warning("v2_get_latest_published_session_for_user failed: %s", e)
             return None
 
+    def v2_get_latest_session_for_user(self, user_id: str) -> Optional[dict]:
+        """Return the most recent session for a user (any status, including
+        unfinished / unpublished). Used by /v2/user/sessions/current to expose
+        the full state machine to the frontend so it can route correctly.
+        """
+        try:
+            result = (
+                self.client.table("v2_sessions")
+                .select("*")
+                .eq("user_id", user_id)
+                .order("created_at", desc=True)
+                .limit(1)
+                .execute()
+            )
+            return result.data[0] if result.data else None
+        except Exception as e:
+            logger.warning("v2_get_latest_session_for_user failed: %s", e)
+            return None
+
+    def v2_count_session_snippets(self, session_id: str) -> dict:
+        """Count snippets for a session, split by review state.
+
+        Returns:
+            {
+                "total": int,             # all non-skipped snippets
+                "with_admin_comment": int # admin has reviewed and written feedback
+            }
+
+        The "with_admin_comment" count is what powers the pending_review →
+        completed transition in the routing-status endpoint: a session has
+        snippets ready to show only when at least one has admin_comment set.
+        """
+        try:
+            total_res = (
+                self.client.table("charisma_snippets")
+                .select("id", count="exact")
+                .eq("session_id", session_id)
+                .eq("is_skipped", False)
+                .execute()
+            )
+            total = int(total_res.count or 0)
+
+            with_comment_res = (
+                self.client.table("charisma_snippets")
+                .select("id", count="exact")
+                .eq("session_id", session_id)
+                .eq("is_skipped", False)
+                .not_("admin_comment", "is", None)
+                .execute()
+            )
+            with_comment = int(with_comment_res.count or 0)
+
+            return {"total": total, "with_admin_comment": with_comment}
+        except Exception as e:
+            logger.warning("v2_count_session_snippets failed: %s", e)
+            return {"total": 0, "with_admin_comment": 0}
+
+    def v2_get_published_sessions_for_user(self, user_id: str) -> List[dict]:
+        """All published sessions for a user, newest first.
+
+        Powers the /v2/user/results/me Voice-Journey timeline. Returns an
+        empty list when the user has nothing published — the endpoint must
+        NEVER fall back to mock data.
+        """
+        try:
+            result = (
+                self.client.table("v2_sessions")
+                .select("*")
+                .eq("user_id", user_id)
+                .not_("results_published_at", "is", None)
+                .order("results_published_at", desc=True)
+                .execute()
+            )
+            return result.data or []
+        except Exception as e:
+            logger.warning("v2_get_published_sessions_for_user failed: %s", e)
+            return []
+
     def v2_delete_stress_snippets_for_recording(self, recording_id: str) -> int:
         """Delete previously generated snippet candidates for one recording."""
         result = (
