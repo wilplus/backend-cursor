@@ -7931,6 +7931,52 @@ def v2_coaching_start():
         return jsonify({"code": "V2_ERROR", "error": "Failed to start coaching"}), 500
 
 
+@v2_bp.route("/coaching/<coaching_id>", methods=["GET"])
+@require_auth
+def v2_coaching_get(coaching_id):
+    """Re-hydrate a coaching session — survive reloads of /coach/[id].
+
+    Returns the same shape as /coaching/start except with current_stage
+    and trial_session_id reflecting any progress already made.
+
+    404 GET semantics: NOT_FOUND covers both "doesn't exist" and "owned
+    by someone else" so we don't leak coaching id existence.
+    """
+    try:
+        if not _is_valid_uuid(coaching_id):
+            return jsonify({"code": "INVALID_INPUT", "error": "coaching_id must be a UUID"}), 400
+        user_id = request.user_id
+        coaching = db.get_coaching_session(coaching_id, user_id)
+        if not coaching:
+            return jsonify({
+                "code": "COACHING_NOT_FOUND",
+                "error": "Coaching session not found.",
+            }), 404
+        snippet = db.get_snippet_by_id(coaching.get("source_snippet_id"), user_id=user_id)
+        if not snippet:
+            return jsonify({
+                "code": "SNIPPET_NOT_FOUND",
+                "error": "Source snippet missing.",
+            }), 404
+        return jsonify({
+            "coaching_id": str(coaching.get("id")),
+            "intent": coaching.get("intent"),
+            "current_stage": coaching.get("current_stage"),
+            "awareness_message": (snippet.get("admin_comment") or "").strip(),
+            "source_snippet": {
+                "id": str(snippet.get("id")),
+                "transcript": snippet.get("transcript"),
+                "audio_url": snippet.get("audio_url"),
+                "duration_ms": snippet.get("duration_ms"),
+            },
+            "trial_session_id": coaching.get("trial_session_id"),
+        }), 200
+    except Exception as e:
+        logger.error("coaching/<id> failed: %s", e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to load coaching"}), 500
+
+
 @v2_bp.route("/coaching/turn", methods=["POST"])
 @require_auth
 def v2_coaching_turn():
