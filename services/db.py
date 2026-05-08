@@ -1393,27 +1393,29 @@ class DatabaseService:
         The "with_admin_comment" count is what powers the pending_review →
         completed transition in the routing-status endpoint: a session has
         snippets ready to show only when at least one has admin_comment set.
+
+        Implementation note: we fetch the rows and count in Python rather
+        than using `select("id", count="exact")`. The supabase-py SDK
+        version on the deployed runtime treats the count kwarg differently
+        from what the docs suggest and threw
+        "'SyncSelectRequestBuilder' object is not callable" on .execute().
+        Volume here is tiny (snippets-per-session), so the cost of
+        materialising the rows is negligible and the code is bulletproof
+        across SDK versions.
         """
         try:
-            total_res = (
+            result = (
                 self.client.table("charisma_snippets")
-                .select("id", count="exact")
+                .select("id, admin_comment, is_skipped")
                 .eq("session_id", session_id)
-                .eq("is_skipped", False)
                 .execute()
             )
-            total = int(total_res.count or 0)
-
-            with_comment_res = (
-                self.client.table("charisma_snippets")
-                .select("id", count="exact")
-                .eq("session_id", session_id)
-                .eq("is_skipped", False)
-                .not_("admin_comment", "is", None)
-                .execute()
+            rows = result.data or []
+            non_skipped = [r for r in rows if not r.get("is_skipped")]
+            total = len(non_skipped)
+            with_comment = sum(
+                1 for r in non_skipped if r.get("admin_comment")
             )
-            with_comment = int(with_comment_res.count or 0)
-
             return {"total": total, "with_admin_comment": with_comment}
         except Exception as e:
             logger.warning("v2_count_session_snippets failed: %s", e)
