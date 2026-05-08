@@ -8516,9 +8516,16 @@ def v2_public_interview_upload_answer():
             logger.warning("interview: storage upload failed: %s", upload_err, exc_info=True)
             return jsonify({"code": "UPLOAD_FAILED", "error": "Failed to store audio"}), 500
 
-        # Create a recording_1 row on first turn (so claim flow works)
-        recording_id = str(uuid.uuid4())
+        # Create a recording_1 row on first turn (so claim flow works).
+        # On subsequent turns we reuse the SAME recording_id by reading it
+        # back from the session — generating a fresh uuid on every call
+        # caused a silent foreign-key violation on the snippet insert
+        # (charisma_snippets.recording_id references recordings.id) and
+        # was the reason only turn 1 ever showed up in the admin
+        # timeline. Multiple turns conceptually share one parent
+        # recording on the guest interview path.
         if is_first_turn:
+            recording_id = str(uuid.uuid4())
             rec_payload = {
                 "id": recording_id,
                 "user_id": None,
@@ -8545,6 +8552,30 @@ def v2_public_interview_upload_answer():
                 db.v2_set_guest_session_recording(guest_session_id, recording_id)
             except Exception:
                 pass
+        else:
+            # Re-use the session's bound recording. If for any reason it
+            # isn't bound, fail loudly rather than insert a snippet with
+            # a dangling FK that would silently crash the row.
+            recording_id = None
+            try:
+                existing_session = db.v2_get_session_by_id(guest_session_id)
+                if existing_session:
+                    recording_id = existing_session.get("recording_1_id")
+            except Exception as lookup_err:
+                logger.warning(
+                    "interview: turn %d session lookup failed: %s",
+                    turn_number, lookup_err,
+                )
+            if not recording_id:
+                logger.error(
+                    "interview: turn %d for session %s has no parent recording — "
+                    "first-turn create must have failed; refusing snippet insert",
+                    turn_number, guest_session_id,
+                )
+                return jsonify({
+                    "code": "RECORDING_MISSING",
+                    "error": "Parent recording is missing — record turn 1 again.",
+                }), 409
 
         # Read optional question_text from form (so we can store it with the snippet)
         question_text = (form.get("question_text") or "").strip() or None
@@ -8589,7 +8620,14 @@ def v2_public_interview_upload_answer():
         snippet_dict = None
         try:
             snippet_payload = {
-                "transcript_text": transcript_text,  # Whisper output (may be None)
+                # Schema canonical column is `transcript` (see
+                # migrations/add_charisma_snippet_pipeline.sql); using
+                # the legacy `transcript_text` here caused PostgREST
+                # PGRST204 ("unknown column") on every insert, dropping
+                # us into the fallback path that strips the turn_number
+                # / question_text / transcript metadata — which is why
+                # the admin timeline rendered "No interview turns".
+                "transcript": transcript_text,  # Whisper output (may be None)
                 "session_id": guest_session_id,
                 "recording_id": recording_id,
                 "start_offset_ms": 0,
