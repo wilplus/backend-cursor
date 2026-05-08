@@ -1419,6 +1419,95 @@ class DatabaseService:
             logger.warning("v2_count_session_snippets failed: %s", e)
             return {"total": 0, "with_admin_comment": 0}
 
+    # ------------------------------------------------------------------
+    # Coaching sessions — micro-coaching loop on a single snippet
+    # ------------------------------------------------------------------
+
+    def create_coaching_session(
+        self,
+        user_id: str,
+        source_snippet_id: str,
+        intent: str,
+    ) -> Optional[dict]:
+        """Insert one coaching_sessions row in the awareness stage.
+
+        Caller must have already validated:
+          - the snippet exists and the user owns it
+          - the snippet has admin_comment populated (otherwise there is
+            nothing to serve as the awareness "first bubble")
+          - intent ∈ {'stress', 'charisma'}
+
+        Returns the inserted row dict, or None on failure.
+        """
+        try:
+            row = {
+                "user_id": user_id,
+                "source_snippet_id": source_snippet_id,
+                "intent": intent,
+                "current_stage": "awareness",
+            }
+            result = (
+                self.client.table("coaching_sessions")
+                .insert(row)
+                .execute()
+            )
+            return result.data[0] if result.data else None
+        except Exception as e:
+            logger.error("create_coaching_session failed: %s", e)
+            return None
+
+    def get_coaching_session(self, coaching_id: str, user_id: str) -> Optional[dict]:
+        """Owner-scoped fetch of one coaching session."""
+        try:
+            result = (
+                self.client.table("coaching_sessions")
+                .select("*")
+                .eq("id", coaching_id)
+                .eq("user_id", user_id)
+                .limit(1)
+                .execute()
+            )
+            return result.data[0] if result.data else None
+        except Exception as e:
+            logger.warning("get_coaching_session failed: %s", e)
+            return None
+
+    def update_coaching_stage(
+        self,
+        coaching_id: str,
+        new_stage: str,
+        trial_session_id: Optional[str] = None,
+    ) -> Optional[dict]:
+        """Advance a coaching session's stage. Forward-only (never reverses).
+
+        When new_stage == 'complete', also stamps completed_at and binds
+        trial_session_id.
+        """
+        try:
+            payload: dict = {
+                "current_stage": new_stage,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }
+            if new_stage == "complete":
+                payload["completed_at"] = datetime.now(timezone.utc).isoformat()
+            if trial_session_id:
+                payload["trial_session_id"] = trial_session_id
+
+            result = (
+                self.client.table("coaching_sessions")
+                .update(payload)
+                .eq("id", coaching_id)
+                .execute()
+            )
+            return result.data[0] if result.data else None
+        except Exception as e:
+            logger.error("update_coaching_stage failed: %s", e)
+            return None
+
+    # ------------------------------------------------------------------
+    # End coaching sessions
+    # ------------------------------------------------------------------
+
     def v2_get_published_sessions_for_user(self, user_id: str) -> List[dict]:
         """All published sessions for a user, newest first.
 
@@ -5214,6 +5303,26 @@ class DatabaseService:
         except Exception as e:
             logger.error(f"get_snippets_with_comments_by_session failed: {e}")
             return []
+
+    def get_snippet_by_id(
+        self,
+        snippet_id: str,
+        user_id: str | None = None,
+    ) -> dict | None:
+        """Owner-scoped fetch of one charisma_snippets row by id.
+
+        When user_id is provided we filter on it for ownership; pass None
+        from admin contexts that need to read any snippet.
+        """
+        try:
+            q = self.client.table("charisma_snippets").select("*").eq("id", snippet_id)
+            if user_id:
+                q = q.eq("user_id", user_id)
+            result = q.limit(1).execute()
+            return result.data[0] if result.data else None
+        except Exception as e:
+            logger.warning(f"get_snippet_by_id failed: {e}")
+            return None
 
     def update_snippet_comment(
         self,

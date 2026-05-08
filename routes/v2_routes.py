@@ -7757,6 +7757,427 @@ def v2_user_results_me():
         return jsonify({"code": "V2_ERROR", "error": "Failed to fetch voice journey"}), 500
 
 
+# ─────────────────────────────────────────────────────────────────────
+# Coaching loop — micro-coaching session on a single snippet
+#
+# v1: stress intent only, two technical stages (awareness → trial) with
+# the reframe baked into the awareness prompt. The flow:
+#
+#   /v2/coaching/start
+#     POST { snippet_id }
+#     → reads charisma_snippets row, validates ownership + admin_comment,
+#       creates coaching_sessions row, returns the admin_comment as the
+#       awareness "first bubble" so the frontend can render it instantly.
+#
+#   /v2/coaching/turn
+#     POST { coaching_id, user_message }
+#     → calls the LLM with _STRESS_AWARENESS_SYSTEM_PROMPT, parses the
+#       acknowledgment ||| question shape and the [ADVANCE] tag,
+#       advances stage to 'trial' if [ADVANCE] is present.
+#
+#   /v2/coaching/trial-recording
+#     POST multipart audio_file + coaching_id
+#     → uploads audio, creates v2_session + recording rows, runs the
+#       existing extract_recording_snippets pipeline, marks the
+#       coaching_session 'complete' and binds trial_session_id.
+# ─────────────────────────────────────────────────────────────────────
+
+
+_STRESS_AWARENESS_SYSTEM_PROMPT = """You are a charisma coach inside a voice-first sales training app. The user just clicked a snippet where their voice tightened under pressure. Their admin coach already showed them the exact moment. You have ONE turn to do three things, then disappear:
+
+  1. Validate the feeling in HALF a sentence.
+  2. Reframe the body's response in ONE sentence: a racing heart and tight voice are NOT panic — they are adrenaline routing blood to the brain so it thinks faster (Brooks 2014, anxiety reappraisal).
+  3. Set up a re-performance of the EXACT same scenario in ONE sentence. The user's mic is about to unlock; they get ONE shot to deliver the line again with the new mindset.
+
+═══════════════════════════════════════════════════════════════════════
+OUTPUT FORMAT — STRICT. Violations break the UI.
+═══════════════════════════════════════════════════════════════════════
+
+Return ONE message in this exact shape:
+
+    <half-sentence validation + one-sentence reframe> ||| <one-sentence scenario setup ending with the prospect's exact stress-trigger line in quotes> [ADVANCE]
+
+The frontend splits on `|||` into two chat bubbles. `[ADVANCE]` is stripped server-side and flips the UI into record-only trial mode.
+
+═══════════════════════════════════════════════════════════════════════
+HARD CONSTRAINTS
+═══════════════════════════════════════════════════════════════════════
+
+DO:
+  • Speak like a calm, sharp coach. Direct. No fluff. No emojis.
+  • End the second bubble by quoting the prospect's exact line back so the user re-performs AGAINST it.
+  • Always end the message with `[ADVANCE]` on its own.
+
+NEVER:
+  • Write more than 3 sentences total across both bubbles.
+  • Use the words: anxiety, panic, nerves, "calm down", "take a deep breath", "don't worry".
+  • Ask the user a question. The mic unlocks — their next move is to perform, not to type a thoughtful answer.
+  • Lecture, explain mechanics, or give them WHAT to say.
+  • Open with filler ("Got it." / "Sure." / "Okay so."). Land cold.
+
+═══════════════════════════════════════════════════════════════════════
+EXAMPLE
+═══════════════════════════════════════════════════════════════════════
+
+admin_comment:    "Your voice tightened when the prospect said 'too expensive'."
+user_transcript:  "Yeah, our pricing is a bit out of budget for most companies."
+user_first_reply: "I was scared they'd walk. Lost two deals this month already."
+
+OUTPUT:
+That fear is real, and that pressure in your chest is fuel — adrenaline routing blood to your brain so you think faster, not slower. ||| Mic on. The prospect just said: "Honestly, that's way out of our budget." Land it. [ADVANCE]
+"""
+
+
+def _parse_coach_turn(raw: str) -> tuple[str, str, bool]:
+    """Parse the LLM's coaching turn output into UI-ready bubbles.
+
+    Returns (bubble_1, bubble_2, advance) — strips the [ADVANCE] tag and
+    splits on `|||`. Degrades gracefully on missing delimiter / tag rather
+    than crashing the whole loop.
+    """
+    if not isinstance(raw, str):
+        return ("", "", False)
+    advance = "[ADVANCE]" in raw
+    cleaned = raw.replace("[ADVANCE]", "").strip()
+    parts = [p.strip() for p in cleaned.split("|||", 1)]
+    if len(parts) == 1:
+        return (parts[0], "", advance)
+    return (parts[0], parts[1], advance)
+
+
+def _coach_intent_for_snippet(snippet: dict) -> str:
+    """Map a snippet's coach_label to a coaching intent.
+
+    Stress intent fires on 'no_charisma' or anything not flagged as
+    explicit charisma. v1 only ships the stress flow so anything that
+    isn't 'charisma' falls through to 'stress'.
+    """
+    label = (snippet.get("coach_label") or "").lower()
+    if label == "charisma":
+        return "charisma"
+    return "stress"
+
+
+@v2_bp.route("/coaching/start", methods=["POST"])
+@require_auth
+def v2_coaching_start():
+    """Open a micro-coaching session on one snippet.
+
+    Body: { "snippet_id": "<uuid>" }
+
+    Validates the user owns the snippet and that the admin has left a
+    comment (no comment ⇒ nothing to coach about). Creates a
+    coaching_sessions row in the awareness stage.
+
+    Response (200):
+        {
+            "coaching_id": str,
+            "intent": "stress" | "charisma",
+            "awareness_message": str,   # admin_comment, served verbatim
+            "source_snippet": {
+                "id": str, "transcript": str | None, "audio_url": str | None,
+                "duration_ms": int | None
+            }
+        }
+    """
+    try:
+        body = request.get_json(silent=True) or {}
+        snippet_id = (body.get("snippet_id") or "").strip()
+        if not _is_valid_uuid(snippet_id):
+            return jsonify({"code": "INVALID_INPUT", "error": "snippet_id must be a UUID"}), 400
+
+        user_id = request.user_id
+        snippet = db.get_snippet_by_id(snippet_id, user_id=user_id)
+        if not snippet:
+            return jsonify({
+                "code": "SNIPPET_NOT_FOUND",
+                "error": "Snippet not found or not yours.",
+            }), 404
+
+        admin_comment = (snippet.get("admin_comment") or "").strip()
+        if not admin_comment:
+            return jsonify({
+                "code": "SNIPPET_NOT_COACHABLE",
+                "error": "This snippet has no coach comment yet — nothing to coach on.",
+            }), 422
+
+        intent = _coach_intent_for_snippet(snippet)
+        # v1 ships stress only; charisma intent is a future iteration.
+        if intent != "stress":
+            return jsonify({
+                "code": "INTENT_NOT_SUPPORTED",
+                "error": "Only stress coaching is available right now.",
+            }), 422
+
+        coaching = db.create_coaching_session(user_id, snippet_id, intent)
+        if not coaching:
+            return jsonify({"code": "V2_ERROR", "error": "Failed to start coaching"}), 500
+
+        return jsonify({
+            "coaching_id": str(coaching.get("id")),
+            "intent": intent,
+            "awareness_message": admin_comment,
+            "source_snippet": {
+                "id": str(snippet.get("id")),
+                "transcript": snippet.get("transcript"),
+                "audio_url": snippet.get("audio_url"),
+                "duration_ms": snippet.get("duration_ms"),
+            },
+        }), 200
+
+    except Exception as e:
+        logger.error("coaching/start failed: %s", e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to start coaching"}), 500
+
+
+@v2_bp.route("/coaching/turn", methods=["POST"])
+@require_auth
+def v2_coaching_turn():
+    """Run one LLM turn of the awareness stage.
+
+    Body: { "coaching_id": "<uuid>", "user_message": "..." }
+
+    Loads the coaching session + source snippet, builds the awareness
+    prompt with admin_comment / transcript / user_message context, calls
+    GPT, parses the `|||` + `[ADVANCE]` shape, and advances to the trial
+    stage when [ADVANCE] is present.
+
+    Response (200):
+        {
+            "bubbles": [str, str],   # second may be empty if model
+                                     # forgot the delimiter
+            "advance": bool,
+            "next_stage": "awareness" | "trial" | "complete"
+        }
+    """
+    try:
+        body = request.get_json(silent=True) or {}
+        coaching_id = (body.get("coaching_id") or "").strip()
+        user_message = (body.get("user_message") or "").strip()
+
+        if not _is_valid_uuid(coaching_id):
+            return jsonify({"code": "INVALID_INPUT", "error": "coaching_id must be a UUID"}), 400
+        if not user_message:
+            return jsonify({"code": "INVALID_INPUT", "error": "user_message is required"}), 400
+
+        user_id = request.user_id
+        coaching = db.get_coaching_session(coaching_id, user_id)
+        if not coaching:
+            return jsonify({"code": "COACHING_NOT_FOUND", "error": "Coaching session not found"}), 404
+        if coaching.get("current_stage") == "complete":
+            return jsonify({
+                "code": "COACHING_COMPLETE",
+                "error": "This coaching loop is already complete.",
+            }), 409
+
+        snippet = db.get_snippet_by_id(coaching.get("source_snippet_id"), user_id=user_id)
+        if not snippet:
+            return jsonify({"code": "SNIPPET_NOT_FOUND", "error": "Source snippet missing"}), 404
+
+        intent = coaching.get("intent") or "stress"
+        if intent != "stress":
+            return jsonify({"code": "INTENT_NOT_SUPPORTED", "error": "Charisma intent not yet shipped"}), 422
+
+        from services.openai_service import OpenAIService
+        service = OpenAIService()
+        if not service.client:
+            return jsonify({"code": "LLM_UNAVAILABLE", "error": "Coaching LLM is not configured"}), 503
+
+        admin_comment = (snippet.get("admin_comment") or "").strip()
+        user_transcript = (snippet.get("transcript") or "").strip()
+
+        user_content = (
+            f'admin_comment: "{admin_comment}"\n'
+            f'user_transcript: "{user_transcript}"\n'
+            f'user_first_reply: "{user_message}"'
+        )
+
+        try:
+            response = service.client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": _STRESS_AWARENESS_SYSTEM_PROMPT},
+                    {"role": "user", "content": user_content},
+                ],
+                temperature=0.6,
+                max_tokens=200,
+            )
+            raw = response.choices[0].message.content or ""
+        except Exception as llm_err:
+            logger.error("coaching/turn LLM call failed: %s", llm_err, exc_info=True)
+            return jsonify({
+                "code": "LLM_ERROR",
+                "error": "Coach is unavailable. Please try again in a moment.",
+            }), 502
+
+        bubble_1, bubble_2, advance = _parse_coach_turn(raw)
+        if not bubble_1 and not bubble_2:
+            # Total LLM failure — return a graceful fallback instead of an
+            # empty payload so the user always sees something.
+            bubble_1 = "Take that pressure as fuel."
+            bubble_2 = 'Mic on — replay that exact moment with the new frame.'
+            advance = True
+
+        next_stage = "trial" if advance else coaching.get("current_stage", "awareness")
+        if advance and coaching.get("current_stage") != "trial":
+            db.update_coaching_stage(coaching_id, "trial")
+
+        return jsonify({
+            "bubbles": [bubble_1, bubble_2],
+            "advance": advance,
+            "next_stage": next_stage,
+        }), 200
+
+    except Exception as e:
+        logger.error("coaching/turn failed: %s", e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Coaching turn failed"}), 500
+
+
+@v2_bp.route("/coaching/trial-recording", methods=["POST"])
+@require_auth
+def v2_coaching_trial_recording():
+    """Bind the user's trial re-performance to their coaching session.
+
+    Multipart body:
+      - audio_file: the recorded re-performance
+      - coaching_id: (form field) the coaching_sessions row to mark complete
+
+    Side effects on success:
+      - audio uploaded to the same audio bucket the cold-start funnel uses
+      - new v2_sessions row created (so the existing snippet pipeline
+        treats this like any other authenticated recording)
+      - new recordings row created and linked to that v2_session
+      - existing extract_recording_snippets fires — its output snippets
+        land back on /results, closing the loop
+      - coaching_session marked complete, trial_session_id bound
+
+    Response (201):
+        { status: "ok", coaching_id, trial_session_id, recording_id }
+    """
+    import uuid as _uuid
+    from services.recording_1_job import enqueue_recording_1_job
+
+    try:
+        coaching_id = (request.form.get("coaching_id") or "").strip()
+        if not _is_valid_uuid(coaching_id):
+            return jsonify({"code": "INVALID_INPUT", "error": "coaching_id must be a UUID"}), 400
+
+        audio = request.files.get("audio_file")
+        if not audio:
+            return jsonify({"code": "INVALID_INPUT", "error": "audio_file is required"}), 400
+
+        user_id = request.user_id
+        coaching = db.get_coaching_session(coaching_id, user_id)
+        if not coaching:
+            return jsonify({"code": "COACHING_NOT_FOUND", "error": "Coaching session not found"}), 404
+        if coaching.get("current_stage") == "complete":
+            # Idempotent: trial already submitted. Return the bound IDs.
+            return jsonify({
+                "status": "ok",
+                "coaching_id": coaching_id,
+                "trial_session_id": coaching.get("trial_session_id"),
+                "already_complete": True,
+            }), 200
+
+        # 1. Upload audio — use the same bucket + helper the cold-start
+        # funnel uses so the analysis pipeline reads it the same way.
+        try:
+            file_bytes = audio.read()
+        except Exception:
+            return jsonify({"code": "AUDIO_READ_FAILED", "error": "Could not read audio"}), 400
+        if not file_bytes:
+            return jsonify({"code": "AUDIO_EMPTY", "error": "Empty audio payload"}), 400
+
+        recording_id = str(_uuid.uuid4())
+        # Coaching trials live under their own prefix so admin queries can
+        # tell them apart from baseline recordings at a glance.
+        storage_path = f"coaching_trials/{user_id}/{recording_id}.webm"
+        content_type = (audio.mimetype or "audio/webm").strip() or "audio/webm"
+        try:
+            db.upload_audio(config.AUDIO_BUCKET_NAME, storage_path, file_bytes, content_type=content_type)
+        except Exception as upload_err:
+            logger.error("coaching trial: upload failed: %s", upload_err, exc_info=True)
+            return jsonify({"code": "STORAGE_ERROR", "error": "Failed to store audio"}), 502
+
+        # 2. Create the v2_session row that will parent the new snippets
+        trial_session = db.v2_create_session(user_id)
+        if not trial_session:
+            return jsonify({"code": "V2_ERROR", "error": "Failed to create trial session"}), 500
+        trial_session_id = str(trial_session.get("id"))
+
+        # 3. Create the recording row
+        recording_payload = {
+            "id": recording_id,
+            "user_id": user_id,
+            "session_v2_id": trial_session_id,
+            "storage_path": storage_path,
+            "audio_url": "",
+            "duration": 0,
+            "recording_origin": "coaching_trial",
+        }
+        try:
+            db.create_recording(recording_payload)
+        except Exception as create_err:
+            err_low = str(create_err).lower()
+            if "recording_origin" in err_low or "pgrst204" in err_low:
+                fallback = {k: v for k, v in recording_payload.items() if k != "recording_origin"}
+                db.create_recording(fallback)
+            else:
+                logger.error("coaching trial: create_recording failed: %s", create_err, exc_info=True)
+                return jsonify({"code": "RECORDING_CREATE_FAILED", "error": "Failed to create recording"}), 500
+
+        # 4. Bind the recording to the session and stamp the lifecycle
+        # fields so the recording-1 pipeline auto-completes.
+        try:
+            db.v2_update_session(trial_session_id, user_id, {
+                "recording_1_id": recording_id,
+                "status": "completing_from_recording_1",
+                "recording_1_processing_status": "pending",
+                "self_rating_submitted_at": datetime.now(timezone.utc).isoformat(),
+            })
+        except Exception as link_err:
+            logger.warning("coaching trial: session link failed (non-fatal): %s", link_err)
+
+        # 5. Kick off analysis + snippet extraction. Both are non-fatal:
+        # if either fails the row is bound and admins can re-run.
+        try:
+            enqueue_recording_1_job(trial_session_id, recording_id, storage_path, user_id, None)
+        except Exception as q_err:
+            logger.warning("coaching trial: enqueue failed: %s", q_err, exc_info=True)
+        try:
+            from services.snippet_extraction import extract_recording_snippets
+            extract_recording_snippets(
+                session_id=trial_session_id,
+                user_id=str(user_id),
+                recording_id=recording_id,
+                recording_path=storage_path,
+                duration_seconds=None,
+            )
+        except Exception as snippet_err:
+            logger.warning("coaching trial: extract_recording_snippets failed: %s", snippet_err)
+
+        # 6. Mark the coaching session complete and bind the trial session
+        db.update_coaching_stage(coaching_id, "complete", trial_session_id=trial_session_id)
+
+        logger.info(
+            "coaching trial: ok user_id=%s coaching_id=%s trial_session_id=%s",
+            user_id, coaching_id, trial_session_id,
+        )
+        return jsonify({
+            "status": "ok",
+            "coaching_id": coaching_id,
+            "trial_session_id": trial_session_id,
+            "recording_id": recording_id,
+        }), 201
+
+    except Exception as e:
+        logger.error("coaching/trial-recording failed: %s", e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Trial recording failed"}), 500
+
+
 @v2_bp.route("/user/chat/first-question", methods=["POST"])
 @require_auth
 def v2_user_chat_first_question():
