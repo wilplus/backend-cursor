@@ -9608,6 +9608,163 @@ def v2_admin_patch_turn_question(turn_id):
 # Admin: Compute global session metrics + AI alignment
 ############################################################################
 
+@v2_bp.route("/admin/sessions/<session_id>", methods=["GET"])
+@require_admin
+def v2_admin_get_session(session_id):
+    """Comprehensive admin payload for one session.
+
+    Eager-loads everything the admin user-detail view needs:
+      - the session row + global metrics
+      - the chronological conversation turns (AI question / user answer
+        pairs) flattened into a `[{role, content, ...}, ...]` array
+      - the full list of charisma_snippets associated with the session
+        (both interview turn rows and any extraction-only snippets) so
+        the snippet panel and the conversation transcript share one
+        source of truth
+
+    The shape is deliberately denormalised — readers don't need to do a
+    second round-trip per turn or per snippet to render the page.
+
+    Auth: admin only (via @require_admin).
+
+    Response (200):
+        {
+            "id":             str,
+            "user_id":        str,
+            "status":         str | null,
+            "results_published_at": str | null,
+            "created_at":     str | null,
+            "global_metrics": { wpm, fillers, pause_ms, dynamic_db,
+                                pitch_center, energy, kpi_score,
+                                ai_score, ai_summary },
+            "turns": [
+                { "role": "ai",   "content": str, "tone": str | null,
+                  "turn_number": int },
+                { "role": "user", "content": str, "audio_url": str | null,
+                  "duration_ms": int | null, "snippet_id": str,
+                  "turn_number": int, "metrics": {...} },
+                ...
+            ],
+            "snippets": [
+                { "id": str, "type": str | null, "audio_url": str | null,
+                  "transcript": str | null, "duration_ms": int | null,
+                  "admin_comment": str | null, "is_skipped": bool,
+                  "turn_number": int | null, "coach_label": str | null },
+                ...
+            ],
+            "total_turns": int,
+            "total_snippets": int
+        }
+    """
+    try:
+        session = db.get_session_with_global_metrics(session_id)
+        if not session:
+            return jsonify({
+                "code": "SESSION_NOT_FOUND",
+                "error": "Session not found.",
+            }), 404
+
+        user_id = session.get("user_id")
+
+        # One DB read for every snippet on this session — interview turns
+        # AND extracted moments live in the same charisma_snippets table,
+        # distinguished by whether `turn_number` is populated.
+        all_snippets = db.get_snippets_by_session(session_id) or []
+
+        # ── Turns: flatten interview rows into AI/user message pairs ────
+        # Interview rows are the ones with turn_number set. We sort by
+        # turn_number then start_offset_ms so within-turn ordering stays
+        # stable even if turn_number duplicates appear.
+        interview_rows = [s for s in all_snippets if s.get("turn_number") is not None]
+        interview_rows.sort(
+            key=lambda s: (
+                s.get("turn_number") or 0,
+                s.get("start_offset_ms") or 0,
+            )
+        )
+
+        turns: list[dict] = []
+        for s in interview_rows:
+            q_text = (s.get("question_text") or "").strip()
+            if q_text:
+                turns.append({
+                    "role": "ai",
+                    "content": q_text,
+                    "tone": s.get("question_tone"),
+                    "turn_number": s.get("turn_number"),
+                })
+            turns.append({
+                "role": "user",
+                "content": (s.get("transcript") or "").strip(),
+                "audio_url": s.get("audio_segment_path"),
+                "duration_ms": s.get("duration_ms"),
+                "snippet_id": str(s.get("id")) if s.get("id") else None,
+                "turn_number": s.get("turn_number"),
+                "metrics": {
+                    "wpm": s.get("wpm"),
+                    "fillers": s.get("fillers"),
+                    "pause_ms": s.get("pause_ms"),
+                    "dynamic_db": s.get("dynamic_db"),
+                    "pitch_center": s.get("pitch_center"),
+                    "energy": s.get("energy"),
+                },
+            })
+
+        # ── Snippets: every charisma_snippets row for this session ───────
+        # Includes interview-turn rows too, so a coach can label any of
+        # them. snippet_type is populated by the admin labelling flow;
+        # coach_label is the older binary classifier label — both are
+        # surfaced so the frontend can pick whichever it renders.
+        snippets = [
+            {
+                "id": str(s.get("id")) if s.get("id") else None,
+                "type": s.get("snippet_type") or s.get("coach_label"),
+                "snippet_type": s.get("snippet_type"),
+                "coach_label": s.get("coach_label"),
+                "audio_url": s.get("audio_segment_path"),
+                "transcript": s.get("transcript"),
+                "duration_ms": s.get("duration_ms"),
+                "admin_comment": s.get("admin_comment"),
+                "is_skipped": bool(s.get("is_skipped", False)),
+                "turn_number": s.get("turn_number"),
+                "start_time": s.get("start_time"),
+                "end_time": s.get("end_time"),
+                "created_at": s.get("created_at"),
+            }
+            for s in all_snippets
+        ]
+
+        global_metrics = {
+            "wpm": session.get("global_wpm"),
+            "fillers": session.get("global_fillers"),
+            "pause_ms": session.get("global_pause_ms"),
+            "dynamic_db": session.get("global_dynamic_db"),
+            "pitch_center": session.get("global_pitch_center"),
+            "energy": session.get("global_energy"),
+            "kpi_score": session.get("kpi_score"),
+            "ai_score": session.get("ai_task_alignment_score"),
+            "ai_summary": session.get("ai_task_alignment_comment"),
+        }
+
+        return jsonify({
+            "id": str(session_id),
+            "user_id": str(user_id) if user_id else None,
+            "status": session.get("status"),
+            "results_published_at": session.get("results_published_at"),
+            "created_at": session.get("created_at"),
+            "global_metrics": global_metrics,
+            "turns": turns,
+            "snippets": snippets,
+            "total_turns": len(turns),
+            "total_snippets": len(snippets),
+        }), 200
+
+    except Exception as e:
+        logger.error("admin/sessions/<id> GET failed: %s", e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to fetch session"}), 500
+
+
 @v2_bp.route("/admin/sessions/<session_id>/compute-metrics", methods=["POST"])
 @require_admin
 def v2_admin_compute_session_metrics(session_id):
