@@ -35,11 +35,40 @@ def signup():
         { code: "TERMS_NOT_ACCEPTED" | "INVALID_INPUT", error: str }
     """
     try:
-        body = request.get_json(silent=True) or {}
-        email = (body.get("email") or "").strip()
-        password = body.get("password") or ""
-        name = (body.get("name") or "").strip()
+        # ── 0. Payload shape ─────────────────────────────────────────────
+        # Reject anything that isn't a JSON object up front so a malformed
+        # body (string, list, null, non-JSON content-type) yields a 400
+        # with a specific code instead of crashing the field extraction
+        # below and bubbling out as a generic 500.
+        body = request.get_json(silent=True)
+        if not isinstance(body, dict):
+            return jsonify({
+                "code": "INVALID_PAYLOAD",
+                "error": "Request body must be a JSON object.",
+            }), 400
+
+        email_raw = body.get("email")
+        password_raw = body.get("password")
+        name_raw = body.get("name", "")
         terms_accepted = body.get("terms_accepted")
+
+        # Type guards on the stringly-typed fields. Without these, a client
+        # sending `password: 123` would AttributeError on `.strip()` later
+        # and surface as a 500 SIGNUP_ERROR.
+        if not isinstance(email_raw, str) or not isinstance(password_raw, str):
+            return jsonify({
+                "code": "INVALID_PAYLOAD",
+                "error": "email and password must be strings.",
+            }), 400
+        if name_raw is not None and not isinstance(name_raw, str):
+            return jsonify({
+                "code": "INVALID_PAYLOAD",
+                "error": "name must be a string when provided.",
+            }), 400
+
+        email = email_raw.strip()
+        password = password_raw
+        name = (name_raw or "").strip()
 
         # ── 1. Input validation ──────────────────────────────────────────
         if not email or not password:
@@ -55,6 +84,9 @@ def signup():
             }), 400
 
         # ── 2. Consent gate — MUST be true before user is created ────────
+        # Strict identity check (`is not True`) so truthy-but-not-true
+        # values like 1 or "true" don't slip through. The frontend always
+        # sends a real boolean.
         if terms_accepted is not True:
             return jsonify({
                 "code": "TERMS_NOT_ACCEPTED",

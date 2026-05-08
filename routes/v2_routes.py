@@ -8082,6 +8082,21 @@ def v2_auth_merge_session():
         return jsonify({"code": "V2_ERROR", "error": "Session merge failed"}), 500
 
 
+@v2_bp.route("/auth/signup", methods=["POST"])
+def v2_auth_signup():
+    """Alias for /auth/signup under the /v2/auth/* namespace.
+
+    The native registration handler lives on `auth_bp` (mounted at `/auth`),
+    but the BFF posts to `/v2/auth/signup` to match the sibling
+    `/v2/auth/merge-session` endpoint and keep the BFF surface consistent
+    under one namespace. This route delegates to the same function so both
+    paths produce identical behaviour and the legal-consent gate is
+    enforced regardless of which path callers hit.
+    """
+    from routes.auth import signup as _native_signup
+    return _native_signup()
+
+
 @v2_bp.route("/admin/funnel/afterwards-video", methods=["POST"])
 @require_admin
 def v2_admin_funnel_afterwards_video_upload():
