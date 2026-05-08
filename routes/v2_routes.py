@@ -9494,6 +9494,10 @@ def v2_admin_get_user_timeline(user_id):
                     "start_time": snippet.get("start_time"),
                     "end_time": snippet.get("end_time"),
                     "is_skipped": snippet.get("is_skipped", False),
+                    # Whisper transcription of the user's spoken answer.
+                    # The /admin timeline cards render this on each turn;
+                    # without it they fall back to a placeholder.
+                    "transcript": snippet.get("transcript"),
                 },
                 "metrics": {
                     "wpm": snippet.get("wpm"),
