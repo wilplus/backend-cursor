@@ -64,7 +64,6 @@ def extract_recording_snippets(
     Returns list of created snippet dicts.
     """
     from services.coach_video_storage import (
-        get_coach_object_bytes,
         put_coach_object_bytes,
         coach_media_public_url,
     )
@@ -80,9 +79,20 @@ def extract_recording_snippets(
         if duration_ms > 15000:
             duration_ms = 15000
 
-        # Download the original recording
+        # Download the original recording.
+        #
+        # IMPORTANT: read directly from Supabase Storage via
+        # db.download_audio rather than coach_video_storage's
+        # get_coach_object_bytes. The cold-start funnel uploads via
+        # db.upload_audio("audio_recordings", ...) which always writes
+        # to Supabase Storage, but coach_video_storage routes reads
+        # through Cloudflare R2 whenever R2_* env vars are set —
+        # producing a silent miss (returns empty/throws), which made
+        # extract_recording_snippets return [] and create no rows.
+        # The admin page then showed "No interview turns recorded"
+        # despite the recording being uploaded successfully.
         try:
-            audio_bytes = get_coach_object_bytes("audio_recordings", recording_path)
+            audio_bytes = db.download_audio("audio_recordings", recording_path)
         except Exception as e:
             logger.error(f"Failed to read recording {recording_path}: {e}")
             return []
