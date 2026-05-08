@@ -8601,6 +8601,25 @@ def v2_public_interview_upload_answer():
                     content_type=content_type if content_type != "application/octet-stream" else None,
                 )
                 transcript_text = (_result.get("text") or "").strip() or None
+                # Distinguish "Whisper ran and returned empty" (silent
+                # audio) from "Whisper never ran" so production logs
+                # let us tell which is happening.
+                if not transcript_text:
+                    logger.info(
+                        "interview: Whisper returned empty transcript "
+                        "(audio likely silent) session=%s turn=%s size=%d",
+                        guest_session_id, turn_number, len(file_bytes),
+                    )
+            else:
+                # Loud failure mode: silent skip is what made every row's
+                # transcript NULL despite operators believing the key was
+                # set. Now there's an explicit signal in Railway logs.
+                logger.error(
+                    "interview: OpenAI client is None — OPENAI_API_KEY is "
+                    "missing or empty in this process's environment. "
+                    "Transcription skipped for session=%s turn=%s",
+                    guest_session_id, turn_number,
+                )
         except Exception as t_err:
             logger.warning("interview: transcription failed (non-fatal): %s", t_err)
 
