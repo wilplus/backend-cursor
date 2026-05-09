@@ -7925,21 +7925,53 @@ def v2_internal_whisper_health():
     """Diagnostic: does the running process actually have OPENAI_API_KEY?
 
     Hit this from a browser or curl. The response tells us deterministically
-    whether the OpenAI client can be constructed at runtime, without needing
-    to trigger a real recording or sift through Railway logs.
+    whether the OpenAI client can be constructed at runtime AND whether a
+    real API call to OpenAI succeeds — without needing to trigger a real
+    recording or sift through Railway logs.
 
     Auth: intentionally none — leaks no secret material; only metadata
-    (length, first 7 chars masked) about whether a key is present.
+    (length, first 7 chars masked, model count) about whether the integration
+    is wired up.
     """
     try:
         from services.openai_service import OpenAIService
         svc = OpenAIService()
         key = (config.OPENAI_API_KEY or "")
+
+        # Live API reachability check — list models. Cheap call (one
+        # request, ~100ms), proves the key is valid AND the network can
+        # reach api.openai.com from this Railway container.
+        api_reachable = False
+        api_error: str | None = None
+        api_model_count = 0
+        if svc.client:
+            try:
+                models = svc.client.models.list()
+                api_reachable = True
+                # `data` is a list of Model objects on the response
+                api_model_count = len(getattr(models, "data", []) or [])
+            except Exception as call_err:
+                api_error = f"{type(call_err).__name__}: {call_err}"
+
+        # Also verify which git commit this process is running. Helps
+        # confirm Railway has picked up the latest deploy (e.g. the
+        # explicit transcription log in e7271b8). Read from RAILWAY_GIT_COMMIT_SHA
+        # (Railway-injected) or fall back to RAILWAY_DEPLOYMENT_ID.
+        git_sha = (
+            os.environ.get("RAILWAY_GIT_COMMIT_SHA")
+            or os.environ.get("RAILWAY_DEPLOYMENT_ID")
+            or None
+        )
+
         return jsonify({
             "client_initialized": svc.client is not None,
             "api_key_present": bool(key),
             "api_key_length": len(key),
             "api_key_prefix": (key[:7] + "...") if key else None,
+            "api_reachable": api_reachable,
+            "api_error": api_error,
+            "api_model_count": api_model_count,
+            "git_sha": git_sha,
             # Echo back which env vars are actually visible at runtime so we
             # can spot Railway-scoped misses (preview vs production env).
             "env_visible": {
