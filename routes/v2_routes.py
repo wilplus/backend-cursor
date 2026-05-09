@@ -7920,6 +7920,40 @@ def _coach_intent_for_snippet(snippet: dict) -> str:
     return "stress"
 
 
+@v2_bp.route("/internal/whisper-health", methods=["GET"])
+def v2_internal_whisper_health():
+    """Diagnostic: does the running process actually have OPENAI_API_KEY?
+
+    Hit this from a browser or curl. The response tells us deterministically
+    whether the OpenAI client can be constructed at runtime, without needing
+    to trigger a real recording or sift through Railway logs.
+
+    Auth: intentionally none — leaks no secret material; only metadata
+    (length, first 7 chars masked) about whether a key is present.
+    """
+    try:
+        from services.openai_service import OpenAIService
+        svc = OpenAIService()
+        key = (config.OPENAI_API_KEY or "")
+        return jsonify({
+            "client_initialized": svc.client is not None,
+            "api_key_present": bool(key),
+            "api_key_length": len(key),
+            "api_key_prefix": (key[:7] + "...") if key else None,
+            # Echo back which env vars are actually visible at runtime so we
+            # can spot Railway-scoped misses (preview vs production env).
+            "env_visible": {
+                "OPENAI_API_KEY": bool(os.environ.get("OPENAI_API_KEY")),
+                "GUEST_FUNNEL_ENABLED": os.environ.get("GUEST_FUNNEL_ENABLED"),
+                "BACKEND_URL_INTERNAL": bool(os.environ.get("BACKEND_URL_INTERNAL")),
+                "R2_PUBLIC_BASE_URL": bool(os.environ.get("R2_PUBLIC_BASE_URL")),
+            },
+        }), 200
+    except Exception as e:
+        logger.error("whisper-health failed: %s", e, exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
 @v2_bp.route("/coaching/start", methods=["POST"])
 @require_auth
 def v2_coaching_start():
