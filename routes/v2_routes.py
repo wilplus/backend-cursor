@@ -8667,11 +8667,20 @@ def v2_public_interview_upload_answer():
                     content_type=content_type if content_type != "application/octet-stream" else None,
                 )
                 transcript_text = (_result.get("text") or "").strip() or None
-                # Distinguish "Whisper ran and returned empty" (silent
-                # audio) from "Whisper never ran" so production logs
-                # let us tell which is happening.
-                if not transcript_text:
-                    logger.info(
+                # Log at WARNING so the line is visible regardless of
+                # Railway's log-level filter (their default surface
+                # often hides INFO). Two states to distinguish:
+                #   - Whisper ran, returned text → useful transcript
+                #   - Whisper ran, returned empty → audio was silent
+                if transcript_text:
+                    logger.warning(
+                        "interview: Whisper OK session=%s turn=%s "
+                        "text_chars=%d size=%d",
+                        guest_session_id, turn_number,
+                        len(transcript_text), len(file_bytes),
+                    )
+                else:
+                    logger.warning(
                         "interview: Whisper returned empty transcript "
                         "(audio likely silent) session=%s turn=%s size=%d",
                         guest_session_id, turn_number, len(file_bytes),
