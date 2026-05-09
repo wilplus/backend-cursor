@@ -524,10 +524,9 @@ def homework_session_status():
             "credits": int(credits_active),
         }
         # Hide intro coach video while report is generating; session row still has tutor_video_* from session/start.
-        hide_tutor_video = internal_status in (
-            STATUS_COMPLETING_FROM_RECORDING_1,
-            STATUS_COMPLETING_FROM_RECORDING_2,
-        )
+        # Note: STATUS_COMPLETING_FROM_RECORDING_2 was removed when the codebase
+        # moved to single-recording sessions; this used to be a tuple of both.
+        hide_tutor_video = internal_status == STATUS_COMPLETING_FROM_RECORDING_1
         # Once the session is completed, the frontend should transition to the report/reviewing
         # screen instead of continuing to show the pre-homework coach message block.
         playable, tb, tp = resolve_tutor_video_playable_url(
