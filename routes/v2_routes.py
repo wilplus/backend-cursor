@@ -9740,6 +9740,40 @@ def v2_admin_patch_turn_question(turn_id):
 # Admin: Compute global session metrics + AI alignment
 ############################################################################
 
+def _resolve_snippet_audio_url(snippet: dict) -> str | None:
+    """Pick a playable audio URL from whichever column the writer used.
+
+    The three snippet creation paths populate different columns:
+      - Path A (interview/upload-answer): audio_segment_path = full URL
+      - Path B (extract_recording_snippets): audio_segment_path = full URL
+      - Path C (charisma_snippet_service): storage_path = bucket-relative key
+                                           in AUDIO_BUCKET (Supabase Storage)
+                                           with audio_segment_path NULL
+
+    This helper returns the first usable URL: the existing
+    audio_segment_path verbatim, or a Supabase signed URL derived from
+    storage_path. Returning None means there's truly nothing playable —
+    only happens if both columns are NULL.
+    """
+    seg = (snippet.get("audio_segment_path") or "").strip()
+    if seg:
+        return seg
+    storage = (snippet.get("storage_path") or "").strip()
+    if not storage:
+        return None
+    # Path C writes to AUDIO_BUCKET_NAME (Supabase Storage). Generate a
+    # short-lived signed URL so the admin's <audio> element can play it.
+    try:
+        return db.create_signed_url(
+            config.AUDIO_BUCKET_NAME, storage, config.SIGNED_URL_EXPIRY_SECONDS
+        )
+    except Exception as e:
+        logger.warning(
+            "snippet audio URL: signed url failed for %s: %s", storage, e
+        )
+        return None
+
+
 @v2_bp.route("/admin/sessions/<session_id>", methods=["GET"])
 @require_admin
 def v2_admin_get_session(session_id):
@@ -9828,7 +9862,7 @@ def v2_admin_get_session(session_id):
             turns.append({
                 "role": "user",
                 "content": (s.get("transcript") or "").strip(),
-                "audio_url": s.get("audio_segment_path"),
+                "audio_url": _resolve_snippet_audio_url(s),
                 "duration_ms": s.get("duration_ms"),
                 "snippet_id": str(s.get("id")) if s.get("id") else None,
                 "turn_number": s.get("turn_number"),
@@ -9853,7 +9887,7 @@ def v2_admin_get_session(session_id):
                 "type": s.get("snippet_type") or s.get("coach_label"),
                 "snippet_type": s.get("snippet_type"),
                 "coach_label": s.get("coach_label"),
-                "audio_url": s.get("audio_segment_path"),
+                "audio_url": _resolve_snippet_audio_url(s),
                 "transcript": s.get("transcript"),
                 "duration_ms": s.get("duration_ms"),
                 "admin_comment": s.get("admin_comment"),
