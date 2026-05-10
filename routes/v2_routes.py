@@ -9525,6 +9525,300 @@ def v2_admin_adjust_snippet_boundaries(snippet_id):
         return jsonify({"code": "V2_ERROR", "error": "Failed to adjust boundaries"}), 500
 
 
+@v2_bp.route("/admin/snippets/<snippet_id>", methods=["PATCH"])
+@require_admin
+def v2_admin_patch_snippet(snippet_id):
+    """Consolidated partial-update endpoint for a single snippet.
+
+    Replaces the need to call /comment, /boundaries, and /skip
+    separately when the admin saves a snippet card. Accepts any
+    combination of the editable fields and applies each to the row,
+    then returns the final state.
+
+    Body (all fields optional — only present keys are applied):
+        {
+          "start_time":     float,
+          "end_time":       float,
+          "coach_label":    "charisma" | "stress" | "no_charisma" | null,
+                            // alias of snippet_type for the admin-facing
+                            // taxonomy; persisted to `snippet_type`
+                            // since that's what the user-facing /results
+                            // renders from
+          "snippet_type":   "charisma" | "stress" | "unlabeled",
+                            // direct passthrough — same effect as
+                            // coach_label, kept for client compatibility
+          "admin_comment":  string | null,
+          "status":         "draft" | "skipped" | "published"
+                            // "skipped" → is_skipped = true
+                            // "draft"   → is_skipped = false
+                            // "published" rejected (session-level
+                            // operation — use POST /admin/sessions/<id>/publish)
+        }
+
+    Responses:
+        200 { status: "ok", snippet: {...full row...} }
+        400 INVALID_INPUT, INVALID_BOUNDARIES
+        404 NOT_FOUND
+        500 V2_ERROR
+    """
+    try:
+        body = request.get_json(silent=True) or {}
+        if not isinstance(body, dict):
+            return jsonify({
+                "code": "INVALID_PAYLOAD",
+                "error": "Request body must be a JSON object.",
+            }), 400
+
+        snippet = None  # latest persisted state — keeps the final return tidy
+
+        # ── 1. Boundaries ─────────────────────────────────────────────
+        # Only update if BOTH start_time and end_time are present and
+        # form a valid window. Partial { start_time only } is rejected
+        # because the boundary update is atomic in the DB helper.
+        has_start = "start_time" in body and body["start_time"] is not None
+        has_end = "end_time" in body and body["end_time"] is not None
+        if has_start or has_end:
+            if not (has_start and has_end):
+                return jsonify({
+                    "code": "INVALID_INPUT",
+                    "error": "start_time and end_time must be provided together.",
+                }), 400
+            try:
+                start_time = float(body["start_time"])
+                end_time = float(body["end_time"])
+            except (TypeError, ValueError):
+                return jsonify({
+                    "code": "INVALID_INPUT",
+                    "error": "start_time and end_time must be numeric.",
+                }), 400
+            if end_time <= start_time:
+                return jsonify({
+                    "code": "INVALID_BOUNDARIES",
+                    "error": "end_time must be greater than start_time.",
+                }), 400
+            snippet = db.update_snippet_boundaries(snippet_id, start_time, end_time)
+            if not snippet:
+                return jsonify({"code": "NOT_FOUND", "error": "Snippet not found."}), 404
+
+        # ── 2. Label + comment ────────────────────────────────────────
+        # `coach_label` is the admin-friendly alias of `snippet_type` —
+        # both routed to the same DB column so the user-facing /results
+        # renders the right type. Strict allow-list per the existing
+        # comment endpoint.
+        label_keys = [k for k in ("snippet_type", "coach_label") if k in body]
+        comment_present = "admin_comment" in body
+        if label_keys or comment_present:
+            raw_label = body.get("snippet_type") or body.get("coach_label")
+            if raw_label is not None:
+                label = str(raw_label).strip().lower()
+                # Normalise: coach_label uses "no_charisma" for "stress"-ish
+                # absence in legacy data; treat it as unlabeled for the
+                # snippet_type taxonomy.
+                if label == "no_charisma":
+                    label = "unlabeled"
+                if label not in ("charisma", "stress", "unlabeled"):
+                    return jsonify({
+                        "code": "INVALID_INPUT",
+                        "error": (
+                            "coach_label/snippet_type must be 'charisma', "
+                            "'stress', 'unlabeled', or 'no_charisma'."
+                        ),
+                    }), 400
+            else:
+                label = "unlabeled"
+
+            admin_comment = body.get("admin_comment")
+            if isinstance(admin_comment, str):
+                admin_comment = admin_comment.strip() or None
+
+            snippet = db.update_snippet_comment(
+                snippet_id=snippet_id,
+                admin_comment=admin_comment,
+                snippet_type=label,
+                admin_user_id=request.user_id,
+            )
+            if not snippet:
+                return jsonify({"code": "NOT_FOUND", "error": "Snippet not found."}), 404
+
+        # ── 3. Status (skipped / draft / published) ───────────────────
+        # The user-facing surface keys off `is_skipped` for visibility
+        # gating, so map admin-friendly status strings here.
+        if "status" in body and body["status"] is not None:
+            status = str(body["status"]).strip().lower()
+            if status == "skipped":
+                snippet = db.skip_snippet(snippet_id, True)
+            elif status == "draft":
+                snippet = db.skip_snippet(snippet_id, False)
+            elif status == "published":
+                # Per-snippet "publish" doesn't exist — publication is a
+                # session-level operation that flips results_published_at.
+                # Reject loudly so callers don't think this did anything.
+                return jsonify({
+                    "code": "INVALID_INPUT",
+                    "error": (
+                        "Snippet status='published' is not supported. "
+                        "Use POST /v2/admin/sessions/<id>/publish to "
+                        "publish a whole session."
+                    ),
+                }), 400
+            else:
+                return jsonify({
+                    "code": "INVALID_INPUT",
+                    "error": "status must be 'draft' or 'skipped'.",
+                }), 400
+            if not snippet:
+                return jsonify({"code": "NOT_FOUND", "error": "Snippet not found."}), 404
+
+        # If no editable keys were present, the caller hit this endpoint
+        # for nothing — surface it rather than silently 200ing.
+        if snippet is None:
+            return jsonify({
+                "code": "NO_FIELDS_TO_UPDATE",
+                "error": (
+                    "Request body had no recognised fields. Provide one or "
+                    "more of: start_time+end_time, coach_label/snippet_type, "
+                    "admin_comment, status."
+                ),
+            }), 400
+
+        return jsonify({"status": "ok", "snippet": snippet}), 200
+
+    except Exception as e:
+        logger.error("admin: patch snippet failed: %s", e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to update snippet"}), 500
+
+
+@v2_bp.route("/admin/sessions/<session_id>/publish", methods=["POST"])
+@require_admin
+def v2_admin_publish_session(session_id):
+    """Publish results for a session — flips visibility for the user.
+
+    Mirrors the existing /v2/internal/publish-session-results endpoint
+    but takes session_id as a URL path param instead of a body field,
+    so it slots cleanly under the /admin/sessions/* namespace the
+    admin UI consumes.
+
+    Side effects:
+      * Sets results_published_at = NOW() on the session
+      * Flips status to 'completed'
+      * Sends the "Charisma Snippets Ready" email via Resend
+        (same as the internal endpoint — failure is non-fatal so the
+        publish itself still goes through)
+
+    Snippets with is_skipped = true stay hidden from the user-facing
+    /results page; only non-skipped rows are returned by
+    v2_get_results_snippets_for_session.
+
+    Responses:
+        200 { status: "ok", session_id, results_published_at, email_sent }
+        400 INVALID_INPUT
+        404 SESSION_NOT_FOUND
+        500 V2_ERROR
+    """
+    try:
+        if not _is_valid_uuid(session_id):
+            return jsonify({
+                "code": "INVALID_INPUT",
+                "error": "session_id must be a valid UUID",
+            }), 400
+
+        session = db.v2_get_session_by_id(session_id)
+        if not session:
+            return jsonify({
+                "code": "SESSION_NOT_FOUND",
+                "error": "Session not found",
+            }), 404
+
+        # 1. Stamp results_published_at
+        published = db.v2_publish_session_results(session_id)
+        if not published:
+            return jsonify({
+                "code": "V2_ERROR",
+                "error": "Failed to publish session",
+            }), 500
+
+        # 2. Flip session status so the user-facing routing recognises
+        #    the completed state immediately.
+        try:
+            db.v2_update_session_status_unscoped(session_id, "completed")
+        except Exception as flip_err:
+            logger.warning("publish: status flip failed (non-fatal): %s", flip_err)
+
+        # 3. Best-effort email notify. Reuses the same internal helper
+        #    so the email template and Resend wiring stay in one place.
+        email_sent = False
+        try:
+            email_sent = _send_results_ready_email(session_id, session)
+        except Exception as mail_err:
+            logger.warning("publish: email failed (non-fatal): %s", mail_err)
+
+        return jsonify({
+            "status": "ok",
+            "session_id": session_id,
+            "results_published_at": published.get("results_published_at"),
+            "email_sent": email_sent,
+        }), 200
+
+    except Exception as e:
+        logger.error("admin: publish session failed: %s", e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to publish session"}), 500
+
+
+def _send_results_ready_email(session_id: str, session: dict) -> bool:
+    """Send the "Results Ready" email. Returns True iff the email was
+    enqueued / sent successfully. Non-fatal: callers decide whether a
+    failure here should affect the overall response.
+
+    Centralised so /admin/sessions/<id>/publish and the legacy
+    /internal/publish-session-results don't drift apart.
+    """
+    from services.email_service import send_email_resend
+    import httpx
+
+    user_id = session.get("user_id")
+    if not user_id:
+        logger.warning("publish: session has no user_id, skipping email")
+        return False
+
+    auth_headers = {
+        "Authorization": f"Bearer {config.SUPABASE_SERVICE_ROLE_KEY}",
+        "apikey": config.SUPABASE_SERVICE_ROLE_KEY,
+    }
+    user_url = f"{config.SUPABASE_URL.rstrip('/')}/auth/v1/admin/users/{user_id}"
+    resp = httpx.get(user_url, headers=auth_headers, timeout=10)
+    if resp.status_code != 200:
+        logger.warning("publish: failed to fetch user %s (status %d)", user_id, resp.status_code)
+        return False
+    user_email = (resp.json() or {}).get("email")
+    if not user_email:
+        return False
+
+    app_base = (
+        getattr(config, "APP_PUBLIC_BASE_URL", None)
+        or os.environ.get("APP_PUBLIC_BASE_URL")
+        or "https://www.willonski.com"
+    ).rstrip("/")
+    results_url = f"{app_base}/results/{session_id}"
+
+    send_email_resend(
+        to=user_email,
+        subject="Your Charisma Snippets Are Ready",
+        html=(
+            f'<p>Hi,</p>'
+            f'<p>Your voice analysis is complete. We extracted your best moments '
+            f'and added detailed feedback.</p>'
+            f'<p><a href="{results_url}" '
+            f'style="display:inline-block;padding:12px 20px;background:#f97316;'
+            f'color:#fff;text-decoration:none;border-radius:8px;font-weight:600;">'
+            f'View your Charisma Snippets</a></p>'
+            f'<p style="color:#666;font-size:14px;">— Team Willab</p>'
+        ),
+    )
+    return True
+
+
 @v2_bp.route("/admin/snippets/<snippet_id>/skip", methods=["POST"])
 @require_admin
 def v2_admin_skip_snippet(snippet_id):
