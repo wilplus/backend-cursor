@@ -1691,11 +1691,33 @@ class DatabaseService:
     # ------------------------------------------------------------------
 
     def v2_delete_charisma_snippets_for_recording(self, recording_id: str) -> int:
-        """Delete all charisma snippet candidates for one recording."""
+        """Delete ONLY ML-generator candidate snippets for one recording.
+
+        IMPORTANT: this is the cleanup the ML pipeline
+        (charisma_snippet_service.generate_charisma_snippets_for_recording)
+        runs before re-inserting fresh candidates. Without the source_type
+        filter below, it would also wipe out:
+
+          - Interview-turn rows from /v2/public/interview/upload-answer
+            (Path A), which carry the user's actual recorded answers,
+            Whisper transcripts, and turn metadata
+          - Single-snippet rows from extract_recording_snippets (Path B)
+            that the cold-start claim flow produces
+
+        Production was hitting this exact failure: users recorded 3
+        EBCP turns, the per-turn inserts succeeded, then the analysis
+        pipeline ran and wiped the rows just before admin tried to
+        view them.
+
+        Only ML-generator rows have `source_type` populated ('student'
+        or 'internet'); Paths A and B leave it NULL. Filtering on
+        source_type IS NOT NULL preserves their data.
+        """
         result = (
             self.client.table("charisma_snippets")
             .delete()
             .eq("recording_id", recording_id)
+            .not_("source_type", "is", None)
             .execute()
         )
         return len(result.data or [])
