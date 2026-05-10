@@ -9600,20 +9600,29 @@ def v2_admin_patch_snippet(snippet_id):
             if not snippet:
                 return jsonify({"code": "NOT_FOUND", "error": "Snippet not found."}), 404
 
-        # ── 2. Label + comment ────────────────────────────────────────
+        # ── 2. Label + comment (TRUE partial update) ─────────────────
+        # Only touch columns that the admin explicitly named in the body.
+        # The destructive default to "unlabeled" was wrong: if the admin
+        # is just editing the comment text on a snippet they already
+        # labelled "charisma", the previous label MUST stay.
+        #
         # `coach_label` is the admin-friendly alias of `snippet_type` —
-        # both routed to the same DB column so the user-facing /results
-        # renders the right type. Strict allow-list per the existing
-        # comment endpoint.
-        label_keys = [k for k in ("snippet_type", "coach_label") if k in body]
-        comment_present = "admin_comment" in body
-        if label_keys or comment_present:
-            raw_label = body.get("snippet_type") or body.get("coach_label")
-            if raw_label is not None:
+        # both keys, if present, route to the same DB column.
+        patch: dict = {}
+
+        label_provided = "snippet_type" in body or "coach_label" in body
+        if label_provided:
+            raw_label = (
+                body["snippet_type"]
+                if "snippet_type" in body
+                else body["coach_label"]
+            )
+            if raw_label is None:
+                # Explicit null clears the label
+                patch["snippet_type"] = None
+            else:
                 label = str(raw_label).strip().lower()
-                # Normalise: coach_label uses "no_charisma" for "stress"-ish
-                # absence in legacy data; treat it as unlabeled for the
-                # snippet_type taxonomy.
+                # Legacy "no_charisma" → "unlabeled" for the newer taxonomy.
                 if label == "no_charisma":
                     label = "unlabeled"
                 if label not in ("charisma", "stress", "unlabeled"):
@@ -9624,19 +9633,39 @@ def v2_admin_patch_snippet(snippet_id):
                             "'stress', 'unlabeled', or 'no_charisma'."
                         ),
                     }), 400
+                patch["snippet_type"] = label
+
+        if "admin_comment" in body:
+            raw_comment = body["admin_comment"]
+            if raw_comment is None:
+                patch["admin_comment"] = None
+            elif isinstance(raw_comment, str):
+                patch["admin_comment"] = raw_comment.strip() or None
             else:
-                label = "unlabeled"
+                return jsonify({
+                    "code": "INVALID_INPUT",
+                    "error": "admin_comment must be a string or null.",
+                }), 400
 
-            admin_comment = body.get("admin_comment")
-            if isinstance(admin_comment, str):
-                admin_comment = admin_comment.strip() or None
-
-            snippet = db.update_snippet_comment(
-                snippet_id=snippet_id,
-                admin_comment=admin_comment,
-                snippet_type=label,
-                admin_user_id=request.user_id,
-            )
+        if patch:
+            # Stamp the admin who made the change whenever either column
+            # is touched, so the audit trail reflects the last editor
+            # even on a comment-only update.
+            patch["admin_user_id"] = request.user_id
+            try:
+                result = (
+                    db.client.table("charisma_snippets")
+                    .update(patch)
+                    .eq("id", snippet_id)
+                    .execute()
+                )
+                snippet = result.data[0] if result.data else None
+            except Exception as upd_err:
+                logger.error("admin: snippet partial update failed: %s", upd_err, exc_info=True)
+                return jsonify({
+                    "code": "V2_ERROR",
+                    "error": "Failed to update snippet.",
+                }), 500
             if not snippet:
                 return jsonify({"code": "NOT_FOUND", "error": "Snippet not found."}), 404
 
