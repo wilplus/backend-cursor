@@ -10204,15 +10204,28 @@ def v2_admin_get_session(session_id):
         # them. snippet_type is populated by the admin labelling flow;
         # coach_label is the older binary classifier label — both are
         # surfaced so the frontend can pick whichever it renders.
+        # IMPORTANT: include session_id (and identity fields) on every row.
+        # The admin user page overwrites its `snippets` state with the per-
+        # session payload, then filters by `s.session_id === latestSession.id`
+        # to render the snippet panel. If session_id is missing here the
+        # filter eliminates every row and the panel renders empty even
+        # though rows exist — exactly the regression that surfaced as
+        # "No snippets extracted for this session yet."
         snippets = [
             {
                 "id": str(s.get("id")) if s.get("id") else None,
+                "session_id": str(s.get("session_id")) if s.get("session_id") else str(session_id),
+                "user_id": str(s.get("user_id")) if s.get("user_id") else None,
+                "recording_id": str(s.get("recording_id")) if s.get("recording_id") else None,
                 "type": s.get("snippet_type") or s.get("coach_label"),
                 "snippet_type": s.get("snippet_type"),
                 "coach_label": s.get("coach_label"),
                 "audio_url": _resolve_snippet_audio_url(s),
+                "audio_segment_path": s.get("audio_segment_path"),
+                "storage_path": s.get("storage_path"),
                 "transcript": s.get("transcript"),
                 "duration_ms": s.get("duration_ms"),
+                "start_offset_ms": s.get("start_offset_ms"),
                 "admin_comment": s.get("admin_comment"),
                 "is_skipped": bool(s.get("is_skipped", False)),
                 "turn_number": s.get("turn_number"),
