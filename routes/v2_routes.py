@@ -10366,6 +10366,11 @@ def v2_admin_get_session(session_id):
                 "recording_id": str(s.get("recording_id")) if s.get("recording_id") else None,
                 "type": s.get("snippet_type") or s.get("coach_label"),
                 "snippet_type": s.get("snippet_type"),
+                # Provenance tag — "auto_extracted" for highlights from
+                # services.snippet_truncation, "student" for user-uploaded
+                # clips, NULL for legacy path-B rows. Frontend filters
+                # the snippet panel on this so legacy noise stays hidden.
+                "source_type": s.get("source_type"),
                 "coach_label": s.get("coach_label"),
                 "audio_url": _resolve_snippet_audio_url(s),
                 "audio_segment_path": s.get("audio_segment_path"),

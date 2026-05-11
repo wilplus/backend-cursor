@@ -150,10 +150,31 @@ def extract_snippets_from_pcm(
     dbs = _frame_rms_db(pcm)
     voiced_mask = dbs >= SILENCE_DB_THRESHOLD
 
-    # 2) Candidate windows = speech runs between silence runs ≥ MIN_SILENCE_MS
-    candidates = _segment_by_silence(voiced_mask, duration_ms)
-    candidates = [c for c in candidates
-                  if MIN_SNIPPET_MS <= (c[1] - c[0]) <= MAX_SNIPPET_MS]
+    # 2) Candidate windows from silence segmentation. If a segment is
+    #    too long (one continuous run of speech > MAX_SNIPPET_MS — common
+    #    when a user gives a 45 s answer without internal pauses), we
+    #    split it with a sliding window so we don't lose the content.
+    #    Without this, sessions with one or more long turns would
+    #    produce ZERO candidates and the snippet panel would stay empty.
+    raw_candidates = _segment_by_silence(voiced_mask, duration_ms)
+    candidates: list[tuple[int, int]] = []
+    for start_ms, end_ms in raw_candidates:
+        length = end_ms - start_ms
+        if length < MIN_SNIPPET_MS:
+            continue
+        if length <= MAX_SNIPPET_MS:
+            candidates.append((start_ms, end_ms))
+            continue
+        # Long segment: window it with stride = half the sweet-spot so
+        # neighbouring windows overlap by ~50% (NMS later picks the best).
+        stride_ms = max(MIN_SNIPPET_MS, LENGTH_SWEET_SPOT_MS // 2)
+        window_ms = LENGTH_SWEET_SPOT_MS
+        cursor = start_ms
+        while cursor + MIN_SNIPPET_MS <= end_ms:
+            win_end = min(cursor + window_ms, end_ms)
+            if win_end - cursor >= MIN_SNIPPET_MS:
+                candidates.append((cursor, win_end))
+            cursor += stride_ms
     if not candidates:
         return []
 

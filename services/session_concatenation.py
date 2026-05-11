@@ -429,10 +429,62 @@ def finalize_session_recording(session_id: str) -> dict[str, Any]:
             )
             failed_ids.append(sid)
 
+    # Also rewrite recordings.storage_path so the admin's "Full Recording"
+    # player — which fetches /v2/admin/recordings/<id>/playback-url and
+    # uses recordings.storage_path verbatim — points at the concat'd
+    # full.webm instead of the turn-1-only file written at first upload.
+    # Without this, Full Recording always shows the duration of turn 1
+    # (3 s, in the user's example) instead of the full session (48 s).
+    rewritten_recordings = 0
+    if turn_ids:
+        # Every turn row should share one recording_id (set on turn 1
+        # upload and reused on subsequent turns). Read it back from the
+        # first turn row.
+        try:
+            anchor = (
+                db.client.table("charisma_snippets")
+                .select("recording_id")
+                .eq("id", turn_ids[0])
+                .limit(1)
+                .execute()
+            )
+            recording_id = (
+                (anchor.data or [{}])[0].get("recording_id")
+                if anchor.data else None
+            )
+        except Exception as e:
+            logger.warning(
+                "finalize: failed to read recording_id for session=%s: %s",
+                session_id, e,
+            )
+            recording_id = None
+
+        if recording_id:
+            try:
+                upd = (
+                    db.client.table("recordings")
+                    .update({"storage_path": storage_path})
+                    .eq("id", recording_id)
+                    .execute()
+                )
+                rewritten_recordings = len(upd.data or [])
+                logger.info(
+                    "finalize:recording-rewrite sid=%s rid=%s storage=%s "
+                    "rows=%d",
+                    session_id, recording_id, storage_path,
+                    rewritten_recordings,
+                )
+            except Exception as e:
+                logger.warning(
+                    "finalize: recording rewrite failed sid=%s rid=%s err=%s",
+                    session_id, recording_id, e,
+                )
+
     return {
         **meta,
         "n_turns_rewritten": n_rewritten,
         "n_turns_failed": len(failed_ids),
+        "n_recordings_rewritten": rewritten_recordings,
         "failed_snippet_ids": failed_ids,
     }
 
