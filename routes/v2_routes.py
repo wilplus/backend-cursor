@@ -10131,6 +10131,26 @@ def _resolve_snippet_audio_url(snippet: dict) -> str | None:
     """
     storage = (snippet.get("storage_path") or "").strip()
     if storage:
+        # Concat'd session recordings (created by
+        # services.session_concatenation.concatenate_session_audio) live
+        # in R2 at session_recordings/<sid>/full.webm — the same R2 bucket
+        # the per-turn .webm files use. Other storage_path values
+        # (notably student uploads under charisma_snippets/...) live in
+        # Supabase Storage. Disambiguate by prefix so we hand the player
+        # back a URL that actually resolves.
+        if storage.startswith("session_recordings/"):
+            try:
+                from services.coach_video_storage import coach_media_public_url
+                url = coach_media_public_url(storage)
+                if url:
+                    return url
+            except Exception as e:
+                logger.warning(
+                    "snippet audio URL: R2 URL build failed for %s: %s",
+                    storage, e,
+                )
+            # If R2_PUBLIC_BASE_URL isn't set (local dev without R2), fall
+            # through to the Supabase signed-URL path below.
         try:
             return db.create_signed_url(
                 config.AUDIO_BUCKET_NAME, storage, config.SIGNED_URL_EXPIRY_SECONDS

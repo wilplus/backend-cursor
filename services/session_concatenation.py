@@ -232,14 +232,25 @@ def concatenate_session_audio(
         #    (sanity check + caller may want it for logging / metrics).
         probed_duration_ms = _probe_duration_ms(out_path, ffmpeg_exe)
 
-        # 7) Upload to Supabase Storage. Reusing db.upload_audio means the
-        #    bucket-name validation + content-type normalisation match the
-        #    rest of the codebase exactly.
+        # 7) Upload to Cloudflare R2 (not Supabase Storage). We deliberately
+        #    route through services.coach_video_storage.put_coach_object_bytes
+        #    so this destination matches where the per-turn inputs live —
+        #    the upload-answer endpoint writes per-turn .webm files there
+        #    via the same helper. R2 is the canonical storage for audio in
+        #    this codebase now; the prior db.upload_audio call wrote the
+        #    concat'd file to Supabase Storage, which (a) caused the
+        #    StorageException "Object not found" failures the user pasted
+        #    (Supabase refusing the write because the path doesn't exist
+        #    under the audio_recordings bucket's expected layout) and
+        #    (b) split the canonical recording across two buckets.
         storage_path = f"{storage_prefix.rstrip('/')}/{session_id}/full.webm"
         with open(out_path, "rb") as f:
             blob = f.read()
         try:
-            db.upload_audio(target_bucket, storage_path, blob, "audio/webm")
+            from services.coach_video_storage import put_coach_object_bytes
+            put_coach_object_bytes(
+                target_bucket, storage_path, blob, "audio/webm"
+            )
         except Exception as e:
             raise ConcatError(
                 f"session {session_id}: storage upload failed for "

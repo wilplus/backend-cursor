@@ -217,7 +217,34 @@ def _process_one(payload: dict):
             int((time.monotonic() - job_started) * 1000),
         )
 
-        audio_url = db.create_signed_url(config.AUDIO_BUCKET_NAME, storage_path, config.SIGNED_URL_EXPIRY_SECONDS)
+        # Build a playable URL for the recording row. With per-turn audio
+        # now living in R2 (see services.coach_video_storage), the prior
+        # db.create_signed_url(AUDIO_BUCKET_NAME, ...) call hits Supabase
+        # Storage for an object that isn't there and raises
+        # "{'statusCode': 400, 'error': 'not_found'}". Prefer the R2 public
+        # URL (via R2_PUBLIC_BASE_URL, configured in production) and fall
+        # back to the Supabase signed-URL path so this still works in dev
+        # environments where R2 isn't configured.
+        audio_url = ""
+        try:
+            from services.coach_video_storage import coach_media_public_url
+            audio_url = coach_media_public_url(storage_path) or ""
+        except Exception as e:
+            logger.warning(
+                "recording_1_job: R2 URL build failed for %s: %s",
+                storage_path, e,
+            )
+        if not audio_url:
+            try:
+                audio_url = db.create_signed_url(
+                    config.AUDIO_BUCKET_NAME, storage_path, config.SIGNED_URL_EXPIRY_SECONDS
+                ) or ""
+            except Exception as e:
+                logger.warning(
+                    "recording_1_job: signed URL fallback failed for %s: %s",
+                    storage_path, e,
+                )
+                audio_url = ""
         if not audio_url:
             supabase_url = config.SUPABASE_URL.rstrip("/")
             audio_url = f"{supabase_url}/storage/v1/object/public/{config.AUDIO_BUCKET_NAME}/{storage_path}"
