@@ -67,6 +67,22 @@ class Config:
     R2_BUCKET_NAME = (os.getenv("R2_BUCKET_NAME") or "").strip()
     # Optional public or custom domain base for stable <video src> URLs, no trailing slash (e.g. https://videos.example.com).
     R2_PUBLIC_BASE_URL = (os.getenv("R2_PUBLIC_BASE_URL") or "").strip()
+
+    # ── Cloudflare R2 — USER INTERVIEW AUDIO ─────────────────────────────────
+    # Deliberately a separate bucket from coach feedback videos because the
+    # content type, lifecycle, and access policy differ:
+    #   - coach_feedback_videos: long-lived public videos created by coaches
+    #   - user-interview-audio:  short-lived per-user audio + concat'd session
+    #                            recordings, possibly under stricter retention
+    # Set both R2_AUDIO_BUCKET_NAME and R2_AUDIO_PUBLIC_BASE_URL to enable R2
+    # for audio. The same R2_ACCOUNT_ID / R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY
+    # are reused — no new credentials needed, just a different bucket on the
+    # same R2 account.
+    # When unset (dev / non-R2 environments), services.audio_storage falls
+    # back to Supabase Storage at AUDIO_BUCKET_NAME ("audio_recordings"),
+    # matching the codebase's pre-migration default.
+    R2_AUDIO_BUCKET_NAME = (os.getenv("R2_AUDIO_BUCKET_NAME") or "").strip()
+    R2_AUDIO_PUBLIC_BASE_URL = (os.getenv("R2_AUDIO_PUBLIC_BASE_URL") or "").strip()
     
     # Frontend URL (for email links)
     FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
