@@ -342,14 +342,22 @@ def finalize_session_recording(session_id: str) -> dict[str, Any]:
     failed_ids: list[str] = []
 
     for sid, offset, duration in zip(turn_ids, offsets_ms, durations_ms):
-        # Belt-and-suspenders: also rewrite duration_ms so the row's
-        # (start_offset_ms, duration_ms) is internally consistent even
-        # if a prior process wrote a stale duration that no longer
-        # matches the audio. ``concatenate_session_audio`` echoes back
-        # the DB-side duration, so this is effectively idempotent.
+        # We DO NOT null out audio_segment_path here. Two reasons:
+        #   1. concatenate_session_audio's SELECT filters by
+        #      ``audio_segment_path IS NOT NULL`` to find turn rows;
+        #      nulling it would make subsequent finalize calls miss
+        #      every row that's already been processed and break
+        #      idempotency. (Critical for the auto-trigger that runs
+        #      after every turn upload — each call re-finds all turns.)
+        #   2. _resolve_snippet_audio_url now prefers storage_path over
+        #      audio_segment_path, so once storage_path is populated the
+        #      player switches to the concat'd-slice URL automatically.
+        #      audio_segment_path is preserved as a historical record /
+        #      fallback if signed-URL generation ever fails.
+        # duration_ms is echoed back so (start_offset_ms, duration_ms)
+        # stays internally consistent even if a stale prior value drifted.
         patch = {
             "storage_path": storage_path,
-            "audio_segment_path": None,
             "start_offset_ms": int(offset),
             "duration_ms": int(duration),
         }

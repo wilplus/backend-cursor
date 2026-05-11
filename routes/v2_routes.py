@@ -8802,6 +8802,24 @@ def v2_public_interview_upload_answer():
             turn_number, question_tone, duration_seconds or 0, total_duration, guest_session_id,
         )
 
+        # Auto-finalize: kick off ffmpeg concat + session-level metric
+        # aggregation in a background thread so the upload response isn't
+        # blocked. Idempotent — running after every turn just means the
+        # canonical recording is always up-to-date; the final run (after
+        # the last turn) is the one that matters for admin playback.
+        # Errors inside the thread are logged but never raised; a finalize
+        # failure must not affect the turn-upload response.
+        try:
+            _run_session_finalize_in_bg(guest_session_id)
+        except Exception as bg_err:
+            # _run_session_finalize_in_bg itself shouldn't raise (it only
+            # starts a thread) — but if it does, swallow so we don't fail
+            # the upload that already succeeded.
+            logger.warning(
+                "auto-finalize: failed to schedule for session=%s: %s",
+                guest_session_id, bg_err,
+            )
+
         return jsonify({
             "status": "ok",
             "guest_session_id": guest_session_id,
@@ -10090,35 +10108,43 @@ def v2_admin_patch_turn_question(turn_id):
 def _resolve_snippet_audio_url(snippet: dict) -> str | None:
     """Pick a playable audio URL from whichever column the writer used.
 
-    The three snippet creation paths populate different columns:
-      - Path A (interview/upload-answer): audio_segment_path = full URL
-      - Path B (extract_recording_snippets): audio_segment_path = full URL
-      - Path C (charisma_snippet_service): storage_path = bucket-relative key
-                                           in AUDIO_BUCKET (Supabase Storage)
-                                           with audio_segment_path NULL
+    The four snippet states we have to play through one <audio> element:
+      - Path A pre-finalize: audio_segment_path = R2 public URL for the
+        per-turn .webm, storage_path NULL.
+      - Path A post-finalize: storage_path = bucket-relative key of the
+        concat'd session full.webm (Supabase Storage). audio_segment_path
+        is left intact (historical record + idempotent re-finalize), but
+        storage_path is what start_offset_ms / duration_ms are RELATIVE TO,
+        so it must win.
+      - Path B (extract_recording_snippets): audio_segment_path = full URL,
+        storage_path NULL.
+      - Path C (charisma_snippet_service) and student uploads: storage_path
+        set, audio_segment_path NULL.
 
-    This helper returns the first usable URL: the existing
-    audio_segment_path verbatim, or a Supabase signed URL derived from
-    storage_path. Returning None means there's truly nothing playable —
-    only happens if both columns are NULL.
+    Precedence is therefore: storage_path → audio_segment_path → None.
+    Returning None means there's truly nothing playable. Keeping
+    audio_segment_path as the fallback (rather than the primary) is what
+    makes the per-turn → canonical-recording migration safe — the moment
+    finalize_session_recording populates storage_path, the snippet flips
+    from playing its per-turn file to playing a slice of the concat'd
+    session audio, no DB cleanup required.
     """
+    storage = (snippet.get("storage_path") or "").strip()
+    if storage:
+        try:
+            return db.create_signed_url(
+                config.AUDIO_BUCKET_NAME, storage, config.SIGNED_URL_EXPIRY_SECONDS
+            )
+        except Exception as e:
+            logger.warning(
+                "snippet audio URL: signed url failed for %s: %s — falling back",
+                storage, e,
+            )
+            # fall through to audio_segment_path
     seg = (snippet.get("audio_segment_path") or "").strip()
     if seg:
         return seg
-    storage = (snippet.get("storage_path") or "").strip()
-    if not storage:
-        return None
-    # Path C writes to AUDIO_BUCKET_NAME (Supabase Storage). Generate a
-    # short-lived signed URL so the admin's <audio> element can play it.
-    try:
-        return db.create_signed_url(
-            config.AUDIO_BUCKET_NAME, storage, config.SIGNED_URL_EXPIRY_SECONDS
-        )
-    except Exception as e:
-        logger.warning(
-            "snippet audio URL: signed url failed for %s: %s", storage, e
-        )
-        return None
+    return None
 
 
 @v2_bp.route("/admin/sessions/<session_id>", methods=["GET"])
@@ -10291,79 +10317,186 @@ def v2_admin_get_session(session_id):
         return jsonify({"code": "V2_ERROR", "error": "Failed to fetch session"}), 500
 
 
+def _compute_session_global_metrics(session_id: str) -> dict | None:
+    """Aggregate snippet-level metrics into session-level averages and persist.
+
+    Extracted from v2_admin_compute_session_metrics so it can be called
+    from the auto-finalize background thread (no LLM call, no HTTP shell).
+    Returns the computed metrics dict on success, or None when the session
+    has no active snippets (caller decides whether that's an error).
+
+    The aggregation rule is averages for rates (wpm, pause_ms, dynamic_db,
+    pitch_center, energy) and sum for counts (fillers). Falls back to the
+    JSONB ``metrics`` column when individual metric columns are NULL —
+    older snippet rows wrote metrics into the blob before the dedicated
+    columns existed.
+    """
+    snippets = db.get_snippets_by_session(session_id)
+    active_snippets = [s for s in snippets if not s.get("is_skipped", False)]
+    if not active_snippets:
+        return None
+
+    wpms = [s.get("wpm") for s in active_snippets if s.get("wpm") is not None]
+    fillers_list = [s.get("fillers") for s in active_snippets if s.get("fillers") is not None]
+    pauses = [s.get("pause_ms") for s in active_snippets if s.get("pause_ms") is not None]
+    dynamics = [s.get("dynamic_db") for s in active_snippets if s.get("dynamic_db") is not None]
+    pitches = [s.get("pitch_center") for s in active_snippets if s.get("pitch_center") is not None]
+    energies = [s.get("energy") for s in active_snippets if s.get("energy") is not None]
+
+    # JSONB ``metrics`` fallback for any field whose dedicated column is empty
+    if not pauses:
+        pauses = [s["metrics"]["pause_ms"] for s in active_snippets
+                  if s.get("metrics") and s["metrics"].get("pause_ms") is not None]
+    if not dynamics:
+        dynamics = [s["metrics"]["dynamic_db"] for s in active_snippets
+                    if s.get("metrics") and s["metrics"].get("dynamic_db") is not None]
+    if not pitches:
+        pitches = [s["metrics"]["pitch_center_st"] for s in active_snippets
+                   if s.get("metrics") and s["metrics"].get("pitch_center_st") is not None]
+    if not energies:
+        energies = [s["metrics"]["energy_ratio"] for s in active_snippets
+                    if s.get("metrics") and s["metrics"].get("energy_ratio") is not None]
+
+    global_wpm = round(sum(wpms) / len(wpms), 1) if wpms else None
+    global_fillers = sum(fillers_list) if fillers_list else None
+    global_pause_ms = round(sum(pauses) / len(pauses), 1) if pauses else None
+    global_dynamic_db = round(sum(dynamics) / len(dynamics), 1) if dynamics else None
+    global_pitch_center = round(sum(pitches) / len(pitches), 1) if pitches else None
+    global_energy = round(sum(energies) / len(energies), 3) if energies else None
+
+    # KPI from the existing performance formula
+    kpi_score = None
+    kpi_debug = None
+    try:
+        from services.metrics_v2 import compute_recording_performance_score
+        kpi_result = compute_recording_performance_score(
+            center_hold_ratio=global_energy,
+            filler_count=global_fillers or 0,
+            wpm=global_wpm or 140.0,
+        )
+        kpi_score = round(kpi_result["score_01"] * 100, 1)
+        kpi_debug = kpi_result
+    except Exception as kpi_err:
+        logger.warning("session metrics: KPI score compute failed: %s", kpi_err)
+
+    db.update_session_global_metrics(
+        session_id=session_id,
+        global_wpm=global_wpm,
+        global_fillers=global_fillers,
+        global_pause_ms=global_pause_ms,
+        global_dynamic_db=global_dynamic_db,
+        global_pitch_center=global_pitch_center,
+        global_energy=global_energy,
+        kpi_score=kpi_score,
+    )
+
+    return {
+        "wpm": global_wpm,
+        "fillers": global_fillers,
+        "pause_ms": global_pause_ms,
+        "dynamic_db": global_dynamic_db,
+        "pitch_center": global_pitch_center,
+        "energy": global_energy,
+        "kpi_score": kpi_score,
+        "kpi_debug": kpi_debug,
+        "snippets_analyzed": len(active_snippets),
+        "active_snippets": active_snippets,
+    }
+
+
+def _run_session_finalize_in_bg(session_id: str) -> None:
+    """Concatenate per-turn audio + aggregate session metrics, in background.
+
+    Called from the interview turn upload endpoint after every successful
+    turn. Idempotent — finalize_session_recording overwrites the same
+    storage key and rewrites the same snippet rows on each run, so running
+    it after every turn (rather than only the last one) just means a few
+    extra ffmpeg passes; the final state always reflects the latest turn.
+
+    Runs in a daemon thread so the upload response isn't blocked by ffmpeg
+    + storage I/O + metric aggregation. Mirrors the threading pattern used
+    elsewhere in this module (e.g. background email send around L937).
+
+    Errors are swallowed but logged — a finalize failure must NEVER fail
+    the upload it was triggered from, since the turn itself has already
+    been persisted successfully.
+    """
+    def _worker():
+        try:
+            from services.session_concatenation import (
+                finalize_session_recording,
+                ConcatError,
+            )
+            try:
+                meta = finalize_session_recording(session_id)
+                logger.info(
+                    "auto-finalize: session=%s storage=%s turns=%d failed=%d duration_ms=%d",
+                    session_id,
+                    meta.get("storage_path"),
+                    meta.get("n_turns_rewritten", 0),
+                    meta.get("n_turns_failed", 0),
+                    meta.get("duration_ms", 0),
+                )
+            except ConcatError as e:
+                # Expected when this is the first turn and there's only
+                # one input — or when an upstream upload silently failed
+                # and the per-turn file doesn't exist in R2. We log and
+                # move on so the metrics step still runs.
+                logger.info(
+                    "auto-finalize: skipped session=%s reason=%s",
+                    session_id, e,
+                )
+
+            try:
+                m = _compute_session_global_metrics(session_id)
+                if m is not None:
+                    logger.info(
+                        "auto-metrics: session=%s wpm=%s fillers=%s kpi=%s n=%d",
+                        session_id, m.get("wpm"), m.get("fillers"),
+                        m.get("kpi_score"), m.get("snippets_analyzed"),
+                    )
+            except Exception as me:
+                logger.warning("auto-metrics: session=%s failed: %s", session_id, me)
+        except Exception as outer:
+            # Last-resort catchall so the daemon thread can't surface
+            # exceptions into gunicorn's worker logs as unhandled.
+            logger.warning("auto-finalize: outer failure session=%s: %s", session_id, outer)
+
+    threading.Thread(
+        target=_worker,
+        daemon=True,
+        name=f"auto-finalize-{session_id[:8]}",
+    ).start()
+
+
 @v2_bp.route("/admin/sessions/<session_id>/compute-metrics", methods=["POST"])
 @require_admin
 def v2_admin_compute_session_metrics(session_id):
     """Trigger computation of global session metrics and AI alignment review.
 
-    1. Aggregates snippet-level metrics into session-level averages.
-    2. Calls LLM to evaluate the transcript and produce alignment score + comment.
+    1. Aggregates snippet-level metrics into session-level averages
+       (delegated to _compute_session_global_metrics; same logic the
+       auto-finalize background trigger uses).
+    2. Calls LLM to evaluate the transcript and produce alignment
+       score + comment (unique to this admin-triggered path — the auto
+       trigger skips the LLM call because it's heavyweight).
     """
     try:
-        # Fetch all non-skipped snippets for this session
-        snippets = db.get_snippets_by_session(session_id)
-        active_snippets = [s for s in snippets if not s.get("is_skipped", False)]
-
-        if not active_snippets:
+        m = _compute_session_global_metrics(session_id)
+        if m is None:
             return jsonify({"code": "NO_SNIPPETS", "error": "No active snippets in this session"}), 404
 
-        # Aggregate metrics across snippets
-        wpms = [s.get("wpm") for s in active_snippets if s.get("wpm") is not None]
-        fillers_list = [s.get("fillers") for s in active_snippets if s.get("fillers") is not None]
-        pauses = [s.get("pause_ms") for s in active_snippets if s.get("pause_ms") is not None]
-        dynamics = [s.get("dynamic_db") for s in active_snippets if s.get("dynamic_db") is not None]
-        pitches = [s.get("pitch_center") for s in active_snippets if s.get("pitch_center") is not None]
-        energies = [s.get("energy") for s in active_snippets if s.get("energy") is not None]
-
-        # Also check JSONB metrics column as fallback
-        if not pauses:
-            pauses = [s["metrics"]["pause_ms"] for s in active_snippets
-                      if s.get("metrics") and s["metrics"].get("pause_ms") is not None]
-        if not dynamics:
-            dynamics = [s["metrics"]["dynamic_db"] for s in active_snippets
-                        if s.get("metrics") and s["metrics"].get("dynamic_db") is not None]
-        if not pitches:
-            pitches = [s["metrics"]["pitch_center_st"] for s in active_snippets
-                       if s.get("metrics") and s["metrics"].get("pitch_center_st") is not None]
-        if not energies:
-            energies = [s["metrics"]["energy_ratio"] for s in active_snippets
-                        if s.get("metrics") and s["metrics"].get("energy_ratio") is not None]
-
-        global_wpm = round(sum(wpms) / len(wpms), 1) if wpms else None
-        global_fillers = sum(fillers_list) if fillers_list else None
-        global_pause_ms = round(sum(pauses) / len(pauses), 1) if pauses else None
-        global_dynamic_db = round(sum(dynamics) / len(dynamics), 1) if dynamics else None
-        global_pitch_center = round(sum(pitches) / len(pitches), 1) if pitches else None
-        global_energy = round(sum(energies) / len(energies), 3) if energies else None
-
-        # Compute KPI score using existing performance formula
-        # Uses center_hold_ratio (energy as proxy) + filler count + WPM
-        kpi_score = None
-        kpi_debug = None
-        try:
-            from services.metrics_v2 import compute_recording_performance_score
-            # Use global energy as a proxy for center_hold_ratio (both are 0..1)
-            kpi_result = compute_recording_performance_score(
-                center_hold_ratio=global_energy,
-                filler_count=global_fillers or 0,
-                wpm=global_wpm or 140.0,
-            )
-            kpi_score = round(kpi_result["score_01"] * 100, 1)
-            kpi_debug = kpi_result
-        except Exception as kpi_err:
-            logger.warning("admin: KPI score compute failed: %s", kpi_err)
-
-        # Save global metrics + KPI
-        db.update_session_global_metrics(
-            session_id=session_id,
-            global_wpm=global_wpm,
-            global_fillers=global_fillers,
-            global_pause_ms=global_pause_ms,
-            global_dynamic_db=global_dynamic_db,
-            global_pitch_center=global_pitch_center,
-            global_energy=global_energy,
-            kpi_score=kpi_score,
-        )
+        active_snippets = m["active_snippets"]
+        global_wpm = m["wpm"]
+        global_fillers = m["fillers"]
+        global_pause_ms = m["pause_ms"]
+        global_dynamic_db = m["dynamic_db"]
+        global_pitch_center = m["pitch_center"]
+        global_energy = m["energy"]
+        kpi_score = m["kpi_score"]
+        kpi_debug = m["kpi_debug"]
+        # _compute_session_global_metrics has already persisted the row
+        # via db.update_session_global_metrics — no second write needed.
 
         # AI alignment: evaluate the full interview transcript via LLM
         # Includes KPI score as context so the LLM factors it in
