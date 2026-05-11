@@ -10501,89 +10501,186 @@ def _compute_session_global_metrics(session_id: str) -> dict | None:
     }
 
 
+# ── Per-session debounce + lock state (module-local) ────────────────────────
+#
+# The previous design spawned a daemon thread on every turn upload that
+# immediately ran concat + extract. With turns landing seconds apart, two
+# threads frequently overlapped — and because finalize publishes derived
+# state (full.webm in R2, snippet anchor rewrites in DB) without any
+# notion of "session version", the LATER-finishing thread could regress
+# the canonical recording back to an earlier turn count. That's the bug
+# behind both:
+#   1. Full Recording showing only turn-1 length (3 s instead of 48 s)
+#   2. Duplicate auto-extracted snippets cut from the truncated file
+#
+# Two layers of protection:
+#   - Debounce: every upload reschedules. The actual work only runs after
+#     FINALIZE_DEBOUNCE_SEC of upload silence — naturally collapsing a
+#     burst of N turns into a single finalize run against the latest
+#     state. Catches the common case (rapid sequential turns).
+#   - In-process per-session lock: defensive — if the debounce doesn't
+#     catch a race (e.g. an upload arrives exactly at the debounce
+#     deadline of another), the lock serializes runs so the later one
+#     waits for the earlier to finish, then runs against fresh data.
+#
+# Both are per-worker. With 2 gunicorn workers the cross-worker race
+# window shrinks but isn't fully closed; if we still see it, the next
+# step is a Postgres advisory lock on hashtext(session_id). Keeping that
+# in reserve.
+_finalize_state_lock = threading.Lock()
+_finalize_timers: dict[str, threading.Timer] = {}
+_finalize_locks: dict[str, threading.Lock] = {}
+FINALIZE_DEBOUNCE_SEC = 2.0
+
+
+def _get_session_finalize_lock(session_id: str) -> threading.Lock:
+    """Lazily allocate one Lock per session_id. Holding the meta-lock
+    while we create the per-session lock guarantees the two workers
+    inside the same process never end up with two different locks."""
+    with _finalize_state_lock:
+        lock = _finalize_locks.get(session_id)
+        if lock is None:
+            lock = threading.Lock()
+            _finalize_locks[session_id] = lock
+        return lock
+
+
 def _run_session_finalize_in_bg(session_id: str) -> None:
-    """Concatenate per-turn audio + aggregate session metrics, in background.
+    """Schedule a debounced finalize run for ``session_id``.
 
     Called from the interview turn upload endpoint after every successful
-    turn. Idempotent — finalize_session_recording overwrites the same
-    storage key and rewrites the same snippet rows on each run, so running
-    it after every turn (rather than only the last one) just means a few
-    extra ffmpeg passes; the final state always reflects the latest turn.
+    turn. Each call cancels any pending timer for the same session and
+    schedules a fresh one. Only the timer that survives a full
+    ``FINALIZE_DEBOUNCE_SEC`` window of silence actually fires the real
+    finalize work — so a burst of N turn uploads produces exactly one
+    finalize run against the final session state.
 
-    Runs in a daemon thread so the upload response isn't blocked by ffmpeg
-    + storage I/O + metric aggregation. Mirrors the threading pattern used
-    elsewhere in this module (e.g. background email send around L937).
-
-    Errors are swallowed but logged — a finalize failure must NEVER fail
-    the upload it was triggered from, since the turn itself has already
-    been persisted successfully.
+    Returns immediately. The upload response is never blocked by ffmpeg,
+    storage I/O, or metric aggregation.
     """
-    def _worker():
+    with _finalize_state_lock:
+        existing_timer = _finalize_timers.pop(session_id, None)
+        if existing_timer is not None:
+            existing_timer.cancel()
+
+        timer = threading.Timer(
+            FINALIZE_DEBOUNCE_SEC,
+            _do_session_finalize,
+            args=(session_id,),
+        )
+        timer.daemon = True
+        timer.name = f"finalize-debounce-{session_id[:8]}"
+        _finalize_timers[session_id] = timer
+        timer.start()
+
+
+def _do_session_finalize(session_id: str) -> None:
+    """Run the actual concat + metrics + extract pipeline under the
+    per-session lock. Fired by the debounce timer in _run_session_
+    finalize_in_bg, NOT by every upload.
+
+    Every log line carries the same ``run`` UUID so the timeline of any
+    one finalize is grep-able. The run also records:
+      - start / end timestamps
+      - per-step turn counts and durations
+      - whether the lock had to wait
+
+    If another worker is already finalizing this session, we wait
+    behind it rather than racing — by the time we get the lock, the
+    DB and R2 reflect the prior worker's writes, so our re-read will
+    see the latest turns.
+    """
+    run_id = uuid.uuid4().hex[:8]
+    lock = _get_session_finalize_lock(session_id)
+    started = time.monotonic()
+
+    waited_for_lock = not lock.acquire(blocking=False)
+    if waited_for_lock:
+        # Another finalize for this session is in-flight inside this
+        # worker process. Wait for it — when we get the lock the prior
+        # writer's state is visible, so our re-read covers any turn that
+        # landed since we were scheduled.
+        logger.info("finalize:wait run=%s sid=%s", run_id, session_id)
+        lock.acquire()
+
+    try:
+        wait_ms = int((time.monotonic() - started) * 1000) if waited_for_lock else 0
+        logger.info(
+            "finalize:start run=%s sid=%s lock_wait_ms=%d", run_id, session_id, wait_ms,
+        )
+
+        # Concat step: glue per-turn .webm files into one full.webm and
+        # rewrite turn rows' (storage_path, start_offset_ms).
         try:
             from services.session_concatenation import (
                 finalize_session_recording,
                 ConcatError,
             )
-            try:
-                meta = finalize_session_recording(session_id)
-                logger.info(
-                    "auto-finalize: session=%s storage=%s turns=%d failed=%d duration_ms=%d",
-                    session_id,
-                    meta.get("storage_path"),
-                    meta.get("n_turns_rewritten", 0),
-                    meta.get("n_turns_failed", 0),
-                    meta.get("duration_ms", 0),
-                )
-            except ConcatError as e:
-                # Expected when this is the first turn and there's only
-                # one input — or when an upstream upload silently failed
-                # and the per-turn file doesn't exist in R2. We log and
-                # move on so the metrics step still runs.
-                logger.info(
-                    "auto-finalize: skipped session=%s reason=%s",
-                    session_id, e,
-                )
+            meta = finalize_session_recording(session_id)
+            logger.info(
+                "finalize:concat run=%s sid=%s storage=%s turns_rewritten=%d turns_failed=%d duration_ms=%d",
+                run_id, session_id,
+                meta.get("storage_path"),
+                meta.get("n_turns_rewritten", 0),
+                meta.get("n_turns_failed", 0),
+                meta.get("duration_ms", 0),
+            )
+        except ConcatError as e:
+            logger.info(
+                "finalize:concat-skip run=%s sid=%s reason=%s",
+                run_id, session_id, e,
+            )
+        except Exception as e:
+            logger.warning(
+                "finalize:concat-fail run=%s sid=%s err=%s",
+                run_id, session_id, e,
+            )
 
-            try:
-                m = _compute_session_global_metrics(session_id)
-                if m is not None:
-                    logger.info(
-                        "auto-metrics: session=%s wpm=%s fillers=%s kpi=%s n=%d",
-                        session_id, m.get("wpm"), m.get("fillers"),
-                        m.get("kpi_score"), m.get("snippets_analyzed"),
-                    )
-            except Exception as me:
-                logger.warning("auto-metrics: session=%s failed: %s", session_id, me)
-
-            # Extract highlight snippets from the just-finalized recording.
-            # Runs every turn (per product requirement) — apply_extracted_
-            # snippets is idempotent and freezes labeled snippets, so the
-            # admin's manual labels persist across re-runs.
-            try:
-                from services.snippet_truncation import apply_extracted_snippets
-                summary = apply_extracted_snippets(session_id)
+        # Metrics aggregation step.
+        try:
+            m = _compute_session_global_metrics(session_id)
+            if m is not None:
                 logger.info(
-                    "auto-extract: session=%s proposed=%s frozen=%s inserted=%s deleted=%s "
-                    "skipped=%s",
-                    session_id,
-                    summary.get("candidates_proposed", 0),
-                    summary.get("frozen_preserved", 0),
-                    summary.get("new_inserted", 0),
-                    summary.get("deleted", 0),
-                    summary.get("skipped", "no"),
+                    "finalize:metrics run=%s sid=%s wpm=%s fillers=%s kpi=%s n=%d",
+                    run_id, session_id,
+                    m.get("wpm"), m.get("fillers"),
+                    m.get("kpi_score"), m.get("snippets_analyzed"),
                 )
-            except Exception as ee:
-                logger.warning("auto-extract: session=%s failed: %s", session_id, ee)
-        except Exception as outer:
-            # Last-resort catchall so the daemon thread can't surface
-            # exceptions into gunicorn's worker logs as unhandled.
-            logger.warning("auto-finalize: outer failure session=%s: %s", session_id, outer)
+        except Exception as e:
+            logger.warning(
+                "finalize:metrics-fail run=%s sid=%s err=%s",
+                run_id, session_id, e,
+            )
 
-    threading.Thread(
-        target=_worker,
-        daemon=True,
-        name=f"auto-finalize-{session_id[:8]}",
-    ).start()
+        # Snippet extraction step: highlights cut from the just-published
+        # full.webm. Idempotent by window-keyed diff (see apply_extracted_
+        # snippets), so re-running converges to the same set of windows
+        # without producing duplicates.
+        try:
+            from services.snippet_truncation import apply_extracted_snippets
+            summary = apply_extracted_snippets(session_id)
+            logger.info(
+                "finalize:extract run=%s sid=%s proposed=%s frozen=%s inserted=%s deleted=%s skipped=%s",
+                run_id, session_id,
+                summary.get("candidates_proposed", 0),
+                summary.get("frozen_preserved", 0),
+                summary.get("new_inserted", 0),
+                summary.get("deleted", 0),
+                summary.get("skipped", "no"),
+            )
+        except Exception as e:
+            logger.warning(
+                "finalize:extract-fail run=%s sid=%s err=%s",
+                run_id, session_id, e,
+            )
+
+        elapsed_ms = int((time.monotonic() - started) * 1000)
+        logger.info(
+            "finalize:done run=%s sid=%s elapsed_ms=%d",
+            run_id, session_id, elapsed_ms,
+        )
+    finally:
+        lock.release()
 
 
 @v2_bp.route("/admin/sessions/<session_id>/compute-metrics", methods=["POST"])

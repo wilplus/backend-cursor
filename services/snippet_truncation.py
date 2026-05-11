@@ -305,8 +305,13 @@ def apply_extracted_snippets(session_id: str) -> dict[str, Any]:
             "deleted": 0,
         }
 
-    # 2) Pull existing extracted rows for the session and split them
-    #    into frozen (labeled) vs unfrozen (eligible for replacement).
+    # 2) Pull existing extracted rows for the session and classify them
+    #    into:
+    #      - frozen (labeled by an admin — never delete, never overlap)
+    #      - existing_unfrozen_by_window (auto_extracted but not labeled —
+    #        candidates for window-keyed diff below)
+    #    Rows with non-"auto_extracted" source_type (and unlabeled) are
+    #    left alone; we don't own those.
     existing = (
         db.client.table("charisma_snippets")
         .select("id, start_offset_ms, duration_ms, source_type, "
@@ -317,16 +322,23 @@ def apply_extracted_snippets(session_id: str) -> dict[str, Any]:
     )
     existing_rows = existing.data or []
     frozen: list[dict[str, Any]] = []
-    unfrozen_auto_ids: list[str] = []
+    # Key: (start_offset_ms, duration_ms) → row dict. Used to dedupe
+    # against new candidates so we DON'T churn rows that already exist
+    # at the same window. This is the structural fix for the duplicate-
+    # snippet bug that surfaced when two concurrent finalize threads
+    # both ran DELETE-then-INSERT and the INSERTs landed before the
+    # DELETEs took effect.
+    existing_unfrozen_by_window: dict[tuple[int, int], dict[str, Any]] = {}
     for s in existing_rows:
         if _is_frozen(s):
             frozen.append(s)
-        elif (s.get("source_type") or "") == "auto_extracted":
-            sid = s.get("id")
-            if sid:
-                unfrozen_auto_ids.append(str(sid))
-        # Note: rows with source_type other than auto_extracted and not
-        # frozen (e.g. a stale state) are left alone. We don't own them.
+            continue
+        if (s.get("source_type") or "") == "auto_extracted":
+            window = (
+                int(s.get("start_offset_ms") or 0),
+                int(s.get("duration_ms") or 0),
+            )
+            existing_unfrozen_by_window[window] = s
 
     # 3) Build a session-wide transcript from turn rows for the
     #    filler-density penalty. Order by turn_number so the
@@ -380,26 +392,50 @@ def apply_extracted_snippets(session_id: str) -> dict[str, Any]:
 
     new_candidates = [c for c in candidates if not _overlaps_any_frozen(c)]
 
-    # 6) Delete prior un-frozen auto_extracted rows in one shot
+    # 6) Window-keyed diff between existing un-frozen auto_extracted
+    #    rows and the new candidate set. The previous implementation
+    #    DELETE'd every un-frozen row and INSERT'd every candidate —
+    #    which under two concurrent finalize runs produces duplicates
+    #    (both runs see the same "prior" set, both insert their windows,
+    #    second DELETE arrives too late). The diff approach is naturally
+    #    idempotent and converges to the same final state regardless of
+    #    invocation count.
+    proposed_keys = {
+        (int(c["start_offset_ms"]), int(c["duration_ms"]))
+        for c in new_candidates
+    }
+    existing_keys = set(existing_unfrozen_by_window.keys())
+
+    to_delete_ids = [
+        str(s["id"]) for key, s in existing_unfrozen_by_window.items()
+        if key not in proposed_keys and s.get("id")
+    ]
+    to_insert = [
+        c for c in new_candidates
+        if (int(c["start_offset_ms"]), int(c["duration_ms"])) not in existing_keys
+    ]
+    # Rows whose window is in BOTH sets are left untouched — no DB churn,
+    # no risk of clobbering admin edits made between extractions.
+
     deleted_count = 0
-    if unfrozen_auto_ids:
+    if to_delete_ids:
         try:
             del_res = (
                 db.client.table("charisma_snippets")
                 .delete()
-                .in_("id", unfrozen_auto_ids)
+                .in_("id", to_delete_ids)
                 .execute()
             )
-            deleted_count = len(del_res.data or unfrozen_auto_ids)
+            deleted_count = len(del_res.data or to_delete_ids)
         except Exception as e:
             logger.warning(
                 "apply_extracted_snippets: delete failed session=%s err=%s",
                 session_id, e,
             )
 
-    # 7) Insert surviving candidates as new auto_extracted rows
+    # 7) Insert net-new windows
     inserted_count = 0
-    if new_candidates:
+    if to_insert:
         payload = [
             {
                 "session_id": session_id,
@@ -418,7 +454,7 @@ def apply_extracted_snippets(session_id: str) -> dict[str, Any]:
                 "metrics": {"extractor_score": c.get("score"),
                             "extractor_components": c.get("components")},
             }
-            for c in new_candidates
+            for c in to_insert
         ]
         try:
             inserted = db.v2_insert_charisma_snippets(payload)
@@ -434,6 +470,7 @@ def apply_extracted_snippets(session_id: str) -> dict[str, Any]:
         "storage_path": concat_storage_path,
         "candidates_proposed": len(candidates),
         "frozen_preserved": len(frozen),
+        "existing_unchanged": len(existing_keys & proposed_keys),
         "new_inserted": inserted_count,
         "deleted": deleted_count,
     }
