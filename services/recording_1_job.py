@@ -161,8 +161,22 @@ def _process_one(payload: dict):
     job_started = time.monotonic()
 
     try:
-        # Step 1: download audio from storage
-        audio_bytes = db.download_audio(config.AUDIO_BUCKET_NAME, storage_path)
+        # Step 1: download audio from storage.
+        #
+        # We pull through services.coach_video_storage.get_coach_object_bytes
+        # so this stays in sync with the upload helper used by /v2/public/
+        # interview/upload-answer (put_coach_object_bytes). That helper writes
+        # to R2 when R2_* env vars are set (production) and falls back to
+        # Supabase Storage otherwise. The previous direct
+        # db.download_audio(AUDIO_BUCKET_NAME, ...) call always looked in
+        # Supabase Storage, which broke this worker the moment uploads moved
+        # to R2 — every new session crashed with:
+        #   StorageException {'statusCode': 400, 'error': 'not_found'}
+        # on guest_funnel/<sid>/turn_N.webm.
+        from services.coach_video_storage import get_coach_object_bytes
+        audio_bytes = get_coach_object_bytes(
+            config.AUDIO_BUCKET_NAME, storage_path
+        )
         if not audio_bytes:
             raise ValueError(f"Downloaded audio is empty (0 bytes): path={storage_path}")
         logger.info("recording_1_job: downloaded audio size=%d bytes session_id=%s", len(audio_bytes), session_id)
