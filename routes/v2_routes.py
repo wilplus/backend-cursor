@@ -8574,10 +8574,29 @@ def v2_public_interview_upload_answer():
                 logger.warning("interview: create session failed: %s", session_err, exc_info=True)
                 return jsonify({"code": "SESSION_CREATE_FAILED", "error": "Failed to create session"}), 500
 
-        # Upload audio to storage
+        # Upload audio to Cloudflare R2 (NOT Supabase Storage).
+        # Why: the URL we persist on the snippet row a few lines below is
+        # built by coach_media_public_url(), which returns
+        # `{R2_PUBLIC_BASE_URL}/{key}` — a Cloudflare R2 public-bucket URL.
+        # Earlier code uploaded to db.upload_audio(AUDIO_BUCKET_NAME, ...)
+        # which lands in Supabase Storage `audio_recordings`, so the
+        # bytes never reached the bucket the URL points at and every
+        # interview-turn audio_segment_path was DOA (404 on read).
+        #
+        # put_coach_object_bytes() writes to R2 when R2_* env vars are set
+        # (production has them); on dev without R2 it transparently falls
+        # back to Supabase Storage at the same key, matching the URL
+        # fallback in coach_media_public_url. Same bucket on read, same
+        # bucket on write — the bytes finally land where the URL says.
         storage_path = f"guest_funnel/{guest_session_id}/turn_{turn_number}_{uuid.uuid4().hex[:8]}{ext}"
         try:
-            db.upload_audio(config.AUDIO_BUCKET_NAME, storage_path, file_bytes, content_type=content_type)
+            from services.coach_video_storage import put_coach_object_bytes
+            put_coach_object_bytes(
+                config.COACH_FEEDBACK_VIDEO_BUCKET,
+                storage_path,
+                file_bytes,
+                content_type=content_type,
+            )
         except Exception as upload_err:
             logger.warning("interview: storage upload failed: %s", upload_err, exc_info=True)
             return jsonify({"code": "UPLOAD_FAILED", "error": "Failed to store audio"}), 500
@@ -8698,7 +8717,12 @@ def v2_public_interview_upload_answer():
         except Exception as t_err:
             logger.warning("interview: transcription failed (non-fatal): %s", t_err)
 
-        # Generate public URL for the snippet audio
+        # Build the stable public URL for the snippet audio. With the
+        # upload now landing in R2 (see put_coach_object_bytes call
+        # above), this URL — `{R2_PUBLIC_BASE_URL}/{storage_path}` —
+        # finally points at real bytes. Previously the bytes went to
+        # Supabase Storage while this URL still claimed R2; that's the
+        # mismatch that caused every interview-turn audio to 404 on read.
         snippet_url = ""
         try:
             from services.coach_video_storage import coach_media_public_url
