@@ -10431,3 +10431,79 @@ def v2_admin_compute_session_metrics(session_id):
         logger.error("admin: compute session metrics failed: %s", e, exc_info=True)
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR", "error": "Failed to compute metrics"}), 500
+
+
+@v2_bp.route("/admin/sessions/<session_id>/finalize-recording", methods=["POST"])
+@require_admin
+def v2_admin_finalize_session_recording(session_id):
+    """Concatenate per-turn audio for a session into one canonical recording
+    and rewrite that session's interview-turn snippet anchors to point into it.
+
+    Manual trigger for the migration toward "snippets are slices of one
+    canonical audio". Wraps services.session_concatenation.finalize_session_recording.
+
+    Use this endpoint to backfill historical sessions or to verify the
+    pipeline on a session before commit 3/5 wires automatic finalization
+    into the session-completion handler.
+
+    Idempotent — re-invoking on an already-finalized session re-uploads
+    the same storage key and rewrites the same offsets.
+
+    Response (200):
+        {
+            "session_id":        str,
+            "bucket":            str,
+            "storage_path":      str,
+            "duration_ms":       int,
+            "turn_snippet_ids":  [str, ...],
+            "turn_offsets_ms":   [int, ...],
+            "turn_durations_ms": [int, ...],
+            "n_turns_rewritten": int,
+            "n_turns_failed":    int,
+            "failed_snippet_ids": [str, ...]
+        }
+    """
+    if not _is_valid_uuid(session_id):
+        return jsonify({
+            "code": "INVALID_INPUT",
+            "error": "session_id must be a valid UUID",
+        }), 400
+
+    try:
+        from services.session_concatenation import (
+            finalize_session_recording,
+            ConcatError,
+        )
+    except Exception as e:
+        logger.error("admin: failed to import session_concatenation: %s", e, exc_info=True)
+        return jsonify({
+            "code": "V2_ERROR",
+            "error": "session_concatenation service unavailable",
+        }), 500
+
+    try:
+        result = finalize_session_recording(session_id)
+        logger.info(
+            "admin: finalized session=%s rewritten=%d failed=%d storage=%s",
+            session_id,
+            result.get("n_turns_rewritten", 0),
+            result.get("n_turns_failed", 0),
+            result.get("storage_path"),
+        )
+        return jsonify(result), 200
+    except ConcatError as e:
+        # Concrete, expected failure mode (no turns to glue, ffmpeg
+        # failure, upload failure). 422 — caller's payload is fine but
+        # the resource isn't in a finalize-able state.
+        logger.warning("admin: finalize-recording rejected session=%s: %s", session_id, e)
+        return jsonify({
+            "code": "FINALIZE_REJECTED",
+            "error": str(e),
+        }), 422
+    except Exception as e:
+        logger.error("admin: finalize-recording failed session=%s: %s", session_id, e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({
+            "code": "V2_ERROR",
+            "error": "Failed to finalize session recording",
+        }), 500
