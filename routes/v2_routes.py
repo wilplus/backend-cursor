@@ -1909,11 +1909,29 @@ def v2_admin_recording_playback_url(recording_id):
         if not storage_path:
             return jsonify({"code": "NO_STORAGE_PATH", "error": "Recording has no storage path"}), 404
 
+        # Interview audio (including the per-recording bytes anchored by
+        # recordings.storage_path) lives in the R2 audio bucket now.
+        # Resolve through audio_public_url first; fall back to Supabase
+        # signed URL only when R2 isn't configured (dev). The prior
+        # db.create_signed_url(AUDIO_BUCKET_NAME, ...) call always queried
+        # Supabase and 400'd for every recording uploaded after the R2
+        # migration — that's the source of the "Audio unavailable" badge
+        # on the Full Recording player.
+        audio_url = ""
         try:
-            audio_url = db.create_signed_url(config.AUDIO_BUCKET_NAME, storage_path, config.SIGNED_URL_EXPIRY_SECONDS)
+            from services.audio_storage import audio_public_url
+            audio_url = audio_public_url(storage_path) or ""
         except Exception as e:
-            logger.warning("Admin playback URL: signed URL failed for %s: %s", recording_id, e)
-            # Fallback to public URL pattern
+            logger.warning("Admin playback URL: R2 build failed for %s: %s", recording_id, e)
+        if not audio_url:
+            try:
+                audio_url = db.create_signed_url(
+                    config.AUDIO_BUCKET_NAME, storage_path, config.SIGNED_URL_EXPIRY_SECONDS
+                ) or ""
+            except Exception as e:
+                logger.warning("Admin playback URL: signed URL fallback failed for %s: %s", recording_id, e)
+        if not audio_url:
+            # Last-resort: synthesise the Supabase public URL pattern
             supabase_url = (getattr(config, "SUPABASE_URL", "") or "").rstrip("/")
             audio_url = f"{supabase_url}/storage/v1/object/public/{config.AUDIO_BUCKET_NAME}/{storage_path}" if supabase_url else None
 
@@ -10306,6 +10324,17 @@ def v2_admin_get_session(session_id):
                 # which gets concat'd-file slice URLs.
                 "audio_url": _resolve_turn_audio_url(s),
                 "duration_ms": s.get("duration_ms"),
+                # Offset within the audio_url, for chat bubbles that need
+                # to clamp playback. ZERO when audio_url points at the
+                # per-turn original file (the common case); the row's
+                # actual start_offset_ms (set by finalize) when audio_url
+                # falls through to the concat'd full.webm. Frontend uses
+                # (start_offset_ms, duration_ms) to seek+stop on play.
+                "start_offset_ms": (
+                    0
+                    if (s.get("audio_segment_path") or "").strip()
+                    else int(s.get("start_offset_ms") or 0)
+                ),
                 "snippet_id": str(s.get("id")) if s.get("id") else None,
                 "turn_number": s.get("turn_number"),
                 "metrics": {
