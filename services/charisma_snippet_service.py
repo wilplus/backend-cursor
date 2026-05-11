@@ -80,7 +80,11 @@ def generate_charisma_snippets_for_recording(
         if not ffmpeg_exe:
             raise RuntimeError("ffmpeg is required for snippet extraction")
 
-        audio_bytes = db.download_audio(config.AUDIO_BUCKET_NAME, storage_path)
+        # Per-turn interview audio lives in Cloudflare R2 (see cfe6c86),
+        # not Supabase Storage. Route through coach_video_storage so the
+        # ML-generator pipeline stays in sync with the upload destination.
+        from services.coach_video_storage import get_coach_object_bytes
+        audio_bytes = get_coach_object_bytes(config.AUDIO_BUCKET_NAME, storage_path)
         if not audio_bytes:
             raise ValueError("recording audio is empty")
         signal = _decode_audio_to_pcm(audio_bytes, ffmpeg_exe)

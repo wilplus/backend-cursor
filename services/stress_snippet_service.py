@@ -775,7 +775,13 @@ def generate_stress_snippets_for_recording(
         if not ffmpeg_exe:
             raise RuntimeError("ffmpeg is required for snippet extraction")
 
-        audio_bytes = db.download_audio(config.AUDIO_BUCKET_NAME, storage_path)
+        # Per-turn interview audio lives in Cloudflare R2 (see cfe6c86),
+        # not Supabase Storage. Route through coach_video_storage so this
+        # service stays in sync with where the upload-answer endpoint
+        # actually writes the bytes. db.download_audio was returning
+        # 400/Object-not-found on every fresh recording before this fix.
+        from services.coach_video_storage import get_coach_object_bytes
+        audio_bytes = get_coach_object_bytes(config.AUDIO_BUCKET_NAME, storage_path)
         if not audio_bytes:
             raise ValueError("recording audio is empty")
         signal = _decode_audio_to_pcm(audio_bytes, ffmpeg_exe)
