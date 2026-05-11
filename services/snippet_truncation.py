@@ -238,6 +238,228 @@ def extract_snippets_from_bytes(
     return extract_snippets_from_pcm(pcm, full_transcript=full_transcript)
 
 
+def apply_extracted_snippets(session_id: str) -> dict[str, Any]:
+    """Run extraction for a session and persist the results to the DB.
+
+    End-to-end pipeline:
+      1. Look up the session's concat'd recording (storage_path under
+         ``session_recordings/``) and parent recording_id by inspecting
+         any turn row.
+      2. Pull existing extracted snippets for the session and freeze the
+         ones an admin has labeled (coach_label, admin_comment, or a
+         non-"unlabeled" snippet_type). Frozen rows are never deleted
+         and their timeline windows mask out overlapping candidates.
+      3. Build the session-wide transcript from turn rows (in
+         turn_number order) for the filler-density penalty.
+      4. Download full.webm via services.audio_storage and call
+         ``extract_snippets_from_bytes`` to propose candidate windows.
+      5. Drop candidates that overlap any frozen window.
+      6. Delete prior un-frozen ``source_type='auto_extracted'`` rows in
+         one shot.
+      7. Insert the surviving candidates as new rows.
+
+    Idempotent: re-running on a session re-runs extraction but preserves
+    every labeled snippet exactly. The auto-extracted set converges to
+    whatever the algorithm currently outputs minus the frozen mask.
+
+    Returns a summary dict the caller can log; never raises on bad
+    session_id / missing recording — those are reported via the dict
+    (no-op return). Storage / DB errors propagate.
+    """
+    from services.audio_storage import get_audio_bytes
+    from services.db import db
+
+    # 1) Find the canonical recording for this session by inspecting any
+    #    turn row. After finalize_session_recording, every turn row's
+    #    storage_path points at session_recordings/<sid>/full.webm.
+    turn_anchor = (
+        db.client.table("charisma_snippets")
+        .select("storage_path, recording_id")
+        .eq("session_id", session_id)
+        .not_.is_("turn_number", "null")
+        .not_.is_("storage_path", "null")
+        .limit(1)
+        .execute()
+    )
+    rows = turn_anchor.data or []
+    if not rows:
+        return {
+            "session_id": session_id,
+            "skipped": "no_canonical_recording",
+            "candidates_proposed": 0,
+            "frozen_preserved": 0,
+            "new_inserted": 0,
+            "deleted": 0,
+        }
+    concat_storage_path = (rows[0].get("storage_path") or "").strip()
+    recording_id = rows[0].get("recording_id")
+    if not concat_storage_path.startswith("session_recordings/"):
+        # Turn rows still point at per-turn files — concat hasn't run yet
+        # (or has been undone). Caller should retry after finalize.
+        return {
+            "session_id": session_id,
+            "skipped": "canonical_not_finalized",
+            "candidates_proposed": 0,
+            "frozen_preserved": 0,
+            "new_inserted": 0,
+            "deleted": 0,
+        }
+
+    # 2) Pull existing extracted rows for the session and split them
+    #    into frozen (labeled) vs unfrozen (eligible for replacement).
+    existing = (
+        db.client.table("charisma_snippets")
+        .select("id, start_offset_ms, duration_ms, source_type, "
+                "coach_label, admin_comment, snippet_type")
+        .eq("session_id", session_id)
+        .is_("turn_number", "null")
+        .execute()
+    )
+    existing_rows = existing.data or []
+    frozen: list[dict[str, Any]] = []
+    unfrozen_auto_ids: list[str] = []
+    for s in existing_rows:
+        if _is_frozen(s):
+            frozen.append(s)
+        elif (s.get("source_type") or "") == "auto_extracted":
+            sid = s.get("id")
+            if sid:
+                unfrozen_auto_ids.append(str(sid))
+        # Note: rows with source_type other than auto_extracted and not
+        # frozen (e.g. a stale state) are left alone. We don't own them.
+
+    # 3) Build a session-wide transcript from turn rows for the
+    #    filler-density penalty. Order by turn_number so the
+    #    proportional time-slicing inside extract_snippets_from_pcm
+    #    roughly aligns with the recording's timeline.
+    turn_rows = (
+        db.client.table("charisma_snippets")
+        .select("transcript, turn_number")
+        .eq("session_id", session_id)
+        .not_.is_("turn_number", "null")
+        .order("turn_number", desc=False)
+        .execute()
+    )
+    parts = [
+        (t.get("transcript") or "").strip()
+        for t in (turn_rows.data or [])
+        if (t.get("transcript") or "").strip()
+    ]
+    full_transcript = " ".join(parts).strip() or None
+
+    # 4) Download audio + run the algorithm
+    try:
+        audio_bytes = get_audio_bytes(concat_storage_path)
+    except Exception as e:
+        logger.warning(
+            "apply_extracted_snippets: download failed session=%s path=%s err=%s",
+            session_id, concat_storage_path, e,
+        )
+        return {
+            "session_id": session_id,
+            "skipped": "download_failed",
+            "candidates_proposed": 0,
+            "frozen_preserved": len(frozen),
+            "new_inserted": 0,
+            "deleted": 0,
+        }
+    candidates = extract_snippets_from_bytes(
+        audio_bytes, full_transcript=full_transcript
+    )
+
+    # 5) Drop candidates that overlap any frozen window (timeline IoU > 0)
+    def _overlaps_any_frozen(cand: dict[str, Any]) -> bool:
+        c_start = int(cand["start_offset_ms"])
+        c_end = c_start + int(cand["duration_ms"])
+        for f in frozen:
+            f_start = int(f.get("start_offset_ms") or 0)
+            f_end = f_start + int(f.get("duration_ms") or 0)
+            if max(0, min(c_end, f_end) - max(c_start, f_start)) > 0:
+                return True
+        return False
+
+    new_candidates = [c for c in candidates if not _overlaps_any_frozen(c)]
+
+    # 6) Delete prior un-frozen auto_extracted rows in one shot
+    deleted_count = 0
+    if unfrozen_auto_ids:
+        try:
+            del_res = (
+                db.client.table("charisma_snippets")
+                .delete()
+                .in_("id", unfrozen_auto_ids)
+                .execute()
+            )
+            deleted_count = len(del_res.data or unfrozen_auto_ids)
+        except Exception as e:
+            logger.warning(
+                "apply_extracted_snippets: delete failed session=%s err=%s",
+                session_id, e,
+            )
+
+    # 7) Insert surviving candidates as new auto_extracted rows
+    inserted_count = 0
+    if new_candidates:
+        payload = [
+            {
+                "session_id": session_id,
+                "recording_id": recording_id,
+                "storage_path": concat_storage_path,
+                "start_offset_ms": int(c["start_offset_ms"]),
+                "duration_ms": int(c["duration_ms"]),
+                # turn_number stays NULL — this is what distinguishes an
+                # extracted snippet from a turn row in /admin/sessions/<id>.
+                "source_type": "auto_extracted",
+                "transcript": c.get("transcript_excerpt"),
+                "snippet_type": "unlabeled",
+                # Light-weight metadata for telemetry; the heavy
+                # per-snippet metric re-compute is deferred to either
+                # the boundary-adjust endpoint or a follow-up commit.
+                "metrics": {"extractor_score": c.get("score"),
+                            "extractor_components": c.get("components")},
+            }
+            for c in new_candidates
+        ]
+        try:
+            inserted = db.v2_insert_charisma_snippets(payload)
+            inserted_count = len(inserted or [])
+        except Exception as e:
+            logger.warning(
+                "apply_extracted_snippets: insert failed session=%s err=%s",
+                session_id, e,
+            )
+
+    return {
+        "session_id": session_id,
+        "storage_path": concat_storage_path,
+        "candidates_proposed": len(candidates),
+        "frozen_preserved": len(frozen),
+        "new_inserted": inserted_count,
+        "deleted": deleted_count,
+    }
+
+
+def _is_frozen(snippet: dict[str, Any]) -> bool:
+    """An auto-extracted row is frozen once an admin has labeled it.
+
+    Three frozen signals (any one is sufficient):
+      - coach_label set (binary classifier label, "charisma" / "stress")
+      - admin_comment populated (coach has written feedback)
+      - snippet_type set AND not the default "unlabeled"
+
+    Frozen rows are never deleted, and their timeline windows mask out
+    overlapping candidates in subsequent extractions.
+    """
+    if (snippet.get("coach_label") or "").strip():
+        return True
+    if (snippet.get("admin_comment") or "").strip():
+        return True
+    snippet_type = (snippet.get("snippet_type") or "").strip().lower()
+    if snippet_type and snippet_type != "unlabeled":
+        return True
+    return False
+
+
 # ── Internals ───────────────────────────────────────────────────────────────
 
 
