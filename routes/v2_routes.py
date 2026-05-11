@@ -10108,6 +10108,47 @@ def v2_admin_patch_turn_question(turn_id):
 # Admin: Compute global session metrics + AI alignment
 ############################################################################
 
+def _resolve_turn_audio_url(snippet: dict) -> str | None:
+    """Playback URL for a *turn* row (Chat Transcript / Conversation Timeline).
+
+    Distinct from ``_resolve_snippet_audio_url``: a turn is the ORIGINAL
+    per-turn recording, not a slice of the concat'd session file. The
+    chat-history bubble plays it through a plain ``<audio>`` element with
+    no offset clamping, so we must hand back a URL that resolves to a
+    standalone-playable file — i.e. the per-turn ``audio_segment_path``
+    (the R2 public URL written at upload time), NOT the concat'd
+    storage_path the snippet panel uses.
+
+    Fallback chain:
+      1. audio_segment_path (set at turn upload, never NULL'd by finalize)
+      2. storage_path signed via audio bucket — only when audio_segment_path
+         is missing for legacy / cold-start rows
+      3. None
+    """
+    seg = (snippet.get("audio_segment_path") or "").strip()
+    if seg:
+        return seg
+    storage = (snippet.get("storage_path") or "").strip()
+    if storage and not storage.startswith("charisma_snippets/"):
+        try:
+            from services.audio_storage import audio_public_url
+            url = audio_public_url(storage)
+            if url:
+                return url
+        except Exception as e:
+            logger.warning(
+                "turn audio URL: R2 build failed for %s: %s", storage, e
+            )
+    if storage:
+        try:
+            return db.create_signed_url(
+                config.AUDIO_BUCKET_NAME, storage, config.SIGNED_URL_EXPIRY_SECONDS
+            )
+        except Exception:
+            return None
+    return None
+
+
 def _resolve_snippet_audio_url(snippet: dict) -> str | None:
     """Pick a playable audio URL from whichever column the writer used.
 
@@ -10260,7 +10301,10 @@ def v2_admin_get_session(session_id):
             turns.append({
                 "role": "user",
                 "content": (s.get("transcript") or "").strip(),
-                "audio_url": _resolve_snippet_audio_url(s),
+                # Per-turn ORIGINAL audio URL — plays standalone in the
+                # chat bubble. Distinct from the snippet panel below
+                # which gets concat'd-file slice URLs.
+                "audio_url": _resolve_turn_audio_url(s),
                 "duration_ms": s.get("duration_ms"),
                 "snippet_id": str(s.get("id")) if s.get("id") else None,
                 "turn_number": s.get("turn_number"),
@@ -10274,18 +10318,17 @@ def v2_admin_get_session(session_id):
                 },
             })
 
-        # ── Snippets: every charisma_snippets row for this session ───────
-        # Includes interview-turn rows too, so a coach can label any of
-        # them. snippet_type is populated by the admin labelling flow;
-        # coach_label is the older binary classifier label — both are
-        # surfaced so the frontend can pick whichever it renders.
-        # IMPORTANT: include session_id (and identity fields) on every row.
-        # The admin user page overwrites its `snippets` state with the per-
-        # session payload, then filters by `s.session_id === latestSession.id`
-        # to render the snippet panel. If session_id is missing here the
-        # filter eliminates every row and the panel renders empty even
-        # though rows exist — exactly the regression that surfaced as
-        # "No snippets extracted for this session yet."
+        # ── Snippets: ONLY extracted highlight snippets ──────────────────
+        # The snippet panel in the admin UI is a highlight reel — moments
+        # of interest within the full session recording, NOT one row per
+        # turn. Turn rows belong in the Chat Transcript / Conversation
+        # Timeline (served via the `turns` array above).
+        #
+        # Distinction: turn rows have `turn_number IS NOT NULL` (set at
+        # upload time by /v2/public/interview/upload-answer). Extracted
+        # snippets have `turn_number IS NULL` and `source_type` populated
+        # (typically "auto_extracted" or "student").
+        extracted_only = [s for s in all_snippets if s.get("turn_number") is None]
         snippets = [
             {
                 "id": str(s.get("id")) if s.get("id") else None,
@@ -10308,7 +10351,7 @@ def v2_admin_get_session(session_id):
                 "end_time": s.get("end_time"),
                 "created_at": s.get("created_at"),
             }
-            for s in all_snippets
+            for s in extracted_only
         ]
 
         global_metrics = {
