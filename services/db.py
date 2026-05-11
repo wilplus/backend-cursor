@@ -1713,11 +1713,19 @@ class DatabaseService:
         or 'internet'); Paths A and B leave it NULL. Filtering on
         source_type IS NOT NULL preserves their data.
         """
+        # supabase-py exposes `not_` as a property, NOT a callable —
+        # the chain is .not_.is_(col, "null"), matching every other
+        # usage in this file (e.g. .not_.is_("words_per_minute", "null")
+        # at db.py:374). A prior commit accidentally wrote
+        # .not_("source_type", "is", None) which raised
+        # "'SyncFilterRequestBuilder' object is not callable" at runtime,
+        # and the ML-generator cleanup silently failed every time it
+        # ran — letting stale snippet candidates accumulate.
         result = (
             self.client.table("charisma_snippets")
             .delete()
             .eq("recording_id", recording_id)
-            .not_("source_type", "is", None)
+            .not_.is_("source_type", "null")
             .execute()
         )
         return len(result.data or [])
