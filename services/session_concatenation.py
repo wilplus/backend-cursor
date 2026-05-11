@@ -109,15 +109,17 @@ def concatenate_session_audio(
         raise ConcatError("ffmpeg binary not found on host")
 
     # 2) Load interview-turn snippet rows for this session.
-    #    Filter: source_type IS NULL identifies Path A interview rows
-    #    (Path C / student rows have a non-null source_type). Order by
+    #    We deliberately don't filter on `turn_number IS NOT NULL` here
+    #    even though Path A always sets turn_number — the older filter
+    #    is source_type IS NULL, which historically distinguishes
+    #    Paths A/B from the Path C ML-generator rows. Order by
     #    created_at so the concat'd timeline matches turn chronology.
     try:
         result = (
             db.client.table("charisma_snippets")
             .select(
-                "id, audio_segment_path, duration_ms, "
-                "start_offset_ms, created_at"
+                "id, turn_number, source_type, audio_segment_path, "
+                "duration_ms, start_offset_ms, created_at"
             )
             .eq("session_id", session_id)
             .is_("source_type", "null")
@@ -129,10 +131,36 @@ def concatenate_session_audio(
             f"session {session_id}: failed to load snippet rows: {e}"
         ) from e
 
+    raw_rows = result.data or []
+    # Diagnostic: surface EXACTLY which rows the SELECT returned and
+    # which we kept after the audio_segment_path filter. When the user-
+    # visible "concat only has turn 1" symptom shows up, this log line
+    # tells us whether the row was missing from the SELECT (visibility
+    # / source_type drift), present-but-empty-path (write race),
+    # or present-and-downloadable but the HTTP fetch is the culprit.
+    raw_summary = [
+        (r.get("turn_number"), bool((r.get("audio_segment_path") or "").strip()))
+        for r in raw_rows
+    ]
+    logger.info(
+        "concat:select sid=%s raw_count=%d raw_turns=%s",
+        session_id, len(raw_rows), raw_summary,
+    )
+
     rows = [
-        r for r in (result.data or [])
+        r for r in raw_rows
         if (r.get("audio_segment_path") or "").strip()
     ]
+    if len(rows) != len(raw_rows):
+        dropped = [
+            r.get("turn_number") for r in raw_rows
+            if not (r.get("audio_segment_path") or "").strip()
+        ]
+        logger.warning(
+            "concat:dropped-empty-path sid=%s dropped_turns=%s",
+            session_id, dropped,
+        )
+
     if not rows:
         raise ConcatError(
             f"session {session_id}: no interview-turn rows with "
@@ -147,6 +175,7 @@ def concatenate_session_audio(
         with httpx.Client(timeout=http_timeout_sec, follow_redirects=True) as http:
             for idx, row in enumerate(rows):
                 url = (row.get("audio_segment_path") or "").strip()
+                turn_num = row.get("turn_number")
                 local_path = os.path.join(tmpdir, f"turn_{idx:04d}.webm")
                 try:
                     resp = http.get(url)
@@ -154,23 +183,32 @@ def concatenate_session_audio(
                     content = resp.content or b""
                     if not content:
                         logger.warning(
-                            "concat: empty body for turn idx=%d url=%s",
-                            idx, url,
+                            "concat:empty sid=%s turn=%s idx=%d url=%s",
+                            session_id, turn_num, idx, url,
                         )
                         continue
                     with open(local_path, "wb") as f:
                         f.write(content)
                     local_paths.append(local_path)
                     kept_rows.append(row)
+                    logger.info(
+                        "concat:fetched sid=%s turn=%s idx=%d bytes=%d",
+                        session_id, turn_num, idx, len(content),
+                    )
                 except Exception as e:
                     # One bad turn shouldn't fail the whole session; we
                     # log and skip it. The returned metadata reflects
                     # only the turns that actually made it into the
                     # concat'd file.
                     logger.warning(
-                        "concat: skipping turn idx=%d url=%s err=%s",
-                        idx, url, e,
+                        "concat:fetch-fail sid=%s turn=%s idx=%d url=%s err=%s",
+                        session_id, turn_num, idx, url, e,
                     )
+
+        logger.info(
+            "concat:downloads-complete sid=%s kept=%d expected=%d",
+            session_id, len(local_paths), len(rows),
+        )
 
         if not local_paths:
             raise ConcatError(
