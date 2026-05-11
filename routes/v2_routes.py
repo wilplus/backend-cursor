@@ -10525,6 +10525,26 @@ def _run_session_finalize_in_bg(session_id: str) -> None:
                     )
             except Exception as me:
                 logger.warning("auto-metrics: session=%s failed: %s", session_id, me)
+
+            # Extract highlight snippets from the just-finalized recording.
+            # Runs every turn (per product requirement) — apply_extracted_
+            # snippets is idempotent and freezes labeled snippets, so the
+            # admin's manual labels persist across re-runs.
+            try:
+                from services.snippet_truncation import apply_extracted_snippets
+                summary = apply_extracted_snippets(session_id)
+                logger.info(
+                    "auto-extract: session=%s proposed=%s frozen=%s inserted=%s deleted=%s "
+                    "skipped=%s",
+                    session_id,
+                    summary.get("candidates_proposed", 0),
+                    summary.get("frozen_preserved", 0),
+                    summary.get("new_inserted", 0),
+                    summary.get("deleted", 0),
+                    summary.get("skipped", "no"),
+                )
+            except Exception as ee:
+                logger.warning("auto-extract: session=%s failed: %s", session_id, ee)
         except Exception as outer:
             # Last-resort catchall so the daemon thread can't surface
             # exceptions into gunicorn's worker logs as unhandled.
