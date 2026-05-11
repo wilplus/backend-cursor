@@ -5488,34 +5488,34 @@ class DatabaseService:
 
         Returns the updated snippet row.
 
-        DB-shim (Expand-Contract phase 1):
-            charisma_snippets carries two semantically-paired column
-            representations of the same boundary, and the codebase has
-            consumers of BOTH:
+        Schema reality check (2026-05-11):
+            Production logs after df9def4 surfaced PGRST204:
+              "Could not find the 'end_time' column of
+               'charisma_snippets' in the schema cache"
 
-                Pair B (seconds, float):  start_time, end_time
-                Pair A (milliseconds, int): start_offset_ms, duration_ms
+            So contrary to the Expand-Contract assumption that there
+            were two semantically-paired column representations of the
+            same boundary, only ONE pair actually exists in this DB:
 
-            Pair B was the original ±2s contract from the admin endpoint;
-            Pair A is what every downstream display / playback / snippet
-            extraction path now uses. Historically this helper only wrote
-            Pair B, so any frontend reading Pair A (snippet card header,
-            duration pill, SnippetPreviewPlayer's seekTo/clipEnd clamps)
-            saw the OLD bounds after a successful adjust — the toast
-            fired, the DB updated, the visible state didn't move.
+                start_offset_ms, duration_ms   (milliseconds, int)
 
-            Fix: write BOTH pairs atomically so they stay in sync
-            regardless of which reader the consumer happens to use.
-            Conversions:
+            The `start_time` / `end_time` references in the codebase
+            (this helper's prior version, the upload-answer INSERT
+            payload at routes/v2_routes.py:8777-8778, the
+            v2_admin_get_session response shape at L10384, the route
+            handler at L9404+) are write-only artefacts of an aborted
+            schema migration that landed in the code but never in the
+            database. PostgREST silently drops them on INSERT (which
+            is why fresh sessions still create snippet rows fine) but
+            errors atomically on UPDATE (which is why ±2s adjusts
+            started failing 404 after df9def4).
 
-                start_offset_ms = round(start_time * 1000)
-                duration_ms     = round((end_time - start_time) * 1000)
-
-            The redundancy is intentionally preserved (no schema change,
-            no contract change for legacy callers). The cleanup pass
-            that picks ONE pair as canonical and drops or
-            generated-column'ifies the other lives in a separate
-            "Option 3 / Contract phase" sprint — out of scope here.
+            The fix is just to write the columns that actually exist.
+            The route handler keeps accepting (start_time, end_time)
+            as its public contract — we convert at this single
+            chokepoint. If a future migration adds the seconds-pair as
+            real columns (or restores them), this is the one place to
+            re-introduce the dual write.
         """
         try:
             start_offset_ms = max(0, int(round(start_time * 1000)))
@@ -5523,12 +5523,6 @@ class DatabaseService:
             result = (
                 self.client.table("charisma_snippets")
                 .update({
-                    # Legacy pair (seconds, float) — kept for any consumer
-                    # still reading these columns directly.
-                    "start_time": start_time,
-                    "end_time": end_time,
-                    # Canonical pair (milliseconds, int) — what the
-                    # frontend display + playback offset clamps read.
                     "start_offset_ms": start_offset_ms,
                     "duration_ms": duration_ms,
                 })
