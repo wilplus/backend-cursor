@@ -8769,13 +8769,17 @@ def v2_public_interview_upload_answer():
                 "transcript": transcript_text,  # Whisper output (may be None)
                 "session_id": guest_session_id,
                 "recording_id": recording_id,
+                # Canonical boundary representation (the ONLY pair that
+                # exists in the schema). The seconds-float pair
+                # (start_time/end_time) used to be written here too but
+                # the columns are phantom — PostgREST silently drops
+                # them on INSERT and erroneously rolls back on UPDATE
+                # (see services/db.py::update_snippet_boundaries for
+                # the PGRST204 trail). Don't reintroduce.
                 "start_offset_ms": 0,
                 "duration_ms": int((duration_seconds or 10) * 1000),
                 "audio_segment_path": snippet_url,
                 "snippet_type": "unlabeled",
-                # Boundaries, turn context, per-snippet metrics
-                "start_time": 0.0,
-                "end_time": duration_seconds or 10.0,
                 "turn_number": turn_number,
                 "question_text": question_text,
                 "question_tone": question_tone,
@@ -10009,8 +10013,12 @@ def v2_admin_get_user_timeline(user_id):
                     "snippet_id": snippet.get("id"),
                     "audio_url": snippet.get("audio_segment_path"),
                     "duration_ms": snippet.get("duration_ms"),
-                    "start_time": snippet.get("start_time"),
-                    "end_time": snippet.get("end_time"),
+                    # start_time / end_time are derived at the API
+                    # boundary — they are NOT persisted (phantom
+                    # columns; see services/db.py::update_snippet_
+                    # boundaries). The frontend may consume seconds.
+                    "start_time": _snippet_start_time(snippet),
+                    "end_time": _snippet_end_time(snippet),
                     "is_skipped": snippet.get("is_skipped", False),
                     # Whisper transcription of the user's spoken answer.
                     # The /admin timeline cards render this on each turn;
@@ -10088,8 +10096,10 @@ def v2_admin_patch_turn_question(turn_id):
                 "snippet_id": updated.get("id"),
                 "audio_url": updated.get("audio_segment_path"),
                 "duration_ms": updated.get("duration_ms"),
-                "start_time": updated.get("start_time"),
-                "end_time": updated.get("end_time"),
+                # Derived seconds (phantom columns — see
+                # services/db.py::update_snippet_boundaries).
+                "start_time": _snippet_start_time(updated),
+                "end_time": _snippet_end_time(updated),
                 "is_skipped": updated.get("is_skipped", False),
             },
             "metrics": {
@@ -10125,6 +10135,34 @@ def v2_admin_patch_turn_question(turn_id):
 ############################################################################
 # Admin: Compute global session metrics + AI alignment
 ############################################################################
+
+def _snippet_start_time(snippet: dict) -> float | None:
+    """API-boundary derivation of seconds-float start time.
+
+    The seconds-float pair (start_time / end_time) referenced through
+    older API contracts is NOT a persisted schema column — every
+    attempt to write it raises PGRST204 (see
+    services/db.py::update_snippet_boundaries). All snippets store
+    their bounds in the canonical millisecond-integer pair
+    (start_offset_ms / duration_ms). We synthesise the seconds-float
+    values at response time so any frontend that still consumes the
+    old contract keeps working without a stale write.
+    """
+    ms = snippet.get("start_offset_ms")
+    return None if ms is None else round(float(ms) / 1000.0, 3)
+
+
+def _snippet_end_time(snippet: dict) -> float | None:
+    """API-boundary derivation of seconds-float end time. See
+    :func:`_snippet_start_time` for why this is computed rather than
+    read from the row.
+    """
+    start_ms = snippet.get("start_offset_ms")
+    dur_ms = snippet.get("duration_ms")
+    if start_ms is None or dur_ms is None:
+        return None
+    return round((float(start_ms) + float(dur_ms)) / 1000.0, 3)
+
 
 def _resolve_turn_audio_url(snippet: dict) -> str | None:
     """Playback URL for a *turn* row (Chat Transcript / Conversation Timeline).
@@ -10381,8 +10419,11 @@ def v2_admin_get_session(session_id):
                 "admin_comment": s.get("admin_comment"),
                 "is_skipped": bool(s.get("is_skipped", False)),
                 "turn_number": s.get("turn_number"),
-                "start_time": s.get("start_time"),
-                "end_time": s.get("end_time"),
+                # Derived at API boundary — these columns don't exist
+                # in the schema. See services/db.py::update_snippet_
+                # boundaries for the canonical model rationale.
+                "start_time": _snippet_start_time(s),
+                "end_time": _snippet_end_time(s),
                 "created_at": s.get("created_at"),
             }
             for s in extracted_only
