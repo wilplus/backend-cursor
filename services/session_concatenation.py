@@ -142,7 +142,7 @@ def concatenate_session_audio(
         (r.get("turn_number"), bool((r.get("audio_segment_path") or "").strip()))
         for r in raw_rows
     ]
-    logger.info(
+    logger.warning(
         "concat:select sid=%s raw_count=%d raw_turns=%s",
         session_id, len(raw_rows), raw_summary,
     )
@@ -191,8 +191,8 @@ def concatenate_session_audio(
                         f.write(content)
                     local_paths.append(local_path)
                     kept_rows.append(row)
-                    logger.info(
-                        "concat:fetched sid=%s turn=%s idx=%d bytes=%d",
+                    logger.warning(
+        "concat:fetched sid=%s turn=%s idx=%d bytes=%d",
                         session_id, turn_num, idx, len(content),
                     )
                 except Exception as e:
@@ -205,8 +205,8 @@ def concatenate_session_audio(
                         session_id, turn_num, idx, url, e,
                     )
 
-        logger.info(
-            "concat:downloads-complete sid=%s kept=%d expected=%d",
+        logger.warning(
+        "concat:downloads-complete sid=%s kept=%d expected=%d",
             session_id, len(local_paths), len(rows),
         )
 
@@ -239,8 +239,8 @@ def concatenate_session_audio(
             timeout_sec=ffmpeg_timeout_sec,
         )
         if rc != 0 or not (os.path.exists(out_path) and os.path.getsize(out_path) > 0):
-            logger.info(
-                "concat: stream-copy failed for session=%s rc=%d — "
+            logger.warning(
+        "concat: stream-copy failed for session=%s rc=%d — "
                 "retrying with libopus re-encode. stderr_tail=%s",
                 session_id, rc, stderr[-500:],
             )
@@ -468,8 +468,8 @@ def finalize_session_recording(session_id: str) -> dict[str, Any]:
                     .execute()
                 )
                 rewritten_recordings = len(upd.data or [])
-                logger.info(
-                    "finalize:recording-rewrite sid=%s rid=%s storage=%s "
+                logger.warning(
+        "finalize:recording-rewrite sid=%s rid=%s storage=%s "
                     "rows=%d",
                     session_id, recording_id, storage_path,
                     rewritten_recordings,

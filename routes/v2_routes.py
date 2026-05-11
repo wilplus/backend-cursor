@@ -10605,13 +10605,14 @@ def _do_session_finalize(session_id: str) -> None:
         # worker process. Wait for it — when we get the lock the prior
         # writer's state is visible, so our re-read covers any turn that
         # landed since we were scheduled.
-        logger.info("finalize:wait run=%s sid=%s", run_id, session_id)
+        logger.warning(
+        "finalize:wait run=%s sid=%s", run_id, session_id)
         lock.acquire()
 
     try:
         wait_ms = int((time.monotonic() - started) * 1000) if waited_for_lock else 0
-        logger.info(
-            "finalize:start run=%s sid=%s lock_wait_ms=%d", run_id, session_id, wait_ms,
+        logger.warning(
+        "finalize:start run=%s sid=%s lock_wait_ms=%d", run_id, session_id, wait_ms,
         )
 
         # Concat step: glue per-turn .webm files into one full.webm and
@@ -10622,8 +10623,8 @@ def _do_session_finalize(session_id: str) -> None:
                 ConcatError,
             )
             meta = finalize_session_recording(session_id)
-            logger.info(
-                "finalize:concat run=%s sid=%s storage=%s turns_rewritten=%d turns_failed=%d duration_ms=%d",
+            logger.warning(
+        "finalize:concat run=%s sid=%s storage=%s turns_rewritten=%d turns_failed=%d duration_ms=%d",
                 run_id, session_id,
                 meta.get("storage_path"),
                 meta.get("n_turns_rewritten", 0),
@@ -10631,8 +10632,8 @@ def _do_session_finalize(session_id: str) -> None:
                 meta.get("duration_ms", 0),
             )
         except ConcatError as e:
-            logger.info(
-                "finalize:concat-skip run=%s sid=%s reason=%s",
+            logger.warning(
+        "finalize:concat-skip run=%s sid=%s reason=%s",
                 run_id, session_id, e,
             )
         except Exception as e:
@@ -10645,8 +10646,8 @@ def _do_session_finalize(session_id: str) -> None:
         try:
             m = _compute_session_global_metrics(session_id)
             if m is not None:
-                logger.info(
-                    "finalize:metrics run=%s sid=%s wpm=%s fillers=%s kpi=%s n=%d",
+                logger.warning(
+        "finalize:metrics run=%s sid=%s wpm=%s fillers=%s kpi=%s n=%d",
                     run_id, session_id,
                     m.get("wpm"), m.get("fillers"),
                     m.get("kpi_score"), m.get("snippets_analyzed"),
@@ -10664,8 +10665,8 @@ def _do_session_finalize(session_id: str) -> None:
         try:
             from services.snippet_truncation import apply_extracted_snippets
             summary = apply_extracted_snippets(session_id)
-            logger.info(
-                "finalize:extract run=%s sid=%s proposed=%s frozen=%s inserted=%s deleted=%s skipped=%s",
+            logger.warning(
+        "finalize:extract run=%s sid=%s proposed=%s frozen=%s inserted=%s deleted=%s skipped=%s",
                 run_id, session_id,
                 summary.get("candidates_proposed", 0),
                 summary.get("frozen_preserved", 0),
@@ -10680,8 +10681,8 @@ def _do_session_finalize(session_id: str) -> None:
             )
 
         elapsed_ms = int((time.monotonic() - started) * 1000)
-        logger.info(
-            "finalize:done run=%s sid=%s elapsed_ms=%d",
+        logger.warning(
+        "finalize:done run=%s sid=%s elapsed_ms=%d",
             run_id, session_id, elapsed_ms,
         )
     finally:
