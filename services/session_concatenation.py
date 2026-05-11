@@ -289,6 +289,105 @@ def concatenate_session_audio(
     }
 
 
+def finalize_session_recording(session_id: str) -> dict[str, Any]:
+    """Concatenate per-turn audio AND rewrite snippet anchors transactionally.
+
+    This is the second step in the migration toward one canonical session
+    recording. It calls ``concatenate_session_audio`` (which uploads the
+    glued ``.webm`` to storage) and then rewrites each interview-turn
+    snippet row so it points into that single file with the right
+    cumulative offset:
+
+        storage_path        ← <bucket-relative key of full.webm>
+        audio_segment_path  ← NULL   (deprecated for v2 sessions)
+        start_offset_ms     ← cumulative offset within concat'd timeline
+        duration_ms         ← unchanged
+
+    After this call, every interview-turn snippet plays as a slice of one
+    canonical audio: SnippetPreviewPlayer's ``seekTo`` / ``clipEnd`` clamps
+    handle the per-snippet trim, and the ±2s buttons only need to mutate
+    ``start_offset_ms`` / ``duration_ms`` — no audio re-export.
+
+    Idempotent: re-running on an already-finalized session re-uploads the
+    same key (Supabase Storage overwrite-on-upsert) and rewrites the same
+    offsets, so it's safe to call from triggers that may fire more than
+    once. Rows where the rewrite fails are reported in the return value
+    but do not abort the others — the operation is best-effort per row.
+
+    Args:
+        session_id: ``v2_sessions.id`` to finalize.
+
+    Returns:
+        {
+            **concatenate_session_audio return value,
+            "n_turns_rewritten": int,
+            "n_turns_failed":    int,
+            "failed_snippet_ids": [str, ...],
+        }
+
+    Raises:
+        ConcatError: when the underlying concatenation step fails (no
+            turns found, ffmpeg failure, upload failure). DB-write
+            failures on individual rows are reported in the return
+            value, not raised — one bad row should not block the rest.
+    """
+    meta = concatenate_session_audio(session_id)
+
+    storage_path = meta["storage_path"]
+    turn_ids: list[str] = meta["turn_snippet_ids"]
+    offsets_ms: list[int] = meta["turn_offsets_ms"]
+    durations_ms: list[int] = meta["turn_durations_ms"]
+
+    n_rewritten = 0
+    failed_ids: list[str] = []
+
+    for sid, offset, duration in zip(turn_ids, offsets_ms, durations_ms):
+        # Belt-and-suspenders: also rewrite duration_ms so the row's
+        # (start_offset_ms, duration_ms) is internally consistent even
+        # if a prior process wrote a stale duration that no longer
+        # matches the audio. ``concatenate_session_audio`` echoes back
+        # the DB-side duration, so this is effectively idempotent.
+        patch = {
+            "storage_path": storage_path,
+            "audio_segment_path": None,
+            "start_offset_ms": int(offset),
+            "duration_ms": int(duration),
+        }
+        try:
+            result = (
+                db.client.table("charisma_snippets")
+                .update(patch)
+                .eq("id", sid)
+                .execute()
+            )
+            if getattr(result, "data", None):
+                n_rewritten += 1
+            else:
+                # PostgREST returns empty data when no row matched the
+                # filter — treat that as a soft failure. The id either
+                # got deleted between the concat step and now, or RLS
+                # is blocking the write (should never happen with the
+                # service-role client, but worth flagging).
+                logger.warning(
+                    "finalize: empty update result for snippet=%s session=%s",
+                    sid, session_id,
+                )
+                failed_ids.append(sid)
+        except Exception as e:
+            logger.warning(
+                "finalize: rewrite failed snippet=%s session=%s err=%s",
+                sid, session_id, e,
+            )
+            failed_ids.append(sid)
+
+    return {
+        **meta,
+        "n_turns_rewritten": n_rewritten,
+        "n_turns_failed": len(failed_ids),
+        "failed_snippet_ids": failed_ids,
+    }
+
+
 # ----------------------------------------------------------------------------
 # Internals
 # ----------------------------------------------------------------------------
