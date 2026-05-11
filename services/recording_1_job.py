@@ -161,22 +161,14 @@ def _process_one(payload: dict):
     job_started = time.monotonic()
 
     try:
-        # Step 1: download audio from storage.
-        #
-        # We pull through services.coach_video_storage.get_coach_object_bytes
-        # so this stays in sync with the upload helper used by /v2/public/
-        # interview/upload-answer (put_coach_object_bytes). That helper writes
-        # to R2 when R2_* env vars are set (production) and falls back to
-        # Supabase Storage otherwise. The previous direct
-        # db.download_audio(AUDIO_BUCKET_NAME, ...) call always looked in
-        # Supabase Storage, which broke this worker the moment uploads moved
-        # to R2 — every new session crashed with:
-        #   StorageException {'statusCode': 400, 'error': 'not_found'}
-        # on guest_funnel/<sid>/turn_N.webm.
-        from services.coach_video_storage import get_coach_object_bytes
-        audio_bytes = get_coach_object_bytes(
-            config.AUDIO_BUCKET_NAME, storage_path
-        )
+        # Download from services.audio_storage — the dedicated audio
+        # backend. Reads from R2_AUDIO_BUCKET_NAME in production and
+        # falls back to Supabase Storage AUDIO_BUCKET_NAME in dev,
+        # matching the upload destination in /v2/public/interview/
+        # upload-answer. Single helper, single bucket, no possibility
+        # of read/write drift.
+        from services.audio_storage import get_audio_bytes
+        audio_bytes = get_audio_bytes(storage_path)
         if not audio_bytes:
             raise ValueError(f"Downloaded audio is empty (0 bytes): path={storage_path}")
         logger.info("recording_1_job: downloaded audio size=%d bytes session_id=%s", len(audio_bytes), session_id)
@@ -217,21 +209,17 @@ def _process_one(payload: dict):
             int((time.monotonic() - job_started) * 1000),
         )
 
-        # Build a playable URL for the recording row. With per-turn audio
-        # now living in R2 (see services.coach_video_storage), the prior
-        # db.create_signed_url(AUDIO_BUCKET_NAME, ...) call hits Supabase
-        # Storage for an object that isn't there and raises
-        # "{'statusCode': 400, 'error': 'not_found'}". Prefer the R2 public
-        # URL (via R2_PUBLIC_BASE_URL, configured in production) and fall
-        # back to the Supabase signed-URL path so this still works in dev
-        # environments where R2 isn't configured.
+        # Build a playable URL for the recording row. Prefer the audio
+        # bucket's public URL (R2_AUDIO_PUBLIC_BASE_URL in production)
+        # and fall back to a Supabase signed URL when audio is in the
+        # Supabase fallback path (dev or pre-migration data).
         audio_url = ""
         try:
-            from services.coach_video_storage import coach_media_public_url
-            audio_url = coach_media_public_url(storage_path) or ""
+            from services.audio_storage import audio_public_url
+            audio_url = audio_public_url(storage_path) or ""
         except Exception as e:
             logger.warning(
-                "recording_1_job: R2 URL build failed for %s: %s",
+                "recording_1_job: R2 audio URL build failed for %s: %s",
                 storage_path, e,
             )
         if not audio_url:

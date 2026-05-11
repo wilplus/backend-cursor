@@ -1802,8 +1802,14 @@ def v2_admin_recordings_import():
         if content_type in ("True", "False"):
             content_type = "application/octet-stream"
 
+        # Use services.audio_storage so the bytes land in the same bucket
+        # recording_1_job + stress/charisma services read from. Without
+        # this the admin import would land in Supabase Storage while
+        # recording_1_job (now using audio_storage) looks for it in R2,
+        # leaving every admin-imported recording un-analysable.
         try:
-            db.upload_audio(config.AUDIO_BUCKET_NAME, storage_path, file_bytes, content_type=content_type)
+            from services.audio_storage import put_audio_bytes
+            put_audio_bytes(storage_path, file_bytes, content_type=content_type)
         except Exception as upload_err:
             logger.warning("Admin recording import upload failed: %s", upload_err, exc_info=True)
             return jsonify({"code": "IMPORT_UPLOAD_FAILED", "error": "Failed to store uploaded audio"}), 500
@@ -6944,8 +6950,14 @@ def v2_public_shaky_voice_upload():
         if content_type in ("True", "False"):
             content_type = "application/octet-stream"
 
+        # Cold-start funnel: upload via services.audio_storage so the
+        # bytes land in the same bucket extract_recording_snippets reads
+        # from. Otherwise the cold-start admin view shows "No interview
+        # turns recorded" because the snippet-extraction reader can't
+        # find the audio.
         try:
-            db.upload_audio(config.AUDIO_BUCKET_NAME, storage_path, file_bytes, content_type=content_type)
+            from services.audio_storage import put_audio_bytes
+            put_audio_bytes(storage_path, file_bytes, content_type=content_type)
         except Exception as upload_err:
             logger.warning("guest_funnel: storage upload failed ip=%s: %s", client_ip, upload_err, exc_info=True)
             return jsonify({"code": "UPLOAD_FAILED", "error": "Failed to store uploaded audio"}), 500
@@ -8273,8 +8285,13 @@ def v2_coaching_trial_recording():
         # tell them apart from baseline recordings at a glance.
         storage_path = f"coaching_trials/{user_id}/{recording_id}.webm"
         content_type = (audio.mimetype or "audio/webm").strip() or "audio/webm"
+        # services.audio_storage puts bytes in the same bucket the
+        # stress/charisma analysis services read from. Without this the
+        # coaching trial upload would land in Supabase while readers
+        # look in R2.
         try:
-            db.upload_audio(config.AUDIO_BUCKET_NAME, storage_path, file_bytes, content_type=content_type)
+            from services.audio_storage import put_audio_bytes
+            put_audio_bytes(storage_path, file_bytes, content_type=content_type)
         except Exception as upload_err:
             logger.error("coaching trial: upload failed: %s", upload_err, exc_info=True)
             return jsonify({"code": "STORAGE_ERROR", "error": "Failed to store audio"}), 502
@@ -8574,29 +8591,17 @@ def v2_public_interview_upload_answer():
                 logger.warning("interview: create session failed: %s", session_err, exc_info=True)
                 return jsonify({"code": "SESSION_CREATE_FAILED", "error": "Failed to create session"}), 500
 
-        # Upload audio to Cloudflare R2 (NOT Supabase Storage).
-        # Why: the URL we persist on the snippet row a few lines below is
-        # built by coach_media_public_url(), which returns
-        # `{R2_PUBLIC_BASE_URL}/{key}` — a Cloudflare R2 public-bucket URL.
-        # Earlier code uploaded to db.upload_audio(AUDIO_BUCKET_NAME, ...)
-        # which lands in Supabase Storage `audio_recordings`, so the
-        # bytes never reached the bucket the URL points at and every
-        # interview-turn audio_segment_path was DOA (404 on read).
-        #
-        # put_coach_object_bytes() writes to R2 when R2_* env vars are set
-        # (production has them); on dev without R2 it transparently falls
-        # back to Supabase Storage at the same key, matching the URL
-        # fallback in coach_media_public_url. Same bucket on read, same
-        # bucket on write — the bytes finally land where the URL says.
+        # Upload audio to the dedicated R2 audio bucket via the
+        # services.audio_storage helper. The helper writes to
+        # R2_AUDIO_BUCKET_NAME when configured (production) and falls
+        # back to Supabase Storage AUDIO_BUCKET_NAME in dev. Single
+        # source of truth — every reader downstream uses the matching
+        # get_audio_bytes() helper so writes and reads can never drift
+        # apart again.
         storage_path = f"guest_funnel/{guest_session_id}/turn_{turn_number}_{uuid.uuid4().hex[:8]}{ext}"
         try:
-            from services.coach_video_storage import put_coach_object_bytes
-            put_coach_object_bytes(
-                config.COACH_FEEDBACK_VIDEO_BUCKET,
-                storage_path,
-                file_bytes,
-                content_type=content_type,
-            )
+            from services.audio_storage import put_audio_bytes
+            put_audio_bytes(storage_path, file_bytes, content_type=content_type)
         except Exception as upload_err:
             logger.warning("interview: storage upload failed: %s", upload_err, exc_info=True)
             return jsonify({"code": "UPLOAD_FAILED", "error": "Failed to store audio"}), 500
@@ -8717,16 +8722,14 @@ def v2_public_interview_upload_answer():
         except Exception as t_err:
             logger.warning("interview: transcription failed (non-fatal): %s", t_err)
 
-        # Build the stable public URL for the snippet audio. With the
-        # upload now landing in R2 (see put_coach_object_bytes call
-        # above), this URL — `{R2_PUBLIC_BASE_URL}/{storage_path}` —
-        # finally points at real bytes. Previously the bytes went to
-        # Supabase Storage while this URL still claimed R2; that's the
-        # mismatch that caused every interview-turn audio to 404 on read.
+        # Build the stable public URL for the snippet audio via the
+        # audio-bucket helper (R2_AUDIO_PUBLIC_BASE_URL in production).
+        # Mirrors the put_audio_bytes call above — same bucket on the
+        # write, same bucket on the URL.
         snippet_url = ""
         try:
-            from services.coach_video_storage import coach_media_public_url
-            snippet_url = coach_media_public_url(storage_path) or ""
+            from services.audio_storage import audio_public_url
+            snippet_url = audio_public_url(storage_path) or ""
         except Exception:
             pass
         if not snippet_url:
@@ -10131,26 +10134,28 @@ def _resolve_snippet_audio_url(snippet: dict) -> str | None:
     """
     storage = (snippet.get("storage_path") or "").strip()
     if storage:
-        # Concat'd session recordings (created by
-        # services.session_concatenation.concatenate_session_audio) live
-        # in R2 at session_recordings/<sid>/full.webm — the same R2 bucket
-        # the per-turn .webm files use. Other storage_path values
-        # (notably student uploads under charisma_snippets/...) live in
-        # Supabase Storage. Disambiguate by prefix so we hand the player
-        # back a URL that actually resolves.
-        if storage.startswith("session_recordings/"):
+        # Two classes of storage_path coexist:
+        #   - "session_recordings/<sid>/full.webm" and
+        #     "guest_funnel/<sid>/turn_N.webm" — interview audio in R2,
+        #     served via the audio bucket's public base URL.
+        #   - "charisma_snippets/<uuid>" — student-uploaded clips in
+        #     Supabase Storage, served via signed URLs.
+        # Disambiguate by prefix. Anything that isn't a known
+        # Supabase-only prefix is assumed to be audio-bucket content.
+        is_supabase_prefix = storage.startswith("charisma_snippets/")
+        if not is_supabase_prefix:
             try:
-                from services.coach_video_storage import coach_media_public_url
-                url = coach_media_public_url(storage)
+                from services.audio_storage import audio_public_url
+                url = audio_public_url(storage)
                 if url:
                     return url
             except Exception as e:
                 logger.warning(
-                    "snippet audio URL: R2 URL build failed for %s: %s",
+                    "snippet audio URL: R2 audio URL build failed for %s: %s",
                     storage, e,
                 )
-            # If R2_PUBLIC_BASE_URL isn't set (local dev without R2), fall
-            # through to the Supabase signed-URL path below.
+            # R2_AUDIO_PUBLIC_BASE_URL not set (local dev) — fall through
+            # to the Supabase signed-URL path so dev still works.
         try:
             return db.create_signed_url(
                 config.AUDIO_BUCKET_NAME, storage, config.SIGNED_URL_EXPIRY_SECONDS

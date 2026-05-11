@@ -56,7 +56,6 @@ from typing import Any
 
 import httpx
 
-from config import Config
 from services.db import db
 from services.ffmpeg_audio_extract import resolve_ffmpeg_executable
 
@@ -76,7 +75,6 @@ class ConcatError(RuntimeError):
 def concatenate_session_audio(
     session_id: str,
     *,
-    bucket: str | None = None,
     storage_prefix: str = "session_recordings",
     http_timeout_sec: float = 30.0,
     ffmpeg_timeout_sec: float = 300.0,
@@ -88,14 +86,13 @@ def concatenate_session_audio(
 
     Args:
         session_id: ``v2_sessions.id`` whose per-turn audio to concatenate.
-        bucket: Supabase Storage bucket to write into. Defaults to
-            ``config.AUDIO_BUCKET_NAME`` so the result lives next to the
-            existing ``charisma_snippets`` audio assets and ``_resolve_
-            snippet_audio_url`` can sign URLs for it with no new code.
-        storage_prefix: Path prefix inside the bucket; the final key is
-            ``{storage_prefix}/{session_id}/full.webm``.
+        storage_prefix: Path prefix inside the audio bucket; the final
+            key is ``{storage_prefix}/{session_id}/full.webm``. The
+            bucket itself isn't a parameter because
+            services.audio_storage owns that decision now — every audio
+            write goes to the same bucket.
         http_timeout_sec: Per-file download timeout when fetching the
-            current public-R2 ``audio_segment_path`` URLs.
+            per-turn ``audio_segment_path`` URLs (R2 public URLs in prod).
         ffmpeg_timeout_sec: Hard timeout on each ffmpeg invocation.
 
     Returns:
@@ -105,8 +102,6 @@ def concatenate_session_audio(
         ConcatError: when no turn rows are found, every download fails,
             ffmpeg fails on both paths, or the storage upload fails.
     """
-    cfg = Config()
-    target_bucket = bucket or cfg.AUDIO_BUCKET_NAME
 
     # 1) Resolve ffmpeg up front so we fail fast instead of after a download.
     ffmpeg_exe = resolve_ffmpeg_executable()
@@ -232,29 +227,21 @@ def concatenate_session_audio(
         #    (sanity check + caller may want it for logging / metrics).
         probed_duration_ms = _probe_duration_ms(out_path, ffmpeg_exe)
 
-        # 7) Upload to Cloudflare R2 (not Supabase Storage). We deliberately
-        #    route through services.coach_video_storage.put_coach_object_bytes
-        #    so this destination matches where the per-turn inputs live —
-        #    the upload-answer endpoint writes per-turn .webm files there
-        #    via the same helper. R2 is the canonical storage for audio in
-        #    this codebase now; the prior db.upload_audio call wrote the
-        #    concat'd file to Supabase Storage, which (a) caused the
-        #    StorageException "Object not found" failures the user pasted
-        #    (Supabase refusing the write because the path doesn't exist
-        #    under the audio_recordings bucket's expected layout) and
-        #    (b) split the canonical recording across two buckets.
+        # 7) Upload the concat'd file to the audio bucket via the
+        #    dedicated audio storage helper. Same bucket as the per-turn
+        #    inputs (so canonical and source bytes live together) and
+        #    same helper as every other interview-audio write — no
+        #    chance of read/write bucket drift.
         storage_path = f"{storage_prefix.rstrip('/')}/{session_id}/full.webm"
         with open(out_path, "rb") as f:
             blob = f.read()
         try:
-            from services.coach_video_storage import put_coach_object_bytes
-            put_coach_object_bytes(
-                target_bucket, storage_path, blob, "audio/webm"
-            )
+            from services.audio_storage import put_audio_bytes
+            put_audio_bytes(storage_path, blob, "audio/webm")
         except Exception as e:
             raise ConcatError(
                 f"session {session_id}: storage upload failed for "
-                f"{target_bucket}/{storage_path}: {e}"
+                f"{storage_path}: {e}"
             ) from e
 
     # 8) Build the offsets the follow-up step will write back to snippet rows.
@@ -289,9 +276,14 @@ def concatenate_session_audio(
             session_id, probed_duration_ms, sum_durations_ms,
         )
 
+    # Surface the resolved audio bucket name so callers + telemetry can
+    # see where the file landed (R2 in production, Supabase fallback in
+    # dev). audio_bucket_name() returns "" when R2 isn't configured;
+    # callers should treat that as "Supabase Storage at AUDIO_BUCKET_NAME".
+    from services.audio_storage import audio_bucket_name as _audio_bucket
     return {
         "session_id": session_id,
-        "bucket": target_bucket,
+        "bucket": _audio_bucket() or "audio_recordings",
         "storage_path": storage_path,
         "duration_ms": probed_duration_ms or sum_durations_ms,
         "turn_snippet_ids": turn_snippet_ids,
