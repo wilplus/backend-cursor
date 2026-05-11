@@ -5487,13 +5487,50 @@ class DatabaseService:
         """Update a snippet's time boundaries (admin +/- 2s adjust).
 
         Returns the updated snippet row.
+
+        DB-shim (Expand-Contract phase 1):
+            charisma_snippets carries two semantically-paired column
+            representations of the same boundary, and the codebase has
+            consumers of BOTH:
+
+                Pair B (seconds, float):  start_time, end_time
+                Pair A (milliseconds, int): start_offset_ms, duration_ms
+
+            Pair B was the original ±2s contract from the admin endpoint;
+            Pair A is what every downstream display / playback / snippet
+            extraction path now uses. Historically this helper only wrote
+            Pair B, so any frontend reading Pair A (snippet card header,
+            duration pill, SnippetPreviewPlayer's seekTo/clipEnd clamps)
+            saw the OLD bounds after a successful adjust — the toast
+            fired, the DB updated, the visible state didn't move.
+
+            Fix: write BOTH pairs atomically so they stay in sync
+            regardless of which reader the consumer happens to use.
+            Conversions:
+
+                start_offset_ms = round(start_time * 1000)
+                duration_ms     = round((end_time - start_time) * 1000)
+
+            The redundancy is intentionally preserved (no schema change,
+            no contract change for legacy callers). The cleanup pass
+            that picks ONE pair as canonical and drops or
+            generated-column'ifies the other lives in a separate
+            "Option 3 / Contract phase" sprint — out of scope here.
         """
         try:
+            start_offset_ms = max(0, int(round(start_time * 1000)))
+            duration_ms = max(0, int(round((end_time - start_time) * 1000)))
             result = (
                 self.client.table("charisma_snippets")
                 .update({
+                    # Legacy pair (seconds, float) — kept for any consumer
+                    # still reading these columns directly.
                     "start_time": start_time,
                     "end_time": end_time,
+                    # Canonical pair (milliseconds, int) — what the
+                    # frontend display + playback offset clamps read.
+                    "start_offset_ms": start_offset_ms,
+                    "duration_ms": duration_ms,
                 })
                 .eq("id", snippet_id)
                 .execute()
