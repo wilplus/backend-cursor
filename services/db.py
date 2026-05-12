@@ -5888,6 +5888,47 @@ class DatabaseService:
             )
             return None
 
+    def set_user_current_learner_mirror(
+        self,
+        user_id: str,
+        mirror: Optional[dict],
+    ) -> Optional[dict]:
+        """Upsert the current learner mirror JSONB for ``user_id``.
+
+        Phase 6 — replaces (does not append) the prior mirror so the
+        user always sees the most recent reflection. Passing
+        ``mirror=None`` clears the column, which is useful if we
+        ever want a "discard my reflection" button.
+
+        Upsert because the row may not exist yet — same reasoning as
+        set_user_inferred_learner_profile. Failure returns None;
+        the caller (services.learner_mirror) maps that to a
+        PERSIST_FAILED error code so the user sees a clear retry
+        signal rather than a silent no-op.
+        """
+        try:
+            result = (
+                self.client.table("user_settings")
+                .upsert({
+                    "user_id": user_id,
+                    "current_learner_mirror": mirror,
+                    "current_learner_mirror_generated_at": (
+                        datetime.now(timezone.utc).isoformat()
+                    ),
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                })
+                .execute()
+            )
+            if result.data and len(result.data) > 0:
+                return result.data[0]
+            return None
+        except Exception as e:
+            logger.warning(
+                "set_user_current_learner_mirror failed user=%s err=%s",
+                user_id, e,
+            )
+            return None
+
     def get_top_followup_examples(
         self,
         intent: str,

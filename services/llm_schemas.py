@@ -136,6 +136,62 @@ EXCHANGE_SCORE_SCHEMA: dict[str, Any] = {
 }
 
 
+LEARNER_MIRROR_SCHEMA: dict[str, Any] = {
+    # Phase 6 — the on-demand narrative the user sees when they ask
+    # "what are you noticing about me?". The LLM gets the learner
+    # profile + recent attempt aggregates as input and returns a
+    # short reflection. ``observations`` is the audit trail: bullet
+    # points the model considered salient, distinct from the prose
+    # in ``narrative``. Strict mode keeps the shape stable so the
+    # frontend renderer can be dumb.
+    "name": "learner_mirror_v1",
+    "strict": True,
+    "schema": {
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["headline", "narrative", "observations"],
+        "properties": {
+            "headline": {
+                "type": "string",
+                "maxLength": 120,
+                "description": (
+                    "One sentence that names the pattern you're "
+                    "noticing. Warm, second-person, no clinical "
+                    "framing. Examples: \"You're learning to bring "
+                    "Sarah into the room with you\" or \"Your "
+                    "specificity is sharpening — and you can tell.\""
+                ),
+            },
+            "narrative": {
+                "type": "string",
+                "maxLength": 1200,
+                "description": (
+                    "2-3 short paragraphs of reflection in the second "
+                    "person. Reference the user's actual recurring "
+                    "entities and trends by name. Stay grounded in "
+                    "the data — don't invent attempts that aren't in "
+                    "the input. End on something forward-looking, "
+                    "not summative."
+                ),
+            },
+            "observations": {
+                "type": "array",
+                "maxItems": 6,
+                "items": {"type": "string", "maxLength": 160},
+                "description": (
+                    "3-6 short bullet points listing the concrete "
+                    "facts the narrative is built on (trend "
+                    "direction, recurring entity counts, weakest "
+                    "dimension, self-rating gap). Audit trail — "
+                    "admins use this to verify the narrative is "
+                    "grounded."
+                ),
+            },
+        },
+    },
+}
+
+
 AWARENESS_TURN_SCHEMA: dict[str, Any] = {
     "name": "awareness_turn_v1",
     "strict": True,

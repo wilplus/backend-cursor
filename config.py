@@ -132,6 +132,18 @@ class Config:
         (os.getenv("LEARNER_PROFILE_INJECTION_ENABLED") or "").strip().lower()
         in ("1", "true", "yes", "on")
     )
+
+    # ── Phase 6: on-demand learner mirror ────────────────────────────────
+    # When TRUE the user-facing mirror endpoints (GET /v2/user/mirror,
+    # POST /v2/user/mirror/generate) accept requests and the generate
+    # path makes an LLM call. When FALSE both endpoints respond with
+    # FEATURE_DISABLED so the frontend can show a "coming soon" state
+    # without breaking. Default OFF: the LLM cost is per user click,
+    # so we gate it until the UX is ready end-to-end.
+    LEARNER_MIRROR_ENABLED = (
+        (os.getenv("LEARNER_MIRROR_ENABLED") or "").strip().lower()
+        in ("1", "true", "yes", "on")
+    )
     
     # Frontend URL (for email links)
     FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")

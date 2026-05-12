@@ -9151,6 +9151,116 @@ def v2_user_learner_profile():
         }), 500
 
 
+_MIRROR_ERROR_STATUS: dict[str, tuple[int, str]] = {
+    # services.learner_mirror error code → (HTTP status, client message)
+    "NOT_ENOUGH_DATA": (
+        409,
+        "Not enough coaching attempts yet to generate a reflection.",
+    ),
+    "PROFILE_MISSING": (
+        409,
+        "No learner profile yet — record a coaching attempt first.",
+    ),
+    "LLM_UNAVAILABLE": (
+        503,
+        "The reflection generator is temporarily unavailable.",
+    ),
+    "LLM_ERROR": (
+        502,
+        "The reflection generator returned an unusable response. "
+        "Try again in a moment.",
+    ),
+    "PERSIST_FAILED": (
+        500,
+        "Generated the reflection but couldn't save it. Try again.",
+    ),
+}
+
+
+@v2_bp.route("/user/mirror", methods=["GET"])
+@require_auth
+def v2_user_mirror_get():
+    """Return the requesting user's current learner mirror, if any.
+
+    Phase 6 — read-only. Does NOT trigger generation. The frontend
+    typically calls this on /results render and falls back to
+    "tap to generate" UX when ``mirror`` is null.
+
+    Response shape::
+
+        {
+          "feature_enabled": true,            # flag state
+          "mirror": { ... } | null,            # the JSONB blob
+          "generated_at": "..." | null
+        }
+    """
+    try:
+        user_id = request.user_id
+        from config import Config
+
+        feature_enabled = bool(Config().LEARNER_MIRROR_ENABLED)
+        settings = db.get_user_settings(user_id) or {}
+        mirror = settings.get("current_learner_mirror") or None
+        generated_at = settings.get("current_learner_mirror_generated_at")
+        return jsonify({
+            "feature_enabled": feature_enabled,
+            "mirror": mirror,
+            "generated_at": generated_at,
+        }), 200
+    except Exception as e:
+        logger.error("user/mirror GET failed: %s", e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({
+            "code": "V2_ERROR",
+            "error": "Failed to load mirror",
+        }), 500
+
+
+@v2_bp.route("/user/mirror/generate", methods=["POST"])
+@require_auth
+def v2_user_mirror_generate():
+    """Generate a fresh learner mirror for the requesting user.
+
+    Phase 6 — on-demand, user-triggered. One LLM call per request,
+    grounded in the user's inferred learner profile + recent
+    coaching attempts. Replaces the prior mirror on success.
+
+    Response (200):
+        { "mirror": {...}, "generated_at": "..." }
+    Failure codes map to HTTP via _MIRROR_ERROR_STATUS — clients
+    can switch on the ``code`` field to render appropriate UX
+    (e.g. NOT_ENOUGH_DATA → "keep practising, come back at 3 attempts").
+    """
+    try:
+        user_id = request.user_id
+        from config import Config
+        if not Config().LEARNER_MIRROR_ENABLED:
+            return jsonify({
+                "code": "FEATURE_DISABLED",
+                "error": "Learner mirror is not enabled for this deployment.",
+            }), 503
+
+        from services.learner_mirror import generate_learner_mirror
+        mirror, err = generate_learner_mirror(user_id)
+        if err:
+            status, message = _MIRROR_ERROR_STATUS.get(
+                err, (500, "Failed to generate mirror"),
+            )
+            return jsonify({"code": err, "error": message}), status
+
+        return jsonify({
+            "mirror": mirror,
+            "generated_at": mirror.get("generated_at") if mirror else None,
+        }), 200
+    except Exception as e:
+        logger.error("user/mirror/generate failed: %s", e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({
+            "code": "V2_ERROR",
+            "error": "Failed to generate mirror",
+        }), 500
+
+
 @v2_bp.route("/public/interview/next-question", methods=["POST"])
 def v2_public_interview_next_question():
     """Return the next interview question.
