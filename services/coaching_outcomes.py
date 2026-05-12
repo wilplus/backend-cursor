@@ -420,9 +420,44 @@ def _persist_outcome(snippet_id: str, outcome: dict[str, Any]) -> bool:
             snippet_id, e,
         )
 
+    # Phase 3: recompute the inferred learner profile from the user's
+    # latest window of attempts. Cheap — one indexed LIMIT 10 select +
+    # one upsert. Runs only after a successful canonical insert so the
+    # recompute always sees the row we just wrote. Failure is swallowed:
+    # a stale profile is far better than failing the outcome capture.
+    if inserted is not None and user_id:
+        _recompute_learner_profile(user_id)
+
     if inserted is not None:
         return True
     # Canonical insert failed. Treat the legacy mirror as a fallback
     # success so we don't lose the outcome entirely while the migration
     # is still rolling out.
     return legacy_ok
+
+
+def _recompute_learner_profile(user_id: str) -> None:
+    """Pull this user's recent attempts and refresh their profile blob.
+
+    Designed to never throw — the outcome write that called us is
+    already committed and the user's about to land on the next
+    coaching turn. A profile recompute failure should log and move
+    on, never block the response or trigger a retry storm.
+    """
+    try:
+        from services.learner_profile import (
+            ATTEMPTS_WINDOW,
+            compute_learner_profile,
+        )
+        attempts = db.list_recent_coaching_attempts_for_user(
+            user_id, limit=ATTEMPTS_WINDOW
+        )
+        profile = compute_learner_profile(attempts)
+        # None means "no analysable attempts" — write None to clear
+        # any stale blob.
+        db.set_user_inferred_learner_profile(user_id, profile)
+    except Exception as e:
+        logger.warning(
+            "outcome: learner-profile recompute failed user=%s err=%s",
+            user_id, e,
+        )

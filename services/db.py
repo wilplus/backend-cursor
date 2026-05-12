@@ -5806,6 +5806,86 @@ class DatabaseService:
             )
             return None
 
+    def list_recent_coaching_attempts_for_user(
+        self,
+        user_id: str,
+        *,
+        limit: int = 10,
+    ) -> List[dict]:
+        """Most recent coaching_attempts for ``user_id``, newest first.
+
+        Phase 3 — feeds the learner-profile aggregator. We select only
+        the columns the aggregator needs so the query stays cheap on
+        users with long histories. ``limit`` matches
+        services.learner_profile.ATTEMPTS_WINDOW.
+
+        Returns [] on any error so the recompute path can degrade
+        gracefully (leaving the profile column unchanged) rather than
+        breaking the outcome-persist flow that triggered it.
+        """
+        try:
+            return (
+                self.client.table("coaching_attempts")
+                .select(
+                    "attempt_number, score, components, self_rating, "
+                    "created_at, snippet_id"
+                )
+                .eq("user_id", user_id)
+                .order("created_at", desc=True)
+                .limit(max(1, limit))
+                .execute()
+                .data
+            ) or []
+        except Exception as e:
+            logger.warning(
+                "list_recent_coaching_attempts_for_user failed "
+                "user=%s err=%s", user_id, e,
+            )
+            return []
+
+    def set_user_inferred_learner_profile(
+        self,
+        user_id: str,
+        profile: Optional[dict],
+    ) -> Optional[dict]:
+        """Upsert the inferred learner profile JSONB for ``user_id``.
+
+        Pass ``profile=None`` to clear the column (e.g. when the user
+        has no analysable attempts yet — we'd rather show NULL than
+        keep a stale blob around).
+
+        Upsert because the row may not exist yet — new users only
+        create a user_settings row when an admin first edits their
+        custom instructions.
+
+        Returns the updated row, or None on failure (column missing
+        because migration hasn't run yet, Supabase down, etc.) The
+        caller (coaching_outcomes._persist_outcome) treats failure as
+        a recoverable no-op — it logs and continues.
+        """
+        try:
+            result = (
+                self.client.table("user_settings")
+                .upsert({
+                    "user_id": user_id,
+                    "inferred_learner_profile": profile,
+                    "inferred_learner_profile_updated_at": (
+                        datetime.now(timezone.utc).isoformat()
+                    ),
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                })
+                .execute()
+            )
+            if result.data and len(result.data) > 0:
+                return result.data[0]
+            return None
+        except Exception as e:
+            logger.warning(
+                "set_user_inferred_learner_profile failed user=%s err=%s",
+                user_id, e,
+            )
+            return None
+
     def get_top_followup_examples(
         self,
         intent: str,

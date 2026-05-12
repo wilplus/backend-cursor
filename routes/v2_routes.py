@@ -8051,17 +8051,22 @@ def _system_prompt_for_intent(intent: str) -> str:
 def _augment_coaching_system_prompt(base_prompt: str, user_id: str) -> str:
     """Append the long-term user profile to a coaching system prompt.
 
-    Two sources of personalisation:
+    Three sources of personalisation, stacked top-to-bottom in the
+    system prompt:
       - user_settings.custom_llm_instructions — free-text instructions
         the admin set in Admin Tab 3 ("Global LLM Instructions"). Goes
         verbatim into the prompt so the admin's wording is preserved.
       - student profile.behavioral_profile — the user's classified
         learner type (e.g. Stressor, Racer, Freezer) from the
-        behavioural-profile classifier. Tells the model who it's
-        coaching so feedback adapts.
+        behavioural-profile classifier.
+      - Phase 3: user_settings.inferred_learner_profile — AI-inferred
+        traits derived from coaching_attempts aggregates (weakest
+        component, score trend, self-rating gap, etc.). Flag-gated by
+        LEARNER_PROFILE_INJECTION_ENABLED and additionally gated by
+        sample-size threshold in services/learner_profile.py.
 
-    Both fields are optional. When neither is set we return the base
-    prompt unchanged — no [USER LONG-TERM PROFILE] block, no harm.
+    Any of these can be absent. When all three are silent we return
+    the base prompt unchanged — no [USER LONG-TERM PROFILE] block.
 
     Failure modes are swallowed: a DB read miss returns the base
     prompt rather than blocking the coaching turn. Personalisation is
@@ -8070,7 +8075,9 @@ def _augment_coaching_system_prompt(base_prompt: str, user_id: str) -> str:
     """
     learner_type: str = ""
     custom_instructions: str = ""
+    inferred_profile: dict | None = None
 
+    settings: dict = {}
     try:
         settings = db.get_user_settings(user_id) or {}
         custom_instructions = (settings.get("custom_llm_instructions") or "").strip()
@@ -8088,7 +8095,25 @@ def _augment_coaching_system_prompt(base_prompt: str, user_id: str) -> str:
     except Exception as e:
         logger.warning("coaching/turn: profile load failed user=%s: %s", user_id, e)
 
-    if not learner_type and not custom_instructions:
+    # Phase 3 — inferred profile. Read from the same user_settings row
+    # we already pulled above so we don't issue a second query. Gated
+    # by the feature flag so the recompute can run live without the
+    # block influencing the AI until we backtest it.
+    insights_block: str | None = None
+    try:
+        from config import Config
+        if Config().LEARNER_PROFILE_INJECTION_ENABLED:
+            inferred_profile = settings.get("inferred_learner_profile") or None
+            if inferred_profile:
+                from services.learner_profile import format_profile_for_prompt
+                insights_block = format_profile_for_prompt(inferred_profile)
+    except Exception as e:
+        logger.warning(
+            "coaching/turn: inferred profile render failed user=%s: %s",
+            user_id, e,
+        )
+
+    if not learner_type and not custom_instructions and not insights_block:
         return base_prompt
 
     lines: list[str] = ["[USER LONG-TERM PROFILE]"]
@@ -8096,6 +8121,10 @@ def _augment_coaching_system_prompt(base_prompt: str, user_id: str) -> str:
         lines.append(f"Learner Type: {learner_type}")
     if custom_instructions:
         lines.append(f"Custom Coaching Instructions: {custom_instructions}")
+    if insights_block:
+        lines.append("")
+        lines.append("[LEARNER INSIGHTS — inferred from recent attempts]")
+        lines.append(insights_block)
     lines.append("")
     lines.append(
         "CRITICAL: You must adhere to these custom instructions and "
@@ -9061,6 +9090,61 @@ def v2_user_coaching_self_rating():
         return jsonify({
             "code": "V2_ERROR",
             "error": "Failed to save self-rating",
+        }), 500
+
+
+@v2_bp.route("/user/learner-profile", methods=["GET"])
+@require_auth
+def v2_user_learner_profile():
+    """Return the requesting user's inferred learner profile blob.
+
+    Phase 3 — read-only diagnostic so admins can verify the recompute
+    pipeline and the user can be shown their own progress narrative
+    (frontend opt-in). The blob itself is whatever services/
+    learner_profile.py wrote on the last successful recompute; this
+    endpoint does NOT trigger a recompute (that runs on the outcome
+    persist path).
+
+    Response shape::
+
+        {
+          "profile": { ... } | null,
+          "updated_at": "..." | null,
+          "injection_enabled": true | false,
+          "injection_eligible": true | false  # would the augmenter
+                                              # actually use this blob
+                                              # if injection was on?
+        }
+
+    ``injection_eligible`` mirrors the sample-size gate inside
+    format_profile_for_prompt — it answers "does this profile have
+    enough signal to actually shape the coaching prompt?" without
+    leaking the raw threshold to the client.
+    """
+    try:
+        user_id = request.user_id
+        settings = db.get_user_settings(user_id) or {}
+        profile = settings.get("inferred_learner_profile") or None
+        updated_at = settings.get("inferred_learner_profile_updated_at")
+
+        from services.learner_profile import format_profile_for_prompt
+        from config import Config
+
+        injection_enabled = bool(Config().LEARNER_PROFILE_INJECTION_ENABLED)
+        injection_eligible = bool(format_profile_for_prompt(profile))
+
+        return jsonify({
+            "profile": profile,
+            "updated_at": updated_at,
+            "injection_enabled": injection_enabled,
+            "injection_eligible": injection_eligible,
+        }), 200
+    except Exception as e:
+        logger.error("user/learner-profile failed: %s", e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({
+            "code": "V2_ERROR",
+            "error": "Failed to load learner profile",
         }), 500
 
 

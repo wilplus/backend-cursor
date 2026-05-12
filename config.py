@@ -115,6 +115,23 @@ class Config:
         (os.getenv("COACHING_ATTEMPTS_DUAL_WRITE") or "true").strip().lower()
         in ("1", "true", "yes", "on")
     )
+
+    # ── Phase 3: inferred learner profile injection ──────────────────────
+    # When TRUE, _augment_coaching_system_prompt appends a [LEARNER
+    # INSIGHTS] block derived from the user's last 10 coaching_attempts
+    # (weakest dimension, score trend, self-rating gap, etc.) on top of
+    # the existing custom_llm_instructions + behavioral_profile block.
+    # The block is also gated by services.learner_profile.MIN_ATTEMPTS_
+    # TO_INJECT — a user with <3 attempts gets no insights regardless of
+    # the flag, because trait estimates are too noisy.
+    #
+    # Default OFF: the recompute runs (so admins can read the JSONB
+    # via the diagnostic endpoint) but the prompt augmentation is
+    # silent until we flip this on after backtesting the injection.
+    LEARNER_PROFILE_INJECTION_ENABLED = (
+        (os.getenv("LEARNER_PROFILE_INJECTION_ENABLED") or "").strip().lower()
+        in ("1", "true", "yes", "on")
+    )
     
     # Frontend URL (for email links)
     FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
