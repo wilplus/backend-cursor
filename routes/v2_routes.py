@@ -8817,6 +8817,11 @@ def v2_user_coaching_progress():
 
         attempt_payload: list[dict] = []
         for a in attempts:
+            self_rating = a.get("self_rating")
+            try:
+                self_rating = int(self_rating) if self_rating is not None else None
+            except (TypeError, ValueError):
+                self_rating = None
             attempt_payload.append({
                 "attempt_number": a.get("attempt_number"),
                 "score": _to_float(a.get("score")),
@@ -8826,6 +8831,9 @@ def v2_user_coaching_progress():
                 "acoustic_features": a.get("acoustic_features"),
                 "source": a.get("source"),
                 "is_eligible_for_few_shot": bool(a.get("is_eligible_for_few_shot")),
+                "self_rating": self_rating,
+                "self_rating_text": a.get("self_rating_text"),
+                "self_rating_submitted_at": a.get("self_rating_submitted_at"),
                 "created_at": a.get("created_at"),
             })
 
@@ -8854,6 +8862,13 @@ def v2_user_coaching_progress():
                         (best.get("user_answer_duration_ms") or 0)
                         - (first.get("user_answer_duration_ms") or 0)
                     ),
+                    # Self-rating delta is independent of the score-based
+                    # best/first pair: a user can rate themselves higher
+                    # on an attempt the LLM scored lower. Carry first and
+                    # best self_ratings (across all attempts that have one)
+                    # so the frontend can show both progression signals.
+                    "self_rating_first": _first_self_rating(attempt_payload),
+                    "self_rating_best": _best_self_rating(attempt_payload),
                 }
 
         return jsonify({
@@ -8868,6 +8883,184 @@ def v2_user_coaching_progress():
         return jsonify({
             "code": "V2_ERROR",
             "error": "Failed to load coaching progress",
+        }), 500
+
+
+# Capture the FIRST digit 1-10 in a string. We anchor on word-
+# boundaries so "1000" won't match "10" and "v8" won't match. The
+# "10|[1-9]" ordering matters — alternation is greedy left-to-right,
+# so "10" must come first or "8 out of 10" would match "8" inside
+# "10".
+_SELF_RATING_RE = re.compile(r"\b(10|[1-9])\b")
+# Phase 8 self-rating: bound the free-text payload so an abusive
+# client can't ship megabytes through the endpoint. The frontend
+# input is the chat composer (typically <200 chars).
+_SELF_RATING_TEXT_MAX = 500
+
+
+def _parse_self_rating_from_text(text: str) -> int | None:
+    """Pull a 1..10 integer out of a free-form user reply.
+
+    Returns the FIRST 1-10 number found, or None when nothing matches.
+    A None return signals the caller to ask the user to retry (vs.
+    silently defaulting to a wrong rating).
+    """
+    if not text:
+        return None
+    m = _SELF_RATING_RE.search(text)
+    if not m:
+        return None
+    try:
+        return int(m.group(1))
+    except (TypeError, ValueError):
+        return None
+
+
+def _first_self_rating(attempts: list[dict]) -> int | None:
+    """First chronological self-rating present in ``attempts``.
+
+    Used by /coaching/progress to show first → best progression.
+    Attempts are already ordered by attempt_number ASC when the
+    progress endpoint builds them.
+    """
+    for a in attempts:
+        r = a.get("self_rating")
+        if isinstance(r, int) and 1 <= r <= 10:
+            return r
+    return None
+
+
+def _best_self_rating(attempts: list[dict]) -> int | None:
+    """Highest self-rating across ``attempts``. None when no attempt has one."""
+    ratings = [
+        a.get("self_rating") for a in attempts
+        if isinstance(a.get("self_rating"), int)
+        and 1 <= a.get("self_rating") <= 10
+    ]
+    return max(ratings) if ratings else None
+
+
+@v2_bp.route("/user/coaching/self-rating", methods=["POST"])
+@require_auth
+def v2_user_coaching_self_rating():
+    """Capture the user's in-chat 1..10 self-rating for a coaching attempt.
+
+    Phase 8 of the snippet-CTA learning loop. After the LLM evaluation
+    lands in coaching_attempts (Phase 2), the frontend asks the user
+    "on a scale of 1-10, how do you feel about that response?" inside
+    the chat thread and POSTs the reply here.
+
+    Body (any of these shapes works; ``rating`` wins when both are set)::
+
+        { "snippet_id": "<uuid>", "rating": 8 }
+        { "snippet_id": "<uuid>", "rating_text": "I'd say 8" }
+        { "snippet_id": "<uuid>", "rating_text": "8", "attempt_number": 3 }
+
+    ``attempt_number`` is optional — when omitted we target the most
+    recent attempt for this (snippet, user). That is the common path
+    because the rating ask follows the latest evaluation in the chat.
+
+    Status codes:
+      200 — rating accepted; response carries the persisted row.
+      400 — input invalid (missing snippet_id, can't parse a 1..10).
+      404 — snippet not owned by the requesting user.
+      425 — no coaching_attempts row exists yet (race with the
+            evaluation daemon). Client should retry after a beat.
+      500 — unexpected error.
+    """
+    try:
+        user_id = request.user_id
+        body = request.get_json(silent=True) or {}
+
+        snippet_id = (body.get("snippet_id") or "").strip()
+        if not snippet_id or not _is_valid_uuid(snippet_id):
+            return jsonify({
+                "code": "INVALID_INPUT",
+                "error": "snippet_id must be a valid UUID",
+            }), 400
+
+        attempt_number = body.get("attempt_number")
+        if attempt_number is not None:
+            try:
+                attempt_number = int(attempt_number)
+                if attempt_number < 1:
+                    raise ValueError
+            except (TypeError, ValueError):
+                return jsonify({
+                    "code": "INVALID_INPUT",
+                    "error": "attempt_number must be a positive integer",
+                }), 400
+
+        rating_text_raw = (body.get("rating_text") or "")
+        if not isinstance(rating_text_raw, str):
+            rating_text_raw = str(rating_text_raw)
+        rating_text = rating_text_raw[:_SELF_RATING_TEXT_MAX].strip() or None
+
+        # rating wins when both shapes are sent — it's the explicit
+        # numeric path the frontend uses when it already parsed the
+        # number client-side.
+        rating_val = body.get("rating")
+        rating: int | None = None
+        if rating_val is not None:
+            try:
+                rating = int(rating_val)
+            except (TypeError, ValueError):
+                return jsonify({
+                    "code": "INVALID_INPUT",
+                    "error": "rating must be an integer 1..10",
+                }), 400
+        elif rating_text:
+            rating = _parse_self_rating_from_text(rating_text)
+
+        if rating is None or not (1 <= rating <= 10):
+            return jsonify({
+                "code": "RATING_UNPARSEABLE",
+                "error": "Could not read a number from 1 to 10 in the reply",
+            }), 400
+
+        # Owner check — block users from rating someone else's snippet.
+        snippet = db.v2_get_charisma_snippet_for_user(snippet_id, user_id)
+        if not snippet:
+            return jsonify({
+                "code": "NOT_FOUND",
+                "error": "Snippet not found",
+            }), 404
+
+        updated = db.update_coaching_attempt_self_rating(
+            snippet_id=snippet_id,
+            user_id=user_id,
+            rating=rating,
+            rating_text=rating_text,
+            attempt_number=attempt_number,
+        )
+        if not updated:
+            # No row found for (snippet, user[, attempt_number]).
+            # Most likely cause: the eval daemon hasn't finished
+            # writing the coaching_attempts row yet. 425 (Too Early)
+            # tells the client to retry shortly.
+            return jsonify({
+                "code": "ATTEMPT_NOT_READY",
+                "error": (
+                    "No coaching attempt found for this snippet yet. "
+                    "Wait a moment and retry."
+                ),
+            }), 425
+
+        return jsonify({
+            "status": "ok",
+            "snippet_id": snippet_id,
+            "attempt_number": updated.get("attempt_number"),
+            "self_rating": updated.get("self_rating"),
+            "self_rating_text": updated.get("self_rating_text"),
+            "self_rating_submitted_at": updated.get("self_rating_submitted_at"),
+        }), 200
+
+    except Exception as e:
+        logger.error("user/coaching/self-rating failed: %s", e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({
+            "code": "V2_ERROR",
+            "error": "Failed to save self-rating",
         }), 500
 
 

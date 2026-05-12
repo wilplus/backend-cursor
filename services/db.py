@@ -5716,6 +5716,96 @@ class DatabaseService:
             )
             return []
 
+    def update_coaching_attempt_self_rating(
+        self,
+        *,
+        snippet_id: str,
+        user_id: str,
+        rating: int,
+        rating_text: Optional[str] = None,
+        attempt_number: Optional[int] = None,
+    ) -> Optional[dict]:
+        """Stamp a 1..10 self-rating onto a coaching_attempts row.
+
+        Phase 8 — in-chat self-rating. The frontend asks "how do you
+        feel about that response on a scale of 1-10?" right after the
+        evaluation lands, and POSTs the user's reply to /v2/user/
+        coaching/self-rating, which calls this.
+
+        Targeting rules:
+          - When ``attempt_number`` is provided, update that exact
+            row (owner-scoped so a user can't backfill someone else's
+            attempt).
+          - When ``attempt_number`` is None, target the MOST RECENT
+            attempt for this (snippet, user). This is the common
+            path — the rating ask sits right after the latest
+            evaluation, so the user is rating the attempt they just
+            saw scored.
+
+        Returns the updated row, or None when:
+          - no attempt exists yet for that snippet+user (race with
+            the eval daemon — caller should 425 the client),
+          - the targeted attempt isn't owned by ``user_id``,
+          - any Supabase error.
+        """
+        try:
+            r = int(rating)
+        except (TypeError, ValueError):
+            return None
+        if not (1 <= r <= 10):
+            return None
+
+        # Resolve the target row id. We always do this lookup (rather
+        # than UPDATE … WHERE attempt_number = …) so the owner-scope
+        # check is explicit and we can distinguish "missing" from
+        # "wrong owner" in the response.
+        try:
+            query = (
+                self.client.table("coaching_attempts")
+                .select("id, attempt_number, user_id")
+                .eq("snippet_id", snippet_id)
+                .eq("user_id", user_id)
+            )
+            if attempt_number is not None:
+                query = query.eq("attempt_number", int(attempt_number))
+            else:
+                query = query.order("attempt_number", desc=True).limit(1)
+            existing = (query.execute().data) or []
+        except Exception as e:
+            logger.warning(
+                "update_coaching_attempt_self_rating lookup failed "
+                "snippet=%s user=%s err=%s",
+                snippet_id, user_id, e,
+            )
+            return None
+
+        if not existing:
+            return None
+        row_id = existing[0].get("id")
+        if not row_id:
+            return None
+
+        payload = {
+            "self_rating": r,
+            "self_rating_text": (rating_text or None),
+            "self_rating_submitted_at": datetime.now(timezone.utc).isoformat(),
+        }
+        try:
+            result = (
+                self.client.table("coaching_attempts")
+                .update(payload)
+                .eq("id", row_id)
+                .execute()
+            )
+            return result.data[0] if result.data else None
+        except Exception as e:
+            logger.warning(
+                "update_coaching_attempt_self_rating update failed "
+                "id=%s err=%s",
+                row_id, e,
+            )
+            return None
+
     def get_top_followup_examples(
         self,
         intent: str,
