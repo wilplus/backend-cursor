@@ -122,6 +122,21 @@ def evaluate_and_record_followup_outcome(
     stored_question = (snippet.get("follow_up_question") or "").strip()
     question_text = (asked_question or "").strip() or stored_question
 
+    # Phase 7 — derive the skill id from the source snippet so each
+    # coaching_attempt row carries the intent it was practising.
+    # Resolution is swallow-on-error: a bad import here would block
+    # an otherwise-valid outcome write, which is worse than just
+    # losing the skill tag on this row.
+    skill_id: str | None = None
+    try:
+        from services.skills import resolve_for_snippet
+        skill_id = resolve_for_snippet(snippet)
+    except Exception as e:
+        logger.warning(
+            "outcome: skill resolution failed snippet=%s err=%s",
+            source_snippet_id, e,
+        )
+
     # We need at least admin_comment + question text to evaluate the
     # exchange meaningfully. Source transcript is nice but not strictly
     # required — the user's answer + question alone can be scored.
@@ -188,6 +203,9 @@ def evaluate_and_record_followup_outcome(
         # Phase 4 — entities the user mentioned in this exchange.
         # Empty lists are OK; None means extraction failed.
         "entities": entities,
+        # Phase 7 — skill the attempt practised. None means snippet
+        # didn't resolve to a registered skill at write time.
+        "skill_id": skill_id,
         # Phase 5 — fact-check flag + diagnostics. Phase 1 few-shot
         # retrieval filters on eligible_for_few_shot so hallucinated
         # outcomes never seed future prompts. The full fact_check
@@ -454,6 +472,7 @@ def _persist_outcome(snippet_id: str, outcome: dict[str, Any]) -> bool:
             fact_check=outcome.get("fact_check"),
             evaluator_model=evaluator.get("model"),
             entities=outcome.get("entities"),
+            skill_id=outcome.get("skill_id"),
             raw_outcome=outcome,
         )
     except Exception as e:

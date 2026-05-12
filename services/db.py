@@ -5592,6 +5592,7 @@ class DatabaseService:
         evaluator_model: str | None = None,
         acoustic_features: dict | None = None,
         entities: dict | None = None,
+        skill_id: str | None = None,
         raw_outcome: dict | None = None,
     ) -> Optional[dict]:
         """Append a new row to coaching_attempts for ``snippet_id``.
@@ -5630,6 +5631,7 @@ class DatabaseService:
             "components": components,
             "acoustic_features": acoustic_features,
             "entities": entities,
+            "skill_id": skill_id,
             "question_text": question_text,
             "user_answer_text": user_answer_text,
             "user_answer_duration_ms": user_answer_duration_ms,

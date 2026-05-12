@@ -7087,7 +7087,18 @@ RULES:
   If there is no acknowledgment, return ONLY the question text with no delimiter.
 """
 
-_CONTEXTUAL_INTENTS = {"charisma", "stress"}
+from services.skills import (
+    get_skill as _get_skill,
+    list_skill_ids as _list_skill_ids,
+    resolve_for_snippet as _skill_for_snippet,
+)
+
+
+# Phase 7 — the registry in services/skills/ is the source of truth
+# for which intents the contextual /chat flow accepts. The literal
+# {"charisma", "stress"} that used to live here is gone; adding a
+# skill is now a package-level change, not a route-level edit.
+_CONTEXTUAL_INTENTS = _list_skill_ids()
 
 # ---------------------------------------------------------------------------
 # EBCP Baseline Mapping — system prompt & generation
@@ -7929,9 +7940,10 @@ def v2_user_results_me():
 #
 #   /v2/coaching/turn
 #     POST { coaching_id, user_message }
-#     → calls the LLM with _STRESS_AWARENESS_SYSTEM_PROMPT, parses the
-#       acknowledgment ||| question shape and the [ADVANCE] tag,
-#       advances stage to 'trial' if [ADVANCE] is present.
+#     → looks up the active skill via services.skills.get_skill(intent),
+#       calls the LLM with that skill's awareness_system_prompt, parses
+#       the structured JSON (validation_bubble / challenge_bubble /
+#       advance) and advances stage to 'trial' when advance is true.
 #
 #   /v2/coaching/trial-recording
 #     POST multipart audio_file + coaching_id
@@ -7941,111 +7953,18 @@ def v2_user_results_me():
 # ─────────────────────────────────────────────────────────────────────
 
 
-_STRESS_AWARENESS_SYSTEM_PROMPT = """You are a charisma coach inside a voice-first sales training app. The user just clicked a snippet where their voice tightened under pressure. Their admin coach already showed them the exact moment. You have ONE turn to do three things, then disappear:
-
-  1. Validate the feeling in HALF a sentence.
-  2. Reframe the body's response in ONE sentence: a racing heart and tight voice are NOT panic — they are adrenaline routing blood to the brain so it thinks faster (Brooks 2014, anxiety reappraisal).
-  3. Set up a re-performance of the EXACT same scenario in ONE sentence. The user's mic is about to unlock; they get ONE shot to deliver the line again with the new mindset.
-
-═══════════════════════════════════════════════════════════════════════
-OUTPUT FORMAT — STRICT. Violations break the UI.
-═══════════════════════════════════════════════════════════════════════
-
-Return ONE message in this exact shape:
-
-    <half-sentence validation + one-sentence reframe> ||| <one-sentence scenario setup ending with the prospect's exact stress-trigger line in quotes> [ADVANCE]
-
-The frontend splits on `|||` into two chat bubbles. `[ADVANCE]` is stripped server-side and flips the UI into record-only trial mode.
-
-═══════════════════════════════════════════════════════════════════════
-HARD CONSTRAINTS
-═══════════════════════════════════════════════════════════════════════
-
-DO:
-  • Speak like a calm, sharp coach. Direct. No fluff. No emojis.
-  • End the second bubble by quoting the prospect's exact line back so the user re-performs AGAINST it.
-  • Always end the message with `[ADVANCE]` on its own.
-
-NEVER:
-  • Write more than 3 sentences total across both bubbles.
-  • Use the words: anxiety, panic, nerves, "calm down", "take a deep breath", "don't worry".
-  • Ask the user a question. The mic unlocks — their next move is to perform, not to type a thoughtful answer.
-  • Lecture, explain mechanics, or give them WHAT to say.
-  • Open with filler ("Got it." / "Sure." / "Okay so."). Land cold.
-
-═══════════════════════════════════════════════════════════════════════
-EXAMPLE
-═══════════════════════════════════════════════════════════════════════
-
-admin_comment:    "Your voice tightened when the prospect said 'too expensive'."
-user_transcript:  "Yeah, our pricing is a bit out of budget for most companies."
-user_first_reply: "I was scared they'd walk. Lost two deals this month already."
-
-OUTPUT:
-That fear is real, and that pressure in your chest is fuel — adrenaline routing blood to your brain so you think faster, not slower. ||| Mic on. The prospect just said: "Honestly, that's way out of our budget." Land it. [ADVANCE]
-"""
-
-
-_CHARISMA_AWARENESS_SYSTEM_PROMPT = """You are a high-level communication coach inside a voice-first sales training app. The user just clicked a snippet where they sounded incredibly charismatic — confident, in flow, magnetic. Their admin coach already showed them that exact moment. The user has now told you WHY they felt that way (their trigger). You have ONE turn to do three things, then disappear:
-
-  1. Anchor their trigger in HALF a sentence — name it back to them so they own it ("That confidence came from absolute knowledge of the data").
-  2. STRIP the trigger in ONE sentence by inventing a hypothetical scenario where that exact context is GONE — a question they don't know, a topic outside their depth, a curveball with no rehearsal.
-  3. Challenge them to deliver under those stripped conditions in ONE sentence, holding the SAME magnetic tone they had in the original snippet — no safety net.
-
-This is anchoring + generalization: take the felt-sense of charisma off its specific trigger so they can produce it on demand.
-
-═══════════════════════════════════════════════════════════════════════
-OUTPUT FORMAT — STRICT. Violations break the UI.
-═══════════════════════════════════════════════════════════════════════
-
-Return ONE message in this exact shape:
-
-    <half-sentence trigger anchor> ||| <one-sentence trigger-stripped scenario ending with the new harder prospect line in quotes> [ADVANCE]
-
-The frontend splits on `|||` into two chat bubbles. `[ADVANCE]` is stripped server-side and flips the UI into record-only trial mode.
-
-═══════════════════════════════════════════════════════════════════════
-HARD CONSTRAINTS
-═══════════════════════════════════════════════════════════════════════
-
-DO:
-  • Speak like a sharp, demanding coach. Cool admiration only.
-  • End the second bubble by quoting the new HARDER prospect line so they re-perform AGAINST it without their original anchor.
-  • The new scenario MUST remove the anchor. If they were confident because they knew the data, the new scenario asks about data they don't know. If they were confident because they had rehearsed, the new scenario is improvised. Get this right or the loop is pointless.
-  • Always end the message with `[ADVANCE]` on its own.
-
-NEVER:
-  • Write more than 3 sentences total across both bubbles.
-  • Praise gratuitously ("amazing!" / "you're a natural" / "great job" / "wow"). One half-sentence anchor, then move.
-  • Re-use the user's own anchor in the new scenario — that defeats the whole exercise.
-  • Ask the user a question. The mic unlocks — their next move is to perform, not to type a thoughtful answer.
-  • Lecture, explain mechanics, or tell them WHAT to say.
-  • Open with filler ("Got it." / "Sure." / "Okay so."). Land cold.
-
-═══════════════════════════════════════════════════════════════════════
-EXAMPLE
-═══════════════════════════════════════════════════════════════════════
-
-admin_comment:    "Your delivery here was magnetic — perfect dynamic range and total confidence."
-user_transcript:  "We've helped 47 SaaS companies hit their Q4 numbers using this exact playbook."
-user_first_reply: "I knew that case study cold. I've told it a hundred times."
-
-OUTPUT:
-That confidence came from absolute knowledge of the data — that's a real anchor. ||| Now strip it: the prospect just said: "What about your integration with our custom legacy ERP that nobody else uses?" Hold the same flow. [ADVANCE]
-"""
-
-
 def _system_prompt_for_intent(intent: str) -> str:
     """Pick the awareness-stage system prompt for a given coaching intent.
 
-    Centralised here so adding a third intent (e.g. 'pacing') is a
-    one-line change rather than a new conditional in v2_coaching_turn.
+    Phase 7 — the prompts themselves moved to services/skills/. This
+    function is a thin shim over the registry kept around so existing
+    call sites don't have to change; new code should call
+    ``services.skills.get_skill(intent).awareness_system_prompt``
+    directly. The fallback path (unknown intent) lands on the stress
+    skill, matching pre-refactor behaviour.
     """
-    if intent == "charisma":
-        return _CHARISMA_AWARENESS_SYSTEM_PROMPT
-    # Default to stress — _coach_intent_for_snippet only ever returns
-    # 'charisma' or 'stress' so this branch covers all valid inputs.
-    return _STRESS_AWARENESS_SYSTEM_PROMPT
+    skill = _get_skill(intent) or _get_skill("stress")
+    return skill.awareness_system_prompt if skill else ""
 
 
 def _augment_coaching_system_prompt(base_prompt: str, user_id: str) -> str:
@@ -8137,14 +8056,12 @@ def _augment_coaching_system_prompt(base_prompt: str, user_id: str) -> str:
 def _coach_intent_for_snippet(snippet: dict) -> str:
     """Map a snippet's coach_label to a coaching intent.
 
-    Stress intent fires on 'no_charisma' or anything not flagged as
-    explicit charisma. v1 only ships the stress flow so anything that
-    isn't 'charisma' falls through to 'stress'.
+    Phase 7 — thin shim over services.skills.resolve_for_snippet.
+    Kept under the old name so existing call sites in this module
+    keep working; new code should import resolve_for_snippet
+    directly from the skills package.
     """
-    label = (snippet.get("coach_label") or "").lower()
-    if label == "charisma":
-        return "charisma"
-    return "stress"
+    return _skill_for_snippet(snippet)
 
 
 @v2_bp.route("/internal/whisper-health", methods=["GET"])
@@ -8459,20 +8376,14 @@ def v2_coaching_turn():
             )
 
         if not bubble_1 and not bubble_2:
-            # Total LLM failure — return a graceful fallback instead of an
-            # empty payload so the user always sees something. Tone differs
-            # by intent so the user lands somewhere coherent.
-            if intent == "charisma":
-                bubble_1 = "That trigger is real."
-                bubble_2 = (
-                    "Mic on — hold the same magnetic tone for a curveball you "
-                    "haven't rehearsed."
-                )
-            else:
-                bubble_1 = "Take that pressure as fuel."
-                bubble_2 = (
-                    "Mic on — replay that exact moment with the new frame."
-                )
+            # Total LLM failure — return a graceful fallback instead of
+            # an empty payload so the user always sees something. The
+            # bubbles come from the skill registry so a degraded
+            # response stays tonally consistent with the active skill.
+            fallback_skill = _get_skill(intent) or _get_skill("stress")
+            if fallback_skill is not None:
+                bubble_1 = fallback_skill.fallback_validation_bubble
+                bubble_2 = fallback_skill.fallback_challenge_bubble
             advance = True
 
         # Persist the AI side of the exchange. Both bubbles together so
@@ -8756,11 +8667,13 @@ def v2_user_chat_first_question():
             contextual_init=contextual_init,
         )
         if not question:
-            question = (
-                "When you think back to that moment, what exactly did you feel in your body right before you spoke?"
-                if intent == "stress"
-                else "In that moment, what did you believe about yourself that made your voice feel so easy and confident?"
-            )
+            # Phase 7 — first-question fallback lives on the Skill
+            # object so it stays consistent with the rest of that
+            # skill's tone. Defaults to stress's question when the
+            # intent doesn't resolve.
+            fallback_skill = _get_skill(intent) or _get_skill("stress")
+            if fallback_skill is not None:
+                question = fallback_skill.contextual_first_question
 
         return jsonify({
             "status": "ok",
