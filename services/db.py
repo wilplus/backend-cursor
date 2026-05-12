@@ -1487,6 +1487,102 @@ class DatabaseService:
             logger.warning("get_coaching_session failed: %s", e)
             return None
 
+    def append_coaching_message(
+        self,
+        coaching_id: str,
+        role: str,
+        content: str,
+        *,
+        extra: Optional[dict] = None,
+    ) -> Optional[dict]:
+        """Append one entry to coaching_sessions.messages (JSONB).
+
+        The transcript is an ordered array of:
+            { "role": "user" | "assistant" | "system" | "trial_audio",
+              "content": <string>, "ts": <iso8601>, **extra }
+
+        Read-modify-write rather than a single jsonb_set RPC because
+        Supabase REST doesn't expose `jsonb || jsonb` append cleanly,
+        and the call cadence (one turn at a time per user) makes the
+        race window negligible. If we ever multiplex coaching turns
+        per session this should move to a Postgres function.
+
+        Requires the migration to have added the `messages JSONB`
+        column. Without it, PGRST204 surfaces and we return None
+        cleanly (the caller swallows so the turn response still ships).
+        """
+        try:
+            existing = (
+                self.client.table("coaching_sessions")
+                .select("messages")
+                .eq("id", coaching_id)
+                .limit(1)
+                .execute()
+            )
+            current: list = []
+            if existing.data and isinstance(existing.data[0].get("messages"), list):
+                current = list(existing.data[0]["messages"])
+
+            entry: dict = {
+                "role": role,
+                "content": content,
+                "ts": datetime.now(timezone.utc).isoformat(),
+            }
+            if extra:
+                # extra keys win over defaults so callers can override
+                # role/content/ts when they need to (e.g. trial_audio
+                # entries carry storage_path instead of content).
+                entry.update(extra)
+            current.append(entry)
+
+            result = (
+                self.client.table("coaching_sessions")
+                .update({
+                    "messages": current,
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                })
+                .eq("id", coaching_id)
+                .execute()
+            )
+            return result.data[0] if result.data else None
+        except Exception as e:
+            logger.warning(
+                "append_coaching_message failed (id=%s, role=%s): %s",
+                coaching_id, role, e,
+            )
+            return None
+
+    def set_coaching_trial_recording(
+        self,
+        coaching_id: str,
+        trial_recording_url: str,
+    ) -> Optional[dict]:
+        """Persist the trial-phase audio URL on a coaching session.
+
+        Called from /v2/coaching/trial-recording after the user uploads
+        their re-performance. Lets admin review the full coaching loop
+        — bubbles + trial audio — from one row. We also append a
+        trial_audio entry to messages so the transcript order stays
+        linear.
+        """
+        try:
+            result = (
+                self.client.table("coaching_sessions")
+                .update({
+                    "trial_recording_url": trial_recording_url,
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                })
+                .eq("id", coaching_id)
+                .execute()
+            )
+            return result.data[0] if result.data else None
+        except Exception as e:
+            logger.warning(
+                "set_coaching_trial_recording failed (id=%s): %s",
+                coaching_id, e,
+            )
+            return None
+
     def update_coaching_stage(
         self,
         coaching_id: str,

@@ -8031,6 +8031,63 @@ def _system_prompt_for_intent(intent: str) -> str:
     return _STRESS_AWARENESS_SYSTEM_PROMPT
 
 
+def _augment_coaching_system_prompt(base_prompt: str, user_id: str) -> str:
+    """Append the long-term user profile to a coaching system prompt.
+
+    Two sources of personalisation:
+      - user_settings.custom_llm_instructions — free-text instructions
+        the admin set in Admin Tab 3 ("Global LLM Instructions"). Goes
+        verbatim into the prompt so the admin's wording is preserved.
+      - student profile.behavioral_profile — the user's classified
+        learner type (e.g. Stressor, Racer, Freezer) from the
+        behavioural-profile classifier. Tells the model who it's
+        coaching so feedback adapts.
+
+    Both fields are optional. When neither is set we return the base
+    prompt unchanged — no [USER LONG-TERM PROFILE] block, no harm.
+
+    Failure modes are swallowed: a DB read miss returns the base
+    prompt rather than blocking the coaching turn. Personalisation is
+    additive — the awareness loop must keep running even when the
+    profile is unreadable.
+    """
+    learner_type: str = ""
+    custom_instructions: str = ""
+
+    try:
+        settings = db.get_user_settings(user_id) or {}
+        custom_instructions = (settings.get("custom_llm_instructions") or "").strip()
+    except Exception as e:
+        logger.warning("coaching/turn: settings load failed user=%s: %s", user_id, e)
+
+    try:
+        profile = db.get_sniper_profile(user_id) or {}
+        # Admin's manual override wins when set — same precedence used
+        # everywhere else (admin/students endpoints, snippet display).
+        learner_type = (
+            (profile.get("coach_override_profile") or "").strip()
+            or (profile.get("behavioral_profile") or "").strip()
+        )
+    except Exception as e:
+        logger.warning("coaching/turn: profile load failed user=%s: %s", user_id, e)
+
+    if not learner_type and not custom_instructions:
+        return base_prompt
+
+    lines: list[str] = ["[USER LONG-TERM PROFILE]"]
+    if learner_type:
+        lines.append(f"Learner Type: {learner_type}")
+    if custom_instructions:
+        lines.append(f"Custom Coaching Instructions: {custom_instructions}")
+    lines.append("")
+    lines.append(
+        "CRITICAL: You must adhere to these custom instructions and "
+        "tailor your feedback to this learner type."
+    )
+
+    return f"{base_prompt}\n\n" + "\n".join(lines)
+
+
 def _parse_coach_turn(raw: str) -> tuple[str, str, bool]:
     """Parse the LLM's coaching turn output into UI-ready bubbles.
 
@@ -8286,7 +8343,16 @@ def v2_coaching_turn():
             return jsonify({"code": "SNIPPET_NOT_FOUND", "error": "Source snippet missing"}), 404
 
         intent = coaching.get("intent") or "stress"
-        system_prompt = _system_prompt_for_intent(intent)
+        base_system_prompt = _system_prompt_for_intent(intent)
+
+        # ── Long-term profile injection ─────────────────────────────
+        # Pulls the admin-set custom_llm_instructions (Admin Tab 3) +
+        # the user's behavioral_profile classification (e.g. Stressor,
+        # Racer, Freezer). When either is present, we append a
+        # [USER LONG-TERM PROFILE] block to the system prompt so the
+        # coaching turn adapts to who this specific user is rather
+        # than coaching every learner identically.
+        system_prompt = _augment_coaching_system_prompt(base_system_prompt, user_id)
 
         from services.openai_service import OpenAIService
         service = OpenAIService()
@@ -8301,6 +8367,15 @@ def v2_coaching_turn():
             f'user_transcript: "{user_transcript}"\n'
             f'user_first_reply: "{user_message}"'
         )
+
+        # Persist the user side of the exchange before calling the LLM.
+        # If the LLM call fails downstream we still want admins to see
+        # what the user actually said. Best-effort — append never blocks
+        # the response if the JSONB column hasn't been migrated yet.
+        try:
+            db.append_coaching_message(coaching_id, "user", user_message)
+        except Exception as msg_err:
+            logger.warning("coaching/turn user-msg append failed: %s", msg_err)
 
         try:
             response = service.client.chat.completions.create(
@@ -8337,6 +8412,25 @@ def v2_coaching_turn():
                     "Mic on — replay that exact moment with the new frame."
                 )
             advance = True
+
+        # Persist the AI side of the exchange. Both bubbles together so
+        # the admin transcript reads as one assistant message rather
+        # than two synthetic ones — the `||| / [ADVANCE]` is an LLM
+        # output detail, not a semantic separation.
+        try:
+            ai_content_parts = [b for b in (bubble_1, bubble_2) if b]
+            db.append_coaching_message(
+                coaching_id,
+                "assistant",
+                " ||| ".join(ai_content_parts),
+                extra={
+                    "bubbles": [bubble_1, bubble_2],
+                    "advance": advance,
+                    "raw_llm_output": raw,
+                },
+            )
+        except Exception as msg_err:
+            logger.warning("coaching/turn assistant-msg append failed: %s", msg_err)
 
         next_stage = "trial" if advance else coaching.get("current_stage", "awareness")
         if advance and coaching.get("current_stage") != "trial":
@@ -8484,6 +8578,32 @@ def v2_coaching_trial_recording():
 
         # 6. Mark the coaching session complete and bind the trial session
         db.update_coaching_stage(coaching_id, "complete", trial_session_id=trial_session_id)
+
+        # 7. Record the trial recording on the coaching session so admin
+        # review tooling can replay the full loop (admin comment →
+        # awareness bubbles → user's re-performance audio) from one
+        # row. We resolve a playable URL the same way the admin
+        # snippet panel does so the saved value is directly usable in
+        # an <audio> tag without further translation.
+        try:
+            from services.audio_storage import audio_public_url
+            playable_url = audio_public_url(storage_path) or storage_path
+            db.set_coaching_trial_recording(coaching_id, playable_url)
+            db.append_coaching_message(
+                coaching_id,
+                "trial_audio",
+                playable_url,
+                extra={
+                    "storage_path": storage_path,
+                    "recording_id": recording_id,
+                    "trial_session_id": trial_session_id,
+                },
+            )
+        except Exception as bind_err:
+            logger.warning(
+                "coaching trial: log trial recording failed (non-fatal): %s",
+                bind_err,
+            )
 
         logger.info(
             "coaching trial: ok user_id=%s coaching_id=%s trial_session_id=%s",
