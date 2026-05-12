@@ -7967,6 +7967,52 @@ def _system_prompt_for_intent(intent: str) -> str:
     return skill.awareness_system_prompt if skill else ""
 
 
+def _merge_admin_override_into_profile(
+    *,
+    inferred: dict | None,
+    override: dict | None,
+) -> dict | None:
+    """Combine the inferred profile with any admin override.
+
+    Phase 9. The override is layered on TOP of the inferred profile
+    field-by-field so an admin can correct one trait (say
+    score_trend) without re-stating every other trait they wanted to
+    leave alone.
+
+    Rules:
+      - No override and no inferred → None (nothing to inject).
+      - Override only (no inferred yet) → override as-is.
+      - Inferred only → inferred as-is (Phase 3 behaviour).
+      - Both → override.traits replaces matching keys from
+        inferred.traits; top-level attempts_analyzed comes from the
+        override so the injection gate in format_profile_for_prompt
+        always clears when an override is set.
+
+    The returned dict matches the shape format_profile_for_prompt
+    expects: ``{attempts_analyzed: int, traits: {...}, ...}``.
+    """
+    if not inferred and not override:
+        return None
+    if override and not inferred:
+        return override
+    if inferred and not override:
+        return inferred
+
+    base_traits = dict((inferred or {}).get("traits") or {})
+    override_traits = dict((override or {}).get("traits") or {})
+    base_traits.update(override_traits)
+
+    return {
+        **inferred,
+        "attempts_analyzed": int(
+            (override or {}).get("attempts_analyzed")
+            or (inferred or {}).get("attempts_analyzed")
+            or 0
+        ),
+        "traits": base_traits,
+    }
+
+
 def _augment_coaching_system_prompt(base_prompt: str, user_id: str) -> str:
     """Append the long-term user profile to a coaching system prompt.
 
@@ -8014,18 +8060,29 @@ def _augment_coaching_system_prompt(base_prompt: str, user_id: str) -> str:
     except Exception as e:
         logger.warning("coaching/turn: profile load failed user=%s: %s", user_id, e)
 
-    # Phase 3 — inferred profile. Read from the same user_settings row
-    # we already pulled above so we don't issue a second query. Gated
-    # by the feature flag so the recompute can run live without the
-    # block influencing the AI until we backtest it.
+    # Phase 3 + Phase 9 — inferred profile, possibly overridden by
+    # an admin. The override (when present) wins trait-by-trait over
+    # the inferred profile so an admin can correct one signal without
+    # discarding the rest. Read both from the same user_settings row
+    # we already pulled above so we don't issue a second query.
+    # Injection-gated by LEARNER_PROFILE_INJECTION_ENABLED so the
+    # recompute can run live without the block influencing the AI
+    # until we backtest it.
     insights_block: str | None = None
+    override_active: bool = False
     try:
         from config import Config
         if Config().LEARNER_PROFILE_INJECTION_ENABLED:
             inferred_profile = settings.get("inferred_learner_profile") or None
-            if inferred_profile:
+            override_profile = settings.get("admin_profile_override") or None
+            effective_profile = _merge_admin_override_into_profile(
+                inferred=inferred_profile,
+                override=override_profile,
+            )
+            override_active = override_profile is not None
+            if effective_profile:
                 from services.learner_profile import format_profile_for_prompt
-                insights_block = format_profile_for_prompt(inferred_profile)
+                insights_block = format_profile_for_prompt(effective_profile)
     except Exception as e:
         logger.warning(
             "coaching/turn: inferred profile render failed user=%s: %s",
@@ -8042,7 +8099,12 @@ def _augment_coaching_system_prompt(base_prompt: str, user_id: str) -> str:
         lines.append(f"Custom Coaching Instructions: {custom_instructions}")
     if insights_block:
         lines.append("")
-        lines.append("[LEARNER INSIGHTS — inferred from recent attempts]")
+        header = (
+            "[LEARNER INSIGHTS — admin-curated overrides applied]"
+            if override_active
+            else "[LEARNER INSIGHTS — inferred from recent attempts]"
+        )
+        lines.append(header)
         lines.append(insights_block)
     lines.append("")
     lines.append(
@@ -9042,16 +9104,28 @@ def v2_user_learner_profile():
         settings = db.get_user_settings(user_id) or {}
         profile = settings.get("inferred_learner_profile") or None
         updated_at = settings.get("inferred_learner_profile_updated_at")
+        # Phase 9: surface override state so the frontend can show a
+        # "Admin override active" badge. The override JSONB itself
+        # is intentionally NOT returned to the end user — it may
+        # contain admin notes meant for internal use only.
+        override = settings.get("admin_profile_override") or None
+        override_set_at = settings.get("admin_profile_override_set_at")
 
         from services.learner_profile import format_profile_for_prompt
         from config import Config
 
         injection_enabled = bool(Config().LEARNER_PROFILE_INJECTION_ENABLED)
-        injection_eligible = bool(format_profile_for_prompt(profile))
+        effective = _merge_admin_override_into_profile(
+            inferred=profile,
+            override=override,
+        )
+        injection_eligible = bool(format_profile_for_prompt(effective))
 
         return jsonify({
             "profile": profile,
             "updated_at": updated_at,
+            "admin_override_active": override is not None,
+            "admin_override_set_at": override_set_at,
             "injection_enabled": injection_enabled,
             "injection_eligible": injection_eligible,
         }), 200
@@ -9171,6 +9245,293 @@ def v2_user_mirror_generate():
         return jsonify({
             "code": "V2_ERROR",
             "error": "Failed to generate mirror",
+        }), 500
+
+
+# ── Phase 9: admin RLHF + profile override ──────────────────────────────
+
+
+# How many coaching-attempt annotations an admin needs before
+# bulk-approve unlocks on the frontend. Exposed by the annotations
+# count endpoint so the UI can render a progress indicator. Tuneable
+# without a release: just change the constant.
+_BULK_APPROVE_THRESHOLD = 100
+
+_ANNOTATION_ACTIONS = {"approved", "edited", "flagged", "rejected"}
+
+
+@v2_bp.route(
+    "/admin/coaching-attempts/<attempt_id>/annotations",
+    methods=["POST"],
+)
+@require_admin
+def v2_admin_coaching_attempt_annotation_create(attempt_id):
+    """Persist an admin annotation on one coaching attempt.
+
+    Phase 9 — captures admin RLHF on a Phase 2 attempt row. Each
+    POST creates a NEW annotation; the same attempt can be reviewed
+    by multiple admins and an admin can revise their own verdict by
+    posting again (history is preserved by design).
+
+    Body (all fields optional except admin_action)::
+
+        {
+          "admin_action": "approved" | "edited" | "flagged" | "rejected",
+          "admin_score": 0.78,
+          "admin_components": { "specificity": 0.7, ... },
+          "admin_note": "Score was generous on engagement.",
+          "ai_score_was_correct": false,
+          "reason_chip": "score_inflated"
+        }
+
+    Response: 201 with the persisted row + the admin's running
+    annotations count (for the bulk-approve gate).
+    """
+    try:
+        admin_user_id = request.user_id
+        if not _is_valid_uuid(attempt_id):
+            return jsonify({
+                "code": "INVALID_INPUT",
+                "error": "attempt_id must be a valid UUID",
+            }), 400
+
+        body = request.get_json(silent=True) or {}
+        action = (body.get("admin_action") or "").strip().lower()
+        if action not in _ANNOTATION_ACTIONS:
+            return jsonify({
+                "code": "INVALID_ACTION",
+                "error": (
+                    "admin_action must be one of: "
+                    + ", ".join(sorted(_ANNOTATION_ACTIONS))
+                ),
+            }), 400
+
+        admin_score = body.get("admin_score")
+        if admin_score is not None:
+            try:
+                admin_score = float(admin_score)
+                if not (0.0 <= admin_score <= 1.0):
+                    raise ValueError
+            except (TypeError, ValueError):
+                return jsonify({
+                    "code": "INVALID_INPUT",
+                    "error": "admin_score must be a number in [0, 1]",
+                }), 400
+
+        admin_components = body.get("admin_components")
+        if admin_components is not None and not isinstance(admin_components, dict):
+            return jsonify({
+                "code": "INVALID_INPUT",
+                "error": "admin_components must be an object",
+            }), 400
+
+        admin_note = body.get("admin_note")
+        if isinstance(admin_note, str):
+            admin_note = admin_note.strip()[:2000] or None
+        else:
+            admin_note = None
+
+        ai_correct = body.get("ai_score_was_correct")
+        if ai_correct is not None and not isinstance(ai_correct, bool):
+            return jsonify({
+                "code": "INVALID_INPUT",
+                "error": "ai_score_was_correct must be boolean",
+            }), 400
+
+        reason_chip = body.get("reason_chip")
+        if isinstance(reason_chip, str):
+            reason_chip = reason_chip.strip()[:80] or None
+        else:
+            reason_chip = None
+
+        inserted = db.insert_coaching_attempt_annotation(
+            coaching_attempt_id=attempt_id,
+            admin_user_id=admin_user_id,
+            admin_action=action,
+            admin_score=admin_score,
+            admin_components=admin_components,
+            admin_note=admin_note,
+            ai_score_was_correct=ai_correct,
+            reason_chip=reason_chip,
+        )
+        if not inserted:
+            return jsonify({
+                "code": "PERSIST_FAILED",
+                "error": (
+                    "Could not save annotation — the attempt may not "
+                    "exist or the annotations table is not migrated."
+                ),
+            }), 500
+
+        admin_count = db.count_annotations_by_admin(admin_user_id)
+
+        return jsonify({
+            "annotation": inserted,
+            "admin_annotations_count": admin_count,
+            "bulk_approve_threshold": _BULK_APPROVE_THRESHOLD,
+            "bulk_approve_unlocked": admin_count >= _BULK_APPROVE_THRESHOLD,
+        }), 201
+
+    except Exception as e:
+        logger.error(
+            "admin/coaching-attempts/<id>/annotations POST failed: %s",
+            e, exc_info=True,
+        )
+        sentry_sdk.capture_exception(e)
+        return jsonify({
+            "code": "V2_ERROR",
+            "error": "Failed to save annotation",
+        }), 500
+
+
+@v2_bp.route(
+    "/admin/coaching-attempts/<attempt_id>/annotations",
+    methods=["GET"],
+)
+@require_admin
+def v2_admin_coaching_attempt_annotation_list(attempt_id):
+    """List all annotations on one coaching attempt, newest first."""
+    try:
+        if not _is_valid_uuid(attempt_id):
+            return jsonify({
+                "code": "INVALID_INPUT",
+                "error": "attempt_id must be a valid UUID",
+            }), 400
+        annotations = db.list_annotations_for_coaching_attempt(attempt_id)
+        return jsonify({
+            "attempt_id": attempt_id,
+            "annotations": annotations,
+        }), 200
+    except Exception as e:
+        logger.error(
+            "admin/coaching-attempts/<id>/annotations GET failed: %s",
+            e, exc_info=True,
+        )
+        sentry_sdk.capture_exception(e)
+        return jsonify({
+            "code": "V2_ERROR",
+            "error": "Failed to load annotations",
+        }), 500
+
+
+@v2_bp.route(
+    "/admin/users/<user_id>/learner-profile-override",
+    methods=["PUT", "DELETE"],
+)
+@require_admin
+def v2_admin_user_learner_profile_override(user_id):
+    """Set, replace, or clear an admin override of the inferred profile.
+
+    Phase 9. The override wins over the inferred profile inside
+    _augment_coaching_system_prompt when present. Same shape as
+    inferred_learner_profile.traits — admins typically set a small
+    diff (e.g. flip score_trend to "improving") and leave other
+    traits unset, in which case the augmenter merges field-by-field
+    from the inferred profile.
+
+    PUT body::
+
+        {
+          "traits": { ... },          # required
+          "note": "Short rationale"   # optional, stored verbatim
+        }
+
+    DELETE clears the override (resets to inferred).
+    """
+    try:
+        if not _is_valid_uuid(user_id):
+            return jsonify({
+                "code": "INVALID_INPUT",
+                "error": "user_id must be a valid UUID",
+            }), 400
+
+        if request.method == "DELETE":
+            row = db.set_user_admin_profile_override(
+                user_id=user_id,
+                override=None,
+                set_by=request.user_id,
+            )
+            if not row:
+                return jsonify({
+                    "code": "PERSIST_FAILED",
+                    "error": "Could not clear override",
+                }), 500
+            return jsonify({"status": "cleared"}), 200
+
+        body = request.get_json(silent=True) or {}
+        traits = body.get("traits")
+        if not isinstance(traits, dict) or not traits:
+            return jsonify({
+                "code": "INVALID_INPUT",
+                "error": "traits must be a non-empty object",
+            }), 400
+        note_raw = body.get("note")
+        note = (
+            note_raw.strip()[:1000]
+            if isinstance(note_raw, str) and note_raw.strip()
+            else None
+        )
+
+        override = {
+            "version": "override-v1",
+            "set_by": str(request.user_id),
+            "set_at": datetime.now(timezone.utc).isoformat(),
+            "note": note,
+            # The injection gate in services/learner_profile.py
+            # checks attempts_analyzed >= MIN_ATTEMPTS_TO_INJECT;
+            # the override should always be eligible regardless of
+            # how many real attempts the user has, so we stamp a
+            # synthetic value that clears the gate.
+            "attempts_analyzed": 999,
+            "traits": traits,
+        }
+        row = db.set_user_admin_profile_override(
+            user_id=user_id,
+            override=override,
+            set_by=request.user_id,
+        )
+        if not row:
+            return jsonify({
+                "code": "PERSIST_FAILED",
+                "error": "Could not save override",
+            }), 500
+        return jsonify({"status": "ok", "override": override}), 200
+
+    except Exception as e:
+        logger.error(
+            "admin/users/<id>/learner-profile-override failed: %s",
+            e, exc_info=True,
+        )
+        sentry_sdk.capture_exception(e)
+        return jsonify({
+            "code": "V2_ERROR",
+            "error": "Failed to update profile override",
+        }), 500
+
+
+@v2_bp.route("/admin/me/annotation-progress", methods=["GET"])
+@require_admin
+def v2_admin_me_annotation_progress():
+    """How many coaching-attempt annotations the requesting admin has logged.
+
+    Drives the frontend's bulk-approve gate (unlocks once count
+    reaches _BULK_APPROVE_THRESHOLD).
+    """
+    try:
+        count = db.count_annotations_by_admin(request.user_id)
+        return jsonify({
+            "admin_annotations_count": count,
+            "bulk_approve_threshold": _BULK_APPROVE_THRESHOLD,
+            "bulk_approve_unlocked": count >= _BULK_APPROVE_THRESHOLD,
+        }), 200
+    except Exception as e:
+        logger.error(
+            "admin/me/annotation-progress failed: %s", e, exc_info=True,
+        )
+        sentry_sdk.capture_exception(e)
+        return jsonify({
+            "code": "V2_ERROR",
+            "error": "Failed to load annotation progress",
         }), 500
 
 

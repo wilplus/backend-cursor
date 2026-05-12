@@ -5931,6 +5931,151 @@ class DatabaseService:
             )
             return None
 
+    # ── Phase 9: admin RLHF on coaching attempts ──────────────────────
+
+    def insert_coaching_attempt_annotation(
+        self,
+        *,
+        coaching_attempt_id: str,
+        admin_user_id: str,
+        admin_action: str,
+        admin_score: float | None = None,
+        admin_components: dict | None = None,
+        admin_note: str | None = None,
+        ai_score_was_correct: bool | None = None,
+        reason_chip: str | None = None,
+    ) -> Optional[dict]:
+        """Append an admin annotation onto a coaching_attempts row.
+
+        Phase 9 — one row per review action so multi-admin review
+        stays cleanly queryable. The caller (the admin route) is
+        responsible for verifying the requester is actually an
+        admin; this helper does not re-check.
+
+        Returns the inserted row on success, None when:
+          - the migration hasn't run yet,
+          - the coaching_attempt_id doesn't exist (FK violation),
+          - any Supabase error.
+        """
+        payload = {
+            "coaching_attempt_id": coaching_attempt_id,
+            "admin_user_id": admin_user_id,
+            "admin_action": admin_action,
+            "admin_score": admin_score,
+            "admin_components": admin_components,
+            "admin_note": admin_note,
+            "ai_score_was_correct": ai_score_was_correct,
+            "reason_chip": reason_chip,
+        }
+        try:
+            result = (
+                self.client.table("coaching_attempt_annotations")
+                .insert(payload)
+                .execute()
+            )
+            return result.data[0] if result.data else None
+        except Exception as e:
+            logger.warning(
+                "insert_coaching_attempt_annotation failed attempt=%s "
+                "admin=%s err=%s",
+                coaching_attempt_id, admin_user_id, e,
+            )
+            return None
+
+    def list_annotations_for_coaching_attempt(
+        self,
+        coaching_attempt_id: str,
+    ) -> List[dict]:
+        """All annotations on one attempt, newest first.
+
+        Returns [] on any error so the review UI can render the
+        attempt page even if the annotations table is missing.
+        """
+        try:
+            return (
+                self.client.table("coaching_attempt_annotations")
+                .select("*")
+                .eq("coaching_attempt_id", coaching_attempt_id)
+                .order("created_at", desc=True)
+                .execute()
+                .data
+            ) or []
+        except Exception as e:
+            logger.warning(
+                "list_annotations_for_coaching_attempt failed "
+                "attempt=%s err=%s", coaching_attempt_id, e,
+            )
+            return []
+
+    def count_annotations_by_admin(self, admin_user_id: str) -> int:
+        """How many coaching-attempt annotations has this admin written?
+
+        Phase 9 — the bulk-approve threshold (default: unlock at
+        100 reviews per admin) is read off this number by the
+        admin UI. We use count='exact' so the response carries the
+        total without fetching rows.
+
+        Returns 0 on any error — failure mode is "feature stays
+        locked", which is safe.
+        """
+        try:
+            result = (
+                self.client.table("coaching_attempt_annotations")
+                .select("id", count="exact")
+                .eq("admin_user_id", admin_user_id)
+                .limit(1)
+                .execute()
+            )
+            return int(result.count or 0)
+        except Exception as e:
+            logger.warning(
+                "count_annotations_by_admin failed admin=%s err=%s",
+                admin_user_id, e,
+            )
+            return 0
+
+    def set_user_admin_profile_override(
+        self,
+        *,
+        user_id: str,
+        override: Optional[dict],
+        set_by: Optional[str],
+    ) -> Optional[dict]:
+        """Upsert the admin override of the learner profile.
+
+        Pass ``override=None`` to clear (admin "reset to inferred"
+        action). ``set_by`` is the admin's user id — recorded for
+        audit; can be None when the system itself clears the
+        override (e.g. via a future cron job).
+
+        Returns the upserted row, or None on failure.
+        """
+        try:
+            payload: dict[str, Any] = {
+                "user_id": user_id,
+                "admin_profile_override": override,
+                "admin_profile_override_set_at": (
+                    datetime.now(timezone.utc).isoformat() if override is not None
+                    else None
+                ),
+                "admin_profile_override_set_by": set_by,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }
+            result = (
+                self.client.table("user_settings")
+                .upsert(payload)
+                .execute()
+            )
+            if result.data and len(result.data) > 0:
+                return result.data[0]
+            return None
+        except Exception as e:
+            logger.warning(
+                "set_user_admin_profile_override failed user=%s err=%s",
+                user_id, e,
+            )
+            return None
+
     def get_top_followup_examples(
         self,
         intent: str,
