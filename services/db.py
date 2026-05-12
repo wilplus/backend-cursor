@@ -23,43 +23,22 @@ class DatabaseService:
         self._legacy_student_profile_table = "user_sniper_profile"
 
     def _build_supabase_client(self) -> Client:
-        """Create Supabase client and prefer HTTP/1.1 transport to avoid flaky HTTP/2 disconnects."""
-        try:
-            import httpx
-            ClientOptions = None
-            try:
-                from supabase.lib.client_options import ClientOptions as _ClientOptions
-                ClientOptions = _ClientOptions
-            except Exception:
-                try:
-                    from supabase.client_options import ClientOptions as _ClientOptions
-                    ClientOptions = _ClientOptions
-                except Exception:
-                    try:
-                        from supabase import ClientOptions as _ClientOptions
-                        ClientOptions = _ClientOptions
-                    except Exception:
-                        ClientOptions = None
+        """Create the Supabase client.
 
-            if ClientOptions is not None:
-                http_client = httpx.Client(http2=False, timeout=httpx.Timeout(20.0))
-                options = ClientOptions(http_client=http_client)
-                try:
-                    return create_client(
-                        config.SUPABASE_URL,
-                        config.SUPABASE_SERVICE_ROLE_KEY,
-                        options=options,
-                    )
-                except TypeError:
-                    # Older supabase-py may expect positional options arg.
-                    return create_client(
-                        config.SUPABASE_URL,
-                        config.SUPABASE_SERVICE_ROLE_KEY,
-                        options,
-                    )
-        except Exception as e:
-            logger.warning("Supabase HTTP/1.1 transport setup failed; falling back to default client: %s", e)
+        Earlier this method tried to force HTTP/1.1 transport via a
+        custom httpx.Client passed through ClientOptions(http_client=…)
+        — supabase-py 2.7.0+ accepts that kwarg, our pin is 2.6.0, so
+        every boot raised TypeError and we fell through to the
+        default client anyway. The noisy warning ("ClientOptions
+        unexpected keyword argument 'http_client'") was the
+        fallback firing on each worker boot — not an actual error.
 
+        Application-level retry in ``_execute_with_retry`` /
+        ``_is_transient_postgrest_disconnect`` already handles the
+        transient HTTP/2 disconnects that motivated the HTTP/1.1
+        transport tweak, so we drop the dead code and let the default
+        transport do its thing.
+        """
         return create_client(
             config.SUPABASE_URL,
             config.SUPABASE_SERVICE_ROLE_KEY,

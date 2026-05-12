@@ -769,7 +769,12 @@ def v2_admin_student_sniper_profile(user_id):
         return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
 
 
-@v2_bp.route("/admin/user/<user_id>/context", methods=["GET", "PUT"])
+# Phase 12 / 13 — admin user context. The frontend BFF hits the
+# PLURAL path with PATCH; we register both spellings (singular +
+# plural) and accept GET/PUT/PATCH on the same handler so old and
+# new callers both resolve without an extra hop.
+@v2_bp.route("/admin/user/<user_id>/context", methods=["GET", "PUT", "PATCH"])
+@v2_bp.route("/admin/users/<user_id>/context", methods=["GET", "PUT", "PATCH"])
 @require_admin
 def v2_admin_user_context(user_id):
     """Admin user view: full longitudinal context.
@@ -824,7 +829,10 @@ def v2_admin_user_context(user_id):
         }), 400
 
     try:
-        if request.method == "PUT":
+        # PATCH and PUT share the partial-update semantics — only keys
+        # present in the body are written, missing keys leave the
+        # existing value alone. GET falls through to the read-back.
+        if request.method in ("PUT", "PATCH"):
             body = request.get_json(silent=True) or {}
 
             def has(k):
