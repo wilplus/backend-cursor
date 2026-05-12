@@ -11757,11 +11757,11 @@ def v2_admin_get_session(session_id):
             "pitch_center": session.get("global_pitch_center"),
             "energy": session.get("global_energy"),
             "kpi_score": session.get("kpi_score"),
-            "ai_score": session.get("ai_task_alignment_score"),
-            "ai_summary": session.get("ai_task_alignment_comment"),
             # Phase 11 — stickiness-topic. Three NULL fields when the
             # admin hasn't yet clicked "Compute Metrics" on this
-            # session; the frontend renders "—" in that case.
+            # session; the frontend renders "—" in that case. The
+            # legacy ai_score / ai_summary block was removed when the
+            # panel was redesigned to KPI + Stickiness.
             "stickiness_top_topic": session.get("stickiness_top_topic"),
             "stickiness_score": session.get("stickiness_score"),
             "stickiness_topic_distribution": session.get(
@@ -12062,14 +12062,16 @@ def _do_session_finalize(session_id: str) -> None:
 @v2_bp.route("/admin/sessions/<session_id>/compute-metrics", methods=["POST"])
 @require_admin
 def v2_admin_compute_session_metrics(session_id):
-    """Trigger computation of global session metrics and AI alignment review.
+    """Trigger computation of global session metrics + stickiness-topic.
 
     1. Aggregates snippet-level metrics into session-level averages
        (delegated to _compute_session_global_metrics; same logic the
        auto-finalize background trigger uses).
-    2. Calls LLM to evaluate the transcript and produce alignment
-       score + comment (unique to this admin-triggered path — the auto
-       trigger skips the LLM call because it's heavyweight).
+    2. Phase 11 — computes the stickiness-topic metric in one batch
+       LLM call (services.stickiness.compute_session_stickiness).
+
+    The legacy ai_alignment LLM evaluation has been replaced by the
+    KPI + Stickiness panel and no longer runs from this endpoint.
     """
     try:
         m = _compute_session_global_metrics(session_id)
@@ -12115,70 +12117,11 @@ def v2_admin_compute_session_metrics(session_id):
                 stick_err,
             )
 
-        # AI alignment: evaluate the full interview transcript via LLM
-        # Includes KPI score as context so the LLM factors it in
-        ai_score = None
-        ai_comment = None
-        try:
-            from services.openai_service import OpenAIService
-            service = OpenAIService()
-            if service.client:
-                # Build transcript summary for the LLM
-                transcript_parts = []
-                for s in active_snippets:
-                    q = s.get("question_text") or "Unknown question"
-                    tone = s.get("question_tone") or "unknown"
-                    turn = s.get("turn_number") or "?"
-                    transcript_parts.append(
-                        f"Turn {turn} ({tone}): Q: {q}\n"
-                        f"  [Audio: {s.get('duration_ms', 0) / 1000:.1f}s, "
-                        f"WPM={s.get('wpm', '?')}, Pause={s.get('pause_ms', '?')}ms, "
-                        f"Energy={s.get('energy', '?')}]"
-                    )
-
-                # Include the KPI score for the LLM to reference
-                kpi_context = ""
-                if kpi_score is not None:
-                    kpi_context = (
-                        f"\n\nPERFORMANCE KPI: {kpi_score}/100 "
-                        f"(computed from vocal energy, filler count, and pacing). "
-                        f"Factor this into your evaluation — it represents the "
-                        f"quantitative delivery quality.\n"
-                    )
-
-                eval_prompt = (
-                    "You are an expert speech and communication evaluator. "
-                    "Review this interview session and provide:\n"
-                    "1. A score from 0-100 representing overall communication quality "
-                    "(considering charisma, confidence, engagement, vocal delivery, "
-                    "AND the KPI score provided below).\n"
-                    "2. A 2-3 sentence comment summarizing strengths and areas for improvement.\n\n"
-                    "INTERVIEW TRANSCRIPT:\n" + "\n".join(transcript_parts) +
-                    kpi_context + "\n\n"
-                    "Respond in JSON format: {\"score\": <number>, \"comment\": \"<text>\"}"
-                )
-
-                response = service.client.chat.completions.create(
-                    model="gpt-4o-mini",
-                    messages=[{"role": "user", "content": eval_prompt}],
-                    max_tokens=300,
-                    temperature=0.5,
-                )
-
-                import json as json_module
-                raw_text = response.choices[0].message.content.strip()
-                # Try to parse JSON (handle code blocks)
-                if raw_text.startswith("```"):
-                    raw_text = raw_text.split("```")[1]
-                    if raw_text.startswith("json"):
-                        raw_text = raw_text[4:]
-                eval_result = json_module.loads(raw_text)
-                ai_score = float(eval_result.get("score", 0))
-                ai_comment = str(eval_result.get("comment", ""))
-
-                db.update_session_ai_alignment(session_id, ai_score, ai_comment)
-        except Exception as ai_err:
-            logger.warning("admin: AI alignment eval failed (non-fatal): %s", ai_err)
+        # Phase 11 — the legacy ai_alignment LLM evaluation has been
+        # replaced by the KPI + Stickiness panel. We no longer call
+        # GPT to produce ai_task_alignment_score/comment; the columns
+        # remain in the DB for any historical reads but new writes
+        # never land here. Cuts one LLM call per "Compute Metrics".
 
         return jsonify({
             "status": "ok",
@@ -12201,10 +12144,6 @@ def v2_admin_compute_session_metrics(session_id):
                 "top_topic": stickiness_top_topic,
                 "score": stickiness_score,
                 "distribution": stickiness_distribution,
-            },
-            "ai_alignment": {
-                "score": ai_score,
-                "comment": ai_comment,
             },
             "snippets_analyzed": len(active_snippets),
         }), 200
