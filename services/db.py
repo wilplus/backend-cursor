@@ -5516,6 +5516,281 @@ class DatabaseService:
             logger.error("update_snippet_follow_up_question failed for %s: %s", snippet_id, e)
             return None
 
+    # ── Phase 10: AI-draft + implicit-approval helpers ────────────────
+
+    def set_charisma_snippet_ai_draft_comment(
+        self,
+        snippet_id: str,
+        draft: str | None,
+    ) -> bool:
+        """Persist an AI-suggested admin_comment draft on a charisma snippet.
+
+        Phase 10. Written once when the snippet is first extracted; the
+        admin then keeps it, edits it, or replaces it via the normal
+        admin_comment save path. The draft column is intentionally
+        immutable from the admin UI — at publish time we compare
+        admin_comment vs this column to emit the RLHF pair.
+
+        Returns True on success. Failure logs + returns False so the
+        snippet pipeline that triggered this can keep running.
+        """
+        try:
+            now = datetime.now(timezone.utc).isoformat()
+            (
+                self.client.table("charisma_snippets")
+                .update({
+                    "ai_draft_admin_comment": draft,
+                    "ai_draft_admin_comment_generated_at": now,
+                    "updated_at": now,
+                })
+                .eq("id", snippet_id)
+                .execute()
+            )
+            return True
+        except Exception as e:
+            logger.warning(
+                "set_charisma_snippet_ai_draft_comment failed %s: %s",
+                snippet_id, e,
+            )
+            return False
+
+    def set_charisma_snippet_ai_draft_follow_up(
+        self,
+        snippet_id: str,
+        draft: str | None,
+    ) -> bool:
+        """Persist the original AI-generated follow_up_question, frozen.
+
+        Phase 10. follow_up_question itself may be edited by the admin
+        — this column preserves the pre-edit version so the publish-
+        time annotation can pair the two.
+        """
+        try:
+            now = datetime.now(timezone.utc).isoformat()
+            (
+                self.client.table("charisma_snippets")
+                .update({
+                    "ai_draft_follow_up_question": draft,
+                    "ai_draft_follow_up_question_generated_at": now,
+                    "updated_at": now,
+                })
+                .eq("id", snippet_id)
+                .execute()
+            )
+            return True
+        except Exception as e:
+            logger.warning(
+                "set_charisma_snippet_ai_draft_follow_up failed %s: %s",
+                snippet_id, e,
+            )
+            return False
+
+    def set_stress_snippet_ai_draft_notes(
+        self,
+        snippet_id: str,
+        draft: str | None,
+    ) -> bool:
+        """Persist an AI-suggested coach_notes draft on a stress snippet."""
+        try:
+            now = datetime.now(timezone.utc).isoformat()
+            (
+                self.client.table("stress_snippets")
+                .update({
+                    "ai_draft_coach_notes": draft,
+                    "ai_draft_coach_notes_generated_at": now,
+                    "updated_at": now,
+                })
+                .eq("id", snippet_id)
+                .execute()
+            )
+            return True
+        except Exception as e:
+            logger.warning(
+                "set_stress_snippet_ai_draft_notes failed %s: %s",
+                snippet_id, e,
+            )
+            return False
+
+    def record_snippet_publish_annotations(
+        self,
+        *,
+        session_id: str,
+        admin_user_id: str,
+    ) -> int:
+        """Emit RLHF annotation events for every snippet in a session.
+
+        Phase 10 — fires once per session at publish time. For each
+        snippet that has an ai_draft_* column populated, write one
+        admin_annotation_events row comparing the draft to the final
+        admin-typed value:
+
+          - draft == final  → reason_chip='approved_as_is', both
+            ai_original_text and coach_final_text = the draft. Signal:
+            this AI suggestion was good enough to ship unedited.
+          - draft != final  → ai_original_text=draft,
+            coach_final_text=final, no reason_chip. Signal: admin
+            corrected the AI; the diff is the lesson.
+
+        Three field_names emit: 'admin_comment',
+        'follow_up_question' (both on charisma_snippets), and
+        'coach_label_notes' (stress_snippets).
+
+        Returns total events written. Idempotency isn't enforced in
+        SQL — re-publishing a session would double-write. Callers
+        should only invoke this once per publish action.
+        """
+        events_written = 0
+
+        # ── Charisma side ──────────────────────────────────────────
+        try:
+            charisma_rows = (
+                self.client.table("charisma_snippets")
+                .select(
+                    "id, admin_comment, ai_draft_admin_comment, "
+                    "follow_up_question, ai_draft_follow_up_question"
+                )
+                .eq("session_id", session_id)
+                .execute()
+                .data
+            ) or []
+        except Exception as e:
+            logger.warning(
+                "record_snippet_publish_annotations: charisma select "
+                "failed session=%s: %s", session_id, e,
+            )
+            charisma_rows = []
+
+        for row in charisma_rows:
+            snippet_id = row.get("id")
+            if not snippet_id:
+                continue
+            events_written += self._emit_publish_event_if_signal(
+                session_id=session_id,
+                admin_user_id=admin_user_id,
+                section_type="charisma_snippet",
+                field_name="admin_comment",
+                draft=row.get("ai_draft_admin_comment"),
+                final=row.get("admin_comment"),
+                draft_id=str(snippet_id),
+            )
+            events_written += self._emit_publish_event_if_signal(
+                session_id=session_id,
+                admin_user_id=admin_user_id,
+                section_type="charisma_snippet",
+                field_name="follow_up_question",
+                draft=row.get("ai_draft_follow_up_question"),
+                final=row.get("follow_up_question"),
+                draft_id=str(snippet_id),
+            )
+
+        # ── Stress side ────────────────────────────────────────────
+        # Stress snippets are extracted from recordings, not sessions
+        # directly — we need to look them up via the recordings that
+        # belong to this session. Most installs have one recording
+        # per session; small N either way.
+        try:
+            recording_ids_q = (
+                self.client.table("recordings")
+                .select("id")
+                .eq("session_id", session_id)
+                .execute()
+            )
+            recording_ids = [
+                str(r.get("id")) for r in (recording_ids_q.data or [])
+                if r.get("id")
+            ]
+        except Exception as e:
+            logger.warning(
+                "record_snippet_publish_annotations: recordings lookup "
+                "failed session=%s: %s", session_id, e,
+            )
+            recording_ids = []
+
+        if recording_ids:
+            try:
+                stress_rows = (
+                    self.client.table("stress_snippets")
+                    .select(
+                        "id, coach_label_notes, ai_draft_coach_notes"
+                    )
+                    .in_("recording_id", recording_ids)
+                    .execute()
+                    .data
+                ) or []
+            except Exception as e:
+                logger.warning(
+                    "record_snippet_publish_annotations: stress select "
+                    "failed: %s", e,
+                )
+                stress_rows = []
+
+            for row in stress_rows:
+                snippet_id = row.get("id")
+                if not snippet_id:
+                    continue
+                events_written += self._emit_publish_event_if_signal(
+                    session_id=session_id,
+                    admin_user_id=admin_user_id,
+                    section_type="stress_snippet",
+                    field_name="coach_label_notes",
+                    draft=row.get("ai_draft_coach_notes"),
+                    final=row.get("coach_label_notes"),
+                    draft_id=str(snippet_id),
+                )
+
+        return events_written
+
+    def _emit_publish_event_if_signal(
+        self,
+        *,
+        session_id: str,
+        admin_user_id: str,
+        section_type: str,
+        field_name: str,
+        draft: str | None,
+        final: str | None,
+        draft_id: str | None,
+    ) -> int:
+        """Fire one admin_annotation_events row if there's signal to capture.
+
+        Returns 1 when an event was written, 0 when both draft and
+        final were empty (no signal) or the insert raised.
+        """
+        d = (draft or "").strip()
+        f = (final or "").strip()
+        if not d and not f:
+            return 0
+        # Detect "approved as-is" vs "edited" with case-insensitive
+        # whitespace-collapsed comparison so trivial differences don't
+        # generate false correction signal.
+        norm_d = " ".join(d.split()).lower()
+        norm_f = " ".join(f.split()).lower()
+        if d and norm_d == norm_f:
+            reason_chip = "approved_as_is"
+        else:
+            reason_chip = None
+        try:
+            self.insert_admin_annotation_event(
+                user_id=None,
+                session_id=session_id,
+                section_type=section_type,
+                field_name=field_name,
+                ai_original_text=(d or None),
+                coach_final_text=(f or None),
+                reason_chip=reason_chip,
+                custom_reason=None,
+                created_by=admin_user_id,
+                draft_id=draft_id,
+            )
+            return 1
+        except Exception as e:
+            logger.warning(
+                "record_snippet_publish_annotations: emit failed "
+                "session=%s field=%s: %s",
+                session_id, field_name, e,
+            )
+            return 0
+
     def get_user_company_id(self, user_id: str) -> Optional[str]:
         """Lookup the user's company_id from user_settings.
 

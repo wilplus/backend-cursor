@@ -10410,6 +10410,17 @@ def v2_admin_update_snippet_comment(snippet_id):
                 )
                 if generated:
                     db.update_snippet_follow_up_question(snippet_id, generated)
+                    # Phase 10 — preserve the original AI generation
+                    # in ai_draft_follow_up_question so the publish-
+                    # time annotation can pair (draft, final) even if
+                    # the admin edits follow_up_question afterwards.
+                    # Only write the draft once (first generation);
+                    # subsequent edits don't overwrite the audit
+                    # trail.
+                    if not (updated.get("ai_draft_follow_up_question") or "").strip():
+                        db.set_charisma_snippet_ai_draft_follow_up(
+                            snippet_id, generated,
+                        )
                     follow_up_question = generated
                     follow_up_source = "llm_generated"
                 else:
@@ -10495,6 +10506,27 @@ def v2_internal_publish_session_results():
                 "code": "NOT_FOUND",
                 "error": "Session not found",
             }), 404
+
+        # Phase 10 — emit RLHF annotation events for every snippet in
+        # this session BEFORE the status flip + email. Each row in
+        # admin_annotation_events captures (ai_draft, admin_final) for
+        # admin_comment, follow_up_question, and stress coach_label_
+        # notes. Approved-as-is gets reason_chip='approved_as_is';
+        # edits get the diff. Best-effort — never blocks the publish.
+        try:
+            events_written = db.record_snippet_publish_annotations(
+                session_id=session_id,
+                admin_user_id=str(request.user_id),
+            )
+            logger.info(
+                "publish-results: rlhf events emitted session=%s count=%d",
+                session_id, events_written,
+            )
+        except Exception as annot_err:
+            logger.warning(
+                "publish-results: rlhf emit failed session=%s err=%s "
+                "(non-fatal)", session_id, annot_err,
+            )
 
         # Flip results status so frontend transitions from waiting → results
         try:

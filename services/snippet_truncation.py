@@ -486,6 +486,13 @@ def apply_extracted_snippets(session_id: str) -> dict[str, Any]:
                 session_id, e,
             )
 
+        # Phase 10 — fan out AI-draft generation for each freshly
+        # inserted charisma snippet. Runs in a daemon thread so the
+        # extractor returns immediately; failures are swallowed by
+        # the generator and never block this pipeline.
+        if inserted:
+            _spawn_draft_generators_async(inserted, kind="charisma")
+
     return {
         "session_id": session_id,
         "storage_path": concat_storage_path,
@@ -769,3 +776,55 @@ def _snap_boundaries(
 
 def _clamp01(x: float) -> float:
     return max(0.0, min(1.0, float(x)))
+
+
+def _spawn_draft_generators_async(
+    inserted_rows: list[dict],
+    *,
+    kind: str,
+) -> None:
+    """Fan out one daemon-thread LLM call per freshly-inserted snippet.
+
+    Phase 10. The extractor finishes its DB writes synchronously, but
+    the AI-draft generation is per-snippet LLM cost so we don't block
+    the caller. Daemon threads mean the process can exit even with
+    in-flight drafts — acceptable for backend workers that restart on
+    deploy. Worst case is a snippet missing its draft, which the
+    admin sees as the existing empty-field UX.
+
+    ``kind`` is 'charisma' or 'stress' — selects the right generator.
+    Failures inside each thread are already swallowed by the generator
+    module; we don't propagate anything back here.
+    """
+    try:
+        import threading
+        from services.snippet_drafts import (
+            generate_charisma_draft_for_snippet,
+            generate_stress_draft_for_snippet,
+        )
+    except Exception as e:
+        logger.warning(
+            "draft-generator fan-out: import failed (%s) — skipping", e,
+        )
+        return
+
+    fn = (
+        generate_charisma_draft_for_snippet
+        if kind == "charisma"
+        else generate_stress_draft_for_snippet
+    )
+
+    for row in inserted_rows:
+        snippet_id = (row or {}).get("id")
+        if not snippet_id:
+            continue
+        try:
+            t = threading.Thread(
+                target=fn, args=(str(snippet_id),), daemon=True,
+            )
+            t.start()
+        except Exception as e:
+            logger.warning(
+                "draft-generator: thread spawn failed snippet=%s: %s",
+                snippet_id, e,
+            )

@@ -905,8 +905,46 @@ def generate_stress_snippets_for_recording(
             )
 
         inserted = db.v2_insert_stress_snippets(rows)
+        # Phase 10 — kick off AI-draft generation per freshly inserted
+        # stress snippet. Daemon-thread per row, swallow-on-error so a
+        # draft miss can never block the stress pipeline.
+        if inserted:
+            _spawn_stress_draft_generators_async(inserted)
         return inserted
     except Exception as e:
         logger.warning("stress_snippet_service: generation failed recording_id=%s err=%s", recording_id, e, exc_info=True)
         sentry_sdk.capture_exception(e)
         return []
+
+
+def _spawn_stress_draft_generators_async(inserted_rows: list[dict]) -> None:
+    """Per-snippet daemon-thread call to the stress draft generator.
+
+    Phase 10. Same pattern as the charisma side in
+    services.snippet_truncation. Kept here rather than imported from
+    snippet_truncation to avoid a cross-module dependency for what is
+    five lines of glue.
+    """
+    try:
+        import threading
+        from services.snippet_drafts import generate_stress_draft_for_snippet
+    except Exception as e:
+        logger.warning(
+            "stress_snippet_service: draft fan-out import failed: %s", e,
+        )
+        return
+    for row in inserted_rows:
+        snippet_id = (row or {}).get("id")
+        if not snippet_id:
+            continue
+        try:
+            threading.Thread(
+                target=generate_stress_draft_for_snippet,
+                args=(str(snippet_id),),
+                daemon=True,
+            ).start()
+        except Exception as e:
+            logger.warning(
+                "stress_snippet_service: draft thread spawn failed "
+                "snippet=%s: %s", snippet_id, e,
+            )

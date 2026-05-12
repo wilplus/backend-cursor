@@ -192,6 +192,66 @@ LEARNER_MIRROR_SCHEMA: dict[str, Any] = {
 }
 
 
+CHARISMA_DRAFT_SCHEMA: dict[str, Any] = {
+    # Phase 10 — AI prefill for charisma_snippets.admin_comment.
+    # Generated when a charisma snippet is first extracted so the
+    # admin sees a draft they can keep or edit. Strict + tight max
+    # lengths so the model produces something terse like a real
+    # admin would write, not a clinical paragraph.
+    "name": "charisma_draft_v1",
+    "strict": True,
+    "schema": {
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["admin_comment"],
+        "properties": {
+            "admin_comment": {
+                "type": "string",
+                "maxLength": 220,
+                "description": (
+                    "One-sentence coaching insight on what made this "
+                    "moment charismatic. Second-person, terse, "
+                    "specific. Example: \"Your delivery here was "
+                    "magnetic — perfect dynamic range and total "
+                    "confidence.\" Never start with \"This\" or "
+                    "\"The user\"; speak to the user directly."
+                ),
+            },
+        },
+    },
+}
+
+
+STRESS_DRAFT_SCHEMA: dict[str, Any] = {
+    # Phase 10 — AI prefill for stress_snippets.coach_label_notes.
+    # Same shape + tone as the charisma draft. The field name
+    # ("coach_notes") is more clinical than "admin_comment" but the
+    # UX role is identical: a coaching insight the admin keeps or edits.
+    "name": "stress_draft_v1",
+    "strict": True,
+    "schema": {
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["coach_notes"],
+        "properties": {
+            "coach_notes": {
+                "type": "string",
+                "maxLength": 220,
+                "description": (
+                    "One-sentence coaching insight on what tightened "
+                    "in this moment. Second-person, terse, specific. "
+                    "Example: \"Your voice tightened when the "
+                    "prospect said 'too expensive'.\" Quote the "
+                    "trigger phrase verbatim when it's in the "
+                    "transcript. Never start with \"This\" or \"The "
+                    "user\"."
+                ),
+            },
+        },
+    },
+}
+
+
 AWARENESS_TURN_SCHEMA: dict[str, Any] = {
     "name": "awareness_turn_v1",
     "strict": True,
