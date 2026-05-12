@@ -55,11 +55,24 @@ from __future__ import annotations
 
 import logging
 import statistics
+from collections import Counter
 from datetime import datetime, timezone
 from typing import Any, Sequence
 
 
 logger = logging.getLogger(__name__)
+
+
+# Phase 4 — how many top-frequency entities to surface per category
+# in the inferred profile. We keep the cap small so the prompt
+# augmenter can include all of them without dominating the system
+# prompt; admins can still see the raw per-attempt entities via
+# /coaching/progress.
+RECURRING_ENTITIES_TOP_N = 5
+# An entity needs to show up across at least this many attempts in
+# the window before it counts as "recurring" — a one-time mention
+# isn't a pattern worth telling the coach about.
+RECURRING_ENTITY_MIN_COUNT = 2
 
 
 # Rolling window of attempts we look at when computing the profile.
@@ -157,8 +170,13 @@ def compute_learner_profile(attempts: Sequence[dict]) -> dict[str, Any] | None:
     if paired:
         gap = statistics.fmean(p[1] - p[0] for p in paired)
 
+    # Phase 4 — recurring entities. Aggregate ALL attempts in the
+    # window (not just the scored ones) because entities are
+    # independent of whether the LLM produced a usable score.
+    recurring_entities = _aggregate_entities(window)
+
     return {
-        "version": "v1",
+        "version": "v2",
         "computed_at": datetime.now(timezone.utc).isoformat(),
         "attempts_analyzed": n,
         "traits": {
@@ -174,6 +192,7 @@ def compute_learner_profile(attempts: Sequence[dict]) -> dict[str, Any] | None:
                 if self_rating_average is not None else None
             ),
             "self_rating_gap": round(gap, 4) if gap is not None else None,
+            "recurring_entities": recurring_entities,
         },
     }
 
@@ -231,12 +250,123 @@ def format_profile_for_prompt(profile: dict[str, Any] | None) -> str | None:
                 "may be self-critical; validate before challenging."
             )
 
+    # Phase 4 — recurring entities. The coach should reference these
+    # by name when they fit naturally; we explicitly tell the model
+    # NOT to force-mention them, otherwise it tends to shoehorn the
+    # entity into every reply.
+    recurring = traits.get("recurring_entities") or {}
+    if isinstance(recurring, dict):
+        entity_lines = _format_recurring_entities(recurring)
+        if entity_lines:
+            lines.append(
+                "- Recurring entities (reference by name only when "
+                "naturally relevant, don't force them):"
+            )
+            lines.extend(entity_lines)
+
     if not lines:
         return None
     return "\n".join(lines)
 
 
+def _format_recurring_entities(recurring: dict[str, list[dict]]) -> list[str]:
+    """Render the aggregated entities block for the system prompt.
+
+    Returns one bullet per non-empty category. Each bullet lists up
+    to 3 labels with counts ("Sarah ×4, Mom ×3"). 3 < the storage
+    top-N because the prompt cares about salience rather than
+    completeness — admins can read the full list via the diagnostic
+    endpoint.
+    """
+    out: list[str] = []
+    for category, label_singular in (
+        ("people", "People"),
+        ("situations", "Situations"),
+        ("themes", "Themes"),
+    ):
+        items = recurring.get(category) or []
+        rendered = []
+        for it in items[:3]:
+            if not isinstance(it, dict):
+                continue
+            label = (it.get("label") or "").strip()
+            count = it.get("count")
+            if not label or not isinstance(count, int):
+                continue
+            rendered.append(f"{label} ×{count}")
+        if rendered:
+            out.append(f"    {label_singular}: " + ", ".join(rendered))
+    return out
+
+
 # ── Internals ───────────────────────────────────────────────────────────────
+
+
+def _aggregate_entities(window: Sequence[dict]) -> dict[str, list[dict]]:
+    """Count entity occurrences across ``window`` and return the top-N per category.
+
+    Case-normalised for counting so "Sarah" and "sarah" merge, but
+    the surface form returned is the most common original spelling
+    in the window (so the prompt-formatter shows the user's
+    phrasing). Categories without any qualifying recurrent entries
+    return empty lists — callers persist the empty shape so the
+    blob is grep-able for diagnostic purposes.
+
+    Returned shape::
+
+        {
+          "people":     [{"label": "Sarah", "count": 4}, ...],
+          "situations": [{"label": "Q4 review", "count": 2}, ...],
+          "themes":     [{"label": "imposter syndrome", "count": 3}, ...],
+        }
+    """
+    counters: dict[str, Counter] = {
+        "people": Counter(),
+        "situations": Counter(),
+        "themes": Counter(),
+    }
+    # surface_by_key tracks the most common original spelling per
+    # lowercase key so we can render "Sarah" rather than "sarah" when
+    # counts are tied — Counter.most_common breaks ties by insertion
+    # order, which favours the first-seen surface form anyway.
+    surface_by_key: dict[str, Counter] = {
+        "people": Counter(),
+        "situations": Counter(),
+        "themes": Counter(),
+    }
+    for attempt in window:
+        ents = attempt.get("entities")
+        if not isinstance(ents, dict):
+            continue
+        for category in counters:
+            seq = ents.get(category)
+            if not isinstance(seq, list):
+                continue
+            for item in seq:
+                if not isinstance(item, str):
+                    continue
+                v = item.strip()
+                if not v:
+                    continue
+                key = v.lower()
+                counters[category][key] += 1
+                surface_by_key[category][(key, v)] += 1
+
+    result: dict[str, list[dict]] = {}
+    for category, counter in counters.items():
+        top = []
+        for key, count in counter.most_common(RECURRING_ENTITIES_TOP_N):
+            if count < RECURRING_ENTITY_MIN_COUNT:
+                continue
+            # Pick the surface form most often used for this key.
+            surface_counts = {
+                surf: c for (k, surf), c in surface_by_key[category].items()
+                if k == key
+            }
+            label = max(surface_counts, key=surface_counts.get) if surface_counts else key
+            top.append({"label": label, "count": count})
+        result[category] = top
+    return result
 
 
 def _is_number(v: Any) -> bool:

@@ -5591,6 +5591,7 @@ class DatabaseService:
         fact_check: dict | None = None,
         evaluator_model: str | None = None,
         acoustic_features: dict | None = None,
+        entities: dict | None = None,
         raw_outcome: dict | None = None,
     ) -> Optional[dict]:
         """Append a new row to coaching_attempts for ``snippet_id``.
@@ -5628,6 +5629,7 @@ class DatabaseService:
             "score": score,
             "components": components,
             "acoustic_features": acoustic_features,
+            "entities": entities,
             "question_text": question_text,
             "user_answer_text": user_answer_text,
             "user_answer_duration_ms": user_answer_duration_ms,
@@ -5828,7 +5830,7 @@ class DatabaseService:
                 self.client.table("coaching_attempts")
                 .select(
                     "attempt_number, score, components, self_rating, "
-                    "created_at, snippet_id"
+                    "entities, created_at, snippet_id"
                 )
                 .eq("user_id", user_id)
                 .order("created_at", desc=True)

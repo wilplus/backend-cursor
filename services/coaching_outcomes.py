@@ -133,7 +133,7 @@ def evaluate_and_record_followup_outcome(
         )
         return None
 
-    components, rationale = _llm_score_exchange(
+    components, rationale, entities = _llm_score_exchange(
         source_transcript=source_transcript,
         admin_comment=admin_comment,
         question_text=question_text,
@@ -185,6 +185,9 @@ def evaluate_and_record_followup_outcome(
         # path index (idx_charisma_snippets_follow_up_outcome_score)
         # actually work without a deep ->-> traversal.
         "score": round(composite, 4),
+        # Phase 4 — entities the user mentioned in this exchange.
+        # Empty lists are OK; None means extraction failed.
+        "entities": entities,
         # Phase 5 — fact-check flag + diagnostics. Phase 1 few-shot
         # retrieval filters on eligible_for_few_shot so hallucinated
         # outcomes never seed future prompts. The full fact_check
@@ -275,8 +278,8 @@ def _llm_score_exchange(
 
     system = (
         "You evaluate one coaching-follow-up exchange. Score three "
-        "independent dimensions in [0.0, 1.0] and add a one-sentence "
-        "rationale.\n"
+        "independent dimensions in [0.0, 1.0], add a one-sentence "
+        "rationale, AND extract the entities the user mentioned.\n"
         "\n"
         "SPECIFICITY — did the user name a concrete moment, feeling, "
         "or action, vs answer in generalities? 0 generic platitudes, "
@@ -288,6 +291,15 @@ def _llm_score_exchange(
         "specificity of language, apparent effort. Short answers can "
         "be high-engagement if specific; long answers can be "
         "low-engagement if rambling.\n"
+        "\n"
+        "ENTITIES — three short lists. PEOPLE are named individuals "
+        "(\"Sarah\", \"Mom\", \"my boss Mark\") — skip generic "
+        "references like \"my team\". SITUATIONS are specific events "
+        "(\"Q4 review\", \"yesterday's stand-up\") — skip vague "
+        "\"a meeting\". THEMES are recurring patterns worth tracking "
+        "across sessions (\"imposter syndrome\", \"perfectionism\"). "
+        "Keep the user's surface phrasing; empty lists are fine when "
+        "nothing applies.\n"
         "\n"
         "CITATION RULE — when you quote the user in your rationale, "
         "the quoted phrase MUST appear verbatim (or near-verbatim) in "
@@ -318,14 +330,17 @@ def _llm_score_exchange(
                 {"role": "system", "content": system},
                 {"role": "user", "content": user_prompt},
             ],
-            max_tokens=250,
+            # Bumped from 250 to 360 to leave room for the Phase 4
+            # entities block. Each entity list caps at a handful of
+            # short strings, so the extra budget is small but real.
+            max_tokens=360,
             temperature=0.3,
             response_format=response_format(EXCHANGE_SCORE_SCHEMA),
         )
         raw = (response.choices[0].message.content or "").strip()
     except Exception as e:
         logger.warning("outcome: openai call failed: %s", e)
-        return None, None
+        return None, None, None
 
     try:
         parsed = json.loads(raw)
@@ -334,7 +349,7 @@ def _llm_score_exchange(
         # When it does the SDK probably returned an unrecognised
         # response — log and bail rather than persist garbage.
         logger.warning("outcome: structured output not parseable: %r", raw[:400])
-        return None, None
+        return None, None, None
 
     components = {
         "specificity": _clamp01(parsed.get("specificity")),
@@ -342,7 +357,46 @@ def _llm_score_exchange(
         "engagement": _clamp01(parsed.get("engagement")),
     }
     rationale = str(parsed.get("rationale") or "").strip()[:500] or None
-    return components, rationale
+    entities = _sanitize_entities(parsed.get("entities"))
+    return components, rationale, entities
+
+
+def _sanitize_entities(raw: Any) -> dict[str, list[str]] | None:
+    """Validate + clean the entities sub-object from the LLM response.
+
+    The schema already constrains shape (strict mode), but a defensive
+    pass here catches degenerate values (whitespace-only strings,
+    duplicate casing, leading/trailing punctuation) so the persisted
+    blob is clean enough for the aggregator to count meaningfully.
+    Returns None when the input isn't a dict with the expected keys —
+    callers persist None and the column stays NULL.
+    """
+    if not isinstance(raw, dict):
+        return None
+    out: dict[str, list[str]] = {}
+    for key in ("people", "situations", "themes"):
+        seq = raw.get(key)
+        if not isinstance(seq, list):
+            out[key] = []
+            continue
+        cleaned: list[str] = []
+        seen_lower: set[str] = set()
+        for item in seq:
+            if not isinstance(item, str):
+                continue
+            v = item.strip().strip(".,;:!?\"'")
+            if not v or len(v) > 80:
+                continue
+            key_lower = v.lower()
+            if key_lower in seen_lower:
+                continue
+            seen_lower.add(key_lower)
+            cleaned.append(v)
+        out[key] = cleaned
+    # All-empty case: still return the dict (callers can distinguish
+    # "extraction ran, found nothing" from "no extraction" via the
+    # shape rather than a truthy check).
+    return out
 
 
 def _composite_score(components: dict[str, float]) -> float:
@@ -399,6 +453,7 @@ def _persist_outcome(snippet_id: str, outcome: dict[str, Any]) -> bool:
             is_eligible_for_few_shot=bool(outcome.get("eligible_for_few_shot", True)),
             fact_check=outcome.get("fact_check"),
             evaluator_model=evaluator.get("model"),
+            entities=outcome.get("entities"),
             raw_outcome=outcome,
         )
     except Exception as e:

@@ -31,7 +31,13 @@ from typing import Any
 # ── Schemas ─────────────────────────────────────────────────────────────────
 
 EXCHANGE_SCORE_SCHEMA: dict[str, Any] = {
-    "name": "exchange_score_v1",
+    # v2 (Phase 4) — same three sub-scores + rationale, plus a small
+    # entities object the same call extracts in one pass. The v1 name
+    # is retired; the only consumer (services.coaching_outcomes) reads
+    # the new shape. Strict mode rejects extra keys, so a model that
+    # somehow returned v1-shape JSON would error and we'd skip the
+    # outcome rather than silently lose entity data.
+    "name": "exchange_score_v2",
     "strict": True,
     "schema": {
         "type": "object",
@@ -41,6 +47,7 @@ EXCHANGE_SCORE_SCHEMA: dict[str, Any] = {
             "emotional_movement",
             "engagement",
             "rationale",
+            "entities",
         ],
         "properties": {
             "specificity": {
@@ -80,6 +87,49 @@ EXCHANGE_SCORE_SCHEMA: dict[str, Any] = {
                     "transcript — the fact-check guard will downgrade "
                     "scores when quotes are hallucinated."
                 ),
+            },
+            "entities": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["people", "situations", "themes"],
+                "description": (
+                    "Phase 4 — entities the user mentioned in this "
+                    "answer. Each list is short (typically 0-5). "
+                    "Keep the user's surface phrasing; the aggregator "
+                    "handles case-normalisation. Empty lists are fine."
+                ),
+                "properties": {
+                    "people": {
+                        "type": "array",
+                        "items": {"type": "string", "maxLength": 60},
+                        "description": (
+                            "Named people the user referenced "
+                            "(\"Sarah\", \"my boss\", \"Mom\"). "
+                            "First names + role hints are useful — "
+                            "skip generic pronouns like \"my team\"."
+                        ),
+                    },
+                    "situations": {
+                        "type": "array",
+                        "items": {"type": "string", "maxLength": 80},
+                        "description": (
+                            "Specific situations or events "
+                            "(\"the Q4 review\", \"yesterday's "
+                            "stand-up\"). Skip vague references like "
+                            "\"a meeting\"."
+                        ),
+                    },
+                    "themes": {
+                        "type": "array",
+                        "items": {"type": "string", "maxLength": 60},
+                        "description": (
+                            "Recurring patterns or feelings worth "
+                            "tracking across sessions (\"imposter "
+                            "syndrome\", \"perfectionism\", \"public "
+                            "speaking fear\"). 1-2 word phrases."
+                        ),
+                    },
+                },
             },
         },
     },

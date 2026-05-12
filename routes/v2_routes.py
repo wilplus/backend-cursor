@@ -8863,6 +8863,9 @@ def v2_user_coaching_progress():
                 "self_rating": self_rating,
                 "self_rating_text": a.get("self_rating_text"),
                 "self_rating_submitted_at": a.get("self_rating_submitted_at"),
+                # Phase 4 — per-attempt entities. Pre-Phase-4 rows
+                # have this as NULL; the frontend renders nothing.
+                "entities": a.get("entities"),
                 "created_at": a.get("created_at"),
             })
 
