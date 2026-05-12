@@ -870,6 +870,72 @@ def v2_admin_user_context(user_id):
         }), 500
 
 
+@v2_bp.route("/admin/users/<user_id>/reset-baseline", methods=["POST"])
+@require_admin
+def v2_admin_reset_baseline(user_id):
+    """Force a user back into the scripted EBCP opener regime.
+
+    Phase 13 admin reset path. Flips
+    user_settings.baseline_established back to FALSE so the user's
+    next session opens with the hardcoded "Are you good at math?"
+    EBCP script (turns 1-4) before handing off to LLM continuation
+    on turn 5. Use cases: new microphone, new cohort, suspected
+    acoustic drift, or any time the admin wants fresh calibration
+    data.
+
+    Idempotent: re-hitting on an already-reset user just stamps
+    updated_at; no error. Returns 200 with the new state so the
+    frontend can update its local copy without a second GET.
+
+    Response::
+
+        {
+          "status": "ok",
+          "user_id": "<uuid>",
+          "baseline_established": false,
+          "baseline_established_at": null
+        }
+    """
+    if not _is_valid_uuid(user_id):
+        return jsonify({
+            "code": "INVALID_INPUT",
+            "error": "user_id must be a valid UUID",
+        }), 400
+
+    try:
+        ok = db.reset_baseline_established(user_id)
+        if not ok:
+            return jsonify({
+                "code": "PERSIST_FAILED",
+                "error": (
+                    "Could not reset baseline — user_settings write "
+                    "failed. Check Railway logs."
+                ),
+            }), 500
+
+        logger.info(
+            "admin: baseline reset user=%s by admin=%s",
+            user_id, getattr(request, "user_id", None),
+        )
+        return jsonify({
+            "status": "ok",
+            "user_id": user_id,
+            "baseline_established": False,
+            "baseline_established_at": None,
+        }), 200
+
+    except Exception as e:
+        logger.error(
+            "admin/users/<id>/reset-baseline failed: %s",
+            e, exc_info=True,
+        )
+        sentry_sdk.capture_exception(e)
+        return jsonify({
+            "code": "V2_ERROR",
+            "error": "Failed to reset baseline",
+        }), 500
+
+
 def _build_admin_user_context_payload(user_id: str) -> dict:
     """Compose the multi-session admin user context payload.
 

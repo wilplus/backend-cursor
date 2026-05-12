@@ -7122,6 +7122,40 @@ class DatabaseService:
             )
             return False
 
+    def reset_baseline_established(self, user_id: str) -> bool:
+        """Phase 13 — admin reset path. Flips ``baseline_established``
+        back to FALSE so the user runs the scripted EBCP opener again
+        on their next session. Clears ``baseline_established_at`` too
+        for audit clarity ("when was the most recent graduation?").
+
+        Upsert (not update) so this works on users who don't have a
+        user_settings row yet — they just get a fresh row with FALSE,
+        which is the schema default anyway.
+
+        Returns True on success. Failure logs + returns False so the
+        admin route can surface a proper error.
+        """
+        if not user_id:
+            return False
+        try:
+            (
+                self.client.table("user_settings")
+                .upsert({
+                    "user_id": user_id,
+                    "baseline_established": False,
+                    "baseline_established_at": None,
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                })
+                .execute()
+            )
+            return True
+        except Exception as e:
+            logger.warning(
+                "reset_baseline_established failed user=%s err=%s",
+                user_id, e,
+            )
+            return False
+
     def list_sessions_for_user_admin(self, user_id: str) -> List[dict]:
         """All v2_sessions rows for ``user_id``, newest first.
 
