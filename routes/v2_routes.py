@@ -8745,6 +8745,132 @@ def v2_user_chat_first_question():
         return jsonify({"code": "V2_ERROR", "error": "Failed to generate first question"}), 500
 
 
+@v2_bp.route("/user/coaching/progress", methods=["GET"])
+@require_auth
+def v2_user_coaching_progress():
+    """All attempts the requesting user has made on one source snippet.
+
+    Phase 2 of the snippet-CTA learning loop. Returns the per-snippet
+    progress timeline plus a delta between the first attempt and the
+    best-scoring attempt. Powers the "see your progress" view on /results
+    and is also consumable by self-rating UX in a later phase.
+
+    Query params:
+      - snippet_id (UUID, required)
+
+    Response shape::
+
+        {
+          "snippet_id": "...",
+          "attempts": [
+            {
+              "attempt_number": 1,
+              "score": 0.7123,
+              "components": {...},
+              "user_answer_word_count": 47,
+              "user_answer_duration_ms": 12300,
+              "acoustic_features": null,
+              "source": "post_turn_1_evaluation",
+              "is_eligible_for_few_shot": true,
+              "created_at": "2026-..."
+            },
+            ...
+          ],
+          "delta": {
+            "best_attempt_number": 3,
+            "first_score": 0.7123,
+            "best_score": 0.8421,
+            "score": 0.1298,
+            "word_count": 12,
+            "duration_ms": 4100
+          }
+        }
+
+    Owner-scoped: only attempts authored by the requesting user are
+    returned. Returns 404 when the snippet doesn't belong to the user
+    (mirrors v2_get_charisma_snippet_for_user's ownership check).
+    """
+    try:
+        user_id = request.user_id
+        snippet_id = (request.args.get("snippet_id") or "").strip()
+        if not snippet_id or not _is_valid_uuid(snippet_id):
+            return jsonify({
+                "code": "INVALID_INPUT",
+                "error": "snippet_id must be a valid UUID",
+            }), 400
+
+        # Owner check — block users from probing other people's snippets.
+        snippet = db.v2_get_charisma_snippet_for_user(snippet_id, user_id)
+        if not snippet:
+            return jsonify({
+                "code": "NOT_FOUND",
+                "error": "Snippet not found",
+            }), 404
+
+        attempts = db.list_coaching_attempts_for_snippet(snippet_id, user_id=user_id)
+
+        def _to_float(v):
+            try:
+                return float(v) if v is not None else None
+            except (TypeError, ValueError):
+                return None
+
+        attempt_payload: list[dict] = []
+        for a in attempts:
+            attempt_payload.append({
+                "attempt_number": a.get("attempt_number"),
+                "score": _to_float(a.get("score")),
+                "components": a.get("components") or {},
+                "user_answer_word_count": a.get("user_answer_word_count"),
+                "user_answer_duration_ms": a.get("user_answer_duration_ms"),
+                "acoustic_features": a.get("acoustic_features"),
+                "source": a.get("source"),
+                "is_eligible_for_few_shot": bool(a.get("is_eligible_for_few_shot")),
+                "created_at": a.get("created_at"),
+            })
+
+        delta: dict | None = None
+        if attempt_payload:
+            scored = [
+                a for a in attempt_payload
+                if isinstance(a.get("score"), (int, float))
+            ]
+            if scored:
+                first = min(scored, key=lambda a: a.get("attempt_number") or 0)
+                best = max(scored, key=lambda a: a.get("score") or 0.0)
+                delta = {
+                    "best_attempt_number": best.get("attempt_number"),
+                    "first_score": first.get("score"),
+                    "best_score": best.get("score"),
+                    "score": round(
+                        (best.get("score") or 0.0) - (first.get("score") or 0.0),
+                        4,
+                    ),
+                    "word_count": (
+                        (best.get("user_answer_word_count") or 0)
+                        - (first.get("user_answer_word_count") or 0)
+                    ),
+                    "duration_ms": (
+                        (best.get("user_answer_duration_ms") or 0)
+                        - (first.get("user_answer_duration_ms") or 0)
+                    ),
+                }
+
+        return jsonify({
+            "snippet_id": snippet_id,
+            "attempts": attempt_payload,
+            "delta": delta,
+        }), 200
+
+    except Exception as e:
+        logger.error("user/coaching/progress failed: %s", e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({
+            "code": "V2_ERROR",
+            "error": "Failed to load coaching progress",
+        }), 500
+
+
 @v2_bp.route("/public/interview/next-question", methods=["POST"])
 def v2_public_interview_next_question():
     """Return the next interview question.

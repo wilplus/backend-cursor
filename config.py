@@ -100,6 +100,21 @@ class Config:
         (os.getenv("FEW_SHOT_TENANT_SCOPED") or "").strip().lower()
         in ("1", "true", "yes", "on")
     )
+
+    # ── Phase 2: 1:N coaching attempts history ───────────────────────────
+    # When TRUE (default), every outcome write also lands in the legacy
+    # charisma_snippets.follow_up_outcome JSONB so admin views and the
+    # backfill script still see the latest attempt. Flip to FALSE only
+    # after the migration is fully cut over and consumers exclusively
+    # read from coaching_attempts. Two consumers known today:
+    #   - the admin snippet card outcome strip (reads follow_up_outcome)
+    #   - get_top_followup_examples (reads coaching_attempts already)
+    # Until the admin strip is re-pointed, leaving dual-write on is the
+    # safer default.
+    COACHING_ATTEMPTS_DUAL_WRITE = (
+        (os.getenv("COACHING_ATTEMPTS_DUAL_WRITE") or "true").strip().lower()
+        in ("1", "true", "yes", "on")
+    )
     
     # Frontend URL (for email links)
     FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")

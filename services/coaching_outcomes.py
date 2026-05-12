@@ -362,19 +362,67 @@ def _clamp01(x: Any) -> float:
 
 
 def _persist_outcome(snippet_id: str, outcome: dict[str, Any]) -> bool:
-    """Write the JSONB blob to the source snippet's follow_up_outcome.
+    """Persist the evaluation. Phase 2: writes to coaching_attempts
+    (canonical 1:N store) and, while the dual-write flag is on, also
+    mirrors to the legacy charisma_snippets.follow_up_outcome JSONB so
+    the admin UI keeps working through the cutover.
 
-    Uses the dedicated db helper so the column reference stays in one
-    place — if PGRST204 ever surfaces because the column wasn't yet
-    migrated (see the recent phantom-column incident), the failure
-    logs but doesn't bubble up to the upload endpoint.
+    The coaching_attempts insert is the authoritative success signal —
+    if it lands, the outcome counts as persisted even when the legacy
+    write fails (e.g. PGRST204 on a soon-to-be-dropped column). The
+    legacy write only counts when the canonical insert ALSO failed
+    (degraded-mode safety net).
     """
+    user_id = str(outcome.get("user_id") or "")
+    evaluator = outcome.get("evaluator") or {}
+    user_answer = outcome.get("user_answer") or {}
+
+    components = evaluator.get("components") if isinstance(evaluator.get("components"), dict) else None
     try:
-        result = db.set_snippet_follow_up_outcome(snippet_id, outcome)
-        return bool(result)
+        score = float(outcome.get("score")) if outcome.get("score") is not None else None
+    except (TypeError, ValueError):
+        score = None
+
+    inserted = None
+    try:
+        inserted = db.insert_coaching_attempt(
+            snippet_id=snippet_id,
+            user_id=user_id,
+            source=str(outcome.get("source") or "post_turn_1_evaluation"),
+            score=score,
+            components=components,
+            question_text=outcome.get("question_text"),
+            user_answer_text=user_answer.get("text"),
+            user_answer_duration_ms=user_answer.get("duration_ms"),
+            user_answer_word_count=user_answer.get("word_count"),
+            rationale=evaluator.get("rationale"),
+            is_eligible_for_few_shot=bool(outcome.get("eligible_for_few_shot", True)),
+            fact_check=outcome.get("fact_check"),
+            evaluator_model=evaluator.get("model"),
+            raw_outcome=outcome,
+        )
     except Exception as e:
         logger.warning(
-            "outcome: persist failed source_snippet=%s err=%s",
+            "outcome: coaching_attempts insert raised source_snippet=%s err=%s",
             snippet_id, e,
         )
-        return False
+
+    legacy_ok = False
+    try:
+        from config import Config
+        if Config().COACHING_ATTEMPTS_DUAL_WRITE:
+            legacy_ok = bool(db.set_snippet_follow_up_outcome(snippet_id, outcome))
+    except Exception as e:
+        # Legacy column may already be dropped — don't let a stale
+        # mirror write mask a successful canonical insert.
+        logger.warning(
+            "outcome: legacy follow_up_outcome write failed source_snippet=%s err=%s",
+            snippet_id, e,
+        )
+
+    if inserted is not None:
+        return True
+    # Canonical insert failed. Treat the legacy mirror as a fallback
+    # success so we don't lose the outcome entirely while the migration
+    # is still rolling out.
+    return legacy_ok

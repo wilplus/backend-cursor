@@ -5574,6 +5574,148 @@ class DatabaseService:
         except Exception as e:
             logger.warning("log_few_shot_retrieval failed: %s", e)
 
+    def insert_coaching_attempt(
+        self,
+        *,
+        snippet_id: str,
+        user_id: str,
+        source: str,
+        score: float | None,
+        components: dict | None,
+        question_text: str | None,
+        user_answer_text: str | None,
+        user_answer_duration_ms: int | None,
+        user_answer_word_count: int | None,
+        rationale: str | None,
+        is_eligible_for_few_shot: bool = True,
+        fact_check: dict | None = None,
+        evaluator_model: str | None = None,
+        acoustic_features: dict | None = None,
+        raw_outcome: dict | None = None,
+    ) -> Optional[dict]:
+        """Append a new row to coaching_attempts for ``snippet_id``.
+
+        Phase 2 of the snippet-CTA learning loop. Every contextual
+        turn-1 evaluation produces ONE row here — so a snippet that's
+        been re-attempted N times has N rows, ordered by
+        ``attempt_number``.
+
+        ``attempt_number`` is derived via read-then-insert: we read
+        ``COALESCE(MAX(attempt_number), 0) + 1`` and write that value.
+        The UNIQUE(snippet_id, attempt_number) constraint is the race
+        safety net — if two daemon threads pick the same number
+        simultaneously, the second write raises and we retry once
+        with MAX+1 recomputed. Beyond one retry we give up (extreme
+        write contention isn't expected: outcome capture is spawned
+        from the upload endpoint per user-action).
+
+        Failure modes (returns None):
+          - the migration hasn't run yet (PGRST204 on the table)
+          - extreme write contention (≥2 conflicts in a row)
+          - any other Supabase error
+        Caller is the daemon thread in coaching_outcomes — it must
+        NOT propagate failures up to the user's upload response.
+        """
+        next_number = self._next_coaching_attempt_number(snippet_id)
+        if next_number is None:
+            return None
+
+        payload = {
+            "snippet_id": snippet_id,
+            "user_id": user_id,
+            "attempt_number": next_number,
+            "source": source,
+            "score": score,
+            "components": components,
+            "acoustic_features": acoustic_features,
+            "question_text": question_text,
+            "user_answer_text": user_answer_text,
+            "user_answer_duration_ms": user_answer_duration_ms,
+            "user_answer_word_count": user_answer_word_count,
+            "rationale": rationale,
+            "is_eligible_for_few_shot": bool(is_eligible_for_few_shot),
+            "fact_check": fact_check,
+            "evaluator_model": evaluator_model,
+            "raw_outcome": raw_outcome,
+        }
+
+        for attempt in range(2):
+            try:
+                result = (
+                    self.client.table("coaching_attempts")
+                    .insert(payload)
+                    .execute()
+                )
+                return result.data[0] if result.data else None
+            except Exception as e:
+                msg = str(e).lower()
+                # Unique-violation race — recompute MAX and retry once.
+                if attempt == 0 and ("duplicate key" in msg or "23505" in msg):
+                    retry_number = self._next_coaching_attempt_number(snippet_id)
+                    if retry_number is None:
+                        return None
+                    payload["attempt_number"] = retry_number
+                    continue
+                logger.warning(
+                    "insert_coaching_attempt failed snippet=%s err=%s",
+                    snippet_id, e,
+                )
+                return None
+        return None
+
+    def _next_coaching_attempt_number(self, snippet_id: str) -> Optional[int]:
+        """Compute the next attempt_number for a snippet. ``None`` on error."""
+        try:
+            row = (
+                self.client.table("coaching_attempts")
+                .select("attempt_number")
+                .eq("snippet_id", snippet_id)
+                .order("attempt_number", desc=True)
+                .limit(1)
+                .execute()
+            )
+            if row.data:
+                return int(row.data[0].get("attempt_number") or 0) + 1
+            return 1
+        except Exception as e:
+            logger.warning(
+                "_next_coaching_attempt_number failed snippet=%s err=%s",
+                snippet_id, e,
+            )
+            return None
+
+    def list_coaching_attempts_for_snippet(
+        self,
+        snippet_id: str,
+        user_id: Optional[str] = None,
+    ) -> List[dict]:
+        """All coaching_attempts for ``snippet_id`` in chronological order.
+
+        When ``user_id`` is provided the query is owner-scoped — the
+        public /coaching/progress endpoint passes it so a user can
+        only see their own attempts. Admin callers pass None to see
+        every attempt regardless of owner.
+
+        Returns [] on any error (missing table, etc.) so the caller
+        can render an empty progress view without 500-ing.
+        """
+        try:
+            query = (
+                self.client.table("coaching_attempts")
+                .select("*")
+                .eq("snippet_id", snippet_id)
+                .order("attempt_number", desc=False)
+            )
+            if user_id:
+                query = query.eq("user_id", user_id)
+            return (query.execute().data) or []
+        except Exception as e:
+            logger.warning(
+                "list_coaching_attempts_for_snippet failed snippet=%s err=%s",
+                snippet_id, e,
+            )
+            return []
+
     def get_top_followup_examples(
         self,
         intent: str,
@@ -5587,42 +5729,40 @@ class DatabaseService:
 
         Powers the few-shot retrieval layer of the coaching-effectiveness
         loop: when the user clicks a CTA, the LLM that generates the
-        first question receives the TOP-N past exchanges (across all
-        users) where the same intent produced a high-quality answer.
-        That nudges the model toward the wording patterns that have
-        already worked, instead of generating from scratch every time.
+        first question receives the TOP-N past exchanges where the same
+        intent produced a high-quality answer. That nudges the model
+        toward wording patterns that have already worked, instead of
+        generating from scratch every time.
+
+        Phase 2 rewrite: reads from ``coaching_attempts`` (1:N) rather
+        than the latest-wins ``charisma_snippets.follow_up_outcome``
+        JSONB. The retrieval picks the BEST attempt per snippet (group
+        by snippet_id, keep MAX score) and then joins the snippet
+        context. The downstream consumer (``_build_few_shot_block``)
+        still expects a ``follow_up_outcome``-shaped dict on each row,
+        so we synthesize one from the chosen attempt — that keeps the
+        prompt-builder unchanged through the migration.
 
         Filters applied (all must hold):
-          - snippet_type = intent ("charisma" or "stress")
-          - admin_comment non-null (we need the coach's framing)
-          - follow_up_outcome non-null with score >= ``min_score``
-          - id != exclude_snippet_id (don't show a row its own example)
-          - transcript non-null AND follow_up_outcome.user_answer.text
-            non-null (both ends of the exchange must be visible)
+          - charisma_snippets.snippet_type = intent ("charisma"/"stress")
+          - admin_comment non-null (need the coach's framing)
+          - transcript non-null
+          - attempt.score >= ``min_score``
+          - attempt.is_eligible_for_few_shot = TRUE (Phase 5 guard)
+          - snippet_id != exclude_snippet_id
 
-        Ordered by follow_up_outcome.score DESC. Returns at most
-        ``limit`` rows. Returns [] on any error so the caller (LLM
-        prompt builder) can fall back to context-free generation.
-
-        We DELIBERATELY do not scope to a single user_id — coaching
-        wisdom is meant to be shared. If you ever want user-specific
-        examples, add a user_id arg and an .eq() filter.
+        Falls back to [] on any error (e.g. coaching_attempts table not
+        yet migrated) so the LLM prompt builder degrades gracefully to
+        context-free generation.
         """
         try:
             normalised = (intent or "").strip().lower()
             if normalised not in ("charisma", "stress"):
                 return []
 
-            # ── Phase 1: tenant scoping ─────────────────────────────
-            # Resolve viewer_company_id BEFORE building the query so
-            # the .eq filter is applied at the DB level — the cheaper
-            # path for big tenants and the only way the audit log
-            # captures the company_id that was actually used.
-            #
-            # Flag-gated. When FEW_SHOT_TENANT_SCOPED is False (default)
-            # the query is identical to pre-Phase-1; the audit log
-            # records `scope_mode = 'cross_tenant_legacy'` so we can
-            # diff retrieval shape before / after the rollout.
+            # ── Phase 1 tenant-scoping setup ───────────────────────
+            # Resolved BEFORE the query so the audit log captures the
+            # company_id that was actually used.
             from config import Config
             tenant_scoping_on = bool(Config().FEW_SHOT_TENANT_SCOPED)
             viewer_company_id: str | None = None
@@ -5630,92 +5770,148 @@ class DatabaseService:
             if tenant_scoping_on and viewer_user_id:
                 viewer_company_id = self.get_user_company_id(viewer_user_id)
 
-            query = (
-                self.client.table("charisma_snippets")
-                .select(
-                    "id, snippet_type, transcript, admin_comment, "
-                    "follow_up_question, follow_up_outcome, sharing_scope, "
-                    "user_id, created_at"
+            # ── Step 1: pull top-scoring attempts ──────────────────
+            # Fetch a generous pool — same snippet may have many
+            # attempts so we need headroom to dedupe to the best-per-
+            # snippet without losing the requested limit.
+            try:
+                attempts = (
+                    self.client.table("coaching_attempts")
+                    .select(
+                        "snippet_id, user_id, attempt_number, score, "
+                        "components, question_text, user_answer_text, "
+                        "user_answer_duration_ms, user_answer_word_count, "
+                        "rationale, is_eligible_for_few_shot, "
+                        "evaluator_model, fact_check, created_at"
+                    )
+                    .eq("is_eligible_for_few_shot", True)
+                    .gte("score", min_score)
+                    .order("score", desc=True)
+                    .limit(max(limit * 10, 40))
+                    .execute()
+                    .data
+                ) or []
+            except Exception as e:
+                # Table missing / not migrated — degrade to empty pool
+                # rather than crash the first-question endpoint.
+                logger.warning(
+                    "get_top_followup_examples: coaching_attempts query "
+                    "failed (table missing?): %s", e
                 )
-                .eq("snippet_type", normalised)
-                .not_.is_("admin_comment", "null")
-                .not_.is_("transcript", "null")
-                .not_.is_("follow_up_outcome", "null")
-                .order("follow_up_outcome->>score", desc=True)
-                .limit(max(1, min(limit * 4, 20)))
-            )
-            if exclude_snippet_id:
-                query = query.neq("id", exclude_snippet_id)
-            rows = (query.execute().data) or []
+                return []
 
-            # Tenant scope filter runs in Python:
-            #   - When the flag is off, no filter; legacy cross-tenant.
-            #   - When on AND viewer has a company_id: include rows
-            #     authored by users IN THE SAME company (we resolve
-            #     company per snippet via a single batched user_settings
-            #     lookup) PLUS rows with sharing_scope='canonical'.
-            #   - When on AND viewer has no company_id (cold-start /
-            #     personal sandbox): canonical-only — never expose
-            #     another user's data.
-            #   - Always: skip rows with sharing_scope='private'.
+            # Best attempt per snippet. attempts is already score-DESC,
+            # so the first occurrence of each snippet_id is the best.
+            best_by_snippet: dict[str, dict] = {}
+            for a in attempts:
+                sid = a.get("snippet_id")
+                if not sid or sid == exclude_snippet_id:
+                    continue
+                if sid in best_by_snippet:
+                    continue
+                best_by_snippet[sid] = a
+            if not best_by_snippet:
+                if viewer_user_id:
+                    self.log_few_shot_retrieval(
+                        user_id=viewer_user_id,
+                        requesting_snippet_id=exclude_snippet_id,
+                        exemplar_snippet_ids=[],
+                        intent=normalised,
+                        scope_mode=scope_mode,
+                        company_id=viewer_company_id,
+                    )
+                return []
+
+            # ── Step 2: join snippet context ───────────────────────
+            snippet_ids = list(best_by_snippet.keys())
+            try:
+                snippet_rows = (
+                    self.client.table("charisma_snippets")
+                    .select(
+                        "id, snippet_type, transcript, admin_comment, "
+                        "follow_up_question, sharing_scope, user_id, "
+                        "created_at"
+                    )
+                    .in_("id", snippet_ids)
+                    .eq("snippet_type", normalised)
+                    .not_.is_("admin_comment", "null")
+                    .not_.is_("transcript", "null")
+                    .execute()
+                    .data
+                ) or []
+            except Exception as e:
+                logger.warning(
+                    "get_top_followup_examples: snippet join failed: %s", e
+                )
+                return []
+
+            # Merge attempt + snippet; synthesize a follow_up_outcome
+            # dict so _build_few_shot_block doesn't need to change.
+            merged: list[dict] = []
+            for s in snippet_rows:
+                if not (s.get("admin_comment") or "").strip():
+                    continue
+                if not (s.get("transcript") or "").strip():
+                    continue
+                attempt = best_by_snippet.get(s.get("id"))
+                if not attempt:
+                    continue
+                answer_text = (attempt.get("user_answer_text") or "").strip()
+                if not answer_text:
+                    continue
+                merged_row = dict(s)
+                merged_row["follow_up_outcome"] = {
+                    "score": attempt.get("score"),
+                    "evaluator": {
+                        "components": attempt.get("components") or {},
+                        "rationale": attempt.get("rationale"),
+                        "model": attempt.get("evaluator_model"),
+                    },
+                    "user_answer": {
+                        "text": answer_text,
+                        "duration_ms": attempt.get("user_answer_duration_ms"),
+                        "word_count": attempt.get("user_answer_word_count"),
+                    },
+                    "question_text": attempt.get("question_text"),
+                    "eligible_for_few_shot": bool(
+                        attempt.get("is_eligible_for_few_shot")
+                    ),
+                    "fact_check": attempt.get("fact_check"),
+                    "attempt_number": attempt.get("attempt_number"),
+                }
+                merged.append(merged_row)
+
+            # Re-sort by the attempt score (descending). Snippet-IN
+            # order isn't guaranteed by PostgREST.
+            merged.sort(
+                key=lambda r: float(
+                    (r.get("follow_up_outcome") or {}).get("score") or 0
+                ),
+                reverse=True,
+            )
+
+            # ── Step 3: Phase 1 tenant filter ──────────────────────
             if tenant_scoping_on:
                 if viewer_company_id:
                     scope_mode = "tenant_scoped"
-                    rows = self._filter_by_tenant_or_canonical(
-                        rows, viewer_company_id
+                    merged = self._filter_by_tenant_or_canonical(
+                        merged, viewer_company_id
                     )
                 else:
                     scope_mode = "canonical_topup"
-                    rows = [
-                        r for r in rows
+                    merged = [
+                        r for r in merged
                         if (r.get("sharing_scope") or "tenant_only") == "canonical"
                     ]
             else:
-                # Flag-off: still drop explicitly-private rows so the
-                # 'private' value is enforced regardless of the flag.
-                rows = [
-                    r for r in rows
+                merged = [
+                    r for r in merged
                     if (r.get("sharing_scope") or "tenant_only") != "private"
                 ]
 
-            # Post-filter in Python: PostgREST can't easily compare a
-            # JSONB text-extract as a number, and can't poke inside
-            # `user_answer` for emptiness. We fetched a few extra rows
-            # above so this still yields the requested limit.
-            kept: list[dict] = []
-            for r in rows:
-                outcome = r.get("follow_up_outcome") or {}
-                try:
-                    score = float(outcome.get("score") or 0)
-                except (TypeError, ValueError):
-                    score = 0.0
-                if score < min_score:
-                    continue
-                # Phase 5: fact-check guard. Outcomes that failed
-                # verification are still in the DB for admin review
-                # but must NOT seed future prompts. Older rows
-                # written before Phase 5 don't carry the flag — we
-                # treat the missing key as eligible (legacy default)
-                # so the few-shot pool doesn't suddenly empty out
-                # on the day the flag was introduced.
-                if outcome.get("eligible_for_few_shot") is False:
-                    continue
-                user_answer = (
-                    ((outcome.get("user_answer") or {}).get("text") or "").strip()
-                )
-                if not user_answer:
-                    continue
-                if not (r.get("admin_comment") or "").strip():
-                    continue
-                if not (r.get("transcript") or "").strip():
-                    continue
-                kept.append(r)
-                if len(kept) >= limit:
-                    break
+            kept = merged[:limit]
 
-            # Fire-and-forget audit log. Phase 1 telemetry — lets us
-            # measure pool depth per tenant before flipping the flag
-            # to default-on.
+            # Fire-and-forget audit log.
             if viewer_user_id:
                 self.log_few_shot_retrieval(
                     user_id=viewer_user_id,
