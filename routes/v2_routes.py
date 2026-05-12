@@ -7464,17 +7464,36 @@ def v2_user_get_results(session_id):
 
         if status == "completed":
             snippets = db.v2_get_results_snippets_for_session(session_id, user_id)
-            # Shape each snippet for frontend consumption
+            # Shape each snippet for frontend consumption.
+            #
+            # IMPORTANT: audio_url comes from _resolve_snippet_audio_url
+            # (NOT the raw audio_segment_path column) so:
+            #   - Concat'd session snippets (storage_path =
+            #     session_recordings/<sid>/full.webm) get the R2 audio
+            #     bucket public URL — playable directly in the
+            #     <audio> tag without RLS / signing dance.
+            #   - Student / Path-C rows (storage_path =
+            #     charisma_snippets/<uuid>) get a short-lived Supabase
+            #     signed URL.
+            #   - Legacy rows (audio_segment_path = an absolute URL)
+            #     fall through to that URL.
+            # The previous version returned audio_segment_path verbatim,
+            # which was NULL for every auto_extracted snippet — so the
+            # /results page rendered un-playable cards.
+            #
+            # start_offset_ms ships too so the frontend can clamp
+            # playback when audio_url points at a concat'd full.webm.
             payload["snippets"] = [
                 {
                     "id": s.get("id"),
                     "snippet_type": s.get("snippet_type"),
                     "admin_comment": s.get("admin_comment"),
-                    "audio_url": s.get("audio_segment_path"),
+                    "audio_url": _resolve_snippet_audio_url(s),
                     "transcript": s.get("transcript"),
                     "turn_number": s.get("turn_number"),
                     "question_text": s.get("question_text"),
                     "question_tone": s.get("question_tone"),
+                    "start_offset_ms": s.get("start_offset_ms") or 0,
                     "duration_ms": s.get("duration_ms"),
                     "metrics": {
                         "wpm": s.get("wpm"),

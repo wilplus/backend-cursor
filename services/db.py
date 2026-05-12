@@ -1318,18 +1318,31 @@ class DatabaseService:
         return result.data[0] if result.data else None
 
     def v2_get_results_snippets_for_session(self, session_id: str, user_id: str) -> List[dict]:
-        """Snippets for /results page (owner scoped, non-skipped), ordered by turn."""
+        """Snippets for the /results page.
+
+        Owner-scoped, non-skipped, AND require admin_comment to be
+        populated. The /results page's whole point is delivering coach
+        insight to the student — a snippet without a comment has
+        nothing meaningful to render, so we hide it here rather than
+        having the frontend skip-render it. Matches what
+        get_snippets_with_comments_by_session already does for the
+        with_admin_comment counter that powers session-state.
+        """
         result = (
             self.client.table("charisma_snippets")
             .select("*")
             .eq("session_id", session_id)
             .eq("user_id", user_id)
             .eq("is_skipped", False)
+            .not_.is_("admin_comment", "null")
             .order("turn_number", desc=False)
             .order("start_offset_ms", desc=False)
             .execute()
         )
-        return result.data or []
+        rows = result.data or []
+        # Belt-and-suspenders: whitespace-only admin_comment is treated
+        # as no comment (PostgREST's NOT NULL filter doesn't catch this).
+        return [r for r in rows if (r.get("admin_comment") or "").strip()]
 
     def v2_publish_session_results(self, session_id: str) -> Optional[dict]:
         """Set results_published_at on a session (admin publish action).
