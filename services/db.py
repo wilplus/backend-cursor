@@ -5584,6 +5584,15 @@ class DatabaseService:
                     score = 0.0
                 if score < min_score:
                     continue
+                # Phase 5: fact-check guard. Outcomes that failed
+                # verification are still in the DB for admin review
+                # but must NOT seed future prompts. Older rows
+                # written before Phase 5 don't carry the flag — we
+                # treat the missing key as eligible (legacy default)
+                # so the few-shot pool doesn't suddenly empty out
+                # on the day the flag was introduced.
+                if outcome.get("eligible_for_few_shot") is False:
+                    continue
                 user_answer = (
                     ((outcome.get("user_answer") or {}).get("text") or "").strip()
                 )

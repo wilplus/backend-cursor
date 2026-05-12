@@ -8088,23 +8088,6 @@ def _augment_coaching_system_prompt(base_prompt: str, user_id: str) -> str:
     return f"{base_prompt}\n\n" + "\n".join(lines)
 
 
-def _parse_coach_turn(raw: str) -> tuple[str, str, bool]:
-    """Parse the LLM's coaching turn output into UI-ready bubbles.
-
-    Returns (bubble_1, bubble_2, advance) — strips the [ADVANCE] tag and
-    splits on `|||`. Degrades gracefully on missing delimiter / tag rather
-    than crashing the whole loop.
-    """
-    if not isinstance(raw, str):
-        return ("", "", False)
-    advance = "[ADVANCE]" in raw
-    cleaned = raw.replace("[ADVANCE]", "").strip()
-    parts = [p.strip() for p in cleaned.split("|||", 1)]
-    if len(parts) == 1:
-        return (parts[0], "", advance)
-    return (parts[0], parts[1], advance)
-
-
 def _coach_intent_for_snippet(snippet: dict) -> str:
     """Map a snippet's coach_label to a coaching intent.
 
@@ -8377,15 +8360,33 @@ def v2_coaching_turn():
         except Exception as msg_err:
             logger.warning("coaching/turn user-msg append failed: %s", msg_err)
 
+        # Phase 0 — structured output. The model returns a strict
+        # JSON object {validation_bubble, challenge_bubble, advance}
+        # so the prior |||  + [ADVANCE] string-parsing dance is gone.
+        # System prompt still tells the model what each field means;
+        # the schema enforces shape, the prompt enforces semantics.
+        from services.llm_schemas import (
+            AWARENESS_TURN_SCHEMA,
+            response_format as _response_format,
+        )
+        structured_prompt = (
+            f"{system_prompt}\n\n"
+            "RESPONSE SHAPE — return JSON only with exactly these keys:\n"
+            "  validation_bubble — 1-2 sentence acknowledgment of the user's reply.\n"
+            "  challenge_bubble  — the mic-on instruction telling them what to do next.\n"
+            "  advance           — true when the user is ready to record the trial.\n"
+        )
+
         try:
             response = service.client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=[
-                    {"role": "system", "content": system_prompt},
+                    {"role": "system", "content": structured_prompt},
                     {"role": "user", "content": user_content},
                 ],
                 temperature=0.6,
-                max_tokens=200,
+                max_tokens=240,
+                response_format=_response_format(AWARENESS_TURN_SCHEMA),
             )
             raw = response.choices[0].message.content or ""
         except Exception as llm_err:
@@ -8395,7 +8396,22 @@ def v2_coaching_turn():
                 "error": "Coach is unavailable. Please try again in a moment.",
             }), 502
 
-        bubble_1, bubble_2, advance = _parse_coach_turn(raw)
+        # Schema enforces the shape — only failure left is a transport
+        # blip that returns malformed text. We log + fall back below.
+        bubble_1 = ""
+        bubble_2 = ""
+        advance = False
+        try:
+            parsed = json.loads(raw) if raw else {}
+            bubble_1 = (parsed.get("validation_bubble") or "").strip()
+            bubble_2 = (parsed.get("challenge_bubble") or "").strip()
+            advance = bool(parsed.get("advance"))
+        except (json.JSONDecodeError, ValueError, AttributeError) as parse_err:
+            logger.warning(
+                "coaching/turn: structured output not parseable: %r err=%s",
+                raw[:300], parse_err,
+            )
+
         if not bubble_1 and not bubble_2:
             # Total LLM failure — return a graceful fallback instead of an
             # empty payload so the user always sees something. Tone differs

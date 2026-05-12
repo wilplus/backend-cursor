@@ -143,6 +143,24 @@ def evaluate_and_record_followup_outcome(
     if components is None:
         return None
 
+    # ── Phase 5: fact-check guard ──────────────────────────────────
+    # Verify the rationale's quoted claims actually appear in the
+    # user's answer / source transcript, and apply the specificity
+    # floor. Failures don't drop the outcome (admins still see the
+    # exchange) but they DO mark it ineligible for downstream
+    # learning — the few-shot retrieval (Phase 1) filters on this
+    # flag so hallucinated quotes never seed future prompts.
+    from services.fact_check import fact_check_outcome
+
+    fc = fact_check_outcome(
+        rationale=rationale or "",
+        user_answer_text=answer_text,
+        source_transcript=source_transcript,
+        specificity=components.get("specificity", 0.0),
+    )
+    if fc.get("adjusted_specificity") is not None:
+        components["specificity"] = _clamp01(fc["adjusted_specificity"])
+
     composite = _composite_score(components)
     word_count = len(answer_text.split())
 
@@ -167,6 +185,16 @@ def evaluate_and_record_followup_outcome(
         # path index (idx_charisma_snippets_follow_up_outcome_score)
         # actually work without a deep ->-> traversal.
         "score": round(composite, 4),
+        # Phase 5 — fact-check flag + diagnostics. Phase 1 few-shot
+        # retrieval filters on eligible_for_few_shot so hallucinated
+        # outcomes never seed future prompts. The full fact_check
+        # block stays in the row for admin audit / debugging.
+        "eligible_for_few_shot": bool(fc.get("eligible_for_few_shot")),
+        "fact_check": {
+            "passed": bool(fc.get("passed")),
+            "issues": list(fc.get("issues") or []),
+            "adjusted_specificity": fc.get("adjusted_specificity"),
+        },
     }
 
     if not _persist_outcome(source_snippet_id, outcome):
@@ -174,9 +202,10 @@ def evaluate_and_record_followup_outcome(
 
     logger.warning(
         "outcome:recorded source_snippet=%s user=%s score=%.3f "
-        "components=%s words=%d",
+        "components=%s words=%d eligible=%s fc_issues=%d",
         source_snippet_id, user_id, composite,
         outcome["evaluator"]["components"], word_count,
+        outcome["eligible_for_few_shot"], len(outcome["fact_check"]["issues"]),
     )
     return outcome
 
@@ -238,31 +267,33 @@ def _llm_score_exchange(
     )
     word_count = len(answer_text.split())
 
+    # Schema-validated structured output — the API guarantees the JSON
+    # shape, so the post-parse defence-in-depth (regex extraction,
+    # fence stripping, brace-finding) the previous version had is
+    # gone. The only failure mode left is the API call itself.
+    from services.llm_schemas import EXCHANGE_SCORE_SCHEMA, response_format
+
     system = (
-        "You are evaluating the quality of a coaching follow-up "
-        "exchange. You score three independent dimensions, each from "
-        "0.0 to 1.0, then add a single-sentence rationale.\n"
+        "You evaluate one coaching-follow-up exchange. Score three "
+        "independent dimensions in [0.0, 1.0] and add a one-sentence "
+        "rationale.\n"
         "\n"
-        "Return STRICT JSON with this exact shape and no additional "
-        "keys, prose, or markdown:\n"
-        '{\n'
-        '  "specificity": <number 0-1>,\n'
-        '  "emotional_movement": <number 0-1>,\n'
-        '  "engagement": <number 0-1>,\n'
-        '  "rationale": "<one sentence summarising the strongest signal>"\n'
-        '}\n'
+        "SPECIFICITY — did the user name a concrete moment, feeling, "
+        "or action, vs answer in generalities? 0 generic platitudes, "
+        "1 vivid specific detail.\n"
+        "EMOTIONAL_MOVEMENT — did the answer reveal something the "
+        "original transcript did not already say? 0 same surface, "
+        "1 new insight / acknowledgment / specific introspection.\n"
+        "ENGAGEMENT — did the user lean in? Consider answer length, "
+        "specificity of language, apparent effort. Short answers can "
+        "be high-engagement if specific; long answers can be "
+        "low-engagement if rambling.\n"
         "\n"
-        "Definitions:\n"
-        "  SPECIFICITY — did the user name a concrete moment, feeling, "
-        "or action, vs answer in generalities? 0 = generic platitudes, "
-        "1 = vivid specific detail.\n"
-        "  EMOTIONAL_MOVEMENT — did the answer reveal something the "
-        "original transcript did not already say? 0 = same surface as "
-        "before, 1 = new insight / acknowledgment / specific introspection.\n"
-        "  ENGAGEMENT — did the user lean in? Consider answer length, "
-        "specificity of language, apparent effort. Note: short answers "
-        "can be high-engagement if specific; long answers can be "
-        "low-engagement if rambling."
+        "CITATION RULE — when you quote the user in your rationale, "
+        "the quoted phrase MUST appear verbatim (or near-verbatim) in "
+        "their answer or the original transcript. A fact-check guard "
+        "downgrades scores when quotes are hallucinated; if you're "
+        "not sure of the exact wording, paraphrase without quotes."
     )
 
     user_prompt = (
@@ -277,9 +308,7 @@ def _llm_score_exchange(
         f"\n"
         f"USER'S TURN-1 ANSWER:\n"
         f'"{answer_text}"\n'
-        f"(length: {word_count} words, audio duration: {duration_str})\n"
-        f"\n"
-        f"Return the JSON now."
+        f"(length: {word_count} words, audio duration: {duration_str})"
     )
 
     try:
@@ -291,15 +320,20 @@ def _llm_score_exchange(
             ],
             max_tokens=250,
             temperature=0.3,
+            response_format=response_format(EXCHANGE_SCORE_SCHEMA),
         )
         raw = (response.choices[0].message.content or "").strip()
     except Exception as e:
         logger.warning("outcome: openai call failed: %s", e)
         return None, None
 
-    parsed = _parse_score_json(raw)
-    if parsed is None:
-        logger.warning("outcome: could not parse model output: %r", raw[:400])
+    try:
+        parsed = json.loads(raw)
+    except (json.JSONDecodeError, ValueError):
+        # With strict structured outputs this should never happen.
+        # When it does the SDK probably returned an unrecognised
+        # response — log and bail rather than persist garbage.
+        logger.warning("outcome: structured output not parseable: %r", raw[:400])
         return None, None
 
     components = {
@@ -309,23 +343,6 @@ def _llm_score_exchange(
     }
     rationale = str(parsed.get("rationale") or "").strip()[:500] or None
     return components, rationale
-
-
-def _parse_score_json(raw: str) -> dict | None:
-    """Pull the first JSON object out of ``raw``. Handles code-fenced output."""
-    if not raw:
-        return None
-    # Strip ```json``` fences if the model wrapped its answer
-    fence_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", raw, re.DOTALL)
-    candidate = fence_match.group(1) if fence_match else raw
-    # Or pull the outermost {...}
-    brace_match = re.search(r"\{.*\}", candidate, re.DOTALL)
-    if not brace_match:
-        return None
-    try:
-        return json.loads(brace_match.group(0))
-    except (json.JSONDecodeError, ValueError):
-        return None
 
 
 def _composite_score(components: dict[str, float]) -> float:
