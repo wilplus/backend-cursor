@@ -5420,6 +5420,42 @@ class DatabaseService:
             logger.error("update_snippet_follow_up_question failed for %s: %s", snippet_id, e)
             return None
 
+    def set_snippet_follow_up_outcome(
+        self,
+        snippet_id: str,
+        outcome: dict | None,
+    ) -> dict | None:
+        """Persist the post-turn-1 evaluation JSONB onto a source snippet.
+
+        Powers the first piece of the coaching-effectiveness learning
+        loop: every contextual chat the user starts via a CTA produces
+        one of these blobs (score + components + rationale + the user's
+        actual answer). See services/coaching_outcomes.py for the
+        evaluation logic.
+
+        Latest-wins overwrite (the user may re-record turn 1).
+        Requires the `follow_up_outcome JSONB` column on
+        charisma_snippets. If the migration hasn't run yet the call
+        fails cleanly (PGRST204) and the caller silently swallows.
+        """
+        try:
+            result = (
+                self.client.table("charisma_snippets")
+                .update({
+                    "follow_up_outcome": outcome,
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                })
+                .eq("id", snippet_id)
+                .execute()
+            )
+            return result.data[0] if result.data else None
+        except Exception as e:
+            logger.error(
+                "set_snippet_follow_up_outcome failed for %s: %s",
+                snippet_id, e,
+            )
+            return None
+
     def update_coach_ai_message(
         self,
         user_id: str,

@@ -8707,6 +8707,20 @@ def v2_public_interview_upload_answer():
         # Read optional question_text from form (so we can store it with the snippet)
         question_text = (form.get("question_text") or "").strip() or None
 
+        # Read optional source_snippet_id from form. Set by the /chat
+        # client when this chat was initiated by clicking a CTA on a
+        # published snippet (/chat?sourceSnippet=<id>&intent=…). When
+        # present AND this is turn 1, we score the user's answer
+        # against the source snippet's admin_comment + transcript in a
+        # background thread and write the result onto the source
+        # snippet's follow_up_outcome column. This is how the system
+        # starts learning whether the admin's coaching annotation
+        # actually produced meaningful reflection.
+        source_snippet_id_raw = (form.get("source_snippet_id") or "").strip()
+        source_snippet_id = (
+            source_snippet_id_raw if _is_valid_uuid(source_snippet_id_raw) else None
+        )
+
         # Compute acoustic metrics for this chunk
         snippet_metrics = None
         try:
@@ -8863,6 +8877,80 @@ def v2_public_interview_upload_answer():
                 "auto-finalize: failed to schedule for session=%s: %s",
                 guest_session_id, bg_err,
             )
+
+        # Coaching outcome capture: when this turn is the FIRST turn of
+        # a contextual chat (frontend passed source_snippet_id, set
+        # via /chat?sourceSnippet=<id>&intent=…), spawn a daemon thread
+        # that scores the user's answer against the source snippet's
+        # admin coach insight + transcript and writes the outcome onto
+        # the source snippet's follow_up_outcome JSONB column.
+        #
+        # First piece of the learning loop. Collect silently for now;
+        # later commits surface the score in the admin UI and feed
+        # successful exchanges into few-shot question generation.
+        #
+        # This endpoint is otherwise unauthenticated (guest funnel
+        # supports anon uploads). We do a best-effort JWT extract from
+        # the Authorization header just for the contextual branch —
+        # the snippet load inside evaluate_and_record_followup_outcome
+        # is owner-scoped on the decoded user_id, so a missing/invalid
+        # token simply skips the outcome write.
+        if (
+            source_snippet_id is not None
+            and turn_number == 1
+            and (transcript_text or "").strip()
+        ):
+            authed_user_id = None
+            try:
+                from auth import verify_supabase_token
+                auth_header = request.headers.get("Authorization") or ""
+                if auth_header.startswith("Bearer "):
+                    _payload = verify_supabase_token(
+                        auth_header[len("Bearer "):].strip()
+                    )
+                    authed_user_id = (_payload or {}).get("sub")
+            except Exception as auth_err:
+                logger.info(
+                    "outcome:skip reason=auth_decode_failed source_snippet=%s err=%s",
+                    source_snippet_id, auth_err,
+                )
+
+            if authed_user_id:
+                _scored_user_id = str(authed_user_id)
+                _scored_snippet_id = source_snippet_id
+                _scored_answer = transcript_text or ""
+                _scored_duration_ms = int((duration_seconds or 0) * 1000)
+                _scored_question = question_text
+
+                def _outcome_worker():
+                    try:
+                        from services.coaching_outcomes import (
+                            evaluate_and_record_followup_outcome,
+                        )
+                        evaluate_and_record_followup_outcome(
+                            source_snippet_id=_scored_snippet_id,
+                            user_id=_scored_user_id,
+                            user_answer_text=_scored_answer,
+                            user_answer_duration_ms=_scored_duration_ms,
+                            asked_question=_scored_question,
+                        )
+                    except Exception as inner:
+                        logger.warning(
+                            "outcome:bg-thread failure source_snippet=%s err=%s",
+                            _scored_snippet_id, inner,
+                        )
+
+                try:
+                    threading.Thread(
+                        target=_outcome_worker,
+                        daemon=True,
+                        name=f"outcome-{source_snippet_id[:8]}",
+                    ).start()
+                except Exception as out_err:
+                    logger.warning(
+                        "outcome: failed to schedule for source_snippet=%s: %s",
+                        source_snippet_id, out_err,
+                    )
 
         return jsonify({
             "status": "ok",
