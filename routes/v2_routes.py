@@ -10531,6 +10531,16 @@ def v2_admin_get_session(session_id):
                 # boundaries for the canonical model rationale.
                 "start_time": _snippet_start_time(s),
                 "end_time": _snippet_end_time(s),
+                # Coaching-outcome blob written by
+                # services.coaching_outcomes.evaluate_and_record_followup_
+                # outcome after the user answered turn 1 of a contextual
+                # chat that this snippet seeded (via /chat?sourceSnippet=
+                # <id>). Surfaced here so the admin page can render the
+                # score + the user's actual answer next to the comment
+                # the admin originally wrote — closing the feedback
+                # loop. NULL until the user has clicked the CTA AND
+                # answered the first question.
+                "follow_up_outcome": s.get("follow_up_outcome"),
                 "created_at": s.get("created_at"),
             }
             for s in extracted_only
