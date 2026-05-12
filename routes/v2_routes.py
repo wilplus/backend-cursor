@@ -51,6 +51,7 @@ import hashlib
 import random
 import mimetypes
 import os
+import re
 import uuid
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlparse
