@@ -6,44 +6,40 @@ Hand this entire document to your frontend agent. It is self-contained: it expla
 
 ## 0. TL;DR for the frontend agent
 
-The backend has shipped two new admin capabilities and one runtime tweak. The admin panel currently throws **404** because none of the BFF proxy routes for these exist yet, and the existing proxy (if any) is pointed at the wrong path segment (`/admin/users/:id/context` instead of the correct singular `/admin/user/:id/context`).
+The backend has shipped two new admin capabilities and one runtime tweak. The admin panel was throwing **404** because the BFF proxy routes did not exist yet.
+
+**Path convention (canonical):** every admin user-scoped route uses the **plural `/v2/admin/users/{user_id}/...`** form. Use this everywhere, no exceptions. The legacy singular `/admin/user/...` alias still exists for back-compat but new code must not use it.
 
 You must:
 
-1. **Add three Next.js BFF routes** under `src/app/api/admin/...` (full code below).
+1. **Add three Next.js BFF routes** under `src/app/api/admin/users/[id]/...` (full code below).
 2. **Extend `lib/api/admin-client.ts`** with three typed methods + their response interfaces.
-3. **Update the admin user-detail page** (`/admin/users/[id]` or `/admin/students/[id]`) to consume the new multi-session context payload, render the admin-only fields (custom LLM instructions, private notes, queued override question, coach override profile, behavioral profile source badge, baseline state), and add a **"Reset baseline"** danger-zone button.
+3. **Update the admin user-detail page** (`/admin/users/[id]`) to consume the new multi-session context payload, render the admin-only fields (custom LLM instructions, private notes, queued override question, coach override profile, behavioral profile source badge, baseline state), and add a **"Reset baseline"** danger-zone button.
 4. **Optionally** wire a one-shot **"Force assessment this session"** toggle on the interview start screen that sets `force_assessment: true` in the payload to `POST /v2/public/interview/next-question`. This is independent of the persistent reset.
 
 After you ship: every URL the admin clicks for a student under `/admin/users/[id]` must resolve (no 404s), the page must render the multi-session timeline, and the reset button must hit `POST /api/admin/users/<id>/reset-baseline` and show a success toast.
 
 ---
 
-## 1. Why the panel is currently broken (root cause of the 404)
+## 1. Why the panel was broken (root cause of the 404) and the canonical route map
 
-The Flask backend exposes these new endpoints (verified against `routes/v2_routes.py`):
+The Flask backend exposes these endpoints (verified against `routes/v2_routes.py`). Use the **plural** `users` form everywhere — it is the project-wide REST convention:
 
-| Method | Backend path                                       | Purpose                                                                 |
-|--------|----------------------------------------------------|-------------------------------------------------------------------------|
-| GET    | `/v2/admin/user/<user_id>/context`  *(singular `user`)* | Full longitudinal admin view: user block + ALL their sessions + chat   |
-| PUT    | `/v2/admin/user/<user_id>/context`  *(singular `user`)* | Update `custom_llm_instructions`, `private_admin_notes`, `queued_override_question`, `coach_override_profile` |
-| POST   | `/v2/admin/users/<user_id>/reset-baseline` *(plural `users`)* | Flip `user_settings.baseline_established=FALSE` (re-arm scripted EBCP) |
+| Method        | Backend path                                          | Purpose                                                                                                          |
+|---------------|-------------------------------------------------------|------------------------------------------------------------------------------------------------------------------|
+| GET           | `/v2/admin/users/<user_id>/context`                   | Full longitudinal admin view: user block + ALL their sessions + chat                                             |
+| PATCH *(or PUT)* | `/v2/admin/users/<user_id>/context`                | Partial update of `custom_llm_instructions`, `private_admin_notes`, `queued_override_question`, `coach_override_profile`. PATCH and PUT share the same partial-update semantics — use **PATCH** in new code. |
+| POST          | `/v2/admin/users/<user_id>/reset-baseline`            | Flip `user_settings.baseline_established=FALSE` (re-arm scripted EBCP)                                           |
 
-Three failure modes have been observed:
+The 404 was caused by missing BFF proxies under `/api/admin/users/[id]/...`. Add the routes in §3 and the panel resolves.
 
-- **No BFF route exists** at `/api/admin/user/[id]/context` → Next.js itself returns 404 before the request ever leaves the box.
-- **BFF route exists but uses the wrong path segment**: hitting `/v2/admin/users/<id>/context` (plural) or `/v2/admin/students/<id>/context` will 404 from Flask. The new multi-session context endpoint is **singular `user`**, no plural, no `students`. The `student_profile` route at `/v2/admin/students/<id>` is a different (older) shape and is **not** what the new admin user page should call.
-- **BFF route exists but mounted as `/api/admin/users/[id]/context`** (plural) — Next.js will reach Flask, Flask will 404 because the route is registered as singular. Mount the proxy at the singular path **and** call the singular Flask path. They must match.
-
-The reset endpoint is the inverse — backend uses **plural `users`** (`/admin/users/<id>/reset-baseline`). Mount the BFF at the same plural path so the BFF→Flask path map is unambiguous.
-
-> **Rule of thumb you can copy into the agent's mental model:** the *legacy single-record context endpoint* lives under singular `/admin/user/:id/...` and the *bulk admin operations on the user record* (settings, snippets, timeline, reset-baseline) live under plural `/admin/users/:id/...`. Do not normalise — preserve the asymmetry; that is what Flask is registered for.
+> **Note on the legacy singular alias.** The backend still accepts `/v2/admin/user/<id>/context` (singular) for back-compat with older callers. **Do not write new code against it.** All BFF mounts, all client methods, all in-app links — plural only. This keeps URLs predictable and matches every other admin user-scoped route in the API (`/users/<id>/settings`, `/users/<id>/snippets`, `/users/<id>/timeline`, `/users/<id>/reset-baseline`).
 
 ---
 
 ## 2. Backend contract — exact request/response shapes
 
-### 2.1 `GET /v2/admin/user/<user_id>/context`
+### 2.1 `GET /v2/admin/users/<user_id>/context`
 
 Auth: `Authorization: Bearer <admin access_token>` (admin allowlist enforced server-side).
 
@@ -118,9 +114,9 @@ Response 200:
 }
 ```
 
-### 2.2 `PUT /v2/admin/user/<user_id>/context`
+### 2.2 `PATCH /v2/admin/users/<user_id>/context`  *(PUT also accepted)*
 
-Body — every field optional, only included keys are written. `null` clears.
+Body — every field optional, only included keys are written. `null` clears. PATCH and PUT have identical semantics on this endpoint; **use PATCH in new code** to match REST convention for partial updates.
 
 ```jsonc
 {
@@ -176,14 +172,12 @@ Response (unchanged): `{ question, tone, turn_number, source }` where `source` i
 
 These assume `src/app/api/getAuth.ts` exports `getV2AccessToken()` and `getBackendUrl()` exactly as in `docs/homework-bff-routes/getAuth.ts`. If your project keeps them elsewhere, fix the import paths.
 
-### 3.1 `src/app/api/admin/user/[id]/context/route.ts`
-
-**Note the singular `user` in the URL — this matches the Flask path.**
+### 3.1 `src/app/api/admin/users/[id]/context/route.ts`
 
 ```ts
 /**
- * BFF: /api/admin/user/[id]/context
- * Proxies to GET/PUT /v2/admin/user/<id>/context.
+ * BFF: /api/admin/users/[id]/context
+ * Proxies to GET/PATCH /v2/admin/users/<id>/context.
  * Backs the multi-session admin view at /admin/users/[id].
  */
 import { NextRequest, NextResponse } from "next/server";
@@ -199,7 +193,7 @@ export async function GET(
   }
   const { id } = await params;
   const backend = getBackendUrl();
-  const res = await fetch(`${backend}/v2/admin/user/${id}/context`, {
+  const res = await fetch(`${backend}/v2/admin/users/${id}/context`, {
     headers: { Authorization: `Bearer ${token}` },
     cache: "no-store",
   });
@@ -207,7 +201,7 @@ export async function GET(
   return NextResponse.json(data, { status: res.status });
 }
 
-export async function PUT(
+export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
@@ -218,8 +212,8 @@ export async function PUT(
   const { id } = await params;
   const body = await request.json().catch(() => ({}));
   const backend = getBackendUrl();
-  const res = await fetch(`${backend}/v2/admin/user/${id}/context`, {
-    method: "PUT",
+  const res = await fetch(`${backend}/v2/admin/users/${id}/context`, {
+    method: "PATCH",
     headers: {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
@@ -232,8 +226,6 @@ export async function PUT(
 ```
 
 ### 3.2 `src/app/api/admin/users/[id]/reset-baseline/route.ts`
-
-**Note the plural `users` in the URL — this matches the Flask path.**
 
 ```ts
 /**
@@ -361,11 +353,11 @@ export interface ResetBaselineResponse {
 ```ts
   // ── Phase 12 / 13 — Admin user multi-session view + EBCP reset ──
   getUserContext: (userId: string) =>
-    adminFetch<AdminUserContextPayload>(`/user/${userId}/context`),
+    adminFetch<AdminUserContextPayload>(`/users/${userId}/context`),
 
   updateUserContext: (userId: string, patch: AdminUserContextUpdate) =>
-    adminFetch<AdminUserContextPayload>(`/user/${userId}/context`, {
-      method: "PUT",
+    adminFetch<AdminUserContextPayload>(`/users/${userId}/context`, {
+      method: "PATCH",
       body: patch,
     }),
 
@@ -376,7 +368,7 @@ export interface ResetBaselineResponse {
     ),
 ```
 
-> **Pitfall:** `getUserContext`/`updateUserContext` use **`/user/`** (singular). `resetBaseline` uses **`/users/`** (plural). This mirrors the Flask routes — do **not** normalise.
+All three methods sit under the unified `/users/{id}/...` namespace. Use `PATCH` for partial updates of the context (matches REST convention for partial mutations).
 
 ---
 
@@ -389,7 +381,7 @@ Replace the existing call to `adminApi.getStudentProfile(id)` with `adminApi.get
 ### 5.1 Page sections to render (top → bottom)
 
 1. **Header**: name + email + a small badge for `behavioral_profile_source` (`auto` → grey, `admin_override` → orange "Manual"). If `coach_override_profile` is set, show it; otherwise show `behavioral_profile_auto`.
-2. **Admin tools card** (editable, debounced PUT to `updateUserContext`):
+2. **Admin tools card** (editable, debounced PATCH to `updateUserContext`):
    - `custom_llm_instructions` — textarea
    - `private_admin_notes` — textarea
    - `queued_override_question` — single-line input (helper text: "Will be injected as the next bot turn, then cleared")
@@ -466,12 +458,12 @@ The frontend agent is done when **all** of these are true:
 
 - [ ] Visiting `/admin/users/<some_real_user_id>` no longer 404s and renders the page.
 - [ ] The user card shows `email`, `name`, `behavioral_profile`, `behavioral_profile_source` badge.
-- [ ] Editing `custom_llm_instructions`, `private_admin_notes`, `queued_override_question`, or `coach_override_profile` issues a `PUT` to `/api/admin/user/<id>/context` and the new value persists across a page reload.
+- [ ] Editing `custom_llm_instructions`, `private_admin_notes`, `queued_override_question`, or `coach_override_profile` issues a `PATCH` to `/api/admin/users/<id>/context` and the new value persists across a page reload.
 - [ ] The sessions accordion renders **all** of the user's sessions (newest first), each expandable to show metrics + chat + snippets.
 - [ ] Clicking "Reset EBCP baseline" issues `POST /api/admin/users/<id>/reset-baseline`, returns 200, shows a success toast, and the next session that user records starts with the scripted EBCP opener (`source: "ebcp_llm"` or `"ebcp_fallback"` in the next-question response). Clicking it again on an already-reset user is harmless (idempotent 200).
 - [ ] DevTools network tab shows **zero** 404s on the admin user page.
 
-If any single endpoint still 404s, the most likely cause is a path-segment mismatch between the BFF mount and the Flask route — re-read §1.
+If any single endpoint still 404s, the most likely cause is the BFF route file is missing — every backend route in §1 needs a matching `src/app/api/admin/users/[id]/...` proxy.
 
 ---
 
@@ -485,9 +477,10 @@ If any single endpoint still 404s, the most likely cause is a path-segment misma
 
 ## 8. References (file paths in the backend repo for the agent to inspect)
 
-- Backend route: `routes/v2_routes.py:772` (GET/PUT user context) and `routes/v2_routes.py:873` (reset-baseline).
-- Backend smart EBCP routing: `routes/v2_routes.py:10075` (`v2_public_interview_next_question`, `force_assessment` flag at line 10095).
-- DB helpers: `services/db.py:7069` (`get_baseline_established`), `services/db.py:7096` (`mark_baseline_established`), `services/db.py:7125` (`reset_baseline_established`).
+- Backend route: `routes/v2_routes.py:776` — `v2_admin_user_context`, registered for **both** `/admin/user/<id>/context` and `/admin/users/<id>/context` with methods `GET, PUT, PATCH`. Use plural in new code.
+- Backend route: `routes/v2_routes.py:881` — `v2_admin_reset_baseline` (POST only).
+- Backend smart EBCP routing: `routes/v2_routes.py:10096` (`v2_public_interview_next_question`, `force_assessment` flag at line 10115).
+- DB helpers: `services/db.py:7048` (`get_baseline_established`), `services/db.py:7075` (`mark_baseline_established`), `services/db.py:7104` (`reset_baseline_established`).
 - Existing BFF auth helper to copy: `docs/homework-bff-routes/getAuth.ts`.
 - Existing BFF route to mirror as a stylistic template: `docs/frontend-admin-panel/api-routes/students-[id]-overrides-route.ts`.
 - Existing admin client to extend: `docs/frontend-admin-panel/lib/api/admin-client.ts`.
