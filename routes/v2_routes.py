@@ -7464,7 +7464,7 @@ RULES:
 - You MUST alternate tones: if the previous question was charisma, the next MUST be stress, and vice versa.
 - Keep questions concise (1-2 sentences max).
 - Never repeat a question you've already asked in this session.
-- Make follow-up questions contextual when possible (reference what the user said).
+- You must dynamically build upon a specific element from the user's most recent answer to challenge them further. DO NOT parrot or awkwardly repeat their words back to them. Push the conversation forward contextually.
 - Never break character or explain what you're doing.
 - FORMATTING RULE: If you include a brief acknowledgment or validation before your question,
   separate it from the question using the exact delimiter `|||`.
@@ -7810,11 +7810,18 @@ def _generate_llm_question(
     user_id: str | None = None,
     *,
     contextual_init: dict | None = None,
+    timeout_seconds: float | None = None,
 ) -> str | None:
     """Call GPT-4o-mini to generate the next interview question.
 
     Falls back to the hardcoded bank on failure.
     Returns the question text, or None on error (caller uses fallback).
+
+    timeout_seconds — Phase 13. When set, the OpenAI call is bounded
+    by this wall-clock budget. Used by the smart-EBCP-bypass path so
+    a stalled LLM doesn't keep a returning user staring at a blank
+    chat; the caller catches None and substitutes the scripted EBCP
+    turn 1 as a safety net.
     """
     try:
         from services.openai_service import OpenAIService
@@ -7899,9 +7906,9 @@ def _generate_llm_question(
         # Build system prompt with optional user-specific injection
         system_prompt = _INTERVIEW_SYSTEM_PROMPT
         if user_id:
-            settings = db.get_user_settings(user_id)
-            if settings and settings.get("custom_llm_instructions"):
-                system_prompt += f"\n\nADDITIONAL INSTRUCTIONS FOR THIS USER:\n{settings['custom_llm_instructions']}"
+            system_prompt = _augment_interview_prompt_with_profile(
+                system_prompt, user_id,
+            )
 
         # Build conversation history for context
         messages = [{"role": "system", "content": system_prompt}]
@@ -7918,12 +7925,20 @@ def _generate_llm_question(
             "content": f"Generate the next question. This is turn {turn_number}. Required tone: {tone}.",
         })
 
-        response = service.client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=messages,
-            max_tokens=150,
-            temperature=0.8,
-        )
+        # Phase 13 — optional per-call timeout for the bypass-EBCP
+        # path. The OpenAI Python SDK accepts a ``timeout`` kwarg on
+        # the request that maps to httpx; if it isn't honoured for
+        # some reason the outer try/except still catches the slow
+        # call and falls back to the scripted EBCP turn 1.
+        create_kwargs = {
+            "model": "gpt-4o-mini",
+            "messages": messages,
+            "max_tokens": 150,
+            "temperature": 0.8,
+        }
+        if timeout_seconds is not None:
+            create_kwargs["timeout"] = float(timeout_seconds)
+        response = service.client.chat.completions.create(**create_kwargs)
 
         question = response.choices[0].message.content.strip()
         # Strip quotes if the LLM wrapped it
@@ -8396,6 +8411,77 @@ def _merge_admin_override_into_profile(
         ),
         "traits": base_traits,
     }
+
+
+def _augment_interview_prompt_with_profile(
+    base_prompt: str,
+    user_id: str,
+) -> str:
+    """Phase 13 — soft profile injection for the interview-question generator.
+
+    Appends a [COACHING CONTEXT] block with the user's effective
+    learner type + admin's global LLM instructions. Adds a stability
+    directive telling the model to USE the profile to shape tone
+    without becoming locked-in by it ("still probe beyond their
+    stated strengths"). Custom instructions remain available as the
+    legacy ADDITIONAL INSTRUCTIONS block so the existing wording
+    admins typed in keeps applying.
+
+    Failure modes swallow — a missing settings row or DB hiccup
+    returns the base prompt unchanged so question generation never
+    hard-fails on profile load.
+    """
+    learner_type = ""
+    custom_instructions = ""
+    try:
+        settings = db.get_user_settings(user_id) or {}
+        custom_instructions = (
+            settings.get("custom_llm_instructions") or ""
+        ).strip()
+    except Exception as e:
+        logger.warning(
+            "interview: settings load failed user=%s: %s", user_id, e,
+        )
+
+    try:
+        sniper = db.get_sniper_profile(user_id) or {}
+        learner_type = (
+            (sniper.get("coach_override_profile") or "").strip()
+            or (sniper.get("behavioral_profile") or "").strip()
+        )
+    except Exception as e:
+        logger.warning(
+            "interview: profile load failed user=%s: %s", user_id, e,
+        )
+
+    if not learner_type and not custom_instructions:
+        return base_prompt
+
+    block_lines = ["", "[COACHING CONTEXT]"]
+    if learner_type:
+        block_lines.append(f"Learner Profile: {learner_type}")
+    if custom_instructions:
+        block_lines.append(f"Admin Notes: {custom_instructions}")
+    block_lines.append("")
+    block_lines.append(
+        "Directive: Use this profile to shape your challenge style and "
+        "tone, but DO NOT become trapped by it. You must still probe "
+        "beyond their stated strengths and test their boundaries under "
+        "pressure."
+    )
+
+    augmented = base_prompt + "\n" + "\n".join(block_lines)
+
+    # Keep the legacy verbatim block as well — admins relying on the
+    # old "ADDITIONAL INSTRUCTIONS FOR THIS USER" wording in their
+    # custom_llm_instructions content still see it surface unchanged.
+    if custom_instructions:
+        augmented += (
+            "\n\nADDITIONAL INSTRUCTIONS FOR THIS USER:\n"
+            f"{custom_instructions}"
+        )
+
+    return augmented
 
 
 def _augment_coaching_system_prompt(base_prompt: str, user_id: str) -> str:
@@ -9938,8 +10024,55 @@ def v2_public_interview_next_question():
 
         user_id = (body.get("user_id") or "").strip() or None
         previous_turns = body.get("previous_turns") or None
+        # Explicit assessment requests force the scripted EBCP path
+        # regardless of baseline state (e.g. admin recalibrating).
+        force_assessment = bool(body.get("force_assessment", False))
 
-        # ── EBCP Baseline Mapping: turns 1-4 ─────────────────────────────────
+        # ── Phase 13: smart-EBCP routing ─────────────────────────────
+        # Returning users (baseline_established=TRUE) skip the
+        # scripted 1-4 turns and go straight to LLM continuation.
+        # Guests (no user_id), new users (flag FALSE), and explicit
+        # assessment runs keep the original EBCP behaviour.
+        baseline_done = (
+            not force_assessment
+            and bool(user_id)
+            and db.get_baseline_established(user_id)
+        )
+
+        if baseline_done and turn_number <= 4:
+            # Same tone alternation as turn 5+: odd → charisma,
+            # even → stress. That gives a charisma-warm opener and
+            # a stress probe on turn 2.
+            tone = "charisma" if turn_number % 2 == 1 else "stress"
+            question = _generate_llm_question(
+                turn_number=turn_number,
+                tone=tone,
+                previous_turns=previous_turns,
+                user_id=user_id,
+                timeout_seconds=3.0,
+            )
+            if question:
+                return jsonify({
+                    "question": question,
+                    "tone": tone,
+                    "turn_number": turn_number,
+                    "source": "llm_bypass_ebcp",
+                }), 200
+            # Fallback: LLM stalled or failed — drop into the
+            # scripted EBCP opener so the UI never locks up.
+            logger.warning(
+                "interview: bypass-ebcp LLM failed for user=%s turn=%d "
+                "— falling back to scripted EBCP turn 1",
+                user_id, turn_number,
+            )
+            return jsonify({
+                "question": _EBCP_FALLBACKS[1],
+                "tone": "charisma",
+                "turn_number": turn_number,
+                "source": "llm_bypass_fallback",
+            }), 200
+
+        # ── EBCP Baseline Mapping: turns 1-4 (new users) ─────────────
         if turn_number <= 4:
             question = _generate_ebcp_question(turn_number, previous_turns)
             if not question:
@@ -9955,10 +10088,25 @@ def v2_public_interview_next_question():
                 "source": source,
             }), 200
 
-        # ── Regular charisma/stress alternation: turns 5+ ────────────────────
-        # Offset so turn 5 is the first post-EBCP turn (charisma), turn 6 is stress, etc.
+        # ── Regular charisma/stress alternation: turns 5+ ────────────
+        # Offset so turn 5 is the first post-EBCP turn (charisma),
+        # turn 6 is stress, etc.
         post_ebcp_index = turn_number - 4  # 1, 2, 3 …
         tone = "charisma" if post_ebcp_index % 2 == 1 else "stress"
+
+        # Phase 13 graduation — the user just asked for turn 5,
+        # meaning they completed all 4 scripted EBCP turns. Flip the
+        # flag so their NEXT session bypasses the script. Best-effort:
+        # a failed write here just delays bypass by one session.
+        if user_id and turn_number == 5:
+            try:
+                if not db.get_baseline_established(user_id):
+                    db.mark_baseline_established(user_id)
+            except Exception as flag_err:
+                logger.warning(
+                    "interview: baseline_established flip failed "
+                    "user=%s err=%s", user_id, flag_err,
+                )
 
         question = _generate_llm_question(
             turn_number=turn_number,

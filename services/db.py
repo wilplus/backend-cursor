@@ -7066,6 +7066,62 @@ class DatabaseService:
 
         return updated_row
 
+    def get_baseline_established(self, user_id: str) -> bool:
+        """Phase 13 — has this user completed the EBCP baseline once?
+
+        Defaults to False on any error or missing row so an
+        infrastructure hiccup never accidentally bypasses the
+        scripted opener.
+        """
+        if not user_id:
+            return False
+        try:
+            result = (
+                self.client.table("user_settings")
+                .select("baseline_established")
+                .eq("user_id", user_id)
+                .limit(1)
+                .execute()
+            )
+            if result.data:
+                return bool(result.data[0].get("baseline_established"))
+            return False
+        except Exception as e:
+            logger.warning(
+                "get_baseline_established failed user=%s err=%s",
+                user_id, e,
+            )
+            return False
+
+    def mark_baseline_established(self, user_id: str) -> bool:
+        """Phase 13 — flip the flag TRUE the first time a user
+        graduates from the scripted EBCP turns (1-4) into the LLM
+        regime. Upsert so the row exists even for users who never
+        edited any other setting. Returns True on success.
+        """
+        if not user_id:
+            return False
+        try:
+            (
+                self.client.table("user_settings")
+                .upsert({
+                    "user_id": user_id,
+                    "baseline_established": True,
+                    "baseline_established_at": (
+                        datetime.now(timezone.utc).isoformat()
+                    ),
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                })
+                .execute()
+            )
+            return True
+        except Exception as e:
+            logger.warning(
+                "mark_baseline_established failed user=%s err=%s",
+                user_id, e,
+            )
+            return False
+
     def list_sessions_for_user_admin(self, user_id: str) -> List[dict]:
         """All v2_sessions rows for ``user_id``, newest first.
 
