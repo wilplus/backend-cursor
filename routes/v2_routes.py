@@ -769,6 +769,138 @@ def v2_admin_student_sniper_profile(user_id):
         return jsonify({"code": "V2_ERROR", "error": str(e)}), 500
 
 
+@v2_bp.route("/admin/user/<user_id>/context", methods=["GET", "PUT"])
+@require_admin
+def v2_admin_user_context(user_id):
+    """Admin user-level context: Private Notes + Global LLM Instructions
+    + Learning Profile + queued override question.
+
+    Phase 12. Backs the admin user view at /admin/users/<id>. The
+    frontend BFF proxies /api/admin/user/<id>/context here.
+
+    GET response::
+
+        {
+          "user_id": "...",
+          "email": "...",
+          "custom_llm_instructions": "..." | null,
+          "private_admin_notes": "..." | null,
+          "queued_override_question": "..." | null,
+          "behavioral_profile": "Stressor" | null,        # auto-detected
+          "behavioral_profile_source": "auto" | "admin_override",
+          "coach_override_profile": "Stressor" | null,    # admin override
+          "inferred_learner_profile": {...} | null,        # Phase 3 blob
+          "admin_profile_override_active": bool,           # Phase 9
+          "admin_profile_override_set_at": "..." | null
+        }
+
+    PUT body (every field optional — only included keys are written)::
+
+        {
+          "custom_llm_instructions": "...",
+          "private_admin_notes": "...",
+          "queued_override_question": "...",   # null clears the queue
+          "coach_override_profile": "Stressor" # null clears
+        }
+
+    PUT response: the same shape as GET, reflecting the post-write
+    state so the frontend can re-render without a second request.
+    """
+    if not _is_valid_uuid(user_id):
+        return jsonify({
+            "code": "INVALID_INPUT",
+            "error": "user_id must be a valid UUID",
+        }), 400
+
+    try:
+        if request.method == "PUT":
+            body = request.get_json(silent=True) or {}
+
+            # Helper: True when the caller explicitly sent this key
+            # (so we can distinguish "clear this value" from "leave
+            # it alone"). The DB helper's update_* flags use this.
+            def has(k):
+                return k in body
+
+            instructions = body.get("custom_llm_instructions")
+            if isinstance(instructions, str):
+                instructions = instructions.strip() or None
+            notes = body.get("private_admin_notes")
+            if isinstance(notes, str):
+                notes = notes.strip() or None
+            queued = body.get("queued_override_question")
+            if isinstance(queued, str):
+                queued = queued.strip() or None
+            override_profile = body.get("coach_override_profile")
+            if isinstance(override_profile, str):
+                override_profile = override_profile.strip() or None
+
+            db.upsert_admin_user_context_fields(
+                user_id=user_id,
+                custom_llm_instructions=instructions,
+                private_admin_notes=notes,
+                queued_override_question=queued,
+                coach_override_profile=override_profile,
+                update_instructions=has("custom_llm_instructions"),
+                update_notes=has("private_admin_notes"),
+                update_queued_question=has("queued_override_question"),
+                update_override_profile=has("coach_override_profile"),
+            )
+            # Fall through to read-back so the response matches GET.
+
+        # ── GET (and PUT read-back) ───────────────────────────────
+        settings = db.get_user_settings(user_id) or {}
+        sniper = db.get_sniper_profile(user_id) or {}
+        email = None
+        try:
+            email = db.get_user_email_from_auth(user_id)
+        except Exception:
+            pass
+
+        behavioral_profile_auto = (
+            (sniper.get("behavioral_profile") or "").strip() or None
+        )
+        coach_override = (
+            (sniper.get("coach_override_profile") or "").strip() or None
+        )
+        effective_profile = coach_override or behavioral_profile_auto
+        source = "admin_override" if coach_override else "auto"
+
+        return jsonify({
+            "user_id": user_id,
+            "email": email,
+            "custom_llm_instructions": settings.get("custom_llm_instructions"),
+            "private_admin_notes": settings.get("private_admin_notes"),
+            "queued_override_question": settings.get(
+                "queued_override_question"
+            ),
+            "behavioral_profile": effective_profile,
+            "behavioral_profile_auto": behavioral_profile_auto,
+            "behavioral_profile_source": source,
+            "coach_override_profile": coach_override,
+            "inferred_learner_profile": settings.get(
+                "inferred_learner_profile"
+            ),
+            "admin_profile_override_active": bool(
+                settings.get("admin_profile_override")
+            ),
+            "admin_profile_override_set_at": settings.get(
+                "admin_profile_override_set_at"
+            ),
+        }), 200
+
+    except Exception as e:
+        logger.error(
+            "admin/user/<id>/context %s failed: %s",
+            request.method, e, exc_info=True,
+        )
+        sentry_sdk.capture_exception(e)
+        return jsonify({
+            "code": "V2_ERROR",
+            "error": "Failed to load admin user context",
+        }), 500
+
+
 @v2_bp.route("/admin/students/<user_id>/overrides", methods=["PUT"])
 @require_admin
 def v2_admin_student_overrides(user_id):

@@ -6983,6 +6983,129 @@ class DatabaseService:
             logger.error(f"upsert_user_settings failed: {e}")
             return None
 
+    def upsert_admin_user_context_fields(
+        self,
+        *,
+        user_id: str,
+        custom_llm_instructions: Optional[str] = None,
+        private_admin_notes: Optional[str] = None,
+        queued_override_question: Optional[str] = None,
+        coach_override_profile: Optional[str] = None,
+        update_instructions: bool = False,
+        update_notes: bool = False,
+        update_queued_question: bool = False,
+        update_override_profile: bool = False,
+    ) -> Optional[dict]:
+        """Partial upsert of admin-editable user context fields.
+
+        Phase 12 — backs the PUT /v2/admin/user/<id>/context endpoint.
+        Each ``update_*`` flag controls whether the matching value is
+        included in the upsert payload, so the caller can update one
+        card on the admin view without overwriting the others.
+
+        Note: ``coach_override_profile`` lives on user_sniper_profile
+        (the Phase 9 admin learner-type override), not user_settings.
+        We persist it via the existing student-profile path so the
+        precedence rule in _augment_coaching_system_prompt keeps
+        working unchanged.
+
+        Returns the updated user_settings row, or None on failure.
+        """
+        # ── user_settings side ────────────────────────────────────
+        payload: dict[str, Any] = {
+            "user_id": user_id,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+        if update_instructions:
+            payload["custom_llm_instructions"] = custom_llm_instructions
+        if update_notes:
+            payload["private_admin_notes"] = private_admin_notes
+        if update_queued_question:
+            payload["queued_override_question"] = queued_override_question
+
+        updated_row = None
+        if len(payload) > 2:  # more than just user_id + updated_at
+            try:
+                result = (
+                    self.client.table("user_settings")
+                    .upsert(payload)
+                    .execute()
+                )
+                if result.data:
+                    updated_row = result.data[0]
+            except Exception as e:
+                logger.warning(
+                    "upsert_admin_user_context_fields settings failed "
+                    "user=%s err=%s", user_id, e,
+                )
+                return None
+        else:
+            # Caller didn't ask to update anything on user_settings;
+            # we still want to return the current row.
+            updated_row = self.get_user_settings(user_id)
+
+        # ── user_sniper_profile side (coach_override_profile) ─────
+        if update_override_profile:
+            try:
+                # The override column lives on user_sniper_profile (per
+                # the precedence rule in routes/v2_routes.py::
+                # _augment_coaching_system_prompt). Upsert keyed on
+                # user_id; we only touch the override column so the
+                # rest of the profile (behavioral_profile, etc.) stays
+                # intact.
+                self.client.table("user_sniper_profile").upsert({
+                    "user_id": user_id,
+                    "coach_override_profile": coach_override_profile,
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                }).execute()
+            except Exception as e:
+                logger.warning(
+                    "upsert_admin_user_context_fields override failed "
+                    "user=%s err=%s", user_id, e,
+                )
+
+        return updated_row
+
+    def consume_queued_override_question(
+        self,
+        user_id: str,
+    ) -> Optional[str]:
+        """Pop and clear the queued override question for a user.
+
+        Returns the question text (or None when nothing is queued).
+        Called by the contextual /chat first-question handler — the
+        admin queues a question via PUT context, the next chat eats
+        it. Atomic-ish: we read then clear in two calls; a concurrent
+        admin edit between them would lose the new question, which is
+        acceptable for an admin-only single-edit workflow.
+        """
+        try:
+            settings = self.get_user_settings(user_id) or {}
+            q = (settings.get("queued_override_question") or "").strip()
+            if not q:
+                return None
+            # Clear it so the same question doesn't fire twice.
+            try:
+                (
+                    self.client.table("user_settings")
+                    .update({"queued_override_question": None})
+                    .eq("user_id", user_id)
+                    .execute()
+                )
+            except Exception as clear_err:
+                logger.warning(
+                    "consume_queued_override_question: clear failed "
+                    "user=%s err=%s — returning question anyway",
+                    user_id, clear_err,
+                )
+            return q
+        except Exception as e:
+            logger.warning(
+                "consume_queued_override_question failed user=%s err=%s",
+                user_id, e,
+            )
+            return None
+
     # ------------------------------------------------------------------
     # User timeline (admin: chronological interview view)
     # ------------------------------------------------------------------
