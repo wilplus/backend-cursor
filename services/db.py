@@ -7066,6 +7066,66 @@ class DatabaseService:
 
         return updated_row
 
+    def list_sessions_for_user_admin(self, user_id: str) -> List[dict]:
+        """All v2_sessions rows for ``user_id``, newest first.
+
+        Phase 12 — backs the multi-session admin user view. No limit
+        — the admin needs the full longitudinal history. Returns []
+        on any error so the endpoint still renders.
+        """
+        try:
+            return (
+                self.client.table("v2_sessions")
+                .select("*")
+                .eq("user_id", user_id)
+                .order("created_at", desc=True)
+                .execute()
+                .data
+            ) or []
+        except Exception as e:
+            logger.warning(
+                "list_sessions_for_user_admin failed user=%s err=%s",
+                user_id, e,
+            )
+            return []
+
+    def list_snippets_for_sessions(
+        self,
+        session_ids: List[str],
+    ) -> dict[str, List[dict]]:
+        """Bulk load charisma_snippets grouped by session_id.
+
+        Phase 12 — replaces N per-session queries with one IN-list
+        query. Returns ``{session_id: [snippet, ...]}``. Sessions
+        with no snippets are NOT included as empty entries; callers
+        should default to [] when looking up a missing key.
+        """
+        if not session_ids:
+            return {}
+        try:
+            rows = (
+                self.client.table("charisma_snippets")
+                .select("*")
+                .in_("session_id", session_ids)
+                .order("turn_number", desc=False)
+                .order("start_offset_ms", desc=False)
+                .execute()
+                .data
+            ) or []
+        except Exception as e:
+            logger.warning(
+                "list_snippets_for_sessions failed err=%s", e,
+            )
+            return {}
+
+        grouped: dict[str, List[dict]] = {}
+        for r in rows:
+            sid = r.get("session_id")
+            if not sid:
+                continue
+            grouped.setdefault(str(sid), []).append(r)
+        return grouped
+
     def consume_queued_override_question(
         self,
         user_id: str,

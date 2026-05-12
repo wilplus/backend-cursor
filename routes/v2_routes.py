@@ -772,26 +772,37 @@ def v2_admin_student_sniper_profile(user_id):
 @v2_bp.route("/admin/user/<user_id>/context", methods=["GET", "PUT"])
 @require_admin
 def v2_admin_user_context(user_id):
-    """Admin user-level context: Private Notes + Global LLM Instructions
-    + Learning Profile + queued override question.
+    """Admin user view: full longitudinal context.
 
     Phase 12. Backs the admin user view at /admin/users/<id>. The
     frontend BFF proxies /api/admin/user/<id>/context here.
 
-    GET response::
+    GET response shape::
 
         {
-          "user_id": "...",
-          "email": "...",
-          "custom_llm_instructions": "..." | null,
-          "private_admin_notes": "..." | null,
-          "queued_override_question": "..." | null,
-          "behavioral_profile": "Stressor" | null,        # auto-detected
-          "behavioral_profile_source": "auto" | "admin_override",
-          "coach_override_profile": "Stressor" | null,    # admin override
-          "inferred_learner_profile": {...} | null,        # Phase 3 blob
-          "admin_profile_override_active": bool,           # Phase 9
-          "admin_profile_override_set_at": "..." | null
+          "user": {
+            "id", "email", "name",
+            "custom_llm_instructions", "private_admin_notes",
+            "queued_override_question",
+            "behavioral_profile", "behavioral_profile_auto",
+            "behavioral_profile_source",     # "auto" | "admin_override"
+            "coach_override_profile",
+            "inferred_learner_profile",
+            "admin_profile_override_active",
+            "admin_profile_override_set_at"
+          },
+          "sessions": [    # newest first; full history
+            {
+              "id", "created_at",
+              "date":   "12 May 2026",
+              "score":  "8.5/10" | null,
+              "status": "Pending Review" | "Completed",
+              "summary":   "...",
+              "metrics":   [{label, value}, ...],
+              "snippets":  [{id, range, wpm, pitch, type, status}, ...],
+              "chat":      [{from: "bot"|"user", text}, ...]
+            }, ...
+          ]
         }
 
     PUT body (every field optional — only included keys are written)::
@@ -803,8 +814,8 @@ def v2_admin_user_context(user_id):
           "coach_override_profile": "Stressor" # null clears
         }
 
-    PUT response: the same shape as GET, reflecting the post-write
-    state so the frontend can re-render without a second request.
+    PUT response: same shape as GET so the frontend re-renders from
+    one request.
     """
     if not _is_valid_uuid(user_id):
         return jsonify({
@@ -816,9 +827,6 @@ def v2_admin_user_context(user_id):
         if request.method == "PUT":
             body = request.get_json(silent=True) or {}
 
-            # Helper: True when the caller explicitly sent this key
-            # (so we can distinguish "clear this value" from "leave
-            # it alone"). The DB helper's update_* flags use this.
             def has(k):
                 return k in body
 
@@ -846,48 +854,9 @@ def v2_admin_user_context(user_id):
                 update_queued_question=has("queued_override_question"),
                 update_override_profile=has("coach_override_profile"),
             )
-            # Fall through to read-back so the response matches GET.
+            # Fall through to read-back.
 
-        # ── GET (and PUT read-back) ───────────────────────────────
-        settings = db.get_user_settings(user_id) or {}
-        sniper = db.get_sniper_profile(user_id) or {}
-        email = None
-        try:
-            email = db.get_user_email_from_auth(user_id)
-        except Exception:
-            pass
-
-        behavioral_profile_auto = (
-            (sniper.get("behavioral_profile") or "").strip() or None
-        )
-        coach_override = (
-            (sniper.get("coach_override_profile") or "").strip() or None
-        )
-        effective_profile = coach_override or behavioral_profile_auto
-        source = "admin_override" if coach_override else "auto"
-
-        return jsonify({
-            "user_id": user_id,
-            "email": email,
-            "custom_llm_instructions": settings.get("custom_llm_instructions"),
-            "private_admin_notes": settings.get("private_admin_notes"),
-            "queued_override_question": settings.get(
-                "queued_override_question"
-            ),
-            "behavioral_profile": effective_profile,
-            "behavioral_profile_auto": behavioral_profile_auto,
-            "behavioral_profile_source": source,
-            "coach_override_profile": coach_override,
-            "inferred_learner_profile": settings.get(
-                "inferred_learner_profile"
-            ),
-            "admin_profile_override_active": bool(
-                settings.get("admin_profile_override")
-            ),
-            "admin_profile_override_set_at": settings.get(
-                "admin_profile_override_set_at"
-            ),
-        }), 200
+        return jsonify(_build_admin_user_context_payload(user_id)), 200
 
     except Exception as e:
         logger.error(
@@ -899,6 +868,289 @@ def v2_admin_user_context(user_id):
             "code": "V2_ERROR",
             "error": "Failed to load admin user context",
         }), 500
+
+
+def _build_admin_user_context_payload(user_id: str) -> dict:
+    """Compose the multi-session admin user context payload.
+
+    Pulls user-level state from user_settings + user_sniper_profile,
+    then loads ALL the user's v2_sessions (newest first) and bulk-
+    loads their charisma_snippets in one IN-list query (no N+1).
+    Renders each session into the frontend's session-block shape.
+    """
+    settings = db.get_user_settings(user_id) or {}
+    sniper = db.get_sniper_profile(user_id) or {}
+    email = None
+    name = None
+    try:
+        email = db.get_user_email_from_auth(user_id)
+    except Exception:
+        pass
+    try:
+        details = db.v2_get_student_details(user_id) or {}
+        name = details.get("name")
+    except Exception:
+        pass
+
+    behavioral_profile_auto = (
+        (sniper.get("behavioral_profile") or "").strip() or None
+    )
+    coach_override = (
+        (sniper.get("coach_override_profile") or "").strip() or None
+    )
+    effective_profile = coach_override or behavioral_profile_auto
+
+    user_block = {
+        "id": user_id,
+        "email": email,
+        "name": name,
+        "custom_llm_instructions": settings.get("custom_llm_instructions"),
+        "private_admin_notes": settings.get("private_admin_notes"),
+        "queued_override_question": settings.get(
+            "queued_override_question"
+        ),
+        "behavioral_profile": effective_profile,
+        "behavioral_profile_auto": behavioral_profile_auto,
+        "behavioral_profile_source": (
+            "admin_override" if coach_override else "auto"
+        ),
+        "coach_override_profile": coach_override,
+        "inferred_learner_profile": settings.get(
+            "inferred_learner_profile"
+        ),
+        "admin_profile_override_active": bool(
+            settings.get("admin_profile_override")
+        ),
+        "admin_profile_override_set_at": settings.get(
+            "admin_profile_override_set_at"
+        ),
+    }
+
+    sessions = db.list_sessions_for_user_admin(user_id)
+    session_ids = [str(s.get("id")) for s in sessions if s.get("id")]
+    snippets_by_session = db.list_snippets_for_sessions(session_ids)
+
+    session_blocks: list[dict] = [
+        _build_session_block(s, snippets_by_session.get(str(s.get("id")), []))
+        for s in sessions
+    ]
+
+    return {"user": user_block, "sessions": session_blocks}
+
+
+def _build_session_block(session: dict, snippets: list[dict]) -> dict:
+    """Render one session for the multi-session admin payload.
+
+    snippets are the charisma_snippets rows belonging to this session.
+    They serve double-duty: the chat-transcript rendering iterates
+    them ordered by turn_number to build the Q/A bubble list, and the
+    snippet-card list reads the same rows for the highlight cards.
+    """
+    session_id = session.get("id")
+    created_at = session.get("created_at")
+
+    kpi = session.get("kpi_score")
+    score_label: str | None = None
+    if isinstance(kpi, (int, float)):
+        # /10 format per the frontend contract — divide 0..100 by 10
+        # and round to one decimal place.
+        score_label = f"{round(float(kpi) / 10.0, 1)}/10"
+
+    status = (
+        "Completed"
+        if (session.get("results_published_at") or "")
+        else "Pending Review"
+    )
+
+    summary = _build_session_summary(session)
+
+    metrics = _build_session_metrics_list(session)
+
+    # Sort snippets: turn_number ASC then start_offset_ms ASC. The
+    # bulk loader already returns this order, but we re-sort
+    # defensively in case the response shape changes upstream.
+    ordered_snippets = sorted(
+        snippets,
+        key=lambda s: (
+            s.get("turn_number") or 0,
+            s.get("start_offset_ms") or 0,
+        ),
+    )
+
+    snippet_cards = [_render_snippet_card(s) for s in ordered_snippets]
+    chat = _render_chat_thread(ordered_snippets)
+
+    return {
+        "id": str(session_id) if session_id else None,
+        "created_at": created_at,
+        "date": _format_admin_date(created_at),
+        "score": score_label,
+        "status": status,
+        "summary": summary,
+        "metrics": metrics,
+        "snippets": snippet_cards,
+        "chat": chat,
+    }
+
+
+def _build_session_summary(session: dict) -> str | None:
+    """One-line summary string for the session-list accordion header.
+
+    Replaces the legacy ai_task_alignment_comment with a deterministic
+    KPI + Stickiness line. Returns None when neither metric has run
+    yet so the frontend can show "Compute metrics to see a summary".
+    """
+    kpi = session.get("kpi_score")
+    top_topic = (session.get("stickiness_top_topic") or "").strip() or None
+    stickiness = session.get("stickiness_score")
+
+    parts: list[str] = []
+    if isinstance(kpi, (int, float)):
+        parts.append(f"KPI {round(float(kpi))}/100")
+    if top_topic and isinstance(stickiness, (int, float)):
+        parts.append(
+            f"Sticky topic: {top_topic} ({round(float(stickiness) * 100)}%)"
+        )
+    elif top_topic:
+        parts.append(f"Sticky topic: {top_topic}")
+
+    if parts:
+        return " · ".join(parts)
+
+    # Legacy fallback — historical sessions wrote ai_task_alignment_
+    # comment before the panel was redesigned; surface it so the row
+    # isn't blank when the new metrics haven't run.
+    legacy = (session.get("ai_task_alignment_comment") or "").strip()
+    return legacy or None
+
+
+def _build_session_metrics_list(session: dict) -> list[dict]:
+    """Flat [{label, value}] list for the metrics card on the session header."""
+    out: list[dict] = []
+
+    def add(label: str, value, unit: str = ""):
+        if value is None:
+            return
+        if isinstance(value, float):
+            text = f"{value:g}{unit}"
+        else:
+            text = f"{value}{unit}"
+        out.append({"label": label, "value": text})
+
+    add("KPI", session.get("kpi_score"), "/100")
+    add("WPM", session.get("global_wpm"))
+    add("Fillers", session.get("global_fillers"))
+    add("Pause", session.get("global_pause_ms"), "ms")
+    add("Dynamic", session.get("global_dynamic_db"), "dB")
+    add("Pitch", session.get("global_pitch_center"))
+    add("Energy", session.get("global_energy"))
+
+    sticky = session.get("stickiness_score")
+    sticky_topic = (session.get("stickiness_top_topic") or "").strip() or None
+    if sticky_topic and isinstance(sticky, (int, float)):
+        out.append({
+            "label": "Sticky topic",
+            "value": f"{sticky_topic} ({round(float(sticky) * 100)}%)",
+        })
+
+    return out
+
+
+def _render_snippet_card(snippet: dict) -> dict:
+    """One snippet → frontend snippet card shape."""
+    start = snippet.get("start_offset_ms")
+    duration = snippet.get("duration_ms")
+    range_label: str | None = None
+    if start is not None and duration is not None:
+        start_sec = int(float(start) / 1000.0)
+        end_sec = int((float(start) + float(duration)) / 1000.0)
+        range_label = f"{_mmss(start_sec)} - {_mmss(end_sec)}"
+
+    snippet_type = (snippet.get("snippet_type") or "unlabeled").strip().lower()
+
+    # status taxonomy for the card: published when admin commented +
+    # snippet has a type; saved when only one of those is set;
+    # otherwise raw.
+    has_comment = bool((snippet.get("admin_comment") or "").strip())
+    has_type = snippet_type in ("charisma", "stress")
+    if has_comment and has_type:
+        status = "published"
+    elif has_comment or has_type:
+        status = "saved"
+    elif snippet.get("is_skipped"):
+        status = "skipped"
+    else:
+        status = "raw"
+
+    return {
+        "id": str(snippet.get("id")) if snippet.get("id") else None,
+        "turn_number": snippet.get("turn_number"),
+        "range": range_label,
+        "wpm": snippet.get("wpm"),
+        "pitch": snippet.get("pitch_center"),
+        "type": snippet_type,
+        "status": status,
+        "admin_comment": snippet.get("admin_comment"),
+        "ai_draft_admin_comment": snippet.get("ai_draft_admin_comment"),
+        "follow_up_question": snippet.get("follow_up_question"),
+        "ai_draft_follow_up_question": snippet.get(
+            "ai_draft_follow_up_question"
+        ),
+        "transcript": snippet.get("transcript"),
+        "is_skipped": bool(snippet.get("is_skipped")),
+    }
+
+
+def _render_chat_thread(snippets: list[dict]) -> list[dict]:
+    """Build [{from, text}, ...] chat from snippets, oldest first.
+
+    For each turn we emit a 'bot' bubble (the question) followed by a
+    'user' bubble (their answer transcript). Bubbles with empty text
+    are skipped — better to render a clean thread than to print empty
+    cards for missing transcripts.
+    """
+    thread: list[dict] = []
+    for s in snippets:
+        question = (s.get("question_text") or "").strip()
+        answer = (s.get("transcript") or "").strip()
+        if question:
+            thread.append({
+                "from": "bot",
+                "text": question,
+                "turn_number": s.get("turn_number"),
+                "snippet_id": str(s.get("id")) if s.get("id") else None,
+            })
+        if answer:
+            thread.append({
+                "from": "user",
+                "text": answer,
+                "turn_number": s.get("turn_number"),
+                "snippet_id": str(s.get("id")) if s.get("id") else None,
+            })
+    return thread
+
+
+def _mmss(total_seconds: int) -> str:
+    minutes = total_seconds // 60
+    seconds = total_seconds % 60
+    return f"{minutes}:{seconds:02d}"
+
+
+def _format_admin_date(value) -> str | None:
+    """ISO/datetime → '12 May 2026'. Returns None on parse failure."""
+    if value is None:
+        return None
+    try:
+        if isinstance(value, str):
+            from datetime import datetime as _dt
+            # Supabase returns ISO 8601 with a trailing 'Z' OR offset.
+            cleaned = value.replace("Z", "+00:00")
+            dt = _dt.fromisoformat(cleaned)
+        else:
+            dt = value
+        return dt.strftime("%-d %b %Y")
+    except Exception:
+        return None
 
 
 @v2_bp.route("/admin/students/<user_id>/overrides", methods=["PUT"])
