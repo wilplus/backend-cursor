@@ -9216,6 +9216,18 @@ def v2_user_chat_first_question():
         source_snippet_id = (request.args.get("sourceSnippetId") or "").strip() or None
         intent = (request.args.get("intent") or "").strip().lower() or None
 
+        # Admin queued override (PUT /v2/admin/user/<id>/context with
+        # queued_override_question) wins over everything: contextual
+        # snippet flow, stored follow-up question, dynamic LLM. Pop-and-
+        # clear so it fires exactly once.
+        override = db.consume_queued_override_question(user_id)
+        if override:
+            return jsonify({
+                "status": "ok",
+                "question": override,
+                "source": "admin_override",
+            }), 200
+
         contextual_init = None
         if source_snippet_id or intent:
             if not (source_snippet_id and intent):
@@ -10101,6 +10113,21 @@ def v2_public_interview_next_question():
         # Explicit assessment requests force the scripted EBCP path
         # regardless of baseline state (e.g. admin recalibrating).
         force_assessment = bool(body.get("force_assessment", False))
+
+        # ── Admin queued override (turn 1 only) ──────────────────────
+        # PUT /v2/admin/user/<id>/context with queued_override_question
+        # arms a one-shot question that takes precedence over EBCP
+        # script, LLM bypass, and force_assessment. Pop-and-clear on
+        # turn 1 so it fires exactly once per session start.
+        if user_id and turn_number == 1:
+            override = db.consume_queued_override_question(user_id)
+            if override:
+                return jsonify({
+                    "question": override,
+                    "tone": "charisma",
+                    "turn_number": turn_number,
+                    "source": "admin_override",
+                }), 200
 
         # ── Phase 13: smart-EBCP routing ─────────────────────────────
         # Returning users (baseline_established=TRUE) skip the
