@@ -431,3 +431,67 @@ class EmailService:
 
 # Singleton instance
 email_service = EmailService()
+
+
+def send_email_resend(
+    *,
+    to: str,
+    subject: str,
+    html: str,
+    text: str | None = None,
+    from_addr: str | None = None,
+) -> dict:
+    """Thin module-level wrapper around resend.Emails.send().
+
+    Two routes in routes/v2_routes.py (publish-session-results around
+    L9333, the cleaner /admin/sessions/<id>/publish alias around L9873)
+    already import this name and call it with (to, subject, html). The
+    function was never defined, so every publish click crashed with:
+
+        ImportError: cannot import name 'send_email_resend'
+                     from 'services.email_service'
+
+    What it does:
+      - validates the Resend API key is present and SEND_EMAILS is true
+      - picks the From: address (passed-in override, else
+        config.RESEND_FROM_EMAIL)
+      - synthesises a plain-text fallback from the HTML (strip tags) if
+        the caller didn't supply one
+      - calls resend.Emails.send() and returns the response dict, or
+        raises on failure (the route handlers catch + log + 502 on
+        their side, so we don't swallow)
+
+    Kept module-level (rather than an EmailService method) because the
+    callers import it as a free function and it's a tiny generic
+    sender — no need to instantiate.
+    """
+    if not config.SEND_EMAILS:
+        logger.info("send_email_resend: SEND_EMAILS is false — skipping (to=%s)", to)
+        return {"status": "pending", "sent": False}
+
+    if not config.RESEND_API_KEY:
+        raise RuntimeError("RESEND_API_KEY not configured")
+
+    # resend.api_key is set in EmailService.__init__ (singleton above
+    # initialises it). If for any reason the singleton hasn't been
+    # constructed yet, set it here defensively so a direct module-level
+    # call works without an explicit EmailService() instantiation.
+    if not getattr(resend, "api_key", None):
+        resend.api_key = config.RESEND_API_KEY
+
+    fallback_text = text or re.sub(r"<[^>]+>", "", html or "").strip()
+    params = {
+        "from": (from_addr or config.RESEND_FROM_EMAIL),
+        "to": [to],
+        "subject": subject,
+        "text": fallback_text,
+        "html": html,
+    }
+    try:
+        response = resend.Emails.send(params)
+        logger.info("send_email_resend: accepted to=%s subject=%r", to, subject)
+        return {"status": "sent", "sent": True, "resend_response": response}
+    except Exception as e:
+        sentry_sdk.capture_exception(e)
+        logger.warning("send_email_resend failed to=%s err=%r", to, e)
+        raise
