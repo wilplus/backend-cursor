@@ -5420,6 +5420,91 @@ class DatabaseService:
             logger.error("update_snippet_follow_up_question failed for %s: %s", snippet_id, e)
             return None
 
+    def get_top_followup_examples(
+        self,
+        intent: str,
+        *,
+        limit: int = 3,
+        min_score: float = 0.65,
+        exclude_snippet_id: str | None = None,
+    ) -> List[dict]:
+        """Highest-scoring past contextual exchanges for a given intent.
+
+        Powers the few-shot retrieval layer of the coaching-effectiveness
+        loop: when the user clicks a CTA, the LLM that generates the
+        first question receives the TOP-N past exchanges (across all
+        users) where the same intent produced a high-quality answer.
+        That nudges the model toward the wording patterns that have
+        already worked, instead of generating from scratch every time.
+
+        Filters applied (all must hold):
+          - snippet_type = intent ("charisma" or "stress")
+          - admin_comment non-null (we need the coach's framing)
+          - follow_up_outcome non-null with score >= ``min_score``
+          - id != exclude_snippet_id (don't show a row its own example)
+          - transcript non-null AND follow_up_outcome.user_answer.text
+            non-null (both ends of the exchange must be visible)
+
+        Ordered by follow_up_outcome.score DESC. Returns at most
+        ``limit`` rows. Returns [] on any error so the caller (LLM
+        prompt builder) can fall back to context-free generation.
+
+        We DELIBERATELY do not scope to a single user_id — coaching
+        wisdom is meant to be shared. If you ever want user-specific
+        examples, add a user_id arg and an .eq() filter.
+        """
+        try:
+            normalised = (intent or "").strip().lower()
+            if normalised not in ("charisma", "stress"):
+                return []
+
+            query = (
+                self.client.table("charisma_snippets")
+                .select(
+                    "id, snippet_type, transcript, admin_comment, "
+                    "follow_up_question, follow_up_outcome, created_at"
+                )
+                .eq("snippet_type", normalised)
+                .not_.is_("admin_comment", "null")
+                .not_.is_("transcript", "null")
+                .not_.is_("follow_up_outcome", "null")
+                .order("follow_up_outcome->>score", desc=True)
+                .limit(max(1, min(limit * 4, 20)))
+            )
+            if exclude_snippet_id:
+                query = query.neq("id", exclude_snippet_id)
+            rows = (query.execute().data) or []
+
+            # Post-filter in Python: PostgREST can't easily compare a
+            # JSONB text-extract as a number, and can't poke inside
+            # `user_answer` for emptiness. We fetched a few extra rows
+            # above so this still yields the requested limit.
+            kept: list[dict] = []
+            for r in rows:
+                outcome = r.get("follow_up_outcome") or {}
+                try:
+                    score = float(outcome.get("score") or 0)
+                except (TypeError, ValueError):
+                    score = 0.0
+                if score < min_score:
+                    continue
+                user_answer = (
+                    ((outcome.get("user_answer") or {}).get("text") or "").strip()
+                )
+                if not user_answer:
+                    continue
+                if not (r.get("admin_comment") or "").strip():
+                    continue
+                if not (r.get("transcript") or "").strip():
+                    continue
+                kept.append(r)
+                if len(kept) >= limit:
+                    break
+            return kept
+        except Exception as e:
+            logger.warning("get_top_followup_examples failed: %s", e)
+            return []
+
     def set_snippet_follow_up_outcome(
         self,
         snippet_id: str,

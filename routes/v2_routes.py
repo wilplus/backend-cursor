@@ -7322,6 +7322,80 @@ def _generate_snippet_follow_up_question(
         return None
 
 
+def _build_few_shot_block(
+    *,
+    intent: str,
+    exclude_snippet_id: str | None = None,
+    limit: int = 3,
+) -> str:
+    """Render the top-N high-scoring past exchanges as a system-prompt
+    preamble for contextual question generation.
+
+    Pulls from db.get_top_followup_examples which returns charisma_snippets
+    rows whose follow_up_outcome.score is at least min_score. Each example
+    is rendered with four pieces of context:
+      - the original user transcript (the moment the coach annotated)
+      - the coach's insight
+      - the question that was asked
+      - the user's actual answer + the evaluator's score
+
+    Returns an empty string when no qualifying examples exist (early
+    days of the loop, before enough outcomes have accumulated) — the
+    caller is responsible for handling the empty case.
+
+    Example budget: we trim each field to a sane character cap so a
+    handful of long transcripts can't blow the context window. The
+    examples block typically lands in the 400-1200 char range.
+    """
+    examples = db.get_top_followup_examples(
+        intent, limit=limit, exclude_snippet_id=exclude_snippet_id
+    )
+    if not examples:
+        return ""
+
+    def _truncate(s: str | None, cap: int) -> str:
+        text = (s or "").strip()
+        if not text:
+            return ""
+        if len(text) <= cap:
+            return text
+        return text[:cap].rstrip() + "…"
+
+    chunks: list[str] = [
+        "Below are examples of past coaching follow-ups that the user "
+        "actually engaged with deeply (each scored highly by an automated "
+        "evaluator). Study the STYLE of the questions: specific, somatic, "
+        "concrete, non-leading. Use the SAME style when you generate the "
+        "new question further down."
+    ]
+    for i, ex in enumerate(examples, start=1):
+        outcome = ex.get("follow_up_outcome") or {}
+        evaluator = (outcome.get("evaluator") or {}) if isinstance(outcome, dict) else {}
+        score_raw = outcome.get("score") if isinstance(outcome, dict) else None
+        try:
+            score_pct = int(round(float(score_raw) * 100))
+        except (TypeError, ValueError):
+            score_pct = 0
+        question = (
+            ex.get("follow_up_question")
+            or (outcome.get("question_text") if isinstance(outcome, dict) else None)
+            or ""
+        )
+        user_answer = (
+            (outcome.get("user_answer") or {}).get("text")
+            if isinstance(outcome, dict)
+            else None
+        ) or ""
+        chunks.append(
+            f"\nEXAMPLE {i} (score: {score_pct}/100)\n"
+            f"Original moment: \"{_truncate(ex.get('transcript'), 240)}\"\n"
+            f"Coach insight:   \"{_truncate(ex.get('admin_comment'), 200)}\"\n"
+            f"Question asked:  \"{_truncate(question, 200)}\"\n"
+            f"User responded:  \"{_truncate(user_answer, 280)}\""
+        )
+    return "\n".join(chunks)
+
+
 def _generate_llm_question(
     turn_number: int,
     tone: str,
@@ -7348,9 +7422,21 @@ def _generate_llm_question(
             intent = (contextual_init.get("intent") or "").strip().lower()
             transcript = (contextual_init.get("transcript") or "").strip()
             admin_comment = (contextual_init.get("admin_comment") or "").strip()
+            source_snippet_id = contextual_init.get("source_snippet_id")
             if intent in _CONTEXTUAL_INTENTS and transcript and admin_comment:
+                # ── Few-shot retrieval ──────────────────────────────
+                # Pull the top-scoring past exchanges with the SAME intent
+                # so the model is anchored on wording that historically
+                # produced specific, emotionally-rich answers. Falls
+                # silent when there aren't enough labeled outcomes yet
+                # (no examples block in the prompt, model generates
+                # purely from the current snippet's context).
+                few_shot_block = _build_few_shot_block(
+                    intent=intent, exclude_snippet_id=source_snippet_id
+                )
+
                 if intent == "charisma":
-                    system_prompt = (
+                    base = (
                         "You are a coaching assistant. "
                         "The user clicked 'Understand your charisma' on a past recording. "
                         f"In that recording, they said: '{transcript}'. "
@@ -7365,7 +7451,7 @@ def _generate_llm_question(
                         "Return ONLY these two parts separated by `|||`, nothing else."
                     )
                 else:
-                    system_prompt = (
+                    base = (
                         "You are a coaching assistant. "
                         "The user clicked 'Release your stress'. "
                         f"In that recording, they said: '{transcript}'. "
@@ -7379,6 +7465,12 @@ def _generate_llm_question(
                         "What was the thing you most feared would go wrong right then?` "
                         "Return ONLY these two parts separated by `|||`, nothing else."
                     )
+
+                # Few-shot block goes BEFORE the task description so the
+                # examples set tone before the task constraints are read.
+                system_prompt = (
+                    f"{few_shot_block}\n\n{base}" if few_shot_block else base
+                )
 
                 response = service.client.chat.completions.create(
                     model="gpt-4o-mini",
@@ -8467,6 +8559,9 @@ def v2_user_chat_first_question():
                 "intent": intent,
                 "transcript": transcript,
                 "admin_comment": admin_comment,
+                # Forwarded so the few-shot retrieval doesn't echo this
+                # exact snippet back as one of its own examples.
+                "source_snippet_id": source_snippet_id,
             }
 
         # Generate the first question dynamically
