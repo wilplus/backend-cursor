@@ -6905,6 +6905,44 @@ class DatabaseService:
             logger.error(f"update_session_ai_alignment failed: {e}")
             return None
 
+    def update_session_stickiness(
+        self,
+        *,
+        session_id: str,
+        top_topic: Optional[str],
+        score: Optional[float],
+        distribution: Optional[dict],
+    ) -> Optional[dict]:
+        """Persist the Phase 11 stickiness-topic metric onto v2_sessions.
+
+        Pass all three values as None to clear (e.g. after a re-extract
+        produced no topics). The ``computed_at`` timestamp is always
+        written so admins can see "ran but found nothing" vs "never ran".
+        """
+        try:
+            result = (
+                self.client.table("v2_sessions")
+                .update({
+                    "stickiness_top_topic": top_topic,
+                    "stickiness_score": score,
+                    "stickiness_topic_distribution": distribution,
+                    "stickiness_computed_at": (
+                        datetime.now(timezone.utc).isoformat()
+                    ),
+                })
+                .eq("id", session_id)
+                .execute()
+            )
+            if result.data and len(result.data) > 0:
+                return result.data[0]
+            return None
+        except Exception as e:
+            logger.warning(
+                "update_session_stickiness failed session=%s err=%s",
+                session_id, e,
+            )
+            return None
+
     # ------------------------------------------------------------------
     # User settings (LLM instructions)
     # ------------------------------------------------------------------

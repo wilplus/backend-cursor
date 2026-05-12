@@ -252,6 +252,46 @@ STRESS_DRAFT_SCHEMA: dict[str, Any] = {
 }
 
 
+SESSION_TOPIC_EXTRACTION_SCHEMA: dict[str, Any] = {
+    # Phase 11 — per-session stickiness-topic metric. The compute-
+    # metrics LLM call already evaluates the transcript; we extend
+    # that same call to ALSO emit a 1-2-word topic per snippet so
+    # stickiness can be computed without a second round-trip.
+    #
+    # The array length is expected to match the number of snippets
+    # passed in, but we don't enforce a length constraint in the
+    # schema — the model occasionally drops trailing turns when the
+    # input is long. The caller pads with None where lengths don't
+    # match so stickiness can still be computed off the topics that
+    # ARE present.
+    "name": "session_topic_extraction_v1",
+    "strict": True,
+    "schema": {
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["per_turn_topics"],
+        "properties": {
+            "per_turn_topics": {
+                "type": "array",
+                "items": {
+                    "type": "string",
+                    "maxLength": 60,
+                    "description": (
+                        "1-2 word topic the user is talking about "
+                        "in this turn. Use the same wording across "
+                        "turns when the topic repeats (so \"my boss "
+                        "Sarah\" and \"Sarah\" should be normalised "
+                        "by you to one phrase). Empty string when "
+                        "the turn was non-substantive (filler, "
+                        "\"yeah\", etc.)."
+                    ),
+                },
+            },
+        },
+    },
+}
+
+
 AWARENESS_TURN_SCHEMA: dict[str, Any] = {
     "name": "awareness_turn_v1",
     "strict": True,

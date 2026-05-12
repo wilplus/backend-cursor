@@ -11627,6 +11627,15 @@ def v2_admin_get_session(session_id):
             "kpi_score": session.get("kpi_score"),
             "ai_score": session.get("ai_task_alignment_score"),
             "ai_summary": session.get("ai_task_alignment_comment"),
+            # Phase 11 — stickiness-topic. Three NULL fields when the
+            # admin hasn't yet clicked "Compute Metrics" on this
+            # session; the frontend renders "—" in that case.
+            "stickiness_top_topic": session.get("stickiness_top_topic"),
+            "stickiness_score": session.get("stickiness_score"),
+            "stickiness_topic_distribution": session.get(
+                "stickiness_topic_distribution"
+            ),
+            "stickiness_computed_at": session.get("stickiness_computed_at"),
         }
 
         return jsonify({
@@ -11947,6 +11956,33 @@ def v2_admin_compute_session_metrics(session_id):
         # _compute_session_global_metrics has already persisted the row
         # via db.update_session_global_metrics — no second write needed.
 
+        # Phase 11 — stickiness-topic metric. One additional LLM call
+        # extracting a 1-2 word topic per snippet; we count the
+        # top-recurring topic and the share of snippets it covers.
+        # Best-effort: any failure leaves the columns NULL, the AI
+        # alignment LLM call below still runs.
+        stickiness_top_topic = None
+        stickiness_score = None
+        stickiness_distribution = None
+        try:
+            from services.stickiness import compute_session_stickiness
+            (
+                stickiness_top_topic,
+                stickiness_score,
+                stickiness_distribution,
+            ) = compute_session_stickiness(active_snippets)
+            db.update_session_stickiness(
+                session_id=session_id,
+                top_topic=stickiness_top_topic,
+                score=stickiness_score,
+                distribution=stickiness_distribution,
+            )
+        except Exception as stick_err:
+            logger.warning(
+                "compute-metrics: stickiness failed (non-fatal): %s",
+                stick_err,
+            )
+
         # AI alignment: evaluate the full interview transcript via LLM
         # Includes KPI score as context so the LLM factors it in
         ai_score = None
@@ -12025,6 +12061,14 @@ def v2_admin_compute_session_metrics(session_id):
             "kpi": {
                 "score": kpi_score,
                 "debug": kpi_debug,
+            },
+            # Phase 11 — stickiness-topic. Frontend renders top_topic
+            # + score (as percent) and uses distribution for an
+            # optional drill-down.
+            "stickiness": {
+                "top_topic": stickiness_top_topic,
+                "score": stickiness_score,
+                "distribution": stickiness_distribution,
             },
             "ai_alignment": {
                 "score": ai_score,
