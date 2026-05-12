@@ -7327,6 +7327,7 @@ def _build_few_shot_block(
     intent: str,
     exclude_snippet_id: str | None = None,
     limit: int = 3,
+    viewer_user_id: str | None = None,
 ) -> str:
     """Render the top-N high-scoring past exchanges as a system-prompt
     preamble for contextual question generation.
@@ -7339,6 +7340,13 @@ def _build_few_shot_block(
       - the question that was asked
       - the user's actual answer + the evaluator's score
 
+    When ``viewer_user_id`` is provided AND Config.FEW_SHOT_TENANT_SCOPED
+    is on, retrieval is scoped to the viewer's company (joined via
+    user_settings.company_id) plus any 'canonical' rows. Otherwise the
+    legacy cross-tenant retrieval is preserved exactly. Every call
+    writes one row to ``few_shot_retrievals`` for compliance + Phase 1
+    pool-depth telemetry.
+
     Returns an empty string when no qualifying examples exist (early
     days of the loop, before enough outcomes have accumulated) — the
     caller is responsible for handling the empty case.
@@ -7348,7 +7356,10 @@ def _build_few_shot_block(
     examples block typically lands in the 400-1200 char range.
     """
     examples = db.get_top_followup_examples(
-        intent, limit=limit, exclude_snippet_id=exclude_snippet_id
+        intent,
+        limit=limit,
+        exclude_snippet_id=exclude_snippet_id,
+        viewer_user_id=viewer_user_id,
     )
     if not examples:
         return ""
@@ -7432,7 +7443,13 @@ def _generate_llm_question(
                 # (no examples block in the prompt, model generates
                 # purely from the current snippet's context).
                 few_shot_block = _build_few_shot_block(
-                    intent=intent, exclude_snippet_id=source_snippet_id
+                    intent=intent,
+                    exclude_snippet_id=source_snippet_id,
+                    # Phase 1 tenant scoping flows through the caller's
+                    # user_id so retrieval can JOIN through
+                    # user_settings.company_id. When None (background
+                    # script, internal caller), the legacy path runs.
+                    viewer_user_id=user_id,
                 )
 
                 if intent == "charisma":

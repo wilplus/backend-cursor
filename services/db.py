@@ -5516,6 +5516,64 @@ class DatabaseService:
             logger.error("update_snippet_follow_up_question failed for %s: %s", snippet_id, e)
             return None
 
+    def get_user_company_id(self, user_id: str) -> Optional[str]:
+        """Lookup the user's company_id from user_settings.
+
+        Returns None when:
+          - the row doesn't exist (user never edited any setting), OR
+          - the column isn't migrated yet (PGRST204), OR
+          - the value is genuinely NULL (user in personal sandbox).
+        Callers must treat all three uniformly — no company == personal
+        sandbox, snippet retrieval scoped to viewer only.
+        """
+        try:
+            result = (
+                self.client.table("user_settings")
+                .select("company_id")
+                .eq("user_id", user_id)
+                .limit(1)
+                .execute()
+            )
+            if result.data and len(result.data) > 0:
+                return (result.data[0].get("company_id") or None)
+            return None
+        except Exception as e:
+            logger.warning("get_user_company_id failed for %s: %s", user_id, e)
+            return None
+
+    def log_few_shot_retrieval(
+        self,
+        *,
+        user_id: str,
+        requesting_snippet_id: Optional[str],
+        exemplar_snippet_ids: List[str],
+        intent: str,
+        scope_mode: str,
+        company_id: Optional[str],
+    ) -> None:
+        """Fire-and-forget audit log entry for a few-shot retrieval.
+
+        Compliance + telemetry. ``scope_mode`` documents the rollout
+        path:
+          - 'cross_tenant_legacy' — flag off, pre-Phase-1 behaviour
+          - 'tenant_scoped'      — flag on, viewer has a company_id
+          - 'canonical_topup'    — flag on, no company / cold start;
+                                     limited to canonical rows
+        Failures swallow — the retrieval already happened in memory
+        and we don't want an audit-log write to delay the LLM call.
+        """
+        try:
+            self.client.table("few_shot_retrievals").insert({
+                "user_id": user_id,
+                "requesting_snippet_id": requesting_snippet_id,
+                "exemplar_snippet_ids": list(exemplar_snippet_ids),
+                "intent": intent,
+                "scope_mode": scope_mode,
+                "company_id": company_id,
+            }).execute()
+        except Exception as e:
+            logger.warning("log_few_shot_retrieval failed: %s", e)
+
     def get_top_followup_examples(
         self,
         intent: str,
@@ -5523,6 +5581,7 @@ class DatabaseService:
         limit: int = 3,
         min_score: float = 0.65,
         exclude_snippet_id: str | None = None,
+        viewer_user_id: str | None = None,
     ) -> List[dict]:
         """Highest-scoring past contextual exchanges for a given intent.
 
@@ -5554,11 +5613,29 @@ class DatabaseService:
             if normalised not in ("charisma", "stress"):
                 return []
 
+            # ── Phase 1: tenant scoping ─────────────────────────────
+            # Resolve viewer_company_id BEFORE building the query so
+            # the .eq filter is applied at the DB level — the cheaper
+            # path for big tenants and the only way the audit log
+            # captures the company_id that was actually used.
+            #
+            # Flag-gated. When FEW_SHOT_TENANT_SCOPED is False (default)
+            # the query is identical to pre-Phase-1; the audit log
+            # records `scope_mode = 'cross_tenant_legacy'` so we can
+            # diff retrieval shape before / after the rollout.
+            from config import Config
+            tenant_scoping_on = bool(Config().FEW_SHOT_TENANT_SCOPED)
+            viewer_company_id: str | None = None
+            scope_mode = "cross_tenant_legacy"
+            if tenant_scoping_on and viewer_user_id:
+                viewer_company_id = self.get_user_company_id(viewer_user_id)
+
             query = (
                 self.client.table("charisma_snippets")
                 .select(
                     "id, snippet_type, transcript, admin_comment, "
-                    "follow_up_question, follow_up_outcome, created_at"
+                    "follow_up_question, follow_up_outcome, sharing_scope, "
+                    "user_id, created_at"
                 )
                 .eq("snippet_type", normalised)
                 .not_.is_("admin_comment", "null")
@@ -5570,6 +5647,36 @@ class DatabaseService:
             if exclude_snippet_id:
                 query = query.neq("id", exclude_snippet_id)
             rows = (query.execute().data) or []
+
+            # Tenant scope filter runs in Python:
+            #   - When the flag is off, no filter; legacy cross-tenant.
+            #   - When on AND viewer has a company_id: include rows
+            #     authored by users IN THE SAME company (we resolve
+            #     company per snippet via a single batched user_settings
+            #     lookup) PLUS rows with sharing_scope='canonical'.
+            #   - When on AND viewer has no company_id (cold-start /
+            #     personal sandbox): canonical-only — never expose
+            #     another user's data.
+            #   - Always: skip rows with sharing_scope='private'.
+            if tenant_scoping_on:
+                if viewer_company_id:
+                    scope_mode = "tenant_scoped"
+                    rows = self._filter_by_tenant_or_canonical(
+                        rows, viewer_company_id
+                    )
+                else:
+                    scope_mode = "canonical_topup"
+                    rows = [
+                        r for r in rows
+                        if (r.get("sharing_scope") or "tenant_only") == "canonical"
+                    ]
+            else:
+                # Flag-off: still drop explicitly-private rows so the
+                # 'private' value is enforced regardless of the flag.
+                rows = [
+                    r for r in rows
+                    if (r.get("sharing_scope") or "tenant_only") != "private"
+                ]
 
             # Post-filter in Python: PostgREST can't easily compare a
             # JSONB text-extract as a number, and can't poke inside
@@ -5605,10 +5712,83 @@ class DatabaseService:
                 kept.append(r)
                 if len(kept) >= limit:
                     break
+
+            # Fire-and-forget audit log. Phase 1 telemetry — lets us
+            # measure pool depth per tenant before flipping the flag
+            # to default-on.
+            if viewer_user_id:
+                self.log_few_shot_retrieval(
+                    user_id=viewer_user_id,
+                    requesting_snippet_id=exclude_snippet_id,
+                    exemplar_snippet_ids=[str(r.get("id")) for r in kept if r.get("id")],
+                    intent=normalised,
+                    scope_mode=scope_mode,
+                    company_id=viewer_company_id,
+                )
             return kept
         except Exception as e:
             logger.warning("get_top_followup_examples failed: %s", e)
             return []
+
+    def _filter_by_tenant_or_canonical(
+        self,
+        rows: list[dict],
+        viewer_company_id: str,
+    ) -> list[dict]:
+        """Keep rows whose author is in the viewer's company OR whose
+        sharing_scope is 'canonical'. Drop everything else.
+
+        Single batched user_settings lookup for the candidate authors —
+        we do NOT issue per-row queries. For typical pool sizes
+        (limit * 4 == 12 candidates) the IN-list query is fast.
+        """
+        canonical_rows: list[dict] = []
+        author_ids: set[str] = set()
+        for r in rows:
+            scope = (r.get("sharing_scope") or "tenant_only").lower()
+            if scope == "private":
+                continue
+            if scope == "canonical":
+                canonical_rows.append(r)
+                continue
+            uid = r.get("user_id")
+            if uid:
+                author_ids.add(str(uid))
+
+        if not author_ids:
+            return canonical_rows
+
+        # Batch lookup: which of these authors share viewer_company_id?
+        try:
+            settings = (
+                self.client.table("user_settings")
+                .select("user_id, company_id")
+                .in_("user_id", list(author_ids))
+                .execute()
+                .data
+            ) or []
+        except Exception as e:
+            logger.warning(
+                "_filter_by_tenant_or_canonical: settings lookup failed: %s", e
+            )
+            settings = []
+
+        same_company = {
+            str(s.get("user_id"))
+            for s in settings
+            if s.get("company_id") and str(s.get("company_id")) == str(viewer_company_id)
+        }
+
+        tenant_rows = [
+            r for r in rows
+            if (r.get("sharing_scope") or "tenant_only").lower() == "tenant_only"
+            and str(r.get("user_id") or "") in same_company
+        ]
+
+        # Preserve order from the score-sorted source query, with
+        # canonical rows interleaved naturally (they were already in
+        # `rows` and we kept their original positions).
+        return [r for r in rows if r in tenant_rows or r in canonical_rows]
 
     def set_snippet_follow_up_outcome(
         self,

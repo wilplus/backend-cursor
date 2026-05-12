@@ -83,6 +83,23 @@ class Config:
     # matching the codebase's pre-migration default.
     R2_AUDIO_BUCKET_NAME = (os.getenv("R2_AUDIO_BUCKET_NAME") or "").strip()
     R2_AUDIO_PUBLIC_BASE_URL = (os.getenv("R2_AUDIO_PUBLIC_BASE_URL") or "").strip()
+
+    # ── Phase 1: tenant-scoped few-shot pool ─────────────────────────────
+    # When TRUE, services.db.get_top_followup_examples scopes exemplars
+    # to the viewer's company (joined via user_settings.company_id) plus
+    # any 'canonical' rows admins have explicitly promoted. When FALSE
+    # (default), behaviour matches the pre-Phase-1 cross-tenant retrieval
+    # so the flag flip is the only thing the rollout depends on.
+    # Flip to TRUE only after:
+    #   1. The companies / sharing_scope migration has run.
+    #   2. The discovery SQL (in the Phase 1 plan) returns at least one
+    #      candidate tenant with ≥3 active users + ≥50 commented snippets.
+    #   3. Pool-depth backtest confirms the candidate tenant gets a
+    #      non-empty few-shot block on most retrievals.
+    FEW_SHOT_TENANT_SCOPED = (
+        (os.getenv("FEW_SHOT_TENANT_SCOPED") or "").strip().lower()
+        in ("1", "true", "yes", "on")
+    )
     
     # Frontend URL (for email links)
     FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
