@@ -204,12 +204,19 @@ def send_publish_results_email(
         headers["List-Unsubscribe"] = f"<{unsubscribe_url}>"
         headers["List-Unsubscribe-Post"] = "List-Unsubscribe=One-Click"
 
+    # Force the display name on this transactional email to "Willab"
+    # regardless of what RESEND_FROM_EMAIL is configured as globally
+    # (could be a personal name from a dev account). The mailbox part
+    # is preserved — we only rewrite the display name.
+    from_addr = _willab_branded_from(cfg.RESEND_FROM_EMAIL)
+
     try:
         result = send_email_resend(
             to=user_email,
             subject=subject,
             html=rendered["html"],
             text=rendered["text"] or None,
+            from_addr=from_addr,
             headers=headers or None,
         )
         logger.info(
@@ -240,6 +247,51 @@ def _build_subject(snippet_count: int) -> str:
         if n == 0
         else f"{n} new voice moments are ready"
     )
+
+
+# Display name baked into every Post-Session-Results envelope. The
+# user's mailbox part is preserved (extracted from RESEND_FROM_EMAIL);
+# only the friendly-name half is rewritten so inboxes show "Willab"
+# instead of whatever dev account label the global env var holds.
+_BRAND_DISPLAY_NAME = "Willab"
+
+
+def _willab_branded_from(raw_from: str | None) -> str | None:
+    """Return ``"Willab <email@domain>"`` from any of these inputs:
+
+      - ``"Artur <hello@willonski.com>"``  → ``"Willab <hello@willonski.com>"``
+      - ``"hello@willonski.com"``          → ``"Willab <hello@willonski.com>"``
+      - ``None`` / ``""``                  → ``None`` (caller falls
+                                              back to send_email_resend's
+                                              own default)
+
+    The transformation is mailbox-preserving — we never touch the
+    local-part or domain. Only the display name gets normalised.
+    Robust against extra whitespace and stray quotes.
+    """
+    if not raw_from:
+        return None
+    s = raw_from.strip()
+    if not s:
+        return None
+
+    # Case 1: already in "Name <email>" format. Extract the bracketed
+    # mailbox and re-attach Willab as the display name.
+    if "<" in s and s.endswith(">"):
+        bracket_open = s.rfind("<")
+        mailbox = s[bracket_open + 1 : -1].strip()
+        if mailbox and "@" in mailbox:
+            return f"{_BRAND_DISPLAY_NAME} <{mailbox}>"
+        # Malformed — fall through to bare-email handling below.
+
+    # Case 2: bare "email@domain" with no angle brackets.
+    if "@" in s and "<" not in s and ">" not in s:
+        return f"{_BRAND_DISPLAY_NAME} <{s}>"
+
+    # Anything else (weird formatting): return as-is so we don't
+    # silently drop the From header. send_email_resend will use it
+    # verbatim; downstream Resend either accepts or 400s loudly.
+    return raw_from
 
 
 def _render_inline_fallback(props: dict) -> dict:
