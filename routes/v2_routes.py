@@ -7877,6 +7877,147 @@ def _build_few_shot_block(
     return "\n".join(chunks)
 
 
+def _build_longitudinal_context_block(
+    *,
+    snippet_id: str | None,
+    user_id: str | None,
+) -> str | None:
+    """Phase 15 — assemble per-user longitudinal context for the
+    first-question prompt of a contextual /chat click.
+
+    Returns a multi-section string ready to splice into the system
+    prompt, or None when no signal is available for this user.
+
+    Sections (each independently optional):
+
+      [LEARNER PROFILE]              — behavioral_profile + recurring
+                                       themes from inferred profile,
+                                       layered with any admin override.
+      [RECENT REFLECTION]            — current_learner_mirror narrative
+                                       (truncated to 600 chars so it
+                                       doesn't dominate the prompt).
+      [PRIOR ATTEMPTS ON THIS MOMENT]— last 3 coaching_attempts for
+                                       this snippet+user, with the
+                                       questions previously asked so
+                                       the LLM avoids repeating
+                                       angles and acknowledges
+                                       progress.
+
+    Failure modes swallow + log — a partial block is better than
+    blocking the first-question generation. Returns None when ALL
+    three sections come back empty (caller falls through to the
+    pre-Phase-15 behaviour).
+    """
+    if not user_id or not snippet_id:
+        return None
+
+    sections: list[str] = []
+    settings: dict = {}
+
+    # ── Learner profile ───────────────────────────────────────────
+    try:
+        settings = db.get_user_settings(user_id) or {}
+        sniper = db.get_sniper_profile(user_id) or {}
+        learner_type = (
+            (sniper.get("coach_override_profile") or "").strip()
+            or (sniper.get("behavioral_profile") or "").strip()
+        )
+        profile = settings.get("inferred_learner_profile") or {}
+        override = settings.get("admin_profile_override") or None
+        base_traits = (profile.get("traits") or {}) if isinstance(profile, dict) else {}
+        override_traits = (
+            (override.get("traits") or {}) if isinstance(override, dict) else {}
+        )
+        merged_traits = {**base_traits, **override_traits}
+        recurring = merged_traits.get("recurring_entities") or {}
+        themes = []
+        if isinstance(recurring, dict):
+            for t in (recurring.get("themes") or [])[:3]:
+                if isinstance(t, dict) and t.get("label"):
+                    themes.append(str(t.get("label")))
+
+        if learner_type or themes:
+            lines = ["[LEARNER PROFILE]"]
+            if learner_type:
+                lines.append(f"Learner type: {learner_type}")
+            if themes:
+                lines.append(
+                    f"Recurring themes the user keeps returning to: "
+                    f"{', '.join(themes)}"
+                )
+            lines.append(
+                "Frame your question to push them past their comfort zone "
+                "given this profile — don't pander to their stated "
+                "strengths."
+            )
+            sections.append("\n".join(lines))
+    except Exception as e:
+        logger.warning(
+            "first-question: profile load failed user=%s err=%s",
+            user_id, e,
+        )
+
+    # ── Recent reflection (mirror) ────────────────────────────────
+    try:
+        mirror = (settings or db.get_user_settings(user_id) or {}).get(
+            "current_learner_mirror"
+        ) or {}
+        narrative = (mirror.get("narrative") or "").strip() if isinstance(mirror, dict) else ""
+        if narrative:
+            if len(narrative) > 600:
+                narrative = narrative[:600].rstrip() + "…"
+            sections.append(f"[RECENT REFLECTION]\n{narrative}")
+    except Exception as e:
+        logger.warning(
+            "first-question: mirror load failed user=%s err=%s",
+            user_id, e,
+        )
+
+    # ── Prior attempts on THIS snippet ────────────────────────────
+    try:
+        attempts = db.list_coaching_attempts_for_snippet(
+            snippet_id, user_id=user_id,
+        ) or []
+        # list_coaching_attempts_for_snippet returns chronological
+        # (attempt_number ASC) — last 3 means the most recent three.
+        recent = attempts[-3:] if attempts else []
+        question_lines: list[str] = []
+        for a in recent:
+            q = (a.get("question_text") or "").strip()
+            if not q:
+                continue
+            if len(q) > 200:
+                q = q[:200].rstrip() + "…"
+            question_lines.append(f"  - {q}")
+        if question_lines:
+            lines = ["[PRIOR ATTEMPTS ON THIS MOMENT]"]
+            lines.append(
+                f"The user has already worked through these "
+                f"{len(question_lines)} angle(s) on THIS snippet:"
+            )
+            lines.extend(question_lines)
+            lines.append(
+                "Open with ONE sentence acknowledging their progress "
+                "(\"You've already worked the X angle…\"), then ask a "
+                "NEW question that probes a different dimension — "
+                "emotion if they covered mechanics, mechanics if they "
+                "covered emotion, the people involved if they covered "
+                "the situation, etc. DO NOT repeat any prior question's "
+                "angle."
+            )
+            sections.append("\n".join(lines))
+    except Exception as e:
+        logger.warning(
+            "first-question: prior attempts load failed "
+            "snippet=%s user=%s err=%s",
+            snippet_id, user_id, e,
+        )
+
+    if not sections:
+        return None
+    return "\n\n".join(sections)
+
+
 def _generate_llm_question(
     turn_number: int,
     tone: str,
@@ -7929,6 +8070,27 @@ def _generate_llm_question(
                     viewer_user_id=user_id,
                 )
 
+                # ── Phase 15 longitudinal context ───────────────────
+                # When enabled, splice in learner-profile + mirror +
+                # prior attempts on THIS snippet so the LLM stops
+                # producing the same opener on every click. Gated by
+                # LONGITUDINAL_FIRST_QUESTION_ENABLED so deploy is a
+                # no-op until the operator flips it; falls silent if
+                # the user has no signal yet (cold-start unaffected).
+                longitudinal_block: str | None = None
+                try:
+                    from config import Config
+                    if Config().LONGITUDINAL_FIRST_QUESTION_ENABLED:
+                        longitudinal_block = _build_longitudinal_context_block(
+                            snippet_id=source_snippet_id,
+                            user_id=user_id,
+                        )
+                except Exception as long_err:
+                    logger.warning(
+                        "first-question: longitudinal block failed: %s",
+                        long_err,
+                    )
+
                 if intent == "charisma":
                     base = (
                         "You are a coaching assistant. "
@@ -7960,17 +8122,31 @@ def _generate_llm_question(
                         "Return ONLY these two parts separated by `|||`, nothing else."
                     )
 
-                # Few-shot block goes BEFORE the task description so the
-                # examples set tone before the task constraints are read.
-                system_prompt = (
-                    f"{few_shot_block}\n\n{base}" if few_shot_block else base
-                )
+                # Few-shot examples first (anchors wording), then
+                # Phase 15 longitudinal context (the user-specific
+                # signal), then the base task description. Order
+                # matters: the LLM should read tone-anchors and
+                # who-this-user-is BEFORE the imperative task block.
+                prompt_parts: list[str] = []
+                if few_shot_block:
+                    prompt_parts.append(few_shot_block)
+                if longitudinal_block:
+                    prompt_parts.append(longitudinal_block)
+                prompt_parts.append(base)
+                system_prompt = "\n\n".join(prompt_parts)
+
+                # Phase 15 — bump temperature when longitudinal
+                # context is in play so even identical inputs produce
+                # verbal variety. Falls back to the legacy 0.7 when
+                # the block is empty (preserves prior behaviour byte-
+                # for-byte for cold-start users).
+                ctx_temperature = 0.85 if longitudinal_block else 0.7
 
                 response = service.client.chat.completions.create(
                     model="gpt-4o-mini",
                     messages=[{"role": "system", "content": system_prompt}],
-                    max_tokens=150,
-                    temperature=0.7,
+                    max_tokens=180,
+                    temperature=ctx_temperature,
                 )
                 question = response.choices[0].message.content.strip()
                 if question.startswith('"') and question.endswith('"'):

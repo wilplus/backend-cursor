@@ -133,6 +133,23 @@ class Config:
         in ("1", "true", "yes", "on")
     )
 
+    # ── Phase 15: longitudinal first-question generation ────────────────
+    # When TRUE, the contextual_init branch of _generate_llm_question
+    # enriches its system prompt with:
+    #   - the user's last 3 coaching_attempts on THIS snippet (so the
+    #     LLM can avoid repeating prior angles and acknowledge progress)
+    #   - the user's inferred_learner_profile (learner type + recurring
+    #     themes) for tone shaping
+    #   - the user's current learner_mirror narrative (continuity across
+    #     the system as a whole)
+    # And bumps temperature 0.7 → 0.85 so even identical inputs vary.
+    # Default OFF so deploy is a no-op; flip to TRUE after a sanity
+    # check of one user's CTA click.
+    LONGITUDINAL_FIRST_QUESTION_ENABLED = (
+        (os.getenv("LONGITUDINAL_FIRST_QUESTION_ENABLED") or "").strip().lower()
+        in ("1", "true", "yes", "on")
+    )
+
     # ── Phase 6: on-demand learner mirror ────────────────────────────────
     # When TRUE the user-facing mirror endpoints (GET /v2/user/mirror,
     # POST /v2/user/mirror/generate) accept requests and the generate
