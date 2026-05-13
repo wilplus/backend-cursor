@@ -12509,6 +12509,35 @@ def _compute_session_global_metrics(session_id: str) -> dict | None:
     pitches = [s.get("pitch_center") for s in active_snippets if s.get("pitch_center") is not None]
     energies = [s.get("energy") for s in active_snippets if s.get("energy") is not None]
 
+    # Transcript-derived fallback for snippets whose per-row wpm /
+    # fillers columns were never populated (typical: snippets created
+    # via paths that skipped the metrics pipeline). count_fillers +
+    # compute_wpm are deterministic and cheap — running them here
+    # closes the data gap without touching the upstream pipelines OR
+    # requiring a backfill. The snippet rows themselves stay NULL
+    # (we don't side-effect into the DB from a metrics aggregator);
+    # if cache-y behaviour matters later, a one-shot script that
+    # walks the table and persists these values is a follow-up.
+    if not wpms or not fillers_list:
+        try:
+            from utils.metrics import compute_wpm as _compute_wpm
+            from utils.metrics import count_fillers as _count_fillers
+            for s in active_snippets:
+                transcript = (s.get("transcript") or "").strip()
+                duration_ms = s.get("duration_ms")
+                if not transcript or not duration_ms:
+                    continue
+                if s.get("wpm") is None:
+                    wpms.append(_compute_wpm(transcript, float(duration_ms) / 1000.0))
+                if s.get("fillers") is None:
+                    fc = _count_fillers(transcript)
+                    fillers_list.append(int(fc.get("total") or 0))
+        except Exception as fb_err:
+            logger.warning(
+                "session metrics: transcript-fallback failed session=%s: %s",
+                session_id, fb_err,
+            )
+
     # JSONB ``metrics`` fallback for any field whose dedicated column is empty
     if not pauses:
         pauses = [s["metrics"]["pause_ms"] for s in active_snippets
