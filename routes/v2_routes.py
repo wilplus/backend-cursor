@@ -9383,13 +9383,25 @@ def v2_coaching_trial_recording():
 def v2_user_chat_first_question():
     """Start a contextual chat by generating the first AI question.
 
-    Query params:
-      - sourceSnippetId (UUID)
+    Query params (any one spelling accepted, see comment below):
+      - sourceSnippetId / sourceSnippet / source_snippet_id  (UUID)
       - intent: charisma|stress
     """
     try:
         user_id = request.user_id
-        source_snippet_id = (request.args.get("sourceSnippetId") or "").strip() or None
+        # Defensive param read: the frontend /chat page URL has used
+        # `sourceSnippet` while the backend canonical name is
+        # `sourceSnippetId`. A mismatch causes the contextual init
+        # to silently fall through to the cold-start interview path
+        # ("Are you good at math?"). Accept all three spellings so a
+        # one-side-only deploy can never reintroduce that bug —
+        # whichever key the BFF forwards, we resolve it.
+        source_snippet_id = (
+            request.args.get("sourceSnippetId")
+            or request.args.get("sourceSnippet")
+            or request.args.get("source_snippet_id")
+            or ""
+        ).strip() or None
         intent = (request.args.get("intent") or "").strip().lower() or None
 
         # Admin queued override (PUT /v2/admin/user/<id>/context with
