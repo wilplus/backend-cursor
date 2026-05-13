@@ -172,6 +172,37 @@ def compute_baseline_summary(
     persisted = db.set_user_baseline_summary(user_id, summary)
     if not persisted:
         return None
+
+    # ── Audit log for the directed-freestyle pivot ──────────────
+    # Greppable tag [BASELINE_SUMMARY_AUDIT] so we can pull these
+    # straight out of Railway logs for the first ~10 production
+    # users post-pivot and judge whether the LLM digest is still
+    # producing useful coaching_handles now that the source
+    # transcripts come from dynamic scenarios (Phase 19) rather
+    # than the old static EBCP probes. Each transcript truncated
+    # to 200 chars so a long answer doesn't blow up the log line.
+    try:
+        excerpts = [
+            "T{n}={t!r}".format(
+                n=t.get("turn_number") or (i + 1),
+                t=(t.get("transcript") or "")[:200],
+            )
+            for i, t in enumerate(usable)
+        ]
+        logger.info(
+            "[BASELINE_SUMMARY_AUDIT] user=%s "
+            "coaching_handle=%r headline=%r turns=[%s]",
+            user_id,
+            summary.get("coaching_handle"),
+            summary.get("headline"),
+            " | ".join(excerpts),
+        )
+    except Exception as audit_err:
+        logger.warning(
+            "[BASELINE_SUMMARY_AUDIT] log emit failed user=%s err=%s",
+            user_id, audit_err,
+        )
+
     return summary
 
 

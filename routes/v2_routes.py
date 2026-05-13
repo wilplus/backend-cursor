@@ -7905,6 +7905,7 @@ def _generate_llm_question(
     *,
     contextual_init: dict | None = None,
     timeout_seconds: float | None = None,
+    baseline_objective: str | None = None,
 ) -> str | None:
     """Call GPT-4o-mini to generate the next interview question.
 
@@ -7916,6 +7917,15 @@ def _generate_llm_question(
     a stalled LLM doesn't keep a returning user staring at a blank
     chat; the caller catches None and substitutes the scripted EBCP
     turn 1 as a safety net.
+
+    baseline_objective — Directed-freestyle pivot. When the caller
+    supplies a per-turn objective string (turns 1-4 for users with
+    baseline_established=False), it's spliced into the system prompt
+    as a [CURRENT_TURN_OBJECTIVE] block so the LLM has a concrete
+    psychological target for THIS turn (icebreaker, empathy,
+    pressure, quick reflex) rather than freelancing across the four
+    onboarding turns. Returning users get None and the prompt
+    falls back to standard alternation.
     """
     try:
         from services.openai_service import OpenAIService
@@ -8114,6 +8124,24 @@ def _generate_llm_question(
                     "interview: baseline_summary inject failed "
                     "user=%s err=%s", user_id, bs_err,
                 )
+
+        # Directed-freestyle objective for the 4 onboarding turns.
+        # When the caller passes a baseline_objective, the LLM gets
+        # a hard psychological target for THIS turn instead of free-
+        # styling across the onboarding phase. Goes AFTER the
+        # profile/baseline blocks so identity context is read first,
+        # then the per-turn directive is the last instruction the
+        # model sees before "generate" — anchoring effect on the
+        # response.
+        if baseline_objective:
+            system_prompt = (
+                f"{system_prompt}\n\n[CURRENT_TURN_OBJECTIVE]\n"
+                f"{baseline_objective.strip()}\n\n"
+                "Build a one-question scenario that delivers the "
+                "objective above. Stay in the interview-coach voice. "
+                "Do NOT explain the objective to the user — just ask "
+                "the question."
+            )
 
         # Build conversation history for context
         messages = [{"role": "system", "content": system_prompt}]
@@ -10469,59 +10497,90 @@ def _obscure_email(email: str) -> str | None:
     return f"{head}**@{domain}"
 
 
-# ── Intent guardrail helpers — REMOVED IN PHASE 18 ──────────────────
-# _INTENT_ACK_CATEGORIES + _intent_ack_check / _already_fired /
-# _mark_fired existed solely to prepend an "I hear you" bubble onto
-# the scripted EBCP turn-2-to-4 responses when a user interrupted
-# with confusion / resistance / "are you a bot?". With turns 1-4 now
-# owned entirely by the frontend (M1-M4 hardcoded strings,
-# docs/ARCHITECTURE_SINGLE_SOURCE_OF_TRUTH.md §1), there's no
-# scripted backend response to prepend onto. Removing the helpers
-# keeps the route file honest. If a frontend-side analogue is
-# wanted in the future, build it in TSX where the bubbles live.
+# ── Directed-freestyle baseline (turns 1-4 for new users) ──────────
+# Pivot from Phase 18's "frontend owns turns 1-4 as hardcoded strings"
+# back to backend-generated dynamic questions, but with per-turn
+# psychological OBJECTIVES so the LLM doesn't drift across the
+# onboarding arc. Each turn has a single goal; the LLM builds the
+# scenario but must satisfy that goal.
+#
+# Tone arc for the 4 baseline turns: turns 1-2 are warm (charisma —
+# icebreaker + empathy), turns 3-4 are pressure (stress — challenge
+# + reflex). After baseline (turn 5+), tone alternates per SSoT §4.
+
+_BASELINE_TURN_OBJECTIVES: dict[int, str] = {
+    1: (
+        "OBJECTIVE: Icebreaker. Give a low-stakes scenario explaining "
+        "something basic to a beginner. Do NOT mention math. Goal: "
+        "Get them speaking naturally for 15s."
+    ),
+    2: (
+        "OBJECTIVE: Empathy/Frustration. The person they are talking "
+        "to misunderstood their last answer. Ask how they de-escalate "
+        "and re-explain."
+    ),
+    3: (
+        "OBJECTIVE: Pressure. Pivot to a high-pressure professional "
+        "environment where someone aggressively challenges their "
+        "authority. Demand a response."
+    ),
+    4: (
+        "OBJECTIVE: Quick Reflex. Give an arbitrary, sudden constraint "
+        "(e.g., \"Pitch your idea in exactly 3 sentences\")."
+    ),
+}
+
+
+def _baseline_turn_objective(turn_number: int) -> str | None:
+    """Return the directed-freestyle objective for turns 1-4, or
+    None for turns outside that range. The caller decides whether
+    to apply it (typically only when baseline_established=False)."""
+    return _BASELINE_TURN_OBJECTIVES.get(turn_number)
+
+
+def _baseline_turn_tone(turn_number: int) -> str:
+    """Tone for baseline turns 1-4. Turns 1-2 charisma (warm arc),
+    turns 3-4 stress (pressure arc). Out-of-range falls back to a
+    standard alternation."""
+    if turn_number == 1 or turn_number == 2:
+        return "charisma"
+    if turn_number == 3 or turn_number == 4:
+        return "stress"
+    return "charisma" if turn_number % 2 == 1 else "stress"
 
 
 @v2_bp.route("/public/interview/next-question", methods=["POST"])
 def v2_public_interview_next_question():
-    """Return the next interview question — TURN 5+ ONLY.
+    """Return the next interview question — backend owns ALL turns.
 
-    Per docs/ARCHITECTURE_SINGLE_SOURCE_OF_TRUTH.md (Phase 18):
-    the frontend owns turns 1-4 as hardcoded ONBOARDING_MESSAGES.
-    This endpoint refuses turn_number <= 4 with a clear error so a
-    confused client can't silently regress into "backend owns the
-    opener again."
+    Pivot from Phase 18 (frontend-owned cold-start strings) back to
+    backend-generated dynamic questions, with directed-freestyle
+    per-turn objectives on turns 1-4 for users who haven't completed
+    a baseline yet. See docs/ARCHITECTURE_SINGLE_SOURCE_OF_TRUTH.md
+    §1 for the architectural reasoning.
 
-    Turn 5+ behaviour (unchanged):
-      - Tone alternation: turn 5 = charisma, turn 6 = stress, …
-      - _generate_llm_question with previous_turns + soft profile +
-        Phase 16 baseline_summary + Phase 15 longitudinal block.
-      - Falls back to _INTERVIEW_QUESTIONS_FALLBACK pool on LLM
-        failure.
+    Behaviour:
+      - Turn 1-4 + baseline_established=False (new user):
+        LLM generates the question with a strict per-turn
+        CURRENT_TURN_OBJECTIVE block in the system prompt + tone
+        forced by the objective arc (1-2 charisma, 3-4 stress).
+      - Turn 1-4 + baseline_established=True (returning user) OR
+        turn 5+ for anyone:
+        Standard alternation (charisma on odd, stress on even),
+        no objective override. Phase 16 baseline summary +
+        Phase 15 longitudinal + Phase 17 metrics blocks still
+        apply via _generate_llm_question's existing augmentation.
 
-    Input:  { turn_number: int (>=5), user_id?: str, previous_turns?: [{question, transcript?}] }
+    Input:  { turn_number: int, user_id?: str, previous_turns?: [{question, transcript?}] }
     Output:
       200 { question, tone, turn_number, source }
-      400 { code: "TURN_OWNED_BY_FRONTEND" } when turn_number <= 4
       400 { code: "INVALID_INPUT" } on malformed input
     """
     try:
         body = request.get_json(silent=True) or {}
-        turn_number = int(body.get("turn_number", 5))
-
-        # ── Phase 18 guardrail: turns 1-4 belong to the frontend ────
-        # The frontend renders M1-M4 from its hardcoded
-        # ONBOARDING_MESSAGES array. The backend is never called for
-        # those turns. Refuse loudly so a buggy client surfaces the
-        # contract violation immediately.
-        if turn_number < 5:
-            return jsonify({
-                "code": "TURN_OWNED_BY_FRONTEND",
-                "error": (
-                    "Turns 1-4 are hardcoded ONBOARDING_MESSAGES on the "
-                    "frontend. The backend does not generate them. See "
-                    "docs/ARCHITECTURE_SINGLE_SOURCE_OF_TRUTH.md §1."
-                ),
-            }), 400
+        turn_number = int(body.get("turn_number", 1))
+        if turn_number < 1:
+            turn_number = 1
 
         user_id = (body.get("user_id") or "").strip() or None
         previous_turns = body.get("previous_turns") or None
@@ -10540,23 +10599,46 @@ def v2_public_interview_next_question():
                     "source": "admin_override",
                 }), 200
 
-        # ── Tone alternation (backend is authoritative) ──────────────
-        # Per SSoT §4: turn 5 = charisma, 6 = stress, 7 = charisma, …
-        # The frontend renders response.tone blindly.
-        post_baseline_index = turn_number - 4  # 1, 2, 3 …
-        tone = "charisma" if post_baseline_index % 2 == 1 else "stress"
+        # ── Directed-freestyle decision ──────────────────────────────
+        # New users (baseline_established=False) on turns 1-4 get the
+        # per-turn objective + warm/stress arc. Everyone else uses
+        # standard alternation.
+        in_baseline_phase = (
+            1 <= turn_number <= 4
+            and bool(user_id)
+            and not db.get_baseline_established(user_id)
+        )
+        # Guests with no user_id during turns 1-4: also apply the
+        # baseline objectives. The flag-flip can't fire (no user_id)
+        # but the question quality matters just as much for funnel UX.
+        if 1 <= turn_number <= 4 and not user_id:
+            in_baseline_phase = True
+
+        if in_baseline_phase:
+            tone = _baseline_turn_tone(turn_number)
+            objective = _baseline_turn_objective(turn_number)
+        else:
+            # Turn 5+ for anyone, OR turns 1-4 for a returning user.
+            # Standard alternation: odd→charisma, even→stress.
+            tone = "charisma" if turn_number % 2 == 1 else "stress"
+            objective = None
 
         question = _generate_llm_question(
             turn_number=turn_number,
             tone=tone,
             previous_turns=previous_turns,
             user_id=user_id,
+            baseline_objective=objective,
         )
-        source = "llm" if question else "fallback"
+        source = (
+            "llm_baseline_directed" if objective and question
+            else "llm" if question
+            else "fallback"
+        )
 
         if not question:
             pool = _INTERVIEW_QUESTIONS_FALLBACK[tone]
-            question_index = ((post_baseline_index - 1) // 2) % len(pool)
+            question_index = (turn_number - 1) % len(pool)
             question = pool[question_index]
 
         return jsonify({
