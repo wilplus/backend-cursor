@@ -12986,6 +12986,11 @@ def v2_admin_get_session(session_id):
                 "stickiness_topic_distribution"
             ),
             "stickiness_computed_at": session.get("stickiness_computed_at"),
+            # Phase 17.1 — drift-guard verdict. The admin UI can
+            # render a "needs review" banner when this is True and
+            # surface drift_diagnostic for the explanation.
+            "needs_admin_review": bool(session.get("needs_admin_review")),
+            "drift_diagnostic": session.get("drift_diagnostic"),
         }
 
         return jsonify({
@@ -13132,6 +13137,57 @@ def _compute_session_global_metrics(session_id: str) -> dict | None:
         kpi_score=kpi_score,
     )
 
+    # ── Phase 17.1: cross-layer drift guard ──────────────────────
+    # Compare B6 (kpi_score scaled to 0..1) against the average
+    # D1 classifier_confidence across the active snippets. When
+    # they disagree by > 40 percentage points one side glitched —
+    # transcript missing, classifier model regressed, etc. — so
+    # we flag the session for admin review instead of letting a
+    # potentially wrong number publish silently.
+    #
+    # Best-effort: any failure here logs and proceeds. The flag
+    # is non-blocking (publish still succeeds), so a stuck drift
+    # check can't break the flow.
+    drift_diag: dict | None = None
+    needs_review = False
+    try:
+        from services.metrics_v2 import detect_classifier_drift
+        confidences = [
+            float(s.get("classifier_confidence"))
+            for s in active_snippets
+            if isinstance(s.get("classifier_confidence"), (int, float))
+        ]
+        avg_confidence = (
+            sum(confidences) / len(confidences) if confidences else None
+        )
+        b6_normalised = (
+            (kpi_score / 100.0) if isinstance(kpi_score, (int, float)) else None
+        )
+        drift_diag = detect_classifier_drift(
+            performance_score=b6_normalised,
+            classifier_confidence=avg_confidence,
+        )
+        needs_review = bool(drift_diag.get("needs_admin_review"))
+        # Persist BOTH columns regardless of outcome so admins can
+        # see "we checked — no drift" vs "we never checked".
+        db.set_session_drift_flag(
+            session_id=session_id,
+            needs_review=needs_review,
+            diagnostic=drift_diag,
+        )
+        if needs_review:
+            logger.warning(
+                "session metrics: drift flag fired session=%s "
+                "b6=%s classifier_conf=%s deviation=%s",
+                session_id, b6_normalised, avg_confidence,
+                drift_diag.get("deviation"),
+            )
+    except Exception as drift_err:
+        logger.warning(
+            "session metrics: drift check failed session=%s err=%s",
+            session_id, drift_err,
+        )
+
     return {
         "wpm": global_wpm,
         "fillers": global_fillers,
@@ -13141,6 +13197,8 @@ def _compute_session_global_metrics(session_id: str) -> dict | None:
         "energy": global_energy,
         "kpi_score": kpi_score,
         "kpi_debug": kpi_debug,
+        "needs_admin_review": needs_review,
+        "drift_diagnostic": drift_diag,
         "snippets_analyzed": len(active_snippets),
         "active_snippets": active_snippets,
     }
@@ -13414,6 +13472,14 @@ def v2_admin_compute_session_metrics(session_id):
                 "top_topic": stickiness_top_topic,
                 "score": stickiness_score,
                 "distribution": stickiness_distribution,
+            },
+            # Phase 17.1 — drift-guard verdict. Admin UI shows a
+            # "needs review" banner when needs_admin_review is True;
+            # drift_diagnostic carries the why (deviation, threshold,
+            # the two numbers being compared) for the explainer panel.
+            "drift": {
+                "needs_admin_review": bool(m.get("needs_admin_review")),
+                "diagnostic": m.get("drift_diagnostic"),
             },
             "snippets_analyzed": len(active_snippets),
         }), 200

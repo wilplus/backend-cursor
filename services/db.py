@@ -6884,6 +6884,43 @@ class DatabaseService:
             logger.error(f"update_session_ai_alignment failed: {e}")
             return None
 
+    def set_session_drift_flag(
+        self,
+        *,
+        session_id: str,
+        needs_review: bool,
+        diagnostic: Optional[dict],
+    ) -> Optional[dict]:
+        """Phase 17.1 — persist the Phase 17 drift-guard verdict.
+
+        Writes both columns atomically so admin surfaces never see a
+        flag without the explanation, or vice versa. ``diagnostic``
+        is the dict returned by detect_classifier_drift.
+
+        Idempotent — when drift resolves on a re-run (admin re-
+        extracted a snippet with better metrics, say) pass
+        ``needs_review=False`` and the new diagnostic; the row flips
+        back. Failure logs + returns None so the metrics compute
+        path can keep going.
+        """
+        try:
+            result = (
+                self.client.table("v2_sessions")
+                .update({
+                    "needs_admin_review": bool(needs_review),
+                    "drift_diagnostic": diagnostic,
+                })
+                .eq("id", session_id)
+                .execute()
+            )
+            return result.data[0] if result.data else None
+        except Exception as e:
+            logger.warning(
+                "set_session_drift_flag failed session=%s err=%s",
+                session_id, e,
+            )
+            return None
+
     def update_session_stickiness(
         self,
         *,

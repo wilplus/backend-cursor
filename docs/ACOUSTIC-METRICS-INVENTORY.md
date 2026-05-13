@@ -86,7 +86,7 @@ These come from the binary/probabilistic classifiers that label snippets at extr
 | D1 | `classifier_confidence` (charisma classifier) | `services/charisma_snippet_service.py` | `charisma_snippets.classifier_confidence` |
 | D2 | `classifier_stress_probability` + `classifier_confidence` (stress classifier) | `services/stress_snippet_service.py` | `stress_snippets.classifier_stress_probability`, `classifier_confidence` |
 
-**Cross-layer guard (Phase 17, this commit):** when the B6 Master Score and the D1/D2 classifier confidence disagree by more than 40% on the same recording, the session is flagged for admin review (`v2_sessions.needs_admin_review = TRUE`) instead of being silently published. Implemented in `services.metrics_v2.detect_classifier_drift`.
+**Cross-layer guard (Phase 17 primitive, Phase 17.1 wiring):** when the B6 Master Score and the D1/D2 classifier confidence disagree by more than 40 percentage points on the same recording, the session is flagged for admin review (`v2_sessions.needs_admin_review = TRUE`) and the full diagnostic is stored in `v2_sessions.drift_diagnostic`. Implemented in `services.metrics_v2.detect_classifier_drift`; wired into `_compute_session_global_metrics` so every "Compute Metrics" click runs it. The flag is **non-blocking** — publish still succeeds, but admin surfaces show a banner and the drift_diagnostic carries the why. Future Phase 17.2 can promote this to a hard block behind a feature flag if desired.
 
 ---
 
