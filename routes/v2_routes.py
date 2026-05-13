@@ -10515,9 +10515,15 @@ _BASELINE_TURN_OBJECTIVES: dict[int, str] = {
         "Get them speaking naturally for 15s."
     ),
     2: (
-        "OBJECTIVE: Empathy/Frustration. The person they are talking "
-        "to misunderstood their last answer. Ask how they de-escalate "
-        "and re-explain."
+        "OBJECTIVE: Empathy/Frustration. CRITICAL REQUIREMENT: You "
+        "MUST explicitly reference a specific detail from the user's "
+        "answer in Turn 1 — quote or paraphrase one concrete thing "
+        "they said. Pretend the person they were explaining to "
+        "completely misunderstood THAT specific detail and is getting "
+        "frustrated. Ask the user how they de-escalate and re-explain. "
+        "Do not ask a generic empathy question; prove you listened to "
+        "their previous audio by anchoring on a phrase or example "
+        "from it."
     ),
     3: (
         "OBJECTIVE: Pressure. Pivot to a high-pressure professional "
