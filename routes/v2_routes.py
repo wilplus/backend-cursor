@@ -8052,7 +8052,12 @@ def _generate_llm_question(
             transcript = (contextual_init.get("transcript") or "").strip()
             admin_comment = (contextual_init.get("admin_comment") or "").strip()
             source_snippet_id = contextual_init.get("source_snippet_id")
-            if intent in _CONTEXTUAL_INTENTS and transcript and admin_comment:
+            # Transcript is OPTIONAL — the publish gate only demands
+            # admin_comment, so we mirror that here. When transcript
+            # is empty the base prompt below substitutes a neutral
+            # "the user just recorded a moment" phrasing so the LLM
+            # still has a coherent setup.
+            if intent in _CONTEXTUAL_INTENTS and admin_comment:
                 # ── Few-shot retrieval ──────────────────────────────
                 # Pull the top-scoring past exchanges with the SAME intent
                 # so the model is anchored on wording that historically
@@ -8091,11 +8096,24 @@ def _generate_llm_question(
                         long_err,
                     )
 
+                # When transcript is missing (Whisper miss / extracted
+                # highlight without a captured slice), fall back to a
+                # neutral framing that grounds the LLM in the coach
+                # insight alone. The "What did the user say" line is
+                # built once so both branches share the substitution.
+                if transcript:
+                    moment_line = f"In that recording, they said: '{transcript}'."
+                else:
+                    moment_line = (
+                        "We don't have a transcript of the exact words, "
+                        "but the coach flagged this moment specifically."
+                    )
+
                 if intent == "charisma":
                     base = (
                         "You are a coaching assistant. "
                         "The user clicked 'Understand your charisma' on a past recording. "
-                        f"In that recording, they said: '{transcript}'. "
+                        f"{moment_line} "
                         f"The human coach commented: '{admin_comment}'. "
                         "Respond with two parts: (1) a brief warm acknowledgment of this specific moment, "
                         "then (2) ONE deepening question to help them deconstruct WHY they felt so confident "
@@ -8110,7 +8128,7 @@ def _generate_llm_question(
                     base = (
                         "You are a coaching assistant. "
                         "The user clicked 'Release your stress'. "
-                        f"In that recording, they said: '{transcript}'. "
+                        f"{moment_line} "
                         f"The human coach commented: '{admin_comment}'. "
                         "Respond with two parts: (1) a brief empathetic acknowledgment of this moment, "
                         "then (2) ONE deepening question to help them identify the root cause of that "
@@ -9441,7 +9459,17 @@ def v2_user_chat_first_question():
                     "source": "stored_follow_up",
                 }), 200
 
-            # No pre-stored question → fall back to dynamic LLM generation
+            # No pre-stored question → fall back to dynamic LLM generation.
+            #
+            # Gate alignment fix: the publish gate
+            # (v2_get_results_snippets_for_session) requires only
+            # admin_comment NOT NULL — transcript is optional there.
+            # If we hard-fail here on missing transcript we break the
+            # CTA on snippets that the admin legitimately published
+            # (e.g. when Whisper missed a 5s slice). Soften: require
+            # only admin_comment. The LLM still has the coach insight
+            # to anchor on; transcript is forwarded as empty and the
+            # base prompt handles that case.
             transcript = (
                 (snippet.get("transcript") or "")
                 or (snippet.get("transcription_text") or "")
@@ -9449,11 +9477,17 @@ def v2_user_chat_first_question():
                 or (snippet.get("transcript_excerpt") or "")
             ).strip()
             admin_comment = (snippet.get("admin_comment") or "").strip()
-            if not transcript or not admin_comment:
+            if not admin_comment:
                 return jsonify({
                     "code": "SNIPPET_CONTEXT_UNAVAILABLE",
-                    "error": "Snippet transcript/admin_comment is not available yet",
+                    "error": "Snippet admin_comment is not available yet",
                 }), 422
+            if not transcript:
+                logger.info(
+                    "first-question: snippet has no transcript, proceeding "
+                    "with admin_comment only snippet=%s user=%s",
+                    source_snippet_id, user_id,
+                )
 
             contextual_init = {
                 "intent": intent,
