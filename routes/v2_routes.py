@@ -11966,6 +11966,134 @@ def v2_internal_publish_session_results():
 
 
 ############################################################################
+# Admin: AI evaluator rationale review (Phase 14.x — frontend BFF target)
+############################################################################
+
+@v2_bp.route(
+    "/admin/snippets/<snippet_id>/coaching-rationale",
+    methods=["PATCH"],
+)
+@require_admin
+def v2_admin_update_snippet_coaching_rationale(snippet_id):
+    """Persist an admin's review of the AI evaluator's rationale.
+
+    Backs the editable-rationale strip on the admin user-detail page.
+    The strip pre-fills its textarea with the AI's rationale and lets
+    the admin save it as-is (approval signal) or edit it (correction
+    signal). At publish time, ``record_snippet_publish_annotations``
+    emits one ``admin_annotation_events`` row per reviewed snippet
+    (field_name='evaluator_rationale') so the RLHF/DPO export
+    captures the (AI draft, admin final) pair the same way it
+    already captures admin_comment / follow_up_question.
+
+    Body::
+
+        {
+          "rationale":        str,   # text the admin saw on screen
+          "edited_by_admin":  bool   # true → store as correction;
+                                     # false → store admin_corrected_
+                                     #   rationale=null (= approved
+                                     #   AI verbatim)
+        }
+
+    Responses:
+      200 — review saved; returns the updated outcome.evaluator block
+      400 INVALID_INPUT       — bad UUID, missing rationale, or
+                                edited_by_admin not a bool
+      404 NOT_FOUND           — no charisma_snippet with this id
+      422 NO_OUTCOME_TO_REVIEW — snippet exists but has no
+                                follow_up_outcome / no evaluator
+                                (the user hasn't done a coaching
+                                attempt for this snippet yet, so
+                                there's no AI rationale to review)
+      500 V2_ERROR            — unexpected
+    """
+    if not _is_valid_uuid(snippet_id):
+        return jsonify({
+            "code": "INVALID_INPUT",
+            "error": "snippet_id must be a valid UUID",
+        }), 400
+
+    try:
+        body = request.get_json(silent=True) or {}
+        rationale = body.get("rationale")
+        edited_by_admin = body.get("edited_by_admin")
+
+        if not isinstance(rationale, str) or not rationale.strip():
+            return jsonify({
+                "code": "INVALID_INPUT",
+                "error": "rationale must be a non-empty string",
+            }), 400
+        if not isinstance(edited_by_admin, bool):
+            return jsonify({
+                "code": "INVALID_INPUT",
+                "error": "edited_by_admin must be a boolean",
+            }), 400
+
+        reviewed_at = datetime.now(timezone.utc).isoformat()
+        outcome = db.set_snippet_evaluator_rationale_review(
+            snippet_id=snippet_id,
+            rationale_text=rationale,
+            edited_by_admin=edited_by_admin,
+            reviewed_at=reviewed_at,
+        )
+        if not outcome:
+            # Distinguish "snippet doesn't exist" from "snippet has
+            # no follow_up_outcome to review" with a quick existence
+            # probe — both are 4xx but the codes are different so
+            # the frontend can show the right toast.
+            try:
+                exists_probe = (
+                    db.client.table("charisma_snippets")
+                    .select("id")
+                    .eq("id", snippet_id)
+                    .limit(1)
+                    .execute()
+                )
+                snippet_exists = bool(exists_probe.data)
+            except Exception:
+                snippet_exists = False
+
+            if not snippet_exists:
+                return jsonify({
+                    "code": "NOT_FOUND",
+                    "error": "Snippet not found",
+                }), 404
+            return jsonify({
+                "code": "NO_OUTCOME_TO_REVIEW",
+                "error": (
+                    "Snippet has no coaching outcome yet — the user "
+                    "must complete a coaching attempt before the "
+                    "rationale can be reviewed."
+                ),
+            }), 422
+
+        evaluator = outcome.get("evaluator") or {}
+        return jsonify({
+            "status": "ok",
+            "snippet_id": snippet_id,
+            "evaluator": {
+                "rationale": evaluator.get("rationale"),
+                "admin_corrected_rationale": evaluator.get(
+                    "admin_corrected_rationale"
+                ),
+                "admin_reviewed_at": evaluator.get("admin_reviewed_at"),
+            },
+        }), 200
+
+    except Exception as e:
+        logger.error(
+            "admin/snippets/<id>/coaching-rationale failed: %s",
+            e, exc_info=True,
+        )
+        sentry_sdk.capture_exception(e)
+        return jsonify({
+            "code": "V2_ERROR",
+            "error": "Failed to save rationale review",
+        }), 500
+
+
+############################################################################
 # Admin: Snippet boundary adjustment (the +/- 2s feature)
 ############################################################################
 

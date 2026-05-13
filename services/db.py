@@ -5626,7 +5626,8 @@ class DatabaseService:
                 self.client.table("charisma_snippets")
                 .select(
                     "id, admin_comment, ai_draft_admin_comment, "
-                    "follow_up_question, ai_draft_follow_up_question"
+                    "follow_up_question, ai_draft_follow_up_question, "
+                    "follow_up_outcome"
                 )
                 .eq("session_id", session_id)
                 .execute()
@@ -5661,6 +5662,38 @@ class DatabaseService:
                 final=row.get("follow_up_question"),
                 draft_id=str(snippet_id),
             )
+
+            # Phase 14.x — evaluator rationale review. Gated on
+            # admin_reviewed_at so we don't fire spurious "approved
+            # as-is" signal for rationales the admin never looked at.
+            # When admin reviewed: draft = AI's rationale, final =
+            # admin_corrected_rationale OR (fall back to AI rationale
+            # when admin approved verbatim). _emit_publish_event_if_
+            # signal then assigns reason_chip="approved_as_is" or
+            # null exactly like the other two fields.
+            outcome = row.get("follow_up_outcome")
+            evaluator = (
+                outcome.get("evaluator")
+                if isinstance(outcome, dict) else None
+            )
+            if isinstance(evaluator, dict) and evaluator.get(
+                "admin_reviewed_at"
+            ):
+                ai_rationale = (evaluator.get("rationale") or "").strip()
+                admin_correction = (
+                    (evaluator.get("admin_corrected_rationale") or "")
+                    .strip()
+                    or None
+                )
+                events_written += self._emit_publish_event_if_signal(
+                    session_id=session_id,
+                    admin_user_id=admin_user_id,
+                    section_type="charisma_snippet",
+                    field_name="evaluator_rationale",
+                    draft=ai_rationale,
+                    final=admin_correction or ai_rationale,
+                    draft_id=str(snippet_id),
+                )
 
         # ── Stress side ────────────────────────────────────────────
         # Stress snippets are extracted from recordings, not sessions
@@ -6599,6 +6632,102 @@ class DatabaseService:
         # canonical rows interleaved naturally (they were already in
         # `rows` and we kept their original positions).
         return [r for r in rows if r in tenant_rows or r in canonical_rows]
+
+    def set_snippet_evaluator_rationale_review(
+        self,
+        snippet_id: str,
+        *,
+        rationale_text: str,
+        edited_by_admin: bool,
+        reviewed_at: str,
+    ) -> dict | None:
+        """Persist an admin's review of the AI evaluator's rationale.
+
+        Lives inside the existing ``follow_up_outcome.evaluator`` JSONB
+        block (Phase 14.x — frontend's contract) rather than as a
+        separate column, so we read the current outcome, mutate the
+        two review fields, and write the whole JSONB back.
+
+        Semantics::
+
+          edited_by_admin=True  → admin_corrected_rationale = rationale_text
+                                   (admin's edited version of the AI text)
+          edited_by_admin=False → admin_corrected_rationale = None
+                                   (admin approved the AI rationale verbatim;
+                                   stored as null so the publish-time
+                                   annotation logic can falls back to the
+                                   AI rationale and detect approved_as_is)
+
+        ``admin_reviewed_at`` is always stamped — its presence is what
+        distinguishes "admin reviewed and approved" from "admin never
+        looked at this", and it's the gate the publish-time annotation
+        loop uses to decide whether to emit a signal.
+
+        Returns the updated outcome dict on success, or None when the
+        snippet has no follow_up_outcome / no evaluator block (caller
+        should respond 422 — there's no rationale to review yet).
+
+        Race window: if a new coaching attempt overwrites
+        follow_up_outcome between our read and write, we lose the
+        attempt. Admin reviews are infrequent and coaching attempts
+        are user-initiated, so the window is small in practice; if
+        this becomes a problem we'll move admin review to a separate
+        column or add a JSONB-merge SQL function.
+        """
+        if not snippet_id:
+            return None
+        try:
+            existing = (
+                self.client.table("charisma_snippets")
+                .select("follow_up_outcome")
+                .eq("id", snippet_id)
+                .limit(1)
+                .execute()
+            )
+        except Exception as e:
+            logger.error(
+                "set_snippet_evaluator_rationale_review: select failed "
+                "snippet=%s err=%s", snippet_id, e,
+            )
+            return None
+
+        if not existing.data:
+            return None
+        outcome = (existing.data[0].get("follow_up_outcome") or None)
+        if not isinstance(outcome, dict):
+            # No coaching attempt has been recorded for this snippet yet —
+            # nothing to review.
+            return None
+        evaluator = outcome.get("evaluator")
+        if not isinstance(evaluator, dict):
+            return None
+
+        # Mutate in place — outcome is a fresh dict from the DB read.
+        evaluator["admin_corrected_rationale"] = (
+            (rationale_text or "").strip() if edited_by_admin else None
+        )
+        evaluator["admin_reviewed_at"] = reviewed_at
+        outcome["evaluator"] = evaluator
+
+        try:
+            result = (
+                self.client.table("charisma_snippets")
+                .update({
+                    "follow_up_outcome": outcome,
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                })
+                .eq("id", snippet_id)
+                .execute()
+            )
+            if result.data:
+                return result.data[0].get("follow_up_outcome") or outcome
+            return outcome
+        except Exception as e:
+            logger.error(
+                "set_snippet_evaluator_rationale_review: update failed "
+                "snippet=%s err=%s", snippet_id, e,
+            )
+            return None
 
     def set_snippet_follow_up_outcome(
         self,
