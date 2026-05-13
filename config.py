@@ -150,6 +150,22 @@ class Config:
         in ("1", "true", "yes", "on")
     )
 
+    # ── Phase 16: pre-baked baseline summary ────────────────────────────
+    # When TRUE, the first time a user reaches turn 5 of the EBCP run we
+    # fire a dedicated LLM call that digests turns 1-4 into a structured
+    # baseline_summary (headline, themes, aspirational_archetype, tension,
+    # coaching_handle) on user_settings. Every subsequent question
+    # generator for this user (interview turn 5+, contextual /chat
+    # first-question) reads that summary INSTEAD of having to re-derive
+    # who-this-user-is from raw transcripts on every call — which is
+    # where shallow openers leak in.
+    # Default OFF so deploy is a no-op; flip to TRUE after spot-checking
+    # one user's turn-5 generation post-baseline.
+    BASELINE_SUMMARY_ENABLED = (
+        (os.getenv("BASELINE_SUMMARY_ENABLED") or "").strip().lower()
+        in ("1", "true", "yes", "on")
+    )
+
     # ── Phase 6: on-demand learner mirror ────────────────────────────────
     # When TRUE the user-facing mirror endpoints (GET /v2/user/mirror,
     # POST /v2/user/mirror/generate) accept requests and the generate

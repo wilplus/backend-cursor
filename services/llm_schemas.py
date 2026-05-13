@@ -252,6 +252,89 @@ STRESS_DRAFT_SCHEMA: dict[str, Any] = {
 }
 
 
+BASELINE_SUMMARY_SCHEMA: dict[str, Any] = {
+    # Phase 16 — one-shot extraction call run when a user finishes
+    # the EBCP turns 1-4 for the first time. Splits the
+    # "extract from 4 transcripts + write a great turn 5" burden
+    # the turn-5 generator used to carry alone. Output is cached
+    # on user_settings.baseline_summary and read by every
+    # subsequent question generator for this user.
+    "name": "baseline_summary_v1",
+    "strict": True,
+    "schema": {
+        "type": "object",
+        "additionalProperties": False,
+        "required": [
+            "headline",
+            "themes",
+            "aspirational_archetype",
+            "tension",
+            "coaching_handle",
+        ],
+        "properties": {
+            "headline": {
+                "type": "string",
+                "maxLength": 200,
+                "description": (
+                    "One sentence naming this user from their "
+                    "baseline. Specific, not generic. Examples: "
+                    "\"Confident with numbers but treats charisma "
+                    "as something to earn through people skills\" "
+                    "or \"Storyteller who freezes when asked to "
+                    "perform under unfamiliar pressure.\""
+                ),
+            },
+            "themes": {
+                "type": "array",
+                "maxItems": 6,
+                "items": {"type": "string", "maxLength": 60},
+                "description": (
+                    "2-5 short tags capturing the recurring "
+                    "patterns across the 4 baseline answers. "
+                    "Examples: \"math confidence\", \"empathic "
+                    "leadership\", \"structured pressure\"."
+                ),
+            },
+            "aspirational_archetype": {
+                "type": "string",
+                "maxLength": 200,
+                "description": (
+                    "Who this user admires / wants to embody — "
+                    "drawn from their turn 3 (charismatic leader) "
+                    "and turn 4 (fictional character) answers. "
+                    "Example: \"Tony Stark — sharp, decisive, "
+                    "witty under pressure.\" One sentence."
+                ),
+            },
+            "tension": {
+                "type": "string",
+                "maxLength": 240,
+                "description": (
+                    "The productive contradiction or growth edge "
+                    "the baseline reveals. NOT what they're good "
+                    "at — what their gap is. Example: \"Comfortable "
+                    "with structured cognitive load, but views "
+                    "charisma as a separate \"social skill\" they "
+                    "haven't claimed yet.\""
+                ),
+            },
+            "coaching_handle": {
+                "type": "string",
+                "maxLength": 240,
+                "description": (
+                    "ONE specific directive a coach would use to "
+                    "challenge this user on the next turn. Concrete, "
+                    "action-shaped. Example: \"Push them to "
+                    "articulate what 'witty under pressure' sounds "
+                    "like in THEIR voice, not Tony Stark's.\" The "
+                    "downstream question-generator builds on this."
+                ),
+            },
+        },
+    },
+}
+
+
 SESSION_TOPIC_EXTRACTION_SCHEMA: dict[str, Any] = {
     # Phase 11 — per-session stickiness-topic metric. The compute-
     # metrics LLM call already evaluates the transcript; we extend

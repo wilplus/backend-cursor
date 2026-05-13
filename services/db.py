@@ -7183,6 +7183,12 @@ class DatabaseService:
         on their next session. Clears ``baseline_established_at`` too
         for audit clarity ("when was the most recent graduation?").
 
+        Phase 16: also clears any cached ``baseline_summary`` so the
+        re-run produces a fresh digest. Otherwise an admin-triggered
+        re-baseline would silently use the OLD summary on the new
+        EBCP graduation — masking exactly the freshness an admin
+        wanted.
+
         Upsert (not update) so this works on users who don't have a
         user_settings row yet — they just get a fresh row with FALSE,
         which is the schema default anyway.
@@ -7199,6 +7205,8 @@ class DatabaseService:
                     "user_id": user_id,
                     "baseline_established": False,
                     "baseline_established_at": None,
+                    "baseline_summary": None,
+                    "baseline_summary_computed_at": None,
                     "updated_at": datetime.now(timezone.utc).isoformat(),
                 })
                 .execute()
@@ -7207,6 +7215,71 @@ class DatabaseService:
         except Exception as e:
             logger.warning(
                 "reset_baseline_established failed user=%s err=%s",
+                user_id, e,
+            )
+            return False
+
+    def get_user_baseline_summary(self, user_id: str) -> Optional[dict]:
+        """Phase 16 — read the cached baseline_summary blob.
+
+        Returns None when:
+          - user_id missing,
+          - no user_settings row yet,
+          - column is NULL (user hasn't reached turn 5 yet),
+          - any Supabase error.
+        Caller falls through to raw previous_turns in those cases.
+        """
+        if not user_id:
+            return None
+        try:
+            result = (
+                self.client.table("user_settings")
+                .select("baseline_summary")
+                .eq("user_id", user_id)
+                .limit(1)
+                .execute()
+            )
+            if result.data:
+                return result.data[0].get("baseline_summary") or None
+            return None
+        except Exception as e:
+            logger.warning(
+                "get_user_baseline_summary failed user=%s err=%s",
+                user_id, e,
+            )
+            return None
+
+    def set_user_baseline_summary(
+        self,
+        user_id: str,
+        summary: Optional[dict],
+    ) -> bool:
+        """Phase 16 — persist the LLM-generated baseline digest.
+
+        Upserts user_settings row + stamps baseline_summary_
+        computed_at. Pass summary=None to clear (admin reset path
+        uses reset_baseline_established, not this).
+
+        Returns True on success.
+        """
+        if not user_id:
+            return False
+        try:
+            now = datetime.now(timezone.utc).isoformat()
+            (
+                self.client.table("user_settings")
+                .upsert({
+                    "user_id": user_id,
+                    "baseline_summary": summary,
+                    "baseline_summary_computed_at": now if summary else None,
+                    "updated_at": now,
+                })
+                .execute()
+            )
+            return True
+        except Exception as e:
+            logger.warning(
+                "set_user_baseline_summary failed user=%s err=%s",
                 user_id, e,
             )
             return False

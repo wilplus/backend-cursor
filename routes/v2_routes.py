@@ -8096,6 +8096,28 @@ def _generate_llm_question(
                         long_err,
                     )
 
+                # ── Phase 16 baseline insight ───────────────────────
+                # Pre-baked digest of the user's EBCP turns 1-4. Read
+                # from the cache only — we don't compute here because
+                # this is the contextual /chat path, not the
+                # interview funnel where compute happens at turn 5.
+                # Gated by BASELINE_SUMMARY_ENABLED.
+                baseline_block: str | None = None
+                try:
+                    from config import Config
+                    if Config().BASELINE_SUMMARY_ENABLED and user_id:
+                        summary = db.get_user_baseline_summary(user_id)
+                        if summary:
+                            from services.baseline_summary import (
+                                format_baseline_for_prompt,
+                            )
+                            baseline_block = format_baseline_for_prompt(summary)
+                except Exception as bs_err:
+                    logger.warning(
+                        "first-question: baseline block failed: %s",
+                        bs_err,
+                    )
+
                 # When transcript is missing (Whisper miss / extracted
                 # highlight without a captured slice), fall back to a
                 # neutral framing that grounds the LLM in the coach
@@ -8141,24 +8163,37 @@ def _generate_llm_question(
                     )
 
                 # Few-shot examples first (anchors wording), then
-                # Phase 15 longitudinal context (the user-specific
-                # signal), then the base task description. Order
-                # matters: the LLM should read tone-anchors and
-                # who-this-user-is BEFORE the imperative task block.
+                # Phase 16 baseline insight (who this user is from
+                # their EBCP run), then Phase 15 longitudinal context
+                # (recent attempts on this snippet + recurring
+                # entities), then the base task description.
+                #
+                # Order matters: the LLM should read who-this-user-is
+                # BEFORE the imperative task block. Baseline (stable
+                # identity) comes before longitudinal (recent state)
+                # so the model anchors on identity and adapts on
+                # recent — not the other way around.
                 prompt_parts: list[str] = []
                 if few_shot_block:
                     prompt_parts.append(few_shot_block)
+                if baseline_block:
+                    prompt_parts.append(baseline_block)
                 if longitudinal_block:
                     prompt_parts.append(longitudinal_block)
                 prompt_parts.append(base)
                 system_prompt = "\n\n".join(prompt_parts)
 
-                # Phase 15 — bump temperature when longitudinal
-                # context is in play so even identical inputs produce
-                # verbal variety. Falls back to the legacy 0.7 when
-                # the block is empty (preserves prior behaviour byte-
-                # for-byte for cold-start users).
-                ctx_temperature = 0.85 if longitudinal_block else 0.7
+                # Phase 15 / 16 — bump temperature when ANY user-
+                # specific context is in play (longitudinal block OR
+                # the Phase 16 baseline insight) so even identical
+                # raw inputs produce verbal variety. Falls back to
+                # the legacy 0.7 when both blocks are empty
+                # (preserves cold-start behaviour byte-for-byte).
+                ctx_temperature = (
+                    0.85
+                    if (longitudinal_block or baseline_block)
+                    else 0.7
+                )
 
                 response = service.client.chat.completions.create(
                     model="gpt-4o-mini",
@@ -8177,6 +8212,29 @@ def _generate_llm_question(
             system_prompt = _augment_interview_prompt_with_profile(
                 system_prompt, user_id,
             )
+            # Phase 16 — splice in the pre-baked baseline digest so
+            # the LLM doesn't redo extraction + generation in one
+            # call. Flag-gated; falls through silently when the
+            # summary hasn't been computed yet (cold-start users or
+            # admin resets that haven't graduated again).
+            try:
+                from config import Config
+                if Config().BASELINE_SUMMARY_ENABLED:
+                    summary = db.get_user_baseline_summary(user_id)
+                    if summary:
+                        from services.baseline_summary import (
+                            format_baseline_for_prompt,
+                        )
+                        baseline_block = format_baseline_for_prompt(summary)
+                        if baseline_block:
+                            system_prompt = (
+                                f"{system_prompt}\n\n{baseline_block}"
+                            )
+            except Exception as bs_err:
+                logger.warning(
+                    "interview: baseline_summary inject failed "
+                    "user=%s err=%s", user_id, bs_err,
+                )
 
         # Build conversation history for context
         messages = [{"role": "system", "content": system_prompt}]
@@ -10558,6 +10616,37 @@ def v2_public_interview_next_question():
                 logger.warning(
                     "interview: baseline_established flip failed "
                     "user=%s err=%s", user_id, flag_err,
+                )
+
+        # Phase 16 — bake the EBCP digest at the turn 4→5 transition.
+        # Done synchronously here so the same request that fires turn 5
+        # gets the freshly-computed summary in its prompt. ~1-2s extra
+        # latency on a one-time-per-user moment.
+        # Flag-gated; failure logs + falls through to raw-previous-
+        # turns behaviour. Skips when a summary already exists
+        # (returning user after an admin reset will recompute because
+        # reset_baseline_established also clears baseline_summary).
+        if (
+            user_id
+            and turn_number == 5
+            and previous_turns
+        ):
+            try:
+                from config import Config
+                if Config().BASELINE_SUMMARY_ENABLED:
+                    existing = db.get_user_baseline_summary(user_id)
+                    if not existing:
+                        from services.baseline_summary import (
+                            compute_baseline_summary,
+                        )
+                        compute_baseline_summary(
+                            user_id=user_id,
+                            previous_turns=previous_turns,
+                        )
+            except Exception as bs_err:
+                logger.warning(
+                    "interview: baseline_summary compute failed "
+                    "user=%s err=%s", user_id, bs_err,
                 )
 
         question = _generate_llm_question(
