@@ -102,13 +102,33 @@ def compute_session_stickiness(
 
 
 def _serialise_snippets(snippets: list[dict]) -> list[dict]:
-    """Pull (turn_number, transcript) out of each snippet, in order.
+    """Build the per-turn list the LLM topic-extractor consumes.
 
-    Returns only items with non-empty transcripts. ``turn_number`` is
-    forwarded to the LLM so it can keep the per-turn topic array
-    aligned with the input.
+    Each item carries the question (the AI's prompt for that turn)
+    plus the user's answer — both matter for topic extraction
+    because the question frames what the user was reacting to.
+
+    Two non-obvious things this function does:
+
+    1. **Deduplicate by turn_number.** ``charisma_snippets`` can hold
+       both a turn row (the per-turn answer audio) AND an extracted
+       highlight row sliced from that same turn. Both have the same
+       turn_number; both have a transcript. Counting them as two
+       separate turns inflates stickiness — the same topic appears
+       twice, once per row. We keep the row with the longest
+       transcript (assumed to be the turn row; highlights are
+       sub-slices).
+
+    2. **Order by turn_number, not start_offset_ms.** Turn rows have
+       ``start_offset_ms = 0`` (or NULL) before finalize rewrites
+       them into the concatenated full recording, so ordering by
+       offsets is unstable on fresh sessions. ``turn_number`` is
+       written at upload time and never changes.
     """
-    out: list[dict] = []
+    # First pass: dedupe by turn_number, keeping the row with the
+    # most transcript content.
+    by_turn: dict[int, dict] = {}
+    standalone: list[dict] = []  # rows without a turn_number
     for s in snippets:
         transcript = (
             (s.get("transcript") or "")
@@ -117,11 +137,33 @@ def _serialise_snippets(snippets: list[dict]) -> list[dict]:
         ).strip()
         if not transcript:
             continue
-        out.append({
-            "turn_number": s.get("turn_number"),
+        question = (s.get("question_text") or "").strip()
+
+        turn = s.get("turn_number")
+        try:
+            turn_int = int(turn) if turn is not None else None
+        except (TypeError, ValueError):
+            turn_int = None
+
+        record = {
+            "turn_number": turn_int,
+            "question": question,
             "transcript": transcript,
-        })
-    return out
+        }
+
+        if turn_int is None:
+            standalone.append(record)
+            continue
+
+        prev = by_turn.get(turn_int)
+        if prev is None or len(record["transcript"]) > len(prev["transcript"]):
+            by_turn[turn_int] = record
+
+    # Sort the deduplicated turns by turn_number ASC; append the
+    # standalone (no-turn-number) rows last in their original order.
+    ordered = [by_turn[k] for k in sorted(by_turn.keys())]
+    ordered.extend(standalone)
+    return ordered
 
 
 def _extract_topics_via_llm(items: list[dict]) -> list[str] | None:
@@ -142,13 +184,27 @@ def _extract_topics_via_llm(items: list[dict]) -> list[str] | None:
 
     user_prompt = _build_user_prompt(items)
     system_prompt = (
-        "Extract a 1-2 word topic for each interview turn. Normalise "
-        "different surface forms of the same subject to one phrase "
-        "across turns (so \"my boss Sarah\" and \"Sarah\" should be "
-        "the same topic in your output). Return one topic per turn "
-        "in the order given. Use an empty string for non-substantive "
-        "turns (\"yeah\", filler, single words). Output strict JSON "
-        "with the key per_turn_topics only."
+        "You read an interview transcript and extract one 1-2 word "
+        "topic per turn — capturing what the USER was talking about "
+        "in their answer (the question is given only as context for "
+        "what they were responding to).\n"
+        "\n"
+        "Apply to EVERY turn in the input — return one topic per "
+        "turn in the exact order given, never collapse turns "
+        "together, never skip turns. The output array length must "
+        "equal the number of turns in the input.\n"
+        "\n"
+        "Normalise surface forms of the same subject to one phrase "
+        "across turns: \"my boss Sarah\" and \"Sarah\" should be "
+        "the same topic; \"Q4 review\" and \"the Q4 meeting\" "
+        "should be the same topic. This lets the downstream counter "
+        "measure how often the user circles back to a subject.\n"
+        "\n"
+        "Use an empty string \"\" for non-substantive turns — "
+        "single-word affirmations, fillers, or answers that don't "
+        "name a subject. Better to emit \"\" than to invent a topic.\n"
+        "\n"
+        "Output strict JSON with the key per_turn_topics only."
     )
 
     try:
@@ -189,15 +245,38 @@ def _extract_topics_via_llm(items: list[dict]) -> list[str] | None:
 
 
 def _build_user_prompt(items: list[dict]) -> str:
-    """Render snippets as a numbered list the LLM can align its output to."""
+    """Render the Q+A pairs the LLM topic-extractor should align its
+    output array to.
+
+    Each turn is rendered as::
+
+        Turn N:
+          Q: <question, trimmed>
+          A: <answer, trimmed>
+
+    Including the Q gives the LLM enough context to disambiguate
+    answers like "Sarah, again" that would otherwise be a one-word
+    blob. Both Q and A are trimmed to 400 chars each (was 600 for
+    just A) so 10 long turns still fit comfortably in the model's
+    context.
+    """
     lines: list[str] = []
+    n = len(items)
     for i, it in enumerate(items, start=1):
         turn = it.get("turn_number") or i
-        transcript = it.get("transcript") or ""
-        # Trim very long transcripts — topic extraction doesn't need
-        # the full text, just enough to identify the subject. Cap at
-        # ~600 chars per turn to keep the whole prompt under budget.
-        if len(transcript) > 600:
-            transcript = transcript[:600] + "…"
-        lines.append(f"Turn {turn}: {transcript}")
-    return "INTERVIEW TURNS:\n" + "\n\n".join(lines)
+        question = (it.get("question") or "").strip()
+        transcript = (it.get("transcript") or "").strip()
+        if len(question) > 400:
+            question = question[:400] + "…"
+        if len(transcript) > 400:
+            transcript = transcript[:400] + "…"
+        block_lines = [f"Turn {turn}:"]
+        if question:
+            block_lines.append(f"  Q: {question}")
+        block_lines.append(f"  A: {transcript}")
+        lines.append("\n".join(block_lines))
+    header = (
+        f"INTERVIEW TURNS ({n} turns total — extract one topic for "
+        "EACH, in order):"
+    )
+    return header + "\n\n" + "\n\n".join(lines)
