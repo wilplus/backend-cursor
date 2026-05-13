@@ -176,14 +176,25 @@ def send_publish_results_email(
         "subscribedEmail": user_email,
     }
 
+    # Render: try the React Email renderer first, fall back to an
+    # inline-HTML template if anything in the round-trip fails
+    # (EMAIL_RENDER_SECRET unset, frontend down, timeout, 5xx, empty
+    # body, …). The user receiving SOME email is critical; a degraded
+    # template beats silence. The render-failure path logs at error
+    # level so Sentry still surfaces the underlying misconfig.
+    render_mode = "rendered"
+    render_error: Optional[str] = None
     try:
         rendered = render_post_session_results_email(props)
     except Exception as e:
+        render_error = str(e)
         logger.error(
-            "publish-results email: render failed user=%s err=%s",
+            "publish-results email: render failed user=%s err=%s "
+            "— falling back to inline template",
             user_id, e,
         )
-        return {"status": "render_failed", "error": str(e)}
+        rendered = _render_inline_fallback(props)
+        render_mode = "fallback"
 
     subject = _build_subject(snippet_count)
     headers: dict[str, str] = {}
@@ -202,14 +213,21 @@ def send_publish_results_email(
             headers=headers or None,
         )
         logger.info(
-            "publish-results email: sent user=%s session=%s",
-            user_id, session_id,
+            "publish-results email: sent user=%s session=%s mode=%s",
+            user_id, session_id, render_mode,
         )
-        return {"status": "sent", "resend": result}
+        out: dict[str, Any] = {
+            "status": "sent",
+            "resend": result,
+            "render_mode": render_mode,
+        }
+        if render_error:
+            out["render_error"] = render_error
+        return out
     except Exception as e:
         logger.error(
-            "publish-results email: send failed user=%s err=%s",
-            user_id, e,
+            "publish-results email: send failed user=%s err=%s mode=%s",
+            user_id, e, render_mode,
         )
         return {"status": "send_failed", "error": str(e)}
 
@@ -222,3 +240,104 @@ def _build_subject(snippet_count: int) -> str:
         if n == 0
         else f"{n} new voice moments are ready"
     )
+
+
+def _render_inline_fallback(props: dict) -> dict:
+    """Last-resort renderer when the React Email round-trip fails.
+
+    Builds a small, self-contained inline-HTML email from the same
+    props the React template consumes. No env vars, no network — so
+    it works even when EMAIL_RENDER_SECRET is unset, the frontend
+    renderer is down, or the contract has drifted. Returns the same
+    ``{html, text}`` shape as ``render_post_session_results_email``
+    so the call site is identical.
+
+    The visual is intentionally simple (no gradients, no images) —
+    this template only ships when something upstream is already
+    broken, so resilience > polish. The plain-text fallback is the
+    same content with markup stripped.
+    """
+    import html as _html_lib
+
+    first_name = (props.get("userFirstName") or "").strip()
+    snippet_count = int(props.get("snippetCount") or 0)
+    top_theme = (props.get("topTheme") or "").strip()
+    journey_url = (props.get("journeyUrl") or "").strip()
+    unsubscribe_url = (props.get("unsubscribeUrl") or "").strip()
+
+    greeting_name = _html_lib.escape(first_name) if first_name else "there"
+    safe_journey_url = _html_lib.escape(journey_url, quote=True)
+
+    if snippet_count > 0:
+        headline = (
+            f"{snippet_count} new voice moment"
+            f"{'s' if snippet_count != 1 else ''} are ready"
+        )
+    else:
+        headline = "Your voice moments are ready"
+
+    theme_line = ""
+    if top_theme:
+        theme_line = (
+            f"<p style=\"font-size:15px;line-height:1.6;margin:8px 0 16px;"
+            f"color:#444;\">Top theme this session: "
+            f"<strong>{_html_lib.escape(top_theme)}</strong>.</p>"
+        )
+
+    cta_block = ""
+    if journey_url:
+        cta_block = (
+            f"<div style=\"text-align:center;margin:28px 0;\">"
+            f"<a href=\"{safe_journey_url}\" "
+            f"style=\"display:inline-block;background:#000;color:#fff;"
+            f"padding:14px 28px;border-radius:6px;text-decoration:none;"
+            f"font-weight:600;font-size:16px;\">View your results</a></div>"
+        )
+
+    footer_unsub = ""
+    if unsubscribe_url:
+        safe_unsub = _html_lib.escape(unsubscribe_url, quote=True)
+        footer_unsub = (
+            f"<p style=\"font-size:12px;color:#888;margin:16px 0 0;\">"
+            f"Don't want these updates? "
+            f"<a href=\"{safe_unsub}\" style=\"color:#888;\">Unsubscribe</a>."
+            f"</p>"
+        )
+
+    html_body = f"""<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="margin:0;padding:0;background:#f9fafb;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#222;">
+  <div style="max-width:560px;margin:0 auto;padding:32px 24px;background:#ffffff;">
+    <h1 style="font-size:22px;font-weight:600;margin:0 0 16px;">{headline}</h1>
+    <p style="font-size:16px;line-height:1.6;margin:0 0 12px;">Hi {greeting_name},</p>
+    <p style="font-size:16px;line-height:1.6;margin:0 0 8px;">
+      Your voice analysis is complete. We extracted your best moments and added detailed feedback.
+    </p>
+    {theme_line}
+    {cta_block}
+    <p style="font-size:13px;color:#666;margin:24px 0 0;">— Team Willab</p>
+    {footer_unsub}
+  </div>
+</body>
+</html>"""
+
+    # Plain-text fallback for clients that prefer text/plain. Hand-
+    # built rather than regex-stripped so line breaks read cleanly.
+    text_lines = [
+        headline,
+        "",
+        f"Hi {first_name or 'there'},",
+        "",
+        "Your voice analysis is complete. We extracted your best "
+        "moments and added detailed feedback.",
+    ]
+    if top_theme:
+        text_lines.append(f"Top theme this session: {top_theme}.")
+    if journey_url:
+        text_lines.extend(["", f"View your results: {journey_url}"])
+    text_lines.extend(["", "— Team Willab"])
+    if unsubscribe_url:
+        text_lines.extend(["", f"Unsubscribe: {unsubscribe_url}"])
+
+    return {"html": html_body, "text": "\n".join(text_lines)}
