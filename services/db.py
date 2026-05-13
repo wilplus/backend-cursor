@@ -7045,6 +7045,82 @@ class DatabaseService:
 
         return updated_row
 
+    def get_email_pref_publish_results(self, user_id: str) -> bool:
+        """Phase 14 — is this user subscribed to the publish-results
+        email? Defaults to TRUE on any error or missing row so a DB
+        hiccup never accidentally drops emails to subscribed users.
+        """
+        if not user_id:
+            return True
+        try:
+            result = (
+                self.client.table("user_settings")
+                .select("email_pref_publish_results")
+                .eq("user_id", user_id)
+                .limit(1)
+                .execute()
+            )
+            if result.data:
+                val = result.data[0].get("email_pref_publish_results")
+                # Treat NULL as TRUE — schema default is TRUE; only an
+                # explicit FALSE skips the send.
+                return False if val is False else True
+            return True
+        except Exception as e:
+            logger.warning(
+                "get_email_pref_publish_results failed user=%s err=%s",
+                user_id, e,
+            )
+            return True
+
+    def set_email_pref_publish_results(
+        self,
+        *,
+        user_id: str,
+        subscribed: bool,
+        source: str | None = None,
+    ) -> bool:
+        """Phase 14 — flip the publish-results email preference.
+
+        When ``subscribed`` is False we also stamp ``unsubscribed_at``
+        + ``unsubscribed_source`` for audit. Going back to True
+        clears those fields so the audit trail reflects only the
+        current opt-out state.
+
+        Upsert so users without a settings row still record their
+        opt-out (the row defaults the other settings columns to
+        their schema defaults).
+
+        Returns True on success.
+        """
+        if not user_id:
+            return False
+        try:
+            now = datetime.now(timezone.utc).isoformat()
+            payload: dict[str, Any] = {
+                "user_id": user_id,
+                "email_pref_publish_results": bool(subscribed),
+                "updated_at": now,
+            }
+            if subscribed:
+                payload["unsubscribed_at"] = None
+                payload["unsubscribed_source"] = None
+            else:
+                payload["unsubscribed_at"] = now
+                payload["unsubscribed_source"] = source or "unknown"
+            (
+                self.client.table("user_settings")
+                .upsert(payload)
+                .execute()
+            )
+            return True
+        except Exception as e:
+            logger.warning(
+                "set_email_pref_publish_results failed user=%s err=%s",
+                user_id, e,
+            )
+            return False
+
     def get_baseline_established(self, user_id: str) -> bool:
         """Phase 13 — has this user completed the EBCP baseline once?
 

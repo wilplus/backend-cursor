@@ -1,6 +1,7 @@
 import html
 import logging
 import re
+from typing import Any
 import resend
 from config import Config
 import sentry_sdk
@@ -440,6 +441,7 @@ def send_email_resend(
     html: str,
     text: str | None = None,
     from_addr: str | None = None,
+    headers: dict[str, str] | None = None,
 ) -> dict:
     """Thin module-level wrapper around resend.Emails.send().
 
@@ -480,13 +482,24 @@ def send_email_resend(
         resend.api_key = config.RESEND_API_KEY
 
     fallback_text = text or re.sub(r"<[^>]+>", "", html or "").strip()
-    params = {
+    params: dict[str, Any] = {
         "from": (from_addr or config.RESEND_FROM_EMAIL),
         "to": [to],
         "subject": subject,
         "text": fallback_text,
         "html": html,
     }
+    # RFC 8058 List-Unsubscribe + arbitrary delivery headers (e.g.
+    # X-Entity-Ref-ID for grouping). Resend forwards the dict
+    # verbatim to the SMTP layer. Empty / falsy values are dropped
+    # so callers can pass headers={} without polluting the request.
+    if headers:
+        clean_headers = {
+            str(k): str(v) for k, v in headers.items()
+            if k and v
+        }
+        if clean_headers:
+            params["headers"] = clean_headers
     try:
         response = resend.Emails.send(params)
         logger.info("send_email_resend: accepted to=%s subject=%r", to, subject)

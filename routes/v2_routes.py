@@ -10092,6 +10092,135 @@ def v2_admin_me_annotation_progress():
         }), 500
 
 
+@v2_bp.route("/public/unsubscribe", methods=["POST"])
+def v2_public_unsubscribe():
+    """Token-based unsubscribe from publish-results emails.
+
+    Phase 14. No bearer auth required — the signed token IS the
+    auth. Validates signature, audience, and expiry; flips
+    user_settings.email_pref_publish_results to FALSE; returns 200
+    on first success and on subsequent re-clicks (idempotent).
+
+    Body::
+        { "token": "<signed unsubscribe JWT>" }
+
+    Responses (per the frontend BFF contract):
+      200 {status, email_obscured?, already_unsubscribed?}
+      400 INVALID_INPUT — token missing / non-string
+      401 INVALID_TOKEN — bad sig / expired / wrong audience
+      404 USER_NOT_FOUND — token decoded but the user is gone
+      503 SERVICE_UNAVAILABLE — UNSUBSCRIBE_TOKEN_SECRET unset
+    """
+    try:
+        body = request.get_json(silent=True) or {}
+        token = body.get("token")
+        if not token or not isinstance(token, str):
+            return jsonify({
+                "code": "INVALID_INPUT",
+                "error": "token required",
+            }), 400
+
+        from services.unsubscribe_tokens import (
+            verify_unsubscribe_token,
+            UnsubscribeTokenInvalid,
+            UnsubscribeTokenExpired,
+            UnsubscribeTokenNotConfigured,
+        )
+
+        try:
+            user_id = verify_unsubscribe_token(token)
+        except UnsubscribeTokenNotConfigured as e:
+            logger.error("unsubscribe: secret not configured: %s", e)
+            return jsonify({
+                "code": "SERVICE_UNAVAILABLE",
+                "error": "Unsubscribe service is temporarily unavailable.",
+            }), 503
+        except UnsubscribeTokenExpired as e:
+            return jsonify({
+                "code": "INVALID_TOKEN",
+                "error": f"This unsubscribe link has expired ({e}).",
+            }), 401
+        except UnsubscribeTokenInvalid as e:
+            return jsonify({
+                "code": "INVALID_TOKEN",
+                "error": f"This unsubscribe link is invalid ({e}).",
+            }), 401
+
+        # Make sure the user still exists (token may outlive the
+        # account). We resolve the email both for the optional
+        # email_obscured response field AND as the existence check
+        # — get_user_email_from_auth returns None when the auth
+        # row is gone.
+        user_email: str | None = None
+        try:
+            user_email = db.get_user_email_from_auth(user_id)
+        except Exception as e:
+            logger.warning(
+                "unsubscribe: email lookup failed user=%s err=%s",
+                user_id, e,
+            )
+        if not user_email:
+            return jsonify({
+                "code": "USER_NOT_FOUND",
+                "error": "We can't find that account anymore.",
+            }), 404
+
+        # Idempotency — second click within the validity window
+        # should return 200 with already_unsubscribed=true, not a
+        # 4xx. Read the current pref BEFORE writing so we know
+        # whether this click changed state.
+        was_subscribed = db.get_email_pref_publish_results(user_id)
+        if was_subscribed:
+            persisted = db.set_email_pref_publish_results(
+                user_id=user_id,
+                subscribed=False,
+                source="email_token",
+            )
+            if not persisted:
+                logger.warning(
+                    "unsubscribe: persist failed user=%s — token "
+                    "validated but DB write didn't land",
+                    user_id,
+                )
+                return jsonify({
+                    "code": "SERVICE_UNAVAILABLE",
+                    "error": (
+                        "Couldn't save your preference. Please try "
+                        "again in a moment."
+                    ),
+                }), 503
+
+        return jsonify({
+            "status": "ok",
+            "email_obscured": _obscure_email(user_email),
+            "already_unsubscribed": not was_subscribed,
+        }), 200
+
+    except Exception as e:
+        logger.error("public/unsubscribe failed: %s", e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({
+            "code": "SERVICE_UNAVAILABLE",
+            "error": "Unsubscribe service is temporarily unavailable.",
+        }), 503
+
+
+def _obscure_email(email: str) -> str | None:
+    """Render ``email`` as ``j**@gmail.com``.
+
+    First char + two stars + @ + domain. Returns None on malformed
+    input so the response simply omits the field rather than
+    leaking the raw address.
+    """
+    if not email or "@" not in email:
+        return None
+    local, _, domain = email.partition("@")
+    if not local or not domain:
+        return None
+    head = local[0]
+    return f"{head}**@{domain}"
+
+
 @v2_bp.route("/public/interview/next-question", methods=["POST"])
 def v2_public_interview_next_question():
     """Return the next interview question.
@@ -11204,69 +11333,106 @@ def v2_internal_publish_session_results():
                 "error": "User has no email",
             }), 400
 
-        # Build email content
-        frontend_url = getattr(config, "FRONTEND_URL", "https://willonski.com").rstrip("/")
-        results_url = f"{frontend_url}/results/{session_id}"
-        subject = "Your Charisma Baseline Analysis is ready"
-        html_body = f"""<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"></head>
-<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #333; background-color: #f9fafb; margin: 0; padding: 0;">
-  <div style="max-width: 600px; margin: 0 auto; background-color: white; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
-    <div style="background: linear-gradient(135deg, #000 0%, #333 100%); color: white; padding: 32px 24px; text-align: center;">
-      <h1 style="margin: 0; font-size: 22px; font-weight: 600;">Your Charisma Baseline Analysis is Ready</h1>
-    </div>
-    <div style="padding: 32px 24px;">
-      <p style="font-size: 16px; line-height: 1.6; margin: 16px 0;">Hi,</p>
-      <p style="font-size: 16px; line-height: 1.6; margin: 16px 0;">
-        Your voice analysis is complete. We've reviewed your recording and added personalized feedback from our coaches.
-      </p>
-      <div style="text-align: center; margin: 32px 0;">
-        <a href="{results_url}" style="display: inline-block; background-color: #000; color: white; padding: 14px 32px; border-radius: 6px; text-decoration: none; font-weight: 600; font-size: 16px;">
-          View Your Results
-        </a>
-      </div>
-      <p style="font-size: 14px; color: #6b7280; margin-top: 24px;">
-        Each snippet includes detailed feedback to help you understand what made that moment stand out.
-      </p>
-    </div>
-    <div style="background-color: #f9fafb; padding: 24px; text-align: center; border-top: 1px solid #e5e7eb; font-size: 12px; color: #6b7280;">
-      <p style="margin: 0;">&copy; {__import__('datetime').datetime.now().year} Willab. All rights reserved.</p>
-    </div>
-  </div>
-</body>
-</html>"""
-
-        # Flip the session status so /results page shows snippets
+        # Flip the session status so /results page shows snippets.
+        # Done BEFORE the email send so a failed send never blocks
+        # the user from reaching their results via direct link.
         db.v2_publish_session_results(session_id)
 
-        # Send email via Resend
+        # ── Phase 14 — new PostSessionResultsEmail render pipeline ──
+        # Replaces the inline HTML build. The render service handles:
+        #   - per-user pref check (skip if unsubscribed)
+        #   - server-to-server render call into Next.js
+        #   - RFC 8058 List-Unsubscribe headers
+        #   - unsubscribe token mint + URL
+        # Props for the template:
+        first_name: str | None = None
         try:
-            send_email_resend(
-                to=user_email,
-                subject=subject,
-                html=html_body,
+            details = db.v2_get_student_details(user_id) or {}
+            full_name = (details.get("name") or "").strip()
+            if full_name:
+                first_name = full_name.split()[0]
+        except Exception as e:
+            logger.warning(
+                "publish-results: name lookup failed user=%s err=%s",
+                user_id, e,
             )
-        except Exception as email_err:
-            logger.error("publish-results: send email failed: %s", email_err)
-            # Results are still published even if email delivery fails —
-            # the user can reach /results via direct link.
+
+        snippet_count = 0
+        try:
+            commented = db.get_snippets_with_comments_by_session(session_id)
+            snippet_count = len(commented or [])
+        except Exception as e:
+            logger.warning(
+                "publish-results: snippet count lookup failed "
+                "session=%s err=%s", session_id, e,
+            )
+
+        top_theme: str | None = None
+        try:
+            sess_row = db.v2_get_session_by_id(session_id) or {}
+            top_theme = (
+                (sess_row.get("stickiness_top_topic") or "").strip() or None
+            )
+        except Exception:
+            pass
+
+        from services.post_session_results_email import (
+            send_publish_results_email,
+        )
+
+        results_url = (
+            f"{config.PUBLIC_FRONTEND_URL.rstrip('/')}/results/{session_id}"
+        )
+
+        send_result = send_publish_results_email(
+            user_id=user_id,
+            user_email=user_email,
+            user_first_name=first_name,
+            snippet_count=snippet_count,
+            top_theme=top_theme,
+            session_id=session_id,
+        )
+        status = send_result.get("status")
+
+        if status == "sent":
+            logger.info(
+                "publish-results: email sent session_id=%s user_id=%s "
+                "email=%s", session_id, user_id, user_email,
+            )
+            return jsonify({
+                "status": "ok",
+                "email_sent_to": user_email,
+                "results_url": results_url,
+            }), 200
+
+        if status == "skipped":
+            reason = send_result.get("reason") or "unknown"
+            logger.info(
+                "publish-results: email skipped session_id=%s user_id=%s "
+                "reason=%s", session_id, user_id, reason,
+            )
             return jsonify({
                 "status": "ok",
                 "email_sent_to": None,
                 "results_url": results_url,
-                "warning": "Results published but email delivery failed",
+                "email_skipped_reason": reason,
             }), 200
 
-        logger.info(
-            "publish-results: email sent session_id=%s user_id=%s email=%s",
-            session_id, user_id, user_email,
+        # render_failed / send_failed — publish itself succeeded
+        # (the session is already flipped to completed) so we return
+        # 200 with a warning rather than blocking on the email step.
+        logger.error(
+            "publish-results: email %s session_id=%s user_id=%s err=%s",
+            status, session_id, user_id, send_result.get("error"),
         )
-
         return jsonify({
             "status": "ok",
-            "email_sent_to": user_email,
+            "email_sent_to": None,
             "results_url": results_url,
+            "warning": (
+                "Results published but email delivery failed: "
+                f"{send_result.get('error') or status}"
+            ),
         }), 200
 
     except Exception as e:
@@ -11674,14 +11840,16 @@ def v2_admin_publish_session(session_id):
 
 
 def _send_results_ready_email(session_id: str, session: dict) -> bool:
-    """Send the "Results Ready" email. Returns True iff the email was
-    enqueued / sent successfully. Non-fatal: callers decide whether a
-    failure here should affect the overall response.
+    """Send the "Results Ready" email via the Phase 14 render pipeline.
+
+    Returns True iff the email was actually sent. SKIPPED states
+    (user unsubscribed, SEND_EMAILS off) return False so the caller
+    treats them the same as a delivery miss in its boolean response
+    flag, but the underlying outcome is logged.
 
     Centralised so /admin/sessions/<id>/publish and the legacy
     /internal/publish-session-results don't drift apart.
     """
-    from services.email_service import send_email_resend
     import httpx
 
     user_id = session.get("user_id")
@@ -11694,7 +11862,11 @@ def _send_results_ready_email(session_id: str, session: dict) -> bool:
         "apikey": config.SUPABASE_SERVICE_ROLE_KEY,
     }
     user_url = f"{config.SUPABASE_URL.rstrip('/')}/auth/v1/admin/users/{user_id}"
-    resp = httpx.get(user_url, headers=auth_headers, timeout=10)
+    try:
+        resp = httpx.get(user_url, headers=auth_headers, timeout=10)
+    except Exception as e:
+        logger.warning("publish: auth fetch raised user=%s: %s", user_id, e)
+        return False
     if resp.status_code != 200:
         logger.warning("publish: failed to fetch user %s (status %d)", user_id, resp.status_code)
         return False
@@ -11702,28 +11874,49 @@ def _send_results_ready_email(session_id: str, session: dict) -> bool:
     if not user_email:
         return False
 
-    app_base = (
-        getattr(config, "APP_PUBLIC_BASE_URL", None)
-        or os.environ.get("APP_PUBLIC_BASE_URL")
-        or "https://www.willonski.com"
-    ).rstrip("/")
-    results_url = f"{app_base}/results/{session_id}"
+    first_name: str | None = None
+    try:
+        details = db.v2_get_student_details(user_id) or {}
+        full_name = (details.get("name") or "").strip()
+        if full_name:
+            first_name = full_name.split()[0]
+    except Exception as e:
+        logger.warning(
+            "publish: name lookup failed user=%s err=%s", user_id, e,
+        )
 
-    send_email_resend(
-        to=user_email,
-        subject="Your Charisma Snippets Are Ready",
-        html=(
-            f'<p>Hi,</p>'
-            f'<p>Your voice analysis is complete. We extracted your best moments '
-            f'and added detailed feedback.</p>'
-            f'<p><a href="{results_url}" '
-            f'style="display:inline-block;padding:12px 20px;background:#f97316;'
-            f'color:#fff;text-decoration:none;border-radius:8px;font-weight:600;">'
-            f'View your Charisma Snippets</a></p>'
-            f'<p style="color:#666;font-size:14px;">— Team Willab</p>'
-        ),
+    snippet_count = 0
+    try:
+        commented = db.get_snippets_with_comments_by_session(session_id)
+        snippet_count = len(commented or [])
+    except Exception as e:
+        logger.warning(
+            "publish: snippet count lookup failed session=%s err=%s",
+            session_id, e,
+        )
+
+    top_theme = (session.get("stickiness_top_topic") or "").strip() or None
+
+    from services.post_session_results_email import (
+        send_publish_results_email,
     )
-    return True
+    result = send_publish_results_email(
+        user_id=user_id,
+        user_email=user_email,
+        user_first_name=first_name,
+        snippet_count=snippet_count,
+        top_theme=top_theme,
+        session_id=session_id,
+    )
+    status = result.get("status")
+    if status == "sent":
+        return True
+    logger.info(
+        "publish: email %s session=%s user=%s reason=%s",
+        status, session_id, user_id,
+        result.get("reason") or result.get("error"),
+    )
+    return False
 
 
 @v2_bp.route("/admin/snippets/<snippet_id>/skip", methods=["POST"])

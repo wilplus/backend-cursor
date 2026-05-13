@@ -148,6 +148,34 @@ class Config:
     # Frontend URL (for email links)
     FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
 
+    # ── Phase 14: PostSessionResultsEmail rollout ────────────────────────
+    # PUBLIC_FRONTEND_URL  — base for user-facing links baked into emails
+    #                        (e.g. /unsubscribe?token=...). Falls back to
+    #                        FRONTEND_URL so a single env var still works
+    #                        in dev / preview deploys.
+    # FRONTEND_BASE_URL    — base for server-to-server calls into the
+    #                        Next.js render endpoint
+    #                        (/api/internal/emails/post-session-results).
+    #                        Same value as PUBLIC_FRONTEND_URL in prod;
+    #                        kept distinct so private-network deploys
+    #                        can point the server-to-server hop at an
+    #                        internal hostname.
+    # EMAIL_RENDER_SECRET  — shared secret the frontend's render
+    #                        endpoint checks. Backend sends it in the
+    #                        x-internal-secret header.
+    # UNSUBSCRIBE_TOKEN_SECRET — dedicated HS256 signing key for the
+    #                        unsubscribe JWTs. Distinct from the auth
+    #                        JWT secret so a leak here doesn't burn
+    #                        session credentials.
+    PUBLIC_FRONTEND_URL = (
+        os.getenv("PUBLIC_FRONTEND_URL") or FRONTEND_URL
+    ).rstrip("/")
+    FRONTEND_BASE_URL = (
+        os.getenv("FRONTEND_BASE_URL") or PUBLIC_FRONTEND_URL
+    ).rstrip("/")
+    EMAIL_RENDER_SECRET = (os.getenv("EMAIL_RENDER_SECRET") or "").strip()
+    UNSUBSCRIBE_TOKEN_SECRET = (os.getenv("UNSUBSCRIBE_TOKEN_SECRET") or "").strip()
+
     # Optional: shared secret for POST /v2/internal/student-credits/increment (Stripe webhook / BFF).
     INTERNAL_CREDITS_WEBHOOK_SECRET = (os.getenv("INTERNAL_CREDITS_WEBHOOK_SECRET") or "").strip()
 
