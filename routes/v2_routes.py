@@ -7560,138 +7560,17 @@ from services.skills import (
 _CONTEXTUAL_INTENTS = _list_skill_ids()
 
 # ---------------------------------------------------------------------------
-# EBCP Baseline Mapping — system prompt & generation
+# Cold-start onboarding (turns 1-4) — REMOVED IN PHASE 18.
+#
+# Per docs/ARCHITECTURE_SINGLE_SOURCE_OF_TRUTH.md, the frontend now
+# owns turns 1-4 entirely as hardcoded ONBOARDING_MESSAGES strings.
+# The backend's scripted EBCP path (the long _EBCP_BASELINE_SYSTEM_
+# PROMPT, the _EBCP_FALLBACKS dict, and _generate_ebcp_question) was
+# deleted to eliminate duplicate ownership. /v2/public/interview/
+# next-question now refuses turn_number <= 4 with 400 TURN_OWNED_BY_
+# FRONTEND so a confused client surfaces the violation immediately
+# instead of silently regressing into "backend owns turn 1 again".
 # ---------------------------------------------------------------------------
-
-_EBCP_BASELINE_SYSTEM_PROMPT = """You are an EBCP Baseline Mapping coach conducting a structured 3-stage voice assessment for sales professionals.
-You MUST follow this EXACT sequential flow based on the turn number provided in the user message.
-
-=== STAGE 1: FRUSTRATION FACTOR (Turn 2) ===
-The user was just asked: "Are you good at math?"
-Analyze their transcript to determine confidence level.
-
-IF the user indicated YES (confident, positive, eager — "yes", "love it", "pretty good", "great", "sure"):
-Return EXACTLY:
-"Love the confidence! ||| Let's test that sales brain. Imagine you have a prospect on the phone. They want to buy 15 software licenses at $100 each, but they are demanding a 20% discount to close today. Walk me through your calculation out loud: What is the final deal size, and how would you deliver that number to the client?"
-
-IF the user indicated NO (hesitant, unsure, negative — "no", "not really", "bad at math", "hate math", "not good"):
-Return EXACTLY:
-"No worries, that is exactly what CRM software and calculators are for! ||| Let's keep it simple. Imagine you just closed a $3,000 deal, and your commission is 10%. Tell me: How much money did you just make, and what is the very first thing you are going to spend it on?"
-
-GUARDRAIL — If the transcript is unclear or ambiguous: Default to the NO branch.
-
-=== STAGE 2: RELIEF FACTOR (Turn 3) ===
-The user just attempted a math challenge. Generate a response that:
-1. Opens with ONE brief warm acknowledgment sentence of their math effort (e.g. "Great job crunching those numbers! Let's leave the math behind us now.")
-   — GUARDRAIL: If the user refused math or gave a clearly wrong/confused answer, open with "OK, thanks for that a lot! Let's move on!" instead.
-2. Separates the acknowledgment from the question using the exact delimiter `|||`.
-3. Immediately follows with EXACTLY this question (note the `|||` between the setup sentence and the "Hit record" prompt — keep it):
-"Think about the most charismatic leader or salesperson you have ever worked with—someone who naturally inspires others. ||| Hit record and tell me: What is the one specific trait they have that makes people instantly trust them? And how do you feel when you talk to them?"
-   — GUARDRAIL: If the transcript reveals the user has never met a charismatic leader, append: " That's fair! Think of a public figure, a famous CEO, or anyone you admire from afar. What makes them so trustworthy?"
-
-=== STAGE 3: FAMILIARITY FACTOR (Turn 4) ===
-The user just described a charismatic leader. Generate a response that:
-1. Opens with ONE brief validation sentence (e.g. "That's a great observation. It is definitely easier to buy from someone we naturally trust.")
-2. Separates the validation from the question using the exact delimiter `|||`.
-3. Immediately follows with EXACTLY this question:
-"Let's wrap up this baseline mapping with something a bit more fun. Think about your favorite movie, show, or book. If you could bring one fictional character with you to the toughest negotiation of your life to help you close the deal, who would it be and why? Hit record and tell me how they would handle a difficult client."
-   — GUARDRAIL: If the transcript reveals the user doesn't watch movies or read books, append: " No problem at all. Just think of any historical figure or famous personality you'd want by your side in a tough negotiation. Who would it be and why?"
-
-=== GLOBAL GUARDRAILS ===
-- FORMATTING RULE: Separate your acknowledgment/validation from your question using the exact delimiter `|||`.
-  Example: `OK, thanks for that a lot! Let's move on! ||| Think about the most charismatic leader or salesperson you have ever worked with...`
-  Turn 1 has no acknowledgment prefix — return ONLY the question text with no `|||`.
-- Return ONLY the formatted text. No labels, no stage headers, no meta-commentary.
-- NEVER correct the user's math. NEVER force them to retry. NEVER argue.
-- Your primary goal: keep them speaking to collect their vocal baseline.
-- If any answer is unexpected, validate gracefully and advance the sequence.
-- Low temperature: be deterministic and stick closely to the exact wording specified above.
-"""
-
-# Deterministic fallbacks when the LLM fails — keyed by turn_number
-_EBCP_FALLBACKS: dict[int, str] = {
-    1: "Are you good at math?",
-    2: (
-        "No worries, that is exactly what CRM software and calculators are for! ||| "
-        "Let's keep it simple. Imagine you just closed a $3,000 deal, and your commission is 10%. "
-        "Tell me: How much money did you just make, and what is the very first thing you are going to spend it on?"
-    ),
-    3: (
-        "Great effort! Let's leave the math behind us now. ||| "
-        "Think about the most charismatic leader or salesperson you have ever worked with—someone who naturally inspires others. ||| "
-        "Hit record and tell me: What is the one specific trait they have that makes people instantly trust them? "
-        "And how do you feel when you talk to them?"
-    ),
-    4: (
-        "That's a great observation. It is definitely easier to buy from someone we naturally trust. ||| "
-        "Let's wrap up this baseline mapping with something a bit more fun. "
-        "Think about your favorite movie, show, or book. If you could bring one fictional character with you to the "
-        "toughest negotiation of your life to help you close the deal, who would it be and why? "
-        "Hit record and tell me how they would handle a difficult client."
-    ),
-}
-
-
-def _generate_ebcp_question(
-    turn_number: int,
-    previous_turns: list | None = None,
-) -> str | None:
-    """Generate the EBCP Baseline Mapping question for turns 1-4.
-
-    Turn 1 → fixed opener ("Are you good at math?"), no LLM needed.
-    Turn 2 → Math branching: LLM reads turn-1 transcript for YES/NO.
-    Turn 3 → Relief/Charisma: LLM acknowledges math effort, asks about charismatic leader.
-    Turn 4 → Familiarity: LLM acknowledges charisma response, asks about fictional character.
-    """
-    # Turn 1: hardcoded EBCP opener — no LLM call needed
-    if turn_number == 1:
-        return _EBCP_FALLBACKS[1]
-
-    # Turns 2-4: ask the LLM with EBCP system prompt + conversation history
-    if turn_number > 4:
-        return None  # caller should fall through to regular charisma/stress questions
-
-    try:
-        from services.openai_service import OpenAIService
-        service = OpenAIService()
-        if not service.client:
-            return None
-
-        messages: list[dict] = [{"role": "system", "content": _EBCP_BASELINE_SYSTEM_PROMPT}]
-
-        # Build conversation history so the LLM sees prior turns & transcripts
-        if previous_turns:
-            for turn in previous_turns:
-                q = (turn.get("question") or "").strip()
-                t = (turn.get("transcript") or "").strip()
-                if q:
-                    messages.append({"role": "assistant", "content": q})
-                if t:
-                    messages.append({"role": "user", "content": t})
-
-        messages.append({
-            "role": "user",
-            "content": (
-                f"This is turn {turn_number}. "
-                "Generate the appropriate EBCP stage response based on the conversation history above. "
-                "Return ONLY the question text, nothing else."
-            ),
-        })
-
-        response = service.client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=messages,
-            max_tokens=300,
-            temperature=0.25,  # Low temperature: deterministic EBCP wording
-        )
-        question = response.choices[0].message.content.strip()
-        if question.startswith('"') and question.endswith('"'):
-            question = question[1:-1]
-        return question if question else None
-
-    except Exception as e:
-        logger.warning("_generate_ebcp_question(turn=%d) failed (will use fallback): %s", turn_number, e)
-        return None
 
 
 def _generate_snippet_follow_up_question(
@@ -10590,140 +10469,68 @@ def _obscure_email(email: str) -> str | None:
     return f"{head}**@{domain}"
 
 
-# ── Lightweight intent guardrail for scripted EBCP turns ───────────
-# When a user "interrupts" the scripted EBCP turns (1-4) with a
-# question, expression of confusion, or resistance, we prepend a
-# one-shot acknowledgment bubble to the next scripted question. The
-# scripted question itself is unchanged — baseline integrity wins.
-#
-# Detection is pure regex (no LLM call, no extra latency). Most-
-# specific patterns first so e.g. "are you a bot" goes to system_
-# identity rather than purpose_confusion.
-#
-# Triggers only when the latest user transcript:
-#   - matches one of the keyword patterns, AND
-#   - has more than 3 words (avoids false positives on short
-#     answers like "I do not" that happen to contain a stop-word)
-#
-# One-fire-per-session: a per-process TTL cache keyed on session_id
-# (preferred) or user_id (fallback) keeps the ack from re-firing if
-# the user keeps asking. Multi-worker setups don't share state — a
-# stray duplicate ack across workers is harmless UX, not a bug.
-# Guests with no session_id and no user_id get the ack ungated; the
-# false-positive rate is acceptable for that small slice.
-_INTENT_ACK_CATEGORIES = (
-    # (pattern, bubble_text). Order matters — first match wins.
-    (
-        re.compile(
-            r"\b(?:are\s+you|who(?:\s+(?:are|is))?)\b",
-            re.IGNORECASE,
-        ),
-        "Good question. I'll answer that in a second — quick baseline first.",
-    ),
-    (
-        re.compile(
-            r"\b(?:skip|stop)\b",
-            re.IGNORECASE,
-        ),
-        "Got it. This will be fast — just need this short baseline to proceed.",
-    ),
-    (
-        re.compile(
-            r"\b(?:why|what\s+is\s+this|wait|confused|don'?t\s+get)\b",
-            re.IGNORECASE,
-        ),
-        "I hear you — I'll explain in a moment, but first I need a quick baseline to tailor the coaching.",
-    ),
-)
-
-_INTENT_ACK_MIN_WORDS = 3  # strictly greater-than (so 4+ words fires)
-_INTENT_ACK_TTL_SECONDS = 30 * 60  # ~ session length
-_intent_ack_cache: dict[str, float] = {}
-_intent_ack_lock = threading.Lock()
-
-
-def _intent_ack_check(previous_turns) -> str | None:
-    """Return the acknowledgment bubble for the latest user transcript,
-    or None if no trigger matches. Pure / no side effects.
-
-    Walks ``previous_turns`` from newest to oldest, picks the first
-    non-empty transcript, applies the word-count gate, then runs the
-    ordered category patterns until one matches.
-    """
-    if not previous_turns or not isinstance(previous_turns, list):
-        return None
-    latest_transcript: str | None = None
-    for prev in reversed(previous_turns):
-        if isinstance(prev, dict):
-            t = (prev.get("transcript") or "").strip()
-            if t:
-                latest_transcript = t
-                break
-    if not latest_transcript:
-        return None
-    if len(latest_transcript.split()) <= _INTENT_ACK_MIN_WORDS:
-        return None
-    for pattern, bubble in _INTENT_ACK_CATEGORIES:
-        if pattern.search(latest_transcript):
-            return bubble
-    return None
-
-
-def _intent_ack_already_fired(key: str) -> bool:
-    """Per-process one-fire-per-session gate. Lazy-prunes expired
-    entries on each call (cheap; the cache is small)."""
-    if not key:
-        return False
-    now = time.monotonic()
-    with _intent_ack_lock:
-        expired = [k for k, exp in _intent_ack_cache.items() if exp < now]
-        for k in expired:
-            _intent_ack_cache.pop(k, None)
-        return key in _intent_ack_cache
-
-
-def _intent_ack_mark_fired(key: str) -> None:
-    """Stamp the per-session expiry so subsequent calls skip the ack."""
-    if not key:
-        return
-    now = time.monotonic()
-    with _intent_ack_lock:
-        _intent_ack_cache[key] = now + _INTENT_ACK_TTL_SECONDS
+# ── Intent guardrail helpers — REMOVED IN PHASE 18 ──────────────────
+# _INTENT_ACK_CATEGORIES + _intent_ack_check / _already_fired /
+# _mark_fired existed solely to prepend an "I hear you" bubble onto
+# the scripted EBCP turn-2-to-4 responses when a user interrupted
+# with confusion / resistance / "are you a bot?". With turns 1-4 now
+# owned entirely by the frontend (M1-M4 hardcoded strings,
+# docs/ARCHITECTURE_SINGLE_SOURCE_OF_TRUTH.md §1), there's no
+# scripted backend response to prepend onto. Removing the helpers
+# keeps the route file honest. If a frontend-side analogue is
+# wanted in the future, build it in TSX where the bubbles live.
 
 
 @v2_bp.route("/public/interview/next-question", methods=["POST"])
 def v2_public_interview_next_question():
-    """Return the next interview question.
+    """Return the next interview question — TURN 5+ ONLY.
 
-    Turns 1-4: EBCP Baseline Mapping (Frustration → Relief → Familiarity factors).
-    Turns 5+:  Open-ended charisma/stress alternating questions.
+    Per docs/ARCHITECTURE_SINGLE_SOURCE_OF_TRUTH.md (Phase 18):
+    the frontend owns turns 1-4 as hardcoded ONBOARDING_MESSAGES.
+    This endpoint refuses turn_number <= 4 with a clear error so a
+    confused client can't silently regress into "backend owns the
+    opener again."
 
-    Input:  { turn_number: int, user_id?: str, previous_turns?: [{question, transcript?}] }
-    Output: { question: str, tone: "charisma"|"stress"|"ebcp", turn_number: int, source: str }
+    Turn 5+ behaviour (unchanged):
+      - Tone alternation: turn 5 = charisma, turn 6 = stress, …
+      - _generate_llm_question with previous_turns + soft profile +
+        Phase 16 baseline_summary + Phase 15 longitudinal block.
+      - Falls back to _INTERVIEW_QUESTIONS_FALLBACK pool on LLM
+        failure.
+
+    Input:  { turn_number: int (>=5), user_id?: str, previous_turns?: [{question, transcript?}] }
+    Output:
+      200 { question, tone, turn_number, source }
+      400 { code: "TURN_OWNED_BY_FRONTEND" } when turn_number <= 4
+      400 { code: "INVALID_INPUT" } on malformed input
     """
     try:
         body = request.get_json(silent=True) or {}
-        turn_number = int(body.get("turn_number", 1))
-        if turn_number < 1:
-            turn_number = 1
+        turn_number = int(body.get("turn_number", 5))
+
+        # ── Phase 18 guardrail: turns 1-4 belong to the frontend ────
+        # The frontend renders M1-M4 from its hardcoded
+        # ONBOARDING_MESSAGES array. The backend is never called for
+        # those turns. Refuse loudly so a buggy client surfaces the
+        # contract violation immediately.
+        if turn_number < 5:
+            return jsonify({
+                "code": "TURN_OWNED_BY_FRONTEND",
+                "error": (
+                    "Turns 1-4 are hardcoded ONBOARDING_MESSAGES on the "
+                    "frontend. The backend does not generate them. See "
+                    "docs/ARCHITECTURE_SINGLE_SOURCE_OF_TRUTH.md §1."
+                ),
+            }), 400
 
         user_id = (body.get("user_id") or "").strip() or None
         previous_turns = body.get("previous_turns") or None
-        # Optional — when the frontend supplies it, we use it as the
-        # one-fire-per-session cache key for the intent guardrail. Falls
-        # back to user_id when absent. Backward compatible: existing
-        # callers that don't send it just dedupe on user_id instead.
-        session_id = (body.get("session_id") or "").strip() or None
-        # Explicit assessment requests force the scripted EBCP path
-        # regardless of baseline state (e.g. admin recalibrating).
-        force_assessment = bool(body.get("force_assessment", False))
 
-        # ── Admin queued override (turn 1 only) ──────────────────────
+        # ── Admin queued override (any turn) ──────────────────────────
         # PUT /v2/admin/user/<id>/context with queued_override_question
-        # arms a one-shot question that takes precedence over EBCP
-        # script, LLM bypass, and force_assessment. Pop-and-clear on
-        # turn 1 so it fires exactly once per session start.
-        if user_id and turn_number == 1:
+        # arms a one-shot question that wins over LLM generation.
+        # Pop-and-clear so it fires exactly once.
+        if user_id:
             override = db.consume_queued_override_question(user_id)
             if override:
                 return jsonify({
@@ -10733,134 +10540,11 @@ def v2_public_interview_next_question():
                     "source": "admin_override",
                 }), 200
 
-        # ── Phase 13: smart-EBCP routing ─────────────────────────────
-        # Returning users (baseline_established=TRUE) skip the
-        # scripted 1-4 turns and go straight to LLM continuation.
-        # Guests (no user_id), new users (flag FALSE), and explicit
-        # assessment runs keep the original EBCP behaviour.
-        baseline_done = (
-            not force_assessment
-            and bool(user_id)
-            and db.get_baseline_established(user_id)
-        )
-
-        if baseline_done and turn_number <= 4:
-            # Same tone alternation as turn 5+: odd → charisma,
-            # even → stress. That gives a charisma-warm opener and
-            # a stress probe on turn 2.
-            tone = "charisma" if turn_number % 2 == 1 else "stress"
-            question = _generate_llm_question(
-                turn_number=turn_number,
-                tone=tone,
-                previous_turns=previous_turns,
-                user_id=user_id,
-                timeout_seconds=3.0,
-            )
-            if question:
-                return jsonify({
-                    "question": question,
-                    "tone": tone,
-                    "turn_number": turn_number,
-                    "source": "llm_bypass_ebcp",
-                }), 200
-            # Fallback: LLM stalled or failed — drop into the
-            # scripted EBCP opener so the UI never locks up.
-            logger.warning(
-                "interview: bypass-ebcp LLM failed for user=%s turn=%d "
-                "— falling back to scripted EBCP turn 1",
-                user_id, turn_number,
-            )
-            return jsonify({
-                "question": _EBCP_FALLBACKS[1],
-                "tone": "charisma",
-                "turn_number": turn_number,
-                "source": "llm_bypass_fallback",
-            }), 200
-
-        # ── EBCP Baseline Mapping: turns 1-4 (new users) ─────────────
-        if turn_number <= 4:
-            question = _generate_ebcp_question(turn_number, previous_turns)
-            if not question:
-                question = _EBCP_FALLBACKS.get(turn_number, _EBCP_FALLBACKS[4])
-                source = "ebcp_fallback"
-            else:
-                source = "ebcp_llm"
-
-            response_payload: dict = {
-                "question": question,
-                "tone": "charisma",  # EBCP turns register as charisma
-                "turn_number": turn_number,
-                "source": source,
-            }
-
-            # ── Emotional handling: one-shot acknowledgment bubble ──
-            # Only meaningful from turn 2 onwards (turn 1 has no prior
-            # transcript to inspect). The scripted question is unchanged
-            # — we just prepend an "I hear you" bubble so the user
-            # doesn't feel ignored. Baseline integrity preserved: they
-            # still must answer the math/leader question to register a
-            # baseline data point.
-            if turn_number >= 2:
-                ack_text = _intent_ack_check(previous_turns)
-                if ack_text:
-                    ack_key = session_id or user_id or ""
-                    if not (ack_key and _intent_ack_already_fired(ack_key)):
-                        response_payload["acknowledgment"] = ack_text
-                        if ack_key:
-                            _intent_ack_mark_fired(ack_key)
-
-            return jsonify(response_payload), 200
-
-        # ── Regular charisma/stress alternation: turns 5+ ────────────
-        # Offset so turn 5 is the first post-EBCP turn (charisma),
-        # turn 6 is stress, etc.
-        post_ebcp_index = turn_number - 4  # 1, 2, 3 …
-        tone = "charisma" if post_ebcp_index % 2 == 1 else "stress"
-
-        # Phase 13 graduation — the user just asked for turn 5,
-        # meaning they completed all 4 scripted EBCP turns. Flip the
-        # flag so their NEXT session bypasses the script. Best-effort:
-        # a failed write here just delays bypass by one session.
-        if user_id and turn_number == 5:
-            try:
-                if not db.get_baseline_established(user_id):
-                    db.mark_baseline_established(user_id)
-            except Exception as flag_err:
-                logger.warning(
-                    "interview: baseline_established flip failed "
-                    "user=%s err=%s", user_id, flag_err,
-                )
-
-        # Phase 16 — bake the EBCP digest at the turn 4→5 transition.
-        # Done synchronously here so the same request that fires turn 5
-        # gets the freshly-computed summary in its prompt. ~1-2s extra
-        # latency on a one-time-per-user moment.
-        # Flag-gated; failure logs + falls through to raw-previous-
-        # turns behaviour. Skips when a summary already exists
-        # (returning user after an admin reset will recompute because
-        # reset_baseline_established also clears baseline_summary).
-        if (
-            user_id
-            and turn_number == 5
-            and previous_turns
-        ):
-            try:
-                from config import Config
-                if Config().BASELINE_SUMMARY_ENABLED:
-                    existing = db.get_user_baseline_summary(user_id)
-                    if not existing:
-                        from services.baseline_summary import (
-                            compute_baseline_summary,
-                        )
-                        compute_baseline_summary(
-                            user_id=user_id,
-                            previous_turns=previous_turns,
-                        )
-            except Exception as bs_err:
-                logger.warning(
-                    "interview: baseline_summary compute failed "
-                    "user=%s err=%s", user_id, bs_err,
-                )
+        # ── Tone alternation (backend is authoritative) ──────────────
+        # Per SSoT §4: turn 5 = charisma, 6 = stress, 7 = charisma, …
+        # The frontend renders response.tone blindly.
+        post_baseline_index = turn_number - 4  # 1, 2, 3 …
+        tone = "charisma" if post_baseline_index % 2 == 1 else "stress"
 
         question = _generate_llm_question(
             turn_number=turn_number,
@@ -10872,7 +10556,7 @@ def v2_public_interview_next_question():
 
         if not question:
             pool = _INTERVIEW_QUESTIONS_FALLBACK[tone]
-            question_index = ((post_ebcp_index - 1) // 2) % len(pool)
+            question_index = ((post_baseline_index - 1) // 2) % len(pool)
             question = pool[question_index]
 
         return jsonify({
@@ -10882,6 +10566,11 @@ def v2_public_interview_next_question():
             "source": source,
         }), 200
 
+    except (TypeError, ValueError) as e:
+        return jsonify({
+            "code": "INVALID_INPUT",
+            "error": f"turn_number must be an integer >= 5: {e}",
+        }), 400
     except Exception as e:
         logger.error("interview/next-question failed: %s", e, exc_info=True)
         return jsonify({"code": "V2_ERROR", "error": "Failed to get question"}), 500
@@ -11277,6 +10966,94 @@ def v2_public_interview_upload_answer():
                         source_snippet_id, out_err,
                     )
 
+        # ── Phase 18: baseline graduation at turn 4 completion ──────
+        # Per docs/ARCHITECTURE_SINGLE_SOURCE_OF_TRUTH.md §2, the
+        # baseline_established flip happens here — the moment the
+        # user has successfully submitted their answer to the last
+        # frontend-owned onboarding turn (M4). Previous behaviour
+        # flipped lazily at the first turn-5 next-question request,
+        # which moved the side-effect away from the moment it
+        # semantically belongs. The Phase 16 baseline summary also
+        # bakes here so the digest is ready before the user's first
+        # turn-5 prompt is built.
+        #
+        # Requires an authenticated user — guest sessions skip both
+        # the flip (no user_settings row to upsert) and the summary
+        # (nothing to attach it to). The auth extract is best-
+        # effort: a missing/invalid token just skips this block.
+        if turn_number == 4:
+            try:
+                from auth import verify_supabase_token
+                authed_user_id_b = None
+                auth_header_b = request.headers.get("Authorization") or ""
+                if auth_header_b.startswith("Bearer "):
+                    payload_b = verify_supabase_token(
+                        auth_header_b[len("Bearer "):].strip()
+                    )
+                    authed_user_id_b = (payload_b or {}).get("sub")
+                if authed_user_id_b:
+                    uid = str(authed_user_id_b)
+                    # Flip the flag (idempotent — upsert + no-op when
+                    # already TRUE).
+                    try:
+                        db.mark_baseline_established(uid)
+                    except Exception as flip_err:
+                        logger.warning(
+                            "baseline-flip: failed user=%s err=%s",
+                            uid, flip_err,
+                        )
+
+                    # Phase 16 — compute the EBCP digest now so the
+                    # next turn-5 prompt has it ready. Flag-gated;
+                    # synchronous so the result is persisted before
+                    # the upload response returns (~1-2s additional
+                    # latency on this one moment per user).
+                    try:
+                        from config import Config
+                        if Config().BASELINE_SUMMARY_ENABLED:
+                            if not db.get_user_baseline_summary(uid):
+                                # Build previous_turns from this
+                                # session's snippets (turn rows
+                                # carry question_text + transcript).
+                                turns_for_summary: list[dict] = []
+                                try:
+                                    rows = db.get_snippets_by_session(
+                                        guest_session_id
+                                    ) or []
+                                except Exception:
+                                    rows = []
+                                ordered = sorted(
+                                    rows,
+                                    key=lambda r: r.get("turn_number") or 0,
+                                )
+                                for r in ordered:
+                                    q = (r.get("question_text") or "").strip()
+                                    t = (r.get("transcript") or "").strip()
+                                    if not t:
+                                        continue
+                                    turns_for_summary.append({
+                                        "question": q,
+                                        "transcript": t,
+                                    })
+                                if turns_for_summary:
+                                    from services.baseline_summary import (
+                                        compute_baseline_summary,
+                                    )
+                                    compute_baseline_summary(
+                                        user_id=uid,
+                                        previous_turns=turns_for_summary,
+                                    )
+                    except Exception as bs_err:
+                        logger.warning(
+                            "baseline-summary: compute failed user=%s err=%s",
+                            uid, bs_err,
+                        )
+            except Exception as outer_err:
+                logger.warning(
+                    "baseline-graduation: outer failure: %s",
+                    outer_err,
+                )
+
         return jsonify({
             "status": "ok",
             "guest_session_id": guest_session_id,
@@ -11284,7 +11061,7 @@ def v2_public_interview_upload_answer():
             "duration_seconds": duration_seconds,
             "total_session_duration_seconds": round(total_duration, 1),
             "metrics": snippet_metrics,
-            "transcript": transcript_text,  # Whisper transcript for EBCP branching
+            "transcript": transcript_text,
         }), 201
 
     except Exception as e:

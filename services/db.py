@@ -5409,7 +5409,13 @@ class DatabaseService:
             return []
 
     def get_snippets_with_comments_by_session(self, session_id: str) -> List[dict]:
-        """Get only snippets that have admin comments (used for /results page)."""
+        """Get only snippets that have admin comments (used for /results page).
+
+        Per docs/ARCHITECTURE_SINGLE_SOURCE_OF_TRUTH.md §6: whitespace-
+        only admin_comment is treated as "no comment". PostgREST's
+        NOT NULL filter can't express TRIM(...) <> '' so we apply the
+        strip-filter in Python after the DB query.
+        """
         try:
             result = (
                 self.client.table("charisma_snippets")
@@ -5419,7 +5425,8 @@ class DatabaseService:
                 .order("start_offset_ms", desc=False)
                 .execute()
             )
-            return result.data if result.data else []
+            rows = result.data or []
+            return [r for r in rows if (r.get("admin_comment") or "").strip()]
         except Exception as e:
             logger.error(f"get_snippets_with_comments_by_session failed: {e}")
             return []
