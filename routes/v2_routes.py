@@ -12530,20 +12530,43 @@ def _compute_session_global_metrics(session_id: str) -> dict | None:
     global_pitch_center = round(sum(pitches) / len(pitches), 1) if pitches else None
     global_energy = round(sum(energies) / len(energies), 3) if energies else None
 
-    # KPI from the existing performance formula
+    # KPI from the existing performance formula. The previous version
+    # defaulted missing inputs (fillers→0, wpm→140), which silently
+    # produced a "perfect" 100 on sessions where the snippet metrics
+    # pipeline never populated those fields — making one user's KPI
+    # incomparable to another's. Refuse to score when any input is
+    # missing; the response carries kpi_score=None and the frontend
+    # renders "—" instead of a misleading number.
     kpi_score = None
     kpi_debug = None
-    try:
-        from services.metrics_v2 import compute_recording_performance_score
-        kpi_result = compute_recording_performance_score(
-            center_hold_ratio=global_energy,
-            filler_count=global_fillers or 0,
-            wpm=global_wpm or 140.0,
+    if (
+        global_wpm is not None
+        and global_fillers is not None
+        and global_energy is not None
+    ):
+        try:
+            from services.metrics_v2 import compute_recording_performance_score
+            kpi_result = compute_recording_performance_score(
+                center_hold_ratio=global_energy,
+                filler_count=global_fillers,
+                wpm=global_wpm,
+            )
+            kpi_score = round(kpi_result["score_01"] * 100, 1)
+            kpi_debug = kpi_result
+        except Exception as kpi_err:
+            logger.warning("session metrics: KPI score compute failed: %s", kpi_err)
+    else:
+        logger.info(
+            "session metrics: skipping KPI for session=%s — missing "
+            "inputs wpm=%s fillers=%s energy=%s",
+            session_id, global_wpm, global_fillers, global_energy,
         )
-        kpi_score = round(kpi_result["score_01"] * 100, 1)
-        kpi_debug = kpi_result
-    except Exception as kpi_err:
-        logger.warning("session metrics: KPI score compute failed: %s", kpi_err)
+        kpi_debug = {
+            "score_source": "skipped_missing_inputs",
+            "wpm_missing": global_wpm is None,
+            "fillers_missing": global_fillers is None,
+            "energy_missing": global_energy is None,
+        }
 
     db.update_session_global_metrics(
         session_id=session_id,
