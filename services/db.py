@@ -6956,6 +6956,52 @@ class DatabaseService:
             logger.error(f"skip_snippet failed: {e}")
             return None
 
+    def hard_delete_charisma_snippet(self, snippet_id: str) -> Optional[dict]:
+        """Permanently remove a charisma_snippets row.
+
+        Phase 18.1 — admin "delete snippet" flow for garbage /
+        misclassified extractions. Distinct from skip_snippet:
+          - skip_snippet: soft-hide (is_skipped=TRUE), row remains
+            in admin view + DB. Reversible.
+          - hard_delete_charisma_snippet: row is GONE. coaching_
+            attempts referencing it CASCADE-delete (per the FK
+            in the Phase 2 migration); admin_annotation_events
+            keyed on snippet_id stay in place (no FK) so the
+            RLHF training signal isn't lost.
+
+        Returns the deleted row dict on success (lets the caller
+        log what was destroyed), None when nothing matched the
+        id, or raises only on Supabase transport errors — the
+        caller maps those to 500.
+
+        Idempotent: deleting an already-gone row returns None
+        cleanly, no exception, so the route layer can map to
+        404 without retry.
+        """
+        try:
+            # Read-before-delete so we can return the row in the
+            # response AND tell "already gone" (None data) from
+            # "Supabase rejected the delete" (exception).
+            existing = (
+                self.client.table("charisma_snippets")
+                .select("*")
+                .eq("id", snippet_id)
+                .limit(1)
+                .execute()
+            )
+            if not (existing.data or []):
+                return None
+            self.client.table("charisma_snippets").delete().eq(
+                "id", snippet_id
+            ).execute()
+            return existing.data[0]
+        except Exception as e:
+            logger.error(
+                "hard_delete_charisma_snippet failed snippet=%s err=%s",
+                snippet_id, e,
+            )
+            raise
+
     # ------------------------------------------------------------------
     # Session-level global metrics & AI alignment
     # ------------------------------------------------------------------

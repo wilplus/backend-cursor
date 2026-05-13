@@ -12371,6 +12371,66 @@ def v2_admin_skip_snippet(snippet_id):
         return jsonify({"code": "V2_ERROR", "error": "Failed to skip snippet"}), 500
 
 
+@v2_bp.route("/admin/snippets/<snippet_id>", methods=["DELETE"])
+@require_admin
+def v2_admin_delete_snippet(snippet_id):
+    """Permanently delete a charisma_snippets row.
+
+    Phase 18.1 — admin "delete snippet" flow for garbage /
+    misclassified extractions. Distinct from /skip: skip is a soft
+    hide reversible from admin UI; this is destructive.
+
+    Cascade behaviour:
+      - coaching_attempts rows referencing this snippet → CASCADE
+        deleted via the FK from the Phase 2 migration.
+      - coaching_attempt_annotations → CASCADE via coaching_attempts.
+      - admin_annotation_events → not cascaded (no FK). RLHF training
+        signal stays intact.
+
+    Returns:
+        200 { status: "ok", deleted_id }
+        400 INVALID_INPUT — bad UUID
+        404 NOT_FOUND — snippet doesn't exist (or already deleted —
+            idempotent for the caller; second click is just a 404)
+        500 V2_ERROR — unexpected DB error
+    """
+    if not _is_valid_uuid(snippet_id):
+        return jsonify({
+            "code": "INVALID_INPUT",
+            "error": "snippet_id must be a valid UUID",
+        }), 400
+
+    try:
+        deleted = db.hard_delete_charisma_snippet(snippet_id)
+        if deleted is None:
+            return jsonify({
+                "code": "NOT_FOUND",
+                "error": "Snippet not found (already deleted or never existed)",
+            }), 404
+
+        logger.info(
+            "admin: deleted snippet=%s session=%s by admin=%s",
+            snippet_id,
+            deleted.get("session_id"),
+            getattr(request, "user_id", None),
+        )
+        return jsonify({
+            "status": "ok",
+            "deleted_id": snippet_id,
+        }), 200
+
+    except Exception as e:
+        logger.error(
+            "admin: delete snippet failed snippet=%s: %s",
+            snippet_id, e, exc_info=True,
+        )
+        sentry_sdk.capture_exception(e)
+        return jsonify({
+            "code": "V2_ERROR",
+            "error": "Failed to delete snippet",
+        }), 500
+
+
 ############################################################################
 # Admin: User settings (LLM instructions)
 ############################################################################
