@@ -8780,7 +8780,24 @@ def _augment_interview_prompt_with_profile(
             "interview: profile load failed user=%s: %s", user_id, e,
         )
 
-    if not learner_type and not custom_instructions:
+    # ── Phase 17 — Master Score (B6) block ───────────────────────
+    # Pulls the most recent session's persisted kpi_score / global
+    # acoustic aggregates and renders them as a tight
+    # [PERFORMANCE METRICS] block. Anti-parrot directive can now
+    # cite concrete numbers ("your pace landed at 145 wpm, well in
+    # band, but your dynamic range came in low") rather than
+    # generic shape. Falls silent when no recent session has
+    # measurements — protects cold-start users from a misleading
+    # "your score" line in the prompt.
+    metrics_block: str | None = None
+    try:
+        metrics_block = _build_master_score_block(user_id)
+    except Exception as e:
+        logger.warning(
+            "interview: master-score block failed user=%s: %s", user_id, e,
+        )
+
+    if not learner_type and not custom_instructions and not metrics_block:
         return base_prompt
 
     block_lines = ["", "[COACHING CONTEXT]"]
@@ -8798,6 +8815,9 @@ def _augment_interview_prompt_with_profile(
 
     augmented = base_prompt + "\n" + "\n".join(block_lines)
 
+    if metrics_block:
+        augmented += "\n\n" + metrics_block
+
     # Keep the legacy verbatim block as well — admins relying on the
     # old "ADDITIONAL INSTRUCTIONS FOR THIS USER" wording in their
     # custom_llm_instructions content still see it surface unchanged.
@@ -8808,6 +8828,75 @@ def _augment_interview_prompt_with_profile(
         )
 
     return augmented
+
+
+def _build_master_score_block(user_id: str) -> str | None:
+    """Phase 17 — render the user's latest B6 Master Score for the LLM.
+
+    Source: the most recent v2_sessions row that has computed
+    metrics. Surfaces kpi_score (B7, the persisted 0..100 score),
+    plus the global acoustic averages that fed it, plus the
+    stickiness topic (C4) when present.
+
+    Returns None when no recent session has metrics — better to
+    omit the block than to print "—" placeholders the LLM would
+    parrot back at the user.
+
+    Uses the LATEST session's data on purpose: the next interview
+    question is FORWARD-looking from the user's last completed run,
+    not their lifetime average. If we ever want a lifetime view, it
+    belongs in a separate block (e.g. learner profile).
+    """
+    if not user_id:
+        return None
+    try:
+        latest = db.v2_get_latest_published_session_for_user(user_id) or {}
+    except Exception as e:
+        logger.warning(
+            "master-score-block: session load failed user=%s: %s", user_id, e,
+        )
+        return None
+    if not latest:
+        return None
+
+    kpi = latest.get("kpi_score")
+    g_wpm = latest.get("global_wpm")
+    g_fillers = latest.get("global_fillers")
+    g_dynamic = latest.get("global_dynamic_db")
+    g_pitch = latest.get("global_pitch_center")
+    g_pause = latest.get("global_pause_ms")
+    sticky_topic = (latest.get("stickiness_top_topic") or "").strip() or None
+
+    # Nothing measurable on the latest session — bail rather than
+    # render a hollow block.
+    if all(v is None for v in (kpi, g_wpm, g_fillers, g_dynamic, g_pitch, g_pause)):
+        return None
+
+    lines: list[str] = [
+        "[PERFORMANCE METRICS — from this user's most recent session]"
+    ]
+    if isinstance(kpi, (int, float)):
+        lines.append(f"Master score (KPI, 0-100): {round(float(kpi), 1)}")
+    if isinstance(g_wpm, (int, float)):
+        lines.append(f"Pace: {round(float(g_wpm), 1)} WPM (target band 120-160)")
+    if isinstance(g_fillers, (int, float)):
+        lines.append(f"Fillers across session: {int(g_fillers)}")
+    if isinstance(g_dynamic, (int, float)):
+        lines.append(f"Dynamic range: {round(float(g_dynamic), 1)} dB")
+    if isinstance(g_pitch, (int, float)):
+        lines.append(f"Pitch centre: {round(float(g_pitch), 1)} st")
+    if isinstance(g_pause, (int, float)):
+        lines.append(f"Average pause: {round(float(g_pause), 0)} ms")
+    if sticky_topic:
+        lines.append(f"Sticky topic last session: {sticky_topic}")
+    lines.append("")
+    lines.append(
+        "Directive: cite ONE specific metric above when it would "
+        "ground your question — e.g. \"your pace ran at 175 WPM in "
+        "the last session, so this time...\". Do NOT recite the "
+        "whole block; pick the most coachable number for THIS turn."
+    )
+    return "\n".join(lines)
 
 
 def _augment_coaching_system_prompt(base_prompt: str, user_id: str) -> str:

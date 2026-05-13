@@ -162,41 +162,225 @@ def build_recording_1_performance_profile(wpm: float, filler_count: int) -> Dict
 
 
 def compute_metrics_v2(
-    wpm: float,
+    wpm: Optional[float],
     strength_raw: Optional[float],
-    filler_count: int,
-    emotion_achieved: bool,
-    transcript: str,
-    keywords: List[str],
+    filler_count: Optional[int],
+    emotion_achieved: Optional[bool],
+    transcript: Optional[str],
+    keywords: Optional[List[str]],
     metric_definitions: List[Dict],
 ) -> Dict[str, Any]:
-    """
+    """B6 — the canonical Master Score (see docs/ACOUSTIC-METRICS-INVENTORY.md).
+
+    Five components: pace, strength, fillers, emotion_achieved,
+    keywords_used. Each normalised to 0..1.
+
+    NULL handling (Phase 17 — replaces the previous "substitute 0.5"
+    behaviour):
+        Missing component → its weight is REDISTRIBUTED proportionally
+        across the components that DO carry signal. A session with
+        complete pace + fillers + keywords but missing strength +
+        emotion runs as `(pace + fillers + keywords) / 3` rather than
+        `(pace + 0.5 + fillers + 0 + keywords) / 5`.
+        When every component is missing, performance_score = None.
+
     Returns:
-    - metrics: { code: { raw, normalized, explanation } }
-    - performance_score: 0..1 (average of 5)
-    - metric_labels_snapshot: { code: { left_label, right_label } } for storage
+        {
+          metrics: { code: { raw, normalized, explanation, is_real, weight } },
+          performance_score: float | None,   # 0..1, None when no signal
+          weights_used: { code: weight },    # the redistributed weights
+          components_with_signal: int,       # 0..5
+          metric_labels_snapshot: { code: { left_label, right_label } },
+        }
     """
-    labels = {m["code"]: {"left_label": m.get("left_label", ""), "right_label": m.get("right_label", "")} for m in metric_definitions}
-
-    pace_n = normalize_pace(wpm)
-    strength_n = normalize_strength(strength_raw) if strength_raw is not None else 0.5
-    fillers_n = normalize_fillers(filler_count)
-    emotion_n = normalize_emotion_achieved(emotion_achieved)
-    keywords_n = normalize_keywords_used(transcript, keywords or [])
-
-    metrics = {
-        "pace": {"raw": wpm, "normalized": pace_n, "explanation": f"WPM {wpm:.0f} (target 120-160)"},
-        "strength": {"raw": strength_raw, "normalized": strength_n, "explanation": f"Loudness {strength_raw}" if strength_raw is not None else "Loudness (pending)"},
-        "fillers": {"raw": filler_count, "normalized": fillers_n, "explanation": f"{filler_count} fillers"},
-        "emotion_achieved": {"raw": emotion_achieved, "normalized": emotion_n, "explanation": "Yes" if emotion_achieved else "No"},
-        "keywords_used": {"raw": len([k for k in (keywords or []) if k]), "normalized": keywords_n, "explanation": f"Keywords matched in transcript"},
+    labels = {
+        m["code"]: {
+            "left_label": m.get("left_label", ""),
+            "right_label": m.get("right_label", ""),
+        }
+        for m in (metric_definitions or [])
     }
 
-    performance_score = (pace_n + strength_n + fillers_n + emotion_n + keywords_n) / 5.0
-    performance_score = max(0.0, min(1.0, performance_score))
+    # ── Per-component evaluation ──────────────────────────────────
+    # Each tuple: (normalized_value, is_real_signal, raw_for_display,
+    #              explanation).
+    components: Dict[str, Dict[str, Any]] = {}
+
+    # Pace — real when wpm > 0. wpm == None or <= 0 means no signal;
+    # normalize_pace's legacy 0.5-fallback path is bypassed via the
+    # is_real flag.
+    if wpm is not None and float(wpm) > 0:
+        components["pace"] = {
+            "normalized": normalize_pace(float(wpm)),
+            "is_real": True,
+            "raw": wpm,
+            "explanation": f"WPM {float(wpm):.0f} (target 120-160)",
+        }
+    else:
+        components["pace"] = {
+            "normalized": None, "is_real": False, "raw": wpm,
+            "explanation": "Pace (no signal)",
+        }
+
+    # Strength — real when an rms/dB value was actually measured.
+    if strength_raw is not None:
+        components["strength"] = {
+            "normalized": normalize_strength(strength_raw),
+            "is_real": True,
+            "raw": strength_raw,
+            "explanation": f"Loudness {strength_raw}",
+        }
+    else:
+        components["strength"] = {
+            "normalized": None, "is_real": False, "raw": None,
+            "explanation": "Loudness (pending)",
+        }
+
+    # Fillers — real when filler_count is known (even zero is a real
+    # measurement). Distinct from "the user happened to have 0
+    # fillers" vs "the metrics pipeline didn't run".
+    if filler_count is not None:
+        fc = int(filler_count)
+        components["fillers"] = {
+            "normalized": normalize_fillers(fc),
+            "is_real": True,
+            "raw": fc,
+            "explanation": f"{fc} fillers",
+        }
+    else:
+        components["fillers"] = {
+            "normalized": None, "is_real": False, "raw": None,
+            "explanation": "Fillers (pending)",
+        }
+
+    # Emotion achieved — real when the post-recording yes/no answer
+    # was captured. None means the question wasn't asked / answered.
+    if emotion_achieved is not None:
+        components["emotion_achieved"] = {
+            "normalized": normalize_emotion_achieved(bool(emotion_achieved)),
+            "is_real": True,
+            "raw": bool(emotion_achieved),
+            "explanation": "Yes" if emotion_achieved else "No",
+        }
+    else:
+        components["emotion_achieved"] = {
+            "normalized": None, "is_real": False, "raw": None,
+            "explanation": "Emotion check (not answered)",
+        }
+
+    # Keywords — real when both transcript AND a non-empty keyword
+    # list are present. Otherwise we can't score it.
+    kw_list = [k for k in (keywords or []) if k]
+    if transcript and kw_list:
+        components["keywords_used"] = {
+            "normalized": normalize_keywords_used(transcript, kw_list),
+            "is_real": True,
+            "raw": len(kw_list),
+            "explanation": "Keywords matched in transcript",
+        }
+    else:
+        components["keywords_used"] = {
+            "normalized": None, "is_real": False, "raw": len(kw_list),
+            "explanation": "Keywords (no transcript or no list)",
+        }
+
+    # ── Weight redistribution ────────────────────────────────────
+    real_codes = [k for k, v in components.items() if v["is_real"]]
+    weights_used: Dict[str, float] = {}
+    if real_codes:
+        # Equal weight among real components (pre-Phase-17 weights
+        # were already 1/5 each, so this preserves intent when all
+        # five are real).
+        equal_weight = 1.0 / len(real_codes)
+        for code in real_codes:
+            weights_used[code] = equal_weight
+            components[code]["weight"] = equal_weight
+        performance_score = sum(
+            components[code]["normalized"] * weights_used[code]
+            for code in real_codes
+        )
+        performance_score = max(0.0, min(1.0, performance_score))
+    else:
+        performance_score = None
+
+    # Non-real components carry weight 0 in the output so callers
+    # rendering the metric strip can distinguish "weighted in" from
+    # "not weighted in".
+    for code, v in components.items():
+        v.setdefault("weight", 0.0)
 
     return {
-        "metrics": metrics,
+        "metrics": components,
         "performance_score": performance_score,
+        "weights_used": weights_used,
+        "components_with_signal": len(real_codes),
         "metric_labels_snapshot": labels,
+    }
+
+
+# ── Layer-cross drift guard (Phase 17) ──────────────────────────────────────
+
+
+# Maximum allowed gap between the B6 Master Score (0..1) and the
+# D1/D2 classifier confidence (0..1) before we flag the session for
+# admin review. Tuned at 0.40 per the constitution: that's a 40-
+# percentage-point disagreement, which historically only happens
+# when one side glitched (transcript missing, classifier model
+# regressed, etc.) rather than legitimate noise.
+DEFAULT_DRIFT_THRESHOLD = 0.40
+
+
+def detect_classifier_drift(
+    *,
+    performance_score: Optional[float],
+    classifier_confidence: Optional[float],
+    threshold: float = DEFAULT_DRIFT_THRESHOLD,
+) -> Dict[str, Any]:
+    """Compare B6 against the D1/D2 classifier confidence.
+
+    Returns a diagnostic dict the caller can stuff onto the session
+    row (or use to decide whether to flip a `needs_admin_review`
+    bit). Both inputs are expected in [0, 1] — pass the classifier's
+    own confidence ([charisma|stress]_snippets.classifier_confidence)
+    NOT a raw probability.
+
+    Returns ``needs_admin_review = False`` when either side is None
+    (can't drift if you can't compare) — the caller can decide
+    whether NULL inputs themselves warrant admin attention via a
+    separate check.
+
+    The threshold default (0.40) matches the constitution. Callers
+    can raise it (more permissive) or lower it (catch finer drift)
+    by passing ``threshold``.
+    """
+    if performance_score is None or classifier_confidence is None:
+        return {
+            "performance_score": performance_score,
+            "classifier_confidence": classifier_confidence,
+            "deviation": None,
+            "threshold": threshold,
+            "needs_admin_review": False,
+            "reason": "missing_input",
+        }
+    try:
+        ps = float(performance_score)
+        cc = float(classifier_confidence)
+    except (TypeError, ValueError):
+        return {
+            "performance_score": performance_score,
+            "classifier_confidence": classifier_confidence,
+            "deviation": None,
+            "threshold": threshold,
+            "needs_admin_review": False,
+            "reason": "uncastable",
+        }
+    deviation = abs(ps - cc)
+    needs_review = deviation > threshold
+    return {
+        "performance_score": ps,
+        "classifier_confidence": cc,
+        "deviation": round(deviation, 4),
+        "threshold": threshold,
+        "needs_admin_review": needs_review,
+        "reason": "drift_above_threshold" if needs_review else "within_threshold",
     }
