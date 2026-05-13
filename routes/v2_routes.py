@@ -10590,6 +10590,107 @@ def _obscure_email(email: str) -> str | None:
     return f"{head}**@{domain}"
 
 
+# ── Lightweight intent guardrail for scripted EBCP turns ───────────
+# When a user "interrupts" the scripted EBCP turns (1-4) with a
+# question, expression of confusion, or resistance, we prepend a
+# one-shot acknowledgment bubble to the next scripted question. The
+# scripted question itself is unchanged — baseline integrity wins.
+#
+# Detection is pure regex (no LLM call, no extra latency). Most-
+# specific patterns first so e.g. "are you a bot" goes to system_
+# identity rather than purpose_confusion.
+#
+# Triggers only when the latest user transcript:
+#   - matches one of the keyword patterns, AND
+#   - has more than 3 words (avoids false positives on short
+#     answers like "I do not" that happen to contain a stop-word)
+#
+# One-fire-per-session: a per-process TTL cache keyed on session_id
+# (preferred) or user_id (fallback) keeps the ack from re-firing if
+# the user keeps asking. Multi-worker setups don't share state — a
+# stray duplicate ack across workers is harmless UX, not a bug.
+# Guests with no session_id and no user_id get the ack ungated; the
+# false-positive rate is acceptable for that small slice.
+_INTENT_ACK_CATEGORIES = (
+    # (pattern, bubble_text). Order matters — first match wins.
+    (
+        re.compile(
+            r"\b(?:are\s+you|who(?:\s+(?:are|is))?)\b",
+            re.IGNORECASE,
+        ),
+        "Good question. I'll answer that in a second — quick baseline first.",
+    ),
+    (
+        re.compile(
+            r"\b(?:skip|stop)\b",
+            re.IGNORECASE,
+        ),
+        "Got it. This will be fast — just need this short baseline to proceed.",
+    ),
+    (
+        re.compile(
+            r"\b(?:why|what\s+is\s+this|wait|confused|don'?t\s+get)\b",
+            re.IGNORECASE,
+        ),
+        "I hear you — I'll explain in a moment, but first I need a quick baseline to tailor the coaching.",
+    ),
+)
+
+_INTENT_ACK_MIN_WORDS = 3  # strictly greater-than (so 4+ words fires)
+_INTENT_ACK_TTL_SECONDS = 30 * 60  # ~ session length
+_intent_ack_cache: dict[str, float] = {}
+_intent_ack_lock = threading.Lock()
+
+
+def _intent_ack_check(previous_turns) -> str | None:
+    """Return the acknowledgment bubble for the latest user transcript,
+    or None if no trigger matches. Pure / no side effects.
+
+    Walks ``previous_turns`` from newest to oldest, picks the first
+    non-empty transcript, applies the word-count gate, then runs the
+    ordered category patterns until one matches.
+    """
+    if not previous_turns or not isinstance(previous_turns, list):
+        return None
+    latest_transcript: str | None = None
+    for prev in reversed(previous_turns):
+        if isinstance(prev, dict):
+            t = (prev.get("transcript") or "").strip()
+            if t:
+                latest_transcript = t
+                break
+    if not latest_transcript:
+        return None
+    if len(latest_transcript.split()) <= _INTENT_ACK_MIN_WORDS:
+        return None
+    for pattern, bubble in _INTENT_ACK_CATEGORIES:
+        if pattern.search(latest_transcript):
+            return bubble
+    return None
+
+
+def _intent_ack_already_fired(key: str) -> bool:
+    """Per-process one-fire-per-session gate. Lazy-prunes expired
+    entries on each call (cheap; the cache is small)."""
+    if not key:
+        return False
+    now = time.monotonic()
+    with _intent_ack_lock:
+        expired = [k for k, exp in _intent_ack_cache.items() if exp < now]
+        for k in expired:
+            _intent_ack_cache.pop(k, None)
+        return key in _intent_ack_cache
+
+
+def _intent_ack_mark_fired(key: str) -> None:
+    """Stamp the per-session expiry so subsequent calls skip the ack."""
+    if not key:
+        return
+    now = time.monotonic()
+    with _intent_ack_lock:
+        _intent_ack_cache[key] = now + _INTENT_ACK_TTL_SECONDS
+
+
 @v2_bp.route("/public/interview/next-question", methods=["POST"])
 def v2_public_interview_next_question():
     """Return the next interview question.
@@ -10608,6 +10709,11 @@ def v2_public_interview_next_question():
 
         user_id = (body.get("user_id") or "").strip() or None
         previous_turns = body.get("previous_turns") or None
+        # Optional — when the frontend supplies it, we use it as the
+        # one-fire-per-session cache key for the intent guardrail. Falls
+        # back to user_id when absent. Backward compatible: existing
+        # callers that don't send it just dedupe on user_id instead.
+        session_id = (body.get("session_id") or "").strip() or None
         # Explicit assessment requests force the scripted EBCP path
         # regardless of baseline state (e.g. admin recalibrating).
         force_assessment = bool(body.get("force_assessment", False))
@@ -10680,12 +10786,30 @@ def v2_public_interview_next_question():
             else:
                 source = "ebcp_llm"
 
-            return jsonify({
+            response_payload: dict = {
                 "question": question,
                 "tone": "charisma",  # EBCP turns register as charisma
                 "turn_number": turn_number,
                 "source": source,
-            }), 200
+            }
+
+            # ── Emotional handling: one-shot acknowledgment bubble ──
+            # Only meaningful from turn 2 onwards (turn 1 has no prior
+            # transcript to inspect). The scripted question is unchanged
+            # — we just prepend an "I hear you" bubble so the user
+            # doesn't feel ignored. Baseline integrity preserved: they
+            # still must answer the math/leader question to register a
+            # baseline data point.
+            if turn_number >= 2:
+                ack_text = _intent_ack_check(previous_turns)
+                if ack_text:
+                    ack_key = session_id or user_id or ""
+                    if not (ack_key and _intent_ack_already_fired(ack_key)):
+                        response_payload["acknowledgment"] = ack_text
+                        if ack_key:
+                            _intent_ack_mark_fired(ack_key)
+
+            return jsonify(response_payload), 200
 
         # ── Regular charisma/stress alternation: turns 5+ ────────────
         # Offset so turn 5 is the first post-EBCP turn (charisma),
