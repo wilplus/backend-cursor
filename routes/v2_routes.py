@@ -9953,6 +9953,118 @@ def v2_user_coaching_self_rating():
         }), 500
 
 
+@v2_bp.route("/user/sessions/<session_id>/charisma-profile", methods=["GET"])
+@require_auth
+def v2_user_session_charisma_profile(session_id):
+    """Charisma Awareness Dashboard payload for one session.
+
+    Owner-scoped — only the user the session belongs to can read.
+    Pure aggregation over data already on disk (no LLM call), so
+    response latency is bounded by Supabase round-trips.
+
+    Response shape (every key always present; nested objects
+    shape-complete even when underlying data is sparse)::
+
+        {
+          "archetype": "The Visionary",          # str — derived from trinity
+          "narrative": "...",                    # str — mirror.narrative or fallback
+          "acoustics": {
+            "pace": 135.0,                        # WPM (float) or null
+            "idealMin": 125,
+            "idealMax": 140,
+            "peakTopic": "Leadership",            # stickiness_top_topic
+            "timeline": [{ "t": "0:00", "wpm": 120.0 }, ...]
+          },
+          "trinity": {
+            "power":    0.85,
+            "warmth":   0.40,
+            "presence": 0.75,
+            "insight":  "Your authoritative profile is heavy on Power..."
+          },
+          "triggers": {
+            "topTheme":         "Leadership",
+            "pitchDelta":       "+3.2st",
+            "fillerMultiplier": "2.0x",
+            "points": [{ "t": 20, "intensity": 0.3 }, ...]
+          },
+          "recommendation": {
+            "title": "Ready for your next stress-test?",
+            "body":  "Your visionary profile is strong, but..."
+          }
+        }
+
+    Responses:
+      200 { "session_id": "...", "charisma_profile": {...} }
+      400 INVALID_INPUT — bad UUID
+      404 SESSION_NOT_FOUND — session doesn't exist or isn't owned
+      500 V2_ERROR — unexpected
+    """
+    try:
+        if not _is_valid_uuid(session_id):
+            return jsonify({
+                "code": "INVALID_INPUT",
+                "error": "session_id must be a valid UUID",
+            }), 400
+
+        user_id = request.user_id
+
+        # Owner-scoped load. v2_get_session_by_id returns the row
+        # regardless of owner so we verify here.
+        session = db.v2_get_session_by_id(session_id)
+        if not session or str(session.get("user_id") or "") != str(user_id):
+            return jsonify({
+                "code": "SESSION_NOT_FOUND",
+                "error": "Session not found",
+            }), 404
+
+        # Pull the four input slices. All swallow-on-error so a
+        # missing piece degrades gracefully — the builder applies
+        # defaults per-field.
+        try:
+            snippets = db.get_snippets_by_session(session_id) or []
+        except Exception as e:
+            logger.warning(
+                "charisma-profile: snippet load failed session=%s err=%s",
+                session_id, e,
+            )
+            snippets = []
+
+        settings: dict = {}
+        try:
+            settings = db.get_user_settings(user_id) or {}
+        except Exception as e:
+            logger.warning(
+                "charisma-profile: settings load failed user=%s err=%s",
+                user_id, e,
+            )
+        learner_profile = settings.get("inferred_learner_profile") or None
+        mirror = settings.get("current_learner_mirror") or None
+
+        from services.charisma_profile import build_charisma_profile
+        profile_payload = build_charisma_profile(
+            session=session,
+            snippets=snippets,
+            learner_profile=learner_profile,
+            mirror=mirror,
+        )
+
+        return jsonify({
+            "session_id": session_id,
+            "charisma_profile": profile_payload,
+        }), 200
+
+    except Exception as e:
+        logger.error(
+            "user/sessions/<id>/charisma-profile failed: %s",
+            e, exc_info=True,
+        )
+        sentry_sdk.capture_exception(e)
+        return jsonify({
+            "code": "V2_ERROR",
+            "error": "Failed to build charisma profile",
+        }), 500
+
+
 @v2_bp.route("/user/learner-profile", methods=["GET"])
 @require_auth
 def v2_user_learner_profile():
