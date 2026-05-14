@@ -9711,10 +9711,31 @@ def v2_user_coaching_progress():
                     "self_rating_best": _best_self_rating(attempt_payload),
                 }
 
+        # Gate for the self-rating prompt — frontend reads this and
+        # decides whether to render the "rate yourself 1-10" UI for
+        # this snippet. Rule: ask AT MOST once per attempt. If the
+        # most recent attempt already carries a self_rating, the
+        # user has answered for this scenario and we silently skip
+        # the prompt on subsequent reads.
+        #
+        # When there are zero attempts yet (the eval daemon hasn't
+        # written one) we also return False so the frontend doesn't
+        # flash the rating UI before the user has even completed the
+        # exchange. The natural moment to ask is *after* the first
+        # post-attempt poll returns a row.
+        requires_self_score = False
+        if attempt_payload:
+            latest = max(
+                attempt_payload,
+                key=lambda a: a.get("attempt_number") or 0,
+            )
+            requires_self_score = latest.get("self_rating") is None
+
         return jsonify({
             "snippet_id": snippet_id,
             "attempts": attempt_payload,
             "delta": delta,
+            "requires_self_score": requires_self_score,
         }), 200
 
     except Exception as e:
@@ -9726,12 +9747,25 @@ def v2_user_coaching_progress():
         }), 500
 
 
-# Capture the FIRST digit 1-10 in a string. We anchor on word-
-# boundaries so "1000" won't match "10" and "v8" won't match. The
-# "10|[1-9]" ordering matters — alternation is greedy left-to-right,
-# so "10" must come first or "8 out of 10" would match "8" inside
-# "10".
-_SELF_RATING_RE = re.compile(r"\b(10|[1-9])\b")
+# Capture the FIRST 1-10 number in a string, accepting EITHER a
+# digit ("8", "10") OR a spelled-out word ("eight", "ten"). Whisper
+# sometimes transcribes a spoken "8" as the word "eight" so we have
+# to cover both to avoid a brittle UX where the user has to repeat
+# themselves. Order in the alternation matters:
+#   - "10" first so "8 out of 10" doesn't match "10" inside it
+#     (actually word-boundary handles that, but defence-in-depth)
+#   - Word numbers after digits so digit-only inputs ("8") parse
+#     via the cheap branch
+# The capture group is the matched token; resolution to an int
+# happens in _parse_self_rating_from_text.
+_SELF_RATING_RE = re.compile(
+    r"\b(10|[1-9]|one|two|three|four|five|six|seven|eight|nine|ten)\b",
+    re.IGNORECASE,
+)
+_SELF_RATING_WORD_MAP: dict[str, int] = {
+    "one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
+    "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10,
+}
 # Phase 8 self-rating: bound the free-text payload so an abusive
 # client can't ship megabytes through the endpoint. The frontend
 # input is the chat composer (typically <200 chars).
@@ -9741,17 +9775,32 @@ _SELF_RATING_TEXT_MAX = 500
 def _parse_self_rating_from_text(text: str) -> int | None:
     """Pull a 1..10 integer out of a free-form user reply.
 
-    Returns the FIRST 1-10 number found, or None when nothing matches.
-    A None return signals the caller to ask the user to retry (vs.
-    silently defaulting to a wrong rating).
+    Accepts digits ("8", "10") and English number words ("eight",
+    "ten") case-insensitively. Returns the FIRST 1-10 number found,
+    or None when nothing matches.
+
+    Examples:
+      "8"              → 8
+      "I'd say 8"      → 8
+      "9/10"           → 9
+      "eight"          → 8
+      "TEN"            → 10
+      "8 out of 10"    → 8
+      "11"             → None (digit out of range; word_boundary kills it)
+      "ten and a half" → 10
+      ""               → None
     """
     if not text:
         return None
     m = _SELF_RATING_RE.search(text)
     if not m:
         return None
+    token = m.group(1).strip().lower()
+    if token in _SELF_RATING_WORD_MAP:
+        return _SELF_RATING_WORD_MAP[token]
     try:
-        return int(m.group(1))
+        n = int(token)
+        return n if 1 <= n <= 10 else None
     except (TypeError, ValueError):
         return None
 
