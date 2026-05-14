@@ -8264,23 +8264,14 @@ def v2_user_get_results(session_id):
             payload["ai_score"] = session.get("ai_task_alignment_score")
             payload["kpi_score"] = session.get("kpi_score")
 
-            # Charisma Awareness Dashboard payload. Injected here so
-            # the /results page can render the radar / heatmap /
-            # archetype card off the same single fetch as the
-            # snippet list — no second round-trip from the client.
-            # Failure-isolated: a bad profile build never blocks the
-            # core results payload.
-            try:
-                from services.charisma_profile import generate_charisma_profile
-                payload["charisma_profile"] = generate_charisma_profile(
-                    session_id=str(session_id), user_id=user_id,
-                )
-            except Exception as cp_err:
-                logger.warning(
-                    "user/results: charisma_profile build failed sid=%s err=%s",
-                    session_id, cp_err,
-                )
-                payload["charisma_profile"] = None
+            # Charisma Awareness Dashboard payload. Read straight off
+            # the session row — the blob was computed and persisted
+            # during publish-session-results (and overwritten by the
+            # admin compute-metrics endpoint). Pre-existing sessions
+            # that haven't been recomputed since the column was
+            # added return NULL, which the frontend treats as
+            # "hide the dashboard section entirely".
+            payload["charisma_profile"] = session.get("charisma_profile")
 
         return jsonify(payload), 200
 
@@ -8542,10 +8533,6 @@ def v2_user_results_me():
             }), 200
 
         total = len(sessions)
-        # Cheap import outside the loop — generate_charisma_profile
-        # only loads per-session data on each call.
-        from services.charisma_profile import generate_charisma_profile
-
         journey_sessions = []
         for idx, session in enumerate(sessions):
             session_id = str(session.get("id"))
@@ -8555,21 +8542,6 @@ def v2_user_results_me():
             # which the DB query already filters out.
             visible = [s for s in raw_snippets if s.get("admin_comment")]
 
-            # Per-session charisma profile so the Voice Journey UI
-            # can pop the dashboard inline for whichever session the
-            # user expands. Failure-isolated per session so one bad
-            # build can't blank out the whole timeline.
-            try:
-                charisma_profile = generate_charisma_profile(
-                    session_id=session_id, user_id=user_id,
-                )
-            except Exception as cp_err:
-                logger.warning(
-                    "user/results/me: charisma_profile build failed sid=%s err=%s",
-                    session_id, cp_err,
-                )
-                charisma_profile = None
-
             journey_sessions.append({
                 "id": session_id,
                 # Index oldest → newest for the user-facing label so
@@ -8578,7 +8550,11 @@ def v2_user_results_me():
                     "Baseline Audio" if (total - idx) == 1 else "Follow-up"
                 ),
                 "snippets": [_snippet_to_journey_card(s) for s in visible],
-                "charisma_profile": charisma_profile,
+                # Per-session charisma blob — straight cache read so
+                # the timeline doesn't fan-out N LLM calls. NULL when
+                # the session pre-dates the column or was too sparse
+                # to compute.
+                "charisma_profile": session.get("charisma_profile"),
             })
 
         # The UI shows newest first, but its progress tracker is 1-based
@@ -10056,36 +10032,13 @@ def v2_user_session_charisma_profile(session_id):
                 "error": "Session not found",
             }), 404
 
-        # Pull the four input slices. All swallow-on-error so a
-        # missing piece degrades gracefully — the builder applies
-        # defaults per-field.
-        try:
-            snippets = db.get_snippets_by_session(session_id) or []
-        except Exception as e:
-            logger.warning(
-                "charisma-profile: snippet load failed session=%s err=%s",
-                session_id, e,
-            )
-            snippets = []
-
-        settings: dict = {}
-        try:
-            settings = db.get_user_settings(user_id) or {}
-        except Exception as e:
-            logger.warning(
-                "charisma-profile: settings load failed user=%s err=%s",
-                user_id, e,
-            )
-        learner_profile = settings.get("inferred_learner_profile") or None
-        mirror = settings.get("current_learner_mirror") or None
-
-        from services.charisma_profile import build_charisma_profile
-        profile_payload = build_charisma_profile(
-            session=session,
-            snippets=snippets,
-            learner_profile=learner_profile,
-            mirror=mirror,
-        )
+        # Pure cache read. The blob was computed and persisted at
+        # session-publish + admin compute-metrics — no live compute
+        # here so the dashboard load is bounded by a single
+        # Supabase select. NULL when the session pre-dates the
+        # column or was too sparse to compute; frontend treats
+        # NULL as "hide the dashboard".
+        profile_payload = session.get("charisma_profile")
 
         return jsonify({
             "session_id": session_id,
@@ -11927,6 +11880,26 @@ def v2_internal_publish_session_results():
         # the user from reaching their results via direct link.
         db.v2_publish_session_results(session_id)
 
+        # Charisma Awareness Dashboard — compute once on publish so
+        # the user-facing /results page can render the radar/heatmap
+        # off a cache read. Failure-isolated: a bad build leaves the
+        # column NULL and the frontend hides the section, but the
+        # publish still proceeds (snippets + email both ship).
+        try:
+            from services.charisma_profile import (
+                compute_and_persist_charisma_profile,
+            )
+            compute_and_persist_charisma_profile(
+                session_id=session_id,
+                user_id=str(user_id),
+            )
+        except Exception as cp_err:
+            logger.warning(
+                "publish-results: charisma_profile compute failed "
+                "sid=%s err=%s (non-fatal)",
+                session_id, cp_err,
+            )
+
         # ── Phase 14 — new PostSessionResultsEmail render pipeline ──
         # Replaces the inline HTML build. The render service handles:
         #   - per-user pref check (skip if unsubscribed)
@@ -13703,6 +13676,32 @@ def v2_admin_compute_session_metrics(session_id):
         # GPT to produce ai_task_alignment_score/comment; the columns
         # remain in the DB for any historical reads but new writes
         # never land here. Cuts one LLM call per "Compute Metrics".
+
+        # Charisma Awareness Dashboard — overwrite the cached profile
+        # so the /results page reflects whatever the admin just
+        # recomputed (e.g. after re-extracting snippets or re-running
+        # KPI). Best-effort; failure leaves the previous blob in
+        # place.
+        try:
+            from services.charisma_profile import (
+                compute_and_persist_charisma_profile,
+            )
+            # We need the owner id to compute. The session row carries
+            # it; if it's somehow absent (anonymous pre-claim session)
+            # we skip — there's no user-facing dashboard to render
+            # for an un-claimed session anyway.
+            session_row = db.v2_get_session_by_id(session_id) or {}
+            owner_id = session_row.get("user_id")
+            if owner_id:
+                compute_and_persist_charisma_profile(
+                    session_id=session_id, user_id=str(owner_id),
+                )
+        except Exception as cp_err:
+            logger.warning(
+                "compute-metrics: charisma_profile rebuild failed "
+                "sid=%s err=%s (non-fatal)",
+                session_id, cp_err,
+            )
 
         return jsonify({
             "status": "ok",

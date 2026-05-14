@@ -7066,6 +7066,36 @@ class DatabaseService:
             logger.error(f"update_session_ai_alignment failed: {e}")
             return None
 
+    def update_session_charisma_profile(
+        self,
+        session_id: str,
+        profile: Optional[dict],
+    ) -> Optional[dict]:
+        """Persist the Charisma Awareness Dashboard payload.
+
+        Writes ``v2_sessions.charisma_profile`` (JSONB) — the single
+        blob the user-facing /results page reads to render its
+        radar/heatmap/recommendation cards.
+
+        Passing ``profile=None`` clears the column — useful if a
+        recompute decides the session is too sparse to render and
+        we want to fall back to "hide the dashboard" mode rather
+        than leaving a stale blob.
+        """
+        try:
+            result = (
+                self.client.table("v2_sessions")
+                .update({"charisma_profile": profile})
+                .eq("id", session_id)
+                .execute()
+            )
+            if result.data and len(result.data) > 0:
+                return result.data[0]
+            return None
+        except Exception as e:
+            logger.error(f"update_session_charisma_profile failed: {e}")
+            return None
+
     def set_session_drift_flag(
         self,
         *,

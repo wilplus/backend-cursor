@@ -1,51 +1,109 @@
-"""Charisma-Awareness Dashboard payload builder.
+"""Charisma-Awareness Dashboard payload builder + persistor.
 
-Assembles the `charisma_profile` JSONB that powers the user-facing
-results dashboard (radar charts, heatmaps, archetype + recommendation
-cards). Pure aggregation over data already on disk — no LLM call,
-no new tables. The narrative slot reuses the existing learner-mirror
-narrative when available and falls back to a deterministic one-line
-summary otherwise.
+Assembles the ``charisma_profile`` JSONB the /results page reads to
+render its radar / heatmap / archetype / recommendation cards.
+Computed once during session-finalize (publish) and admin compute-
+metrics; persisted to ``v2_sessions.charisma_profile``; read straight
+off the row by the BFF endpoints.
 
-Architecture
-------------
-- One public entry point: ``build_charisma_profile``.
-- Composes from four data sources, all already populated by earlier
-  phases:
-    1. `v2_sessions` row (KPI, stickiness, global acoustic averages)
-    2. `charisma_snippets` rows for that session (per-turn metrics)
-    3. `user_settings.inferred_learner_profile` (Phase 3)
-    4. `user_settings.current_learner_mirror` (Phase 6 narrative)
-- Five output blocks: archetype, narrative, acoustics, trinity,
-  triggers, recommendation. All defined in the contract:
-  see the route docstring on ``v2_user_session_charisma_profile``.
+Public surface
+--------------
+- ``build_charisma_profile(...)`` — pure aggregation, no LLM, no
+  DB. Always returns a shape-complete dict so callers (tests,
+  preview tools) get something usable even on sparse input.
+- ``compute_and_persist_charisma_profile(session_id, user_id)`` —
+  the production entry. Loads inputs, builds the deterministic
+  blob, layers in LLM-generated insight + recommendation (one
+  call, with deterministic fallback), and writes the result to
+  ``v2_sessions.charisma_profile``. Returns the persisted blob or
+  ``None`` when the session is too sparse to bother.
+- ``generate_charisma_profile(session_id, user_id)`` — kept as a
+  thin alias over ``compute_and_persist_charisma_profile`` so any
+  caller wired up before persistence existed still works.
 
-Degraded mode
--------------
-Every block computes from whatever data is present — sparse sessions
-get sensible defaults (e.g. WPM falls back to band-midpoint when the
-session never measured), and the trinity scores degrade to 0.5
-neutral when the inputs are missing. The frontend always receives a
-shape-complete payload; nothing flashes ``undefined`` rendering.
+Contract
+--------
+Six required sub-objects when ``charisma_profile`` is non-null:
+``archetype``, ``narrative``, ``acoustics``, ``trinity``,
+``triggers``, ``recommendation``. The frontend treats partial
+objects as a runtime error, so every block in here is forced
+shape-complete even when the underlying data is missing.
+
+Why we LLM ``trinity.insight`` and ``recommendation`` (but not the
+rest):
+- the deterministic blocks describe *what* — numbers, archetype
+  labels, peak topics. Cheap and reliable.
+- the LLM blocks describe *what to do about it* — phrased the way
+  a coach would phrase it. Worth one call per finalize/recompute,
+  cached, never invoked on the read path.
+- failure mode: if the LLM call fails (no key, timeout, parse
+  error), we land on deterministic copies that are good enough to
+  ship. Recompute later → real LLM read.
+
+Why a "too-sparse" gate
+-----------------------
+The narrative we want is "you delivered N minutes of audio and we
+noticed X." If the session has no acoustic signal at all (zero
+WPM measurements, no fillers tracked, no snippets), every block
+falls back to neutral 0.5 / "—" / empty arrays — that's a
+dashboard that *technically* renders but is worse than hiding.
+``compute_and_persist_charisma_profile`` returns ``None`` (and
+writes ``NULL`` to the column) in that case so the frontend hides
+the section entirely.
 """
 from __future__ import annotations
 
+import json
 import logging
+import statistics
+from collections import Counter
 from typing import Any, Optional
+
+from services.db import db
 
 
 logger = logging.getLogger(__name__)
 
+
+# ── Dashboard contract constants ────────────────────────────────────
 
 # Pace band the dashboard surfaces — tighter than the
 # normalize_pace target (120-160) so the on-screen "ideal" range
 # matches what we coach toward, not what we tolerate.
 _IDEAL_WPM_MIN = 125
 _IDEAL_WPM_MAX = 140
-_PACE_BAND_MID = (_IDEAL_WPM_MIN + _IDEAL_WPM_MAX) / 2
 
 # Trinity neutral default when no signal exists for a dimension.
 _TRINITY_NEUTRAL = 0.5
+
+# Filler-density saturation (per minute). 0 fillers/min → 1.0;
+# 12+/min → 0. Same threshold across power-input, presence-input
+# and per-snippet flow so the dashboard's "stressed-delivery"
+# read is consistent.
+_FILLER_PER_MIN_SAT = 12.0
+
+# Dynamic-dB normalisation range. 15 dB → 0; 35 dB → 1; linear
+# in between. Below 15 reads flat, above 35 plateaus.
+_DYNAMIC_DB_MIN = 15.0
+_DYNAMIC_DB_MAX = 35.0
+
+# Pause variability normalisation. Std-dev of per-snippet
+# pause_ms expressed as a fraction of session mean. 0 → 1.0;
+# 1.0+ (std equals mean → very erratic) → 0.
+_PAUSE_CV_SAT = 1.0
+
+# Archetype proximity thresholds — read directly from spec.
+# All three within this delta → "Balanced Communicator".
+_ARCHETYPE_BALANCED_DELTA = 0.10
+# Top two within this delta → pair-dominant archetype.
+_ARCHETYPE_PAIR_DELTA = 0.05
+
+# LLM model + token budget for insight + recommendation.
+_LLM_MODEL = "gpt-4o-mini"
+_LLM_MAX_TOKENS = 300
+
+
+# ── Public entries ──────────────────────────────────────────────────
 
 
 def build_charisma_profile(
@@ -55,29 +113,26 @@ def build_charisma_profile(
     learner_profile: Optional[dict],
     mirror: Optional[dict],
 ) -> dict[str, Any]:
-    """Build the full charisma_profile payload.
+    """Pure-aggregation build of the full payload.
 
-    Inputs are read-only; this never writes to the DB. Returned dict
-    matches the frontend contract exactly — every key is present,
-    every nested object is shape-complete (defaults applied when
-    underlying data is missing).
+    Returned dict is shape-complete (every required key present,
+    every nested object with all spec keys). ``trinity.insight`` and
+    ``recommendation`` are deterministic here — the LLM upgrade
+    happens in ``compute_and_persist_charisma_profile`` so callers
+    that just want the structural blob (tests, preview, ad-hoc
+    inspection) don't pay for an OpenAI round-trip.
     """
     snippets_sorted = _sort_snippets(snippets or [])
 
     acoustics = _build_acoustics(session or {}, snippets_sorted)
     trinity = _build_trinity(session or {}, snippets_sorted, learner_profile)
-    triggers = _build_triggers(
-        session or {}, snippets_sorted, learner_profile,
-    )
-    archetype = _build_archetype(trinity, learner_profile)
-    recommendation = _build_recommendation(trinity, archetype)
-    narrative = _build_narrative(
-        session=session or {},
-        mirror=mirror,
-        trinity=trinity,
-        acoustics=acoustics,
-        triggers=triggers,
-    )
+    triggers = _build_triggers(session or {}, snippets_sorted)
+    archetype = _build_archetype(trinity)
+    recommendation = _deterministic_recommendation(trinity, archetype, triggers)
+    narrative = _build_narrative(session=session or {}, mirror=mirror)
+    # Deterministic insight — overwritten by the LLM layer when the
+    # caller goes through compute_and_persist.
+    trinity["insight"] = _deterministic_trinity_insight(trinity, archetype)
 
     return {
         "archetype": archetype,
@@ -89,47 +144,45 @@ def build_charisma_profile(
     }
 
 
-def generate_charisma_profile(
+def compute_and_persist_charisma_profile(
     session_id: str,
     user_id: str,
-) -> dict[str, Any]:
-    """Spec-named entry: load the four input slices for ``session_id``
-    (owner-checked against ``user_id``) and return the full
-    charisma_profile payload.
+) -> Optional[dict[str, Any]]:
+    """Production entry — load, build, LLM-upgrade, persist.
 
-    Use this from BFF endpoints that have only the IDs — the route
-    handler at ``/v2/user/sessions/<id>/charisma-profile`` has the
-    session already in hand and goes through ``build_charisma_profile``
-    directly to save a round-trip.
+    Called by:
+      - the publish-session-results internal endpoint (first compute
+        on session finalize)
+      - the admin compute-metrics endpoint (overwrite on demand)
 
-    Owner-mismatched or missing sessions degrade to an empty
-    ``session`` dict so the builder applies neutral defaults — the
-    payload is always shape-complete, never raises, and the BFF
-    caller can safely splat it into the response.
+    Returns the persisted blob, or ``None`` when the session has no
+    usable signal (no WPM, no snippets, no acoustic averages). In
+    the None case we also write NULL to the column so a stale blob
+    from a prior compute doesn't linger and mislead the dashboard.
     """
-    from services.db import db  # local import — keeps module import-cheap
-
     try:
         session = db.v2_get_session_by_id(session_id) or {}
     except Exception as e:
         logger.warning(
-            "generate_charisma_profile: session load failed sid=%s err=%s",
+            "charisma_profile: session load failed sid=%s err=%s",
             session_id, e,
         )
         session = {}
 
-    # Owner gate. We don't raise — the caller decides whether to
-    # surface 404 or render a sparse profile. Returning a neutral
-    # shape protects against accidental cross-user leakage if a
-    # caller forgets to verify ownership before injection.
     if session and str(session.get("user_id") or "") != str(user_id):
-        session = {}
+        # Caller passed the wrong user — refuse to persist anything
+        # under that session, but don't raise.
+        logger.warning(
+            "charisma_profile: owner mismatch sid=%s uid=%s actual=%s",
+            session_id, user_id, session.get("user_id"),
+        )
+        return None
 
     try:
         snippets = db.get_snippets_by_session(session_id) or []
     except Exception as e:
         logger.warning(
-            "generate_charisma_profile: snippet load failed sid=%s err=%s",
+            "charisma_profile: snippet load failed sid=%s err=%s",
             session_id, e,
         )
         snippets = []
@@ -139,79 +192,139 @@ def generate_charisma_profile(
         settings = db.get_user_settings(user_id) or {}
     except Exception as e:
         logger.warning(
-            "generate_charisma_profile: settings load failed uid=%s err=%s",
+            "charisma_profile: settings load failed uid=%s err=%s",
             user_id, e,
         )
-
     learner_profile = settings.get("inferred_learner_profile") or None
     mirror = settings.get("current_learner_mirror") or None
 
-    return build_charisma_profile(
+    if not _has_usable_signal(session, snippets):
+        # Too sparse to render anything honest. Clear the column so
+        # the dashboard stays hidden rather than showing stale data.
+        try:
+            db.update_session_charisma_profile(session_id, None)
+        except Exception as e:
+            logger.warning(
+                "charisma_profile: null-clear failed sid=%s err=%s",
+                session_id, e,
+            )
+        return None
+
+    payload = build_charisma_profile(
         session=session,
         snippets=snippets,
         learner_profile=learner_profile,
         mirror=mirror,
     )
 
-
-# ── Internals ───────────────────────────────────────────────────────────────
-
-
-def _sort_snippets(snippets: list[dict]) -> list[dict]:
-    """Turn-row order. Stable on turn_number, then start_offset_ms."""
-    return sorted(
-        snippets,
-        key=lambda s: (
-            int(s.get("turn_number") or 0),
-            int(s.get("start_offset_ms") or 0),
-        ),
+    # LLM upgrade — one call returns both insight + recommendation.
+    # Failure leaves the deterministic strings build_charisma_profile
+    # already wrote in place.
+    upgraded = _llm_insight_and_recommendation(
+        trinity=payload["trinity"],
+        archetype=payload["archetype"],
+        triggers=payload["triggers"],
+        acoustics=payload["acoustics"],
     )
+    if upgraded is not None:
+        if upgraded.get("insight"):
+            payload["trinity"]["insight"] = upgraded["insight"]
+        if upgraded.get("recommendation"):
+            payload["recommendation"] = upgraded["recommendation"]
+
+    try:
+        db.update_session_charisma_profile(session_id, payload)
+    except Exception as e:
+        logger.error(
+            "charisma_profile: persist failed sid=%s err=%s",
+            session_id, e,
+        )
+        # Caller gets the computed blob anyway so a publish flow can
+        # still email the user the right archetype; just the cache
+        # write didn't land.
+
+    return payload
+
+
+def generate_charisma_profile(
+    session_id: str,
+    user_id: str,
+) -> Optional[dict[str, Any]]:
+    """Back-compat alias for ``compute_and_persist_charisma_profile``.
+
+    Pre-persistence callers used this name. Keeping the alias means
+    the route handler that wires the dedicated GET endpoint doesn't
+    need a parallel rename.
+    """
+    return compute_and_persist_charisma_profile(session_id, user_id)
+
+
+# ── Sparseness gate ─────────────────────────────────────────────────
+
+
+def _has_usable_signal(session: dict, snippets: list[dict]) -> bool:
+    """True when there's *anything* worth rendering.
+
+    Bar is intentionally low: at least one WPM measurement OR at
+    least one snippet with duration. We'd rather show a partial
+    dashboard than hide a real session because filler counts
+    happened to be missing.
+    """
+    if _to_float(session.get("global_wpm")) is not None:
+        return True
+    for s in snippets:
+        if _to_int(s.get("duration_ms")) and _to_int(s.get("duration_ms")) > 0:
+            return True
+        if _to_float(s.get("wpm")) is not None:
+            return True
+    return False
 
 
 # ── Acoustics ──────────────────────────────────────────────────────
 
 
 def _build_acoustics(session: dict, snippets: list[dict]) -> dict[str, Any]:
-    """Pace + ideal band + peak topic + per-turn WPM timeline."""
-    raw_pace = session.get("global_wpm")
-    try:
-        pace = round(float(raw_pace), 1) if raw_pace is not None else None
-    except (TypeError, ValueError):
-        pace = None
+    """Session-level pace + ideal band + peak topic + per-turn timeline.
+
+    Spec contract:
+      pace      — int WPM (session avg)
+      idealMin  — int WPM (125)
+      idealMax  — int WPM (140)
+      peakTopic — string (free text)
+      timeline  — list of { t: "T<n>", wpm: int } per snippet with WPM
+    """
+    wpms = [
+        _to_float(s.get("wpm"))
+        for s in snippets
+        if _to_float(s.get("wpm")) is not None and _to_float(s.get("wpm")) > 0
+    ]
+    if wpms:
+        pace_int: Optional[int] = int(round(sum(wpms) / len(wpms)))
+    else:
+        # Fall back to the global column so the band still anchors
+        # somewhere meaningful even when per-snippet WPM is missing.
+        raw_global = _to_float(session.get("global_wpm"))
+        pace_int = int(round(raw_global)) if raw_global else None
 
     timeline: list[dict[str, Any]] = []
-    cumulative_ms = 0
+    turn_idx = 1
     for s in snippets:
-        # Prefer the per-row offset when finalize has rewritten it;
-        # otherwise fall back to a running cumulative cursor so the
-        # x-axis stays monotonic even on fresh sessions.
-        start_ms = s.get("start_offset_ms")
-        try:
-            t_ms = int(start_ms) if start_ms is not None else cumulative_ms
-        except (TypeError, ValueError):
-            t_ms = cumulative_ms
-        wpm_raw = s.get("wpm")
-        try:
-            wpm = float(wpm_raw) if wpm_raw is not None else None
-        except (TypeError, ValueError):
-            wpm = None
-        if wpm is None or wpm <= 0:
-            # Skip rows where WPM wasn't measured. The dashboard
-            # shouldn't plot a 0 point — would look like a silent
-            # turn (which usually means the data is missing, not
-            # that the user paused for the whole turn).
-            cumulative_ms += int(s.get("duration_ms") or 0)
+        wpm_raw = _to_float(s.get("wpm"))
+        if wpm_raw is None or wpm_raw <= 0:
+            # Skip rows where WPM wasn't measured — dashboard
+            # shouldn't plot a 0 point. Don't bump turn_idx either;
+            # the on-screen tick should match the *measured* turns.
             continue
         timeline.append({
-            "t": _mmss(t_ms),
-            "wpm": round(wpm, 1),
+            "t": f"T{turn_idx}",
+            "wpm": int(round(wpm_raw)),
         })
-        cumulative_ms += int(s.get("duration_ms") or 0)
+        turn_idx += 1
 
-    peak_topic = (session.get("stickiness_top_topic") or "").strip() or None
+    peak_topic = _peak_topic(session, snippets)
 
     return {
-        "pace": pace,
+        "pace": pace_int,
         "idealMin": _IDEAL_WPM_MIN,
         "idealMax": _IDEAL_WPM_MAX,
         "peakTopic": peak_topic,
@@ -219,7 +332,34 @@ def _build_acoustics(session: dict, snippets: list[dict]) -> dict[str, Any]:
     }
 
 
-# ── Trinity (Power / Warmth / Presence) ─────────────────────────────
+def _peak_topic(session: dict, snippets: list[dict]) -> Optional[str]:
+    """Topic of the strongest snippet. Falls back to stickiness top
+    topic when per-snippet topic data isn't available — which is
+    almost always the case in v1 since snippets only carry
+    ``question_text``, not a discrete topic label."""
+    # Best snippet by simple per-snippet quality proxy. Most
+    # interesting interpretation of "highest engagement" we can
+    # cheaply compute today.
+    best_score = -1.0
+    best_snippet: Optional[dict] = None
+    for s in snippets:
+        sc = _snippet_quality_score(s)
+        if sc is None:
+            continue
+        if sc > best_score:
+            best_score = sc
+            best_snippet = s
+    if best_snippet is not None:
+        for field in ("topic", "question_text"):
+            label = (best_snippet.get(field) or "").strip()
+            if label:
+                return label[:80]
+
+    top = (session.get("stickiness_top_topic") or "").strip()
+    return top or None
+
+
+# ── Trinity ─────────────────────────────────────────────────────────
 
 
 def _build_trinity(
@@ -229,107 +369,245 @@ def _build_trinity(
 ) -> dict[str, Any]:
     """Three normalised 0..1 scores + a one-line insight.
 
-    Per the dashboard spec — every dimension is a simple average of
-    two already-normalised inputs:
+    Spec — each axis is a *weighted* composite of three signals.
+    Missing signals drop out of the average (we re-normalise over
+    the surviving weights), so a dimension with one valid input
+    still produces a meaningful number instead of bias from a
+    constant fill-value.
 
-      POWER    = avg(stickiness, pace)
-      WARMTH   = avg(emotional_movement, engagement)
-      PRESENCE = avg(flow, score)
+      POWER    = 0.5·engagement + 0.3·norm(dynamic_db) + 0.2·(1 − norm(filler_density))
+      WARMTH   = 0.6·emotional_movement + 0.4·norm(pitch_range)
+      PRESENCE = 0.5·flow + 0.3·specificity + 0.2·(1 − norm(pause_variability))
 
-    ``stickiness``, ``emotional_movement``, ``engagement`` are read
-    directly from ``inferred_learner_profile.traits.score_per_component``
-    (Phase 4 evaluator output, already 0..1). ``pace`` is the WPM
-    proximity-to-ideal-band score from session.global_wpm.
-    ``flow`` is an inverse-filler-density proxy on the session.
-    ``score`` is session.kpi_score / 100.
+    ``engagement``, ``emotional_movement``, ``specificity`` come
+    from ``learner_profile.traits.score_per_component`` — the
+    Phase-3/Phase-4 aggregate. We use the user-level aggregate
+    rather than per-session because v1 snippets don't carry
+    per-attempt evaluator components (those live on
+    ``coaching_attempts``, which most onboarding snippets don't
+    spawn). Future enhancement: average per-session coaching
+    attempts when present.
 
-    Missing inputs are skipped, not zeroed — a dimension with one
-    valid input averages just that one. A dimension with no inputs
-    degrades to ``_TRINITY_NEUTRAL`` (0.5) so the radar chart never
-    shows a 0 from missing data.
+    ``flow`` is computed from session filler density — same
+    threshold as the per-snippet ``1 − flow`` intensity on
+    triggers, so the dashboard's overall fluency read and its
+    heatmap agree on what 'stressed delivery' looks like.
     """
-    stickiness = _coaching_components_average(learner_profile, "stickiness")
-    emotional_movement = _coaching_components_average(
-        learner_profile, "emotional_movement",
-    )
-    engagement = _coaching_components_average(learner_profile, "engagement")
-    pace = _pace_proximity_score(session)
-    flow = _flow_score(session)
-    score = _kpi_normalised(session)
+    engagement = _component_avg(learner_profile, "engagement")
+    emotional_movement = _component_avg(learner_profile, "emotional_movement")
+    specificity = _component_avg(learner_profile, "specificity")
 
-    power = _avg_or_neutral([stickiness, pace])
-    warmth = _avg_or_neutral([emotional_movement, engagement])
-    presence = _avg_or_neutral([flow, score])
+    dynamic_db_norm = _norm_dynamic_db(session)
+    filler_inv = _inv_filler_density(session, snippets)
+    flow = _flow_score(session, snippets)
+    pitch_range_norm = _norm_pitch_range(snippets)
+    pause_var_inv = _inv_pause_variability(snippets)
 
-    insight = _trinity_insight(power, warmth, presence)
+    power = _weighted_average([
+        (0.5, engagement),
+        (0.3, dynamic_db_norm),
+        (0.2, filler_inv),
+    ])
+    warmth = _weighted_average([
+        (0.6, emotional_movement),
+        (0.4, pitch_range_norm),
+    ])
+    presence = _weighted_average([
+        (0.5, flow),
+        (0.3, specificity),
+        (0.2, pause_var_inv),
+    ])
+
     return {
         "power": round(power, 4),
         "warmth": round(warmth, 4),
         "presence": round(presence, 4),
-        "insight": insight,
+        # Insight is filled by build_charisma_profile (deterministic)
+        # or compute_and_persist_charisma_profile (LLM upgrade).
+        "insight": "",
     }
 
 
-def _avg_or_neutral(values: list[Optional[float]]) -> float:
-    """Mean of the non-None inputs; 0.5 if none present."""
-    present = [v for v in values if v is not None]
-    return sum(present) / len(present) if present else _TRINITY_NEUTRAL
+def _weighted_average(pairs: list[tuple[float, Optional[float]]]) -> float:
+    """Weighted mean over present (non-None) inputs.
 
-
-def _pace_proximity_score(session: dict) -> Optional[float]:
-    """0..1 proximity of global_wpm to the ideal band.
-
-    1.0 inside [_IDEAL_WPM_MIN, _IDEAL_WPM_MAX]; falls off linearly
-    to 0 at 80 (too slow) or 200 (too fast). Returns None when WPM
-    is missing so the trinity averages skip it instead of zeroing.
+    When every input is None → 0.5 neutral. When some are present,
+    weights of the missing ones are dropped and the rest re-
+    normalised so the result is still a proper [0,1] average.
     """
-    wpm = _to_float(session.get("global_wpm"))
-    if wpm is None or wpm <= 0:
+    num = 0.0
+    denom = 0.0
+    for w, v in pairs:
+        if v is None:
+            continue
+        num += w * _clamp01(v)
+        denom += w
+    if denom <= 0:
+        return _TRINITY_NEUTRAL
+    return num / denom
+
+
+def _component_avg(
+    learner_profile: Optional[dict],
+    key: str,
+) -> Optional[float]:
+    """Read an evaluator-component aggregate (0..1) from the
+    learner profile. None when missing."""
+    if not isinstance(learner_profile, dict):
         return None
-    if _IDEAL_WPM_MIN <= wpm <= _IDEAL_WPM_MAX:
-        return 1.0
-    if wpm < _IDEAL_WPM_MIN:
-        return _clamp01((wpm - 80) / (_IDEAL_WPM_MIN - 80))
-    return _clamp01((200 - wpm) / (200 - _IDEAL_WPM_MAX))
+    traits = learner_profile.get("traits") or {}
+    per_component = traits.get("score_per_component") or {}
+    if not isinstance(per_component, dict):
+        return None
+    return _to_float(per_component.get(key))
 
 
-def _flow_score(session: dict) -> Optional[float]:
-    """0..1 delivery-fluency proxy from session-level filler count.
+def _norm_dynamic_db(session: dict) -> Optional[float]:
+    """Map session global_dynamic_db to 0..1.
 
-    0 fillers → 1.0; 12+ fillers → 0. Linear in between. The same
-    threshold the spec uses for the per-snippet ``1.0 - flow``
-    intensity points, so the dashboard's overall flow read and its
-    heatmap agree on what 'stressed delivery' looks like.
+    15 dB → 0, 35 dB → 1. Higher dynamic range = more vocal
+    authority = more Power.
     """
-    fillers = _to_int(session.get("global_fillers"))
-    if fillers is None:
+    raw = _to_float(session.get("global_dynamic_db"))
+    if raw is None:
         return None
-    return _clamp01(1.0 - (fillers / 12.0))
-
-
-def _kpi_normalised(session: dict) -> Optional[float]:
-    """KPI master score (0..100) → 0..1. None when KPI missing."""
-    kpi = _to_float(session.get("kpi_score"))
-    if kpi is None:
-        return None
-    return _clamp01(kpi / 100.0)
-
-
-def _trinity_insight(power: float, warmth: float, presence: float) -> str:
-    """One-sentence framing of the dominant + lagging axes."""
-    scores = {"Power": power, "Warmth": warmth, "Presence": presence}
-    top = max(scores, key=scores.get)
-    bot = min(scores, key=scores.get)
-    if scores[top] - scores[bot] < 0.10:
-        return (
-            f"Your profile is balanced across Power ({power:.2f}), "
-            f"Warmth ({warmth:.2f}), and Presence ({presence:.2f}). "
-            "Push any one dimension to stand out."
-        )
-    return (
-        f"Your authoritative profile is heavy on {top} ({scores[top]:.2f}) "
-        f"but lacks {bot} ({scores[bot]:.2f}) under pressure."
+    return _clamp01(
+        (raw - _DYNAMIC_DB_MIN) / (_DYNAMIC_DB_MAX - _DYNAMIC_DB_MIN)
     )
+
+
+def _inv_filler_density(
+    session: dict,
+    snippets: list[dict],
+) -> Optional[float]:
+    """Inverse of session-level filler density (per minute).
+
+    Prefer per-snippet sum (lets the dashboard agree with the
+    heatmap), fall back to global_fillers + cumulative duration if
+    per-snippet data is empty.
+    """
+    fillers_total = 0
+    duration_ms_total = 0
+    for s in snippets:
+        f = _to_int(s.get("fillers"))
+        d = _to_int(s.get("duration_ms"))
+        if f is not None:
+            fillers_total += f
+        if d is not None and d > 0:
+            duration_ms_total += d
+    if duration_ms_total <= 0:
+        # Fall back to the session row's globals.
+        fillers_global = _to_int(session.get("global_fillers"))
+        if fillers_global is None:
+            return None
+        # No per-minute basis available — saturate against the
+        # absolute threshold the spec uses for the global blob.
+        return _clamp01(1.0 - (fillers_global / _FILLER_PER_MIN_SAT))
+    per_minute = fillers_total / (duration_ms_total / 60000.0)
+    return _clamp01(1.0 - per_minute / _FILLER_PER_MIN_SAT)
+
+
+def _flow_score(
+    session: dict,
+    snippets: list[dict],
+) -> Optional[float]:
+    """Delivery-fluency proxy. Same input as _inv_filler_density —
+    keep them in lockstep so 'flow' and 'low fillers' don't
+    disagree on the same session.
+    """
+    return _inv_filler_density(session, snippets)
+
+
+def _norm_pitch_range(snippets: list[dict]) -> Optional[float]:
+    """Map pitch-range (semitones spread across snippets) to 0..1.
+
+    1 semitone → 0; 8+ semitones → 1. More melodic variation reads
+    warmer — flat monotone is the cold extreme.
+    """
+    centers = [
+        _to_float(s.get("pitch_center"))
+        for s in snippets
+        if _to_float(s.get("pitch_center")) is not None
+    ]
+    if len(centers) < 2:
+        return None
+    span = max(centers) - min(centers)
+    return _clamp01((span - 1.0) / (8.0 - 1.0))
+
+
+def _inv_pause_variability(snippets: list[dict]) -> Optional[float]:
+    """Inverse coefficient-of-variation of pause_ms across snippets.
+
+    Tight, consistent pauses → high presence (1.0); erratic pauses
+    → low (0). Coefficient of variation = std / mean — scale-free,
+    so a fast and a slow speaker get judged on their own consistency.
+    Needs ≥ 2 snippets with pause data; returns None below that.
+    """
+    pauses = [
+        _to_float(s.get("pause_ms"))
+        for s in snippets
+        if _to_float(s.get("pause_ms")) is not None
+    ]
+    if len(pauses) < 2:
+        return None
+    mean = sum(pauses) / len(pauses)
+    if mean <= 0:
+        return None
+    try:
+        stdev = statistics.pstdev(pauses)
+    except statistics.StatisticsError:
+        return None
+    cv = stdev / mean
+    return _clamp01(1.0 - cv / _PAUSE_CV_SAT)
+
+
+# ── Archetype ───────────────────────────────────────────────────────
+
+
+def _build_archetype(trinity: dict) -> str:
+    """7-tier archetype mapping per spec.
+
+    Single-axis dominance:
+      POWER lead    → "The Decisive Leader"
+      WARMTH lead   → "The Trusted Confidant"
+      PRESENCE lead → "The Calm Anchor"
+
+    Pair-dominance (top two within 0.05):
+      POWER + WARMTH    → "The Visionary Leader"
+      WARMTH + PRESENCE → "The Empathic Communicator"
+      POWER + PRESENCE  → "The Composed Authority"
+
+    All three within 0.10 of each other:
+      → "The Balanced Communicator"
+    """
+    p = trinity.get("power") or 0.0
+    w = trinity.get("warmth") or 0.0
+    pr = trinity.get("presence") or 0.0
+    scores = {"power": p, "warmth": w, "presence": pr}
+
+    ordered = sorted(scores.items(), key=lambda kv: kv[1], reverse=True)
+    (top_axis, top_val), (mid_axis, mid_val), (bot_axis, bot_val) = ordered
+
+    # All three close — balanced.
+    if top_val - bot_val < _ARCHETYPE_BALANCED_DELTA:
+        return "The Balanced Communicator"
+
+    # Top two within pair threshold — pair archetype.
+    if top_val - mid_val < _ARCHETYPE_PAIR_DELTA:
+        pair = frozenset([top_axis, mid_axis])
+        if pair == frozenset({"power", "warmth"}):
+            return "The Visionary Leader"
+        if pair == frozenset({"warmth", "presence"}):
+            return "The Empathic Communicator"
+        if pair == frozenset({"power", "presence"}):
+            return "The Composed Authority"
+
+    # Single-axis dominant.
+    return {
+        "power": "The Decisive Leader",
+        "warmth": "The Trusted Confidant",
+        "presence": "The Calm Anchor",
+    }[top_axis]
 
 
 # ── Triggers ────────────────────────────────────────────────────────
@@ -338,178 +616,287 @@ def _trinity_insight(power: float, warmth: float, presence: float) -> str:
 def _build_triggers(
     session: dict,
     snippets: list[dict],
-    learner_profile: Optional[dict],
 ) -> dict[str, Any]:
-    """Heatmap-style trigger payload — spec-aligned.
+    """Heatmap-style trigger payload — stress-snippet-anchored.
 
-    topTheme         — theme/question from the worst-performing
-                       snippet (lowest per-snippet flow score). This
-                       is what the user wants to drill into next;
-                       reading it off the LEARNER PROFILE's top
-                       recurring entity would surface what's
-                       frequent, not what's hardest.
-    pitchDelta       — semitone spread across the session.
-    fillerMultiplier — ratio of fillers in second half vs first half.
-    points           — per-turn stress points where
-                       ``t`` is percentage (0..100) of session
-                       duration and ``intensity`` is
-                       ``1.0 - per_snippet_flow``. Both spec-shaped
-                       so the frontend can plot a clean heatmap
-                       without further math.
+    Spec semantics:
+      topTheme         — most common theme across stress snippets
+                          (snippet_type == 'stress' OR coach_label
+                          == 'stress'). Falls back to lowest-
+                          quality non-stress snippet, then to
+                          session stickiness top topic.
+      pitchDelta       — max pitch deviation on stress snippets vs
+                          session-mean baseline, in semitones,
+                          formatted as "+N.N st" / "-N.N st".
+      fillerMultiplier — (stress filler density) / (charisma filler
+                          density), floored at "1.0x" — never report
+                          a multiplier below baseline.
+      points           — one entry per stress snippet:
+                          t = (start_offset_ms / total_session_ms)·100
+                          intensity = 1 − snippet quality score
     """
-    top_theme = _worst_snippet_theme(snippets) or _top_recurring_theme(
-        learner_profile,
-    )
+    stress_snips, charisma_snips = _partition_by_coach_label(snippets)
 
-    # Pitch delta — max minus min across turns, in semitones.
-    pitch_centers = [
-        _to_float(s.get("pitch_center"))
-        for s in snippets
-        if _to_float(s.get("pitch_center")) is not None
-    ]
-    pitch_delta_label: str
-    if len(pitch_centers) >= 2:
-        delta = max(pitch_centers) - min(pitch_centers)
-        pitch_delta_label = f"{delta:+.1f}st"
-    else:
-        pitch_delta_label = "—"
-
-    # Filler multiplier — second half / first half. >1.0 means
-    # fillers crept in under pressure.
-    filler_counts = [
-        _to_int(s.get("fillers"))
-        for s in snippets
-        if _to_int(s.get("fillers")) is not None
-    ]
-    multiplier_label: str
-    if len(filler_counts) >= 2:
-        mid = len(filler_counts) // 2
-        first_half = sum(filler_counts[:mid]) or 0
-        second_half = sum(filler_counts[mid:]) or 0
-        if first_half == 0 and second_half == 0:
-            multiplier_label = "1x"
-        elif first_half == 0:
-            multiplier_label = f"{second_half}x"  # no baseline → raw count
-        else:
-            multiplier_label = f"{second_half / first_half:.1f}x"
-    else:
-        multiplier_label = "—"
-
-    # Per-turn intensity points. Spec: ``t`` is 0..100 (percent of
-    # session duration), ``intensity`` is ``1.0 - flow_score`` where
-    # flow_score is the per-snippet fluency proxy. High intensity
-    # therefore = stressed delivery (lots of fillers per minute on
-    # that turn).
-    total_ms = sum(int(s.get("duration_ms") or 0) for s in snippets) or 0
-    points: list[dict[str, Any]] = []
-    cumulative_ms = 0
-    for s in snippets:
-        # Anchor the point at the START of the turn — gives the
-        # heatmap a left-edge "stress at minute X" reading rather
-        # than smearing across the turn.
-        start_ms = s.get("start_offset_ms")
-        try:
-            t_ms = int(start_ms) if start_ms is not None else cumulative_ms
-        except (TypeError, ValueError):
-            t_ms = cumulative_ms
-
-        if total_ms > 0:
-            t_pct = round((t_ms / total_ms) * 100.0, 1)
-        else:
-            t_pct = 0.0
-        t_pct = max(0.0, min(100.0, t_pct))
-
-        flow = _snippet_flow(s)
-        if flow is not None:
-            intensity = round(_clamp01(1.0 - flow), 4)
-            points.append({"t": t_pct, "intensity": intensity})
-
-        cumulative_ms += int(s.get("duration_ms") or 0)
+    top_theme = _stress_top_theme(stress_snips, snippets, session)
+    pitch_delta = _format_pitch_delta(stress_snips, snippets)
+    filler_multiplier = _format_filler_multiplier(stress_snips, charisma_snips)
+    points = _stress_points(stress_snips, snippets)
 
     return {
         "topTheme": top_theme,
-        "pitchDelta": pitch_delta_label,
-        "fillerMultiplier": multiplier_label,
+        "pitchDelta": pitch_delta,
+        "fillerMultiplier": filler_multiplier,
         "points": points,
     }
 
 
-def _snippet_flow(s: dict) -> Optional[float]:
-    """Per-snippet flow score (0..1) — inverse filler density.
-
-    0 fillers/min → 1.0; 12+ fillers/min → 0. The minute basis
-    normalises across turn lengths so a 10s turn with 1 filler
-    doesn't read as catastrophic. Returns None when fillers or
-    duration are missing.
-    """
-    fillers = _to_int(s.get("fillers"))
-    dur_ms = _to_int(s.get("duration_ms"))
-    if fillers is None or dur_ms is None or dur_ms <= 0:
-        return None
-    per_minute = fillers / (dur_ms / 60000.0)
-    return _clamp01(1.0 - per_minute / 12.0)
-
-
-def _worst_snippet_theme(snippets: list[dict]) -> Optional[str]:
-    """Surface the question/topic of the worst-performing snippet
-    (lowest flow → highest delivery stress). The dashboard renders
-    this as 'where it spiked', so it should point at the moment
-    that needs work, not the most-recurring topic.
-
-    We prefer ``question_text`` (always set on directed turns),
-    then fall back to ``topic`` / first sentence of ``transcript``
-    so we have something even on legacy snippets.
-    """
-    if not snippets:
-        return None
-
-    scored: list[tuple[float, dict]] = []
+def _partition_by_coach_label(
+    snippets: list[dict],
+) -> tuple[list[dict], list[dict]]:
+    """Split snippets into (stress, charisma) by coach_label /
+    snippet_type. Anything not explicitly labelled either way
+    drops out — we don't want unlabelled snippets diluting the
+    stress vs charisma comparison."""
+    stress: list[dict] = []
+    charisma: list[dict] = []
     for s in snippets:
-        flow = _snippet_flow(s)
-        if flow is None:
-            continue
-        scored.append((flow, s))
-    if not scored:
-        return None
-
-    scored.sort(key=lambda x: x[0])  # lowest flow first
-    worst = scored[0][1]
-
-    for field in ("question_text", "topic"):
-        label = (worst.get(field) or "").strip()
-        if label:
-            return label[:80]
-
-    transcript = (worst.get("transcript") or "").strip()
-    if transcript:
-        # First sentence-ish — terminate at the first sentence
-        # boundary so we don't blow up the card with the whole
-        # answer.
-        for terminator in (". ", "? ", "! ", "\n"):
-            idx = transcript.find(terminator)
-            if 0 < idx <= 80:
-                return transcript[: idx + 1].strip()
-        return transcript[:80].strip()
-
-    return None
+        label = (s.get("coach_label") or s.get("snippet_type") or "").lower()
+        if label == "stress":
+            stress.append(s)
+        elif label == "charisma":
+            charisma.append(s)
+    return stress, charisma
 
 
-# ── Archetype ───────────────────────────────────────────────────────
+def _stress_top_theme(
+    stress_snips: list[dict],
+    all_snips: list[dict],
+    session: dict,
+) -> Optional[str]:
+    """Most common theme across stress snippets.
 
-
-def _build_archetype(trinity: dict, learner_profile: Optional[dict]) -> str:
-    """Map the trinity dominant axis to a spec archetype name.
-
-    Per the dashboard spec:
-      Balanced (top–bottom delta < 0.10) → "The Harmonizer"
-      POWER-dominant                     → "The Commander"
-      WARMTH-dominant                    → "The Empath"
-      PRESENCE-dominant                  → "The Anchor"
-
-    Pure trinity-derived so the archetype matches the radar the
-    user is staring at — no override from behavioral_profile_auto
-    in v1.
+    Snippets don't carry a discrete topic label, so we approximate
+    by clustering on ``question_text`` (which most directed turns
+    carry). Falls back to the lowest-quality non-stress snippet's
+    theme, then to the session stickiness top topic.
     """
+    counts: Counter[str] = Counter()
+    for s in stress_snips:
+        label = (s.get("question_text") or s.get("topic") or "").strip()
+        if label:
+            counts[label[:80]] += 1
+    if counts:
+        return counts.most_common(1)[0][0]
+
+    # No labelled stress snippets — fall back to lowest-engagement
+    # non-stress snippet. Spec: "If none labeled stress, return the
+    # lowest-engagement topic instead."
+    worst_score = 1.1
+    worst_label: Optional[str] = None
+    for s in all_snips:
+        sc = _snippet_quality_score(s)
+        if sc is None:
+            continue
+        if sc < worst_score:
+            worst_score = sc
+            for field in ("question_text", "topic"):
+                cand = (s.get(field) or "").strip()
+                if cand:
+                    worst_label = cand[:80]
+                    break
+    if worst_label:
+        return worst_label
+
+    sticky = (session.get("stickiness_top_topic") or "").strip()
+    return sticky or None
+
+
+def _format_pitch_delta(
+    stress_snips: list[dict],
+    all_snips: list[dict],
+) -> str:
+    """Max pitch deviation on stress snippets vs session-mean
+    baseline, in semitones (pitch_center is already stored in
+    semitones — recompute_metrics_v2 hands us pitch_center_st).
+
+    Format: "+N.N st" / "-N.N st" with a space. When the data is
+    insufficient we return "—" so the card doesn't show a
+    misleading 0.0.
+    """
+    baseline_pool = [
+        _to_float(s.get("pitch_center"))
+        for s in all_snips
+        if _to_float(s.get("pitch_center")) is not None
+    ]
+    if not baseline_pool:
+        return "—"
+    baseline = sum(baseline_pool) / len(baseline_pool)
+
+    stress_pitches = [
+        _to_float(s.get("pitch_center"))
+        for s in stress_snips
+        if _to_float(s.get("pitch_center")) is not None
+    ]
+    if not stress_pitches:
+        # No stress snippets — fall back to session-wide max
+        # deviation, which at least answers "did this user's pitch
+        # vary at all this session?"
+        if len(baseline_pool) < 2:
+            return "—"
+        spread = max(baseline_pool) - min(baseline_pool)
+        return _fmt_semitone_signed(spread)
+
+    # Signed max deviation: pick whichever extreme (above or below
+    # baseline) is largest in absolute value, keep its sign so the
+    # card communicates direction.
+    deltas = [p - baseline for p in stress_pitches]
+    pick = max(deltas, key=abs)
+    return _fmt_semitone_signed(pick)
+
+
+def _fmt_semitone_signed(v: float) -> str:
+    """+N.N st / -N.N st with the U+2212 minus and a space."""
+    if v >= 0:
+        return f"+{v:.1f} st"
+    return f"−{abs(v):.1f} st"
+
+
+def _format_filler_multiplier(
+    stress_snips: list[dict],
+    charisma_snips: list[dict],
+) -> str:
+    """(stress filler density) ÷ (charisma filler density), as Nx.
+
+    Floor at "1.0x" — the spec is explicit: never report < 1.0x
+    because "fewer fillers under stress than at baseline" isn't
+    a meaningful trigger reading, just noise. Returns "—" if either
+    side has zero duration.
+    """
+    stress_density = _filler_density_per_min(stress_snips)
+    charisma_density = _filler_density_per_min(charisma_snips)
+    if stress_density is None or charisma_density is None:
+        return "—"
+    if charisma_density <= 0:
+        # Charisma side had zero fillers — the ratio is ∞ or
+        # undefined. Treat as 1.0x (no signal) rather than printing
+        # a garbage huge number.
+        if stress_density <= 0:
+            return "1.0x"
+        return "—"
+    ratio = stress_density / charisma_density
+    ratio = max(1.0, ratio)
+    return f"{ratio:.1f}x"
+
+
+def _filler_density_per_min(snippets: list[dict]) -> Optional[float]:
+    """Sum fillers / sum duration · 60_000. None when no usable rows."""
+    total_fillers = 0
+    total_ms = 0
+    for s in snippets:
+        f = _to_int(s.get("fillers"))
+        d = _to_int(s.get("duration_ms"))
+        if f is None or d is None or d <= 0:
+            continue
+        total_fillers += f
+        total_ms += d
+    if total_ms <= 0:
+        return None
+    return total_fillers / (total_ms / 60000.0)
+
+
+def _stress_points(
+    stress_snips: list[dict],
+    all_snips: list[dict],
+) -> list[dict[str, Any]]:
+    """One entry per stress snippet.
+
+      t         = (start_offset_ms / total_session_ms) · 100
+                  clamped to [0, 100]
+      intensity = 1 − snippet quality score, clamped to [0, 1]
+
+    Total session ms is the sum of every snippet's duration (not
+    just stress snippets), so the percentage anchors the trigger
+    to its position in the session as a whole.
+    """
+    total_ms = sum(int(s.get("duration_ms") or 0) for s in all_snips)
+    if total_ms <= 0:
+        return []
+
+    points: list[dict[str, Any]] = []
+    for s in stress_snips:
+        start_ms_raw = _to_int(s.get("start_offset_ms")) or 0
+        t_pct = (start_ms_raw / total_ms) * 100.0
+        t_pct = max(0.0, min(100.0, t_pct))
+        quality = _snippet_quality_score(s)
+        if quality is None:
+            continue
+        intensity = _clamp01(1.0 - quality)
+        points.append({
+            "t": round(t_pct, 1),
+            "intensity": round(intensity, 4),
+        })
+    return points
+
+
+def _snippet_quality_score(s: dict) -> Optional[float]:
+    """Per-snippet quality proxy (0..1).
+
+    Mean of:
+      - pace-in-band score (1 inside ideal, falls off outside)
+      - 1 - filler density per minute (saturated at the same
+        threshold as session-level flow)
+    Returns None when neither input is computable.
+    """
+    parts: list[float] = []
+    wpm = _to_float(s.get("wpm"))
+    if wpm is not None and wpm > 0:
+        if _IDEAL_WPM_MIN <= wpm <= _IDEAL_WPM_MAX:
+            parts.append(1.0)
+        elif wpm < _IDEAL_WPM_MIN:
+            parts.append(_clamp01((wpm - 80) / (_IDEAL_WPM_MIN - 80)))
+        else:
+            parts.append(_clamp01((200 - wpm) / (200 - _IDEAL_WPM_MAX)))
+
+    f = _to_int(s.get("fillers"))
+    d = _to_int(s.get("duration_ms"))
+    if f is not None and d is not None and d > 0:
+        per_minute = f / (d / 60000.0)
+        parts.append(_clamp01(1.0 - per_minute / _FILLER_PER_MIN_SAT))
+
+    if not parts:
+        return None
+    return sum(parts) / len(parts)
+
+
+# ── Narrative ───────────────────────────────────────────────────────
+
+
+def _build_narrative(*, session: dict, mirror: Optional[dict]) -> str:
+    """Prefer the session's KPI narrative (already AI-written during
+    finalize), then the cached learner-mirror narrative, then a
+    spec fallback string so the field is never empty."""
+    kpi_narrative = (session.get("ai_task_alignment_comment") or "").strip()
+    if kpi_narrative:
+        return kpi_narrative
+
+    if isinstance(mirror, dict):
+        cached = (mirror.get("narrative") or "").strip()
+        if cached:
+            return cached
+
+    return (
+        "Your acoustic baseline has been captured. Complete more "
+        "scenarios to unlock your deep narrative."
+    )
+
+
+# ── Deterministic insight + recommendation (fallback / preview) ────
+
+
+def _deterministic_trinity_insight(trinity: dict, archetype: str) -> str:
+    """One sentence framing the lead vs lag axes. Used as the
+    deterministic baseline; the LLM upgrade in
+    compute_and_persist replaces this with a coach-toned line."""
     scores = {
         "Power": trinity.get("power") or 0.0,
         "Warmth": trinity.get("warmth") or 0.0,
@@ -517,52 +904,41 @@ def _build_archetype(trinity: dict, learner_profile: Optional[dict]) -> str:
     }
     top = max(scores, key=scores.get)
     bot = min(scores, key=scores.get)
-    if scores[top] - scores[bot] < 0.10:
-        return "The Harmonizer"
-    return {
-        "Power": "The Commander",
-        "Warmth": "The Empath",
-        "Presence": "The Anchor",
-    }[top]
+    if scores[top] - scores[bot] < _ARCHETYPE_BALANCED_DELTA:
+        return (
+            f"Your profile is balanced — Power, Warmth and Presence "
+            f"each near {scores[top]:.2f}."
+        )
+    return f"{top} leads at {scores[top]:.2f}; {bot} lags at {scores[bot]:.2f}."
 
 
-# ── Recommendation ──────────────────────────────────────────────────
-
-
-def _build_recommendation(
-    trinity: dict, archetype: str,
+def _deterministic_recommendation(
+    trinity: dict,
+    archetype: str,
+    triggers: dict,
 ) -> dict[str, str]:
-    """Next-step card driven by the weakest trinity axis.
-
-    Spec body strings — one per weakest axis, no interpolation of
-    raw numbers so the copy stays clean:
-
-      Weakest POWER    → "Your warmth and presence are strong, but
-                          let's practice Power under fire."
-      Weakest WARMTH   → "Your authority is strong, but let's
-                          practice Warmth under fire."
-      Weakest PRESENCE → "Your authority is strong, but let's
-                          practice Presence under fire."
-    """
+    """Spec-shaped recommendation built off the weakest axis. The
+    LLM upgrade replaces this with copy anchored on the highest-
+    intensity trigger point; this version is what ships when the
+    LLM is unavailable."""
     scores = {
         "Power": trinity.get("power") or 0.0,
         "Warmth": trinity.get("warmth") or 0.0,
         "Presence": trinity.get("presence") or 0.0,
     }
     weakest = min(scores, key=scores.get)
-
     body_by_axis = {
         "Power": (
-            "Your warmth and presence are strong, but let's "
-            "practice Power under fire."
+            "Your warmth and presence are strong — let's practise "
+            "Power under pressure on the next scenario."
         ),
         "Warmth": (
-            "Your authority is strong, but let's practice Warmth "
-            "under fire."
+            "Your authority is strong — let's practise Warmth under "
+            "fire on the next scenario."
         ),
         "Presence": (
-            "Your authority is strong, but let's practice Presence "
-            "under fire."
+            "Your authority is strong — let's anchor Presence under "
+            "fire on the next scenario."
         ),
     }
     return {
@@ -571,35 +947,154 @@ def _build_recommendation(
     }
 
 
-# ── Narrative ───────────────────────────────────────────────────────
+# ── LLM insight + recommendation ────────────────────────────────────
 
 
-def _build_narrative(
+def _llm_insight_and_recommendation(
     *,
-    session: dict,
-    mirror: Optional[dict],
     trinity: dict,
-    acoustics: dict,
+    archetype: str,
     triggers: dict,
-) -> str:
-    """Use the cached learner-mirror narrative when available; else
-    emit the spec's deterministic fallback so the dashboard always
-    has prose to render even on a sparse first session."""
-    if isinstance(mirror, dict):
-        cached = (mirror.get("narrative") or "").strip()
-        if cached:
-            return cached
+    acoustics: dict,
+) -> Optional[dict[str, Any]]:
+    """One structured-output call returning both insight and
+    recommendation. None on any failure — caller keeps the
+    deterministic strings already in the payload.
 
-    # Spec fallback — verbatim. Keeps the copy honest: we promised
-    # narrative when there's enough data, and we say so explicitly
-    # when there isn't.
-    return (
-        "Your acoustic baseline has been captured. Complete more "
-        "scenarios to unlock your deep narrative."
+    We do this once per finalize/recompute, cache in the JSONB
+    column, and never invoke from the read path. ~250 tokens out,
+    so cost is bounded.
+    """
+    try:
+        from services.openai_service import OpenAIService
+        service = OpenAIService()
+    except Exception as e:
+        logger.warning("charisma_profile: openai import failed: %s", e)
+        return None
+    if not service.client:
+        return None
+
+    peak_intensity_point = _peak_trigger_point(triggers)
+    system = (
+        "You write short coaching copy for a Charisma Awareness "
+        "Dashboard. Voice: warm, specific, second-person. No "
+        "therapy-speak, no motivational fluff. Ground every claim "
+        "in the data the user gives you — do not invent numbers, "
+        "do not invent moments."
     )
+    user_prompt = (
+        "TRINITY\n"
+        f"  Power:    {trinity.get('power', 0):.2f}\n"
+        f"  Warmth:   {trinity.get('warmth', 0):.2f}\n"
+        f"  Presence: {trinity.get('presence', 0):.2f}\n"
+        f"ARCHETYPE: {archetype}\n"
+        "TRIGGERS\n"
+        f"  topTheme:         {triggers.get('topTheme') or '—'}\n"
+        f"  pitchDelta:       {triggers.get('pitchDelta') or '—'}\n"
+        f"  fillerMultiplier: {triggers.get('fillerMultiplier') or '—'}\n"
+        f"  peak point:       {_peak_point_label(peak_intensity_point)}\n"
+        "ACOUSTICS\n"
+        f"  pace: {acoustics.get('pace')} wpm "
+        f"(ideal {acoustics.get('idealMin')}-{acoustics.get('idealMax')})\n"
+        f"  peakTopic: {acoustics.get('peakTopic') or '—'}\n"
+        "\n"
+        "Return STRICT JSON with two top-level keys:\n"
+        "  insight        — one sentence, ≤ 25 words, naming which "
+        "trinity axis leads and which lags. Reference the numbers "
+        "above; do not paraphrase to new ones.\n"
+        "  recommendation — object with `title` (≤ 6 words, action-"
+        "shaped) and `body` (≤ 35 words). Anchor body on the "
+        "highest-intensity trigger point above — reference its "
+        "timing or its signal (pitchDelta / fillerMultiplier)."
+    )
+
+    schema = {
+        "name": "charisma_insight_recommendation",
+        "schema": {
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["insight", "recommendation"],
+            "properties": {
+                "insight": {"type": "string", "maxLength": 240},
+                "recommendation": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "required": ["title", "body"],
+                    "properties": {
+                        "title": {"type": "string", "maxLength": 60},
+                        "body": {"type": "string", "maxLength": 300},
+                    },
+                },
+            },
+        },
+        "strict": True,
+    }
+
+    try:
+        response = service.client.chat.completions.create(
+            model=_LLM_MODEL,
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": user_prompt},
+            ],
+            max_tokens=_LLM_MAX_TOKENS,
+            temperature=0.5,
+            response_format={"type": "json_schema", "json_schema": schema},
+        )
+        raw = (response.choices[0].message.content or "").strip()
+    except Exception as e:
+        logger.warning("charisma_profile: llm call failed: %s", e)
+        return None
+
+    try:
+        parsed = json.loads(raw)
+    except (json.JSONDecodeError, ValueError):
+        logger.warning("charisma_profile: llm output not JSON: %r", raw[:300])
+        return None
+
+    insight = str(parsed.get("insight") or "").strip()
+    rec = parsed.get("recommendation") or {}
+    title = str(rec.get("title") or "").strip()
+    body = str(rec.get("body") or "").strip()
+    if not insight or not title or not body:
+        return None
+
+    return {
+        "insight": insight,
+        "recommendation": {"title": title, "body": body},
+    }
+
+
+def _peak_trigger_point(triggers: dict) -> Optional[dict]:
+    """Highest-intensity entry from triggers.points, or None."""
+    points = triggers.get("points") or []
+    if not points:
+        return None
+    return max(points, key=lambda p: p.get("intensity") or 0.0)
+
+
+def _peak_point_label(point: Optional[dict]) -> str:
+    if not point:
+        return "—"
+    t = point.get("t")
+    intensity = point.get("intensity")
+    if t is None or intensity is None:
+        return "—"
+    return f"{t:.0f}% in, intensity {intensity:.2f}"
 
 
 # ── Tiny helpers ────────────────────────────────────────────────────
+
+
+def _sort_snippets(snippets: list[dict]) -> list[dict]:
+    """Stable turn-row order: turn_number, then start_offset_ms."""
+    return sorted(
+        snippets,
+        key=lambda s: (
+            int(s.get("turn_number") or 0),
+            int(s.get("start_offset_ms") or 0),
+        ),
+    )
 
 
 def _to_float(v: Any) -> Optional[float]:
@@ -622,41 +1117,3 @@ def _to_int(v: Any) -> Optional[int]:
 
 def _clamp01(x: float) -> float:
     return max(0.0, min(1.0, float(x)))
-
-
-def _mmss(total_ms: int) -> str:
-    s = max(0, int(total_ms) // 1000)
-    return f"{s // 60}:{s % 60:02d}"
-
-
-def _coaching_components_average(
-    learner_profile: Optional[dict],
-    key: str,
-) -> Optional[float]:
-    """Read the average component score (specificity, engagement,
-    emotional_movement, stickiness) from the inferred learner
-    profile's traits block. Returns None if absent."""
-    if not isinstance(learner_profile, dict):
-        return None
-    traits = learner_profile.get("traits") or {}
-    per_component = traits.get("score_per_component") or {}
-    if not isinstance(per_component, dict):
-        return None
-    v = per_component.get(key)
-    return _to_float(v)
-
-
-def _top_recurring_theme(learner_profile: Optional[dict]) -> Optional[str]:
-    if not isinstance(learner_profile, dict):
-        return None
-    traits = learner_profile.get("traits") or {}
-    recurring = traits.get("recurring_entities") or {}
-    if not isinstance(recurring, dict):
-        return None
-    themes = recurring.get("themes") or []
-    if not themes:
-        return None
-    first = themes[0]
-    if isinstance(first, dict):
-        return (first.get("label") or "").strip() or None
-    return str(first).strip() or None
