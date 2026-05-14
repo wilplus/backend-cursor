@@ -8264,6 +8264,24 @@ def v2_user_get_results(session_id):
             payload["ai_score"] = session.get("ai_task_alignment_score")
             payload["kpi_score"] = session.get("kpi_score")
 
+            # Charisma Awareness Dashboard payload. Injected here so
+            # the /results page can render the radar / heatmap /
+            # archetype card off the same single fetch as the
+            # snippet list — no second round-trip from the client.
+            # Failure-isolated: a bad profile build never blocks the
+            # core results payload.
+            try:
+                from services.charisma_profile import generate_charisma_profile
+                payload["charisma_profile"] = generate_charisma_profile(
+                    session_id=str(session_id), user_id=user_id,
+                )
+            except Exception as cp_err:
+                logger.warning(
+                    "user/results: charisma_profile build failed sid=%s err=%s",
+                    session_id, cp_err,
+                )
+                payload["charisma_profile"] = None
+
         return jsonify(payload), 200
 
     except Exception as e:
@@ -8524,6 +8542,10 @@ def v2_user_results_me():
             }), 200
 
         total = len(sessions)
+        # Cheap import outside the loop — generate_charisma_profile
+        # only loads per-session data on each call.
+        from services.charisma_profile import generate_charisma_profile
+
         journey_sessions = []
         for idx, session in enumerate(sessions):
             session_id = str(session.get("id"))
@@ -8532,6 +8554,22 @@ def v2_user_results_me():
             # admin can hide individual snippets by toggling is_skipped,
             # which the DB query already filters out.
             visible = [s for s in raw_snippets if s.get("admin_comment")]
+
+            # Per-session charisma profile so the Voice Journey UI
+            # can pop the dashboard inline for whichever session the
+            # user expands. Failure-isolated per session so one bad
+            # build can't blank out the whole timeline.
+            try:
+                charisma_profile = generate_charisma_profile(
+                    session_id=session_id, user_id=user_id,
+                )
+            except Exception as cp_err:
+                logger.warning(
+                    "user/results/me: charisma_profile build failed sid=%s err=%s",
+                    session_id, cp_err,
+                )
+                charisma_profile = None
+
             journey_sessions.append({
                 "id": session_id,
                 # Index oldest → newest for the user-facing label so
@@ -8540,6 +8578,7 @@ def v2_user_results_me():
                     "Baseline Audio" if (total - idx) == 1 else "Follow-up"
                 ),
                 "snippets": [_snippet_to_journey_card(s) for s in visible],
+                "charisma_profile": charisma_profile,
             })
 
         # The UI shows newest first, but its progress tracker is 1-based

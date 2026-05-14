@@ -89,6 +89,71 @@ def build_charisma_profile(
     }
 
 
+def generate_charisma_profile(
+    session_id: str,
+    user_id: str,
+) -> dict[str, Any]:
+    """Spec-named entry: load the four input slices for ``session_id``
+    (owner-checked against ``user_id``) and return the full
+    charisma_profile payload.
+
+    Use this from BFF endpoints that have only the IDs — the route
+    handler at ``/v2/user/sessions/<id>/charisma-profile`` has the
+    session already in hand and goes through ``build_charisma_profile``
+    directly to save a round-trip.
+
+    Owner-mismatched or missing sessions degrade to an empty
+    ``session`` dict so the builder applies neutral defaults — the
+    payload is always shape-complete, never raises, and the BFF
+    caller can safely splat it into the response.
+    """
+    from services.db import db  # local import — keeps module import-cheap
+
+    try:
+        session = db.v2_get_session_by_id(session_id) or {}
+    except Exception as e:
+        logger.warning(
+            "generate_charisma_profile: session load failed sid=%s err=%s",
+            session_id, e,
+        )
+        session = {}
+
+    # Owner gate. We don't raise — the caller decides whether to
+    # surface 404 or render a sparse profile. Returning a neutral
+    # shape protects against accidental cross-user leakage if a
+    # caller forgets to verify ownership before injection.
+    if session and str(session.get("user_id") or "") != str(user_id):
+        session = {}
+
+    try:
+        snippets = db.get_snippets_by_session(session_id) or []
+    except Exception as e:
+        logger.warning(
+            "generate_charisma_profile: snippet load failed sid=%s err=%s",
+            session_id, e,
+        )
+        snippets = []
+
+    settings: dict = {}
+    try:
+        settings = db.get_user_settings(user_id) or {}
+    except Exception as e:
+        logger.warning(
+            "generate_charisma_profile: settings load failed uid=%s err=%s",
+            user_id, e,
+        )
+
+    learner_profile = settings.get("inferred_learner_profile") or None
+    mirror = settings.get("current_learner_mirror") or None
+
+    return build_charisma_profile(
+        session=session,
+        snippets=snippets,
+        learner_profile=learner_profile,
+        mirror=mirror,
+    )
+
+
 # ── Internals ───────────────────────────────────────────────────────────────
 
 
@@ -164,108 +229,90 @@ def _build_trinity(
 ) -> dict[str, Any]:
     """Three normalised 0..1 scores + a one-line insight.
 
-    Heuristic mapping from existing metrics:
-      Power    — wpm-driven assertiveness + dynamic range, penalised
-                 by filler density. "Did the voice command the room?"
-      Warmth   — emotional_movement from coaching attempts +
-                 inverse-of-too-fast-pace, energy in mid-range.
-                 "Did the voice invite the listener in?"
-      Presence — pace-in-ideal-band + filler suppression + low
-                 cross-turn variance. "Was the voice steady and
-                 deliberate?"
+    Per the dashboard spec — every dimension is a simple average of
+    two already-normalised inputs:
 
-    Each dimension defaults to ``_TRINITY_NEUTRAL`` when no signal
-    is present, so the radar chart never shows a 0 from missing data.
+      POWER    = avg(stickiness, pace)
+      WARMTH   = avg(emotional_movement, engagement)
+      PRESENCE = avg(flow, score)
+
+    ``stickiness``, ``emotional_movement``, ``engagement`` are read
+    directly from ``inferred_learner_profile.traits.score_per_component``
+    (Phase 4 evaluator output, already 0..1). ``pace`` is the WPM
+    proximity-to-ideal-band score from session.global_wpm.
+    ``flow`` is an inverse-filler-density proxy on the session.
+    ``score`` is session.kpi_score / 100.
+
+    Missing inputs are skipped, not zeroed — a dimension with one
+    valid input averages just that one. A dimension with no inputs
+    degrades to ``_TRINITY_NEUTRAL`` (0.5) so the radar chart never
+    shows a 0 from missing data.
     """
-    wpm = _to_float(session.get("global_wpm"))
-    fillers = _to_int(session.get("global_fillers"))
-    dynamic_db = _to_float(session.get("global_dynamic_db"))
-    energy = _to_float(session.get("global_energy"))
-
-    # Power — assertive delivery.
-    power_parts: list[float] = []
-    if wpm is not None and wpm > 0:
-        # Above the ideal band → asserting force; below → too soft.
-        # Map 100..170 → 0..1 with band centre at 0.7 (slightly
-        # above midpoint so the strong-voice end gets more weight).
-        power_parts.append(_clamp01((wpm - 100) / 70.0))
-    if dynamic_db is not None:
-        # Center 25 dB → 1.0, falls off below 15 dB; above 35 dB
-        # plateaus.
-        power_parts.append(_clamp01((dynamic_db - 15) / 20.0))
-    if fillers is not None:
-        # 0 fillers → +1.0, 10+ → 0. Quadratic-ish via linear slope.
-        power_parts.append(_clamp01(1.0 - (fillers / 12.0)))
-    power = (
-        round(sum(power_parts) / len(power_parts), 4)
-        if power_parts else _TRINITY_NEUTRAL
+    stickiness = _coaching_components_average(learner_profile, "stickiness")
+    emotional_movement = _coaching_components_average(
+        learner_profile, "emotional_movement",
     )
+    engagement = _coaching_components_average(learner_profile, "engagement")
+    pace = _pace_proximity_score(session)
+    flow = _flow_score(session)
+    score = _kpi_normalised(session)
 
-    # Warmth — emotional invitation.
-    warmth_parts: list[float] = []
-    em_avg = _coaching_components_average(learner_profile, "emotional_movement")
-    if em_avg is not None:
-        warmth_parts.append(em_avg)
-    if wpm is not None and wpm > 0:
-        # Above 170 WPM gets cold-and-fast → penalty. Below 100 →
-        # plodding → also penalty.
-        if wpm > 170:
-            warmth_parts.append(_clamp01((220 - wpm) / 50.0))
-        elif wpm < 100:
-            warmth_parts.append(_clamp01(wpm / 100.0))
-        else:
-            warmth_parts.append(0.85)  # in-range = high warmth
-    if energy is not None:
-        # Mid-range energy (0.4..0.8) reads warmest; flat (low) is
-        # cold, hot (>0.95) reads aggressive.
-        if 0.4 <= energy <= 0.8:
-            warmth_parts.append(0.9)
-        elif energy < 0.4:
-            warmth_parts.append(_clamp01(energy / 0.4))
-        else:
-            warmth_parts.append(_clamp01((1.1 - energy) / 0.3))
-    warmth = (
-        round(sum(warmth_parts) / len(warmth_parts), 4)
-        if warmth_parts else _TRINITY_NEUTRAL
-    )
-
-    # Presence — steady, deliberate delivery.
-    presence_parts: list[float] = []
-    if wpm is not None and wpm > 0:
-        # 1.0 inside the ideal band; falls off linearly to 0 at 80
-        # or 200.
-        if _IDEAL_WPM_MIN <= wpm <= _IDEAL_WPM_MAX:
-            presence_parts.append(1.0)
-        elif wpm < _IDEAL_WPM_MIN:
-            presence_parts.append(_clamp01((wpm - 80) / (_IDEAL_WPM_MIN - 80)))
-        else:
-            presence_parts.append(_clamp01((200 - wpm) / (200 - _IDEAL_WPM_MAX)))
-    if fillers is not None:
-        presence_parts.append(_clamp01(1.0 - (fillers / 15.0)))
-    # Cross-turn WPM consistency — low variance = high presence.
-    wpms = [
-        _to_float(s.get("wpm"))
-        for s in snippets
-        if _to_float(s.get("wpm")) is not None and _to_float(s.get("wpm")) > 0
-    ]
-    if len(wpms) >= 2:
-        avg = sum(wpms) / len(wpms)
-        spread = max(wpms) - min(wpms)
-        # spread of 0 → 1.0; spread of 80+ → 0.
-        presence_parts.append(_clamp01(1.0 - (spread / 80.0)))
-        # avg keeps unused warning quiet; future use: weighting
-    presence = (
-        round(sum(presence_parts) / len(presence_parts), 4)
-        if presence_parts else _TRINITY_NEUTRAL
-    )
+    power = _avg_or_neutral([stickiness, pace])
+    warmth = _avg_or_neutral([emotional_movement, engagement])
+    presence = _avg_or_neutral([flow, score])
 
     insight = _trinity_insight(power, warmth, presence)
     return {
-        "power": power,
-        "warmth": warmth,
-        "presence": presence,
+        "power": round(power, 4),
+        "warmth": round(warmth, 4),
+        "presence": round(presence, 4),
         "insight": insight,
     }
+
+
+def _avg_or_neutral(values: list[Optional[float]]) -> float:
+    """Mean of the non-None inputs; 0.5 if none present."""
+    present = [v for v in values if v is not None]
+    return sum(present) / len(present) if present else _TRINITY_NEUTRAL
+
+
+def _pace_proximity_score(session: dict) -> Optional[float]:
+    """0..1 proximity of global_wpm to the ideal band.
+
+    1.0 inside [_IDEAL_WPM_MIN, _IDEAL_WPM_MAX]; falls off linearly
+    to 0 at 80 (too slow) or 200 (too fast). Returns None when WPM
+    is missing so the trinity averages skip it instead of zeroing.
+    """
+    wpm = _to_float(session.get("global_wpm"))
+    if wpm is None or wpm <= 0:
+        return None
+    if _IDEAL_WPM_MIN <= wpm <= _IDEAL_WPM_MAX:
+        return 1.0
+    if wpm < _IDEAL_WPM_MIN:
+        return _clamp01((wpm - 80) / (_IDEAL_WPM_MIN - 80))
+    return _clamp01((200 - wpm) / (200 - _IDEAL_WPM_MAX))
+
+
+def _flow_score(session: dict) -> Optional[float]:
+    """0..1 delivery-fluency proxy from session-level filler count.
+
+    0 fillers → 1.0; 12+ fillers → 0. Linear in between. The same
+    threshold the spec uses for the per-snippet ``1.0 - flow``
+    intensity points, so the dashboard's overall flow read and its
+    heatmap agree on what 'stressed delivery' looks like.
+    """
+    fillers = _to_int(session.get("global_fillers"))
+    if fillers is None:
+        return None
+    return _clamp01(1.0 - (fillers / 12.0))
+
+
+def _kpi_normalised(session: dict) -> Optional[float]:
+    """KPI master score (0..100) → 0..1. None when KPI missing."""
+    kpi = _to_float(session.get("kpi_score"))
+    if kpi is None:
+        return None
+    return _clamp01(kpi / 100.0)
 
 
 def _trinity_insight(power: float, warmth: float, presence: float) -> str:
@@ -293,14 +340,26 @@ def _build_triggers(
     snippets: list[dict],
     learner_profile: Optional[dict],
 ) -> dict[str, Any]:
-    """Heatmap-style trigger payload.
+    """Heatmap-style trigger payload — spec-aligned.
 
-    topTheme         — top recurring theme from learner profile.
+    topTheme         — theme/question from the worst-performing
+                       snippet (lowest per-snippet flow score). This
+                       is what the user wants to drill into next;
+                       reading it off the LEARNER PROFILE's top
+                       recurring entity would surface what's
+                       frequent, not what's hardest.
     pitchDelta       — semitone spread across the session.
     fillerMultiplier — ratio of fillers in second half vs first half.
-    points           — per-turn stress-intensity points [0..1].
+    points           — per-turn stress points where
+                       ``t`` is percentage (0..100) of session
+                       duration and ``intensity`` is
+                       ``1.0 - per_snippet_flow``. Both spec-shaped
+                       so the frontend can plot a clean heatmap
+                       without further math.
     """
-    top_theme = _top_recurring_theme(learner_profile)
+    top_theme = _worst_snippet_theme(snippets) or _top_recurring_theme(
+        learner_profile,
+    )
 
     # Pitch delta — max minus min across turns, in semitones.
     pitch_centers = [
@@ -336,44 +395,36 @@ def _build_triggers(
     else:
         multiplier_label = "—"
 
-    # Per-turn intensity points. Combine filler density + pitch
-    # volatility into a 0..1 stress proxy. ``t`` is seconds from
-    # session start (use cumulative duration when start_offset_ms
-    # missing).
+    # Per-turn intensity points. Spec: ``t`` is 0..100 (percent of
+    # session duration), ``intensity`` is ``1.0 - flow_score`` where
+    # flow_score is the per-snippet fluency proxy. High intensity
+    # therefore = stressed delivery (lots of fillers per minute on
+    # that turn).
+    total_ms = sum(int(s.get("duration_ms") or 0) for s in snippets) or 0
     points: list[dict[str, Any]] = []
-    cumulative_sec = 0
-    avg_pitch = (
-        sum(pitch_centers) / len(pitch_centers) if pitch_centers else None
-    )
+    cumulative_ms = 0
     for s in snippets:
+        # Anchor the point at the START of the turn — gives the
+        # heatmap a left-edge "stress at minute X" reading rather
+        # than smearing across the turn.
         start_ms = s.get("start_offset_ms")
         try:
-            t_sec = (
-                int(start_ms) // 1000
-                if start_ms is not None
-                else cumulative_sec
-            )
+            t_ms = int(start_ms) if start_ms is not None else cumulative_ms
         except (TypeError, ValueError):
-            t_sec = cumulative_sec
-        intensity_parts: list[float] = []
-        fillers = _to_int(s.get("fillers"))
-        if fillers is not None:
-            intensity_parts.append(_clamp01(fillers / 6.0))
-        pitch = _to_float(s.get("pitch_center"))
-        if pitch is not None and avg_pitch is not None:
-            intensity_parts.append(_clamp01(abs(pitch - avg_pitch) / 6.0))
-        wpm = _to_float(s.get("wpm"))
-        if wpm is not None and wpm > 0:
-            # WPM above 170 reads stressed.
-            intensity_parts.append(_clamp01((wpm - 140) / 60.0))
-        if intensity_parts:
-            points.append({
-                "t": t_sec,
-                "intensity": round(
-                    sum(intensity_parts) / len(intensity_parts), 4
-                ),
-            })
-        cumulative_sec += int((s.get("duration_ms") or 0) / 1000)
+            t_ms = cumulative_ms
+
+        if total_ms > 0:
+            t_pct = round((t_ms / total_ms) * 100.0, 1)
+        else:
+            t_pct = 0.0
+        t_pct = max(0.0, min(100.0, t_pct))
+
+        flow = _snippet_flow(s)
+        if flow is not None:
+            intensity = round(_clamp01(1.0 - flow), 4)
+            points.append({"t": t_pct, "intensity": intensity})
+
+        cumulative_ms += int(s.get("duration_ms") or 0)
 
     return {
         "topTheme": top_theme,
@@ -383,21 +434,81 @@ def _build_triggers(
     }
 
 
+def _snippet_flow(s: dict) -> Optional[float]:
+    """Per-snippet flow score (0..1) — inverse filler density.
+
+    0 fillers/min → 1.0; 12+ fillers/min → 0. The minute basis
+    normalises across turn lengths so a 10s turn with 1 filler
+    doesn't read as catastrophic. Returns None when fillers or
+    duration are missing.
+    """
+    fillers = _to_int(s.get("fillers"))
+    dur_ms = _to_int(s.get("duration_ms"))
+    if fillers is None or dur_ms is None or dur_ms <= 0:
+        return None
+    per_minute = fillers / (dur_ms / 60000.0)
+    return _clamp01(1.0 - per_minute / 12.0)
+
+
+def _worst_snippet_theme(snippets: list[dict]) -> Optional[str]:
+    """Surface the question/topic of the worst-performing snippet
+    (lowest flow → highest delivery stress). The dashboard renders
+    this as 'where it spiked', so it should point at the moment
+    that needs work, not the most-recurring topic.
+
+    We prefer ``question_text`` (always set on directed turns),
+    then fall back to ``topic`` / first sentence of ``transcript``
+    so we have something even on legacy snippets.
+    """
+    if not snippets:
+        return None
+
+    scored: list[tuple[float, dict]] = []
+    for s in snippets:
+        flow = _snippet_flow(s)
+        if flow is None:
+            continue
+        scored.append((flow, s))
+    if not scored:
+        return None
+
+    scored.sort(key=lambda x: x[0])  # lowest flow first
+    worst = scored[0][1]
+
+    for field in ("question_text", "topic"):
+        label = (worst.get(field) or "").strip()
+        if label:
+            return label[:80]
+
+    transcript = (worst.get("transcript") or "").strip()
+    if transcript:
+        # First sentence-ish — terminate at the first sentence
+        # boundary so we don't blow up the card with the whole
+        # answer.
+        for terminator in (". ", "? ", "! ", "\n"):
+            idx = transcript.find(terminator)
+            if 0 < idx <= 80:
+                return transcript[: idx + 1].strip()
+        return transcript[:80].strip()
+
+    return None
+
+
 # ── Archetype ───────────────────────────────────────────────────────
 
 
 def _build_archetype(trinity: dict, learner_profile: Optional[dict]) -> str:
-    """Map the trinity dominant axis to a marketing-friendly name.
+    """Map the trinity dominant axis to a spec archetype name.
 
-    Balanced profiles (top–bottom delta < 0.10) → "The Master".
-    Power-dominant → "The Authority".
-    Warmth-dominant → "The Connector".
-    Presence-dominant → "The Visionary".
+    Per the dashboard spec:
+      Balanced (top–bottom delta < 0.10) → "The Harmonizer"
+      POWER-dominant                     → "The Commander"
+      WARMTH-dominant                    → "The Empath"
+      PRESENCE-dominant                  → "The Anchor"
 
-    The learner profile's behavioral_profile_auto could override
-    this in future iterations (e.g. force "The Reactor" for
-    classified Stressors), but v1 stays purely trinity-derived so
-    the archetype matches the chart the user is staring at.
+    Pure trinity-derived so the archetype matches the radar the
+    user is staring at — no override from behavioral_profile_auto
+    in v1.
     """
     scores = {
         "Power": trinity.get("power") or 0.0,
@@ -407,11 +518,11 @@ def _build_archetype(trinity: dict, learner_profile: Optional[dict]) -> str:
     top = max(scores, key=scores.get)
     bot = min(scores, key=scores.get)
     if scores[top] - scores[bot] < 0.10:
-        return "The Master"
+        return "The Harmonizer"
     return {
-        "Power": "The Authority",
-        "Warmth": "The Connector",
-        "Presence": "The Visionary",
+        "Power": "The Commander",
+        "Warmth": "The Empath",
+        "Presence": "The Anchor",
     }[top]
 
 
@@ -421,30 +532,43 @@ def _build_archetype(trinity: dict, learner_profile: Optional[dict]) -> str:
 def _build_recommendation(
     trinity: dict, archetype: str,
 ) -> dict[str, str]:
-    """Next-step card. Title is action-shaped, body names the
-    weakest trinity axis so the user knows what to practise."""
+    """Next-step card driven by the weakest trinity axis.
+
+    Spec body strings — one per weakest axis, no interpolation of
+    raw numbers so the copy stays clean:
+
+      Weakest POWER    → "Your warmth and presence are strong, but
+                          let's practice Power under fire."
+      Weakest WARMTH   → "Your authority is strong, but let's
+                          practice Warmth under fire."
+      Weakest PRESENCE → "Your authority is strong, but let's
+                          practice Presence under fire."
+    """
     scores = {
         "Power": trinity.get("power") or 0.0,
         "Warmth": trinity.get("warmth") or 0.0,
         "Presence": trinity.get("presence") or 0.0,
     }
     weakest = min(scores, key=scores.get)
-    weakest_val = scores[weakest]
 
-    weakness_phrasing = {
-        "Power": "build authority under pressure",
-        "Warmth": "soften your delivery without losing edge",
-        "Presence": "steady your pace and reduce filler density",
+    body_by_axis = {
+        "Power": (
+            "Your warmth and presence are strong, but let's "
+            "practice Power under fire."
+        ),
+        "Warmth": (
+            "Your authority is strong, but let's practice Warmth "
+            "under fire."
+        ),
+        "Presence": (
+            "Your authority is strong, but let's practice Presence "
+            "under fire."
+        ),
     }
-
-    title = "Ready for your next stress-test?"
-    body = (
-        f"Your {archetype.replace('The ', '').lower()} profile is "
-        f"strong, but let's practice "
-        f"{weakness_phrasing[weakest]} "
-        f"({weakest} sits at {weakest_val:.2f})."
-    )
-    return {"title": title, "body": body}
+    return {
+        "title": "Ready for your next stress-test?",
+        "body": body_by_axis[weakest],
+    }
 
 
 # ── Narrative ───────────────────────────────────────────────────────
@@ -459,27 +583,19 @@ def _build_narrative(
     triggers: dict,
 ) -> str:
     """Use the cached learner-mirror narrative when available; else
-    synthesise a one-sentence summary from the trinity + KPI so the
-    payload is never empty."""
+    emit the spec's deterministic fallback so the dashboard always
+    has prose to render even on a sparse first session."""
     if isinstance(mirror, dict):
         cached = (mirror.get("narrative") or "").strip()
         if cached:
             return cached
 
-    # Deterministic fallback. One sentence so the dashboard isn't
-    # blank for first-session users who haven't generated a mirror.
-    kpi = session.get("kpi_score")
-    pace = acoustics.get("pace")
-    pace_str = f"{pace:g} WPM" if isinstance(pace, (int, float)) else "an unmeasured pace"
-    top_theme = triggers.get("topTheme") or "no recurring theme yet"
-    kpi_str = f" with a KPI of {kpi:.0f}/100" if isinstance(kpi, (int, float)) else ""
+    # Spec fallback — verbatim. Keeps the copy honest: we promised
+    # narrative when there's enough data, and we say so explicitly
+    # when there isn't.
     return (
-        f"You delivered {pace_str}{kpi_str}, scoring Power "
-        f"{trinity.get('power', 0):.2f} / Warmth "
-        f"{trinity.get('warmth', 0):.2f} / Presence "
-        f"{trinity.get('presence', 0):.2f}, with {top_theme} as your "
-        "anchor — your next session will tighten the dimension where "
-        "you lagged most."
+        "Your acoustic baseline has been captured. Complete more "
+        "scenarios to unlock your deep narrative."
     )
 
 
