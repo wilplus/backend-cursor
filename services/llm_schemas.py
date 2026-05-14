@@ -31,13 +31,13 @@ from typing import Any
 # ── Schemas ─────────────────────────────────────────────────────────────────
 
 EXCHANGE_SCORE_SCHEMA: dict[str, Any] = {
-    # v2 (Phase 4) — same three sub-scores + rationale, plus a small
-    # entities object the same call extracts in one pass. The v1 name
-    # is retired; the only consumer (services.coaching_outcomes) reads
-    # the new shape. Strict mode rejects extra keys, so a model that
-    # somehow returned v1-shape JSON would error and we'd skip the
-    # outcome rather than silently lose entity data.
-    "name": "exchange_score_v2",
+    # v3 — adds a `stickiness` component grading topic adherence to
+    # the TARGET_TOPIC the caller passes in (the question that was
+    # asked, or the cold-start CURRENT_TURN_OBJECTIVE). Without this,
+    # the evaluator was scoring the answer's quality in abstract —
+    # vivid but off-topic answers were getting high specificity +
+    # engagement and inflating the composite. v3 closes that gap.
+    "name": "exchange_score_v3",
     "strict": True,
     "schema": {
         "type": "object",
@@ -46,6 +46,7 @@ EXCHANGE_SCORE_SCHEMA: dict[str, Any] = {
             "specificity",
             "emotional_movement",
             "engagement",
+            "stickiness",
             "rationale",
             "entities",
         ],
@@ -75,6 +76,21 @@ EXCHANGE_SCORE_SCHEMA: dict[str, Any] = {
                 "description": (
                     "0..1 — did the user lean in? Consider length, "
                     "specificity of language, apparent effort."
+                ),
+            },
+            "stickiness": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1,
+                "description": (
+                    "0..1 — how directly did the user answer the "
+                    "TARGET_TOPIC (the asked question / cold-start "
+                    "objective)? 1.0 = fully on-topic, addressed "
+                    "what was asked. 0.5 = answered partially or "
+                    "wandered toward adjacent territory. 0.0 = "
+                    "ignored the question, drifted to an unrelated "
+                    "tangent, or actively avoided the topic. "
+                    "Penalize HEAVILY when the user diverts."
                 ),
             },
             "rationale": {
@@ -164,14 +180,18 @@ LEARNER_MIRROR_SCHEMA: dict[str, Any] = {
             },
             "narrative": {
                 "type": "string",
-                "maxLength": 1200,
+                "maxLength": 900,
                 "description": (
-                    "2-3 short paragraphs of reflection in the second "
-                    "person. Reference the user's actual recurring "
-                    "entities and trends by name. Stay grounded in "
-                    "the data — don't invent attempts that aren't in "
-                    "the input. End on something forward-looking, "
-                    "not summative."
+                    "EXACTLY ONE cohesive paragraph (3-4 sentences) "
+                    "of reflection in the second person. Weave the "
+                    "user's numeric scores (Pace, Flow / Stickiness, "
+                    "etc.) and recurring entities directly into the "
+                    "natural prose. DO NOT use bullet points. DO NOT "
+                    "split into multiple paragraphs, headers, or "
+                    "sections. No line breaks. Stay grounded in the "
+                    "data — don't invent attempts that aren't in the "
+                    "input. End on something forward-looking, not "
+                    "summative."
                 ),
             },
             "observations": {

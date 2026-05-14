@@ -67,9 +67,14 @@ logger = logging.getLogger(__name__)
 
 
 # Weights for the composite score. Sum = 1.0. Tunable later.
-_W_SPECIFICITY = 0.40
-_W_EMOTIONAL_MOVEMENT = 0.35
-_W_ENGAGEMENT = 0.25
+# Composite-score weights. Bumped when adding `stickiness` so the
+# four components sum to 1.0. Stickiness gets meaningful weight
+# (0.25) because an off-topic but vivid answer was previously
+# scoring high — that's the bug we're closing.
+_W_SPECIFICITY = 0.30
+_W_EMOTIONAL_MOVEMENT = 0.25
+_W_ENGAGEMENT = 0.20
+_W_STICKINESS = 0.25
 
 
 def evaluate_and_record_followup_outcome(
@@ -294,8 +299,16 @@ def _llm_score_exchange(
     # gone. The only failure mode left is the API call itself.
     from services.llm_schemas import EXCHANGE_SCORE_SCHEMA, response_format
 
+    # TARGET_TOPIC is the exact text of the question the AI asked
+    # (or, for cold-start onboarding, the CURRENT_TURN_OBJECTIVE).
+    # The Stickiness component grades adherence to it. Without this
+    # the evaluator scored quality in abstract — vivid but off-
+    # topic answers got high engagement and the composite ignored
+    # whether the user actually answered the question.
+    target_topic = question_text or "[no target topic captured]"
+
     system = (
-        "You evaluate one coaching-follow-up exchange. Score three "
+        "You evaluate one coaching-follow-up exchange. Score four "
         "independent dimensions in [0.0, 1.0], add a one-sentence "
         "rationale, AND extract the entities the user mentioned.\n"
         "\n"
@@ -309,6 +322,14 @@ def _llm_score_exchange(
         "specificity of language, apparent effort. Short answers can "
         "be high-engagement if specific; long answers can be "
         "low-engagement if rambling.\n"
+        "STICKINESS — To calculate this, you MUST evaluate how well "
+        "the user directly answered this specific Target Topic:\n"
+        f'    TARGET_TOPIC: "{target_topic}"\n'
+        "Penalize HEAVILY if they drifted, avoided the question, "
+        "or went on irrelevant tangents. 1.0 fully on-topic, 0.5 "
+        "wandered toward adjacent territory, 0.0 ignored or "
+        "actively avoided the asked topic. Specificity + engagement "
+        "without stickiness is a vivid answer to the wrong question.\n"
         "\n"
         "ENTITIES — three short lists. PEOPLE are named individuals "
         "(\"Sarah\", \"Mom\", \"my boss Mark\") — skip generic "
@@ -333,8 +354,9 @@ def _llm_score_exchange(
         f"COACH INSIGHT (what the human coach noted):\n"
         f'"{admin_comment}"\n'
         f"\n"
-        f"FOLLOW-UP QUESTION asked at the top of this chat:\n"
-        f'"{question_text}"\n'
+        f"TARGET_TOPIC (the question they were asked — grade "
+        f"Stickiness against this):\n"
+        f'"{target_topic}"\n'
         f"\n"
         f"USER'S TURN-1 ANSWER:\n"
         f'"{answer_text}"\n'
@@ -373,6 +395,9 @@ def _llm_score_exchange(
         "specificity": _clamp01(parsed.get("specificity")),
         "emotional_movement": _clamp01(parsed.get("emotional_movement")),
         "engagement": _clamp01(parsed.get("engagement")),
+        # v3 — topic-adherence dimension, weighted 0.25 in the
+        # composite. Heavily penalises vivid-but-off-topic answers.
+        "stickiness": _clamp01(parsed.get("stickiness")),
     }
     rationale = str(parsed.get("rationale") or "").strip()[:500] or None
     entities = _sanitize_entities(parsed.get("entities"))
@@ -422,6 +447,7 @@ def _composite_score(components: dict[str, float]) -> float:
         _W_SPECIFICITY * components.get("specificity", 0.0)
         + _W_EMOTIONAL_MOVEMENT * components.get("emotional_movement", 0.0)
         + _W_ENGAGEMENT * components.get("engagement", 0.0)
+        + _W_STICKINESS * components.get("stickiness", 0.0)
     )
 
 

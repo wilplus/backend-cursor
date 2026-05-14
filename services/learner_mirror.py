@@ -185,13 +185,17 @@ def _build_system_prompt() -> str:
         "\n"
         "OUTPUT — strict JSON with exactly:\n"
         "  headline    — 1 sentence naming the pattern.\n"
-        "  narrative   — 2-3 short paragraphs (separated by blank "
-        "lines). Reference recurring entities by name when natural; "
-        "don't force them. End on something forward-looking, not a "
-        "summary.\n"
+        "  narrative   — Write EXACTLY ONE cohesive paragraph (3-4 "
+        "sentences). Weave the numeric scores (Pace, Flow / "
+        "Stickiness, etc.) and recurring entities directly into the "
+        "natural prose. DO NOT use bullet points. DO NOT split the "
+        "response into multiple parts, headers, or sections. NO line "
+        "breaks. Just one flowing paragraph summarising their "
+        "performance, ending on something forward-looking.\n"
         "  observations — 3-6 short bullets of the FACTS your "
         "narrative is built on (trend, weakest dimension, recurring "
-        "entity counts, self-rating gap). Plain English."
+        "entity counts, self-rating gap). Plain English. Bullets "
+        "live HERE — never inside the narrative."
     )
 
 
