@@ -12028,6 +12028,51 @@ def v2_public_interview_upload_answer():
                     outer_err,
                 )
 
+        # Freemium tease — last onboarding turn returns session-aggregate
+        # stats + a hardcoded archetype so the frontend can render the
+        # "what we noticed" bubbles BEFORE the user signs up. The session
+        # stays anonymous (user_id=NULL); the full charisma_profile +
+        # admin email don't fire until /v2/auth/merge-session links it
+        # to a real user.
+        #
+        # Archetype is hardcoded to "The Calm Anchor" per the v1 spec.
+        # The real archetype emerges from charisma_profile during the
+        # post-claim finalize once we have user_id; pre-claim we
+        # surface a stable placeholder rather than computing an
+        # unstable one off 4 short turns.
+        freemium_tease = None
+        if turn_number == 4:
+            try:
+                from services.session_metrics import (
+                    compute_session_global_metrics,
+                )
+                # Aggregates all 4 turns' snippets into global_* + KPI
+                # and persists to the v2_sessions row. Idempotent —
+                # the admin "Compute Metrics" click later re-runs the
+                # same path.
+                agg = compute_session_global_metrics(guest_session_id) or {}
+                freemium_tease = {
+                    "archetype": "The Calm Anchor",
+                    "stats": {
+                        "wpm": agg.get("wpm"),
+                        "fillers": agg.get("fillers"),
+                        "pause_ms": agg.get("pause_ms"),
+                        "dynamic_db": agg.get("dynamic_db"),
+                        "pitch_center": agg.get("pitch_center"),
+                        "energy": agg.get("energy"),
+                        "kpi_score": agg.get("kpi_score"),
+                        "snippets_analyzed": agg.get("snippets_analyzed"),
+                    },
+                }
+            except Exception as tease_err:
+                # Tease is best-effort — failure leaves freemium_tease=None
+                # and the frontend renders a "tap to sign up to see
+                # your stats" empty state.
+                logger.warning(
+                    "freemium_tease: aggregation failed sid=%s err=%s",
+                    guest_session_id, tease_err,
+                )
+
         return jsonify({
             "status": "ok",
             "guest_session_id": guest_session_id,
@@ -12036,6 +12081,7 @@ def v2_public_interview_upload_answer():
             "total_session_duration_seconds": round(total_duration, 1),
             "metrics": snippet_metrics,
             "transcript": transcript_text,
+            "freemium_tease": freemium_tease,
         }), 201
 
     except Exception as e:
@@ -12176,6 +12222,37 @@ def _merge_anonymous_session_into_user(session_id: str, user_id: str):
     except Exception as uid_err:
         logger.warning("guest_funnel: update_snippets_user_id failed: %s", uid_err)
 
+    # Now that the session has a real user_id, run the standard
+    # finalize so the admin sees this in the Pending Review queue
+    # and gets the notification email. The spec is explicit: the
+    # email dispatches ONLY after the claim, never on the
+    # anonymous session.
+    #
+    # finalize_session_pending_admin_review computes global metrics
+    # + B6 KPI + AI draft prefill, writes session_kpi_narrative,
+    # flips status to "pending_admin_review", and sends the admin
+    # notification. Per-step failure-isolated so a flaky email
+    # service never unwinds the (already-committed) claim.
+    finalize_summary: dict | None = None
+    try:
+        from services.session_publish import (
+            finalize_session_pending_admin_review,
+        )
+        finalize_summary = finalize_session_pending_admin_review(
+            session_id=session_id,
+            user_id=str(user_id),
+        )
+        logger.info(
+            "guest_funnel: post-claim finalize sid=%s result=%s",
+            session_id, finalize_summary,
+        )
+    except Exception as fp_err:
+        logger.warning(
+            "guest_funnel: post-claim finalize failed sid=%s err=%s "
+            "(non-fatal — admin can recompute manually)",
+            session_id, fp_err,
+        )
+
     logger.info(
         "guest_funnel: claim ok user_id=%s session_id=%s recording_id=%s",
         user_id, session_id, rec_id,
@@ -12184,6 +12261,7 @@ def _merge_anonymous_session_into_user(session_id: str, user_id: str):
         "status": "ok",
         "session_id": str(claimed.get("id")),
         "analysis_status": "queued",
+        "finalize": finalize_summary,
     }, 200)
 
 
