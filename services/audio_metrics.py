@@ -200,8 +200,128 @@ def analyze_audio(audio_bytes: bytes, transcript: str = "", duration_sec: float 
     if sig is None:
         logger.warning("analyze_audio: decode_audio_to_pcm returned None (ffmpeg failed or not installed) audio_bytes=%d", len(audio_bytes) if audio_bytes else 0)
         return None
+    return _analyze_pcm(sig, transcript=transcript, duration_sec=duration_sec, fallback_wpm=fallback_wpm)
+
+
+def analyze_audio_window(
+    audio_bytes: bytes,
+    *,
+    start_offset_ms: int,
+    duration_ms: int,
+    transcript: str = "",
+) -> Optional[Dict]:
+    """Slice the parent audio by [start, start+duration] and analyze ONLY that window.
+
+    This is the single source of truth for "compute metrics for the
+    exact time-bound slice of a snippet" — used by initial extraction
+    AND by every boundary-adjust path (POST /boundaries, PATCH
+    /admin/snippets/<id>) so the JSONB ``metrics`` blob on the snippet
+    row always reflects the current window, not the parent recording.
+
+    ``start_offset_ms`` and ``duration_ms`` are the same fields stored
+    on the snippet row — pass them through verbatim.
+
+    When ``transcript`` is empty we leave WPM as None. Callers that
+    want a window-accurate WPM should re-Whisper the slice first
+    (see ``extract_window_as_wav``) and pass the new transcript in.
+
+    Returns None on decode failure or if the sliced window is too
+    short for stable analysis (< 1s of PCM).
+    """
+    sig = decode_audio_to_pcm(audio_bytes)
+    if sig is None:
+        logger.warning(
+            "analyze_audio_window: decode_audio_to_pcm returned None "
+            "(ffmpeg failed) bytes=%d",
+            len(audio_bytes) if audio_bytes else 0,
+        )
+        return None
+
+    sliced = _slice_pcm(sig, start_offset_ms, duration_ms)
+    if sliced is None:
+        return None
+
+    duration_sec = len(sliced) / float(SAMPLE_RATE)
+    return _analyze_pcm(sliced, transcript=transcript, duration_sec=duration_sec)
+
+
+def extract_window_as_wav(
+    audio_bytes: bytes,
+    *,
+    start_offset_ms: int,
+    duration_ms: int,
+) -> Optional[bytes]:
+    """Decode the parent audio, slice to the window, wrap as WAV bytes.
+
+    Used by recompute paths that need to re-transcribe just the
+    sliced window via Whisper. WAV (16-bit PCM, 16 kHz mono) is
+    universally accepted by the Whisper API and matches the
+    sample-rate we already decode to, so there's no extra
+    re-sampling step.
+    """
+    sig = decode_audio_to_pcm(audio_bytes)
+    if sig is None:
+        return None
+
+    sliced = _slice_pcm(sig, start_offset_ms, duration_ms)
+    if sliced is None:
+        return None
+
+    return _pcm_to_wav_bytes(sliced)
+
+
+def _slice_pcm(
+    sig: "np.ndarray",
+    start_offset_ms: int,
+    duration_ms: int,
+) -> Optional["np.ndarray"]:
+    """Cut a [start, start+duration] window out of a decoded PCM
+    array. Returns None when the resulting slice is too short
+    (< 1 s) for the analysis pipeline to produce stable metrics.
+
+    Bounds are clamped to the parent length so out-of-range offsets
+    quietly truncate rather than throwing — the caller has no clean
+    way to recover from a half-bad window other than to bail.
+    """
+    total_samples = len(sig)
+    start_sample = max(0, int(start_offset_ms / 1000.0 * SAMPLE_RATE))
+    start_sample = min(start_sample, total_samples)
+    end_sample = max(
+        start_sample,
+        int((start_offset_ms + duration_ms) / 1000.0 * SAMPLE_RATE),
+    )
+    end_sample = min(end_sample, total_samples)
+    sliced = sig[start_sample:end_sample]
+    if len(sliced) < SAMPLE_RATE:
+        logger.warning(
+            "_slice_pcm: window too short (%d samples < %d) "
+            "start_ms=%d duration_ms=%d parent_samples=%d",
+            len(sliced), SAMPLE_RATE, start_offset_ms, duration_ms,
+            total_samples,
+        )
+        return None
+    return sliced
+
+
+def _analyze_pcm(
+    sig: "np.ndarray",
+    *,
+    transcript: str = "",
+    duration_sec: float = 0.0,
+    fallback_wpm: Optional[float] = None,
+) -> Optional[Dict]:
+    """Run the full metric suite on an already-decoded PCM array.
+
+    Shared between ``analyze_audio`` (whole-file) and
+    ``analyze_audio_window`` (sliced) so the metric definitions live
+    in exactly one place. The signature matches what callers had
+    when this was inlined in ``analyze_audio``.
+    """
     if len(sig) < SAMPLE_RATE:
-        logger.warning("analyze_audio: audio too short (%d samples < %d) — skipping metrics", len(sig), SAMPLE_RATE)
+        logger.warning(
+            "_analyze_pcm: audio too short (%d samples < %d) — skipping metrics",
+            len(sig), SAMPLE_RATE,
+        )
         return None
 
     if duration_sec <= 0:
@@ -211,8 +331,8 @@ def analyze_audio(audio_bytes: bytes, transcript: str = "", duration_sec: float 
     voiced_mask = dbs >= SILENCE_DB_THRESHOLD
     voiced_dur = float(np.sum(voiced_mask)) * (FRAME_MS / 1000.0)
 
-    # WPM from transcript
-    wpm = None
+    # WPM from transcript.
+    wpm: Optional[float] = None
     if transcript and duration_sec > 0:
         word_count = len(transcript.split())
         wpm = round(word_count / (duration_sec / 60.0), 1)
@@ -231,3 +351,25 @@ def analyze_audio(audio_bytes: bytes, transcript: str = "", duration_sec: float 
         "pitch_frame_count": pitch_frames,
         "voiced_duration_sec": round(voiced_dur, 1),
     }
+
+
+def _pcm_to_wav_bytes(sig: "np.ndarray") -> bytes:
+    """Wrap a 16 kHz mono float32 PCM array as a WAV blob.
+
+    Whisper accepts WAV directly; this avoids an ffmpeg re-encode
+    just to convert the slice back to a container format. We clip
+    to [-1, 1] before quantising to int16 to dodge wrap-around on
+    rare hot frames.
+    """
+    import io
+    import wave
+
+    clipped = np.clip(sig, -1.0, 1.0)
+    int16 = (clipped * 32767.0).astype(np.int16)
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)  # 16-bit
+        w.setframerate(SAMPLE_RATE)
+        w.writeframes(int16.tobytes())
+    return buf.getvalue()

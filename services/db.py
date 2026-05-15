@@ -6911,10 +6911,21 @@ class DatabaseService:
         pitch_center: float | None,
         energy: float | None,
         metrics_json: dict | None = None,
+        transcript: str | None = None,
     ) -> Optional[dict]:
-        """Update a snippet's individual acoustic metric columns.
+        """Update a snippet's per-window acoustic metric columns.
 
-        Also updates the JSONB metrics column for backwards compat.
+        Persists the individual columns the admin UI / KPI compute
+        read from (wpm, fillers, pause_ms, dynamic_db, pitch_center,
+        energy) AND the canonical ``metrics`` JSONB blob, so the two
+        representations stay in lockstep.
+
+        When ``transcript`` is provided we also overwrite the
+        ``transcript`` column — boundary-adjust paths re-Whisper the
+        sliced window and call this with the new transcript so WPM
+        and fillers are computed against the correct text. Passing
+        ``transcript=None`` (default) leaves the column untouched
+        (e.g. for paths that only refresh acoustic numbers).
         """
         try:
             payload: dict = {
@@ -6927,6 +6938,8 @@ class DatabaseService:
             }
             if metrics_json is not None:
                 payload["metrics"] = metrics_json
+            if transcript is not None:
+                payload["transcript"] = transcript
             result = (
                 self.client.table("charisma_snippets")
                 .update(payload)

@@ -1156,12 +1156,29 @@ def _render_snippet_card(snippet: dict) -> dict:
     else:
         status = "raw"
 
+    # Full per-window metrics JSONB. The admin card renders these
+    # raw — pace + fillers + pause + dynamic dB + pitch + energy
+    # are read straight from this dict so the +/- 2 s buttons can
+    # repaint the card the moment recompute_snippet_metrics_for_window
+    # returns. The denormalised top-level wpm/pitch fields are kept
+    # for back-compat with any caller that still reads them.
+    metrics_blob = snippet.get("metrics") if isinstance(
+        snippet.get("metrics"), dict
+    ) else None
+
     return {
         "id": str(snippet.get("id")) if snippet.get("id") else None,
         "turn_number": snippet.get("turn_number"),
         "range": range_label,
+        "start_offset_ms": snippet.get("start_offset_ms"),
+        "duration_ms": snippet.get("duration_ms"),
         "wpm": snippet.get("wpm"),
         "pitch": snippet.get("pitch_center"),
+        "fillers": snippet.get("fillers"),
+        "pause_ms": snippet.get("pause_ms"),
+        "dynamic_db": snippet.get("dynamic_db"),
+        "energy": snippet.get("energy"),
+        "metrics": metrics_blob,
         "type": snippet_type,
         "status": status,
         "admin_comment": snippet.get("admin_comment"),
@@ -12158,92 +12175,37 @@ def v2_admin_adjust_snippet_boundaries(snippet_id):
         if end_time <= start_time:
             return jsonify({"code": "INVALID_BOUNDARIES", "error": "end_time must be greater than start_time"}), 400
 
-        # Update boundaries in DB
+        # Update boundaries in DB. update_snippet_boundaries
+        # converts (start_time, end_time) seconds → (start_offset_ms,
+        # duration_ms) and writes those columns — the recompute below
+        # then reads the new values straight off the row.
         updated = db.update_snippet_boundaries(snippet_id, start_time, end_time)
         if not updated:
             return jsonify({"code": "NOT_FOUND", "error": "Snippet not found"}), 404
 
-        # Re-compute metrics for the new time range
-        # Fetch the snippet's audio, decode, slice, and analyze
+        # Re-slice the parent audio for the new window and re-derive
+        # the per-snippet metrics blob + transcript + WPM + fillers
+        # in one call. The helper handles audio fetch, PCM decode,
+        # PCM slice, Whisper re-transcribe, filler count, and the
+        # atomic DB write. Failure is non-fatal so the boundary
+        # update still lands.
         recomputed_metrics = None
         try:
-            snippet = updated
-            audio_path = snippet.get("audio_segment_path", "")
-            if audio_path:
-                from services.audio_metrics import analyze_audio, decode_audio_to_pcm, SAMPLE_RATE
-                from services.coach_video_storage import get_coach_object_bytes
-                import numpy as np
-
-                # Try to download audio
-                audio_bytes = None
-                try:
-                    audio_bytes = get_coach_object_bytes("coach_feedback_videos", audio_path)
-                except Exception:
-                    # Try the bucket name from audio_recordings
-                    try:
-                        audio_bytes = get_coach_object_bytes("audio_recordings", audio_path)
-                    except Exception:
-                        pass
-
-                if audio_bytes:
-                    # Decode full audio to PCM
-                    pcm = decode_audio_to_pcm(audio_bytes)
-                    if pcm is not None and len(pcm) > 0:
-                        # Slice to the new boundaries
-                        start_sample = int(start_time * SAMPLE_RATE)
-                        end_sample = int(end_time * SAMPLE_RATE)
-                        start_sample = max(0, min(start_sample, len(pcm)))
-                        end_sample = max(start_sample, min(end_sample, len(pcm)))
-                        sliced = pcm[start_sample:end_sample]
-
-                        if len(sliced) >= SAMPLE_RATE:
-                            # Re-encode sliced PCM to bytes for analyze_audio
-                            import subprocess
-                            sliced_int16 = (sliced * 32768.0).astype(np.int16)
-                            raw_bytes = sliced_int16.tobytes()
-
-                            # analyze_audio expects encoded audio, so use raw PCM via a minimal approach
-                            # We'll directly call the internal functions instead
-                            from services.audio_metrics import (
-                                _frame_rms_db, _compute_pause_ms, _compute_dynamic_db,
-                                _compute_emphasis_per_min, _compute_energy_ratio, _compute_pitch_center_st,
-                                SILENCE_DB_THRESHOLD
-                            )
-                            duration_sec = len(sliced) / float(SAMPLE_RATE)
-                            dbs = _frame_rms_db(sliced)
-
-                            recomputed_metrics = {
-                                "wpm": None,  # requires transcript
-                                "pause_ms": _compute_pause_ms(dbs),
-                                "dynamic_db": _compute_dynamic_db(dbs),
-                                "emphasis_per_min": _compute_emphasis_per_min(dbs, duration_sec),
-                                "energy_ratio": _compute_energy_ratio(sliced, dbs),
-                                "pitch_center_st": None,
-                                "pitch_frame_count": 0,
-                                "voiced_duration_sec": round(
-                                    float(np.sum(dbs >= SILENCE_DB_THRESHOLD)) * 0.02, 1
-                                ),
-                            }
-                            pitch_st, pitch_frames = _compute_pitch_center_st(sliced)
-                            recomputed_metrics["pitch_center_st"] = pitch_st
-                            recomputed_metrics["pitch_frame_count"] = pitch_frames
-
-                            # Update snippet metric columns
-                            db.update_snippet_metrics(
-                                snippet_id=snippet_id,
-                                wpm=recomputed_metrics.get("wpm"),
-                                fillers=None,
-                                pause_ms=recomputed_metrics.get("pause_ms"),
-                                dynamic_db=recomputed_metrics.get("dynamic_db"),
-                                pitch_center=recomputed_metrics.get("pitch_center_st"),
-                                energy=recomputed_metrics.get("energy_ratio"),
-                                metrics_json=recomputed_metrics,
-                            )
+            from services.snippet_extraction import (
+                recompute_snippet_metrics_for_window,
+            )
+            recomputed_metrics = recompute_snippet_metrics_for_window(
+                snippet_id
+            )
         except Exception as metrics_err:
-            logger.warning("admin: re-compute metrics after boundary adjust failed: %s", metrics_err, exc_info=True)
-            # Non-fatal: boundaries are updated even if metrics re-computation fails
+            logger.warning(
+                "admin: re-compute metrics after boundary adjust failed: %s",
+                metrics_err, exc_info=True,
+            )
 
-        # Re-fetch the final state
+        # Re-fetch the final state so the response carries the row
+        # the admin UI is about to render — includes the fresh
+        # metrics JSONB and the new transcript.
         final_snippet = db.client.table("charisma_snippets").select("*").eq("id", snippet_id).execute()
         final = final_snippet.data[0] if final_snippet.data else updated
 
@@ -12333,6 +12295,34 @@ def v2_admin_patch_snippet(snippet_id):
             snippet = db.update_snippet_boundaries(snippet_id, start_time, end_time)
             if not snippet:
                 return jsonify({"code": "NOT_FOUND", "error": "Snippet not found."}), 404
+
+            # Boundaries changed → the per-snippet metrics blob must
+            # be recomputed for the new window. Same helper the
+            # dedicated /boundaries endpoint calls, so PATCH and POST
+            # produce identical post-conditions. Failure is non-fatal
+            # — the boundary update lands either way.
+            try:
+                from services.snippet_extraction import (
+                    recompute_snippet_metrics_for_window,
+                )
+                recompute_snippet_metrics_for_window(snippet_id)
+                # Re-fetch so subsequent partial updates in this same
+                # request (label, comment, status) see the new
+                # transcript + metric columns.
+                refreshed = (
+                    db.client.table("charisma_snippets")
+                    .select("*")
+                    .eq("id", snippet_id)
+                    .limit(1)
+                    .execute()
+                )
+                if refreshed.data:
+                    snippet = refreshed.data[0]
+            except Exception as metrics_err:
+                logger.warning(
+                    "admin patch: re-compute after boundary change failed: %s",
+                    metrics_err, exc_info=True,
+                )
 
         # ── 2. Label + comment (TRUE partial update) ─────────────────
         # Only touch columns that the admin explicitly named in the body.
