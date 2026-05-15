@@ -75,6 +75,7 @@ def finalize_session_pending_admin_review(
     result: dict[str, Any] = {
         "ok": False,
         "global_metrics_computed": False,
+        "kpi_narrative_written": False,
         "drafts_generated": 0,
         "status_set": False,
         "admin_email_status": None,
@@ -83,12 +84,31 @@ def finalize_session_pending_admin_review(
 
     # ── Step 1: global metrics + B6 KPI.
     try:
-        from routes.v2_routes import _compute_session_global_metrics
-        metrics = _compute_session_global_metrics(session_id)
+        from services.session_metrics import compute_session_global_metrics
+        metrics = compute_session_global_metrics(session_id)
         result["global_metrics_computed"] = metrics is not None
     except Exception as e:
         logger.warning(
             "finalize_pending_review: global metrics compute failed "
+            "sid=%s err=%s", session_id, e,
+        )
+
+    # ── Step 1.5: LLM-generated session_kpi_narrative.
+    # Writes to v2_sessions.ai_task_alignment_comment so the
+    # charisma_profile dashboard (which reads that column as its
+    # top-level narrative) has a coach-toned paragraph to render
+    # the moment the admin publishes. Best-effort — a missing
+    # narrative falls back to the learner-mirror / spec line in
+    # the dashboard's narrative builder.
+    try:
+        from services.session_kpi_narrative import (
+            generate_session_kpi_narrative,
+        )
+        narrative = generate_session_kpi_narrative(session_id)
+        result["kpi_narrative_written"] = bool(narrative)
+    except Exception as e:
+        logger.warning(
+            "finalize_pending_review: kpi narrative compute failed "
             "sid=%s err=%s", session_id, e,
         )
 
@@ -175,16 +195,29 @@ def auto_publish_trial_session(
     # trial finalize produces the same shape of dashboard the
     # onboarding finalize does.
     try:
-        # Late import: routes/v2_routes.py imports services, so a
-        # top-level import here would cycle. By the time we run,
-        # the route module is fully loaded.
-        from routes.v2_routes import _compute_session_global_metrics
-        metrics = _compute_session_global_metrics(session_id)
+        from services.session_metrics import compute_session_global_metrics
+        metrics = compute_session_global_metrics(session_id)
         result["global_metrics_computed"] = metrics is not None
     except Exception as e:
         logger.warning(
             "auto_publish_trial: global metrics compute failed sid=%s err=%s",
             session_id, e,
+        )
+
+    # ── Step 0.5: LLM-generated session narrative.
+    # Same rationale as finalize_session_pending_admin_review —
+    # populates ai_task_alignment_comment so the charisma_profile
+    # dashboard renders a real paragraph instead of the spec
+    # fallback line. Best-effort; failure leaves the column empty.
+    try:
+        from services.session_kpi_narrative import (
+            generate_session_kpi_narrative,
+        )
+        generate_session_kpi_narrative(session_id)
+    except Exception as e:
+        logger.warning(
+            "auto_publish_trial: kpi narrative compute failed "
+            "sid=%s err=%s", session_id, e,
         )
 
     # ── Step 1: AI-draft generation for any missing drafts.
