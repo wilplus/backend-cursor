@@ -9427,6 +9427,17 @@ def v2_coaching_state_machine_turn():
         body = request.get_json(silent=True) or {}
         coaching_id = (body.get("coaching_id") or "").strip()
         user_message = (body.get("user_message") or "").strip()
+        # Optional language hint for STEP 1 (which has no prior
+        # user message to infer language from). Accept either key
+        # so the frontend BFF doesn't have to be picky. Plain
+        # display name ("Polish", "English") or ISO code — the
+        # prompt builder hands it to the LLM verbatim.
+        user_language_hint = (
+            body.get("user_language")
+            or body.get("user_language_hint")
+            or body.get("language")
+            or ""
+        ).strip() or None
 
         if not _is_valid_uuid(coaching_id):
             return jsonify({
@@ -9502,6 +9513,7 @@ def v2_coaching_state_machine_turn():
             acoustic_targets=targets,
             user_first_name=first_name,
             user_org_context=None,
+            user_language_hint=user_language_hint,
         )
 
         # Build the LLM's view of the conversation. The system
