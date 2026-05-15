@@ -9385,6 +9385,249 @@ def v2_coaching_turn():
         return jsonify({"code": "V2_ERROR", "error": "Coaching turn failed"}), 500
 
 
+@v2_bp.route("/coaching/state-machine/turn", methods=["POST"])
+@require_auth
+def v2_coaching_state_machine_turn():
+    """One turn of the 5-step coaching state machine.
+
+    Parallel to ``/v2/coaching/turn`` (which runs the older
+    awareness→trial loop). Doesn't touch the existing flow — the
+    frontend opts in by hitting this endpoint instead.
+
+    Body::
+
+        {
+          "coaching_id": "<uuid>",   // existing coaching_sessions row
+          "user_message": "..."       // optional on the very first
+                                      // call (STEP 1 has no user
+                                      // message yet — the AI opens)
+        }
+
+    Response (200) — mirrors the structured-output schema verbatim
+    plus an ``ai_message_id`` placeholder the frontend can ignore::
+
+        {
+          "narration":    str,
+          "step":         1..5,
+          "triggers":     [str, ...],
+          "end":          bool,
+          "snippet_player":   { snippet_id } | omitted,
+          "label_buttons":    { snippet_id, yes_label, no_label } | omitted,
+          "negotiation":      { current_offer, user_offer, concluded } | omitted,
+          "acoustic_targets": { target_wpm, ... } | omitted
+        }
+
+    Persists each turn to ``coaching_sessions.messages`` so the
+    admin transcript view replays the full chat. The state itself
+    is implicit in the conversation history — we hand the LLM the
+    full prior turns and it follows the protocol from the system
+    prompt.
+    """
+    try:
+        body = request.get_json(silent=True) or {}
+        coaching_id = (body.get("coaching_id") or "").strip()
+        user_message = (body.get("user_message") or "").strip()
+
+        if not _is_valid_uuid(coaching_id):
+            return jsonify({
+                "code": "INVALID_INPUT",
+                "error": "coaching_id must be a UUID",
+            }), 400
+
+        user_id = request.user_id
+        coaching = db.get_coaching_session(coaching_id, user_id)
+        if not coaching:
+            return jsonify({
+                "code": "COACHING_NOT_FOUND",
+                "error": "Coaching session not found",
+            }), 404
+        if coaching.get("current_stage") == "complete":
+            return jsonify({
+                "code": "COACHING_COMPLETE",
+                "error": "This coaching loop is already complete.",
+            }), 409
+
+        snippet = db.get_snippet_by_id(
+            coaching.get("source_snippet_id"), user_id=user_id,
+        )
+        if not snippet:
+            return jsonify({
+                "code": "SNIPPET_NOT_FOUND",
+                "error": "Source snippet missing",
+            }), 404
+
+        # Acoustic targets are computed against the snippet's parent
+        # session — its global metrics are the user's baseline for
+        # this conversation. Falls through to None targets when the
+        # session row hasn't been finalized yet (the prompt builder
+        # drops missing lines).
+        parent_session: dict = {}
+        if snippet.get("session_id"):
+            try:
+                parent_session = db.v2_get_session_by_id(
+                    snippet.get("session_id"),
+                ) or {}
+            except Exception as e:
+                logger.warning(
+                    "coaching/state-machine: parent session load failed sid=%s err=%s",
+                    snippet.get("session_id"), e,
+                )
+
+        from services.coaching_state_machine import (
+            compute_acoustic_targets,
+            build_state_machine_system_prompt,
+            STATE_MACHINE_RESPONSE_SCHEMA,
+            parse_state_machine_response,
+        )
+        targets = compute_acoustic_targets(
+            global_wpm=parent_session.get("global_wpm"),
+            global_fillers=parent_session.get("global_fillers"),
+            global_dynamic_db=parent_session.get("global_dynamic_db"),
+            session_duration_ms=parent_session.get("duration_ms"),
+        )
+
+        # First-name + org-context are nice-to-haves; missing both
+        # is fine, the prompt builder degrades gracefully.
+        first_name: str | None = None
+        try:
+            details = db.v2_get_student_details(user_id) or {}
+            full_name = (details.get("name") or "").strip()
+            if full_name:
+                first_name = full_name.split()[0]
+        except Exception:
+            pass
+
+        system_prompt = build_state_machine_system_prompt(
+            snippet=snippet,
+            acoustic_targets=targets,
+            user_first_name=first_name,
+            user_org_context=None,
+        )
+
+        # Build the LLM's view of the conversation. The system
+        # prompt encodes the protocol; the message history tells
+        # the model which step we're on.
+        messages: list[dict] = [
+            {"role": "system", "content": system_prompt},
+        ]
+        prior = coaching.get("messages") or []
+        if isinstance(prior, list):
+            for m in prior:
+                role = (m.get("role") or "").strip()
+                content = (m.get("content") or "").strip()
+                # 'trial_audio' rows aren't part of the state-machine
+                # exchange — they're recordings dropped into the
+                # legacy awareness flow. Filter them out so the LLM
+                # doesn't see binary placeholders.
+                if role in ("user", "assistant") and content:
+                    messages.append({"role": role, "content": content})
+
+        # On the very first call (no user_message and no prior
+        # messages) we still ask the LLM for STEP 1 — the system
+        # prompt instructs it to open without waiting for input.
+        if user_message:
+            messages.append({"role": "user", "content": user_message})
+
+        from services.openai_service import OpenAIService
+        service = OpenAIService()
+        if not service.client:
+            return jsonify({
+                "code": "LLM_UNAVAILABLE",
+                "error": "Coach LLM not configured",
+            }), 503
+
+        try:
+            response = service.client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=messages,
+                temperature=0.7,
+                max_tokens=600,
+                response_format={
+                    "type": "json_schema",
+                    "json_schema": STATE_MACHINE_RESPONSE_SCHEMA,
+                },
+            )
+            raw = response.choices[0].message.content or ""
+        except Exception as llm_err:
+            logger.error(
+                "coaching/state-machine: LLM call failed: %s",
+                llm_err, exc_info=True,
+            )
+            return jsonify({
+                "code": "LLM_ERROR",
+                "error": "Coach is unavailable. Please try again.",
+            }), 502
+
+        parsed = parse_state_machine_response(raw)
+        if parsed is None:
+            return jsonify({
+                "code": "LLM_PARSE_ERROR",
+                "error": (
+                    "Coach response was malformed. Please send again."
+                ),
+            }), 502
+
+        # Persist user side first so the admin transcript reads
+        # chronologically even if assistant persist fails downstream.
+        if user_message:
+            try:
+                db.append_coaching_message(
+                    coaching_id, "user", user_message,
+                )
+            except Exception as msg_err:
+                logger.warning(
+                    "coaching/state-machine: user msg append failed: %s",
+                    msg_err,
+                )
+
+        try:
+            db.append_coaching_message(
+                coaching_id,
+                "assistant",
+                parsed.get("narration") or "",
+                extra={
+                    "step": parsed.get("step"),
+                    "triggers": parsed.get("triggers") or [],
+                    "end": bool(parsed.get("end")),
+                    "snippet_player": parsed.get("snippet_player"),
+                    "label_buttons": parsed.get("label_buttons"),
+                    "negotiation": parsed.get("negotiation"),
+                    "acoustic_targets": parsed.get("acoustic_targets"),
+                    "raw_llm_output": raw,
+                },
+            )
+        except Exception as msg_err:
+            logger.warning(
+                "coaching/state-machine: assistant msg append failed: %s",
+                msg_err,
+            )
+
+        # When the LLM flags end=true on STEP 5, advance the
+        # coaching_session to 'complete' so subsequent POSTs return
+        # COACHING_COMPLETE. Best-effort; the chat already showed
+        # the closing card by this point.
+        if parsed.get("end") and coaching.get("current_stage") != "complete":
+            try:
+                db.update_coaching_stage(coaching_id, "complete")
+            except Exception as stage_err:
+                logger.warning(
+                    "coaching/state-machine: stage advance failed: %s",
+                    stage_err,
+                )
+
+        return jsonify(parsed), 200
+
+    except Exception as e:
+        logger.error(
+            "coaching/state-machine/turn failed: %s", e, exc_info=True,
+        )
+        sentry_sdk.capture_exception(e)
+        return jsonify({
+            "code": "V2_ERROR",
+            "error": "State machine turn failed",
+        }), 500
+
+
 @v2_bp.route("/coaching/trial-recording", methods=["POST"])
 @require_auth
 def v2_coaching_trial_recording():
@@ -10629,6 +10872,86 @@ def v2_user_mirror_generate():
         return jsonify({
             "code": "V2_ERROR",
             "error": "Failed to generate mirror",
+        }), 500
+
+
+@v2_bp.route("/user/snippets/<snippet_id>/label", methods=["POST"])
+@require_auth
+def v2_user_snippet_label(snippet_id):
+    """Capture the user's self-confirmation of a snippet's
+    charismatic read (the chat state machine's "Would you label
+    your voice here as Charismatic? Yes / No" beat).
+
+    RLHF signal. Paired with ``coach_label`` (admin annotation),
+    the (admin, user) tuple is the training pair we export later:
+    when the user disagrees with the admin, that's the moment the
+    classifier most needs to learn from.
+
+    Body::
+
+        { "label": true | false }
+
+    Responses::
+
+        200 { "status": "ok", "snippet_id": ..., "user_charisma_label": ... }
+        400 INVALID_INPUT — bad UUID / non-bool label
+        404 NOT_FOUND     — snippet doesn't exist or isn't owned by
+                            this user
+        500 V2_ERROR
+
+    Owner-scoped at both the route level (require_auth + the
+    db.set_user_snippet_charisma_label filter on user_id) so a
+    user can't write to someone else's row even if they guess the
+    snippet UUID.
+    """
+    try:
+        if not _is_valid_uuid(snippet_id):
+            return jsonify({
+                "code": "INVALID_INPUT",
+                "error": "snippet_id must be a valid UUID",
+            }), 400
+
+        body = request.get_json(silent=True) or {}
+        label = body.get("label")
+        # Strict bool — accept True/False only. The frontend
+        # ActionBubble emits one of those two; anything else (None,
+        # int, string "yes") signals a malformed call we want to
+        # surface rather than coerce.
+        if not isinstance(label, bool):
+            return jsonify({
+                "code": "INVALID_INPUT",
+                "error": "label must be a boolean (true or false)",
+            }), 400
+
+        user_id = request.user_id
+        updated = db.set_user_snippet_charisma_label(
+            snippet_id=snippet_id,
+            user_id=str(user_id),
+            label=label,
+        )
+        if not updated:
+            return jsonify({
+                "code": "NOT_FOUND",
+                "error": "Snippet not found or not owned by user",
+            }), 404
+
+        return jsonify({
+            "status": "ok",
+            "snippet_id": snippet_id,
+            "user_charisma_label": updated.get("user_charisma_label"),
+            "user_charisma_label_set_at": updated.get(
+                "user_charisma_label_set_at"
+            ),
+        }), 200
+
+    except Exception as e:
+        logger.error(
+            "user/snippets/<id>/label failed: %s", e, exc_info=True,
+        )
+        sentry_sdk.capture_exception(e)
+        return jsonify({
+            "code": "V2_ERROR",
+            "error": "Failed to record snippet label",
         }), 500
 
 

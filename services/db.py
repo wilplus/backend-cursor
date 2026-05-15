@@ -5504,6 +5504,58 @@ class DatabaseService:
 
     # ── Phase 10: AI-draft + implicit-approval helpers ────────────────
 
+    def set_user_snippet_charisma_label(
+        self,
+        snippet_id: str,
+        user_id: str,
+        label: bool | None,
+    ) -> Optional[dict]:
+        """RLHF signal capture — the user's self-confirmation of a
+        snippet's charismatic read.
+
+        Owner-scoped: the .eq("user_id", user_id) clause guarantees
+        a user can only label their own snippets (the route handler
+        already gates auth, but defence-in-depth at the DB layer
+        keeps stray writes from leaking into someone else's row).
+
+        ``label=True``  → user confirms the snippet as charismatic.
+        ``label=False`` → user disagrees with the admin's "charisma"
+                          coach_label.
+        ``label=None``  → clears the column (admin tooling /
+                          backfill use only; the user-facing chat
+                          state machine only ever writes True/False).
+
+        Returns the updated row on success, ``None`` when the
+        owner-scoped match found nothing (snippet doesn't exist or
+        belongs to a different user). Failure logs + returns None
+        so the chat continues even if the RLHF capture missed.
+        """
+        try:
+            now = datetime.now(timezone.utc).isoformat()
+            result = (
+                self.client.table("charisma_snippets")
+                .update({
+                    "user_charisma_label": label,
+                    "user_charisma_label_set_at": (
+                        now if label is not None else None
+                    ),
+                    "updated_at": now,
+                })
+                .eq("id", snippet_id)
+                .eq("user_id", user_id)
+                .execute()
+            )
+            if result.data and len(result.data) > 0:
+                return result.data[0]
+            return None
+        except Exception as e:
+            logger.warning(
+                "set_user_snippet_charisma_label failed snippet=%s "
+                "user=%s err=%s",
+                snippet_id, user_id, e,
+            )
+            return None
+
     def promote_ai_drafts_to_admin_comments(self, session_id: str) -> int:
         """Copy ai_draft_admin_comment → admin_comment for every snippet
         in ``session_id`` that has a draft but no human comment yet.
