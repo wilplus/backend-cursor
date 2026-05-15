@@ -9439,6 +9439,30 @@ def v2_coaching_trial_recording():
         # 6. Mark the coaching session complete and bind the trial session
         db.update_coaching_stage(coaching_id, "complete", trial_session_id=trial_session_id)
 
+        # 6.5. Auto-publish + email. The trial flow has no admin in
+        # the loop — the user expects feedback within minutes, not
+        # after a review queue. We mirror the steps of the admin
+        # publish endpoint (promote AI drafts → admin_comment, flip
+        # status, stamp results_published_at, compute charisma
+        # profile, send the standard results email). Best-effort:
+        # every step in the helper is failure-isolated so a broken
+        # email or a missing draft never blocks the trial response.
+        try:
+            from services.session_publish import auto_publish_trial_session
+            ap_result = auto_publish_trial_session(
+                session_id=trial_session_id,
+                user_id=str(user_id),
+            )
+            logger.info(
+                "coaching trial: auto-publish sid=%s result=%s",
+                trial_session_id, ap_result,
+            )
+        except Exception as ap_err:
+            logger.warning(
+                "coaching trial: auto-publish failed sid=%s err=%s",
+                trial_session_id, ap_err,
+            )
+
         # 7. Record the trial recording on the coaching session so admin
         # review tooling can replay the full loop (admin comment →
         # awareness bubbles → user's re-performance audio) from one

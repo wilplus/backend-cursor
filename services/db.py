@@ -5504,6 +5504,65 @@ class DatabaseService:
 
     # ── Phase 10: AI-draft + implicit-approval helpers ────────────────
 
+    def promote_ai_drafts_to_admin_comments(self, session_id: str) -> int:
+        """Copy ai_draft_admin_comment → admin_comment for every snippet
+        in ``session_id`` that has a draft but no human comment yet.
+
+        Used by the auto-publish flow for coaching trial recordings —
+        there's no admin in the loop to review drafts, so we ship the
+        AI's first take as the comment. Existing admin_comment rows
+        are NOT overwritten (idempotent: a manual review later wins
+        over a previous auto-promotion if the admin edits the row).
+
+        Returns the number of rows promoted. Zero is a valid outcome:
+        snippets without drafts, or already-commented rows, both fall
+        outside the filter.
+        """
+        try:
+            # PostgREST has no UPDATE … FROM, so we read first then
+            # write per-row. The N here is bounded by snippets-per-
+            # session (typically 1-5 for a trial recording) so the
+            # extra round-trip cost is fine.
+            sel = (
+                self.client.table("charisma_snippets")
+                .select("id, ai_draft_admin_comment, admin_comment")
+                .eq("session_id", session_id)
+                .execute()
+            )
+            candidates = sel.data or []
+            promoted = 0
+            now = datetime.now(timezone.utc).isoformat()
+            for row in candidates:
+                existing = (row.get("admin_comment") or "").strip()
+                if existing:
+                    continue
+                draft = (row.get("ai_draft_admin_comment") or "").strip()
+                if not draft:
+                    continue
+                try:
+                    (
+                        self.client.table("charisma_snippets")
+                        .update({
+                            "admin_comment": draft,
+                            "updated_at": now,
+                        })
+                        .eq("id", row["id"])
+                        .execute()
+                    )
+                    promoted += 1
+                except Exception as upd_err:
+                    logger.warning(
+                        "promote_ai_drafts: row update failed sid=%s sn=%s err=%s",
+                        session_id, row["id"], upd_err,
+                    )
+            return promoted
+        except Exception as e:
+            logger.warning(
+                "promote_ai_drafts_to_admin_comments failed sid=%s: %s",
+                session_id, e,
+            )
+            return 0
+
     def set_charisma_snippet_ai_draft_comment(
         self,
         snippet_id: str,
