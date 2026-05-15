@@ -143,11 +143,14 @@ class Config:
     #   - the user's current learner_mirror narrative (continuity across
     #     the system as a whole)
     # And bumps temperature 0.7 → 0.85 so even identical inputs vary.
-    # Default OFF so deploy is a no-op; flip to TRUE after a sanity
-    # check of one user's CTA click.
+    # Default ON — the contextual chat ("infinite flywheel") relies on
+    # the longitudinal block to make Session 2+ feel like the system
+    # remembers the user. Set LONGITUDINAL_FIRST_QUESTION_ENABLED=false
+    # in env to opt back out (kill switch preserved for incident
+    # response).
     LONGITUDINAL_FIRST_QUESTION_ENABLED = (
-        (os.getenv("LONGITUDINAL_FIRST_QUESTION_ENABLED") or "").strip().lower()
-        in ("1", "true", "yes", "on")
+        (os.getenv("LONGITUDINAL_FIRST_QUESTION_ENABLED") or "true")
+        .strip().lower() in ("1", "true", "yes", "on")
     )
 
     # ── Phase 16: pre-baked baseline summary ────────────────────────────
@@ -159,11 +162,13 @@ class Config:
     # first-question) reads that summary INSTEAD of having to re-derive
     # who-this-user-is from raw transcripts on every call — which is
     # where shallow openers leak in.
-    # Default OFF so deploy is a no-op; flip to TRUE after spot-checking
-    # one user's turn-5 generation post-baseline.
+    # Default ON — same rationale as LONGITUDINAL_FIRST_QUESTION_ENABLED:
+    # the baseline digest is the single source-of-truth for who-the-
+    # user-is by the time Session 2+ kicks in. Set
+    # BASELINE_SUMMARY_ENABLED=false in env to opt back out.
     BASELINE_SUMMARY_ENABLED = (
-        (os.getenv("BASELINE_SUMMARY_ENABLED") or "").strip().lower()
-        in ("1", "true", "yes", "on")
+        (os.getenv("BASELINE_SUMMARY_ENABLED") or "true")
+        .strip().lower() in ("1", "true", "yes", "on")
     )
 
     # ── Phase 6: on-demand learner mirror ────────────────────────────────

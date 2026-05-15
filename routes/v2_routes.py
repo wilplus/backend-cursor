@@ -7869,6 +7869,83 @@ def _build_longitudinal_context_block(
             user_id, e,
         )
 
+    # ── Prior sessions: archetype + recent admin coaching notes ──
+    # Cross-session memory. The infinite-flywheel UX is "each loop
+    # is wiser than the last" — the LLM should see what archetype
+    # the user landed on in their previous session(s) and what the
+    # admin has been telling them, so the new opening question
+    # builds on (not repeats) that thread.
+    try:
+        prior_sessions = (
+            db.v2_get_published_sessions_for_user(user_id) or []
+        )
+        last_session = prior_sessions[0] if prior_sessions else None
+
+        archetype: str | None = None
+        if isinstance(last_session, dict):
+            cp = last_session.get("charisma_profile") or {}
+            if isinstance(cp, dict):
+                archetype = (cp.get("archetype") or "").strip() or None
+
+        # Pull the most recent admin coaching notes the user has
+        # received across ALL their published snippets. We cap at 3
+        # so the LLM has continuity without the prompt ballooning.
+        recent_notes: list[str] = []
+        try:
+            note_rows = (
+                db.client.table("charisma_snippets")
+                .select("admin_comment, created_at, session_id")
+                .eq("user_id", user_id)
+                .not_.is_("admin_comment", "null")
+                .order("created_at", desc=True)
+                .limit(8)
+                .execute()
+                .data
+            ) or []
+            for r in note_rows:
+                # Exclude the snippet the user is currently working
+                # on — the parent prompt already has its admin_comment.
+                if r.get("session_id") and r.get("session_id") == snippet_id:
+                    continue
+                note = (r.get("admin_comment") or "").strip()
+                if not note:
+                    continue
+                if len(note) > 180:
+                    note = note[:180].rstrip() + "…"
+                recent_notes.append(note)
+                if len(recent_notes) >= 3:
+                    break
+        except Exception as note_err:
+            logger.warning(
+                "first-question: recent admin notes load failed "
+                "user=%s err=%s", user_id, note_err,
+            )
+
+        if archetype or recent_notes:
+            lines = ["[PRIOR SESSIONS]"]
+            if archetype:
+                lines.append(
+                    f"Last session's archetype read: {archetype}. "
+                    "Use this as a continuity anchor — acknowledge "
+                    "the trajectory, don't restart from zero."
+                )
+            if recent_notes:
+                lines.append(
+                    "Recent admin coaching notes (most-recent first):"
+                )
+                for note in recent_notes:
+                    lines.append(f"  • {note}")
+                lines.append(
+                    "Build on these threads — do NOT repeat advice "
+                    "the admin already gave; probe the next layer."
+                )
+            sections.append("\n".join(lines))
+    except Exception as e:
+        logger.warning(
+            "first-question: prior-sessions load failed user=%s err=%s",
+            user_id, e,
+        )
+
     # ── Prior attempts on THIS snippet ────────────────────────────
     try:
         attempts = db.list_coaching_attempts_for_snippet(
@@ -9439,28 +9516,31 @@ def v2_coaching_trial_recording():
         # 6. Mark the coaching session complete and bind the trial session
         db.update_coaching_stage(coaching_id, "complete", trial_session_id=trial_session_id)
 
-        # 6.5. Auto-publish + email. The trial flow has no admin in
-        # the loop — the user expects feedback within minutes, not
-        # after a review queue. We mirror the steps of the admin
-        # publish endpoint (promote AI drafts → admin_comment, flip
-        # status, stamp results_published_at, compute charisma
-        # profile, send the standard results email). Best-effort:
-        # every step in the helper is failure-isolated so a broken
-        # email or a missing draft never blocks the trial response.
+        # 6.5. Flip the trial v2_session into the admin review queue.
+        # The "infinite loop" model wants admin review on every non-
+        # onboarding session — trial recordings included — so the
+        # standard publish flow happens once per session (admin
+        # clicks Publish, results_published_at gets stamped, user
+        # gets the email, charisma_profile gets computed, etc.).
+        # Here we just (a) make sure the session has a status that
+        # the admin Pending Review surface picks up and (b) notify
+        # the admin so they know there's something waiting.
         try:
-            from services.session_publish import auto_publish_trial_session
-            ap_result = auto_publish_trial_session(
+            from services.session_publish import (
+                finalize_session_pending_admin_review,
+            )
+            fp_result = finalize_session_pending_admin_review(
                 session_id=trial_session_id,
                 user_id=str(user_id),
             )
             logger.info(
-                "coaching trial: auto-publish sid=%s result=%s",
-                trial_session_id, ap_result,
+                "coaching trial: pending-review sid=%s result=%s",
+                trial_session_id, fp_result,
             )
-        except Exception as ap_err:
+        except Exception as fp_err:
             logger.warning(
-                "coaching trial: auto-publish failed sid=%s err=%s",
-                trial_session_id, ap_err,
+                "coaching trial: pending-review handoff failed "
+                "sid=%s err=%s", trial_session_id, fp_err,
             )
 
         # 7. Record the trial recording on the coaching session so admin
@@ -9504,6 +9584,247 @@ def v2_coaching_trial_recording():
         logger.error("coaching/trial-recording failed: %s", e, exc_info=True)
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR", "error": "Trial recording failed"}), 500
+
+
+@v2_bp.route("/user/chat/upload-answer", methods=["POST"])
+@require_auth
+def v2_user_chat_upload_answer():
+    """Accept a contextual-chat audio response, finalize the session
+    for admin review.
+
+    This is the "Session 2+" upload entry — the user has finished
+    onboarding, clicked a CTA on a snippet, gone through the
+    contextual chat (POST /v2/user/chat/first-question for the
+    opening question), and is now uploading their audio response.
+    The previous path (/v2/public/interview/upload-answer) created
+    a guest session and left it orphaned; this endpoint creates a
+    proper user-bound v2_session and runs it through the same
+    finalize pipeline coaching trials use.
+
+    Multipart body:
+      - audio_file:      the recorded response (required)
+      - source_snippet_id: the snippet the user clicked from
+                          /results to enter this conversation
+                          (optional; logged for context)
+      - intent:           'stress' | 'charisma' (optional; logged)
+      - question_text:    the AI-generated opening question
+                          (optional; logged for traceability)
+
+    Side effects on success:
+      - audio uploaded to the audio bucket
+      - new v2_sessions row bound to request.user_id
+      - new recordings row with recording_origin='contextual_chat'
+      - recording-1 metrics job enqueued
+      - extract_recording_snippets runs (snippets land back on
+        /results once admin publishes)
+      - session handed to finalize_session_pending_admin_review:
+        global metrics + B6 KPI, AI draft prefill, status flip to
+        'pending_admin_review', admin notification email
+
+    Response (201):
+        { status: "ok", session_id, recording_id, finalize: {...} }
+
+    Why no auto-publish: the "infinite loop" UX is admin reviews
+    every non-onboarding session. The user stays on the waiting
+    screen (/user/results/<id> returns status='processing' while
+    results_published_at IS NULL) until the admin clicks Publish.
+    """
+    import uuid as _uuid
+    from services.recording_1_job import enqueue_recording_1_job
+
+    try:
+        audio = request.files.get("audio_file")
+        if not audio:
+            return jsonify({
+                "code": "INVALID_INPUT",
+                "error": "audio_file is required",
+            }), 400
+
+        user_id = request.user_id
+        source_snippet_id = (
+            request.form.get("source_snippet_id")
+            or request.form.get("sourceSnippetId")
+            or ""
+        ).strip() or None
+        intent = (request.form.get("intent") or "").strip().lower() or None
+        question_text = (request.form.get("question_text") or "").strip() or None
+
+        # 1. Upload audio — same bucket helper trial-recording uses.
+        try:
+            file_bytes = audio.read()
+        except Exception:
+            return jsonify({
+                "code": "AUDIO_READ_FAILED",
+                "error": "Could not read audio",
+            }), 400
+        if not file_bytes:
+            return jsonify({
+                "code": "AUDIO_EMPTY",
+                "error": "Empty audio payload",
+            }), 400
+
+        recording_id = str(_uuid.uuid4())
+        # Contextual chat audio lives under its own prefix so the
+        # admin queue can tell them apart from baselines and trials
+        # at a glance (and so future analytics queries can group by
+        # origin without joining recordings).
+        storage_path = (
+            f"contextual_chat/{user_id}/{recording_id}.webm"
+        )
+        content_type = (
+            audio.mimetype or "audio/webm"
+        ).strip() or "audio/webm"
+        try:
+            from services.audio_storage import put_audio_bytes
+            put_audio_bytes(
+                storage_path, file_bytes, content_type=content_type,
+            )
+        except Exception as upload_err:
+            logger.error(
+                "chat/upload-answer: storage failed: %s",
+                upload_err, exc_info=True,
+            )
+            return jsonify({
+                "code": "STORAGE_ERROR",
+                "error": "Failed to store audio",
+            }), 502
+
+        # 2. Create the v2_session bound to this user.
+        chat_session = db.v2_create_session(user_id)
+        if not chat_session:
+            return jsonify({
+                "code": "V2_ERROR",
+                "error": "Failed to create session",
+            }), 500
+        chat_session_id = str(chat_session.get("id"))
+
+        # 3. Create the recordings row. The 'contextual_chat'
+        # origin is also a safety filter — the backfill script
+        # only acts on coaching_trial, so a half-broken contextual
+        # session can't get accidentally auto-published.
+        recording_payload = {
+            "id": recording_id,
+            "user_id": user_id,
+            "session_v2_id": chat_session_id,
+            "storage_path": storage_path,
+            "audio_url": "",
+            "duration": 0,
+            "recording_origin": "contextual_chat",
+        }
+        if source_snippet_id:
+            # Tucked into the JSONB source_metadata column so admins
+            # reviewing the new session can trace which prior snippet
+            # the user was responding to.
+            recording_payload["source_metadata"] = {
+                "source_snippet_id": source_snippet_id,
+                "intent": intent,
+                "question_text": question_text,
+            }
+        try:
+            db.create_recording(recording_payload)
+        except Exception as create_err:
+            err_low = str(create_err).lower()
+            if (
+                "recording_origin" in err_low
+                or "source_metadata" in err_low
+                or "pgrst204" in err_low
+            ):
+                fallback = {
+                    k: v for k, v in recording_payload.items()
+                    if k not in ("recording_origin", "source_metadata")
+                }
+                db.create_recording(fallback)
+            else:
+                logger.error(
+                    "chat/upload-answer: create_recording failed: %s",
+                    create_err, exc_info=True,
+                )
+                return jsonify({
+                    "code": "RECORDING_CREATE_FAILED",
+                    "error": "Failed to create recording",
+                }), 500
+
+        # 4. Bind the recording to the session + set the lifecycle
+        # state recording-1 job uses to drive metrics analysis.
+        try:
+            db.v2_update_session(chat_session_id, user_id, {
+                "recording_1_id": recording_id,
+                "status": "completing_from_recording_1",
+                "recording_1_processing_status": "pending",
+                "self_rating_submitted_at": datetime.now(timezone.utc).isoformat(),
+            })
+        except Exception as link_err:
+            logger.warning(
+                "chat/upload-answer: session link failed (non-fatal): %s",
+                link_err,
+            )
+
+        # 5. Kick off metrics + snippet extraction. Same pattern as
+        # trial-recording: enqueue the metrics job (async) AND run
+        # extract synchronously so the snippets exist by the time
+        # finalize_session_pending_admin_review runs.
+        try:
+            enqueue_recording_1_job(
+                chat_session_id, recording_id, storage_path, user_id, None,
+            )
+        except Exception as q_err:
+            logger.warning(
+                "chat/upload-answer: enqueue failed: %s", q_err, exc_info=True,
+            )
+        try:
+            from services.snippet_extraction import extract_recording_snippets
+            extract_recording_snippets(
+                session_id=chat_session_id,
+                user_id=str(user_id),
+                recording_id=recording_id,
+                recording_path=storage_path,
+                duration_seconds=None,
+            )
+        except Exception as snippet_err:
+            logger.warning(
+                "chat/upload-answer: extract failed: %s", snippet_err,
+            )
+
+        # 6. Finalize — same helper trial-recording calls. Computes
+        # global metrics + B6 KPI, generates AI draft comments,
+        # flips status to pending_admin_review, sends the admin
+        # notification email.
+        finalize_summary: dict | None = None
+        try:
+            from services.session_publish import (
+                finalize_session_pending_admin_review,
+            )
+            finalize_summary = finalize_session_pending_admin_review(
+                session_id=chat_session_id,
+                user_id=str(user_id),
+            )
+        except Exception as fp_err:
+            logger.warning(
+                "chat/upload-answer: finalize handoff failed sid=%s err=%s",
+                chat_session_id, fp_err,
+            )
+
+        logger.info(
+            "chat/upload-answer: ok user_id=%s session_id=%s "
+            "source_snippet=%s intent=%s",
+            user_id, chat_session_id, source_snippet_id, intent,
+        )
+        return jsonify({
+            "status": "ok",
+            "session_id": chat_session_id,
+            "recording_id": recording_id,
+            "finalize": finalize_summary,
+        }), 201
+
+    except Exception as e:
+        logger.error(
+            "chat/upload-answer: failed: %s", e, exc_info=True,
+        )
+        sentry_sdk.capture_exception(e)
+        return jsonify({
+            "code": "V2_ERROR",
+            "error": "Contextual chat upload failed",
+        }), 500
 
 
 @v2_bp.route("/user/chat/first-question", methods=["POST"])

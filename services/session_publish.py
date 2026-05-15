@@ -43,6 +43,97 @@ from services.db import db
 logger = logging.getLogger(__name__)
 
 
+def finalize_session_pending_admin_review(
+    session_id: str,
+    user_id: str,
+) -> dict[str, Any]:
+    """Hand a freshly-recorded non-onboarding session to the admin
+    review queue.
+
+    Called at the tail of every audio-bearing flow that ISN'T
+    onboarding: coaching trial recordings, contextual chat
+    recordings, future ad-hoc sessions. The shared "infinite loop"
+    contract is that admin reviews every session before the user
+    sees results — so we DON'T stamp ``results_published_at`` and
+    we DON'T send the user-facing email. Instead:
+
+      1. Compute global metrics + B6 KPI so the admin Pending
+         Review surface has scores to render.
+      2. Generate AI admin_comment drafts for any new snippet
+         missing one (so the admin opens the row to a pre-filled
+         suggestion they can keep, edit, or replace).
+      3. Set status to "pending_admin_review" so the admin UI
+         picks the session up (and so /user/results/<id>'s
+         status derivation returns 'processing' until publish).
+      4. Send the standard admin notification email so the admin
+         knows there's something new to look at.
+
+    Failure-isolated throughout: a missing draft or a flaky email
+    never blocks the rest. Returns a structured dict the caller
+    can log for observability.
+    """
+    result: dict[str, Any] = {
+        "ok": False,
+        "global_metrics_computed": False,
+        "drafts_generated": 0,
+        "status_set": False,
+        "admin_email_status": None,
+        "snippet_count": 0,
+    }
+
+    # ── Step 1: global metrics + B6 KPI.
+    try:
+        from routes.v2_routes import _compute_session_global_metrics
+        metrics = _compute_session_global_metrics(session_id)
+        result["global_metrics_computed"] = metrics is not None
+    except Exception as e:
+        logger.warning(
+            "finalize_pending_review: global metrics compute failed "
+            "sid=%s err=%s", session_id, e,
+        )
+
+    # ── Step 2: pre-fill admin_comment drafts.
+    try:
+        drafts = _ensure_drafts(session_id)
+        # _ensure_drafts logs internally; this counter is best-effort.
+        result["drafts_generated"] = drafts if isinstance(drafts, int) else 0
+    except Exception as e:
+        logger.warning(
+            "finalize_pending_review: draft generation failed sid=%s err=%s",
+            session_id, e,
+        )
+
+    # Snapshot snippet count for downstream (admin email body, log).
+    try:
+        snippets = db.get_snippets_by_session(session_id) or []
+        result["snippet_count"] = len(snippets)
+    except Exception:
+        pass
+
+    # ── Step 3: status flip. The admin UI's Pending Review listing
+    # keys on this string; the /user/results/<id> BFF derives
+    # 'processing' from "results_published_at IS NULL" so the user
+    # stays on the waiting screen regardless of the exact status.
+    try:
+        db.v2_update_session_status_unscoped(session_id, "pending_admin_review")
+        result["status_set"] = True
+    except Exception as e:
+        logger.warning(
+            "finalize_pending_review: status flip failed sid=%s err=%s",
+            session_id, e,
+        )
+
+    # ── Step 4: admin notification email.
+    result["admin_email_status"] = _send_admin_notification(
+        session_id=session_id,
+        user_id=user_id,
+        snippet_count=result["snippet_count"],
+    )
+
+    result["ok"] = True
+    return result
+
+
 def auto_publish_trial_session(
     session_id: str,
     user_id: str,
