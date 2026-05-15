@@ -52,10 +52,11 @@ def generate_session_kpi_narrative(
 ) -> str | None:
     """Generate + persist a coach-toned narrative for ``session_id``.
 
-    Reads the session row (and a handful of its snippets) for
-    grounding, calls one LLM with a strict JSON schema, writes the
-    result to ``v2_sessions.ai_task_alignment_comment``, returns
-    the narrative string.
+    Reads the session row, its snippets (for admin_comment context),
+    and the owner's learner_profile (for cross-session traits), then
+    calls one LLM with a strict JSON schema. Writes the result to
+    ``v2_sessions.ai_task_alignment_comment`` and returns the
+    narrative string.
 
     ``overwrite=False`` (default) — if the column is already
     populated we leave it alone. Useful from finalize paths that
@@ -102,7 +103,22 @@ def generate_session_kpi_narrative(
         )
         snippets = []
 
-    narrative = _llm_generate_narrative(session, snippets)
+    # Cross-session traits the prompt grounds in. user_id is on the
+    # session row; we fail closed (empty profile) when the lookup
+    # misses, since the narrative should never block on it.
+    learner_profile: dict = {}
+    owner_id = session.get("user_id")
+    if owner_id:
+        try:
+            settings = db.get_user_settings(str(owner_id)) or {}
+            learner_profile = settings.get("inferred_learner_profile") or {}
+        except Exception as e:
+            logger.warning(
+                "kpi_narrative: learner profile load failed sid=%s err=%s",
+                session_id, e,
+            )
+
+    narrative = _llm_generate_narrative(session, snippets, learner_profile)
     if not narrative:
         return None
 
@@ -146,6 +162,7 @@ def _has_usable_signal(session: dict) -> bool:
 def _llm_generate_narrative(
     session: dict,
     snippets: list[dict],
+    learner_profile: dict,
 ) -> str | None:
     try:
         from services.openai_service import OpenAIService
@@ -157,28 +174,63 @@ def _llm_generate_narrative(
         return None
 
     system = (
-        "You write a short post-session reflection for a user who "
-        "just finished a charisma / stress coaching session. The "
-        "reflection ships verbatim into the user's results "
-        "dashboard as the top narrative — the radar + heatmap below "
-        "it carry the numbers, so you don't need to repeat them.\n"
+        "You write a short post-session reflection that ships verbatim "
+        "into the user's results dashboard as the top narrative. The "
+        "radar + heatmap + scores below it carry the raw numbers, so "
+        "you don't need to recite them — your job is to describe "
+        "HOW the user shows up, not WHAT they answered.\n"
         "\n"
         "Voice: warm, specific, second-person. Not clinical. Not "
         "motivational fluff. Sound like a trusted coach summarising "
         "what they noticed.\n"
         "\n"
-        "Ground EVERY claim in the data the user gives you — quote "
-        "specific numbers (\"around 132 WPM\", \"6 fillers across "
-        "the session\") and recurring topics directly. Don't invent "
-        "moments. If a number is missing, don't fill in a plausible-"
-        "sounding one.\n"
+        "CRITICAL — IGNORE THE LITERAL SUBJECT MATTER OF THE "
+        "DIAGNOSTIC QUESTIONS (math problems, trivia, facts, etc.). "
+        "Those questions are cognitive-load probes, NOT topics the "
+        "user 'is good at'. Do NOT say 'you handled the math well' "
+        "or 'you stayed on the trivia topic'. The literal content of "
+        "the questions is irrelevant to the charisma read.\n"
+        "\n"
+        "REDEFINE 'STICKINESS' for this narrative: stickiness is a "
+        "MENTAL FOCUS / PRESENCE UNDER PRESSURE signal — the user's "
+        "ability to hold a clear train of thought when their working "
+        "memory is taxed. Talk about it as composure, focus, "
+        "presence. Never name the topic stickiness was measured on.\n"
+        "\n"
+        "PRIMARY SOURCES OF TRUTH (in order):\n"
+        "  1. Admin coaching comments (what a human coach has flagged "
+        "     on this user's snippets — these are the most signal-"
+        "     dense observations available).\n"
+        "  2. Acoustic delivery metrics: Pace (WPM), Flow (fillers "
+        "     per minute), Pitch (semitone range), Dynamic dB, Energy.\n"
+        "  3. Cross-session learner profile (behavioral profile, "
+        "     recurring patterns, score-per-component aggregates).\n"
+        "\n"
+        "Base the narrative on HOW they speak and what the coach has "
+        "observed — NOT what factual questions they answered. Numbers "
+        "are background grounding; the coach's words are the "
+        "foreground.\n"
+        "\n"
+        "EXAMPLES of the bar to hit:\n"
+        "\n"
+        "  BAD (do NOT do this):\n"
+        "    \"You answered the math questions quickly and stayed on "
+        "    the topic of calculations well, showing great "
+        "    stickiness.\"\n"
+        "\n"
+        "  GOOD (this is the vibe):\n"
+        "    \"You have an authoritative presence. Under cognitive "
+        "    pressure, your mental focus remains unbroken and your "
+        "    pace is steady, though your coach noted a slight drop "
+        "    in vocal warmth. You project confidence even when "
+        "    challenged.\"\n"
         "\n"
         "Output strict JSON with one key: 'narrative'. ONE cohesive "
         "paragraph (3-5 sentences). No bullets, no headers, no line "
-        "breaks. End on something forward-looking — what to push on "
-        "next."
+        "breaks, no enumeration of question topics. End on something "
+        "forward-looking — what to push on next."
     )
-    user_prompt = _build_user_prompt(session, snippets)
+    user_prompt = _build_user_prompt(session, snippets, learner_profile)
 
     schema = {
         "name": "session_kpi_narrative",
@@ -221,22 +273,94 @@ def _llm_generate_narrative(
     return narrative or None
 
 
-def _build_user_prompt(session: dict, snippets: list[dict]) -> str:
+def _build_user_prompt(
+    session: dict,
+    snippets: list[dict],
+    learner_profile: dict,
+) -> str:
     """Serialise just enough of the session to ground the narrative.
 
-    We send numbers (KPI, global metrics) + topic + a thin index of
-    the snippets (count, durations) — NOT the full transcripts. The
-    LLM doesn't need the prose to write the dashboard prose.
+    Sections in priority order (matches the system prompt's ranking
+    of sources of truth):
+
+      1. ADMIN COACHING COMMENTS — the human coach's observations on
+         this session's snippets. PRIMARY truth for the narrative.
+      2. LEARNER PROFILE — cross-session traits (behavioral profile,
+         recurring patterns, component score aggregates).
+      3. ACOUSTIC DELIVERY — Pace, Flow, Pitch, dB, Energy.
+      4. STICKINESS DIAGNOSTIC — score only, NO topic. The topic of
+         the cognitive-load probe is excluded by design so the LLM
+         can't anchor on it.
+
+    The full transcripts are NOT sent — the LLM doesn't need the
+    prose to write dashboard prose, and including them would risk
+    the model latching onto the question's literal subject matter.
     """
+    parts: list[str] = []
+
+    # ── 1. Admin coaching comments (PRIMARY) ────────────────────
+    coach_lines: list[str] = []
+    for s in snippets:
+        comment = (s.get("admin_comment") or "").strip()
+        if not comment:
+            continue
+        label = (s.get("coach_label") or s.get("snippet_type") or "").lower()
+        tag = f"[{label}]" if label in ("stress", "charisma") else ""
+        # Trim each comment so a chatty admin doesn't blow the prompt;
+        # 240 chars is enough to carry the observation.
+        if len(comment) > 240:
+            comment = comment[:240].rstrip() + "…"
+        coach_lines.append(f"  {tag} {comment}".strip())
+        if len(coach_lines) >= 8:  # cap to keep the prompt bounded
+            break
+    if coach_lines:
+        parts.append(
+            "ADMIN COACHING COMMENTS (primary source — base the "
+            "narrative on what the coach saw):\n" + "\n".join(coach_lines)
+        )
+    else:
+        parts.append(
+            "ADMIN COACHING COMMENTS: (none yet — fall back to "
+            "acoustic delivery + learner profile)"
+        )
+
+    # ── 2. Learner profile (cross-session) ──────────────────────
+    profile_lines = _learner_profile_lines(learner_profile)
+    if profile_lines:
+        parts.append("LEARNER PROFILE:\n" + "\n".join(profile_lines))
+
+    # ── 3. Acoustic delivery (Pace / Flow / Pitch / dB / Energy) ─
     kpi = session.get("kpi_score")
     g_wpm = session.get("global_wpm")
     g_fillers = session.get("global_fillers")
     g_dyn = session.get("global_dynamic_db")
     g_pitch = session.get("global_pitch_center")
     g_energy = session.get("global_energy")
-    top_topic = (session.get("stickiness_top_topic") or "").strip() or None
-    sticky_score = session.get("stickiness_score")
 
+    parts.append(
+        "ACOUSTIC DELIVERY (how they speak — secondary source):\n"
+        f"  Pace (WPM):          {g_wpm if g_wpm is not None else '—'}\n"
+        f"  Flow (total fillers):{g_fillers if g_fillers is not None else '—'}\n"
+        f"  Dynamic dB:          {g_dyn if g_dyn is not None else '—'}\n"
+        f"  Pitch center (st):   {g_pitch if g_pitch is not None else '—'}\n"
+        f"  Energy:              {g_energy if g_energy is not None else '—'}\n"
+        f"  Overall KPI (0-100): {kpi if kpi is not None else '—'}"
+    )
+
+    # ── 4. Stickiness as diagnostic ONLY — no topic ─────────────
+    # We deliberately omit stickiness_top_topic. The system prompt
+    # tells the LLM to treat stickiness as mental focus / presence
+    # under pressure; sending the topic name here would directly
+    # contradict that and tempt the model to leak it into prose.
+    sticky_score = session.get("stickiness_score")
+    if isinstance(sticky_score, (int, float)):
+        parts.append(
+            "MENTAL FOCUS / PRESENCE (stickiness diagnostic — score "
+            "only, DO NOT mention the underlying question topic):\n"
+            f"  Stickiness score (0-1): {float(sticky_score):.2f}"
+        )
+
+    # ── Snippet shape (for context, no transcripts) ─────────────
     snippet_count = len(snippets)
     stress_count = sum(
         1 for s in snippets
@@ -246,20 +370,54 @@ def _build_user_prompt(session: dict, snippets: list[dict]) -> str:
         1 for s in snippets
         if (s.get("coach_label") or s.get("snippet_type") or "").lower() == "charisma"
     )
-
-    return (
-        "SESSION METRICS\n"
-        f"  KPI score (0-100):   {kpi if kpi is not None else '—'}\n"
-        f"  WPM (session avg):   {g_wpm if g_wpm is not None else '—'}\n"
-        f"  Fillers (total):     {g_fillers if g_fillers is not None else '—'}\n"
-        f"  Dynamic dB:          {g_dyn if g_dyn is not None else '—'}\n"
-        f"  Pitch center (st):   {g_pitch if g_pitch is not None else '—'}\n"
-        f"  Energy:              {g_energy if g_energy is not None else '—'}\n"
-        f"  Top stickiness:      {top_topic or '—'}"
-        + (
-            f" (score {float(sticky_score):.2f})" if isinstance(sticky_score, (int, float)) else ""
-        )
-        + "\n"
-        f"  Snippets:            {snippet_count} total "
-        f"({charisma_count} charisma, {stress_count} stress)\n"
+    parts.append(
+        "SESSION SHAPE:\n"
+        f"  Snippets: {snippet_count} total "
+        f"({charisma_count} charisma, {stress_count} stress)"
     )
+
+    return "\n\n".join(parts)
+
+
+def _learner_profile_lines(learner_profile: dict) -> list[str]:
+    """Pull a few high-signal traits from the cross-session profile.
+
+    We deliberately stay terse — the system prompt is doing the
+    heavy lift, and the profile is "background colour" the LLM
+    should weave in only where it lands. Recurring entities are
+    explicitly excluded: those are the SAME literal topics we
+    want the narrative to ignore.
+    """
+    if not isinstance(learner_profile, dict) or not learner_profile:
+        return []
+    lines: list[str] = []
+    traits = learner_profile.get("traits") or {}
+    if not isinstance(traits, dict):
+        return []
+
+    behavioral = (
+        (learner_profile.get("behavioral_profile") or "").strip()
+        or (traits.get("behavioral_profile") or "").strip()
+    )
+    if behavioral:
+        lines.append(f"  Behavioral profile: {behavioral}")
+
+    components = traits.get("score_per_component") or {}
+    if isinstance(components, dict) and components:
+        bits = []
+        for key in ("engagement", "emotional_movement", "specificity", "stickiness"):
+            v = components.get(key)
+            if isinstance(v, (int, float)):
+                bits.append(f"{key}={float(v):.2f}")
+        if bits:
+            lines.append("  Component averages: " + ", ".join(bits))
+
+    score_trend = traits.get("score_trend") or traits.get("trend")
+    if isinstance(score_trend, str) and score_trend.strip():
+        lines.append(f"  Score trend: {score_trend.strip()}")
+
+    attempts = traits.get("attempts_analyzed") or learner_profile.get("attempts_analyzed")
+    if isinstance(attempts, int) and attempts > 0:
+        lines.append(f"  Coaching attempts on record: {attempts}")
+
+    return lines
