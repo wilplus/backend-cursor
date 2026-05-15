@@ -10551,6 +10551,42 @@ def v2_user_mirror_get():
         }), 500
 
 
+@v2_bp.route("/user/mirror", methods=["DELETE"])
+@require_auth
+def v2_user_mirror_delete():
+    """Clear the requesting user's current learner mirror.
+
+    Owner-scoped; the auth-required decorator already binds
+    ``request.user_id``. Calls ``db.set_user_current_learner_mirror
+    (user_id, None)`` which the helper already supports (passing
+    ``None`` clears the column).
+
+    Why: lets the user opt out of a cached reflection they don't
+    want lingering on their results page. The next click of
+    Regenerate writes a fresh mirror with whatever the current
+    prompt + data produce, so this is also the "force re-prompt"
+    button when we've shipped prompt changes and want users to see
+    the new output without waiting for organic regeneration.
+
+    Response (200)::
+
+        { "status": "ok", "mirror": null }
+    """
+    try:
+        user_id = request.user_id
+        db.set_user_current_learner_mirror(user_id, None)
+        return jsonify({"status": "ok", "mirror": None}), 200
+    except Exception as e:
+        logger.error(
+            "user/mirror DELETE failed: %s", e, exc_info=True,
+        )
+        sentry_sdk.capture_exception(e)
+        return jsonify({
+            "code": "V2_ERROR",
+            "error": "Failed to delete mirror",
+        }), 500
+
+
 @v2_bp.route("/user/mirror/generate", methods=["POST"])
 @require_auth
 def v2_user_mirror_generate():
