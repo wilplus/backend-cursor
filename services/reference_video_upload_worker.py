@@ -246,24 +246,6 @@ def run_reference_video_upload(
                     "feature_metadata": fm,
                 },
             ) or created
-            if transcript_text:
-                try:
-                    db.create_admin_annotation_event(
-                        user_id=student_user_id,
-                        session_id=session_id,
-                        section_type="assignment",
-                        field_name="reference_video_transcript",
-                        ai_original_text=None,
-                        coach_final_text=transcript_text[:4000],
-                        reason_chip="video_upload",
-                        custom_reason=f"reference_video_id={created.get('id')}",
-                        created_by=admin_user_id,
-                        draft_id=draft_id,
-                        previous_value_hash=None,
-                        new_value_hash=_value_hash(transcript_text[:4000]),
-                    )
-                except Exception as ann_err:
-                    logger.warning("reference video upload annotation failed: %s", ann_err)
             _job_progress(
                 job_id,
                 stage="transcription",

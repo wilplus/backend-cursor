@@ -1548,18 +1548,6 @@ def v2_admin_send_assignment(user_id):
                     sent_row.pop("ai_draft_message", None)
                     sent_row.pop("ai_draft_video_script", None)
                     db.insert_admin_student_send_drafts([sent_row])
-            if ai_message and final_video_description and ai_message.strip() != final_video_description.strip():
-                db.create_admin_annotation_event(
-                    user_id=user_id,
-                    session_id=last_completed.get("id"),
-                    section_type="assignment",
-                    field_name="email_message",
-                    ai_original_text=ai_message,
-                    coach_final_text=final_video_description,
-                    reason_chip="manual_edit",
-                    custom_reason=None,
-                    created_by=request.user_id,
-                )
         except Exception as prefill_err:
             logger.warning("send-assignment: draft provenance save failed for %s: %s", user_id, prefill_err)
 
@@ -1777,30 +1765,6 @@ def v2_admin_student_session_detail(user_id, session_id):
                     custom_reason=updates.get("coach_override_justification"),
                     created_by=request.user_id,
                 )
-            if "report_grade" in updates:
-                db.create_admin_annotation_event(
-                    user_id=user_id,
-                    session_id=session_id,
-                    section_type="report",
-                    field_name="report_grade",
-                    ai_original_text=str(current.get("ai_draft_grade")) if current.get("ai_draft_grade") is not None else None,
-                    coach_final_text=str(updates.get("report_grade")) if updates.get("report_grade") is not None else None,
-                    reason_chip=(data.get("reason_chip") or "manual_grade"),
-                    custom_reason=None,
-                    created_by=request.user_id,
-                )
-            if "report_comment" in updates:
-                db.create_admin_annotation_event(
-                    user_id=user_id,
-                    session_id=session_id,
-                    section_type="report",
-                    field_name="report_comment",
-                    ai_original_text=(current.get("ai_draft_comment") or "").strip() or None,
-                    coach_final_text=(updates.get("report_comment") or "").strip() or None,
-                    reason_chip=(data.get("reason_chip") or "manual_comment"),
-                    custom_reason=None,
-                    created_by=request.user_id,
-                )
             # Phase 4: RLHF capture for profile/task approvals. reason_chip distinguishes
             # approve (coach kept AI suggestion) from override (coach changed it) so the
             # training-data pipeline can weigh disagreements separately.
@@ -1885,32 +1849,6 @@ def v2_admin_student_session_grade(user_id, session_id):
         })
         if not updated:
             return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found"}), 404
-        try:
-            db.create_admin_annotation_event(
-                user_id=user_id,
-                session_id=session_id,
-                section_type="report",
-                field_name="report_grade",
-                ai_original_text=str(session.get("ai_draft_grade")) if session.get("ai_draft_grade") is not None else None,
-                coach_final_text=str(g),
-                reason_chip=(data.get("reason_chip") or "manual_grade"),
-                custom_reason=None,
-                created_by=request.user_id,
-            )
-            if "report_comment" in data:
-                db.create_admin_annotation_event(
-                    user_id=user_id,
-                    session_id=session_id,
-                    section_type="report",
-                    field_name="report_comment",
-                    ai_original_text=(session.get("ai_draft_comment") or "").strip() or None,
-                    coach_final_text=(report_comment or "").strip() or None,
-                    reason_chip=(data.get("reason_chip") or "manual_comment"),
-                    custom_reason=None,
-                    created_by=request.user_id,
-                )
-        except Exception as ann_err:
-            logger.warning("session grade annotation event failed: %s", ann_err)
         return jsonify({
             "status": "ok",
             "report_grade": g,
@@ -3970,18 +3908,6 @@ def v2_admin_insight_audit(user_id, session_id):
         if not updates:
             return jsonify({"code": "INVALID_INPUT", "error": "Nothing to update"}), 400
         db.v2_update_session(session_id, user_id, updates)
-        if reason_chip or custom_reason or corrected is not None:
-            db.create_admin_annotation_event(
-                user_id=user_id,
-                session_id=session_id,
-                section_type="post_hoc_audit",
-                field_name="coach_insight",
-                ai_original_text=(session.get("coach_insight") or "").strip() or None,
-                coach_final_text=(updates.get("coach_corrected_insight") or "").strip() or None,
-                reason_chip=reason_chip,
-                custom_reason=custom_reason,
-                created_by=request.user_id,
-            )
         return jsonify({"status": "ok", "session_id": session_id, **updates}), 200
     except Exception as e:
         sentry_sdk.capture_exception(e)
@@ -4024,17 +3950,6 @@ def v2_admin_profile_classification_override(user_id):
                 "coach_override_profile": override_profile,
                 "profile_override_justification": justification,
             },
-        )
-        db.create_admin_annotation_event(
-            user_id=user_id,
-            session_id=None,
-            section_type="classification",
-            field_name="behavioral_profile",
-            ai_original_text=(updated.get("behavioral_profile") or "").strip() or None,
-            coach_final_text=override_profile,
-            reason_chip=reason_chip,
-            custom_reason=justification,
-            created_by=request.user_id,
         )
         lp = _learning_profile_payload(updated)
         return jsonify(
@@ -5705,75 +5620,6 @@ def v2_admin_copilot_student_drafts(user_id):
         try:
             new_grade = payload.get("grade_draft")
             new_comment = (payload.get("comment_draft") or "").strip()
-            if "grade_draft" in body and str(old_grade) != str(new_grade):
-                db.create_admin_annotation_event(
-                    user_id=user_id,
-                    session_id=row.get("session_id"),
-                    section_type="report",
-                    field_name="report_grade",
-                    ai_original_text=str(ai_grade_baseline) if ai_grade_baseline is not None else (str(old_grade) if old_grade is not None else None),
-                    coach_final_text=str(new_grade) if new_grade is not None else None,
-                    reason_chip=(body.get("reason_chip") or "manual_grade"),
-                    custom_reason=(body.get("reason_chip_custom") or None),
-                    created_by=request.user_id,
-                )
-            if "comment_draft" in body and old_comment != new_comment:
-                db.create_admin_annotation_event(
-                    user_id=user_id,
-                    session_id=row.get("session_id"),
-                    section_type="report",
-                    field_name="report_comment",
-                    ai_original_text=ai_comment_baseline or old_comment or None,
-                    coach_final_text=new_comment or None,
-                    reason_chip=(body.get("reason_chip") or "manual_comment"),
-                    custom_reason=(body.get("reason_chip_custom") or None),
-                    created_by=request.user_id,
-                )
-            if "task_draft" in body and old_task != new_task:
-                db.create_admin_annotation_event(
-                    user_id=user_id,
-                    session_id=row.get("session_id"),
-                    section_type="assignment",
-                    field_name="task_draft",
-                    ai_original_text=ai_task_baseline or old_task,
-                    coach_final_text=new_task or None,
-                    reason_chip=(body.get("reason_chip") or "task_swap"),
-                    custom_reason=(body.get("reason_chip_custom") or None),
-                    created_by=request.user_id,
-                    draft_id=str(row.get("id") or "") or None,
-                    previous_value_hash=_value_hash(ai_task_baseline or old_task),
-                    new_value_hash=_value_hash(new_task),
-                )
-            if "email_draft" in body and old_email != new_email:
-                db.create_admin_annotation_event(
-                    user_id=user_id,
-                    session_id=row.get("session_id"),
-                    section_type="assignment",
-                    field_name="email_draft",
-                    ai_original_text=ai_email_baseline or old_email or None,
-                    coach_final_text=new_email or None,
-                    reason_chip=(body.get("reason_chip") or "manual_edit"),
-                    custom_reason=(body.get("reason_chip_custom") or None),
-                    created_by=request.user_id,
-                    draft_id=str(row.get("id") or "") or None,
-                    previous_value_hash=_value_hash(ai_email_baseline or old_email or None),
-                    new_value_hash=_value_hash(new_email or None),
-                )
-            if ("script_draft" in body or "video_script" in body) and old_script != new_script:
-                db.create_admin_annotation_event(
-                    user_id=user_id,
-                    session_id=row.get("session_id"),
-                    section_type="assignment",
-                    field_name="script_draft",
-                    ai_original_text=ai_script_baseline or old_script or None,
-                    coach_final_text=new_script or None,
-                    reason_chip=(body.get("reason_chip") or "manual_edit"),
-                    custom_reason=(body.get("reason_chip_custom") or None),
-                    created_by=request.user_id,
-                    draft_id=str(row.get("id") or "") or None,
-                    previous_value_hash=_value_hash(ai_script_baseline or old_script or None),
-                    new_value_hash=_value_hash(new_script or None),
-                )
             if "corrected_insight" in body and old_corrected_insight != new_corrected_insight:
                 db.create_admin_annotation_event(
                     user_id=user_id,
@@ -6455,27 +6301,6 @@ def v2_admin_copilot_attach_reference_video(user_id, draft_id):
             .execute()
         )
         out = updated.data[0] if updated.data else row
-        transcript_text = (ref.get("transcript_text") or "").strip()
-        if transcript_text:
-            try:
-                db.create_admin_annotation_event(
-                    user_id=user_id,
-                    session_id=row.get("session_id"),
-                    section_type="assignment",
-                    field_name="reference_video_transcript",
-                    ai_original_text=(
-                        (_normalize_copilot_payload(row).get("ai_script_draft") or row.get("ai_draft_video_script") or "")
-                    )[:4000] or None,
-                    coach_final_text=transcript_text[:4000],
-                    reason_chip="video_override",
-                    custom_reason=f"reference_video_id={reference_video_id}",
-                    created_by=request.user_id,
-                    draft_id=str(row.get("id") or "") or None,
-                    previous_value_hash=None,
-                    new_value_hash=_value_hash(transcript_text[:4000]),
-                )
-            except Exception as ann_err:
-                logger.warning("attach reference video annotation failed: %s", ann_err)
         return jsonify({"status": "ok", "draft": _serialize_copilot_draft(out), "reference_video": ref}), 200
     except Exception as e:
         sentry_sdk.capture_exception(e)
@@ -6535,35 +6360,6 @@ def v2_admin_copilot_student_audit(user_id):
                 })
             except Exception:
                 pass
-        try:
-            new_corrected = (payload.get("corrected_insight") or "").strip()
-            new_good_as_is = bool(payload.get("good_as_is"))
-            if "corrected_insight" in body and old_corrected != new_corrected:
-                db.create_admin_annotation_event(
-                    user_id=user_id,
-                    session_id=row.get("session_id"),
-                    section_type="post_hoc_audit",
-                    field_name="coach_insight",
-                    ai_original_text=ai_insight,
-                    coach_final_text=new_corrected or None,
-                    reason_chip=((body.get("reason_chips") or [None])[0] if isinstance(body.get("reason_chips"), list) else body.get("reason_chip")),
-                    custom_reason=body.get("reason_chip_custom"),
-                    created_by=request.user_id,
-                )
-            elif "good_as_is" in body and (not old_good_as_is and new_good_as_is):
-                db.create_admin_annotation_event(
-                    user_id=user_id,
-                    session_id=row.get("session_id"),
-                    section_type="post_hoc_audit",
-                    field_name="coach_insight",
-                    ai_original_text=ai_insight,
-                    coach_final_text=ai_insight,
-                    reason_chip="good_as_is",
-                    custom_reason=None,
-                    created_by=request.user_id,
-                )
-        except Exception as ann_err:
-            logger.warning("copilot audit annotation event failed: %s", ann_err)
         audit = _serialize_copilot_draft(out)
         return jsonify({"status": "ok", "audit": audit, "session_id": audit.get("session_id")}), 200
     except Exception as e:
@@ -6703,26 +6499,6 @@ def v2_admin_copilot_student_send(user_id):
                 )
             except Exception as rlhf_err:
                 logger.warning("copilot send RLHF auto-accept log failed: %s", rlhf_err)
-            try:
-                ai_message = (
-                    payload.get("ai_email_draft")
-                    or row.get("ai_draft_message")
-                    or ""
-                )
-                if (ai_message or "").strip() and (final_message or "").strip() and ai_message.strip() != final_message.strip():
-                    db.create_admin_annotation_event(
-                        user_id=user_id,
-                        session_id=row.get("session_id"),
-                        section_type="assignment",
-                        field_name="email_message",
-                        ai_original_text=ai_message,
-                        coach_final_text=final_message,
-                        reason_chip="manual_edit",
-                        custom_reason=None,
-                        created_by=request.user_id,
-                    )
-            except Exception as ann_err:
-                logger.warning("copilot send annotation event failed: %s", ann_err)
         except Exception:
             db.reset_admin_send_draft_delivery_idle(draft_pk, user_id)
             raise
@@ -6919,27 +6695,6 @@ def v2_admin_student_draft_approve_send(user_id, draft_id):
                 except Exception as queue_err:
                     db.reset_admin_send_draft_delivery_idle(draft_id, user_id)
                     raise queue_err
-                payload = _normalize_copilot_payload(updated or row)
-                ai_script = (payload.get("ai_script_draft") or row.get("ai_draft_video_script") or "").strip()
-                final_script = (payload.get("script_draft") or payload.get("video_script") or "").strip()
-                if ai_script and final_script and ai_script != final_script:
-                    try:
-                        db.create_admin_annotation_event(
-                            user_id=user_id,
-                            session_id=row.get("session_id"),
-                            section_type="assignment",
-                            field_name="script_draft",
-                            ai_original_text=ai_script,
-                            coach_final_text=final_script,
-                            reason_chip="manual_edit",
-                            custom_reason=None,
-                            created_by=request.user_id,
-                            draft_id=str(row.get("id") or "") or None,
-                            previous_value_hash=_value_hash(ai_script),
-                            new_value_hash=_value_hash(final_script),
-                        )
-                    except Exception as ann_err:
-                        logger.warning("pipeline enqueue annotation failed: %s", ann_err)
                 return jsonify(
                     {
                         "status": "ok",
@@ -7024,26 +6779,6 @@ def v2_admin_student_draft_approve_send(user_id, draft_id):
                 )
             except Exception as rlhf_err:
                 logger.warning("approve-send RLHF auto-accept log failed: %s", rlhf_err)
-            try:
-                ai_message = (
-                    payload.get("ai_email_draft")
-                    or row.get("ai_draft_message")
-                    or ""
-                )
-                if (ai_message or "").strip() and (final_message or "").strip() and ai_message.strip() != final_message.strip():
-                    db.create_admin_annotation_event(
-                        user_id=user_id,
-                        session_id=row.get("session_id"),
-                        section_type="assignment",
-                        field_name="email_message",
-                        ai_original_text=ai_message,
-                        coach_final_text=final_message,
-                        reason_chip="manual_edit",
-                        custom_reason=None,
-                        created_by=request.user_id,
-                    )
-            except Exception as ann_err:
-                logger.warning("approve-send annotation event failed: %s", ann_err)
         except Exception:
             db.reset_admin_send_draft_delivery_idle(draft_id, user_id)
             raise
