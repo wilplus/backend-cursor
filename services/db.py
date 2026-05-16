@@ -5457,16 +5457,42 @@ class DatabaseService:
         admin_comment: str | None,
         snippet_type: str,
         admin_user_id: str | None,
+        acceptance_mode: str | None = None,
     ) -> dict | None:
-        """Update a snippet's comment, type, and admin user."""
+        """Update a snippet's comment, type, admin user, and
+        optional RLHF acceptance_mode.
+
+        ``acceptance_mode``:
+          'accepted_as_is'  — admin saved the AI draft without
+                              changing it (positive RLHF signal).
+          'admin_corrected' — admin edited the draft before saving
+                              (correction trajectory; paired with
+                              ai_draft_admin_comment as the
+                              training (predicted, final) row).
+          None              — caller didn't classify; column stays
+                              unchanged (or NULL on first write).
+                              Used by legacy callers + the
+                              auto-promote-drafts path that
+                              doesn't have admin intent to
+                              record.
+
+        ``admin_comment_acceptance_set_at`` is stamped iff
+        acceptance_mode is not None.
+        """
         try:
+            patch: dict = {
+                "admin_comment": admin_comment,
+                "snippet_type": snippet_type,
+                "admin_user_id": admin_user_id,
+            }
+            if acceptance_mode is not None:
+                patch["admin_comment_acceptance_mode"] = acceptance_mode
+                patch["admin_comment_acceptance_set_at"] = (
+                    datetime.now(timezone.utc).isoformat()
+                )
             result = (
                 self.client.table("charisma_snippets")
-                .update({
-                    "admin_comment": admin_comment,
-                    "snippet_type": snippet_type,
-                    "admin_user_id": admin_user_id,
-                })
+                .update(patch)
                 .eq("id", snippet_id)
                 .execute()
             )
@@ -5474,6 +5500,43 @@ class DatabaseService:
                 return result.data[0]
             return None
         except Exception as e:
+            err_low = str(e).lower()
+            if (
+                "admin_comment_acceptance_mode" in err_low
+                or "admin_comment_acceptance_set_at" in err_low
+                or "pgrst204" in err_low
+            ):
+                # Migration not yet run in this environment — retry
+                # without the new columns so existing admin tooling
+                # keeps working. The acceptance signal is lost for
+                # this row, which is the expected pre-migration
+                # behaviour.
+                logger.warning(
+                    "update_snippet_comment: acceptance columns "
+                    "missing (migration pending?), retrying "
+                    "without — sid=%s",
+                    snippet_id,
+                )
+                try:
+                    fallback = {
+                        "admin_comment": admin_comment,
+                        "snippet_type": snippet_type,
+                        "admin_user_id": admin_user_id,
+                    }
+                    result = (
+                        self.client.table("charisma_snippets")
+                        .update(fallback)
+                        .eq("id", snippet_id)
+                        .execute()
+                    )
+                    if result.data and len(result.data) > 0:
+                        return result.data[0]
+                    return None
+                except Exception as e2:
+                    logger.error(
+                        f"update_snippet_comment fallback failed: {e2}"
+                    )
+                    return None
             logger.error(f"update_snippet_comment failed: {e}")
             return None
 

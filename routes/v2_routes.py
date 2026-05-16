@@ -12992,13 +12992,19 @@ def v2_admin_update_snippet_comment(snippet_id):
     and optionally override the pre-generated follow_up_question.
 
     Body:
-      - admin_comment (str, optional)
-      - snippet_type  ("charisma"|"stress"|"unlabeled", default "unlabeled")
+      - admin_comment    (str, optional)
+      - snippet_type     ("charisma"|"stress"|"unlabeled", default "unlabeled")
       - follow_up_question (str, optional) — if omitted AND admin_comment is set,
         the LLM auto-generates one based on snippet_type + transcript + comment.
         Pass null explicitly to clear an existing follow_up_question.
+      - acceptance_mode  ("accepted_as_is" | "admin_corrected", optional) — RLHF
+        signal classifying how the admin handled the AI's
+        ai_draft_admin_comment. "accepted_as_is" = saved the draft raw
+        (positive signal). "admin_corrected" = edited before save
+        (correction trajectory). Omit to leave the column unchanged;
+        the weekly fine-tuning cron filters on this value.
 
-    Returns: { status, snippet, follow_up_question_source }
+    Returns: { status, snippet, follow_up_question_source, acceptance_mode }
       follow_up_question_source: "admin_provided" | "llm_generated" | "llm_failed" | "cleared" | "unchanged"
     """
     try:
@@ -13018,6 +13024,28 @@ def v2_admin_update_snippet_comment(snippet_id):
                 "error": "snippet_type must be 'charisma', 'stress', or 'unlabeled'",
             }), 400
 
+        # acceptance_mode — optional RLHF classification. Strict
+        # whitelist; reject typos with a 400 so the frontend
+        # surfaces the bug instead of silently dropping the signal.
+        acceptance_mode_raw = body.get("acceptance_mode")
+        acceptance_mode: str | None = None
+        if acceptance_mode_raw is not None:
+            if not isinstance(acceptance_mode_raw, str):
+                return jsonify({
+                    "code": "INVALID_INPUT",
+                    "error": "acceptance_mode must be a string",
+                }), 400
+            normalized = acceptance_mode_raw.strip().lower()
+            if normalized not in ("accepted_as_is", "admin_corrected"):
+                return jsonify({
+                    "code": "INVALID_INPUT",
+                    "error": (
+                        "acceptance_mode must be 'accepted_as_is' "
+                        "or 'admin_corrected'"
+                    ),
+                }), 400
+            acceptance_mode = normalized
+
         admin_user_id = request.user_id
 
         updated = db.update_snippet_comment(
@@ -13025,6 +13053,7 @@ def v2_admin_update_snippet_comment(snippet_id):
             admin_comment=admin_comment,
             snippet_type=snippet_type,
             admin_user_id=admin_user_id,
+            acceptance_mode=acceptance_mode,
         )
 
         if not updated:
@@ -13083,12 +13112,19 @@ def v2_admin_update_snippet_comment(snippet_id):
             snippet_id, admin_user_id, snippet_type, follow_up_source,
         )
 
-        # Return the snippet with updated follow_up_question reflected
+        # Return the snippet with updated follow_up_question reflected.
+        # The row already carries the acceptance_mode + set_at columns
+        # if the migration is in place, so the frontend can read them
+        # back from final_snippet directly — exposing the canonical
+        # acceptance_mode at the top level too for cheap parsing.
         final_snippet = {**updated, "follow_up_question": follow_up_question}
         return jsonify({
             "status": "ok",
             "snippet": final_snippet,
             "follow_up_question_source": follow_up_source,
+            "acceptance_mode": (
+                final_snippet.get("admin_comment_acceptance_mode")
+            ),
         }), 200
 
     except Exception as e:
