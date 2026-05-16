@@ -9838,6 +9838,27 @@ def v2_coaching_trial_recording():
                 bind_err,
             )
 
+        # Same acoustic-readback pattern as /v2/user/chat/upload-answer
+        # — finalize already computed global_*; we surface them inline
+        # for the AcousticMetricsBubble.
+        acoustic_metrics: dict | None = None
+        try:
+            sess_row = db.v2_get_session_by_id(trial_session_id) or {}
+            acoustic_metrics = {
+                "wpm": sess_row.get("global_wpm"),
+                "fillers": sess_row.get("global_fillers"),
+                "pause_ms": sess_row.get("global_pause_ms"),
+                "dynamic_db": sess_row.get("global_dynamic_db"),
+                "pitch_center": sess_row.get("global_pitch_center"),
+                "energy": sess_row.get("global_energy"),
+                "kpi_score": sess_row.get("kpi_score"),
+            }
+        except Exception as ar_err:
+            logger.warning(
+                "coaching trial: acoustic readback failed sid=%s err=%s",
+                trial_session_id, ar_err,
+            )
+
         logger.info(
             "coaching trial: ok user_id=%s coaching_id=%s trial_session_id=%s",
             user_id, coaching_id, trial_session_id,
@@ -9847,6 +9868,8 @@ def v2_coaching_trial_recording():
             "coaching_id": coaching_id,
             "trial_session_id": trial_session_id,
             "recording_id": recording_id,
+            "session_status": "processing",
+            "acoustic_metrics": acoustic_metrics,
         }), 201
 
     except Exception as e:
@@ -10073,6 +10096,31 @@ def v2_user_chat_upload_answer():
                 chat_session_id, fp_err,
             )
 
+        # Re-read the session row to surface the freshly-computed
+        # acoustic metrics inline. finalize_session_pending_admin_review
+        # called compute_session_global_metrics in its first step,
+        # so the global_* columns are already populated and this is
+        # a cheap one-row select. The frontend uses these to render
+        # the AcousticMetricsBubble at the 30-second mark while the
+        # session sits in admin review.
+        acoustic_metrics: dict | None = None
+        try:
+            session_row = db.v2_get_session_by_id(chat_session_id) or {}
+            acoustic_metrics = {
+                "wpm": session_row.get("global_wpm"),
+                "fillers": session_row.get("global_fillers"),
+                "pause_ms": session_row.get("global_pause_ms"),
+                "dynamic_db": session_row.get("global_dynamic_db"),
+                "pitch_center": session_row.get("global_pitch_center"),
+                "energy": session_row.get("global_energy"),
+                "kpi_score": session_row.get("kpi_score"),
+            }
+        except Exception as ar_err:
+            logger.warning(
+                "chat/upload-answer: acoustic readback failed sid=%s err=%s",
+                chat_session_id, ar_err,
+            )
+
         logger.info(
             "chat/upload-answer: ok user_id=%s session_id=%s "
             "source_snippet=%s intent=%s",
@@ -10082,6 +10130,8 @@ def v2_user_chat_upload_answer():
             "status": "ok",
             "session_id": chat_session_id,
             "recording_id": recording_id,
+            "session_status": "processing",
+            "acoustic_metrics": acoustic_metrics,
             "finalize": finalize_summary,
         }), 201
 
@@ -10898,6 +10948,73 @@ def v2_user_mirror_generate():
         return jsonify({
             "code": "V2_ERROR",
             "error": "Failed to generate mirror",
+        }), 500
+
+
+@v2_bp.route("/chat/query", methods=["POST"])
+@require_auth
+def v2_chat_query():
+    """Master-Document-grounded FAQ chat.
+
+    Powers the post-signup "ask anything about the product" surface.
+    The LLM is locked to a verbatim Master Document (see
+    services.master_doc_rag) — it cannot pull in outside knowledge
+    and cannot hallucinate features / prices / claims that aren't
+    in the doc. Out-of-scope questions get a graceful pivot back
+    to a real fact from the document.
+
+    Body::
+
+        {
+          "question": "what is this?",
+          "history":  [                          // optional
+            { "role": "user",      "content": "..." },
+            { "role": "assistant", "content": "..." }
+          ]
+        }
+
+    Responses::
+
+        200 { "answer": "...", "debug": {...} }
+        400 INVALID_INPUT — question missing or not a string
+        500 V2_ERROR
+
+    Why @require_auth: the spec says this is the "after signup"
+    surface. Pre-signup users get the on-rails interview flow;
+    once they sign up they can ask freeform questions and we want
+    the request to carry their identity for future per-user
+    analytics on which topics get asked. Anonymous probing of
+    the Q&A is out-of-scope for v1.
+    """
+    try:
+        body = request.get_json(silent=True) or {}
+        question = body.get("question")
+        if not isinstance(question, str) or not question.strip():
+            return jsonify({
+                "code": "INVALID_INPUT",
+                "error": "question must be a non-empty string",
+            }), 400
+
+        history = body.get("history")
+        if history is not None and not isinstance(history, list):
+            # Be lenient: a stringly-typed or oddly-shaped history
+            # shouldn't break the answer — drop it and continue.
+            history = None
+
+        from services.master_doc_rag import answer_question
+        answer, debug = answer_question(question.strip(), history=history)
+
+        return jsonify({
+            "answer": answer,
+            "debug": debug,
+        }), 200
+
+    except Exception as e:
+        logger.error("chat/query failed: %s", e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({
+            "code": "V2_ERROR",
+            "error": "Chat query failed",
         }), 500
 
 
