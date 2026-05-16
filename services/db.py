@@ -5582,6 +5582,117 @@ class DatabaseService:
             )
             return []
 
+    def set_session_predictions(
+        self,
+        session_id: str,
+        *,
+        ai_predicted_session_comment: Optional[str],
+        ai_predicted_next_question: Optional[str],
+    ) -> Optional[dict]:
+        """Persist pre-generated AI predictions on the session row.
+
+        Called by services.session_predictions during finalize so
+        the admin opens the user-detail page to a pre-filled
+        comment + next-question they can accept or edit. Stamps
+        ai_predictions_generated_at so the UI can surface "this is
+        N hours old, regenerate?" when metrics drift.
+        """
+        try:
+            now = datetime.now(timezone.utc).isoformat()
+            result = (
+                self.client.table("v2_sessions")
+                .update({
+                    "ai_predicted_session_comment": ai_predicted_session_comment,
+                    "ai_predicted_next_question": ai_predicted_next_question,
+                    "ai_predictions_generated_at": now,
+                })
+                .eq("id", session_id)
+                .execute()
+            )
+            if result.data and len(result.data) > 0:
+                return result.data[0]
+            return None
+        except Exception as e:
+            logger.warning(
+                "set_session_predictions failed sid=%s err=%s",
+                session_id, e,
+            )
+            return None
+
+    def get_session_predictions(self, session_id: str) -> Optional[dict]:
+        """Read the (predicted_comment, predicted_question,
+        generated_at) trio without pulling the full session row.
+
+        Returns ``None`` when the session doesn't exist or has
+        never had predictions generated. The publish handler uses
+        this to recover the AI prediction it needs to log
+        alongside the human's final.
+        """
+        try:
+            result = (
+                self.client.table("v2_sessions")
+                .select(
+                    "id, ai_predicted_session_comment, "
+                    "ai_predicted_next_question, "
+                    "ai_predictions_generated_at"
+                )
+                .eq("id", session_id)
+                .limit(1)
+                .execute()
+            )
+            data = result.data or []
+            return data[0] if data else None
+        except Exception as e:
+            logger.warning(
+                "get_session_predictions failed sid=%s err=%s",
+                session_id, e,
+            )
+            return None
+
+    def insert_admin_annotation_log(
+        self,
+        *,
+        user_id: str,
+        session_id: str,
+        ai_predicted_comment: Optional[str],
+        ai_predicted_question: Optional[str],
+        final_human_comment: Optional[str],
+        final_human_question: Optional[str],
+        was_corrected: bool,
+    ) -> Optional[dict]:
+        """Write one RLHF training row to admin_annotations_log.
+
+        Called from the admin Publish handler. Returns the
+        inserted row or None on failure — failure logs but does
+        NOT raise to the route, because the publish itself has
+        already succeeded by the time we write the log and we
+        won't undo it for a training-pipeline side-effect.
+        """
+        try:
+            payload = {
+                "user_id": user_id,
+                "session_id": session_id,
+                "ai_predicted_comment": ai_predicted_comment,
+                "ai_predicted_question": ai_predicted_question,
+                "final_human_comment": final_human_comment,
+                "final_human_question": final_human_question,
+                "was_corrected": bool(was_corrected),
+            }
+            result = (
+                self.client.table("admin_annotations_log")
+                .insert(payload)
+                .execute()
+            )
+            if result.data and len(result.data) > 0:
+                return result.data[0]
+            return None
+        except Exception as e:
+            logger.warning(
+                "insert_admin_annotation_log failed sid=%s uid=%s err=%s",
+                session_id, user_id, e,
+            )
+            return None
+
     def set_user_snippet_charisma_label(
         self,
         snippet_id: str,

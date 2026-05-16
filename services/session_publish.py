@@ -76,6 +76,7 @@ def finalize_session_pending_admin_review(
         "ok": False,
         "global_metrics_computed": False,
         "kpi_narrative_written": False,
+        "predictions_generated": False,
         "drafts_generated": 0,
         "status_set": False,
         "admin_email_status": None,
@@ -109,6 +110,25 @@ def finalize_session_pending_admin_review(
     except Exception as e:
         logger.warning(
             "finalize_pending_review: kpi narrative compute failed "
+            "sid=%s err=%s", session_id, e,
+        )
+
+    # ── Step 1.6: Pre-generate admin-facing session predictions.
+    # Writes ai_predicted_session_comment + ai_predicted_next_question
+    # on the session row so the admin opens the user-detail page
+    # to a pre-filled draft they can accept or edit. The (predicted,
+    # final) pair becomes one row in admin_annotations_log on
+    # Publish. Best-effort; missing predictions just means the
+    # admin types the comment from scratch like before.
+    try:
+        from services.session_predictions import (
+            generate_session_predictions,
+        )
+        predictions = generate_session_predictions(session_id)
+        result["predictions_generated"] = predictions is not None
+    except Exception as e:
+        logger.warning(
+            "finalize_pending_review: predictions compute failed "
             "sid=%s err=%s", session_id, e,
         )
 

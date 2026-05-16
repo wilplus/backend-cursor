@@ -13774,26 +13774,38 @@ def v2_admin_patch_snippet(snippet_id):
 @v2_bp.route("/admin/sessions/<session_id>/publish", methods=["POST"])
 @require_admin
 def v2_admin_publish_session(session_id):
-    """Publish results for a session — flips visibility for the user.
+    """Publish results for a session — flips visibility for the user
+    and writes one RLHF training row.
 
     Mirrors the existing /v2/internal/publish-session-results endpoint
-    but takes session_id as a URL path param instead of a body field,
-    so it slots cleanly under the /admin/sessions/* namespace the
-    admin UI consumes.
+    but takes session_id as a URL path param and ALSO accepts the
+    admin's finalized session_comment + next_question so we can
+    capture the (AI predicted, human final) pair into
+    admin_annotations_log on the same atomic action.
+
+    Body (all fields optional)::
+
+        {
+          "final_human_comment":  "...",   // admin's edited / accepted
+                                            // session_comment
+          "final_human_question": "..."    // admin's edited / accepted
+                                            // next_question
+        }
+
+    When either field is omitted, the AI's pre-generated prediction
+    is used as the final (admin implicitly accepted it raw). The
+    was_corrected flag is computed by string-comparing predicted
+    vs final.
 
     Side effects:
       * Sets results_published_at = NOW() on the session
       * Flips status to 'completed'
       * Sends the "Charisma Snippets Ready" email via Resend
-        (same as the internal endpoint — failure is non-fatal so the
-        publish itself still goes through)
-
-    Snippets with is_skipped = true stay hidden from the user-facing
-    /results page; only non-skipped rows are returned by
-    v2_get_results_snippets_for_session.
+      * Inserts one row into admin_annotations_log
 
     Responses:
-        200 { status: "ok", session_id, results_published_at, email_sent }
+        200 { status: "ok", session_id, results_published_at,
+              email_sent, rlhf_logged, was_corrected }
         400 INVALID_INPUT
         404 SESSION_NOT_FOUND
         500 V2_ERROR
@@ -13811,6 +13823,18 @@ def v2_admin_publish_session(session_id):
                 "code": "SESSION_NOT_FOUND",
                 "error": "Session not found",
             }), 404
+
+        body = request.get_json(silent=True) or {}
+        final_comment_raw = body.get("final_human_comment")
+        final_question_raw = body.get("final_human_question")
+        final_comment = (
+            final_comment_raw.strip() if isinstance(final_comment_raw, str)
+            else None
+        )
+        final_question = (
+            final_question_raw.strip() if isinstance(final_question_raw, str)
+            else None
+        )
 
         # 1. Stamp results_published_at
         published = db.v2_publish_session_results(session_id)
@@ -13835,11 +13859,57 @@ def v2_admin_publish_session(session_id):
         except Exception as mail_err:
             logger.warning("publish: email failed (non-fatal): %s", mail_err)
 
+        # 4. RLHF log. Read back the AI predictions, fall through to
+        #    them as the "final" when the admin sent nothing (implicit
+        #    accept). was_corrected = True iff the human field both
+        #    exists AND differs from the prediction. Failure-isolated:
+        #    publish already succeeded, we don't unwind for a log
+        #    miss.
+        ai_comment = (session.get("ai_predicted_session_comment") or "").strip() or None
+        ai_question = (session.get("ai_predicted_next_question") or "").strip() or None
+
+        if final_comment is None:
+            final_comment = ai_comment
+        if final_question is None:
+            final_question = ai_question
+
+        was_corrected = bool(
+            (ai_comment != final_comment and (ai_comment or final_comment))
+            or (ai_question != final_question and (ai_question or final_question))
+        )
+
+        owner_id = session.get("user_id")
+        rlhf_logged = False
+        if owner_id:
+            try:
+                logged = db.insert_admin_annotation_log(
+                    user_id=str(owner_id),
+                    session_id=str(session_id),
+                    ai_predicted_comment=ai_comment,
+                    ai_predicted_question=ai_question,
+                    final_human_comment=final_comment,
+                    final_human_question=final_question,
+                    was_corrected=was_corrected,
+                )
+                rlhf_logged = logged is not None
+            except Exception as log_err:
+                logger.warning(
+                    "publish: rlhf log insert failed sid=%s err=%s (non-fatal)",
+                    session_id, log_err,
+                )
+        else:
+            logger.info(
+                "publish: skipping rlhf log sid=%s — no owner_id "
+                "(anonymous session)", session_id,
+            )
+
         return jsonify({
             "status": "ok",
             "session_id": session_id,
             "results_published_at": published.get("results_published_at"),
             "email_sent": email_sent,
+            "rlhf_logged": rlhf_logged,
+            "was_corrected": was_corrected,
         }), 200
 
     except Exception as e:
