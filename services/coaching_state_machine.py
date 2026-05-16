@@ -61,9 +61,10 @@ from typing import Any, Optional
 logger = logging.getLogger(__name__)
 
 
-# Negotiation guardrails — surfaced in the system prompt verbatim
-# and also exposed here as constants so future tweaks (e.g. running
-# A/B on the floor price) live in one place.
+# Legacy negotiation guardrails — kept exported for back-compat
+# with any tooling that imports them, but no longer surfaced in
+# the system prompt. The hardcoded SaaS-vendor roleplay was
+# replaced by the admin-directed 5-question Director's Script.
 NEGOTIATION_ANCHOR_PRICE = 150
 NEGOTIATION_FLOOR_PRICE = 90
 
@@ -72,6 +73,12 @@ NEGOTIATION_FLOOR_PRICE = 90
 # read across the chat and the radar.
 _IDEAL_WPM_MIN = 125
 _IDEAL_WPM_MAX = 140
+
+# Cap on how many script questions the prompt will walk through.
+# Schema-side cap is also 5 (see migration). If more get passed,
+# we truncate; if fewer, we walk through what we have and skip
+# the missing positions.
+_MAX_SCRIPT_QUESTIONS = 5
 
 # Target filler density — chat goal frames it as "fewer fillers
 # next time". 1/min reads as fluent on conversational delivery.
@@ -156,11 +163,12 @@ def build_state_machine_system_prompt(
     *,
     snippet: dict,
     acoustic_targets: dict,
+    director_script_questions: Optional[list[dict]] = None,
     user_first_name: Optional[str] = None,
     user_org_context: Optional[str] = None,
     user_language_hint: Optional[str] = None,
 ) -> str:
-    """Assemble the 5-step state-machine system prompt for one
+    """Assemble the 8-step state-machine system prompt for one
     coaching chat session.
 
     The snippet's admin_comment is injected as Director's Notes —
@@ -168,17 +176,26 @@ def build_state_machine_system_prompt(
     NOT the coach itself. That framing keeps the AI from
     overriding the coach with its own opinion.
 
-    ``user_org_context`` is the optional "since you are part of <X>
-    organisation" string the frontend can pass when the user has
-    a team. When absent, STEP 3 falls through to the spec's
-    "standard charisma training" pivot.
+    ``director_script_questions`` is the admin-directed sequence
+    of up to 5 questions the chat walks the user through after
+    the RLHF label step. Shape: list of {position: 1..5, text,
+    intent_tag?}. The admin's edited version (saved on Publish)
+    is preferred over the AI's pre-generated draft — the route
+    handler resolves which to pass in.
+    When the script is empty / missing, the prompt falls through
+    to a single open question and proceeds straight to the
+    acoustic cliffhanger.
+
+    ``user_org_context`` is accepted for back-compat (frontend BFF
+    still passes it from the previous SaaS-negotiation design) but
+    is no longer used — the script REPLACES the org-context pivot.
+    Passing it is harmless.
 
     ``user_language_hint`` is accepted for back-compat with callers
     written against the prior language-mirroring rule, but it is now
     IGNORED inside the prompt: the chat speaks English-only with a
     one-shot disclaimer when the user writes in a non-English
-    language (see RULE 1 below). The parameter is preserved so the
-    frontend BFF doesn't need a coordinated change to drop the field.
+    language (see RULE 1 below).
     """
     snippet_id = (snippet.get("id") or "").strip() or "UNKNOWN"
     admin_comment = (snippet.get("admin_comment") or "").strip()
@@ -197,12 +214,12 @@ def build_state_machine_system_prompt(
         else "noteworthy"
     )
 
-    org_pivot_line = (
-        f"Since you are part of {user_org_context}, let's tailor "
-        f"this to your real work context. Let's negotiate!"
-        if user_org_context else
-        "Since you are not part of an organization yet, let's go "
-        "with standard charisma training. Let's negotiate!"
+    # user_org_context is preserved on the signature for back-compat
+    # but no longer used — the Director's Script replaces the
+    # negotiation pivot.
+
+    script_block, script_length = _format_director_script(
+        director_script_questions or []
     )
 
     target_wpm = acoustic_targets.get("target_wpm")
@@ -234,11 +251,11 @@ def build_state_machine_system_prompt(
     return (
         "You are the AI host of a structured coaching chat. You are "
         "NOT the coach — you are the ACTOR delivering the coach's "
-        "script (the admin_comment below is the Director's Notes; "
-        "deliver them, don't override them). Follow the 5-step "
-        "protocol EXACTLY in the order given. Each user message "
-        "advances the protocol by one step (or by negotiation turn "
-        "within STEP 4). NEVER skip a step.\n"
+        "script (the admin_comment is the Director's Notes; the "
+        "5-question script below is the Director's Script; deliver "
+        "BOTH, don't override them). The protocol has up to 8 "
+        "steps. Each user message advances the protocol by one "
+        "step. NEVER skip a step.\n"
         + first_name_line +
         "\n"
         "═════════════════════════════════════════════════\n"
@@ -274,10 +291,10 @@ def build_state_machine_system_prompt(
         "\n"
         "  RULE 2 — EMPATHY / ACKNOWLEDGEMENT:\n"
         "    • NEVER ignore what the user just said. On every turn "
-        "      where a user message exists (STEP 2-5), start your "
-        "      narration with ONE sentence that summarises or "
-        "      reflects what they said, then move into the current "
-        "      step's content.\n"
+        "      where a user message exists (STEP 2 through STEP 8), "
+        "      start your narration with ONE sentence that "
+        "      summarises or reflects what they said, then move "
+        "      into the current step's content.\n"
         "    • Examples of the bar to hit:\n"
         "        \"I hear that you felt stressed during that part "
         "         — let's look at why.\"\n"
@@ -289,11 +306,10 @@ def build_state_machine_system_prompt(
         "    • The acknowledgement is genuine, not formulaic. Don't "
         "      template-paste \"Thanks for sharing\". Reflect the "
         "      actual content of what they said.\n"
-        "    • This rule still applies inside STEP 4's negotiation: "
-        "      the vendor character acknowledges the user's "
-        "      argument (\"I see your point about ROI — but...\") "
-        "      before pushing back. In-character empathy is still "
-        "      empathy.\n"
+        "    • Inside the Director's Script steps (3-7), the ack "
+        "      bridges from the user's last answer into the NEXT "
+        "      scripted question — you don't get to invent the "
+        "      next question, only the bridge phrasing.\n"
         "    • STEP 1 has no user message yet, so no acknowledgement "
         "      is needed — open with the reveal as instructed.\n"
         "\n"
@@ -329,16 +345,17 @@ def build_state_machine_system_prompt(
         "STEP 1 — THE REVEAL (your VERY FIRST message in this "
         "thread, before the user has typed anything):\n"
         "  Open with the meaning of: \"We've got something really "
-        "cool for you. Listen to this highlight.\" (translated to "
-        "the opening language).\n"
+        "cool for you. Listen to this highlight.\" (in English per "
+        "RULE 1).\n"
         "  Then in the same turn, quote the admin_comment "
         "verbatim (in quotes, attributed to the coach — preserve "
         "the comment's own language as written).\n"
         "  Close STEP 1 with the meaning of: \"What do you think "
         "about this? Do you agree with the coach?\"\n"
-        "  Set step=1 and triggers=['render_snippet_player']. "
-        "Pass the snippet_id in snippet_player.snippet_id so the "
-        "frontend knows which audio to load.\n"
+        "  Set step=1, current_question_position=null, and "
+        "triggers=['render_snippet_player']. Pass the snippet_id "
+        "in snippet_player.snippet_id so the frontend knows which "
+        "audio to load.\n"
         "\n"
         "STEP 2 — REFLECTION & RLHF LABEL (after the user's first "
         "response to STEP 1):\n"
@@ -347,76 +364,73 @@ def build_state_machine_system_prompt(
         "(in English per RULE 1): \"Would you "
         f"actually label your voice here as "
         f"{'Charismatic' if coach_label != 'stress' else 'a stress moment'}?\"\n"
-        "  Set step=2 and triggers=['show_charisma_label_buttons']. "
-        "Pass the snippet_id in label_buttons.snippet_id so the "
-        "frontend wires the Yes/No to POST /v2/user/snippets/"
-        "<id>/label.\n"
+        "  Set step=2, current_question_position=null, and "
+        "triggers=['show_charisma_label_buttons']. Pass the "
+        "snippet_id in label_buttons.snippet_id so the frontend "
+        "wires the Yes/No to POST /v2/user/snippets/<id>/label.\n"
         "\n"
-        "STEP 3 — THE CONTEXTUAL PIVOT (after the user clicks "
-        "Yes or No):\n"
-        "  Per RULE 2, acknowledge their Yes/No in one sentence "
-        "first (e.g. \"Got it — you see it the same way as the "
-        "coach.\" / \"OK — you'd label this differently. Noted.\").\n"
-        f"  Then deliver (in English per RULE 1): "
-        f"\"{org_pivot_line}\".\n"
-        "  Set step=3 and triggers=['none']. Do NOT roleplay "
-        "yet — give them one beat to read the pivot, then the "
-        "user's next message kicks off STEP 4.\n"
+        "─────────────────────────────────────────────────\n"
+        "DIRECTOR'S SCRIPT — the admin-prepared sequence of "
+        f"{script_length} question(s) you walk the user through, "
+        "in order, one per turn. Steps 3 through "
+        f"{2 + script_length} correspond to script positions 1 "
+        f"through {script_length}.\n"
+        f"{script_block}"
+        "─────────────────────────────────────────────────\n"
         "\n"
-        "STEP 4 — THE NEGOTIATION SIMULATION (multi-turn — this "
-        "is the only step that spans more than one user/assistant "
-        "exchange):\n"
-        "  Open as a tough SaaS vendor (in English per RULE 1) "
-        f"with: \"This app costs ${NEGOTIATION_ANCHOR_PRICE}/month. "
-        "Would you pay for it?\". Prices stay in USD — the dollar "
-        "amounts are part of the scenario.\n"
-        "  RULES of the negotiation (NEVER break these):\n"
-        f"    • Anchor price: ${NEGOTIATION_ANCHOR_PRICE}/month.\n"
-        f"    • Floor price: ${NEGOTIATION_FLOOR_PRICE}/month — NEVER "
-        "      drop below this no matter what the user offers.\n"
-        "    • Every counter-offer the user makes, RULE 2 still "
-        "      applies: acknowledge their point first (\"I see "
-        "      your reasoning on X — but...\") then push back "
-        "      and ask \"Why?\" / \"What's that based on?\". "
-        "      Challenge their reasoning, don't just lower the "
-        "      price reflexively.\n"
-        "    • Stay in character as the vendor — direct, slightly "
-        "      confrontational, but professional.\n"
-        f"    • The negotiation concludes when the user (a) agrees "
-        f"      to a price ≥ ${NEGOTIATION_FLOOR_PRICE}, (b) walks "
-        "      away, or (c) has had ~5 back-and-forth turns. You "
-        "      decide when to close — judgment call.\n"
-        "  Set step=4 and triggers=['none']. Pass "
-        "negotiation.current_offer (the latest price you're at) "
-        "and negotiation.user_offer (the latest price they "
-        "offered) so the frontend can render the live offer.\n"
-        "  When the negotiation concludes, set "
-        "negotiation.concluded=true on THAT turn and advance to "
-        "STEP 5 in the NEXT turn.\n"
+        "STEPS 3..7 — THE DIRECTOR'S SCRIPT LOOP (one step per "
+        "scripted question, in position order):\n"
+        "  For each script position in order:\n"
+        "    1. Per RULE 2, open with ONE sentence reflecting the "
+        "       user's most recent message (their answer to the "
+        "       previous question, or their Yes/No on STEP 2 if "
+        "       this is the first script question).\n"
+        "    2. Then ask the script's question for THIS position "
+        "       VERBATIM. You may paraphrase only for grammar; you "
+        "       do NOT rewrite the substance — that's the admin's "
+        "       text. The admin's words are your script.\n"
+        "    3. If the user's previous answer was extremely short "
+        "       (1-3 words, \"idk\", \"yeah\") AND it's an early "
+        "       script position, you may probe ONCE on this turn "
+        "       before delivering the next scripted question. The "
+        "       probe stays in the SAME turn as the next scripted "
+        "       question — don't waste a step on a bare probe.\n"
+        "  Set step = 2 + position (so script position 1 → step 3, "
+        "  position 2 → step 4, ... position 5 → step 7).\n"
+        "  Set current_question_position = the 1..5 position you "
+        "  just delivered.\n"
+        "  Set triggers=['none'].\n"
+        "  If the script is empty (length 0), skip directly from "
+        "  STEP 2 to STEP 8 — open STEP 8's narration with a brief "
+        "  bridge acknowledging the user's reflection and proceed "
+        "  to the cliffhanger.\n"
         "\n"
-        "STEP 5 — THE ACOUSTIC CLIFFHANGER (one turn, ends the "
+        "STEP 8 — THE ACOUSTIC CLIFFHANGER (one turn, ends the "
         "session):\n"
         "  Per RULE 2, open with (in English per RULE 1): \"Ok, "
-        "noted. We had some real argumentation here.\" — that line "
-        "IS the acknowledgement of the negotiation as a whole.\n"
-        "  Then frame the carrot: \"If you keep progressing, "
-        "you'll get a real discount.\"\n"
+        "noted. Good work across those reflections.\" — adapted "
+        "to acknowledge what the user said in the final script "
+        "answer.\n"
+        "  Then frame the carrot: \"If you keep progressing, the "
+        "next session will go further.\"\n"
         "  Close with the acoustic goals — render the targets "
         "below in English and keep the NUMBERS verbatim (WPM, "
         "dB, filler counts come from this user's actual baseline; "
-        "don't invent your own). Phrasing seed: \n"
+        "don't invent your own). Phrasing seed:\n"
         f"    {acoustic_targets_line}\n"
         "  End the entire session with the literal word END.\n"
-        "  Set step=5, end=true, and triggers=['show_acoustic_"
-        "targets_card']. Pass the targets in acoustic_targets so "
-        "the frontend can render the closing card.\n"
+        "  Set step=8, end=true, current_question_position=null, "
+        "  and triggers=['show_acoustic_targets_card']. Pass the "
+        "  targets in acoustic_targets so the frontend can render "
+        "  the closing card.\n"
         "\n"
         "─────────────────────────────────────────────────\n"
         "OUTPUT FORMAT — strict JSON matching the response schema. "
         "The 'narration' field is what the user sees in the chat "
-        "bubble (in English per RULE 1). The 'step', "
-        "'triggers', 'end', 'snippet_player', 'label_buttons', "
-        "'negotiation', and 'acoustic_targets' fields drive the "
+        "bubble (in English per RULE 1). The 'step' (1..8), "
+        "'current_question_position' (1..5 during script steps, "
+        "null otherwise), 'triggers', 'end', 'snippet_player', "
+        "'label_buttons', and 'acoustic_targets' fields drive the "
         "frontend's UI affordances and are language-neutral keys "
         "/ enum values — NEVER translate the schema keys, only "
         "the narration prose.\n"
@@ -427,6 +441,53 @@ def build_state_machine_system_prompt(
         "not essays. NO bullet lists, NO headers in narration; "
         "the frontend handles UI structure."
     )
+
+
+def _format_director_script(
+    questions: list[dict],
+) -> tuple[str, int]:
+    """Render the Director's Script block + report its length.
+
+    Input is the ordered question list from the session row
+    (admin-edited preferred over AI-pre-generated; the route
+    handler picks which). Each entry should be a dict with
+    {position, text, intent_tag?}. We're defensive against
+    missing fields — drop empties, cap at _MAX_SCRIPT_QUESTIONS,
+    and renumber so positions land 1..N in the rendered prompt
+    even when the input had gaps.
+
+    Returns ``(rendered_block, used_length)``. ``used_length`` is
+    what the prompt body references when emitting "Steps 3..N+2"
+    boundaries — callers MUST pass this through, never recount
+    the original list.
+    """
+    cleaned: list[dict] = []
+    for entry in questions or []:
+        if not isinstance(entry, dict):
+            continue
+        text = (entry.get("text") or "").strip()
+        if not text:
+            continue
+        intent = (entry.get("intent_tag") or "").strip() or None
+        cleaned.append({"text": text, "intent_tag": intent})
+        if len(cleaned) >= _MAX_SCRIPT_QUESTIONS:
+            break
+
+    if not cleaned:
+        return (
+            "  (no script — admin did not stage questions for this "
+            "session. Skip from STEP 2 straight to STEP 8.)\n",
+            0,
+        )
+
+    lines: list[str] = []
+    for i, entry in enumerate(cleaned):
+        position = i + 1
+        tag_str = f" [{entry['intent_tag']}]" if entry["intent_tag"] else ""
+        lines.append(
+            f"  Q{position}{tag_str}: \"{entry['text']}\""
+        )
+    return ("\n".join(lines) + "\n", len(cleaned))
 
 
 def _format_acoustic_targets_for_prompt(
@@ -512,8 +573,21 @@ STATE_MACHINE_RESPONSE_SCHEMA: dict[str, Any] = {
             "step": {
                 "type": "integer",
                 "minimum": 1,
-                "maximum": 5,
-                "description": "Which protocol step this turn is in.",
+                "maximum": 8,
+                "description": (
+                    "Which protocol step this turn is in: "
+                    "1=reveal, 2=rlhf_label, 3..7=script_q1..q5, "
+                    "8=cliffhanger."
+                ),
+            },
+            "current_question_position": {
+                "type": ["integer", "null"],
+                "description": (
+                    "Which Director's Script position (1..5) this "
+                    "turn delivered, or null on steps 1/2/8. "
+                    "Frontend reads this to render a '3 of 5' "
+                    "progress dot."
+                ),
             },
             "triggers": {
                 "type": "array",
@@ -536,7 +610,7 @@ STATE_MACHINE_RESPONSE_SCHEMA: dict[str, Any] = {
                 "type": "boolean",
                 "description": (
                     "TRUE on the turn that closes the session "
-                    "(STEP 5 cliffhanger). Frontend closes the input "
+                    "(STEP 8 cliffhanger). Frontend closes the input "
                     "and marks the coaching_session complete."
                 ),
             },
@@ -554,15 +628,6 @@ STATE_MACHINE_RESPONSE_SCHEMA: dict[str, Any] = {
                     "snippet_id": {"type": "string"},
                     "yes_label": {"type": "string"},
                     "no_label": {"type": "string"},
-                },
-            },
-            "negotiation": {
-                "type": "object",
-                "additionalProperties": False,
-                "properties": {
-                    "current_offer": {"type": "number"},
-                    "user_offer": {"type": "number"},
-                    "concluded": {"type": "boolean"},
                 },
             },
             "acoustic_targets": {
@@ -605,11 +670,18 @@ def parse_state_machine_response(raw: str) -> Optional[dict[str, Any]]:
     if not (parsed.get("narration") or "").strip():
         return None
     step = parsed.get("step")
-    if not isinstance(step, int) or not (1 <= step <= 5):
+    if not isinstance(step, int) or not (1 <= step <= 8):
         return None
     triggers = parsed.get("triggers") or []
     if not isinstance(triggers, list):
         return None
     if "end" not in parsed:
+        return None
+    # current_question_position is optional but if present must
+    # be either null or an integer in 1..5. The schema enforces
+    # type already; double-check the range here so a downstream
+    # consumer doesn't have to.
+    pos = parsed.get("current_question_position")
+    if pos is not None and (not isinstance(pos, int) or not (1 <= pos <= 5)):
         return None
     return parsed

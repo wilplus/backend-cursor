@@ -9425,9 +9425,10 @@ def v2_coaching_state_machine_turn():
           "step":         1..5,
           "triggers":     [str, ...],
           "end":          bool,
+          "current_question_position": 1..5 | null,  // Director's
+                                                      // Script position
           "snippet_player":   { snippet_id } | omitted,
           "label_buttons":    { snippet_id, yes_label, no_label } | omitted,
-          "negotiation":      { current_offer, user_offer, concluded } | omitted,
           "acoustic_targets": { target_wpm, ... } | omitted
         }
 
@@ -9511,6 +9512,18 @@ def v2_coaching_state_machine_turn():
             session_duration_ms=parent_session.get("duration_ms"),
         )
 
+        # Director's Script — admin-edited array wins; fall through
+        # to AI-pre-generated draft; empty list if neither exists
+        # (the prompt handles the empty case by skipping straight
+        # from STEP 2 to STEP 8).
+        director_script_questions = (
+            parent_session.get("final_human_next_questions")
+            or parent_session.get("ai_predicted_next_questions")
+            or []
+        )
+        if not isinstance(director_script_questions, list):
+            director_script_questions = []
+
         # First-name + org-context are nice-to-haves; missing both
         # is fine, the prompt builder degrades gracefully.
         first_name: str | None = None
@@ -9525,6 +9538,7 @@ def v2_coaching_state_machine_turn():
         system_prompt = build_state_machine_system_prompt(
             snippet=snippet,
             acoustic_targets=targets,
+            director_script_questions=director_script_questions,
             user_first_name=first_name,
             user_org_context=None,
             user_language_hint=user_language_hint,
@@ -9613,11 +9627,13 @@ def v2_coaching_state_machine_turn():
                 parsed.get("narration") or "",
                 extra={
                     "step": parsed.get("step"),
+                    "current_question_position": parsed.get(
+                        "current_question_position"
+                    ),
                     "triggers": parsed.get("triggers") or [],
                     "end": bool(parsed.get("end")),
                     "snippet_player": parsed.get("snippet_player"),
                     "label_buttons": parsed.get("label_buttons"),
-                    "negotiation": parsed.get("negotiation"),
                     "acoustic_targets": parsed.get("acoustic_targets"),
                     "raw_llm_output": raw,
                 },
@@ -9628,7 +9644,7 @@ def v2_coaching_state_machine_turn():
                 msg_err,
             )
 
-        # When the LLM flags end=true on STEP 5, advance the
+        # When the LLM flags end=true on STEP 8, advance the
         # coaching_session to 'complete' so subsequent POSTs return
         # COACHING_COMPLETE. Best-effort; the chat already showed
         # the closing card by this point.
@@ -13824,37 +13840,49 @@ def v2_admin_patch_snippet(snippet_id):
 @require_admin
 def v2_admin_publish_session(session_id):
     """Publish results for a session — flips visibility for the user
-    and writes one RLHF training row.
+    and writes RLHF training rows.
 
     Mirrors the existing /v2/internal/publish-session-results endpoint
     but takes session_id as a URL path param and ALSO accepts the
-    admin's finalized session_comment + next_question so we can
-    capture the (AI predicted, human final) pair into
+    admin's finalized session_comment + Director's Script so we can
+    capture the (AI predicted, human final) pairs into
     admin_annotations_log on the same atomic action.
 
     Body (all fields optional)::
 
         {
-          "final_human_comment":  "...",   // admin's edited / accepted
-                                            // session_comment
-          "final_human_question": "..."    // admin's edited / accepted
-                                            // next_question
+          "final_human_comment":  "...",       // session-level message
+          "final_human_next_questions": [      // NEW — 5-question script
+            { "position": 1, "text": "...", "intent_tag": "..." },
+            ...
+          ],
+          "final_human_question": "..."        // back-compat single-question;
+                                               // ignored if array is present
         }
 
-    When either field is omitted, the AI's pre-generated prediction
-    is used as the final (admin implicitly accepted it raw). The
-    was_corrected flag is computed by string-comparing predicted
-    vs final.
+    Omitted fields fall through to the AI's pre-generated prediction
+    (implicit accept). was_corrected is computed per-field/per-
+    position by string-comparing predicted vs final.
+
+    RLHF log writes (per Publish click):
+      * 1 row for the session-level admin_comment
+        (question_position = NULL)
+      * up to 5 rows for the Director's Script positions
+        (question_position = 1..5, intent_tag carried)
+      * 1 row for the legacy single next_question back-compat path
+        when the array was NOT provided (question_position = NULL)
 
     Side effects:
       * Sets results_published_at = NOW() on the session
       * Flips status to 'completed'
+      * Saves final_human_next_questions on the session row
       * Sends the "Charisma Snippets Ready" email via Resend
-      * Inserts one row into admin_annotations_log
+      * Inserts the RLHF rows above
 
     Responses:
-        200 { status: "ok", session_id, results_published_at,
-              email_sent, rlhf_logged, was_corrected }
+        200 { status, session_id, results_published_at,
+              email_sent, rlhf_logged, rlhf_rows_written,
+              was_corrected }
         400 INVALID_INPUT
         404 SESSION_NOT_FOUND
         500 V2_ERROR
@@ -13885,6 +13913,32 @@ def v2_admin_publish_session(session_id):
             else None
         )
 
+        # NEW — Director's Script array. When present, supersedes
+        # the legacy single-question body field for RLHF purposes
+        # (we ignore final_human_question for log-write decisions
+        # when the array is the authoritative input).
+        final_questions_raw = body.get("final_human_next_questions")
+        final_questions: list[dict] = []
+        if isinstance(final_questions_raw, list):
+            for entry in final_questions_raw[:5]:
+                if not isinstance(entry, dict):
+                    continue
+                text = (entry.get("text") or "").strip()
+                if not text:
+                    continue
+                try:
+                    pos = int(entry.get("position"))
+                except (TypeError, ValueError):
+                    continue
+                if not (1 <= pos <= 5):
+                    continue
+                intent = (entry.get("intent_tag") or "").strip() or None
+                final_questions.append({
+                    "position": pos,
+                    "text": text,
+                    "intent_tag": intent,
+                })
+
         # 1. Stamp results_published_at
         published = db.v2_publish_session_results(session_id)
         if not published:
@@ -13908,44 +13962,133 @@ def v2_admin_publish_session(session_id):
         except Exception as mail_err:
             logger.warning("publish: email failed (non-fatal): %s", mail_err)
 
-        # 4. RLHF log. Read back the AI predictions, fall through to
-        #    them as the "final" when the admin sent nothing (implicit
-        #    accept). was_corrected = True iff the human field both
-        #    exists AND differs from the prediction. Failure-isolated:
-        #    publish already succeeded, we don't unwind for a log
-        #    miss.
+        # 3.5. Persist the admin-edited 5-question script on the
+        #      session row so the next state-machine turn loads
+        #      THIS version (not the AI pre-generated draft).
+        if final_questions:
+            try:
+                db.set_session_final_next_questions(
+                    str(session_id), final_questions,
+                )
+            except Exception as fq_err:
+                logger.warning(
+                    "publish: final_questions persist failed sid=%s err=%s",
+                    session_id, fq_err,
+                )
+
+        # 4. RLHF log. Three writes:
+        #    a) one row for the session-level admin_comment
+        #    b) per-position rows when the Director's Script array
+        #       was provided (preferred RLHF granularity)
+        #    c) fallback: one row for the legacy single
+        #       final_human_question when the array was NOT
+        #       provided (back-compat — old admin UI path).
+        #    Failure-isolated: publish already succeeded, we don't
+        #    unwind for log misses.
         ai_comment = (session.get("ai_predicted_session_comment") or "").strip() or None
         ai_question = (session.get("ai_predicted_next_question") or "").strip() or None
+        ai_questions_raw = session.get("ai_predicted_next_questions") or []
+        # Position-indexed lookup of the AI prediction so we can
+        # diff against admin's per-position edits cheaply.
+        ai_questions_by_pos: dict[int, dict] = {}
+        if isinstance(ai_questions_raw, list):
+            for entry in ai_questions_raw:
+                if not isinstance(entry, dict):
+                    continue
+                try:
+                    p = int(entry.get("position"))
+                except (TypeError, ValueError):
+                    continue
+                if 1 <= p <= 5:
+                    ai_questions_by_pos[p] = entry
 
+        # Session-level comment fall-through (admin omitted → accepted).
         if final_comment is None:
             final_comment = ai_comment
-        if final_question is None:
-            final_question = ai_question
 
-        was_corrected = bool(
-            (ai_comment != final_comment and (ai_comment or final_comment))
-            or (ai_question != final_question and (ai_question or final_question))
+        # was_corrected (session-level row): per-comment compare.
+        # Per-question rows compute their own was_corrected below.
+        session_was_corrected = bool(
+            (ai_comment != final_comment) and (ai_comment or final_comment)
         )
+        # Surface-level "did the admin change ANYTHING" for the
+        # response. True if the comment was edited OR any question
+        # was edited.
+        any_was_corrected = session_was_corrected
 
         owner_id = session.get("user_id")
-        rlhf_logged = False
+        rlhf_rows_written = 0
         if owner_id:
+            owner_id_s = str(owner_id)
+            session_id_s = str(session_id)
+            # a) session-level comment row (question_position = NULL).
+            #    We pass the legacy single question into this row
+            #    too ONLY when the array path isn't being used,
+            #    matching the prior shape exactly for back-compat
+            #    consumers of admin_annotations_log.
             try:
-                logged = db.insert_admin_annotation_log(
-                    user_id=str(owner_id),
-                    session_id=str(session_id),
-                    ai_predicted_comment=ai_comment,
-                    ai_predicted_question=ai_question,
-                    final_human_comment=final_comment,
-                    final_human_question=final_question,
-                    was_corrected=was_corrected,
+                legacy_q_final = (
+                    final_question
+                    if final_question is not None
+                    else ai_question
                 )
-                rlhf_logged = logged is not None
+                row = db.insert_admin_annotation_log(
+                    user_id=owner_id_s,
+                    session_id=session_id_s,
+                    ai_predicted_comment=ai_comment,
+                    ai_predicted_question=(
+                        None if final_questions else ai_question
+                    ),
+                    final_human_comment=final_comment,
+                    final_human_question=(
+                        None if final_questions else legacy_q_final
+                    ),
+                    was_corrected=session_was_corrected,
+                )
+                if row is not None:
+                    rlhf_rows_written += 1
             except Exception as log_err:
                 logger.warning(
-                    "publish: rlhf log insert failed sid=%s err=%s (non-fatal)",
+                    "publish: session-level rlhf log failed sid=%s err=%s",
                     session_id, log_err,
                 )
+
+            # b) per-position rows when admin sent the array.
+            if final_questions:
+                for entry in final_questions:
+                    pos = entry["position"]
+                    final_text = entry["text"]
+                    final_tag = entry["intent_tag"]
+                    ai_entry = ai_questions_by_pos.get(pos) or {}
+                    ai_text = (ai_entry.get("text") or "").strip() or None
+                    ai_tag = (
+                        ai_entry.get("intent_tag") or ""
+                    ).strip() or None
+                    per_was_corrected = bool(
+                        (ai_text != final_text) and (ai_text or final_text)
+                    )
+                    if per_was_corrected:
+                        any_was_corrected = True
+                    try:
+                        row = db.insert_admin_annotation_log(
+                            user_id=owner_id_s,
+                            session_id=session_id_s,
+                            ai_predicted_comment=None,
+                            ai_predicted_question=ai_text,
+                            final_human_comment=None,
+                            final_human_question=final_text,
+                            was_corrected=per_was_corrected,
+                            question_position=pos,
+                            intent_tag=(final_tag or ai_tag),
+                        )
+                        if row is not None:
+                            rlhf_rows_written += 1
+                    except Exception as log_err:
+                        logger.warning(
+                            "publish: per-position rlhf log failed "
+                            "sid=%s pos=%d err=%s",
+                            session_id, pos, log_err,
+                        )
         else:
             logger.info(
                 "publish: skipping rlhf log sid=%s — no owner_id "
@@ -13957,8 +14100,9 @@ def v2_admin_publish_session(session_id):
             "session_id": session_id,
             "results_published_at": published.get("results_published_at"),
             "email_sent": email_sent,
-            "rlhf_logged": rlhf_logged,
-            "was_corrected": was_corrected,
+            "rlhf_logged": rlhf_rows_written > 0,
+            "rlhf_rows_written": rlhf_rows_written,
+            "was_corrected": any_was_corrected,
         }), 200
 
     except Exception as e:

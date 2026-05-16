@@ -45,7 +45,10 @@ logger = logging.getLogger(__name__)
 
 
 _MODEL = "gpt-4o-mini"
-_MAX_TOKENS = 500
+# Comment (~150 tok) + 5 × question (~50 tok) + JSON envelope.
+# 800 leaves comfortable headroom; the strict schema enforces
+# total length via maxLength on each field.
+_MAX_TOKENS = 800
 
 
 def generate_session_predictions(
@@ -76,13 +79,14 @@ def generate_session_predictions(
         existing_comment = (
             session.get("ai_predicted_session_comment") or ""
         ).strip()
-        existing_question = (
-            session.get("ai_predicted_next_question") or ""
-        ).strip()
-        if existing_comment and existing_question:
+        existing_questions = session.get("ai_predicted_next_questions")
+        if existing_comment and isinstance(existing_questions, list) and existing_questions:
             return {
                 "comment": existing_comment,
-                "question": existing_question,
+                "questions": existing_questions,
+                # Back-compat: surface position-1 as the single
+                # field for legacy callers that still read 'question'.
+                "question": (existing_questions[0].get("text") if isinstance(existing_questions[0], dict) else None),
                 "generated_at": session.get("ai_predictions_generated_at"),
             }
 
@@ -119,24 +123,62 @@ def generate_session_predictions(
         return None
 
     comment = (parsed.get("admin_comment") or "").strip()
-    question = (parsed.get("next_question") or "").strip()
-    if not comment or not question:
+    raw_questions = parsed.get("next_questions") or []
+    questions = _normalize_questions(raw_questions)
+
+    if not comment or not questions:
         logger.warning(
-            "session_predictions: empty fields sid=%s comment=%d question=%d",
-            session_id, len(comment), len(question),
+            "session_predictions: empty fields sid=%s comment=%d questions=%d",
+            session_id, len(comment), len(questions),
         )
         return None
+
+    # Back-compat single string — position 1's text. Old admin UI
+    # still reads ai_predicted_next_question; the array is the
+    # new source of truth.
+    single_question = questions[0]["text"] if questions else ""
 
     row = db.set_session_predictions(
         session_id=session_id,
         ai_predicted_session_comment=comment,
-        ai_predicted_next_question=question,
+        ai_predicted_next_question=single_question,
+        ai_predicted_next_questions=questions,
     )
     return {
         "comment": comment,
-        "question": question,
+        "questions": questions,
+        "question": single_question,
         "generated_at": (row or {}).get("ai_predictions_generated_at"),
     }
+
+
+def _normalize_questions(raw: list) -> list[dict]:
+    """Clean + cap the LLM's questions array.
+
+    The strict schema in _llm_generate enforces 5 entries with
+    {position, text, intent_tag}, but we still defensively:
+      - drop entries with empty text
+      - reassign positions 1..N if the model emitted gaps
+      - cap at 5 even if the model overran (shouldn't happen)
+    Returns a list of dicts in position order; empty list when
+    nothing usable came back.
+    """
+    out: list[dict] = []
+    for entry in raw or []:
+        if not isinstance(entry, dict):
+            continue
+        text = (entry.get("text") or "").strip()
+        if not text:
+            continue
+        intent_tag = (entry.get("intent_tag") or "").strip() or None
+        out.append({"text": text, "intent_tag": intent_tag})
+        if len(out) >= 5:
+            break
+    # Renumber positions 1..N now that we've dropped any empties.
+    return [
+        {"position": i + 1, "text": e["text"], "intent_tag": e["intent_tag"]}
+        for i, e in enumerate(out)
+    ]
 
 
 # ── Internals ──────────────────────────────────────────────────────
@@ -171,21 +213,41 @@ def _llm_generate(
         "Two outputs, both addressed TO the user as a coach would "
         "address them — second-person, warm, specific, short:\n"
         "\n"
-        "  admin_comment  — the session-level message the user sees "
-        "                   on their /chat page when results "
-        "                   publish. 2-4 sentences, no fluff. Reflect "
-        "                   what actually happened in this session "
-        "                   (KPI, top topic, what the recent admin "
-        "                   notes have been threading on). Forward-"
-        "                   looking; end on what to push on next.\n"
+        "  admin_comment   — the session-level message the user sees "
+        "                    on their /chat page when results "
+        "                    publish. 2-4 sentences, no fluff. "
+        "                    Reflect what actually happened in this "
+        "                    session (KPI, top topic, what the "
+        "                    recent admin notes have been threading "
+        "                    on). Forward-looking; end on what to "
+        "                    push on next.\n"
         "\n"
-        "  next_question  — ONE question to open the user's next "
-        "                   coaching loop with. Builds on what they "
-        "                   did this session — probes the next layer, "
-        "                   not the same angle they already worked. "
-        "                   Direct second-person, ≤ 25 words.\n"
+        "  next_questions  — an ordered SCRIPT of EXACTLY 5 "
+        "                    questions the admin will use to direct "
+        "                    the next coaching conversation with "
+        "                    this user. The chat will walk the user "
+        "                    through them in order, one per turn.\n"
         "\n"
-        "Rules:\n"
+        "RULES FOR THE 5-QUESTION SCRIPT (these are not negotiable):\n"
+        "  • The 5 questions MUST build on each other — they are a "
+        "    sequence, not 5 restatements of the same prompt. "
+        "    Typical arc: ground emotion → test application → "
+        "    rehearse tactic → challenge belief → close loop. "
+        "    Pick whichever arc fits THIS user's session.\n"
+        "  • Each question stands alone (the user reads one bubble "
+        "    at a time) and is ≤ 25 words, direct second-person.\n"
+        "  • Each carries a position (1..5) and an intent_tag — a "
+        "    short snake_case label for what the question is doing. "
+        "    Soft vocabulary; pick from {ground-emotion, "
+        "    test-application, rehearse-tactic, challenge-belief, "
+        "    close-loop, name-the-pattern, surface-resistance, "
+        "    invite-specifics, contrast-before-after, commit-to-"
+        "    action} or coin a tighter tag if one fits better.\n"
+        "  • DO NOT roleplay or set up scenarios in the questions "
+        "    themselves — they are PROMPTS for the user to answer, "
+        "    not openings of skits.\n"
+        "\n"
+        "GENERAL RULES:\n"
         "  • Both fields ground in the data below. Do NOT invent "
         "    moments, scores, or topics the inputs don't show.\n"
         "  • IGNORE the literal subject matter of any diagnostic "
@@ -195,7 +257,7 @@ def _llm_generate(
         "    than perfect.\n"
         "\n"
         "Output strict JSON with keys 'admin_comment' and "
-        "'next_question'. No other keys."
+        "'next_questions' (array of exactly 5)."
     )
 
     user_prompt = _build_user_prompt(session, snippets, learner_profile)
@@ -205,10 +267,34 @@ def _llm_generate(
         "schema": {
             "type": "object",
             "additionalProperties": False,
-            "required": ["admin_comment", "next_question"],
+            "required": ["admin_comment", "next_questions"],
             "properties": {
                 "admin_comment": {"type": "string", "maxLength": 700},
-                "next_question": {"type": "string", "maxLength": 240},
+                "next_questions": {
+                    "type": "array",
+                    "minItems": 5,
+                    "maxItems": 5,
+                    "items": {
+                        "type": "object",
+                        "additionalProperties": False,
+                        "required": ["position", "text", "intent_tag"],
+                        "properties": {
+                            "position": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 5,
+                            },
+                            "text": {
+                                "type": "string",
+                                "maxLength": 240,
+                            },
+                            "intent_tag": {
+                                "type": "string",
+                                "maxLength": 40,
+                            },
+                        },
+                    },
+                },
             },
         },
         "strict": True,

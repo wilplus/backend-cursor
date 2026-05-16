@@ -5650,24 +5650,119 @@ class DatabaseService:
         session_id: str,
         *,
         ai_predicted_session_comment: Optional[str],
-        ai_predicted_next_question: Optional[str],
+        ai_predicted_next_question: Optional[str] = None,
+        ai_predicted_next_questions: Optional[list] = None,
     ) -> Optional[dict]:
         """Persist pre-generated AI predictions on the session row.
 
         Called by services.session_predictions during finalize so
         the admin opens the user-detail page to a pre-filled
-        comment + next-question they can accept or edit. Stamps
+        comment + next-question(s) they can accept or edit. Stamps
         ai_predictions_generated_at so the UI can surface "this is
         N hours old, regenerate?" when metrics drift.
+
+        ``ai_predicted_next_questions`` is the NEW 5-position
+        ordered script — list of {position, text, intent_tag}.
+        ``ai_predicted_next_question`` is kept for back-compat
+        with the old single-question admin UI; if the array is
+        provided but the single field isn't, we derive the single
+        field from position-1 so legacy callers keep working.
+
+        Gracefully degrades if the new JSONB column doesn't exist
+        yet (migration pending) — retries the update without it
+        and logs a warning, so existing admin tooling still saves
+        the comment + single question.
+        """
+        try:
+            now = datetime.now(timezone.utc).isoformat()
+            # Derive single-question back-compat value when only
+            # the array was passed.
+            single_q = ai_predicted_next_question
+            if single_q is None and ai_predicted_next_questions:
+                try:
+                    first = ai_predicted_next_questions[0]
+                    if isinstance(first, dict):
+                        single_q = (first.get("text") or "").strip() or None
+                except (IndexError, AttributeError, TypeError):
+                    single_q = None
+
+            patch: dict = {
+                "ai_predicted_session_comment": ai_predicted_session_comment,
+                "ai_predicted_next_question": single_q,
+                "ai_predictions_generated_at": now,
+            }
+            if ai_predicted_next_questions is not None:
+                patch["ai_predicted_next_questions"] = ai_predicted_next_questions
+
+            result = (
+                self.client.table("v2_sessions")
+                .update(patch)
+                .eq("id", session_id)
+                .execute()
+            )
+            if result.data and len(result.data) > 0:
+                return result.data[0]
+            return None
+        except Exception as e:
+            err_low = str(e).lower()
+            if (
+                "ai_predicted_next_questions" in err_low
+                or "pgrst204" in err_low
+            ):
+                # New JSONB column missing in this environment —
+                # retry without it so the comment + single-question
+                # back-compat path still saves.
+                logger.warning(
+                    "set_session_predictions: array column missing "
+                    "(migration pending?), retrying without — sid=%s",
+                    session_id,
+                )
+                try:
+                    fallback = {
+                        "ai_predicted_session_comment": ai_predicted_session_comment,
+                        "ai_predicted_next_question": single_q,
+                        "ai_predictions_generated_at": now,
+                    }
+                    result = (
+                        self.client.table("v2_sessions")
+                        .update(fallback)
+                        .eq("id", session_id)
+                        .execute()
+                    )
+                    if result.data and len(result.data) > 0:
+                        return result.data[0]
+                    return None
+                except Exception as e2:
+                    logger.warning(
+                        "set_session_predictions fallback failed sid=%s err=%s",
+                        session_id, e2,
+                    )
+                    return None
+            logger.warning(
+                "set_session_predictions failed sid=%s err=%s",
+                session_id, e,
+            )
+            return None
+
+    def set_session_final_next_questions(
+        self,
+        session_id: str,
+        questions: Optional[list],
+    ) -> Optional[dict]:
+        """Save the admin-edited 5-question script on Publish.
+
+        ``questions`` is a list of {position, text, intent_tag?}
+        dicts (length ≤ 5) or None to clear. Idempotent — same
+        list saved twice is a no-op. Failure logs + returns None
+        so the publish itself isn't blocked.
         """
         try:
             now = datetime.now(timezone.utc).isoformat()
             result = (
                 self.client.table("v2_sessions")
                 .update({
-                    "ai_predicted_session_comment": ai_predicted_session_comment,
-                    "ai_predicted_next_question": ai_predicted_next_question,
-                    "ai_predictions_generated_at": now,
+                    "final_human_next_questions": questions,
+                    "updated_at": now,
                 })
                 .eq("id", session_id)
                 .execute()
@@ -5676,8 +5771,19 @@ class DatabaseService:
                 return result.data[0]
             return None
         except Exception as e:
+            err_low = str(e).lower()
+            if (
+                "final_human_next_questions" in err_low
+                or "pgrst204" in err_low
+            ):
+                logger.warning(
+                    "set_session_final_next_questions: column missing "
+                    "(migration pending?) sid=%s",
+                    session_id,
+                )
+                return None
             logger.warning(
-                "set_session_predictions failed sid=%s err=%s",
+                "set_session_final_next_questions failed sid=%s err=%s",
                 session_id, e,
             )
             return None
@@ -5722,6 +5828,8 @@ class DatabaseService:
         final_human_comment: Optional[str],
         final_human_question: Optional[str],
         was_corrected: bool,
+        question_position: Optional[int] = None,
+        intent_tag: Optional[str] = None,
     ) -> Optional[dict]:
         """Write one RLHF training row to admin_annotations_log.
 
@@ -5730,9 +5838,21 @@ class DatabaseService:
         NOT raise to the route, because the publish itself has
         already succeeded by the time we write the log and we
         won't undo it for a training-pipeline side-effect.
+
+        ``question_position`` (1..5) + ``intent_tag`` are set
+        for the per-position rows that capture each Director's
+        Script question's (predicted, final) pair. Left NULL for
+        the session-level admin_comment row and for legacy
+        single-question rows.
+
+        Graceful fallback when the per-position columns aren't in
+        the schema yet (migration pending): retries the insert
+        without them. The session-level signal still lands; the
+        per-position granularity just isn't available until the
+        migration runs.
         """
         try:
-            payload = {
+            payload: dict = {
                 "user_id": user_id,
                 "session_id": session_id,
                 "ai_predicted_comment": ai_predicted_comment,
@@ -5741,6 +5861,11 @@ class DatabaseService:
                 "final_human_question": final_human_question,
                 "was_corrected": bool(was_corrected),
             }
+            if question_position is not None:
+                payload["question_position"] = int(question_position)
+            if intent_tag is not None:
+                payload["intent_tag"] = intent_tag
+
             result = (
                 self.client.table("admin_annotations_log")
                 .insert(payload)
@@ -5750,6 +5875,37 @@ class DatabaseService:
                 return result.data[0]
             return None
         except Exception as e:
+            err_low = str(e).lower()
+            if (
+                "question_position" in err_low
+                or "intent_tag" in err_low
+                or "pgrst204" in err_low
+            ):
+                logger.warning(
+                    "insert_admin_annotation_log: per-position "
+                    "columns missing (migration pending?), "
+                    "retrying without — sid=%s pos=%s",
+                    session_id, question_position,
+                )
+                try:
+                    fallback = {
+                        k: v for k, v in payload.items()
+                        if k not in ("question_position", "intent_tag")
+                    }
+                    result = (
+                        self.client.table("admin_annotations_log")
+                        .insert(fallback)
+                        .execute()
+                    )
+                    if result.data and len(result.data) > 0:
+                        return result.data[0]
+                    return None
+                except Exception as e2:
+                    logger.warning(
+                        "insert_admin_annotation_log fallback failed sid=%s err=%s",
+                        session_id, e2,
+                    )
+                    return None
             logger.warning(
                 "insert_admin_annotation_log failed sid=%s uid=%s err=%s",
                 session_id, user_id, e,
