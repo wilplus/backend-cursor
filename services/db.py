@@ -5504,6 +5504,84 @@ class DatabaseService:
 
     # ── Phase 10: AI-draft + implicit-approval helpers ────────────────
 
+    def create_user_uploaded_file(
+        self,
+        *,
+        user_id: str,
+        session_id: str | None,
+        r2_bucket: str,
+        r2_key: str,
+        r2_url: str | None,
+        file_name: str,
+        file_type: str,
+        content_type: str | None,
+        file_size_bytes: int | None,
+    ) -> Optional[dict]:
+        """Insert a user_uploaded_files row.
+
+        Owner-scoping is enforced at the row level via ``user_id``;
+        the caller (route handler) is responsible for taking
+        ``user_id`` from the authenticated request, not from the
+        request body.
+
+        Returns the inserted row on success, ``None`` on failure
+        (logs the error so the upload endpoint can surface a
+        generic 500 without leaking schema details).
+        """
+        try:
+            payload = {
+                "user_id": user_id,
+                "session_id": session_id,
+                "r2_bucket": r2_bucket,
+                "r2_key": r2_key,
+                "r2_url": r2_url,
+                "file_name": file_name,
+                "file_type": file_type,
+                "content_type": content_type,
+                "file_size_bytes": file_size_bytes,
+            }
+            result = (
+                self.client.table("user_uploaded_files")
+                .insert(payload)
+                .execute()
+            )
+            if result.data and len(result.data) > 0:
+                return result.data[0]
+            return None
+        except Exception as e:
+            logger.error("create_user_uploaded_file failed: %s", e)
+            return None
+
+    def list_user_uploaded_files_for_user(
+        self,
+        user_id: str,
+        *,
+        limit: int = 200,
+    ) -> list[dict]:
+        """Return all user_uploaded_files rows for ``user_id``,
+        newest first.
+
+        Backs the admin Files tab. ``limit`` is generous (200)
+        because the table is per-user; if a user accumulates more
+        than 200 uploads we'll add pagination then.
+        """
+        try:
+            result = (
+                self.client.table("user_uploaded_files")
+                .select("*")
+                .eq("user_id", user_id)
+                .order("created_at", desc=True)
+                .limit(max(1, int(limit)))
+                .execute()
+            )
+            return result.data or []
+        except Exception as e:
+            logger.warning(
+                "list_user_uploaded_files_for_user failed user=%s err=%s",
+                user_id, e,
+            )
+            return []
+
     def set_user_snippet_charisma_label(
         self,
         snippet_id: str,

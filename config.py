@@ -68,6 +68,30 @@ class Config:
     # Optional public or custom domain base for stable <video src> URLs, no trailing slash (e.g. https://videos.example.com).
     R2_PUBLIC_BASE_URL = (os.getenv("R2_PUBLIC_BASE_URL") or "").strip()
 
+    # ── Cloudflare R2 — USER MEDIA UPLOADS (audio + video) ─────────────────
+    # Separate bucket from coach videos / interview audio because the
+    # access policy + retention differ: user-uploaded media is owned
+    # by the user, surfaced in the admin Files tab, and lifecycled
+    # per-user. The same R2 credentials above are reused.
+    # When unset, services.user_media_storage falls back to the
+    # coach video bucket so dev environments still function.
+    R2_USER_MEDIA_BUCKET = (
+        os.getenv("R2_USER_MEDIA_BUCKET")
+        or os.getenv("VIDEO_FILES_REPOSITORY")
+        or ""
+    ).strip()
+    R2_USER_MEDIA_PUBLIC_BASE_URL = (
+        os.getenv("R2_USER_MEDIA_PUBLIC_BASE_URL") or ""
+    ).strip()
+
+    # File size cap for the user-facing /v2/user/upload-media endpoint.
+    # Higher than MAX_AUDIO_SIZE_MB (25) because video is the primary
+    # use case here. 200 MB matches the in-browser MediaRecorder ceiling
+    # most clients hit before we'd want a chunked-upload strategy.
+    MAX_USER_MEDIA_SIZE_MB = int(
+        os.getenv("MAX_USER_MEDIA_SIZE_MB", "200")
+    )
+
     # ── Cloudflare R2 — USER INTERVIEW AUDIO ─────────────────────────────────
     # Deliberately a separate bucket from coach feedback videos because the
     # content type, lifecycle, and access policy differ:

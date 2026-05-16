@@ -10901,6 +10901,266 @@ def v2_user_mirror_generate():
         }), 500
 
 
+@v2_bp.route("/user/upload-media", methods=["POST"])
+@require_auth
+def v2_user_upload_media():
+    """Accept a user-uploaded media file (audio OR video), stream
+    to Cloudflare R2, persist metadata, hand off to the standard
+    admin-review finalize.
+
+    Multipart body:
+      - file:        the bytes (required). Field name 'file' is the
+                     canonical name; we also accept 'audio_file' /
+                     'video_file' / 'media' as aliases so frontend
+                     code that came in from the recording endpoints
+                     doesn't have to be renamed.
+      - session_id:  the v2_sessions row this upload belongs to
+                     (optional — null is allowed but means the
+                     file won't trigger an admin-review flow).
+      - filename:    optional override for the user-facing file
+                     name; falls back to the multipart filename.
+
+    Side effects on success:
+      - bytes uploaded to R2 (user-media bucket) at
+        users/<user_id>/sessions/<session_id>/<filename>
+      - user_uploaded_files row written
+      - if session_id was passed: session status flipped to
+        "pending_admin_review" + admin notification email
+        dispatched via the standard finalize helper
+
+    Response (201)::
+
+        {
+          "status": "ok",
+          "file": {
+            "id": "<uuid>",
+            "file_name": "<original>",
+            "file_type": "audio" | "video",
+            "content_type": "video/mp4",
+            "size_bytes": 12345678,
+            "r2_url": "https://.../users/.../filename.mp4" | null,
+            "playback_url": "<public OR signed URL the admin UI can stream>",
+            "session_id": "<uuid>" | null,
+            "created_at": "<iso8601>"
+          },
+          "finalize": {...} | null   // present iff session_id was bound
+        }
+
+    Why we treat this like a recording-turn finalize: the
+    frontend's "video waiting screen" is gated on a session being
+    in pending_admin_review status and on the admin email having
+    been dispatched. Mirroring the trial-recording handoff means
+    files behave the same as live recordings from the user's
+    perspective — same flywheel.
+    """
+    import uuid as _uuid
+    from services.user_media_storage import (
+        put_user_media_bytes,
+        user_media_public_url,
+        user_media_bucket_name,
+        guess_media_content_type,
+        classify_media_kind,
+    )
+
+    try:
+        upload = (
+            request.files.get("file")
+            or request.files.get("media")
+            or request.files.get("audio_file")
+            or request.files.get("video_file")
+        )
+        if not upload:
+            return jsonify({
+                "code": "INVALID_INPUT",
+                "error": "file is required (multipart field 'file')",
+            }), 400
+
+        # Read bytes once. We accept memory-based reads because the
+        # frontend's MediaRecorder upper bound + the route's
+        # MAX_USER_MEDIA_SIZE_MB cap keep us well under any
+        # workable streaming threshold.
+        try:
+            file_bytes = upload.read()
+        except Exception:
+            return jsonify({
+                "code": "FILE_READ_FAILED",
+                "error": "Could not read upload",
+            }), 400
+        if not file_bytes:
+            return jsonify({
+                "code": "FILE_EMPTY",
+                "error": "Empty upload payload",
+            }), 400
+
+        size_bytes = len(file_bytes)
+        max_mb = int(getattr(config, "MAX_USER_MEDIA_SIZE_MB", 200) or 200)
+        if size_bytes > max_mb * 1024 * 1024:
+            return jsonify({
+                "code": "FILE_TOO_LARGE",
+                "error": f"Upload exceeds {max_mb} MB limit",
+            }), 413
+
+        # File-name resolution: explicit form override → multipart
+        # filename → generic 'upload'. We sanitise via secure_filename
+        # so a hostile filename can't escape the R2 prefix.
+        raw_name = (
+            (request.form.get("filename") or "").strip()
+            or (upload.filename or "").strip()
+            or "upload"
+        )
+        safe_name = secure_filename(raw_name) or "upload"
+
+        # Content type — prefer the multipart's, fall back to a
+        # guess off the filename so an iOS upload that ships
+        # application/octet-stream still gets classified.
+        content_type = (upload.mimetype or "").strip().lower()
+        if not content_type or content_type == "application/octet-stream":
+            content_type = guess_media_content_type(safe_name)
+        kind = classify_media_kind(content_type)
+        if kind is None:
+            return jsonify({
+                "code": "UNSUPPORTED_MEDIA_TYPE",
+                "error": (
+                    "Only audio/* and video/* uploads are supported "
+                    f"(got {content_type or 'unknown'})"
+                ),
+            }), 415
+
+        # Session binding. We accept missing session_id (the chat
+        # might upload outside a session context in future), but
+        # if one is passed we verify ownership before threading it
+        # through — a user must not be able to attach files to
+        # someone else's session by guessing UUIDs.
+        user_id = request.user_id
+        session_id_raw = (
+            request.form.get("session_id")
+            or request.form.get("sessionId")
+            or ""
+        ).strip() or None
+        session_id: str | None = None
+        if session_id_raw:
+            if not _is_valid_uuid(session_id_raw):
+                return jsonify({
+                    "code": "INVALID_INPUT",
+                    "error": "session_id must be a valid UUID",
+                }), 400
+            try:
+                session_row = db.v2_get_session_by_id(session_id_raw) or {}
+            except Exception:
+                session_row = {}
+            if not session_row or str(session_row.get("user_id") or "") != str(user_id):
+                return jsonify({
+                    "code": "SESSION_NOT_FOUND",
+                    "error": "Session not found for this user",
+                }), 404
+            session_id = session_id_raw
+
+        # R2 key shape — exactly the path the spec asked for. The
+        # uuid suffix on the filename prevents collisions when a
+        # user uploads "video.mp4" three times to the same session.
+        path_session = session_id or "no-session"
+        r2_key = (
+            f"users/{user_id}/sessions/{path_session}/"
+            f"{_uuid.uuid4().hex[:8]}_{safe_name}"
+        )
+
+        try:
+            bucket = put_user_media_bytes(
+                key=r2_key, body=file_bytes, content_type=content_type,
+            )
+        except Exception as up_err:
+            logger.error(
+                "user/upload-media: R2 upload failed key=%s err=%s",
+                r2_key, up_err, exc_info=True,
+            )
+            sentry_sdk.capture_exception(up_err)
+            return jsonify({
+                "code": "STORAGE_ERROR",
+                "error": "Upload to media bucket failed",
+            }), 502
+
+        # Public URL cached when the bucket is public. For private
+        # buckets we leave r2_url=NULL and let the admin endpoint
+        # mint a signed URL on read.
+        public_url = user_media_public_url(r2_key)
+
+        row = db.create_user_uploaded_file(
+            user_id=str(user_id),
+            session_id=session_id,
+            r2_bucket=bucket,
+            r2_key=r2_key,
+            r2_url=public_url,
+            file_name=safe_name,
+            file_type=kind,
+            content_type=content_type,
+            file_size_bytes=size_bytes,
+        )
+        if not row:
+            logger.error(
+                "user/upload-media: DB insert returned None "
+                "user=%s key=%s", user_id, r2_key,
+            )
+            return jsonify({
+                "code": "DB_ERROR",
+                "error": "Upload succeeded but metadata write failed",
+            }), 500
+
+        # Treat the file like a completed live recording: flip the
+        # session into the admin review queue + dispatch the
+        # "New Session Awaiting Review" email. Failure-isolated;
+        # the upload still succeeds and the file is queryable in
+        # the admin Files tab even if the email send blips.
+        finalize_summary: dict | None = None
+        if session_id:
+            try:
+                from services.session_publish import (
+                    finalize_session_pending_admin_review,
+                )
+                finalize_summary = finalize_session_pending_admin_review(
+                    session_id=session_id, user_id=str(user_id),
+                )
+            except Exception as fp_err:
+                logger.warning(
+                    "user/upload-media: finalize handoff failed "
+                    "sid=%s err=%s", session_id, fp_err,
+                )
+
+        # The playback_url is what the frontend will actually use
+        # to render an <audio>/<video> element right now. Public
+        # URL wins; signed URL is the fallback. Always populated
+        # on a successful response — if both came back null the
+        # admin endpoint will still resolve it later, but we may
+        # as well hand the freshest one over now.
+        playback_url = public_url
+        if not playback_url:
+            from services.user_media_storage import presigned_get_user_media
+            playback_url = presigned_get_user_media(r2_key)
+
+        return jsonify({
+            "status": "ok",
+            "file": {
+                "id": row.get("id"),
+                "file_name": row.get("file_name"),
+                "file_type": row.get("file_type"),
+                "content_type": row.get("content_type"),
+                "size_bytes": row.get("file_size_bytes"),
+                "r2_url": row.get("r2_url"),
+                "playback_url": playback_url,
+                "session_id": row.get("session_id"),
+                "created_at": row.get("created_at"),
+            },
+            "finalize": finalize_summary,
+        }), 201
+
+    except Exception as e:
+        logger.error("user/upload-media failed: %s", e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({
+            "code": "V2_ERROR",
+            "error": "Media upload failed",
+        }), 500
+
+
 @v2_bp.route("/user/snippets/<snippet_id>/label", methods=["POST"])
 @require_auth
 def v2_user_snippet_label(snippet_id):
@@ -13532,6 +13792,106 @@ def v2_admin_update_user_settings(user_id):
 ############################################################################
 # Admin: User interview timeline
 ############################################################################
+
+@v2_bp.route("/admin/users/<user_id>/files", methods=["GET"])
+@require_admin
+def v2_admin_get_user_files(user_id):
+    """Files uploaded by ``user_id`` (audio + video), newest first.
+
+    Backs the admin user-detail "Files" tab. Each row is decorated
+    with a ``playback_url`` so the admin UI can drop straight into
+    an ``<audio>`` / ``<video>`` element without a second round-trip:
+      - Public bucket → cached ``r2_url`` from the row
+      - Private bucket → fresh signed URL minted here (default
+        TTL: SIGNED_URL_EXPIRY_SECONDS, configurable via
+        ?expires_in=N up to 7 days)
+
+    Auth: admin only (``@require_admin``). The user_id in the path
+    is the user whose files we list — distinct from the admin
+    making the request.
+
+    Response (200)::
+
+        {
+          "user_id": "<uuid>",
+          "files": [
+            {
+              "id": "<uuid>",
+              "session_id": "<uuid>" | null,
+              "file_name": "<original>",
+              "file_type": "audio" | "video",
+              "content_type": "video/mp4" | ...,
+              "size_bytes": 12345678,
+              "r2_url": "https://..." | null,
+              "playback_url": "https://...",
+              "created_at": "<iso8601>"
+            },
+            ...
+          ],
+          "total": N
+        }
+    """
+    try:
+        if not _is_valid_uuid(user_id):
+            return jsonify({
+                "code": "INVALID_INPUT",
+                "error": "user_id must be a valid UUID",
+            }), 400
+
+        try:
+            expires_in = int(
+                request.args.get("expires_in")
+                or config.SIGNED_URL_EXPIRY_SECONDS
+            )
+        except (TypeError, ValueError):
+            expires_in = config.SIGNED_URL_EXPIRY_SECONDS
+
+        rows = db.list_user_uploaded_files_for_user(user_id) or []
+
+        from services.user_media_storage import presigned_get_user_media
+
+        files: list[dict] = []
+        for r in rows:
+            # Cached public URL wins when present (zero round-trip
+            # on R2 public buckets). Otherwise mint a fresh signed
+            # URL per response — TTL is bounded by the helper to
+            # 60s..7d so a missing/garbage query param can't
+            # produce a URL that lives forever.
+            playback_url = (r.get("r2_url") or "").strip() or None
+            if not playback_url:
+                key = (r.get("r2_key") or "").strip()
+                if key:
+                    playback_url = presigned_get_user_media(
+                        key, expires_in=expires_in,
+                    )
+            files.append({
+                "id": r.get("id"),
+                "session_id": r.get("session_id"),
+                "file_name": r.get("file_name"),
+                "file_type": r.get("file_type"),
+                "content_type": r.get("content_type"),
+                "size_bytes": r.get("file_size_bytes"),
+                "r2_url": r.get("r2_url"),
+                "playback_url": playback_url,
+                "created_at": r.get("created_at"),
+            })
+
+        return jsonify({
+            "user_id": user_id,
+            "files": files,
+            "total": len(files),
+        }), 200
+
+    except Exception as e:
+        logger.error(
+            "admin/users/<id>/files failed: %s", e, exc_info=True,
+        )
+        sentry_sdk.capture_exception(e)
+        return jsonify({
+            "code": "V2_ERROR",
+            "error": "Failed to fetch user files",
+        }), 500
+
 
 @v2_bp.route("/admin/users/<user_id>/timeline", methods=["GET"])
 @require_admin
