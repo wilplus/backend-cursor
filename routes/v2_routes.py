@@ -10951,6 +10951,150 @@ def v2_user_mirror_generate():
         }), 500
 
 
+@v2_bp.route("/chat/session-state", methods=["GET"])
+@require_auth
+def v2_chat_session_state():
+    """Drive the /chat route's UI state for a returning user.
+
+    The frontend killed the /results page; /chat is now the
+    single destination after onboarding. This endpoint tells it
+    what mode to render in.
+
+    State machine::
+
+        NO_SESSION     — user has no v2_sessions row at all (fresh
+                          signup, never recorded). Frontend should
+                          route them into the onboarding interview.
+
+        PENDING_COACH  — latest session exists but
+                          results_published_at IS NULL (admin
+                          hasn't reviewed + published yet).
+                          Frontend renders the waiting / FAQ chat;
+                          POST /v2/chat/query is fully usable
+                          against the Master Document in this
+                          state.
+
+        REVIEW_LOOP    — latest session has been published. Payload
+                          includes the snippets + admin_comments
+                          so the frontend can drop straight into
+                          the snippet-review chat without a second
+                          round-trip to /v2/user/results/<id>.
+
+    Response (200)::
+
+        {
+          "state": "NO_SESSION" | "PENDING_COACH" | "REVIEW_LOOP",
+          "session_id": "<uuid>" | null,
+          "created_at": "<iso8601>" | null,
+          "results_published_at": "<iso8601>" | null,
+
+          // present iff state == "REVIEW_LOOP"
+          "snippets":         [ ... full snippet objects, see below ],
+          "kpi_score":        number | null,
+          "charisma_profile": { ... } | null,
+          "ai_summary":       string | null
+        }
+
+    Each REVIEW_LOOP snippet matches the shape /user/results/<id>
+    returns so the frontend can reuse its existing renderer
+    without a second translation layer.
+
+    Why a separate endpoint when /user/sessions/current exists:
+    /sessions/current emits the legacy 5-status vocabulary
+    (no_session / processing / pending_review / completed /
+    error). The frontend's /chat router wants the new
+    3-state vocabulary explicitly + the snippet payload inline.
+    We could overload /sessions/current, but doing that risks
+    breaking the homework + admin routing surfaces that read
+    its current shape. A dedicated endpoint is cheaper.
+    """
+    try:
+        user_id = request.user_id
+        session = db.v2_get_latest_session_for_user(user_id)
+
+        if not session:
+            return jsonify({
+                "state": "NO_SESSION",
+                "session_id": None,
+                "created_at": None,
+                "results_published_at": None,
+            }), 200
+
+        session_id = str(session.get("id"))
+        published_at = session.get("results_published_at")
+        base = {
+            "session_id": session_id,
+            "created_at": session.get("created_at"),
+            "results_published_at": published_at,
+        }
+
+        if not published_at:
+            # Admin hasn't clicked Publish yet. The /v2/chat/query
+            # endpoint is the right surface for the user to ask
+            # questions while they wait — same Master-Document
+            # grounding, no special-casing needed here.
+            return jsonify({"state": "PENDING_COACH", **base}), 200
+
+        # REVIEW_LOOP — load published snippets in the same shape
+        # /user/results/<id> uses, so the frontend renderer is
+        # reusable. We resolve audio URLs the same way too: the
+        # admin Files tab, the /results page, and this endpoint all
+        # serve the same playable URL.
+        try:
+            raw_snippets = db.v2_get_results_snippets_for_session(
+                session_id, user_id,
+            ) or []
+        except Exception as snip_err:
+            logger.warning(
+                "chat/session-state: snippet load failed sid=%s err=%s",
+                session_id, snip_err,
+            )
+            raw_snippets = []
+
+        snippets = [
+            {
+                "id": s.get("id"),
+                "snippet_type": s.get("snippet_type"),
+                "admin_comment": s.get("admin_comment"),
+                "audio_url": _resolve_snippet_audio_url(s),
+                "transcript": s.get("transcript"),
+                "turn_number": s.get("turn_number"),
+                "question_text": s.get("question_text"),
+                "question_tone": s.get("question_tone"),
+                "start_offset_ms": s.get("start_offset_ms") or 0,
+                "duration_ms": s.get("duration_ms"),
+                "metrics": {
+                    "wpm": s.get("wpm"),
+                    "fillers": s.get("fillers"),
+                    "pause_ms": s.get("pause_ms"),
+                    "dynamic_db": s.get("dynamic_db"),
+                    "pitch_center": s.get("pitch_center"),
+                    "energy": s.get("energy"),
+                },
+            }
+            for s in raw_snippets
+        ]
+
+        return jsonify({
+            "state": "REVIEW_LOOP",
+            **base,
+            "snippets": snippets,
+            "kpi_score": session.get("kpi_score"),
+            "charisma_profile": session.get("charisma_profile"),
+            "ai_summary": session.get("ai_task_alignment_comment"),
+        }), 200
+
+    except Exception as e:
+        logger.error(
+            "chat/session-state failed: %s", e, exc_info=True,
+        )
+        sentry_sdk.capture_exception(e)
+        return jsonify({
+            "code": "V2_ERROR",
+            "error": "Failed to evaluate session state",
+        }), 500
+
+
 @v2_bp.route("/chat/query", methods=["POST"])
 @require_auth
 def v2_chat_query():
