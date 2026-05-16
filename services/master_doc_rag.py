@@ -73,6 +73,10 @@ Because public speaking is, in the end, about being in public: real rooms, real 
 We're honest that this part takes time. A real community needs local leaders and advocates, and that doesn't appear overnight. But it will happen — and how fast it reaches you depends partly on you. Wait for a group or help start one: your call. Our commitment is the other half — we'll do everything we can to help you find a group near you, or form one where none exists yet.
 That's the arrangement. We give you the tool and the push; the real growth happens out there, with people, where it always has.
 
+Can I just have a 1-on-1 call with you?
+Yes — that's possible.We'll be honest about our bias, though: for most work we deliberately prefer asynchronous. It's not a limitation, it's the method — it gives a human time to actually analyse what you sent rather than react to it live, and it's what makes the feedback worth waiting a few hours for. So if your situation fits the normal flow, async will usually serve you better than a call.But some cases genuinely call for a live conversation — and when they do, we're here for it. If that's you, book a time directly:Book a 60-minute 1-on-1 →Either way, you reach a real person. The call is just a different door into the same thing.
+https://cal.com/artur-willonski-zywzu7/lesson?duration=60
+
 Q&A
 
 Why is it asynchronous (meaning: not instant answers etc.)?
