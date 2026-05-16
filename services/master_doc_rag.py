@@ -31,6 +31,7 @@ Public surface
 """
 from __future__ import annotations
 
+import json
 import logging
 from typing import Any, Optional
 
@@ -40,6 +41,40 @@ logger = logging.getLogger(__name__)
 
 _MODEL = "gpt-4o-mini"
 _MAX_TOKENS = 600
+
+
+# Structured-output contract — the LLM must return JSON matching
+# this schema. ``answer`` is what the user sees; ``show_upload_ui``
+# is the per-turn flag the frontend reads to reveal/hide the
+# upload dropzone in place of the microphone affordance.
+_RESPONSE_SCHEMA: dict[str, Any] = {
+    "name": "chat_query_response",
+    "schema": {
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["answer", "show_upload_ui"],
+        "properties": {
+            "answer": {
+                "type": "string",
+                "maxLength": 1200,
+                "description": (
+                    "What the user sees in the chat bubble. Under "
+                    "75 chars except for direct Master-Document "
+                    "quote answers (RULE F)."
+                ),
+            },
+            "show_upload_ui": {
+                "type": "boolean",
+                "description": (
+                    "TRUE on the turn where the user expressed "
+                    "intent to upload audio/video; FALSE on every "
+                    "other turn. Per-turn signal, not session state."
+                ),
+            },
+        },
+    },
+    "strict": True,
+}
 
 
 # The verbatim Master Document. Triple-quoted string so paragraph
@@ -149,11 +184,47 @@ _SYSTEM_PROMPT = (
     "answering user questions using the verbatim text from the "
     "Master Document.\n"
     "    In practice: chit-chat, acknowledgements, graceful pivots, "
-    "    and \"yes / no / thanks\" replies stay under 75 chars. "
-    "    Substantive answers grounded in the Master Document "
-    "    (philosophy, science explainer, pricing, community vision, "
-    "    etc.) can run as long as they need to so the document's "
-    "    own phrasing comes through faithfully.\n"
+    "    \"yes / no / thanks\" replies, and capability declines "
+    "    stay under 75 chars. Substantive answers grounded in the "
+    "    Master Document (philosophy, science explainer, pricing, "
+    "    community vision, etc.) can run as long as they need to "
+    "    so the document's own phrasing comes through faithfully.\n"
+    "\n"
+    "  RULE G — UPLOAD-INTENT DETECTION:\n"
+    "    When the user expresses intent to upload audio or video "
+    "    files (\"can I upload an audio file?\", \"I want to send a "
+    "    video\", \"how do I attach my recording?\", \"where do I "
+    "    drop a file?\", any phrasing that maps to 'I want to give "
+    "    you a file'), set show_upload_ui=true in your JSON "
+    "    response AND give a brief confirming answer (under 75 "
+    "    chars) such as \"Yes — you can drop an audio or video "
+    "    file right here.\". The frontend hides the upload "
+    "    affordance by default and reveals it on this flag, so "
+    "    setting it is what makes the user's next click work.\n"
+    "    On every OTHER turn (not upload intent), set "
+    "    show_upload_ui=false. Do NOT leave it true across "
+    "    turns — it's a per-turn signal, not a session state.\n"
+    "\n"
+    "  RULE H — CAPABILITY BOUNDARIES (POLITE DECLINE):\n"
+    "    The app's surface is voice-only, asynchronous, and "
+    "    browser-based. It CANNOT do any of:\n"
+    "      • access the user's phone camera, microphone hardware, "
+    "        GPS, or any other device sensor\n"
+    "      • make phone calls, send SMS, send email on the user's "
+    "        behalf, or post to any external service\n"
+    "      • read or modify the user's calendar, contacts, photo "
+    "        roll, or files outside what they upload\n"
+    "      • transcribe or analyse audio in real time during the "
+    "        chat (recording is async — see the Master Document)\n"
+    "      • do anything not described in the Master Document\n"
+    "    When the user asks for ANY of those: DO NOT pretend the "
+    "    capability exists, DO NOT borrow Master-Document phrasing "
+    "    to disguise the decline. Politely say no in ≤75 chars and "
+    "    pivot back to voice — match this template's energy:\n"
+    "      \"No, unfortunately I cannot access your phone's camera. "
+    "       Let's get back to your voice!\"\n"
+    "    Out-of-scope but NOT capability-related questions still "
+    "    follow RULE B (pivot to a real Master-Document fact).\n"
     "═════════════════════════════════════════════════\n"
     "\n"
     "MASTER DOCUMENT (verbatim — your only source of truth):\n"
@@ -169,14 +240,21 @@ def answer_question(
     question: str,
     *,
     history: Optional[list[dict]] = None,
-) -> tuple[str, dict[str, Any]]:
+) -> tuple[dict[str, Any], dict[str, Any]]:
     """Run one LLM call grounded in the Master Document.
 
-    Returns ``(answer_text, debug)``. On any failure we still
-    return a usable answer (a polite fallback that itself pulls
-    from the Master Document) and signal the error in
-    ``debug["error"]`` so the route can log without bothering
-    the user.
+    Returns ``(payload, debug)`` where ``payload`` always carries::
+
+        {
+          "answer":         str,   # the chat-bubble text
+          "show_upload_ui": bool,  # per-turn upload-intent signal
+        }
+
+    On any failure path we still hand back a shape-complete
+    payload (polite document-grounded fallback) so the route never
+    has to special-case the error envelope. ``debug["error"]`` is
+    set on failure so the route can log without bothering the
+    user.
 
     ``history`` is an optional list of prior {role, content}
     dicts the caller can pass when the FAQ chat is multi-turn.
@@ -186,9 +264,14 @@ def answer_question(
     q = (question or "").strip()
     if not q:
         return (
-            "What would you like to know? You can ask about the "
-            "philosophy, the science behind the voice work, what "
-            "the system does, who's behind it, or the pricing.",
+            {
+                "answer": (
+                    "What would you like to know? You can ask "
+                    "about the philosophy, the science, pricing, "
+                    "or who's behind it."
+                ),
+                "show_upload_ui": False,
+            },
             {"error": "empty_question"},
         )
 
@@ -208,9 +291,9 @@ def answer_question(
         service = OpenAIService()
     except Exception as e:
         logger.warning("master_doc_rag: openai import failed: %s", e)
-        return (_fallback_answer(), {"error": "llm_unavailable"})
+        return (_fallback_payload(), {"error": "llm_unavailable"})
     if not service.client:
-        return (_fallback_answer(), {"error": "llm_unavailable"})
+        return (_fallback_payload(), {"error": "llm_unavailable"})
 
     try:
         response = service.client.chat.completions.create(
@@ -218,29 +301,60 @@ def answer_question(
             messages=messages,
             temperature=0.4,
             max_tokens=_MAX_TOKENS,
+            response_format={
+                "type": "json_schema",
+                "json_schema": _RESPONSE_SCHEMA,
+            },
         )
         raw = (response.choices[0].message.content or "").strip()
     except Exception as e:
         logger.warning("master_doc_rag: llm call failed: %s", e)
-        return (_fallback_answer(), {"error": "llm_error", "detail": str(e)})
+        return (
+            _fallback_payload(),
+            {"error": "llm_error", "detail": str(e)},
+        )
 
     if not raw:
-        return (_fallback_answer(), {"error": "empty_response"})
+        return (_fallback_payload(), {"error": "empty_response"})
 
-    return (raw, {"model": _MODEL, "history_used": len(messages) - 2})
+    try:
+        parsed = json.loads(raw)
+    except (json.JSONDecodeError, ValueError):
+        logger.warning(
+            "master_doc_rag: llm output not JSON: %r", raw[:300],
+        )
+        return (_fallback_payload(), {"error": "parse_error"})
 
+    answer = (parsed.get("answer") or "").strip()
+    if not answer:
+        return (_fallback_payload(), {"error": "empty_answer"})
 
-def _fallback_answer() -> str:
-    """Polite, document-grounded fallback when the LLM is unavailable.
+    # Defensive coercion — strict schema should guarantee bool,
+    # but the wire could in theory carry truthy strings on a model
+    # regression. Normalise to the two valid values only.
+    show_upload_ui = bool(parsed.get("show_upload_ui"))
 
-    Pulls verbatim phrasing from the Master Document's opening so
-    the answer still feels on-brand even when we couldn't get a
-    fresh LLM response.
-    """
     return (
-        "I'm having trouble pulling the answer together right now. "
-        "What I can tell you is that this system is mostly human-led "
-        "and scaled by AI — at the core, a real coach listens to "
-        "your recordings and shapes what you work on next. Try "
-        "again in a moment, or ask something more specific."
+        {"answer": answer, "show_upload_ui": show_upload_ui},
+        {"model": _MODEL, "history_used": len(messages) - 2},
     )
+
+
+def _fallback_payload() -> dict[str, Any]:
+    """Polite, document-grounded fallback payload when the LLM is
+    unavailable / failed / returned unparseable output.
+
+    Always shape-complete so the route handler never has to special
+    -case the error envelope. show_upload_ui=False since we
+    couldn't actually detect intent.
+    """
+    return {
+        "answer": (
+            "I'm having trouble pulling the answer together right "
+            "now. The system is mostly human-led and scaled by AI "
+            "— a real coach listens to your recordings and shapes "
+            "what you work on next. Try again in a moment, or "
+            "ask something more specific."
+        ),
+        "show_upload_ui": False,
+    }

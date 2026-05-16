@@ -11098,14 +11098,13 @@ def v2_chat_session_state():
 @v2_bp.route("/chat/query", methods=["POST"])
 @require_auth
 def v2_chat_query():
-    """Master-Document-grounded FAQ chat.
+    """Unified chat orchestrator for the /chat page.
 
-    Powers the post-signup "ask anything about the product" surface.
-    The LLM is locked to a verbatim Master Document (see
-    services.master_doc_rag) — it cannot pull in outside knowledge
-    and cannot hallucinate features / prices / claims that aren't
-    in the doc. Out-of-scope questions get a graceful pivot back
-    to a real fact from the document.
+    Powers the post-signup single-thread chat surface. The LLM
+    runs under services.master_doc_rag with the verbatim Master
+    Document as its only source of truth, plus capability-boundary
+    + upload-intent rules. Returns structured output the frontend
+    uses to drive UI state (showing/hiding the upload dropzone).
 
     Body::
 
@@ -11119,9 +11118,22 @@ def v2_chat_query():
 
     Responses::
 
-        200 { "answer": "...", "debug": {...} }
+        200 {
+              "answer":         str,    # the chat bubble text
+              "show_upload_ui": bool,   # per-turn upload affordance
+                                         # toggle (RULE G)
+              "debug":          {...}   # model + history_used / error
+            }
         400 INVALID_INPUT — question missing or not a string
         500 V2_ERROR
+
+    show_upload_ui semantics:
+      • TRUE on the turn where the user expressed intent to upload
+        audio / video (the LLM detects "can I send a file?",
+        "I want to upload my recording", etc.)
+      • FALSE on every other turn
+      • Per-turn signal — frontend must NOT cache it across turns;
+        the answer carries the current state.
 
     Why @require_auth: the spec says this is the "after signup"
     surface. Pre-signup users get the on-rails interview flow;
@@ -11146,10 +11158,11 @@ def v2_chat_query():
             history = None
 
         from services.master_doc_rag import answer_question
-        answer, debug = answer_question(question.strip(), history=history)
+        payload, debug = answer_question(question.strip(), history=history)
 
         return jsonify({
-            "answer": answer,
+            "answer": payload.get("answer", ""),
+            "show_upload_ui": bool(payload.get("show_upload_ui", False)),
             "debug": debug,
         }), 200
 
