@@ -308,17 +308,23 @@ def run_smoke_test(
     user_email: str,
     snippet_id_override: Optional[str],
     dry_run: bool,
+    service_role: bool,
 ) -> int:
     """Returns exit code: 0 = all gates passed, non-zero = at least one failed."""
+    mode_label = (
+        "DRY RUN (no writes)" if dry_run
+        else "LIVE — service-role (bypasses Flask auth + body parsing)"
+        if service_role
+        else "LIVE — HTTP (full route path)"
+    )
     print(f"{Color.BOLD}RLHF capture smoke test{Color.END}")
     print(f"  backend: {backend_url}")
     print(f"  user:    {user_email}")
-    print(f"  mode:    {'DRY RUN (no writes)' if dry_run else 'LIVE'}")
+    print(f"  mode:    {mode_label}")
 
     # ── Preflight: catch obviously-bad JWTs before any network call.
-    #    Done outside dry-run too, because a bad JWT means the LIVE
-    #    run will fail with a confusing httpx encoding error.
-    if not dry_run:
+    #    Skipped in service-role mode (no JWT needed there).
+    if not dry_run and not service_role:
         jwt_error = _validate_jwt_shape(admin_jwt)
         if jwt_error:
             print(f"\n{Color.RED}{Color.BOLD}JWT REJECTED — {jwt_error}{Color.END}")
@@ -327,6 +333,10 @@ def run_smoke_test(
                 "log in → DevTools → Application → Local Storage → "
                 "key 'sb-<project>-auth-token' → copy the access_token "
                 "value (it's nested JSON, the long string under that key)."
+            )
+            print(
+                f"\n  OR re-run with {Color.CYAN}--service-role{Color.END} "
+                "to skip the route layer and write via db helpers directly."
             )
             return 2
 
@@ -414,7 +424,6 @@ def run_smoke_test(
         return 0
 
     # ── Step 1 — Admin saves an edited comment with acceptance_mode
-    _step(1, "POST /v2/admin/snippets/<id>/comment")
     test_comment_text = (
         "[SMOKE TEST "
         + datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -423,31 +432,69 @@ def run_smoke_test(
     coach_label = (
         "charisma" if pick["snippet_type"] != "stress" else "stress"
     )
-    url1 = f"{backend_url.rstrip('/')}/v2/admin/snippets/{pick['snippet_id']}/comment"
-    body1 = {
-        "admin_comment": test_comment_text,
-        "snippet_type": coach_label,
-        "acceptance_mode": "admin_corrected",
-    }
-    resp1, status1 = _post(url1, admin_jwt, body1, label="comment endpoint")
-    step1_ok = status1 == 200
-    if not step1_ok:
-        _fail(
-            "comment endpoint",
-            f"status={status1} body={json.dumps(resp1)[:300]}",
-        )
-        fail_count += 1
-    else:
-        _ok("comment endpoint", f"status=200")
-        returned_mode = (resp1 or {}).get("acceptance_mode")
-        if returned_mode == "admin_corrected":
-            _ok("response acceptance_mode", "admin_corrected echoed back")
-        else:
+
+    if service_role:
+        _step(1, "db.update_snippet_comment(...) [service-role, no HTTP]")
+        try:
+            updated_row = db.update_snippet_comment(
+                snippet_id=pick["snippet_id"],
+                admin_comment=test_comment_text,
+                snippet_type=coach_label,
+                admin_user_id=user_id,
+                acceptance_mode="admin_corrected",
+            )
+        except Exception as e:
+            _fail("db.update_snippet_comment", f"raised: {e}")
+            updated_row = None
+
+        step1_ok = updated_row is not None
+        if not step1_ok:
             _fail(
-                "response acceptance_mode",
-                f"expected 'admin_corrected' got {returned_mode!r}",
+                "db.update_snippet_comment",
+                "returned None — see service log above",
             )
             fail_count += 1
+        else:
+            _ok("db.update_snippet_comment", "row written")
+            returned_mode = updated_row.get("admin_comment_acceptance_mode")
+            if returned_mode == "admin_corrected":
+                _ok(
+                    "row acceptance_mode",
+                    "admin_corrected on returned row",
+                )
+            else:
+                _fail(
+                    "row acceptance_mode",
+                    f"expected 'admin_corrected' got {returned_mode!r}",
+                )
+                fail_count += 1
+    else:
+        _step(1, "POST /v2/admin/snippets/<id>/comment")
+        url1 = f"{backend_url.rstrip('/')}/v2/admin/snippets/{pick['snippet_id']}/comment"
+        body1 = {
+            "admin_comment": test_comment_text,
+            "snippet_type": coach_label,
+            "acceptance_mode": "admin_corrected",
+        }
+        resp1, status1 = _post(url1, admin_jwt, body1, label="comment endpoint")
+        step1_ok = status1 == 200
+        if not step1_ok:
+            _fail(
+                "comment endpoint",
+                f"status={status1} body={json.dumps(resp1)[:300]}",
+            )
+            fail_count += 1
+        else:
+            _ok("comment endpoint", f"status=200")
+            returned_mode = (resp1 or {}).get("acceptance_mode")
+            if returned_mode == "admin_corrected":
+                _ok("response acceptance_mode", "admin_corrected echoed back")
+            else:
+                _fail(
+                    "response acceptance_mode",
+                    f"expected 'admin_corrected' got {returned_mode!r}",
+                )
+                fail_count += 1
 
     # ── Step 2 — Verify snippet column updated
     _step(2, "Verify charisma_snippets.admin_comment_acceptance_mode")
@@ -506,65 +553,162 @@ def run_smoke_test(
             fail_count += 1
 
     # ── Step 3 — Publish the session with the 5-question array
-    _step(3, "POST /v2/admin/sessions/<id>/publish")
-    url3 = (
-        f"{backend_url.rstrip('/')}/v2/admin/sessions/"
-        f"{pick['session_id']}/publish"
-    )
     test_session_comment = (
         f"[SMOKE TEST {datetime.now(timezone.utc).isoformat()}] "
         "Session-level test comment from smoke_rlhf_capture.py"
     )
-    body3 = {
-        "final_human_comment": test_session_comment,
-        "final_human_next_questions": [
-            {
-                "position": 1,
-                "text": "Smoke test Q1 — ground emotion?",
-                "intent_tag": "ground-emotion",
-            },
-            {
-                "position": 2,
-                "text": "Smoke test Q2 — test application?",
-                "intent_tag": "test-application",
-            },
-        ],
-    }
-    resp3, status3 = _post(url3, admin_jwt, body3, label="publish endpoint")
-    if status3 != 200:
-        _fail(
-            "publish endpoint",
-            f"status={status3} body={json.dumps(resp3)[:300]}",
-        )
-        fail_count += 1
-    else:
-        _ok("publish endpoint", "status=200")
-        rlhf_logged = (resp3 or {}).get("rlhf_logged")
-        rlhf_rows = (resp3 or {}).get("rlhf_rows_written")
-        was_corrected = (resp3 or {}).get("was_corrected")
-        if rlhf_logged is True:
-            _ok("response.rlhf_logged", "True")
-        else:
-            _fail("response.rlhf_logged", f"got {rlhf_logged!r}")
+    test_questions = [
+        {
+            "position": 1,
+            "text": "Smoke test Q1 — ground emotion?",
+            "intent_tag": "ground-emotion",
+        },
+        {
+            "position": 2,
+            "text": "Smoke test Q2 — test application?",
+            "intent_tag": "test-application",
+        },
+    ]
+
+    if service_role:
+        _step(3, "Replicate publish handler via db helpers [service-role]")
+        # Mirror the route's POST /admin/sessions/<id>/publish steps:
+        # stamp results_published_at → flip status → persist final_
+        # human_next_questions → write 1 session-level row +
+        # N per-position rows to admin_annotations_log. Skips the
+        # results-ready email and the route's body-shape validation.
+        rlhf_rows_written = 0
+
+        try:
+            published_row = db.v2_publish_session_results(pick["session_id"])
+            if published_row:
+                _ok("v2_publish_session_results", "results_published_at stamped")
+            else:
+                _fail("v2_publish_session_results", "returned None")
+                fail_count += 1
+        except Exception as e:
+            _fail("v2_publish_session_results", f"raised: {e}")
             fail_count += 1
-        if isinstance(rlhf_rows, int) and rlhf_rows >= 3:
+
+        try:
+            db.v2_update_session_status_unscoped(pick["session_id"], "completed")
+            _ok("status flip", "set to 'completed'")
+        except Exception as e:
+            _fail("status flip", f"raised: {e}")
+            fail_count += 1
+
+        try:
+            db.set_session_final_next_questions(
+                pick["session_id"], test_questions,
+            )
+            _ok("set_session_final_next_questions", "array persisted")
+        except Exception as e:
+            _fail("set_session_final_next_questions", f"raised: {e}")
+            fail_count += 1
+
+        # Session-level row
+        try:
+            sess_row = db.insert_admin_annotation_log(
+                user_id=user_id,
+                session_id=pick["session_id"],
+                ai_predicted_comment=None,
+                ai_predicted_question=None,
+                final_human_comment=test_session_comment,
+                final_human_question=None,
+                was_corrected=True,
+            )
+            if sess_row is not None:
+                rlhf_rows_written += 1
+        except Exception as e:
+            _fail("admin_annotations_log session-row", f"raised: {e}")
+            fail_count += 1
+
+        # Per-position rows
+        for q in test_questions:
+            try:
+                row = db.insert_admin_annotation_log(
+                    user_id=user_id,
+                    session_id=pick["session_id"],
+                    ai_predicted_comment=None,
+                    ai_predicted_question=None,
+                    final_human_comment=None,
+                    final_human_question=q["text"],
+                    was_corrected=True,
+                    question_position=q["position"],
+                    intent_tag=q["intent_tag"],
+                )
+                if row is not None:
+                    rlhf_rows_written += 1
+            except Exception as e:
+                _fail(
+                    f"admin_annotations_log pos={q['position']}",
+                    f"raised: {e}",
+                )
+                fail_count += 1
+
+        if rlhf_rows_written >= 3:
             _ok(
-                "response.rlhf_rows_written",
-                f"{rlhf_rows} (≥ 3 expected: 1 session + 2 positions)",
+                "admin_annotations_log rows written",
+                f"{rlhf_rows_written} (1 session + 2 positions)",
             )
         else:
             _fail(
-                "response.rlhf_rows_written",
-                f"expected ≥3 got {rlhf_rows!r}",
+                "admin_annotations_log rows written",
+                f"only {rlhf_rows_written} of 3 expected landed",
             )
             fail_count += 1
-        if was_corrected is True:
-            _ok("response.was_corrected", "True (admin diffed)")
-        else:
-            _warn(
-                f"response.was_corrected = {was_corrected!r} "
-                "(may be False if no AI prediction existed to diff against)"
+
+        _info(
+            "service-role mode: skipped the route's "
+            "record_snippet_publish_annotations() call. Step 5 "
+            "(admin_annotation_events check) will show 0 fresh rows — "
+            "that's expected in this mode, not a failure."
+        )
+    else:
+        _step(3, "POST /v2/admin/sessions/<id>/publish")
+        url3 = (
+            f"{backend_url.rstrip('/')}/v2/admin/sessions/"
+            f"{pick['session_id']}/publish"
+        )
+        body3 = {
+            "final_human_comment": test_session_comment,
+            "final_human_next_questions": test_questions,
+        }
+        resp3, status3 = _post(url3, admin_jwt, body3, label="publish endpoint")
+        if status3 != 200:
+            _fail(
+                "publish endpoint",
+                f"status={status3} body={json.dumps(resp3)[:300]}",
             )
+            fail_count += 1
+        else:
+            _ok("publish endpoint", "status=200")
+            rlhf_logged = (resp3 or {}).get("rlhf_logged")
+            rlhf_rows = (resp3 or {}).get("rlhf_rows_written")
+            was_corrected = (resp3 or {}).get("was_corrected")
+            if rlhf_logged is True:
+                _ok("response.rlhf_logged", "True")
+            else:
+                _fail("response.rlhf_logged", f"got {rlhf_logged!r}")
+                fail_count += 1
+            if isinstance(rlhf_rows, int) and rlhf_rows >= 3:
+                _ok(
+                    "response.rlhf_rows_written",
+                    f"{rlhf_rows} (≥ 3 expected: 1 session + 2 positions)",
+                )
+            else:
+                _fail(
+                    "response.rlhf_rows_written",
+                    f"expected ≥3 got {rlhf_rows!r}",
+                )
+                fail_count += 1
+            if was_corrected is True:
+                _ok("response.was_corrected", "True (admin diffed)")
+            else:
+                _warn(
+                    f"response.was_corrected = {was_corrected!r} "
+                    "(may be False if no AI prediction existed to diff against)"
+                )
 
     # Give Supabase a moment to settle (rare race on subsequent reads)
     time.sleep(0.5)
@@ -668,6 +812,14 @@ def run_smoke_test(
                 f"  field_name={r.get('field_name')!r}  "
                 f"chip={r.get('reason_chip')!r}"
             )
+    elif service_role:
+        _warn(
+            "admin_annotation_events fresh rows = 0 — EXPECTED in "
+            "service-role mode (we bypassed the route handler that "
+            "calls record_snippet_publish_annotations). To exercise "
+            "this gate, re-run without --service-role and with a real "
+            "admin JWT."
+        )
     else:
         _fail(
             "admin_annotation_events fresh rows",
@@ -727,14 +879,26 @@ def main() -> int:
         action="store_true",
         help="Resolve snippet + print plan, but do not POST anything",
     )
+    parser.add_argument(
+        "--service-role",
+        action="store_true",
+        help=(
+            "Skip the Flask route layer (no JWT needed). Calls db "
+            "helpers directly via SUPABASE_SERVICE_ROLE_KEY. Tests "
+            "the data path end-to-end; does NOT exercise route auth "
+            "or body validation, and Step 5 (admin_annotation_events) "
+            "will show 0 fresh rows since publish-time capture is "
+            "the route's job."
+        ),
+    )
     args = parser.parse_args()
 
-    if not args.admin_jwt:
+    if not args.admin_jwt and not args.service_role and not args.dry_run:
         print(
-            f"{Color.RED}ERROR{Color.END} — admin JWT required. Pass "
-            "--admin-jwt or set ADMIN_JWT. Grab the token from your "
-            "admin browser session (dev tools → application → "
-            "supabase storage).",
+            f"{Color.RED}ERROR{Color.END} — pass --admin-jwt / "
+            "ADMIN_JWT env, OR --service-role to bypass the route "
+            "layer entirely. --dry-run also works without either "
+            "(no writes).",
             file=sys.stderr,
         )
         return 2
@@ -746,6 +910,7 @@ def main() -> int:
             user_email=args.user_email,
             snippet_id_override=args.snippet_id,
             dry_run=args.dry_run,
+            service_role=args.service_role,
         )
     except KeyboardInterrupt:
         print("\nInterrupted.", file=sys.stderr)
