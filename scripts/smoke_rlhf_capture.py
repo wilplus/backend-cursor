@@ -87,6 +87,41 @@ def _step(n: int, title: str) -> None:
     print(f"\n{Color.BOLD}── Step {n} — {title}{Color.END}")
 
 
+def _summarize_and_exit(
+    fail_count: int,
+    pick: dict,
+    *,
+    additional_note: str = "",
+) -> None:
+    """Print the final summary block. Used both by the normal end-of-
+    run path and by mid-run early-exits when an earlier gate's
+    failure makes later gates meaningless."""
+    print()
+    if fail_count == 0:
+        print(
+            f"{Color.GREEN}{Color.BOLD}ALL GATES PASSED{Color.END}  "
+            f"({Color.GREEN}0 failures{Color.END})"
+        )
+        return
+    print(
+        f"{Color.RED}{Color.BOLD}{fail_count} GATE(S) FAILED{Color.END}"
+    )
+    if additional_note:
+        print(f"  {additional_note}")
+    print("\n  Inspect manually:")
+    print(
+        f"  SELECT * FROM charisma_snippets WHERE id = '{pick['snippet_id']}';"
+    )
+    print(
+        f"  SELECT * FROM admin_annotation_events WHERE session_id = "
+        f"'{pick['session_id']}' ORDER BY created_at DESC LIMIT 10;"
+    )
+    print(
+        f"  SELECT * FROM admin_annotations_log WHERE session_id = "
+        f"'{pick['session_id']}' ORDER BY created_at DESC LIMIT 10;"
+    )
+
+
 # ── Step helpers ────────────────────────────────────────────────────
 
 
@@ -215,6 +250,57 @@ def _post(
 # ── Main test flow ──────────────────────────────────────────────────
 
 
+def _validate_jwt_shape(jwt: str) -> Optional[str]:
+    """Catch the most common JWT footguns before the script hits the
+    network. Returns an error string when the token is obviously
+    wrong; None when it looks plausible (real validity is checked by
+    the server, this is just a "is it even a JWT shape" pass).
+    """
+    if not jwt:
+        return "ADMIN_JWT is empty"
+    # Placeholder text from prior docs that people sometimes paste
+    # verbatim. If any of these substrings appears, the token isn't
+    # real.
+    placeholder_markers = (
+        "YOUR-USER-UUID-HERE", "paste your REAL", "paste your real",
+        "<paste", "placeholder", "—",  # em dash never appears in JWTs
+    )
+    for marker in placeholder_markers:
+        if marker in jwt:
+            return (
+                f"ADMIN_JWT contains the substring {marker!r} — looks "
+                "like the placeholder text from the docs example, not a "
+                "real Supabase access_token. Grab one from your browser's "
+                "Local Storage (sb-<project>-auth-token → access_token)."
+            )
+    # JWTs are 3 base64url segments separated by dots.
+    parts = jwt.split(".")
+    if len(parts) != 3:
+        return (
+            f"ADMIN_JWT has {len(parts)} dot-separated segments; a JWT "
+            "always has exactly 3 (header.payload.signature)."
+        )
+    # A real Supabase access_token is ~700+ chars; anything under 100
+    # chars is almost certainly truncated or wrong.
+    if len(jwt) < 100:
+        return (
+            f"ADMIN_JWT is only {len(jwt)} chars; a Supabase "
+            "access_token is typically 700+. Token probably truncated "
+            "on copy."
+        )
+    # Headers must be ASCII. If the token has non-ASCII bytes it
+    # can't even be sent.
+    try:
+        jwt.encode("ascii")
+    except UnicodeEncodeError as e:
+        return (
+            f"ADMIN_JWT contains non-ASCII characters ({e}) — typical "
+            "cause is copying the placeholder text from the docs which "
+            "includes an em dash. Real JWTs are ASCII-only."
+        )
+    return None
+
+
 def run_smoke_test(
     *,
     backend_url: str,
@@ -228,6 +314,21 @@ def run_smoke_test(
     print(f"  backend: {backend_url}")
     print(f"  user:    {user_email}")
     print(f"  mode:    {'DRY RUN (no writes)' if dry_run else 'LIVE'}")
+
+    # ── Preflight: catch obviously-bad JWTs before any network call.
+    #    Done outside dry-run too, because a bad JWT means the LIVE
+    #    run will fail with a confusing httpx encoding error.
+    if not dry_run:
+        jwt_error = _validate_jwt_shape(admin_jwt)
+        if jwt_error:
+            print(f"\n{Color.RED}{Color.BOLD}JWT REJECTED — {jwt_error}{Color.END}")
+            print(
+                "\n  Get a real one: open the admin UI in your browser → "
+                "log in → DevTools → Application → Local Storage → "
+                "key 'sb-<project>-auth-token' → copy the access_token "
+                "value (it's nested JSON, the long string under that key)."
+            )
+            return 2
 
     fail_count = 0
 
@@ -329,7 +430,8 @@ def run_smoke_test(
         "acceptance_mode": "admin_corrected",
     }
     resp1, status1 = _post(url1, admin_jwt, body1, label="comment endpoint")
-    if status1 != 200:
+    step1_ok = status1 == 200
+    if not step1_ok:
         _fail(
             "comment endpoint",
             f"status={status1} body={json.dumps(resp1)[:300]}",
@@ -349,6 +451,16 @@ def run_smoke_test(
 
     # ── Step 2 — Verify snippet column updated
     _step(2, "Verify charisma_snippets.admin_comment_acceptance_mode")
+    if not step1_ok:
+        _warn("skipping — Step 1 failed, the snippet wasn't written to")
+        _summarize_and_exit(
+            fail_count, pick, additional_note=(
+                "Step 1's POST didn't succeed, so subsequent gates "
+                "have nothing to verify against. Fix the comment-endpoint "
+                "failure (above) before re-running."
+            ),
+        )
+        return 1
     try:
         row = (
             db.client.table("charisma_snippets")
@@ -386,10 +498,11 @@ def run_smoke_test(
         if actual_comment == test_comment_text:
             _ok("admin_comment value", "matches what we POSTed")
         else:
-            _fail(
-                "admin_comment value",
-                f"got {actual_comment[:80]!r}",
+            preview = (
+                (actual_comment[:80] if isinstance(actual_comment, str) else None)
+                or repr(actual_comment)
             )
+            _fail("admin_comment value", f"got {preview!r}")
             fail_count += 1
 
     # ── Step 3 — Publish the session with the 5-question array
@@ -566,12 +679,8 @@ def run_smoke_test(
         fail_count += 1
 
     # ── Summary
-    print()
     if fail_count == 0:
-        print(
-            f"{Color.GREEN}{Color.BOLD}ALL GATES PASSED{Color.END}  "
-            f"({Color.GREEN}0 failures{Color.END})"
-        )
+        _summarize_and_exit(0, pick)
         print(
             "  RLHF capture pipeline is firing end-to-end. Safe to "
             "build A1 backfill cron — it has working capture to "
@@ -579,25 +688,12 @@ def run_smoke_test(
         )
         return 0
 
-    print(
-        f"{Color.RED}{Color.BOLD}{fail_count} GATE(S) FAILED{Color.END}"
-    )
-    print(
-        "  At least one write path did not land. Investigate before "
-        "building A1 — a broken capture means the cron will produce "
-        "zero useful rows."
-    )
-    print(f"\n  Inspect manually:")
-    print(
-        f"  SELECT * FROM charisma_snippets WHERE id = '{pick['snippet_id']}';"
-    )
-    print(
-        f"  SELECT * FROM admin_annotation_events WHERE session_id = "
-        f"'{pick['session_id']}' ORDER BY created_at DESC LIMIT 10;"
-    )
-    print(
-        f"  SELECT * FROM admin_annotations_log WHERE session_id = "
-        f"'{pick['session_id']}' ORDER BY created_at DESC LIMIT 10;"
+    _summarize_and_exit(
+        fail_count, pick, additional_note=(
+            "At least one write path did not land. Investigate before "
+            "building A1 — a broken capture means the cron will produce "
+            "zero useful rows."
+        ),
     )
     return 1
 
