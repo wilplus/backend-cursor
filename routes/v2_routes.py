@@ -15222,3 +15222,204 @@ def v2_admin_finalize_session_recording(session_id):
             "code": "V2_ERROR",
             "error": "Failed to finalize session recording",
         }), 500
+
+
+# ── Snippet follow-up chat (BE Prompt 0) ──────────────────────────────
+#
+# Frontend contract: docs/PANEL-STATE-MATRIX.md row LI-4 + LI-5.
+#
+# After the user clicks agree/disagree on a snippet's `coach_label`, the
+# panel POSTs `{snippet_id, user_label}` here and we return one short
+# follow-up question to seed LI-5 (snippet follow-up chat).
+#
+# `user_label` semantic — PIN; see matrix preamble. true ⇒ user AGREES
+# with the AI/coach's existing `coach_label` on this snippet. false ⇒
+# user DISAGREES. The type (charisma vs stress) lives on
+# `snippet.coach_label` / `snippet.snippet_type` and is never overloaded
+# onto `user_label`. We surface this contract back to the caller via
+# `debug.user_label_interpretation = "agreement"` so any silent
+# regression to a "type" semantic fails loud in dev.
+_FOLLOWUP_MODEL = "gpt-4o-mini"
+
+
+@v2_bp.route("/chat/snippet-followup", methods=["POST"])
+@require_auth
+def v2_chat_snippet_followup():
+    """One-shot follow-up question generator after a user labels a snippet.
+
+    Body (JSON):
+      - snippet_id (UUID, required)
+      - user_label (bool, required) — AGREEMENT semantic; see module-level
+        comment above and ``docs/PANEL-STATE-MATRIX.md`` preamble.
+
+    Response 200 (JSON):
+      {
+        "followup_text": "<≤2-sentence question>",
+        "debug": {
+          "model": "gpt-4o-mini",
+          "user_label_interpretation": "agreement"
+        }
+      }
+
+    Errors:
+      400 INVALID_INPUT                — missing/malformed fields
+      404 NOT_FOUND                    — snippet missing OR not owner-scoped
+      422 SNIPPET_CONTEXT_UNAVAILABLE  — snippet lacks admin_comment
+      500 V2_ERROR                     — LLM/parse/other failure
+    """
+    try:
+        user_id = request.user_id
+        body = request.get_json(silent=True) or {}
+
+        # ── Input validation ──
+        snippet_id = (body.get("snippet_id") or "").strip()
+        if not snippet_id or not _is_valid_uuid(snippet_id):
+            return jsonify({
+                "code": "INVALID_INPUT",
+                "error": "snippet_id must be a valid UUID",
+            }), 400
+
+        user_label_raw = body.get("user_label")
+        if not isinstance(user_label_raw, bool):
+            return jsonify({
+                "code": "INVALID_INPUT",
+                "error": "user_label must be a boolean (agreement semantic)",
+            }), 400
+        user_label: bool = user_label_raw
+
+        # ── Owner-scoped fetch ──
+        # 404 (not 403) on foreign-owner so we don't leak existence.
+        snippet = db.get_snippet_by_id(snippet_id, user_id=user_id)
+        if not snippet:
+            return jsonify({
+                "code": "NOT_FOUND",
+                "error": "Snippet not found",
+            }), 404
+
+        admin_comment = (snippet.get("admin_comment") or "").strip()
+        if not admin_comment:
+            # Without the coach's insight the follow-up question would
+            # be ungrounded ("how did that make you feel?" style filler).
+            # Refuse rather than emit something vapid.
+            return jsonify({
+                "code": "SNIPPET_CONTEXT_UNAVAILABLE",
+                "error": "Snippet has no admin_comment yet",
+            }), 422
+
+        transcript = (
+            (snippet.get("transcript") or "")
+            or (snippet.get("transcription_text") or "")
+            or (snippet.get("transcript_text") or "")
+            or (snippet.get("transcript_excerpt") or "")
+        ).strip()
+        coach_label = (snippet.get("coach_label") or "").strip().lower() or None
+        snippet_type = (snippet.get("snippet_type") or "").strip().lower() or None
+        # Display label = whatever the AI/coach asserted about this
+        # snippet, in user-facing words. Fall back through coach_label →
+        # snippet_type → "this moment" so the prompt never reads
+        # "you {None} this".
+        display_label = coach_label or snippet_type or "this moment"
+
+        # ── LLM call ──
+        from services.openai_service import openai_service
+        if not openai_service.client:
+            logger.error(
+                "snippet-followup: openai client unavailable user=%s snippet=%s",
+                user_id, snippet_id,
+            )
+            return jsonify({
+                "code": "V2_ERROR",
+                "error": "Coaching service unavailable",
+            }), 500
+
+        agreement_phrase = (
+            "The user AGREES with the coach's label."
+            if user_label
+            else "The user DISAGREES with the coach's label."
+        )
+        system = (
+            "You are a warm, curious communication coach. After a "
+            "user has agreed or disagreed with a coach's label on a "
+            "moment from their own speech, you ask ONE short "
+            "follow-up question (≤2 sentences) that invites them to "
+            "reflect on why. Anchor your question to the specific "
+            "coach insight provided; never ask generic 'how did that "
+            "feel' filler. Output strict JSON: "
+            '{"followup_text": "<question>"}.'
+        )
+        user_prompt = (
+            f"Coach's label on this snippet: {display_label}\n"
+            f"Coach's written insight (admin_comment):\n{admin_comment}\n"
+            f"User's spoken transcript on this moment:\n"
+            f"{transcript or '(no transcript captured)'}\n\n"
+            f"User's response: {agreement_phrase}\n\n"
+            "Return strict JSON with a single key followup_text."
+        )
+
+        try:
+            response = openai_service.client.chat.completions.create(
+                model=_FOLLOWUP_MODEL,
+                messages=[
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user_prompt},
+                ],
+                # Some warmth; not creative writing.
+                temperature=0.4,
+                max_tokens=200,
+                response_format={"type": "json_object"},
+            )
+            raw = (response.choices[0].message.content or "").strip()
+        except Exception as e:
+            logger.error(
+                "snippet-followup: llm call failed user=%s snippet=%s err=%s",
+                user_id, snippet_id, e,
+            )
+            sentry_sdk.capture_exception(e)
+            return jsonify({
+                "code": "V2_ERROR",
+                "error": "Failed to generate follow-up",
+            }), 500
+
+        try:
+            import json as _json
+            parsed = _json.loads(raw)
+            followup_text = (parsed.get("followup_text") or "").strip()
+        except Exception as e:
+            logger.error(
+                "snippet-followup: json parse failed user=%s snippet=%s raw=%r",
+                user_id, snippet_id, raw[:200],
+            )
+            sentry_sdk.capture_exception(e)
+            return jsonify({
+                "code": "V2_ERROR",
+                "error": "Coach response was malformed",
+            }), 500
+
+        if not followup_text:
+            logger.warning(
+                "snippet-followup: empty followup_text user=%s snippet=%s",
+                user_id, snippet_id,
+            )
+            return jsonify({
+                "code": "V2_ERROR",
+                "error": "Coach returned an empty follow-up",
+            }), 500
+
+        return jsonify({
+            "followup_text": followup_text,
+            "debug": {
+                "model": _FOLLOWUP_MODEL,
+                # PIN: never change to "type" without coordinated FE
+                # update + matrix-doc preamble update. See module-level
+                # comment for the full contract.
+                "user_label_interpretation": "agreement",
+            },
+        }), 200
+
+    except Exception as e:
+        logger.error("chat/snippet-followup failed: %s", e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({
+            "code": "V2_ERROR",
+            "error": "Failed to generate follow-up",
+        }), 500
