@@ -5645,6 +5645,82 @@ class DatabaseService:
             )
             return []
 
+    def get_pending_review_session_for_user(
+        self,
+        user_id: str,
+    ) -> Optional[dict]:
+        """Return the user's existing pending-admin-review session,
+        if any.
+
+        Pending = bound to this user_id AND results_published_at IS
+        NULL AND has at least one non-skipped snippet (so a freshly-
+        aborted upload that never made it to snippet extraction
+        doesn't block new attempts indefinitely).
+
+        Used by upload endpoints (chat/upload-answer + coaching/
+        trial-recording) to prevent the user from stacking a
+        second session on top of the first while the coach is
+        still reviewing. The frontend's PENDING_COACH state should
+        already gate the mic, but the backend check is the
+        defence-in-depth layer for cases where the frontend is
+        stale, the user has two tabs open, or a third-party
+        client bypasses the UI.
+
+        Returns the most-recent qualifying session row or None.
+        Failure logs + returns None — the caller treats None as
+        "no block, proceed with upload" so a transient query
+        failure doesn't lock the user out.
+        """
+        try:
+            sessions = (
+                self.client.table("v2_sessions")
+                .select("id, created_at, status, results_published_at")
+                .eq("user_id", user_id)
+                .is_("results_published_at", "null")
+                .order("created_at", desc=True)
+                .limit(10)
+                .execute()
+                .data
+            ) or []
+        except Exception as e:
+            logger.warning(
+                "get_pending_review_session_for_user query failed "
+                "uid=%s err=%s — allowing upload to proceed", user_id, e,
+            )
+            return None
+
+        if not sessions:
+            return None
+
+        # Confirm at least one of those sessions has actual snippet
+        # content. A session row with zero snippets is either a
+        # freshly-aborted upload OR a placeholder created by the
+        # endpoint just before snippet extraction failed — neither
+        # should block a clean retry.
+        session_ids = [s["id"] for s in sessions]
+        try:
+            snip_rows = (
+                self.client.table("charisma_snippets")
+                .select("session_id")
+                .in_("session_id", session_ids)
+                .eq("is_skipped", False)
+                .limit(50)
+                .execute()
+                .data
+            ) or []
+        except Exception as e:
+            logger.warning(
+                "get_pending_review_session_for_user snippet probe "
+                "failed uid=%s err=%s — allowing upload", user_id, e,
+            )
+            return None
+
+        sessions_with_snippets = {r.get("session_id") for r in snip_rows if r.get("session_id")}
+        for s in sessions:
+            if s["id"] in sessions_with_snippets:
+                return s
+        return None
+
     def set_session_conversation_summary(
         self,
         session_id: str,

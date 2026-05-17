@@ -9505,6 +9505,23 @@ def v2_coaching_trial_recording():
                 "already_complete": True,
             }), 200
 
+        # B2 gate (defense-in-depth) — refuse to stack a new session
+        # on top of one the coach is still reviewing. Frontend should
+        # already disable the mic when /v2/chat/session-state returns
+        # PENDING_COACH; this is the backstop for stale UI / multiple
+        # tabs / API clients bypassing the frontend.
+        prior_pending = db.get_pending_review_session_for_user(str(user_id))
+        if prior_pending:
+            return jsonify({
+                "code": "PRIOR_SESSION_PENDING_REVIEW",
+                "error": (
+                    "Your coach is still reviewing a prior session. "
+                    "Wait for those results to publish before recording "
+                    "a new one."
+                ),
+                "pending_session_id": str(prior_pending.get("id")),
+            }), 409
+
         # 1. Upload audio — use the same bucket + helper the cold-start
         # funnel uses so the analysis pipeline reads it the same way.
         try:
@@ -9745,6 +9762,22 @@ def v2_user_chat_upload_answer():
         ).strip() or None
         intent = (request.form.get("intent") or "").strip().lower() or None
         question_text = (request.form.get("question_text") or "").strip() or None
+
+        # B2 gate (defense-in-depth) — refuse to stack a new contextual
+        # chat session on top of one the coach is still reviewing.
+        # Same rule + response code as the coaching/trial-recording
+        # endpoint so the frontend can branch on a single code.
+        prior_pending = db.get_pending_review_session_for_user(str(user_id))
+        if prior_pending:
+            return jsonify({
+                "code": "PRIOR_SESSION_PENDING_REVIEW",
+                "error": (
+                    "Your coach is still reviewing a prior session. "
+                    "Wait for those results to publish before "
+                    "starting a new conversation."
+                ),
+                "pending_session_id": str(prior_pending.get("id")),
+            }), 409
 
         # 1. Upload audio — same bucket helper trial-recording uses.
         try:
