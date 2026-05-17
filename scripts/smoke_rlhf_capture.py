@@ -1,0 +1,660 @@
+#!/usr/bin/env python3
+"""End-to-end smoke test for the RLHF capture pipeline.
+
+Drives one snippet through:
+  1. POST /v2/admin/snippets/<id>/comment   (with acceptance_mode)
+  2. POST /v2/admin/sessions/<id>/publish    (with final array)
+
+Then verifies the writes landed in:
+  - charisma_snippets.admin_comment_acceptance_mode
+  - admin_annotation_events (field_name='admin_comment' or similar)
+  - admin_annotations_log   (1 session-level + N per-position rows)
+
+Reports PASS/FAIL per gate so a regression in any of the three
+write paths is caught before A1 backfill cron is built (which
+depends on the publish-time capture firing).
+
+DESTRUCTIVE — this is a real Publish:
+  * results_published_at gets stamped on the session
+  * status flips to 'completed'
+  * the standard "results ready" email FIRES if SEND_EMAILS=true
+  * RLHF rows land in admin_annotations_log
+The script defaults to picking your most recent UNPUBLISHED
+session so you don't double-publish a live one. Pass --snippet-id
+to override. Use --dry-run to print the plan without writing.
+
+Usage:
+    export BACKEND_URL=https://flask-backend-production-ab37.up.railway.app
+    export ADMIN_JWT=eyJhbGc...   # admin user's Supabase JWT
+    export TEST_USER_EMAIL=artur@willonski.com
+
+    python3 scripts/smoke_rlhf_capture.py
+    python3 scripts/smoke_rlhf_capture.py --dry-run
+    python3 scripts/smoke_rlhf_capture.py --snippet-id <uuid>
+    python3 scripts/smoke_rlhf_capture.py --backend-url http://localhost:5000
+
+Auth: --admin-jwt arg or ADMIN_JWT env var (the admin user's
+Supabase access_token; grab it from browser dev tools after
+logging into the admin UI).
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import sys
+import time
+from datetime import datetime, timezone
+from typing import Any, Optional
+
+import httpx
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+
+# ── ANSI for terminal output ────────────────────────────────────────
+
+
+class Color:
+    GREEN = "\033[92m"
+    RED = "\033[91m"
+    YELLOW = "\033[93m"
+    CYAN = "\033[96m"
+    DIM = "\033[2m"
+    BOLD = "\033[1m"
+    END = "\033[0m"
+
+
+def _ok(label: str, detail: str = "") -> None:
+    suffix = f" — {detail}" if detail else ""
+    print(f"  {Color.GREEN}✓ PASS{Color.END}  {label}{Color.DIM}{suffix}{Color.END}")
+
+
+def _fail(label: str, detail: str = "") -> None:
+    suffix = f" — {detail}" if detail else ""
+    print(f"  {Color.RED}✗ FAIL{Color.END}  {label}{Color.DIM}{suffix}{Color.END}")
+
+
+def _info(msg: str) -> None:
+    print(f"  {Color.CYAN}ℹ{Color.END}     {msg}")
+
+
+def _warn(msg: str) -> None:
+    print(f"  {Color.YELLOW}!{Color.END}     {msg}")
+
+
+def _step(n: int, title: str) -> None:
+    print(f"\n{Color.BOLD}── Step {n} — {title}{Color.END}")
+
+
+# ── Step helpers ────────────────────────────────────────────────────
+
+
+def _resolve_user_id(db, email: str) -> Optional[str]:
+    """Find auth.users.id for the given email via Supabase admin API."""
+    try:
+        from config import Config
+        url = (
+            f"{Config.SUPABASE_URL.rstrip('/')}/auth/v1/admin/users"
+        )
+        headers = {
+            "Authorization": f"Bearer {Config.SUPABASE_SERVICE_ROLE_KEY}",
+            "apikey": Config.SUPABASE_SERVICE_ROLE_KEY,
+        }
+        resp = httpx.get(url, headers=headers, params={"email": email}, timeout=10)
+        if resp.status_code != 200:
+            return None
+        data = resp.json()
+        users = data.get("users") if isinstance(data, dict) else data
+        if not users:
+            return None
+        return users[0].get("id")
+    except Exception as e:
+        _warn(f"auth lookup failed: {e}")
+        return None
+
+
+def _pick_test_snippet(db, user_id: str, prefer_unpublished: bool) -> Optional[dict]:
+    """Pick a snippet on a session owned by user_id. Preference order:
+    unpublished session first (so we don't double-publish a live one),
+    then most-recent overall.
+    """
+    try:
+        sessions = (
+            db.client.table("v2_sessions")
+            .select("id, results_published_at, created_at")
+            .eq("user_id", user_id)
+            .order("created_at", desc=True)
+            .limit(20)
+            .execute()
+            .data
+        ) or []
+    except Exception as e:
+        _warn(f"session lookup failed: {e}")
+        return None
+    if not sessions:
+        return None
+    # Prefer unpublished
+    candidates = sessions if not prefer_unpublished else [
+        s for s in sessions if not s.get("results_published_at")
+    ] or sessions
+
+    for s in candidates:
+        sid = s["id"]
+        try:
+            snippets = (
+                db.client.table("charisma_snippets")
+                .select("id, session_id, admin_comment, ai_draft_admin_comment, snippet_type")
+                .eq("session_id", sid)
+                .limit(1)
+                .execute()
+                .data
+            ) or []
+        except Exception:
+            continue
+        if snippets:
+            return {
+                "snippet_id": snippets[0]["id"],
+                "session_id": sid,
+                "session_published_at": s.get("results_published_at"),
+                "current_admin_comment": snippets[0].get("admin_comment"),
+                "current_ai_draft": snippets[0].get("ai_draft_admin_comment"),
+                "snippet_type": snippets[0].get("snippet_type"),
+            }
+    return None
+
+
+def _snapshot_counts(db, session_id: str) -> dict:
+    """Read row counts in the tables we're about to write to."""
+    snapshot: dict = {}
+    try:
+        snapshot["admin_annotation_events_for_session"] = (
+            db.client.table("admin_annotation_events")
+            .select("id", count="exact")
+            .eq("session_id", session_id)
+            .limit(1)
+            .execute()
+            .count
+        )
+    except Exception:
+        snapshot["admin_annotation_events_for_session"] = None
+    try:
+        snapshot["admin_annotations_log_for_session"] = (
+            db.client.table("admin_annotations_log")
+            .select("id", count="exact")
+            .eq("session_id", session_id)
+            .limit(1)
+            .execute()
+            .count
+        )
+    except Exception:
+        snapshot["admin_annotations_log_for_session"] = None
+    return snapshot
+
+
+def _post(
+    url: str, jwt: str, body: dict, *, label: str,
+) -> tuple[Optional[dict], Optional[int]]:
+    """One auth'd POST. Returns (json_body, status_code)."""
+    headers = {
+        "Authorization": f"Bearer {jwt}",
+        "Content-Type": "application/json",
+    }
+    try:
+        resp = httpx.post(url, headers=headers, json=body, timeout=30)
+    except Exception as e:
+        _fail(label, f"transport error: {e}")
+        return None, None
+    try:
+        data = resp.json()
+    except Exception:
+        data = {"raw": resp.text[:500]}
+    return data, resp.status_code
+
+
+# ── Main test flow ──────────────────────────────────────────────────
+
+
+def run_smoke_test(
+    *,
+    backend_url: str,
+    admin_jwt: str,
+    user_email: str,
+    snippet_id_override: Optional[str],
+    dry_run: bool,
+) -> int:
+    """Returns exit code: 0 = all gates passed, non-zero = at least one failed."""
+    print(f"{Color.BOLD}RLHF capture smoke test{Color.END}")
+    print(f"  backend: {backend_url}")
+    print(f"  user:    {user_email}")
+    print(f"  mode:    {'DRY RUN (no writes)' if dry_run else 'LIVE'}")
+
+    fail_count = 0
+
+    # ── Setup
+    from services.db import db
+    _step(0, "Resolve user + snippet")
+    user_id = _resolve_user_id(db, user_email)
+    if not user_id:
+        _fail("user lookup", f"no auth user for {user_email}")
+        return 1
+    _ok("user lookup", f"user_id={user_id[:8]}…")
+
+    if snippet_id_override:
+        try:
+            row = (
+                db.client.table("charisma_snippets")
+                .select(
+                    "id, session_id, admin_comment, ai_draft_admin_comment, "
+                    "snippet_type"
+                )
+                .eq("id", snippet_id_override)
+                .limit(1)
+                .execute()
+                .data
+            ) or []
+        except Exception as e:
+            _fail("snippet lookup", str(e))
+            return 1
+        if not row:
+            _fail("snippet lookup", f"no snippet with id={snippet_id_override}")
+            return 1
+        # Fetch session published_at
+        try:
+            sess = (
+                db.client.table("v2_sessions")
+                .select("results_published_at")
+                .eq("id", row[0]["session_id"])
+                .limit(1)
+                .execute()
+                .data
+            ) or [{}]
+        except Exception:
+            sess = [{}]
+        pick = {
+            "snippet_id": row[0]["id"],
+            "session_id": row[0]["session_id"],
+            "session_published_at": sess[0].get("results_published_at"),
+            "current_admin_comment": row[0].get("admin_comment"),
+            "current_ai_draft": row[0].get("ai_draft_admin_comment"),
+            "snippet_type": row[0].get("snippet_type"),
+        }
+    else:
+        pick = _pick_test_snippet(db, user_id, prefer_unpublished=True)
+        if not pick:
+            _fail(
+                "snippet pick",
+                f"no snippets found on any session for user {user_email}",
+            )
+            return 1
+    _ok(
+        "snippet pick",
+        f"snippet={pick['snippet_id'][:8]}… session={pick['session_id'][:8]}…",
+    )
+    _info(f"existing admin_comment: {pick['current_admin_comment'] or '(none)'}")
+    _info(f"existing ai_draft:      {pick['current_ai_draft'] or '(none)'}")
+    _info(f"session published_at:   {pick['session_published_at'] or '(unpublished)'}")
+    if pick["session_published_at"]:
+        _warn(
+            "session is ALREADY PUBLISHED — re-publish is idempotent on "
+            "results_published_at but will still write a fresh RLHF row "
+            "and may re-fire the results email."
+        )
+
+    # Snapshot before any writes
+    before = _snapshot_counts(db, pick["session_id"])
+    _info(f"before — admin_annotation_events rows for session: "
+          f"{before['admin_annotation_events_for_session']}")
+    _info(f"before — admin_annotations_log    rows for session: "
+          f"{before['admin_annotations_log_for_session']}")
+
+    if dry_run:
+        print(f"\n{Color.YELLOW}DRY RUN — exiting before any writes.{Color.END}")
+        return 0
+
+    # ── Step 1 — Admin saves an edited comment with acceptance_mode
+    _step(1, "POST /v2/admin/snippets/<id>/comment")
+    test_comment_text = (
+        "[SMOKE TEST "
+        + datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        + "] Capture-pipeline E2E check."
+    )
+    coach_label = (
+        "charisma" if pick["snippet_type"] != "stress" else "stress"
+    )
+    url1 = f"{backend_url.rstrip('/')}/v2/admin/snippets/{pick['snippet_id']}/comment"
+    body1 = {
+        "admin_comment": test_comment_text,
+        "snippet_type": coach_label,
+        "acceptance_mode": "admin_corrected",
+    }
+    resp1, status1 = _post(url1, admin_jwt, body1, label="comment endpoint")
+    if status1 != 200:
+        _fail(
+            "comment endpoint",
+            f"status={status1} body={json.dumps(resp1)[:300]}",
+        )
+        fail_count += 1
+    else:
+        _ok("comment endpoint", f"status=200")
+        returned_mode = (resp1 or {}).get("acceptance_mode")
+        if returned_mode == "admin_corrected":
+            _ok("response acceptance_mode", "admin_corrected echoed back")
+        else:
+            _fail(
+                "response acceptance_mode",
+                f"expected 'admin_corrected' got {returned_mode!r}",
+            )
+            fail_count += 1
+
+    # ── Step 2 — Verify snippet column updated
+    _step(2, "Verify charisma_snippets.admin_comment_acceptance_mode")
+    try:
+        row = (
+            db.client.table("charisma_snippets")
+            .select(
+                "admin_comment, admin_comment_acceptance_mode, "
+                "admin_comment_acceptance_set_at"
+            )
+            .eq("id", pick["snippet_id"])
+            .limit(1)
+            .execute()
+            .data
+        ) or []
+    except Exception as e:
+        _fail("snippet column read", str(e))
+        fail_count += 1
+        row = []
+
+    if row:
+        actual_mode = row[0].get("admin_comment_acceptance_mode")
+        actual_at = row[0].get("admin_comment_acceptance_set_at")
+        actual_comment = row[0].get("admin_comment")
+        if actual_mode == "admin_corrected":
+            _ok("admin_comment_acceptance_mode", "set to 'admin_corrected'")
+        else:
+            _fail(
+                "admin_comment_acceptance_mode",
+                f"expected 'admin_corrected' got {actual_mode!r}",
+            )
+            fail_count += 1
+        if actual_at:
+            _ok("admin_comment_acceptance_set_at", f"timestamp set: {actual_at}")
+        else:
+            _fail("admin_comment_acceptance_set_at", "still NULL")
+            fail_count += 1
+        if actual_comment == test_comment_text:
+            _ok("admin_comment value", "matches what we POSTed")
+        else:
+            _fail(
+                "admin_comment value",
+                f"got {actual_comment[:80]!r}",
+            )
+            fail_count += 1
+
+    # ── Step 3 — Publish the session with the 5-question array
+    _step(3, "POST /v2/admin/sessions/<id>/publish")
+    url3 = (
+        f"{backend_url.rstrip('/')}/v2/admin/sessions/"
+        f"{pick['session_id']}/publish"
+    )
+    test_session_comment = (
+        f"[SMOKE TEST {datetime.now(timezone.utc).isoformat()}] "
+        "Session-level test comment from smoke_rlhf_capture.py"
+    )
+    body3 = {
+        "final_human_comment": test_session_comment,
+        "final_human_next_questions": [
+            {
+                "position": 1,
+                "text": "Smoke test Q1 — ground emotion?",
+                "intent_tag": "ground-emotion",
+            },
+            {
+                "position": 2,
+                "text": "Smoke test Q2 — test application?",
+                "intent_tag": "test-application",
+            },
+        ],
+    }
+    resp3, status3 = _post(url3, admin_jwt, body3, label="publish endpoint")
+    if status3 != 200:
+        _fail(
+            "publish endpoint",
+            f"status={status3} body={json.dumps(resp3)[:300]}",
+        )
+        fail_count += 1
+    else:
+        _ok("publish endpoint", "status=200")
+        rlhf_logged = (resp3 or {}).get("rlhf_logged")
+        rlhf_rows = (resp3 or {}).get("rlhf_rows_written")
+        was_corrected = (resp3 or {}).get("was_corrected")
+        if rlhf_logged is True:
+            _ok("response.rlhf_logged", "True")
+        else:
+            _fail("response.rlhf_logged", f"got {rlhf_logged!r}")
+            fail_count += 1
+        if isinstance(rlhf_rows, int) and rlhf_rows >= 3:
+            _ok(
+                "response.rlhf_rows_written",
+                f"{rlhf_rows} (≥ 3 expected: 1 session + 2 positions)",
+            )
+        else:
+            _fail(
+                "response.rlhf_rows_written",
+                f"expected ≥3 got {rlhf_rows!r}",
+            )
+            fail_count += 1
+        if was_corrected is True:
+            _ok("response.was_corrected", "True (admin diffed)")
+        else:
+            _warn(
+                f"response.was_corrected = {was_corrected!r} "
+                "(may be False if no AI prediction existed to diff against)"
+            )
+
+    # Give Supabase a moment to settle (rare race on subsequent reads)
+    time.sleep(0.5)
+
+    # ── Step 4 — Verify rows in admin_annotations_log
+    _step(4, "Verify admin_annotations_log rows for this session")
+    try:
+        log_rows = (
+            db.client.table("admin_annotations_log")
+            .select(
+                "id, question_position, intent_tag, was_corrected, "
+                "ai_predicted_question, final_human_question, "
+                "ai_predicted_comment, final_human_comment, created_at"
+            )
+            .eq("session_id", pick["session_id"])
+            .order("created_at", desc=True)
+            .limit(20)
+            .execute()
+            .data
+        ) or []
+    except Exception as e:
+        _fail("admin_annotations_log read", str(e))
+        fail_count += 1
+        log_rows = []
+
+    # Filter to rows from this run (most recent N)
+    fresh_log = [
+        r for r in log_rows
+        if (r.get("final_human_comment") == test_session_comment
+            or (r.get("final_human_question") or "").startswith("Smoke test Q"))
+    ]
+    if len(fresh_log) >= 3:
+        _ok(
+            "admin_annotations_log fresh rows",
+            f"{len(fresh_log)} rows (expected ≥3: 1 session + 2 positions)",
+        )
+    else:
+        _fail(
+            "admin_annotations_log fresh rows",
+            f"expected ≥3 got {len(fresh_log)}",
+        )
+        fail_count += 1
+
+    positions = sorted(
+        [r.get("question_position") for r in fresh_log
+         if r.get("question_position") is not None]
+    )
+    if positions == [1, 2]:
+        _ok("per-position rows", "positions [1, 2] present")
+    else:
+        _fail("per-position rows", f"expected [1, 2] got {positions}")
+        fail_count += 1
+
+    session_level = [r for r in fresh_log if r.get("question_position") is None]
+    if len(session_level) >= 1:
+        _ok("session-level row", f"{len(session_level)} row(s) with NULL position")
+    else:
+        _fail("session-level row", "no NULL-position row found")
+        fail_count += 1
+
+    # Verify intent_tag carried through
+    tags_seen = sorted({r.get("intent_tag") for r in fresh_log if r.get("intent_tag")})
+    if "ground-emotion" in tags_seen and "test-application" in tags_seen:
+        _ok("intent_tags carried", f"{tags_seen}")
+    else:
+        _fail("intent_tags carried", f"got {tags_seen}")
+        fail_count += 1
+
+    # ── Step 5 — Verify rows in admin_annotation_events
+    _step(5, "Verify admin_annotation_events for this session "
+              "(field_name capture)")
+    try:
+        ev_rows = (
+            db.client.table("admin_annotation_events")
+            .select("field_name, reason_chip, ai_original_text, "
+                    "coach_final_text, created_at")
+            .eq("session_id", pick["session_id"])
+            .order("created_at", desc=True)
+            .limit(20)
+            .execute()
+            .data
+        ) or []
+    except Exception as e:
+        _fail("admin_annotation_events read", str(e))
+        fail_count += 1
+        ev_rows = []
+
+    fresh_ev = [
+        r for r in ev_rows
+        if (r.get("coach_final_text") or "") == test_comment_text
+        or (r.get("coach_final_text") or "") == test_session_comment
+    ]
+
+    if fresh_ev:
+        _ok(
+            "admin_annotation_events fresh rows",
+            f"{len(fresh_ev)} row(s) carry our test text",
+        )
+        for r in fresh_ev:
+            _info(
+                f"  field_name={r.get('field_name')!r}  "
+                f"chip={r.get('reason_chip')!r}"
+            )
+    else:
+        _fail(
+            "admin_annotation_events fresh rows",
+            "NO rows from this run contain our test text. "
+            "This means publish-time capture (record_snippet_publish_annotations) "
+            "did NOT write to admin_annotation_events. "
+            "A1 backfill cron would have nothing to recover from this path."
+        )
+        fail_count += 1
+
+    # ── Summary
+    print()
+    if fail_count == 0:
+        print(
+            f"{Color.GREEN}{Color.BOLD}ALL GATES PASSED{Color.END}  "
+            f"({Color.GREEN}0 failures{Color.END})"
+        )
+        print(
+            "  RLHF capture pipeline is firing end-to-end. Safe to "
+            "build A1 backfill cron — it has working capture to "
+            "complement."
+        )
+        return 0
+
+    print(
+        f"{Color.RED}{Color.BOLD}{fail_count} GATE(S) FAILED{Color.END}"
+    )
+    print(
+        "  At least one write path did not land. Investigate before "
+        "building A1 — a broken capture means the cron will produce "
+        "zero useful rows."
+    )
+    print(f"\n  Inspect manually:")
+    print(
+        f"  SELECT * FROM charisma_snippets WHERE id = '{pick['snippet_id']}';"
+    )
+    print(
+        f"  SELECT * FROM admin_annotation_events WHERE session_id = "
+        f"'{pick['session_id']}' ORDER BY created_at DESC LIMIT 10;"
+    )
+    print(
+        f"  SELECT * FROM admin_annotations_log WHERE session_id = "
+        f"'{pick['session_id']}' ORDER BY created_at DESC LIMIT 10;"
+    )
+    return 1
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="End-to-end smoke test for the RLHF capture pipeline."
+    )
+    parser.add_argument(
+        "--backend-url",
+        default=os.getenv("BACKEND_URL", "https://flask-backend-production-ab37.up.railway.app"),
+        help="Backend base URL (default: prod Railway)",
+    )
+    parser.add_argument(
+        "--admin-jwt",
+        default=os.getenv("ADMIN_JWT", ""),
+        help="Admin Supabase access_token (or set ADMIN_JWT env)",
+    )
+    parser.add_argument(
+        "--user-email",
+        default=os.getenv("TEST_USER_EMAIL", "artur@willonski.com"),
+        help="Email of the user whose snippet/session we'll test against",
+    )
+    parser.add_argument(
+        "--snippet-id",
+        default=None,
+        help="Specific snippet UUID to test (default: auto-pick most recent)",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Resolve snippet + print plan, but do not POST anything",
+    )
+    args = parser.parse_args()
+
+    if not args.admin_jwt:
+        print(
+            f"{Color.RED}ERROR{Color.END} — admin JWT required. Pass "
+            "--admin-jwt or set ADMIN_JWT. Grab the token from your "
+            "admin browser session (dev tools → application → "
+            "supabase storage).",
+            file=sys.stderr,
+        )
+        return 2
+
+    try:
+        return run_smoke_test(
+            backend_url=args.backend_url,
+            admin_jwt=args.admin_jwt,
+            user_email=args.user_email,
+            snippet_id_override=args.snippet_id,
+            dry_run=args.dry_run,
+        )
+    except KeyboardInterrupt:
+        print("\nInterrupted.", file=sys.stderr)
+        return 130
+
+
+if __name__ == "__main__":
+    sys.exit(main())
