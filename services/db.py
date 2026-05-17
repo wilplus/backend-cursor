@@ -5645,6 +5645,91 @@ class DatabaseService:
             )
             return []
 
+    def set_session_conversation_summary(
+        self,
+        session_id: str,
+        summary: Optional[str],
+    ) -> Optional[dict]:
+        """Phase A2.1 — persist the rolling interview digest.
+
+        Called by services/conversation_summary.py after each turn.
+        Stamps conversation_summary_updated_at so the prompt builder
+        can detect staleness.
+
+        Passing ``summary=None`` clears the column — useful for
+        admin resets or when graduation invalidates the digest.
+
+        Failure logs + returns None; the caller (the async
+        updater) treats a failed persist as "leave previous
+        summary in place" rather than blocking the next turn.
+        """
+        try:
+            now = datetime.now(timezone.utc).isoformat()
+            result = (
+                self.client.table("v2_sessions")
+                .update({
+                    "conversation_summary": summary,
+                    "conversation_summary_updated_at": (
+                        now if summary is not None else None
+                    ),
+                })
+                .eq("id", session_id)
+                .execute()
+            )
+            if result.data and len(result.data) > 0:
+                return result.data[0]
+            return None
+        except Exception as e:
+            err_low = str(e).lower()
+            if (
+                "conversation_summary" in err_low
+                or "pgrst204" in err_low
+            ):
+                logger.warning(
+                    "set_session_conversation_summary: column missing "
+                    "(migration pending?) sid=%s", session_id,
+                )
+                return None
+            logger.warning(
+                "set_session_conversation_summary failed sid=%s err=%s",
+                session_id, e,
+            )
+            return None
+
+    def get_session_conversation_summary(
+        self,
+        session_id: str,
+    ) -> Optional[dict]:
+        """Read the current digest + its updated_at without pulling
+        the full session row. Returns ``{summary, updated_at}`` or
+        None when the session doesn't exist OR the digest hasn't
+        been generated yet (cold-start)."""
+        try:
+            result = (
+                self.client.table("v2_sessions")
+                .select("conversation_summary, conversation_summary_updated_at")
+                .eq("id", session_id)
+                .limit(1)
+                .execute()
+            )
+            data = result.data or []
+            if not data:
+                return None
+            row = data[0]
+            summary = (row.get("conversation_summary") or "").strip() or None
+            if summary is None:
+                return None
+            return {
+                "summary": summary,
+                "updated_at": row.get("conversation_summary_updated_at"),
+            }
+        except Exception as e:
+            logger.warning(
+                "get_session_conversation_summary failed sid=%s err=%s",
+                session_id, e,
+            )
+            return None
+
     def set_session_predictions(
         self,
         session_id: str,

@@ -7749,6 +7749,7 @@ def _generate_llm_question(
     contextual_init: dict | None = None,
     timeout_seconds: float | None = None,
     baseline_objective: str | None = None,
+    conversation_summary: str | None = None,
 ) -> str | None:
     """Call GPT-4o-mini to generate the next interview question.
 
@@ -7769,6 +7770,14 @@ def _generate_llm_question(
     pressure, quick reflex) rather than freelancing across the four
     onboarding turns. Returning users get None and the prompt
     falls back to standard alternation.
+
+    conversation_summary — Phase A2.1 rolling digest. When passed,
+    replaces the quadratic-cost full-history replay: the prompt
+    gets the digest as a context block + only the last 2 raw
+    turns in chat history. NULL on the very first turn (cold-
+    start) or when the async summary writer hasn't caught up; the
+    prompt builder degrades to using all of previous_turns in
+    that case so we never serve a turn with NO context.
     """
     try:
         from services.openai_service import OpenAIService
@@ -7968,14 +7977,47 @@ def _generate_llm_question(
                     "user=%s err=%s", user_id, bs_err,
                 )
 
+        # ── Phase A2.1 — rolling conversation summary ───────────────
+        # Splice order (pitfall #7 in the learning-loop spec —
+        # augmentation order is load-bearing, later blocks get more
+        # model attention):
+        #
+        #   1. base interview prompt
+        #   2. profile / [LEARNER PROFILE] (existing)
+        #   3. baseline_summary (Phase 16, stable identity)
+        #   4. conversation_summary (THIS BLOCK — per-session digest)
+        #   5. baseline_objective ([CURRENT_TURN_OBJECTIVE], per-turn
+        #      directive — stays last so it anchors the generate step)
+        #
+        # The summary goes BETWEEN baseline (stable user identity) and
+        # baseline_objective (per-turn imperative) because it's
+        # per-session ephemera that's more recent than baseline but
+        # less imperative than the current-turn directive. Keeping
+        # baseline_objective last preserves its anchoring effect.
+        if conversation_summary:
+            try:
+                from services.conversation_summary import (
+                    format_summary_for_prompt,
+                )
+                summary_block = format_summary_for_prompt(conversation_summary)
+                if summary_block:
+                    system_prompt = (
+                        f"{system_prompt}\n\n{summary_block}"
+                    )
+            except Exception as sum_err:
+                logger.warning(
+                    "interview: conversation_summary splice failed "
+                    "(continuing without): %s", sum_err,
+                )
+
         # Directed-freestyle objective for the 4 onboarding turns.
         # When the caller passes a baseline_objective, the LLM gets
         # a hard psychological target for THIS turn instead of free-
         # styling across the onboarding phase. Goes AFTER the
-        # profile/baseline blocks so identity context is read first,
-        # then the per-turn directive is the last instruction the
-        # model sees before "generate" — anchoring effect on the
-        # response.
+        # profile/baseline/summary blocks so identity context is
+        # read first, then the per-turn directive is the last
+        # instruction the model sees before "generate" — anchoring
+        # effect on the response.
         if baseline_objective:
             system_prompt = (
                 f"{system_prompt}\n\n[CURRENT_TURN_OBJECTIVE]\n"
@@ -7986,11 +8028,23 @@ def _generate_llm_question(
                 "the question."
             )
 
-        # Build conversation history for context
+        # Build conversation history for context.
+        # Phase A2.1: when a conversation_summary is in play, the
+        # digest covers the older turns and we only need the LAST 2
+        # raw turns for short-range fidelity (the model gets
+        # "what was JUST said" verbatim, longer-range memory from
+        # the summary block above). When no summary exists yet
+        # (cold-start), fall back to replaying ALL previous_turns
+        # so the first few turns don't lose context.
         messages = [{"role": "system", "content": system_prompt}]
 
         if previous_turns:
-            for turn in previous_turns:
+            turns_to_render = (
+                previous_turns[-2:]
+                if conversation_summary
+                else previous_turns
+            )
+            for turn in turns_to_render:
                 messages.append({"role": "assistant", "content": turn.get("question", "")})
                 if turn.get("transcript"):
                     messages.append({"role": "user", "content": turn["transcript"]})
@@ -11762,7 +11816,18 @@ def v2_public_interview_next_question():
         Phase 15 longitudinal + Phase 17 metrics blocks still
         apply via _generate_llm_question's existing augmentation.
 
-    Input:  { turn_number: int, user_id?: str, previous_turns?: [{question, transcript?}] }
+    Input:  {
+        turn_number: int,
+        user_id?: str,
+        previous_turns?: [{question, transcript?}],
+        session_id?: str,                    // Phase A2.1 — optional;
+        guest_session_id?: str               // when present, the
+                                             // rolling conversation
+                                             // summary is loaded and
+                                             // spliced into the prompt
+                                             // so previous_turns can be
+                                             // trimmed to the last 2.
+    }
     Output:
       200 { question, tone, turn_number, source }
       400 { code: "INVALID_INPUT" } on malformed input
@@ -11775,6 +11840,35 @@ def v2_public_interview_next_question():
 
         user_id = (body.get("user_id") or "").strip() or None
         previous_turns = body.get("previous_turns") or None
+        # Phase A2.1 — caller can pass either spelling; whichever
+        # the frontend has on hand. Empty/None → summary lookup is
+        # skipped and the prompt builder falls back to the legacy
+        # full-history replay (preserves turn-1 cold-start behavior
+        # byte-for-byte).
+        session_id_raw = (
+            body.get("session_id")
+            or body.get("guest_session_id")
+            or ""
+        )
+        session_id_for_summary = (
+            session_id_raw.strip() or None
+            if isinstance(session_id_raw, str) else None
+        )
+        conversation_summary: str | None = None
+        if session_id_for_summary and _is_valid_uuid(session_id_for_summary):
+            try:
+                row = db.get_session_conversation_summary(
+                    session_id_for_summary,
+                )
+                if row:
+                    conversation_summary = row.get("summary") or None
+            except Exception as cs_err:
+                logger.warning(
+                    "interview: conversation_summary lookup failed "
+                    "sid=%s err=%s (continuing with legacy "
+                    "full-history replay)",
+                    session_id_for_summary, cs_err,
+                )
 
         # ── Admin queued override (any turn) ──────────────────────────
         # PUT /v2/admin/user/<id>/context with queued_override_question
@@ -11820,6 +11914,7 @@ def v2_public_interview_next_question():
             previous_turns=previous_turns,
             user_id=user_id,
             baseline_objective=objective,
+            conversation_summary=conversation_summary,
         )
         source = (
             "llm_baseline_directed" if objective and question
@@ -12370,6 +12465,46 @@ def v2_public_interview_upload_answer():
                 logger.warning(
                     "freemium_tease: aggregation failed sid=%s err=%s",
                     guest_session_id, tease_err,
+                )
+
+        # ── Phase A2.1 — fire-and-forget rolling-summary update ─────
+        # Folds this turn's (question, transcript) into the session's
+        # conversation_summary so the NEXT call to
+        # /v2/public/interview/next-question can read a bounded-cost
+        # digest instead of replaying the whole history.
+        #
+        # Async by design: the LLM call adds ~1-2s of wall time and
+        # this endpoint already does enough on the hot path
+        # (Whisper + acoustic metrics + snippet insert). The runner
+        # is a daemon thread that never raises — a failed update
+        # leaves the previous summary in place per the spec's "MUST
+        # fall back to keep previous summary" rule.
+        #
+        # Only fires when we have at least one usable side (question
+        # OR transcript). Cold-start turn-1 with no question_text +
+        # no transcript is a no-op.
+        if guest_session_id and (
+            (question_text or "").strip()
+            or (transcript_text or "").strip()
+        ):
+            try:
+                from services.conversation_summary import (
+                    update_summary_async,
+                )
+                prev = db.get_session_conversation_summary(guest_session_id)
+                prev_summary = (prev or {}).get("summary")
+                update_summary_async(
+                    session_id=guest_session_id,
+                    previous_summary=prev_summary,
+                    question=(question_text or "").strip(),
+                    transcript=(transcript_text or "").strip(),
+                )
+            except Exception as cs_err:
+                logger.warning(
+                    "interview: conversation_summary async-fire "
+                    "failed sid=%s err=%s (non-fatal — next read "
+                    "will see previous summary)",
+                    guest_session_id, cs_err,
                 )
 
         return jsonify({
