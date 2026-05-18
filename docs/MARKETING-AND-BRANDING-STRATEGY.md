@@ -37,17 +37,20 @@ Willonski's wedge is the middle: **AI for daily reps, human for verdicts.** That
 
 Three concentric rings. Concentrate spend on Ring 1 until CAC and retention are proven, then expand.
 
-### Ring 1 — Beachhead: ambitious individual contributors at tech / consulting / sales companies (25–40)
+### Ring 1 — Beachhead: founders, senior salespeople, and execs (30–50)
+
+At $100/mo and a $200 anchor, the beachhead is not a junior IC saving on Duolingo — it is someone whose next spoken moment is worth four or five figures.
+
+- Founders raising, pitching, doing podcasts; Heads of Sales and AE leaders; partners at consultancies / law firms; senior PMs and engineering leaders presenting to execs.
+- High‑stakes spoken moments, often infrequent, very expensive to mess up. $100/mo is a rounding error against a missed raise, a botched board update, or a lost deal.
+- They already buy executive coaching (or feel they should). $200 for a 1:1 with the founder is *cheaper* than what they're used to paying for the same hour, which is the entire point of the anchor.
+- **Acquisition channels:** founder‑led LinkedIn content (the highest‑intent channel for this audience by a wide margin); YouTube pre‑roll on charisma/public‑speaking creators (Vinh Giang, Chris Anderson, Patrick Bet‑David adjacent); curated newsletters (The Generalist, Lenny's, Not Boring sponsorships); warm referrals from existing 1:1 clients.
+
+### Ring 2 — Ambitious individual contributors at tech / consulting / sales companies (25–40)
 
 - They got told in a 360 or skip‑level: "you mumble," "you ramble," "you sound nervous in big meetings."
-- They have disposable income (€50–€150/month is reasonable), are used to subscription tools, and self‑improve through apps (Duolingo, Headspace, Whoop).
-- They will not pay €300/hr for a coach yet, but they want measurable progress.
-- **Acquisition channels:** YouTube ads pre‑roll on charisma/public‑speaking content; LinkedIn thought‑leadership; Reddit (r/sales, r/cscareerquestions, r/PublicSpeaking); referral from frontline managers.
-
-### Ring 2 — Career switchers and founders (28–45)
-
-- Pitching investors, interviewing for senior roles, doing podcasts. High‑stakes spoken moments, infrequent, very expensive to mess up.
-- Acquisition is content‑led: "I analysed 100 founder pitches — here's what kills them," "What VCs hear vs. what you said."
+- $100/mo is a stretch but defensible against the next promotion. The **$5/turn** tier is built for them: they can try the product 5–10 times for the price of a lunch before committing.
+- Acquisition: Reddit (r/sales, r/cscareerquestions, r/PublicSpeaking); SEO on diagnostic queries; manager‑led referral (the manager who gave the feedback recommends the tool).
 
 ### Ring 3 — Non‑native English speakers in international workplaces
 
@@ -120,11 +123,11 @@ Three messages, ranked by what we lead with depending on funnel stage.
 1. **Top of funnel — "Your voice has a number."**
    The hook is the surprise that something you've never measured can be measured: pace, fillers, "charisma probability." Lead creative shows the chart climbing.
 
-2. **Mid funnel — "AI watches every rep. A real coach watches every week."**
-   Differentiates from Yoodli/Orai. The human‑in‑the‑loop is the moat; say so out loud.
+2. **Mid funnel — "AI watches every rep. A real coach reads every one."**
+   Differentiates from Yoodli/Orai. The human‑in‑the‑loop is the moat; say so out loud. The line under it: *"And if you want, the person who built the system will train you personally for $200."* That single sentence does more pricing work than a chart can.
 
-3. **Bottom of funnel — "30 days, or your money back."**
-   The product already tracks `performance_score_end` over time; the guarantee is the chart, not a vibe. This is cheap to offer because non‑improvers are also non‑practisers, and they self‑select out.
+3. **Bottom of funnel — "Try one turn for $5. Keep going for $100/month. Or work with me directly for $200."**
+   Three options, ordered by commitment, all on one page. The product already tracks `performance_score_end` over time, so the implicit guarantee is your own chart — if the line doesn't move after a few $5 turns, you stop. The pricing is the guarantee.
 
 ---
 
@@ -135,48 +138,56 @@ The plan is sequenced so each phase de‑risks the next. Don't skip ahead.
 ### Phase 0 (weeks 1–4) — Foundation
 - Lock positioning, voice, and one tagline.
 - Rebuild the marketing site around **a single hero asset: an animated `performance_history` chart with a real (anonymised) user's 30‑day journey.**
-- Ship a free **"60‑second voice check"** — one recording, returns pace, fillers, and a charisma/stress estimate. No login. This is the top‑of‑funnel hook and the single most important asset to build first.
-- Set up analytics: CAC by channel, activation (= first workout completed), week‑1 retention, day‑30 score delta.
+- Ship a free **"60‑second voice check"** — one recording, returns pace, fillers, and a charisma/stress estimate. No login. This is the top‑of‑funnel hook.
+- Ship the **$5 / single turn** purchase flow — the single highest‑leverage conversion mechanism we have. Most users will buy a $5 turn before they buy a $100 membership.
+- Set up analytics: CAC by channel, **first $5 turn purchased**, $5 → $100 upgrade rate, 1:1 booking rate, day‑30 score delta.
 
 ### Phase 1 (months 2–3) — Beachhead acquisition
-- **Content:** weekly teardown of a famous talk or pitch using Willonski's own metrics. This is content the product is uniquely qualified to produce — competitors cannot.
-- **Paid:** small budget (€3–5k/mo) on YouTube pre‑roll against charisma / Vinh Giang / Chris Anderson / sales‑training audiences. LinkedIn against Sales Director / SDR / PM titles.
-- **Founder‑led:** the founder posts one short Willonski‑analysed clip per workday on LinkedIn for 60 days. Cheap, compounding, on‑brand.
-- **Target:** 500 paying users by end of month 3. CAC ceiling: €40 blended.
+- **Content:** weekly teardown of a famous talk or pitch using Willonski's own metrics. Content the product is uniquely qualified to produce — competitors cannot.
+- **Paid:** $5–10k/mo on LinkedIn against founder / Head of Sales / Partner / Director titles, and YouTube pre‑roll on charisma / Vinh Giang / Chris Anderson adjacent content.
+- **Founder‑led:** the founder posts one short Willonski‑analysed clip per workday on LinkedIn for 60 days. Cheap, compounding, on‑brand — and directly fills the $200 1:1 calendar, which is the most credible social proof we can generate.
+- **Target by month 3:** 200 paying members ($100/mo), 1,000 $5‑turn purchasers, a $200 1:1 calendar booked out 3 weeks ahead. **CAC ceiling: $150 for a member, $20 for a $5 turn.**
 
 ### Phase 2 (months 4–6) — Proof and referral
-- Publish the first **Willonski Index** — aggregate (anonymised) stats: "the average tech worker speaks at 168 WPM and fillers 9× per minute." Press‑bait, link‑bait, repeatable annually.
-- Ship in‑product **shareable progress card** ("I cut my fillers from 14 to 4 in 30 days") with a watermark. Make sharing one tap.
-- Launch a referral mechanic (one month free per friend who completes 5 workouts). The product's score chart is the social proof — make sure the share asset shows it.
-- **Target:** 2,000 paying users, 25% of new signups from referral, NPS ≥ 50.
+- Publish the first **Willonski Index** — aggregate (anonymised) stats: "the average founder speaks at 174 WPM and fillers 11× per minute on Demo Day." Press‑bait, link‑bait, repeatable annually.
+- Ship in‑product **shareable progress card** ("I cut my fillers from 14 to 4 in 30 days") with a watermark. One tap to share.
+- Launch a referral mechanic — **one free $5 turn per friend, plus one free month at the third referred member.** The product's score chart is the social proof; make sure the share asset shows it.
+- **Target:** 800 paying members, 25% of new signups from referral, $200 1:1 capacity expanded with at least one additional senior coach trained by the founder.
 
 ### Phase 3 (months 7–9) — Expand audiences
-- Open Ring 2 (founders) with a vertical landing page + a "pitch room" workout template.
+- Open Ring 2 (ICs) with a vertical landing page that leads with **$5/turn** instead of $100/mo — same product, different door.
 - Pilot Ring 3 (ESL) with one language (Spanish or Portuguese) — full localised funnel, one in‑market coach on staff.
-- First paid partnerships: 3–5 mid‑tier creators in business / sales / public‑speaking niches, performance deal (not flat fee).
-- **Target:** 5,000 paying users; Ring 2 at ≥15% of new signups; first Spanish‑speaking cohort live.
+- First paid partnerships: 3–5 mid‑tier creators in founder / sales / public‑speaking niches, performance deal (not flat fee), tracked via unique $5‑turn promo codes.
+- **Target:** 2,000 paying members; Ring 2 contributing ≥30% of new $5‑turn purchases; first Spanish‑speaking cohort live.
 
 ### Phase 4 (months 10–12) — Defensibility and stretch
-- Begin a closed pilot with **3 enterprise design partners** (sales orgs, consultancies). Goal is not revenue yet — it's a logo wall and product feedback for Year 2.
-- Public **30‑day money‑back guarantee** based on the score chart. By now we have enough data to know this is safe.
+- Begin a closed pilot with **3 enterprise design partners** (sales orgs, VC portfolios, consultancies). Sell a "team membership" priced per seat, not per turn. Logo wall and Year 2 product feedback matter more than the revenue.
+- Publish a public **chart‑based guarantee**: if your score doesn't move in 30 days as a member, the next month is free. Cheap because non‑improvers are non‑practisers and self‑select out; powerful as a top‑of‑page claim.
 - Strategic content investment: a longform research piece ("What makes founders sound fundable") backed by Willonski data, pitched to one tier‑1 publication.
-- **Target:** 10,000 paying users; <€35 blended CAC; ≥40% month‑6 retention.
+- **Target:** 4,000 paying members; <$130 blended CAC on the $100 tier; ≥45% month‑6 retention; $200 1:1 sold out every week.
 
 ---
 
 ## 7. Pricing and packaging (brand‑level, not finance‑level)
 
-Three tiers. The middle one is where the brand lives.
+Three tiers, designed so each one anchors the next. **The $200 1:1 is the brand. The $100/mo is the business. The $5/turn is the funnel.**
 
-- **Free — Daily Score.** One workout per day, AI score only, no coach. Permanent free tier; it's both the funnel and the product's most credible marketing.
-- **Coached — €29/mo (or €19/mo annual).** Daily workouts, full AI scoring, **a real coach reviews 1 workout per week** with a written verdict. This is the default product and the one all marketing should sell.
-- **Pro — €79/mo.** Daily workouts, coach reviews 3 per week, async chat with the coach, custom focus tasks (the product already supports `selected_task_id` and coaching memory — this is where to surface it).
+- **$5 / turn — Drop‑in.** Pay‑as‑you‑go: a single workout with full AI scoring and a written coach verdict. No subscription, no commitment. This is the trial. It removes every "is this for me?" objection in a single click. A free version still exists (the 60‑second voice check on the landing page), but the first *real* workout — the one with a coach verdict — costs $5. Charging for the trial filters tire‑kickers and signals quality.
+- **$100 / month — Membership.** Unlimited workouts, daily AI scoring, **coach verdicts on every session you submit**, full progress chart, custom focus tasks driven by coaching memory. This is the default product and what every paid ad sells. Pays for itself at 20 turns/month (i.e. roughly one workout per workday) — frame the math openly: *"if you practise, this is half the price. If you don't, you shouldn't be paying us."*
+- **$200 / 1:1 — Session with the founder.** A live, scheduled 60‑minute lesson with the founder (the person who built the scoring system and trained the coaches). Strictly limited capacity. This tier is not primarily a revenue product — it is the **brand anchor**. Every prospect who sees "$100/mo" reads it against "$200 for one hour with the person whose name is on the door."
 
-Pricing principles:
+### Why this structure works
 
-- Anchor on "what 1 hour of a real coach would cost" (€150–€300), not on "what an AI app costs." Every paid tier should feel like getting a coach for the price of Spotify.
-- Never discount the **Coached** tier on the landing page. Discounts go to the free tier in the form of a longer trial.
-- Annual price ends in 9, monthly does not. Small thing, real conversion impact.
+- **The $200 1:1 reframes everything below it.** Without it, $100/mo competes with €29 AI apps. With it, $100/mo looks like getting unlimited group‑class access at a studio whose master class is $200. That's a different (and easier) sale.
+- **$5 / turn is the conversion engine.** Most people will not sign up for $100/mo on day one. They will pay $5 once. The product's own data (`recurring_issues`, `last_5_scores`, the progress chart) makes the second and third $5 turn obvious — and by turn 4 or 5 the membership math sells itself.
+- **The cliff between tiers is intentional.** No $19 "lite" tier. We are not in the budget AI category and shouldn't price like one. People who balk at $100/mo should be on the $5/turn track until they're either ready or gone — not on a sad middle plan that erodes the brand.
+
+### Pricing principles
+
+- **Never discount the $100 membership.** Discounts erode the anchor and tell paying members they overpaid. Promotions go to the $5 drop‑in (e.g. "first turn free this week"), never to the subscription.
+- **Lead landing‑page pricing with the $200 1:1**, then $100/mo, then $5/turn. Anchor high; let the eye walk down. Most pricing pages do this backwards.
+- **Annual option ($1,000/yr, ~17% off two months) for members only.** Stops the churn‑and‑rejoin pattern; raises LTV; never advertised on cold traffic — surfaced inside the product after 60 days of active use.
+- **Coach 1:1s are scarce on purpose.** Show real available slots, real waitlist. Abundance kills the anchor.
 
 ---
 
@@ -200,11 +211,13 @@ Pricing principles:
 
 | Metric | What it tells the brand | Target by month 12 |
 |---|---|---|
-| **CAC (blended)** | Whether the story is working in market | <€35 |
-| **Activation = first workout completed** | Whether the onboarding is converting curiosity into reps | ≥70% of signups |
-| **Day‑7 retention** | Whether daily workouts actually feel daily | ≥40% |
-| **Day‑30 score delta (median)** | Whether the brand promise is being kept | ≥ +10 points |
+| **CAC on $100 membership** | Whether the premium story is working | <$130 |
+| **CAC on $5 single turn** | Whether the trial funnel is efficient | <$20 |
+| **$5 → $100 upgrade rate (within 30d of first turn)** | Whether the product earns the subscription | ≥25% |
+| **$200 1:1 calendar utilisation** | Whether the anchor tier is credible and demanded | ≥80% of available slots booked |
+| **Day‑30 score delta (median, members)** | Whether the brand promise is being kept | ≥ +10 points |
 | **Coach‑verdict open rate** | Whether the human side of the product is loved | ≥80% |
+| **Month‑6 retention on $100 tier** | Whether members keep paying | ≥45% |
 | **Referral share rate** | Whether the score chart is as shareable as we think | ≥10% of completers share |
 
 The single most important one is **day‑30 score delta.** If the chart moves, every other number eventually moves with it. If it doesn't, no amount of marketing fixes the funnel.
