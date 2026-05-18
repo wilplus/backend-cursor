@@ -6010,6 +6010,259 @@ class DatabaseService:
             "sign_convention": "positive_delta_means_official_greater_than_casual",
         }
 
+    # ── Coaching Directives Queue (Phase Directives-Queue / BE) ────
+    #
+    # User-level 5-step coaching arc. Admins POST an ordered list of
+    # 5 questions via /v2/admin/users/<id>/directives-queue; the
+    # chat / interview surface pops them one at a time via
+    # pop_next_directive() and marks each exhausted. When the queue
+    # is empty, those surfaces fall back to _generate_llm_question.
+    #
+    # Replaces the per-user single-question
+    # user_settings.queued_override_question (kept as a deprioritized
+    # fallback for back-compat) and the conceptually-misplaced
+    # snippet-level next_question_1..5 columns (which never shipped
+    # to this branch).
+
+    def list_directives_queue(
+        self,
+        user_id: str,
+    ) -> List[dict]:
+        """Return the user's current arc, ordered by position ASC.
+        Returns empty list when no queue exists OR the table is
+        missing (pre-migration env).
+        """
+        try:
+            result = (
+                self.client.table("coaching_directives_queue")
+                .select(
+                    "id, position, intent_tag, question, "
+                    "exhausted, created_at, created_by_admin_id"
+                )
+                .eq("user_id", user_id)
+                .order("position", desc=False)
+                .execute()
+            )
+            return list(result.data or [])
+        except Exception as e:
+            err_low = str(e).lower()
+            if (
+                "coaching_directives_queue" in err_low
+                and ("does not exist" in err_low or "pgrst" in err_low)
+            ):
+                logger.warning(
+                    "list_directives_queue: table missing "
+                    "(migration pending?) user=%s — returning []",
+                    user_id,
+                )
+                return []
+            logger.warning(
+                "list_directives_queue failed user=%s err=%s",
+                user_id, e,
+            )
+            return []
+
+    def replace_directives_queue(
+        self,
+        *,
+        user_id: str,
+        rows: List[dict],
+        admin_user_id: Optional[str],
+    ) -> List[dict]:
+        """Atomic-ish replace: DELETE existing rows for user_id,
+        then INSERT the new arc. Returns the inserted rows on
+        success; empty list on failure.
+
+        ``rows`` must each carry ``position`` (1..5), ``intent_tag``
+        (non-empty str), ``question`` (non-empty str). The caller
+        is responsible for validation; this method just persists
+        what it's given.
+
+        Atomicity caveat: Supabase python-postgrest doesn't expose
+        BEGIN/COMMIT, so DELETE and INSERT are two HTTP round-trips.
+        If the INSERT fails after the DELETE succeeded, the user
+        ends up with NO queue — admin will see an empty list on
+        the next GET and can re-POST. We log the half-state at
+        WARNING so support can spot it. Acceptable for an
+        admin-driven workflow (no concurrent writers).
+        """
+        try:
+            (
+                self.client.table("coaching_directives_queue")
+                .delete()
+                .eq("user_id", user_id)
+                .execute()
+            )
+        except Exception as del_err:
+            err_low = str(del_err).lower()
+            if (
+                "coaching_directives_queue" in err_low
+                and ("does not exist" in err_low or "pgrst" in err_low)
+            ):
+                logger.warning(
+                    "replace_directives_queue: table missing "
+                    "(migration pending?) user=%s — skipping",
+                    user_id,
+                )
+                return []
+            logger.warning(
+                "replace_directives_queue: DELETE failed user=%s err=%s",
+                user_id, del_err,
+            )
+            return []
+
+        if not rows:
+            # POST with empty rows == effectively DELETE. Honor
+            # silently so the admin UI can implement "clear" via
+            # POST [] as an alternative to DELETE.
+            return []
+
+        payload = [
+            {
+                "user_id": user_id,
+                "position": int(r["position"]),
+                "intent_tag": (r.get("intent_tag") or "").strip(),
+                "question": (r.get("question") or "").strip(),
+                "exhausted": False,
+                "created_by_admin_id": admin_user_id,
+            }
+            for r in rows
+        ]
+        try:
+            result = (
+                self.client.table("coaching_directives_queue")
+                .insert(payload)
+                .execute()
+            )
+            return list(result.data or [])
+        except Exception as ins_err:
+            logger.error(
+                "replace_directives_queue: INSERT failed AFTER "
+                "successful DELETE user=%s err=%s — user now has "
+                "EMPTY queue; admin should re-POST",
+                user_id, ins_err,
+            )
+            return []
+
+    def clear_directives_queue(self, user_id: str) -> bool:
+        """Delete the user's current arc. Returns True on success
+        (including the "nothing to delete" case), False on real
+        failure. Idempotent — calling on an empty queue is a no-op
+        success.
+        """
+        try:
+            (
+                self.client.table("coaching_directives_queue")
+                .delete()
+                .eq("user_id", user_id)
+                .execute()
+            )
+            return True
+        except Exception as e:
+            err_low = str(e).lower()
+            if (
+                "coaching_directives_queue" in err_low
+                and ("does not exist" in err_low or "pgrst" in err_low)
+            ):
+                logger.warning(
+                    "clear_directives_queue: table missing "
+                    "(migration pending?) user=%s — treating as "
+                    "no-op success",
+                    user_id,
+                )
+                return True
+            logger.warning(
+                "clear_directives_queue failed user=%s err=%s",
+                user_id, e,
+            )
+            return False
+
+    def pop_next_directive(
+        self,
+        user_id: str,
+    ) -> Optional[dict]:
+        """Atomic-ish: find the lowest-position un-exhausted row
+        for ``user_id``, mark it exhausted, return its
+        ``{id, position, intent_tag, question}``. Returns None when
+        the queue is empty OR fully exhausted OR the table is
+        missing.
+
+        Atomicity caveat: SELECT then UPDATE on two HTTP calls.
+        Race window between them = "if two next-question requests
+        for the same user fire in parallel, both might consume the
+        same row." Acceptable today because: (a) chat & interview
+        surfaces are user-driven and serial per session; (b) an
+        admin watching this in production can re-POST if the queue
+        gets weirdly out of order. If we ever need stricter
+        guarantees, promote to an RPC stored function with
+        SELECT ... FOR UPDATE SKIP LOCKED.
+
+        Called from the next-question splice in /v2/user/chat/
+        first-question and /v2/public/interview/next-question
+        BEFORE the legacy queued_override_question consumer and
+        BEFORE the LLM fallback.
+        """
+        try:
+            picked = (
+                self.client.table("coaching_directives_queue")
+                .select("id, position, intent_tag, question")
+                .eq("user_id", user_id)
+                .eq("exhausted", False)
+                .order("position", desc=False)
+                .limit(1)
+                .execute()
+            )
+            rows = picked.data or []
+            if not rows:
+                return None
+            row = rows[0]
+        except Exception as sel_err:
+            err_low = str(sel_err).lower()
+            if (
+                "coaching_directives_queue" in err_low
+                and ("does not exist" in err_low or "pgrst" in err_low)
+            ):
+                # Table not yet present — silently fall through to
+                # legacy / LLM path so the next-question handler
+                # doesn't 500 just because the migration is
+                # pending.
+                return None
+            logger.warning(
+                "pop_next_directive: select failed user=%s err=%s "
+                "— falling through",
+                user_id, sel_err,
+            )
+            return None
+
+        try:
+            (
+                self.client.table("coaching_directives_queue")
+                .update({"exhausted": True})
+                .eq("id", row["id"])
+                .execute()
+            )
+        except Exception as upd_err:
+            # The UPDATE failed but we already have the row in
+            # memory. Returning it means the chat surface will use
+            # this question — but the row is still flagged
+            # un-exhausted in the DB, so the NEXT turn will also
+            # pick the same row. Worse than dropping the row.
+            # Safer: log + return None, let the LLM fallback fire.
+            logger.warning(
+                "pop_next_directive: mark-exhausted failed "
+                "user=%s row=%s err=%s — falling through to LLM "
+                "to avoid double-firing the same directive",
+                user_id, row.get("id"), upd_err,
+            )
+            return None
+
+        return {
+            "id": row.get("id"),
+            "position": row.get("position"),
+            "intent_tag": row.get("intent_tag"),
+            "question": row.get("question"),
+        }
+
     def set_session_predictions(
         self,
         session_id: str,

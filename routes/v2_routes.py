@@ -10055,12 +10055,41 @@ def v2_user_chat_first_question():
         ).strip() or None
         intent = (request.args.get("intent") or "").strip().lower() or None
 
-        # Admin queued override (PUT /v2/admin/user/<id>/context with
-        # queued_override_question) wins over everything: contextual
-        # snippet flow, stored follow-up question, dynamic LLM. Pop-and-
-        # clear so it fires exactly once.
+        # ── Admin overrides (priority order) ────────────────────────
+        # 1) coaching_directives_queue — new user-level 5-step arc.
+        #    Pop the lowest-position un-exhausted row, mark exhausted.
+        #    Wins over contextual snippet flow, stored follow-up, and
+        #    the dynamic LLM. Phase Directives-Queue (BE).
+        # 2) queued_override_question — legacy single-question
+        #    override (PUT /v2/admin/user/<id>/context). Kept as a
+        #    deprioritized fallback so admin tooling still on the old
+        #    contract keeps working. Pop-and-clear so it fires once.
+        directive = db.pop_next_directive(user_id)
+        if directive:
+            logger.info(
+                "first-question: directives-queue HIT user=%s pos=%s "
+                "intent=%s",
+                user_id, directive.get("position"),
+                directive.get("intent_tag"),
+            )
+            return jsonify({
+                "status": "ok",
+                "question": directive.get("question"),
+                "source": "directives_queue",
+                "directive": {
+                    "position": directive.get("position"),
+                    "intent_tag": directive.get("intent_tag"),
+                },
+            }), 200
+
         override = db.consume_queued_override_question(user_id)
         if override:
+            logger.info(
+                "first-question: legacy queued_override_question HIT "
+                "user=%s — consider migrating admin tooling to "
+                "directives-queue",
+                user_id,
+            )
             return jsonify({
                 "status": "ok",
                 "question": override,
@@ -12055,13 +12084,42 @@ def v2_public_interview_next_question():
                     session_id_for_summary, cs_err,
                 )
 
-        # ── Admin queued override (any turn) ──────────────────────────
-        # PUT /v2/admin/user/<id>/context with queued_override_question
-        # arms a one-shot question that wins over LLM generation.
-        # Pop-and-clear so it fires exactly once.
+        # ── Admin overrides (priority order) ──────────────────────────
+        # 1) coaching_directives_queue — new user-level 5-step arc.
+        #    Pop the lowest-position un-exhausted row, mark exhausted.
+        #    Wins over directed-freestyle objectives and dynamic LLM
+        #    generation. Phase Directives-Queue (BE).
+        # 2) queued_override_question — legacy single-question override
+        #    via PUT /v2/admin/user/<id>/context. Kept as deprioritized
+        #    fallback for back-compat. Pop-and-clear (fires once).
         if user_id:
+            directive = db.pop_next_directive(user_id)
+            if directive:
+                logger.info(
+                    "interview: directives-queue HIT user=%s pos=%s "
+                    "intent=%s turn=%s",
+                    user_id, directive.get("position"),
+                    directive.get("intent_tag"), turn_number,
+                )
+                return jsonify({
+                    "question": directive.get("question"),
+                    "tone": "charisma",
+                    "turn_number": turn_number,
+                    "source": "directives_queue",
+                    "directive": {
+                        "position": directive.get("position"),
+                        "intent_tag": directive.get("intent_tag"),
+                    },
+                }), 200
+
             override = db.consume_queued_override_question(user_id)
             if override:
+                logger.info(
+                    "interview: legacy queued_override_question HIT "
+                    "user=%s — consider migrating admin tooling to "
+                    "directives-queue",
+                    user_id,
+                )
                 return jsonify({
                     "question": override,
                     "tone": "charisma",
@@ -15574,4 +15632,304 @@ def v2_chat_snippet_followup():
         return jsonify({
             "code": "V2_ERROR",
             "error": "Failed to generate follow-up",
+        }), 500
+
+
+# ── Coaching Directives Queue (Phase Directives-Queue / BE) ───────
+#
+# User-level 5-step coaching arc. Admin authors a sequence of 5
+# questions for one user; the chat / interview surface pops them
+# one at a time as the AI question for the next turn, marking
+# each exhausted as it fires. When the queue is empty, those
+# surfaces fall back to _generate_llm_question.
+#
+# Replaces the per-user single-question
+# user_settings.queued_override_question (kept as a deprioritized
+# fallback for back-compat — see consumer wiring in
+# v2_user_chat_first_question and v2_public_interview_next_question)
+# and the conceptually-misplaced snippet-level next_question_1..5
+# columns (which never shipped to this branch).
+#
+# Audit: every write logs an INFO line with structured fields
+# (user, admin, op, row count). We do NOT route to
+# admin_annotations_log — that table's schema captures the RLHF
+# (predicted, final) training pair, not admin config changes. The
+# application log is the audit trail of record for this surface.
+
+
+def _validate_directives_rows(rows: object) -> tuple[list, str | None]:
+    """Returns (normalized_rows, None) on success or
+    ([], error_message) on validation failure. Keeps the validation
+    logic out of the route body so the rules are easy to spot and
+    test."""
+    if not isinstance(rows, list):
+        return [], "rows must be an array"
+    if len(rows) != 5:
+        return [], "rows must contain exactly 5 entries (positions 1..5)"
+
+    seen_positions: set[int] = set()
+    out: list[dict] = []
+    for idx, r in enumerate(rows):
+        if not isinstance(r, dict):
+            return [], f"rows[{idx}] must be an object"
+        try:
+            pos = int(r.get("position"))
+        except (TypeError, ValueError):
+            return [], f"rows[{idx}].position must be an integer 1..5"
+        if pos < 1 or pos > 5:
+            return [], f"rows[{idx}].position must be in [1, 5], got {pos}"
+        if pos in seen_positions:
+            return [], f"position {pos} appears more than once"
+        seen_positions.add(pos)
+        intent_tag = (r.get("intent_tag") or "").strip()
+        question = (r.get("question") or "").strip()
+        if not intent_tag:
+            return [], f"rows[{idx}].intent_tag must be non-empty"
+        if not question:
+            return [], f"rows[{idx}].question must be non-empty"
+        out.append({
+            "position": pos,
+            "intent_tag": intent_tag,
+            "question": question,
+        })
+
+    # Positions must cover 1..5 exactly (no gaps, no dupes — dupes
+    # already caught above; this catches gaps).
+    if seen_positions != {1, 2, 3, 4, 5}:
+        return [], (
+            "positions must cover {1, 2, 3, 4, 5} exactly; "
+            f"got {sorted(seen_positions)}"
+        )
+
+    # Sort by position so persistence + audit log share one order.
+    out.sort(key=lambda r: r["position"])
+    return out, None
+
+
+@v2_bp.route(
+    "/admin/users/<user_id>/directives-queue",
+    methods=["GET"],
+)
+@require_admin
+def v2_admin_get_directives_queue(user_id):
+    """Return the user's current 5-step coaching arc.
+
+    Response 200:
+        {
+          "rows": [
+            {"position": 1, "intent_tag": "warm-up", "question": "...",
+             "exhausted": false, "id": "...", "created_at": "...",
+             "created_by_admin_id": "..."},
+            ...
+          ]
+        }
+    Empty list when no queue exists.
+    """
+    if not _is_valid_uuid(user_id):
+        return jsonify({
+            "code": "INVALID_INPUT",
+            "error": "user_id must be a valid UUID",
+        }), 400
+    try:
+        rows = db.list_directives_queue(user_id)
+        return jsonify({"rows": rows}), 200
+    except Exception as e:
+        logger.error(
+            "admin/directives-queue GET failed user=%s: %s",
+            user_id, e, exc_info=True,
+        )
+        sentry_sdk.capture_exception(e)
+        return jsonify({
+            "code": "V2_ERROR",
+            "error": "Failed to read directives queue",
+        }), 500
+
+
+@v2_bp.route(
+    "/admin/users/<user_id>/directives-queue",
+    methods=["POST"],
+)
+@require_admin
+def v2_admin_post_directives_queue(user_id):
+    """Replace the user's coaching arc with the posted 5 rows.
+
+    Body (JSON):
+        {
+          "rows": [
+            {"position": 1, "intent_tag": "...", "question": "..."},
+            ... five entries total ...
+          ]
+        }
+
+    Atomically (at the application layer): DELETE existing rows
+    for this user, then INSERT the new 5. The historical record is
+    in the application log (logger.info with structured fields).
+
+    Returns the inserted rows as the response so the FE can
+    rebuild its view without an extra GET round-trip.
+    """
+    if not _is_valid_uuid(user_id):
+        return jsonify({
+            "code": "INVALID_INPUT",
+            "error": "user_id must be a valid UUID",
+        }), 400
+    try:
+        body = request.get_json(silent=True) or {}
+        rows_raw = body.get("rows")
+        normalized, err = _validate_directives_rows(rows_raw)
+        if err:
+            return jsonify({
+                "code": "INVALID_INPUT",
+                "error": err,
+            }), 400
+
+        admin_user_id = str(request.user_id) if request.user_id else None
+        inserted = db.replace_directives_queue(
+            user_id=user_id,
+            rows=normalized,
+            admin_user_id=admin_user_id,
+        )
+        if not inserted:
+            # Either the table is missing (pre-migration) or the
+            # INSERT half-failed after the DELETE. Either way the
+            # user now has no queue; surface a recoverable error
+            # so the admin retries rather than thinking it worked.
+            return jsonify({
+                "code": "QUEUE_WRITE_FAILED",
+                "error": (
+                    "Failed to persist directives queue. The "
+                    "user's queue may now be empty — please retry."
+                ),
+            }), 500
+
+        # Structured audit log. One line per POST, parseable by
+        # log-ingesting tools downstream.
+        logger.info(
+            "directives-queue: REPLACE user=%s admin=%s rows=%d "
+            "positions=%s",
+            user_id, admin_user_id, len(inserted),
+            [r.get("position") for r in inserted],
+        )
+        return jsonify({"rows": inserted}), 200
+
+    except Exception as e:
+        logger.error(
+            "admin/directives-queue POST failed user=%s: %s",
+            user_id, e, exc_info=True,
+        )
+        sentry_sdk.capture_exception(e)
+        return jsonify({
+            "code": "V2_ERROR",
+            "error": "Failed to write directives queue",
+        }), 500
+
+
+@v2_bp.route(
+    "/admin/users/<user_id>/directives-queue",
+    methods=["DELETE"],
+)
+@require_admin
+def v2_admin_delete_directives_queue(user_id):
+    """Clear the user's coaching arc. Idempotent — calling on an
+    empty queue returns 200 with cleared:true."""
+    if not _is_valid_uuid(user_id):
+        return jsonify({
+            "code": "INVALID_INPUT",
+            "error": "user_id must be a valid UUID",
+        }), 400
+    try:
+        admin_user_id = str(request.user_id) if request.user_id else None
+        ok = db.clear_directives_queue(user_id)
+        if not ok:
+            return jsonify({
+                "code": "QUEUE_WRITE_FAILED",
+                "error": "Failed to clear directives queue",
+            }), 500
+        logger.info(
+            "directives-queue: CLEAR user=%s admin=%s",
+            user_id, admin_user_id,
+        )
+        return jsonify({"cleared": True}), 200
+    except Exception as e:
+        logger.error(
+            "admin/directives-queue DELETE failed user=%s: %s",
+            user_id, e, exc_info=True,
+        )
+        sentry_sdk.capture_exception(e)
+        return jsonify({
+            "code": "V2_ERROR",
+            "error": "Failed to clear directives queue",
+        }), 500
+
+
+@v2_bp.route(
+    "/admin/users/<user_id>/directives-queue/suggest",
+    methods=["POST"],
+)
+@require_admin
+def v2_admin_suggest_directives_queue(user_id):
+    """Generate 5 LLM-suggested directives for this user. NEVER
+    persists — the admin reviews the suggestions, edits as
+    needed, and then POSTs them via the normal endpoint above.
+
+    Body (JSON, optional):
+        {"snippet_id_context": "<uuid>"}  // soft anchor for the arc
+
+    Response 200:
+        {
+          "rows": [
+            {"intent_tag": "...", "question": "..."},
+            ... up to 5 entries ...
+          ]
+        }
+
+    May return ``rows: []`` when:
+      - LLM is unavailable (OPENAI_API_KEY missing, etc.)
+      - The user has no recent transcripts AND no profile signals
+        (cold-start — better to let the admin author manually
+        than emit generic filler)
+      - The model returns malformed JSON
+    The admin UI should render an empty form for manual authoring
+    in those cases.
+    """
+    if not _is_valid_uuid(user_id):
+        return jsonify({
+            "code": "INVALID_INPUT",
+            "error": "user_id must be a valid UUID",
+        }), 400
+    try:
+        body = request.get_json(silent=True) or {}
+        snippet_id_context = (
+            body.get("snippet_id_context") or ""
+        ).strip() or None
+        if snippet_id_context and not _is_valid_uuid(snippet_id_context):
+            return jsonify({
+                "code": "INVALID_INPUT",
+                "error": "snippet_id_context must be a UUID if provided",
+            }), 400
+
+        from services.directive_suggestions import suggest_directive_arc
+        rows = suggest_directive_arc(
+            user_id=user_id,
+            snippet_id_context=snippet_id_context,
+        )
+
+        admin_user_id = str(request.user_id) if request.user_id else None
+        logger.info(
+            "directives-queue: SUGGEST user=%s admin=%s anchor=%s "
+            "rows=%d",
+            user_id, admin_user_id, snippet_id_context or "-",
+            len(rows),
+        )
+        return jsonify({"rows": rows}), 200
+
+    except Exception as e:
+        logger.error(
+            "admin/directives-queue/suggest failed user=%s: %s",
+            user_id, e, exc_info=True,
+        )
+        sentry_sdk.capture_exception(e)
+        return jsonify({
+            "code": "V2_ERROR",
+            "error": "Failed to generate suggestions",
         }), 500
