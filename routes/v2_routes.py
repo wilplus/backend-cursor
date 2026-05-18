@@ -9376,6 +9376,7 @@ def v2_coaching_state_machine_turn():
             user_first_name=first_name,
             user_org_context=None,
             user_language_hint=user_language_hint,
+            coaching_id=coaching_id,
         )
 
         # Build the LLM's view of the conversation. The system
@@ -11034,18 +11035,24 @@ def v2_chat_query():
               "answer":         str,    # the chat bubble text
               "show_upload_ui": bool,   # per-turn upload affordance
                                          # toggle (RULE G)
+              "show_record_ui": bool,   # per-turn record affordance
+                                         # toggle (RULE I) — in-app
+                                         # mic, distinct from upload
               "debug":          {...}   # model + history_used / error
             }
         400 INVALID_INPUT — question missing or not a string
         500 V2_ERROR
 
-    show_upload_ui semantics:
-      • TRUE on the turn where the user expressed intent to upload
-        audio / video (the LLM detects "can I send a file?",
-        "I want to upload my recording", etc.)
-      • FALSE on every other turn
-      • Per-turn signal — frontend must NOT cache it across turns;
-        the answer carries the current state.
+    show_upload_ui / show_record_ui semantics:
+      • show_upload_ui — TRUE on the turn where the user expressed
+        intent to upload an existing file ("can I send a file?",
+        "I want to upload my recording", etc.). RULE G.
+      • show_record_ui — TRUE on the turn where the user expressed
+        intent to RECORD in-app via the chat's mic ("can I record
+        here?", "let me just record it", etc.). RULE I.
+      • Mutually exclusive — at most ONE is TRUE on any turn.
+      • Per-turn signals — frontend must NOT cache them across
+        turns; each answer carries the current state.
 
     Why @require_auth: the spec says this is the "after signup"
     surface. Pre-signup users get the on-rails interview flow;
@@ -11182,6 +11189,7 @@ def v2_chat_query():
         return jsonify({
             "answer": payload.get("answer", ""),
             "show_upload_ui": bool(payload.get("show_upload_ui", False)),
+            "show_record_ui": bool(payload.get("show_record_ui", False)),
             "debug": debug,
         }), 200
 
