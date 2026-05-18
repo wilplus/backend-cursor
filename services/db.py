@@ -5806,6 +5806,210 @@ class DatabaseService:
             )
             return None
 
+    # ── Casual Voice Benchmarks (Phase Stress-Contrast / BE-3) ──────
+    #
+    # Silent acoustic snapshots of the user speaking casually during
+    # /v2/chat/query (multipart path). Paired with
+    # services.casual_voice_analytics.analyze_casual_audio_async (the
+    # daemon-thread writer) and surfaced by compute_stress_contrast
+    # below.
+
+    def insert_casual_voice_benchmark(
+        self,
+        *,
+        user_id: str,
+        session_id: Optional[str],
+        metrics: dict,
+        transcript_source: str,
+        audio_duration_ms: Optional[int],
+        audio_storage_path: Optional[str] = None,
+    ) -> Optional[dict]:
+        """Persist one casual-voice metrics row. Returns the inserted
+        row, or None on any failure (caller is the fire-and-forget
+        daemon thread — losing one row is non-fatal).
+        """
+        payload = {
+            "user_id": user_id,
+            "session_id": session_id,
+            "metrics": metrics,
+            "transcript_source": transcript_source,
+            "audio_duration_ms": audio_duration_ms,
+            "audio_storage_path": audio_storage_path,
+        }
+        try:
+            result = (
+                self.client.table("casual_voice_benchmarks")
+                .insert(payload)
+                .execute()
+            )
+            return result.data[0] if result.data else None
+        except Exception as e:
+            err_low = str(e).lower()
+            if (
+                "casual_voice_benchmarks" in err_low
+                and ("does not exist" in err_low or "pgrst" in err_low)
+            ):
+                # Migration not yet applied in this environment —
+                # silently no-op so /v2/chat/query keeps working
+                # while the table catches up. Production has it; dev
+                # branches that pulled the code before running the
+                # SQL would otherwise spam Sentry on every chat send.
+                logger.warning(
+                    "insert_casual_voice_benchmark: table missing "
+                    "(migration pending?) user=%s — skipping",
+                    user_id,
+                )
+                return None
+            logger.warning(
+                "insert_casual_voice_benchmark failed user=%s err=%s",
+                user_id, e,
+            )
+            return None
+
+    def get_recent_casual_voice_metrics(
+        self,
+        user_id: str,
+        limit: int = 5,
+    ) -> List[dict]:
+        """Last N casual-voice metric blobs for this user, newest
+        first. Returns a list of the ``metrics`` JSONB dicts (just
+        the metrics, not the wrapping row). Empty list on no rows or
+        on failure (caller is the contrast aggregator, which already
+        handles the empty case as "not enough samples").
+        """
+        try:
+            result = (
+                self.client.table("casual_voice_benchmarks")
+                .select("metrics")
+                .eq("user_id", user_id)
+                .order("created_at", desc=True)
+                .limit(int(limit))
+                .execute()
+            )
+            return [
+                r["metrics"]
+                for r in (result.data or [])
+                if isinstance(r.get("metrics"), dict)
+            ]
+        except Exception as e:
+            logger.warning(
+                "get_recent_casual_voice_metrics failed user=%s err=%s",
+                user_id, e,
+            )
+            return []
+
+    def get_recent_published_snippet_metrics(
+        self,
+        user_id: str,
+        limit: int = 5,
+    ) -> List[dict]:
+        """Last N PUBLISHED charisma_snippets metric blobs for this
+        user. "Published" = coach_label IS NOT NULL (admin has
+        reviewed and labeled the snippet). This is the "official /
+        high-stakes" side of the stress contrast.
+
+        Returns dicts with the same keys
+        /v2/user/results/<session_id> exposes:
+        {wpm, fillers, pause_ms, dynamic_db, pitch_center, energy}.
+        Empty list on failure or no rows.
+        """
+        try:
+            result = (
+                self.client.table("charisma_snippets")
+                .select(
+                    "wpm, fillers, pause_ms, dynamic_db, "
+                    "pitch_center, energy, created_at"
+                )
+                .eq("user_id", user_id)
+                .not_.is_("coach_label", "null")
+                .order("created_at", desc=True)
+                .limit(int(limit))
+                .execute()
+            )
+            out: List[dict] = []
+            for r in result.data or []:
+                out.append({
+                    "wpm": r.get("wpm"),
+                    "fillers": r.get("fillers"),
+                    "pause_ms": r.get("pause_ms"),
+                    "dynamic_db": r.get("dynamic_db"),
+                    "pitch_center": r.get("pitch_center"),
+                    "energy": r.get("energy"),
+                })
+            return out
+        except Exception as e:
+            logger.warning(
+                "get_recent_published_snippet_metrics failed "
+                "user=%s err=%s",
+                user_id, e,
+            )
+            return []
+
+    def compute_stress_contrast(
+        self,
+        user_id: str,
+    ) -> Optional[dict]:
+        """median(last 5 published snippet metrics) − median(last 5
+        casual voice metrics) for the keys that exist on both
+        sides.
+
+        Sign convention (PIN; documented in
+        docs/PANEL-STATE-MATRIX.md): positive delta means OFFICIAL >
+        CASUAL. So +wpm_delta = user speaks faster under pressure
+        than when casual = likely a stress tell. Frontend renders
+        accordingly.
+
+        Returns None when EITHER side has fewer than 3 samples
+        (insufficient signal for a meaningful median). Frontend uses
+        None to omit the Stress Contrast section entirely — no
+        "not enough data" placeholder.
+
+        Pitch is intentionally OMITTED from the delta in v1:
+        ``charisma_snippets.pitch_center`` is in Hz, while
+        ``analyze_audio.pitch_center_st`` is in semitones. Comparing
+        them directly produces nonsense. A future revision can
+        unit-harmonize and add ``pitch_delta_st``.
+        """
+        import statistics
+
+        official = self.get_recent_published_snippet_metrics(user_id, limit=5)
+        casual = self.get_recent_casual_voice_metrics(user_id, limit=5)
+
+        if len(official) < 3 or len(casual) < 3:
+            return None
+
+        def _median(rows: List[dict], key: str) -> Optional[float]:
+            vals = [
+                r.get(key)
+                for r in rows
+                if isinstance(r.get(key), (int, float))
+            ]
+            return float(statistics.median(vals)) if vals else None
+
+        deltas: dict = {}
+        # Keys that exist on BOTH sides with compatible units.
+        # See docstring re: pitch omission.
+        for key in ("wpm", "pause_ms", "dynamic_db"):
+            o = _median(official, key)
+            c = _median(casual, key)
+            if o is not None and c is not None:
+                deltas[f"{key}_delta"] = round(o - c, 3)
+
+        if not deltas:
+            # Samples on both sides but no shared metric keys had
+            # numeric values — happens on legacy rows with NULL
+            # metric columns. Treat as underpowered.
+            return None
+
+        return {
+            "samples": {
+                "official": len(official),
+                "casual": len(casual),
+            },
+            "deltas": deltas,
+            "sign_convention": "positive_delta_means_official_greater_than_casual",
+        }
+
     def set_session_predictions(
         self,
         session_id: str,

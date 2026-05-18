@@ -8092,6 +8092,15 @@ def v2_user_get_results(session_id):
 
     When completed, payload includes all non-skipped snippets with their
     metrics, admin_comment, snippet_type, and audio URLs.
+
+    Optional query param ``include_contrast=true`` (Phase
+    Stress-Contrast / BE-3) attaches a ``contrast`` field powered
+    by ``db.compute_stress_contrast``: median deltas between the
+    user's last 5 published snippets ("official / high-stakes")
+    and their last 5 casual voice benchmarks captured during
+    /v2/chat/query. ``contrast`` is None when either side has
+    fewer than 3 samples; the frontend uses None to omit the card
+    entirely (do not render a placeholder).
     """
     try:
         if not _is_valid_uuid(session_id):
@@ -8101,6 +8110,17 @@ def v2_user_get_results(session_id):
         session = db.v2_get_session(session_id, user_id)
         if not session:
             return jsonify({"code": "NOT_FOUND", "error": "Session not found"}), 404
+
+        # BE-3: stress contrast is opt-in via query param so callers
+        # that don't render the dashboard section don't pay for two
+        # extra table reads. Cheap when included (≤10 indexed rows
+        # per side) but still gated for hygiene.
+        include_contrast = (
+            (request.args.get("include_contrast") or "")
+            .strip()
+            .lower()
+            in ("1", "true", "yes")
+        )
 
         # Dual-state: admin must explicitly publish before user sees results
         is_published = bool(session.get("results_published_at"))
@@ -8169,6 +8189,31 @@ def v2_user_get_results(session_id):
             # added return NULL, which the frontend treats as
             # "hide the dashboard section entirely".
             payload["charisma_profile"] = session.get("charisma_profile")
+
+        # ── BE-3 Stress Contrast ─────────────────────────────────────
+        # Gated by ?include_contrast=true. Computed across the WHOLE
+        # user (last 5 published snippets vs last 5 casual chat
+        # benchmarks), not just this session — that's the point: the
+        # delta is a per-user trait, not a per-session one. Surface
+        # it on the same payload so the dashboard renders it in the
+        # session-review view without a second round-trip.
+        #
+        # Returns None when either pool has <3 samples; the frontend
+        # treats None as "omit the section entirely" (do NOT render
+        # a 'not enough data' placeholder — see FE Prompt 3 C7).
+        if include_contrast:
+            try:
+                payload["contrast"] = db.compute_stress_contrast(user_id)
+            except Exception as contrast_err:
+                # Aggregator failure must not break the rest of the
+                # results payload. Log and surface None so the FE
+                # uniformly handles "no contrast available".
+                logger.warning(
+                    "user/results: stress contrast failed user=%s "
+                    "session=%s err=%s",
+                    user_id, session_id, contrast_err,
+                )
+                payload["contrast"] = None
 
         return jsonify(payload), 200
 
@@ -10979,24 +11024,131 @@ def v2_chat_query():
     the request to carry their identity for future per-user
     analytics on which topics get asked. Anonymous probing of
     the Q&A is out-of-scope for v1.
+
+    ─────────────────────────────────────────────────────────────────
+    Phase Stress-Contrast (BE-3) — dual-mode body parsing
+    ─────────────────────────────────────────────────────────────────
+    This endpoint additively supports a ``multipart/form-data`` body
+    when the frontend captures audio alongside the typed/dictated
+    question. Path A (text → LLM) is unchanged. Path B (audio → DSP)
+    fires asynchronously via ``casual_voice_analytics`` and never
+    blocks the HTTP response.
+
+    Multipart fields (all when Path B applies):
+      - question:              str (required; same semantics as JSON)
+      - history:               JSON-stringified list (optional)
+      - audio_file:            webm/opus blob (required for Path B)
+      - transcript_source:     "web_speech" | "server_whisper"
+                                (default "web_speech")
+      - audio_duration_sec:    float hint (optional)
+
+    JSON callers (the existing path) keep the exact same request
+    and response shape — no regression.
     """
     try:
-        body = request.get_json(silent=True) or {}
-        question = body.get("question")
+        # ── Body parsing — branch on content-type so existing JSON
+        # callers keep working unchanged (compatibility contract C1
+        # from BE-3 prompt). Multipart adds the audio side without
+        # touching the JSON code path.
+        content_type = (request.content_type or "").lower()
+        is_multipart = "multipart/form-data" in content_type
+
+        audio_bytes: bytes | None = None
+        transcript_source = "web_speech"
+        audio_duration_sec: float = 0.0
+
+        if is_multipart:
+            question = (request.form.get("question") or "").strip()
+            history_raw = request.form.get("history")
+            history: list | None = None
+            if history_raw:
+                try:
+                    import json as _json
+                    parsed = _json.loads(history_raw)
+                    if isinstance(parsed, list):
+                        history = parsed
+                except Exception:
+                    # Same leniency as the JSON path — bad history
+                    # never breaks the answer.
+                    history = None
+
+            audio_file = request.files.get("audio_file")
+            if audio_file is not None:
+                try:
+                    audio_bytes = audio_file.read()
+                except Exception as read_err:
+                    logger.warning(
+                        "chat/query: audio read failed user=%s err=%s "
+                        "— continuing text-only",
+                        request.user_id, read_err,
+                    )
+                    audio_bytes = None
+
+                ts_raw = (
+                    request.form.get("transcript_source") or ""
+                ).strip().lower()
+                if ts_raw in ("web_speech", "server_whisper"):
+                    transcript_source = ts_raw
+
+                try:
+                    audio_duration_sec = float(
+                        request.form.get("audio_duration_sec") or "0"
+                    )
+                except (TypeError, ValueError):
+                    audio_duration_sec = 0.0
+        else:
+            body = request.get_json(silent=True) or {}
+            question = body.get("question")
+            history = body.get("history")
+            if history is not None and not isinstance(history, list):
+                history = None
+
         if not isinstance(question, str) or not question.strip():
             return jsonify({
                 "code": "INVALID_INPUT",
                 "error": "question must be a non-empty string",
             }), 400
 
-        history = body.get("history")
-        if history is not None and not isinstance(history, list):
-            # Be lenient: a stringly-typed or oddly-shaped history
-            # shouldn't break the answer — drop it and continue.
-            history = None
-
+        # ── Path A — LLM answer (the only thing the HTTP response
+        # carries back). Unchanged from the pre-BE-3 behavior.
         from services.master_doc_rag import answer_question
         payload, debug = answer_question(question.strip(), history=history)
+
+        # ── Path B — fire-and-forget DSP extraction. Spawned BEFORE
+        # the jsonify so the daemon's stack frame exists by the time
+        # the request worker recycles, but AFTER Path A so we never
+        # delay the LLM. The dispatch itself is a thread.start() —
+        # microseconds; safe to do before returning. Failure to
+        # dispatch is logged and swallowed; the LLM answer still
+        # ships.
+        if audio_bytes:
+            try:
+                from services.casual_voice_analytics import (
+                    analyze_casual_audio_async,
+                )
+                analyze_casual_audio_async(
+                    user_id=str(request.user_id),
+                    # session_id is None for pure Lounge chat — the
+                    # endpoint isn't session-bound. The column on
+                    # casual_voice_benchmarks is nullable for this
+                    # exact reason; see migration comment.
+                    session_id=None,
+                    audio_bytes=audio_bytes,
+                    transcript=question.strip(),
+                    duration_sec=audio_duration_sec,
+                    transcript_source=transcript_source,
+                )
+            except Exception as cv_err:
+                # The dispatcher should never raise (it's just a
+                # thread.start), but defense-in-depth: a broken
+                # casual-voice path MUST NOT take down the chat
+                # response. Log and move on.
+                logger.warning(
+                    "chat/query: casual_voice dispatch failed "
+                    "user=%s err=%s (non-fatal — LLM answer still "
+                    "returned)",
+                    request.user_id, cv_err,
+                )
 
         return jsonify({
             "answer": payload.get("answer", ""),
