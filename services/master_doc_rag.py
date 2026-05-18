@@ -52,7 +52,7 @@ _RESPONSE_SCHEMA: dict[str, Any] = {
     "schema": {
         "type": "object",
         "additionalProperties": False,
-        "required": ["answer", "show_upload_ui"],
+        "required": ["answer", "show_upload_ui", "show_record_ui"],
         "properties": {
             "answer": {
                 "type": "string",
@@ -74,6 +74,19 @@ _RESPONSE_SCHEMA: dict[str, Any] = {
                     "TRUE on the turn where the user expressed "
                     "intent to upload audio/video; FALSE on every "
                     "other turn. Per-turn signal, not session state."
+                ),
+            },
+            "show_record_ui": {
+                "type": "boolean",
+                "description": (
+                    "TRUE on the turn where the user expressed "
+                    "intent to record in-app via the chat's mic "
+                    "(distinct from uploading an existing file). "
+                    "FALSE on every other turn. Per-turn signal, "
+                    "not session state. Record and upload intents "
+                    "are different gestures — set at most ONE of "
+                    "show_record_ui / show_upload_ui to TRUE on "
+                    "any given turn."
                 ),
             },
         },
@@ -237,23 +250,35 @@ _SYSTEM_PROMPT = (
     "    turns — it's a per-turn signal, not a session state.\n"
     "\n"
     "  RULE H — CAPABILITY BOUNDARIES (POLITE DECLINE):\n"
-    "    The app's surface is voice-only, asynchronous, and "
+    "    The app's surface is voice-led, asynchronous, and "
     "    browser-based. It CANNOT do any of:\n"
-    "      • access the user's phone camera, microphone hardware, "
-    "        GPS, or any other device sensor\n"
+    "      • access the user's phone camera, GPS, or any non-"
+    "        microphone device sensor\n"
     "      • make phone calls, send SMS, send email on the user's "
     "        behalf, or post to any external service\n"
     "      • read or modify the user's calendar, contacts, photo "
     "        roll, or files outside what they upload\n"
-    "      • transcribe or analyse audio in real time during the "
-    "        chat (recording is async — see the Master Document)\n"
     "      • do anything not described in the Master Document\n"
-    "    When the user asks for ANY of those: DO NOT pretend the "
+    "    SUPPORTED — do NOT decline these:\n"
+    "      • RECORDING audio in-app via the chat's microphone "
+    "        button. POST /v2/chat/query accepts a multipart "
+    "        audio_file and dispatches it to casual_voice_"
+    "        analytics. When the user asks to record, follow "
+    "        RULE I (record-intent detection) — do NOT route "
+    "        them through this decline rule.\n"
+    "      • UPLOADING an existing audio / video file. Follow "
+    "        RULE G (upload-intent detection).\n"
+    "    When the user asks for any of the genuine non-capabilities "
+    "    above (camera, calendar, SMS, etc.): DO NOT pretend the "
     "    capability exists. Politely say no in a single short "
     "    sentence and pivot back to voice — match this template's "
     "    energy:\n"
     "      \"No, unfortunately I cannot access your phone's camera. "
     "       Let's get back to your voice!\"\n"
+    "    NEVER use this template (or anything mentioning "
+    "    \"microphone\" / \"cannot access\" / \"camera\") when the "
+    "    user asks about RECORDING — the microphone IS available; "
+    "    RULE I owns that path.\n"
     "    Declines are SHORT BY MERIT, not by truncation. "
     "    Capability declines do NOT get the RULE F Master-Document "
     "    grounded-answer exemption — do NOT pad them with borrowed "
@@ -264,6 +289,35 @@ _SYSTEM_PROMPT = (
     "    answer plus a one-line pivot.\n"
     "    Out-of-scope but NOT capability-related questions still "
     "    follow RULE B (pivot to a real Master-Document fact).\n"
+    "\n"
+    "  RULE I — RECORD-INTENT DETECTION (in-app mic):\n"
+    "    When the user expresses intent to RECORD audio in the "
+    "    chat (distinct from uploading an existing file — that's "
+    "    RULE G), set show_record_ui=true in your JSON response "
+    "    AND give a brief confirming answer (under 75 chars). Use "
+    "    this exact phrasing whenever possible:\n"
+    "      \"Sure — tap the mic to record.\"\n"
+    "    Trigger phrasings include (non-exhaustive):\n"
+    "      • \"can I record here\"\n"
+    "      • \"let me just record it\"\n"
+    "      • \"I want to record in the app\"\n"
+    "      • \"can I do it here\"\n"
+    "      • \"how do I record this\"\n"
+    "      • any phrasing that maps to 'I want to record right now '\n"
+    "        'in this chat'\n"
+    "    The frontend hides the mic affordance by default and "
+    "    reveals it on this flag, so setting it is what makes the "
+    "    user's next click work.\n"
+    "    NEVER decline a record-intent question with a "
+    "    capability-decline template (RULE H). The microphone IS "
+    "    supported; the chat HAS a mic. Saying \"I cannot access "
+    "    your microphone\" on this path is a bug.\n"
+    "    On every OTHER turn (not record intent), set "
+    "    show_record_ui=false. Do NOT leave it true across "
+    "    turns — it's a per-turn signal, not a session state.\n"
+    "    RULE G (upload) and RULE I (record) are MUTUALLY "
+    "    EXCLUSIVE on any single turn — set at most ONE of "
+    "    show_upload_ui / show_record_ui to TRUE.\n"
     "═════════════════════════════════════════════════\n"
     "\n"
     "MASTER DOCUMENT (verbatim — your only source of truth):\n"
@@ -287,7 +341,14 @@ def answer_question(
         {
           "answer":         str,   # the chat-bubble text
           "show_upload_ui": bool,  # per-turn upload-intent signal
+          "show_record_ui": bool,  # per-turn record-intent signal
+                                    # (in-app mic; distinct from upload)
         }
+
+    show_upload_ui and show_record_ui are mutually exclusive on
+    any single turn — the LLM is instructed to set at most one of
+    them. The route handler does NOT enforce mutual exclusion; it
+    trusts the schema + prompt rules.
 
     On any failure path we still hand back a shape-complete
     payload (polite document-grounded fallback) so the route never
@@ -310,6 +371,7 @@ def answer_question(
                     "or who's behind it."
                 ),
                 "show_upload_ui": False,
+                "show_record_ui": False,
             },
             {"error": "empty_question"},
         )
@@ -372,9 +434,14 @@ def answer_question(
     # but the wire could in theory carry truthy strings on a model
     # regression. Normalise to the two valid values only.
     show_upload_ui = bool(parsed.get("show_upload_ui"))
+    show_record_ui = bool(parsed.get("show_record_ui"))
 
     return (
-        {"answer": answer, "show_upload_ui": show_upload_ui},
+        {
+            "answer": answer,
+            "show_upload_ui": show_upload_ui,
+            "show_record_ui": show_record_ui,
+        },
         {"model": _MODEL, "history_used": len(messages) - 2},
     )
 
@@ -384,8 +451,8 @@ def _fallback_payload() -> dict[str, Any]:
     unavailable / failed / returned unparseable output.
 
     Always shape-complete so the route handler never has to special
-    -case the error envelope. show_upload_ui=False since we
-    couldn't actually detect intent.
+    -case the error envelope. Both intent flags default False since
+    we couldn't actually detect intent.
     """
     return {
         "answer": (
@@ -396,4 +463,5 @@ def _fallback_payload() -> dict[str, Any]:
             "ask something more specific."
         ),
         "show_upload_ui": False,
+        "show_record_ui": False,
     }

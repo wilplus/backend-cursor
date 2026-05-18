@@ -46,10 +46,15 @@ The frontend reads the structured output and:
     "do you agree with the coach?" reflection input.
   - On step==2: renders ActionBubble (Yes / No) wired to
     POST /v2/user/snippets/<id>/label.
-  - On step==3-4: renders standard chat bubbles + negotiation
-    affordances (input box stays open).
-  - On step==5 with end=true: shows the acoustic-targets card
-    and closes the session.
+  - On step==3..7: renders standard chat bubbles for each
+    Director's Script question; input box stays open.
+  - On step==8: shows the acoustic-targets card (the bridge —
+    end=false, input stays open for the user's reaction).
+  - On step==9 with show_trial_recording_mic in triggers:
+    swaps the text input for the mic affordance and POSTs the
+    recording to /v2/coaching/trial-recording. The session is
+    marked complete out-of-band when that POST arrives, NOT on
+    this turn (end=false; this turn closes the input only).
 """
 from __future__ import annotations
 
@@ -167,8 +172,9 @@ def build_state_machine_system_prompt(
     user_first_name: Optional[str] = None,
     user_org_context: Optional[str] = None,
     user_language_hint: Optional[str] = None,
+    coaching_id: Optional[str] = None,
 ) -> str:
-    """Assemble the 8-step state-machine system prompt for one
+    """Assemble the 9-step state-machine system prompt for one
     coaching chat session.
 
     The snippet's admin_comment is injected as Director's Notes —
@@ -184,7 +190,13 @@ def build_state_machine_system_prompt(
     handler resolves which to pass in.
     When the script is empty / missing, the prompt falls through
     to a single open question and proceeds straight to the
-    acoustic cliffhanger.
+    acoustic bridge + re-record ask.
+
+    ``coaching_id`` is echoed back to the frontend on STEP 9 via
+    ``trial_recording.coaching_id`` so the recording POST knows
+    which coaching session the take belongs to. Optional only so
+    direct callers (tests) don't have to wire it; the live route
+    always passes it.
 
     ``user_org_context`` is accepted for back-compat (frontend BFF
     still passes it from the previous SaaS-negotiation design) but
@@ -248,12 +260,13 @@ def build_state_machine_system_prompt(
     # The parameter is still accepted to preserve the function
     # signature for existing callers.
 
+    coaching_id_clean = (coaching_id or "").strip() or "UNKNOWN"
     return (
         "You are the AI host of a structured coaching chat. You are "
         "NOT the coach — you are the ACTOR delivering the coach's "
         "script (the admin_comment is the Director's Notes; the "
         "5-question script below is the Director's Script; deliver "
-        "BOTH, don't override them). The protocol has up to 8 "
+        "BOTH, don't override them). The protocol has up to 9 "
         "steps. Each user message advances the protocol by one "
         "step. NEVER skip a step.\n"
         + first_name_line +
@@ -291,7 +304,7 @@ def build_state_machine_system_prompt(
         "\n"
         "  RULE 2 — EMPATHY / ACKNOWLEDGEMENT:\n"
         "    • NEVER ignore what the user just said. On every turn "
-        "      where a user message exists (STEP 2 through STEP 8), "
+        "      where a user message exists (STEP 2 through STEP 9), "
         "      start your narration with ONE sentence that "
         "      summarises or reflects what they said, then move "
         "      into the current step's content.\n"
@@ -403,37 +416,64 @@ def build_state_machine_system_prompt(
         "  If the script is empty (length 0), skip directly from "
         "  STEP 2 to STEP 8 — open STEP 8's narration with a brief "
         "  bridge acknowledging the user's reflection and proceed "
-        "  to the cliffhanger.\n"
+        "  to the bridge.\n"
         "\n"
-        "STEP 8 — THE ACOUSTIC CLIFFHANGER (one turn, ends the "
-        "session):\n"
+        "STEP 8 — THE ACOUSTIC BRIDGE (one turn — this is a "
+        "BRIDGE, not the close; STEP 9 comes next):\n"
         "  Per RULE 2, open with (in English per RULE 1): \"Ok, "
         "noted. Good work across those reflections.\" — adapted "
         "to acknowledge what the user said in the final script "
         "answer.\n"
-        "  Then frame the carrot: \"If you keep progressing, the "
-        "next session will go further.\"\n"
-        "  Close with the acoustic goals — render the targets "
+        "  Then surface the acoustic goals — render the targets "
         "below in English and keep the NUMBERS verbatim (WPM, "
         "dB, filler counts come from this user's actual baseline; "
-        "don't invent your own). Phrasing seed:\n"
+        "don't invent your own). Frame them as the bar for the "
+        "next take. Phrasing seed:\n"
         f"    {acoustic_targets_line}\n"
-        "  End the entire session with the literal word END.\n"
-        "  Set step=8, end=true, current_question_position=null, "
+        "  Close with a one-line preview that a fresh recording "
+        "is coming up next (e.g. \"Now let's hear you try it — "
+        "you'll record a short take in a moment.\"). Do NOT ask "
+        "for the recording on this step — STEP 9 owns that.\n"
+        "  Set step=8, end=false, current_question_position=null, "
         "  and triggers=['show_acoustic_targets_card']. Pass the "
         "  targets in acoustic_targets so the frontend can render "
-        "  the closing card.\n"
+        "  the targets card. Do NOT emit show_trial_recording_mic "
+        "  here — that fires on STEP 9.\n"
+        "\n"
+        "STEP 9 — THE RE-RECORD ASK (one turn — closes the chat "
+        "input and hands off to the mic):\n"
+        "  Per RULE 2, open with ONE sentence reflecting the "
+        "user's reaction to the targets you just surfaced in "
+        "STEP 8.\n"
+        "  Then ask them to record a fresh take here in the chat. "
+        "Describe the practice prompt briefly — refer back to the "
+        "acoustic targets from STEP 8 (the WPM band, the dB lift, "
+        "the filler ceiling) as the bar to aim for. Keep the ask "
+        "concrete and 1-2 sentences: \"Tap the mic and re-do that "
+        "moment — aim for X WPM, with a touch more vocal range, "
+        "and under N fillers.\"\n"
+        "  Do NOT end with the literal word END. The session "
+        "closes out-of-band when the trial recording POSTs to "
+        "/v2/coaching/trial-recording.\n"
+        "  Set step=9, end=false, current_question_position=null, "
+        "  and triggers=['show_trial_recording_mic']. Pass the "
+        f"  trial_recording object as {{ coaching_id: "
+        f"\"{coaching_id_clean}\", prompt_text: <one-sentence "
+        "  paraphrase of your ask> }} so the frontend wires the "
+        "  mic to the right session and renders a short hint "
+        "  above the recorder.\n"
         "\n"
         "─────────────────────────────────────────────────\n"
         "OUTPUT FORMAT — strict JSON matching the response schema. "
         "The 'narration' field is what the user sees in the chat "
-        "bubble (in English per RULE 1). The 'step' (1..8), "
+        "bubble (in English per RULE 1). The 'step' (1..9), "
         "'current_question_position' (1..5 during script steps, "
         "null otherwise), 'triggers', 'end', 'snippet_player', "
-        "'label_buttons', and 'acoustic_targets' fields drive the "
-        "frontend's UI affordances and are language-neutral keys "
-        "/ enum values — NEVER translate the schema keys, only "
-        "the narration prose.\n"
+        "'label_buttons', 'acoustic_targets', and "
+        "'trial_recording' fields drive the frontend's UI "
+        "affordances and are language-neutral keys / enum values "
+        "— NEVER translate the schema keys, only the narration "
+        "prose.\n"
         "\n"
         "Voice: direct, second-person, warm-but-no-fluff. Match "
         "the coach's tone (the admin_comment is your style "
@@ -573,18 +613,18 @@ STATE_MACHINE_RESPONSE_SCHEMA: dict[str, Any] = {
             "step": {
                 "type": "integer",
                 "minimum": 1,
-                "maximum": 8,
+                "maximum": 9,
                 "description": (
                     "Which protocol step this turn is in: "
                     "1=reveal, 2=rlhf_label, 3..7=script_q1..q5, "
-                    "8=cliffhanger."
+                    "8=acoustic_bridge, 9=re_record_ask."
                 ),
             },
             "current_question_position": {
                 "type": ["integer", "null"],
                 "description": (
                     "Which Director's Script position (1..5) this "
-                    "turn delivered, or null on steps 1/2/8. "
+                    "turn delivered, or null on steps 1/2/8/9. "
                     "Frontend reads this to render a '3 of 5' "
                     "progress dot."
                 ),
@@ -598,20 +638,27 @@ STATE_MACHINE_RESPONSE_SCHEMA: dict[str, Any] = {
                         "render_snippet_player",
                         "show_charisma_label_buttons",
                         "show_acoustic_targets_card",
+                        "show_trial_recording_mic",
                         "none",
                     ],
                 },
                 "description": (
                     "Which UI affordances the frontend should render "
-                    "alongside this turn's narration."
+                    "alongside this turn's narration. "
+                    "'show_trial_recording_mic' fires on STEP 9 and "
+                    "unlocks the mic that POSTs to "
+                    "/v2/coaching/trial-recording."
                 ),
             },
             "end": {
                 "type": "boolean",
                 "description": (
-                    "TRUE on the turn that closes the session "
-                    "(STEP 8 cliffhanger). Frontend closes the input "
-                    "and marks the coaching_session complete."
+                    "TRUE on the turn that closes the chat input "
+                    "(STEP 9 re-record ask — frontend swaps the text "
+                    "input for the mic affordance). The "
+                    "coaching_session is marked complete out-of-band "
+                    "when the trial recording POST arrives, NOT on "
+                    "this turn."
                 ),
             },
             "snippet_player": {
@@ -643,6 +690,24 @@ STATE_MACHINE_RESPONSE_SCHEMA: dict[str, Any] = {
                     "current_dynamic_db": {"type": ["number", "null"]},
                 },
             },
+            "trial_recording": {
+                "type": "object",
+                "additionalProperties": False,
+                "description": (
+                    "Present on STEP 9 alongside the "
+                    "'show_trial_recording_mic' trigger. Frontend "
+                    "uses this to POST the recording to "
+                    "/v2/coaching/trial-recording and to render a "
+                    "short hint above the mic. 'prompt_text' is a "
+                    "one-sentence ask paraphrased from the "
+                    "narration; the narration carries the full "
+                    "framing."
+                ),
+                "properties": {
+                    "coaching_id": {"type": "string"},
+                    "prompt_text": {"type": "string"},
+                },
+            },
         },
     },
     "strict": True,
@@ -670,7 +735,7 @@ def parse_state_machine_response(raw: str) -> Optional[dict[str, Any]]:
     if not (parsed.get("narration") or "").strip():
         return None
     step = parsed.get("step")
-    if not isinstance(step, int) or not (1 <= step <= 8):
+    if not isinstance(step, int) or not (1 <= step <= 9):
         return None
     triggers = parsed.get("triggers") or []
     if not isinstance(triggers, list):
