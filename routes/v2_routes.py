@@ -15941,3 +15941,168 @@ def v2_admin_suggest_directives_queue(user_id):
             "code": "V2_ERROR",
             "error": "Failed to generate suggestions",
         }), 500
+
+
+# ── Chat-surface consent flags (Phase Single-Slot-Chat) ──────────
+#
+# GET / PUT /v2/user/sharing-consent — four-flag fan-out (Option A
+# from the BE prompt). Each flag corresponds to one YesNoPills
+# consent moment in the chat funnel:
+#   mic_consent    — microphone permission
+#   share_consent  — share recorded snippets with the human coach
+#   email_consent  — receive weekly progress emails
+#   terms_consent  — accept Terms & Privacy
+#
+# Storage: nullable booleans on user_settings (added by
+# migrations/add_consent_flags_to_user_settings.sql). NULL = not
+# yet answered → FE shows the prompt for that slot. TRUE/FALSE =
+# answered.
+#
+# Back-compat: GET response ALSO echoes share_consent as the
+# legacy `opt_in` field; PUT body accepts `opt_in: bool` as an
+# alias for `share_consent`. Both alias paths are kept until the
+# FE migrates to the new field names — flag this as deprecated
+# once FE is on the new contract.
+
+_CONSENT_FIELDS_FE = (
+    "mic_consent",
+    "share_consent",
+    "email_consent",
+    "terms_consent",
+)
+
+
+def _shape_consent_response(state: dict) -> dict:
+    """Compose the GET/PUT response body from a consent state
+    dict (as returned by ``db.get_consent_state``).
+
+    has_answered = any of the four is non-null. FE uses it as a
+    coarse "has the user been through the funnel at all" check;
+    per-moment gating uses the individual fields.
+    """
+    has_answered = any(
+        state.get(field) is not None
+        for field in _CONSENT_FIELDS_FE
+    )
+    out = {
+        "has_answered": has_answered,
+        "mic_consent": state.get("mic_consent"),
+        "share_consent": state.get("share_consent"),
+        "email_consent": state.get("email_consent"),
+        "terms_consent": state.get("terms_consent"),
+        # Back-compat alias for the legacy single-flag contract.
+        # Drops to be removed after FE migrates.
+        "opt_in": state.get("share_consent"),
+    }
+    return out
+
+
+@v2_bp.route("/user/sharing-consent", methods=["GET"])
+@require_auth
+def v2_user_get_sharing_consent():
+    """Return the user's four-flag consent state.
+
+    Response 200::
+
+        {
+          "has_answered": bool,
+          "mic_consent":   bool | null,
+          "share_consent": bool | null,
+          "email_consent": bool | null,
+          "terms_consent": bool | null,
+          "opt_in":        bool | null   # ALIAS for share_consent
+                                          # (back-compat, deprecated)
+        }
+    """
+    try:
+        state = db.get_consent_state(str(request.user_id))
+        return jsonify(_shape_consent_response(state)), 200
+    except Exception as e:
+        logger.error(
+            "user/sharing-consent GET failed user=%s: %s",
+            getattr(request, "user_id", None), e, exc_info=True,
+        )
+        sentry_sdk.capture_exception(e)
+        return jsonify({
+            "code": "V2_ERROR",
+            "error": "Failed to read consent state",
+        }), 500
+
+
+@v2_bp.route("/user/sharing-consent", methods=["PUT"])
+@require_auth
+def v2_user_put_sharing_consent():
+    """Update any subset of the four consent flags.
+
+    Body (JSON): any subset of mic_consent / share_consent /
+    email_consent / terms_consent (each must be bool). The legacy
+    ``opt_in: bool`` key is accepted as an alias for
+    ``share_consent`` — if BOTH are present, the explicit
+    ``share_consent`` value wins.
+
+    Response 200: same shape as GET, echoing the post-write state.
+    """
+    try:
+        user_id = str(request.user_id)
+        body = request.get_json(silent=True) or {}
+        if not isinstance(body, dict):
+            return jsonify({
+                "code": "INVALID_INPUT",
+                "error": "Body must be a JSON object",
+            }), 400
+
+        patch: dict = {}
+        # ── Back-compat alias: opt_in → share_consent ──
+        if "opt_in" in body:
+            val = body["opt_in"]
+            if val is not None and not isinstance(val, bool):
+                return jsonify({
+                    "code": "INVALID_INPUT",
+                    "error": "opt_in must be a boolean or null",
+                }), 400
+            patch["share_consent"] = val
+
+        # ── Canonical fields (override the alias if both passed) ──
+        for field in _CONSENT_FIELDS_FE:
+            if field in body:
+                val = body[field]
+                if val is not None and not isinstance(val, bool):
+                    return jsonify({
+                        "code": "INVALID_INPUT",
+                        "error": f"{field} must be a boolean or null",
+                    }), 400
+                patch[field] = val
+
+        if not patch:
+            return jsonify({
+                "code": "INVALID_INPUT",
+                "error": (
+                    "Body must include at least one of: "
+                    "mic_consent, share_consent, email_consent, "
+                    "terms_consent, opt_in"
+                ),
+            }), 400
+
+        new_state = db.upsert_consent_fields(user_id, patch)
+        if new_state is None:
+            return jsonify({
+                "code": "V2_ERROR",
+                "error": "Failed to write consent state",
+            }), 500
+
+        logger.info(
+            "user/sharing-consent PUT user=%s fields=%s",
+            user_id, sorted(patch.keys()),
+        )
+        return jsonify(_shape_consent_response(new_state)), 200
+
+    except Exception as e:
+        logger.error(
+            "user/sharing-consent PUT failed user=%s: %s",
+            getattr(request, "user_id", None), e, exc_info=True,
+        )
+        sentry_sdk.capture_exception(e)
+        return jsonify({
+            "code": "V2_ERROR",
+            "error": "Failed to update consent state",
+        }), 500

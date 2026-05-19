@@ -8342,6 +8342,113 @@ class DatabaseService:
             logger.warning(f"get_user_settings failed: {e}")
             return None
 
+    # ── Chat-surface consent flags (Phase Single-Slot-Chat) ────────
+    #
+    # Four nullable boolean columns on user_settings powering
+    # GET / PUT /v2/user/sharing-consent. NULL = not yet answered
+    # (FE shows the prompt for that slot). TRUE/FALSE = answered.
+    # Distinct from the user_consents GDPR audit ledger; that one
+    # is immutable and written once at signup.
+
+    _CONSENT_FIELDS = (
+        "mic_consent",
+        "share_consent",
+        "email_consent",
+        "terms_consent",
+    )
+
+    def get_consent_state(self, user_id: str) -> dict:
+        """Returns the four-flag consent state for ``user_id``.
+
+        Shape::
+            {
+              "mic_consent":   bool | None,
+              "share_consent": bool | None,
+              "email_consent": bool | None,
+              "terms_consent": bool | None,
+            }
+
+        Returns all-None when the user has no user_settings row yet
+        OR the consent columns haven't been migrated yet (silent
+        degradation so pre-migration deploys don't 500). The route
+        handler computes ``has_answered`` from these.
+        """
+        settings = self.get_user_settings(user_id) or {}
+        out: dict = {}
+        for field in self._CONSENT_FIELDS:
+            val = settings.get(field)
+            # Defensive: anything other than True/False/None is treated
+            # as "not answered". Supabase JSON decode can occasionally
+            # surface odd types; we'd rather show the prompt than
+            # block on a malformed cell.
+            if isinstance(val, bool):
+                out[field] = val
+            else:
+                out[field] = None
+        return out
+
+    def upsert_consent_fields(
+        self,
+        user_id: str,
+        patch: dict,
+    ) -> Optional[dict]:
+        """Partial upsert of the four consent flags. ``patch`` may
+        contain any subset of mic_consent / share_consent /
+        email_consent / terms_consent; missing keys are NOT touched.
+
+        Returns the post-write consent state (same shape as
+        ``get_consent_state``) on success, None on failure.
+
+        Silently no-ops + warns when the columns are missing
+        (pre-migration env). Matches the pattern used by
+        ``insert_casual_voice_benchmark`` and others.
+        """
+        payload: dict = {
+            "user_id": user_id,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+        for field in self._CONSENT_FIELDS:
+            if field in patch:
+                val = patch[field]
+                if val is not None and not isinstance(val, bool):
+                    # Caller passed a non-bool / non-None — reject
+                    # at this layer rather than silently coercing.
+                    logger.warning(
+                        "upsert_consent_fields: %s must be bool or "
+                        "None, got %r — skipping that field",
+                        field, type(val).__name__,
+                    )
+                    continue
+                payload[field] = val
+        if len(payload) <= 2:
+            # Caller asked to update nothing — return current state.
+            return self.get_consent_state(user_id)
+
+        try:
+            (
+                self.client.table("user_settings")
+                .upsert(payload)
+                .execute()
+            )
+        except Exception as e:
+            err_low = str(e).lower()
+            if any(
+                f in err_low for f in self._CONSENT_FIELDS
+            ) and ("does not exist" in err_low or "pgrst204" in err_low):
+                logger.warning(
+                    "upsert_consent_fields: consent columns missing "
+                    "(migration pending?) user=%s — skipping write",
+                    user_id,
+                )
+                return self.get_consent_state(user_id)
+            logger.warning(
+                "upsert_consent_fields failed user=%s err=%s",
+                user_id, e,
+            )
+            return None
+
+        return self.get_consent_state(user_id)
+
     def upsert_user_settings(self, user_id: str, custom_llm_instructions: str | None) -> Optional[dict]:
         """Create or update user_settings.custom_llm_instructions."""
         try:
