@@ -42,7 +42,17 @@ class Config:
     RESEND_API_KEY = os.getenv("RESEND_API_KEY")
     RESEND_FROM_EMAIL = os.getenv("RESEND_FROM_EMAIL")
     ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "artur@willonski.com")
-    
+
+    # Current published Terms / Privacy Policy version. Must match the
+    # "Last updated" date in the live legal docs (e.g. "1.0" = Terms
+    # dated 7 May 2026; bump when docs are materially revised). The
+    # /v2/user/consent endpoint reads this to decide whether the user
+    # is "behind" on terms acceptance (terms_consent=false means the
+    # frontend prompts a re-accept). Hardcoded default mirrors the
+    # migration's user_consents.terms_version default; override via
+    # env once docs change so behavior shifts without a redeploy.
+    CURRENT_TERMS_VERSION = os.getenv("CURRENT_TERMS_VERSION", "1.0")
+
     # Sentry
     SENTRY_DSN = os.getenv("SENTRY_DSN")
     

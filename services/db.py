@@ -9268,8 +9268,164 @@ class DatabaseService:
             return None
 
     # ------------------------------------------------------------------
-    # Legal consent
+    # Legal + runtime consent
     # ------------------------------------------------------------------
+
+    def get_user_consent_state(
+        self,
+        user_id: str,
+        *,
+        current_terms_version: str,
+    ) -> dict:
+        """Compose the unified consent payload for /v2/user/consent.
+
+        Reads three runtime preferences off user_settings (mic, share,
+        email) AND the immutable user_consents ledger to derive a
+        terms_consent flag against ``current_terms_version``.
+
+        Returns a shape-complete dict — every field is always present
+        so the route handler doesn't need to special-case missing
+        rows. NULL preferences mean "user has never been asked"; the
+        frontend uses NULL to decide whether to surface the prompt.
+
+        Response shape::
+
+            {
+              "has_answered":            bool,
+              "mic_consent":             True | False | None,
+              "mic_consent_set_at":      "ISO8601" | None,
+              "share_consent":           True | False | None,
+              "share_consent_set_at":    "ISO8601" | None,
+              "email_consent":           True | False | None,
+              "email_consent_set_at":    "ISO8601" | None,
+              "terms_consent":           True | False,
+              "terms_version_current":   "1.0",
+              "terms_version_accepted":  "1.0" | None,
+              "terms_accepted_at":       "ISO8601" | None,
+            }
+
+        has_answered is True iff ANY of (mic / share / email is non-
+        NULL) OR the user has a user_consents row at the current
+        terms_version. Frontend reads this to skip the "ask anything"
+        moment for users who have already engaged with consent.
+        """
+        settings = self.get_user_settings(user_id) or {}
+
+        # Resolve the terms ledger lookup. Cheap (indexed on user_id +
+        # terms_version, unique pair). On any error: default to
+        # terms_consent=False so we under-claim acceptance rather than
+        # over-claim — the frontend simply re-prompts.
+        terms_row: Optional[dict] = None
+        try:
+            result = (
+                self.client.table("user_consents")
+                .select("terms_version, terms_accepted_at")
+                .eq("user_id", user_id)
+                .eq("terms_version", current_terms_version)
+                .limit(1)
+                .execute()
+            )
+            if result.data:
+                terms_row = result.data[0]
+        except Exception as e:
+            logger.warning(
+                "get_user_consent_state: terms lookup failed "
+                "user=%s err=%s — defaulting terms_consent=False",
+                user_id, e,
+            )
+
+        mic = settings.get("mic_consent_preference")
+        share = settings.get("share_consent_preference")
+        email = settings.get("email_consent_preference")
+        terms_consent = bool(terms_row)
+
+        has_answered = (
+            mic is not None
+            or share is not None
+            or email is not None
+            or terms_consent
+        )
+
+        return {
+            "has_answered": has_answered,
+            "mic_consent": mic,
+            "mic_consent_set_at": settings.get("mic_consent_set_at"),
+            "share_consent": share,
+            "share_consent_set_at": settings.get("share_consent_set_at"),
+            "email_consent": email,
+            "email_consent_set_at": settings.get("email_consent_set_at"),
+            "terms_consent": terms_consent,
+            "terms_version_current": current_terms_version,
+            "terms_version_accepted": (
+                terms_row.get("terms_version") if terms_row else None
+            ),
+            "terms_accepted_at": (
+                terms_row.get("terms_accepted_at") if terms_row else None
+            ),
+        }
+
+    def set_user_consent_preferences(
+        self,
+        user_id: str,
+        *,
+        mic: Optional[bool] = None,
+        share: Optional[bool] = None,
+        email: Optional[bool] = None,
+        update_mic: bool = False,
+        update_share: bool = False,
+        update_email: bool = False,
+    ) -> bool:
+        """Upsert the runtime consent preferences on user_settings.
+
+        Only the flags whose ``update_*`` companion is True are
+        written. This matches the existing partial-update convention
+        used by upsert_admin_user_context_fields and lets the route
+        send PATCH-style payloads (only included keys are written).
+
+        Each ``update_*=True`` write also stamps the corresponding
+        *_set_at column to NOW so the UI can show "you opted in on
+        <date>". Setting a preference to None when update_*=True is
+        a valid "clear" (the column goes back to NULL, set_at also
+        cleared, the frontend re-prompts).
+
+        Returns True on success, False on any DB error. The route
+        handler maps False to 500 so the user retries rather than
+        seeing a misleading 200.
+        """
+        if not (update_mic or update_share or update_email):
+            # Nothing to write — caller sent an empty payload.
+            return True
+
+        from datetime import datetime, timezone
+        now_iso = datetime.now(timezone.utc).isoformat()
+
+        payload: dict[str, Any] = {
+            "user_id": user_id,
+            "updated_at": now_iso,
+        }
+        if update_mic:
+            payload["mic_consent_preference"] = mic
+            payload["mic_consent_set_at"] = now_iso if mic is not None else None
+        if update_share:
+            payload["share_consent_preference"] = share
+            payload["share_consent_set_at"] = now_iso if share is not None else None
+        if update_email:
+            payload["email_consent_preference"] = email
+            payload["email_consent_set_at"] = now_iso if email is not None else None
+
+        try:
+            (
+                self.client.table("user_settings")
+                .upsert(payload)
+                .execute()
+            )
+            return True
+        except Exception as e:
+            logger.error(
+                "set_user_consent_preferences failed user=%s err=%s",
+                user_id, e,
+            )
+            return False
 
     def record_user_consent(
         self,

@@ -11324,6 +11324,205 @@ def v2_user_mirror_generate():
         }), 500
 
 
+@v2_bp.route("/user/consent", methods=["GET", "PUT"])
+@require_auth
+def v2_user_consent():
+    """Unified consent surface for the four prompted moments.
+
+    Returns / accepts the four boolean consent flags the frontend
+    surfaces during onboarding: mic-access, share-voice-clone,
+    email-notifications, and Terms-of-Service acceptance. The first
+    three are runtime preferences stored on user_settings; the
+    fourth reads the immutable user_consents ledger against
+    ``Config.CURRENT_TERMS_VERSION`` so the historical audit trail
+    stays intact (we never UPDATE the ledger, only INSERT a new row
+    on re-accept).
+
+    Response shape (200, both GET and PUT)::
+
+        {
+          "has_answered":           bool,    # true once any flag
+                                              # has been answered
+          "mic_consent":            true|false|null,
+          "mic_consent_set_at":     "ISO8601"|null,
+          "share_consent":          true|false|null,
+          "share_consent_set_at":   "ISO8601"|null,
+          "email_consent":          true|false|null,
+          "email_consent_set_at":   "ISO8601"|null,
+          "terms_consent":          bool,     # true iff a
+                                               # user_consents row
+                                               # at the current
+                                               # terms_version exists
+          "terms_version_current":  "1.0",
+          "terms_version_accepted": "1.0"|null,
+          "terms_accepted_at":      "ISO8601"|null
+        }
+
+    NULL semantics:
+      • mic/share/email = NULL  ⇒ user has never been asked. The
+        frontend uses this to decide whether to surface the prompt
+        in the first place. has_answered also stays false until at
+        least one is non-NULL (or the user has accepted terms).
+      • mic/share/email = true / false ⇒ user has explicitly
+        answered. *_set_at is stamped at the moment of the answer.
+      • terms_consent is computed, not stored on user_settings —
+        it's a boolean derived from the ledger lookup.
+
+    PUT body — every field is optional; only included keys are
+    written (PATCH-style semantics)::
+
+        {
+          "mic_consent":   true | false | null,
+          "share_consent": true | false | null,
+          "email_consent": true | false | null,
+          "terms_consent": true      # ONLY true is accepted —
+                                      # accepting terms inserts a
+                                      # ledger row at the current
+                                      # version. false / null are
+                                      # rejected since the ledger
+                                      # is append-only and you
+                                      # cannot un-accept.
+        }
+
+    Setting mic/share/email to null is a valid "clear" — the
+    preference column goes back to NULL and the frontend re-prompts
+    on the next visit. set_at is also cleared.
+
+    Setting terms_consent=true is idempotent — if the user already
+    has a row at the current version, no new row is written and
+    the existing terms_accepted_at is preserved (the underlying
+    upsert uses on_conflict=do_nothing).
+
+    Responses:
+      200 — full state echoed back (single round trip on PUT)
+      400 INVALID_INPUT — bad body shape or terms_consent not true
+      500 V2_ERROR / PERSIST_FAILED — DB hiccup
+    """
+    user_id = request.user_id
+
+    try:
+        if request.method == "PUT":
+            body = request.get_json(silent=True)
+            if not isinstance(body, dict):
+                return jsonify({
+                    "code": "INVALID_INPUT",
+                    "error": "Request body must be a JSON object",
+                }), 400
+
+            # Validate the three runtime flags. None is a valid
+            # "clear"; anything other than bool/None is rejected.
+            def _validate(key: str):
+                if key not in body:
+                    return False, None
+                value = body[key]
+                if value is None or isinstance(value, bool):
+                    return True, value
+                return None, None  # signals invalid
+
+            mic_present, mic_val = _validate("mic_consent")
+            if mic_present is None:
+                return jsonify({
+                    "code": "INVALID_INPUT",
+                    "error": "mic_consent must be true, false, or null",
+                }), 400
+            share_present, share_val = _validate("share_consent")
+            if share_present is None:
+                return jsonify({
+                    "code": "INVALID_INPUT",
+                    "error": "share_consent must be true, false, or null",
+                }), 400
+            email_present, email_val = _validate("email_consent")
+            if email_present is None:
+                return jsonify({
+                    "code": "INVALID_INPUT",
+                    "error": "email_consent must be true, false, or null",
+                }), 400
+
+            # Terms is append-only: only `true` is meaningful. We
+            # reject `false`/`null` explicitly so callers don't
+            # quietly assume they can rescind acceptance via this
+            # endpoint (compliance: the ledger has no concept of
+            # "un-accept" and the audit row stays once written).
+            terms_consent_write = False
+            if "terms_consent" in body:
+                tc = body["terms_consent"]
+                if tc is not True:
+                    return jsonify({
+                        "code": "INVALID_INPUT",
+                        "error": (
+                            "terms_consent only accepts true (accept "
+                            "current terms). The legal ledger is "
+                            "append-only — false/null are not valid."
+                        ),
+                    }), 400
+                terms_consent_write = True
+
+            # Persist the three runtime preferences first; terms
+            # second so a terms-write failure doesn't leave the
+            # frontend thinking it landed when only the prefs did.
+            ok = db.set_user_consent_preferences(
+                user_id=user_id,
+                mic=mic_val,
+                share=share_val,
+                email=email_val,
+                update_mic=bool(mic_present),
+                update_share=bool(share_present),
+                update_email=bool(email_present),
+            )
+            if not ok:
+                return jsonify({
+                    "code": "PERSIST_FAILED",
+                    "error": (
+                        "Could not save consent preferences. "
+                        "Please retry."
+                    ),
+                }), 500
+
+            if terms_consent_write:
+                ip = (
+                    request.headers.get("X-Forwarded-For", "")
+                    .split(",")[0]
+                    .strip()
+                    or request.remote_addr
+                )
+                ua = request.headers.get("User-Agent")
+                ledger_row = db.record_user_consent(
+                    user_id=user_id,
+                    terms_version=config.CURRENT_TERMS_VERSION,
+                    ip_address=ip,
+                    user_agent=ua,
+                )
+                if ledger_row is None:
+                    return jsonify({
+                        "code": "PERSIST_FAILED",
+                        "error": (
+                            "Could not record terms acceptance. "
+                            "Please retry."
+                        ),
+                    }), 500
+
+            # Fall through to the GET read-back so the response is
+            # always the full current state — caller doesn't need a
+            # follow-up fetch.
+
+        state = db.get_user_consent_state(
+            user_id,
+            current_terms_version=config.CURRENT_TERMS_VERSION,
+        )
+        return jsonify(state), 200
+
+    except Exception as e:
+        logger.error(
+            "user/consent %s failed: %s",
+            request.method, e, exc_info=True,
+        )
+        sentry_sdk.capture_exception(e)
+        return jsonify({
+            "code": "V2_ERROR",
+            "error": "Failed to load consent state",
+        }), 500
+
+
 @v2_bp.route("/chat/session-state", methods=["GET"])
 @require_auth
 def v2_chat_session_state():
