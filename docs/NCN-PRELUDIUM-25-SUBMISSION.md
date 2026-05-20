@@ -332,7 +332,8 @@ This project tests whether asynchronous AI-augmented coaching — architected as
 - H_B3 (mechanism): Reduction in evaluation apprehension mediates the willab-arm advantage.
 - H_B4 (interoception transfer): Heartbeat-counting accuracy increases pre-to-post more in willab arm than waitlist arm.
 - H_B5 (confirmatory EEG): Calibrated acoustic and EEG agree in Flow classification at Event 2 (Cohen's κ ≥ 0.65).
-- H_B6 (scaffold vs. prescriptive, optional third arm): willab-scaffold arm produces greater 90-day transfer than willab-prescriptive arm. Both implementations use identical acoustic measurement infrastructure and differ only in feedback interface logic — intra-speaker historical reference (scaffold) vs. population-relative optimum target (prescriptive). Direct empirical test of the deployment-pattern distinction against existing commercial paradigms (Niebuhr / AllGoodSpeakers / PICSA).
+
+*Deferred to follow-up work (out of scope for this grant):* a direct head-to-head test of scaffold (intra-speaker, reflective) vs. prescriptive (population-relative, target-anchored) implementations of the same acoustic measurement infrastructure. This comparison would constitute the most direct empirical confrontation with prior commercial deployments (Niebuhr / AllGoodSpeakers / PICSA), but its inclusion as a third arm of Study B exceeds the budgetary envelope of Preludium. It is identified in Section 15.4 as the primary follow-up question once Studies A, B (2-arm) and C are complete.
 
 *Study C (Ecological Validation):*
 - H_C1: 12-week willab acoustic trajectories correlate with self-reported Flow trajectories at within-person level (r ≥ 0.40).
@@ -348,15 +349,15 @@ This project tests whether asynchronous AI-augmented coaching — architected as
 
 *Third, three methodological obstacles in communication-competence assessment.* (a) *Valence Ambiguity* — physiological arousal is indistinguishable between threat and challenge states using standard biometrics (Blascovich & Mendes 2010). (b) *Dirty Audio Wall* — reliance on studio-grade acoustic instrumentation that does not scale to real organisational contexts. (c) *Idiosyncrasy Limit* — population-average models fail to capture individual baselines, where within-person change actually occurs. The willab platform was built precisely to address all three.
 
-**Originality and positioning vs. prior art.** The technical category of acoustic biofeedback for public speaking is not empty (Niebuhr et al., 2017–2023, commercialised as AllGoodSpeakers / PICSA / Acoustic Voice Profiling®; US patents 10446055B2, 11798431B2 on ML-rated public speaking trainers; VoiceCoach by Wang et al., 2020). The novelty of this dissertation lies not in the tool category but in four specific contributions that prior work has not made:
+**Originality and positioning vs. prior art.** The technical category of acoustic biofeedback for public speaking is not empty (Niebuhr et al., 2017–2023, commercialised as AllGoodSpeakers / PICSA / Acoustic Voice Profiling®; US patents 10446055B2, 11798431B2 on ML-rated public speaking trainers; VoiceCoach by Wang et al., 2020). The novelty of this dissertation lies not in the tool category but in three specific contributions that prior work has not made:
 
-(i) **Independent neurophysiological validation during live high-stakes performance.** Existing tools validate acoustic features against perceptual ratings — a circular paradigm in which the predictor is calibrated against the same human judgments it aims to predict. Study A breaks this circularity by using EEG signatures of Flow recorded during actual stage performance as independent ground truth.
+(i) **Independent neurophysiological validation during live high-stakes performance.** Existing tools validate acoustic features against perceptual ratings — a circular paradigm in which the predictor is calibrated against the same human judgments it aims to predict. Study A breaks this circularity by using EEG signatures of Flow recorded during actual stage performance as independent ground truth. This is the headline methodological contribution of the project.
 
-(ii) **Empirical test of scaffold vs. prescriptive implementation as categorically different cognitive interventions.** Existing commercial deployments anchor evaluation to population-derived "optimal" reference levels — a prescriptive model. The within-person Intra-Speaker Baseline used in willab is a reflective model. Study B H_B6 directly tests whether these two implementation patterns of identical acoustic infrastructure produce different transfer outcomes — converting the existence of competitors from a threat into the empirical question being answered.
+(ii) **Within-person Intra-Speaker Baseline as the primary scoring paradigm**, contrasted against the population-relative scoring (anchored to "optimal" or "celebrity speaker" reference levels) that dominates prior tools and commercial deployments. Study C tests whether intra-speaker modelling outperforms population-pooled modelling in detecting within-person change.
 
-(iii) **Within-person modelling as the primary scoring paradigm**, contrasted against the population-relative scoring that dominates prior tools.
+(iii) **Privacy-by-design architecture** (on-device only, no raw audio transmission, GDPR Art. 9 compliant), aligning with the EU AI Act regulatory direction and distinguishing this implementation from cloud-dependent commercial alternatives. This is a policy contribution, not only an ethical commitment.
 
-(iv) **Privacy-by-design architecture** (on-device only, no raw audio transmission, GDPR Art. 9 compliant), aligning with the EU AI Act regulatory direction and distinguishing this implementation from cloud-dependent commercial alternatives. This is a policy contribution, not only an ethical commitment.
+A direct head-to-head empirical test of scaffold (reflective, intra-speaker) vs. prescriptive (target-anchored, population-relative) implementation patterns of identical acoustic infrastructure is identified as the primary follow-up question (see Section 15.4) but exceeds the budgetary envelope of this Preludium proposal and is therefore explicitly deferred.
 
 ### 3. Concept and Research Plan
 
@@ -509,24 +510,15 @@ The methodological gaps that remain open, and that this project specifically add
 
 ### Repositioned Novelty Claim
 
-The novelty of this dissertation is therefore not the willab tool as such. The novelty is fourfold:
+The novelty of this dissertation is therefore not the willab tool as such. The novelty within scope of this Preludium proposal is threefold:
 
-- A neurophysiological validation pipeline that breaks the circularity of perception-validated-by-perception;
-- An empirical test of whether scaffold-style implementation produces categorically different cognitive consequences from prescriptive-style implementation;
-- A within-person modelling paradigm as the primary scoring approach, contrasted against the population-relative paradigm dominant in existing commercial deployments;
+- A neurophysiological validation pipeline (Study A) that breaks the circularity of perception-validated-by-perception by introducing EEG signatures of Flow recorded during live stage performance as independent ground truth for acoustic markers;
+- A within-person Intra-Speaker Baseline modelling paradigm as the primary scoring approach (operationalised in Study A calibration and tested against the population-relative paradigm in Study C);
 - A privacy-by-design architectural commitment, on-device only, that distinguishes this implementation from cloud-dependent commercial alternatives and aligns with the regulatory direction of the EU AI Act.
 
-### Implications for Hypothesis Set
+### Identified Follow-Up Question (Out of Scope for This Grant)
 
-A new hypothesis is added to Study B to operationalise the scaffold-vs-prescriptive distinction:
-
-**H_B6 (head-to-head scaffold vs prescriptive):** willab-scaffold arm produces greater 90-day transfer than willab-prescriptive arm (both implementations of identical acoustic measurement infrastructure, differing only in feedback interface logic — intra-speaker historical reference vs. population-relative optimum).
-
-This converts the existence of commercial competitors from a threat to the proposal's contribution into the *direct empirical question being answered*.
-
-### Implications for Budget and Design
-
-If the third arm is included, Study B expands from N ≈ 60 (2-arm) to N ≈ 90 (3-arm) at a marginal cost of approximately 10,000 PLN (additional participant honoraria + EEG consumables for confirmatory measurement). The current budget reserves capacity for this expansion; if budget pressure forces a 2-arm design, H_B6 can be deferred to follow-up work and Studies A + B + C remain coherent without it.
+A direct empirical test of whether scaffold-style implementation (reflective, intra-speaker, learner-interpretive feedback) produces categorically different cognitive consequences from prescriptive-style implementation (target-anchored, population-relative, system-interpretive feedback) of identical acoustic infrastructure is identified as the primary follow-up question of this research programme. Such a test would require a third arm in Study B (willab-scaffold vs. willab-prescriptive vs. waitlist), expanding the design from N ≈ 60 to N ≈ 90 at marginal cost of approximately 9,000–10,000 PLN. This expansion exceeds the budgetary envelope of Preludium and is explicitly deferred to a follow-up project. Studies A + B (2-arm) + C remain methodologically coherent without it; the scaffold-vs-prescriptive comparison is identified here transparently as the natural next step rather than concealed.
 
 ---
 
@@ -633,18 +625,9 @@ Within the context of Human Resource Development (HRD) and organizational behavi
 ✓ Koszty pośrednie ≤ 20% direct (35,000 / 175,000 = 20.0%) — spełnione
 ✓ Wynagrodzenia dodatkowe ≤ 2k PLN/mc total — spełnione
 
-### Opcjonalne rozszerzenie: trzecie ramię (scaffold vs. prescriptive)
+### Decyzja projektowa: 2-arm Studium B
 
-Test hipotezy H_B6 wymaga rozszerzenia Studium B z N ≈ 60 (2-arm) do N ≈ 90 (3-arm):
-- +30 uczestników × 150 PLN honorarium = +4,500 PLN
-- +30 × 2 sesje EEG × ~80 PLN consumables = +4,800 PLN
-- Łącznie marginalny koszt: ~9,300 PLN
-
-Mieszczenie tego w kosztach pośrednich nie jest możliwe (wyczerpane). Ścieżki:
-- (a) Przesunięcie z USA wyjazdu (–4,800 PLN, redukcja per diem) i z organizacji konferencji (–4,500 PLN, mniejsza skala refreshments) — pozwala zachować trzecie ramię bez przekroczenia capu
-- (b) Defer H_B6 do follow-up project poza Preludium — Studia A + B (2-arm) + C pozostają spójne metodologicznie bez H_B6
-
-Decyzja zależy od priorytetu konfrontacji z PICSA/AllGoodSpeakers vs. komfortu budżetowego w pierwszym roku realizacji.
+Studium B realizowane w wariancie 2-arm (willab vs. waitlist control). Trzecie ramię scaffold-vs-prescriptive zostaje przesunięte do follow-up project poza zakresem niniejszego Preludium, zgodnie z notatką w Sekcji 15.4. Budżet wyczerpany dokładnie do capu 210,000 PLN bez konieczności kompromisów na wyjazdach konferencyjnych lub organizacji wydarzeń.
 
 ---
 
