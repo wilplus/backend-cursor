@@ -12051,7 +12051,19 @@ def v2_public_interview_next_question():
                                              // trimmed to the last 2.
     }
     Output:
-      200 { question, tone, turn_number, source }
+      200 {
+        question:       str,
+        tone:           "charisma" | "stress",
+        turn_number:    int,
+        source:         "directives_queue" | "admin_override"
+                          | "llm_generated",
+        directive?:     {position, intent_tag},   // present iff
+                                                  // source = directives_queue
+        source_detail?: "llm_baseline_directed" | "llm" | "fallback",
+                          // present iff source = llm_generated; granular
+                          // attribution for backend analytics; FE may
+                          // safely ignore.
+      }
       400 { code: "INVALID_INPUT" } on malformed input
     """
     try:
@@ -12167,11 +12179,21 @@ def v2_public_interview_next_question():
             baseline_objective=objective,
             conversation_summary=conversation_summary,
         )
-        source = (
-            "llm_baseline_directed" if objective and question
-            else "llm" if question
-            else "fallback"
-        )
+        # FE-aligned `source` enum: directives_queue | admin_override |
+        # llm_generated. The directives-queue + admin-override branches
+        # above already return with the right values; here we always
+        # emit "llm_generated" for the LLM/fallback paths so the FE
+        # NextQuestionSource enum stays clean.
+        #
+        # `source_detail` preserves the legacy granularity (baseline-
+        # directed vs free-form vs fallback) for backend analytics /
+        # admin debugging. FE doesn't consume it; safe to ignore.
+        if question and objective:
+            source_detail = "llm_baseline_directed"
+        elif question:
+            source_detail = "llm"
+        else:
+            source_detail = "fallback"
 
         if not question:
             pool = _INTERVIEW_QUESTIONS_FALLBACK[tone]
@@ -12182,7 +12204,8 @@ def v2_public_interview_next_question():
             "question": question,
             "tone": tone,
             "turn_number": turn_number,
-            "source": source,
+            "source": "llm_generated",
+            "source_detail": source_detail,
         }), 200
 
     except (TypeError, ValueError) as e:
