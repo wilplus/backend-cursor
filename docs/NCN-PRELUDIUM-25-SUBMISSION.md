@@ -332,6 +332,7 @@ This project tests whether asynchronous AI-augmented coaching — architected as
 - H_B3 (mechanism): Reduction in evaluation apprehension mediates the willab-arm advantage.
 - H_B4 (interoception transfer): Heartbeat-counting accuracy increases pre-to-post more in willab arm than waitlist arm.
 - H_B5 (confirmatory EEG): Calibrated acoustic and EEG agree in Flow classification at Event 2 (Cohen's κ ≥ 0.65).
+- H_B6 (scaffold vs. prescriptive, optional third arm): willab-scaffold arm produces greater 90-day transfer than willab-prescriptive arm. Both implementations use identical acoustic measurement infrastructure and differ only in feedback interface logic — intra-speaker historical reference (scaffold) vs. population-relative optimum target (prescriptive). Direct empirical test of the deployment-pattern distinction against existing commercial paradigms (Niebuhr / AllGoodSpeakers / PICSA).
 
 *Study C (Ecological Validation):*
 - H_C1: 12-week willab acoustic trajectories correlate with self-reported Flow trajectories at within-person level (r ≥ 0.40).
@@ -347,7 +348,15 @@ This project tests whether asynchronous AI-augmented coaching — architected as
 
 *Third, three methodological obstacles in communication-competence assessment.* (a) *Valence Ambiguity* — physiological arousal is indistinguishable between threat and challenge states using standard biometrics (Blascovich & Mendes 2010). (b) *Dirty Audio Wall* — reliance on studio-grade acoustic instrumentation that does not scale to real organisational contexts. (c) *Idiosyncrasy Limit* — population-average models fail to capture individual baselines, where within-person change actually occurs. The willab platform was built precisely to address all three.
 
-**Originality.** No prior study has (i) simultaneously isolated asynchrony from AI augmentation through a dedicated experimental arm, (ii) provided independent EEG validation of Flow-onset acceleration in workplace coaching, or (iii) validated consumer-grade acoustic telemetry against laboratory measures for HR analytics. The interdisciplinary integration of management science with cognitive neuroscience — institutionalised through the Interdepartmental Laboratory of Neuropsychophysiology collaboration — is itself a contribution.
+**Originality and positioning vs. prior art.** The technical category of acoustic biofeedback for public speaking is not empty (Niebuhr et al., 2017–2023, commercialised as AllGoodSpeakers / PICSA / Acoustic Voice Profiling®; US patents 10446055B2, 11798431B2 on ML-rated public speaking trainers; VoiceCoach by Wang et al., 2020). The novelty of this dissertation lies not in the tool category but in four specific contributions that prior work has not made:
+
+(i) **Independent neurophysiological validation during live high-stakes performance.** Existing tools validate acoustic features against perceptual ratings — a circular paradigm in which the predictor is calibrated against the same human judgments it aims to predict. Study A breaks this circularity by using EEG signatures of Flow recorded during actual stage performance as independent ground truth.
+
+(ii) **Empirical test of scaffold vs. prescriptive implementation as categorically different cognitive interventions.** Existing commercial deployments anchor evaluation to population-derived "optimal" reference levels — a prescriptive model. The within-person Intra-Speaker Baseline used in willab is a reflective model. Study B H_B6 directly tests whether these two implementation patterns of identical acoustic infrastructure produce different transfer outcomes — converting the existence of competitors from a threat into the empirical question being answered.
+
+(iii) **Within-person modelling as the primary scoring paradigm**, contrasted against the population-relative scoring that dominates prior tools.
+
+(iv) **Privacy-by-design architecture** (on-device only, no raw audio transmission, GDPR Art. 9 compliant), aligning with the EU AI Act regulatory direction and distinguishing this implementation from cloud-dependent commercial alternatives. This is a policy contribution, not only an ethical commitment.
 
 ### 3. Concept and Research Plan
 
@@ -410,6 +419,19 @@ EEG collaboration: Międzywydziałowe Laboratorium Neuropsychofizjologii (formal
 
 [Use the full bibliography from the PhD concept paper — Alliger, Antonakis, Baldwin & Ford, Bandura, Blascovich & Mendes, Blume, Cottrell, Csíkszentmihályi, de Haan, Deci & Ryan, Dietrich, Edmondson, Engeser & Rheinberg, Ericsson, Fan, Gerlich, Grant, Jones, Kahneman, Katahira, Kirkpatrick, Kluger & DeNisi, Kraiger, Noe, Nonaka & Takeuchi, Rheinberg, Sweller, Theeboom — full citations as in the PhD concept paper.]
 
+**Additional references required for prior art positioning (Section 15.4):**
+
+- Niebuhr, O. (2017+). Series of papers on acoustic markers of charismatic speech (e.g., "The acoustic fingerprint of a charismatic voice" and successors). Verify current citations against author's institutional repository at University of Southern Denmark.
+- AllGoodSpeakers ApS — commercial deployment of PICSA / Acoustic Voice Profiling® / Voice Vectors® / WebPitcher. Reference as product documentation where direct peer-reviewed citation is unavailable.
+- Wang, X. et al. (2020). VoiceCoach: Interactive evidence-based training for voice modulation skills in public speaking. *Proceedings of CHI Conference on Human Factors in Computing Systems*.
+- Rosenberg, A., & Hirschberg, J. (2009). Charisma perception from text and speech. *Speech Communication*.
+- US Patent 10,446,055 B2 (granted) — Public speaking trainer with 3-D simulation and real-time feedback.
+- US Patent 11,798,431 B2 (granted) — Public speaking trainer (continuation / extension).
+- US Patent 7,222,075 B2 — Detecting emotions using voice signal analysis (broad emotion-from-voice patent, Accenture).
+- McAllister Byun, T., & Hitchcock, E. R. (2012). Investigating the use of traditional and spectral biofeedback approaches to intervention for /r/ misarticulation. *American Journal of Speech-Language Pathology* (representative example of clinical voice biofeedback prior art).
+
+Verify all citation details against current databases (Scopus, Web of Science) and EPO/USPTO patent databases before submission.
+
 ---
 
 ## SECTION 15 — OPIS SZCZEGÓŁOWY (EN, max 15 pages A4 + bibliography)
@@ -454,6 +476,57 @@ The detailed description expands on the same six-section structure (cel naukowy 
 Full bibliography with ~35–50 entries (Preludium typical scope), in APA 7th edition format.
 
 **(Full text would be assembled by expanding the OPIS SKRÓCONY above with the additions listed here. Estimated length: 12–14 pages of body text + 2–3 pages of bibliography, within the 15-page limit for body text.)**
+
+---
+
+## SECTION 15.4 — RELATED WORK AND POSITIONING VS. PRIOR ART (insertion into Opis Szczegółowy)
+
+This section must be placed within the Significance / Theoretical Framework portion of the Opis Szczegółowy, immediately following the literature review of training transfer and feedback-intervention theory. Honest acknowledgement of adjacent prior art is methodologically and ethically required.
+
+### Existing Tools and Adjacent Research
+
+The acoustic-analysis-for-public-speaking domain is not empty. Several lines of prior work have established the technical feasibility of automated acoustic feedback for delivery training:
+
+- **Niebuhr and colleagues at the University of Southern Denmark** (2017–present) have developed PICSA (Perception-Integrated Charismatic Speech Analysis), Acoustic Voice Profiling®, and the WebPitcher real-time feedback tool, with published phonetic research on the "acoustic fingerprint of a charismatic voice." This research has been commercialised through AllGoodSpeakers ApS, deployed across multiple European markets.
+- **U.S. patents 10446055B2 and 11798431B2** describe public-speaking trainers using machine-learning-rated acoustic features with simulated audience feedback and real-time performance metrics.
+- **VoiceCoach (HKUST, Wang et al., 2020)** has demonstrated interactive evidence-based training for voice modulation with real-time quantitative visual feedback in published research.
+- **Rosenberg et al.** have characterised lexical and acoustic properties of charismatic speech in earlier work.
+- **Clinical voice biofeedback applications** (staRt, RSE telepractice) have established the feasibility of smartphone-based acoustic biofeedback for speech-therapy contexts, with randomised trials published.
+
+The technical operation of willab — on-device acoustic feature extraction, longitudinal user trajectories, feedback delivery to the speaker — overlaps substantially with this prior art. The proposal does not claim novelty for the *category* of acoustic biofeedback for public speaking.
+
+### What This Prior Art Has Not Done
+
+The methodological gaps that remain open, and that this project specifically addresses, are four in number:
+
+1. **No independent neurophysiological validation during live high-stakes performance.** Existing tools validate against perceptual ratings from audiences and expert coaches. This is methodologically circular: the acoustic features are calibrated against the same perceptual judgments that the tool aims to predict. No prior study has used EEG signatures of Flow (frontal alpha asymmetry, frontal midline theta) recorded during actual stage performance as independent ground truth. Study A of this project provides this validation.
+
+2. **No within-person modelling as the primary scoring paradigm.** AllGoodSpeakers, PICSA-derived tools, and US-patented systems explicitly anchor evaluation to population-derived "optimal" or "celebrity speaker" reference levels. This is a *prescriptive* model: the user is shown the gap between their current state and an external target. The Intra-Speaker Baseline framework, in which the user's signal is referenced exclusively to their own historical trajectory, has not been deployed as the primary scoring paradigm in this domain.
+
+3. **No randomised three-arm comparison of implementation patterns.** Prior tools have been evaluated against no-intervention controls or against subjective improvement reports. No study has directly tested two implementation patterns of the same technical capability — scaffold (reflective, intra-speaker, learner-interpretive) versus prescriptive (target-anchored, population-relative, system-interpretive) — against each other in a randomised design with mediation analysis. This is the methodological gap that this project converts into its primary novel contribution (see Study B Arm 3 below).
+
+4. **No theoretical confrontation with the metacognitive-degradation literature.** Existing tools have not been positioned theoretically against the emerging literature on AI-induced metacognitive laziness (Fan et al., 2025) and cognitive offloading (Gerlich, 2025). The scaffold-versus-substitute distinction has not been operationalised as a falsifiable hypothesis in this domain.
+
+### Repositioned Novelty Claim
+
+The novelty of this dissertation is therefore not the willab tool as such. The novelty is fourfold:
+
+- A neurophysiological validation pipeline that breaks the circularity of perception-validated-by-perception;
+- An empirical test of whether scaffold-style implementation produces categorically different cognitive consequences from prescriptive-style implementation;
+- A within-person modelling paradigm as the primary scoring approach, contrasted against the population-relative paradigm dominant in existing commercial deployments;
+- A privacy-by-design architectural commitment, on-device only, that distinguishes this implementation from cloud-dependent commercial alternatives and aligns with the regulatory direction of the EU AI Act.
+
+### Implications for Hypothesis Set
+
+A new hypothesis is added to Study B to operationalise the scaffold-vs-prescriptive distinction:
+
+**H_B6 (head-to-head scaffold vs prescriptive):** willab-scaffold arm produces greater 90-day transfer than willab-prescriptive arm (both implementations of identical acoustic measurement infrastructure, differing only in feedback interface logic — intra-speaker historical reference vs. population-relative optimum).
+
+This converts the existence of commercial competitors from a threat to the proposal's contribution into the *direct empirical question being answered*.
+
+### Implications for Budget and Design
+
+If the third arm is included, Study B expands from N ≈ 60 (2-arm) to N ≈ 90 (3-arm) at a marginal cost of approximately 10,000 PLN (additional participant honoraria + EEG consumables for confirmatory measurement). The current budget reserves capacity for this expansion; if budget pressure forces a 2-arm design, H_B6 can be deferred to follow-up work and Studies A + B + C remain coherent without it.
 
 ---
 
@@ -559,6 +632,19 @@ Within the context of Human Resource Development (HRD) and organizational behavi
 ✓ OA ≤ 2% direct (3,500 / 175,000 = 2.0%) — spełnione
 ✓ Koszty pośrednie ≤ 20% direct (35,000 / 175,000 = 20.0%) — spełnione
 ✓ Wynagrodzenia dodatkowe ≤ 2k PLN/mc total — spełnione
+
+### Opcjonalne rozszerzenie: trzecie ramię (scaffold vs. prescriptive)
+
+Test hipotezy H_B6 wymaga rozszerzenia Studium B z N ≈ 60 (2-arm) do N ≈ 90 (3-arm):
+- +30 uczestników × 150 PLN honorarium = +4,500 PLN
+- +30 × 2 sesje EEG × ~80 PLN consumables = +4,800 PLN
+- Łącznie marginalny koszt: ~9,300 PLN
+
+Mieszczenie tego w kosztach pośrednich nie jest możliwe (wyczerpane). Ścieżki:
+- (a) Przesunięcie z USA wyjazdu (–4,800 PLN, redukcja per diem) i z organizacji konferencji (–4,500 PLN, mniejsza skala refreshments) — pozwala zachować trzecie ramię bez przekroczenia capu
+- (b) Defer H_B6 do follow-up project poza Preludium — Studia A + B (2-arm) + C pozostają spójne metodologicznie bez H_B6
+
+Decyzja zależy od priorytetu konfrontacji z PICSA/AllGoodSpeakers vs. komfortu budżetowego w pierwszym roku realizacji.
 
 ---
 
