@@ -115,66 +115,65 @@ Three contributions are expected. **Theoretical**: a falsifiable test of AI-as-s
 
 ## SECTION 7 — PLAN BADAŃ (PL + EN identical)
 
-**New design (post-pivot):** Two-event speech conference with willab intervention between events. Pre/post within-subject + waitlist control comparison. EEG validation at both timepoints.
+**Restructured design (post-Studium-A-introduction):** Three sequential studies separating instrument validation (Study A) from intervention effectiveness (Study B) from ecological generalisation (Study C). EEG serves as primary ground truth only in Study A; in Study B EEG plays a reduced confirmatory role; Study C runs purely on the calibrated acoustic instrument.
 
 ### Polish
 
 **Z1.** Etyka, pilotaż instrumentu i pre-rejestracja (M1–M6)
-- Złożenie wniosków do komisji etycznych (Etap I + Etap II)
-- Organizacja Event 1 i Event 2 konferencji wystąpień (sala, AV, harmonogram)
-- Techniczny pilotaż willab (N≈8) — weryfikacja stabilności cech akustycznych (ICC ≥ 0.80) + synchronizacja z EEG
+- Trzy odrębne wnioski do komisji etycznych (Studium A, B, C)
+- Organizacja konferencji wystąpień (Event 1 i Event 2 dla Studium B)
+- Techniczny pilotaż willab (N≈8) — weryfikacja stabilności cech akustycznych (ICC ≥ 0.80), synchronizacja z EEG, sensitivity analysis długości próbki
 - Finalizacja protokołu EEG we współpracy z Międzywydziałowym Laboratorium Neuropsychofizjologii
-- Pre-rejestracja hipotez, planów analiz i kryteriów decyzyjnych na OSF
+- Pre-rejestracja na OSF: ground truth weighting, mediatorzy, moderatorzy, długość próbki, kandydaci na markery akustyczne
 
-**Z2.** Rekrutacja i Event 1 — pre-test (M7–M12)
-- Rekrutacja N ≈ 60 specjalistów technologicznych
-- Randomizacja: Arm A (willab) vs Arm B (waitlist control)
-- **Event 1 (Konferencja wystąpień, pre-test):**
-  - Sesja EEG w laboratorium dla każdego uczestnika (baseline frontal alpha asymmetry, midline theta, DLPFC engagement)
-  - Standaryzowane wystąpienie ~5–10 min na żywo (nagrywane wideo + audio dla CLT rating)
-- Opcjonalnie: 5 coachów prowadzi pojedyncze sesje wprowadzające dla Arm B (light comparison)
+**Z2.** Studium A — Acoustic-Neural Surrogate Biomarker Calibration (M7–M14)
+- Rekrutacja N ≈ 35 specjalistów technologicznych
+- 90-minutowe sesje laboratoryjne: baseline / charisma elicitation / stress induction / flow elicitation / recovery
+- Jednoczesny EEG (32-kanałowy) + nagranie akustyczne
+- Weighted Ground Truth: neural + expert coach (2 raterów blinded) + asymmetric peer validation (N≈8)
+- Trening modelu kalibracyjnego: ridge regression / random forest / gradient boosting; leave-one-participant-out cross-validation
+- Output: zwalidowana funkcja mapowania willab → stan neurofizjologiczny
 
-**Z3.** Okres interwencji willab (M13–M16)
-- Arm A: 4–6 tygodni codziennego/regularnego użytkowania willab (asynchroniczne nagrania, biofeedback akustyczny, prowokacja metapoznawcza)
-- Arm B: waitlist (brak interwencji)
-- Cotygodniowe self-reports (Flow Short Scale, evaluation-apprehension scale)
-- On-device akustyczna telemetria (Intra-Speaker Baseline budowany w willab)
+**Z3.** Studium B — Effectiveness RCT, Event 1 pre-test (M15–M18)
+- Rekrutacja N ≈ 60 (niezależna od Studium A)
+- Randomizacja: arm willab vs arm waitlist
+- **Event 1 — Konferencja wystąpień, pre-test:** sesja EEG + standaryzowane wystąpienie 5–10 min + heartbeat-counting task (baseline interocepcji); pomiar willab z użyciem kalibracji ze Studium A
+- Baseline: Big Five, Liebowitz Social Anxiety Scale (dla późniejszej analizy moderatorów)
 
-**Z4.** Event 2 — post-test (M17–M19)
-- **Event 2 (Konferencja wystąpień, post-test):**
-  - Druga sesja EEG dla każdego uczestnika
-  - Drugie standaryzowane wystąpienie na tym samym formacie konferencji
-- Pomiary cognitive / skill-based / affective po interwencji
-- Pomiary transferu na +90 dni (oceny przełożonych, samoraporty)
+**Z4.** Studium B — okres interwencji willab i Event 2 post-test (M19–M22)
+- Arm willab: 4–6 tygodni regularnego użytkowania
+- Arm waitlist: brak interwencji
+- Cotygodniowe self-reports (Flow Short Scale, evaluation apprehension)
+- **Event 2 — Konferencja wystąpień, post-test:** druga sesja EEG (confirmatory only) + drugie wystąpienie + heartbeat-counting task (interocepcja post)
+- 90-day follow-up: oceny przełożonych + samoraporty
 
-**Z5.** Analiza pierwotna + Etap II walidacja polowa (M19–M33)
-- Mixed-effects ANCOVA (pre/post + arm) na composite learning outcome
-- Cox regression: time-to-emergence Flow EEG signatures (Arm A vs Arm B)
-- ROC analysis: Intra-Speaker Baseline vs population baseline (H6)
-- Rekrutacja Etap II (N ≥ 100, niezależna pula) — pure ecological validation willab bez konferencji
-- Hierarchical linear modeling trajektorii flow w 12-tygodniowym okresie
+**Z5.** Studium C — Ecological Field Validation (M19–M33, równolegle)
+- Rekrutacja N ≥ 100, niezależna próba
+- 12-tygodniowe użytkowanie willab na osobistych urządzeniach
+- Pure acoustic deployment — bez laboratorium, bez coacha, bez EEG
+- Cross-validation względem ocen rówieśniczych końcowego wystąpienia + Intra-Speaker Baseline vs population baseline (H6)
 
-**Z6.** Dyseminacja i finalizacja (M34–M36)
-- Manuskrypty 1, 2, 3
-- Prezentacje konferencyjne (Academy of Management — USA; EAWOP lub krajowa)
-- Open Access deposition (1 APC)
+**Z6.** Synteza, dyseminacja i finalizacja (M34–M36)
+- Manuskrypty: (1) Studium A — methodological paper o akustycznym surrogate biomarker; (2) Studium B — primary effectiveness RCT; (3) Studium C — ecological validation + Intra-Speaker Baseline
+- Konferencje: Academy of Management (USA); EAWOP lub krajowa
+- Open Access deposition
 - Finalizacja rozprawy doktorskiej
 
 ### English
 
-(Same six research tasks, translated identically.)
+(Identical six research tasks, translated.)
 
-**Z1.** Ethics, instrument pilot, pre-registration (M1–M6) — ethics submissions; speech conference logistics (Event 1 + Event 2); willab reliability pilot N ≈ 8; EEG protocol finalisation with the Interdepartmental Laboratory of Neuropsychophysiology; OSF pre-registration.
+**Z1.** Ethics, instrument pilot, pre-registration (M1–M6) — three separate ethics applications; speech conference logistics; willab reliability pilot N ≈ 8 with snippet-length sensitivity analysis; OSF pre-registration of ground truth weights, mediators, moderators, acoustic feature candidates.
 
-**Z2.** Recruitment and Event 1 pre-test (M7–M12) — recruit N ≈ 60; randomise into willab arm vs. waitlist; **Event 1 of the speech conference:** baseline EEG session in lab + standardised 5–10 min live talk (recorded for CLT scoring).
+**Z2.** Study A — Calibration (M7–M14) — N ≈ 35 lab participants; 90-min sessions with concurrent EEG + acoustic recording across five task segments; Weighted Ground Truth (neural + expert coach + asymmetric peer validation); ridge regression and ensemble calibration with leave-one-participant-out CV; output: validated willab → neurocognitive state mapping.
 
-**Z3.** willab intervention period (M13–M16) — 4–6 weeks regular use for the willab arm; waitlist for control; weekly Flow Short Scale + evaluation-apprehension scales; on-device acoustic telemetry building Intra-Speaker Baseline.
+**Z3.** Study B — Event 1 pre-test (M15–M18) — N ≈ 60 independent sample; randomisation into willab arm vs. waitlist; Event 1: lab EEG + conference talk + interoception baseline (heartbeat-counting) + calibrated willab measurement; baseline personality + anxiety covariates.
 
-**Z4.** Event 2 post-test (M17–M19) — **Event 2:** second EEG session + second standardised talk at the same conference format; cognitive/skill-based/affective measurements; 90-day transfer follow-up (supervisor ratings, self-reports).
+**Z4.** Study B — intervention period and Event 2 post-test (M19–M22) — 4–6 week willab use vs. waitlist; weekly self-reports; Event 2: confirmatory EEG + second talk + interoception post-test; 90-day transfer follow-up.
 
-**Z5.** Primary analysis + Stage II field validation (M19–M33) — mixed-effects ANCOVA on composite learning outcome; Cox regression on EEG time-to-Flow-criterion (H3); ROC analysis on Intra-Speaker vs. population baseline (H6); Stage II recruitment (N ≥ 100, independent sample) for 12-week ecological validation of willab without the conference event.
+**Z5.** Study C — Ecological Field Validation (M19–M33, parallel) — N ≥ 100 independent sample; 12-week willab deployment on personal devices; pure acoustic instrument; peer-rated end-of-period presentation as ground truth.
 
-**Z6.** Dissemination and dissertation finalisation (M34–M36) — 3 manuscripts, AOM (USA) + EAWOP/national conference presentations, OA deposition, dissertation submission.
+**Z6.** Synthesis and dissemination (M34–M36) — three manuscripts (A methodological, B primary RCT, C ecological validation); AOM and EAWOP presentations; OA deposition; dissertation submission.
 
 ---
 
@@ -320,13 +319,23 @@ This project tests whether asynchronous AI-augmented coaching — architected as
 - *RQ3 (Methodological — Valence Ambiguity):* Can macro-acoustic markers (F0 variance, speech-to-pause ratio, disfluency rate, WPM stability) reliably differentiate threat-arousal from challenge-arousal states (Blascovich & Mendes 2010), providing a scalable alternative to laboratory biometrics?
 - *RQ4 (Methodological — Idiosyncrasy Limit):* Does the asynchronous architecture support construction of individual Intra-Speaker Baselines that outperform population-average models in detecting within-person communication-competence change over time?
 
-**Hypotheses (pre-registered).**
-- H1: Post-willab > pre-willab on composite learning outcomes (within-subject, paired comparison; Cohen's *d_z* ≥ 0.5 expected at Event 2 vs Event 1).
-- H2: willab arm > waitlist arm on improvement magnitude (between-subjects, isolates intervention effect from mere conference-practice / maturation effects).
-- H3: Post-willab > pre-willab on Flow EEG signatures (faster time-to-emergence of frontal alpha asymmetry + midline theta during Event 2 talk vs Event 1 talk in willab arm; smaller or no shift in waitlist arm).
-- H4: Reduction in evaluation apprehension mediates willab-arm advantage.
-- H5: Macro-acoustic markers discriminate threat- vs. challenge-arousal with sensitivity ≥ 0.75, specificity ≥ 0.70 against EEG ground truth.
-- H6: Intra-Speaker Baselines outperform population baselines for within-person change detection (AUC improvement ≥ 0.10).
+**Hypotheses (pre-registered) — organised by study.**
+
+*Study A (Calibration):*
+- H_A1: willab acoustic feature vectors discriminate Flow vs. non-Flow states against EEG ground truth with sensitivity ≥ 0.75 and specificity ≥ 0.70 (leave-one-participant-out CV).
+- H_A2: willab acoustic feature vectors discriminate threat-arousal from challenge-arousal against EEG + Weighted Ground Truth with sensitivity ≥ 0.70 and specificity ≥ 0.65.
+- H_A3: Intra-Speaker Baseline calibration outperforms population-pooled calibration in within-person state classification (AUC improvement ≥ 0.10).
+
+*Study B (Effectiveness RCT):*
+- H_B1 (within-subject): Post-willab > pre-willab on composite outcome (calibrated acoustic state probabilities + blinded CLT ratings + self-report), Cohen's *d_z* ≥ 0.5.
+- H_B2 (between-subject): willab arm > waitlist arm on pre-post change magnitude.
+- H_B3 (mechanism): Reduction in evaluation apprehension mediates the willab-arm advantage.
+- H_B4 (interoception transfer): Heartbeat-counting accuracy increases pre-to-post more in willab arm than waitlist arm.
+- H_B5 (confirmatory EEG): Calibrated acoustic and EEG agree in Flow classification at Event 2 (Cohen's κ ≥ 0.65).
+
+*Study C (Ecological Validation):*
+- H_C1: 12-week willab acoustic trajectories correlate with self-reported Flow trajectories at within-person level (r ≥ 0.40).
+- H_C2: Aggregated acoustic markers predict blinded peer ratings of charismatic delivery at end-of-period (R² ≥ 0.30).
 
 ### 2. Significance — State of the Art
 
@@ -448,11 +457,53 @@ Full bibliography with ~35–50 entries (Preludium typical scope), in APA 7th ed
 
 ---
 
+## SECTION 15.5 — LIMITATIONS AND SURROGATE BIOMARKER JUSTIFICATION (insertion into Opis Szczegółowy)
+
+This section should be placed within the Methodology of the Opis Szczegółowy, immediately preceding the description of Study A.
+
+### Limitations of the Research Instruments and Justification for Surrogate Biomarkers
+
+Within the context of Human Resource Development (HRD) and organizational behavior, the proposed acoustic telemetry application (*willab*) is positioned not as a clinical equivalent to Electroencephalography (EEG), but as a highly scalable, ecologically valid **surrogate behavioral biomarker**. To maintain methodological rigor, it is critical to delineate the boundaries of this acoustic proxy and justify its deployment as an operational alternative to neuroimaging in organizational settings.
+
+**1. The Neurophysiological Limitations of Acoustic Telemetry.** While acoustic analysis offers profound insights into human arousal, it is fundamentally an indirect measure of cognitive states. The limitations include:
+
+- *ANS versus CNS measurement.* Acoustic telemetry captures the peripheral expression of the Autonomic Nervous System — specifically vagal tone via laryngeal muscle tension. It does not measure the Central Nervous System directly.
+- *Lack of spatial resolution.* Unlike EEG, voice analysis cannot isolate specific regional cortical activations. While it can detect a state of high cognitive load or hyper-arousal, it cannot autonomously differentiate whether this arousal stems from amygdala-driven fear (threat) or heavy prefrontal cortex engagement (complex problem-solving) without secondary contextual data.
+- *Temporal latency.* Neural electrical activity captured by EEG occurs with millisecond precision. Acoustic markers inherently carry a slight temporal latency, as cortical signals must travel down the vagus nerve to stimulate the neuromuscular mechanisms of the vocal tract.
+
+**2. Justification for the Acoustic Proxy in Organizational Settings.** Despite these neurophysiological limitations, relying exclusively on EEG for L&D evaluation presents insurmountable barriers: it is prohibitively expensive, highly intrusive, and severely compromises ecological validity by removing the subject from their natural environment. The acoustic application resolves these barriers through:
+
+- *Ecological validity.* It allows for continuous, longitudinal assessment in real-world environments (remote business presentations, home practice) without the physical constraints of laboratory equipment.
+- *Actionable biofeedback.* Raw EEG output (such as "decreased frontal alpha asymmetry") is unactionable for an IT professional. The application translates complex biological arousal into actionable communicative metrics (such as "F₀ variance increased by 20 Hz; reduce words per minute"), functioning as an active coaching instrument rather than a passive diagnostic one.
+
+**3. The Cross-Validation Strategy (AI Calibration Pipeline).** To bridge the gap between clinical precision and operational scalability, the project employs a phased methodological pipeline. In Study A, EEG serves as the absolute ground truth. The neural data is used exclusively to calibrate the AI-driven acoustic algorithm — teaching the machine learning model to identify the hidden, non-linear macro-acoustic patterns (F₀ variance, speech-to-pause ratios, disfluency density) that reliably correlate with neural Flow states. Once this correlation is mathematically established and refined using a Weighted Ground Truth model incorporating expert coach labels and asymmetric peer validation, Study B transitions to the acoustic proxy as the primary instrument, with EEG retained only in a confirmatory cross-validation role. This paradigm establishes that while the application cannot replace EEG clinically, it successfully abstracts its operational utility, yielding a scalable, bias-resistant, evidence-based instrument for tracking competence transfer in HRD settings.
+
+### Study A — Acoustic-Neural Surrogate Biomarker Calibration
+
+*Aim.* To empirically establish the criterion validity of willab acoustic features as surrogate biomarkers for EEG-confirmed neurocognitive states (Flow, threat-arousal, challenge-arousal) relevant to public speaking competence, and to derive a calibration function deployable as a scalable alternative to laboratory neuroimaging in organizational HRD applications.
+
+*Design.* Within-subject laboratory experiment with simultaneous EEG and acoustic recording during a structured speech protocol engineered to elicit a wide range of autonomic and cortical states. Conducted in collaboration with the Interdepartmental Laboratory of Neuropsychophysiology.
+
+*Participants.* N ≈ 35 technology professionals (independent sample from Studies B and C). Sample-size justification rests on the within-subjects machine-learning calibration paradigm: with approximately 20 task-segmented trials per participant, the effective training set comprises ≈ 700 trial-level observations, sufficient for ridge regression and ensemble-based calibration with leave-one-participant-out cross-validation.
+
+*Protocol.* Each participant completes a single 90-minute session containing: (1) resting baseline 5 min; (2) charisma elicitation 15 min — prepared persuasive speech on participant-chosen topic; (3) stress induction 15 min — impromptu speech on randomly assigned controversial topic with time pressure and visible observer; (4) flow elicitation 20 min — semi-structured talk in participant's professional domain, with challenge calibrated to skill via pre-task self-assessment; (5) recovery 5 min. EEG: 32-channel, 1000 Hz, standard 10-20 montage, online band-pass 0.1–100 Hz. Voice: 48 kHz / 16-bit, head-mounted condenser microphone.
+
+*Weighted Ground Truth model.* Three independent labeling streams combined with empirically determined weights cross-validated against a hold-out subset:
+- *Neural stream (primary):* frontal alpha asymmetry (F3/F4), frontal midline theta (Fz), reduced DLPFC engagement (mid-beta suppression), time-locked to task segments.
+- *Expert coach stream:* two certified executive coaches, blinded to condition, segment recorded video using a structured rubric anchored in Antonakis CLT taxonomy and Engeser-Rheinberg Flow markers.
+- *Peer validation stream:* N ≈ 8 peer raters; asymmetric weighting discounts outlier judgments while retaining stable consensus.
+
+*Calibration analysis.* willab feature vector → trial-level ground-truth probabilities via ridge regression (primary) plus random forest and gradient boosting (comparative). Leave-one-participant-out cross-validation for generalisation. Success criteria as specified in hypotheses H_A1–H_A3.
+
+*Output.* Validated mapping from willab acoustic features to neurocognitive state probabilities. This mapping is the primary measurement instrument deployed in Study B; EEG in Study B serves only as confirmatory cross-validation.
+
+---
+
 ## SECTION 16 — KOSZTORYS / BUDGET
 
 **Total cap: 210,000 PLN.** Limity: direct costs ≤ 175,000 PLN; indirect costs ≤ 35,000 PLN (≤ 20% of direct); Open Access within indirect costs ≤ 2% of direct; equipment ≤ 30% of total.
 
-**Design context:** Two-event speech conference with willab as the intervention between events. Pre-test (EEG + Speech 1) → 4–6 weeks willab use → Post-test (EEG + Speech 2). No 60+ hour coach-led intervention required, so coach budget drops dramatically vs. original 3-arm RCT plan.
+**Design context:** Three sequential studies. Study A (lab calibration, EEG-intensive, N ≈ 35) → Study B (conference RCT, EEG confirmatory only, N ≈ 60) → Study C (field validation, no EEG, N ≥ 100). No coaches needed — the three-study structure has no coaching comparison arm; EEG remains the costly element only in Study A.
 
 ### Wynagrodzenia (W) — 72,000 PLN
 
@@ -470,25 +521,27 @@ Full bibliography with ~35–50 entries (Preludium typical scope), in APA 7th ed
 | Mikrofony pojemnościowe + interfejs audio (backup do Event 1 i Event 2) | 4,000 | Backup do nagrań na konferencji w razie awarii |
 | Software: Praat, JASP, Whisper API credits | 3,000 | Cross-validation cech akustycznych willab + analiza statystyczna |
 
-### Inne koszty bezpośrednie (E) — 92,000 PLN
+### Inne koszty bezpośrednie (E) — 93,000 PLN
 
 | Kategoria | Kwota | Uzasadnienie |
 |---|---|---|
-| **Organizacja konferencji wystąpień (Event 1 + Event 2)** | 30,000 | Sala, sprzęt AV, materiały dla uczestników, refreshments; ~60 uczestników × 2 wydarzenia |
-| **Wyjazd konferencyjny do USA (np. AOM Annual Meeting)** | 20,000 | Lot ~6k + hotel ~5k + registration ~5k + per diem ~4k |
-| **EEG: konsumable (żele, elektrody)** | 8,000 | Materiały zużywalne — Międzywydziałowe Laboratorium Neuropsychofizjologii udostępnia sprzęt i operatora w ramach współpracy, consumables po naszej stronie |
-| Honoraria coachów (5 × ~6 sesji × 200 PLN/h × 2h) — opcjonalny comparison arm | 12,000 | Lekki coaching jako porównanie z arm willab-only |
-| Honoraria uczestników (60 × 150) | 9,000 | Kompensacja za 2× EEG + 2× wystąpienie + okres willab |
-| Honoraria rater'ów (blinded CLT scoring nagrań z Event 1 i Event 2) | 5,000 | 2 raters × ~50h |
-| Wyjazd konferencyjny EU lub krajowy (np. EAWOP) | 5,000 | Druga dyseminacja |
-| Tłumaczenia i korekta językowa (3 manuskrypty EN) | 3,000 | Native proofread |
+| **Organizacja konferencji wystąpień (Event 1 + Event 2, Studium B)** | 25,000 | Sala, AV, materiały, refreshments; ~60 uczestników × 2 wydarzenia |
+| **Wyjazd konferencyjny do USA (np. AOM Annual Meeting)** | 18,000 | Lot ~5k + hotel ~5k + registration ~4k + per diem ~4k |
+| **EEG: konsumable** (Studium A intensywne + Studium B confirmatory) | 8,000 | Żele, elektrody; Międzywydziałowe Laboratorium Neuropsychofizjologii udostępnia sprzęt i operatora w ramach współpracy |
+| Wyjazd konferencyjny EU lub krajowy (EAWOP) | 5,000 | Druga dyseminacja |
+| **Honoraria uczestników Studium A (35 × 200)** | 7,000 | 90-min sesja laboratoryjna z EEG + 5-task speech protocol |
+| **Honoraria uczestników Studium B (60 × 150)** | 9,000 | 2× EEG + 2× wystąpienie + heartbeat-counting × 2 + okres willab |
+| **Honoraria uczestników Studium C (100 × 80)** | 8,000 | 12-tyg. zaangażowanie polowe |
+| **Honoraria peer raters Studium A (8 × ~10h × 75 PLN)** | 6,000 | Asymmetric peer validation dla Weighted Ground Truth |
+| Honoraria expert raters Studium B (blinded CLT scoring) | 4,000 | 2 expert raters × ~25h każdy |
+| Tłumaczenia i korekta językowa (3 manuskrypty EN) | 3,000 | Native proofread dla Studium A/B/C papers |
 
-### Koszty pośrednie (O) — 34,800 PLN (= 20% × 174,000 direct)
+### Koszty pośrednie (O) — 35,000 PLN (= 20% × 175,000 direct)
 
 | Pozycja | Kwota |
 |---|---|
-| Open Access publication fees (1 APC) | 3,000 |
-| Pozostałe koszty pośrednie (overhead jednostki + DMP) | 31,800 |
+| Open Access publication fees (3 APC, częściowo w pośrednich) | 3,500 |
+| Pozostałe koszty pośrednie (overhead jednostki + DMP + repository deposit) | 31,500 |
 
 ### Podsumowanie
 
@@ -496,28 +549,16 @@ Full bibliography with ~35–50 entries (Preludium typical scope), in APA 7th ed
 |---|---|---|
 | Wynagrodzenia (W) | 72,000 | 34.3% |
 | Aparatura (A) | 10,000 | 4.8% |
-| Inne koszty bezpośrednie (E) | 92,000 | 43.8% |
-| **Koszty bezpośrednie (suma)** | **174,000** | **82.9%** |
-| Koszty pośrednie (O) | 34,800 | 16.6% |
-| **CAŁOŚĆ** | **208,800** | **99.4%** |
+| Inne koszty bezpośrednie (E) | 93,000 | 44.3% |
+| **Koszty bezpośrednie (suma)** | **175,000** | **83.3%** |
+| Koszty pośrednie (O) | 35,000 | 16.7% |
+| **CAŁOŚĆ** | **210,000** | **100%** |
 
-✓ Limit 210,000 PLN (36 mc) — spełniony (rezerwa 1,200 PLN)
+✓ Limit 210,000 PLN (36 mc) — wyczerpany dokładnie
 ✓ Aparatura ≤ 30% total (10,000 / 210,000 = 4.8%) — spełnione
-✓ OA ≤ 2% direct (3,000 / 174,000 = 1.7%) — spełnione
-✓ Koszty pośrednie ≤ 20% direct (34,800 / 174,000 = 20.0%) — spełnione
+✓ OA ≤ 2% direct (3,500 / 175,000 = 2.0%) — spełnione
+✓ Koszty pośrednie ≤ 20% direct (35,000 / 175,000 = 20.0%) — spełnione
 ✓ Wynagrodzenia dodatkowe ≤ 2k PLN/mc total — spełnione
-
-### Wariant bez coachów (jeśli rezygnujemy z comparison arm)
-
-Jeśli zostaniemy przy czystym pre/post within-subject design **bez** coachingu jako comparison:
-- Usuń pozycję "Honoraria coachów" (–12,000 PLN)
-- Zwolnione 12,000 PLN można przeznaczyć na: drugi wyjazd USA (+9k), więcej EEG sessions (+3k), albo zachować jako rezerwę
-
-| Pozycja | Wariant z coachami | Wariant bez coachów |
-|---|---|---|
-| Direct | 174,000 | 162,000 |
-| Indirect (20%) | 34,800 | 32,400 |
-| Total | 208,800 | 194,400 |
 
 ---
 
