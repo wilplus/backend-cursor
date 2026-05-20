@@ -16129,3 +16129,106 @@ def v2_user_put_sharing_consent():
             "code": "V2_ERROR",
             "error": "Failed to update consent state",
         }), 500
+
+
+# ── Public interview funnel: end-of-session signal ────────────────
+#
+# The frontend BFF at /api/session/finalize forwards here when the
+# guest interview funnel ends. Three legitimate reasons today:
+#   • threshold  — cold-start 30s aggregate audio threshold reached
+#   • max_turns  — legacy fallback when the turn cap fires
+#   • user_done  — user clicked "Finish & see results"
+#
+# Historical note: this endpoint did not exist in this repo. The FE
+# BFF was built against it on the assumption that the backend
+# wanted an explicit end-of-funnel signal. Without it the FE was
+# logging a 404 on every session close. We're shipping the stub now
+# so the FE stays clean; the actual end-of-funnel bookkeeping
+# happens elsewhere (via upload-answer + the results-publish flow),
+# so this handler is intentionally minimal:
+#
+#   - validates inputs
+#   - emits a structured log line so funnel-completion analytics
+#     can grep on `funnel: ended sid=... reason=...`
+#   - returns 200 — the FE treats failure as non-fatal anyway, so
+#     200 just keeps the console quiet
+#
+# When analytics actually wants this data persisted (per-row in
+# Postgres, or piped to a warehouse), extend this handler to write
+# to v2_sessions or a dedicated `funnel_events` table. For now,
+# log-line analytics is enough.
+
+
+_INTERVIEW_FINALIZE_VALID_REASONS = {"threshold", "max_turns", "user_done"}
+
+
+@v2_bp.route("/public/interview/finalize", methods=["POST"])
+def v2_public_interview_finalize():
+    """End-of-funnel signal from the public interview.
+
+    Body (JSON):
+      - guest_session_id     (UUID, required)
+      - total_duration_seconds (number, optional)
+      - reason               ("threshold" | "max_turns" | "user_done",
+                              optional — unknown values are accepted
+                              with "unknown" attribution; we'd rather
+                              capture the signal than reject a malformed
+                              field and lose the log line)
+
+    Response 200: {"status": "ok"}
+
+    Failure modes are non-fatal — the FE already treats a non-200
+    here as harmless and routes the user to /results regardless. We
+    therefore prefer accepting weird payloads and logging them over
+    400-ing and losing the analytics signal.
+    """
+    try:
+        body = request.get_json(silent=True) or {}
+
+        gsid = (body.get("guest_session_id") or "").strip()
+        if not gsid or not _is_valid_uuid(gsid):
+            # No usable session id → still return 200 (non-fatal), but
+            # log loudly so we can spot misconfigured callers.
+            logger.warning(
+                "interview/finalize: missing/invalid guest_session_id "
+                "body=%r — accepted (non-fatal)",
+                body,
+            )
+            return jsonify({"status": "ok"}), 200
+
+        try:
+            duration_sec = float(body.get("total_duration_seconds") or 0)
+        except (TypeError, ValueError):
+            duration_sec = 0.0
+
+        reason_raw = (body.get("reason") or "").strip().lower()
+        reason = (
+            reason_raw
+            if reason_raw in _INTERVIEW_FINALIZE_VALID_REASONS
+            else "unknown"
+        )
+
+        # Structured log — primary analytics signal until/unless we
+        # add a dedicated funnel_events table. Greppable prefix
+        # "funnel: ended" so downstream log shippers can fan this
+        # out to a metrics aggregator without a code change.
+        logger.info(
+            "funnel: ended sid=%s reason=%s duration_sec=%.1f"
+            "%s",
+            gsid,
+            reason,
+            duration_sec,
+            f" raw_reason={reason_raw!r}" if reason == "unknown" else "",
+        )
+
+        return jsonify({"status": "ok"}), 200
+
+    except Exception as e:
+        logger.error(
+            "interview/finalize failed: %s", e, exc_info=True,
+        )
+        sentry_sdk.capture_exception(e)
+        # Still return 200 — non-fatal contract per the BFF
+        # comment. We don't want a backend bug to look like a FE
+        # bug in the user's console.
+        return jsonify({"status": "ok"}), 200
