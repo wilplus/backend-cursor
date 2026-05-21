@@ -9752,28 +9752,96 @@ def v2_user_chat_upload_answer():
     """Accept a contextual-chat audio response, finalize the session
     for admin review.
 
-    This is the "Session 2+" upload entry — the user has finished
-    onboarding, clicked a CTA on a snippet, gone through the
-    contextual chat (POST /v2/user/chat/first-question for the
-    opening question), and is now uploading their audio response.
-    The previous path (/v2/public/interview/upload-answer) created
-    a guest session and left it orphaned; this endpoint creates a
-    proper user-bound v2_session and runs it through the same
+    The "Session 2+" upload entry. Two FE flows land here:
+
+      A) Snippet-CTA contextual chat (original use case)
+         User finished onboarding → clicked a CTA on a snippet on
+         /results → went through the contextual chat opener (POST
+         /v2/user/chat/first-question) → now uploads their audio
+         response.
+
+      B) Post-labeling continuation (added Phase Single-Slot-Chat)
+         User labeled a published snippet (Yes/No on coach_label)
+         → read the follow-up question + the personalized intro
+         bubble from /v2/coaching/intro-bubble → now records a
+         fresh take with the big mic. ``source_snippet_id`` is
+         the snippet they JUST labeled, NOT a clicked CTA.
+
+    Both flows are mechanically identical from this endpoint's
+    perspective — same multipart body, same v2_session creation,
+    same finalize pipeline.
+
+    The previous path (/v2/public/interview/upload-answer) creates
+    a guest session and leaves it orphaned; this endpoint creates
+    a proper user-bound v2_session and runs it through the same
     finalize pipeline coaching trials use.
 
-    Multipart body:
-      - audio_file:      the recorded response (required)
-      - source_snippet_id: the snippet the user clicked from
-                          /results to enter this conversation
-                          (optional; logged for context)
-      - intent:           'stress' | 'charisma' (optional; logged)
-      - question_text:    the AI-generated opening question
-                          (optional; logged for traceability)
+    Multipart body
+    --------------
+      audio_file         REQUIRED. The recorded response (webm/opus
+                         expected; the audio_storage helper handles
+                         the actual content-type sniffing).
+      source_snippet_id  OPTIONAL UUID. The snippet that triggered
+                         this upload — the CTA-clicked snippet
+                         (flow A) or the just-labeled snippet
+                         (flow B). Stored in
+                         recordings.source_metadata so admin
+                         tooling can trace the continuation chain.
+                         Also accepted as ``sourceSnippetId``
+                         (camelCase) for legacy FE callers.
+      intent             OPTIONAL free-text label. Logged into
+                         source_metadata for analytics; no
+                         validation. Conventional values include
+                         "stress", "charisma", and (for flow B)
+                         "post_labeling_continuation".
+      question_text      OPTIONAL. The AI-generated opening
+                         question the user was responding to.
+                         Logged for traceability.
 
-    Side effects on success:
+    Success response (201)
+    ----------------------
+        {
+          "status":            "ok",
+          "session_id":        <uuid str>,
+          "recording_id":      <uuid str>,
+          "session_status":    "processing",
+          "acoustic_metrics":  {
+            "wpm": float|null, "fillers": int|null,
+            "pause_ms": int|null, "dynamic_db": float|null,
+            "pitch_center": float|null, "energy": float|null,
+            "kpi_score": float|null
+          },
+          "finalize":          { ... pending_admin_review summary ... }
+        }
+
+    The FE renders ``session_status`` directly; "processing" tells
+    the user their take is being reviewed. ``acoustic_metrics`` is
+    the 30-second readback the dashboard uses while the user waits
+    on admin publish.
+
+    Error responses
+    ---------------
+      400 INVALID_INPUT             missing audio_file
+      400 AUDIO_READ_FAILED         couldn't read multipart blob
+      400 AUDIO_EMPTY               empty audio payload
+      409 PRIOR_SESSION_PENDING_REVIEW   B2 gate — user has another
+                                         session the coach hasn't
+                                         published yet. Includes
+                                         ``pending_session_id`` in
+                                         the body so the FE can
+                                         link the user back to it.
+      500 RECORDING_CREATE_FAILED   DB insert failed
+      500 V2_ERROR                  catch-all
+      502 STORAGE_ERROR             R2 / audio bucket failure
+
+    Side effects on success
+    -----------------------
       - audio uploaded to the audio bucket
+        (contextual_chat/<user_id>/<recording_id>.webm)
       - new v2_sessions row bound to request.user_id
       - new recordings row with recording_origin='contextual_chat'
+        and source_metadata containing source_snippet_id + intent +
+        question_text when provided
       - recording-1 metrics job enqueued
       - extract_recording_snippets runs (snippets land back on
         /results once admin publishes)
@@ -9781,12 +9849,11 @@ def v2_user_chat_upload_answer():
         global metrics + B6 KPI, AI draft prefill, status flip to
         'pending_admin_review', admin notification email
 
-    Response (201):
-        { status: "ok", session_id, recording_id, finalize: {...} }
-
-    Why no auto-publish: the "infinite loop" UX is admin reviews
-    every non-onboarding session. The user stays on the waiting
-    screen (/user/results/<id> returns status='processing' while
+    Why no auto-publish
+    -------------------
+    The "infinite loop" UX is that admin reviews every non-
+    onboarding session. The user stays on the waiting screen
+    (/user/results/<id> returns status='processing' while
     results_published_at IS NULL) until the admin clicks Publish.
     """
     import uuid as _uuid
