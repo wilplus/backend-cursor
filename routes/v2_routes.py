@@ -11477,11 +11477,15 @@ def v2_user_snippet_label(snippet_id):
     Body::
 
         { "label": true | false }
+        // OR, equivalent alias for symmetry with the sibling
+        // /v2/chat/snippet-followup endpoint:
+        { "user_label": true | false }
+        // If BOTH keys are present, ``label`` wins (canonical).
 
     Responses::
 
         200 { "status": "ok", "snippet_id": ..., "user_charisma_label": ... }
-        400 INVALID_INPUT — bad UUID / non-bool label
+        400 INVALID_INPUT — bad UUID / non-bool label / both keys missing
         404 NOT_FOUND     — snippet doesn't exist or isn't owned by
                             this user
         500 V2_ERROR
@@ -11499,15 +11503,25 @@ def v2_user_snippet_label(snippet_id):
             }), 400
 
         body = request.get_json(silent=True) or {}
+        # Canonical field is "label"; "user_label" is an alias kept
+        # in sync with the sibling /v2/chat/snippet-followup endpoint
+        # so the frontend can use one consistent body shape across
+        # both labeling-related calls. If both are present, the
+        # canonical name wins.
         label = body.get("label")
+        if label is None:
+            label = body.get("user_label")
         # Strict bool — accept True/False only. The frontend
         # ActionBubble emits one of those two; anything else (None,
-        # int, string "yes") signals a malformed call we want to
-        # surface rather than coerce.
+        # int, string "yes" / "charisma") signals a malformed call
+        # we want to surface rather than coerce.
         if not isinstance(label, bool):
             return jsonify({
                 "code": "INVALID_INPUT",
-                "error": "label must be a boolean (true or false)",
+                "error": (
+                    "label (or user_label) must be a boolean "
+                    "(true or false)"
+                ),
             }), 400
 
         user_id = request.user_id
