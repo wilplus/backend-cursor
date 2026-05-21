@@ -15769,6 +15769,14 @@ def v2_chat_snippet_followup():
 # application log is the audit trail of record for this surface.
 
 
+# How many directives the admin authors per arc. Tightened from 5
+# to 2 — product spec v2 says two questions is the right size.
+# DB CHECK constraint allows 1..5 (legacy), so app-level validation
+# is the one enforcing the new ceiling for new arcs.
+_DIRECTIVES_ARC_LENGTH = 2
+_DIRECTIVES_VALID_POSITIONS = set(range(1, _DIRECTIVES_ARC_LENGTH + 1))
+
+
 def _validate_directives_rows(rows: object) -> tuple[list, str | None]:
     """Returns (normalized_rows, None) on success or
     ([], error_message) on validation failure. Keeps the validation
@@ -15776,8 +15784,11 @@ def _validate_directives_rows(rows: object) -> tuple[list, str | None]:
     test."""
     if not isinstance(rows, list):
         return [], "rows must be an array"
-    if len(rows) != 5:
-        return [], "rows must contain exactly 5 entries (positions 1..5)"
+    if len(rows) != _DIRECTIVES_ARC_LENGTH:
+        return [], (
+            f"rows must contain exactly {_DIRECTIVES_ARC_LENGTH} "
+            f"entries (positions 1..{_DIRECTIVES_ARC_LENGTH})"
+        )
 
     seen_positions: set[int] = set()
     out: list[dict] = []
@@ -15787,9 +15798,15 @@ def _validate_directives_rows(rows: object) -> tuple[list, str | None]:
         try:
             pos = int(r.get("position"))
         except (TypeError, ValueError):
-            return [], f"rows[{idx}].position must be an integer 1..5"
-        if pos < 1 or pos > 5:
-            return [], f"rows[{idx}].position must be in [1, 5], got {pos}"
+            return [], (
+                f"rows[{idx}].position must be an integer "
+                f"1..{_DIRECTIVES_ARC_LENGTH}"
+            )
+        if pos < 1 or pos > _DIRECTIVES_ARC_LENGTH:
+            return [], (
+                f"rows[{idx}].position must be in "
+                f"[1, {_DIRECTIVES_ARC_LENGTH}], got {pos}"
+            )
         if pos in seen_positions:
             return [], f"position {pos} appears more than once"
         seen_positions.add(pos)
@@ -15805,12 +15822,12 @@ def _validate_directives_rows(rows: object) -> tuple[list, str | None]:
             "question": question,
         })
 
-    # Positions must cover 1..5 exactly (no gaps, no dupes — dupes
+    # Positions must cover 1..N exactly (no gaps, no dupes — dupes
     # already caught above; this catches gaps).
-    if seen_positions != {1, 2, 3, 4, 5}:
+    if seen_positions != _DIRECTIVES_VALID_POSITIONS:
         return [], (
-            "positions must cover {1, 2, 3, 4, 5} exactly; "
-            f"got {sorted(seen_positions)}"
+            f"positions must cover {sorted(_DIRECTIVES_VALID_POSITIONS)} "
+            f"exactly; got {sorted(seen_positions)}"
         )
 
     # Sort by position so persistence + audit log share one order.
@@ -16387,6 +16404,42 @@ def v2_coaching_intro_bubble():
                 "code": "NOT_FOUND",
                 "error": "Snippet not found",
             }), 404
+
+        # ── Directives queue takes priority (Item 7 / Phase 2) ──
+        # If the admin has authored a directive arc for this user,
+        # pop the next un-exhausted entry and use its question as
+        # the intro line — this "smoothly introduces" the admin's
+        # next question for the fresh recording session. The
+        # admin-authored copy wins over the LLM personalization.
+        try:
+            directive = db.pop_next_directive(str(user_id))
+        except Exception as pop_err:
+            logger.warning(
+                "coaching/intro-bubble: pop_next_directive failed "
+                "user=%s err=%s — falling through to LLM path",
+                user_id, pop_err,
+            )
+            directive = None
+
+        if directive and (directive.get("question") or "").strip():
+            logger.info(
+                "coaching/intro-bubble: directives-queue HIT "
+                "user=%s pos=%s intent=%s",
+                user_id, directive.get("position"),
+                directive.get("intent_tag"),
+            )
+            return jsonify({
+                "intro_text": directive["question"].strip(),
+                "debug": {
+                    "model": "gpt-4o-mini",
+                    "prompt_version": "coaching_intro_v1",
+                    "source": "directives_queue",
+                    "directive": {
+                        "position": directive.get("position"),
+                        "intent_tag": directive.get("intent_tag"),
+                    },
+                },
+            }), 200
 
         # Try the LLM path. ``generate_intro_line`` returns None on
         # any failure mode — we then drop to the static fallback.

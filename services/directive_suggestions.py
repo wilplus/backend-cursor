@@ -41,14 +41,18 @@ logger = logging.getLogger(__name__)
 
 
 _MODEL = "gpt-4o-mini"
-# Plenty of headroom for 5 questions × ~120 chars + intent tags +
+# Plenty of headroom for 2 questions × ~120 chars + intent tags +
 # JSON scaffolding. The model occasionally adds whitespace; cap is
 # defensive, not a target.
-_MAX_TOKENS = 800
+_MAX_TOKENS = 400
 # Per-question soft cap (chars). The prompt encodes it as a rule;
 # we don't truncate on the server side because the admin will see
 # overshoots and edit anyway.
 _QUESTION_SOFT_CAP_CHARS = 120
+# How many directives the admin authors per arc. Tightened from 5
+# to 2 — keeps the admin's authoring overhead low and matches the
+# product spec for the directives queue v2 surface.
+_ARC_LENGTH = 2
 
 
 def suggest_directive_arc(
@@ -56,7 +60,7 @@ def suggest_directive_arc(
     user_id: str,
     snippet_id_context: Optional[str] = None,
 ) -> List[dict]:
-    """Generate 5 ordered ``{intent_tag, question}`` dicts.
+    """Generate ``_ARC_LENGTH`` ordered ``{intent_tag, question}`` dicts.
 
     Returns ``[]`` on any failure mode (LLM unavailable, parse
     error, insufficient context). The admin endpoint surfaces this
@@ -82,18 +86,19 @@ def suggest_directive_arc(
     )
 
     system = (
-        "You are an expert communication coach building a 5-step "
-        "coaching arc for ONE user. Each step is one open-ended "
-        "question the AI will ask in their next chat / interview "
-        "session.\n"
+        f"You are an expert communication coach building a "
+        f"{_ARC_LENGTH}-step coaching arc for ONE user. Each step "
+        "is one open-ended question the AI will ask in their next "
+        "chat / interview session.\n"
         "\n"
         "Rules:\n"
-        f"  • Exactly 5 questions, each ≤{_QUESTION_SOFT_CAP_CHARS} "
-        "characters (a strong rule of thumb for chat readability, "
-        "not a hard cap; the admin can edit overshoots).\n"
-        "  • Order matters. Build progressively: open warm, probe "
-        "deeper, challenge gently, invite reflection, land "
-        "intentionally. Don't ask the same angle twice.\n"
+        f"  • Exactly {_ARC_LENGTH} questions, each "
+        f"≤{_QUESTION_SOFT_CAP_CHARS} characters (a strong rule of "
+        "thumb for chat readability, not a hard cap; the admin can "
+        "edit overshoots).\n"
+        "  • Order matters. Build progressively: open with a warm "
+        "probe, then deepen or challenge. Don't ask the same "
+        "angle twice.\n"
         "  • Anchor on the user's actual recent transcripts and "
         "profile — every question should feel like it belongs to "
         "THIS user, not a generic template.\n"
@@ -173,7 +178,7 @@ def suggest_directive_arc(
             "rows user=%s",
             user_id,
         )
-    return out[:5]
+    return out[:_ARC_LENGTH]
 
 
 # ── Internals ──────────────────────────────────────────────────────
