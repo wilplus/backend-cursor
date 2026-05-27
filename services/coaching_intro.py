@@ -67,7 +67,7 @@ def generate_intro_line(
         # No coach insight = nothing to ground on. Caller falls
         # back to the static line.
         logger.info(
-            "coaching_intro: snippet has no admin_comment user=%s "
+            "coaching_intro.no_admin_comment user=%s "
             "snippet=%s — falling back to static intro",
             user_id, snippet.get("id"),
         )
@@ -153,7 +153,7 @@ def generate_intro_line(
     parsed = result.parsed
     if not isinstance(parsed, dict):
         logger.warning(
-            "coaching_intro: malformed JSON shape user=%s raw_head=%r",
+            "coaching_intro.malformed_json user=%s raw_head=%r",
             user_id, result.text[:200],
         )
         return None
@@ -161,7 +161,7 @@ def generate_intro_line(
 
     if not intro_text:
         logger.warning(
-            "coaching_intro: empty intro_text user=%s snippet=%s",
+            "coaching_intro.empty_intro_text user=%s snippet=%s",
             user_id, snippet.get("id"),
         )
         return None

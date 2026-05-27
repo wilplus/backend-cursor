@@ -859,8 +859,8 @@ def v2_admin_user_context(user_id):
             # cleanup; directives-queue is the replacement path.
             if "queued_override_question" in body:
                 logger.warning(
-                    "admin/user/context PUT: ignoring legacy "
-                    "queued_override_question field user=%s — use "
+                    "admin_user_context.legacy_field_ignored "
+                    "field=queued_override_question user=%s — use "
                     "POST /v2/admin/users/<id>/directives-queue",
                     user_id,
                 )
@@ -880,7 +880,7 @@ def v2_admin_user_context(user_id):
 
     except Exception as e:
         logger.error(
-            "admin/user/<id>/context %s failed: %s",
+            "admin_user_context.error method=%s err=%s",
             request.method, e, exc_info=True,
         )
         sentry_sdk.capture_exception(e)
@@ -10150,7 +10150,7 @@ def v2_user_chat_first_question():
         directive = db.pop_next_directive(user_id)
         if directive:
             logger.info(
-                "first-question: directives-queue HIT user=%s pos=%s "
+                "first_question.directives_queue_hit user=%s pos=%s "
                 "intent=%s",
                 user_id, directive.get("position"),
                 directive.get("intent_tag"),
@@ -11615,7 +11615,7 @@ def v2_user_snippet_label(snippet_id):
 
     except Exception as e:
         logger.error(
-            "user/snippets/<id>/label failed: %s", e, exc_info=True,
+            "user_snippet_label.error err=%s", e, exc_info=True,
         )
         sentry_sdk.capture_exception(e)
         return jsonify({
@@ -12200,7 +12200,7 @@ def v2_public_interview_next_question():
             directive = db.pop_next_directive(user_id)
             if directive:
                 logger.info(
-                    "interview: directives-queue HIT user=%s pos=%s "
+                    "interview.directives_queue_hit user=%s pos=%s "
                     "intent=%s turn=%s",
                     user_id, directive.get("position"),
                     directive.get("intent_tag"), turn_number,
@@ -15677,7 +15677,7 @@ def v2_chat_snippet_followup():
         parsed = result.parsed
         if not isinstance(parsed, dict):
             logger.error(
-                "snippet-followup: malformed JSON user=%s snippet=%s raw=%r",
+                "snippet_followup.malformed_json user=%s snippet=%s raw=%r",
                 user_id, snippet_id, result.text[:200],
             )
             return jsonify({
@@ -15688,7 +15688,7 @@ def v2_chat_snippet_followup():
 
         if not followup_text:
             logger.warning(
-                "snippet-followup: empty followup_text user=%s snippet=%s",
+                "snippet_followup.empty_text user=%s snippet=%s",
                 user_id, snippet_id,
             )
             return jsonify({
@@ -15708,7 +15708,7 @@ def v2_chat_snippet_followup():
         }), 200
 
     except Exception as e:
-        logger.error("chat/snippet-followup failed: %s", e, exc_info=True)
+        logger.error("snippet_followup.error err=%s", e, exc_info=True)
         sentry_sdk.capture_exception(e)
         return jsonify({
             "code": "V2_ERROR",
@@ -15831,7 +15831,7 @@ def v2_admin_get_directives_queue(user_id):
         return jsonify({"rows": rows}), 200
     except Exception as e:
         logger.error(
-            "admin/directives-queue GET failed user=%s: %s",
+            "directives_queue.get_error user=%s err=%s",
             user_id, e, exc_info=True,
         )
         sentry_sdk.capture_exception(e)
@@ -15901,7 +15901,7 @@ def v2_admin_post_directives_queue(user_id):
         # Structured audit log. One line per POST, parseable by
         # log-ingesting tools downstream.
         logger.info(
-            "directives-queue: REPLACE user=%s admin=%s rows=%d "
+            "directives_queue.replace user=%s admin=%s rows=%d "
             "positions=%s",
             user_id, admin_user_id, len(inserted),
             [r.get("position") for r in inserted],
@@ -15910,7 +15910,7 @@ def v2_admin_post_directives_queue(user_id):
 
     except Exception as e:
         logger.error(
-            "admin/directives-queue POST failed user=%s: %s",
+            "directives_queue.post_error user=%s err=%s",
             user_id, e, exc_info=True,
         )
         sentry_sdk.capture_exception(e)
@@ -15942,13 +15942,13 @@ def v2_admin_delete_directives_queue(user_id):
                 "error": "Failed to clear directives queue",
             }), 500
         logger.info(
-            "directives-queue: CLEAR user=%s admin=%s",
+            "directives_queue.clear user=%s admin=%s",
             user_id, admin_user_id,
         )
         return jsonify({"cleared": True}), 200
     except Exception as e:
         logger.error(
-            "admin/directives-queue DELETE failed user=%s: %s",
+            "directives_queue.delete_error user=%s err=%s",
             user_id, e, exc_info=True,
         )
         sentry_sdk.capture_exception(e)
@@ -16012,7 +16012,7 @@ def v2_admin_suggest_directives_queue(user_id):
 
         admin_user_id = str(request.user_id) if request.user_id else None
         logger.info(
-            "directives-queue: SUGGEST user=%s admin=%s anchor=%s "
+            "directives_queue.suggest user=%s admin=%s anchor=%s "
             "rows=%d",
             user_id, admin_user_id, snippet_id_context or "-",
             len(rows),
@@ -16021,7 +16021,7 @@ def v2_admin_suggest_directives_queue(user_id):
 
     except Exception as e:
         logger.error(
-            "admin/directives-queue/suggest failed user=%s: %s",
+            "directives_queue.suggest_error user=%s err=%s",
             user_id, e, exc_info=True,
         )
         sentry_sdk.capture_exception(e)
@@ -16101,7 +16101,7 @@ def v2_user_get_sharing_consent():
         return jsonify(_shape_consent_response(state)), 200
     except Exception as e:
         logger.error(
-            "user/sharing-consent GET failed user=%s: %s",
+            "user_sharing_consent.get_error user=%s err=%s",
             getattr(request, "user_id", None), e, exc_info=True,
         )
         sentry_sdk.capture_exception(e)
@@ -16139,8 +16139,8 @@ def v2_user_put_sharing_consent():
         # FE stragglers still sending opt_in. Silently ignored.
         if "opt_in" in body:
             logger.warning(
-                "user/sharing-consent PUT: ignoring legacy "
-                "opt_in field user=%s — use share_consent",
+                "user_sharing_consent.legacy_field_ignored "
+                "field=opt_in user=%s — use share_consent",
                 user_id,
             )
 
@@ -16173,14 +16173,14 @@ def v2_user_put_sharing_consent():
             }), 500
 
         logger.info(
-            "user/sharing-consent PUT user=%s fields=%s",
+            "user_sharing_consent.put user=%s fields=%s",
             user_id, sorted(patch.keys()),
         )
         return jsonify(_shape_consent_response(new_state)), 200
 
     except Exception as e:
         logger.error(
-            "user/sharing-consent PUT failed user=%s: %s",
+            "user_sharing_consent.put_error user=%s err=%s",
             getattr(request, "user_id", None), e, exc_info=True,
         )
         sentry_sdk.capture_exception(e)
@@ -16208,7 +16208,7 @@ def v2_user_put_sharing_consent():
 #
 #   - validates inputs
 #   - emits a structured log line so funnel-completion analytics
-#     can grep on `funnel: ended sid=... reason=...`
+#     can grep on `funnel.end sid=... reason=...`
 #   - returns 200 — the FE treats failure as non-fatal anyway, so
 #     200 just keeps the console quiet
 #
@@ -16249,7 +16249,7 @@ def v2_public_interview_finalize():
             # No usable session id → still return 200 (non-fatal), but
             # log loudly so we can spot misconfigured callers.
             logger.warning(
-                "interview/finalize: missing/invalid guest_session_id "
+                "interview_finalize.invalid_session_id "
                 "body=%r — accepted (non-fatal)",
                 body,
             )
@@ -16269,10 +16269,10 @@ def v2_public_interview_finalize():
 
         # Structured log — primary analytics signal until/unless we
         # add a dedicated funnel_events table. Greppable prefix
-        # "funnel: ended" so downstream log shippers can fan this
+        # "funnel.end" so downstream log shippers can fan this
         # out to a metrics aggregator without a code change.
         logger.info(
-            "funnel: ended sid=%s reason=%s duration_sec=%.1f"
+            "funnel.end sid=%s reason=%s duration_sec=%.1f"
             "%s",
             gsid,
             reason,
@@ -16284,7 +16284,7 @@ def v2_public_interview_finalize():
 
     except Exception as e:
         logger.error(
-            "interview/finalize failed: %s", e, exc_info=True,
+            "interview_finalize.error err=%s", e, exc_info=True,
         )
         sentry_sdk.capture_exception(e)
         # Still return 200 — non-fatal contract per the BFF
@@ -16376,7 +16376,7 @@ def v2_coaching_intro_bubble():
             directive = db.pop_next_directive(str(user_id))
         except Exception as pop_err:
             logger.warning(
-                "coaching/intro-bubble: pop_next_directive failed "
+                "coaching_intro_bubble.pop_directive_failed "
                 "user=%s err=%s — falling through to LLM path",
                 user_id, pop_err,
             )
@@ -16384,7 +16384,7 @@ def v2_coaching_intro_bubble():
 
         if directive and (directive.get("question") or "").strip():
             logger.info(
-                "coaching/intro-bubble: directives-queue HIT "
+                "coaching_intro_bubble.directives_queue_hit "
                 "user=%s pos=%s intent=%s",
                 user_id, directive.get("position"),
                 directive.get("intent_tag"),
@@ -16419,7 +16419,7 @@ def v2_coaching_intro_bubble():
             # its own errors, but if anything escapes we still want
             # to return 200 with the fallback.
             logger.warning(
-                "coaching/intro-bubble: generator raised user=%s "
+                "coaching_intro_bubble.generator_raised user=%s "
                 "snippet=%s err=%s — using fallback",
                 user_id, snippet_id, gen_err,
             )
@@ -16449,7 +16449,7 @@ def v2_coaching_intro_bubble():
 
     except Exception as e:
         logger.error(
-            "coaching/intro-bubble failed: %s", e, exc_info=True,
+            "coaching_intro_bubble.error err=%s", e, exc_info=True,
         )
         sentry_sdk.capture_exception(e)
         # Last-resort: still return 200 with the static fallback so

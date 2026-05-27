@@ -120,7 +120,7 @@ def analyze_casual_audio_async(
                 # too short, etc.). Drop silently — the stress
                 # contrast just gets one fewer sample.
                 logger.warning(
-                    "casual_voice: analyze_audio returned empty user=%s "
+                    "casual_voice.analyze_empty user=%s "
                     "bytes=%d dur=%.2f",
                     args["user_id"],
                     len(args["audio_bytes"]) if args["audio_bytes"] else 0,
@@ -146,7 +146,7 @@ def analyze_casual_audio_async(
                     )
                 except Exception as up_err:
                     logger.warning(
-                        "casual_voice: retain upload failed user=%s err=%s "
+                        "casual_voice.retain_upload_failed user=%s err=%s "
                         "— proceeding metrics-only",
                         args["user_id"], up_err,
                     )
@@ -166,14 +166,14 @@ def analyze_casual_audio_async(
             )
             if row is None:
                 logger.warning(
-                    "casual_voice: persist returned None user=%s "
+                    "casual_voice.persist_failed user=%s "
                     "(table missing or write failed — metrics lost "
                     "but request unaffected)",
                     args["user_id"],
                 )
             else:
                 logger.info(
-                    "casual_voice: persisted user=%s row=%s wpm=%s "
+                    "casual_voice.persisted user=%s row=%s wpm=%s "
                     "pitch_st=%s",
                     args["user_id"],
                     row.get("id"),
@@ -182,7 +182,7 @@ def analyze_casual_audio_async(
                 )
         except Exception as e:
             logger.warning(
-                "casual_voice: async runner crashed user=%s err=%s",
+                "casual_voice.runner_crashed user=%s err=%s",
                 args["user_id"], e,
             )
 
