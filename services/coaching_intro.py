@@ -18,7 +18,6 @@ Mirrors the pattern in services/directive_suggestions.py.
 """
 from __future__ import annotations
 
-import json
 import logging
 from typing import Optional
 
@@ -26,8 +25,6 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 
-_MODEL = "gpt-4o-mini"
-_MAX_TOKENS = 120
 # Bumped manually when the system prompt below materially changes
 # so analytics can attribute regressions to a specific prompt
 # version. Returned on the response in ``debug.prompt_version``.
@@ -37,6 +34,9 @@ PROMPT_VERSION = "coaching_intro_v1"
 # stored / returned value at 220 (some headroom) so a single
 # overshoot doesn't 500. Beyond 220 we truncate at a word boundary.
 _HARD_CHAR_CAP = 220
+
+# Model + decoding spec centralized in services/llm_config.py — see
+# SPEC_COACHING_INTRO for the canonical config.
 
 
 def generate_intro_line(
@@ -73,14 +73,8 @@ def generate_intro_line(
         )
         return None
 
-    try:
-        from services.openai_service import OpenAIService
-        service = OpenAIService()
-    except Exception as e:
-        logger.warning("coaching_intro: openai import failed: %s", e)
-        return None
-    if not service.client:
-        return None
+    from services.llm import chat_complete
+    from services.llm_config import SPEC_COACHING_INTRO
 
     coach_label = (snippet.get("coach_label") or "").strip().lower() or None
     snippet_type = (snippet.get("snippet_type") or "").strip().lower() or None
@@ -145,35 +139,25 @@ def generate_intro_line(
         "Generate the intro line now."
     )
 
-    try:
-        response = service.client.chat.completions.create(
-            model=_MODEL,
-            messages=[
-                {"role": "system", "content": system},
-                {"role": "user", "content": user_prompt},
-            ],
-            # Warmth without drift. Mirrors snippet-followup.
-            temperature=0.5,
-            max_tokens=_MAX_TOKENS,
-            response_format={"type": "json_object"},
-        )
-        raw = (response.choices[0].message.content or "").strip()
-    except Exception as e:
-        logger.warning(
-            "coaching_intro: llm call failed user=%s snippet=%s err=%s",
-            user_id, snippet.get("id"), e,
-        )
+    result = chat_complete(
+        spec=SPEC_COACHING_INTRO,
+        system=system,
+        user=user_prompt,
+        surface="coaching_intro",
+        user_id=user_id,
+    )
+    if result is None:
+        # chat_complete already logged the failure reason.
         return None
 
-    try:
-        parsed = json.loads(raw)
-        intro_text = (parsed.get("intro_text") or "").strip()
-    except Exception as e:
+    parsed = result.parsed
+    if not isinstance(parsed, dict):
         logger.warning(
-            "coaching_intro: json parse failed user=%s raw_head=%r err=%s",
-            user_id, raw[:200], e,
+            "coaching_intro: malformed JSON shape user=%s raw_head=%r",
+            user_id, result.text[:200],
         )
         return None
+    intro_text = (parsed.get("intro_text") or "").strip()
 
     if not intro_text:
         logger.warning(

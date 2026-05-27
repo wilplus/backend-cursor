@@ -15561,7 +15561,9 @@ def v2_admin_finalize_session_recording(session_id):
 # onto `user_label`. We surface this contract back to the caller via
 # `debug.user_label_interpretation = "agreement"` so any silent
 # regression to a "type" semantic fails loud in dev.
-_FOLLOWUP_MODEL = "gpt-4o-mini"
+#
+# Model + decoding spec centralized in services/llm_config.py —
+# see SPEC_SNIPPET_FOLLOWUP for the canonical values.
 
 
 @v2_bp.route("/chat/snippet-followup", methods=["POST"])
@@ -15643,16 +15645,8 @@ def v2_chat_snippet_followup():
         display_label = coach_label or snippet_type or "this moment"
 
         # ── LLM call ──
-        from services.openai_service import openai_service
-        if not openai_service.client:
-            logger.error(
-                "snippet-followup: openai client unavailable user=%s snippet=%s",
-                user_id, snippet_id,
-            )
-            return jsonify({
-                "code": "V2_ERROR",
-                "error": "Coaching service unavailable",
-            }), 500
+        from services.llm import chat_complete
+        from services.llm_config import SPEC_SNIPPET_FOLLOWUP
 
         agreement_phrase = (
             "The user AGREES with the coach's label."
@@ -15678,44 +15672,31 @@ def v2_chat_snippet_followup():
             "Return strict JSON with a single key followup_text."
         )
 
-        try:
-            response = openai_service.client.chat.completions.create(
-                model=_FOLLOWUP_MODEL,
-                messages=[
-                    {"role": "system", "content": system},
-                    {"role": "user", "content": user_prompt},
-                ],
-                # Some warmth; not creative writing.
-                temperature=0.4,
-                max_tokens=200,
-                response_format={"type": "json_object"},
-            )
-            raw = (response.choices[0].message.content or "").strip()
-        except Exception as e:
-            logger.error(
-                "snippet-followup: llm call failed user=%s snippet=%s err=%s",
-                user_id, snippet_id, e,
-            )
-            sentry_sdk.capture_exception(e)
+        result = chat_complete(
+            spec=SPEC_SNIPPET_FOLLOWUP,
+            system=system,
+            user=user_prompt,
+            surface="snippet_followup",
+            user_id=str(user_id),
+        )
+        if result is None:
+            # chat_complete already logged the failure reason.
             return jsonify({
                 "code": "V2_ERROR",
                 "error": "Failed to generate follow-up",
             }), 500
 
-        try:
-            import json as _json
-            parsed = _json.loads(raw)
-            followup_text = (parsed.get("followup_text") or "").strip()
-        except Exception as e:
+        parsed = result.parsed
+        if not isinstance(parsed, dict):
             logger.error(
-                "snippet-followup: json parse failed user=%s snippet=%s raw=%r",
-                user_id, snippet_id, raw[:200],
+                "snippet-followup: malformed JSON user=%s snippet=%s raw=%r",
+                user_id, snippet_id, result.text[:200],
             )
-            sentry_sdk.capture_exception(e)
             return jsonify({
                 "code": "V2_ERROR",
                 "error": "Coach response was malformed",
             }), 500
+        followup_text = (parsed.get("followup_text") or "").strip()
 
         if not followup_text:
             logger.warning(
@@ -15730,7 +15711,7 @@ def v2_chat_snippet_followup():
         return jsonify({
             "followup_text": followup_text,
             "debug": {
-                "model": _FOLLOWUP_MODEL,
+                "model": result.model,
                 # PIN: never change to "type" without coordinated FE
                 # update + matrix-doc preamble update. See module-level
                 # comment for the full contract.

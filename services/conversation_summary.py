@@ -29,11 +29,8 @@ from services.db import db
 logger = logging.getLogger(__name__)
 
 
-_MODEL = "gpt-4o-mini"
-# 200 leaves comfortable headroom for the ~150-token target digest.
-# Spec says "≤~150" — the model occasionally overshoots and we'd
-# rather emit a slightly long digest than truncate mid-sentence.
-_MAX_TOKENS = 250
+# Model + decoding spec centralized in services/llm_config.py —
+# see SPEC_CONVERSATION_SUMMARY for the canonical values.
 
 
 def update_summary_sync(
@@ -150,14 +147,8 @@ def _llm_fold(
     transcript: str,
 ) -> Optional[str]:
     """One LLM call: prior summary + new exchange → updated digest."""
-    try:
-        from services.openai_service import OpenAIService
-        service = OpenAIService()
-    except Exception as e:
-        logger.warning("conversation_summary: openai import failed: %s", e)
-        return None
-    if not service.client:
-        return None
+    from services.llm import chat_complete
+    from services.llm_config import SPEC_CONVERSATION_SUMMARY
 
     system = (
         "You maintain a rolling digest of an ongoing interview "
@@ -197,21 +188,13 @@ def _llm_fold(
         "Return the updated digest only."
     )
 
-    try:
-        response = service.client.chat.completions.create(
-            model=_MODEL,
-            messages=[
-                {"role": "system", "content": system},
-                {"role": "user", "content": user_prompt},
-            ],
-            max_tokens=_MAX_TOKENS,
-            # Low temp — summary should be stable / reproducible
-            # for the same input, not creative.
-            temperature=0.3,
-        )
-        raw = (response.choices[0].message.content or "").strip()
-    except Exception as e:
-        logger.warning("conversation_summary: llm call failed: %s", e)
+    result = chat_complete(
+        spec=SPEC_CONVERSATION_SUMMARY,
+        system=system,
+        user=user_prompt,
+        surface="conversation_summary",
+    )
+    if result is None:
+        # chat_complete already logged the failure reason.
         return None
-
-    return raw or None
+    return result.text or None

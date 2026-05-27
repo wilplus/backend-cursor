@@ -40,11 +40,6 @@ from services.db import db
 logger = logging.getLogger(__name__)
 
 
-_MODEL = "gpt-4o-mini"
-# Plenty of headroom for 2 questions × ~120 chars + intent tags +
-# JSON scaffolding. The model occasionally adds whitespace; cap is
-# defensive, not a target.
-_MAX_TOKENS = 400
 # Per-question soft cap (chars). The prompt encodes it as a rule;
 # we don't truncate on the server side because the admin will see
 # overshoots and edit anyway.
@@ -53,6 +48,10 @@ _QUESTION_SOFT_CAP_CHARS = 120
 # to 2 — keeps the admin's authoring overhead low and matches the
 # product spec for the directives queue v2 surface.
 _ARC_LENGTH = 2
+
+# Model + decoding spec centralized in services/llm_config.py so a
+# model deprecation = one diff. See SPEC_DIRECTIVE_SUGGESTIONS for
+# the chosen temperature / max_tokens / response_format.
 
 
 def suggest_directive_arc(
@@ -67,18 +66,8 @@ def suggest_directive_arc(
     as ``rows: []`` and the FE renders an empty form for manual
     authoring.
     """
-    try:
-        from services.openai_service import openai_service
-    except Exception as e:
-        logger.warning(
-            "directive_suggestions: openai import failed: %s", e,
-        )
-        return []
-    if not openai_service.client:
-        logger.warning(
-            "directive_suggestions: openai client unavailable",
-        )
-        return []
+    from services.llm import chat_complete
+    from services.llm_config import SPEC_DIRECTIVE_SUGGESTIONS
 
     context_payload = _build_context_payload(
         user_id=user_id,
@@ -116,46 +105,27 @@ def suggest_directive_arc(
         "USER CONTEXT (best-effort; sections may be empty if the "
         "user is new):\n"
         f"{context_payload}\n\n"
-        "Generate the 5-step arc now. Strict JSON only."
+        f"Generate the {_ARC_LENGTH}-step arc now. Strict JSON only."
     )
 
-    try:
-        response = openai_service.client.chat.completions.create(
-            model=_MODEL,
-            messages=[
-                {"role": "system", "content": system},
-                {"role": "user", "content": user_prompt},
-            ],
-            # Some warmth — coaching questions shouldn't feel
-            # mechanical — but not so high we lose grounding in
-            # the context payload.
-            temperature=0.5,
-            max_tokens=_MAX_TOKENS,
-            response_format={"type": "json_object"},
-        )
-        raw = (response.choices[0].message.content or "").strip()
-    except Exception as e:
-        logger.warning(
-            "directive_suggestions: LLM call failed user=%s err=%s",
-            user_id, e,
-        )
+    result = chat_complete(
+        spec=SPEC_DIRECTIVE_SUGGESTIONS,
+        system=system,
+        user=user_prompt,
+        surface="directive_suggestions",
+        user_id=user_id,
+    )
+    if result is None:
+        # chat_complete already logged the failure reason.
         return []
 
-    try:
-        parsed = json.loads(raw)
-        rows_raw = parsed.get("rows") if isinstance(parsed, dict) else None
-        if not isinstance(rows_raw, list):
-            logger.warning(
-                "directive_suggestions: malformed JSON shape user=%s "
-                "raw_head=%r",
-                user_id, raw[:200],
-            )
-            return []
-    except Exception as e:
+    parsed = result.parsed
+    rows_raw = parsed.get("rows") if isinstance(parsed, dict) else None
+    if not isinstance(rows_raw, list):
         logger.warning(
-            "directive_suggestions: JSON parse failed user=%s err=%s "
+            "directive_suggestions: malformed JSON shape user=%s "
             "raw_head=%r",
-            user_id, e, raw[:200],
+            user_id, result.text[:200],
         )
         return []
 
