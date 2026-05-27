@@ -16046,11 +16046,10 @@ def v2_admin_suggest_directives_queue(user_id):
 # yet answered → FE shows the prompt for that slot. TRUE/FALSE =
 # answered.
 #
-# Back-compat: GET response ALSO echoes share_consent as the
-# legacy `opt_in` field; PUT body accepts `opt_in: bool` as an
-# alias for `share_consent`. Both alias paths are kept until the
-# FE migrates to the new field names — flag this as deprecated
-# once FE is on the new contract.
+# Legacy ``opt_in`` alias (response echo + PUT body acceptance)
+# was removed in the Week-1 cleanup. The four canonical fields
+# above are the only contract now. Stragglers that PUT ``opt_in``
+# get a warning log and the field is silently ignored.
 
 _CONSENT_FIELDS_FE = (
     "mic_consent",
@@ -16078,9 +16077,6 @@ def _shape_consent_response(state: dict) -> dict:
         "share_consent": state.get("share_consent"),
         "email_consent": state.get("email_consent"),
         "terms_consent": state.get("terms_consent"),
-        # Back-compat alias for the legacy single-flag contract.
-        # Drops to be removed after FE migrates.
-        "opt_in": state.get("share_consent"),
     }
     return out
 
@@ -16097,9 +16093,7 @@ def v2_user_get_sharing_consent():
           "mic_consent":   bool | null,
           "share_consent": bool | null,
           "email_consent": bool | null,
-          "terms_consent": bool | null,
-          "opt_in":        bool | null   # ALIAS for share_consent
-                                          # (back-compat, deprecated)
+          "terms_consent": bool | null
         }
     """
     try:
@@ -16123,10 +16117,12 @@ def v2_user_put_sharing_consent():
     """Update any subset of the four consent flags.
 
     Body (JSON): any subset of mic_consent / share_consent /
-    email_consent / terms_consent (each must be bool). The legacy
-    ``opt_in: bool`` key is accepted as an alias for
-    ``share_consent`` — if BOTH are present, the explicit
-    ``share_consent`` value wins.
+    email_consent / terms_consent (each must be bool).
+
+    Note: the legacy ``opt_in`` alias (which previously mapped to
+    ``share_consent``) was removed in the Week-1 cleanup. If a
+    caller still sends ``opt_in``, we log a warning and silently
+    ignore it — use ``share_consent`` directly.
 
     Response 200: same shape as GET, echoing the post-write state.
     """
@@ -16139,18 +16135,16 @@ def v2_user_put_sharing_consent():
                 "error": "Body must be a JSON object",
             }), 400
 
-        patch: dict = {}
-        # ── Back-compat alias: opt_in → share_consent ──
+        # Legacy-caller detection — log once so we can spot
+        # FE stragglers still sending opt_in. Silently ignored.
         if "opt_in" in body:
-            val = body["opt_in"]
-            if val is not None and not isinstance(val, bool):
-                return jsonify({
-                    "code": "INVALID_INPUT",
-                    "error": "opt_in must be a boolean or null",
-                }), 400
-            patch["share_consent"] = val
+            logger.warning(
+                "user/sharing-consent PUT: ignoring legacy "
+                "opt_in field user=%s — use share_consent",
+                user_id,
+            )
 
-        # ── Canonical fields (override the alias if both passed) ──
+        patch: dict = {}
         for field in _CONSENT_FIELDS_FE:
             if field in body:
                 val = body[field]
@@ -16167,7 +16161,7 @@ def v2_user_put_sharing_consent():
                 "error": (
                     "Body must include at least one of: "
                     "mic_consent, share_consent, email_consent, "
-                    "terms_consent, opt_in"
+                    "terms_consent"
                 ),
             }), 400
 
