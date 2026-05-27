@@ -6019,10 +6019,10 @@ class DatabaseService:
     # is empty, those surfaces fall back to _generate_llm_question.
     #
     # Replaces the per-user single-question
-    # user_settings.queued_override_question (kept as a deprioritized
-    # fallback for back-compat) and the conceptually-misplaced
-    # snippet-level next_question_1..5 columns (which never shipped
-    # to this branch).
+    # user_settings.queued_override_question (removed in Week-1
+    # cleanup) and the conceptually-misplaced snippet-level
+    # next_question_1..5 columns (which never shipped to this
+    # branch).
 
     def list_directives_queue(
         self,
@@ -6199,8 +6199,8 @@ class DatabaseService:
 
         Called from the next-question splice in /v2/user/chat/
         first-question and /v2/public/interview/next-question
-        BEFORE the legacy queued_override_question consumer and
-        BEFORE the LLM fallback.
+        BEFORE the LLM fallback. (The legacy queued_override_question
+        consumer was removed in the Week-1 cleanup.)
         """
         try:
             picked = (
@@ -8474,11 +8474,9 @@ class DatabaseService:
         user_id: str,
         custom_llm_instructions: Optional[str] = None,
         private_admin_notes: Optional[str] = None,
-        queued_override_question: Optional[str] = None,
         coach_override_profile: Optional[str] = None,
         update_instructions: bool = False,
         update_notes: bool = False,
-        update_queued_question: bool = False,
         update_override_profile: bool = False,
     ) -> Optional[dict]:
         """Partial upsert of admin-editable user context fields.
@@ -8494,6 +8492,12 @@ class DatabaseService:
         precedence rule in _augment_coaching_system_prompt keeps
         working unchanged.
 
+        Legacy ``queued_override_question`` parameter was removed in
+        the Week-1 cleanup. The admin override path is now
+        coaching_directives_queue (POST /v2/admin/users/<id>/
+        directives-queue). Old data in the user_settings column
+        persists in the DB but is no longer read or written here.
+
         Returns the updated user_settings row, or None on failure.
         """
         # ── user_settings side ────────────────────────────────────
@@ -8505,8 +8509,6 @@ class DatabaseService:
             payload["custom_llm_instructions"] = custom_llm_instructions
         if update_notes:
             payload["private_admin_notes"] = private_admin_notes
-        if update_queued_question:
-            payload["queued_override_question"] = queued_override_question
 
         updated_row = None
         if len(payload) > 2:  # more than just user_id + updated_at
@@ -8850,45 +8852,12 @@ class DatabaseService:
             grouped.setdefault(str(sid), []).append(r)
         return grouped
 
-    def consume_queued_override_question(
-        self,
-        user_id: str,
-    ) -> Optional[str]:
-        """Pop and clear the queued override question for a user.
-
-        Returns the question text (or None when nothing is queued).
-        Called by the contextual /chat first-question handler — the
-        admin queues a question via PUT context, the next chat eats
-        it. Atomic-ish: we read then clear in two calls; a concurrent
-        admin edit between them would lose the new question, which is
-        acceptable for an admin-only single-edit workflow.
-        """
-        try:
-            settings = self.get_user_settings(user_id) or {}
-            q = (settings.get("queued_override_question") or "").strip()
-            if not q:
-                return None
-            # Clear it so the same question doesn't fire twice.
-            try:
-                (
-                    self.client.table("user_settings")
-                    .update({"queued_override_question": None})
-                    .eq("user_id", user_id)
-                    .execute()
-                )
-            except Exception as clear_err:
-                logger.warning(
-                    "consume_queued_override_question: clear failed "
-                    "user=%s err=%s — returning question anyway",
-                    user_id, clear_err,
-                )
-            return q
-        except Exception as e:
-            logger.warning(
-                "consume_queued_override_question failed user=%s err=%s",
-                user_id, e,
-            )
-            return None
+    # ``consume_queued_override_question`` was removed in the Week-1
+    # cleanup. The admin override path is now
+    # coaching_directives_queue (see db.pop_next_directive). The
+    # legacy ``user_settings.queued_override_question`` column
+    # persists in the DB for forensic safety but is neither read
+    # nor written by application code.
 
     # ------------------------------------------------------------------
     # User timeline (admin: chronological interview view)

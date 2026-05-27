@@ -788,7 +788,6 @@ def v2_admin_user_context(user_id):
           "user": {
             "id", "email", "name",
             "custom_llm_instructions", "private_admin_notes",
-            "queued_override_question",
             "behavioral_profile", "behavioral_profile_auto",
             "behavioral_profile_source",     # "auto" | "admin_override"
             "coach_override_profile",
@@ -815,9 +814,15 @@ def v2_admin_user_context(user_id):
         {
           "custom_llm_instructions": "...",
           "private_admin_notes": "...",
-          "queued_override_question": "...",   # null clears the queue
           "coach_override_profile": "Stressor" # null clears
         }
+
+    NOTE: The legacy ``queued_override_question`` body field was
+    removed in the Week-1 cleanup. The admin override path is now
+    the directives-queue endpoint:
+    POST /v2/admin/users/<user_id>/directives-queue. If a caller
+    still sends ``queued_override_question`` here, it is silently
+    ignored — log line emitted so we can spot any straggler.
 
     PUT response: same shape as GET so the frontend re-renders from
     one request.
@@ -844,22 +849,29 @@ def v2_admin_user_context(user_id):
             notes = body.get("private_admin_notes")
             if isinstance(notes, str):
                 notes = notes.strip() or None
-            queued = body.get("queued_override_question")
-            if isinstance(queued, str):
-                queued = queued.strip() or None
             override_profile = body.get("coach_override_profile")
             if isinstance(override_profile, str):
                 override_profile = override_profile.strip() or None
+
+            # Legacy field detection — log once so we can spot any
+            # straggler admin tooling still sending it. Silently
+            # ignored otherwise. Removed from the writer in Week-1
+            # cleanup; directives-queue is the replacement path.
+            if "queued_override_question" in body:
+                logger.warning(
+                    "admin/user/context PUT: ignoring legacy "
+                    "queued_override_question field user=%s — use "
+                    "POST /v2/admin/users/<id>/directives-queue",
+                    user_id,
+                )
 
             db.upsert_admin_user_context_fields(
                 user_id=user_id,
                 custom_llm_instructions=instructions,
                 private_admin_notes=notes,
-                queued_override_question=queued,
                 coach_override_profile=override_profile,
                 update_instructions=has("custom_llm_instructions"),
                 update_notes=has("private_admin_notes"),
-                update_queued_question=has("queued_override_question"),
                 update_override_profile=has("coach_override_profile"),
             )
             # Fall through to read-back.
@@ -980,9 +992,10 @@ def _build_admin_user_context_payload(user_id: str) -> dict:
         "name": name,
         "custom_llm_instructions": settings.get("custom_llm_instructions"),
         "private_admin_notes": settings.get("private_admin_notes"),
-        "queued_override_question": settings.get(
-            "queued_override_question"
-        ),
+        # queued_override_question removed from response in Week-1
+        # cleanup. The DB column persists (no migration) but is
+        # no longer surfaced to the FE. Admin override path is
+        # POST /v2/admin/users/<id>/directives-queue.
         "behavioral_profile": effective_profile,
         "behavioral_profile_auto": behavioral_profile_auto,
         "behavioral_profile_source": (
@@ -10128,10 +10141,12 @@ def v2_user_chat_first_question():
         #    Pop the lowest-position un-exhausted row, mark exhausted.
         #    Wins over contextual snippet flow, stored follow-up, and
         #    the dynamic LLM. Phase Directives-Queue (BE).
-        # 2) queued_override_question — legacy single-question
-        #    override (PUT /v2/admin/user/<id>/context). Kept as a
-        #    deprioritized fallback so admin tooling still on the old
-        #    contract keeps working. Pop-and-clear so it fires once.
+        #
+        # Legacy queued_override_question (single-question override
+        # via PUT /v2/admin/user/<id>/context) was removed in the
+        # Week-1 cleanup. The directives-queue is the single admin
+        # override path now. Old data in user_settings.queued_
+        # override_question persists in the DB but is ignored.
         directive = db.pop_next_directive(user_id)
         if directive:
             logger.info(
@@ -10148,20 +10163,6 @@ def v2_user_chat_first_question():
                     "position": directive.get("position"),
                     "intent_tag": directive.get("intent_tag"),
                 },
-            }), 200
-
-        override = db.consume_queued_override_question(user_id)
-        if override:
-            logger.info(
-                "first-question: legacy queued_override_question HIT "
-                "user=%s — consider migrating admin tooling to "
-                "directives-queue",
-                user_id,
-            )
-            return jsonify({
-                "status": "ok",
-                "question": override,
-                "source": "admin_override",
             }), 200
 
         contextual_init = None
@@ -12185,14 +12186,16 @@ def v2_public_interview_next_question():
                     session_id_for_summary, cs_err,
                 )
 
-        # ── Admin overrides (priority order) ──────────────────────────
-        # 1) coaching_directives_queue — new user-level 5-step arc.
-        #    Pop the lowest-position un-exhausted row, mark exhausted.
-        #    Wins over directed-freestyle objectives and dynamic LLM
-        #    generation. Phase Directives-Queue (BE).
-        # 2) queued_override_question — legacy single-question override
-        #    via PUT /v2/admin/user/<id>/context. Kept as deprioritized
-        #    fallback for back-compat. Pop-and-clear (fires once).
+        # ── Admin override (directives queue) ─────────────────────────
+        # coaching_directives_queue — user-level 2-step arc. Pop the
+        # lowest-position un-exhausted row, mark exhausted. Wins over
+        # directed-freestyle objectives and dynamic LLM generation.
+        # Phase Directives-Queue (BE).
+        #
+        # Legacy queued_override_question (single-question override
+        # via PUT /v2/admin/user/<id>/context) was removed in the
+        # Week-1 cleanup. The directives-queue is the single admin
+        # override path now.
         if user_id:
             directive = db.pop_next_directive(user_id)
             if directive:
@@ -12211,21 +12214,6 @@ def v2_public_interview_next_question():
                         "position": directive.get("position"),
                         "intent_tag": directive.get("intent_tag"),
                     },
-                }), 200
-
-            override = db.consume_queued_override_question(user_id)
-            if override:
-                logger.info(
-                    "interview: legacy queued_override_question HIT "
-                    "user=%s — consider migrating admin tooling to "
-                    "directives-queue",
-                    user_id,
-                )
-                return jsonify({
-                    "question": override,
-                    "tone": "charisma",
-                    "turn_number": turn_number,
-                    "source": "admin_override",
                 }), 200
 
         # ── Directed-freestyle decision ──────────────────────────────
@@ -15737,11 +15725,9 @@ def v2_chat_snippet_followup():
 # surfaces fall back to _generate_llm_question.
 #
 # Replaces the per-user single-question
-# user_settings.queued_override_question (kept as a deprioritized
-# fallback for back-compat — see consumer wiring in
-# v2_user_chat_first_question and v2_public_interview_next_question)
-# and the conceptually-misplaced snippet-level next_question_1..5
-# columns (which never shipped to this branch).
+# user_settings.queued_override_question (removed in Week-1
+# cleanup) and the conceptually-misplaced snippet-level
+# next_question_1..5 columns (which never shipped to this branch).
 #
 # Audit: every write logs an INFO line with structured fields
 # (user, admin, op, row count). We do NOT route to
