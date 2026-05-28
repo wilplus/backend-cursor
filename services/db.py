@@ -9112,5 +9112,79 @@ class DatabaseService:
             logger.error(f"record_user_consent failed for user_id={user_id}: {e}")
             return None
 
+    def insert_user_consent_event(
+        self,
+        *,
+        user_id: str,
+        consent_type: str,
+        consent_value: Optional[bool],
+        ip_address: Optional[str] = None,
+        user_agent: Optional[str] = None,
+    ) -> Optional[dict]:
+        """Append a row to the per-flip consent audit ledger.
+
+        Companion to ``record_user_consent`` — that one is the
+        single-row-per-(user, terms_version) TOS acceptance record;
+        this one is the append-only event log of every per-toggle
+        consent change (mic_consent / share_consent / email_consent
+        / terms_consent).
+
+        Called from POST /v2/user/sharing-consent for EACH field
+        that the body actually patched. Migration:
+        migrations/add_user_consent_events_table.sql.
+
+        Failure-tolerant — a ledger-write failure does NOT unwind
+        the user-facing PUT (the preference column is already
+        updated and we don't want the admin to retry a successful
+        consent change). Logs the failure so we can spot it in
+        Sentry; returns None.
+
+        Graceful fallback when the table doesn't exist yet
+        (migration pending): the post-rollout PGRST204 is
+        downgraded to a warning so the consent PUT keeps working
+        during the deploy window.
+        """
+        if not user_id or not consent_type:
+            return None
+        try:
+            from datetime import timezone, datetime
+            now_utc = datetime.now(timezone.utc).isoformat()
+            row = {
+                "user_id": user_id,
+                "consent_type": consent_type,
+                "consent_value": consent_value,
+                "set_at": now_utc,
+                "ip_address": ip_address,
+                "user_agent": user_agent,
+            }
+            result = (
+                self.client.table("user_consent_events")
+                .insert(row)
+                .execute()
+            )
+            if result.data and len(result.data) > 0:
+                return result.data[0]
+            return None
+        except Exception as e:
+            err_low = str(e).lower()
+            if (
+                "user_consent_events" in err_low
+                or "pgrst204" in err_low
+            ):
+                logger.warning(
+                    "insert_user_consent_event: table missing "
+                    "(run migrations/add_user_consent_events_"
+                    "table.sql) user=%s type=%s",
+                    user_id, consent_type,
+                )
+                return None
+            logger.error(
+                "insert_user_consent_event failed user=%s type=%s "
+                "err=%s",
+                user_id, consent_type, e,
+            )
+            return None
+
+
 # Singleton instance
 db = DatabaseService()

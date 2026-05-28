@@ -17028,6 +17028,29 @@ def v2_user_put_sharing_consent():
                 "error": "Failed to write consent state",
             }), 500
 
+        # ── Task 8 — append-only GDPR audit ledger ─────────────────
+        # One row per changed field in user_consent_events. Failure-
+        # tolerant: the preference upsert above already succeeded
+        # and we don't want a ledger hiccup to look like the PUT
+        # itself failed (the helper logs to Sentry instead).
+        client_ip = _client_ip_from_request()
+        user_agent = (request.headers.get("User-Agent") or "")[:512] or None
+        for field, value in patch.items():
+            try:
+                db.insert_user_consent_event(
+                    user_id=user_id,
+                    consent_type=field,
+                    consent_value=value,
+                    ip_address=client_ip,
+                    user_agent=user_agent,
+                )
+            except Exception as ledger_err:
+                logger.warning(
+                    "user_sharing_consent.ledger_failed "
+                    "user=%s field=%s err=%s (non-fatal)",
+                    user_id, field, ledger_err,
+                )
+
         logger.info(
             "user_sharing_consent.put user=%s fields=%s",
             user_id, sorted(patch.keys()),
