@@ -874,10 +874,37 @@ def _snippet_quality_score(s: dict) -> Optional[float]:
 def _build_narrative(*, session: dict, mirror: Optional[dict]) -> str:
     """Prefer the session's KPI narrative (already AI-written during
     finalize), then the cached learner-mirror narrative, then a
-    spec fallback string so the field is never empty."""
-    kpi_narrative = (session.get("ai_task_alignment_comment") or "").strip()
-    if kpi_narrative:
-        return kpi_narrative
+    spec fallback string so the field is never empty.
+
+    Phase 18.x — Split-sinks contract (Option A):
+    Read the IMMUTABLE AI draft (session_kpi_narrative_ai_draft)
+    first. Admin's edits to the editable column
+    (ai_task_alignment_comment) feed the RLHF pipeline only — they
+    are intentionally NOT surfaced to the user. See
+    docs/BE-HANDOFF-tab1-comment-sink-split.md for the full
+    rationale + the four-leak-site list this fixes.
+
+    Legacy sessions where the AI draft column is NULL (pre-rollout,
+    never re-computed via Compute Metrics) fall back to the
+    editable column. For those rows the editable column also holds
+    the AI-original text in practice — admin edits weren't
+    user-facing-conscious then, so any edits there are rare and
+    the fallback keeps the dashboard from going blank.
+
+    Three other user-facing reads use the same coalesce pattern at
+    their respective routes (v2_user_results_session, v2_user_
+    results_me, v2_chat_session_state). This function is the
+    canonical comment site; the routes reference it.
+    """
+    ai_draft = (
+        session.get("session_kpi_narrative_ai_draft") or ""
+    ).strip()
+    if ai_draft:
+        return ai_draft
+
+    legacy_narrative = (session.get("ai_task_alignment_comment") or "").strip()
+    if legacy_narrative:
+        return legacy_narrative
 
     if isinstance(mirror, dict):
         cached = (mirror.get("narrative") or "").strip()

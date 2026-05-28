@@ -8205,8 +8205,16 @@ def v2_user_get_results(session_id):
                 }
                 for s in snippets
             ]
-            # Include session-level summary if available
-            payload["ai_summary"] = session.get("ai_task_alignment_comment")
+            # Include session-level summary if available.
+            # Phase 18.x split-sinks Option A — prefer the immutable
+            # AI draft over the editable column so admin's narrative
+            # edits don't leak to the user. Legacy fallback when the
+            # draft column is NULL. Canonical explanation:
+            # services.charisma_profile._build_narrative docstring.
+            payload["ai_summary"] = (
+                session.get("session_kpi_narrative_ai_draft")
+                or session.get("ai_task_alignment_comment")
+            )
             payload["ai_score"] = session.get("ai_task_alignment_score")
             payload["kpi_score"] = session.get("kpi_score")
 
@@ -8531,12 +8539,19 @@ def v2_user_results_me():
         # The UI shows newest first, but its progress tracker is 1-based
         # over the total count of published sessions. current = total here
         # because we always surface the most recent on top.
+        # Phase 18.x split-sinks Option A — surface the immutable
+        # AI draft (not admin's edits). See
+        # services.charisma_profile._build_narrative for rationale.
+        _latest = sessions[0] or {}
         return jsonify({
             "status": "completed",
             "current_session_index": total,
             "total_sessions": total,
             "sessions": journey_sessions,
-            "ai_summary": (sessions[0] or {}).get("ai_task_alignment_comment"),
+            "ai_summary": (
+                _latest.get("session_kpi_narrative_ai_draft")
+                or _latest.get("ai_task_alignment_comment")
+            ),
         }), 200
 
     except Exception as e:
@@ -11111,13 +11126,19 @@ def v2_chat_session_state():
             for s in raw_snippets
         ]
 
+        # Phase 18.x split-sinks Option A — ai_summary surfaces the
+        # immutable AI draft so admin edits don't leak to the user.
+        # See services.charisma_profile._build_narrative.
         return jsonify({
             "state": "REVIEW_LOOP",
             **base,
             "snippets": snippets,
             "kpi_score": session.get("kpi_score"),
             "charisma_profile": session.get("charisma_profile"),
-            "ai_summary": session.get("ai_task_alignment_comment"),
+            "ai_summary": (
+                session.get("session_kpi_narrative_ai_draft")
+                or session.get("ai_task_alignment_comment")
+            ),
         }), 200
 
     except Exception as e:
