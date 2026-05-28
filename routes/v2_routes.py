@@ -782,18 +782,30 @@ def v2_admin_user_context(user_id):
     Phase 12. Backs the admin user view at /admin/users/<id>. The
     frontend BFF proxies /api/admin/user/<id>/context here.
 
+    Tab-3 narrowed (2026-05): the "Global LLM instructions" and
+    "Learning profile" inputs were removed per the recommendation-
+    engine-v1 brainstorm — those concepts are being re-wired
+    elsewhere and Tab 3 keeps only the private admin notes + the
+    one-shot queued override question. The underlying columns
+    (user_settings.custom_llm_instructions, user_sniper_profile.
+    coach_override_profile / behavioral_profile / inferred_learner_
+    profile / admin_profile_override) are intentionally PRESERVED
+    so the rec-engine work can re-wire reads against the same
+    schema without a migration; the prompt-augmentation paths
+    (_augment_interview_prompt_with_profile and
+    _augment_coaching_system_prompt) keep reading them too — they
+    just silently get None when this endpoint no longer writes.
+    Other admin surfaces (copilot queue at the
+    _display_learning_profile_justification call sites + the
+    /v2/admin/students/<id> family) still read/write those fields
+    via their own helpers.
+
     GET response shape::
 
         {
           "user": {
             "id", "email", "name",
-            "custom_llm_instructions", "private_admin_notes",
-            "behavioral_profile", "behavioral_profile_auto",
-            "behavioral_profile_source",     # "auto" | "admin_override"
-            "coach_override_profile",
-            "inferred_learner_profile",
-            "admin_profile_override_active",
-            "admin_profile_override_set_at"
+            "private_admin_notes"
           },
           "sessions": [    # newest first; full history
             {
@@ -812,20 +824,25 @@ def v2_admin_user_context(user_id):
     PUT body (every field optional — only included keys are written)::
 
         {
-          "custom_llm_instructions": "...",
-          "private_admin_notes": "...",
-          "coach_override_profile": "Stressor" # null clears
+          "private_admin_notes": "..."
         }
-
-    NOTE: The legacy ``queued_override_question`` body field was
-    removed in the Week-1 cleanup. The admin override path is now
-    the directives-queue endpoint:
-    POST /v2/admin/users/<user_id>/directives-queue. If a caller
-    still sends ``queued_override_question`` here, it is silently
-    ignored — log line emitted so we can spot any straggler.
 
     PUT response: same shape as GET so the frontend re-renders from
     one request.
+
+    Keys this endpoint NO LONGER accepts (silently ignored — straggler
+    log line emitted per request so we can spot lingering callers):
+
+        queued_override_question
+            Removed in the Week-1 cleanup. Admin override path is
+            POST /v2/admin/users/<id>/directives-queue.
+
+        custom_llm_instructions, coach_override_profile,
+        learning_profile (+ legacy aliases)
+            Removed in the Tab-3 narrowing. The underlying columns
+            persist (no migration) so the rec-engine-v1 work can
+            re-wire writes against the same schema later without
+            a migration round-trip.
     """
     if not _is_valid_uuid(user_id):
         return jsonify({
@@ -843,36 +860,40 @@ def v2_admin_user_context(user_id):
             def has(k):
                 return k in body
 
-            instructions = body.get("custom_llm_instructions")
-            if isinstance(instructions, str):
-                instructions = instructions.strip() or None
             notes = body.get("private_admin_notes")
             if isinstance(notes, str):
                 notes = notes.strip() or None
-            override_profile = body.get("coach_override_profile")
-            if isinstance(override_profile, str):
-                override_profile = override_profile.strip() or None
 
-            # Legacy field detection — log once so we can spot any
-            # straggler admin tooling still sending it. Silently
-            # ignored otherwise. Removed from the writer in Week-1
-            # cleanup; directives-queue is the replacement path.
-            if "queued_override_question" in body:
-                logger.warning(
-                    "admin_user_context.legacy_field_ignored "
-                    "field=queued_override_question user=%s — use "
+            # Legacy field detection — log once per request for any
+            # straggler tooling still sending the removed keys, then
+            # silently drop. The db helper still accepts the matching
+            # kwargs so future callers (rec-engine re-wiring, etc.)
+            # can supply them without a signature change.
+            for _legacy_key, _replacement in (
+                (
+                    "queued_override_question",
                     "POST /v2/admin/users/<id>/directives-queue",
-                    user_id,
-                )
+                ),
+                (
+                    "custom_llm_instructions",
+                    "rec-engine v1 (re-wired separately)",
+                ),
+                (
+                    "coach_override_profile",
+                    "rec-engine v1 (re-wired separately)",
+                ),
+            ):
+                if _legacy_key in body:
+                    logger.warning(
+                        "admin_user_context.legacy_field_ignored "
+                        "field=%s user=%s — use %s instead",
+                        _legacy_key, user_id, _replacement,
+                    )
 
             db.upsert_admin_user_context_fields(
                 user_id=user_id,
-                custom_llm_instructions=instructions,
                 private_admin_notes=notes,
-                coach_override_profile=override_profile,
-                update_instructions=has("custom_llm_instructions"),
                 update_notes=has("private_admin_notes"),
-                update_override_profile=has("coach_override_profile"),
             )
             # Fall through to read-back.
 
@@ -959,13 +980,22 @@ def v2_admin_reset_baseline(user_id):
 def _build_admin_user_context_payload(user_id: str) -> dict:
     """Compose the multi-session admin user context payload.
 
-    Pulls user-level state from user_settings + user_sniper_profile,
-    then loads ALL the user's v2_sessions (newest first) and bulk-
-    loads their charisma_snippets in one IN-list query (no N+1).
-    Renders each session into the frontend's session-block shape.
+    Pulls user-level state from user_settings (no longer reads
+    user_sniper_profile here — see the Tab-3 narrowing note on
+    v2_admin_user_context), then loads ALL the user's v2_sessions
+    (newest first) and bulk-loads their charisma_snippets in one
+    IN-list query (no N+1). Renders each session into the
+    frontend's session-block shape.
+
+    The user_block intentionally omits custom_llm_instructions and
+    the behavioral_profile / coach_override_profile / inferred_
+    learner_profile / admin_profile_override family — those columns
+    still exist and are still read by the prompt-augmentation paths
+    in services/learner_profile + _augment_*_with_profile, but Tab
+    3 no longer surfaces them. The rec-engine-v1 work will re-wire
+    a different view onto the same columns.
     """
     settings = db.get_user_settings(user_id) or {}
-    sniper = db.get_sniper_profile(user_id) or {}
     email = None
     name = None
     try:
@@ -978,39 +1008,16 @@ def _build_admin_user_context_payload(user_id: str) -> dict:
     except Exception:
         pass
 
-    behavioral_profile_auto = (
-        (sniper.get("behavioral_profile") or "").strip() or None
-    )
-    coach_override = (
-        (sniper.get("coach_override_profile") or "").strip() or None
-    )
-    effective_profile = coach_override or behavioral_profile_auto
-
     user_block = {
         "id": user_id,
         "email": email,
         "name": name,
-        "custom_llm_instructions": settings.get("custom_llm_instructions"),
         "private_admin_notes": settings.get("private_admin_notes"),
-        # queued_override_question removed from response in Week-1
-        # cleanup. The DB column persists (no migration) but is
-        # no longer surfaced to the FE. Admin override path is
-        # POST /v2/admin/users/<id>/directives-queue.
-        "behavioral_profile": effective_profile,
-        "behavioral_profile_auto": behavioral_profile_auto,
-        "behavioral_profile_source": (
-            "admin_override" if coach_override else "auto"
-        ),
-        "coach_override_profile": coach_override,
-        "inferred_learner_profile": settings.get(
-            "inferred_learner_profile"
-        ),
-        "admin_profile_override_active": bool(
-            settings.get("admin_profile_override")
-        ),
-        "admin_profile_override_set_at": settings.get(
-            "admin_profile_override_set_at"
-        ),
+        # Deliberately omitted from the response (DB columns persist):
+        #   queued_override_question — replaced by directives-queue
+        #     (Week-1 cleanup).
+        #   custom_llm_instructions + behavioral_profile family —
+        #     re-wired by rec-engine v1 (Tab-3 narrowing).
     }
 
     sessions = db.list_sessions_for_user_admin(user_id)
