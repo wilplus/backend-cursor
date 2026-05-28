@@ -13383,13 +13383,147 @@ def v2_admin_update_snippet_comment(snippet_id):
         return jsonify({"code": "V2_ERROR", "error": "Failed to update snippet"}), 500
 
 
+_SNIPPETS_SORT_MODES = ("chronological", "extremes_first")
+
+
+def _rerank_snippets_extremes_first(
+    snippets: list[dict],
+) -> tuple[list[dict], dict[str, str | None]]:
+    """Move the top-1 stress and top-1 charisma snippet to the head.
+
+    Placeholder ranking — the brainstorm wants "most-extreme classifier
+    polarity at the top" but ``classifier_stress_probability`` is on
+    the wrong table (stress_snippets, dormant) and
+    ``classifier_charisma_probability`` does not exist yet. Until the
+    classifier-plumbing prereq lands (see Phase A in
+    docs/LEARNING-LOOP-ARCHITECTURE.md), we proxy "extreme" with the
+    admin's manual ``snippet_type`` label and break ties by
+    ``created_at desc`` — i.e. the most-recent admin-labeled stress
+    snippet and the most-recent admin-labeled charisma snippet are
+    pinned at the head of the response, then the rest follow in the
+    incoming chronological order.
+
+    When the classifier outputs are populated, swap the
+    ``snippet_type=='stress'`` predicate for
+    ``classifier_stress_probability DESC NULLS LAST`` (and the same
+    for charisma). The route's ``?sort=extremes_first`` contract
+    doesn't change — only this helper.
+
+    Inputs are assumed already ordered by ``created_at DESC`` (the
+    DB query's default). We never re-sort the tail; whatever order
+    db.get_snippets_by_user returned for the non-pinned rows is
+    preserved.
+
+    Ranking is PAGE-SCOPED: the pinned picks are the top within the
+    current limit/offset window, not the user's all-time top. With
+    the default limit=200 (FE handoff value) most users fit in one
+    page so page-scoped and global converge. If a user has > 200
+    snippets and the FE paginates, page 2 will compute its own
+    pinned independent of page 1 — known limitation, document if
+    we hit it.
+
+    Returns ``(reordered_snippets, pinned_ids)``.
+    """
+    top_stress: dict | None = None
+    top_charisma: dict | None = None
+    for s in snippets:
+        # An id-less row can't be pinned (we wouldn't be able to
+        # surface it in ``pinned.top_*_id`` for the FE to badge) so
+        # we skip it from candidacy entirely — its position in the
+        # tail is preserved by the membership test below.
+        if not s.get("id"):
+            continue
+        stype = (s.get("snippet_type") or "").strip().lower()
+        if stype == "stress" and top_stress is None:
+            top_stress = s
+        elif stype == "charisma" and top_charisma is None:
+            top_charisma = s
+        if top_stress is not None and top_charisma is not None:
+            break
+
+    pinned_ids: set[str] = set()
+    head: list[dict] = []
+    if top_stress is not None:
+        head.append(top_stress)
+        pinned_ids.add(str(top_stress["id"]))
+    if top_charisma is not None:
+        cid = str(top_charisma["id"])
+        if cid not in pinned_ids:
+            head.append(top_charisma)
+            pinned_ids.add(cid)
+
+    tail = [
+        s for s in snippets
+        if str(s.get("id") or "") not in pinned_ids
+    ]
+
+    pinned = {
+        "top_stress_id":
+            str(top_stress["id"]) if top_stress else None,
+        "top_charisma_id":
+            str(top_charisma["id"]) if top_charisma else None,
+    }
+    return head + tail, pinned
+
+
 @v2_bp.route("/admin/users/<user_id>/snippets", methods=["GET"])
 @require_admin
 def v2_admin_get_user_snippets(user_id):
-    """Admin endpoint to fetch all snippets for a specific user, paginated."""
+    """Admin endpoint to fetch all snippets for a specific user, paginated.
+
+    Query params:
+      limit  (int, default 100, max 500) — page size
+      offset (int, default 0)            — page offset
+      sort   ("chronological" | "extremes_first",
+              default "chronological")
+        chronological  → created_at DESC (existing default behaviour;
+                         back-compat for old callers that pre-date
+                         the sort param).
+        extremes_first → top-1 admin-labeled stress + top-1 admin-
+                         labeled charisma pinned at the head (by
+                         created_at DESC tiebreaker), then the rest
+                         in chronological order. Placeholder for the
+                         classifier-driven ranking; see
+                         _rerank_snippets_extremes_first docstring.
+
+    Response::
+
+        {
+          "status":  "ok",
+          "snippets": [ ... ],
+          "limit":   <int>,
+          "offset":  <int>,
+          "count":   <int>,
+          "sort":    "chronological" | "extremes_first",
+          "pinned":  {                       # always present
+            "top_stress_id":   "<uuid>" | null,
+            "top_charisma_id": "<uuid>" | null
+          }
+        }
+
+    pinned IDs are NULL when sort=chronological (nothing was pinned)
+    OR when sort=extremes_first but the user has no snippet of that
+    label in the current page. FE can use the IDs to badge the
+    pinned rows in the list without re-deriving them client-side.
+
+    Transcripts: ``transcript`` is included in each snippet row
+    unchanged. FE handles hide-in-render on the surfaces where the
+    brainstorm wanted it suppressed; the data stays in the payload
+    for hover tooltips.
+    """
     try:
         limit = request.args.get("limit", 100, type=int)
         offset = request.args.get("offset", 0, type=int)
+        sort = (request.args.get("sort") or "chronological").strip().lower()
+
+        if sort not in _SNIPPETS_SORT_MODES:
+            return jsonify({
+                "code": "INVALID_INPUT",
+                "error": (
+                    "sort must be one of: "
+                    + ", ".join(_SNIPPETS_SORT_MODES)
+                ),
+            }), 400
 
         # Clamp to reasonable ranges
         limit = max(1, min(limit, 500))
@@ -13397,9 +13531,18 @@ def v2_admin_get_user_snippets(user_id):
 
         snippets = db.get_snippets_by_user(user_id, limit=limit, offset=offset)
 
+        pinned: dict[str, str | None] = {
+            "top_stress_id": None,
+            "top_charisma_id": None,
+        }
+        if sort == "extremes_first":
+            snippets, pinned = _rerank_snippets_extremes_first(snippets)
+
         logger.info(
-            "admin: fetched snippets user_id=%s limit=%s offset=%s count=%s",
-            user_id, limit, offset, len(snippets),
+            "admin: fetched snippets user_id=%s limit=%s offset=%s "
+            "sort=%s count=%s pinned_stress=%s pinned_charisma=%s",
+            user_id, limit, offset, sort, len(snippets),
+            pinned.get("top_stress_id"), pinned.get("top_charisma_id"),
         )
 
         return jsonify({
@@ -13408,6 +13551,8 @@ def v2_admin_get_user_snippets(user_id):
             "limit": limit,
             "offset": offset,
             "count": len(snippets),
+            "sort": sort,
+            "pinned": pinned,
         }), 200
 
     except Exception as e:
