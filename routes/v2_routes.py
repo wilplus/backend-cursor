@@ -13006,6 +13006,22 @@ def v2_public_interview_upload_answer():
         return jsonify({"code": "V2_ERROR", "error": "Upload failed"}), 500
 
 
+# Post-signup confirmation copy. Task 7 — confirmed wording from
+# the FE handoff reply. BE-flag (not FE-hardcoded) so the SLA
+# string can be tuned without a FE deploy when coaching-ops
+# capacity shifts (busy week → "two business days" etc.). FE has
+# its own built-in fallback if this block is omitted from the
+# response, so an older BE deploy never leaves the post-signup
+# screen blank.
+_POST_SIGNUP_CONFIRMATION = {
+    "headline": "We're on it.",
+    "body": (
+        "A human reviews every recording personally — your full "
+        "analysis lands within one business day."
+    ),
+}
+
+
 def _merge_anonymous_session_into_user(session_id: str, user_id: str):
     """Bind an unclaimed anonymous session to an authenticated user.
 
@@ -13178,6 +13194,11 @@ def _merge_anonymous_session_into_user(session_id: str, user_id: str):
         "session_id": str(claimed.get("id")),
         "analysis_status": "queued",
         "finalize": finalize_summary,
+        # Task 7 — BE-flag for the post-signup "human at heart"
+        # confirmation. FE renders headline + body; both nullable
+        # so future copy tuning never requires a FE deploy. FE has
+        # its own fallback if this block is missing entirely.
+        "post_signup_confirmation": _POST_SIGNUP_CONFIRMATION,
     }, 200)
 
 
@@ -17055,14 +17076,14 @@ def v2_user_put_sharing_consent():
 
 _INTERVIEW_FINALIZE_VALID_REASONS = {"threshold", "max_turns", "user_done"}
 
-# Signup-CTA default copy. Task 7 will define the real CTA spec; until
-# then the finalize endpoint returns this placeholder when the gate
-# passes so the FE can wire its CTA reveal against the contract today.
-# Surfaced as `next.signup_cta.copy` in the finalize response — a BE
-# flag (not FE hardcoded) so the copy is A/B-able without a FE deploy
-# and per-user variants can fan out later (e.g. warm-lead vs cold).
+# Signup-CTA default copy. Task 7 — confirmed wording from the FE
+# handoff reply (matches the brainstorm's "Sign up for full
+# analysis" phrasing). Surfaced as `next.signup_cta.copy` in the
+# finalize response — a BE flag (not FE hardcoded) so the copy is
+# A/B-able without a FE deploy and per-user variants can fan out
+# later (e.g. warm-lead vs cold).
 _FINALIZE_SIGNUP_CTA_COPY = (
-    "Create your free account to save your results."
+    "Sign up for your full analysis."
 )
 
 
