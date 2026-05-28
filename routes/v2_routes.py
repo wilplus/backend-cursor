@@ -14497,6 +14497,74 @@ def v2_admin_publish_session(session_id):
                     "intent_tag": intent,
                 })
 
+        # ── Trivial-edit gate (Phase 18.x) ──────────────────────────
+        # Server-side word-token diff between body.final_human_comment
+        # and the AI's pre-publish suggestion
+        # (session.ai_predicted_session_comment). <= 5 changed tokens
+        # = cosmetic; either 422 (block publish entirely — defensive,
+        # FE should have caught it) or proceed with the session-level
+        # admin_annotations_log row suppressed (per the is_trivial_
+        # edit override).
+        #
+        # IMPORTANT: this gate blocks the ENTIRE publish action on
+        # the 422 path because the publish endpoint is atomic across
+        # results_published_at + email + RLHF writes — we can't
+        # half-publish and 422 the log step. The FE must disable the
+        # Publish button when the diff is sub-threshold (matching
+        # the snippet/comment + coaching-rationale UX). 422 here is
+        # purely defensive against unmigrated FE callers.
+        #
+        # Per-position question rows (when final_questions is sent)
+        # are NOT gated this round — FE handoff Q1 explicitly scoped
+        # gating to the prose surface only. Each question has its
+        # own (predicted, final) pair that the per-position log
+        # write evaluates independently downstream.
+        #
+        # Empty-baseline bypass: no AI prediction stored on the
+        # session → admin is writing from scratch, gate doesn't
+        # apply (same rule as the other two gated surfaces).
+        is_trivial_edit = bool(body.get("is_trivial_edit", False))
+        _ai_predicted_comment = (
+            (session.get("ai_predicted_session_comment") or "")
+            .strip()
+        )
+        _suppress_session_comment_log = False
+        if _ai_predicted_comment and final_comment is not None:
+            from services.utils import (
+                changed_word_tokens,
+                TRIVIAL_EDIT_TOKEN_THRESHOLD,
+            )
+            _diff_tokens = changed_word_tokens(
+                _ai_predicted_comment, final_comment,
+            )
+            if _diff_tokens <= TRIVIAL_EDIT_TOKEN_THRESHOLD:
+                if not is_trivial_edit:
+                    logger.info(
+                        "sessions/publish.edit_too_small "
+                        "session=%s diff_tokens=%d threshold=%d",
+                        session_id, _diff_tokens,
+                        TRIVIAL_EDIT_TOKEN_THRESHOLD,
+                    )
+                    return jsonify({
+                        "code": "EDIT_TOO_SMALL",
+                        "error": (
+                            "Too small a change to count as a "
+                            "correction (need "
+                            f"{TRIVIAL_EDIT_TOKEN_THRESHOLD + 1}+ "
+                            "word differences). Tick 'Mark as minor "
+                            "edit' to save as a cosmetic fix."
+                        ),
+                        "diff": {
+                            "changed_word_tokens": _diff_tokens,
+                            "threshold": TRIVIAL_EDIT_TOKEN_THRESHOLD,
+                        },
+                    }), 422
+                # Trivial override accepted — publish proceeds, but
+                # the session-level admin_annotations_log row gets
+                # suppressed so the RLHF corpus isn't polluted with
+                # a near-identical "correction" row.
+                _suppress_session_comment_log = True
+
         # 1. Stamp results_published_at
         published = db.v2_publish_session_results(session_id)
         if not published:
@@ -14584,32 +14652,44 @@ def v2_admin_publish_session(session_id):
             #    too ONLY when the array path isn't being used,
             #    matching the prior shape exactly for back-compat
             #    consumers of admin_annotations_log.
-            try:
-                legacy_q_final = (
-                    final_question
-                    if final_question is not None
-                    else ai_question
+            #
+            #    Skipped when the trivial-edit gate above accepted an
+            #    override (sub-threshold diff, admin ticked "Mark as
+            #    minor edit"). Per-position rows below still write
+            #    when applicable; only THIS session-level prose row
+            #    is suppressed.
+            if _suppress_session_comment_log:
+                logger.info(
+                    "publish: session-level rlhf log suppressed "
+                    "(trivial edit override) sid=%s", session_id,
                 )
-                row = db.insert_admin_annotation_log(
-                    user_id=owner_id_s,
-                    session_id=session_id_s,
-                    ai_predicted_comment=ai_comment,
-                    ai_predicted_question=(
-                        None if final_questions else ai_question
-                    ),
-                    final_human_comment=final_comment,
-                    final_human_question=(
-                        None if final_questions else legacy_q_final
-                    ),
-                    was_corrected=session_was_corrected,
-                )
-                if row is not None:
-                    rlhf_rows_written += 1
-            except Exception as log_err:
-                logger.warning(
-                    "publish: session-level rlhf log failed sid=%s err=%s",
-                    session_id, log_err,
-                )
+            else:
+                try:
+                    legacy_q_final = (
+                        final_question
+                        if final_question is not None
+                        else ai_question
+                    )
+                    row = db.insert_admin_annotation_log(
+                        user_id=owner_id_s,
+                        session_id=session_id_s,
+                        ai_predicted_comment=ai_comment,
+                        ai_predicted_question=(
+                            None if final_questions else ai_question
+                        ),
+                        final_human_comment=final_comment,
+                        final_human_question=(
+                            None if final_questions else legacy_q_final
+                        ),
+                        was_corrected=session_was_corrected,
+                    )
+                    if row is not None:
+                        rlhf_rows_written += 1
+                except Exception as log_err:
+                    logger.warning(
+                        "publish: session-level rlhf log failed sid=%s err=%s",
+                        session_id, log_err,
+                    )
 
             # b) per-position rows when admin sent the array.
             if final_questions:
