@@ -356,6 +356,7 @@ def answer_question(
     question: str,
     *,
     history: Optional[list[dict]] = None,
+    admin_dont_ask_notes: Optional[str] = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Run one LLM call grounded in the Master Document.
 
@@ -383,6 +384,14 @@ def answer_question(
     dicts the caller can pass when the FAQ chat is multi-turn.
     Roles other than 'user' / 'assistant' are filtered out;
     system messages live only in the prompt this module builds.
+
+    ``admin_dont_ask_notes`` is the verbatim text from
+    user_settings.private_admin_notes for the calling user. When
+    non-empty, an [ADMIN-PRIVATE CONTEXT] block is appended to the
+    system prompt instructing the model to navigate around the
+    listed topics silently (never quote, repeat, or reference).
+    None / empty / whitespace-only skips the block entirely.
+    Anonymous callers (no user_id available) pass None.
     """
     q = (question or "").strip()
     if not q:
@@ -399,8 +408,16 @@ def answer_question(
             {"error": "empty_question"},
         )
 
+    # Compose system prompt: base + optional admin don't-ask block.
+    # Shared helper so all four chat surfaces use identical wording.
+    from services.utils import render_admin_dont_ask_block
+    dont_ask_block = render_admin_dont_ask_block(admin_dont_ask_notes)
+    system_content = _SYSTEM_PROMPT
+    if dont_ask_block:
+        system_content = system_content + "\n\n" + dont_ask_block
+
     messages: list[dict[str, str]] = [
-        {"role": "system", "content": _SYSTEM_PROMPT},
+        {"role": "system", "content": system_content},
     ]
     if isinstance(history, list):
         for m in history[-10:]:  # cap context; FAQ chats rarely go deep

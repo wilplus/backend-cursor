@@ -173,6 +173,7 @@ def build_state_machine_system_prompt(
     user_org_context: Optional[str] = None,
     user_language_hint: Optional[str] = None,
     coaching_id: Optional[str] = None,
+    admin_dont_ask_notes: Optional[str] = None,
 ) -> str:
     """Assemble the 9-step state-machine system prompt for one
     coaching chat session.
@@ -208,6 +209,15 @@ def build_state_machine_system_prompt(
     IGNORED inside the prompt: the chat speaks English-only with a
     one-shot disclaimer when the user writes in a non-English
     language (see RULE 1 below).
+
+    ``admin_dont_ask_notes`` is the verbatim text from
+    user_settings.private_admin_notes (the "Private Admin Notes"
+    Tab 3 textarea). When non-empty, an [ADMIN-PRIVATE CONTEXT]
+    block is appended at the very end of the prompt instructing the
+    model to navigate around the listed topics silently — never
+    quote, repeat, or reference. None / empty / whitespace-only
+    skips the block entirely. Route handler fetches via
+    db.get_user_settings(user_id).get("private_admin_notes").
     """
     snippet_id = (snippet.get("id") or "").strip() or "UNKNOWN"
     admin_comment = (snippet.get("admin_comment") or "").strip()
@@ -261,7 +271,7 @@ def build_state_machine_system_prompt(
     # signature for existing callers.
 
     coaching_id_clean = (coaching_id or "").strip() or "UNKNOWN"
-    return (
+    base = (
         "You are the AI host of a structured coaching chat. You are "
         "NOT the coach — you are the ACTOR delivering the coach's "
         "script (the admin_comment is the Director's Notes; the "
@@ -481,6 +491,16 @@ def build_state_machine_system_prompt(
         "not essays. NO bullet lists, NO headers in narration; "
         "the frontend handles UI structure."
     )
+
+    # Admin-private don't-ask block — appended at the very end so
+    # it's the final framing the model sees before the conversation
+    # history + user message. Same wording every chat surface uses.
+    from services.utils import render_admin_dont_ask_block
+    dont_ask_block = render_admin_dont_ask_block(admin_dont_ask_notes)
+    if dont_ask_block:
+        base += "\n\n" + dont_ask_block
+
+    return base
 
 
 def _format_director_script(

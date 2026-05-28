@@ -8643,10 +8643,15 @@ def _augment_interview_prompt_with_profile(
     """
     learner_type = ""
     admin_instructions = ""
+    dont_ask_notes = ""
+    settings: dict = {}
     try:
         settings = db.get_user_settings(user_id) or {}
         admin_instructions = (
             settings.get("custom_llm_instructions") or ""
+        ).strip()
+        dont_ask_notes = (
+            settings.get("private_admin_notes") or ""
         ).strip()
     except Exception as e:
         logger.warning(
@@ -8681,7 +8686,18 @@ def _augment_interview_prompt_with_profile(
             "interview: master-score block failed user=%s: %s", user_id, e,
         )
 
-    if not learner_type and not admin_instructions and not metrics_block:
+    # ── Phase 12.x — private admin notes → don't-ask block ───────
+    # Surfaces user_settings.private_admin_notes as a "topics to
+    # navigate around" instruction. Same DB read above already
+    # pulled the column from the settings dict; render via the
+    # shared helper so all four chat surfaces use identical wording.
+    from services.utils import render_admin_dont_ask_block
+    dont_ask_block = render_admin_dont_ask_block(dont_ask_notes)
+
+    if (
+        not learner_type and not admin_instructions
+        and not metrics_block and not dont_ask_block
+    ):
         return base_prompt
 
     block_lines = ["", "[COACHING CONTEXT]"]
@@ -8711,6 +8727,12 @@ def _augment_interview_prompt_with_profile(
             "\n\nADDITIONAL INSTRUCTIONS FOR THIS USER:\n"
             f"{admin_instructions}"
         )
+
+    # Don't-ask block goes LAST so it's the final framing the model
+    # sees before the user message. Strongest position for negative
+    # constraints in practice.
+    if dont_ask_block:
+        augmented += "\n\n" + dont_ask_block
 
     return augmented
 
@@ -9390,6 +9412,21 @@ def v2_coaching_state_machine_turn():
         except Exception:
             pass
 
+        # Admin's private notes about this user become a don't-ask
+        # block at the end of the system prompt. Best-effort read —
+        # a DB hiccup just means the block is missing, not a 500.
+        admin_dont_ask_notes: str | None = None
+        try:
+            _settings = db.get_user_settings(user_id) or {}
+            admin_dont_ask_notes = (
+                _settings.get("private_admin_notes") or None
+            )
+        except Exception as e:
+            logger.warning(
+                "coaching/state-machine: private_admin_notes load "
+                "failed user=%s: %s", user_id, e,
+            )
+
         system_prompt = build_state_machine_system_prompt(
             snippet=snippet,
             acoustic_targets=targets,
@@ -9398,6 +9435,7 @@ def v2_coaching_state_machine_turn():
             user_org_context=None,
             user_language_hint=user_language_hint,
             coaching_id=coaching_id,
+            admin_dont_ask_notes=admin_dont_ask_notes,
         )
 
         # Build the LLM's view of the conversation. The system
@@ -11223,8 +11261,27 @@ def v2_chat_query():
 
         # ── Path A — LLM answer (the only thing the HTTP response
         # carries back). Unchanged from the pre-BE-3 behavior.
+        # Pull admin's private notes for this user → don't-ask block
+        # in the FAQ chat system prompt. @require_auth guarantees a
+        # user_id; best-effort on the DB read.
+        admin_dont_ask_notes: str | None = None
+        try:
+            _settings = db.get_user_settings(request.user_id) or {}
+            admin_dont_ask_notes = (
+                _settings.get("private_admin_notes") or None
+            )
+        except Exception as e:
+            logger.warning(
+                "chat/query: private_admin_notes load failed "
+                "user=%s: %s", request.user_id, e,
+            )
+
         from services.master_doc_rag import answer_question
-        payload, debug = answer_question(question.strip(), history=history)
+        payload, debug = answer_question(
+            question.strip(),
+            history=history,
+            admin_dont_ask_notes=admin_dont_ask_notes,
+        )
 
         # ── Path B — fire-and-forget DSP extraction. Spawned BEFORE
         # the jsonify so the daemon's stack frame exists by the time
