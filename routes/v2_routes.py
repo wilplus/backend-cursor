@@ -8289,6 +8289,23 @@ def v2_user_get_latest_results():
         return jsonify({"code": "V2_ERROR", "error": "Failed to fetch latest results"}), 500
 
 
+def _metrics_ready(session: dict) -> bool:
+    """Task-8 mirror — has the compute-metrics / finalize chain
+    populated the session-level aggregates yet?
+
+    Marker is ``global_wpm`` because it's set atomically with the
+    other globals in ``compute_session_global_metrics`` and is
+    NEVER set by any other write path. Any of global_fillers,
+    global_pause_ms etc. would work equivalently; wpm is the
+    canonical "metrics computed" signal.
+
+    Returns False for sessions where compute-metrics hasn't run
+    yet (the user is still in the "processing" phase from the FE's
+    chat-phase router).
+    """
+    return session.get("global_wpm") is not None
+
+
 def _derive_session_status(session: dict, snippet_counts: dict) -> str:
     """Compute a single user-facing status string from the raw session row.
 
@@ -8338,6 +8355,11 @@ def v2_user_sessions_current():
             "session_id": str | None,
             "status": "no_session" | "processing" | "pending_review"
                     | "completed" | "error",
+            "metrics_ready": bool,         # Phase Task-8 mirror — true once
+                                            # global_metrics has been populated
+                                            # (compute-metrics ran OR finalize
+                                            # chain populated them)
+            "snippets_published": bool,    # mirrors results_published_at IS NOT NULL
             "has_recordings": bool,
             "turn_count": int,             # interview turns answered (rec'd snippets)
             "snippet_count": int,          # total non-skipped snippets
@@ -8346,6 +8368,12 @@ def v2_user_sessions_current():
             "recording_processing_status": str | None,  # raw ML pipeline state
             "created_at": str | None
         }
+
+    The metrics_ready / snippets_published booleans are intentionally
+    compositional (per the task-8 handoff reply) so a future "partial
+    publish" or "metrics-recompute-in-flight" state can be expressed
+    without churning the enum. FE switches the chat-phase router on
+    the booleans, not the enum.
 
     The endpoint NEVER returns mock data. When the user has no sessions the
     response is { has_session: false, status: "no_session", ...zeros }.
@@ -8359,6 +8387,8 @@ def v2_user_sessions_current():
                 "has_session": False,
                 "session_id": None,
                 "status": "no_session",
+                "metrics_ready": False,
+                "snippets_published": False,
                 "has_recordings": False,
                 "turn_count": 0,
                 "snippet_count": 0,
@@ -8381,6 +8411,8 @@ def v2_user_sessions_current():
             "has_session": True,
             "session_id": session_id,
             "status": status,
+            "metrics_ready": _metrics_ready(session),
+            "snippets_published": bool(session.get("results_published_at")),
             "has_recordings": has_recordings,
             # Each charisma_snippet row corresponds to one interview turn
             # the user actually answered, so total snippet count == turn count.
@@ -8396,6 +8428,146 @@ def v2_user_sessions_current():
         logger.error("user/sessions/current failed: %s", e, exc_info=True)
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR", "error": "Failed to fetch session state"}), 500
+
+
+@v2_bp.route("/user/sessions/<session_id>/summary", methods=["GET"])
+@require_auth
+def v2_user_session_summary(session_id):
+    """User-facing mirror of session metrics + commentary (Task 8).
+
+    Surfaces the acoustic globals + AI summary the moment compute-
+    metrics has run, BEFORE the admin publishes snippets — so the
+    user sees "what the coach sees" during the review window
+    rather than the blank "processing…" screen we ship today.
+
+    EXPLICITLY ALLOWLISTED payload (not a denylist scrub of the
+    admin endpoint). Any new admin field is invisible by default —
+    a new key has to be added to this handler to reach the user.
+    The hard exclusions (documented in the task-8 BE handoff):
+
+      session_kpi_narrative              — task 5: pipeline only
+      admin_corrected_rationale          — RLHF corpus
+      private_admin_notes                — admin-only
+      queued_override_question           — admin steering
+      coach_override_profile             — admin steering
+      behavioral_profile / inferred_*    — admin classification
+      ai_draft_*                         — RLHF training drafts
+      per-snippet score_for_display / follow_up_outcome
+                                         — published owner-scoped
+                                            elsewhere only after
+                                            results_published_at
+
+    Owner-scoped: non-owner gets 404 (not 403) to avoid existence
+    leak — same pattern as the snippet-followup endpoint.
+
+    Response (200)::
+
+        {
+          "status":              "pending_review" | "completed",
+          "metrics_ready":       bool,
+          "snippets_published":  bool,
+          "metrics": {
+            "wpm":              number | null,
+            "fillers":          number | null,
+            "pause_ms":         number | null,
+            "pitch_center_hz":  number | null,
+            "dynamic_db":       number | null,
+            "energy":           number | null
+          },
+          "commentary": {
+            "kind": "ai_summary",
+            "body": "string"
+          } | null,
+          "snippet_count_pending": number      # 0 until extractor
+                                                # identifies candidates,
+                                                # then = total snippets
+                                                # while not yet published
+        }
+
+    Responses:
+      200 — summary returned
+      400 INVALID_INPUT       — bad UUID
+      404 SESSION_NOT_FOUND   — session doesn't exist OR caller
+                                isn't the owner (no existence leak)
+      500 V2_ERROR            — unexpected
+    """
+    if not _is_valid_uuid(session_id):
+        return jsonify({
+            "code": "INVALID_INPUT",
+            "error": "session_id must be a valid UUID",
+        }), 400
+
+    try:
+        session = db.v2_get_session_by_id(session_id)
+        # Owner-scope check. Non-owner → same 404 as missing, so the
+        # endpoint never confirms whether someone else's session
+        # exists.
+        if not session or str(
+            session.get("user_id") or ""
+        ) != str(request.user_id):
+            return jsonify({
+                "code": "SESSION_NOT_FOUND",
+                "error": "Session not found",
+            }), 404
+
+        snippet_counts = db.v2_count_session_snippets(session_id)
+        published = bool(session.get("results_published_at"))
+
+        # snippet_count_pending is the count of extracted snippets
+        # the admin has NOT yet published. Once published, the FE
+        # flips to the existing reviewing-phase fetch and reads
+        # actual per-snippet data from /api/results/<id>/snippets;
+        # this number is for the "Your coach is reviewing N
+        # snippets" chip during the gate window.
+        snippet_count_pending = (
+            snippet_counts.get("total", 0) if not published else 0
+        )
+
+        # Commentary: prefer the immutable AI draft (per task 5's
+        # split-sinks contract — admin edits to the editable column
+        # are pipeline-only and NEVER reach the user). Fallback to
+        # the editable column for legacy sessions where the immutable
+        # draft was never pinned (pre-Phase-18.x). Both reads come
+        # from the same session row already loaded above.
+        commentary_body = (
+            (session.get("session_kpi_narrative_ai_draft") or "").strip()
+            or (session.get("ai_task_alignment_comment") or "").strip()
+            or None
+        )
+        commentary = (
+            {"kind": "ai_summary", "body": commentary_body}
+            if commentary_body else None
+        )
+
+        # Explicit allowlist construction — never spread session row.
+        # Each metric key is the FE-facing name; the DB columns it
+        # reads are documented inline.
+        return jsonify({
+            "status": _derive_session_status(session, snippet_counts),
+            "metrics_ready": _metrics_ready(session),
+            "snippets_published": published,
+            "metrics": {
+                "wpm":             session.get("global_wpm"),
+                "fillers":         session.get("global_fillers"),
+                "pause_ms":        session.get("global_pause_ms"),
+                "pitch_center_hz": session.get("global_pitch_center"),
+                "dynamic_db":      session.get("global_dynamic_db"),
+                "energy":          session.get("global_energy"),
+            },
+            "commentary": commentary,
+            "snippet_count_pending": snippet_count_pending,
+        }), 200
+
+    except Exception as e:
+        logger.error(
+            "user/sessions/<id>/summary failed sid=%s err=%s",
+            session_id, e, exc_info=True,
+        )
+        sentry_sdk.capture_exception(e)
+        return jsonify({
+            "code": "V2_ERROR",
+            "error": "Failed to fetch session summary",
+        }), 500
 
 
 def _format_duration(duration_ms: int | None) -> str:
