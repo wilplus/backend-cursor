@@ -13373,6 +13373,10 @@ def v2_admin_update_snippet_comment(snippet_id):
         # RLHF signal; follow_up_question is currently bundled in
         # the same save action so a single decision per call is
         # appropriate per the FE brief).
+        #
+        # Empty-baseline bypass: when ai_draft_admin_comment is
+        # null/whitespace, the admin is typing net-new content with
+        # no AI starting point to lazily save — gate does not apply.
         is_trivial_edit = bool(body.get("is_trivial_edit", False))
         from services.utils import (
             changed_word_tokens,
@@ -13381,40 +13385,44 @@ def v2_admin_update_snippet_comment(snippet_id):
         existing_row_for_diff = db.get_snippet_by_id(snippet_id) or {}
         ai_draft_for_diff = (
             existing_row_for_diff.get("ai_draft_admin_comment") or ""
-        )
-        diff_tokens = changed_word_tokens(
-            ai_draft_for_diff, admin_comment or ""
-        )
-        if diff_tokens <= TRIVIAL_EDIT_TOKEN_THRESHOLD:
-            if not is_trivial_edit:
-                # Defensive 422 — the FE should have disabled Save
-                # before we got here, but never trust the client.
-                logger.info(
-                    "snippets/comment.edit_too_trivial "
-                    "snippet=%s diff_tokens=%d threshold=%d",
-                    snippet_id, diff_tokens,
-                    TRIVIAL_EDIT_TOKEN_THRESHOLD,
-                )
-                return jsonify({
-                    "code": "EDIT_TOO_TRIVIAL",
-                    "error": (
-                        f"Changed only {diff_tokens} word token"
-                        f"{'' if diff_tokens == 1 else 's'} "
-                        f"(threshold > {TRIVIAL_EDIT_TOKEN_THRESHOLD}). "
-                        "Use 'Save as trivial edit' to skip the "
-                        "annotation log."
-                    ),
-                    "diff": {
-                        "changed_word_tokens": diff_tokens,
-                        "threshold": TRIVIAL_EDIT_TOKEN_THRESHOLD,
-                    },
-                }), 422
-            # Trivial override accepted — force acceptance_mode to
-            # None so the column is NOT written. The publish-time
-            # annotation pipeline reads this column to classify the
-            # save; None means "no RLHF signal recorded for this
-            # save" which is exactly the desired suppression.
-            acceptance_mode = None
+        ).strip()
+        if ai_draft_for_diff:
+            diff_tokens = changed_word_tokens(
+                ai_draft_for_diff, admin_comment or ""
+            )
+            if diff_tokens <= TRIVIAL_EDIT_TOKEN_THRESHOLD:
+                if not is_trivial_edit:
+                    # Defensive 422 — the FE should have disabled
+                    # Save before we got here, but never trust the
+                    # client. Error copy is admin-facing (no "RLHF"
+                    # / "training pipeline" jargon).
+                    logger.info(
+                        "snippets/comment.edit_too_small "
+                        "snippet=%s diff_tokens=%d threshold=%d",
+                        snippet_id, diff_tokens,
+                        TRIVIAL_EDIT_TOKEN_THRESHOLD,
+                    )
+                    return jsonify({
+                        "code": "EDIT_TOO_SMALL",
+                        "error": (
+                            "Too small a change to count as a "
+                            "correction (need "
+                            f"{TRIVIAL_EDIT_TOKEN_THRESHOLD + 1}+ "
+                            "word differences). Tick 'Mark as minor "
+                            "edit' to save as a cosmetic fix."
+                        ),
+                        "diff": {
+                            "changed_word_tokens": diff_tokens,
+                            "threshold": TRIVIAL_EDIT_TOKEN_THRESHOLD,
+                        },
+                    }), 422
+                # Trivial override accepted — force acceptance_mode
+                # to None so the column is NOT written. The publish-
+                # time annotation pipeline reads this column to
+                # classify the save; None means "no RLHF signal
+                # recorded for this save" which is exactly the
+                # desired suppression.
+                acceptance_mode = None
 
         admin_user_id = request.user_id
 
@@ -13968,19 +13976,16 @@ def v2_admin_update_snippet_coaching_rationale(snippet_id):
 
         # ── Trivial-edit gate (Phase 18.x) ──────────────────────────
         # Only applies when the admin claims an edit — approvals
-        # (edited_by_admin=False) skip the gate entirely because
-        # they store no corrected text and emit no correction
-        # signal to begin with.
+        # (edited_by_admin=False) skip the gate because they store
+        # no corrected text and emit no correction signal anyway.
+        # Empty-baseline bypass: when there's no AI rationale on the
+        # snippet's outcome blob to diff against, the admin is
+        # writing net-new content — gate does not apply.
         if edited_by_admin:
             from services.utils import (
                 changed_word_tokens,
                 TRIVIAL_EDIT_TOKEN_THRESHOLD,
             )
-            # Pull the AI rationale from the snippet's outcome blob
-            # to diff against. If the snippet has no outcome yet,
-            # the helper below returns None and we 422 with
-            # NO_OUTCOME_TO_REVIEW further down — no need to gate
-            # something that won't save anyway.
             try:
                 _existing = (
                     db.client.table("charisma_snippets")
@@ -13993,41 +13998,43 @@ def v2_admin_update_snippet_coaching_rationale(snippet_id):
                     _existing.data[0].get("follow_up_outcome") or {}
                 ) if _existing.data else {}
                 _evaluator = _outcome.get("evaluator") or {}
-                _ai_rationale = _evaluator.get("rationale") or ""
+                _ai_rationale = (
+                    _evaluator.get("rationale") or ""
+                ).strip()
             except Exception:
                 _ai_rationale = ""
 
-            diff_tokens = changed_word_tokens(_ai_rationale, rationale)
-            if diff_tokens <= TRIVIAL_EDIT_TOKEN_THRESHOLD:
-                if not is_trivial_edit:
-                    logger.info(
-                        "coaching-rationale.edit_too_trivial "
-                        "snippet=%s diff_tokens=%d threshold=%d",
-                        snippet_id, diff_tokens,
-                        TRIVIAL_EDIT_TOKEN_THRESHOLD,
-                    )
-                    return jsonify({
-                        "code": "EDIT_TOO_TRIVIAL",
-                        "error": (
-                            f"Changed only {diff_tokens} word token"
-                            f"{'' if diff_tokens == 1 else 's'} "
-                            f"(threshold > {TRIVIAL_EDIT_TOKEN_THRESHOLD}). "
-                            "Use 'Save as trivial edit' to skip "
-                            "the annotation log."
-                        ),
-                        "diff": {
-                            "changed_word_tokens": diff_tokens,
-                            "threshold": TRIVIAL_EDIT_TOKEN_THRESHOLD,
-                        },
-                    }), 422
-                # Trivial override accepted — preserve user-facing
-                # text by leaving edited_by_admin=True but flag the
-                # save as trivial so the publish-time annotation
-                # consumer can treat it as approval-equivalent
-                # rather than a real correction.
-            # diff > threshold OR is_trivial_edit: fall through to
-            # the save call; is_trivial_edit is forwarded to the db
-            # helper so the JSONB carries the flag.
+            if _ai_rationale:
+                diff_tokens = changed_word_tokens(
+                    _ai_rationale, rationale
+                )
+                if diff_tokens <= TRIVIAL_EDIT_TOKEN_THRESHOLD:
+                    if not is_trivial_edit:
+                        logger.info(
+                            "coaching-rationale.edit_too_small "
+                            "snippet=%s diff_tokens=%d threshold=%d",
+                            snippet_id, diff_tokens,
+                            TRIVIAL_EDIT_TOKEN_THRESHOLD,
+                        )
+                        return jsonify({
+                            "code": "EDIT_TOO_SMALL",
+                            "error": (
+                                "Too small a change to count as a "
+                                "correction (need "
+                                f"{TRIVIAL_EDIT_TOKEN_THRESHOLD + 1}+ "
+                                "word differences). Tick 'Mark as "
+                                "minor edit' to save as a cosmetic "
+                                "fix."
+                            ),
+                            "diff": {
+                                "changed_word_tokens": diff_tokens,
+                                "threshold": TRIVIAL_EDIT_TOKEN_THRESHOLD,
+                            },
+                        }), 422
+                    # Trivial override accepted — preserve text via
+                    # is_trivial_edit forwarding (helper writes the
+                    # was_trivial_edit flag on the JSONB so publish-
+                    # time consumers can downgrade to approval).
 
         reviewed_at = datetime.now(timezone.utc).isoformat()
         outcome = db.set_snippet_evaluator_rationale_review(
