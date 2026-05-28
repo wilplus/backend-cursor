@@ -15537,6 +15537,19 @@ def v2_admin_get_session(session_id):
             # surface drift_diagnostic for the explanation.
             "needs_admin_review": bool(session.get("needs_admin_review")),
             "drift_diagnostic": session.get("drift_diagnostic"),
+            # Phase 18.x — Performance summary narrative. The DB
+            # column is the legacy ai_task_alignment_comment (the
+            # column name pre-dates the API rename); the FE-canonical
+            # field name is session_kpi_narrative. The immutable AI
+            # draft baseline lives in session_kpi_narrative_ai_draft
+            # and is the diff source for the trivial-edit gate on
+            # PATCH /v2/admin/sessions/<id>/kpi-narrative.
+            "session_kpi_narrative": session.get(
+                "ai_task_alignment_comment"
+            ),
+            "session_kpi_narrative_ai_draft": session.get(
+                "session_kpi_narrative_ai_draft"
+            ),
         }
 
         return jsonify({
@@ -15754,6 +15767,218 @@ def _do_session_finalize(session_id: str) -> None:
         lock.release()
 
 
+@v2_bp.route("/admin/sessions/<session_id>/kpi-narrative", methods=["PATCH"])
+@require_admin
+def v2_admin_update_session_kpi_narrative(session_id):
+    """Admin-edit endpoint for the session-level Performance summary.
+
+    Backs the inline-edit UI on admin Tab 1 (FE commit 6551170+).
+    Writes to the editable column (``ai_task_alignment_comment`` on
+    the DB; surfaced as ``session_kpi_narrative`` in API responses)
+    after running the trivial-edit word-token gate against the
+    immutable AI draft baseline (``session_kpi_narrative_ai_draft``).
+
+    Same gate semantics as the other three RLHF-fed prose surfaces
+    (/admin/snippets/<id>/comment,
+     /admin/snippets/<id>/coaching-rationale,
+     /admin/sessions/<id>/publish):
+
+      • diff > 5 word tokens  → save + write admin_annotations_log row
+      • diff ≤ 5 + is_trivial_edit=True  → save, SKIP the log row
+      • diff ≤ 5 + is_trivial_edit=False → 422 EDIT_TOO_SMALL,
+                                            nothing saved
+      • AI draft NULL/whitespace (legacy session)  → save freely, no
+                                            log (the empty-baseline
+                                            bypass — gate doesn't
+                                            apply when there's no
+                                            AI text to diff against)
+
+    Body::
+
+        {
+          "session_kpi_narrative": "string",            # required
+          "ai_draft_baseline":     "string | null",     # optional —
+                                                         # FE pins the
+                                                         # exact draft
+                                                         # it diffed
+                                                         # against;
+                                                         # server falls
+                                                         # back to the
+                                                         # row's draft
+                                                         # column when
+                                                         # absent
+          "is_trivial_edit":       false                # default
+        }
+
+    Responses:
+      200 { "session_kpi_narrative": "<saved>",
+            "session_kpi_narrative_ai_draft": "<draft|null>",
+            "diff": { "changed_word_tokens": int,
+                      "threshold": 5,
+                      "rlhf_logged": bool } }
+      400 INVALID_INPUT       — bad UUID or malformed body
+      404 SESSION_NOT_FOUND   — session_id resolves to nothing
+      422 EDIT_TOO_SMALL      — gate rejected; nothing saved
+      500 V2_ERROR            — unexpected
+
+    Compute Metrics re-run interaction
+    ----------------------------------
+    POST /v2/admin/sessions/<id>/compute-metrics regenerates the
+    narrative and overwrites BOTH columns — any admin edit made
+    against the OLD narrative is wiped. Admin should re-edit if
+    they still want their corrections after a re-compute. This is
+    intentional: a regenerated narrative is the new baseline, and
+    the old edit's diff metadata wouldn't make sense against it.
+    """
+    if not _is_valid_uuid(session_id):
+        return jsonify({
+            "code": "INVALID_INPUT",
+            "error": "session_id must be a valid UUID",
+        }), 400
+
+    try:
+        body = request.get_json(silent=True) or {}
+        new_text_raw = body.get("session_kpi_narrative")
+        if not isinstance(new_text_raw, str):
+            return jsonify({
+                "code": "INVALID_INPUT",
+                "error": "session_kpi_narrative must be a string",
+            }), 400
+        new_text = new_text_raw.strip()
+        if not new_text:
+            return jsonify({
+                "code": "INVALID_INPUT",
+                "error": "session_kpi_narrative must be non-empty",
+            }), 400
+
+        is_trivial_edit = bool(body.get("is_trivial_edit", False))
+
+        # AI baseline resolution: prefer the explicit field FE pinned
+        # (so a stale row read doesn't drift the gate); fall back to
+        # the row's column on absent/null. The FE handoff has FE
+        # always sending it explicitly; the server-lookup fallback
+        # is defence-in-depth for unmigrated callers.
+        ai_baseline_raw = body.get("ai_draft_baseline")
+        ai_baseline: str = ""
+        if isinstance(ai_baseline_raw, str):
+            ai_baseline = ai_baseline_raw.strip()
+
+        session_row = db.v2_get_session_by_id(session_id)
+        if not session_row:
+            return jsonify({
+                "code": "SESSION_NOT_FOUND",
+                "error": "Session not found",
+            }), 404
+        if not ai_baseline:
+            ai_baseline = (
+                session_row.get("session_kpi_narrative_ai_draft") or ""
+            ).strip()
+
+        # ── Trivial-edit gate ──────────────────────────────────────
+        # Empty-baseline bypass: legacy sessions without an AI draft
+        # (column NULL, generated before this rollout) skip the gate
+        # entirely — admin types whatever they want, no log row.
+        from services.utils import (
+            changed_word_tokens,
+            TRIVIAL_EDIT_TOKEN_THRESHOLD,
+        )
+        diff_tokens: int = 0
+        gate_applied = bool(ai_baseline)
+        if gate_applied:
+            diff_tokens = changed_word_tokens(ai_baseline, new_text)
+            if diff_tokens <= TRIVIAL_EDIT_TOKEN_THRESHOLD:
+                if not is_trivial_edit:
+                    logger.info(
+                        "sessions/kpi-narrative.edit_too_small "
+                        "session=%s diff_tokens=%d threshold=%d",
+                        session_id, diff_tokens,
+                        TRIVIAL_EDIT_TOKEN_THRESHOLD,
+                    )
+                    return jsonify({
+                        "code": "EDIT_TOO_SMALL",
+                        "error": (
+                            "Too small a change to count as a "
+                            "correction (need "
+                            f"{TRIVIAL_EDIT_TOKEN_THRESHOLD + 1}+ "
+                            "word differences). Tick 'Mark as minor "
+                            "edit' to save as a cosmetic fix."
+                        ),
+                        "diff_count": diff_tokens,
+                        "threshold": TRIVIAL_EDIT_TOKEN_THRESHOLD,
+                    }), 422
+
+        # ── Persist the user-facing edit ───────────────────────────
+        # ONLY the editable column moves; the AI draft is immutable
+        # for the life of the narrative version.
+        updated = db.update_session_kpi_narrative_editable(
+            session_id=session_id,
+            comment=new_text,
+        )
+        if not updated:
+            return jsonify({
+                "code": "V2_ERROR",
+                "error": "Failed to persist edit",
+            }), 500
+
+        # ── RLHF log row (only on real corrections) ────────────────
+        # Skip when:
+        #   - empty baseline (no AI draft to attribute correction to)
+        #   - trivial-edit override accepted (admin marked cosmetic)
+        # Best-effort: a log-write failure doesn't unwind the save
+        # because the user-facing column is already updated and we
+        # don't want the admin to retry a successful edit.
+        rlhf_logged = False
+        if gate_applied and diff_tokens > TRIVIAL_EDIT_TOKEN_THRESHOLD:
+            owner_id = session_row.get("user_id")
+            if owner_id:
+                try:
+                    row = db.insert_admin_annotation_log(
+                        user_id=str(owner_id),
+                        session_id=str(session_id),
+                        ai_predicted_comment=ai_baseline,
+                        ai_predicted_question=None,
+                        final_human_comment=new_text,
+                        final_human_question=None,
+                        was_corrected=True,
+                    )
+                    rlhf_logged = row is not None
+                    if rlhf_logged:
+                        logger.info(
+                            "sessions/kpi-narrative.rlhf_logged "
+                            "session=%s diff_tokens=%d",
+                            session_id, diff_tokens,
+                        )
+                except Exception as log_err:
+                    logger.warning(
+                        "sessions/kpi-narrative: rlhf log failed "
+                        "sid=%s err=%s (non-fatal)",
+                        session_id, log_err,
+                    )
+
+        return jsonify({
+            "session_kpi_narrative": new_text,
+            "session_kpi_narrative_ai_draft": (
+                ai_baseline or None
+            ),
+            "diff": {
+                "changed_word_tokens": diff_tokens,
+                "threshold": TRIVIAL_EDIT_TOKEN_THRESHOLD,
+                "rlhf_logged": rlhf_logged,
+            },
+        }), 200
+
+    except Exception as e:
+        logger.error(
+            "admin/sessions/<id>/kpi-narrative failed: %s",
+            e, exc_info=True,
+        )
+        sentry_sdk.capture_exception(e)
+        return jsonify({
+            "code": "V2_ERROR",
+            "error": "Failed to save KPI narrative edit",
+        }), 500
+
+
 @v2_bp.route("/admin/sessions/<session_id>/compute-metrics", methods=["POST"])
 @require_admin
 def v2_admin_compute_session_metrics(session_id):
@@ -15844,6 +16069,50 @@ def v2_admin_compute_session_metrics(session_id):
                 session_id, cp_err,
             )
 
+        # Phase 18.x — regenerate the session KPI narrative on every
+        # Compute Metrics re-run. overwrite=True is the explicit
+        # contract: a regenerated AI narrative becomes the new
+        # immutable baseline (set_session_kpi_narrative_ai_draft
+        # fires inside the generator) AND replaces the editable
+        # copy, so any earlier admin edit against the OLD narrative
+        # is gone. Documented in the PATCH endpoint's docstring.
+        # Best-effort: a generator failure leaves the prior columns
+        # in place rather than wiping them.
+        session_kpi_narrative_text: str | None = None
+        session_kpi_narrative_draft: str | None = None
+        try:
+            from services.session_kpi_narrative import (
+                generate_session_kpi_narrative,
+            )
+            session_kpi_narrative_text = generate_session_kpi_narrative(
+                session_id=session_id,
+                overwrite=True,
+            )
+        except Exception as kpi_err:
+            logger.warning(
+                "compute-metrics: kpi_narrative regenerate failed "
+                "sid=%s err=%s (non-fatal)",
+                session_id, kpi_err,
+            )
+        # Read back the AI-draft column so the response carries the
+        # pinned baseline the FE diffs against. The generator wrote
+        # it just above (or skipped on legacy schema); a fresh
+        # read picks up either case.
+        try:
+            _row = db.v2_get_session_by_id(session_id) or {}
+            session_kpi_narrative_draft = (
+                _row.get("session_kpi_narrative_ai_draft")
+            )
+            # Prefer the just-generated text; fall back to the row's
+            # editable column when the generator returned None (no
+            # signal / LLM failure).
+            if session_kpi_narrative_text is None:
+                session_kpi_narrative_text = (
+                    _row.get("ai_task_alignment_comment")
+                )
+        except Exception:
+            pass
+
         return jsonify({
             "status": "ok",
             "global_metrics": {
@@ -15853,6 +16122,14 @@ def v2_admin_compute_session_metrics(session_id):
                 "dynamic_db": global_dynamic_db,
                 "pitch_center": global_pitch_center,
                 "energy": global_energy,
+                # Phase 18.x — surface the editable narrative + its
+                # immutable AI draft baseline alongside the metrics.
+                # FE handler at FE commit 6551170 reads both keys to
+                # seed local state without a second GET round-trip.
+                "session_kpi_narrative": session_kpi_narrative_text,
+                "session_kpi_narrative_ai_draft": (
+                    session_kpi_narrative_draft
+                ),
             },
             "kpi": {
                 "score": kpi_score,

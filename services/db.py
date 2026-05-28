@@ -8249,6 +8249,103 @@ class DatabaseService:
             logger.error(f"update_session_ai_alignment failed: {e}")
             return None
 
+    def set_session_kpi_narrative_ai_draft(
+        self,
+        session_id: str,
+        ai_draft: str | None,
+    ) -> Optional[dict]:
+        """Persist the IMMUTABLE AI draft of the session KPI narrative.
+
+        Companion to ``update_session_ai_alignment`` — the alignment
+        helper writes the EDITABLE user-facing column
+        (``ai_task_alignment_comment``), this helper writes the
+        immutable AI baseline (``session_kpi_narrative_ai_draft``)
+        that the trivial-edit gate diffs against on
+        PATCH /v2/admin/sessions/<id>/kpi-narrative.
+
+        Two callers:
+          1. services.session_kpi_narrative.generate_session_kpi_
+             narrative — pins the draft at first generation.
+          2. POST /v2/admin/sessions/<id>/compute-metrics — overwrites
+             the draft when the LLM re-generates the narrative.
+
+        NEVER called from the admin PATCH endpoint — admin edits
+        only touch the editable column; the AI draft is intentionally
+        immutable for the life of the narrative version.
+
+        Graceful fallback when the column is missing (migration
+        pending): the post-rollout PGRST204 is downgraded to a
+        warning so the narrative-generator paths don't break during
+        the deploy window. The gate then bypasses on the empty
+        baseline.
+        """
+        try:
+            result = (
+                self.client.table("v2_sessions")
+                .update({
+                    "session_kpi_narrative_ai_draft": ai_draft,
+                })
+                .eq("id", session_id)
+                .execute()
+            )
+            if result.data and len(result.data) > 0:
+                return result.data[0]
+            return None
+        except Exception as e:
+            err_low = str(e).lower()
+            if (
+                "session_kpi_narrative_ai_draft" in err_low
+                or "pgrst204" in err_low
+            ):
+                logger.warning(
+                    "set_session_kpi_narrative_ai_draft: column "
+                    "missing (run migrations/add_session_kpi_"
+                    "narrative_ai_draft.sql) sid=%s",
+                    session_id,
+                )
+                return None
+            logger.error(
+                "set_session_kpi_narrative_ai_draft failed sid=%s: %s",
+                session_id, e,
+            )
+            return None
+
+    def update_session_kpi_narrative_editable(
+        self,
+        session_id: str,
+        comment: str | None,
+    ) -> Optional[dict]:
+        """Admin-edit write path for the session KPI narrative.
+
+        Updates ONLY ``v2_sessions.ai_task_alignment_comment`` —
+        the editable user-facing column the dashboard renders.
+        The companion immutable AI draft column
+        (``session_kpi_narrative_ai_draft``) is intentionally NOT
+        touched here; admin edits leave the diff baseline pinned.
+
+        Distinct from ``update_session_ai_alignment`` (which also
+        writes the legacy score column) so the PATCH endpoint can
+        update prose alone without touching the score.
+        """
+        try:
+            result = (
+                self.client.table("v2_sessions")
+                .update({
+                    "ai_task_alignment_comment": comment,
+                })
+                .eq("id", session_id)
+                .execute()
+            )
+            if result.data and len(result.data) > 0:
+                return result.data[0]
+            return None
+        except Exception as e:
+            logger.error(
+                "update_session_kpi_narrative_editable failed sid=%s: %s",
+                session_id, e,
+            )
+            return None
+
     def update_session_charisma_profile(
         self,
         session_id: str,

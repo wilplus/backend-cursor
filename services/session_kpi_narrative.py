@@ -141,6 +141,29 @@ def generate_session_kpi_narrative(
         # Caller still gets the narrative — the route can choose to
         # return it even if persist failed.
 
+    # Phase 18.x — pin the immutable AI-draft baseline so the
+    # trivial-edit gate on PATCH /v2/admin/sessions/<id>/kpi-
+    # narrative has something to diff against. Same value as the
+    # editable column at generation time; admin edits only touch
+    # the editable column going forward. On Compute Metrics
+    # re-runs (overwrite=True), the LLM regenerates BOTH columns
+    # so a fresh narrative becomes the new baseline and any earlier
+    # admin edit on the OLD narrative is gone (intentional —
+    # documented in the PATCH endpoint's docstring).
+    try:
+        db.set_session_kpi_narrative_ai_draft(
+            session_id=session_id,
+            ai_draft=narrative,
+        )
+    except Exception as e:
+        logger.warning(
+            "kpi_narrative: ai_draft pin failed sid=%s err=%s",
+            session_id, e,
+        )
+        # Don't block — the editable copy is already persisted
+        # above and the gate's empty-baseline bypass means the
+        # admin can still save (just without the gate firing).
+
     return narrative
 
 
