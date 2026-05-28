@@ -13307,6 +13307,33 @@ def v2_admin_update_snippet_comment(snippet_id):
     Allows admin to label snippets as charisma, stress, or unlabeled, add text feedback,
     and optionally override the pre-generated follow_up_question.
 
+    Split-sinks contract (Phase 18.x — see
+    docs/BE-HANDOFF-tab1-comment-sink-split.md):
+
+      ✓ USER-VISIBLE: yes. The /results page reads
+        charisma_snippets.admin_comment live on every visit, so
+        any edit here surfaces to the user the next time they
+        open their results. This is intentional — the snippet
+        comment IS the coach's per-moment feedback.
+
+      ✓ RLHF PIPELINE: yes, but deferred to publish-time. This
+        endpoint does NOT directly write to admin_annotations_log
+        — it persists admin_comment + acceptance_mode on the
+        snippet row, and record_snippet_publish_annotations
+        (fired by POST /v2/admin/sessions/<id>/publish) reads
+        them later to emit a row to admin_annotation_events (the
+        per-snippet RLHF table — distinct from the session-level
+        admin_annotations_log). Different table, same pipeline.
+
+      ✗ NO EMAIL / PUBLISH RE-TRIGGER. This endpoint does not
+        call _send_results_ready_email, v2_publish_session_
+        results, or stamp results_published_at. The "results
+        ready" email is one-shot at initial publish; admin's
+        per-snippet edits after publish surface live on the
+        already-visible /results page without needing a new
+        notification. If a future engineer adds re-email
+        plumbing here — STOP. It's not a bug; it's the contract.
+
     Body:
       - admin_comment    (str, optional)
       - snippet_type     ("charisma"|"stress"|"unlabeled", default "unlabeled")
@@ -14682,6 +14709,7 @@ def v2_admin_publish_session(session_id):
                             None if final_questions else legacy_q_final
                         ),
                         was_corrected=session_was_corrected,
+                        surface="publish_session_comment",
                     )
                     if row is not None:
                         rlhf_rows_written += 1
@@ -14718,6 +14746,7 @@ def v2_admin_publish_session(session_id):
                             was_corrected=per_was_corrected,
                             question_position=pos,
                             intent_tag=(final_tag or ai_tag),
+                            surface=f"publish_question_p{pos}",
                         )
                         if row is not None:
                             rlhf_rows_written += 1
@@ -14759,6 +14788,24 @@ def _send_results_ready_email(session_id: str, session: dict) -> bool:
 
     Centralised so /admin/sessions/<id>/publish and the legacy
     /internal/publish-session-results don't drift apart.
+
+    Callers (kept short on purpose — search before adding new ones):
+      • v2_admin_publish_session — the explicit admin Publish click
+      • v2_internal_publish_session_results — legacy alias of the
+        above; same one-shot semantics
+
+    DO NOT call this from any admin-edit endpoint
+    (POST /v2/admin/snippets/<id>/comment,
+     PATCH /v2/admin/snippets/<id>/coaching-rationale,
+     PATCH /v2/admin/sessions/<id>/kpi-narrative). Per the split-
+    sinks contract (Phase 18.x — docs/BE-HANDOFF-tab1-comment-
+    sink-split.md), the post-session email is one-shot at initial
+    publish. Admin's per-snippet edits surface on the live
+    /results read; admin's KPI narrative edits are pipeline-only
+    and intentionally invisible to the user. Re-firing the email
+    on edit would re-notify the user about content they may not
+    even see (narrative case) or content they're already seeing
+    live (snippet case) — neither is desired.
     """
     import httpx
 
@@ -15927,6 +15974,26 @@ def v2_admin_update_session_kpi_narrative(session_id):
         # Best-effort: a log-write failure doesn't unwind the save
         # because the user-facing column is already updated and we
         # don't want the admin to retry a successful edit.
+        #
+        # SURFACE TAG: "session_kpi_narrative" so the weekly RLHF
+        # analytics can split this row off from the publish-time
+        # rows (which carry surface="publish_session_comment" /
+        # "publish_question_p1..p5"). See migrations/add_surface_
+        # to_admin_annotations_log.sql.
+        #
+        # NO USER-SIDE SIDE EFFECTS HERE — this is intentional, not
+        # a bug. Per the split-sinks contract (BE-HANDOFF-tab1-
+        # comment-sink-split.md): admin's KPI narrative edits feed
+        # the RLHF pipeline only. They do NOT republish the session,
+        # re-send the "results ready" email, or flip any user-
+        # facing visibility flag. Email + publish stamp + visibility
+        # ride exclusively on the explicit Publish action
+        # (POST /v2/admin/sessions/<id>/publish, calling
+        # v2_publish_session_results + _send_results_ready_email).
+        # If a future engineer adds "re-queue email on narrative
+        # change" thinking it's a bugfix — STOP. The user only ever
+        # sees the immutable AI draft on the dashboard; admin's
+        # edits never reach them, by design.
         rlhf_logged = False
         if gate_applied and diff_tokens > TRIVIAL_EDIT_TOKEN_THRESHOLD:
             owner_id = session_row.get("user_id")
@@ -15940,6 +16007,7 @@ def v2_admin_update_session_kpi_narrative(session_id):
                         final_human_comment=new_text,
                         final_human_question=None,
                         was_corrected=True,
+                        surface="session_kpi_narrative",
                     )
                     rlhf_logged = row is not None
                     if rlhf_logged:

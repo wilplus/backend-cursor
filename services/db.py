@@ -6455,12 +6455,14 @@ class DatabaseService:
         was_corrected: bool,
         question_position: Optional[int] = None,
         intent_tag: Optional[str] = None,
+        surface: Optional[str] = None,
     ) -> Optional[dict]:
         """Write one RLHF training row to admin_annotations_log.
 
-        Called from the admin Publish handler. Returns the
-        inserted row or None on failure — failure logs but does
-        NOT raise to the route, because the publish itself has
+        Called from the admin Publish handler and the session-
+        level KPI narrative PATCH handler. Returns the inserted
+        row or None on failure — failure logs but does NOT raise
+        to the route, because the publish / save itself has
         already succeeded by the time we write the log and we
         won't undo it for a training-pipeline side-effect.
 
@@ -6470,11 +6472,20 @@ class DatabaseService:
         the session-level admin_comment row and for legacy
         single-question rows.
 
-        Graceful fallback when the per-position columns aren't in
-        the schema yet (migration pending): retries the insert
-        without them. The session-level signal still lands; the
-        per-position granularity just isn't available until the
-        migration runs.
+        ``surface`` tags the write path so downstream RLHF
+        analytics can filter by edit type. Values currently
+        emitted:
+          "session_kpi_narrative"  — PATCH /kpi-narrative
+          "publish_session_comment" — publish's session-level row
+          "publish_question_p1".."p5" — publish's per-position rows
+        None when the column is missing (graceful fallback below)
+        or when an unmigrated caller doesn't set it.
+
+        Graceful fallback when per-position / surface columns
+        aren't in the schema yet (migration pending): retries the
+        insert without them. The session-level signal still
+        lands; the missing-column granularity just isn't
+        available until the matching migration runs.
         """
         try:
             payload: dict = {
@@ -6490,6 +6501,8 @@ class DatabaseService:
                 payload["question_position"] = int(question_position)
             if intent_tag is not None:
                 payload["intent_tag"] = intent_tag
+            if surface is not None:
+                payload["surface"] = surface
 
             result = (
                 self.client.table("admin_annotations_log")
@@ -6504,18 +6517,23 @@ class DatabaseService:
             if (
                 "question_position" in err_low
                 or "intent_tag" in err_low
+                or "surface" in err_low
                 or "pgrst204" in err_low
             ):
                 logger.warning(
-                    "insert_admin_annotation_log: per-position "
-                    "columns missing (migration pending?), "
-                    "retrying without — sid=%s pos=%s",
-                    session_id, question_position,
+                    "insert_admin_annotation_log: optional column(s) "
+                    "missing (migration pending?), retrying without — "
+                    "sid=%s pos=%s surface=%s",
+                    session_id, question_position, surface,
                 )
                 try:
                     fallback = {
                         k: v for k, v in payload.items()
-                        if k not in ("question_position", "intent_tag")
+                        if k not in (
+                            "question_position",
+                            "intent_tag",
+                            "surface",
+                        )
                     }
                     result = (
                         self.client.table("admin_annotations_log")
