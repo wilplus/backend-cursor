@@ -62,36 +62,14 @@ _CHARISMA_TONE = "charisma"
 _STRESS_TONE = "stress"
 
 
-def session_1_completion_state(
-    session_id: str,
-    *,
-    threshold_seconds: int = DEFAULT_THRESHOLD_SECONDS,
-) -> dict[str, Any]:
-    """Evaluate the three-criterion completion gate for a session.
+def _evaluate_counts(session_id: str) -> tuple[int, int, int]:
+    """Internal — raw counts over the session's snippets.
 
-    Returns the dict shape the FE consumes verbatim on every
-    upload-answer response::
+    Returns ``(charisma_count, stress_count, duration_ms_total)``.
 
-        {
-          "session_1_complete": bool,
-          "session_1_gate": {
-            "charisma_count":    int,
-            "stress_count":      int,
-            "duration_seconds":  float,
-            "threshold_seconds": int,            # echoed so FE
-                                                  # never hardcodes 60
-            "missing": ["charisma" | "stress" | "duration", ...]
-                                                  # empty when complete
-          }
-        }
-
-    Best-effort: a DB read failure returns the "all zeros, all
-    missing" shape so the FE keeps the recorder open rather than
-    crashing or fake-completing the session. The structured log
-    line below is the audit trail when this happens.
-
-    Pure read — no writes, no LLM, no side effects. Cheap (one
-    indexed query on charisma_snippets by session_id).
+    Best-effort: a DB read failure returns ``(0, 0, 0)`` so callers
+    get the "gate stays closed" default rather than raising. Structured
+    log line is the audit trail when this happens.
     """
     charisma_count = 0
     stress_count = 0
@@ -102,7 +80,7 @@ def session_1_completion_state(
     except Exception as e:
         logger.warning(
             "completion_gate: snippet load failed sid=%s err=%s "
-            "— returning empty state (gate stays closed)",
+            "— returning zero counts (gate stays closed)",
             session_id, e,
         )
         rows = []
@@ -120,6 +98,42 @@ def session_1_completion_state(
         if isinstance(d, (int, float)) and d > 0:
             duration_ms_total += int(d)
 
+    return charisma_count, stress_count, duration_ms_total
+
+
+def session_1_completion_state(
+    session_id: str,
+    *,
+    threshold_seconds: int = DEFAULT_THRESHOLD_SECONDS,
+) -> dict[str, Any]:
+    """Evaluate the three-criterion completion gate (legacy shape).
+
+    Used by ``POST /v2/public/interview/upload-answer`` for back-compat
+    with the FE wire contract task 6 shipped against.
+
+    Returns::
+
+        {
+          "session_1_complete": bool,
+          "session_1_gate": {
+            "charisma_count":    int,
+            "stress_count":      int,
+            "duration_seconds":  float,
+            "threshold_seconds": int,            # echoed so FE
+                                                  # never hardcodes 60
+            "missing": ["charisma" | "stress" | "duration", ...]
+                                                  # empty when complete
+          }
+        }
+
+    For the parallel ``{ready, criteria, current}`` shape used by the
+    probe + finalize endpoints, see ``completion_state``. Both shapes
+    wrap the same underlying counts (``_evaluate_counts``) so they
+    can't drift.
+    """
+    charisma_count, stress_count, duration_ms_total = _evaluate_counts(
+        session_id,
+    )
     duration_seconds = duration_ms_total / 1000.0
     has_charisma = charisma_count >= 1
     has_stress = stress_count >= 1
@@ -143,5 +157,58 @@ def session_1_completion_state(
             "duration_seconds": round(duration_seconds, 1),
             "threshold_seconds": threshold_seconds,
             "missing": missing,
+        },
+    }
+
+
+def completion_state(
+    session_id: str,
+    *,
+    threshold_seconds: int = DEFAULT_THRESHOLD_SECONDS,
+) -> dict[str, Any]:
+    """Parallel shape used by the probe + finalize endpoints.
+
+    Returns::
+
+        {
+          "ready": bool,
+          "criteria": {
+            "has_charisma": bool,
+            "has_stress":   bool,
+            "duration_ok":  bool
+          },
+          "current": {
+            "charisma_count":     int,
+            "stress_count":       int,
+            "total_duration_ms":  int,
+            "threshold_seconds":  int
+          }
+        }
+
+    Same underlying counts as ``session_1_completion_state``; the
+    primitive read (``_evaluate_counts``) is shared so the two shapes
+    can't drift. Pick whichever shape your call site prefers; both
+    are equivalent data with different keys.
+    """
+    charisma_count, stress_count, duration_ms_total = _evaluate_counts(
+        session_id,
+    )
+    duration_seconds = duration_ms_total / 1000.0
+    has_charisma = charisma_count >= 1
+    has_stress = stress_count >= 1
+    duration_ok = duration_seconds >= threshold_seconds
+
+    return {
+        "ready": has_charisma and has_stress and duration_ok,
+        "criteria": {
+            "has_charisma": has_charisma,
+            "has_stress": has_stress,
+            "duration_ok": duration_ok,
+        },
+        "current": {
+            "charisma_count": charisma_count,
+            "stress_count": stress_count,
+            "total_duration_ms": duration_ms_total,
+            "threshold_seconds": threshold_seconds,
         },
     }

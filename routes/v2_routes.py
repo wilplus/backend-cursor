@@ -12988,6 +12988,16 @@ def v2_public_interview_upload_answer():
             # See services.interview_completion_gate for the predicate.
             "session_1_complete": gate_state["session_1_complete"],
             "session_1_gate": gate_state["session_1_gate"],
+            # Parallel shape — equivalent to session_1_complete +
+            # session_1_gate above, exposed under the {ready, criteria,
+            # current} contract the probe + finalize endpoints use.
+            # FE handoff for the finalize-gate work asked for this
+            # piggyback so FE doesn't need a separate GET round-trip
+            # against the probe endpoint after each upload. Cheap —
+            # shares the _evaluate_counts read with the legacy shape.
+            "completion_state": _completion_state_or_default(
+                guest_session_id,
+            ),
         }), 201
 
     except Exception as e:
@@ -17045,46 +17055,173 @@ def v2_user_put_sharing_consent():
 
 _INTERVIEW_FINALIZE_VALID_REASONS = {"threshold", "max_turns", "user_done"}
 
+# Signup-CTA default copy. Task 7 will define the real CTA spec; until
+# then the finalize endpoint returns this placeholder when the gate
+# passes so the FE can wire its CTA reveal against the contract today.
+# Surfaced as `next.signup_cta.copy` in the finalize response — a BE
+# flag (not FE hardcoded) so the copy is A/B-able without a FE deploy
+# and per-user variants can fan out later (e.g. warm-lead vs cold).
+_FINALIZE_SIGNUP_CTA_COPY = (
+    "Create your free account to save your results."
+)
+
+
+def _completion_state_or_default(session_id: str) -> dict:
+    """Shared upload-answer / probe / finalize wrapper.
+
+    Calls the interview_completion_gate helper inside a try/except
+    so a transient DB hiccup returns the all-zeros + not-ready shape
+    rather than raising into the route. Same defensive contract the
+    legacy session_1_* fields use.
+    """
+    try:
+        from services.interview_completion_gate import completion_state
+        return completion_state(session_id)
+    except Exception as e:
+        logger.warning(
+            "completion_state: lookup failed sid=%s err=%s "
+            "(returning empty)",
+            session_id, e,
+        )
+        return {
+            "ready": False,
+            "criteria": {
+                "has_charisma": False,
+                "has_stress": False,
+                "duration_ok": False,
+            },
+            "current": {
+                "charisma_count": 0,
+                "stress_count": 0,
+                "total_duration_ms": 0,
+                "threshold_seconds": 60,
+            },
+        }
+
+
+@v2_bp.route(
+    "/public/interview/<guest_session_id>/completion-state",
+    methods=["GET"],
+)
+def v2_public_interview_completion_state(guest_session_id):
+    """Probe endpoint — "is this guest session ready to finalize?"
+
+    Backs the FE's "I'm done" button enable/disable + the per-criterion
+    progress display under the mic. Stateless, no auth, cheap (one
+    indexed charisma_snippets scan).
+
+    Response 200::
+
+        {
+          "ready": bool,
+          "criteria": { has_charisma, has_stress, duration_ok },
+          "current":  { charisma_count, stress_count,
+                        total_duration_ms, threshold_seconds }
+        }
+
+    404 SESSION_NOT_FOUND when the guest_session_id doesn't resolve.
+    """
+    if not _is_valid_uuid(guest_session_id):
+        return jsonify({
+            "code": "INVALID_INPUT",
+            "error": "guest_session_id must be a valid UUID",
+        }), 400
+
+    try:
+        session = db.v2_get_session_by_id(guest_session_id)
+        if not session:
+            return jsonify({
+                "code": "SESSION_NOT_FOUND",
+                "error": "Guest session not found",
+            }), 404
+
+        state = _completion_state_or_default(guest_session_id)
+        return jsonify(state), 200
+
+    except Exception as e:
+        logger.error(
+            "interview_completion_state.error sid=%s err=%s",
+            guest_session_id, e, exc_info=True,
+        )
+        sentry_sdk.capture_exception(e)
+        return jsonify({
+            "code": "V2_ERROR",
+            "error": "Failed to read completion state",
+        }), 500
+
 
 @v2_bp.route("/public/interview/finalize", methods=["POST"])
 def v2_public_interview_finalize():
-    """End-of-funnel signal from the public interview.
+    """End-of-funnel signal — gated. Triggers the post-session chain.
 
-    Body (JSON):
-      - guest_session_id     (UUID, required)
-      - total_duration_seconds (number, optional)
-      - reason               ("threshold" | "max_turns" | "user_done",
-                              optional — unknown values are accepted
-                              with "unknown" attribution; we'd rather
-                              capture the signal than reject a malformed
-                              field and lose the log line)
+    Task 6 + FE handoff (H/Sync/BE/I confirmation): replaces the
+    previous "log + 200 unconditionally" stub with a real gated
+    handler. The four design decisions baked in:
 
-    Response 200: {"status": "ok"}
+      H — Hard gate: 422 SESSION_INCOMPLETE on a failing
+          completion_state. FE should never hit this if it honours
+          the probe endpoint; the 422 is defensive against stale
+          clients.
+      Sync — Trigger chain runs inline (~3-5s LLM round-trip for the
+             KPI narrative + stickiness compute). No polling state
+             machine on FE. Matches the existing compute-metrics
+             endpoint's latency profile.
+      BE — `next.signup_cta` is a BE flag, not FE-side state. Lets
+           copy be A/B'd / personalised without a FE redeploy.
+      I — Idempotent. Re-finalize on a passed session returns the
+          same payload, no recompute (narrative/stickiness writers
+          skip when the column is already populated). Safe under
+          double-click and network flakes.
 
-    Failure modes are non-fatal — the FE already treats a non-200
-    here as harmless and routes the user to /results regardless. We
-    therefore prefer accepting weird payloads and logging them over
-    400-ing and losing the analytics signal.
+    Body (JSON)::
+
+        {
+          "guest_session_id":        "<uuid>",                # required
+          "total_duration_seconds":  number,                  # optional, analytics
+          "reason":                  "threshold" | "max_turns"
+                                     | "user_done"            # optional, analytics
+        }
+
+    Response 200 (gate passed)::
+
+        {
+          "status": "ok",
+          "completion": { ready: true, criteria: {...}, current: {...} },
+          "next": {
+            "narrative_status":  "ready" | "failed",
+            "stickiness_status": "ready" | "failed" | "skipped",
+            "signup_cta": { "show": true, "copy": "<string>" }
+          }
+        }
+
+    Response 422 (gate failed)::
+
+        {
+          "code": "SESSION_INCOMPLETE",
+          "error": "<admin-friendly explanation>",
+          "completion": { ready: false, criteria: {...}, current: {...} }
+        }
+
+    The structured `funnel.end` log line fires on EVERY call (pass or
+    fail) so the existing analytics signal is preserved end-to-end.
     """
     try:
         body = request.get_json(silent=True) or {}
 
         gsid = (body.get("guest_session_id") or "").strip()
         if not gsid or not _is_valid_uuid(gsid):
-            # No usable session id → still return 200 (non-fatal), but
-            # log loudly so we can spot misconfigured callers.
-            logger.warning(
-                "interview_finalize.invalid_session_id "
-                "body=%r — accepted (non-fatal)",
-                body,
-            )
-            return jsonify({"status": "ok"}), 200
+            return jsonify({
+                "code": "INVALID_INPUT",
+                "error": "guest_session_id must be a valid UUID",
+            }), 400
 
+        # Analytics fields — best-effort parse, never block on bad
+        # types. Same telemetry signal as the legacy stub kept alive
+        # so downstream log-shippers don't lose their grep target.
         try:
             duration_sec = float(body.get("total_duration_seconds") or 0)
         except (TypeError, ValueError):
             duration_sec = 0.0
-
         reason_raw = (body.get("reason") or "").strip().lower()
         reason = (
             reason_raw
@@ -17092,30 +17229,94 @@ def v2_public_interview_finalize():
             else "unknown"
         )
 
-        # Structured log — primary analytics signal until/unless we
-        # add a dedicated funnel_events table. Greppable prefix
-        # "funnel.end" so downstream log shippers can fan this
-        # out to a metrics aggregator without a code change.
+        # ── Hard gate ──────────────────────────────────────────────
+        state = _completion_state_or_default(gsid)
         logger.info(
-            "funnel.end sid=%s reason=%s duration_sec=%.1f"
-            "%s",
-            gsid,
-            reason,
-            duration_sec,
+            "funnel.end sid=%s reason=%s duration_sec=%.1f ready=%s%s",
+            gsid, reason, duration_sec, state["ready"],
             f" raw_reason={reason_raw!r}" if reason == "unknown" else "",
         )
+        if not state["ready"]:
+            return jsonify({
+                "code": "SESSION_INCOMPLETE",
+                "error": (
+                    "Need ≥1 charisma answer, ≥1 stress answer, and "
+                    "≥60s of recording before finishing."
+                ),
+                "completion": state,
+            }), 422
 
-        return jsonify({"status": "ok"}), 200
+        # ── Trigger chain (idempotent — writers skip when populated) ──
+        # Narrative generator. overwrite=False means a re-finalize
+        # on a session that's already had its narrative computed
+        # short-circuits without a second LLM call.
+        narrative_status = "ready"
+        try:
+            from services.session_kpi_narrative import (
+                generate_session_kpi_narrative,
+            )
+            generated = generate_session_kpi_narrative(
+                session_id=gsid, overwrite=False,
+            )
+            if not generated:
+                narrative_status = "failed"
+        except Exception as nar_err:
+            logger.warning(
+                "interview_finalize: narrative generate failed "
+                "sid=%s err=%s",
+                gsid, nar_err,
+            )
+            narrative_status = "failed"
+
+        # Stickiness compute. Idempotent at the column level — the
+        # update_session_stickiness writer overwrites with the same
+        # value on re-runs.
+        stickiness_status = "ready"
+        try:
+            from services.stickiness import compute_session_stickiness
+            snippets = db.get_snippets_by_session(gsid) or []
+            if not snippets:
+                stickiness_status = "skipped"
+            else:
+                top_topic, score, distribution = compute_session_stickiness(
+                    snippets,
+                )
+                db.update_session_stickiness(
+                    session_id=gsid,
+                    top_topic=top_topic,
+                    score=score,
+                    distribution=distribution,
+                )
+        except Exception as sticky_err:
+            logger.warning(
+                "interview_finalize: stickiness compute failed "
+                "sid=%s err=%s",
+                gsid, sticky_err,
+            )
+            stickiness_status = "failed"
+
+        return jsonify({
+            "status": "ok",
+            "completion": state,
+            "next": {
+                "narrative_status": narrative_status,
+                "stickiness_status": stickiness_status,
+                "signup_cta": {
+                    "show": True,
+                    "copy": _FINALIZE_SIGNUP_CTA_COPY,
+                },
+            },
+        }), 200
 
     except Exception as e:
         logger.error(
             "interview_finalize.error err=%s", e, exc_info=True,
         )
         sentry_sdk.capture_exception(e)
-        # Still return 200 — non-fatal contract per the BFF
-        # comment. We don't want a backend bug to look like a FE
-        # bug in the user's console.
-        return jsonify({"status": "ok"}), 200
+        return jsonify({
+            "code": "V2_ERROR",
+            "error": "Failed to finalize interview session",
+        }), 500
 
 
 # ── Coaching intro bubble (Phase Single-Slot-Chat) ────────────────

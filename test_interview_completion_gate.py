@@ -184,5 +184,114 @@ class CompletionGateTests(unittest.TestCase):
         )
 
 
+class CompletionStateShapeTests(unittest.TestCase):
+    """The parallel {ready, criteria, current} shape used by the
+    probe + finalize endpoints. Same underlying counts as
+    session_1_completion_state; this class verifies the shape
+    contract + that the two shapes can't drift."""
+
+    def _eval(self, snippets, threshold=60):
+        from services import interview_completion_gate as gate
+        with patch.object(
+            gate.db, "get_snippets_by_session", return_value=snippets,
+        ):
+            return gate.completion_state(
+                "sid-test", threshold_seconds=threshold,
+            )
+
+    def test_empty_session_returns_not_ready(self):
+        out = self._eval([])
+        self.assertFalse(out["ready"])
+        self.assertEqual(out["criteria"], {
+            "has_charisma": False,
+            "has_stress": False,
+            "duration_ok": False,
+        })
+        self.assertEqual(out["current"], {
+            "charisma_count": 0,
+            "stress_count": 0,
+            "total_duration_ms": 0,
+            "threshold_seconds": 60,
+        })
+
+    def test_full_pass_returns_ready(self):
+        snippets = [
+            {"question_tone": "charisma", "duration_ms": 30_000},
+            {"question_tone": "stress",   "duration_ms": 35_000},
+        ]
+        out = self._eval(snippets)
+        self.assertTrue(out["ready"])
+        self.assertTrue(out["criteria"]["has_charisma"])
+        self.assertTrue(out["criteria"]["has_stress"])
+        self.assertTrue(out["criteria"]["duration_ok"])
+        self.assertEqual(out["current"]["total_duration_ms"], 65_000)
+
+    def test_missing_one_criterion_blocks_ready(self):
+        # Charisma + duration OK, no stress
+        snippets = [
+            {"question_tone": "charisma", "duration_ms": 70_000},
+        ]
+        out = self._eval(snippets)
+        self.assertFalse(out["ready"])
+        self.assertFalse(out["criteria"]["has_stress"])
+        self.assertTrue(out["criteria"]["has_charisma"])
+        self.assertTrue(out["criteria"]["duration_ok"])
+
+    def test_threshold_seconds_echoed_in_current(self):
+        out = self._eval([], threshold=42)
+        self.assertEqual(out["current"]["threshold_seconds"], 42)
+
+    def test_two_shapes_agree_on_same_session(self):
+        """Both public functions wrap _evaluate_counts — they MUST
+        agree on whether a session is complete. Drift would mean
+        FE could see ready=true in one place and missing=['stress']
+        in the other."""
+        from services import interview_completion_gate as gate
+        snippets = [
+            {"question_tone": "charisma", "duration_ms": 30_000},
+            {"question_tone": "stress",   "duration_ms": 35_000},
+        ]
+        with patch.object(
+            gate.db, "get_snippets_by_session", return_value=snippets,
+        ):
+            shape_a = gate.session_1_completion_state("x")
+            shape_b = gate.completion_state("x")
+        self.assertEqual(
+            shape_a["session_1_complete"], shape_b["ready"],
+        )
+        self.assertEqual(
+            shape_a["session_1_gate"]["charisma_count"],
+            shape_b["current"]["charisma_count"],
+        )
+        self.assertEqual(
+            shape_a["session_1_gate"]["stress_count"],
+            shape_b["current"]["stress_count"],
+        )
+
+    def test_shape_drift_on_failing_case(self):
+        """Same drift check on a NOT-ready session — both shapes
+        must agree on incomplete + on which counts are zero."""
+        from services import interview_completion_gate as gate
+        snippets = [
+            {"question_tone": "charisma", "duration_ms": 10_000},
+            # Missing stress + duration short → should be NOT ready
+            # in both shapes, with charisma_count=1 in both.
+        ]
+        with patch.object(
+            gate.db, "get_snippets_by_session", return_value=snippets,
+        ):
+            shape_a = gate.session_1_completion_state("x")
+            shape_b = gate.completion_state("x")
+        self.assertFalse(shape_a["session_1_complete"])
+        self.assertFalse(shape_b["ready"])
+        # Shape A: missing=['stress', 'duration']; Shape B:
+        # has_stress=False, duration_ok=False. Equivalent.
+        self.assertIn("stress", shape_a["session_1_gate"]["missing"])
+        self.assertIn("duration", shape_a["session_1_gate"]["missing"])
+        self.assertFalse(shape_b["criteria"]["has_stress"])
+        self.assertFalse(shape_b["criteria"]["duration_ok"])
+        self.assertTrue(shape_b["criteria"]["has_charisma"])
+
+
 if __name__ == "__main__":
     unittest.main()
