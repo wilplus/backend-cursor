@@ -12945,6 +12945,36 @@ def v2_public_interview_upload_answer():
                     guest_session_id, cs_err,
                 )
 
+        # Task 6 — session-1 completion gate (replaces the legacy
+        # 30s-only threshold). Surface the readiness state on every
+        # upload-answer so FE can render "you still need 1 stress
+        # answer + 12s more audio" progress copy and decide when to
+        # fire its onThresholdReached callback. Best-effort: gate
+        # eval can't fail the upload (the helper itself returns an
+        # all-zeros shape on DB hiccups).
+        gate_state: dict = {
+            "session_1_complete": False,
+            "session_1_gate": {
+                "charisma_count": 0,
+                "stress_count": 0,
+                "duration_seconds": 0.0,
+                "threshold_seconds": 60,
+                "missing": ["charisma", "stress", "duration"],
+            },
+        }
+        try:
+            from services.interview_completion_gate import (
+                session_1_completion_state,
+            )
+            gate_state = session_1_completion_state(guest_session_id)
+        except Exception as gate_err:
+            logger.warning(
+                "interview/upload-answer: completion gate eval "
+                "failed sid=%s err=%s (non-fatal — defaulting to "
+                "incomplete)",
+                guest_session_id, gate_err,
+            )
+
         return jsonify({
             "status": "ok",
             "guest_session_id": guest_session_id,
@@ -12954,6 +12984,10 @@ def v2_public_interview_upload_answer():
             "metrics": snippet_metrics,
             "transcript": transcript_text,
             "freemium_tease": freemium_tease,
+            # Task 6 — session-1 completion gate (cold-start funnel only).
+            # See services.interview_completion_gate for the predicate.
+            "session_1_complete": gate_state["session_1_complete"],
+            "session_1_gate": gate_state["session_1_gate"],
         }), 201
 
     except Exception as e:
