@@ -8,6 +8,79 @@ def utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
+import re as _re
+
+
+# Threshold for the "real correction vs cosmetic edit" gate on the
+# admin RLHF write paths. Anything <= this many changed word tokens
+# is treated as cosmetic and either rejected (422) or saved with the
+# RLHF signal suppressed via the `is_trivial_edit` override.
+# Tuned to the brainstorm's "don't trust the client" anti-lazy-admin
+# brief; parameterize per-surface if a longer field (e.g. coaching
+# rationale paragraphs) needs a different floor later.
+TRIVIAL_EDIT_TOKEN_THRESHOLD = 5
+
+
+def _word_tokens(s: Optional[str]) -> list[str]:
+    """Tokenize a string into comparable words for the trivial-edit gate.
+
+    Strips non-word punctuation, lowercases, splits on whitespace.
+    Empty / None input → empty list. The normalisation is intentional:
+    a stray comma, capitalisation flip, or trailing space MUST NOT
+    count as a real correction (those are exactly the cosmetic edits
+    the gate is built to catch).
+    """
+    if not s:
+        return []
+    cleaned = _re.sub(r"[^\w\s]", " ", s.lower())
+    return cleaned.split()
+
+
+def changed_word_tokens(a: Optional[str], b: Optional[str]) -> int:
+    """Levenshtein distance over whitespace-split word tokens.
+
+    Returns the number of insertions + deletions + substitutions
+    needed to transform ``a`` → ``b`` at the WORD level (not char
+    level). Case-insensitive and punctuation-insensitive (see
+    ``_word_tokens``).
+
+    Why Levenshtein over a simple set-diff: a symmetric set diff
+    treats "brave and bold" vs "bold and brave" as 0 changes — but
+    that's the kind of reordering an admin would consider a real
+    edit. Levenshtein catches it as 2 substitutions (one for each
+    swapped position). Matches admin intuition.
+
+    Empty input on either side returns the other's token count, so
+    typed-from-scratch admin content always reflects its full word
+    count against the threshold (and so a 6-word note still passes
+    the gate even with no AI baseline to diff against).
+
+    O(n*m) time / space, but n and m are word counts not char
+    counts — comments + rationales are bounded by what fits in a
+    chat bubble (low hundreds at most), so this is fine.
+    """
+    ta = _word_tokens(a)
+    tb = _word_tokens(b)
+    if not ta:
+        return len(tb)
+    if not tb:
+        return len(ta)
+    # Classic two-row DP. dp[j] = edit distance between ta[:i] and
+    # tb[:j] after the current i-th row is computed.
+    prev = list(range(len(tb) + 1))
+    for i, x in enumerate(ta, start=1):
+        cur = [i] + [0] * len(tb)
+        for j, y in enumerate(tb, start=1):
+            cost = 0 if x == y else 1
+            cur[j] = min(
+                cur[j - 1] + 1,        # insertion (in b)
+                prev[j] + 1,            # deletion (from a)
+                prev[j - 1] + cost,     # substitution / match
+            )
+        prev = cur
+    return prev[-1]
+
+
 def render_admin_dont_ask_block(notes: Optional[str]) -> Optional[str]:
     """Render ``user_settings.private_admin_notes`` as a prompt block, or None.
 

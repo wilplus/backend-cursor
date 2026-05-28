@@ -7791,23 +7791,38 @@ class DatabaseService:
         rationale_text: str,
         edited_by_admin: bool,
         reviewed_at: str,
+        is_trivial_edit: bool = False,
     ) -> dict | None:
         """Persist an admin's review of the AI evaluator's rationale.
 
         Lives inside the existing ``follow_up_outcome.evaluator`` JSONB
         block (Phase 14.x — frontend's contract) rather than as a
         separate column, so we read the current outcome, mutate the
-        two review fields, and write the whole JSONB back.
+        review fields, and write the whole JSONB back.
 
         Semantics::
 
-          edited_by_admin=True  → admin_corrected_rationale = rationale_text
-                                   (admin's edited version of the AI text)
-          edited_by_admin=False → admin_corrected_rationale = None
-                                   (admin approved the AI rationale verbatim;
-                                   stored as null so the publish-time
-                                   annotation logic can falls back to the
-                                   AI rationale and detect approved_as_is)
+          edited_by_admin=True, is_trivial_edit=False
+            → admin_corrected_rationale = rationale_text
+              was_trivial_edit (cleared / not set)
+              "Real correction; train on this."
+
+          edited_by_admin=True, is_trivial_edit=True
+            → admin_corrected_rationale = rationale_text
+              was_trivial_edit = True
+              "Admin's edit preserved as user-facing copy, but the
+               diff was sub-threshold — publish-time annotation
+               consumers MUST check the flag and treat as approval
+               rather than correction. Set by the word-token diff
+               gate (services.utils.changed_word_tokens) when the
+               admin overrode a 422 with the 'trivial edit'
+               checkbox."
+
+          edited_by_admin=False (is_trivial_edit ignored)
+            → admin_corrected_rationale = None
+              "Admin approved the AI rationale verbatim; stored as
+               null so the publish-time annotation logic falls back
+               to the AI rationale and detects approved_as_is."
 
         ``admin_reviewed_at`` is always stamped — its presence is what
         distinguishes "admin reviewed and approved" from "admin never
@@ -7858,6 +7873,17 @@ class DatabaseService:
             (rationale_text or "").strip() if edited_by_admin else None
         )
         evaluator["admin_reviewed_at"] = reviewed_at
+        # was_trivial_edit only carries meaning when edited_by_admin
+        # is True (we actually saved corrected text). Set the flag
+        # in both directions so explicit True/False is recoverable;
+        # publish-time consumers default to False on absent key.
+        if edited_by_admin:
+            evaluator["was_trivial_edit"] = bool(is_trivial_edit)
+        else:
+            # Approval path discards corrected text — the trivial-
+            # edit concept doesn't apply. Clear any stale flag from
+            # a previous save so a re-review doesn't carry it over.
+            evaluator.pop("was_trivial_edit", None)
         outcome["evaluator"] = evaluator
 
         try:
