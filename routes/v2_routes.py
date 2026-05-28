@@ -8642,10 +8642,10 @@ def _augment_interview_prompt_with_profile(
     hard-fails on profile load.
     """
     learner_type = ""
-    custom_instructions = ""
+    admin_instructions = ""
     try:
         settings = db.get_user_settings(user_id) or {}
-        custom_instructions = (
+        admin_instructions = (
             settings.get("custom_llm_instructions") or ""
         ).strip()
     except Exception as e:
@@ -8681,14 +8681,14 @@ def _augment_interview_prompt_with_profile(
             "interview: master-score block failed user=%s: %s", user_id, e,
         )
 
-    if not learner_type and not custom_instructions and not metrics_block:
+    if not learner_type and not admin_instructions and not metrics_block:
         return base_prompt
 
     block_lines = ["", "[COACHING CONTEXT]"]
     if learner_type:
         block_lines.append(f"Learner Profile: {learner_type}")
-    if custom_instructions:
-        block_lines.append(f"Admin Notes: {custom_instructions}")
+    if admin_instructions:
+        block_lines.append(f"Admin Notes: {admin_instructions}")
     block_lines.append("")
     block_lines.append(
         "Directive: Use this profile to shape your challenge style and "
@@ -8704,11 +8704,12 @@ def _augment_interview_prompt_with_profile(
 
     # Keep the legacy verbatim block as well — admins relying on the
     # old "ADDITIONAL INSTRUCTIONS FOR THIS USER" wording in their
-    # custom_llm_instructions content still see it surface unchanged.
-    if custom_instructions:
+    # user_settings.custom_llm_instructions content still see it
+    # surface unchanged.
+    if admin_instructions:
         augmented += (
             "\n\nADDITIONAL INSTRUCTIONS FOR THIS USER:\n"
-            f"{custom_instructions}"
+            f"{admin_instructions}"
         )
 
     return augmented
@@ -8809,13 +8810,13 @@ def _augment_coaching_system_prompt(base_prompt: str, user_id: str) -> str:
     profile is unreadable.
     """
     learner_type: str = ""
-    custom_instructions: str = ""
+    admin_instructions: str = ""
     inferred_profile: dict | None = None
 
     settings: dict = {}
     try:
         settings = db.get_user_settings(user_id) or {}
-        custom_instructions = (settings.get("custom_llm_instructions") or "").strip()
+        admin_instructions = (settings.get("custom_llm_instructions") or "").strip()
     except Exception as e:
         logger.warning("coaching/turn: settings load failed user=%s: %s", user_id, e)
 
@@ -8859,14 +8860,14 @@ def _augment_coaching_system_prompt(base_prompt: str, user_id: str) -> str:
             user_id, e,
         )
 
-    if not learner_type and not custom_instructions and not insights_block:
+    if not learner_type and not admin_instructions and not insights_block:
         return base_prompt
 
     lines: list[str] = ["[USER LONG-TERM PROFILE]"]
     if learner_type:
         lines.append(f"Learner Type: {learner_type}")
-    if custom_instructions:
-        lines.append(f"Custom Coaching Instructions: {custom_instructions}")
+    if admin_instructions:
+        lines.append(f"Custom Coaching Instructions: {admin_instructions}")
     if insights_block:
         lines.append("")
         header = (

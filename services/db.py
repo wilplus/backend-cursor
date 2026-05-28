@@ -577,10 +577,17 @@ class DatabaseService:
         return result.data[0] if result.data else None
     
     def get_user_admin_context(self, user_id: str):
-        """Return admin context for report generation. V2: no professional_notes tables; minimal dict."""
+        """Return admin context for report generation. V2: no professional_notes tables; minimal dict.
+
+        Note: the legacy V1 admin-instructions field (tied to the
+        deleted professional_notes_report_tech table) was removed
+        from this stub when the FE killed its corresponding surface
+        in commit ed9ed70. The downstream prompt branch in
+        services.openai_service was always reading None here, so
+        the branch was dead code; both ends were dropped together.
+        """
         return {
             "general_notes": None,
-            "custom_instructions": None,
             "max_words": 120,
             "specific_questions": [],
         }

@@ -506,17 +506,12 @@ Metrics:
 
 """
         
-        # Add custom instructions if available
-        if admin_context and admin_context.get("custom_instructions"):
-            prompt += f"""
-**Admin Custom Instructions:**
-{admin_context['custom_instructions']}
+        # Legacy V1 admin-instructions field (tied to the deleted
+        # professional_notes_report_tech table) was always read as
+        # None here — its splice branch was dead code and is now
+        # removed. If/when admin coaching instructions come back,
+        # wire a new key here rather than reviving the dead name.
 
-- If the admin explicitly asks to add something to the next coaching message / report (e.g. "add this to the coaching message after the next recording", "include in the next report:"), you MUST include that content in this report.
-- Otherwise incorporate these when they improve the report for this user. If not applicable to this recording, omit.
-
-"""
-        
         # Add progress context for time-aware analysis
         if progress_context:
             prompt += f"""
