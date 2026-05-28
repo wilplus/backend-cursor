@@ -1208,6 +1208,15 @@ def _render_snippet_card(snippet: dict) -> dict:
             "ai_draft_follow_up_question"
         ),
         "transcript": snippet.get("transcript"),
+        # Per-snippet Whisper output (added by the snippet-transcripts
+        # pipeline — see migrations/add_snippet_transcripts.sql).
+        # All three fields are nullable: transcription is best-effort
+        # at generation time and the backfill script catches up later.
+        # FE should treat any of them being null as "transcript-only
+        # mode" and hide word-level UI.
+        "language": snippet.get("language"),
+        "words": snippet.get("words"),
+        "transcribed_duration_ms": snippet.get("transcribed_duration_ms"),
         "is_skipped": bool(snippet.get("is_skipped")),
     }
 
