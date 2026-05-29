@@ -270,7 +270,8 @@ def _serialise_turns(previous_turns: list[dict]) -> list[dict]:
 
 
 def _build_system_prompt() -> str:
-    return (
+    from services.will_voice import with_voice_rules
+    return with_voice_rules(
         "You're a charisma coach analysing a brand-new user's EBCP "
         "Baseline Mapping (4 scripted opener turns).\n"
         "\n"

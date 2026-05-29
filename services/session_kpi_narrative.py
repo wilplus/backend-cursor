@@ -196,7 +196,8 @@ def _llm_generate_narrative(
     if not service.client:
         return None
 
-    system = (
+    from services.will_voice import with_voice_rules
+    system = with_voice_rules(
         "You write a short post-session reflection that ships verbatim "
         "into the user's results dashboard as the top narrative. The "
         "radar + heatmap + scores below it carry the raw numbers, so "

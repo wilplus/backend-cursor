@@ -173,7 +173,8 @@ def _load_settings(user_id: str) -> dict | None:
 
 
 def _build_system_prompt() -> str:
-    return (
+    from services.will_voice import with_voice_rules
+    return with_voice_rules(
         "You are writing a brief, warm reflection back to a user who "
         "has been practising charisma / stress coaching with this "
         "system. They have asked: \"What are you noticing about me?\"\n"

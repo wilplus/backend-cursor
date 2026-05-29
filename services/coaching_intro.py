@@ -106,7 +106,8 @@ def generate_intro_line(
     else:
         user_stance = "(unknown)"
 
-    system = (
+    from services.will_voice import with_voice_rules
+    system = with_voice_rules(
         "You are a warm communication coach. The user just finished "
         "reviewing a snippet from their previous recording — they "
         "marked whether they agreed with the coach's label, then "

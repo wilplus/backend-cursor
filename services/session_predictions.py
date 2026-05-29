@@ -207,7 +207,8 @@ def _llm_generate(
     if not service.client:
         return None
 
-    system = (
+    from services.will_voice import with_voice_rules
+    system = with_voice_rules(
         "You are pre-writing admin-facing drafts a coach can accept "
         "or edit before publishing a coaching session to the user. "
         "Two outputs, both addressed TO the user as a coach would "

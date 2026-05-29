@@ -193,7 +193,9 @@ How does training me through the app actually work if I'm not stressed talking t
 """
 
 
-_SYSTEM_PROMPT = (
+from services.will_voice import with_voice_rules
+
+_SYSTEM_PROMPT = with_voice_rules(
     "You are an FAQ assistant for a voice-analysis coaching product. "
     "Users ask you about the product's philosophy, the science behind "
     "the voice work, what the system actually does, who is behind it, "

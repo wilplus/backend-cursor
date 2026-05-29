@@ -331,11 +331,12 @@ def _llm_generate_question(
     try:
         from services.llm import chat_complete
         from services.llm_config import SPEC_NEXT_SESSION_ICEBREAKER
+        from services.will_voice import with_voice_rules
     except Exception as e:
         logger.warning("icebreaker: llm import failed: %s", e)
         return None
 
-    system = (
+    system = with_voice_rules(
         "You are designing the FIRST question of a coaching session's "
         "warm-up phase. You'll be given a digest of the user's "
         "PREVIOUS coaching session — the snippets they recorded and "

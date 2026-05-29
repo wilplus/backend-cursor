@@ -189,7 +189,8 @@ def _call_llm_draft(
 
 
 def _charisma_system_prompt() -> str:
-    return (
+    from services.will_voice import with_voice_rules
+    return with_voice_rules(
         "You write the one-sentence admin comment a charisma coach "
         "would leave on a snippet where a user sounded magnetic — "
         "confident, in flow, perfectly paced. The admin will see "
@@ -208,7 +209,8 @@ def _charisma_system_prompt() -> str:
 
 
 def _stress_system_prompt() -> str:
-    return (
+    from services.will_voice import with_voice_rules
+    return with_voice_rules(
         "You write the one-sentence coach note a charisma coach "
         "would leave on a snippet where a user's voice tightened "
         "under pressure. The admin will see your suggestion as a "

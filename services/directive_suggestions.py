@@ -74,7 +74,8 @@ def suggest_directive_arc(
         snippet_id_context=snippet_id_context,
     )
 
-    system = (
+    from services.will_voice import with_voice_rules
+    system = with_voice_rules(
         f"You are an expert communication coach building a "
         f"{_ARC_LENGTH}-step coaching arc for ONE user. Each step "
         "is one open-ended question the AI will ask in their next "

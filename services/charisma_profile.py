@@ -1002,7 +1002,8 @@ def _llm_insight_and_recommendation(
         return None
 
     peak_intensity_point = _peak_trigger_point(triggers)
-    system = (
+    from services.will_voice import with_voice_rules
+    system = with_voice_rules(
         "You write short coaching copy for a Charisma Awareness "
         "Dashboard. Voice: warm, specific, second-person. No "
         "therapy-speak, no motivational fluff. Ground every claim "
