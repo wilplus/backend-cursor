@@ -5627,30 +5627,141 @@ class DatabaseService:
         user_id: str,
         *,
         limit: int = 200,
+        offset: int = 0,
     ) -> list[dict]:
-        """Return all user_uploaded_files rows for ``user_id``,
-        newest first.
+        """Return user_uploaded_files rows for ``user_id``, newest first.
 
-        Backs the admin Files tab. ``limit`` is generous (200)
-        because the table is per-user; if a user accumulates more
-        than 200 uploads we'll add pagination then.
+        Backs the admin Files tab. Soft-deleted rows (deleted_at
+        not null, per Task 9's DELETE endpoint) are excluded so the
+        admin never sees them in the list.
+
+        Task 9 pagination — caller passes the FE's ``limit`` AND we
+        fetch ``limit + 1`` so the route handler can compute
+        ``has_more`` without a second count query. Caller is
+        responsible for truncating the response slice to ``limit``
+        before serialising. Default limit of 200 matches the
+        pre-pagination behaviour for callers that don't paginate.
         """
         try:
+            lim = max(1, int(limit))
+            off = max(0, int(offset))
+            # Fetch one extra so the caller can compute has_more
+            # without a separate count() — saves one round-trip.
+            fetch_count = lim + 1
             result = (
                 self.client.table("user_uploaded_files")
                 .select("*")
                 .eq("user_id", user_id)
+                .is_("deleted_at", "null")
                 .order("created_at", desc=True)
-                .limit(max(1, int(limit)))
+                .range(off, off + fetch_count - 1)
                 .execute()
             )
-            return result.data or []
+            rows = result.data or []
+            # The deleted_at column may not exist yet during the
+            # rollout window. Re-issue the query without the
+            # filter so the page keeps working pre-migration.
+            return rows
         except Exception as e:
+            # Detect the "column doesn't exist" case (migration
+            # pending) and retry without the soft-delete filter.
+            err_low = str(e).lower()
+            if "deleted_at" in err_low or "pgrst204" in err_low:
+                logger.warning(
+                    "list_user_uploaded_files_for_user: deleted_at "
+                    "column missing (run migrations/add_deleted_"
+                    "at_to_user_uploaded_files.sql) — falling back "
+                    "to unfiltered list user=%s",
+                    user_id,
+                )
+                try:
+                    lim = max(1, int(limit))
+                    off = max(0, int(offset))
+                    fetch_count = lim + 1
+                    result = (
+                        self.client.table("user_uploaded_files")
+                        .select("*")
+                        .eq("user_id", user_id)
+                        .order("created_at", desc=True)
+                        .range(off, off + fetch_count - 1)
+                        .execute()
+                    )
+                    return result.data or []
+                except Exception as fallback_err:
+                    logger.warning(
+                        "list_user_uploaded_files_for_user fallback "
+                        "failed user=%s err=%s",
+                        user_id, fallback_err,
+                    )
+                    return []
             logger.warning(
                 "list_user_uploaded_files_for_user failed user=%s err=%s",
                 user_id, e,
             )
             return []
+
+    def soft_delete_user_uploaded_file(
+        self,
+        file_id: str,
+        user_id: str,
+    ) -> Optional[dict]:
+        """Owner-scoped soft delete on user_uploaded_files.
+
+        Marks the row with ``deleted_at = NOW()`` instead of
+        DELETE'ing — the weekly hard-delete cron sweeps soft-
+        deleted rows + their R2 bytes. Two-phase delete:
+
+          (1) admin clicks → row.deleted_at set; the API filters
+              it out of the Files list immediately, user-facing
+              surfaces stop linking to it.
+          (2) ~weekly cron → object removed from R2, row removed
+              from DB.
+
+        Owner scope is enforced inline (user_id eq) so a request
+        body that targets a different user's file_id with the
+        wrong user_id quietly no-ops. Caller must verify the
+        admin-context user_id matches the path user_id BEFORE
+        calling this — admins delete other users' files, but only
+        through the admin-scoped route, which provides the
+        authoritative user_id.
+
+        Returns the updated row on success, None on failure or no-
+        match. None is sufficient information for the route to
+        return 404 — admin doesn't need to distinguish "not yours"
+        from "doesn't exist" (existence leak protection).
+        """
+        if not file_id or not user_id:
+            return None
+        try:
+            from datetime import timezone, datetime
+            now_utc = datetime.now(timezone.utc).isoformat()
+            result = (
+                self.client.table("user_uploaded_files")
+                .update({"deleted_at": now_utc})
+                .eq("id", file_id)
+                .eq("user_id", user_id)
+                .is_("deleted_at", "null")
+                .execute()
+            )
+            if result.data and len(result.data) > 0:
+                return result.data[0]
+            return None
+        except Exception as e:
+            err_low = str(e).lower()
+            if "deleted_at" in err_low or "pgrst204" in err_low:
+                logger.warning(
+                    "soft_delete_user_uploaded_file: deleted_at "
+                    "column missing (run migrations/add_deleted_"
+                    "at_to_user_uploaded_files.sql) file=%s user=%s",
+                    file_id, user_id,
+                )
+                return None
+            logger.error(
+                "soft_delete_user_uploaded_file failed file=%s "
+                "user=%s err=%s",
+                file_id, user_id, e,
+            )
+            return None
 
     def get_pending_review_session_for_user(
         self,

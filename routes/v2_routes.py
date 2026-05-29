@@ -15277,6 +15277,16 @@ def v2_admin_get_user_files(user_id):
     is the user whose files we list — distinct from the admin
     making the request.
 
+    Query params:
+      ?limit=N       Page size, default 50, max 200, min 1.
+      ?offset=N      Page offset, default 0.
+      ?expires_in=N  Signed-URL TTL in seconds (private buckets
+                     only). Default SIGNED_URL_EXPIRY_SECONDS,
+                     clamped to [60, 604800] by the storage helper.
+
+    Soft-deleted rows (deleted_at IS NOT NULL — see Task 9 DELETE
+    endpoint) are excluded — the admin never sees them in the list.
+
     Response (200)::
 
         {
@@ -15295,7 +15305,12 @@ def v2_admin_get_user_files(user_id):
             },
             ...
           ],
-          "total": N
+          "limit":    50,
+          "offset":   0,
+          "total":    <int>,        // count in THIS response slice
+          "has_more": bool          // true when more rows exist past
+                                     // this slice (FE renders "Load
+                                     // more" button)
         }
     """
     try:
@@ -15313,7 +15328,26 @@ def v2_admin_get_user_files(user_id):
         except (TypeError, ValueError):
             expires_in = config.SIGNED_URL_EXPIRY_SECONDS
 
-        rows = db.list_user_uploaded_files_for_user(user_id) or []
+        # Task 9 pagination. Defaults match the FE migration commit's
+        # initial fetch (50). Hard ceiling at 200 to bound payload
+        # size on a power-uploader's first page.
+        try:
+            limit = max(1, min(200, int(request.args.get("limit", 50))))
+        except (TypeError, ValueError):
+            limit = 50
+        try:
+            offset = max(0, int(request.args.get("offset", 0)))
+        except (TypeError, ValueError):
+            offset = 0
+
+        # The db helper fetches limit+1 so we can decide has_more
+        # without a second count() round-trip.
+        rows = db.list_user_uploaded_files_for_user(
+            user_id, limit=limit, offset=offset,
+        ) or []
+        has_more = len(rows) > limit
+        if has_more:
+            rows = rows[:limit]
 
         from services.user_media_storage import presigned_get_user_media
 
@@ -15346,7 +15380,10 @@ def v2_admin_get_user_files(user_id):
         return jsonify({
             "user_id": user_id,
             "files": files,
+            "limit": limit,
+            "offset": offset,
             "total": len(files),
+            "has_more": has_more,
         }), 200
 
     except Exception as e:
@@ -15357,6 +15394,74 @@ def v2_admin_get_user_files(user_id):
         return jsonify({
             "code": "V2_ERROR",
             "error": "Failed to fetch user files",
+        }), 500
+
+
+@v2_bp.route(
+    "/admin/users/<user_id>/files/<file_id>",
+    methods=["DELETE"],
+)
+@require_admin
+def v2_admin_delete_user_file(user_id, file_id):
+    """Soft-delete one of ``user_id``'s uploaded files (Task 9).
+
+    Marks ``user_uploaded_files.deleted_at = NOW()`` for the
+    target row. The file disappears from the GET /files list
+    immediately. R2 bytes + row are purged by a weekly cron that
+    sweeps soft-deleted rows.
+
+    Owner-scoping: the path's ``user_id`` is the owner; the
+    helper enforces ``user_id eq + id eq + deleted_at IS NULL``.
+    A file_id that belongs to a different user, or a file that
+    was already soft-deleted, returns 404 — no existence leak.
+
+    Auth: admin only (``@require_admin``).
+
+    Responses:
+      204 — soft-delete succeeded; no body.
+      400 INVALID_INPUT — bad UUID on either path param.
+      404 FILE_NOT_FOUND — file_id doesn't belong to this user,
+                           or row was already soft-deleted.
+      500 V2_ERROR — unexpected.
+    """
+    if not _is_valid_uuid(user_id):
+        return jsonify({
+            "code": "INVALID_INPUT",
+            "error": "user_id must be a valid UUID",
+        }), 400
+    if not _is_valid_uuid(file_id):
+        return jsonify({
+            "code": "INVALID_INPUT",
+            "error": "file_id must be a valid UUID",
+        }), 400
+
+    try:
+        updated = db.soft_delete_user_uploaded_file(
+            file_id=file_id, user_id=user_id,
+        )
+        if not updated:
+            return jsonify({
+                "code": "FILE_NOT_FOUND",
+                "error": "File not found",
+            }), 404
+
+        logger.info(
+            "admin: soft-deleted user file user=%s file=%s "
+            "by admin=%s",
+            user_id, file_id,
+            getattr(request, "user_id", None),
+        )
+        return ("", 204)
+
+    except Exception as e:
+        logger.error(
+            "admin/users/<id>/files/<id> DELETE failed: %s",
+            e, exc_info=True,
+        )
+        sentry_sdk.capture_exception(e)
+        return jsonify({
+            "code": "V2_ERROR",
+            "error": "Failed to delete file",
         }), 500
 
 
