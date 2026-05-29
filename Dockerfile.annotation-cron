@@ -9,7 +9,7 @@
 #   ANNOTATION_EXPORT_CRON_SECRET  same as on the Flask web service
 # Optional: ANNOTATION_EXPORT_LIMIT (default 20000)
 
-FROM curlimages/curl:8.11.1
+FROM curlimages/curl:8.20.0
 WORKDIR /app
 COPY bin/railway-annotation-export-cron.sh /app/run.sh
 ENTRYPOINT ["/bin/sh", "/app/run.sh"]
