@@ -10557,6 +10557,38 @@ def v2_user_chat_first_question():
                 },
             }), 200
 
+        # ── 2) Task 10 — next-session icebreaker (soft-queue read).
+        # Cold-start path only: if a sourceSnippet/intent is provided
+        # the user came in via the snippet-deep-dive CTA, not a fresh
+        # session opener, and the icebreaker should be saved for a
+        # true new-session entry. Marks the source row 'delivered'
+        # atomically with the read (mirrors pop_next_directive's
+        # mark-exhausted pattern).
+        #
+        # Priority slot: AFTER directives_queue (admin always wins),
+        # BEFORE contextual_init / dynamic LLM.
+        if not (source_snippet_id or intent):
+            icebreaker_payload = db.pop_pending_icebreaker_for_user(
+                user_id,
+            )
+            if icebreaker_payload:
+                logger.info(
+                    "first_question.icebreaker_hit user=%s "
+                    "source_sid=%s",
+                    user_id,
+                    icebreaker_payload.get("source_session_id"),
+                )
+                return jsonify({
+                    "status": "ok",
+                    "question": icebreaker_payload.get("question"),
+                    "source": "prev_session_icebreaker",
+                    "icebreaker": {
+                        "source_session_id": icebreaker_payload.get(
+                            "source_session_id",
+                        ),
+                    },
+                }), 200
+
         contextual_init = None
         if source_snippet_id or intent:
             if not (source_snippet_id and intent):
@@ -16759,6 +16791,364 @@ def v2_admin_update_session_kpi_narrative(session_id):
         }), 500
 
 
+# ── Task 10 — Next-session icebreaker (admin endpoints) ─────────────
+#
+# Lives on session N's row; previewed/edited from admin Tab 1
+# (Sessions & Analysis). After session N+1's first chat message
+# delivers it (via /v2/user/chat/first-question), the row's status
+# flips to 'delivered' and the card becomes read-only.
+#
+# Three endpoints below: GET (poll-safe; FE polls every ~3s while
+# queue_status='not_yet_generated' post-finalize), PUT (Save —
+# empty save = 'skipped'), POST /regenerate (blows away admin
+# edits and re-runs the LLM; rate-limited).
+#
+# See: services/next_session_icebreaker.py for the generator +
+# validator, services/db.py get_next_session_icebreaker_row /
+# update_next_session_icebreaker_editable, and
+# migrations/add_next_session_icebreaker_columns.sql for the
+# column shape.
+
+
+# In-process rate-limit map for the regenerate endpoint. {sid: ts}.
+# Per-worker (no cross-worker coordination), 60s window. The map is
+# bounded by the active-admin set size — no eviction needed at
+# realistic scale. Promote to Redis if we ever multi-worker the
+# admin surface heavily.
+_ICEBREAKER_REGEN_RATE_LIMIT_SEC = 60
+_icebreaker_regen_last: dict[str, float] = {}
+
+
+def _build_icebreaker_response(
+    session_id: str,
+    row: dict,
+) -> dict:
+    """Shared GET-shape builder.
+
+    Returns the payload structure documented in the FE handoff §2.
+    Centralized so GET, PUT, and regenerate all return the same
+    shape — FE handles a single response contract.
+    """
+    from services.next_session_icebreaker import derive_queue_status
+
+    owner_id = row.get("user_id")
+    # next_session_id derivation — only fire the lookup when there's
+    # actually a draft to talk about. Saves a query on the
+    # not_yet_generated state, which is what the FE polls hardest.
+    next_session_id: str | None = None
+    ai_draft_present = bool(
+        (row.get("next_session_icebreaker_ai_draft") or "").strip()
+    )
+    if ai_draft_present and owner_id:
+        next_session_id = db.get_next_session_id_for(
+            user_id=str(owner_id),
+            after_session_id=session_id,
+        )
+
+    queue_status = derive_queue_status(row, has_next_session=bool(next_session_id))
+
+    return {
+        "session_id": session_id,
+        "ai_draft": row.get("next_session_icebreaker_ai_draft"),
+        "ai_draft_generated_at": row.get(
+            "next_session_icebreaker_ai_draft_generated_at",
+        ),
+        "current": row.get("next_session_icebreaker"),
+        "edited_at": row.get("next_session_icebreaker_edited_at"),
+        "edited_by_admin": bool(
+            row.get("next_session_icebreaker_edited_at")
+        ),
+        "queue_status": queue_status,
+        "next_session_id": next_session_id,
+        "generation_error": row.get(
+            "next_session_icebreaker_generation_error"
+        ),
+    }
+
+
+@v2_bp.route(
+    "/admin/sessions/<session_id>/next-session-icebreaker",
+    methods=["GET"],
+)
+@require_admin
+def v2_admin_get_next_session_icebreaker(session_id):
+    """Read the icebreaker state for ``session_id``.
+
+    Poll-safe per FE handoff Change 3: FE polls every ~3s while the
+    derived queue_status is 'not_yet_generated' (post-finalize
+    spinner), capped at ~60s then manual refresh. Single-row read,
+    optional one-query lookup for n+1 — well under the cost
+    threshold for that polling cadence.
+
+    Responses:
+      200 — the payload shape in services.next_session_icebreaker
+            documentation + FE handoff §2.
+      400 INVALID_INPUT       — session_id not a UUID
+      404 SESSION_NOT_FOUND   — session row missing OR columns not
+                                migrated. Same code so the FE
+                                renders an empty card either way;
+                                the deploy-time migration mismatch
+                                is logged server-side.
+      500 V2_ERROR            — unexpected.
+    """
+    if not _is_valid_uuid(session_id):
+        return jsonify({
+            "code": "INVALID_INPUT",
+            "error": "session_id must be a valid UUID",
+        }), 400
+
+    try:
+        row = db.get_next_session_icebreaker_row(session_id)
+        if not row:
+            return jsonify({
+                "code": "SESSION_NOT_FOUND",
+                "error": "Session not found",
+            }), 404
+
+        return jsonify(
+            _build_icebreaker_response(session_id, row),
+        ), 200
+
+    except Exception as e:
+        logger.error(
+            "admin/sessions/<id>/next-session-icebreaker GET "
+            "failed: %s", e, exc_info=True,
+        )
+        sentry_sdk.capture_exception(e)
+        return jsonify({
+            "code": "V2_ERROR",
+            "error": "Failed to fetch next-session icebreaker",
+        }), 500
+
+
+@v2_bp.route(
+    "/admin/sessions/<session_id>/next-session-icebreaker",
+    methods=["PUT"],
+)
+@require_admin
+def v2_admin_update_next_session_icebreaker(session_id):
+    """Save an admin edit to the icebreaker.
+
+    Body::
+
+        { "question": "What surprised you about presenting last week?" }
+
+    Behaviour:
+      - Empty-after-trim → status='skipped', current=NULL. n+1 falls
+        through to the default first-question path.
+      - Non-empty → status='pending', current=<cleaned text>. Hard-
+        fails (422) if question doesn't end with '?' (FE handoff Q4)
+        or is < 5 / > 280 chars.
+      - NO EDIT_TOO_SMALL gate (FE handoff Q2 — icebreakers are
+        short by nature, a 1-word swap is meaningful).
+      - The immutable ai_draft column is NEVER touched. Diff
+        baseline stays pinned at generation time.
+
+    Responses:
+      200 — same payload shape as GET, with updated current/status/
+            edited_at fields.
+      400 INVALID_INPUT       — bad UUID or malformed body
+      404 SESSION_NOT_FOUND   — session row missing
+      422 INVALID_INPUT       — validator rejected (message in `error`)
+      500 V2_ERROR            — unexpected
+    """
+    if not _is_valid_uuid(session_id):
+        return jsonify({
+            "code": "INVALID_INPUT",
+            "error": "session_id must be a valid UUID",
+        }), 400
+
+    try:
+        from services.next_session_icebreaker import (
+            IcebreakerValidationError,
+            validate_icebreaker_body,
+        )
+
+        body = request.get_json(silent=True) or {}
+        try:
+            cleaned = validate_icebreaker_body(body)
+        except IcebreakerValidationError as ve:
+            return jsonify({
+                "code": "INVALID_INPUT",
+                "error": str(ve),
+            }), 422
+
+        # cleaned == None means "save empty" — admin chose skip.
+        if cleaned is None:
+            status_value = "skipped"
+            current_value: str | None = None
+        else:
+            status_value = "pending"
+            current_value = cleaned
+
+        row_before = db.get_next_session_icebreaker_row(session_id)
+        if not row_before:
+            return jsonify({
+                "code": "SESSION_NOT_FOUND",
+                "error": "Session not found",
+            }), 404
+
+        now_iso = datetime.now(timezone.utc).isoformat()
+        ok = db.update_next_session_icebreaker_editable(
+            session_id=session_id,
+            current=current_value,
+            edited_at=now_iso,
+            status=status_value,
+        )
+        if not ok:
+            return jsonify({
+                "code": "V2_ERROR",
+                "error": "Failed to persist edit",
+            }), 500
+
+        logger.info(
+            "admin/next-session-icebreaker.save session=%s "
+            "status=%s len=%d",
+            session_id, status_value,
+            len(current_value or ""),
+        )
+
+        # Re-read so the response carries the freshly persisted
+        # values (no client/server drift on the timestamp).
+        row_after = db.get_next_session_icebreaker_row(session_id) or row_before
+        return jsonify(
+            _build_icebreaker_response(session_id, row_after),
+        ), 200
+
+    except Exception as e:
+        logger.error(
+            "admin/sessions/<id>/next-session-icebreaker PUT "
+            "failed: %s", e, exc_info=True,
+        )
+        sentry_sdk.capture_exception(e)
+        return jsonify({
+            "code": "V2_ERROR",
+            "error": "Failed to save next-session icebreaker",
+        }), 500
+
+
+@v2_bp.route(
+    "/admin/sessions/<session_id>/next-session-icebreaker/regenerate",
+    methods=["POST"],
+)
+@require_admin
+def v2_admin_regenerate_next_session_icebreaker(session_id):
+    """Re-run the LLM to produce a fresh icebreaker.
+
+    DESTRUCTIVE: per FE handoff Q3, regenerate blows away any
+    admin edit on both columns — fresh ai_draft AND fresh current.
+    FE owns the confirm modal.
+
+    Rate-limited to one call per session per minute (per worker)
+    unless ``{"force": true}`` is in the body. The cap exists to
+    keep an admin's accidental double-click from doubling our LLM
+    cost, not as a security boundary.
+
+    Responses:
+      200 — same payload shape as GET, with new ai_draft + current.
+      400 INVALID_INPUT       — bad UUID
+      404 SESSION_NOT_FOUND   — session row missing
+      429 RATE_LIMITED        — too soon since last regen; includes
+                                ``retry_after_seconds``.
+      502 LLM_UNAVAILABLE     — generator returned None (LLM down,
+                                empty response, or transcript too
+                                short). The generation_error column
+                                carries the specific tag.
+      500 V2_ERROR            — unexpected
+    """
+    if not _is_valid_uuid(session_id):
+        return jsonify({
+            "code": "INVALID_INPUT",
+            "error": "session_id must be a valid UUID",
+        }), 400
+
+    try:
+        body = request.get_json(silent=True) or {}
+        force = bool(body.get("force", False))
+
+        # Existence check — match the PUT behavior of returning 404
+        # before any DB writes when the session is gone.
+        row_before = db.get_next_session_icebreaker_row(session_id)
+        if not row_before:
+            return jsonify({
+                "code": "SESSION_NOT_FOUND",
+                "error": "Session not found",
+            }), 404
+
+        # Rate-limit: per-session, per-worker, in-memory map.
+        # `time.monotonic()` is non-decreasing within a process so a
+        # clock-skew event can't accidentally expire a valid entry.
+        now_mono = time.monotonic()
+        if not force:
+            last = _icebreaker_regen_last.get(session_id)
+            if last is not None:
+                elapsed = now_mono - last
+                if elapsed < _ICEBREAKER_REGEN_RATE_LIMIT_SEC:
+                    retry_after = int(
+                        _ICEBREAKER_REGEN_RATE_LIMIT_SEC - elapsed
+                    ) + 1
+                    return jsonify({
+                        "code": "RATE_LIMITED",
+                        "error": (
+                            "Regenerate is rate-limited. Try again in "
+                            f"{retry_after}s, or pass force=true."
+                        ),
+                        "retry_after_seconds": retry_after,
+                    }), 429
+
+        # Mark the attempt timestamp BEFORE the LLM call so a slow
+        # call (or one that hangs to timeout) still counts against
+        # the limit. Otherwise an admin could mash regenerate
+        # during a slow LLM and queue up parallel duplicates.
+        _icebreaker_regen_last[session_id] = now_mono
+
+        from services.next_session_icebreaker import (
+            generate_next_session_icebreaker,
+        )
+        question = generate_next_session_icebreaker(
+            session_id=session_id, overwrite=True,
+        )
+
+        if not question:
+            # generator already wrote the generation_error tag.
+            # Re-read so the response surfaces it.
+            row_after = (
+                db.get_next_session_icebreaker_row(session_id)
+                or row_before
+            )
+            payload = _build_icebreaker_response(session_id, row_after)
+            payload["code"] = "LLM_UNAVAILABLE"
+            payload["error"] = (
+                "Generation failed. The error tag is on "
+                "generation_error; try Regenerate again or check "
+                "the snippet content."
+            )
+            return jsonify(payload), 502
+
+        row_after = (
+            db.get_next_session_icebreaker_row(session_id)
+            or row_before
+        )
+        logger.info(
+            "admin/next-session-icebreaker.regenerate session=%s "
+            "len=%d", session_id, len(question or ""),
+        )
+        return jsonify(
+            _build_icebreaker_response(session_id, row_after),
+        ), 200
+
+    except Exception as e:
+        logger.error(
+            "admin/sessions/<id>/next-session-icebreaker/regenerate "
+            "failed: %s", e, exc_info=True,
+        )
+        sentry_sdk.capture_exception(e)
+        return jsonify({
+            "code": "V2_ERROR",
+            "error": "Failed to regenerate next-session icebreaker",
+        }), 500
+
+
 @v2_bp.route("/admin/sessions/<session_id>/compute-metrics", methods=["POST"])
 @require_admin
 def v2_admin_compute_session_metrics(session_id):
@@ -17965,12 +18355,37 @@ def v2_public_interview_finalize():
             )
             stickiness_status = "failed"
 
+        # Task 10 — next-session icebreaker. Best-effort, idempotent
+        # via the generator's overwrite=False short-circuit. The
+        # interview finalize fires before any admin review on the
+        # cold-start funnel, so the icebreaker that lands here is
+        # the first thing the admin will see in Tab 1's icebreaker
+        # card when they open the user.
+        icebreaker_status = "ready"
+        try:
+            from services.next_session_icebreaker import (
+                generate_next_session_icebreaker,
+            )
+            generated_q = generate_next_session_icebreaker(
+                session_id=gsid, overwrite=False,
+            )
+            if not generated_q:
+                icebreaker_status = "failed"
+        except Exception as ice_err:
+            logger.warning(
+                "interview_finalize: icebreaker generate failed "
+                "sid=%s err=%s",
+                gsid, ice_err,
+            )
+            icebreaker_status = "failed"
+
         return jsonify({
             "status": "ok",
             "completion": state,
             "next": {
                 "narrative_status": narrative_status,
                 "stickiness_status": stickiness_status,
+                "icebreaker_status": icebreaker_status,
                 "signup_cta": {
                     "show": True,
                     "copy": _FINALIZE_SIGNUP_CTA_COPY,

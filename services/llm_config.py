@@ -137,3 +137,19 @@ SPEC_EVAL_GRADER = LLMSpec(
     response_format={"type": "json_object"},
 )
 """Semantic grader for tests/evals/master_doc_probe.py."""
+
+
+SPEC_NEXT_SESSION_ICEBREAKER = LLMSpec(
+    model=CHEAP_MODEL,
+    # Some warmth — the question should feel like a coach who
+    # remembered, not a stock prompt — but kept moderate so the
+    # output stays anchored in the specific snippets we passed in.
+    temperature=0.7,
+    # 200 is plenty for ONE ≤280-char question (≈ 60 tokens) with
+    # safety margin for verbose schemas.
+    max_tokens=200,
+    # Schema lives in services/next_session_icebreaker.py and is
+    # passed through at call time via response_format_override.
+    response_format=None,
+)
+"""AI-prefilled icebreaker for session N+1 (Task 10)."""

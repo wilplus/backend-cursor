@@ -8475,6 +8475,407 @@ class DatabaseService:
             )
             return None
 
+    # ── Task 10 — Next-session icebreaker ────────────────────────────
+    #
+    # Split-sinks pattern (mirrors session_kpi_narrative_ai_draft +
+    # ai_task_alignment_comment): six columns on v2_sessions, atomic
+    # consumer pattern (mirrors pop_next_directive).
+    #
+    # See: services/next_session_icebreaker.py for the generator +
+    # validator, and migrations/add_next_session_icebreaker_columns.sql
+    # for the column shape.
+
+    def get_next_session_icebreaker_row(
+        self,
+        session_id: str,
+    ) -> Optional[dict]:
+        """Read the six icebreaker columns + session metadata for
+        the admin GET endpoint.
+
+        Returns a dict with the raw columns; the route layer derives
+        the public 5-state ``queue_status`` enum via
+        ``services.next_session_icebreaker.derive_queue_status``.
+
+        Returns None when the row doesn't exist OR when the columns
+        are missing (migration pending). Empty-row vs missing-column
+        is logged so we can tell them apart in audits.
+        """
+        if not session_id:
+            return None
+        try:
+            result = (
+                self.client.table("v2_sessions")
+                .select(
+                    "id, user_id, "
+                    "next_session_icebreaker_ai_draft, "
+                    "next_session_icebreaker_ai_draft_generated_at, "
+                    "next_session_icebreaker, "
+                    "next_session_icebreaker_edited_at, "
+                    "next_session_icebreaker_status, "
+                    "next_session_icebreaker_generation_error"
+                )
+                .eq("id", session_id)
+                .limit(1)
+                .execute()
+            )
+            if not result.data:
+                return None
+            return result.data[0]
+        except Exception as e:
+            err_low = str(e).lower()
+            if (
+                "next_session_icebreaker" in err_low
+                or "pgrst204" in err_low
+            ):
+                logger.warning(
+                    "get_next_session_icebreaker_row: columns missing "
+                    "(run migrations/add_next_session_icebreaker_"
+                    "columns.sql) sid=%s",
+                    session_id,
+                )
+                return None
+            logger.warning(
+                "get_next_session_icebreaker_row failed sid=%s err=%s",
+                session_id, e,
+            )
+            return None
+
+    def set_next_session_icebreaker_ai_draft(
+        self,
+        session_id: str,
+        *,
+        ai_draft: str,
+        generated_at: str,
+        reset_editable: bool,
+    ) -> bool:
+        """Persist the immutable AI baseline of the icebreaker.
+
+        Called from services.next_session_icebreaker.generate_next_
+        session_icebreaker — the only writer of the ai_draft column.
+
+        Writes:
+          - next_session_icebreaker_ai_draft = ai_draft
+          - next_session_icebreaker_ai_draft_generated_at = generated_at
+          - next_session_icebreaker_generation_error = NULL (success
+            clears any prior failure tag)
+
+        When ``reset_editable=True`` (default for first generation
+        AND regenerate), ALSO writes:
+          - next_session_icebreaker = ai_draft (current starts
+            equal to draft)
+          - next_session_icebreaker_edited_at = NULL
+          - next_session_icebreaker_status = 'pending'
+
+        ``reset_editable=False`` would preserve admin edits across a
+        re-generation — we don't expose that today (regenerate is
+        destructive by FE-approved design) but the kwarg leaves the
+        door open.
+
+        Returns True on success. Logs + returns False on:
+          - missing column (migration pending)
+          - generic DB failure
+        """
+        if not session_id or not ai_draft:
+            return False
+        payload: dict[str, Any] = {
+            "next_session_icebreaker_ai_draft": ai_draft,
+            "next_session_icebreaker_ai_draft_generated_at": generated_at,
+            "next_session_icebreaker_generation_error": None,
+        }
+        if reset_editable:
+            payload.update({
+                "next_session_icebreaker": ai_draft,
+                "next_session_icebreaker_edited_at": None,
+                "next_session_icebreaker_status": "pending",
+            })
+        try:
+            (
+                self.client.table("v2_sessions")
+                .update(payload)
+                .eq("id", session_id)
+                .execute()
+            )
+            return True
+        except Exception as e:
+            err_low = str(e).lower()
+            if (
+                "next_session_icebreaker" in err_low
+                or "pgrst204" in err_low
+            ):
+                logger.warning(
+                    "set_next_session_icebreaker_ai_draft: column "
+                    "missing (run migrations/add_next_session_"
+                    "icebreaker_columns.sql) sid=%s",
+                    session_id,
+                )
+                return False
+            logger.error(
+                "set_next_session_icebreaker_ai_draft failed sid=%s: %s",
+                session_id, e,
+            )
+            return False
+
+    def update_next_session_icebreaker_editable(
+        self,
+        session_id: str,
+        *,
+        current: Optional[str],
+        edited_at: str,
+        status: str,
+    ) -> bool:
+        """Admin-edit write path for the icebreaker.
+
+        Updates ONLY the editable columns:
+          - next_session_icebreaker = current
+          - next_session_icebreaker_edited_at = edited_at
+          - next_session_icebreaker_status = status
+
+        The immutable ai_draft column is intentionally NOT touched —
+        admin edits leave the LLM baseline pinned for diff tracking.
+
+        ``current=None`` + ``status='skipped'`` is the "admin cleared"
+        case: n+1 will fall through to the default first-question
+        path.
+
+        Caller is responsible for the status enum value matching the
+        CHECK constraint ('pending', 'skipped', 'delivered'). Routes
+        pass 'pending' or 'skipped' only; 'delivered' is owned by
+        ``mark_next_session_icebreaker_delivered``.
+        """
+        if not session_id:
+            return False
+        try:
+            (
+                self.client.table("v2_sessions")
+                .update({
+                    "next_session_icebreaker": current,
+                    "next_session_icebreaker_edited_at": edited_at,
+                    "next_session_icebreaker_status": status,
+                })
+                .eq("id", session_id)
+                .execute()
+            )
+            return True
+        except Exception as e:
+            logger.error(
+                "update_next_session_icebreaker_editable failed "
+                "sid=%s: %s", session_id, e,
+            )
+            return False
+
+    def set_next_session_icebreaker_generation_error(
+        self,
+        session_id: str,
+        error_tag: str,
+    ) -> bool:
+        """Tag a failed generation attempt.
+
+        Writes next_session_icebreaker_generation_error = error_tag
+        and leaves ai_draft NULL. FE consumes the tag to render the
+        "Generation failed — Regenerate" red banner state.
+
+        Common tags (no DB-level enum; informational):
+          'transcript_too_short' | 'llm_unavailable' | 'llm_empty'
+        """
+        if not session_id:
+            return False
+        try:
+            (
+                self.client.table("v2_sessions")
+                .update({
+                    "next_session_icebreaker_generation_error": error_tag,
+                })
+                .eq("id", session_id)
+                .execute()
+            )
+            return True
+        except Exception as e:
+            err_low = str(e).lower()
+            if (
+                "next_session_icebreaker" in err_low
+                or "pgrst204" in err_low
+            ):
+                # Migration pending; nothing to log loudly.
+                return False
+            logger.warning(
+                "set_next_session_icebreaker_generation_error "
+                "failed sid=%s: %s", session_id, e,
+            )
+            return False
+
+    def clear_next_session_icebreaker_generation_error(
+        self,
+        session_id: str,
+    ) -> bool:
+        """Clear the error tag before a fresh generation attempt.
+
+        Called from generate_next_session_icebreaker(overwrite=True)
+        so the FE sees the new attempt's outcome rather than a stale
+        failure tag bleeding through.
+        """
+        if not session_id:
+            return False
+        try:
+            (
+                self.client.table("v2_sessions")
+                .update({
+                    "next_session_icebreaker_generation_error": None,
+                })
+                .eq("id", session_id)
+                .execute()
+            )
+            return True
+        except Exception:
+            return False  # best-effort; not load-bearing
+
+    def pop_pending_icebreaker_for_user(
+        self,
+        user_id: str,
+    ) -> Optional[dict]:
+        """Atomic-ish: find the user's most-recent session whose
+        icebreaker is pending+non-null, mark it delivered, return
+        ``{question, source_session_id}``.
+
+        Returns None when:
+          - no pending icebreaker exists for this user
+          - the columns are missing (migration pending)
+          - the read OR the mark-delivered failed
+
+        Atomicity caveat: SELECT then UPDATE on two HTTP calls.
+        Race window between them = "if two first-question requests
+        for the same user fire in parallel, both might consume the
+        same row." Mirrors pop_next_directive's caveat exactly —
+        acceptable because chat surfaces are user-driven and serial
+        per session. If we ever need stricter guarantees, promote
+        to a stored function with SELECT ... FOR UPDATE SKIP LOCKED.
+
+        Called from /v2/user/chat/first-question AFTER the directives-
+        queue check (admin overrides still win) but BEFORE the
+        contextual-init flow — see the route comment for the full
+        priority order.
+        """
+        if not user_id:
+            return None
+        try:
+            picked = (
+                self.client.table("v2_sessions")
+                .select(
+                    "id, next_session_icebreaker"
+                )
+                .eq("user_id", user_id)
+                .eq("next_session_icebreaker_status", "pending")
+                .not_.is_("next_session_icebreaker", None)
+                .order("created_at", desc=True)
+                .limit(1)
+                .execute()
+            )
+            rows = picked.data or []
+            if not rows:
+                return None
+            row = rows[0]
+        except Exception as sel_err:
+            err_low = str(sel_err).lower()
+            if (
+                "next_session_icebreaker" in err_low
+                and ("does not exist" in err_low or "pgrst" in err_low)
+            ):
+                # Columns not yet present — silently fall through to
+                # legacy path. Mirrors pop_next_directive.
+                return None
+            logger.warning(
+                "pop_pending_icebreaker: select failed user=%s err=%s "
+                "— falling through",
+                user_id, sel_err,
+            )
+            return None
+
+        question = (row.get("next_session_icebreaker") or "").strip()
+        if not question:
+            # Status was 'pending' but the value was empty/whitespace —
+            # treat as if no icebreaker exists. Don't flip it to
+            # 'delivered' (nothing was delivered).
+            return None
+
+        # Mark delivered. If this UPDATE fails we abort delivery — same
+        # rationale as pop_next_directive: better to let the LLM
+        # fallback fire than to re-serve the same icebreaker twice.
+        try:
+            (
+                self.client.table("v2_sessions")
+                .update({
+                    "next_session_icebreaker_status": "delivered",
+                })
+                .eq("id", row["id"])
+                .execute()
+            )
+        except Exception as upd_err:
+            logger.warning(
+                "pop_pending_icebreaker: mark-delivered failed "
+                "user=%s sid=%s err=%s — falling through to LLM "
+                "to avoid double-firing the same icebreaker",
+                user_id, row.get("id"), upd_err,
+            )
+            return None
+
+        return {
+            "question": question,
+            "source_session_id": row.get("id"),
+        }
+
+    def get_next_session_id_for(
+        self,
+        user_id: str,
+        after_session_id: str,
+    ) -> Optional[str]:
+        """For the GET endpoint's queue_status derivation: does the
+        user have a session that was created AFTER ``after_session_id``?
+        If so, return its id; the FE renders the card as 'queued'.
+
+        Returns None when:
+          - no later session exists
+          - the after_session row isn't found (can't compare created_at)
+          - DB hiccup
+
+        Light query — single index seek on (user_id, created_at).
+        """
+        if not user_id or not after_session_id:
+            return None
+        try:
+            # First fetch after_session's created_at — we don't have
+            # it in the GET row payload context and don't want to
+            # require the caller to thread it through.
+            anchor = (
+                self.client.table("v2_sessions")
+                .select("created_at")
+                .eq("id", after_session_id)
+                .limit(1)
+                .execute()
+            )
+            if not anchor.data:
+                return None
+            anchor_ts = anchor.data[0].get("created_at")
+            if not anchor_ts:
+                return None
+            later = (
+                self.client.table("v2_sessions")
+                .select("id")
+                .eq("user_id", user_id)
+                .gt("created_at", anchor_ts)
+                .order("created_at", desc=False)
+                .limit(1)
+                .execute()
+            )
+            rows = later.data or []
+            if not rows:
+                return None
+            return rows[0].get("id")
+        except Exception as e:
+            logger.warning(
+                "get_next_session_id_for failed user=%s sid=%s err=%s",
+                user_id, after_session_id, e,
+            )
+            return None
+
     def update_session_charisma_profile(
         self,
         session_id: str,
