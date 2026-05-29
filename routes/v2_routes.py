@@ -8430,6 +8430,156 @@ def v2_user_sessions_current():
         return jsonify({"code": "V2_ERROR", "error": "Failed to fetch session state"}), 500
 
 
+@v2_bp.route(
+    "/user/sessions/<session_id>/intake-context",
+    methods=["GET"],
+)
+@require_auth
+def v2_user_get_session_intake_context(session_id):
+    """Read the per-session speech-context intake block (Task 9).
+
+    Backs the FE's "tell us about this talk" form — FE GETs on
+    form-open to prefill a returning user's draft. Always returns
+    200 with explicit nulls when unset; "no answers yet" is nulls,
+    not 404 (the session row exists, the column is just null).
+
+    Owner-scoped: non-owner gets 404 (not 403) to avoid existence
+    leak. Same pattern as the session-summary endpoint.
+
+    Response 200::
+
+        {
+          "topic":                 str | null,
+          "audience":              str | null,
+          "target_length_seconds": int | null
+        }
+
+      400 INVALID_INPUT       — bad UUID
+      404 SESSION_NOT_FOUND   — session doesn't exist OR not owner
+      500 V2_ERROR            — unexpected
+    """
+    if not _is_valid_uuid(session_id):
+        return jsonify({
+            "code": "INVALID_INPUT",
+            "error": "session_id must be a valid UUID",
+        }), 400
+
+    try:
+        session = db.v2_get_session_by_id(session_id)
+        if not session or str(
+            session.get("user_id") or ""
+        ) != str(request.user_id):
+            return jsonify({
+                "code": "SESSION_NOT_FOUND",
+                "error": "Session not found",
+            }), 404
+
+        ctx = session.get("intake_context")
+        if not isinstance(ctx, dict):
+            ctx = {}
+        return jsonify({
+            "topic": ctx.get("topic"),
+            "audience": ctx.get("audience"),
+            "target_length_seconds": ctx.get("target_length_seconds"),
+        }), 200
+
+    except Exception as e:
+        logger.error(
+            "user/sessions/<id>/intake-context GET failed sid=%s err=%s",
+            session_id, e, exc_info=True,
+        )
+        sentry_sdk.capture_exception(e)
+        return jsonify({
+            "code": "V2_ERROR",
+            "error": "Failed to fetch intake context",
+        }), 500
+
+
+@v2_bp.route(
+    "/user/sessions/<session_id>/intake-context",
+    methods=["PUT"],
+)
+@require_auth
+def v2_user_put_session_intake_context(session_id):
+    """Full-replace write of the intake-context blob (Task 9).
+
+    FE owns the draft and PUTs the whole 3-field form on submit —
+    partial updates are out of scope (matches the spec's "full
+    replace" decision). Empty body {} is valid and clears the
+    column back to {topic: null, audience: null, target_length_
+    seconds: null}.
+
+    Validation (services.intake_context.validate_intake_context_body):
+      - topic, audience: optional str, trimmed, ≤200 chars; empty-
+        after-trim collapses to null
+      - target_length_seconds: optional int in [30, 7200]
+      - bools rejected as integers
+
+    No gating: PUT is accepted on warmup / Session-1 sessions too
+    (per the spec — no Session-1 check by design).
+
+    Response 200: same shape as GET (echoes the persisted state).
+
+      400 INVALID_INPUT       — body malformed / out-of-range / wrong type
+      404 SESSION_NOT_FOUND   — session doesn't exist OR not owner
+      500 V2_ERROR            — unexpected DB failure
+    """
+    if not _is_valid_uuid(session_id):
+        return jsonify({
+            "code": "INVALID_INPUT",
+            "error": "session_id must be a valid UUID",
+        }), 400
+
+    try:
+        from services.intake_context import (
+            IntakeContextError,
+            validate_intake_context_body,
+        )
+        try:
+            ctx = validate_intake_context_body(
+                request.get_json(silent=True) or {}
+            )
+        except IntakeContextError as ve:
+            return jsonify({
+                "code": "INVALID_INPUT",
+                "error": str(ve),
+            }), 400
+
+        session = db.v2_get_session_by_id(session_id)
+        if not session or str(
+            session.get("user_id") or ""
+        ) != str(request.user_id):
+            return jsonify({
+                "code": "SESSION_NOT_FOUND",
+                "error": "Session not found",
+            }), 404
+
+        ok = db.set_session_intake_context(session_id, ctx)
+        if not ok:
+            return jsonify({
+                "code": "V2_ERROR",
+                "error": "Failed to persist intake context",
+            }), 500
+
+        logger.info(
+            "user/sessions/intake-context.put user=%s sid=%s fields=%s",
+            request.user_id, session_id,
+            sorted(k for k, v in ctx.items() if v is not None),
+        )
+        return jsonify(ctx), 200
+
+    except Exception as e:
+        logger.error(
+            "user/sessions/<id>/intake-context PUT failed sid=%s err=%s",
+            session_id, e, exc_info=True,
+        )
+        sentry_sdk.capture_exception(e)
+        return jsonify({
+            "code": "V2_ERROR",
+            "error": "Failed to update intake context",
+        }), 500
+
+
 @v2_bp.route("/user/sessions/<session_id>/summary", methods=["GET"])
 @require_auth
 def v2_user_session_summary(session_id):

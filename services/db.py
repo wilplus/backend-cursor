@@ -8584,6 +8584,91 @@ class DatabaseService:
     # User settings (LLM instructions)
     # ------------------------------------------------------------------
 
+    def get_session_intake_context(
+        self,
+        session_id: str,
+    ) -> Optional[dict]:
+        """Read v2_sessions.intake_context JSONB for a session.
+
+        Task 9 — per-session speech-context intake block:
+            { topic, audience, target_length_seconds }
+
+        Returns the parsed dict (may contain nulls inside), or None
+        when the column is unset / row not found / DB hiccup.
+        ``None`` means "use defaults" downstream — same pre-task-9
+        behavior. Owner-scope is enforced by the caller (route
+        handler), not here.
+        """
+        if not session_id:
+            return None
+        try:
+            result = (
+                self.client.table("v2_sessions")
+                .select("intake_context")
+                .eq("id", session_id)
+                .limit(1)
+                .execute()
+            )
+            if not result.data:
+                return None
+            ctx = result.data[0].get("intake_context")
+            return ctx if isinstance(ctx, dict) else None
+        except Exception as e:
+            err_low = str(e).lower()
+            if "intake_context" in err_low or "pgrst204" in err_low:
+                logger.warning(
+                    "get_session_intake_context: column missing "
+                    "(run migrations/add_intake_context_to_v2_"
+                    "sessions.sql) sid=%s", session_id,
+                )
+                return None
+            logger.warning(
+                "get_session_intake_context failed sid=%s err=%s",
+                session_id, e,
+            )
+            return None
+
+    def set_session_intake_context(
+        self,
+        session_id: str,
+        intake_context: Optional[dict],
+    ) -> bool:
+        """Full-replace write of v2_sessions.intake_context.
+
+        Task 9 — FE owns the draft and PUTs the whole 3-field form
+        on submit; partial updates are out of scope. Pass None to
+        clear the column back to NULL (rare, but supported so an
+        admin tool can wipe stale intake data without a SQL hop).
+
+        Returns True on success, False on any failure path
+        (caller maps to 500). Best-effort logging matches the
+        rest of the v2_sessions helpers.
+        """
+        if not session_id:
+            return False
+        try:
+            (
+                self.client.table("v2_sessions")
+                .update({"intake_context": intake_context})
+                .eq("id", session_id)
+                .execute()
+            )
+            return True
+        except Exception as e:
+            err_low = str(e).lower()
+            if "intake_context" in err_low or "pgrst204" in err_low:
+                logger.warning(
+                    "set_session_intake_context: column missing "
+                    "(run migrations/add_intake_context_to_v2_"
+                    "sessions.sql) sid=%s", session_id,
+                )
+                return False
+            logger.error(
+                "set_session_intake_context failed sid=%s err=%s",
+                session_id, e,
+            )
+            return False
+
     def get_user_settings(self, user_id: str) -> Optional[dict]:
         """Get user_settings row (custom LLM instructions, etc)."""
         try:
