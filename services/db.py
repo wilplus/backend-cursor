@@ -8876,6 +8876,94 @@ class DatabaseService:
             )
             return None
 
+    # ── Ticket 2 — Dad-joke onboarding opener ───────────────────────
+    #
+    # Two reads: one random pick (for /start), one by-id lookup (for
+    # /next when FE returns the joke_id it was given). No writes —
+    # admin curation endpoints (deactivate / edit / add) are out of
+    # scope for v1.
+
+    def get_random_dad_joke(self, locale: str = "en") -> Optional[dict]:
+        """Pick one random active joke in the requested locale.
+
+        Returns ``{id, setup, punchline, emoji}`` or None when:
+          - dad_jokes table is missing (migration pending)
+          - no active jokes in the locale
+          - DB hiccup
+
+        Approach: SELECT all active rows in the locale (small set,
+        ≤ a few dozen at any plausible scale), pick one in Python
+        with random.choice. Avoids the supabase-py limitation that
+        ORDER BY random() isn't exposed cleanly, AND lets us seed
+        the random in tests deterministically if we ever need to.
+        """
+        if not locale:
+            locale = "en"
+        try:
+            res = (
+                self.client.table("dad_jokes")
+                .select("id, setup, punchline, emoji")
+                .eq("locale", locale)
+                .eq("active", True)
+                .execute()
+            )
+            rows = res.data or []
+        except Exception as e:
+            err_low = str(e).lower()
+            if (
+                "dad_jokes" in err_low
+                and ("does not exist" in err_low or "pgrst" in err_low)
+            ):
+                # Migration not yet run — caller falls back to no
+                # opener (silent), which is the right UX: the joke
+                # is decoration, never blocking.
+                return None
+            logger.warning(
+                "get_random_dad_joke failed locale=%s err=%s",
+                locale, e,
+            )
+            return None
+        if not rows:
+            return None
+
+        import random
+        return random.choice(rows)
+
+    def get_dad_joke_by_id(self, joke_id: str) -> Optional[dict]:
+        """Lookup a joke by id for the /next endpoint.
+
+        The FE round-trips the joke_id from /start back to /next so
+        the punchline endpoint can deliver the matching content
+        without re-rolling random. Returns None when the id is
+        unknown or the table is missing (caller falls back to
+        skipping the punchline gracefully).
+        """
+        if not joke_id:
+            return None
+        try:
+            res = (
+                self.client.table("dad_jokes")
+                .select("id, setup, punchline, emoji")
+                .eq("id", joke_id)
+                .limit(1)
+                .execute()
+            )
+            rows = res.data or []
+        except Exception as e:
+            err_low = str(e).lower()
+            if "dad_jokes" in err_low and (
+                "does not exist" in err_low or "pgrst" in err_low
+            ):
+                return None
+            logger.warning(
+                "get_dad_joke_by_id failed jid=%s err=%s",
+                joke_id, e,
+            )
+            return None
+        if not rows:
+            return None
+        return rows[0]
+
     def update_session_charisma_profile(
         self,
         session_id: str,

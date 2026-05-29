@@ -18574,3 +18574,162 @@ def v2_coaching_intro_bubble():
                 "source": "static_fallback",
             },
         }), 200
+
+
+# ── Ticket 2 — Dad-joke onboarding opener ────────────────────────────
+#
+# Three-bubble flow on a new user's first onboarding contact:
+#   1. /onboarding/opener/start  → returns {stage: 'setup', frame, setup, joke_id}
+#   2. /onboarding/opener/next   → body {joke_id, user_reply}
+#                                  returns {stage: 'punchline', ack, punchline}
+#   3. /onboarding/opener/next   → body {joke_id, user_reply, after_punchline: true}
+#                                  returns {stage: 'pivot', pivot_line, done: true}
+#
+# Auth: @require_auth — the opener fires inside the authenticated
+# onboarding flow, after JWT issue. Pre-auth users see a different
+# landing path that doesn't touch this endpoint.
+#
+# Canonical PIVOT_LINE lives in services/onboarding_opener.py and
+# is never LLM-generated. The LLM only produces the optional ack
+# line that bridges user reply → punchline.
+
+
+@v2_bp.route("/onboarding/opener/start", methods=["POST"])
+@require_auth
+def v2_onboarding_opener_start():
+    """Begin the dad-joke onboarding opener.
+
+    No body required. Picks a random active joke and returns the
+    setup bubble shape::
+
+        {
+          "stage": "setup",
+          "joke_id": "<uuid>",
+          "frame":  "Attention, before we begin, let me crack a dad-joke!",
+          "setup":  "How do cows stay up to date?"
+        }
+
+    Returns 204 (no opener) when the dad_jokes table is empty / not
+    yet migrated — FE skips the opener and goes straight to the
+    real first onboarding question. Silent fallback by design: the
+    joke is decorative, never blocking.
+    """
+    try:
+        from services.onboarding_opener import (
+            pick_random_joke, build_setup_message,
+        )
+        joke = pick_random_joke()
+        if not joke:
+            logger.info(
+                "opener.start.no_joke user=%s — skipping opener",
+                request.user_id,
+            )
+            return ("", 204)
+        payload = build_setup_message(joke)
+        return jsonify(payload), 200
+    except Exception as e:
+        logger.error(
+            "onboarding/opener/start failed: %s", e, exc_info=True,
+        )
+        sentry_sdk.capture_exception(e)
+        # Soft-fail: opener is decorative; return 204 so FE skips
+        # without showing an error banner on the user's first
+        # onboarding screen.
+        return ("", 204)
+
+
+@v2_bp.route("/onboarding/opener/next", methods=["POST"])
+@require_auth
+def v2_onboarding_opener_next():
+    """Advance the opener to the next bubble.
+
+    Body::
+
+        {
+          "joke_id":          "<uuid>",        # required
+          "user_reply":       "<string>",      # optional, used for ack
+          "after_punchline":  false            # default false
+        }
+
+    Stage transitions:
+      after_punchline=false → returns the PUNCHLINE bubble:
+        {
+          "stage":     "punchline",
+          "joke_id":   "<uuid>",
+          "ack":       "<≤80-char LLM bridge>",   # may be ""
+          "punchline": "They read the moos-paper. 🐄"
+        }
+
+      after_punchline=true → returns the PIVOT bubble:
+        {
+          "stage":      "pivot",
+          "joke_id":    null,
+          "pivot_line": "Okok, nevermind. Let's focus on public speaking — how can I help you?",
+          "done":       true
+        }
+
+    The pivot line is HARDCODED in services.onboarding_opener.
+    PIVOT_LINE and never produced by the LLM. The ack on the
+    punchline bubble is the only LLM-touched content in this flow.
+
+    Responses:
+      200 — normal flow
+      400 INVALID_INPUT — missing/invalid joke_id
+      404 JOKE_NOT_FOUND — joke_id resolves to nothing (admin
+                            deactivated the joke between /start
+                            and /next, or migration mismatch)
+      500 V2_ERROR — unexpected; FE should bail to real onboarding
+    """
+    try:
+        from services.onboarding_opener import (
+            build_punchline_message,
+            build_pivot_message,
+            generate_punchline_ack,
+        )
+
+        body = request.get_json(silent=True) or {}
+        joke_id_raw = body.get("joke_id")
+        after_punchline = bool(body.get("after_punchline", False))
+        user_reply = body.get("user_reply") or ""
+        if not isinstance(user_reply, str):
+            user_reply = ""
+
+        # Pivot path — no joke lookup needed, pure constant return.
+        # We accept (but don't require) joke_id here so the FE can
+        # round-trip the same payload shape on every /next call.
+        if after_punchline:
+            return jsonify(build_pivot_message()), 200
+
+        # Punchline path — joke_id is required and must resolve.
+        if not joke_id_raw or not isinstance(joke_id_raw, str):
+            return jsonify({
+                "code": "INVALID_INPUT",
+                "error": "joke_id is required for the punchline stage",
+            }), 400
+        if not _is_valid_uuid(joke_id_raw):
+            return jsonify({
+                "code": "INVALID_INPUT",
+                "error": "joke_id must be a valid UUID",
+            }), 400
+
+        joke = db.get_dad_joke_by_id(joke_id_raw)
+        if not joke:
+            return jsonify({
+                "code": "JOKE_NOT_FOUND",
+                "error": "Joke not found",
+            }), 404
+
+        # LLM bridge ack — best-effort, empty string on any failure.
+        ack = generate_punchline_ack(user_reply)
+        payload = build_punchline_message(joke, ack=ack)
+        return jsonify(payload), 200
+
+    except Exception as e:
+        logger.error(
+            "onboarding/opener/next failed: %s", e, exc_info=True,
+        )
+        sentry_sdk.capture_exception(e)
+        return jsonify({
+            "code": "V2_ERROR",
+            "error": "Failed to advance opener",
+        }), 500

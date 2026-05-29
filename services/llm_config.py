@@ -153,3 +153,18 @@ SPEC_NEXT_SESSION_ICEBREAKER = LLMSpec(
     response_format=None,
 )
 """AI-prefilled icebreaker for session N+1 (Task 10)."""
+
+
+SPEC_ONBOARDING_OPENER = LLMSpec(
+    model=CHEAP_MODEL,
+    # Low warmth — the ack is a deadpan bridge into a canonical
+    # punchline. Too much creativity here adds line-noise before
+    # the joke lands.
+    temperature=0.3,
+    # 80-char target output; 60 tokens is overkill but cheap.
+    max_tokens=60,
+    response_format={"type": "json_object"},
+)
+"""Pre-punchline acknowledgement line in the onboarding dad-joke
+opener (Ticket 2). The canonical punchline and pivot line are
+NEVER produced by the LLM — see services/onboarding_opener.py."""
