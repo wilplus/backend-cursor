@@ -58,6 +58,7 @@ from urllib.parse import urlparse
 from werkzeug.utils import secure_filename
 from io import BytesIO
 import threading
+from typing import Any
 
 from services.reference_video_upload_worker import run_reference_video_upload
 from services.draft_delivery import (
@@ -8692,7 +8693,22 @@ def v2_user_session_summary(session_id):
         # Explicit allowlist construction — never spread session row.
         # Each metric key is the FE-facing name; the DB columns it
         # reads are documented inline.
-        return jsonify({
+        # ── Raw-block snippets (always shown post-finalize) ─────────
+        # Per the post-tester decision: user always sees their raw
+        # per-snippet data (transcript, audio, acoustic features,
+        # classifier probability, question_tone). The admin layer
+        # (admin_comment, coach_label, follow_up_question) is
+        # GATED behind published=True so the user only sees the
+        # interpretive content after the human has reviewed.
+        raw_snippets = _build_user_raw_snippet_list(
+            session_id, include_admin_fields=published,
+        )
+
+        # ── Phase-aware findings ────────────────────────────────────
+        # Pre-publish: commentary + kpi_score absent (gated as
+        # "findings" that require human review).
+        # Post-publish: both included.
+        response: dict[str, Any] = {
             "status": _derive_session_status(session, snippet_counts),
             "metrics_ready": _metrics_ready(session),
             "snippets_published": published,
@@ -8704,9 +8720,31 @@ def v2_user_session_summary(session_id):
                 "dynamic_db":      session.get("global_dynamic_db"),
                 "energy":          session.get("global_energy"),
             },
-            "commentary": commentary,
+            "snippets": raw_snippets,
             "snippet_count_pending": snippet_count_pending,
-        }), 200
+            "cta": (
+                {"kind": "view_findings"} if published
+                else {"kind": "wait_for_review",
+                      "copy": (
+                          "Our coach is reviewing your session — "
+                          "you'll get the analysis within 1 business day."
+                      )}
+            ),
+        }
+
+        # Only surface findings post-publish — kpi_score + commentary +
+        # charisma_profile are derived "findings" that require human
+        # review before reaching the user.
+        if published:
+            response["commentary"] = commentary
+            kpi_score = session.get("kpi_score")
+            if isinstance(kpi_score, (int, float)):
+                response["kpi_score"] = float(kpi_score)
+            cp = session.get("charisma_profile")
+            if isinstance(cp, dict):
+                response["charisma_profile"] = cp
+
+        return jsonify(response), 200
 
     except Exception as e:
         logger.error(
@@ -8717,6 +8755,149 @@ def v2_user_session_summary(session_id):
         return jsonify({
             "code": "V2_ERROR",
             "error": "Failed to fetch session summary",
+        }), 500
+
+
+def _build_user_raw_snippet_list(
+    session_id: str,
+    *,
+    include_admin_fields: bool,
+) -> list[dict]:
+    """Build the per-snippet raw-block array consumed by both the
+    signed-in /sessions/<id>/summary and the anonymous
+    /public/interview/<gsid>/raw-results endpoints.
+
+    Always included (raw, no interpretation):
+      snippet_id, audio_url (presigned), duration_ms, transcript,
+      question_tone, acoustic stats block, classifier_stress_probability,
+      created_at
+
+    Gated on ``include_admin_fields`` (i.e., session is published):
+      admin_comment, coach_label, follow_up_question
+
+    The raw block is the same shape for both signed-in and anonymous
+    flows so FE renders one card component for both.
+    """
+    snippets = db.get_snippets_by_session(session_id) or []
+    out: list[dict] = []
+    for s in snippets:
+        # Skip un-extracted candidates; we only show real snippets.
+        # storage_path is the proxy: an extracted snippet has its
+        # audio bytes anchored; a placeholder row may not.
+        if not (s.get("storage_path") or s.get("audio_url")):
+            continue
+
+        metrics = s.get("metrics") or {}
+        if not isinstance(metrics, dict):
+            metrics = {}
+
+        row: dict[str, Any] = {
+            "snippet_id":    s.get("id"),
+            "audio_url":     _resolve_snippet_audio_url(s),
+            "duration_ms":   s.get("duration_ms"),
+            "transcript":    (
+                s.get("transcript")
+                or s.get("transcription_text")
+                or ""
+            ),
+            "question_tone": (s.get("question_tone") or "").lower() or None,
+            "acoustic": {
+                "wpm":             metrics.get("wpm") or s.get("wpm"),
+                "fillers":         metrics.get("fillers") or s.get("fillers"),
+                "pause_ms":        metrics.get("pause_ms") or s.get("pause_ms"),
+                "pitch_center_hz": metrics.get("pitch_center_hz")
+                                  or metrics.get("pitch_center")
+                                  or s.get("pitch_center_hz"),
+                "dynamic_db":      metrics.get("dynamic_db") or s.get("dynamic_db"),
+                "energy":          metrics.get("energy") or s.get("energy"),
+            },
+            "classifier_stress_probability": (
+                s.get("classifier_stress_probability")
+            ),
+            "created_at":    s.get("created_at"),
+        }
+
+        if include_admin_fields:
+            row["admin_comment"]      = s.get("admin_comment")
+            row["coach_label"]        = (s.get("coach_label") or "").lower() or None
+            row["follow_up_question"] = s.get("follow_up_question")
+
+        out.append(row)
+    return out
+
+
+@v2_bp.route(
+    "/public/interview/<guest_session_id>/raw-results",
+    methods=["GET"],
+)
+def v2_public_interview_raw_results(guest_session_id):
+    """Anonymous-tester post-finalize raw-data view.
+
+    Mirrors the signed-in /sessions/<id>/summary's pre-publish shape
+    but lives at a public route (no auth) so the anonymous funnel
+    can render the raw block before the user signs up.
+
+    By design, this endpoint NEVER exposes:
+      - commentary / KPI narrative
+      - kpi_score
+      - admin_comment / coach_label / follow_up_question
+      - charisma_profile / stickiness narrative
+
+    Anonymous = no human review possible = no findings. The only
+    path to findings is the signup CTA returned in this response.
+
+    Responses:
+      200 — raw results + signup CTA
+      400 INVALID_INPUT — bad UUID
+      404 SESSION_NOT_FOUND — guest session row missing
+      500 V2_ERROR — unexpected
+    """
+    if not _is_valid_uuid(guest_session_id):
+        return jsonify({
+            "code": "INVALID_INPUT",
+            "error": "guest_session_id must be a valid UUID",
+        }), 400
+
+    try:
+        session = db.v2_get_session_by_id(guest_session_id)
+        if not session:
+            return jsonify({
+                "code": "SESSION_NOT_FOUND",
+                "error": "Session not found",
+            }), 404
+
+        raw_snippets = _build_user_raw_snippet_list(
+            guest_session_id, include_admin_fields=False,
+        )
+
+        return jsonify({
+            "metrics": {
+                "wpm":             session.get("global_wpm"),
+                "fillers":         session.get("global_fillers"),
+                "pause_ms":        session.get("global_pause_ms"),
+                "pitch_center_hz": session.get("global_pitch_center"),
+                "dynamic_db":      session.get("global_dynamic_db"),
+                "energy":          session.get("global_energy"),
+            },
+            "snippets": raw_snippets,
+            "cta": {
+                "kind": "signup",
+                "copy": (
+                    "Want this structured into findings? "
+                    "Sign up for human-led analysis."
+                ),
+            },
+        }), 200
+
+    except Exception as e:
+        logger.error(
+            "public/interview/<gsid>/raw-results failed sid=%s err=%s",
+            guest_session_id, e, exc_info=True,
+        )
+        sentry_sdk.capture_exception(e)
+        return jsonify({
+            "code": "V2_ERROR",
+            "error": "Failed to fetch raw results",
         }), 500
 
 

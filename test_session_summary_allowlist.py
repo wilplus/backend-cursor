@@ -91,17 +91,32 @@ class SummaryAllowlistTests(unittest.TestCase):
         "ai_task_alignment_score",
     }
 
-    EXPECTED_KEYS = {
+    # Pre-publish keys (post-tester decision: commentary + kpi_score
+    # gated as "findings" until human review). snippets + cta are
+    # always present in the new shape.
+    EXPECTED_KEYS_PRE_PUBLISH = {
         "status",
         "metrics_ready",
         "snippets_published",
         "metrics",
-        "commentary",
+        "snippets",
         "snippet_count_pending",
+        "cta",
+    }
+    # Post-publish: same + commentary + kpi_score (charisma_profile
+    # is optional — only present when the row carries one).
+    EXPECTED_KEYS_POST_PUBLISH = EXPECTED_KEYS_PRE_PUBLISH | {
+        "commentary",
+        "kpi_score",
     }
 
     def _build_response(self, session: dict, snippet_counts: dict) -> dict:
-        """Simulate the route's response construction."""
+        """Simulate the route's response construction (post-tester
+        phase-aware shape).
+
+        Pre-publish: raw block only — no commentary, no kpi_score.
+        Post-publish: + commentary + kpi_score.
+        """
         published = bool(session.get("results_published_at"))
         commentary_body = (
             (session.get("session_kpi_narrative_ai_draft") or "").strip()
@@ -115,7 +130,7 @@ class SummaryAllowlistTests(unittest.TestCase):
         snippet_count_pending = (
             snippet_counts.get("total", 0) if not published else 0
         )
-        return {
+        response = {
             "status": (
                 "completed" if published
                 else "pending_review" if snippet_counts.get("total", 0)
@@ -131,13 +146,34 @@ class SummaryAllowlistTests(unittest.TestCase):
                 "dynamic_db":      session.get("global_dynamic_db"),
                 "energy":          session.get("global_energy"),
             },
-            "commentary": commentary,
+            # Always present in the new shape (raw block).
+            "snippets": [],
             "snippet_count_pending": snippet_count_pending,
+            "cta": (
+                {"kind": "view_findings"} if published
+                else {"kind": "wait_for_review",
+                      "copy": (
+                          "Our coach is reviewing your session — "
+                          "you'll get the analysis within 1 business day."
+                      )}
+            ),
         }
+        # Findings — only after admin publishes.
+        if published:
+            response["commentary"] = commentary
+            kpi = session.get("kpi_score")
+            if isinstance(kpi, (int, float)):
+                response["kpi_score"] = float(kpi)
+            else:
+                # Test harness needs the key in the post-publish
+                # expected-set; default to None for completeness.
+                response["kpi_score"] = None
+        return response
 
     def test_response_keys_match_explicit_allowlist(self):
         """No matter what's on the session row, response keys must be
-        exactly the allowlist — no extras, no missing."""
+        exactly the allowlist for the current phase — no extras,
+        no missing."""
         # Poisoned row with EVERY banned field populated with a
         # sentinel that would be easy to spot in a leak.
         poisoned = {
@@ -162,8 +198,18 @@ class SummaryAllowlistTests(unittest.TestCase):
             "kpi_debug": {"poison": True},
             "drift_diagnostic": "POISON-drift",
         }
-        out = self._build_response(poisoned, {"total": 3})
-        self.assertEqual(set(out.keys()), self.EXPECTED_KEYS)
+        # Pre-publish case (no results_published_at).
+        out_pre = self._build_response(poisoned, {"total": 3})
+        self.assertEqual(set(out_pre.keys()), self.EXPECTED_KEYS_PRE_PUBLISH)
+        # commentary + kpi_score MUST NOT leak pre-publish even
+        # when the row has them populated — they're gated findings.
+        self.assertNotIn("commentary", out_pre)
+        self.assertNotIn("kpi_score", out_pre)
+
+        # Post-publish case (results_published_at set).
+        poisoned_pub = {**poisoned, "results_published_at": "2026-06-01T10:00:00Z"}
+        out_pub = self._build_response(poisoned_pub, {"total": 3})
+        self.assertEqual(set(out_pub.keys()), self.EXPECTED_KEYS_POST_PUBLISH)
 
     def test_no_banned_key_leaks_at_top_level(self):
         """For each banned key, simulate it on the session and
