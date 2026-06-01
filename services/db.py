@@ -8964,6 +8964,249 @@ class DatabaseService:
             return None
         return rows[0]
 
+    # ── tester-soft-v1 — KPI timeline + question pool ────────────────
+    #
+    # Two thin readers + one write path for the admin pool CRUD.
+    # No business logic in db.py — services/kpi_timeline.py and
+    # routes/v2_routes.py own the shaping.
+
+    def get_user_kpi_timeline_rows(
+        self,
+        user_id: str,
+        *,
+        limit: int = 200,
+    ) -> list[dict]:
+        """Return per-session KPI scoring rows for a user, newest
+        first, capped at ``limit``.
+
+        Returns ``{id, created_at, kpi_score, global_wpm,
+        global_fillers, stickiness_score, source}`` per session.
+        ``source`` is the discriminator added by the foundation
+        migration; pre-migration rows return NULL and the consumer
+        treats them as ``'interview'``.
+
+        Empty list when the user has no finalized sessions OR the
+        DB hiccups — same fail-closed pattern as the rest of
+        v2_sessions helpers.
+        """
+        if not user_id:
+            return []
+        try:
+            res = (
+                self.client.table("v2_sessions")
+                .select(
+                    "id, created_at, kpi_score, global_wpm, "
+                    "global_fillers, stickiness_score, source"
+                )
+                .eq("user_id", user_id)
+                .not_.is_("kpi_score", None)
+                .order("created_at", desc=False)
+                .limit(limit)
+                .execute()
+            )
+            return res.data or []
+        except Exception as e:
+            err_low = str(e).lower()
+            if "source" in err_low and "pgrst" in err_low:
+                # Foundation migration not yet run — retry without
+                # the source column so the chart still renders for
+                # whichever rows have kpi_score populated.
+                try:
+                    res = (
+                        self.client.table("v2_sessions")
+                        .select(
+                            "id, created_at, kpi_score, global_wpm, "
+                            "global_fillers, stickiness_score"
+                        )
+                        .eq("user_id", user_id)
+                        .not_.is_("kpi_score", None)
+                        .order("created_at", desc=False)
+                        .limit(limit)
+                        .execute()
+                    )
+                    return res.data or []
+                except Exception as fallback_err:
+                    logger.warning(
+                        "get_user_kpi_timeline_rows fallback "
+                        "failed user=%s err=%s",
+                        user_id, fallback_err,
+                    )
+                    return []
+            logger.warning(
+                "get_user_kpi_timeline_rows failed user=%s err=%s",
+                user_id, e,
+            )
+            return []
+
+    def list_chat_question_pool(
+        self,
+        *,
+        intent: Optional[str] = None,
+        locale: str = "en",
+        active_only: bool = True,
+    ) -> list[dict]:
+        """Admin-facing read of the question pool.
+
+        Filters: ``intent`` ('charisma' | 'stress' | 'trust' |
+        'post_official'), ``locale``, ``active_only``. Returns
+        ordered by ``created_at`` ascending so the admin sees the
+        oldest entries first (matches insertion order for a
+        sequentially-seeded pool).
+
+        Returns [] on missing table — the foundation migration
+        creates it but a stale env might miss the run.
+        """
+        try:
+            query = (
+                self.client.table("chat_question_pool")
+                .select("*")
+                .eq("locale", locale)
+            )
+            if intent is not None:
+                query = query.eq("intent", intent)
+            if active_only:
+                query = query.eq("active", True)
+            res = query.order("created_at", desc=False).execute()
+            return res.data or []
+        except Exception as e:
+            err_low = str(e).lower()
+            if (
+                "chat_question_pool" in err_low
+                and ("does not exist" in err_low or "pgrst" in err_low)
+            ):
+                return []
+            logger.warning(
+                "list_chat_question_pool failed err=%s", e,
+            )
+            return []
+
+    def insert_chat_question(
+        self,
+        *,
+        intent: str,
+        text: str,
+        weight: int = 100,
+        locale: str = "en",
+        position_hint: Optional[str] = None,
+        created_by: Optional[str] = None,
+        notes: Optional[str] = None,
+    ) -> Optional[dict]:
+        """Admin write: insert one question into the pool.
+
+        Validation (intent / position_hint) is handled by the route
+        layer's input validator; the DB-level CHECK constraint is
+        the final gate and rejects bad enum values with a Postgres
+        error that the route catches as 422.
+        """
+        payload: dict[str, Any] = {
+            "intent": intent,
+            "text": text,
+            "weight": int(weight),
+            "locale": locale,
+            "active": True,
+        }
+        if position_hint is not None:
+            payload["position_hint"] = position_hint
+        if created_by:
+            payload["created_by"] = created_by
+        if notes:
+            payload["notes"] = notes
+        try:
+            res = (
+                self.client.table("chat_question_pool")
+                .insert(payload)
+                .execute()
+            )
+            rows = res.data or []
+            return rows[0] if rows else None
+        except Exception as e:
+            logger.warning(
+                "insert_chat_question failed intent=%s err=%s",
+                intent, e,
+            )
+            return None
+
+    def update_chat_question(
+        self,
+        question_id: str,
+        *,
+        text: Optional[str] = None,
+        weight: Optional[int] = None,
+        active: Optional[bool] = None,
+        position_hint: Optional[str] = None,
+        notes: Optional[str] = None,
+    ) -> Optional[dict]:
+        """Admin write: partial update of one question.
+
+        Only fields explicitly passed are updated. intent + locale
+        are intentionally NOT mutable here — those identify the
+        question's pool slot; changing them is functionally a
+        delete + re-insert and should be modeled that way to keep
+        audit history honest.
+        """
+        payload: dict[str, Any] = {}
+        if text is not None:
+            payload["text"] = text
+        if weight is not None:
+            payload["weight"] = int(weight)
+        if active is not None:
+            payload["active"] = bool(active)
+        if position_hint is not None:
+            payload["position_hint"] = position_hint
+        if notes is not None:
+            payload["notes"] = notes
+        if not payload:
+            # No-op update; return current row.
+            try:
+                res = (
+                    self.client.table("chat_question_pool")
+                    .select("*")
+                    .eq("id", question_id)
+                    .limit(1)
+                    .execute()
+                )
+                rows = res.data or []
+                return rows[0] if rows else None
+            except Exception:
+                return None
+        try:
+            res = (
+                self.client.table("chat_question_pool")
+                .update(payload)
+                .eq("id", question_id)
+                .execute()
+            )
+            rows = res.data or []
+            return rows[0] if rows else None
+        except Exception as e:
+            logger.warning(
+                "update_chat_question failed qid=%s err=%s",
+                question_id, e,
+            )
+            return None
+
+    def soft_delete_chat_question(self, question_id: str) -> bool:
+        """Admin write: flip ``active=False`` on one question.
+
+        Soft-delete rather than hard-delete so the audit trail of
+        "this question was previously asked of N users" stays
+        intact. Reactivation is an update with active=True.
+        """
+        try:
+            (
+                self.client.table("chat_question_pool")
+                .update({"active": False})
+                .eq("id", question_id)
+                .execute()
+            )
+            return True
+        except Exception as e:
+            logger.warning(
+                "soft_delete_chat_question failed qid=%s err=%s",
+                question_id, e,
+            )
+            return False
+
     def update_session_charisma_profile(
         self,
         session_id: str,

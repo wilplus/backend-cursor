@@ -18576,6 +18576,367 @@ def v2_coaching_intro_bubble():
         }), 200
 
 
+# ── tester-soft-v1 — KPI timeline + question pool admin CRUD ─────────
+#
+# M1.1 (raw mode): GET /v2/user/kpi/timeline — per-session KPI
+#                  scores in chronological order with a summary card.
+#                  No smoothing yet; FE can render a chart now, the
+#                  `smoothed_kpi` field will be additive when it lands.
+#
+# M1.3 schema-only: GET / POST / PATCH / DELETE for chat_question_pool
+#                   admin curation. Empty pool = legacy question logic
+#                   so this changes nothing until content seeds.
+
+
+_QUESTION_POOL_VALID_INTENTS = (
+    "charisma", "stress", "trust", "post_official",
+)
+_QUESTION_POOL_VALID_POSITIONS = ("opener", "mid", "closer")
+_QUESTION_POOL_MAX_TEXT_LEN = 500
+
+
+@v2_bp.route("/user/kpi/timeline", methods=["GET"])
+@require_auth
+def v2_user_kpi_timeline():
+    """Return the user's session-by-session KPI trajectory.
+
+    M1.1 raw mode — per-session scores, no smoothing, no per-intent
+    cuts. The smoothing layer ships in a follow-up once we have
+    real distributions; the `smoothed_kpi` field will be additive
+    so FE chart code keeps rendering across the rollout.
+
+    Query params:
+      limit (int, optional, default 200) — max series length
+
+    Response 200:
+      Shape documented in services.kpi_timeline.build_user_kpi_timeline.
+
+    Response 401: missing auth (handled by decorator).
+    Response 500: unexpected (FE should fall back to empty chart).
+    """
+    try:
+        user_id = request.user_id
+        limit_raw = request.args.get("limit")
+        limit = 200
+        if limit_raw:
+            try:
+                limit = max(1, min(int(limit_raw), 500))
+            except ValueError:
+                pass  # silently coerce to default; non-blocking
+
+        from services.kpi_timeline import build_user_kpi_timeline
+        payload = build_user_kpi_timeline(user_id, limit=limit)
+        return jsonify(payload), 200
+
+    except Exception as e:
+        logger.error(
+            "user/kpi/timeline failed: %s", e, exc_info=True,
+        )
+        sentry_sdk.capture_exception(e)
+        # Soft-fail: return an empty payload so the FE chart renders
+        # its empty state rather than an error banner.
+        return jsonify({
+            "series": [],
+            "summary": {
+                "sessions_count":      0,
+                "latest_kpi":          None,
+                "first_kpi":           None,
+                "delta_first_to_last": None,
+                "trend":               "insufficient_data",
+            },
+        }), 200
+
+
+def _validate_question_pool_body(body: Any, *, partial: bool) -> dict:
+    """Manual validator for POST/PATCH bodies on the question pool.
+
+    Mirrors the style of v2_routes.py's other manual validators
+    (no Pydantic dep). When ``partial=True``, fields are optional
+    (PATCH); when False (POST), intent + text are required.
+
+    Returns a clean dict on success. Raises ValueError with a
+    user-friendly message on failure.
+    """
+    if not isinstance(body, dict):
+        raise ValueError("Body must be a JSON object")
+
+    cleaned: dict[str, Any] = {}
+
+    if "intent" in body:
+        intent = (body.get("intent") or "").strip().lower()
+        if intent not in _QUESTION_POOL_VALID_INTENTS:
+            raise ValueError(
+                "intent: must be one of "
+                f"{', '.join(_QUESTION_POOL_VALID_INTENTS)}"
+            )
+        cleaned["intent"] = intent
+    elif not partial:
+        raise ValueError("intent: required")
+
+    if "text" in body:
+        text_raw = body.get("text")
+        if not isinstance(text_raw, str):
+            raise ValueError("text: must be a string")
+        text = text_raw.strip()
+        if not text:
+            raise ValueError("text: must be non-empty")
+        if len(text) > _QUESTION_POOL_MAX_TEXT_LEN:
+            raise ValueError(
+                "text: must be "
+                f"{_QUESTION_POOL_MAX_TEXT_LEN} characters or fewer"
+            )
+        cleaned["text"] = text
+    elif not partial:
+        raise ValueError("text: required")
+
+    if "weight" in body:
+        weight_raw = body.get("weight")
+        if isinstance(weight_raw, bool) or not isinstance(weight_raw, int):
+            raise ValueError("weight: must be an integer")
+        if weight_raw < 0 or weight_raw > 10_000:
+            raise ValueError("weight: must be between 0 and 10000")
+        cleaned["weight"] = weight_raw
+
+    if "position_hint" in body:
+        pos = body.get("position_hint")
+        if pos is not None:
+            if not isinstance(pos, str):
+                raise ValueError("position_hint: must be a string or null")
+            pos = pos.strip().lower()
+            if pos not in _QUESTION_POOL_VALID_POSITIONS:
+                raise ValueError(
+                    "position_hint: must be one of "
+                    f"{', '.join(_QUESTION_POOL_VALID_POSITIONS)} or null"
+                )
+        cleaned["position_hint"] = pos
+
+    if "active" in body:
+        active = body.get("active")
+        if not isinstance(active, bool):
+            raise ValueError("active: must be a boolean")
+        cleaned["active"] = active
+
+    if "notes" in body:
+        notes = body.get("notes")
+        if notes is not None and not isinstance(notes, str):
+            raise ValueError("notes: must be a string or null")
+        if isinstance(notes, str) and len(notes) > 2_000:
+            raise ValueError("notes: must be 2000 characters or fewer")
+        cleaned["notes"] = notes
+
+    return cleaned
+
+
+@v2_bp.route("/admin/question-pool", methods=["GET"])
+@require_admin
+def v2_admin_question_pool_list():
+    """List questions in the pool, filterable by intent + locale.
+
+    Query params:
+      intent (optional)   — 'charisma' | 'stress' | 'trust' | 'post_official'
+      locale (default 'en')
+      active_only (default true) — set to 'false' to include soft-
+                                   deleted entries (admin audit)
+
+    Response 200:
+      { "questions": [ {id, intent, text, weight, locale, active,
+                        position_hint, created_at, notes}, ... ],
+        "count": int }
+    """
+    try:
+        intent = (request.args.get("intent") or "").strip().lower() or None
+        if intent is not None and intent not in _QUESTION_POOL_VALID_INTENTS:
+            return jsonify({
+                "code": "INVALID_INPUT",
+                "error": (
+                    "intent: must be one of "
+                    f"{', '.join(_QUESTION_POOL_VALID_INTENTS)}"
+                ),
+            }), 400
+
+        locale = (request.args.get("locale") or "en").strip()
+        active_only_raw = (request.args.get("active_only") or "true").lower()
+        active_only = active_only_raw not in ("false", "0", "no")
+
+        rows = db.list_chat_question_pool(
+            intent=intent,
+            locale=locale,
+            active_only=active_only,
+        )
+        return jsonify({
+            "questions": rows,
+            "count": len(rows),
+        }), 200
+
+    except Exception as e:
+        logger.error(
+            "admin/question-pool GET failed: %s", e, exc_info=True,
+        )
+        sentry_sdk.capture_exception(e)
+        return jsonify({
+            "code": "V2_ERROR",
+            "error": "Failed to list question pool",
+        }), 500
+
+
+@v2_bp.route("/admin/question-pool", methods=["POST"])
+@require_admin
+def v2_admin_question_pool_create():
+    """Insert one question into the pool.
+
+    Body:
+      { "intent": "charisma", "text": "...", "weight": 100,
+        "position_hint": "opener" | "mid" | "closer" | null,
+        "notes": "optional admin note" }
+
+    Responses:
+      201 — created; returns the inserted row.
+      422 INVALID_INPUT — validator rejected; message in `error`.
+      500 V2_ERROR — DB write failed.
+    """
+    try:
+        body = request.get_json(silent=True) or {}
+        try:
+            cleaned = _validate_question_pool_body(body, partial=False)
+        except ValueError as ve:
+            return jsonify({
+                "code": "INVALID_INPUT",
+                "error": str(ve),
+            }), 422
+
+        created_by = getattr(request, "user_id", None)
+        row = db.insert_chat_question(
+            intent=cleaned["intent"],
+            text=cleaned["text"],
+            weight=cleaned.get("weight", 100),
+            locale=(body.get("locale") or "en").strip(),
+            position_hint=cleaned.get("position_hint"),
+            created_by=str(created_by) if created_by else None,
+            notes=cleaned.get("notes"),
+        )
+        if not row:
+            return jsonify({
+                "code": "V2_ERROR",
+                "error": "Failed to persist question",
+            }), 500
+
+        logger.info(
+            "admin/question-pool.create id=%s intent=%s",
+            row.get("id"), cleaned["intent"],
+        )
+        return jsonify({"question": row}), 201
+
+    except Exception as e:
+        logger.error(
+            "admin/question-pool POST failed: %s", e, exc_info=True,
+        )
+        sentry_sdk.capture_exception(e)
+        return jsonify({
+            "code": "V2_ERROR",
+            "error": "Failed to create question",
+        }), 500
+
+
+@v2_bp.route("/admin/question-pool/<question_id>", methods=["PATCH"])
+@require_admin
+def v2_admin_question_pool_update(question_id):
+    """Partial update of one question.
+
+    Updatable fields: text, weight, active, position_hint, notes.
+    intent + locale are NOT mutable here — those define the pool
+    slot, and changing them is functionally a delete + re-insert.
+
+    Body example: { "active": false }
+    Body example: { "text": "Updated phrasing?", "weight": 80 }
+
+    Responses:
+      200 — updated; returns the new row state.
+      422 INVALID_INPUT — validator rejected.
+      404 NOT_FOUND — question_id didn't resolve.
+      500 V2_ERROR — DB write failed.
+    """
+    if not _is_valid_uuid(question_id):
+        return jsonify({
+            "code": "INVALID_INPUT",
+            "error": "question_id must be a valid UUID",
+        }), 400
+
+    try:
+        body = request.get_json(silent=True) or {}
+        try:
+            cleaned = _validate_question_pool_body(body, partial=True)
+        except ValueError as ve:
+            return jsonify({
+                "code": "INVALID_INPUT",
+                "error": str(ve),
+            }), 422
+
+        # intent / locale are explicitly NOT honored in PATCH.
+        cleaned.pop("intent", None)
+        cleaned.pop("locale", None)
+
+        row = db.update_chat_question(question_id, **cleaned)
+        if not row:
+            return jsonify({
+                "code": "NOT_FOUND",
+                "error": "Question not found",
+            }), 404
+
+        return jsonify({"question": row}), 200
+
+    except Exception as e:
+        logger.error(
+            "admin/question-pool PATCH failed: %s", e, exc_info=True,
+        )
+        sentry_sdk.capture_exception(e)
+        return jsonify({
+            "code": "V2_ERROR",
+            "error": "Failed to update question",
+        }), 500
+
+
+@v2_bp.route("/admin/question-pool/<question_id>", methods=["DELETE"])
+@require_admin
+def v2_admin_question_pool_delete(question_id):
+    """Soft-delete one question (sets ``active=false``).
+
+    Hard-delete is intentionally not exposed — questions that have
+    been asked of N users carry audit weight, and a soft-delete
+    preserves the "this question was previously in rotation" trail
+    without breaking any historical join.
+
+    Reactivation: PATCH with ``{"active": true}``.
+
+    Responses:
+      204 — soft-deleted.
+      400 INVALID_INPUT — bad UUID.
+      500 V2_ERROR — DB write failed.
+    """
+    if not _is_valid_uuid(question_id):
+        return jsonify({
+            "code": "INVALID_INPUT",
+            "error": "question_id must be a valid UUID",
+        }), 400
+
+    try:
+        ok = db.soft_delete_chat_question(question_id)
+        if not ok:
+            return jsonify({
+                "code": "V2_ERROR",
+                "error": "Failed to soft-delete question",
+            }), 500
+        return ("", 204)
+    except Exception as e:
+        logger.error(
+            "admin/question-pool DELETE failed: %s", e, exc_info=True,
+        )
+        sentry_sdk.capture_exception(e)
+        return jsonify({
+            "code": "V2_ERROR",
+            "error": "Failed to soft-delete question",
+        }), 500
+
+
 # ── Ticket 2 — Dad-joke onboarding opener ────────────────────────────
 #
 # Three-bubble flow on a new user's first onboarding contact:
