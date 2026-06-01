@@ -168,3 +168,21 @@ SPEC_ONBOARDING_OPENER = LLMSpec(
 """Pre-punchline acknowledgement line in the onboarding dad-joke
 opener (Ticket 2). The canonical punchline and pivot line are
 NEVER produced by the LLM — see services/onboarding_opener.py."""
+
+
+SPEC_CONTEXTUAL_FOLLOWUP = LLMSpec(
+    model=CHEAP_MODEL,
+    # Moderate warmth — the question should feel like a coach who
+    # actually listened, not a stock prompt. Lower than the
+    # icebreaker (0.7) because the LLM has TWO constraints to
+    # juggle (bridge naturally AND elicit a specific intent) and
+    # higher temp loses one of them under load.
+    temperature=0.55,
+    # Two-sentence question + a 5-12 word bridge_to debug tag.
+    # 150 leaves room for verbose model wrapping without truncating.
+    max_tokens=150,
+    response_format={"type": "json_object"},
+)
+"""FIX.1 — Contextual follow-up question for the interview funnel.
+Replaces the legacy alternation prompt that produced bicycle →
+boardroom non-sequiturs (tester feedback)."""

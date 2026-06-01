@@ -8929,6 +8929,63 @@ class DatabaseService:
         import random
         return random.choice(rows)
 
+    def dad_jokes_health(self) -> dict:
+        """FIX.3 — Health probe for the dad_jokes table.
+
+        Returns ``{table_exists, joke_count, sample_joke}`` so admin
+        + FE can confirm the migration ran on Supabase. Catches the
+        common deploy failure mode where the BE ships endpoints
+        but the migration was forgotten — the opener silently
+        skips (204) and nobody knows why.
+
+        ``sample_joke`` is one active row (for visual confirmation
+        the seed took), or None on empty table.
+        """
+        try:
+            res = (
+                self.client.table("dad_jokes")
+                .select("id, setup, punchline, emoji, active")
+                .eq("active", True)
+                .limit(1)
+                .execute()
+            )
+            rows = res.data or []
+            # Re-query just the count without limit so the health
+            # endpoint reflects actual seed size, not the limit-1.
+            try:
+                count_res = (
+                    self.client.table("dad_jokes")
+                    .select("id", count="exact")
+                    .eq("active", True)
+                    .execute()
+                )
+                total = count_res.count or len(rows)
+            except Exception:
+                total = len(rows)
+            return {
+                "table_exists": True,
+                "joke_count": int(total),
+                "sample_joke": rows[0] if rows else None,
+            }
+        except Exception as e:
+            err_low = str(e).lower()
+            if (
+                "dad_jokes" in err_low
+                and ("does not exist" in err_low or "pgrst" in err_low)
+            ):
+                return {
+                    "table_exists": False,
+                    "joke_count": 0,
+                    "sample_joke": None,
+                }
+            logger.warning("dad_jokes_health failed err=%s", e)
+            return {
+                "table_exists": False,
+                "joke_count": 0,
+                "sample_joke": None,
+                "error": str(e),
+            }
+
     def get_dad_joke_by_id(self, joke_id: str) -> Optional[dict]:
         """Lookup a joke by id for the /next endpoint.
 

@@ -18937,6 +18937,184 @@ def v2_admin_question_pool_delete(question_id):
         }), 500
 
 
+# ── FIX.1 — Contextual follow-up for the interview funnel ───────────
+#
+# Replaces the legacy alternation prompt's non-sequitur output
+# (tester said: bicycle → boardroom). The new endpoint reads which
+# intent is missing from the session's snippets and asks the LLM
+# for ONE question that BOTH bridges from the user's last turn AND
+# elicits the missing intent.
+#
+# FE switched fetchNextQuestion to this endpoint at b1eb864; turn 1
+# still uses the old soft-opener path (no guest_session_id yet).
+
+
+@v2_bp.route(
+    "/public/interview/contextual-next-question",
+    methods=["POST"],
+)
+def v2_public_interview_contextual_next_question():
+    """Return the next contextual question — bridges + targets intent.
+
+    Replaces /v2/public/interview/next-question's rigid alternation
+    for turns 2+ (when the FE has a guest_session_id to send). Turn
+    1 still uses the soft-opener path per FE handoff Q1.
+
+    Body::
+
+        {
+          "guest_session_id":  "uuid" | null,        // null on turn 1
+          "turn_number":       int,                  // optional, analytics
+          "previous_turns":    [{question, transcript?}, ...]
+                                                     // last 2-3 max; BE
+                                                     // trims to 3 anyway
+        }
+
+    Response 200::
+
+        {
+          "question":          "When you're on that tough climb...",
+          "target_intent":     "charisma" | "stress",
+          "bridge_to":         "user mentioned cycling",    // debug
+          "source":            "contextual_llm"
+                               | "contextual_llm_fallback"
+                               | "soft_opener",
+          "completion_state":  {
+            "ready":    bool,
+            "criteria": {has_charisma, has_stress, duration_ok},
+            "current":  {charisma_count, stress_count,
+                         total_duration_ms, threshold_seconds}
+          }
+        }
+
+    `completion_state` rides along so FE can update the gate chips
+    without a separate probe call (FE already has them wired per
+    Task 6).
+
+    Response 400 INVALID_INPUT — malformed body.
+    Response 500 V2_ERROR — unexpected; FE falls back to old endpoint.
+    """
+    try:
+        body = request.get_json(silent=True) or {}
+
+        gsid_raw = body.get("guest_session_id")
+        guest_session_id: str | None = None
+        if isinstance(gsid_raw, str) and gsid_raw.strip():
+            cand = gsid_raw.strip()
+            if _is_valid_uuid(cand):
+                guest_session_id = cand
+            else:
+                return jsonify({
+                    "code": "INVALID_INPUT",
+                    "error": "guest_session_id must be a valid UUID or null",
+                }), 400
+
+        previous_turns = body.get("previous_turns")
+        if previous_turns is not None and not isinstance(previous_turns, list):
+            return jsonify({
+                "code": "INVALID_INPUT",
+                "error": "previous_turns must be an array or null",
+            }), 400
+
+        from services.contextual_followup import (
+            generate_contextual_followup,
+        )
+        payload = generate_contextual_followup(
+            guest_session_id=guest_session_id,
+            previous_turns=previous_turns,
+        )
+
+        # Funnel-end log-shipper still wants the turn_number for
+        # bucketing; pass it through best-effort.
+        try:
+            turn_n = int(body.get("turn_number") or 0)
+        except (TypeError, ValueError):
+            turn_n = 0
+        logger.info(
+            "contextual_next.serve sid=%s turn=%d target=%s source=%s",
+            guest_session_id or "-", turn_n,
+            payload.get("target_intent"), payload.get("source"),
+        )
+
+        return jsonify(payload), 200
+
+    except Exception as e:
+        logger.error(
+            "/public/interview/contextual-next-question failed: %s",
+            e, exc_info=True,
+        )
+        sentry_sdk.capture_exception(e)
+        # Soft-fail: return a safe canonical opener so the FE flow
+        # doesn't dead-end on a BE bug. FE can also fall back to
+        # the old endpoint on 500 per their handoff.
+        return jsonify({
+            "code":    "V2_ERROR",
+            "error":   "Failed to generate contextual question",
+            "question":      "Tell me about a moment that's been on your mind recently.",
+            "target_intent": "charisma",
+            "bridge_to":     "",
+            "source":        "contextual_llm_fallback",
+            "completion_state": {
+                "ready": False,
+                "criteria": {
+                    "has_charisma": False,
+                    "has_stress":   False,
+                    "duration_ok":  False,
+                },
+                "current": {
+                    "charisma_count":    0,
+                    "stress_count":      0,
+                    "total_duration_ms": 0,
+                    "threshold_seconds": 60,
+                },
+            },
+        }), 500
+
+
+# ── FIX.3 — Dad jokes health probe (deploy verification) ────────────
+
+
+@v2_bp.route("/admin/health/dad-jokes", methods=["GET"])
+@require_admin
+def v2_admin_dad_jokes_health():
+    """Health probe for the dad_jokes table.
+
+    Lets admin + FE verify the migration ran on Supabase. Common
+    deploy failure: BE ships the opener endpoints, the migration
+    is forgotten, the opener silently 204-skips, FE has no signal.
+
+    Response 200::
+
+        {
+          "table_exists": bool,
+          "joke_count":   int,            // active rows only
+          "sample_joke":  {id, setup, punchline, emoji} | null,
+          "verdict":      "ok"
+                          | "table_missing"
+                          | "table_empty"
+        }
+    """
+    try:
+        health = db.dad_jokes_health()
+        if not health.get("table_exists"):
+            verdict = "table_missing"
+        elif (health.get("joke_count") or 0) == 0:
+            verdict = "table_empty"
+        else:
+            verdict = "ok"
+        health["verdict"] = verdict
+        return jsonify(health), 200
+    except Exception as e:
+        logger.error(
+            "admin/health/dad-jokes failed: %s", e, exc_info=True,
+        )
+        sentry_sdk.capture_exception(e)
+        return jsonify({
+            "code":  "V2_ERROR",
+            "error": "Failed to probe dad_jokes health",
+        }), 500
+
+
 # ── Ticket 2 — Dad-joke onboarding opener ────────────────────────────
 #
 # Three-bubble flow on a new user's first onboarding contact:
