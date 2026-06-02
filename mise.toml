@@ -1,0 +1,30 @@
+# Mise runtime config — read by Railway's build chain.
+#
+# Why this exists:
+#   Railway's build process invokes `mise install` to provision the
+#   Python runtime. As of mise 2026.5.x, mise verifies GitHub artifact
+#   attestations by default for downloaded Python tarballs — but the
+#   cpython-3.12.1+20240107 build we resolve to has no attestation
+#   published, so the install fails with:
+#
+#     mise ERROR Failed to install core:python@3.12.1:
+#     No GitHub artifact attestations found for python@3.12.1
+#
+#   The runtime tarball is unchanged; only the verification step is
+#   failing. Per mise's own error message ("add
+#   python.github_attestations = false under [settings]"), this file
+#   opts out of the attestation check.
+#
+# Why not the env-var alternative:
+#   MISE_PYTHON_GITHUB_ATTESTATIONS=false works but lives in Railway
+#   project settings, not git. This file makes the workaround visible
+#   to anyone debugging the build later — including the inevitable
+#   "why are we disabling this?" PR review months from now.
+#
+# When to remove:
+#   When upstream mise/python-build-standalone publishes the
+#   attestation, OR when we bump to a Python version that has one.
+#   Until then this config is load-bearing for the deploy.
+
+[settings]
+python.github_attestations = false
