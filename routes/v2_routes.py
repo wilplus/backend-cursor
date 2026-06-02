@@ -8775,26 +8775,28 @@ def _build_user_raw_snippet_list(
     Gated on ``include_admin_fields`` (i.e., session is published):
       admin_comment, coach_label, follow_up_question
 
-    Ordering (per the post-tester UX decision): bucket by
-    ``question_tone`` and sort each bucket by intensity, then
-    concatenate. The user sees their most-charismatic moments first
-    (descending), then their most-stressful moments (descending).
-    Anything that can't be bucketed (e.g., legacy snippets with no
-    question_tone) trails the two buckets in chronological order.
+    Ordering depends on phase (mirrors the include_admin_fields gate):
 
-    Intensity metric: ``classifier_stress_probability`` is the only
-    measured intensity signal we have today.
-      - charisma bucket → ASC (lower stress prob = more
-        characteristically charismatic delivery)
-      - stress bucket   → DESC (higher stress prob = more
-        characteristically stressful delivery)
-    Snippets missing the classifier output sort to the tail of
-    their bucket. When we ship a dedicated charisma-intensity
-    signal later, the charisma-bucket key swaps; the bucket
-    structure stays identical.
+      PRE-PUBLISH / ANONYMOUS (include_admin_fields=False):
+        Chronological — snippets in the order they were collected
+        during the session. The raw view is the user's honest
+        replay of "what just happened"; resorting it before any
+        human interpretation would imply judgment we haven't made
+        yet.
 
-    The raw block is the same shape for both signed-in and anonymous
-    flows so FE renders one card component for both.
+      POST-PUBLISH (include_admin_fields=True):
+        Bucket by question_tone and sort by intensity:
+          - charisma bucket first, ASC by classifier_stress_probability
+            (lower stress = more characteristically charismatic)
+          - stress bucket next, DESC by classifier_stress_probability
+            (higher stress = more stressful)
+          - other/untagged trails chronological
+        Snippets missing the classifier output tail each bucket.
+        The intensity sort IS the curated narrative — and it's
+        only earned once a human has reviewed.
+
+    The raw block payload shape is identical for both phases; only
+    the ordering changes. FE renders one card component either way.
     """
     snippets = db.get_snippets_by_session(session_id) or []
 
@@ -8843,7 +8845,12 @@ def _build_user_raw_snippet_list(
 
         rendered.append(row)
 
-    return _sort_raw_snippets_by_intensity(rendered)
+    # Phase-aware ordering: chronological pre-publish (DB order
+    # already is start_offset_ms ASC), intensity-sorted post-publish.
+    # See docstring above for the rationale.
+    if include_admin_fields:
+        return _sort_raw_snippets_by_intensity(rendered)
+    return rendered
 
 
 def _sort_raw_snippets_by_intensity(rendered: list[dict]) -> list[dict]:

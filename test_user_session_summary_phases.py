@@ -157,8 +157,67 @@ class RawBlockShapeTests(unittest.TestCase):
         self.assertEqual(out[0]["acoustic"]["fillers"], 4)
 
 
+class PhaseAwareOrderingTests(unittest.TestCase):
+    """Pre-publish + anonymous → chronological (as collected).
+    Post-publish → intensity-sorted (charisma bucket then stress
+    bucket). The raw view is replay-of-what-happened; the intensity
+    sort IS curation, earned only once a human has reviewed."""
+
+    SNIPPETS = [
+        # Chronological input order: A → B → C → D.
+        {"id": "A", "storage_path": "p/a", "question_tone": "charisma",
+         "classifier_stress_probability": 0.4},
+        {"id": "B", "storage_path": "p/b", "question_tone": "stress",
+         "classifier_stress_probability": 0.9},
+        {"id": "C", "storage_path": "p/c", "question_tone": "charisma",
+         "classifier_stress_probability": 0.1},
+        {"id": "D", "storage_path": "p/d", "question_tone": "stress",
+         "classifier_stress_probability": 0.3},
+    ]
+
+    def _build(self, *, include_admin_fields: bool):
+        # Faithful re-implementation of the route helper's phase
+        # check. include_admin_fields=False → chronological;
+        # True → intensity sort via the bucket-and-sort rules.
+        rendered = _build_raw_snippet_list(
+            self.SNIPPETS, include_admin_fields=include_admin_fields,
+        )
+        if not include_admin_fields:
+            return rendered
+        # Apply intensity sort (mirror of route helper).
+        _UNSCORED = float("inf")
+        def intensity(r):
+            p = r.get("classifier_stress_probability")
+            return float(p) if isinstance(p, (int, float)) else _UNSCORED
+        charisma = [r for r in rendered if r.get("question_tone") == "charisma"]
+        stress   = [r for r in rendered if r.get("question_tone") == "stress"]
+        other    = [
+            r for r in rendered
+            if r.get("question_tone") not in ("charisma", "stress")
+        ]
+        charisma.sort(key=lambda r: (intensity(r) is _UNSCORED, intensity(r)))
+        stress.sort(key=lambda r: (intensity(r) is _UNSCORED, -intensity(r)))
+        return charisma + stress + other
+
+    def test_pre_publish_returns_chronological(self):
+        """Raw view → as collected (A, B, C, D)."""
+        out = self._build(include_admin_fields=False)
+        self.assertEqual([r["snippet_id"] for r in out], ["A", "B", "C", "D"])
+
+    def test_post_publish_returns_intensity_sorted(self):
+        """Curated view → charisma bucket (low stress first), then
+        stress bucket (high stress first):
+          C (charisma, 0.1) → A (charisma, 0.4)
+          → B (stress, 0.9) → D (stress, 0.3)"""
+        out = self._build(include_admin_fields=True)
+        self.assertEqual([r["snippet_id"] for r in out], ["C", "A", "B", "D"])
+
+
 class SnippetOrderingTests(unittest.TestCase):
-    """Bucket-then-sort ordering:
+    """Unit tests for the intensity-sort helper in isolation —
+    used ONLY post-publish per PhaseAwareOrderingTests above.
+
+    Bucket-then-sort ordering:
        charisma bucket (asc by stress prob, lower=more charismatic)
        → stress bucket (desc by stress prob, higher=more stressful)
        → other/untagged (chronological, fallback).
