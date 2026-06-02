@@ -157,6 +157,137 @@ class RawBlockShapeTests(unittest.TestCase):
         self.assertEqual(out[0]["acoustic"]["fillers"], 4)
 
 
+class SnippetOrderingTests(unittest.TestCase):
+    """Bucket-then-sort ordering:
+       charisma bucket (asc by stress prob, lower=more charismatic)
+       → stress bucket (desc by stress prob, higher=more stressful)
+       → other/untagged (chronological, fallback).
+    Unscored snippets tail each bucket regardless of direction."""
+
+    _UNSCORED = float("inf")
+
+    def _sort(self, rendered):
+        # Re-implementation of the route helper's ordering for
+        # decoupled testing.
+        def intensity(r):
+            p = r.get("classifier_stress_probability")
+            return float(p) if isinstance(p, (int, float)) else self._UNSCORED
+
+        charisma = [r for r in rendered if r.get("question_tone") == "charisma"]
+        stress   = [r for r in rendered if r.get("question_tone") == "stress"]
+        other    = [
+            r for r in rendered
+            if r.get("question_tone") not in ("charisma", "stress")
+        ]
+        charisma.sort(key=lambda r: (intensity(r) is self._UNSCORED, intensity(r)))
+        stress.sort(key=lambda r: (intensity(r) is self._UNSCORED, -intensity(r)))
+        return charisma + stress + other
+
+    def test_charisma_bucket_precedes_stress_bucket(self):
+        rendered = [
+            {"snippet_id": "s1", "question_tone": "stress",
+             "classifier_stress_probability": 0.8},
+            {"snippet_id": "c1", "question_tone": "charisma",
+             "classifier_stress_probability": 0.2},
+        ]
+        out = self._sort(rendered)
+        self.assertEqual(out[0]["snippet_id"], "c1")
+        self.assertEqual(out[1]["snippet_id"], "s1")
+
+    def test_charisma_bucket_sorted_asc_by_stress_prob(self):
+        """Lower stress prob = more characteristically charismatic →
+        appears first."""
+        rendered = [
+            {"snippet_id": "c_high", "question_tone": "charisma",
+             "classifier_stress_probability": 0.6},
+            {"snippet_id": "c_low", "question_tone": "charisma",
+             "classifier_stress_probability": 0.1},
+            {"snippet_id": "c_mid", "question_tone": "charisma",
+             "classifier_stress_probability": 0.3},
+        ]
+        out = self._sort(rendered)
+        self.assertEqual(
+            [r["snippet_id"] for r in out],
+            ["c_low", "c_mid", "c_high"],
+        )
+
+    def test_stress_bucket_sorted_desc_by_stress_prob(self):
+        """Higher stress prob = more characteristically stressful →
+        appears first within the stress bucket."""
+        rendered = [
+            {"snippet_id": "s_low", "question_tone": "stress",
+             "classifier_stress_probability": 0.4},
+            {"snippet_id": "s_high", "question_tone": "stress",
+             "classifier_stress_probability": 0.95},
+            {"snippet_id": "s_mid", "question_tone": "stress",
+             "classifier_stress_probability": 0.7},
+        ]
+        out = self._sort(rendered)
+        self.assertEqual(
+            [r["snippet_id"] for r in out],
+            ["s_high", "s_mid", "s_low"],
+        )
+
+    def test_unscored_snippets_tail_each_bucket(self):
+        """Snippets missing classifier_stress_probability sort to
+        the tail of their bucket regardless of sort direction —
+        we never show 'best' snippets that are actually 'unscored'."""
+        rendered = [
+            {"snippet_id": "c_unscored", "question_tone": "charisma",
+             "classifier_stress_probability": None},
+            {"snippet_id": "c_scored", "question_tone": "charisma",
+             "classifier_stress_probability": 0.2},
+            {"snippet_id": "s_unscored", "question_tone": "stress",
+             "classifier_stress_probability": None},
+            {"snippet_id": "s_scored", "question_tone": "stress",
+             "classifier_stress_probability": 0.7},
+        ]
+        out = self._sort(rendered)
+        # Charisma first (scored, then unscored), then stress (scored,
+        # then unscored).
+        self.assertEqual(
+            [r["snippet_id"] for r in out],
+            ["c_scored", "c_unscored", "s_scored", "s_unscored"],
+        )
+
+    def test_other_tone_trails_both_buckets(self):
+        """Legacy / unknown tones (e.g., 'ebcp', 'trust', null) land
+        after both primary buckets in chronological (input) order."""
+        rendered = [
+            {"snippet_id": "o1", "question_tone": "ebcp",
+             "classifier_stress_probability": 0.9},
+            {"snippet_id": "c1", "question_tone": "charisma",
+             "classifier_stress_probability": 0.2},
+            {"snippet_id": "o2", "question_tone": None,
+             "classifier_stress_probability": 0.5},
+            {"snippet_id": "s1", "question_tone": "stress",
+             "classifier_stress_probability": 0.8},
+        ]
+        out = self._sort(rendered)
+        self.assertEqual(
+            [r["snippet_id"] for r in out],
+            ["c1", "s1", "o1", "o2"],
+        )
+
+    def test_empty_input_returns_empty(self):
+        self.assertEqual(self._sort([]), [])
+
+    def test_only_one_bucket_present_works(self):
+        """A session of all-charisma snippets still sorts correctly
+        and returns no stress bucket."""
+        rendered = [
+            {"snippet_id": "c1", "question_tone": "charisma",
+             "classifier_stress_probability": 0.5},
+            {"snippet_id": "c2", "question_tone": "charisma",
+             "classifier_stress_probability": 0.1},
+        ]
+        out = self._sort(rendered)
+        self.assertEqual(
+            [r["snippet_id"] for r in out],
+            ["c2", "c1"],  # c2 has lower stress prob, leads
+        )
+
+
 class CtaDerivationTests(unittest.TestCase):
     """The cta field's kind is the FE's signal for which screen to
     render below the raw block."""

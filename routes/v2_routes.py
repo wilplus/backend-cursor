@@ -8775,11 +8775,30 @@ def _build_user_raw_snippet_list(
     Gated on ``include_admin_fields`` (i.e., session is published):
       admin_comment, coach_label, follow_up_question
 
+    Ordering (per the post-tester UX decision): bucket by
+    ``question_tone`` and sort each bucket by intensity, then
+    concatenate. The user sees their most-charismatic moments first
+    (descending), then their most-stressful moments (descending).
+    Anything that can't be bucketed (e.g., legacy snippets with no
+    question_tone) trails the two buckets in chronological order.
+
+    Intensity metric: ``classifier_stress_probability`` is the only
+    measured intensity signal we have today.
+      - charisma bucket → ASC (lower stress prob = more
+        characteristically charismatic delivery)
+      - stress bucket   → DESC (higher stress prob = more
+        characteristically stressful delivery)
+    Snippets missing the classifier output sort to the tail of
+    their bucket. When we ship a dedicated charisma-intensity
+    signal later, the charisma-bucket key swaps; the bucket
+    structure stays identical.
+
     The raw block is the same shape for both signed-in and anonymous
     flows so FE renders one card component for both.
     """
     snippets = db.get_snippets_by_session(session_id) or []
-    out: list[dict] = []
+
+    rendered: list[dict] = []
     for s in snippets:
         # Skip un-extracted candidates; we only show real snippets.
         # storage_path is the proxy: an extracted snippet has its
@@ -8822,8 +8841,60 @@ def _build_user_raw_snippet_list(
             row["coach_label"]        = (s.get("coach_label") or "").lower() or None
             row["follow_up_question"] = s.get("follow_up_question")
 
-        out.append(row)
-    return out
+        rendered.append(row)
+
+    return _sort_raw_snippets_by_intensity(rendered)
+
+
+def _sort_raw_snippets_by_intensity(rendered: list[dict]) -> list[dict]:
+    """Bucket by ``question_tone`` and sort each bucket by intensity.
+
+    Ordering rules (single source of truth — used by both signed-in
+    and anonymous endpoints):
+
+      1. CHARISMA bucket first, sorted by classifier_stress_probability
+         ASCENDING (lower stress signal = more charismatic delivery).
+      2. STRESS bucket next, sorted by classifier_stress_probability
+         DESCENDING (higher stress signal = more stressful delivery).
+      3. Untagged / other-tone snippets last, in original (chronological)
+         order — defensive against legacy rows or future tones.
+
+    Snippets missing the classifier output (NULL probability) sort
+    to the tail of their bucket so visible "best" snippets are always
+    the ones with actual measured intensity, not the ones we couldn't
+    score.
+    """
+    # Sentinel for snippets missing the classifier output. Used as
+    # the secondary sort key so untyped probs fall to the END of
+    # each bucket regardless of which direction we're sorting.
+    _UNSCORED = float("inf")
+
+    def _intensity(row: dict) -> float:
+        p = row.get("classifier_stress_probability")
+        return float(p) if isinstance(p, (int, float)) else _UNSCORED
+
+    charisma_bucket = [r for r in rendered if r.get("question_tone") == "charisma"]
+    stress_bucket   = [r for r in rendered if r.get("question_tone") == "stress"]
+    other_bucket    = [
+        r for r in rendered
+        if r.get("question_tone") not in ("charisma", "stress")
+    ]
+
+    # CHARISMA: ascending by stress prob (lower = better) — but
+    # unscored rows still trail. The compound key (is_unscored, value)
+    # forces unscored to the end regardless of asc/desc direction.
+    charisma_bucket.sort(
+        key=lambda r: (_intensity(r) is _UNSCORED, _intensity(r)),
+    )
+    # STRESS: descending by stress prob (higher = more stressful).
+    # Negate the value so unscored (inf) flips to -inf and the
+    # primary key sorts naturally; unscored still tail via the
+    # is_unscored boolean.
+    stress_bucket.sort(
+        key=lambda r: (_intensity(r) is _UNSCORED, -_intensity(r)),
+    )
+
+    return charisma_bucket + stress_bucket + other_bucket
 
 
 @v2_bp.route(
