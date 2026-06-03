@@ -19337,6 +19337,227 @@ def v2_user_set_profile():
         }), 500
 
 
+# ── willab beta — Lab upload handler (design §4, contract §3.3) ──────
+#
+# The convergence: multipart audio + inline session_context → min-content
+# gate → store → Whisper → segment → features → per-snippet stickiness →
+# §3.3 Readout payload, synchronously (FE confirmed multipart-sync).
+#
+# AUTH-MODEL ASSUMPTIONS (flagged for FE — easy to change, the route is
+# thin):
+#   (a) PUBLIC / guest-allowed — the willab pre-send flow is unsigned
+#       (account is created only at Send, §13), so the Lab records as a
+#       guest. Mirrors the existing /v2/public/interview/* funnel:
+#       guest_session_id keyed, user_id=NULL, claimed at send via
+#       v2_claim_guest_session.
+#   (b) session_context arrives INLINE in the multipart (topic + optional
+#       audience/target_length_seconds/domain_vocabulary), because an
+#       unsigned user's session_context isn't on the server (the
+#       @require_auth /intake-context PUT is the signed-user variant).
+# If FE wants optional-auth (use the real user_id when a JWT is present)
+# or a separate guest session_context step, say so — small change.
+
+_LAB_MAX_AUDIO_MB = 25  # a 60s+ recording is a few MB; generous headroom
+
+
+def _parse_lab_vocabulary(raw):
+    """Parse the multipart domain_vocabulary field — accepts a JSON
+    array string or a comma-separated list. Returns a list or None."""
+    if raw is None:
+        return None
+    s = str(raw).strip()
+    if not s:
+        return None
+    try:
+        parsed = json.loads(s)
+        if isinstance(parsed, list):
+            return parsed
+    except Exception:
+        pass
+    return [t.strip() for t in s.split(",") if t.strip()]
+
+
+@v2_bp.route("/lab/recordings", methods=["POST"])
+def v2_lab_create_recording():
+    """willab Lab upload — multipart, synchronous, guest-allowed (§3.3).
+
+    Multipart form fields:
+      audio_file            (required) the recording
+      topic                 (required) session_context topic
+      audience              (optional)
+      target_length_seconds (optional, int)
+      domain_vocabulary     (optional, JSON array or comma-separated)
+      guest_session_id      (optional) reuse an existing guest session;
+                            else a fresh one is minted + returned
+
+    Flow (invariant order):
+      1. read audio
+      2. validate session_context (topic required, §3.2/§5.10)
+      3. MIN-CONTENT GATE before any processing (§5.5) → 422 re-record
+      4. store parent audio + guest session + recording + session_context
+      5. process → §3.3 Readout payload (sync)
+
+    Responses:
+      201 { session_id, recording_id, session_context, readout:{snippets[]} }
+      400 INVALID_INPUT / AUDIO_FILE_REQUIRED — bad multipart
+      413 FILE_TOO_LARGE
+      422 INVALID_INPUT (topic) | RECORDING_REJECTED (gate: too_short/
+          no_speech — FE shows re-record)
+      500 V2_ERROR
+    """
+    try:
+        # ── 1. audio ────────────────────────────────────────────────
+        if "audio_file" not in request.files:
+            return jsonify({
+                "code": "AUDIO_FILE_REQUIRED",
+                "error": "audio_file is required",
+            }), 400
+        audio_file = request.files.get("audio_file")
+        max_bytes = _LAB_MAX_AUDIO_MB * 1024 * 1024
+        if (request.content_length or 0) > max_bytes:
+            return jsonify({
+                "code": "FILE_TOO_LARGE",
+                "error": f"audio_file exceeds {_LAB_MAX_AUDIO_MB}MB",
+            }), 413
+        file_bytes = audio_file.read()
+        if not file_bytes:
+            return jsonify({
+                "code": "INVALID_INPUT", "error": "audio_file is empty",
+            }), 400
+        if len(file_bytes) > max_bytes:
+            return jsonify({
+                "code": "FILE_TOO_LARGE",
+                "error": f"audio_file exceeds {_LAB_MAX_AUDIO_MB}MB",
+            }), 413
+
+        # ── 2. session_context (inline; topic required) ─────────────
+        from services.intake_context import (
+            IntakeContextError, validate_intake_context_body,
+        )
+        form = request.form or {}
+        target_raw = form.get("target_length_seconds")
+        try:
+            target_len = int(target_raw) if target_raw not in (None, "") else None
+        except (TypeError, ValueError):
+            target_len = None
+        try:
+            session_context = validate_intake_context_body({
+                "topic": form.get("topic"),
+                "audience": form.get("audience"),
+                "target_length_seconds": target_len,
+                "domain_vocabulary": _parse_lab_vocabulary(
+                    form.get("domain_vocabulary"),
+                ),
+            }, require_topic=True)
+        except IntakeContextError as ve:
+            return jsonify({"code": "INVALID_INPUT", "error": str(ve)}), 422
+
+        # ── 3. MIN-CONTENT GATE before processing (§5.5) ────────────
+        from services.min_content_gate import evaluate_min_content_bytes
+        gate = evaluate_min_content_bytes(file_bytes)
+        if not gate["ok"]:
+            return jsonify({
+                "code": "RECORDING_REJECTED",
+                "error": (
+                    "Recording too short — record at least 60 seconds."
+                    if gate["reason"] == "too_short"
+                    else "No speech detected — try recording again."
+                ),
+                "gate": gate,  # {reason, duration_sec, voiced_sec, thresholds}
+            }), 422
+
+        # ── 4. store + session + recording ──────────────────────────
+        from services.coach_video_storage import (
+            put_coach_object_bytes, coach_media_public_url,
+        )
+        bucket = "coach_feedback_videos"
+        guest_session_id = (
+            (form.get("guest_session_id") or "").strip()
+            or str(uuid.uuid4())
+        )
+        recording_id = str(uuid.uuid4())
+        ext = os.path.splitext(audio_file.filename or "")[1] or ".webm"
+        parent_key = f"willab_lab/{guest_session_id}/recording_{uuid.uuid4().hex}{ext}"
+        content_type = (audio_file.mimetype or "audio/webm").strip() or "audio/webm"
+
+        try:
+            put_coach_object_bytes(bucket, parent_key, file_bytes, content_type)
+        except Exception as up_err:
+            logger.error("lab: parent upload failed: %s", up_err, exc_info=True)
+            return jsonify({
+                "code": "V2_ERROR", "error": "Failed to store recording",
+            }), 500
+        parent_url = coach_media_public_url(parent_key) or f"s3://{bucket}/{parent_key}"
+
+        # Guest session (create only if it doesn't already exist).
+        if not db.v2_get_session_by_id(guest_session_id):
+            try:
+                db.v2_create_guest_session(guest_session_id)
+            except Exception as se:
+                logger.error("lab: guest session create failed: %s", se, exc_info=True)
+                return jsonify({
+                    "code": "V2_ERROR", "error": "Failed to create session",
+                }), 500
+
+        # Persist session_context on the session row.
+        db.set_session_intake_context(guest_session_id, session_context)
+
+        # Recording row (recording_origin fallback for pre-migration envs).
+        rec_payload = {
+            "id": recording_id, "user_id": None,
+            "session_v2_id": guest_session_id,
+            "storage_path": parent_key, "audio_url": parent_url, "duration": 0,
+            "recording_origin": "willab_lab",
+        }
+        try:
+            db.create_recording(rec_payload)
+        except Exception as ce:
+            err_low = str(ce).lower()
+            if "recording_origin" in err_low or "pgrst204" in err_low:
+                db.create_recording({k: v for k, v in rec_payload.items() if k != "recording_origin"})
+            else:
+                logger.error("lab: create_recording failed: %s", ce, exc_info=True)
+                return jsonify({
+                    "code": "V2_ERROR", "error": "Failed to create recording",
+                }), 500
+        try:
+            db.v2_set_guest_session_recording(guest_session_id, recording_id)
+        except Exception as le:
+            logger.warning("lab: link recording failed (non-fatal): %s", le)
+
+        # ── 5. process → Readout payload (sync) ─────────────────────
+        from services.lab_recording import process_lab_recording
+        readout = process_lab_recording(
+            session_id=guest_session_id,
+            user_id=None,
+            recording_id=recording_id,
+            audio_bytes=file_bytes,
+            filename=audio_file.filename or "lab.webm",
+            session_context=session_context,
+            parent_audio_url=parent_url,
+        )
+
+        logger.info(
+            "lab: recording processed sid=%s rec=%s snippets=%d",
+            guest_session_id, recording_id,
+            len(readout.get("snippets") or []),
+        )
+        return jsonify({
+            "status": "ok",
+            "session_id": guest_session_id,
+            "recording_id": recording_id,
+            "session_context": session_context,
+            "readout": readout,
+        }), 201
+
+    except Exception as e:
+        logger.error("lab/recordings POST failed: %s", e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({
+            "code": "V2_ERROR", "error": "Failed to process recording",
+        }), 500
+
+
 # ── willab beta — Lounge thread persistence (BE contract §3.15) ─────
 #
 # Per-user Lounge chat thread that survives reload + device switch.
