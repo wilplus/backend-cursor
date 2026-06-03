@@ -44,5 +44,15 @@ fi
 # Large multipart uploads (reference videos up to MAX_REFERENCE_VIDEO_SIZE_MB)
 # need a long worker timeout. Override with GUNICORN_TIMEOUT (seconds),
 # e.g. 1800 for 30 minutes.
+#
+# --config gunicorn_conf.py wires the post_worker_init librosa warmup
+# (BE contract §4.1/§5.12): each worker pays the ~27s numba JIT at boot,
+# before accepting traffic, so the first snippet-processing request after
+# a deploy can't eat the cold-start and 502 on Railway's 15s proxy
+# timeout. CLI flags below take precedence over the same keys in the file.
 GUNICORN_TIMEOUT="${GUNICORN_TIMEOUT:-1800}"
-exec gunicorn app:app --bind "0.0.0.0:${PORT}" --workers 2 --timeout "${GUNICORN_TIMEOUT}"
+exec gunicorn app:app \
+  --config gunicorn_conf.py \
+  --bind "0.0.0.0:${PORT}" \
+  --workers 2 \
+  --timeout "${GUNICORN_TIMEOUT}"
