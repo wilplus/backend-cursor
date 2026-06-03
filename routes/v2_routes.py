@@ -8538,8 +8538,11 @@ def v2_user_put_session_intake_context(session_id):
             validate_intake_context_body,
         )
         try:
+            # willab §3.2 / invariant §5.10 — session_context REQUIRES
+            # a topic; BE rejects empty (not trusted to FE).
             ctx = validate_intake_context_body(
-                request.get_json(silent=True) or {}
+                request.get_json(silent=True) or {},
+                require_topic=True,
             )
         except IntakeContextError as ve:
             return jsonify({

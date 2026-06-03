@@ -149,13 +149,25 @@ def _norm_vocabulary(value: Any) -> Optional[list[str]]:
     return cleaned or None
 
 
-def validate_intake_context_body(body: Any) -> dict[str, Any]:
+def validate_intake_context_body(
+    body: Any,
+    *,
+    require_topic: bool = False,
+) -> dict[str, Any]:
     """Parse + validate the PUT body, returning the canonical dict.
 
     Accepts:
-      - dict with any subset of the three keys
-      - missing keys are treated as None (cleared)
-      - empty body {} is valid → all-None dict (clears the column)
+      - dict with any subset of the four keys
+      - missing keys are treated as None
+      - empty body {} → all-None dict (only when require_topic=False)
+
+    ``require_topic`` (willab beta §3.2 / invariant §5.10): when True,
+    a missing/empty ``topic`` is rejected — session_context REQUIRES a
+    topic (it feeds stickiness topic-coherence, Whisper priming, prompt
+    relevance, coach interpretability). The willab Lab-entry PUT passes
+    require_topic=True; the legacy default (False) preserves the Task-9
+    all-optional behaviour for any other caller + the validator's unit
+    tests.
 
     Raises IntakeContextError with a user-friendly message on:
       - body not a dict
@@ -163,15 +175,17 @@ def validate_intake_context_body(body: Any) -> dict[str, Any]:
       - text field over the 200-char cap
       - target_length_seconds out of [30, 7200]
       - bool sneaking in where int is expected
+      - domain_vocabulary not a list / over bounds
+      - require_topic=True and topic missing/empty
 
-    The returned dict always carries the three canonical keys with
+    The returned dict always carries the four canonical keys with
     None-or-value, so callers can write it straight into the JSONB
     column without further normalization.
     """
     if not isinstance(body, dict):
         raise IntakeContextError("Body must be a JSON object")
 
-    return {
+    cleaned = {
         "topic": _norm_text(body.get("topic"), "topic"),
         "audience": _norm_text(body.get("audience"), "audience"),
         "target_length_seconds": _norm_seconds(
@@ -181,6 +195,11 @@ def validate_intake_context_body(body: Any) -> dict[str, Any]:
             body.get("domain_vocabulary"),
         ),
     }
+
+    if require_topic and not cleaned["topic"]:
+        raise IntakeContextError("topic: required")
+
+    return cleaned
 
 
 def snapshot_intake_context(session_id: str) -> Optional[dict[str, Any]]:
