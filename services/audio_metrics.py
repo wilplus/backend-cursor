@@ -341,7 +341,7 @@ def _analyze_pcm(
 
     pitch_st, pitch_frames = _compute_pitch_center_st(sig)
 
-    return {
+    result = {
         "wpm": wpm,
         "pause_ms": _compute_pause_ms(dbs),
         "dynamic_db": _compute_dynamic_db(dbs),
@@ -351,6 +351,141 @@ def _analyze_pcm(
         "pitch_frame_count": pitch_frames,
         "voiced_duration_sec": round(voiced_dur, 1),
     }
+
+    # ── Librosa feature block (additive) ──────────────────────────
+    # Best-effort: if librosa is unavailable (import error) or the
+    # analysis fails for any reason, we log and continue with the
+    # existing metrics — the pipeline never breaks because of a
+    # missing librosa feature. The new keys are absent from the
+    # result dict when librosa fails, which is explicitly handled
+    # by every downstream consumer that reads them.
+    #
+    # Features added and why each matters for the T:C classifier:
+    #
+    #   mfcc_mean (13 values) — Mel-frequency cepstral coefficients.
+    #     Encode the overall spectral shape of the voice. The
+    #     acoustic literature consistently shows MFCCs as the
+    #     strongest single feature group for stress classification
+    #     (Scherer 2003; Tahon & Devillers 2016). The 13 means are
+    #     a compact but rich summary.
+    #
+    #   spectral_centroid_mean — "brightness" of the voice. Rises
+    #     under threat-toned activation (voice becomes tenser, more
+    #     high-frequency energy). Drops during relaxed, charismatic
+    #     delivery where low-frequency resonance dominates.
+    #
+    #   spectral_rolloff_mean — frequency below which 85% of the
+    #     spectral energy lives. Complements centroid; together they
+    #     characterise the tonal quality of the voice.
+    #
+    #   zero_crossing_rate_mean (ZCR) — number of sign changes per
+    #     frame. Correlates with unvoiced (fricative) content and
+    #     breathiness. Elevated ZCR during stress reflects vocal
+    #     tension and reduced breath support.
+    #
+    #   spectral_flux_mean — frame-to-frame spectral change rate.
+    #     Measures how dynamic the delivery is. High flux = expressive,
+    #     variable delivery (charisma signature). Low flux = monotone
+    #     (stress/avoidance signature).
+    #
+    #   chroma_mean (12 values) — pitch class energy distribution.
+    #     Encodes tonal coloring. Used as a cross-check for the
+    #     autocorrelation pitch estimate; also captures melodic
+    #     contour across the snippet.
+    #
+    # Storage: all values land in the snippet's metrics JSONB column
+    # as new keys alongside the existing ones. NO migration needed —
+    # charisma_snippets.metrics is JSONB (add_charisma_snippets_
+    # metrics_column.sql) and accepts arbitrary new keys. A dedicated
+    # columnar feature store can come later when the classifier is
+    # trained (spec §11 training-annotation store); for the beta the
+    # JSONB blob is the feature sink.
+    try:
+        librosa_features = _compute_librosa_features(sig)
+        if librosa_features:
+            result.update(librosa_features)
+    except Exception as lib_err:
+        logger.warning(
+            "_analyze_pcm: librosa block failed (non-fatal) err=%s",
+            lib_err,
+        )
+
+    return result
+
+
+def _compute_librosa_features(sig: "np.ndarray") -> Optional[Dict]:
+    """Compute librosa-derived features from 16 kHz mono float32 PCM.
+
+    Returns a dict of new feature keys, or None when librosa is
+    unavailable or the signal is too short. Never raises — callers
+    are expected to swallow any exception from this function.
+
+    All features are averaged across time (mean of per-frame values)
+    so the output is a fixed-length flat dict regardless of the
+    snippet duration. That keeps the metrics JSONB schema stable and
+    directly feedable to a classifier without further aggregation.
+    """
+    try:
+        import librosa
+    except ImportError:
+        logger.warning(
+            "_compute_librosa_features: librosa not installed — "
+            "add librosa>=0.10.0 to requirements.txt"
+        )
+        return None
+
+    # Minimum signal length for stable STFT (at least 2 windows).
+    if len(sig) < 2048:
+        return None
+
+    sr = SAMPLE_RATE  # 16 000 Hz — already decoded by ffmpeg
+
+    try:
+        # ── MFCCs: 13 coefficients, mean across time ───────────────
+        mfccs = librosa.feature.mfcc(y=sig, sr=sr, n_mfcc=13)
+        mfcc_mean = [round(float(v), 4) for v in mfccs.mean(axis=1)]
+
+        # ── Spectral centroid ───────────────────────────────────────
+        centroid = librosa.feature.spectral_centroid(y=sig, sr=sr)
+        spectral_centroid_mean = round(float(centroid.mean()), 2)
+
+        # ── Spectral rolloff (85th percentile) ─────────────────────
+        rolloff = librosa.feature.spectral_rolloff(
+            y=sig, sr=sr, roll_percent=0.85,
+        )
+        spectral_rolloff_mean = round(float(rolloff.mean()), 2)
+
+        # ── Zero-crossing rate ──────────────────────────────────────
+        zcr = librosa.feature.zero_crossing_rate(sig)
+        zero_crossing_rate_mean = round(float(zcr.mean()), 6)
+
+        # ── Spectral flux ───────────────────────────────────────────
+        # librosa doesn't expose spectral_flux directly; we compute
+        # it as the L2 norm of frame-to-frame STFT magnitude diffs.
+        stft_mag = np.abs(librosa.stft(sig))
+        flux_frames = np.sqrt(
+            np.sum(np.diff(stft_mag, axis=1) ** 2, axis=0)
+        )
+        spectral_flux_mean = round(float(flux_frames.mean()), 4)
+
+        # ── Chroma: 12 pitch class energies, mean across time ──────
+        chroma = librosa.feature.chroma_stft(y=sig, sr=sr)
+        chroma_mean = [round(float(v), 4) for v in chroma.mean(axis=1)]
+
+        return {
+            "mfcc_mean":               mfcc_mean,        # list[float] len 13
+            "spectral_centroid_mean":  spectral_centroid_mean,  # Hz
+            "spectral_rolloff_mean":   spectral_rolloff_mean,   # Hz
+            "zero_crossing_rate_mean": zero_crossing_rate_mean,
+            "spectral_flux_mean":      spectral_flux_mean,
+            "chroma_mean":             chroma_mean,       # list[float] len 12
+        }
+
+    except Exception as e:
+        logger.warning(
+            "_compute_librosa_features: computation failed err=%s", e,
+        )
+        return None
 
 
 def _pcm_to_wav_bytes(sig: "np.ndarray") -> bytes:
