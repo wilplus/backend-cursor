@@ -9264,6 +9264,155 @@ class DatabaseService:
             )
             return False
 
+    # ── willab beta — lounge_messages (BE contract §3.15) ───────────
+    #
+    # Per-user Lounge chat thread. Text only, never audio, never in the
+    # coach packet, never profiled. FE-append (incl. bot turns);
+    # idempotent on (user_id, client_id); client_created_at is the
+    # ordering key surviving the unsigned→signed merge.
+    # See services/lounge_messages.py for validation + page shaping.
+
+    def get_lounge_messages_page(
+        self,
+        user_id: str,
+        *,
+        limit: int,
+        before: Optional[str] = None,
+    ) -> list[dict]:
+        """Fetch newest-first (DESC) rows for the thread, up to
+        ``limit + 1`` so the caller can detect older pages.
+
+        Returns the raw row list in DESC order; the route layer calls
+        services.lounge_messages.shape_lounge_page to reverse to ASC +
+        compute has_more + oldest_cursor.
+
+        ``before`` (ISO-8601) pages older: rows strictly older than the
+        cursor. Absent → the latest page (bottom of thread).
+
+        Empty list on missing table (migration pending) / DB hiccup —
+        the Lounge degrades to an empty thread rather than erroring.
+        """
+        if not user_id:
+            return []
+        try:
+            query = (
+                self.client.table("lounge_messages")
+                .select(
+                    "id, client_id, role, kind, body, metadata, "
+                    "client_created_at"
+                )
+                .eq("user_id", user_id)
+            )
+            if before:
+                query = query.lt("client_created_at", before)
+            # +1 to detect whether an older page exists.
+            res = (
+                query.order("client_created_at", desc=True)
+                .limit(limit + 1)
+                .execute()
+            )
+            return res.data or []
+        except Exception as e:
+            err_low = str(e).lower()
+            if (
+                "lounge_messages" in err_low
+                and ("does not exist" in err_low or "pgrst" in err_low)
+            ):
+                logger.warning(
+                    "get_lounge_messages_page: table missing (run "
+                    "migrations/add_lounge_messages_table.sql) user=%s",
+                    user_id,
+                )
+                return []
+            logger.warning(
+                "get_lounge_messages_page failed user=%s err=%s",
+                user_id, e,
+            )
+            return []
+
+    def insert_lounge_messages(
+        self,
+        user_id: str,
+        messages: list[dict],
+    ) -> list[dict]:
+        """Idempotent batch append/merge of Lounge messages.
+
+        Upserts on the (user_id, client_id) unique key — re-sending a
+        stored client_id is a no-op, not a duplicate (covers append
+        retry, double-tap, and double-merge-on-resignup). The same
+        path serves both per-turn appends and the merge-on-signup
+        replay (BE contract §3.5/§3.15, §7.8 — no separate /merge
+        alias).
+
+        ``messages`` are pre-validated rows from
+        services.lounge_messages.validate_lounge_batch (each carries
+        client_id, role, kind, body, metadata, client_created_at).
+        BE stamps user_id here — the FE never sets it.
+
+        Returns the persisted rows (with server id) or [] on failure.
+        """
+        if not user_id or not messages:
+            return []
+        rows = [
+            {
+                "user_id":           user_id,
+                "client_id":         m["client_id"],
+                "role":              m["role"],
+                "kind":              m["kind"],
+                "body":              m.get("body") or "",
+                "metadata":          m.get("metadata"),
+                "client_created_at": m["client_created_at"],
+            }
+            for m in messages
+        ]
+        try:
+            res = (
+                self.client.table("lounge_messages")
+                .upsert(rows, on_conflict="user_id,client_id")
+                .execute()
+            )
+            return res.data or []
+        except Exception as e:
+            err_low = str(e).lower()
+            if (
+                "lounge_messages" in err_low
+                and ("does not exist" in err_low or "pgrst" in err_low)
+            ):
+                logger.warning(
+                    "insert_lounge_messages: table missing (run "
+                    "migrations/add_lounge_messages_table.sql) user=%s",
+                    user_id,
+                )
+                return []
+            logger.error(
+                "insert_lounge_messages failed user=%s count=%d err=%s",
+                user_id, len(rows), e,
+            )
+            return []
+
+    def delete_lounge_messages_for_user(self, user_id: str) -> bool:
+        """Delete the entire Lounge thread for a user (BE contract
+        §3.14 — user-deletable privacy commitment). Account deletion
+        is covered separately by the ON DELETE CASCADE FK; this is the
+        explicit user-initiated 'clear my Lounge' path.
+        """
+        if not user_id:
+            return False
+        try:
+            (
+                self.client.table("lounge_messages")
+                .delete()
+                .eq("user_id", user_id)
+                .execute()
+            )
+            return True
+        except Exception as e:
+            logger.warning(
+                "delete_lounge_messages_for_user failed user=%s err=%s",
+                user_id, e,
+            )
+            return False
+
     def update_session_charisma_profile(
         self,
         session_id: str,
