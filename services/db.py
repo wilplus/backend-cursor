@@ -5348,6 +5348,7 @@ class DatabaseService:
         duration_ms: int,
         audio_segment_path: str,
         metrics: dict | None = None,
+        transcript: str | None = None,
     ) -> dict | None:
         """Create a new charisma snippet record (unlabeled by default).
 
@@ -5371,6 +5372,8 @@ class DatabaseService:
                 payload["user_id"] = user_id
             if metrics:
                 payload["metrics"] = metrics
+            if transcript:
+                payload["transcript"] = transcript
             result = (
                 self.client.table("charisma_snippets")
                 .insert(payload)
