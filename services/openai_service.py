@@ -180,12 +180,20 @@ class OpenAIService:
         self._model_cache[purpose] = (now, model)
         return model
     
-    def transcribe_audio(self, audio_file, filename: str = "audio.webm", content_type: str | None = None):
+    def transcribe_audio(self, audio_file, filename: str = "audio.webm", content_type: str | None = None, vocabulary: list | None = None):
         """
         Transcribe audio using Whisper-1.
-        Returns transcript and duration (from Whisper response).
+        Returns {text, duration, segments} — segments is the verbose_json
+        per-segment list [{start, end, text}] (ADDITIVE; existing callers
+        reading text/duration are unaffected). The willab Lab handler uses
+        segments to slice per-snippet transcripts by timestamp.
 
         content_type: optional MIME for the multipart file tuple; defaults from filename (not hard-coded webm).
+        vocabulary: optional domain terms (session_context.domain_vocabulary)
+                    appended to the Whisper prompt to prime recognition of
+                    domain-specific words (willab contract §3.3 — "Whisper
+                    primed with domain_vocabulary"). None → the default
+                    disfluent-only prompt.
         """
         # Dev mode mock response (COMMENTED OUT - using real OpenAI)
         # if not config.is_production:
@@ -226,21 +234,36 @@ class OpenAIService:
 
             # Transcribe
             # Disfluent prompt conditions Whisper to preserve filler words instead of cleaning them.
+            prompt = "Umm, let me think like, hmm... Okay, so, uh, yeah. I mean, you know, it's like, um, well..."
+            if vocabulary:
+                # Append domain terms so Whisper recognises domain-specific
+                # words (willab §3.3 priming). Cap so the prompt stays small.
+                terms = [str(t).strip() for t in vocabulary if str(t).strip()][:40]
+                if terms:
+                    prompt = prompt + " " + ", ".join(terms) + "."
             transcript_response = self.client.audio.transcriptions.create(
                 model="whisper-1",
                 file=(filename or "audio.bin", audio_data, ct),
                 response_format="verbose_json",
-                prompt="Umm, let me think like, hmm... Okay, so, uh, yeah. I mean, you know, it's like, um, well..."
+                prompt=prompt,
             )
 
-            # Extract duration from segments (use last segment end time)
+            # Extract duration + per-segment timestamps.
             duration = 0.0
+            segments: list = []
             if hasattr(transcript_response, 'segments') and transcript_response.segments:
                 duration = transcript_response.segments[-1].end
+                for seg in transcript_response.segments:
+                    segments.append({
+                        "start": float(getattr(seg, "start", 0.0) or 0.0),
+                        "end": float(getattr(seg, "end", 0.0) or 0.0),
+                        "text": (getattr(seg, "text", "") or "").strip(),
+                    })
 
             return {
                 "text": transcript_response.text,
-                "duration": duration
+                "duration": duration,
+                "segments": segments,
             }
         except Exception as e:
             logger.error(
