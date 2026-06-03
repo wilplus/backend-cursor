@@ -169,6 +169,143 @@ def extract_recording_snippets(
         return []
 
 
+def extract_recording_snippets_segmented(
+    session_id: str,
+    user_id: str,
+    recording_id: str,
+    recording_path: str,
+    duration_seconds: float | None,
+    storage_bucket: str = "coach_feedback_videos",
+    max_snippets: int | None = None,
+) -> list[dict]:
+    """willab Readout multi-snippet extraction (design §5 / §14).
+
+    Carves ONE recording into multiple snippet windows at silence
+    boundaries (services.audio_metrics.segment_into_snippets) instead of
+    the single-whole-recording snippet ``extract_recording_snippets``
+    produces. Each window becomes a charisma_snippets row sharing the
+    SAME parent audio (uploaded once) with its own
+    ``[start_offset_ms, duration_ms]`` — the parent-audio + offset-window
+    model the boundary-adjust path (``recompute_snippet_metrics_for_
+    window``) already uses, so the +/- 2s buttons keep working.
+
+    NOT yet wired to a live caller — the willab Lab upload handler (build
+    sequence Phase 1) calls this. The existing single-snippet
+    ``extract_recording_snippets`` is left untouched so the live funnel
+    is undisturbed until the willab cutover (stay-shippable rule).
+
+    Decodes the parent ONCE and analyzes each window from that PCM
+    (``analyze_pcm_window``) — no per-snippet re-decode. Per-window
+    metrics carry the full 10-feature Readout set (the librosa block is
+    best-effort). Falls back to the single-snippet path on decode
+    failure or when segmentation yields nothing, so the pipeline never
+    produces zero snippets for a usable recording.
+
+    Returns the list of created snippet dicts.
+    """
+    from datetime import datetime
+
+    from services.audio_metrics import (
+        decode_audio_to_pcm,
+        segment_into_snippets,
+        analyze_pcm_window,
+    )
+    from services.audio_storage import get_audio_bytes
+    from services.coach_video_storage import (
+        put_coach_object_bytes,
+        coach_media_public_url,
+    )
+    from services.db import db
+
+    def _fallback_single() -> list[dict]:
+        return extract_recording_snippets(
+            session_id, user_id, recording_id, recording_path,
+            duration_seconds, storage_bucket,
+        )
+
+    try:
+        try:
+            audio_bytes = get_audio_bytes(recording_path)
+        except Exception as e:
+            logger.error("segmented: read failed %s: %s", recording_path, e)
+            return _fallback_single()
+        if not audio_bytes:
+            logger.warning("segmented: recording %s empty", recording_path)
+            return []
+
+        sig = decode_audio_to_pcm(audio_bytes)
+        if sig is None:
+            logger.warning(
+                "segmented: decode failed for %s — single-snippet fallback",
+                recording_path,
+            )
+            return _fallback_single()
+
+        seg_kwargs = {} if max_snippets is None else {"max_snippets": max_snippets}
+        windows = segment_into_snippets(sig, **seg_kwargs)
+        if not windows:
+            logger.info(
+                "segmented: no windows for %s — single-snippet fallback",
+                recording_path,
+            )
+            return _fallback_single()
+
+        # Upload the full recording ONCE as the shared parent; every
+        # snippet row points at it with its own offset window.
+        timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S_%f")[:-3]
+        ext = os.path.splitext(recording_path)[1] or ".webm"
+        parent_key = f"charisma_snippets/{session_id}/{timestamp}_parent{ext}"
+        try:
+            put_coach_object_bytes(
+                storage_bucket, parent_key, audio_bytes,
+                content_type="audio/webm",
+            )
+        except Exception as e:
+            logger.error("segmented: parent upload failed %s: %s", parent_key, e)
+            return _fallback_single()
+        parent_url = (
+            coach_media_public_url(parent_key)
+            or f"s3://{storage_bucket}/{parent_key}"
+        )
+
+        created: list[dict] = []
+        for (start_ms, end_ms) in windows:
+            dur_ms = end_ms - start_ms
+            metrics = analyze_pcm_window(
+                sig, start_offset_ms=start_ms, duration_ms=dur_ms,
+                transcript="",  # per-window Whisper is a later enhancement
+            )
+            row = db.create_charisma_snippet(
+                session_id=session_id,
+                user_id=user_id,
+                recording_id=recording_id,
+                start_offset_ms=start_ms,
+                duration_ms=dur_ms,
+                audio_segment_path=parent_url,
+                metrics=metrics,
+            )
+            if row:
+                created.append(row)
+
+        logger.info(
+            "segmented extraction: session=%s windows=%d created=%d "
+            "(parent=%s)",
+            session_id, len(windows), len(created), parent_key,
+        )
+        # If every row insert somehow failed, fall back so the pipeline
+        # still yields a snippet.
+        return created or _fallback_single()
+
+    except Exception as e:
+        logger.error(
+            "extract_recording_snippets_segmented failed: %s", e, exc_info=True,
+        )
+        try:
+            return _fallback_single()
+        except Exception:
+            return []
+
+
 # ─── Boundary-adjust path ─────────────────────────────────────────────
 
 
