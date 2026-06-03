@@ -39,11 +39,13 @@ class ValidatorTests(unittest.TestCase):
             "topic": "Q3 product launch",
             "audience": "Engineering team",
             "target_length_seconds": 600,
+            "domain_vocabulary": ["keynote", "podium"],
         })
         self.assertEqual(out, {
             "topic": "Q3 product launch",
             "audience": "Engineering team",
             "target_length_seconds": 600,
+            "domain_vocabulary": ["keynote", "podium"],
         })
 
     def test_empty_body_returns_all_nulls(self):
@@ -52,6 +54,7 @@ class ValidatorTests(unittest.TestCase):
             "topic": None,
             "audience": None,
             "target_length_seconds": None,
+            "domain_vocabulary": None,
         })
 
     def test_partial_body_fills_missing_with_null(self):
@@ -65,14 +68,56 @@ class ValidatorTests(unittest.TestCase):
         self.assertIsNone(out["topic"])
         self.assertIsNone(out["audience"])
 
-    def test_canonical_three_keys_always_present(self):
-        """Even when the body has only one of three keys, the
-        returned dict has all three."""
+    def test_canonical_keys_always_present(self):
+        """Even when the body has only one key, the returned dict has
+        all four canonical keys (willab beta added domain_vocabulary)."""
         out = self._validate({"target_length_seconds": 60})
         self.assertEqual(
             set(out.keys()),
-            {"topic", "audience", "target_length_seconds"},
+            {"topic", "audience", "target_length_seconds",
+             "domain_vocabulary"},
         )
+
+    # ── domain_vocabulary (willab beta §4) ─────────────────────────
+
+    def test_vocab_list_passes_and_dedupes(self):
+        out = self._validate({"domain_vocabulary": [
+            "keynote", "  podium ", "keynote", "Q&A",
+        ]})
+        # trimmed, case-insensitive de-dupe preserving order
+        self.assertEqual(out["domain_vocabulary"], ["keynote", "podium", "Q&A"])
+
+    def test_vocab_absent_is_none(self):
+        out = self._validate({"topic": "x"})
+        self.assertIsNone(out["domain_vocabulary"])
+
+    def test_vocab_empty_list_collapses_to_none(self):
+        out = self._validate({"domain_vocabulary": ["", "   "]})
+        self.assertIsNone(out["domain_vocabulary"])
+
+    def test_vocab_non_list_rejected(self):
+        from services.intake_context import IntakeContextError
+        with self.assertRaises(IntakeContextError):
+            self._validate({"domain_vocabulary": "keynote"})
+
+    def test_vocab_non_string_item_rejected(self):
+        from services.intake_context import IntakeContextError
+        with self.assertRaises(IntakeContextError):
+            self._validate({"domain_vocabulary": ["ok", 42]})
+
+    def test_vocab_too_many_terms_rejected(self):
+        from services.intake_context import IntakeContextError, _MAX_VOCAB_TERMS
+        with self.assertRaises(IntakeContextError):
+            self._validate({"domain_vocabulary": [
+                f"term{i}" for i in range(_MAX_VOCAB_TERMS + 1)
+            ]})
+
+    def test_vocab_over_long_term_rejected(self):
+        from services.intake_context import (
+            IntakeContextError, _MAX_VOCAB_TERM_LEN,
+        )
+        with self.assertRaises(IntakeContextError):
+            self._validate({"domain_vocabulary": ["x" * (_MAX_VOCAB_TERM_LEN + 1)]})
 
     # ── Whitespace normalisation ───────────────────────────────────
 
@@ -164,9 +209,9 @@ class SnapshotHelperTests(unittest.TestCase):
             out = mod.snapshot_intake_context("sid-x")
         self.assertIsNone(out)
 
-    def test_normalises_three_keys(self):
+    def test_normalises_canonical_keys(self):
         """A poisoned blob with extra keys gets normalized down to
-        the canonical 3-key shape — consumers can assume the
+        the canonical 4-key shape — consumers can assume the
         contract holds regardless of what's in JSONB."""
         from services import intake_context as mod
         from services.db import db
@@ -174,6 +219,7 @@ class SnapshotHelperTests(unittest.TestCase):
             "topic": "real topic",
             "audience": None,
             "target_length_seconds": 120,
+            "domain_vocabulary": ["keynote"],
             "EXTRA_KEY": "should be dropped",
             "another": 42,
         }
@@ -182,15 +228,16 @@ class SnapshotHelperTests(unittest.TestCase):
         ):
             out = mod.snapshot_intake_context("sid-x")
         self.assertEqual(set(out.keys()), {
-            "topic", "audience", "target_length_seconds",
+            "topic", "audience", "target_length_seconds", "domain_vocabulary",
         })
         self.assertEqual(out["topic"], "real topic")
         self.assertIsNone(out["audience"])
         self.assertEqual(out["target_length_seconds"], 120)
+        self.assertEqual(out["domain_vocabulary"], ["keynote"])
 
     def test_missing_keys_normalize_to_none(self):
         """A row that only has `topic` set still returns the
-        3-key dict with None for the other two."""
+        4-key dict with None for the others."""
         from services import intake_context as mod
         from services.db import db
         with patch.object(
@@ -201,6 +248,7 @@ class SnapshotHelperTests(unittest.TestCase):
             "topic": "x",
             "audience": None,
             "target_length_seconds": None,
+            "domain_vocabulary": None,
         })
 
 

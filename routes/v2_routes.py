@@ -8482,6 +8482,7 @@ def v2_user_get_session_intake_context(session_id):
             "topic": ctx.get("topic"),
             "audience": ctx.get("audience"),
             "target_length_seconds": ctx.get("target_length_seconds"),
+            "domain_vocabulary": ctx.get("domain_vocabulary"),
         }), 200
 
     except Exception as e:
@@ -19193,6 +19194,143 @@ def v2_admin_question_pool_delete(question_id):
         return jsonify({
             "code": "V2_ERROR",
             "error": "Failed to soft-delete question",
+        }), 500
+
+
+# ── willab beta — user profile / intake (design §2, contract §3.1) ──
+#
+# The one-time, non-recording intake: the user picks a domain (one of
+# five chips) + states a goal in their own words. Stored on
+# user_settings (profile_domain + profile_goal), distinct from the
+# admin-authored v2_speaker_profiles. Domain is metadata, never a flow
+# fork. GET prefills the form / the Lab's read-only goal reminder.
+
+_PROFILE_GOAL_MAX_LEN = 500
+
+
+@v2_bp.route("/user/profile", methods=["GET"])
+@require_auth
+def v2_user_get_profile():
+    """Read the user's intake profile.
+
+    Response 200:
+      { "domain": "<enum>" | null, "goal": "<str>" | null,
+        "domain_vocabulary_default": [ ...seed for domain... ] }
+
+    `domain_vocabulary_default` is the editable seed the Lab pre-fills
+    `session_context.domain_vocabulary` from (empty list when no
+    domain is set yet). Both domain + goal null pre-intake.
+    """
+    try:
+        from services.domains import default_domain_vocabulary
+        profile = db.get_user_profile(request.user_id) or {
+            "domain": None, "goal": None,
+        }
+        return jsonify({
+            "domain": profile.get("domain"),
+            "goal": profile.get("goal"),
+            "domain_vocabulary_default": default_domain_vocabulary(
+                profile.get("domain"),
+            ),
+        }), 200
+    except Exception as e:
+        logger.error(
+            "user/profile GET failed: %s", e, exc_info=True,
+        )
+        sentry_sdk.capture_exception(e)
+        return jsonify({
+            "code": "V2_ERROR",
+            "error": "Failed to fetch profile",
+        }), 500
+
+
+@v2_bp.route("/user/profile", methods=["POST"])
+@require_auth
+def v2_user_set_profile():
+    """Submit the intake profile (design §3.1) — non-recording.
+
+    Body:
+      { "domain": "public_speaking|sales|executive_presence|
+                   customer_service|interview_prep" | null,
+        "goal":   "free text" | null }
+
+    Both optional so a partial intake (domain picked, goal skipped, or
+    vice-versa) is accepted — the intake is two bounded turns, but the
+    store doesn't force both. `domain` (when present) must be one of
+    the five enum keys; `goal` is trimmed, ≤500 chars, empty→null.
+
+    Responses:
+      200 — same shape as GET (echoes persisted state + vocab default)
+      422 INVALID_INPUT — bad domain enum or over-long goal
+      500 V2_ERROR — persist failed
+    """
+    try:
+        from services.domains import (
+            default_domain_vocabulary, is_valid_domain,
+        )
+
+        body = request.get_json(silent=True) or {}
+        if not isinstance(body, dict):
+            return jsonify({
+                "code": "INVALID_INPUT", "error": "Body must be a JSON object",
+            }), 422
+
+        raw_domain = body.get("domain")
+        domain: str | None = None
+        if raw_domain is not None:
+            if not is_valid_domain(raw_domain):
+                return jsonify({
+                    "code": "INVALID_INPUT",
+                    "error": (
+                        "domain: must be one of public_speaking, sales, "
+                        "executive_presence, customer_service, interview_prep"
+                    ),
+                }), 422
+            domain = raw_domain
+
+        raw_goal = body.get("goal")
+        goal: str | None = None
+        if raw_goal is not None:
+            if not isinstance(raw_goal, str):
+                return jsonify({
+                    "code": "INVALID_INPUT", "error": "goal: must be a string",
+                }), 422
+            cleaned = raw_goal.strip()
+            if cleaned:
+                if len(cleaned) > _PROFILE_GOAL_MAX_LEN:
+                    return jsonify({
+                        "code": "INVALID_INPUT",
+                        "error": (
+                            f"goal: must be {_PROFILE_GOAL_MAX_LEN} "
+                            "characters or fewer"
+                        ),
+                    }), 422
+                goal = cleaned
+
+        ok = db.set_user_profile(request.user_id, domain=domain, goal=goal)
+        if not ok:
+            return jsonify({
+                "code": "V2_ERROR", "error": "Failed to persist profile",
+            }), 500
+
+        logger.info(
+            "user/profile.set user=%s domain=%s goal_len=%d",
+            request.user_id, domain or "-", len(goal or ""),
+        )
+        return jsonify({
+            "domain": domain,
+            "goal": goal,
+            "domain_vocabulary_default": default_domain_vocabulary(domain),
+        }), 200
+
+    except Exception as e:
+        logger.error(
+            "user/profile POST failed: %s", e, exc_info=True,
+        )
+        sentry_sdk.capture_exception(e)
+        return jsonify({
+            "code": "V2_ERROR",
+            "error": "Failed to save profile",
         }), 500
 
 

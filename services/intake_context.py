@@ -48,9 +48,16 @@ _MAX_TEXT_LEN = 200
 _MIN_TARGET_SECONDS = 30
 _MAX_TARGET_SECONDS = 7200
 
+# domain_vocabulary (willab beta §4): editable list of Whisper-priming
+# terms, defaulted from the profile domain's seed (services.domains).
+# Short tags, bounded count so the JSONB blob + Whisper prompt stay
+# small.
+_MAX_VOCAB_TERMS = 50
+_MAX_VOCAB_TERM_LEN = 40
+
 # Canonical key order — every caller iterates this list when
 # building the response so the JSON shape stays stable.
-_FIELDS = ("topic", "audience", "target_length_seconds")
+_FIELDS = ("topic", "audience", "target_length_seconds", "domain_vocabulary")
 
 
 class IntakeContextError(ValueError):
@@ -100,6 +107,48 @@ def _norm_seconds(value: Any) -> Optional[int]:
     return value
 
 
+def _norm_vocabulary(value: Any) -> Optional[list[str]]:
+    """Normalise the editable domain_vocabulary list.
+
+    Accepts None or a list of short strings. Trims each, drops empties,
+    de-dupes preserving order, and collapses an empty result to None
+    (None means "unset → fall back to the profile domain's seed", same
+    None-means-default convention as the text fields).
+
+    Raises IntakeContextError on a non-list, a non-string item, an
+    over-long term, or too many terms.
+    """
+    if value is None:
+        return None
+    if not isinstance(value, list):
+        raise IntakeContextError("domain_vocabulary: must be a list of strings")
+    if len(value) > _MAX_VOCAB_TERMS:
+        raise IntakeContextError(
+            f"domain_vocabulary: at most {_MAX_VOCAB_TERMS} terms"
+        )
+    cleaned: list[str] = []
+    seen: set[str] = set()
+    for term in value:
+        if not isinstance(term, str):
+            raise IntakeContextError(
+                "domain_vocabulary: every term must be a string"
+            )
+        t = term.strip()
+        if not t:
+            continue
+        if len(t) > _MAX_VOCAB_TERM_LEN:
+            raise IntakeContextError(
+                f"domain_vocabulary: each term must be "
+                f"{_MAX_VOCAB_TERM_LEN} characters or fewer"
+            )
+        key = t.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        cleaned.append(t)
+    return cleaned or None
+
+
 def validate_intake_context_body(body: Any) -> dict[str, Any]:
     """Parse + validate the PUT body, returning the canonical dict.
 
@@ -127,6 +176,9 @@ def validate_intake_context_body(body: Any) -> dict[str, Any]:
         "audience": _norm_text(body.get("audience"), "audience"),
         "target_length_seconds": _norm_seconds(
             body.get("target_length_seconds"),
+        ),
+        "domain_vocabulary": _norm_vocabulary(
+            body.get("domain_vocabulary"),
         ),
     }
 
