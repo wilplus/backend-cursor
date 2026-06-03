@@ -170,6 +170,23 @@ opener (Ticket 2). The canonical punchline and pivot line are
 NEVER produced by the LLM — see services/onboarding_opener.py."""
 
 
+SPEC_SNIPPET_STICKINESS = LLMSpec(
+    model=CHEAP_MODEL,
+    # Low temp — a coherence score should be stable across replays of
+    # the same snippet, not creative.
+    temperature=0.3,
+    # One batch call scoring N (≤10) snippets, each a small float + a
+    # ≤200-char comment. 600 covers the worst case with headroom.
+    max_tokens=600,
+    # Schema (per_snippet array) passed via response_format_override in
+    # services/snippet_stickiness.py.
+    response_format=None,
+)
+"""Per-snippet stickiness (topic-coherence composite + comment) for the
+willab Readout card (design §5). Distinct from the session-level
+stickiness metric (services/stickiness.py)."""
+
+
 SPEC_CONTEXTUAL_FOLLOWUP = LLMSpec(
     model=CHEAP_MODEL,
     # Moderate warmth — the question should feel like a coach who
