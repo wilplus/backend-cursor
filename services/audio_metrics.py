@@ -159,10 +159,17 @@ def _compute_energy_ratio(sig: np.ndarray, dbs: np.ndarray) -> Optional[float]:
     return round(voiced_energy / total_energy, 3)
 
 
-def _compute_pitch_center_st(sig: np.ndarray) -> Tuple[Optional[float], int]:
+def _compute_f0_series(sig: np.ndarray) -> list:
+    """Per-window fundamental-frequency (Hz) series in temporal order.
+
+    Autocorrelation pitch estimate per PITCH_WINDOW; only confident
+    windows (peak ≥ PITCH_CONFIDENCE_THRESHOLD) are kept. The single
+    source of truth for every F0-derived feature (center, mean, SD,
+    slope, mid-vs-end delta) so they're all computed from one pass.
+    """
     min_lag = int(SAMPLE_RATE / PITCH_MAX_HZ)
     max_lag = int(SAMPLE_RATE / PITCH_MIN_HZ)
-    pitch_hz_list = []
+    pitch_hz_list: list = []
     for start in range(0, len(sig) - PITCH_WINDOW + 1, PITCH_WINDOW):
         window = sig[start : start + PITCH_WINDOW]
         hamming = np.hamming(PITCH_WINDOW).astype(np.float32)
@@ -184,11 +191,124 @@ def _compute_pitch_center_st(sig: np.ndarray) -> Tuple[Optional[float], int]:
             lag = min_lag + peak_idx
             if lag > 0:
                 pitch_hz_list.append(SAMPLE_RATE / lag)
-    if not pitch_hz_list:
+    return pitch_hz_list
+
+
+def _pitch_center_st_from_series(series: list) -> Tuple[Optional[float], int]:
+    """Median F0 → semitones (the legacy pitch_center_st), from a
+    pre-computed F0 series."""
+    if not series:
         return None, 0
-    median_hz = float(np.median(pitch_hz_list))
+    median_hz = float(np.median(series))
     semitones = 12.0 * math.log2(median_hz / PITCH_REF_HZ)
-    return round(semitones, 1), len(pitch_hz_list)
+    return round(semitones, 1), len(series)
+
+
+def _compute_pitch_center_st(sig: np.ndarray) -> Tuple[Optional[float], int]:
+    """Back-compat wrapper for external callers — recomputes the F0
+    series. In-pipeline (_analyze_pcm) the series is computed once and
+    shared, so this isn't called there."""
+    return _pitch_center_st_from_series(_compute_f0_series(sig))
+
+
+def _compute_f0_stats(
+    series: list,
+) -> Tuple[Optional[float], Optional[float], Optional[float], Optional[float]]:
+    """Readout F0 features from the F0 series, all in Hz / Hz-per-sec:
+
+      f0_mean          — mean fundamental frequency (Hz)
+      f0_sd            — its standard deviation (expressive pitch range)
+      f0_slope         — linear trend over the snippet (Hz/sec; + rising,
+                         - falling). The "does the voice lift or drop"
+                         dynamic.
+      f0_mid_end_delta — mean(middle third) − mean(last third) of the
+                         contour (Hz). Captures the question-uptick /
+                         trail-off pattern at sentence ends.
+
+    Each is None when the series is too short to be meaningful.
+    Approximation note (v1): slope/delta index the *confident-window*
+    series, so silent gaps compress; good enough for a relative read,
+    not absolute prosody timing.
+    """
+    if not series:
+        return (None, None, None, None)
+    arr = np.array(series, dtype=np.float32)
+
+    f0_mean = round(float(arr.mean()), 1)
+    f0_sd = round(float(arr.std()), 1) if len(arr) >= 2 else None
+
+    f0_slope: Optional[float] = None
+    f0_mid_end_delta: Optional[float] = None
+    if len(arr) >= 3:
+        hop_sec = PITCH_WINDOW / float(SAMPLE_RATE)
+        x = np.arange(len(arr), dtype=np.float32) * hop_sec
+        f0_slope = round(float(np.polyfit(x, arr, 1)[0]), 2)  # Hz/sec
+        third = len(arr) // 3
+        mid = arr[third : 2 * third]
+        end = arr[2 * third :]
+        if len(mid) and len(end):
+            f0_mid_end_delta = round(float(mid.mean() - end.mean()), 1)
+
+    return (f0_mean, f0_sd, f0_slope, f0_mid_end_delta)
+
+
+def _pause_runs_ms(dbs: np.ndarray) -> list:
+    """Durations (ms) of every qualifying silence run (≥ MIN_PAUSE_SEC).
+    Shared by pause_ratio + pause_regularity."""
+    is_silent = dbs < SILENCE_DB_THRESHOLD
+    min_frames = int(MIN_PAUSE_SEC * 1000 / FRAME_MS)
+    runs: list = []
+    run_len = 0
+    for s in is_silent:
+        if s:
+            run_len += 1
+        else:
+            if run_len >= min_frames:
+                runs.append(run_len * FRAME_MS)
+            run_len = 0
+    if run_len >= min_frames:
+        runs.append(run_len * FRAME_MS)
+    return runs
+
+
+def _compute_pause_ratio(dbs: np.ndarray) -> Optional[float]:
+    """Fraction of the snippet spent in qualifying pauses (0..1).
+    The Readout hero "32% paused"."""
+    if len(dbs) == 0:
+        return None
+    total_ms = len(dbs) * FRAME_MS
+    if total_ms <= 0:
+        return None
+    pause_total_ms = sum(_pause_runs_ms(dbs))
+    return round(pause_total_ms / total_ms, 3)
+
+
+def _compute_pause_regularity(dbs: np.ndarray) -> Optional[float]:
+    """Regularity of pause durations in (0, 1]: 1.0 = perfectly even
+    pacing, lower = erratic. Bounded inverse of the coefficient of
+    variation. None when there are fewer than 2 pauses (regularity is
+    undefined for one pause)."""
+    runs = _pause_runs_ms(dbs)
+    if len(runs) < 2:
+        return None
+    arr = np.array(runs, dtype=np.float32)
+    mean = float(arr.mean())
+    if mean <= 0:
+        return None
+    cv = float(arr.std()) / mean
+    return round(1.0 / (1.0 + cv), 3)
+
+
+def _compute_intensity_envelope(dbs: np.ndarray) -> Optional[float]:
+    """Slope of the voiced-loudness contour (dB/sec). + = builds toward
+    the end, - = fades. A scalar v1 read of "intensity-envelope shape".
+    None when too few voiced frames."""
+    voiced = dbs[dbs >= SILENCE_DB_THRESHOLD]
+    if len(voiced) < 5:
+        return None
+    x = np.arange(len(voiced), dtype=np.float32) * (FRAME_MS / 1000.0)
+    slope = float(np.polyfit(x, voiced.astype(np.float32), 1)[0])
+    return round(slope, 3)
 
 
 def analyze_audio(audio_bytes: bytes, transcript: str = "", duration_sec: float = 0.0, fallback_wpm: float = None) -> Optional[Dict]:
@@ -339,7 +459,17 @@ def _analyze_pcm(
     if wpm is None and fallback_wpm is not None:
         wpm = round(float(fallback_wpm), 1)
 
-    pitch_st, pitch_frames = _compute_pitch_center_st(sig)
+    # F0 series computed once, shared by every pitch-derived feature.
+    f0_series = _compute_f0_series(sig)
+    pitch_st, pitch_frames = _pitch_center_st_from_series(f0_series)
+    f0_mean, f0_sd, f0_slope, f0_mid_end_delta = _compute_f0_stats(f0_series)
+
+    # Time-based voiced ratio (voiced frames / total frames) — the
+    # Readout's "voiced_ratio". Distinct from energy_ratio (voiced
+    # energy / total energy), kept below for back-compat.
+    voiced_ratio = (
+        round(float(np.sum(voiced_mask)) / len(dbs), 3) if len(dbs) else None
+    )
 
     result = {
         "wpm": wpm,
@@ -350,6 +480,26 @@ def _analyze_pcm(
         "pitch_center_st": pitch_st,
         "pitch_frame_count": pitch_frames,
         "voiced_duration_sec": round(voiced_dur, 1),
+        # ── willab Readout feature completion (the 6 missing + a true
+        # voiced_ratio). Maps the 10-feature Readout set (design §5):
+        #   f0_mean / f0_sd            ← here
+        #   speech_rate                ← wpm (above)
+        #   mean_pause                 ← pause_ms (above)
+        #   pause_ratio                ← here
+        #   loudness_range             ← dynamic_db (above)
+        #   voiced_ratio               ← here (time-based)
+        #   f0_slope                   ← here
+        #   pause_regularity           ← here
+        #   intensity_envelope         ← here
+        #   f0_mid_end_delta           ← here
+        "f0_mean": f0_mean,
+        "f0_sd": f0_sd,
+        "f0_slope": f0_slope,
+        "f0_mid_end_delta": f0_mid_end_delta,
+        "pause_ratio": _compute_pause_ratio(dbs),
+        "pause_regularity": _compute_pause_regularity(dbs),
+        "intensity_envelope": _compute_intensity_envelope(dbs),
+        "voiced_ratio": voiced_ratio,
     }
 
     # ── Librosa feature block (additive) ──────────────────────────
