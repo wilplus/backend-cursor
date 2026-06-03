@@ -119,6 +119,36 @@ class ValidatorTests(unittest.TestCase):
         with self.assertRaises(IntakeContextError):
             self._validate({"domain_vocabulary": ["x" * (_MAX_VOCAB_TERM_LEN + 1)]})
 
+    # ── require_topic (willab §3.2 / §5.10) ────────────────────────
+
+    def test_require_topic_rejects_missing(self):
+        from services.intake_context import (
+            validate_intake_context_body, IntakeContextError,
+        )
+        with self.assertRaises(IntakeContextError) as cm:
+            validate_intake_context_body({"audience": "team"}, require_topic=True)
+        self.assertIn("topic", str(cm.exception))
+
+    def test_require_topic_rejects_empty(self):
+        from services.intake_context import (
+            validate_intake_context_body, IntakeContextError,
+        )
+        with self.assertRaises(IntakeContextError):
+            validate_intake_context_body({"topic": "   "}, require_topic=True)
+
+    def test_require_topic_passes_with_topic(self):
+        from services.intake_context import validate_intake_context_body
+        out = validate_intake_context_body(
+            {"topic": "Q3 launch"}, require_topic=True,
+        )
+        self.assertEqual(out["topic"], "Q3 launch")
+
+    def test_require_topic_default_off_preserves_legacy(self):
+        """Default (no require_topic) still accepts a topic-less body."""
+        from services.intake_context import validate_intake_context_body
+        out = validate_intake_context_body({"audience": "team"})
+        self.assertIsNone(out["topic"])
+
     # ── Whitespace normalisation ───────────────────────────────────
 
     def test_whitespace_only_text_becomes_null(self):
