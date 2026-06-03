@@ -29,6 +29,17 @@ PITCH_CONFIDENCE_THRESHOLD = 0.15
 PITCH_WINDOW = 2048
 PITCH_REF_HZ = 100.0
 
+# ── Snippet segmentation (willab Readout multi-snippet, design §5/§14) ─
+# Carve one recording into multiple "moment" windows at silence
+# boundaries, so the Readout can show "Snippet 2 of 5" instead of one
+# whole-recording snippet. See segment_into_snippets().
+SEGMENT_MAX_SNIPPETS = 10    # §14 top-N cap (~10) — bounds coach load
+SEGMENT_MIN_SEC = 3.0        # shorter than this isn't a meaningful moment
+SEGMENT_MAX_SEC = 15.0       # split longer monologues into chunks
+SEGMENT_GAP_SEC = 0.6        # silence ≥ this delimits a snippet boundary
+                             # (longer than a within-utterance MIN_PAUSE_SEC)
+SEGMENT_PAD_SEC = 0.2        # natural-playback padding each side
+
 
 def _resolve_ffmpeg_executable() -> Optional[str]:
     """Resolve ffmpeg: FFMPEG_PATH env, then PATH, then bundled imageio-ffmpeg."""
@@ -365,6 +376,32 @@ def analyze_audio_window(
     return _analyze_pcm(sliced, transcript=transcript, duration_sec=duration_sec)
 
 
+def analyze_pcm_window(
+    sig: "np.ndarray",
+    *,
+    start_offset_ms: int,
+    duration_ms: int,
+    transcript: str = "",
+) -> Optional[Dict]:
+    """Analyze a window of an ALREADY-DECODED PCM array.
+
+    The multi-snippet extraction path decodes the parent recording ONCE
+    (for segmentation) and then calls this per segment — avoiding the N
+    re-decodes that ``analyze_audio_window`` (bytes → decode → slice)
+    would incur when carving one recording into many snippets.
+
+    Returns the metrics dict for the slice, or None when the window is
+    too short (< 1s) for stable analysis.
+    """
+    if sig is None:
+        return None
+    sliced = _slice_pcm(sig, start_offset_ms, duration_ms)
+    if sliced is None:
+        return None
+    duration_sec = len(sliced) / float(SAMPLE_RATE)
+    return _analyze_pcm(sliced, transcript=transcript, duration_sec=duration_sec)
+
+
 def extract_window_as_wav(
     audio_bytes: bytes,
     *,
@@ -636,6 +673,108 @@ def _compute_librosa_features(sig: "np.ndarray") -> Optional[Dict]:
             "_compute_librosa_features: computation failed err=%s", e,
         )
         return None
+
+
+def segment_into_snippets(
+    sig: "np.ndarray",
+    *,
+    max_snippets: int = SEGMENT_MAX_SNIPPETS,
+    min_snippet_sec: float = SEGMENT_MIN_SEC,
+    max_snippet_sec: float = SEGMENT_MAX_SEC,
+    gap_sec: float = SEGMENT_GAP_SEC,
+    pad_sec: float = SEGMENT_PAD_SEC,
+) -> list:
+    """Carve a decoded PCM recording into snippet windows at silence
+    boundaries (willab Readout multi-snippet, design §5).
+
+    Returns a list of ``(start_ms, end_ms)`` windows in CHRONOLOGICAL
+    order — the offsets the caller writes to each charisma_snippets row
+    (the parent-audio + offset-window model the boundary-adjust path
+    already uses). The caller runs ``analyze_audio_window`` per window
+    for the per-snippet feature blob.
+
+    Algorithm (VAD/pause based):
+      1. Frame-level voice activity = RMS dB ≥ SILENCE_DB_THRESHOLD.
+      2. Group voiced frames into segments, splitting wherever a silence
+         run reaches ``gap_sec`` (a real "moment" boundary — longer than
+         a within-utterance pause).
+      3. Pad each window ±``pad_sec`` (natural playback), clamp to bounds.
+      4. Drop windows shorter than ``min_snippet_sec``; split windows
+         longer than ``max_snippet_sec`` into even sub-chunks.
+      5. Rank by duration (a fuller, longer moment is more analyzable),
+         cap to ``max_snippets`` (§14), return chronological.
+
+    Fallbacks (never returns zero windows for a usable recording):
+      - signal < 1s → ``[]`` (nothing to segment; caller skips).
+      - no clear voiced segments, or every candidate too short → the
+        whole recording as one window ``[(0, total_ms)]`` (preserves the
+        legacy single-snippet behaviour as the floor).
+    """
+    if sig is None or len(sig) < SAMPLE_RATE:
+        return []
+
+    total_ms = int(len(sig) / SAMPLE_RATE * 1000)
+    dbs = _frame_rms_db(sig)
+    if len(dbs) == 0:
+        return [(0, total_ms)]
+
+    voiced = dbs >= SILENCE_DB_THRESHOLD
+    gap_frames = max(1, int(gap_sec * 1000 / FRAME_MS))
+
+    # ── Group voiced frames into raw segments split on long silences ──
+    raw: list = []  # (start_frame, end_frame_exclusive)
+    seg_start = None
+    last_voiced = None
+    silence_run = 0
+    for i in range(len(voiced)):
+        if voiced[i]:
+            if seg_start is None:
+                seg_start = i
+            last_voiced = i
+            silence_run = 0
+        elif seg_start is not None:
+            silence_run += 1
+            if silence_run >= gap_frames:
+                raw.append((seg_start, last_voiced + 1))
+                seg_start = None
+                silence_run = 0
+    if seg_start is not None and last_voiced is not None:
+        raw.append((seg_start, last_voiced + 1))
+
+    if not raw:
+        return [(0, total_ms)]
+
+    # ── frames → ms, pad/clamp, enforce min/max duration ─────────────
+    pad_ms = int(pad_sec * 1000)
+    min_ms = int(min_snippet_sec * 1000)
+    max_ms = int(max_snippet_sec * 1000)
+    windows: list = []
+    for (sf, ef) in raw:
+        s_ms = max(0, sf * FRAME_MS - pad_ms)
+        e_ms = min(total_ms, ef * FRAME_MS + pad_ms)
+        dur = e_ms - s_ms
+        if dur < min_ms:
+            continue
+        if dur <= max_ms:
+            windows.append((s_ms, e_ms))
+            continue
+        # Split a long monologue into even sub-chunks ≤ max_ms.
+        n_chunks = (dur + max_ms - 1) // max_ms
+        chunk = dur // n_chunks
+        for c in range(n_chunks):
+            cs = s_ms + c * chunk
+            ce = e_ms if c == n_chunks - 1 else min(e_ms, cs + chunk)
+            if ce - cs >= min_ms:
+                windows.append((cs, ce))
+
+    if not windows:
+        return [(0, total_ms)]
+
+    # Rank by duration (analyzability proxy), cap to top-N, chronological.
+    windows.sort(key=lambda w: (w[1] - w[0]), reverse=True)
+    kept = windows[: max(1, max_snippets)]
+    kept.sort(key=lambda w: w[0])
+    return kept
 
 
 def _pcm_to_wav_bytes(sig: "np.ndarray") -> bytes:
