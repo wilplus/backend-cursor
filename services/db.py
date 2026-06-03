@@ -9264,6 +9264,94 @@ class DatabaseService:
             )
             return False
 
+    # ── willab beta — user profile (design §2 / contract §3.1) ──────
+    #
+    # One-time self-declared {domain, goal} on user_settings (co-located
+    # with the derived inferred_learner_profile / baseline_summary it
+    # feeds). Distinct from v2_speaker_profiles (admin coach-notes).
+
+    def get_user_profile(self, user_id: str) -> Optional[dict]:
+        """Read the user's intake profile: {domain, goal}.
+
+        Returns ``{"domain": <enum|None>, "goal": <str|None>}`` — both
+        None pre-intake. None (the whole return) only on a hard DB
+        failure / missing column (migration pending), which the route
+        treats as "no profile yet".
+        """
+        if not user_id:
+            return None
+        try:
+            res = (
+                self.client.table("user_settings")
+                .select("profile_domain, profile_goal")
+                .eq("user_id", user_id)
+                .limit(1)
+                .execute()
+            )
+            if not res.data:
+                return {"domain": None, "goal": None}
+            row = res.data[0]
+            return {
+                "domain": row.get("profile_domain"),
+                "goal": row.get("profile_goal"),
+            }
+        except Exception as e:
+            err_low = str(e).lower()
+            if "profile_domain" in err_low or "pgrst204" in err_low:
+                logger.warning(
+                    "get_user_profile: column missing (run migrations/"
+                    "add_profile_to_user_settings.sql) user=%s", user_id,
+                )
+                return {"domain": None, "goal": None}
+            logger.warning(
+                "get_user_profile failed user=%s err=%s", user_id, e,
+            )
+            return None
+
+    def set_user_profile(
+        self,
+        user_id: str,
+        *,
+        domain: Optional[str],
+        goal: Optional[str],
+    ) -> bool:
+        """Upsert the user's intake profile on user_settings.
+
+        Intake submits both fields together (design §2 — two-turn
+        bounded), so this is a full set, not a partial patch. ``domain``
+        is validated against the enum by the route layer; the DB CHECK
+        constraint is the final gate. Returns True on success, False on
+        any DB failure (route maps to 500).
+        """
+        if not user_id:
+            return False
+        from datetime import datetime, timezone
+        payload = {
+            "user_id": user_id,
+            "profile_domain": domain,
+            "profile_goal": goal,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+        try:
+            (
+                self.client.table("user_settings")
+                .upsert(payload)
+                .execute()
+            )
+            return True
+        except Exception as e:
+            err_low = str(e).lower()
+            if "profile_domain" in err_low or "pgrst204" in err_low:
+                logger.warning(
+                    "set_user_profile: column missing (run migrations/"
+                    "add_profile_to_user_settings.sql) user=%s", user_id,
+                )
+                return False
+            logger.error(
+                "set_user_profile failed user=%s err=%s", user_id, e,
+            )
+            return False
+
     # ── willab beta — lounge_messages (BE contract §3.15) ───────────
     #
     # Per-user Lounge chat thread. Text only, never audio, never in the
