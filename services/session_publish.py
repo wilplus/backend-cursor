@@ -132,24 +132,12 @@ def finalize_session_pending_admin_review(
             "sid=%s err=%s", session_id, e,
         )
 
-    # ── Step 1.7: Task 10 — next-session icebreaker.
-    # Generate the LLM-prefilled icebreaker that will open N+1 from
-    # session N's snippets + admin comments. Lives on session N's
-    # row regardless of whether N+1 exists yet (per FE handoff
-    # Q1: generate eagerly, decoupled from n+1). Best-effort —
-    # failure writes a generation_error tag so the admin sees the
-    # "Regenerate" red banner; never raises into finalize.
-    try:
-        from services.next_session_icebreaker import (
-            generate_next_session_icebreaker,
-        )
-        icebreaker = generate_next_session_icebreaker(session_id)
-        result["icebreaker_generated"] = bool(icebreaker)
-    except Exception as e:
-        logger.warning(
-            "finalize_pending_review: icebreaker compute failed "
-            "sid=%s err=%s", session_id, e,
-        )
+    # ── Step 1.7: next-session icebreaker — DORMANT (willab v1.2).
+    # Generation un-wired in the Phase-5 clearance. The
+    # next_session_icebreaker_* columns + admin read/regenerate
+    # endpoints remain (inert) for a possible later Lounge
+    # warm-opener, but nothing generates an icebreaker here anymore.
+    result["icebreaker_generated"] = False
 
     # ── Step 2: pre-fill admin_comment drafts.
     try:
@@ -259,20 +247,9 @@ def auto_publish_trial_session(
             "sid=%s err=%s", session_id, e,
         )
 
-    # ── Step 0.6: Task 10 — next-session icebreaker.
-    # Mirror of Step 1.7 in finalize_session_pending_admin_review.
-    # Best-effort; failure tags generation_error and the admin's
-    # Tab-1 card surfaces a Regenerate button.
-    try:
-        from services.next_session_icebreaker import (
-            generate_next_session_icebreaker,
-        )
-        generate_next_session_icebreaker(session_id)
-    except Exception as e:
-        logger.warning(
-            "auto_publish_trial: icebreaker compute failed "
-            "sid=%s err=%s", session_id, e,
-        )
+    # ── Step 0.6: next-session icebreaker — DORMANT (willab v1.2).
+    # Generation un-wired in the Phase-5 clearance (see the Step 1.7
+    # note in finalize_session_pending_admin_review).
 
     # ── Step 1: AI-draft generation for any missing drafts.
     # extract_recording_snippets runs upstream of us; depending on
