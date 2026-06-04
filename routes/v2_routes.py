@@ -12143,11 +12143,25 @@ def v2_chat_query():
                 "user=%s: %s", request.user_id, e,
             )
 
+        # willab §3.12 — the user's strong-sides library (coach notes)
+        # for the Lounge bot to retrieve/replay. Best-effort; empty for
+        # users with no published+read sessions yet. The librarian
+        # guardrail (no trajectory/scores) lives in answer_question.
+        library_entries: list | None = None
+        try:
+            library_entries = db.get_strong_sides_library(request.user_id) or None
+        except Exception as e:
+            logger.warning(
+                "chat/query: library load failed user=%s: %s",
+                request.user_id, e,
+            )
+
         from services.master_doc_rag import answer_question
         payload, debug = answer_question(
             question.strip(),
             history=history,
             admin_dont_ask_notes=admin_dont_ask_notes,
+            library_entries=library_entries,
         )
 
         # ── Path B — fire-and-forget DSP extraction. Spawned BEFORE
