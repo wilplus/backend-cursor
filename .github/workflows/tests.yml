@@ -1,0 +1,65 @@
+name: tests
+
+# Regression gate for the Python test suite. Runs the unit-tier
+# tests on every push + PR. Integration-tier modules that need live
+# Supabase / network credentials are quarantined (see QUARANTINE
+# below) — they can't run in CI without secrets and would be red
+# for environmental reasons, not real bugs. A red-on-day-1 gate
+# gets ignored; this one stays green so it means something.
+#
+# When the quarantined modules get proper setUpModule/tearDownModule
+# stubbing (per the memory note on test-stub isolation), move them
+# out of the ignore list so CI covers them too.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  unittest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12.1"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          # pytest is a CI-only runner (not a runtime dep). It runs the
+          # existing unittest-style tests as-is + gives clean exit codes
+          # and --ignore filtering for the quarantined modules.
+          pip install pytest
+
+      - name: Run unit-tier tests
+        env:
+          # Minimal env so import-time guards don't hard-crash. These
+          # are placeholders — the quarantined integration tests that
+          # need REAL creds are excluded below, so dummy values here
+          # only keep the unit modules' import guards happy.
+          JWT_SECRET: ci-placeholder-secret
+          SUPABASE_URL: https://ci-placeholder.invalid
+          SUPABASE_KEY: ci-placeholder-key
+        run: |
+          # QUARANTINE — integration-tier modules that need live
+          # Supabase / network. They fail in CI for environmental
+          # reasons, not real regressions. Run them locally against a
+          # real env, or wire secrets + stubs later to un-quarantine.
+          pytest \
+            --ignore=test_admin_student_profile_regressions.py \
+            --ignore=test_guest_funnel.py \
+            --ignore=test_homework_regressions.py \
+            --ignore=test_score_unification.py \
+            --ignore=test_sentry.py \
+            --ignore=test_auth_request.py \
+            -p no:cacheprovider \
+            -q
