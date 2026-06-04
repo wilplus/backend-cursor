@@ -1,7 +1,0 @@
-{
-  "project": "backend-cursor",
-  "sourceOfTruth": ".taskmaster/docs/APP_DESCRIPTION.md",
-  "schema": ".taskmaster/docs/schema.sql",
-  "docsPath": "docs",
-  "auditDoc": ".taskmaster/docs/AUDIT-AND-BFF-GLOW.md"
-}
