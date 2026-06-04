@@ -183,39 +183,137 @@ def process_lab_recording(
 
     windows = segment_into_snippets(sig)
 
-    snippets_data: list = []
+    # 1) Features + transcript per window (in-memory; no insert yet).
+    prelim: list = []
     for idx, (start_ms, end_ms) in enumerate(windows, start=1):
         dur_ms = end_ms - start_ms
         metrics = analyze_pcm_window(
             sig, start_offset_ms=start_ms, duration_ms=dur_ms,
-        )
+        ) or {}
         transcript = slice_transcript_for_window(segments, start_ms, end_ms)
+        prelim.append({
+            "idx": idx, "start_ms": start_ms, "dur_ms": dur_ms,
+            "metrics": metrics, "transcript": transcript,
+        })
+
+    # 2) Stickiness over transcripts BEFORE insert (one batch). Scored
+    #    by transcript/position, so no snippet ids are needed yet.
+    sticky = score_snippets_stickiness([
+        {"id": None, "transcript": p["transcript"]} for p in prelim
+    ])
+
+    # 3) Insert each snippet with stickiness PERSISTED into its metrics
+    #    blob (metrics["stickiness"]), so a later re-read rebuilds the
+    #    identical §3.3 readout (build_readout_from_session). The
+    #    feature mapper ignores the "stickiness" sub-key.
+    snippets_data: list = []
+    for i, p in enumerate(prelim):
+        st = sticky[i] if i < len(sticky) else {}
+        metrics_full = dict(p["metrics"])
+        metrics_full["stickiness"] = {
+            "composite": st.get("composite"),
+            "comment": st.get("comment"),
+        }
         row = db.create_charisma_snippet(
             session_id=session_id,
             user_id=user_id,
             recording_id=recording_id,
-            start_offset_ms=start_ms,
-            duration_ms=dur_ms,
+            start_offset_ms=p["start_ms"],
+            duration_ms=p["dur_ms"],
             audio_segment_path=parent_audio_url,
-            metrics=metrics,
-            transcript=transcript or None,
+            metrics=metrics_full,
+            transcript=p["transcript"] or None,
         )
         snippets_data.append({
             "id": row.get("id") if row else None,
-            "index": idx,
-            "transcript": transcript,
+            "index": p["idx"],
+            "transcript": p["transcript"],
             "audio_ref": parent_audio_url,
-            "start_offset_ms": start_ms,
-            "duration_ms": dur_ms,
-            "metrics": metrics,
+            "start_offset_ms": p["start_ms"],
+            "duration_ms": p["dur_ms"],
+            "metrics": metrics_full,
         })
 
-    stickiness = score_snippets_stickiness([
-        {"id": s["id"], "transcript": s["transcript"]} for s in snippets_data
-    ])
+    stickiness_list = [
+        {
+            "snippet_id": snippets_data[i]["id"],
+            "composite": (sticky[i] if i < len(sticky) else {}).get("composite"),
+            "comment": (sticky[i] if i < len(sticky) else {}).get("comment"),
+        }
+        for i in range(len(snippets_data))
+    ]
 
     logger.info(
         "process_lab_recording: sid=%s snippets=%d transcribed=%s",
         session_id, len(snippets_data), bool(segments),
     )
-    return build_readout_payload(snippets_data, stickiness)
+    return build_readout_payload(snippets_data, stickiness_list)
+
+
+def build_readout_from_session(
+    session_id: str,
+    *,
+    include_insights: bool = True,
+) -> dict:
+    """Re-derive the §3.3 Readout from PERSISTED snippets — the canonical
+    reader for parked-restore + history (contract: a report loads
+    identically an hour later / on scroll-back).
+
+    Reads charisma_snippets for the session, rebuilds each snippet's
+    §3.3 shape from its metrics blob (features via build_readout_features
+    + the persisted stickiness sub-key), in chronological order
+    (start_offset_ms ASC — the honest "what happened" order).
+
+    Post-publish (include_insights), folds the coach layer:
+      - top-level ``insights_payload`` (overall_message + snippet_notes)
+      - per-snippet ``coach`` {note, tag} matched by snippet_id
+
+    Owner-scoping is the caller's job (the route). Returns
+    {"snippets": [...], "insights_payload"?: {...}}.
+    """
+    from services.db import db
+
+    snippets = db.get_snippets_by_session(session_id) or []
+    out_snips: list = []
+    for i, s in enumerate(snippets):
+        metrics = s.get("metrics") if isinstance(s.get("metrics"), dict) else {}
+        sticky = metrics.get("stickiness") if isinstance(metrics, dict) else None
+        if not isinstance(sticky, dict):
+            sticky = {}
+        out_snips.append({
+            "id": s.get("id"),
+            "index": i + 1,
+            "transcript": (
+                s.get("transcript") or s.get("transcription_text") or ""
+            ),
+            "audio_ref": s.get("audio_segment_path"),
+            "start_offset_ms": s.get("start_offset_ms"),
+            "duration_ms": s.get("duration_ms"),
+            "features": build_readout_features(metrics),
+            "stickiness": {
+                "composite": sticky.get("composite"),
+                "comment": sticky.get("comment"),
+            },
+        })
+
+    result: dict = {"snippets": out_snips}
+
+    if include_insights:
+        try:
+            session = db.v2_get_session_by_id(session_id) or {}
+        except Exception:
+            session = {}
+        ip = session.get("insights_payload")
+        if isinstance(ip, dict):
+            result["insights_payload"] = ip
+            notes_by_id = {
+                n["snippet_id"]: n
+                for n in (ip.get("snippet_notes") or [])
+                if isinstance(n, dict) and n.get("snippet_id")
+            }
+            for snip in out_snips:
+                cn = notes_by_id.get(snip["id"])
+                if cn:
+                    snip["coach"] = {"note": cn.get("note"), "tag": cn.get("tag")}
+
+    return result

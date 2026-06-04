@@ -9267,6 +9267,73 @@ class DatabaseService:
             )
             return False
 
+    # ── willab beta — Lab session source + history ──────────────────
+
+    def set_session_source(self, session_id: str, source: str) -> bool:
+        """Stamp v2_sessions.source (foundation discriminator). The Lab
+        handler marks its sessions 'audit_upload' so the history list +
+        future audit features can find willab Lab sessions. Best-effort;
+        missing column (migration pending) → False, non-fatal."""
+        if not session_id:
+            return False
+        try:
+            (
+                self.client.table("v2_sessions")
+                .update({"source": source})
+                .eq("id", session_id)
+                .execute()
+            )
+            return True
+        except Exception as e:
+            err_low = str(e).lower()
+            if "source" in err_low and "pgrst" in err_low:
+                return False
+            logger.warning(
+                "set_session_source failed sid=%s err=%s", session_id, e,
+            )
+            return False
+
+    def list_user_lab_sessions(
+        self,
+        user_id: str,
+        *,
+        limit: int = 50,
+    ) -> list[dict]:
+        """List a user's willab Lab sessions, newest first, for the
+        history / scroll-back view. Filters source='audit_upload' so
+        old-funnel/homework sessions don't appear. Returns lightweight
+        rows; the FE fetches the full readout per session on tap.
+        """
+        if not user_id:
+            return []
+        try:
+            res = (
+                self.client.table("v2_sessions")
+                .select(
+                    "id, created_at, status, results_published_at, "
+                    "intake_context"
+                )
+                .eq("user_id", user_id)
+                .eq("source", "audit_upload")
+                .order("created_at", desc=True)
+                .limit(limit)
+                .execute()
+            )
+            return res.data or []
+        except Exception as e:
+            err_low = str(e).lower()
+            if "source" in err_low and "pgrst" in err_low:
+                logger.warning(
+                    "list_user_lab_sessions: source column missing (run "
+                    "migrations/add_foundation_discriminators.sql) user=%s",
+                    user_id,
+                )
+                return []
+            logger.warning(
+                "list_user_lab_sessions failed user=%s err=%s", user_id, e,
+            )
+            return []
+
     # ── willab beta — training labels (design §14, PRIVATE lane) ────
 
     def upsert_training_labels(

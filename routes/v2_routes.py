@@ -19499,6 +19499,100 @@ def v2_user_get_library():
         }), 500
 
 
+# ── willab beta — Lab readout re-read + history (parked-restore + scroll-back) ─
+
+
+@v2_bp.route("/user/sessions/<session_id>/readout", methods=["GET"])
+@require_auth
+def v2_user_get_session_readout(session_id):
+    """Re-read the canonical §3.3 Readout for one of the user's sessions.
+
+    Serves parked-restore (the report loads identically an hour later)
+    and history-detail (tap a past report). Re-derived from PERSISTED
+    snippets (features + the persisted stickiness), so it matches the
+    upload-time payload byte-for-byte. Post-publish it also carries the
+    coach layer (insights_payload + per-snippet coach note/tag).
+
+    Owner-scoped: non-owner → 404 (no existence leak).
+
+    Response 200:
+      { "session_id", "published": bool, "state": str,
+        "readout": { "snippets": [...§3.3...], "insights_payload"?: {...} } }
+    """
+    if not _is_valid_uuid(session_id):
+        return jsonify({
+            "code": "INVALID_INPUT", "error": "session_id must be a valid UUID",
+        }), 400
+    try:
+        session = db.v2_get_session_by_id(session_id)
+        if not session or str(session.get("user_id") or "") != str(request.user_id):
+            return jsonify({
+                "code": "SESSION_NOT_FOUND", "error": "Session not found",
+            }), 404
+
+        from services.lab_recording import build_readout_from_session
+        readout = build_readout_from_session(session_id)
+
+        published = bool(session.get("results_published_at"))
+        if published:
+            state = "insights_ready"
+        elif session.get("status") == "pending_admin_review":
+            state = "review_pending"
+        else:
+            state = "readout_ready"
+
+        return jsonify({
+            "session_id": session_id,
+            "published": published,
+            "state": state,
+            "readout": readout,
+        }), 200
+    except Exception as e:
+        logger.error(
+            "user/sessions/<id>/readout GET failed sid=%s err=%s",
+            session_id, e, exc_info=True,
+        )
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to fetch readout"}), 500
+
+
+@v2_bp.route("/user/readouts", methods=["GET"])
+@require_auth
+def v2_user_list_readouts():
+    """The user's Lab session history (scroll-back to previous reports).
+
+    Lightweight list, newest first; the FE fetches the full readout per
+    session via /v2/user/sessions/<id>/readout on tap.
+
+    Response 200:
+      { "readouts": [ {session_id, created_at, topic, state} ], "count": int }
+      state ∈ readout_ready | review_pending | insights_ready
+    """
+    try:
+        rows = db.list_user_lab_sessions(request.user_id)
+        out: list = []
+        for r in rows:
+            ctx = r.get("intake_context") if isinstance(r.get("intake_context"), dict) else {}
+            published = bool(r.get("results_published_at"))
+            if published:
+                state = "insights_ready"
+            elif r.get("status") == "pending_admin_review":
+                state = "review_pending"
+            else:
+                state = "readout_ready"
+            out.append({
+                "session_id": r.get("id"),
+                "created_at": r.get("created_at"),
+                "topic": (ctx or {}).get("topic"),
+                "state": state,
+            })
+        return jsonify({"readouts": out, "count": len(out)}), 200
+    except Exception as e:
+        logger.error("user/readouts GET failed: %s", e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to fetch readouts"}), 500
+
+
 # ── willab beta — Lab upload handler (design §4, contract §3.3) ──────
 #
 # The convergence: multipart audio + inline session_context → min-content
@@ -19663,6 +19757,10 @@ def v2_lab_create_recording():
 
         # Persist session_context on the session row.
         db.set_session_intake_context(guest_session_id, session_context)
+        # Mark as a willab Lab session so the history list + send-gate
+        # origin path can find it (best-effort; the recording_origin on
+        # the recording row is the send-gate's primary gate).
+        db.set_session_source(guest_session_id, "audit_upload")
 
         # Recording row (recording_origin fallback for pre-migration envs).
         rec_payload = {
