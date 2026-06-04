@@ -1,0 +1,103 @@
+"""Unit tests for services.lab_send (willab send-gate §3.4-3.7).
+
+Covers the idempotent send primitive (status flip = success signal,
+already-sent no-op, best-effort notify) + the willab-origin gate.
+DB + notify mocked.
+
+Run: python3 -m unittest test_lab_send
+"""
+from __future__ import annotations
+
+import sys
+import types
+import unittest
+from unittest.mock import MagicMock, patch
+
+
+# Stub services.db so the module imports without a live client.
+_stub_db = types.ModuleType("services.db")
+_stub_db.db = MagicMock()
+sys.modules.setdefault("services.db", _stub_db)
+
+
+class IsLabRecordingTests(unittest.TestCase):
+
+    def test_origin_gate(self):
+        from services.lab_send import is_lab_recording
+        self.assertTrue(is_lab_recording({"recording_origin": "willab_lab"}))
+        self.assertFalse(is_lab_recording({"recording_origin": "guest_funnel"}))
+        self.assertFalse(is_lab_recording({"recording_origin": None}))
+        self.assertFalse(is_lab_recording({}))
+        self.assertFalse(is_lab_recording(None))
+
+
+class SendTests(unittest.TestCase):
+
+    def _send(self, session, *, flip_ok=True):
+        from services import lab_send as mod
+        from services.db import db
+        with patch.object(db, "v2_get_session_by_id", return_value=session), \
+             patch.object(db, "v2_update_session_status_unscoped",
+                          return_value=({"id": "s"} if flip_ok else None)), \
+             patch.object(db, "get_snippets_by_session", return_value=[{"id": "a"}]), \
+             patch("services.session_publish._send_admin_notification",
+                   return_value="sent") as mock_notify:
+            result = mod.send_lab_recording_to_coach("s", "u1")
+            return result, mock_notify
+
+    def test_happy_flip_and_notify(self):
+        result, notify = self._send({"id": "s", "status": "readout_ready"})
+        self.assertTrue(result["ok"])
+        self.assertFalse(result["already_sent"])
+        self.assertEqual(result["status"], "pending_admin_review")
+        notify.assert_called_once()
+
+    def test_already_in_queue_is_noop(self):
+        result, notify = self._send({"id": "s", "status": "pending_admin_review"})
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["already_sent"])
+        notify.assert_not_called()  # no re-notify on idempotent re-send
+
+    def test_already_published_is_noop(self):
+        result, notify = self._send({
+            "id": "s", "status": "completed",
+            "results_published_at": "2026-06-01T10:00:00Z",
+        })
+        self.assertTrue(result["already_sent"])
+        notify.assert_not_called()
+
+    def test_flip_failure_not_ok(self):
+        result, _ = self._send({"id": "s", "status": "readout_ready"}, flip_ok=False)
+        self.assertFalse(result["ok"])
+        self.assertFalse(result["already_sent"])
+
+    def test_missing_session(self):
+        from services import lab_send as mod
+        from services.db import db
+        with patch.object(db, "v2_get_session_by_id", return_value=None):
+            result = mod.send_lab_recording_to_coach("s", "u1")
+        self.assertFalse(result["ok"])
+
+    def test_missing_args(self):
+        from services.lab_send import send_lab_recording_to_coach
+        self.assertFalse(send_lab_recording_to_coach("", "u1")["ok"])
+        self.assertFalse(send_lab_recording_to_coach("s", "")["ok"])
+
+    def test_notify_failure_still_ok(self):
+        """Admin email is a nudge — its failure must not fail the send
+        (the recording is in the queue; that's success)."""
+        from services import lab_send as mod
+        from services.db import db
+        with patch.object(db, "v2_get_session_by_id",
+                          return_value={"id": "s", "status": "readout_ready"}), \
+             patch.object(db, "v2_update_session_status_unscoped",
+                          return_value={"id": "s"}), \
+             patch.object(db, "get_snippets_by_session", return_value=[]), \
+             patch("services.session_publish._send_admin_notification",
+                   side_effect=Exception("smtp down")):
+            result = mod.send_lab_recording_to_coach("s", "u1")
+        self.assertTrue(result["ok"])
+
+
+if __name__ == "__main__":
+    unittest.main()
