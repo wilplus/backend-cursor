@@ -415,11 +415,63 @@ _SYSTEM_PROMPT = with_voice_rules(
 )
 
 
+_LIBRARIAN_GUARDRAIL = (
+    "─── STRONG-SIDES LIBRARY — LIBRARIAN RULES (read before using it) ───\n"
+    "The block below is THIS user's own library: notes their HUMAN COACH "
+    "wrote about specific past moments, each tagged strong / to-work-on. "
+    "You are a LIBRARIAN of these notes, never a judge:\n"
+    "  • You MAY retrieve + replay these coach notes (in the coach's own "
+    "    words), surface the strong / to-work-on moments, and offer to "
+    "    pull them up.\n"
+    "  • You MUST NOT compute, assert, or imply trajectory, improvement, "
+    "    decline, or any cross-session synthesis ('you're getting "
+    "    better', 'you've improved since last time'). That is out of "
+    "    scope and the data here cannot support it.\n"
+    "  • You MUST NOT invent a score, T:C ratio, or any number about the "
+    "    user, and MUST NOT pre-empt or second-guess the coach's read.\n"
+    "  • If asked 'am I improving?' — do NOT answer with a verdict. "
+    "    Invitationally offer to revisit their strong lines, or the ones "
+    "    to work on, in the coach's own words.\n"
+)
+
+
+def _render_library_block(entries: Optional[list]) -> str:
+    """Render the user's strong-sides library into a retrieval context
+    block (preceded by the librarian guardrail). Returns '' when there's
+    nothing to replay. Pure — unit-tested.
+
+    Caps at 20 entries + trims each transcript excerpt so a large library
+    can't blow the prompt budget.
+    """
+    if not entries:
+        return ""
+    lines: list = []
+    for e in entries[:20]:
+        if not isinstance(e, dict):
+            continue
+        note = (e.get("note") or "").strip()
+        if not note:
+            continue
+        label = "strong" if e.get("tag") == "strong" else "to work on"
+        ref = e.get("snippet_ref") or {}
+        tx = (ref.get("transcript") or "").strip() if isinstance(ref, dict) else ""
+        if len(tx) > 160:
+            tx = tx[:160].rstrip() + "…"
+        if tx:
+            lines.append(f'  • [{label}] coach noted: "{note}" — on: "{tx}"')
+        else:
+            lines.append(f'  • [{label}] coach noted: "{note}"')
+    if not lines:
+        return ""
+    return _LIBRARIAN_GUARDRAIL + "\nYOUR LIBRARY (coach notes to replay on request):\n" + "\n".join(lines)
+
+
 def answer_question(
     question: str,
     *,
     history: Optional[list[dict]] = None,
     admin_dont_ask_notes: Optional[str] = None,
+    library_entries: Optional[list] = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Run one LLM call grounded in the Master Document.
 
@@ -478,6 +530,13 @@ def answer_question(
     system_content = _SYSTEM_PROMPT
     if dont_ask_block:
         system_content = system_content + "\n\n" + dont_ask_block
+
+    # willab §3.12 — splice the user's strong-sides library (coach notes)
+    # + the librarian guardrail so the bot can replay them on request
+    # without ever synthesising trajectory/scores.
+    library_block = _render_library_block(library_entries)
+    if library_block:
+        system_content = system_content + "\n\n" + library_block
 
     messages: list[dict[str, str]] = [
         {"role": "system", "content": system_content},
