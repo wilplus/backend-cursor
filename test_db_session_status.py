@@ -57,6 +57,10 @@ class _Chain:
         self.cap.setdefault("eq", []).append((col, val))
         return self
 
+    def is_(self, col, val):
+        self.cap.setdefault("is_", []).append((col, val))
+        return self
+
     def execute(self):
         return types.SimpleNamespace(data=self._rows)
 
@@ -90,6 +94,42 @@ class V2UpdateSessionStatusUnscopedTests(unittest.TestCase):
         self.assertIsNone(
             svc.v2_update_session_status_unscoped("missing", "pending_admin_review")
         )
+
+
+@unittest.skipIf(DatabaseService is None, f"services.db import failed: {_IMPORT_ERR}")
+class V2ChargeLabCreditsOnceTests(unittest.TestCase):
+    """willab "uses credits": publish + soft + idempotent (B-decision)."""
+
+    def _svc(self, cap, flag_rows):
+        svc = DatabaseService.__new__(DatabaseService)
+        svc.client = _Chain(cap, flag_rows)
+        # Record the soft-deduct without touching a real client.
+        self.deducts = []
+        svc.v2_deduct_session_credits = (
+            lambda user_id, amount=5: self.deducts.append((user_id, amount)) or 10
+        )
+        return svc
+
+    def test_charges_once_soft_no_phantom_column(self):
+        cap = {}
+        # flag was NULL → the guarded update matched a row → proceed to deduct.
+        svc = self._svc(cap, [{"id": "sid-1"}])
+        svc.v2_charge_lab_credits_once("sid-1", "user-1", amount=5)
+        self.assertEqual(cap["table"], "v2_sessions")
+        # Idempotency guard: writes lab_credits_charged_at gated on IS NULL.
+        self.assertIn("lab_credits_charged_at", cap["update"])
+        self.assertEqual(cap["is_"], [("lab_credits_charged_at", "null")])
+        # No phantom updated_at column (v2_sessions has none — the PGRST204 trap).
+        self.assertNotIn("updated_at", cap["update"])
+        # Soft deduct fired once with the chosen amount.
+        self.assertEqual(self.deducts, [("user-1", 5)])
+
+    def test_idempotent_noop_when_already_charged(self):
+        cap = {}
+        # flag already set → guarded update matched NO row → must NOT deduct.
+        svc = self._svc(cap, [])
+        svc.v2_charge_lab_credits_once("sid-1", "user-1", amount=5)
+        self.assertEqual(self.deducts, [], "re-publish must not double-charge")
 
 
 if __name__ == "__main__":
