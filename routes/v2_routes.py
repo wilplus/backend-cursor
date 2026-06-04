@@ -19846,6 +19846,10 @@ def v2_lab_create_recording():
             "status": "ok",
             "session_id": guest_session_id,
             "recording_id": recording_id,
+            # A fresh upload is always readout_ready (processed, not yet sent).
+            # Explicit so the 201 is self-describing + matches the re-read /
+            # history `state` field (FE asked: Q2 of the last-pass handoff).
+            "state": "readout_ready",
             "session_context": session_context,
             "readout": readout,
         }), 201
