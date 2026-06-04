@@ -14810,6 +14810,40 @@ def v2_internal_publish_session_results():
                 bool(clean_insights["overall_message"]), labels_written,
             )
 
+            # Surface the insight in the user's Lounge thread (§6/§3.12):
+            # append one `insight` lounge message so willab renders the
+            # "insights ready" card whose "View insights →" re-reads the
+            # session. Best-effort + idempotent — the client_id is a stable
+            # uuid5 keyed on session_id, so a re-publish upserts (never a
+            # duplicate card). insights_payload above is the source of
+            # truth; this is the user-facing nudge.
+            try:
+                from datetime import datetime as _dt, timezone as _tz
+                _owner = (db.v2_get_session_by_id(session_id) or {}).get("user_id")
+                if _owner:
+                    db.insert_lounge_messages(str(_owner), [{
+                        "client_id": str(uuid.uuid5(
+                            uuid.NAMESPACE_URL, f"willab-insight:{session_id}",
+                        )),
+                        "role": "bot",
+                        "kind": "insight",
+                        "body": "Your coach's insights are ready.",
+                        "metadata": {
+                            "session_id": session_id,
+                            "insight_ref": session_id,
+                        },
+                        "client_created_at": _dt.now(_tz.utc).isoformat(),
+                    }])
+                    logger.info(
+                        "publish-results: insight lounge card appended "
+                        "session=%s owner=%s", session_id, _owner,
+                    )
+            except Exception as _le:
+                logger.warning(
+                    "publish-results: insight lounge append failed "
+                    "session=%s err=%s (non-fatal)", session_id, _le,
+                )
+
         # Phase 10 — emit RLHF annotation events for every snippet in
         # this session BEFORE the status flip + email. Each row in
         # admin_annotation_events captures (ai_draft, admin_final) for
