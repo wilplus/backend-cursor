@@ -13949,6 +13949,34 @@ def _merge_anonymous_session_into_user(session_id: str, user_id: str):
             "error": "This trial recording was already claimed.",
         }, 409)
 
+    # ── willab Lab send-gate (design §13, contract §3.4-3.7) ────────
+    # A willab Lab recording was ALREADY processed at upload (snippets +
+    # features + stickiness exist). So for these, skip ALL the old-funnel
+    # processing below (re-extract / recompute would double-process) and
+    # just send to the coach queue. Gated strictly on the recording's
+    # origin, so the legacy claim path below is byte-for-byte unchanged
+    # for every non-willab session. This is the BE-composed merge→send
+    # the FE wiring expects (PendingSessionClaim → /v2/auth/merge-session
+    # for both signed + unsigned — no separate send endpoint).
+    _wl_rec_id = claimed.get("recording_1_id")
+    _wl_rec = db.get_recording(_wl_rec_id) if _wl_rec_id else None
+    from services.lab_send import is_lab_recording, send_lab_recording_to_coach
+    if is_lab_recording(_wl_rec):
+        send_result = send_lab_recording_to_coach(
+            str(claimed.get("id")), str(user_id),
+        )
+        logger.info(
+            "willab_lab: merge→send sid=%s user=%s result=%s",
+            session_id, user_id, send_result,
+        )
+        return ({
+            "status": "ok",
+            "session_id": str(claimed.get("id")),
+            "analysis_status": "sent_to_coach",   # → review_pending
+            "review_pending": True,
+            "post_signup_confirmation": _POST_SIGNUP_CONFIRMATION,
+        }, 200)
+
     # Pipeline: same recording_1_job that handles live student recordings
     # and admin calibration uploads. The job will auto-complete because
     # v2_claim_guest_session stamps self_rating_submitted_at.
