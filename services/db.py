@@ -3858,6 +3858,65 @@ class DatabaseService:
             except Exception:
                 pass
 
+    def v2_charge_lab_credits_once(self, session_id: str, user_id: str, amount: int = 5) -> None:
+        """Deduct `amount` credits once per willab Lab session at publish.
+
+        willab "uses credits" (B-decision, publish + soft, 5/session).
+        Idempotent: sets lab_credits_charged_at only when NULL (a re-publish
+        never double-charges), then deducts SOFTLY — v2_deduct_session_credits
+        floors at 0, so it never hard-blocks. On deduct failure, clears the
+        flag so a retry can succeed. Mirrors v2_charge_homework_completion_
+        credits_once but on a willab-specific flag (the publish caller is the
+        gate — no status='completed' check). Best-effort: never raises into
+        the publish path; degrades to a no-op if the column is missing.
+        """
+        if not session_id or not user_id:
+            return
+        now = datetime.now(timezone.utc).isoformat()
+        try:
+            result = (
+                self.client.table("v2_sessions")
+                .update({"lab_credits_charged_at": now})
+                .eq("id", session_id)
+                .is_("lab_credits_charged_at", "null")
+                .execute()
+            )
+            if not result.data:
+                return  # already charged (idempotent no-op), or no such row
+        except Exception as e:
+            err_low = str(e).lower()
+            if "lab_credits_charged_at" in err_low and (
+                "does not exist" in err_low or "pgrst" in err_low
+            ):
+                logger.warning(
+                    "v2_charge_lab_credits_once: column missing (run "
+                    "migrations/add_lab_credits_charged_at.sql) sid=%s",
+                    session_id,
+                )
+            else:
+                logger.warning(
+                    "v2_charge_lab_credits_once: flag update failed sid=%s err=%s",
+                    session_id, e,
+                )
+            return
+        new_bal = self.v2_deduct_session_credits(user_id, amount=amount)
+        if new_bal is None:
+            logger.warning(
+                "v2_charge_lab_credits_once: deduct failed after flag; "
+                "clearing flag sid=%s user=%s", session_id, user_id,
+            )
+            try:
+                self.client.table("v2_sessions").update(
+                    {"lab_credits_charged_at": None}
+                ).eq("id", session_id).execute()
+            except Exception:
+                pass
+        else:
+            logger.info(
+                "v2_charge_lab_credits_once: charged %d sid=%s user=%s new_balance=%s",
+                amount, session_id, user_id, new_bal,
+            )
+
     def v2_get_student_list_stats(self, user_id: str):
         """Optional stats for admin students list: sessions_count, last_session_at (ISO), avg_performance (0-100)."""
         sessions = (

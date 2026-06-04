@@ -13960,6 +13960,22 @@ def v2_internal_publish_session_results():
                     "session=%s err=%s (non-fatal)", session_id, _le,
                 )
 
+            # ── willab credits — charge 5 once at publish (B-decision:
+            # "publish + soft"). Soft (v2_deduct floors at 0, never blocks)
+            # + idempotent (a re-publish won't double-charge). Best-effort:
+            # never fails the publish; no-ops if the column isn't migrated.
+            try:
+                _credit_owner = (db.v2_get_session_by_id(session_id) or {}).get("user_id")
+                if _credit_owner:
+                    db.v2_charge_lab_credits_once(
+                        session_id, str(_credit_owner), amount=5,
+                    )
+            except Exception as _ce:
+                logger.warning(
+                    "publish-results: lab credit charge failed "
+                    "session=%s err=%s (non-fatal)", session_id, _ce,
+                )
+
         # Phase 10 — emit RLHF annotation events for every snippet in
         # this session BEFORE the status flip + email. Each row in
         # admin_annotation_events captures (ai_draft, admin_final) for
