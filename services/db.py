@@ -9267,6 +9267,79 @@ class DatabaseService:
             )
             return False
 
+    # ── willab beta — strong-sides library (design §7, contract §3.11) ─
+
+    def upsert_strong_sides_library(self, rows: list[dict]) -> int:
+        """Idempotent batch upsert of library rows on (user_id,
+        snippet_id). Returns the number of rows written. Best-effort:
+        missing table (migration pending) → 0.
+
+        Rows: {user_id, session_id, snippet_id, note, tag, snippet_ref}.
+        """
+        if not rows:
+            return 0
+        try:
+            res = (
+                self.client.table("strong_sides_library")
+                .upsert(rows, on_conflict="user_id,snippet_id")
+                .execute()
+            )
+            return len(res.data or [])
+        except Exception as e:
+            err_low = str(e).lower()
+            if (
+                "strong_sides_library" in err_low
+                and ("does not exist" in err_low or "pgrst" in err_low)
+            ):
+                logger.warning(
+                    "upsert_strong_sides_library: table missing (run "
+                    "migrations/add_strong_sides_library_table.sql)",
+                )
+                return 0
+            logger.error("upsert_strong_sides_library failed err=%s", e)
+            return 0
+
+    def get_strong_sides_library(
+        self,
+        user_id: str,
+        *,
+        tag: Optional[str] = None,
+        limit: int = 200,
+    ) -> list[dict]:
+        """Read a user's library (newest first), optionally filtered by
+        tag. Used by the Lounge bot (retrieval) + the FE library view.
+        Empty list on missing table / DB hiccup.
+        """
+        if not user_id:
+            return []
+        try:
+            query = (
+                self.client.table("strong_sides_library")
+                .select("id, session_id, snippet_id, note, tag, "
+                        "snippet_ref, created_at")
+                .eq("user_id", user_id)
+            )
+            if tag is not None:
+                query = query.eq("tag", tag)
+            res = (
+                query.order("created_at", desc=True)
+                .limit(limit)
+                .execute()
+            )
+            return res.data or []
+        except Exception as e:
+            err_low = str(e).lower()
+            if (
+                "strong_sides_library" in err_low
+                and ("does not exist" in err_low or "pgrst" in err_low)
+            ):
+                return []
+            logger.warning(
+                "get_strong_sides_library failed user=%s err=%s",
+                user_id, e,
+            )
+            return []
+
     # ── willab beta — insights_payload (design §6b/§14, contract §3.9) ─
 
     def set_session_insights_payload(

@@ -8754,6 +8754,20 @@ def v2_user_session_summary(session_id):
             ip = session.get("insights_payload")
             if isinstance(ip, dict):
                 response["insights_payload"] = ip
+                # Library ingest-on-READ (§3.11): the user is reading
+                # their published insights now → ingest the coach-tagged
+                # snippets into strong_sides_library. Idempotent +
+                # best-effort (never blocks the read).
+                try:
+                    from services.strong_sides_library import (
+                        ingest_session_library,
+                    )
+                    ingest_session_library(session_id, str(request.user_id))
+                except Exception as ing_err:
+                    logger.warning(
+                        "summary: library ingest failed sid=%s err=%s "
+                        "(non-fatal)", session_id, ing_err,
+                    )
 
         return jsonify(response), 200
 
@@ -19375,6 +19389,43 @@ def v2_user_set_profile():
         return jsonify({
             "code": "V2_ERROR",
             "error": "Failed to save profile",
+        }), 500
+
+
+# ── willab beta — strong-sides library read (design §7, contract §3.11) ─
+
+
+@v2_bp.route("/user/library", methods=["GET"])
+@require_auth
+def v2_user_get_library():
+    """The user's strong-sides library — coach-tagged snippets ingested
+    on insights-read. Backs the Lounge bot's retrieval + a future FE
+    library view.
+
+    Query: tag (optional) = 'strong' | 'to_work_on' filter.
+
+    Response 200:
+      { "entries": [ {id, session_id, snippet_id, note, tag,
+                      snippet_ref, created_at} ],   // newest first
+        "count": int }
+
+    Librarian-not-judge (§7): pure replay of human-authored coach notes;
+    no trajectory/improvement is computed here or anywhere downstream.
+    """
+    try:
+        tag = (request.args.get("tag") or "").strip() or None
+        if tag is not None and tag not in ("strong", "to_work_on"):
+            return jsonify({
+                "code": "INVALID_INPUT",
+                "error": "tag must be 'strong' or 'to_work_on'",
+            }), 400
+        entries = db.get_strong_sides_library(request.user_id, tag=tag)
+        return jsonify({"entries": entries, "count": len(entries)}), 200
+    except Exception as e:
+        logger.error("user/library GET failed: %s", e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({
+            "code": "V2_ERROR", "error": "Failed to fetch library",
         }), 500
 
 
