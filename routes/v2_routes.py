@@ -18589,6 +18589,134 @@ def v2_user_list_readouts():
         return jsonify({"code": "V2_ERROR", "error": "Failed to fetch readouts"}), 500
 
 
+# ── willab beta — coach review flow (design §14, contract §3.8) ──────
+#
+# Two admin/coach endpoints. The split-sink wall (§2) is the rule: the
+# USER re-read (/v2/user/sessions/<id>/readout) OMITS the private
+# direction label; the COACH readout below INCLUDES it (the coach
+# authors/corrects it). Identity is pseudonymized, never the real
+# user_id (§14 red-line 6) — list = low-identifiability; detail =
+# pseudonymized-not-anonymized (full transcript + goal, opaque identity).
+
+_COACH_PSEUDONYM_SALT = "willab-coach-pseudonym-v1"
+
+
+def _pseudonymous_user_id(user_id):
+    """Stable opaque pseudonym for a user_id (§14 red-line 6 — the coach
+    never sees the real id). Deterministic so the same user groups across
+    the queue + detail, but not reversible to the raw id."""
+    if not user_id:
+        return None
+    import hashlib
+    digest = hashlib.sha256(
+        (_COACH_PSEUDONYM_SALT + str(user_id)).encode("utf-8")
+    ).hexdigest()
+    return "u_" + digest[:16]
+
+
+@v2_bp.route("/admin/review-queue", methods=["GET"])
+@require_admin
+def v2_admin_review_queue():
+    """① Coach review queue — review_pending willab Lab sessions, newest
+    sent first. LOW-IDENTIFIABILITY: keyed on pseudonymous_user_id, never
+    the real id (§14 red-line 6); topic + sent_at only — transcript + goal
+    appear only in the per-session coach readout (②).
+
+    Response 200: [ {session_id, topic, pseudonymous_user_id, sent_at} ]
+    """
+    try:
+        rows = db.list_review_queue()
+        out = []
+        for r in rows:
+            ctx = r.get("intake_context") if isinstance(r.get("intake_context"), dict) else {}
+            out.append({
+                "session_id": r.get("id"),
+                "topic": (ctx or {}).get("topic"),
+                "pseudonymous_user_id": _pseudonymous_user_id(r.get("user_id")),
+                "sent_at": r.get("guest_claimed_at") or r.get("created_at"),
+            })
+        return jsonify(out), 200
+    except Exception as e:
+        logger.error("admin/review-queue GET failed: %s", e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to fetch review queue"}), 500
+
+
+@v2_bp.route("/admin/sessions/<session_id>/readout", methods=["GET"])
+@require_admin
+def v2_admin_get_session_readout(session_id):
+    """② Coach authoring Readout — the user §3.3 Readout PLUS the PRIVATE
+    direction-label lane per snippet (split-sink §2: the user re-read
+    omits labels; the coach authors/corrects them here). Pseudonymized,
+    not anonymized: full transcript + goal, identity as
+    pseudonymous_user_id (never the real id).
+
+    Response 200:
+      { session_id, pseudonymous_user_id, state, session_context,
+        readout: { snippets: [ {…§3.3…, label?: {schema_version, value,
+                    was_pre_filled, was_overridden}} ], insights_payload? } }
+
+    Cold start (no classifier): snippet.label absent → coach labels from
+    scratch. Steady state: pre-filled value present → accept/override.
+    """
+    if not _is_valid_uuid(session_id):
+        return jsonify({
+            "code": "INVALID_INPUT", "error": "session_id must be a valid UUID",
+        }), 400
+    try:
+        session = db.v2_get_session_by_id(session_id)
+        if not session:
+            return jsonify({
+                "code": "SESSION_NOT_FOUND", "error": "Session not found",
+            }), 404
+
+        from services.lab_recording import build_readout_from_session
+        readout = build_readout_from_session(session_id)
+
+        # Fold the PRIVATE direction-label lane per snippet (coach-only —
+        # NEVER in the user re-read; this is the authoring half).
+        labels_by_id = {}
+        for lab in db.get_training_labels(session_id):
+            sid = lab.get("snippet_id")
+            if sid is not None:
+                labels_by_id[str(sid)] = {
+                    "schema_version": lab.get("schema_version"),
+                    "value": lab.get("value"),
+                    "was_pre_filled": lab.get("was_pre_filled"),
+                    "was_overridden": lab.get("was_overridden"),
+                }
+        for snip in (readout.get("snippets") or []):
+            lab = labels_by_id.get(str(snip.get("id")))
+            if lab:
+                snip["label"] = lab
+
+        published = bool(session.get("results_published_at"))
+        if published:
+            state = "insights_ready"
+        elif session.get("status") == "pending_admin_review":
+            state = "review_pending"
+        else:
+            state = "readout_ready"
+
+        ctx = session.get("intake_context")
+        return jsonify({
+            "session_id": session_id,
+            "pseudonymous_user_id": _pseudonymous_user_id(session.get("user_id")),
+            "state": state,
+            "session_context": ctx if isinstance(ctx, dict) else {},
+            "readout": readout,
+        }), 200
+    except Exception as e:
+        logger.error(
+            "admin/sessions/<id>/readout GET failed sid=%s err=%s",
+            session_id, e, exc_info=True,
+        )
+        sentry_sdk.capture_exception(e)
+        return jsonify({
+            "code": "V2_ERROR", "error": "Failed to fetch coach readout",
+        }), 500
+
+
 # ── willab beta — Lab upload handler (design §4, contract §3.3) ──────
 #
 # The convergence: multipart audio + inline session_context → min-content

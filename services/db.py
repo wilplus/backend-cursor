@@ -9405,6 +9405,74 @@ class DatabaseService:
             )
             return 0
 
+    def get_training_labels(self, session_id: str) -> list[dict]:
+        """Read the per-snippet direction labels for a session.
+
+        PRIVATE training lane (split-sink §2/§14): exposed ONLY to the
+        coach-authoring readout (`GET /v2/admin/sessions/<id>/readout`),
+        NEVER folded into a user-facing path. Returns [] if none / table
+        missing (cold start has no labels → coach labels from scratch).
+        """
+        if not session_id:
+            return []
+        try:
+            res = (
+                self.client.table("training_labels")
+                .select(
+                    "snippet_id, schema_version, value, was_pre_filled, "
+                    "was_overridden, labeled_by, labeled_at"
+                )
+                .eq("session_id", session_id)
+                .execute()
+            )
+            return res.data or []
+        except Exception as e:
+            err_low = str(e).lower()
+            if "training_labels" in err_low and (
+                "does not exist" in err_low or "pgrst" in err_low
+            ):
+                return []
+            logger.warning(
+                "get_training_labels failed sid=%s err=%s", session_id, e,
+            )
+            return []
+
+    def list_review_queue(self, *, limit: int = 100) -> list[dict]:
+        """willab coach review queue (§3.8/§14): willab Lab sessions sent
+        to the coach (status pending_admin_review, source audit_upload)
+        and not yet published, newest-sent first. Returns raw rows; the
+        route pseudonymizes user_id (§14 red-line 6 — never the real id in
+        the list) + shapes the response. (results_published_at filtered in
+        Python to avoid PostgREST is-null quirks.)
+        """
+        try:
+            res = (
+                self.client.table("v2_sessions")
+                .select(
+                    "id, user_id, intake_context, guest_claimed_at, "
+                    "created_at, results_published_at"
+                )
+                .eq("status", "pending_admin_review")
+                .eq("source", "audit_upload")
+                .order("guest_claimed_at", desc=True)
+                .limit(limit)
+                .execute()
+            )
+            return [
+                r for r in (res.data or [])
+                if not r.get("results_published_at")
+            ]
+        except Exception as e:
+            err_low = str(e).lower()
+            if "source" in err_low and "pgrst" in err_low:
+                logger.warning(
+                    "list_review_queue: source column missing (run "
+                    "migrations/add_foundation_discriminators.sql)",
+                )
+                return []
+            logger.warning("list_review_queue failed err=%s", e)
+            return []
+
     # ── willab beta — strong-sides library (design §7, contract §3.11) ─
 
     def upsert_strong_sides_library(self, rows: list[dict]) -> int:
