@@ -14,10 +14,20 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 
-# Stub services.db so the module imports without a live client.
-_stub_db = types.ModuleType("services.db")
-_stub_db.db = MagicMock()
-sys.modules.setdefault("services.db", _stub_db)
+# services.db pulls in supabase/postgrest, which aren't in the test
+# image, so we stub it — in setUpModule, NOT at import time. A stub
+# left in sys.modules at import time leaks into sibling test modules:
+# test_homework_regressions decides at import time whether the real
+# services.db is importable, and a leaked stub makes it run against
+# the fake instead of skipping. tearDownModule restores the state.
+def setUpModule():
+    stub = types.ModuleType("services.db")
+    stub.db = MagicMock()
+    sys.modules["services.db"] = stub
+
+
+def tearDownModule():
+    sys.modules.pop("services.db", None)
 
 
 class IsLabRecordingTests(unittest.TestCase):

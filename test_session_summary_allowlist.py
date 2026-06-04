@@ -17,18 +17,13 @@ Run: python3 -m unittest test_session_summary_allowlist
 """
 from __future__ import annotations
 
-import sys
-import types
 import unittest
 
 
-# Stub heavy deps before importing the route module (same pattern
-# as test_interview_completion_gate).
-_stub_db_module = types.ModuleType("services.db")
-_stub_db_module.db = None  # not used by these unit-level tests
-sys.modules.setdefault("services.db", _stub_db_module)
-
-
+# These tests re-implement the route's pure JSON-shaping logic locally
+# (see module docstring), so nothing here imports services.db — no stub
+# needed. An unconditional module-top stub used to live here and leaked
+# into sibling test modules; it has been removed.
 class MetricsReadyHelperTests(unittest.TestCase):
     """The marker column for "metrics computed" is global_wpm."""
 

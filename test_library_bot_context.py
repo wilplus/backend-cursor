@@ -14,11 +14,22 @@ import types
 import unittest
 from unittest.mock import MagicMock
 
-# Stub heavy deps so master_doc_rag imports without supabase/openai.
-sys.modules.setdefault("supabase", MagicMock())
-_stub_db = types.ModuleType("services.db")
-_stub_db.db = MagicMock()
-sys.modules.setdefault("services.db", _stub_db)
+# Stub supabase + services.db so master_doc_rag imports without the
+# supabase/openai venv — in setUpModule, NOT at import time. A stub
+# left in sys.modules at import time leaks into sibling test modules:
+# test_homework_regressions decides at import time whether the real
+# services.db is importable, and a leaked stub makes it run against
+# the fake instead of skipping. tearDownModule restores the state.
+def setUpModule():
+    sys.modules["supabase"] = MagicMock()
+    stub = types.ModuleType("services.db")
+    stub.db = MagicMock()
+    sys.modules["services.db"] = stub
+
+
+def tearDownModule():
+    sys.modules.pop("services.db", None)
+    sys.modules.pop("supabase", None)
 
 
 class RenderLibraryBlockTests(unittest.TestCase):

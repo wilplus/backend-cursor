@@ -8,7 +8,7 @@ Covers the acceptance shape from the FE spec:
   - snapshot helper returns None gracefully when column unset
   - snapshot helper normalises away any extra keys from a poisoned blob
 
-Stub services.db at import time so we don't need the supabase venv.
+Stub services.db (in setUpModule) so we don't need the supabase venv.
 
 Run: python3 -m unittest test_intake_context
 """
@@ -20,10 +20,20 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 
-# Stub services.db before importing the module under test.
-_stub_db_module = types.ModuleType("services.db")
-_stub_db_module.db = MagicMock()
-sys.modules.setdefault("services.db", _stub_db_module)
+# services.db pulls in supabase/postgrest, which aren't in the test
+# image, so we stub it — in setUpModule, NOT at import time. A stub
+# left in sys.modules at import time leaks into sibling test modules:
+# test_homework_regressions decides at import time whether the real
+# services.db is importable, and a leaked stub makes it run against
+# the fake instead of skipping. tearDownModule restores the state.
+def setUpModule():
+    stub = types.ModuleType("services.db")
+    stub.db = MagicMock()
+    sys.modules["services.db"] = stub
+
+
+def tearDownModule():
+    sys.modules.pop("services.db", None)
 
 
 class ValidatorTests(unittest.TestCase):

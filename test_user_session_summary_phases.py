@@ -14,16 +14,13 @@ Run: python3 -m unittest test_user_session_summary_phases
 """
 from __future__ import annotations
 
-import sys
-import types
 import unittest
-from unittest.mock import MagicMock
 
 
-# Stub services.db so the route module can import.
-_stub_db = types.ModuleType("services.db")
-_stub_db.db = MagicMock()
-sys.modules.setdefault("services.db", _stub_db)
+# This module re-implements the route's response-builder helpers
+# locally (see below), so nothing here imports services.db — no stub
+# needed. An unconditional module-top stub used to live here and leaked
+# into sibling test modules; it has been removed.
 
 
 # ── Raw-block builder simulation ──────────────────────────────────

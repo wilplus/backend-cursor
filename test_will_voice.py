@@ -16,14 +16,22 @@ import unittest
 from unittest.mock import MagicMock
 
 
-# Stub the supabase + services.db dependency BEFORE any caller import
-# so the integration smoke test can run without the supabase venv.
-# Mirrors the pattern in test_intake_context.py / test_next_session_
-# icebreaker.py — keeps unit tests runnable in any Python 3 env.
-sys.modules.setdefault("supabase", MagicMock())
-_stub_db_module = types.ModuleType("services.db")
-_stub_db_module.db = MagicMock()
-sys.modules.setdefault("services.db", _stub_db_module)
+# Stub supabase + services.db so the integration smoke test runs
+# without the supabase venv — in setUpModule, NOT at import time. A
+# stub left in sys.modules at import time leaks into sibling test
+# modules: test_homework_regressions decides at import time whether
+# the real services.db is importable, and a leaked stub makes it run
+# against the fake instead of skipping. tearDownModule restores state.
+def setUpModule():
+    sys.modules["supabase"] = MagicMock()
+    stub = types.ModuleType("services.db")
+    stub.db = MagicMock()
+    sys.modules["services.db"] = stub
+
+
+def tearDownModule():
+    sys.modules.pop("services.db", None)
+    sys.modules.pop("supabase", None)
 
 
 class WithVoiceRulesTests(unittest.TestCase):

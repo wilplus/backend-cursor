@@ -17,14 +17,23 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 
-# ── Stub heavy deps before importing the module under test ─────────
-# services.db pulls in supabase / postgrest etc. that aren't part of
-# the test image. We swap the db module for a stub that provides
-# the one attribute the gate touches (get_snippets_by_session) so
-# the import chain resolves without a venv.
-_stub_db_module = types.ModuleType("services.db")
-_stub_db_module.db = MagicMock()
-sys.modules.setdefault("services.db", _stub_db_module)
+# ── Stub heavy deps for the duration of this module's tests ────────
+# services.db pulls in supabase/postgrest etc. that aren't part of the
+# test image, so we swap in a stub providing the one attribute the
+# gate touches (db.get_snippets_by_session). This happens in
+# setUpModule, NOT at import time: a stub left in sys.modules at import
+# time leaks into sibling test modules — test_homework_regressions
+# decides at import time whether the real services.db is importable,
+# and a leaked stub makes it run against the fake instead of skipping.
+# tearDownModule restores the state.
+def setUpModule():
+    stub = types.ModuleType("services.db")
+    stub.db = MagicMock()
+    sys.modules["services.db"] = stub
+
+
+def tearDownModule():
+    sys.modules.pop("services.db", None)
 
 
 class CompletionGateTests(unittest.TestCase):
