@@ -12,6 +12,7 @@ import sentry_sdk
 
 from config import Config
 from services.db import db
+from services.snippet_transcription import transcribe_snippet_bytes
 
 # Reuse the entire clip-extraction and selection machinery from the stress
 # pipeline — same underlying audio analysis, different label question.
@@ -184,6 +185,9 @@ def generate_charisma_snippets_for_recording(
             snippet_id = str(uuid.uuid4())
             clip_path = f"charisma_snippets/{recording_id}/{snippet_id}.mp3"
             db.upload_audio(config.AUDIO_BUCKET_NAME, clip_path, clip_bytes, content_type="audio/mpeg")
+            # Best-effort per-snippet Whisper transcription. Failure leaves fields null;
+            # the backfill script (scripts/backfill_snippet_transcripts.py) retries later.
+            tr = transcribe_snippet_bytes(clip_bytes, hint_filename=f"{snippet_id}.mp3") or {}
             rows.append(
                 {
                     "id": snippet_id,
@@ -200,6 +204,10 @@ def generate_charisma_snippets_for_recording(
                     "classifier_confidence": round(float(confidence), 5),
                     "transcript_excerpt": c.transcript_excerpt or None,
                     "storage_path": clip_path,
+                    "transcript": tr.get("transcript"),
+                    "language": tr.get("language"),
+                    "words": tr.get("words"),
+                    "transcribed_duration_ms": tr.get("transcribed_duration_ms"),
                     "features": {
                         "pause_strength": round(float(c.pause_strength), 5),
                         "filler_density": round(float(c.filler_density), 5),

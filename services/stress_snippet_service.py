@@ -15,13 +15,11 @@ import sentry_sdk
 
 from config import Config
 from services.db import db
+from services.snippet_transcription import transcribe_snippet_bytes
+from utils.filler_words import get_filler_list
 
 logger = logging.getLogger(__name__)
 config = Config()
-
-_FILLER_WORDS = {
-    "um", "uh", "erm", "hmm", "like", "you know", "i mean", "sort of", "kind of",
-}
 _SCENARIOS = ("after_pause", "before_pause", "high_filler_density", "low_filler_density")
 # Each exported clip is trimmed to at most this many seconds (product cap).
 STRESS_SNIPPET_CLIP_SEC_DEFAULT = 5.0
@@ -252,14 +250,21 @@ def _split_sentences(transcript: str) -> list[str]:
     return [text]
 
 
-def _count_fillers(text: str) -> int:
+def _count_fillers(text: str, language: Optional[str] = None) -> int:
+    """Count filler word/phrase occurrences in ``text`` using the per-language list.
+
+    Falls back to English when ``language`` is None or unknown. Multi-word fillers
+    ("you know", "i mean") are matched as whole phrases via padded substring; single
+    tokens via word-boundary regex.
+    """
     low = f" {(text or '').lower()} "
     total = 0
-    for token in _FILLER_WORDS:
-        if " " in token:
-            total += low.count(f" {token} ")
+    for token in get_filler_list(language):
+        token_l = token.lower()
+        if " " in token_l:
+            total += low.count(f" {token_l} ")
         else:
-            total += len(re.findall(rf"\b{re.escape(token)}\b", low))
+            total += len(re.findall(rf"\b{re.escape(token_l)}\b", low))
     return total
 
 
@@ -342,6 +347,7 @@ def _build_candidates(
     duration_sec: float,
     dbs: np.ndarray,
     clip_sec: float,
+    language: Optional[str] = None,
 ) -> list[CandidateWindow]:
     pause_regions = _detect_pause_regions(dbs)
     utterances = _utterance_regions_from_pauses(pause_regions, duration_sec)
@@ -384,7 +390,7 @@ def _build_candidates(
         for i, sent in enumerate(sentence_chunks):
             u_idx = min(nu - 1, int((i + 0.5) / max(1, len(sentence_chunks)) * nu))
             u0, u1 = utterances[u_idx]
-            fillers = _count_fillers(sent)
+            fillers = _count_fillers(sent, language=language)
             words = max(1, len(re.findall(r"\b[\w']+\b", sent)))
             density = min(1.0, fillers / max(1.0, words * 0.3))
             center = (u0 + u1) * 0.5
@@ -790,7 +796,11 @@ def generate_stress_snippets_for_recording(
         duration_sec = float(len(signal) / 16000.0)
         dbs = _frame_db(signal)
         transcript = (rec.get("transcription_text") or "").strip()
-        candidates = _build_candidates(transcript, duration_sec, dbs, clip_sec)
+        # Parent-recording language: when the parent transcription path persists
+        # `transcription_language`, multilingual filler detection activates. Until
+        # then this falls back to English inside get_filler_list().
+        language = rec.get("transcription_language") or rec.get("language") or None
+        candidates = _build_candidates(transcript, duration_sec, dbs, clip_sec, language=language)
 
         baseline_model = _load_baseline_model()
         scored_items: list[ScoredClip] = []
@@ -880,6 +890,9 @@ def generate_stress_snippets_for_recording(
             snippet_id = str(uuid.uuid4())
             clip_path = f"stress_snippets/{recording_id}/{snippet_id}.mp3"
             db.upload_audio(config.AUDIO_BUCKET_NAME, clip_path, clip_bytes, content_type="audio/mpeg")
+            # Best-effort per-snippet Whisper transcription. Failure leaves fields null;
+            # the backfill script (scripts/backfill_snippet_transcripts.py) retries later.
+            tr = transcribe_snippet_bytes(clip_bytes, hint_filename=f"{snippet_id}.mp3") or {}
             rows.append(
                 {
                     "id": snippet_id,
@@ -896,6 +909,10 @@ def generate_stress_snippets_for_recording(
                     "classifier_confidence": round(float(confidence), 5),
                     "transcript_excerpt": c.transcript_excerpt or None,
                     "storage_path": clip_path,
+                    "transcript": tr.get("transcript"),
+                    "language": tr.get("language"),
+                    "words": tr.get("words"),
+                    "transcribed_duration_ms": tr.get("transcribed_duration_ms"),
                     "features": {
                         "pause_strength": round(float(c.pause_strength), 5),
                         "filler_density": round(float(c.filler_density), 5),

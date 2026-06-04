@@ -76,6 +76,7 @@ def best_effort_backfill_recording_1_transcript(session_id: str, user_id: str) -
         filler_data = count_fillers(transcript)
         update_payload = {
             "transcription_text": transcript,
+            "transcription_language": tr.get("language"),
             "words_per_minute": wpm,
             "filler_words_count": {
                 "breakdown": filler_data.get("breakdown", {}),

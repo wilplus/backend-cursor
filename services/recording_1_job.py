@@ -355,6 +355,7 @@ def _process_one(payload: dict):
         merged_metrics["scoring_debug"] = scoring_debug
         recording_update = {
             "transcription_text": transcript_text,
+            "transcription_language": transcript_result.get("language"),
             "words_per_minute": wpm,
             "filler_words_count": {"breakdown": filler_data.get("breakdown", {}), "total": filler_count},
             "audio_url": audio_url,

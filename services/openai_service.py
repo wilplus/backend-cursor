@@ -238,9 +238,15 @@ class OpenAIService:
             if hasattr(transcript_response, 'segments') and transcript_response.segments:
                 duration = transcript_response.segments[-1].end
 
+            # Whisper verbose_json includes `language` (ISO 639-1). Surface it so
+            # callers can persist transcription_language on the recording row for
+            # downstream multilingual filler detection (utils/filler_words.py).
+            detected_language = getattr(transcript_response, "language", None)
+
             return {
                 "text": transcript_response.text,
-                "duration": duration
+                "duration": duration,
+                "language": detected_language,
             }
         except Exception as e:
             logger.error(

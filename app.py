@@ -40,6 +40,7 @@ from routes.admin import admin_bp
 from routes.v2_routes import v2_bp
 from routes.homework import homework_bp
 from routes.internal_webhooks import internal_webhooks_bp
+from routes.snippet_labels_routes import snippet_labels_bp
 
 app.register_blueprint(auth_bp, url_prefix="/auth")
 app.register_blueprint(recordings_v2_bp, url_prefix="/v2/recordings")
@@ -48,6 +49,7 @@ app.register_blueprint(admin_bp, url_prefix="/admin")
 app.register_blueprint(v2_bp)
 app.register_blueprint(homework_bp)
 app.register_blueprint(internal_webhooks_bp)
+app.register_blueprint(snippet_labels_bp, url_prefix="/admin/snippet-labels")
 
 
 @app.errorhandler(RequestEntityTooLarge)
