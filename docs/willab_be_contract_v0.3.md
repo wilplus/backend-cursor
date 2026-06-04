@@ -32,7 +32,7 @@ Contract-level shape only — the fields FE/coach depend on, cardinality, scope.
 | **`lounge_messages`** | thread per user | message rows (role, kind, text, ts) — concrete contract §3.15 | **signed:** server per user. **unsigned:** `localStorage`, **merged chronologically (append, never overwrite) on sign-up.** **Continuity only — never profiled, never in coach packet. User-deletable.** |
 | **`consent`** | 1 per user/device | `consent_version`, `accepted_at` | `localStorage` unsigned, server signed, **carried over on sign-up**; re-prompt **only** on version bump (§3.13) |
 | **`labels`** (private training lane) | per trained snippet | closed-set label values (schema `[OPEN]` — §7.1), optional private rationale | **pipeline-only, never user-facing.** Captured at publish |
-| **`insights_payload`** (user lane) | 1 per published session | `overall_message` (**required**), `snippet_notes[]` (curated), `tags[]` (strong / to-work-on, on noted snippets) | published to user (§3.9) + library |
+| **`insights_payload`** (user lane) | 1 per published session | `overall_message` (**optional** — per §6b/§14 precedence; FE-confirmed), `snippet_notes[]` (curated, each `{snippet_id, note, tag}`), `tags[]` (strong / to-work-on, on noted snippets) | published to user (§3.9) + library |
 | **`strong_sides_library`** | grows per user | ingested tagged snippet (snippet ref + raw data + coach note + tag) | ingested **on the user's _read_** of insights (§3.11); read by the Lounge bot; **never trajectory/profiling** |
 ---
 ## 2. The split-sink wall (the one rule that governs everything)
@@ -61,17 +61,26 @@ FE sends `{ topic, audience?, target_length?, domain_vocabulary }`. **`topic` re
 - Pipeline: **Whisper** (primed with `session_context.domain_vocabulary`) → **ffmpeg** → **librosa** → snippet segmentation (pause/VAD) → stickiness scoring + comment.
 - **Response shape FE renders the Readout from (contract):**
 ```jsonc
+// Upload 201 envelope (POST /v2/lab/recordings):
+{ status:"ok", session_id, recording_id, state:"readout_ready",
+  session_context: { topic, audience, target_length_seconds, domain_vocabulary },
+  readout: { snippets: [ /* below */ ] } }
+
 snippets[]: {
-  id, index, transcript, audio_ref,            // SnippetPlayer
+  id, index, transcript,
+  audio_ref,                       // the PARENT recording (whole file) — shared by every snippet
+  start_offset_ms, duration_ms,    // this snippet's window INTO audio_ref (parent + offset model)
   features: {
     f0_mean, f0_sd, speech_rate, mean_pause, pause_ratio,
     loudness_range, voiced_ratio,
     f0_slope, pause_regularity, intensity_envelope, f0_mid_end_delta
-  },
-  stickiness: { composite, subscores?, comment }
+  },                               // any value may be null
+  stickiness: { composite, comment },
+  coach?: { note, tag }            // POST-PUBLISH ONLY (tag ∈ strong | to_work_on)
 }
 ```
 Raw absolute values this phase (no baseline-relative; ISB is coach-side, §5).
+**Audio model:** `audio_ref` is the whole recording; play a snippet with `start_offset_ms`/`duration_ms` (parent + offset window — the FE `MediaPlayer` already supports this). Re-read/history (`GET /v2/user/sessions/<id>/readout`, `GET /v2/user/readouts`) return the SAME snippet shape + a top-level `state`; post-publish the re-read also carries top-level `insights_payload` ({overall_message?, snippet_notes[]}).
 ### 3.4 Send to coach — signed-in (instant) — `[AGREED]`
 - **Idempotent.** FE disables control on tap; BE dedupes on an idempotency key — a double-tap / double-call must not double-send.
 - Payload = the coach packet (§2). **Never the Lounge thread.**
@@ -97,7 +106,7 @@ c. fire the **existing** publish event → `usePublishLiveSubscription` (realtim
 d. flip user session → `insights_ready`.
 **Re-point** those three signals from the retired `reviewing` phase → the status region (§6a).
 ### 3.10 Publish-contract validation (BE-enforced gate) — `[AGREED]`
-Reject publish unless: `overall_message` present · **≥1** curated snippet note present · every **noted** snippet carries a strong/to-work-on tag. No word-count gate on notes. → Guarantees the **library floor**: every published session yields ≥1 library entry, so the bot's "refresh your strong lines" is never empty.
+Reject publish unless: **≥1** curated snippet note present · every **noted** snippet carries a strong/to-work-on tag. `overall_message` is **optional** (no longer a publish gate — §6b/§14 precedence). No word-count gate on notes. → Guarantees the **library floor**: every published session yields ≥1 library entry, so the bot's "refresh your strong lines" is never empty.
 ### 3.11 Library ingest — on READ — `[AGREED]`
 The tagged snippets ingest into `strong_sides_library` **when the user reads** the insights (not at publish). BE exposes the library for the bot to retrieve.
 ### 3.12 Lounge bot context assembly — `[AGREED]` (model verdict deferred — see §7.7)
