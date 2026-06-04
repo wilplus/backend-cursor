@@ -8747,6 +8747,13 @@ def v2_user_session_summary(session_id):
             cp = session.get("charisma_profile")
             if isinstance(cp, dict):
                 response["charisma_profile"] = cp
+            # willab Insights coach layer (§6b) — the overall message +
+            # per-snippet coach notes/tags assembled at publish. The FE
+            # Insights view merges this onto the raw Readout snippets
+            # (matched by snippet_id). Only present post-publish.
+            ip = session.get("insights_payload")
+            if isinstance(ip, dict):
+                response["insights_payload"] = ip
 
         return jsonify(response), 200
 
@@ -14644,6 +14651,40 @@ def v2_internal_publish_session_results():
                 "code": "NOT_FOUND",
                 "error": "Session not found",
             }), 404
+
+        # ── willab beta — insights_payload (publish pivot §3.9/§3.10) ──
+        # OPTIONAL on this endpoint: when the body carries an
+        # `insights_payload`, this is a willab publish — validate the
+        # library floor (≥1 tagged snippet note) + persist it BEFORE any
+        # side effect, so an invalid willab publish 422s with nothing
+        # flipped/emailed. Absent → legacy publish, behaves exactly as
+        # before (old funnel undisturbed).
+        # NOTE: the private training-annotation/label lane (§14) is
+        # gated on the §7.1 schema decision and is NOT captured here yet.
+        if "insights_payload" in body:
+            from services.insights_payload import (
+                InsightsPayloadError, validate_insights_payload,
+            )
+            try:
+                clean_insights = validate_insights_payload(
+                    body.get("insights_payload"),
+                )
+            except InsightsPayloadError as ie:
+                return jsonify({
+                    "code": "PUBLISH_CONTRACT_VIOLATION",
+                    "error": str(ie),
+                }), 422
+            if not db.set_session_insights_payload(session_id, clean_insights):
+                return jsonify({
+                    "code": "V2_ERROR",
+                    "error": "Failed to persist insights payload",
+                }), 500
+            logger.info(
+                "publish-results: insights_payload persisted session=%s "
+                "notes=%d overall=%s",
+                session_id, len(clean_insights["snippet_notes"]),
+                bool(clean_insights["overall_message"]),
+            )
 
         # Phase 10 — emit RLHF annotation events for every snippet in
         # this session BEFORE the status flip + email. Each row in

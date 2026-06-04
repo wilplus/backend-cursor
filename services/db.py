@@ -9267,6 +9267,47 @@ class DatabaseService:
             )
             return False
 
+    # ── willab beta — insights_payload (design §6b/§14, contract §3.9) ─
+
+    def set_session_insights_payload(
+        self,
+        session_id: str,
+        payload: Optional[dict],
+    ) -> bool:
+        """Persist the coach user-facing lane on v2_sessions.insights_
+        payload (JSONB). Called from the publish endpoint after the
+        publish-contract validation (library floor) passes.
+
+        USER lane only (split-sink §2) — never the private labels.
+        Returns True on success; False (logged) on missing column
+        (migration pending) or DB failure so the route can decide
+        whether to hard-fail the publish.
+        """
+        if not session_id:
+            return False
+        try:
+            (
+                self.client.table("v2_sessions")
+                .update({"insights_payload": payload})
+                .eq("id", session_id)
+                .execute()
+            )
+            return True
+        except Exception as e:
+            err_low = str(e).lower()
+            if "insights_payload" in err_low or "pgrst204" in err_low:
+                logger.warning(
+                    "set_session_insights_payload: column missing (run "
+                    "migrations/add_insights_payload_to_v2_sessions.sql) "
+                    "sid=%s", session_id,
+                )
+                return False
+            logger.error(
+                "set_session_insights_payload failed sid=%s err=%s",
+                session_id, e,
+            )
+            return False
+
     # ── willab beta — user profile (design §2 / contract §3.1) ──────
     #
     # One-time self-declared {domain, goal} on user_settings (co-located
