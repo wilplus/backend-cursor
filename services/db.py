@@ -9267,6 +9267,66 @@ class DatabaseService:
             )
             return False
 
+    # ── willab beta — training labels (design §14, PRIVATE lane) ────
+
+    def upsert_training_labels(
+        self,
+        session_id: str,
+        labeled_by: Optional[str],
+        rows: list[dict],
+    ) -> int:
+        """Persist the per-snippet direction labels captured at publish.
+
+        Idempotent on (session_id, snippet_id) — re-publish updates the
+        current label. Stamps session_id + labeled_by + labeled_at on
+        each row (the validator supplied snippet_id/value/flags/
+        schema_version). Returns rows written; 0 on missing table.
+
+        PRIVATE lane (split-sink §2): written here, never read into any
+        user-facing path.
+        """
+        if not session_id or not rows:
+            return 0
+        from datetime import datetime, timezone
+        now_iso = datetime.now(timezone.utc).isoformat()
+        payload = [
+            {
+                "session_id": session_id,
+                "snippet_id": r["snippet_id"],
+                "schema_version": r.get("schema_version", "direction-v1"),
+                "value": r["value"],
+                "labeled_by": labeled_by,
+                "labeled_at": now_iso,
+                "was_pre_filled": bool(r.get("was_pre_filled", False)),
+                "was_overridden": bool(r.get("was_overridden", False)),
+                "updated_at": now_iso,
+            }
+            for r in rows
+        ]
+        try:
+            res = (
+                self.client.table("training_labels")
+                .upsert(payload, on_conflict="session_id,snippet_id")
+                .execute()
+            )
+            return len(res.data or [])
+        except Exception as e:
+            err_low = str(e).lower()
+            if (
+                "training_labels" in err_low
+                and ("does not exist" in err_low or "pgrst" in err_low)
+            ):
+                logger.warning(
+                    "upsert_training_labels: table missing (run "
+                    "migrations/add_training_labels_table.sql) sid=%s",
+                    session_id,
+                )
+                return 0
+            logger.error(
+                "upsert_training_labels failed sid=%s err=%s", session_id, e,
+            )
+            return 0
+
     # ── willab beta — strong-sides library (design §7, contract §3.11) ─
 
     def upsert_strong_sides_library(self, rows: list[dict]) -> int:

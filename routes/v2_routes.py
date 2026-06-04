@@ -14721,6 +14721,11 @@ def v2_internal_publish_session_results():
             from services.insights_payload import (
                 InsightsPayloadError, validate_insights_payload,
             )
+            from services.training_labels import (
+                TrainingLabelError, validate_publish_labels,
+            )
+            # ── Validate BOTH lanes BEFORE any persistence/side effect,
+            # so an invalid willab publish 422s with nothing written.
             try:
                 clean_insights = validate_insights_payload(
                     body.get("insights_payload"),
@@ -14730,16 +14735,39 @@ def v2_internal_publish_session_results():
                     "code": "PUBLISH_CONTRACT_VIOLATION",
                     "error": str(ie),
                 }), 422
+
+            # §14 publish gate: every snippet must carry a direction
+            # label. Gate on the session's actual snippets.
+            try:
+                _snips = db.get_snippets_by_session(session_id) or []
+            except Exception:
+                _snips = []
+            required_ids = {str(s.get("id")) for s in _snips if s.get("id")}
+            try:
+                clean_labels = validate_publish_labels(
+                    body.get("labels"), required_ids,
+                )
+            except TrainingLabelError as le:
+                return jsonify({
+                    "code": "PUBLISH_CONTRACT_VIOLATION",
+                    "error": str(le),
+                }), 422
+
+            # ── Persist both lanes (split-sink §2: separate stores). ──
             if not db.set_session_insights_payload(session_id, clean_insights):
                 return jsonify({
                     "code": "V2_ERROR",
                     "error": "Failed to persist insights payload",
                 }), 500
+            # Private training lane — never touches insights_payload.
+            labels_written = db.upsert_training_labels(
+                session_id, str(request.user_id), clean_labels,
+            )
             logger.info(
-                "publish-results: insights_payload persisted session=%s "
-                "notes=%d overall=%s",
+                "publish-results: willab publish session=%s notes=%d "
+                "overall=%s labels=%d",
                 session_id, len(clean_insights["snippet_notes"]),
-                bool(clean_insights["overall_message"]),
+                bool(clean_insights["overall_message"]), labels_written,
             )
 
         # Phase 10 — emit RLHF annotation events for every snippet in
