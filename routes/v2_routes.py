@@ -1,6 +1,7 @@
 """
-V2: admin CRUD only. Student flow is homework only (routes/homework.py).
-All /v2/admin/* require auth + admin.
+V2 routes: admin CRUD + the willab learner flow (Lab/Readout/Insights,
+Lounge, Library, profile). All /v2/admin/* require auth + admin.
+(The legacy homework student flow was removed in the Phase-5 clearance.)
 """
 from flask import Blueprint, request, jsonify, make_response
 from config import Config
