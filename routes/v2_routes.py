@@ -13085,8 +13085,6 @@ def _merge_anonymous_session_into_user(session_id: str, user_id: str):
     Returns:
         (response_body: dict, http_status: int)
     """
-    from services.recording_1_job import enqueue_recording_1_job
-
     def _willab_send_response(session_row):
         """willab Lab merge→send (design §13, contract §3.4-3.7).
 
@@ -13219,93 +13217,23 @@ def _merge_anonymous_session_into_user(session_id: str, user_id: str):
     if _wl is not None:
         return _wl
 
-    # Pipeline: same recording_1_job that handles live student recordings
-    # and admin calibration uploads. The job will auto-complete because
-    # v2_claim_guest_session stamps self_rating_submitted_at.
-    rec_id = claimed.get("recording_1_id")
-    rec_row = db.get_recording(rec_id, user_id) if rec_id else None
-    storage_path = (rec_row or {}).get("storage_path")
-    duration_seconds = (rec_row or {}).get("duration_seconds")
-    if rec_id and storage_path:
-        try:
-            enqueue_recording_1_job(
-                str(claimed.get("id")),
-                str(rec_id),
-                storage_path,
-                user_id,
-                duration_seconds,
-            )
-        except Exception as q_err:
-            logger.warning("guest_funnel: enqueue_recording_1_job failed: %s", q_err, exc_info=True)
-            # Don't unwind the claim — the row is bound; admin can retry.
-
-        # Extract charisma snippets from the recording (MVP: entire recording as one snippet)
-        try:
-            from services.snippet_extraction import extract_recording_snippets
-            extract_recording_snippets(
-                session_id=str(claimed.get("id")),
-                user_id=str(user_id),
-                recording_id=str(rec_id),
-                recording_path=storage_path,
-                duration_seconds=duration_seconds,
-            )
-        except Exception as snippet_err:
-            logger.warning("guest_funnel: extract_recording_snippets failed: %s", snippet_err, exc_info=True)
-            # Non-fatal: admin can manually extract snippets later if needed
-
-    # Update all interview snippets to point to the real user
+    # Non-willab sessions: the legacy old-funnel pipeline (recording_1_job
+    # + snippet extract + KPI finalize) was removed in the Phase-5 clearance
+    # (D1=REPLACE). willab Lab recordings short-circuit above via
+    # _willab_send_response; any other (now-legacy) session is simply
+    # claimed — there is no old-funnel processing left to run.
     try:
-        updated_count = db.update_snippets_user_id(session_id, str(user_id))
-        if updated_count:
-            logger.info("guest_funnel: updated %d snippet user_ids", updated_count)
+        db.update_snippets_user_id(session_id, str(user_id))
     except Exception as uid_err:
-        logger.warning("guest_funnel: update_snippets_user_id failed: %s", uid_err)
-
-    # Now that the session has a real user_id, run the standard
-    # finalize so the admin sees this in the Pending Review queue
-    # and gets the notification email. The spec is explicit: the
-    # email dispatches ONLY after the claim, never on the
-    # anonymous session.
-    #
-    # finalize_session_pending_admin_review computes global metrics
-    # + B6 KPI + AI draft prefill, writes session_kpi_narrative,
-    # flips status to "pending_admin_review", and sends the admin
-    # notification. Per-step failure-isolated so a flaky email
-    # service never unwinds the (already-committed) claim.
-    finalize_summary: dict | None = None
-    try:
-        from services.session_publish import (
-            finalize_session_pending_admin_review,
-        )
-        finalize_summary = finalize_session_pending_admin_review(
-            session_id=session_id,
-            user_id=str(user_id),
-        )
-        logger.info(
-            "guest_funnel: post-claim finalize sid=%s result=%s",
-            session_id, finalize_summary,
-        )
-    except Exception as fp_err:
-        logger.warning(
-            "guest_funnel: post-claim finalize failed sid=%s err=%s "
-            "(non-fatal — admin can recompute manually)",
-            session_id, fp_err,
-        )
-
+        logger.warning("merge: update_snippets_user_id failed: %s", uid_err)
     logger.info(
-        "guest_funnel: claim ok user_id=%s session_id=%s recording_id=%s",
-        user_id, session_id, rec_id,
+        "merge: claimed non-willab session=%s user=%s (legacy pipeline removed)",
+        session_id, user_id,
     )
     return ({
         "status": "ok",
         "session_id": str(claimed.get("id")),
-        "analysis_status": "queued",
-        "finalize": finalize_summary,
-        # Task 7 — BE-flag for the post-signup "human at heart"
-        # confirmation. FE renders headline + body; both nullable
-        # so future copy tuning never requires a FE deploy. FE has
-        # its own fallback if this block is missing entirely.
-        "post_signup_confirmation": _POST_SIGNUP_CONFIRMATION,
+        "analysis_status": "claimed",
     }, 200)
 
 
