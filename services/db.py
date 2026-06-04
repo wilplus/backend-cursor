@@ -1278,10 +1278,21 @@ class DatabaseService:
         return result.data[0] if result.data else None
 
     def v2_update_session_status_unscoped(self, session_id: str, status: str) -> Optional[dict]:
-        """Update v2_sessions.status without user_id scoping (admin/internal usage)."""
+        """Update v2_sessions.status without user_id scoping (admin/internal usage).
+
+        NOTE: v2_sessions has NO ``updated_at`` column (confirmed against the
+        live schema — it has created_at/completed_at/coach_approved_at/... but
+        no plain updated_at). Writing it made PostgREST reject the ENTIRE
+        update (PGRST204 "could not find the 'updated_at' column"), so the
+        status flip silently never landed — and callers
+        (lab_send.send_lab_recording_to_coach, session_publish finalize) wrap
+        this in try/except, masking the failure. Status-only payload here;
+        every other v2_sessions update writes its own fields without
+        updated_at too.
+        """
         result = (
             self.client.table("v2_sessions")
-            .update({"status": status, "updated_at": datetime.now(timezone.utc).isoformat()})
+            .update({"status": status})
             .eq("id", session_id)
             .execute()
         )

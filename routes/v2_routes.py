@@ -13899,6 +13899,52 @@ def _merge_anonymous_session_into_user(session_id: str, user_id: str):
     """
     from services.recording_1_job import enqueue_recording_1_job
 
+    def _willab_send_response(session_row):
+        """willab Lab merge→send (design §13, contract §3.4-3.7).
+
+        If the (claimed) session is a willab Lab recording — already
+        processed at upload (snippets/features/stickiness exist) — skip
+        ALL the old-funnel processing and just send it to the coach queue,
+        returning the §3.4 (response, status). Returns None for every
+        non-willab session so the caller falls through to the legacy path
+        BYTE-FOR-BYTE unchanged.
+
+        Idempotent: safe on the first claim AND on re-claims (the send
+        itself no-ops once the session is in/through the queue), so a retry
+        after a transient send failure recovers a stuck session. Honors
+        send_result["ok"] — a failed status flip returns 500, never a
+        masked "sent_to_coach" (the bug that hid the missing-updated_at
+        flip failure).
+        """
+        rec_id = (session_row or {}).get("recording_1_id")
+        rec = db.get_recording(rec_id) if rec_id else None
+        from services.lab_send import is_lab_recording, send_lab_recording_to_coach
+        if not is_lab_recording(rec):
+            return None
+        sid = str(session_row.get("id"))
+        send_result = send_lab_recording_to_coach(sid, str(user_id))
+        logger.info(
+            "willab_lab: merge→send sid=%s user=%s result=%s",
+            sid, user_id, send_result,
+        )
+        if not send_result.get("ok"):
+            logger.error(
+                "willab_lab: merge→send flip FAILED sid=%s result=%s",
+                sid, send_result,
+            )
+            return ({
+                "code": "SEND_FAILED",
+                "error": "Recording was claimed but could not be sent for review. Please retry.",
+                "session_id": sid,
+            }, 500)
+        return ({
+            "status": "ok",
+            "session_id": sid,
+            "analysis_status": "sent_to_coach",   # → review_pending
+            "review_pending": True,
+            "post_signup_confirmation": _POST_SIGNUP_CONFIRMATION,
+        }, 200)
+
     if not getattr(config, "GUEST_FUNNEL_ENABLED", False):
         return ({"code": "GUEST_FUNNEL_DISABLED", "error": "Guest funnel is disabled"}, 503)
 
@@ -13919,6 +13965,12 @@ def _merge_anonymous_session_into_user(session_id: str, user_id: str):
         }, 409)
     if existing_user and str(existing_user) == str(user_id):
         # Idempotent re-claim: return the bound session_id without re-enqueueing.
+        # For a willab Lab session, (re-)send to the coach queue first so a
+        # retry after a transient send failure recovers it (send is a no-op
+        # if already queued).
+        _wl = _willab_send_response(existing)
+        if _wl is not None:
+            return _wl
         return ({
             "status": "ok",
             "session_id": str(existing.get("id")),
@@ -13953,6 +14005,9 @@ def _merge_anonymous_session_into_user(session_id: str, user_id: str):
         after = db.v2_get_session_by_id(session_id) or {}
         after_user = after.get("user_id")
         if after_user and str(after_user) == str(user_id):
+            _wl = _willab_send_response(after)
+            if _wl is not None:
+                return _wl
             return ({
                 "status": "ok",
                 "session_id": str(after.get("id")),
@@ -13965,31 +14020,16 @@ def _merge_anonymous_session_into_user(session_id: str, user_id: str):
 
     # ── willab Lab send-gate (design §13, contract §3.4-3.7) ────────
     # A willab Lab recording was ALREADY processed at upload (snippets +
-    # features + stickiness exist). So for these, skip ALL the old-funnel
-    # processing below (re-extract / recompute would double-process) and
-    # just send to the coach queue. Gated strictly on the recording's
-    # origin, so the legacy claim path below is byte-for-byte unchanged
-    # for every non-willab session. This is the BE-composed merge→send
-    # the FE wiring expects (PendingSessionClaim → /v2/auth/merge-session
-    # for both signed + unsigned — no separate send endpoint).
-    _wl_rec_id = claimed.get("recording_1_id")
-    _wl_rec = db.get_recording(_wl_rec_id) if _wl_rec_id else None
-    from services.lab_send import is_lab_recording, send_lab_recording_to_coach
-    if is_lab_recording(_wl_rec):
-        send_result = send_lab_recording_to_coach(
-            str(claimed.get("id")), str(user_id),
-        )
-        logger.info(
-            "willab_lab: merge→send sid=%s user=%s result=%s",
-            session_id, user_id, send_result,
-        )
-        return ({
-            "status": "ok",
-            "session_id": str(claimed.get("id")),
-            "analysis_status": "sent_to_coach",   # → review_pending
-            "review_pending": True,
-            "post_signup_confirmation": _POST_SIGNUP_CONFIRMATION,
-        }, 200)
+    # features + stickiness exist), so skip ALL the old-funnel processing
+    # below (re-extract / recompute would double-process) and just send it
+    # to the coach queue via the helper above (shared with the re-claim
+    # paths). Gated strictly on the recording's origin, so the legacy claim
+    # path below is byte-for-byte unchanged for every non-willab session.
+    # This is the BE-composed merge→send the FE wiring expects
+    # (PendingSessionClaim → /v2/auth/merge-session, signed + unsigned).
+    _wl = _willab_send_response(claimed)
+    if _wl is not None:
+        return _wl
 
     # Pipeline: same recording_1_job that handles live student recordings
     # and admin calibration uploads. The job will auto-complete because
