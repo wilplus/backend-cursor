@@ -12257,25 +12257,10 @@ def v2_internal_publish_session_results():
         # the user from reaching their results via direct link.
         db.v2_publish_session_results(session_id)
 
-        # Charisma Awareness Dashboard — compute once on publish so
-        # the user-facing /results page can render the radar/heatmap
-        # off a cache read. Failure-isolated: a bad build leaves the
-        # column NULL and the frontend hides the section, but the
-        # publish still proceeds (snippets + email both ship).
-        try:
-            from services.charisma_profile import (
-                compute_and_persist_charisma_profile,
-            )
-            compute_and_persist_charisma_profile(
-                session_id=session_id,
-                user_id=str(user_id),
-            )
-        except Exception as cp_err:
-            logger.warning(
-                "publish-results: charisma_profile compute failed "
-                "sid=%s err=%s (non-fatal)",
-                session_id, cp_err,
-            )
+        # (Old charisma-profile compute removed in the old-subsystem
+        # excision — willab publishes never used the result, and AC-9
+        # already strips charisma_profile from user payloads. The legacy
+        # admin compute-metrics route still computes it on demand.)
 
         # ── Phase 14 — new PostSessionResultsEmail render pipeline ──
         # Replaces the inline HTML build. The render service handles:
