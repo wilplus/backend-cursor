@@ -8218,16 +8218,6 @@ def v2_user_get_results(session_id):
                 or session.get("ai_task_alignment_comment")
             )
             payload["ai_score"] = session.get("ai_task_alignment_score")
-            payload["kpi_score"] = session.get("kpi_score")
-
-            # Charisma Awareness Dashboard payload. Read straight off
-            # the session row — the blob was computed and persisted
-            # during publish-session-results (and overwritten by the
-            # admin compute-metrics endpoint). Pre-existing sessions
-            # that haven't been recomputed since the column was
-            # added return NULL, which the frontend treats as
-            # "hide the dashboard section entirely".
-            payload["charisma_profile"] = session.get("charisma_profile")
 
         # ── BE-3 Stress Contrast ─────────────────────────────────────
         # Gated by ?include_contrast=true. Computed across the WHOLE
@@ -8742,12 +8732,6 @@ def v2_user_session_summary(session_id):
         # review before reaching the user.
         if published:
             response["commentary"] = commentary
-            kpi_score = session.get("kpi_score")
-            if isinstance(kpi_score, (int, float)):
-                response["kpi_score"] = float(kpi_score)
-            cp = session.get("charisma_profile")
-            if isinstance(cp, dict):
-                response["charisma_profile"] = cp
             # willab Insights coach layer (§6b) — the overall message +
             # per-snippet coach notes/tags assembled at publish. The FE
             # Insights view merges this onto the raw Readout snippets
@@ -9061,11 +9045,6 @@ def v2_user_results_me():
                     "Baseline Audio" if (total - idx) == 1 else "Follow-up"
                 ),
                 "snippets": [_snippet_to_journey_card(s) for s in visible],
-                # Per-session charisma blob — straight cache read so
-                # the timeline doesn't fan-out N LLM calls. NULL when
-                # the session pre-dates the column or was too sparse
-                # to compute.
-                "charisma_profile": session.get("charisma_profile"),
             })
 
         # The UI shows newest first, but its progress tracker is 1-based
@@ -11123,8 +11102,8 @@ def v2_chat_session_state():
 
           // present iff state == "REVIEW_LOOP"
           "snippets":         [ ... full snippet objects, see below ],
-          "kpi_score":        number | null,
-          "charisma_profile": { ... } | null,
+          // kpi_score + charisma_profile removed (AC-9 — classifier/
+          // appraisal data is never serialized to the user).
           "ai_summary":       string | null
         }
 
@@ -11215,8 +11194,6 @@ def v2_chat_session_state():
             "state": "REVIEW_LOOP",
             **base,
             "snippets": snippets,
-            "kpi_score": session.get("kpi_score"),
-            "charisma_profile": session.get("charisma_profile"),
             "ai_summary": (
                 session.get("session_kpi_narrative_ai_draft")
                 or session.get("ai_task_alignment_comment")
