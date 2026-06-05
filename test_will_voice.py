@@ -154,18 +154,17 @@ class IntegrationSmokeTest(unittest.TestCase):
     line is broken, this catches it BEFORE the deploy."""
 
     def test_every_caller_imports_helper_cleanly(self):
-        # The 10 modules from the audit. If any one of these can't
-        # import, that's a regression in the chain.
+        # Modules that import the Will's Voice helper. If any can't
+        # import, that's a regression in the chain. (learner_mirror +
+        # session_predictions were removed in the old-subsystem excision.)
         callers = [
             "services.baseline_summary",
-            "services.learner_mirror",
             "services.snippet_drafts",
             "services.session_kpi_narrative",
             "services.next_session_icebreaker",
             "services.charisma_profile",
             "services.coaching_intro",
             "services.directive_suggestions",
-            "services.session_predictions",
             "services.master_doc_rag",
         ]
         from importlib import import_module
