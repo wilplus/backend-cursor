@@ -13087,15 +13087,13 @@ def v2_user_kpi_timeline():
         )
         sentry_sdk.capture_exception(e)
         # Soft-fail: return an empty payload so the FE chart renders
-        # its empty state rather than an error banner.
+        # its empty state rather than an error banner. Shape mirrors
+        # build_user_kpi_timeline — KPI fields removed per AC-9 (KPI
+        # is private-lane / coach-side; never user-facing).
         return jsonify({
             "series": [],
             "summary": {
-                "sessions_count":      0,
-                "latest_kpi":          None,
-                "first_kpi":           None,
-                "delta_first_to_last": None,
-                "trend":               "insufficient_data",
+                "sessions_count": 0,
             },
         }), 200
 

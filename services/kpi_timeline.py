@@ -99,11 +99,19 @@ def build_user_kpi_timeline(
             # Defensive — the query already filters NULL kpi_score,
             # but a future schema drift could let strings through.
             continue
+        # AC-9 / split-sink wall (willab handoff §2, §5.1): KPI is
+        # PRIVATE-LANE (coach-side, §5 "ISB is coach-side"). It must
+        # NEVER be serialized into a user-facing payload. This endpoint
+        # is @require_auth (the user's own timeline), so kpi_score and
+        # any KPI-derived verdict are stripped here. The user still gets
+        # their acoustic trajectory (wpm / fillers / stickiness — all
+        # user-facing features per §3.3); only the KPI score/verdict is
+        # withheld. ``kpi`` is still read above (and used to FILTER the
+        # series to scored sessions) but never emitted.
         series.append({
             "session_id":     row.get("id"),
             "session_date":   row.get("created_at"),
             "session_number": idx,
-            "kpi_score":      float(kpi),
             "raw_metrics": {
                 "global_wpm":       _safe_float(row.get("global_wpm")),
                 "global_fillers":   _safe_int(row.get("global_fillers")),
@@ -125,48 +133,18 @@ def build_user_kpi_timeline(
 
 
 def _build_summary(series: list[dict[str, Any]]) -> dict[str, Any]:
-    """Derive the headline stats from the shaped series.
+    """Headline stats for the shaped series.
 
-    Trend rule (v1, intentionally crude):
-      - sessions_count < 2  → "insufficient_data"
-      - delta_first_to_last > +0.05 → "rising"
-      - delta_first_to_last < -0.05 → "falling"
-      - otherwise → "flat"
-
-    The ±0.05 band is a guess — we'll tighten it once real
-    user-level KPI distributions land. Documented as the
-    placeholder it is so a future reader doesn't treat it as
-    studied.
+    AC-9 / split-sink wall: the previous version emitted
+    latest_kpi / first_kpi / delta_first_to_last / a KPI-derived
+    ``trend`` verdict — all PRIVATE-LANE (KPI is coach-side, §5).
+    Those are removed; the user-facing summary carries only the
+    non-leaky session count. A future user-facing progress signal,
+    if wanted, must be built from acoustic features (wpm / fillers
+    / stickiness), never from KPI.
     """
-    count = len(series)
-    if count == 0:
-        return {
-            "sessions_count":      0,
-            "latest_kpi":          None,
-            "first_kpi":           None,
-            "delta_first_to_last": None,
-            "trend":               "insufficient_data",
-        }
-
-    first_kpi = series[0]["kpi_score"]
-    latest_kpi = series[-1]["kpi_score"]
-    delta = latest_kpi - first_kpi
-
-    if count < 2:
-        trend = "insufficient_data"
-    elif delta > 0.05:
-        trend = "rising"
-    elif delta < -0.05:
-        trend = "falling"
-    else:
-        trend = "flat"
-
     return {
-        "sessions_count":      count,
-        "latest_kpi":          latest_kpi,
-        "first_kpi":           first_kpi,
-        "delta_first_to_last": round(delta, 4),
-        "trend":               trend,
+        "sessions_count": len(series),
     }
 
 

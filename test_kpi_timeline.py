@@ -1,8 +1,16 @@
-"""Unit tests for services.kpi_timeline (tester-soft-v1 / M1.1 raw).
+"""Unit tests for services.kpi_timeline (AC-9 split-sink compliant).
 
-Covers the shaping logic + summary derivation. The DB read is
-mocked; we're checking the data-transformation contract that FE
-will consume.
+Covers the shaping logic + the AC-9 privacy guarantee. The DB read
+is mocked; we check the data-transformation contract FE consumes.
+
+AC-9 / split-sink wall (willab handoff §2, §5.1): KPI is PRIVATE-LANE
+(coach-side, §5). This endpoint is the user's own timeline
+(@require_auth), so it must NEVER serialize kpi_score or any
+KPI-derived verdict (trend / latest_kpi / first_kpi / delta). The
+user keeps their ACOUSTIC trajectory (wpm / fillers / stickiness —
+user-facing per §3.3); the KPI is withheld. The DB rows still carry
+kpi_score (it filters the series to scored sessions) but it is never
+emitted. These tests guard that the KPI never leaks out.
 
 Run: python3 -m unittest test_kpi_timeline
 """
@@ -30,6 +38,13 @@ def tearDownModule():
     sys.modules.pop("services.db", None)
 
 
+# Private-lane keys that must NEVER appear in a user-facing payload.
+_FORBIDDEN_SERIES_KEYS = {"kpi_score", "smoothed_kpi"}
+_FORBIDDEN_SUMMARY_KEYS = {
+    "latest_kpi", "first_kpi", "delta_first_to_last", "trend",
+}
+
+
 class SeriesShapeTests(unittest.TestCase):
 
     def _build(self, rows):
@@ -42,12 +57,10 @@ class SeriesShapeTests(unittest.TestCase):
         out = self._build([])
         self.assertEqual(out["series"], [])
         self.assertEqual(out["summary"]["sessions_count"], 0)
-        self.assertEqual(out["summary"]["trend"], "insufficient_data")
-        self.assertIsNone(out["summary"]["latest_kpi"])
 
-    def test_single_session_renders_but_trend_insufficient(self):
-        """A user with only one session can still see their score —
-        but the trend label is honest about not having enough data."""
+    def test_single_session_renders_acoustic_only(self):
+        """A user with one session sees their acoustic row — but
+        NOT a kpi_score (AC-9)."""
         out = self._build([{
             "id": "sid-1",
             "created_at": "2026-01-01T10:00:00Z",
@@ -59,8 +72,7 @@ class SeriesShapeTests(unittest.TestCase):
         }])
         self.assertEqual(len(out["series"]), 1)
         self.assertEqual(out["series"][0]["session_number"], 1)
-        self.assertAlmostEqual(out["series"][0]["kpi_score"], 0.42)
-        self.assertEqual(out["summary"]["trend"], "insufficient_data")
+        self.assertNotIn("kpi_score", out["series"][0])
 
     def test_series_ordered_oldest_to_newest(self):
         """FE plots left-to-right so the BE owns the ordering. DB
@@ -76,37 +88,6 @@ class SeriesShapeTests(unittest.TestCase):
         self.assertEqual(out["series"][0]["session_number"], 1)
         self.assertEqual(out["series"][1]["session_number"], 2)
         self.assertEqual(out["series"][2]["session_number"], 3)
-
-    def test_rising_trend_detected(self):
-        out = self._build([
-            {"id": "s1", "created_at": "2026-01-01T10:00:00Z",
-             "kpi_score": 0.30, "source": "interview"},
-            {"id": "s2", "created_at": "2026-02-01T10:00:00Z",
-             "kpi_score": 0.55, "source": "interview"},
-        ])
-        self.assertEqual(out["summary"]["trend"], "rising")
-        self.assertAlmostEqual(
-            out["summary"]["delta_first_to_last"], 0.25, places=2,
-        )
-
-    def test_falling_trend_detected(self):
-        out = self._build([
-            {"id": "s1", "created_at": "2026-01-01T10:00:00Z",
-             "kpi_score": 0.70, "source": "interview"},
-            {"id": "s2", "created_at": "2026-02-01T10:00:00Z",
-             "kpi_score": 0.45, "source": "interview"},
-        ])
-        self.assertEqual(out["summary"]["trend"], "falling")
-
-    def test_flat_trend_within_band(self):
-        """A ±0.05 delta sits in the flat band per the v1 rule."""
-        out = self._build([
-            {"id": "s1", "created_at": "2026-01-01T10:00:00Z",
-             "kpi_score": 0.50, "source": "interview"},
-            {"id": "s2", "created_at": "2026-02-01T10:00:00Z",
-             "kpi_score": 0.52, "source": "interview"},
-        ])
-        self.assertEqual(out["summary"]["trend"], "flat")
 
     def test_missing_source_defaults_to_interview(self):
         """Pre-foundation-migration rows have no source column. The
@@ -126,8 +107,8 @@ class SeriesShapeTests(unittest.TestCase):
         self.assertEqual(out["series"][0]["source"], "audit_upload")
 
     def test_raw_metrics_block_present_with_nulls(self):
-        """Raw metrics ride along on every row; missing values are
-        None, not absent — FE consumes one stable shape."""
+        """Raw acoustic metrics ride along on every row; missing values
+        are None, not absent — FE consumes one stable shape."""
         out = self._build([{
             "id": "s1", "created_at": "2026-01-01T10:00:00Z",
             "kpi_score": 0.5,
@@ -140,31 +121,63 @@ class SeriesShapeTests(unittest.TestCase):
         self.assertIsNone(rm["global_wpm"])
 
     def test_string_kpi_score_filtered(self):
-        """Defensive — if the DB ever returns a string in kpi_score
-        (schema drift), the row is skipped rather than crashing the
-        chart. Documents the guard."""
+        """Defensive — a string kpi_score (schema drift) skips the row
+        rather than crashing. The kpi_score still gates inclusion even
+        though it isn't emitted."""
         out = self._build([
             {"id": "s1", "created_at": "2026-01-01T10:00:00Z",
              "kpi_score": "0.5", "source": "interview"},  # poisoned
             {"id": "s2", "created_at": "2026-02-01T10:00:00Z",
              "kpi_score": 0.6, "source": "interview"},
         ])
-        # Only the well-typed row survives.
         self.assertEqual(len(out["series"]), 1)
         self.assertEqual(out["series"][0]["session_id"], "s2")
 
-    def test_int_kpi_score_coerced_to_float(self):
+    def test_int_kpi_score_row_included(self):
+        """An int kpi_score is a valid score → the row passes the
+        filter and appears (acoustic-only); kpi itself isn't emitted."""
         out = self._build([{
             "id": "s1", "created_at": "2026-01-01T10:00:00Z",
             "kpi_score": 1, "source": "interview",
         }])
-        self.assertIsInstance(out["series"][0]["kpi_score"], float)
-        self.assertEqual(out["series"][0]["kpi_score"], 1.0)
+        self.assertEqual(len(out["series"]), 1)
+        self.assertNotIn("kpi_score", out["series"][0])
+
+
+class AC9PrivacyGuardTests(unittest.TestCase):
+    """The split-sink wall, asserted positively: no KPI value or
+    KPI-derived verdict may appear in the user payload."""
+
+    def _build(self, rows):
+        from services import kpi_timeline as mod
+        from services.db import db
+        with patch.object(db, "get_user_kpi_timeline_rows", return_value=rows):
+            return mod.build_user_kpi_timeline("uid-1")
+
+    def test_no_kpi_in_series_rows(self):
+        out = self._build([
+            {"id": "s1", "created_at": "2026-01-01T10:00:00Z",
+             "kpi_score": 0.30, "source": "interview"},
+            {"id": "s2", "created_at": "2026-02-01T10:00:00Z",
+             "kpi_score": 0.55, "source": "interview"},
+        ])
+        for row in out["series"]:
+            leaked = _FORBIDDEN_SERIES_KEYS & set(row.keys())
+            self.assertEqual(leaked, set(), f"KPI leaked into series: {leaked}")
+
+    def test_no_kpi_verdict_in_summary(self):
+        out = self._build([
+            {"id": "s1", "created_at": "2026-01-01T10:00:00Z",
+             "kpi_score": 0.30, "source": "interview"},
+            {"id": "s2", "created_at": "2026-02-01T10:00:00Z",
+             "kpi_score": 0.70, "source": "interview"},
+        ])
+        leaked = _FORBIDDEN_SUMMARY_KEYS & set(out["summary"].keys())
+        self.assertEqual(leaked, set(), f"KPI verdict leaked: {leaked}")
 
 
 class FieldContractTests(unittest.TestCase):
-    """Guard the field-name contract FE will consume. A typo in any
-    of these would silently break the chart on the rollout."""
+    """Guard the (AC-9-compliant) field-name contract FE consumes."""
 
     def _build(self, rows):
         from services import kpi_timeline as mod
@@ -184,26 +197,12 @@ class FieldContractTests(unittest.TestCase):
         self.assertEqual(
             set(out["series"][0].keys()),
             {"session_id", "session_date", "session_number",
-             "kpi_score", "raw_metrics", "source"},
+             "raw_metrics", "source"},
         )
 
     def test_summary_keys(self):
         out = self._build([])
-        self.assertEqual(
-            set(out["summary"].keys()),
-            {"sessions_count", "latest_kpi", "first_kpi",
-             "delta_first_to_last", "trend"},
-        )
-
-    def test_no_smoothed_kpi_in_v1(self):
-        """V1 ships RAW. The smoothed_kpi field is reserved for a
-        follow-up but explicitly absent now; FE chart code MUST
-        handle its absence (won't break when it shows up later)."""
-        out = self._build([{
-            "id": "s1", "created_at": "2026-01-01T10:00:00Z",
-            "kpi_score": 0.5, "source": "interview",
-        }])
-        self.assertNotIn("smoothed_kpi", out["series"][0])
+        self.assertEqual(set(out["summary"].keys()), {"sessions_count"})
 
 
 if __name__ == "__main__":
