@@ -9597,6 +9597,124 @@ def v2_admin_get_user_snippets(user_id):
         return jsonify({"code": "V2_ERROR", "error": "Failed to fetch snippets"}), 500
 
 
+def _apply_willab_publish_contract(session_id, body, actor_user_id):
+    """Shared willab publish-contract gate (handoff §3.9 / §3.10).
+
+    OPT-IN: acts only when ``body`` carries an ``insights_payload`` (a
+    willab publish). Absent → returns None (legacy charisma publish,
+    undisturbed). When present, validates BOTH split-sink lanes BEFORE
+    any persistence / side effect, persists both stores (§2), then fires
+    the best-effort user nudge (Lounge "insights ready" card) + the
+    idempotent willab credit charge.
+
+    Returns
+    -------
+    None
+        Success, OR not a willab publish (no ``insights_payload``).
+    (flask_response, status_int)
+        Return this DIRECTLY from the caller — a §3.10 contract
+        violation (422) or a persistence failure (500). Nothing has
+        been flipped/emailed at that point.
+
+    WHY THIS IS A SHARED HELPER (not two copies):
+    The §3.10 "library floor" — ≥1 tagged snippet note + a direction
+    label on every snippet — must hold no matter WHICH publish door a
+    coach uses. The gate originally lived inline in
+    /internal/publish-session-results ONLY, so /admin/sessions/<id>/
+    publish (a coach-reachable door, per BE-HANDOFF-tab1-comment-sink-
+    split.md) could publish a willab session UNGATED — no notes, no
+    tags, insights_payload never written, library floor silently
+    broken. Centralizing here means the two doors physically cannot
+    drift again.
+    """
+    if "insights_payload" not in body:
+        return None  # legacy publish — nothing to enforce
+
+    from services.insights_payload import (
+        InsightsPayloadError, validate_insights_payload,
+    )
+    from services.training_labels import (
+        TrainingLabelError, validate_publish_labels,
+    )
+
+    # ── Validate BOTH lanes BEFORE any persistence/side effect. ──
+    try:
+        clean_insights = validate_insights_payload(body.get("insights_payload"))
+    except InsightsPayloadError as ie:
+        return jsonify({
+            "code": "PUBLISH_CONTRACT_VIOLATION", "error": str(ie),
+        }), 422
+
+    # §14 publish gate: every snippet must carry a direction label.
+    try:
+        _snips = db.get_snippets_by_session(session_id) or []
+    except Exception:
+        _snips = []
+    required_ids = {str(s.get("id")) for s in _snips if s.get("id")}
+    try:
+        clean_labels = validate_publish_labels(body.get("labels"), required_ids)
+    except TrainingLabelError as le:
+        return jsonify({
+            "code": "PUBLISH_CONTRACT_VIOLATION", "error": str(le),
+        }), 422
+
+    # ── Persist both lanes (split-sink §2: separate stores). ──
+    if not db.set_session_insights_payload(session_id, clean_insights):
+        return jsonify({
+            "code": "V2_ERROR", "error": "Failed to persist insights payload",
+        }), 500
+    labels_written = db.upsert_training_labels(
+        session_id, str(actor_user_id), clean_labels,
+    )
+    logger.info(
+        "publish_contract.willab session=%s notes=%d overall=%s labels=%d",
+        session_id, len(clean_insights["snippet_notes"]),
+        bool(clean_insights["overall_message"]), labels_written,
+    )
+
+    # ── User nudge: Lounge "insights ready" card (best-effort, idempotent). ──
+    try:
+        from datetime import datetime as _dt, timezone as _tz
+        _owner = (db.v2_get_session_by_id(session_id) or {}).get("user_id")
+        if _owner:
+            db.insert_lounge_messages(str(_owner), [{
+                "client_id": str(uuid.uuid5(
+                    uuid.NAMESPACE_URL, f"willab-insight:{session_id}",
+                )),
+                "role": "bot",
+                "kind": "insight",
+                "body": "Your coach's insights are ready.",
+                "metadata": {
+                    "session_id": session_id, "insight_ref": session_id,
+                },
+                "client_created_at": _dt.now(_tz.utc).isoformat(),
+            }])
+            logger.info(
+                "publish_contract.lounge_card session=%s owner=%s",
+                session_id, _owner,
+            )
+    except Exception as _le:
+        logger.warning(
+            "publish_contract.lounge_append_failed session=%s err=%s "
+            "(non-fatal)", session_id, _le,
+        )
+
+    # ── willab credits — charge 5 once at publish (best-effort, idempotent). ──
+    try:
+        _credit_owner = (db.v2_get_session_by_id(session_id) or {}).get("user_id")
+        if _credit_owner:
+            db.v2_charge_lab_credits_once(
+                session_id, str(_credit_owner), amount=5,
+            )
+    except Exception as _ce:
+        logger.warning(
+            "publish_contract.credit_charge_failed session=%s err=%s "
+            "(non-fatal)", session_id, _ce,
+        )
+
+    return None
+
+
 @v2_bp.route("/internal/publish-session-results", methods=["POST"])
 @require_admin
 def v2_internal_publish_session_results():
@@ -9624,117 +9742,18 @@ def v2_internal_publish_session_results():
                 "error": "Session not found",
             }), 404
 
-        # ── willab beta — insights_payload (publish pivot §3.9/§3.10) ──
-        # OPTIONAL on this endpoint: when the body carries an
-        # `insights_payload`, this is a willab publish — validate the
-        # library floor (≥1 tagged snippet note) + persist it BEFORE any
-        # side effect, so an invalid willab publish 422s with nothing
-        # flipped/emailed. Absent → legacy publish, behaves exactly as
-        # before (old funnel undisturbed).
-        # NOTE: the private training-annotation/label lane (§14) is
-        # gated on the §7.1 schema decision and is NOT captured here yet.
-        if "insights_payload" in body:
-            from services.insights_payload import (
-                InsightsPayloadError, validate_insights_payload,
-            )
-            from services.training_labels import (
-                TrainingLabelError, validate_publish_labels,
-            )
-            # ── Validate BOTH lanes BEFORE any persistence/side effect,
-            # so an invalid willab publish 422s with nothing written.
-            try:
-                clean_insights = validate_insights_payload(
-                    body.get("insights_payload"),
-                )
-            except InsightsPayloadError as ie:
-                return jsonify({
-                    "code": "PUBLISH_CONTRACT_VIOLATION",
-                    "error": str(ie),
-                }), 422
-
-            # §14 publish gate: every snippet must carry a direction
-            # label. Gate on the session's actual snippets.
-            try:
-                _snips = db.get_snippets_by_session(session_id) or []
-            except Exception:
-                _snips = []
-            required_ids = {str(s.get("id")) for s in _snips if s.get("id")}
-            try:
-                clean_labels = validate_publish_labels(
-                    body.get("labels"), required_ids,
-                )
-            except TrainingLabelError as le:
-                return jsonify({
-                    "code": "PUBLISH_CONTRACT_VIOLATION",
-                    "error": str(le),
-                }), 422
-
-            # ── Persist both lanes (split-sink §2: separate stores). ──
-            if not db.set_session_insights_payload(session_id, clean_insights):
-                return jsonify({
-                    "code": "V2_ERROR",
-                    "error": "Failed to persist insights payload",
-                }), 500
-            # Private training lane — never touches insights_payload.
-            labels_written = db.upsert_training_labels(
-                session_id, str(request.user_id), clean_labels,
-            )
-            logger.info(
-                "publish-results: willab publish session=%s notes=%d "
-                "overall=%s labels=%d",
-                session_id, len(clean_insights["snippet_notes"]),
-                bool(clean_insights["overall_message"]), labels_written,
-            )
-
-            # Surface the insight in the user's Lounge thread (§6/§3.12):
-            # append one `insight` lounge message so willab renders the
-            # "insights ready" card whose "View insights →" re-reads the
-            # session. Best-effort + idempotent — the client_id is a stable
-            # uuid5 keyed on session_id, so a re-publish upserts (never a
-            # duplicate card). insights_payload above is the source of
-            # truth; this is the user-facing nudge.
-            try:
-                from datetime import datetime as _dt, timezone as _tz
-                _owner = (db.v2_get_session_by_id(session_id) or {}).get("user_id")
-                if _owner:
-                    db.insert_lounge_messages(str(_owner), [{
-                        "client_id": str(uuid.uuid5(
-                            uuid.NAMESPACE_URL, f"willab-insight:{session_id}",
-                        )),
-                        "role": "bot",
-                        "kind": "insight",
-                        "body": "Your coach's insights are ready.",
-                        "metadata": {
-                            "session_id": session_id,
-                            "insight_ref": session_id,
-                        },
-                        "client_created_at": _dt.now(_tz.utc).isoformat(),
-                    }])
-                    logger.info(
-                        "publish-results: insight lounge card appended "
-                        "session=%s owner=%s", session_id, _owner,
-                    )
-            except Exception as _le:
-                logger.warning(
-                    "publish-results: insight lounge append failed "
-                    "session=%s err=%s (non-fatal)", session_id, _le,
-                )
-
-            # ── willab credits — charge 5 once at publish (B-decision:
-            # "publish + soft"). Soft (v2_deduct floors at 0, never blocks)
-            # + idempotent (a re-publish won't double-charge). Best-effort:
-            # never fails the publish; no-ops if the column isn't migrated.
-            try:
-                _credit_owner = (db.v2_get_session_by_id(session_id) or {}).get("user_id")
-                if _credit_owner:
-                    db.v2_charge_lab_credits_once(
-                        session_id, str(_credit_owner), amount=5,
-                    )
-            except Exception as _ce:
-                logger.warning(
-                    "publish-results: lab credit charge failed "
-                    "session=%s err=%s (non-fatal)", session_id, _ce,
-                )
+        # willab publish-contract (§3.9/§3.10) — SHARED gate, see
+        # _apply_willab_publish_contract. Opt-in on `insights_payload`;
+        # validates + persists both split-sink lanes (§2) + fires the
+        # user nudge/credits BEFORE any side effect below. Returns a
+        # 422/500 tuple on contract/persist failure (nothing flipped
+        # or emailed at that point). The SAME helper guards
+        # /admin/sessions/<id>/publish so the two doors can't drift.
+        _contract_err = _apply_willab_publish_contract(
+            session_id, body, request.user_id,
+        )
+        if _contract_err is not None:
+            return _contract_err
 
         # Phase 10 — emit RLHF annotation events for every snippet in
         # this session BEFORE the status flip + email. Each row in
@@ -10465,6 +10484,22 @@ def v2_admin_publish_session(session_id):
             }), 404
 
         body = request.get_json(silent=True) or {}
+
+        # willab publish-contract (§3.9/§3.10) — SHARED gate (same helper
+        # as /internal/publish-session-results). This admin door is
+        # coach-reachable (the Tab-1 publish modal POSTs here, per
+        # BE-HANDOFF-tab1-comment-sink-split.md), so a willab session
+        # published through it MUST enforce the §3.10 library floor too —
+        # otherwise it goes live with no notes/tags/labels and the Lounge
+        # bot's strong-lines come up empty. Opt-in on `insights_payload`;
+        # legacy charisma publishes (no insights_payload) are undisturbed.
+        # Runs BEFORE any side effect below (422/500 = nothing flipped).
+        _contract_err = _apply_willab_publish_contract(
+            session_id, body, request.user_id,
+        )
+        if _contract_err is not None:
+            return _contract_err
+
         final_comment_raw = body.get("final_human_comment")
         final_question_raw = body.get("final_human_question")
         final_comment = (
