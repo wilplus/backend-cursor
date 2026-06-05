@@ -155,14 +155,13 @@ class IntegrationSmokeTest(unittest.TestCase):
 
     def test_every_caller_imports_helper_cleanly(self):
         # Modules that import the Will's Voice helper. If any can't
-        # import, that's a regression in the chain. (learner_mirror +
-        # session_predictions were removed in the old-subsystem excision.)
+        # import, that's a regression in the chain. (learner_mirror,
+        # session_predictions, charisma_profile + session_kpi_narrative
+        # were removed in the old-subsystem excision.)
         callers = [
             "services.baseline_summary",
             "services.snippet_drafts",
-            "services.session_kpi_narrative",
             "services.next_session_icebreaker",
-            "services.charisma_profile",
             "services.coaching_intro",
             "services.directive_suggestions",
             "services.master_doc_rag",
