@@ -562,46 +562,14 @@ def _build_longitudinal_context_block(
     sections: list[str] = []
     settings: dict = {}
 
-    # ── Learner profile ───────────────────────────────────────────
+    # ── Learner profile section removed in the excision (sniper
+    # behavioral_profile + learner_profile inferred themes no longer
+    # inject). settings still loaded for the sections below. ───────
     try:
         settings = db.get_user_settings(user_id) or {}
-        sniper = db.get_sniper_profile(user_id) or {}
-        learner_type = (
-            (sniper.get("coach_override_profile") or "").strip()
-            or (sniper.get("behavioral_profile") or "").strip()
-        )
-        profile = settings.get("inferred_learner_profile") or {}
-        override = settings.get("admin_profile_override") or None
-        base_traits = (profile.get("traits") or {}) if isinstance(profile, dict) else {}
-        override_traits = (
-            (override.get("traits") or {}) if isinstance(override, dict) else {}
-        )
-        merged_traits = {**base_traits, **override_traits}
-        recurring = merged_traits.get("recurring_entities") or {}
-        themes = []
-        if isinstance(recurring, dict):
-            for t in (recurring.get("themes") or [])[:3]:
-                if isinstance(t, dict) and t.get("label"):
-                    themes.append(str(t.get("label")))
-
-        if learner_type or themes:
-            lines = ["[LEARNER PROFILE]"]
-            if learner_type:
-                lines.append(f"Learner type: {learner_type}")
-            if themes:
-                lines.append(
-                    f"Recurring themes the user keeps returning to: "
-                    f"{', '.join(themes)}"
-                )
-            lines.append(
-                "Frame your question to push them past their comfort zone "
-                "given this profile — don't pander to their stated "
-                "strengths."
-            )
-            sections.append("\n".join(lines))
     except Exception as e:
         logger.warning(
-            "first-question: profile load failed user=%s err=%s",
+            "first-question: settings load failed user=%s err=%s",
             user_id, e,
         )
 
@@ -1768,52 +1736,6 @@ def _system_prompt_for_intent(intent: str) -> str:
     return skill.awareness_system_prompt if skill else ""
 
 
-def _merge_admin_override_into_profile(
-    *,
-    inferred: dict | None,
-    override: dict | None,
-) -> dict | None:
-    """Combine the inferred profile with any admin override.
-
-    Phase 9. The override is layered on TOP of the inferred profile
-    field-by-field so an admin can correct one trait (say
-    score_trend) without re-stating every other trait they wanted to
-    leave alone.
-
-    Rules:
-      - No override and no inferred → None (nothing to inject).
-      - Override only (no inferred yet) → override as-is.
-      - Inferred only → inferred as-is (Phase 3 behaviour).
-      - Both → override.traits replaces matching keys from
-        inferred.traits; top-level attempts_analyzed comes from the
-        override so the injection gate in format_profile_for_prompt
-        always clears when an override is set.
-
-    The returned dict matches the shape format_profile_for_prompt
-    expects: ``{attempts_analyzed: int, traits: {...}, ...}``.
-    """
-    if not inferred and not override:
-        return None
-    if override and not inferred:
-        return override
-    if inferred and not override:
-        return inferred
-
-    base_traits = dict((inferred or {}).get("traits") or {})
-    override_traits = dict((override or {}).get("traits") or {})
-    base_traits.update(override_traits)
-
-    return {
-        **inferred,
-        "attempts_analyzed": int(
-            (override or {}).get("attempts_analyzed")
-            or (inferred or {}).get("attempts_analyzed")
-            or 0
-        ),
-        "traits": base_traits,
-    }
-
-
 def _augment_interview_prompt_with_profile(
     base_prompt: str,
     user_id: str,
@@ -1832,7 +1754,6 @@ def _augment_interview_prompt_with_profile(
     returns the base prompt unchanged so question generation never
     hard-fails on profile load.
     """
-    learner_type = ""
     admin_instructions = ""
     dont_ask_notes = ""
     settings: dict = {}
@@ -1849,16 +1770,8 @@ def _augment_interview_prompt_with_profile(
             "interview: settings load failed user=%s: %s", user_id, e,
         )
 
-    try:
-        sniper = db.get_sniper_profile(user_id) or {}
-        learner_type = (
-            (sniper.get("coach_override_profile") or "").strip()
-            or (sniper.get("behavioral_profile") or "").strip()
-        )
-    except Exception as e:
-        logger.warning(
-            "interview: profile load failed user=%s: %s", user_id, e,
-        )
+    # Old-subsystem learner-type (sniper behavioral_profile) injection
+    # removed in the excision — willab no longer classifies a learner type.
 
     # ── Phase 17 — Master Score (B6) block ───────────────────────
     # Pulls the most recent session's persisted kpi_score / global
@@ -1886,14 +1799,12 @@ def _augment_interview_prompt_with_profile(
     dont_ask_block = render_admin_dont_ask_block(dont_ask_notes)
 
     if (
-        not learner_type and not admin_instructions
+        not admin_instructions
         and not metrics_block and not dont_ask_block
     ):
         return base_prompt
 
     block_lines = ["", "[COACHING CONTEXT]"]
-    if learner_type:
-        block_lines.append(f"Learner Profile: {learner_type}")
     if admin_instructions:
         block_lines.append(f"Admin Notes: {admin_instructions}")
     block_lines.append("")
@@ -2022,9 +1933,7 @@ def _augment_coaching_system_prompt(base_prompt: str, user_id: str) -> str:
     additive — the awareness loop must keep running even when the
     profile is unreadable.
     """
-    learner_type: str = ""
     admin_instructions: str = ""
-    inferred_profile: dict | None = None
 
     settings: dict = {}
     try:
@@ -2033,63 +1942,16 @@ def _augment_coaching_system_prompt(base_prompt: str, user_id: str) -> str:
     except Exception as e:
         logger.warning("coaching/turn: settings load failed user=%s: %s", user_id, e)
 
-    try:
-        profile = db.get_sniper_profile(user_id) or {}
-        # Admin's manual override wins when set — same precedence used
-        # everywhere else (admin/students endpoints, snippet display).
-        learner_type = (
-            (profile.get("coach_override_profile") or "").strip()
-            or (profile.get("behavioral_profile") or "").strip()
-        )
-    except Exception as e:
-        logger.warning("coaching/turn: profile load failed user=%s: %s", user_id, e)
+    # Old-subsystem personalisation removed in the excision: the sniper
+    # learner-type and the learner_profile inferred-insights block no
+    # longer inject here. Admin custom instructions remain.
 
-    # Phase 3 + Phase 9 — inferred profile, possibly overridden by
-    # an admin. The override (when present) wins trait-by-trait over
-    # the inferred profile so an admin can correct one signal without
-    # discarding the rest. Read both from the same user_settings row
-    # we already pulled above so we don't issue a second query.
-    # Injection-gated by LEARNER_PROFILE_INJECTION_ENABLED so the
-    # recompute can run live without the block influencing the AI
-    # until we backtest it.
-    insights_block: str | None = None
-    override_active: bool = False
-    try:
-        from config import Config
-        if Config().LEARNER_PROFILE_INJECTION_ENABLED:
-            inferred_profile = settings.get("inferred_learner_profile") or None
-            override_profile = settings.get("admin_profile_override") or None
-            effective_profile = _merge_admin_override_into_profile(
-                inferred=inferred_profile,
-                override=override_profile,
-            )
-            override_active = override_profile is not None
-            if effective_profile:
-                from services.learner_profile import format_profile_for_prompt
-                insights_block = format_profile_for_prompt(effective_profile)
-    except Exception as e:
-        logger.warning(
-            "coaching/turn: inferred profile render failed user=%s: %s",
-            user_id, e,
-        )
-
-    if not learner_type and not admin_instructions and not insights_block:
+    if not admin_instructions:
         return base_prompt
 
     lines: list[str] = ["[USER LONG-TERM PROFILE]"]
-    if learner_type:
-        lines.append(f"Learner Type: {learner_type}")
     if admin_instructions:
         lines.append(f"Custom Coaching Instructions: {admin_instructions}")
-    if insights_block:
-        lines.append("")
-        header = (
-            "[LEARNER INSIGHTS — admin-curated overrides applied]"
-            if override_active
-            else "[LEARNER INSIGHTS — inferred from recent attempts]"
-        )
-        lines.append(header)
-        lines.append(insights_block)
     lines.append("")
     lines.append(
         "CRITICAL: You must adhere to these custom instructions and "
