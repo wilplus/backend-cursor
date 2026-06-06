@@ -35,8 +35,8 @@ logger = logging.getLogger(__name__)
 
 # Map services.audio_metrics output keys → the §3.3 Readout feature
 # names. (Some differ: speech_rate=wpm, mean_pause=pause_ms,
-# loudness_range=dynamic_db.) NB: mean_pause is converted ms→seconds in
-# build_readout_features (the value, not the key).
+# loudness_range=dynamic_db.) mean_pause stays in MILLISECONDS here; the
+# FE converts to seconds at its mapper (see build_readout_features).
 _FEATURE_MAP = {
     "f0_mean": "f0_mean",
     "f0_sd": "f0_sd",
@@ -88,22 +88,18 @@ def build_readout_features(metrics: Optional[dict]) -> dict:
     Always returns the full 11-key feature dict (every contract key
     present, value or None) so the FE renders one stable shape. Pure.
 
-    ``mean_pause`` is persisted as ``pause_ms`` (milliseconds) but emitted
-    here in SECONDS: the §5 Readout renders it as seconds and every other
-    feature is already a natural display unit, so this is the single
-    chokepoint (upload-time + re-read + admin readouts all flow through
-    here) that keeps the readout uniformly display-ready. None-safe;
-    storage stays in ms (no migration).
+    UNITS — mean_pause is emitted as the raw pause_ms value: MILLISECONDS.
+    The FE converts ms→seconds at its mapping boundary (FE PR #62), so the
+    BE deliberately does NOT convert here. Do NOT re-add a server-side
+    ``/1000`` — it double-converts against the FE mapper (a 200ms pause
+    would render "0.0s"). This was tried (BE PR #32) and reverted once the
+    FE landed the mapper-side fix; the FE mapper is the single converter.
     """
     m = metrics or {}
-    out = {
+    return {
         out_key: m.get(src_key)
         for out_key, src_key in _FEATURE_MAP.items()
     }
-    mp = out.get("mean_pause")
-    if isinstance(mp, (int, float)):
-        out["mean_pause"] = round(mp / 1000.0, 2)
-    return out
 
 
 def build_readout_payload(
