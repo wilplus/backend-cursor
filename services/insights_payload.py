@@ -33,6 +33,11 @@ VALID_TAGS = ("strong", "to_work_on")
 
 _MAX_NOTE_LEN = 2000
 _MAX_OVERALL_LEN = 4000
+# PR-2 coach fields (optional): `when` = short situational context;
+# `examples` = list of example phrases the FE maps over.
+_MAX_WHEN_LEN = 1000
+_MAX_EXAMPLE_LEN = 500
+_MAX_EXAMPLES = 10
 
 
 class InsightsPayloadError(ValueError):
@@ -48,7 +53,13 @@ def validate_insights_payload(body: Any) -> dict:
       - snippet_notes: a list with ≥1 entry (the library floor)
       - every entry: snippet_id (non-empty str), note (non-empty,
         ≤2000 chars), tag ∈ {strong, to_work_on}
+      - per entry (PR-2, OPTIONAL): when (str ≤1000, empty→None),
+        examples (list[str], each ≤500, ≤10 items, empties dropped)
       - overall_message: OPTIONAL str (≤4000), empty/whitespace → None
+
+    Every cleaned note carries a stable shape — {snippet_id, note, tag,
+    when, examples} — so the readout round-trip + FE ("hidden when
+    absent") see when=None / examples=[] for notes that omit them.
 
     Raises InsightsPayloadError on any violation.
     """
@@ -116,10 +127,57 @@ def validate_insights_payload(body: Any) -> dict:
                 f"{', '.join(VALID_TAGS)}"
             )
 
+        # PR-2: `when` — optional situational context (str), empty → None.
+        when_raw = n.get("when")
+        when_val: Optional[str] = None
+        if when_raw is not None:
+            if not isinstance(when_raw, str):
+                raise InsightsPayloadError(
+                    f"snippet_notes[{i}].when: must be a string"
+                )
+            w = when_raw.strip()
+            if w:
+                if len(w) > _MAX_WHEN_LEN:
+                    raise InsightsPayloadError(
+                        f"snippet_notes[{i}].when: must be {_MAX_WHEN_LEN} "
+                        "characters or fewer"
+                    )
+                when_val = w
+
+        # PR-2: `examples` — optional list[str]; trim, drop empties, cap.
+        examples_raw = n.get("examples")
+        examples_val: list = []
+        if examples_raw is not None:
+            if not isinstance(examples_raw, list):
+                raise InsightsPayloadError(
+                    f"snippet_notes[{i}].examples: must be a list of strings"
+                )
+            if len(examples_raw) > _MAX_EXAMPLES:
+                raise InsightsPayloadError(
+                    f"snippet_notes[{i}].examples: at most {_MAX_EXAMPLES} "
+                    "examples"
+                )
+            for j, ex in enumerate(examples_raw):
+                if not isinstance(ex, str):
+                    raise InsightsPayloadError(
+                        f"snippet_notes[{i}].examples[{j}]: must be a string"
+                    )
+                e = ex.strip()
+                if not e:
+                    continue
+                if len(e) > _MAX_EXAMPLE_LEN:
+                    raise InsightsPayloadError(
+                        f"snippet_notes[{i}].examples[{j}]: must be "
+                        f"{_MAX_EXAMPLE_LEN} characters or fewer"
+                    )
+                examples_val.append(e)
+
         cleaned_notes.append({
             "snippet_id": sid,
             "note": note,
             "tag": tag,
+            "when": when_val,
+            "examples": examples_val,
         })
 
     return {
