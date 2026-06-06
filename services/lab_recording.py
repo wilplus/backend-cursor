@@ -150,6 +150,10 @@ def process_lab_recording(
     """
     from services.audio_metrics import (
         decode_audio_to_pcm, segment_into_snippets, analyze_pcm_window,
+        SEGMENT_MAX_SNIPPETS,
+    )
+    from services.snippet_salience import (
+        rank_candidates_by_salience, SALIENCE_CANDIDATE_POOL,
     )
     from services.snippet_stickiness import score_snippets_stickiness
     from services.db import db
@@ -181,20 +185,43 @@ def process_lab_recording(
         )
         segments = []
 
-    windows = segment_into_snippets(sig)
+    # ── Candidate windows: ask the segmenter for a GENEROUS pool, not
+    # the final cap. Level 1 salience selection picks the top-N most
+    # acoustically-activated of these, so it must score across the whole
+    # recording's moments rather than re-order a pre-capped few. (For
+    # typical Lab recordings the real window count is well under the
+    # pool, so salience scores over ALL of the recording's windows.)
+    candidate_windows = segment_into_snippets(
+        sig, max_snippets=SALIENCE_CANDIDATE_POOL,
+    )
 
-    # 1) Features + transcript per window (in-memory; no insert yet).
-    prelim: list = []
-    for idx, (start_ms, end_ms) in enumerate(windows, start=1):
+    # 1) Features + transcript per CANDIDATE window (in-memory; no insert
+    #    yet; index assigned AFTER selection so persisted snippets are
+    #    1..N chronological).
+    candidates: list = []
+    for (start_ms, end_ms) in candidate_windows:
         dur_ms = end_ms - start_ms
         metrics = analyze_pcm_window(
             sig, start_offset_ms=start_ms, duration_ms=dur_ms,
         ) or {}
         transcript = slice_transcript_for_window(segments, start_ms, end_ms)
-        prelim.append({
-            "idx": idx, "start_ms": start_ms, "dur_ms": dur_ms,
+        candidates.append({
+            "start_ms": start_ms, "dur_ms": dur_ms,
             "metrics": metrics, "transcript": transcript,
         })
+
+    # ── Level 1 SALIENCE SELECTION (replaces naive duration ranking).
+    # Pick the top-N (= existing per-session cap SEGMENT_MAX_SNIPPETS)
+    # most acoustically-salient candidates over the SAME 11-feature
+    # vector. The salience score is transient — never persisted, never
+    # user-facing (split-sink / AC-9); see services/snippet_salience.py
+    # for the methodological fence. Output is ≤ cap, chronological, so
+    # the snippet-count contract (§3.3 / FE ~10) is preserved.
+    prelim: list = rank_candidates_by_salience(
+        candidates, top_n=SEGMENT_MAX_SNIPPETS,
+    )
+    for idx, p in enumerate(prelim, start=1):
+        p["idx"] = idx
 
     # 2) Stickiness over transcripts BEFORE insert (one batch). Scored
     #    by transcript/position, so no snippet ids are needed yet.
