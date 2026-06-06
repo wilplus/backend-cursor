@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS coach_snippet_drafts (
     snippet_id    uuid        NOT NULL,
     note          text,
     tag           text,                              -- 'strong' | 'to_work_on' (validated app-side)
-    surfaced      boolean     NOT NULL DEFAULT true,
+    surfaced      boolean     NOT NULL DEFAULT false, -- explicit coach action; nothing reaches the user until surfaced (FE/spec default)
     when_context  text,
     examples      jsonb       NOT NULL DEFAULT '[]'::jsonb,
     updated_by    uuid,

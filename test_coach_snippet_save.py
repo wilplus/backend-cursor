@@ -1,15 +1,14 @@
-"""willab coach per-snippet immediate save (E1 / §B.3 / S.5) — lane split.
+"""willab coach per-snippet save — /v2/coach/sessions/<id>/snippets/<id>.
 
-Proves the split-sink at the WRITE boundary:
-  * label      -> db.upsert_training_labels (PRIVATE) only
-  * note/tag.. -> db.upsert_coach_snippet_draft (USER) only
-  * no cross-derivation (the tag never lands in the label write, nor vice-versa)
-  * partial saves are first-class; vocab is validated; snippet must be in-session.
+Aligned to FE PR #73: body uses `direction_label` (str|null; null clears),
+the response echoes the folded `coach_state`. Proves the split-sink at the
+WRITE boundary + the round-trip:
+  * direction_label -> training_labels (PRIVATE) only
+  * note/tag/surfaced -> coach_snippet_drafts (USER) only
+  * no cross-derivation; surfaced defaults false; null direction clears.
 
-The view is invoked via __wrapped__ (bypassing the auth decorator — auth is
-covered by test_coach_auth) so this runs locally without a JWT.
-
-Run: python3 -m unittest test_coach_snippet_save
+Stateful db stubs (upsert writes, get reads) so the coach_state echo reflects
+what's persisted. View invoked via __wrapped__ (auth covered by test_coach_auth).
 """
 from __future__ import annotations
 
@@ -19,7 +18,7 @@ try:
     from flask import Flask, request
     from routes import v2_routes as v2
     _IMPORT_ERROR = None
-except Exception as e:  # pragma: no cover - env/bootstrap guard
+except Exception as e:  # pragma: no cover
     Flask = None
     request = None
     v2 = None
@@ -35,29 +34,45 @@ OTHER_SNIP = "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
 class PerSnippetSaveTests(unittest.TestCase):
     def setUp(self):
         self.app = Flask(__name__)
-        self.label_calls = []
-        self.draft_calls = []
+        self.labels: dict = {}   # snippet_id -> value (PRIVATE store)
+        self.drafts: dict = {}   # snippet_id -> {note,tag,surfaced} (USER store)
         self.originals = {}
         self._patch_db("v2_get_session_by_id", lambda sid: {"id": sid, "user_id": "u1"})
         self._patch_db("get_snippets_by_session", lambda sid: [{"id": SNIP}])
-        self._patch_db("upsert_training_labels", self._fake_labels)
-        self._patch_db("upsert_coach_snippet_draft", self._fake_draft)
+        self._patch_db("upsert_training_labels", self._upsert_labels)
+        self._patch_db("delete_training_label", self._delete_label)
+        self._patch_db("upsert_coach_snippet_draft", self._upsert_draft)
+        self._patch_db("get_training_labels", self._get_labels)
+        self._patch_db("get_coach_snippet_drafts", self._get_drafts)
 
     def tearDown(self):
         for target, attr, orig in self.originals.values():
             setattr(target, attr, orig)
 
     def _patch_db(self, attr, fn):
-        self.originals[f"db:{attr}"] = (v2.db, attr, getattr(v2.db, attr))
+        self.originals[f"db:{attr}"] = (v2.db, attr, getattr(v2.db, attr, None))
         setattr(v2.db, attr, fn)
 
-    def _fake_labels(self, session_id, actor, rows):
-        self.label_calls.append((session_id, actor, rows))
+    # stateful fakes
+    def _upsert_labels(self, sid, actor, rows):
+        for r in rows:
+            self.labels[r["snippet_id"]] = r["value"]
         return len(rows)
 
-    def _fake_draft(self, session_id, snippet_id, fields, updated_by=None):
-        self.draft_calls.append((session_id, snippet_id, dict(fields), updated_by))
-        return {"session_id": session_id, "snippet_id": snippet_id, **fields}
+    def _delete_label(self, sid, snip):
+        self.labels.pop(snip, None)
+        return True
+
+    def _upsert_draft(self, sid, snip, fields, updated_by=None):
+        d = self.drafts.setdefault(snip, {"note": None, "tag": None, "surfaced": False})
+        d.update(fields)
+        return d
+
+    def _get_labels(self, sid):
+        return [{"snippet_id": k, "value": v} for k, v in self.labels.items()]
+
+    def _get_drafts(self, sid):
+        return [{"snippet_id": k, **v} for k, v in self.drafts.items()]
 
     def _call(self, body, snip=SNIP):
         with self.app.test_request_context(json=body):
@@ -65,72 +80,66 @@ class PerSnippetSaveTests(unittest.TestCase):
             resp, status = v2.v2_coach_save_snippet.__wrapped__(SID, snip)
             return status, resp.get_json()
 
-    # ── lane separation ──
-    def test_label_only_writes_private_lane_only(self):
-        status, data = self._call({"label": "challenge"})
+    # ── lane separation + echo ──
+    def test_direction_label_private_lane_and_echo(self):
+        status, data = self._call({"direction_label": "challenge"})
         self.assertEqual(status, 200)
-        self.assertEqual(len(self.label_calls), 1)
-        self.assertEqual(len(self.draft_calls), 0)          # USER lane untouched
-        self.assertEqual(self.label_calls[0][2][0]["value"], "challenge")
-        self.assertEqual(data["saved"].get("label"), {"value": "challenge"})
-        self.assertNotIn("draft", data["saved"])
+        self.assertEqual(self.labels[SNIP], "challenge")        # PRIVATE write
+        self.assertEqual(self.drafts, {})                        # USER untouched
+        self.assertEqual(data["coach_state"]["direction_label"], "challenge")
 
-    def test_note_tag_writes_user_lane_only(self):
-        status, data = self._call({"note": "great pause here", "tag": "strong"})
+    def test_note_tag_user_lane_and_echo(self):
+        status, data = self._call({"note": "nice open", "tag": "strong"})
         self.assertEqual(status, 200)
-        self.assertEqual(len(self.draft_calls), 1)
-        self.assertEqual(len(self.label_calls), 0)          # PRIVATE lane untouched
-        self.assertEqual(self.draft_calls[0][2]["note"], "great pause here")
-        self.assertEqual(self.draft_calls[0][2]["tag"], "strong")
-        self.assertNotIn("label", data["saved"])
+        self.assertEqual(self.drafts[SNIP]["note"], "nice open")
+        self.assertEqual(self.drafts[SNIP]["tag"], "strong")
+        self.assertEqual(self.labels, {})                        # PRIVATE untouched
+        self.assertEqual(data["coach_state"]["note"], "nice open")
+        self.assertEqual(data["coach_state"]["tag"], "strong")
 
-    def test_both_lanes_separate_writes_no_cross_derivation(self):
-        status, _ = self._call({"label": "threat", "note": "shaky", "tag": "to_work_on"})
-        self.assertEqual(status, 200)
-        self.assertEqual(len(self.label_calls), 1)
-        self.assertEqual(len(self.draft_calls), 1)
-        # the tag never lands in the label write; the label never lands in the draft.
-        self.assertNotIn("tag", self.label_calls[0][2][0])
-        self.assertNotIn("value", self.draft_calls[0][2])
-        self.assertNotIn("label", self.draft_calls[0][2])
+    def test_both_lanes_no_cross_derivation(self):
+        self._call({"direction_label": "threat", "note": "x", "tag": "to_work_on"})
+        self.assertEqual(self.labels[SNIP], "threat")
+        self.assertNotIn("value", self.drafts[SNIP])             # tag store has no label value
+        self.assertNotIn("direction_label", self.drafts[SNIP])
 
-    # ── partial saves (resume) ──
-    def test_surfaced_only_partial_save(self):
-        status, _ = self._call({"surfaced": False})
-        self.assertEqual(status, 200)
-        self.assertEqual(self.draft_calls[0][2], {"surfaced": False})
-        self.assertEqual(len(self.label_calls), 0)
+    # ── null clears the label ──
+    def test_null_direction_clears(self):
+        self._call({"direction_label": "challenge"})
+        self.assertEqual(self.labels[SNIP], "challenge")
+        status, data = self._call({"direction_label": None})
+        self.assertNotIn(SNIP, self.labels)                      # cleared
+        self.assertIsNone(data["coach_state"]["direction_label"])
 
-    def test_empty_note_clears(self):
-        status, _ = self._call({"note": "   "})
-        self.assertEqual(status, 200)
-        self.assertIsNone(self.draft_calls[0][2]["note"])
+    # ── surfaced defaults false ──
+    def test_note_does_not_auto_surface(self):
+        status, data = self._call({"note": "private context"})
+        self.assertFalse(self.drafts[SNIP]["surfaced"])
+        self.assertFalse(data["coach_state"]["surfaced"])
 
-    # ── vocab validation ──
-    def test_bad_label_value_422_no_writes(self):
-        status, _ = self._call({"label": "good"})  # not in direction-v1 vocab
+    def test_explicit_surface(self):
+        status, data = self._call({"surfaced": True})
+        self.assertTrue(self.drafts[SNIP]["surfaced"])
+        self.assertTrue(data["coach_state"]["surfaced"])
+
+    # ── vocab + scope ──
+    def test_bad_direction_422(self):
+        status, _ = self._call({"direction_label": "good"})
         self.assertEqual(status, 422)
-        self.assertEqual(len(self.label_calls), 0)
-        self.assertEqual(len(self.draft_calls), 0)
+        self.assertEqual(self.labels, {})
 
     def test_bad_tag_422(self):
         status, _ = self._call({"tag": "amazing"})
         self.assertEqual(status, 422)
-        self.assertEqual(len(self.draft_calls), 0)
 
-    def test_surfaced_non_bool_422(self):
-        status, _ = self._call({"surfaced": "yes"})
-        self.assertEqual(status, 422)
-
-    # ── scope guards ──
     def test_snippet_not_in_session_404(self):
-        status, _ = self._call({"label": "challenge"}, snip=OTHER_SNIP)
+        status, _ = self._call({"direction_label": "challenge"}, snip=OTHER_SNIP)
         self.assertEqual(status, 404)
-        self.assertEqual(len(self.label_calls), 0)
+        self.assertEqual(self.labels, {})
 
     def test_session_not_found_404(self):
         setattr(v2.db, "v2_get_session_by_id", lambda sid: None)
-        status, _ = self._call({"label": "challenge"})
+        status, _ = self._call({"direction_label": "challenge"})
         self.assertEqual(status, 404)
 
 

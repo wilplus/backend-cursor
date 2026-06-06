@@ -7313,7 +7313,7 @@ def _pseudonymous_user_id(user_id):
 
 
 @v2_bp.route("/admin/review-queue", methods=["GET"])
-@require_admin_or_coach
+@require_admin
 def v2_admin_review_queue():
     """① Coach review queue — review_pending willab Lab sessions, newest
     sent first. LOW-IDENTIFIABILITY: keyed on pseudonymous_user_id, never
@@ -7341,7 +7341,7 @@ def v2_admin_review_queue():
 
 
 @v2_bp.route("/admin/sessions/<session_id>/readout", methods=["GET"])
-@require_admin_or_coach
+@require_admin
 def v2_admin_get_session_readout(session_id):
     """② Coach authoring Readout — the user §3.3 Readout PLUS the PRIVATE
     direction-label lane per snippet (split-sink §2: the user re-read
@@ -7415,10 +7415,188 @@ def v2_admin_get_session_readout(session_id):
         }), 500
 
 
-@v2_bp.route("/admin/sessions/<session_id>/snippets/<snippet_id>", methods=["POST"])
+# ══════════════════════════════════════════════════════════════════
+# willab COACH SURFACE — canonical /v2/coach/* namespace (FE §F / PR #73).
+#
+# The FE coach overlay + queue speak this namespace + vocabulary: friendly
+# `pseudonym`, per-snippet `coach_state` (both lanes folded), `direction_label`,
+# state ∈ {pending,in_progress,done}. These routes are the alignment layer over
+# the same handlers/db methods — no new logic, just the FE-facing shape. The
+# namespace reversal (supersedes the earlier "re-gate /admin/*") is recorded in
+# docs/coach-namespace-delta.md.
+#
+# IDENTITY (S.4 / §14 red-line 6): every coach response is pseudonymized —
+# `pseudonym` + `domain` only, NEVER user_id / real name / email.
+# ══════════════════════════════════════════════════════════════════
+
+# Friendly, stable, non-reversible pseudonym (§B.4): adjective + animal from a
+# salted hash of user_id. Same user → same handle across queue + overlay (a
+# coach recognises a returning user without knowing who they are). No stored
+# map. Wordlists sized for beta; expand per §B.4 (≈10× user count) at scale.
+_COACH_PSEUDONYM_ADJ = (
+    "Playful", "Quiet", "Bright", "Curious", "Bold", "Gentle", "Swift",
+    "Calm", "Clever", "Brave", "Sunny", "Steady", "Witty", "Warm", "Keen",
+    "Nimble", "Mellow", "Lively", "Patient", "Earnest", "Cheery", "Frank",
+    "Spry", "Wry",
+)
+_COACH_PSEUDONYM_ANIMAL = (
+    "Octopus", "Otter", "Falcon", "Badger", "Heron", "Lynx", "Marten",
+    "Sparrow", "Dolphin", "Ibex", "Magpie", "Beaver", "Finch", "Hare",
+    "Stork", "Vole", "Wren", "Crane", "Mole", "Newt", "Quail", "Robin",
+    "Seal", "Tern",
+)
+
+
+def _coach_pseudonym(user_id):
+    """Stable friendly handle for a user_id (e.g. "Playful Octopus"). Never
+    reversible to identity; no stored map. Empty user_id → 'Anonymous'."""
+    if not user_id:
+        return "Anonymous"
+    import hashlib
+    h = int(hashlib.sha256(
+        (_COACH_PSEUDONYM_SALT + str(user_id)).encode("utf-8")
+    ).hexdigest(), 16)
+    adj = _COACH_PSEUDONYM_ADJ[(h // len(_COACH_PSEUDONYM_ANIMAL)) % len(_COACH_PSEUDONYM_ADJ)]
+    animal = _COACH_PSEUDONYM_ANIMAL[h % len(_COACH_PSEUDONYM_ANIMAL)]
+    return f"{adj} {animal}"
+
+
+def _coach_state_map(session_id):
+    """Per-snippet coach_state, folding BOTH lanes → the resume read.
+    direction_label ← training_labels (PRIVATE); note/tag/surfaced ←
+    coach_snippet_drafts (USER). THIS is what makes note/tag/surfaced
+    round-trip on reopen (not just the label — the bug this layer fixes)."""
+    labels = {}
+    for lab in (db.get_training_labels(session_id) or []):
+        sid = lab.get("snippet_id")
+        if sid is not None:
+            labels[str(sid)] = lab.get("value")
+    drafts = {}
+    for d in (db.get_coach_snippet_drafts(session_id) or []):
+        sid = d.get("snippet_id")
+        if sid is not None:
+            drafts[str(sid)] = d
+    out = {}
+    for sid in set(labels) | set(drafts):
+        d = drafts.get(sid) or {}
+        out[sid] = {
+            "direction_label": labels.get(sid),
+            "note": (d.get("note") or ""),
+            "tag": d.get("tag"),
+            "surfaced": bool(d.get("surfaced")),
+        }
+    return out
+
+
+def _coach_state_for(session_id, snippet_id):
+    """One snippet's coach_state (default-empty when nothing authored yet)."""
+    return _coach_state_map(session_id).get(str(snippet_id), {
+        "direction_label": None, "note": "", "tag": None, "surfaced": False,
+    })
+
+
+def _coach_session_state(session, cstate_map):
+    """FE lifecycle state: done (published) > in_progress (any authoring) >
+    pending (nothing authored yet)."""
+    if session.get("results_published_at"):
+        return "done"
+    return "in_progress" if cstate_map else "pending"
+
+
+@v2_bp.route("/coach/queue", methods=["GET"])
+@require_admin_or_coach
+def v2_coach_queue():
+    """① Coach review queue (FE PR2 → /v2/coach/queue). Pseudonymized rows,
+    FIFO (oldest sent first). Each row: {session_id, pseudonym, domain, topic,
+    n_snippets, state, sent_at} — NEVER user_id / name / email."""
+    try:
+        rows = db.list_review_queue() or []
+        out = []
+        for r in rows:
+            sid = r.get("id")
+            ctx = r.get("intake_context") if isinstance(r.get("intake_context"), dict) else {}
+            cstate = _coach_state_map(sid)
+            out.append({
+                "session_id": sid,
+                "pseudonym": _coach_pseudonym(r.get("user_id")),
+                "domain": (ctx or {}).get("domain") or "",
+                "topic": (ctx or {}).get("topic") or "",
+                "n_snippets": len(db.get_snippets_by_session(sid) or []),
+                "state": _coach_session_state(r, cstate),
+                "sent_at": r.get("guest_claimed_at") or r.get("created_at") or "",
+            })
+        out.sort(key=lambda x: x.get("sent_at") or "")  # FIFO, oldest first
+        return jsonify(out), 200
+    except Exception as e:
+        logger.error("coach/queue GET failed: %s", e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to fetch coach queue"}), 500
+
+
+@v2_bp.route("/coach/sessions/<session_id>", methods=["GET"])
+@require_admin_or_coach
+def v2_coach_get_session(session_id):
+    """② Coach review session payload (FE PR #73 → /v2/coach/sessions/<id>).
+
+    Identity-stripped (S.4): pseudonym + domain only — NO user_id / name /
+    email. Per-snippet coach_state folds BOTH lanes so the coach's note / tag /
+    surfaced / direction ALL resume on reopen (the round-trip the old
+    label-only readout dropped).
+    """
+    if not _is_valid_uuid(session_id):
+        return jsonify({"code": "INVALID_INPUT", "error": "session_id must be a UUID"}), 400
+    try:
+        session = db.v2_get_session_by_id(session_id)
+        if not session:
+            return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found"}), 404
+
+        from services.lab_recording import build_readout_from_session
+        readout = build_readout_from_session(session_id)
+        cstate = _coach_state_map(session_id)
+
+        snippets = []
+        for snip in (readout.get("snippets") or []):
+            snippets.append({
+                "id": snip.get("id"),
+                "index": snip.get("index"),
+                "transcript": snip.get("transcript") or "",
+                "audio_ref": snip.get("audio_ref"),
+                "start_offset_ms": snip.get("start_offset_ms"),
+                "duration_ms": snip.get("duration_ms"),
+                "stickiness": snip.get("stickiness") or {"composite": None, "comment": None},
+                "coach_state": cstate.get(str(snip.get("id")), {
+                    "direction_label": None, "note": "", "tag": None, "surfaced": False,
+                }),
+            })
+
+        ctx = session.get("intake_context") if isinstance(session.get("intake_context"), dict) else {}
+        insights = session.get("insights_payload") if isinstance(session.get("insights_payload"), dict) else {}
+        return jsonify({
+            "session_id": session_id,
+            "pseudonym": _coach_pseudonym(session.get("user_id")),
+            "domain": (ctx or {}).get("domain") or "",
+            "topic": (ctx or {}).get("topic") or "",
+            "sent_at": session.get("guest_claimed_at") or session.get("created_at") or "",
+            "state": _coach_session_state(session, cstate),
+            "overall_message": (insights or {}).get("overall_message") or "",
+            "video_ref": (session.get("coach_video_ref") or None),
+            "snippets": snippets,
+        }), 200
+    except Exception as e:
+        logger.error("coach/get-session failed sid=%s err=%s", session_id, e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to fetch coach session"}), 500
+
+
+@v2_bp.route("/coach/sessions/<session_id>/snippets/<snippet_id>", methods=["POST"])
 @require_admin_or_coach
 def v2_coach_save_snippet(session_id, snippet_id):
     """③ willab coach per-snippet immediate save (E1 / §B.3 / S.5).
+
+    FE contract (PR #73): body uses `direction_label` (not `label`); the
+    response echoes the persisted `coach_state` (both lanes folded), which the
+    FE writes back into its local state. Sending `direction_label: null` CLEARS
+    the label.
 
     Persists ONE snippet's coach authoring immediately, so reopening the
     overlay resumes where the coach left off (no all-in-memory-until-publish
@@ -7465,32 +7643,26 @@ def v2_coach_save_snippet(session_id, snippet_id):
             }), 404
 
         body = request.get_json(silent=True) or {}
-        saved: dict = {}
 
         # ── PRIVATE lane — direction label (training_labels). ──
-        if "label" in body and body["label"] is not None:
-            lab = body["label"]
-            if isinstance(lab, dict):
-                value = lab.get("value")
-                was_pre_filled = bool(lab.get("was_pre_filled", False))
-                was_overridden = bool(lab.get("was_overridden", False))
+        # FE sends `direction_label` (str | null). null CLEARS; a value upserts.
+        if "direction_label" in body:
+            value = body["direction_label"]
+            if value is None:
+                db.delete_training_label(session_id, snippet_id)
+            elif value in VALID_VALUES:
+                db.upsert_training_labels(session_id, str(request.user_id), [{
+                    "snippet_id": snippet_id,
+                    "schema_version": SCHEMA_VERSION,
+                    "value": value,
+                    "was_pre_filled": False,
+                    "was_overridden": False,
+                }])
             else:
-                value = lab
-                was_pre_filled = False
-                was_overridden = False
-            if value not in VALID_VALUES:
                 return jsonify({
                     "code": "INVALID_INPUT",
-                    "error": f"label.value: must be one of {', '.join(VALID_VALUES)}",
+                    "error": f"direction_label: must be one of {', '.join(VALID_VALUES)} or null",
                 }), 422
-            db.upsert_training_labels(session_id, str(request.user_id), [{
-                "snippet_id": snippet_id,
-                "schema_version": SCHEMA_VERSION,
-                "value": value,
-                "was_pre_filled": was_pre_filled,
-                "was_overridden": was_overridden,
-            }])
-            saved["label"] = {"value": value}
 
         # ── USER lane — note / tag / surfaced / when / examples (drafts). ──
         draft_fields: dict = {}
@@ -7537,19 +7709,14 @@ def v2_coach_save_snippet(session_id, snippet_id):
                 draft_fields["examples"] = cleaned_ex
 
         if draft_fields:
-            row = db.upsert_coach_snippet_draft(
+            db.upsert_coach_snippet_draft(
                 session_id, snippet_id, draft_fields, updated_by=str(request.user_id),
             )
-            saved["draft"] = {
-                k: (row.get(k) if row else draft_fields.get(k))
-                for k in draft_fields
-            }
 
+        # Echo the persisted coach_state (BOTH lanes folded) — the FE writes
+        # this back into its local state, so it must reflect what's stored.
         return jsonify({
-            "status": "ok",
-            "session_id": session_id,
-            "snippet_id": snippet_id,
-            "saved": saved,
+            "coach_state": _coach_state_for(session_id, snippet_id),
         }), 200
     except Exception as e:
         logger.error(
@@ -7560,7 +7727,7 @@ def v2_coach_save_snippet(session_id, snippet_id):
         return jsonify({"code": "V2_ERROR", "error": "Failed to save snippet"}), 500
 
 
-@v2_bp.route("/admin/sessions/<session_id>/video", methods=["POST"])
+@v2_bp.route("/coach/sessions/<session_id>/video", methods=["POST"])
 @require_admin_or_coach
 def v2_coach_session_video(session_id):
     """④ willab coach feedback video for a session (B.3).

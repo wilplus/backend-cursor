@@ -8645,6 +8645,32 @@ class DatabaseService:
             )
             return []
 
+    def delete_training_label(self, session_id: str, snippet_id: str) -> bool:
+        """Clear one snippet's direction label (the coach unset it — the FE
+        sends direction_label: null). Best-effort; missing table → False."""
+        if not session_id or not snippet_id:
+            return False
+        try:
+            (
+                self.client.table("training_labels")
+                .delete()
+                .eq("session_id", session_id)
+                .eq("snippet_id", snippet_id)
+                .execute()
+            )
+            return True
+        except Exception as e:
+            err_low = str(e).lower()
+            if "training_labels" in err_low and (
+                "does not exist" in err_low or "pgrst" in err_low
+            ):
+                return False
+            logger.warning(
+                "delete_training_label failed sid=%s snip=%s err=%s",
+                session_id, snippet_id, e,
+            )
+            return False
+
     def list_review_queue(self, *, limit: int = 100) -> list[dict]:
         """willab coach review queue (§3.8/§14): willab Lab sessions sent
         to the coach (status pending_admin_review, source audit_upload)
@@ -8834,7 +8860,9 @@ class DatabaseService:
                 "snippet_id": snippet_id,
                 "note": base.get("note"),
                 "tag": base.get("tag"),
-                "surfaced": base.get("surfaced", True),
+                # Default false on first write — a snippet reaches the user
+                # only when the coach explicitly surfaces it (FE/spec default).
+                "surfaced": base.get("surfaced", False),
                 "when_context": base.get("when_context"),
                 "examples": base.get("examples") or [],
                 "updated_by": updated_by,
