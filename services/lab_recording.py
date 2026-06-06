@@ -35,7 +35,8 @@ logger = logging.getLogger(__name__)
 
 # Map services.audio_metrics output keys → the §3.3 Readout feature
 # names. (Some differ: speech_rate=wpm, mean_pause=pause_ms,
-# loudness_range=dynamic_db.)
+# loudness_range=dynamic_db.) NB: mean_pause is converted ms→seconds in
+# build_readout_features (the value, not the key).
 _FEATURE_MAP = {
     "f0_mean": "f0_mean",
     "f0_sd": "f0_sd",
@@ -86,12 +87,23 @@ def build_readout_features(metrics: Optional[dict]) -> dict:
 
     Always returns the full 11-key feature dict (every contract key
     present, value or None) so the FE renders one stable shape. Pure.
+
+    ``mean_pause`` is persisted as ``pause_ms`` (milliseconds) but emitted
+    here in SECONDS: the §5 Readout renders it as seconds and every other
+    feature is already a natural display unit, so this is the single
+    chokepoint (upload-time + re-read + admin readouts all flow through
+    here) that keeps the readout uniformly display-ready. None-safe;
+    storage stays in ms (no migration).
     """
     m = metrics or {}
-    return {
+    out = {
         out_key: m.get(src_key)
         for out_key, src_key in _FEATURE_MAP.items()
     }
+    mp = out.get("mean_pause")
+    if isinstance(mp, (int, float)):
+        out["mean_pause"] = round(mp / 1000.0, 2)
+    return out
 
 
 def build_readout_payload(
