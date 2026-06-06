@@ -7,12 +7,12 @@ on session N's row (split-sinks: immutable ai_draft + editable
 current); the soft-queue read in /v2/user/chat/first-question
 delivers it when N+1 starts.
 
-Why this lives alone (mirrors session_kpi_narrative)
-----------------------------------------------------
-The finalize chain already has 1.5 (kpi narrative) and 1.6
-(session predictions); this module is Step 1.7. One LLM call per
-finalize, one file per LLM purpose — keeps the surfaces auditable
-and lets us tune the prompt without ripping into a megamodule.
+Why this lives alone
+--------------------
+One LLM call per finalize, one file per LLM purpose — keeps the
+surfaces auditable and lets us tune the prompt without ripping into
+a megamodule. (The old per-purpose finalize siblings — kpi-narrative,
+session-predictions — were retired in the old-subsystem excision.)
 
 The brief flagged: "plan for ≥2 prompt iterations". The split-sinks
 design lets us A/B-eval: the immutable ai_draft is the LLM's
