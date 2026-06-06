@@ -26,14 +26,22 @@ from unittest.mock import MagicMock, patch
 # test_homework_regressions decides at import time whether the real
 # services.db is importable, and a leaked stub makes it run against
 # the fake instead of skipping. tearDownModule restores the state.
+_ORIG_SERVICES_DB = None
+
+
 def setUpModule():
+    global _ORIG_SERVICES_DB
+    _ORIG_SERVICES_DB = sys.modules.get("services.db")
     stub = types.ModuleType("services.db")
     stub.db = MagicMock()
     sys.modules["services.db"] = stub
 
 
 def tearDownModule():
-    sys.modules.pop("services.db", None)
+    if _ORIG_SERVICES_DB is not None:
+        sys.modules["services.db"] = _ORIG_SERVICES_DB
+    else:
+        sys.modules.pop("services.db", None)
 
 
 class ValidatorTests(unittest.TestCase):

@@ -22,7 +22,14 @@ from unittest.mock import MagicMock
 # modules: test_homework_regressions decides at import time whether
 # the real services.db is importable, and a leaked stub makes it run
 # against the fake instead of skipping. tearDownModule restores state.
+_ORIG_SERVICES_DB = None
+_ORIG_SUPABASE = None
+
+
 def setUpModule():
+    global _ORIG_SERVICES_DB, _ORIG_SUPABASE
+    _ORIG_SERVICES_DB = sys.modules.get("services.db")
+    _ORIG_SUPABASE = sys.modules.get("supabase")
     sys.modules["supabase"] = MagicMock()
     stub = types.ModuleType("services.db")
     stub.db = MagicMock()
@@ -30,8 +37,14 @@ def setUpModule():
 
 
 def tearDownModule():
-    sys.modules.pop("services.db", None)
-    sys.modules.pop("supabase", None)
+    if _ORIG_SERVICES_DB is not None:
+        sys.modules["services.db"] = _ORIG_SERVICES_DB
+    else:
+        sys.modules.pop("services.db", None)
+    if _ORIG_SUPABASE is not None:
+        sys.modules["supabase"] = _ORIG_SUPABASE
+    else:
+        sys.modules.pop("supabase", None)
 
 
 class WithVoiceRulesTests(unittest.TestCase):
