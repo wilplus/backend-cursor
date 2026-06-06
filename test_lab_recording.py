@@ -65,18 +65,18 @@ class FeatureMapTests(unittest.TestCase):
             "intensity_envelope": -1.2, "f0_mid_end_delta": -10.0,
         })
         self.assertEqual(out["speech_rate"], 145)     # ← wpm
-        self.assertEqual(out["mean_pause"], 0.22)      # ← pause_ms 220 → seconds
+        self.assertEqual(out["mean_pause"], 220)       # ← pause_ms (MS; FE converts)
         self.assertEqual(out["loudness_range"], 12.0)  # ← dynamic_db
         self.assertEqual(out["f0_mean"], 165.0)
         self.assertEqual(out["pause_ratio"], 0.32)
 
-    def test_mean_pause_converted_ms_to_seconds(self):
-        """mean_pause is stored as pause_ms (ms) but emitted in SECONDS so
-        the §5 Readout renders correctly (a 200ms pause = 0.2s, not 200s)."""
-        self.assertEqual(self._map({"pause_ms": 200})["mean_pause"], 0.2)
-        self.assertEqual(self._map({"pause_ms": 1500})["mean_pause"], 1.5)
-        self.assertEqual(self._map({"pause_ms": 1234.5})["mean_pause"], 1.23)
-        # None-safe: no pauses → None stays None (not 0.0).
+    def test_mean_pause_stays_milliseconds(self):
+        """Guard-rail — mean_pause is emitted as the raw pause_ms value in
+        MILLISECONDS; the FE converts ms→seconds at its mapper (FE PR #62).
+        A server-side /1000 here would double-convert (BE PR #32, reverted).
+        Do not 'fix' this to seconds without removing the FE-side divide."""
+        self.assertEqual(self._map({"pause_ms": 200})["mean_pause"], 200)
+        self.assertEqual(self._map({"pause_ms": 1500})["mean_pause"], 1500)
         self.assertIsNone(self._map({"pause_ms": None})["mean_pause"])
         self.assertIsNone(self._map({})["mean_pause"])
 
