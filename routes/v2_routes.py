@@ -5852,8 +5852,7 @@ def v2_user_get_results(session_id):
             # Phase 18.x split-sinks Option A — prefer the immutable
             # AI draft over the editable column so admin's narrative
             # edits don't leak to the user. Legacy fallback when the
-            # draft column is NULL. Canonical explanation:
-            # services.charisma_profile._build_narrative docstring.
+            # draft column is NULL.
             payload["ai_summary"] = (
                 session.get("session_kpi_narrative_ai_draft")
                 or session.get("ai_task_alignment_comment")
@@ -8126,7 +8125,6 @@ def v2_chat_session_state():
 
         # Phase 18.x split-sinks Option A — ai_summary surfaces the
         # immutable AI draft so admin edits don't leak to the user.
-        # See services.charisma_profile._build_narrative.
         return jsonify({
             "state": "REVIEW_LOOP",
             **base,
