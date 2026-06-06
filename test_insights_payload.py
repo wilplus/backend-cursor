@@ -115,6 +115,65 @@ class ValidateInsightsPayloadTests(unittest.TestCase):
         from services.insights_payload import VALID_TAGS
         self.assertEqual(set(VALID_TAGS), {"strong", "to_work_on"})
 
+    # ── PR-2: coach `when` + `examples` (optional, stable shape) ────
+
+    def test_absent_when_examples_normalize(self):
+        """A note that omits when/examples still gets the stable shape —
+        when=None, examples=[] — so the readout/FE 'hidden when absent'
+        round-trip is predictable and backward-compatible."""
+        out = self._v({"snippet_notes": [self._note()]})
+        n = out["snippet_notes"][0]
+        self.assertIsNone(n["when"])
+        self.assertEqual(n["examples"], [])
+
+    def test_when_examples_round_trip(self):
+        out = self._v({"snippet_notes": [self._note(
+            when="  when you opened the close  ",
+            examples=["  We should ship it.  ", "Let's go."],
+        )]})
+        n = out["snippet_notes"][0]
+        self.assertEqual(n["when"], "when you opened the close")
+        self.assertEqual(n["examples"], ["We should ship it.", "Let's go."])
+
+    def test_empty_when_collapses_to_none(self):
+        out = self._v({"snippet_notes": [self._note(when="   ")]})
+        self.assertIsNone(out["snippet_notes"][0]["when"])
+
+    def test_examples_drops_empty_strings(self):
+        out = self._v({"snippet_notes": [self._note(
+            examples=["keep", "  ", "", "also keep"],
+        )]})
+        self.assertEqual(out["snippet_notes"][0]["examples"], ["keep", "also keep"])
+
+    def test_when_non_string_rejected(self):
+        from services.insights_payload import InsightsPayloadError
+        with self.assertRaises(InsightsPayloadError) as cm:
+            self._v({"snippet_notes": [self._note(when=42)]})
+        self.assertIn("when", str(cm.exception))
+
+    def test_examples_non_list_rejected(self):
+        from services.insights_payload import InsightsPayloadError
+        with self.assertRaises(InsightsPayloadError) as cm:
+            self._v({"snippet_notes": [self._note(examples="not a list")]})
+        self.assertIn("examples", str(cm.exception))
+
+    def test_examples_non_string_item_rejected(self):
+        from services.insights_payload import InsightsPayloadError
+        with self.assertRaises(InsightsPayloadError):
+            self._v({"snippet_notes": [self._note(examples=["ok", 7])]})
+
+    def test_examples_over_cap_rejected(self):
+        from services.insights_payload import InsightsPayloadError, _MAX_EXAMPLES
+        with self.assertRaises(InsightsPayloadError):
+            self._v({"snippet_notes": [self._note(
+                examples=[f"e{i}" for i in range(_MAX_EXAMPLES + 1)],
+            )]})
+
+    def test_over_long_when_rejected(self):
+        from services.insights_payload import InsightsPayloadError, _MAX_WHEN_LEN
+        with self.assertRaises(InsightsPayloadError):
+            self._v({"snippet_notes": [self._note(when="x" * (_MAX_WHEN_LEN + 1))]})
+
 
 if __name__ == "__main__":
     unittest.main()

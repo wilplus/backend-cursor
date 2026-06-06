@@ -100,7 +100,30 @@ class ReadoutFromSessionTests(unittest.TestCase):
         # coach note folded onto snippet a, not b
         self.assertEqual(out["snippets"][0]["coach"]["note"], "best 8s")
         self.assertEqual(out["snippets"][0]["coach"]["tag"], "strong")
+        # PR-2 backward-compat: a note that predates when/examples folds
+        # with when=None / examples=[] so the FE hides them.
+        self.assertIsNone(out["snippets"][0]["coach"]["when"])
+        self.assertEqual(out["snippets"][0]["coach"]["examples"], [])
         self.assertNotIn("coach", out["snippets"][1])
+
+    def test_folds_coach_when_examples(self):
+        """PR-2 — when + examples on a snippet note round-trip into the
+        per-snippet coach object."""
+        session = {
+            "id": "sess1",
+            "insights_payload": {
+                "overall_message": None,
+                "snippet_notes": [{
+                    "snippet_id": "a", "note": "best 8s", "tag": "strong",
+                    "when": "right after the pause",
+                    "examples": ["We should ship it.", "Let's go."],
+                }],
+            },
+        }
+        out = self._build([_snippet("a")], session=session)
+        coach = out["snippets"][0]["coach"]
+        self.assertEqual(coach["when"], "right after the pause")
+        self.assertEqual(coach["examples"], ["We should ship it.", "Let's go."])
 
     def test_include_insights_false_skips_fold(self):
         session = {"id": "sess1", "insights_payload": {"overall_message": "x",

@@ -293,7 +293,8 @@ def build_readout_from_session(
 
     Post-publish (include_insights), folds the coach layer:
       - top-level ``insights_payload`` (overall_message + snippet_notes)
-      - per-snippet ``coach`` {note, tag} matched by snippet_id
+      - per-snippet ``coach`` {note, tag, when, examples} matched by
+        snippet_id (when=None / examples=[] when the note omits them)
 
     Owner-scoping is the caller's job (the route). Returns
     {"snippets": [...], "insights_payload"?: {...}}.
@@ -341,6 +342,14 @@ def build_readout_from_session(
             for snip in out_snips:
                 cn = notes_by_id.get(snip["id"])
                 if cn:
-                    snip["coach"] = {"note": cn.get("note"), "tag": cn.get("tag")}
+                    snip["coach"] = {
+                        "note": cn.get("note"),
+                        "tag": cn.get("tag"),
+                        # PR-2 — optional coach fields; None/[] when the
+                        # note omits them (FE hides when absent). Older
+                        # published payloads predate these keys → absent.
+                        "when": cn.get("when"),
+                        "examples": cn.get("examples") or [],
+                    }
 
     return result
