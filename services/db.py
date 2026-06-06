@@ -8795,6 +8795,137 @@ class DatabaseService:
             )
             return False
 
+    # ── willab beta — coach per-snippet DRAFT store (E1 / §B.3, USER lane) ─
+
+    def upsert_coach_snippet_draft(
+        self,
+        session_id: str,
+        snippet_id: str,
+        fields: dict,
+        updated_by: Optional[str] = None,
+    ) -> Optional[dict]:
+        """MERGE-upsert one coach per-snippet draft (note/tag/surfaced/
+        when_context/examples) on (session_id, snippet_id).
+
+        Only the keys present in ``fields`` change; the rest of the row is
+        preserved (read-modify-write, so partial per-field saves accumulate —
+        coach edits note now, tag later). E1 immediate-persist + resume.
+
+        USER lane (split-sink §2): this is a DRAFT — the published artifact is
+        assembled into v2_sessions.insights_payload at publish. Never the
+        private label lane. Best-effort: missing table → None.
+        """
+        if not session_id or not snippet_id:
+            return None
+        from datetime import datetime, timezone
+        now_iso = datetime.now(timezone.utc).isoformat()
+        try:
+            existing = (
+                self.client.table("coach_snippet_drafts")
+                .select("*")
+                .eq("session_id", session_id)
+                .eq("snippet_id", snippet_id)
+                .limit(1)
+                .execute()
+            )
+            base = (existing.data or [{}])[0] if getattr(existing, "data", None) else {}
+            row = {
+                "session_id": session_id,
+                "snippet_id": snippet_id,
+                "note": base.get("note"),
+                "tag": base.get("tag"),
+                "surfaced": base.get("surfaced", True),
+                "when_context": base.get("when_context"),
+                "examples": base.get("examples") or [],
+                "updated_by": updated_by,
+                "updated_at": now_iso,
+            }
+            for k in ("note", "tag", "surfaced", "when_context", "examples"):
+                if k in fields:
+                    row[k] = fields[k]
+            res = (
+                self.client.table("coach_snippet_drafts")
+                .upsert(row, on_conflict="session_id,snippet_id")
+                .execute()
+            )
+            return (res.data or [None])[0] if getattr(res, "data", None) else row
+        except Exception as e:
+            err_low = str(e).lower()
+            if "coach_snippet_drafts" in err_low and (
+                "does not exist" in err_low or "pgrst" in err_low
+            ):
+                logger.warning(
+                    "upsert_coach_snippet_draft: table missing (run "
+                    "migrations/add_coach_snippet_drafts_table.sql) sid=%s",
+                    session_id,
+                )
+                return None
+            logger.error(
+                "upsert_coach_snippet_draft failed sid=%s snip=%s err=%s",
+                session_id, snippet_id, e,
+            )
+            return None
+
+    def get_coach_snippet_drafts(self, session_id: str) -> list[dict]:
+        """All USER-lane per-snippet drafts for a session (resume read +
+        publish assembly). Empty on missing table / DB hiccup."""
+        if not session_id:
+            return []
+        try:
+            res = (
+                self.client.table("coach_snippet_drafts")
+                .select(
+                    "snippet_id, note, tag, surfaced, when_context, "
+                    "examples, updated_at"
+                )
+                .eq("session_id", session_id)
+                .execute()
+            )
+            return res.data or []
+        except Exception as e:
+            err_low = str(e).lower()
+            if "coach_snippet_drafts" in err_low and (
+                "does not exist" in err_low or "pgrst" in err_low
+            ):
+                return []
+            logger.warning(
+                "get_coach_snippet_drafts failed sid=%s err=%s", session_id, e,
+            )
+            return []
+
+    def set_session_coach_video_ref(
+        self,
+        session_id: str,
+        video_ref: Optional[str],
+    ) -> bool:
+        """Persist the coach feedback video URL on the session (B.3). Folded
+        into insights_payload at publish so it ships to the user. Best-effort:
+        missing column (migration pending) → False."""
+        if not session_id:
+            return False
+        try:
+            (
+                self.client.table("v2_sessions")
+                .update({"coach_video_ref": video_ref})
+                .eq("id", session_id)
+                .execute()
+            )
+            return True
+        except Exception as e:
+            err_low = str(e).lower()
+            if "coach_video_ref" in err_low or "pgrst204" in err_low:
+                logger.warning(
+                    "set_session_coach_video_ref: column missing (run "
+                    "migrations/add_coach_video_ref_to_v2_sessions.sql) sid=%s",
+                    session_id,
+                )
+                return False
+            logger.error(
+                "set_session_coach_video_ref failed sid=%s err=%s",
+                session_id, e,
+            )
+            return False
+
     # ── willab beta — user profile (design §2 / contract §3.1) ──────
     #
     # One-time self-declared {domain, goal} on user_settings (co-located

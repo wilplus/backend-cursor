@@ -6,7 +6,7 @@ Lounge, Library, profile). All /v2/admin/* require auth + admin.
 from flask import Blueprint, request, jsonify, make_response
 from config import Config
 from auth import require_auth, optional_auth
-from routes.admin import require_admin, is_admin
+from routes.admin import require_admin, is_admin, require_admin_or_coach, is_coach
 from services.db import db
 from services.email_service import email_service
 from services.copilot_video_pipeline import (
@@ -4353,6 +4353,47 @@ def v2_public_funnel_afterwards_video():
         return jsonify({"code": "V2_ERROR", "error": "Failed to fetch video"}), 500
 
 
+def _assemble_insights_from_drafts(session_id, overall_message):
+    """Build the USER-lane insights_payload from the coach's persisted
+    per-snippet drafts (the post-§F.4 simplified publish, which sends only
+    {overall_message, notify_client}). SURFACED + noted snippets become
+    snippet_notes; validate_insights_payload then enforces the library floor.
+    """
+    notes: list = []
+    for d in (db.get_coach_snippet_drafts(session_id) or []):
+        if not d.get("surfaced"):
+            continue
+        note = (d.get("note") or "").strip()
+        if not note:
+            continue
+        notes.append({
+            "snippet_id": str(d.get("snippet_id")),
+            "note": note,
+            "tag": d.get("tag"),
+            "when": d.get("when_context"),
+            "examples": d.get("examples") or [],
+        })
+    return {"overall_message": overall_message, "snippet_notes": notes}
+
+
+def _assemble_labels_from_store(session_id):
+    """Build the PRIVATE-lane labels list from training_labels persisted at
+    per-snippet save time (post-§F.4 simplified publish). Re-validated +
+    re-persisted idempotently by the contract."""
+    out: list = []
+    for lab in (db.get_training_labels(session_id) or []):
+        sid = lab.get("snippet_id")
+        if sid is None:
+            continue
+        out.append({
+            "snippet_id": str(sid),
+            "value": lab.get("value"),
+            "was_pre_filled": bool(lab.get("was_pre_filled", False)),
+            "was_overridden": bool(lab.get("was_overridden", False)),
+        })
+    return out
+
+
 def _apply_willab_publish_contract(session_id, body, actor_user_id):
     """Shared willab publish-contract gate (handoff §3.9 / §3.10).
 
@@ -4383,7 +4424,14 @@ def _apply_willab_publish_contract(session_id, body, actor_user_id):
     broken. Centralizing here means the two doors physically cannot
     drift again.
     """
-    if "insights_payload" not in body:
+    # Opt-in: a willab publish carries insights_payload (legacy/body mode —
+    # today's FE) OR notify_client (the post-§F.4 simplified publish, which
+    # sends just {overall_message, notify_client}; we ASSEMBLE both lanes from
+    # the persisted per-snippet drafts + training_labels). Legacy charisma
+    # publishes carry neither → undisturbed.
+    body_mode = "insights_payload" in body
+    assemble_mode = (not body_mode) and ("notify_client" in body)
+    if not (body_mode or assemble_mode):
         return None  # legacy publish — nothing to enforce
 
     from services.insights_payload import (
@@ -4393,26 +4441,51 @@ def _apply_willab_publish_contract(session_id, body, actor_user_id):
         TrainingLabelError, validate_publish_labels,
     )
 
+    if body_mode:
+        raw_insights = body.get("insights_payload")
+        raw_labels = body.get("labels")
+    else:
+        raw_insights = _assemble_insights_from_drafts(
+            session_id, body.get("overall_message"),
+        )
+        raw_labels = _assemble_labels_from_store(session_id)
+
     # ── Validate BOTH lanes BEFORE any persistence/side effect. ──
     try:
-        clean_insights = validate_insights_payload(body.get("insights_payload"))
+        clean_insights = validate_insights_payload(raw_insights)
     except InsightsPayloadError as ie:
         return jsonify({
             "code": "PUBLISH_CONTRACT_VIOLATION", "error": str(ie),
         }), 422
 
-    # §14 publish gate: every snippet must carry a direction label.
+    # §3.10/S.5: the publish floor is the LIBRARY floor (≥1 surfaced note+tag,
+    # enforced above), NOT label coverage. Labels are captured for training but
+    # are NEVER mandatory to publish → require_all=False. NB: this shared helper
+    # guards the (sole surviving) /internal publish door.
     try:
         _snips = db.get_snippets_by_session(session_id) or []
     except Exception:
         _snips = []
     required_ids = {str(s.get("id")) for s in _snips if s.get("id")}
     try:
-        clean_labels = validate_publish_labels(body.get("labels"), required_ids)
+        clean_labels = validate_publish_labels(
+            raw_labels, required_ids, require_all=False,
+        )
     except TrainingLabelError as le:
         return jsonify({
             "code": "PUBLISH_CONTRACT_VIOLATION", "error": str(le),
         }), 422
+
+    # Coach video (B.3): fold the session's coach_video_ref into the published
+    # insights so it ships to the user — both modes, AFTER validation (a coach
+    # artifact, not subject to the library floor). Absent column/value → no-op.
+    try:
+        _sess_for_video = db.v2_get_session_by_id(session_id) or {}
+        _video_ref = (_sess_for_video.get("coach_video_ref") or "").strip() or None
+        if _video_ref:
+            clean_insights["video_ref"] = _video_ref
+    except Exception:
+        pass
 
     # ── Persist both lanes (split-sink §2: separate stores). ──
     if not db.set_session_insights_payload(session_id, clean_insights):
@@ -4472,11 +4545,17 @@ def _apply_willab_publish_contract(session_id, body, actor_user_id):
 
 
 @v2_bp.route("/internal/publish-session-results", methods=["POST"])
-@require_admin
+@require_admin_or_coach
 def v2_internal_publish_session_results():
-    """Admin endpoint to publish (email) results for a completed session.
+    """willab publish door — the coach (or admin) publishes a session's
+    insights. (Re-gated to require_admin_or_coach: the old /admin/sessions/
+    <id>/publish door was excised, so this is the sole surviving publish path
+    that runs the shared _apply_willab_publish_contract; the FE's
+    publishWillabSession already POSTs here.)
 
-    Sends "Charisma Snippets Ready" email with CTA to /results page.
+    Sends the results-ready email with a CTA to /results — GATED on
+    notify_client (the in-app Lounge nudge always fires in the contract
+    helper; only the email is opt-out).
     """
     from services.email_service import send_email_resend
 
@@ -4630,6 +4709,22 @@ def v2_internal_publish_session_results():
         results_url = (
             f"{config.PUBLIC_FRONTEND_URL.rstrip('/')}/results/{session_id}"
         )
+
+        # notify_client gate (C): the in-app Lounge nudge already fired in the
+        # shared contract helper (always). Only the EMAIL is opt-out; default
+        # true preserves the pre-notify_client behaviour (FE sets first-publish
+        # = true, edit = false per S.2-G).
+        if not bool(body.get("notify_client", True)):
+            logger.info(
+                "publish-results: email suppressed (notify_client=false) "
+                "session_id=%s", session_id,
+            )
+            return jsonify({
+                "status": "ok",
+                "email_sent_to": None,
+                "results_url": results_url,
+                "email_suppressed": True,
+            }), 200
 
         send_result = send_publish_results_email(
             user_id=user_id,
@@ -6916,11 +7011,17 @@ def v2_user_get_profile():
 
     Response 200:
       { "domain": "<enum>" | null, "goal": "<str>" | null,
-        "domain_vocabulary_default": [ ...seed for domain... ] }
+        "domain_vocabulary_default": [ ...seed for domain... ],
+        "is_coach": bool }
 
     `domain_vocabulary_default` is the editable seed the Lab pre-fills
     `session_context.domain_vocabulary` from (empty list when no
     domain is set yet). Both domain + goal null pre-intake.
+
+    `is_coach` (F.9b) is RENDER-ONLY — it lets the FE show/hide the coach
+    surface. It is NEVER the authorization gate: every coach route is
+    server-enforced via require_admin_or_coach against the coach_users
+    allowlist. Append-only field; existing consumers ignore it.
     """
     try:
         from services.domains import default_domain_vocabulary
@@ -6933,6 +7034,7 @@ def v2_user_get_profile():
             "domain_vocabulary_default": default_domain_vocabulary(
                 profile.get("domain"),
             ),
+            "is_coach": is_coach(request.user_id),
         }), 200
     except Exception as e:
         logger.error(
@@ -7211,7 +7313,7 @@ def _pseudonymous_user_id(user_id):
 
 
 @v2_bp.route("/admin/review-queue", methods=["GET"])
-@require_admin
+@require_admin_or_coach
 def v2_admin_review_queue():
     """① Coach review queue — review_pending willab Lab sessions, newest
     sent first. LOW-IDENTIFIABILITY: keyed on pseudonymous_user_id, never
@@ -7239,7 +7341,7 @@ def v2_admin_review_queue():
 
 
 @v2_bp.route("/admin/sessions/<session_id>/readout", methods=["GET"])
-@require_admin
+@require_admin_or_coach
 def v2_admin_get_session_readout(session_id):
     """② Coach authoring Readout — the user §3.3 Readout PLUS the PRIVATE
     direction-label lane per snippet (split-sink §2: the user re-read
@@ -7311,6 +7413,231 @@ def v2_admin_get_session_readout(session_id):
         return jsonify({
             "code": "V2_ERROR", "error": "Failed to fetch coach readout",
         }), 500
+
+
+@v2_bp.route("/admin/sessions/<session_id>/snippets/<snippet_id>", methods=["POST"])
+@require_admin_or_coach
+def v2_coach_save_snippet(session_id, snippet_id):
+    """③ willab coach per-snippet immediate save (E1 / §B.3 / S.5).
+
+    Persists ONE snippet's coach authoring immediately, so reopening the
+    overlay resumes where the coach left off (no all-in-memory-until-publish
+    loss). Partial saves are first-class — send only the fields that changed.
+
+    Body (any subset)::
+        { "label"?:   "threat"|"ambiguous"|"challenge"   // or {value, was_pre_filled, was_overridden}
+          "note"?:    "..."        // empty/whitespace -> cleared
+          "tag"?:     "strong"|"to_work_on"
+          "surfaced"?: bool         // does this snippet reach the user?
+          "when"?:    "...", "examples"?: ["..."] }       // optional PR-2 fields
+
+    TWO-LANE write, NO cross-derivation (split-sink §2 / S.1):
+      * label -> PRIVATE training_labels (direction-v1). Never user-facing.
+      * note/tag/surfaced/when/examples -> USER coach_snippet_drafts (assembled
+        into insights_payload at publish). The tag is NOT derived from the
+        label, nor vice-versa — separate request fields, separate stores.
+
+    Idempotent on (session_id, snippet_id). NO publish-floor validation here
+    (drafts are partial; the floor is enforced at publish). Coach-facing only:
+    the response echoes the coach's own input — no salience/control score, no
+    real identity, never serialized to the user.
+
+    200 { status, session_id, snippet_id, saved: { label?, draft? } }
+    400 INVALID_INPUT · 404 SESSION_NOT_FOUND / SNIPPET_NOT_FOUND · 422 invalid value
+    """
+    from services.training_labels import VALID_VALUES, SCHEMA_VERSION
+    from services.insights_payload import VALID_TAGS
+
+    if not _is_valid_uuid(session_id) or not _is_valid_uuid(snippet_id):
+        return jsonify({
+            "code": "INVALID_INPUT", "error": "session_id and snippet_id must be UUIDs",
+        }), 400
+    try:
+        session = db.v2_get_session_by_id(session_id)
+        if not session:
+            return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found"}), 404
+
+        # Snippet must belong to THIS session (no cross-session writes).
+        snips = db.get_snippets_by_session(session_id) or []
+        if snippet_id not in {str(s.get("id")) for s in snips if s.get("id")}:
+            return jsonify({
+                "code": "SNIPPET_NOT_FOUND", "error": "Snippet not in this session",
+            }), 404
+
+        body = request.get_json(silent=True) or {}
+        saved: dict = {}
+
+        # ── PRIVATE lane — direction label (training_labels). ──
+        if "label" in body and body["label"] is not None:
+            lab = body["label"]
+            if isinstance(lab, dict):
+                value = lab.get("value")
+                was_pre_filled = bool(lab.get("was_pre_filled", False))
+                was_overridden = bool(lab.get("was_overridden", False))
+            else:
+                value = lab
+                was_pre_filled = False
+                was_overridden = False
+            if value not in VALID_VALUES:
+                return jsonify({
+                    "code": "INVALID_INPUT",
+                    "error": f"label.value: must be one of {', '.join(VALID_VALUES)}",
+                }), 422
+            db.upsert_training_labels(session_id, str(request.user_id), [{
+                "snippet_id": snippet_id,
+                "schema_version": SCHEMA_VERSION,
+                "value": value,
+                "was_pre_filled": was_pre_filled,
+                "was_overridden": was_overridden,
+            }])
+            saved["label"] = {"value": value}
+
+        # ── USER lane — note / tag / surfaced / when / examples (drafts). ──
+        draft_fields: dict = {}
+        if "note" in body:
+            note_raw = body.get("note")
+            if note_raw is not None and not isinstance(note_raw, str):
+                return jsonify({"code": "INVALID_INPUT", "error": "note: must be a string"}), 422
+            note = (note_raw or "").strip()
+            if len(note) > 2000:
+                return jsonify({"code": "INVALID_INPUT", "error": "note: 2000 chars max"}), 422
+            draft_fields["note"] = note or None
+        if "tag" in body:
+            tag = body.get("tag")
+            if tag is not None and tag not in VALID_TAGS:
+                return jsonify({
+                    "code": "INVALID_INPUT",
+                    "error": f"tag: must be one of {', '.join(VALID_TAGS)}",
+                }), 422
+            draft_fields["tag"] = tag
+        if "surfaced" in body:
+            surfaced = body.get("surfaced")
+            if not isinstance(surfaced, bool):
+                return jsonify({"code": "INVALID_INPUT", "error": "surfaced: must be a boolean"}), 422
+            draft_fields["surfaced"] = surfaced
+        if "when" in body:
+            when_raw = body.get("when")
+            if when_raw is not None and not isinstance(when_raw, str):
+                return jsonify({"code": "INVALID_INPUT", "error": "when: must be a string"}), 422
+            when = (when_raw or "").strip()
+            if len(when) > 1000:
+                return jsonify({"code": "INVALID_INPUT", "error": "when: 1000 chars max"}), 422
+            draft_fields["when_context"] = when or None
+        if "examples" in body:
+            ex_raw = body.get("examples")
+            if ex_raw is None:
+                draft_fields["examples"] = []
+            elif not isinstance(ex_raw, list):
+                return jsonify({"code": "INVALID_INPUT", "error": "examples: must be a list"}), 422
+            else:
+                cleaned_ex = []
+                for ex in ex_raw[:10]:
+                    if isinstance(ex, str) and ex.strip():
+                        cleaned_ex.append(ex.strip()[:500])
+                draft_fields["examples"] = cleaned_ex
+
+        if draft_fields:
+            row = db.upsert_coach_snippet_draft(
+                session_id, snippet_id, draft_fields, updated_by=str(request.user_id),
+            )
+            saved["draft"] = {
+                k: (row.get(k) if row else draft_fields.get(k))
+                for k in draft_fields
+            }
+
+        return jsonify({
+            "status": "ok",
+            "session_id": session_id,
+            "snippet_id": snippet_id,
+            "saved": saved,
+        }), 200
+    except Exception as e:
+        logger.error(
+            "coach/save-snippet failed sid=%s snip=%s err=%s",
+            session_id, snippet_id, e, exc_info=True,
+        )
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to save snippet"}), 500
+
+
+@v2_bp.route("/admin/sessions/<session_id>/video", methods=["POST"])
+@require_admin_or_coach
+def v2_coach_session_video(session_id):
+    """④ willab coach feedback video for a session (B.3).
+
+    REUSES the existing coach video transport/storage (services/coach_video_
+    storage — same bucket + R2/Supabase path the funnel afterwards-video +
+    feedback videos use; no new infra/bucket/transcoding). Stores the file,
+    persists coach_video_ref on the session; the publish contract folds it into
+    insights_payload so it ships to the user with the insights. Re-upload
+    overwrites (deterministic storage key).
+
+    multipart/form-data: video_file (.mp4/.mov/.webm/.m4v).
+    200 { status, session_id, video_ref } · 400/404/413/415/502
+    """
+    from services.coach_video_storage import (
+        coach_media_public_url, put_coach_object_bytes,
+    )
+    import os
+
+    if not _is_valid_uuid(session_id):
+        return jsonify({"code": "INVALID_INPUT", "error": "session_id must be a UUID"}), 400
+    try:
+        session = db.v2_get_session_by_id(session_id)
+        if not session:
+            return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found"}), 404
+
+        max_video_mb = max(1, int(getattr(config, "COACH_FEEDBACK_VIDEO_MAX_MB", 100)))
+        max_video_bytes = max_video_mb * 1024 * 1024
+        content_length = request.content_length or 0
+        if content_length and content_length > max_video_bytes:
+            return jsonify({
+                "code": "PAYLOAD_TOO_LARGE",
+                "error": f"Video is too large. Max allowed is {max_video_mb}MB.",
+            }), 413
+
+        video_file = request.files.get("video_file")
+        if video_file is None or not (video_file.filename or "").strip():
+            return jsonify({"code": "INVALID_INPUT", "error": "video_file is required"}), 400
+
+        safe_name = secure_filename(video_file.filename or "")
+        ext = os.path.splitext(safe_name)[1].lower()
+        if ext not in {".mp4", ".mov", ".webm", ".m4v"}:
+            return jsonify({
+                "code": "INVALID_VIDEO_FORMAT",
+                "error": "Supported formats: .mp4, .mov, .webm, .m4v",
+            }), 415
+
+        video_bytes = video_file.read() or b""
+        if not video_bytes:
+            return jsonify({"code": "INVALID_INPUT", "error": "video_file is empty"}), 400
+        if len(video_bytes) > max_video_bytes:
+            return jsonify({
+                "code": "PAYLOAD_TOO_LARGE",
+                "error": f"Video is too large. Max allowed is {max_video_mb}MB.",
+            }), 413
+
+        storage_key = f"coach-feedback/{session_id}{ext}"
+        bucket = getattr(config, "COACH_FEEDBACK_VIDEO_BUCKET", "coach_feedback_videos")
+        try:
+            put_coach_object_bytes(
+                bucket, storage_key, video_bytes,
+                video_file.content_type or "video/mp4",
+            )
+        except Exception as upload_err:
+            logger.error("coach video upload failed sid=%s err=%s", session_id, upload_err)
+            return jsonify({"code": "UPLOAD_FAILED", "error": "Failed to upload video to storage."}), 502
+
+        video_ref = coach_media_public_url(storage_key)
+        db.set_session_coach_video_ref(session_id, video_ref)
+        logger.info("coach video stored sid=%s key=%s", session_id, storage_key)
+        return jsonify({
+            "status": "ok", "session_id": session_id, "video_ref": video_ref,
+        }), 200
+    except Exception as e:
+        logger.error("coach/session-video failed sid=%s err=%s", session_id, e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to store coach video"}), 500
 
 
 # ── willab beta — Lab upload handler (design §4, contract §3.3) ──────

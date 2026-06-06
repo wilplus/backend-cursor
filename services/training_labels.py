@@ -2,8 +2,13 @@
 
 The private classifier-training lane. The coach assigns each snippet a
 direction appraisal (threat|ambiguous|challenge); at publish the labels
-are captured here. The publish gate (§3.10/§14) requires EVERY snippet
-labeled.
+are captured here.
+
+PUBLISH GATE (§3.10 / S.5, relaxed): labels are NEVER mandatory to publish
+— the coach targets all 10 but the only publish floor is the LIBRARY floor
+(≥1 surfaced note+tag, enforced in insights_payload). So the willab publish
+contract calls this with require_all=False. The strict every-snippet gate
+remains available via require_all=True (the default) for any other caller.
 
 PRIVATE (split-sink §2 / AC-9): these never reach the user, never enter
 insights_payload, and the strong/to-work-on tag is never derived from
@@ -30,12 +35,15 @@ class TrainingLabelError(ValueError):
 def validate_publish_labels(
     labels: Any,
     required_snippet_ids: set,
+    require_all: bool = True,
 ) -> list[dict]:
     """Validate the publish body's labels against the session's snippets.
 
-    Enforces the §14 publish gate: EVERY snippet in
-    ``required_snippet_ids`` must have a valid label, with no labels for
-    snippets outside the session.
+    Validates each supplied label (known snippet, valid value, no dupes).
+    When ``require_all`` is True (default) it ALSO enforces the strict §14
+    gate — every snippet in ``required_snippet_ids`` must be labeled. The
+    willab publish contract passes require_all=False (S.5: labels never
+    mandatory; the library floor is the only publish gate).
 
     Each label entry: {snippet_id, value ∈ VALID_VALUES,
     was_pre_filled?, was_overridden?}. Returns cleaned rows ready for
@@ -87,12 +95,15 @@ def validate_publish_labels(
             "was_overridden": was_overridden,
         })
 
-    # The §14 gate: every snippet must be labeled.
-    missing = required_snippet_ids - seen
-    if missing:
-        raise TrainingLabelError(
-            f"labels: every snippet must be labeled — {len(missing)} "
-            f"unlabeled (e.g. {sorted(missing)[0]})"
-        )
+    # The strict §14 gate (opt-in): every snippet must be labeled. The willab
+    # publish path passes require_all=False — labels are captured but never
+    # block publish (S.5).
+    if require_all:
+        missing = required_snippet_ids - seen
+        if missing:
+            raise TrainingLabelError(
+                f"labels: every snippet must be labeled — {len(missing)} "
+                f"unlabeled (e.g. {sorted(missing)[0]})"
+            )
 
     return cleaned
