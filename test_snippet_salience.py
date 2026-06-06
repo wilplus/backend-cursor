@@ -107,5 +107,119 @@ class FenceGuardTests(unittest.TestCase):
         self.assertTrue(any(s is _HOT for s in sel))
 
 
+# ── Phase 1 — directional control composite + extreme split ────────
+from services.snippet_salience import (  # noqa: E402
+    score_control_direction,
+    select_extremes_by_control,
+    _CONTROL_COMPONENTS,
+)
+
+
+def _ctrl(start_ms, *, f0_sd, pause_regularity, dynamic_db, voiced_ratio):
+    return {
+        "start_ms": start_ms,
+        "metrics": {
+            "f0_sd": f0_sd, "pause_regularity": pause_regularity,
+            "dynamic_db": dynamic_db, "voiced_ratio": voiced_ratio,
+        },
+    }
+
+
+# Controlled (pro-effective): high variability + regular pauses + wide
+# dynamics + full voice. Shaky: the opposite on all four.
+_CONTROLLED = _ctrl(0, f0_sd=40, pause_regularity=0.9, dynamic_db=18, voiced_ratio=0.9)
+_SHAKY = _ctrl(1000, f0_sd=5, pause_regularity=0.1, dynamic_db=4, voiced_ratio=0.4)
+
+
+def _filler_pool(n, base_ms=5000):
+    """n middling candidates so the pool exceeds top_n and a real split
+    happens."""
+    return [
+        _ctrl(base_ms + i * 1000, f0_sd=15 + i, pause_regularity=0.5,
+              dynamic_db=9, voiced_ratio=0.6)
+        for i in range(n)
+    ]
+
+
+class ControlCompositeTests(unittest.TestCase):
+    def test_weights_sum_to_one(self):
+        self.assertAlmostEqual(
+            sum(w for _, w in _CONTROL_COMPONENTS), 1.0, places=9,
+        )
+
+    def test_four_monotonic_components(self):
+        keys = [k for k, _ in _CONTROL_COMPONENTS]
+        self.assertEqual(
+            set(keys), {"f0_sd", "pause_regularity", "dynamic_db", "voiced_ratio"},
+        )
+        # The non-monotonic features must NOT be in the directional axis.
+        for excluded in ("speech_rate", "wpm", "f0_slope",
+                         "f0_mid_end_delta", "f0_mean"):
+            self.assertNotIn(excluded, keys)
+
+    def test_controlled_outscores_shaky(self):
+        pool = [_CONTROLLED, _SHAKY] + _filler_pool(8)
+        scores = score_control_direction(pool)
+        self.assertGreater(scores[0], scores[1])
+
+    def test_within_recording_zscore_when_no_baseline(self):
+        """No baseline → z-scored within the pool; a uniform column
+        contributes nothing (no signal), never crashes."""
+        flat_pool = [_ctrl(i * 1000, f0_sd=10, pause_regularity=0.5,
+                           dynamic_db=10, voiced_ratio=0.6) for i in range(5)]
+        scores = score_control_direction(flat_pool)
+        self.assertTrue(all(abs(s) < 1e-9 for s in scores))
+
+    def test_baseline_hook_accepted(self):
+        """The ISB baseline hook ({feature:(mean,sd)}) is accepted and
+        shifts scoring relative to the speaker, not the pool."""
+        pool = [_CONTROLLED, _SHAKY] + _filler_pool(8)
+        base = {"f0_sd": (10.0, 5.0), "pause_regularity": (0.5, 0.2),
+                "dynamic_db": (8.0, 3.0), "voiced_ratio": (0.6, 0.15)}
+        scores = score_control_direction(pool, baseline=base)
+        self.assertEqual(len(scores), len(pool))
+        self.assertGreater(scores[0], scores[1])
+
+
+class ExtremeSplitTests(unittest.TestCase):
+    def test_surfaces_both_extremes(self):
+        pool = [_CONTROLLED, _SHAKY] + _filler_pool(10)  # 12 > 10
+        sel = select_extremes_by_control(pool, top_n=10)
+        ids = [s["start_ms"] for s in sel]
+        self.assertEqual(len(sel), 10)
+        self.assertIn(0, ids)      # clearest GOOD surfaced
+        self.assertIn(1000, ids)   # clearest SHAKY surfaced
+
+    def test_output_chronological(self):
+        pool = [_CONTROLLED, _SHAKY] + _filler_pool(10)
+        sel = select_extremes_by_control(pool, top_n=10)
+        ids = [s["start_ms"] for s in sel]
+        self.assertEqual(ids, sorted(ids))
+
+    def test_pool_at_or_below_cap_returns_all(self):
+        pool = [_CONTROLLED, _SHAKY] + _filler_pool(4)  # 6 <= 10
+        sel = select_extremes_by_control(pool, top_n=10)
+        self.assertEqual(len(sel), 6)
+
+    def test_never_exceeds_cap(self):
+        pool = [_CONTROLLED, _SHAKY] + _filler_pool(30)  # 32 > 10
+        sel = select_extremes_by_control(pool, top_n=10)
+        self.assertEqual(len(sel), 10)
+
+
+class ControlFenceGuardTests(unittest.TestCase):
+    """Control composite + direction are transient — never on outputs."""
+
+    def test_no_control_or_direction_on_returned_dicts(self):
+        pool = [_CONTROLLED, _SHAKY] + _filler_pool(10)
+        sel = select_extremes_by_control(pool, top_n=10)
+        for s in sel:
+            self.assertEqual(set(s.keys()), {"start_ms", "metrics"})
+            for banned in ("control", "control_score", "direction",
+                           "likely_strong", "likely_shaky", "salience"):
+                self.assertNotIn(banned, s)
+                self.assertNotIn(banned, s["metrics"])
+
+
 if __name__ == "__main__":
     unittest.main()

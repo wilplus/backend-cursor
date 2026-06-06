@@ -220,3 +220,160 @@ def _chronological(items: list[dict]) -> list[dict]:
     if all(isinstance(it.get("start_ms"), (int, float)) for it in items):
         return sorted(items, key=lambda it: it["start_ms"])
     return list(items)
+
+
+# ══════════════════════════════════════════════════════════════════
+# Phase 1 — DIRECTIONAL salience: the control/polish composite + the
+# extreme-split selection that surfaces the clearest GOODS and the
+# clearest SHAKIES (not just the 10 most activated).
+#
+# Two axes:
+#   ACTIVATION (above, rank_candidates_by_salience) → the notable pool.
+#   CONTROL    (here)                               → controlled (good)
+#                                                     vs uncontrolled
+#                                                     (shaky) WITHIN that
+#                                                     pool.
+# Same activation, opposite control = exactly what the coach hunts.
+#
+# DIRECTIONAL PRIORS, NOT VALIDATED THRESHOLDS. Effects in the
+# literature are modest, genre-dependent, learnable-not-trait. This
+# biases WHICH snippets surface; the coach makes every verdict. It is a
+# stand-in until the Phase-2 trained model exists.
+# ══════════════════════════════════════════════════════════════════
+
+
+# How many "notable" (activated) candidates to keep before the control
+# split. The activation gate keeps the top-N by activation salience;
+# flat/boring/low-arousal windows drop out (neither coachably-good nor
+# coachably-shaky). The control split then picks the extremes of THIS
+# pool.
+NOTABLE_POOL_SIZE = 24
+
+
+# ── Control/polish composite (provisional-literature-tilted) ──────
+#
+# Pro-effective sign: pro-effective speech = arousal WITH control.
+# Four clean, MONOTONIC, well-supported features (baseline-relative).
+# All "high" = pro-effective (controlled). Lower = shakier.
+#   f0_sd            higher pitch variability — strongest, most
+#                    consistent charisma/impact marker
+#   pause_regularity more regular/strategic pausing = control;
+#                    fragmented = shaky (threat)
+#   dynamic_db       wider loudness range / energy dynamics
+#   voiced_ratio     fuller voice / cleaner articulation (weaker support)
+#
+# NON-MONOTONIC features deliberately NOT in this axis (they stay in the
+# activation salience only; using their *direction* honestly needs
+# Phase-2 calibration): speech_rate (inverted-U), f0_slope (magnitude
+# is activation; direction needs tuning), f0_mid_end_delta (sustain vs
+# collapse is non-monotonic), f0_mean (pure level/arousal),
+# mean_pause / pause_ratio (amount, not regularity).
+#
+# provisional-literature-tilted, NOT pre-registered. Tune later on a
+# SEPARATE dataset — never Study A's set, never the set they're
+# evaluated on. No tuning machinery here; these are constants.
+_CONTROL_COMPONENTS: list[tuple[str, float]] = [
+    ("f0_sd", 0.30),
+    ("pause_regularity", 0.30),
+    ("dynamic_db", 0.25),   # loudness_range
+    ("voiced_ratio", 0.15),
+]
+# (weights sum to 1.0)
+
+
+def _zscore_column(
+    vals: list[Optional[float]],
+    baseline: Optional[tuple[float, float]],
+) -> list[float]:
+    """Z-score a column. ``baseline`` = (mean, sd) of the speaker's ISB
+    when available; else None → z-score WITHIN this pool (cold start,
+    §5). None entries → 0.0 (neutral). Zero/absent SD → all 0.0 (no
+    signal). Higher already = more controlled (all components are
+    "high" = pro-effective)."""
+    present = [v for v in vals if isinstance(v, (int, float))]
+    if baseline is not None:
+        mean, sd = baseline
+    elif present:
+        mean = sum(present) / len(present)
+        var = sum((v - mean) ** 2 for v in present) / len(present)
+        sd = var ** 0.5
+    else:
+        return [0.0] * len(vals)
+    if not sd or sd <= 0:
+        return [0.0] * len(vals)
+    return [
+        ((float(v) - mean) / sd) if isinstance(v, (int, float)) else 0.0
+        for v in vals
+    ]
+
+
+def score_control_direction(
+    candidates: list[dict],
+    *,
+    baseline: Optional[dict] = None,
+    metrics_key: str = "metrics",
+) -> list[float]:
+    """Per-candidate CONTROL composite (higher = more controlled /
+    pro-effective; lower = shakier). Parallel float list, NEVER attached
+    to the candidate dicts (fence/AC-9 — transient).
+
+    ``baseline``: optional ``{feature: (mean, sd)}`` from the speaker's
+    ISB. When None (no ISB yet — current state), z-scores are computed
+    WITHIN this pool (cold start, §5). The signature carries the hook so
+    baseline-relative drops in unchanged once the ISB store exists.
+    """
+    n = len(candidates)
+    if n == 0:
+        return []
+    scores = [0.0] * n
+    for key, weight in _CONTROL_COMPONENTS:
+        col = [(c.get(metrics_key) or {}).get(key) for c in candidates]
+        base = (baseline or {}).get(key)
+        z = _zscore_column(col, base)
+        for i, x in enumerate(z):
+            scores[i] += weight * x
+    return scores
+
+
+def select_extremes_by_control(
+    notable: list[dict],
+    *,
+    top_n: int,
+    baseline: Optional[dict] = None,
+    metrics_key: str = "metrics",
+) -> list[dict]:
+    """From the notable (activated) pool, surface the clearest GOODS and
+    SHAKIES: the top ``top_n//2`` by control + the bottom ``top_n//2``.
+
+    Returns ≤ ``top_n`` of the SAME dicts, CHRONOLOGICAL. The control
+    score is transient — computed here, used to split, DISCARDED; it is
+    never attached to a returned dict (fence/AC-9).
+
+    Edge handling (§3): if the notable pool ≤ top_n, surface all of it
+    (no split needed). Top/bottom halves are disjoint whenever the pool
+    > top_n, so de-dup is implicit; a set-union guards the boundary.
+    """
+    m = len(notable)
+    n = max(1, int(top_n))
+    if m <= n:
+        # Nothing to split away — the whole notable pool fits.
+        return _chronological(notable)
+
+    control = score_control_direction(
+        notable, baseline=baseline, metrics_key=metrics_key,
+    )
+    # Rank by control desc (stable tie-break on index → deterministic).
+    order = sorted(range(m), key=lambda i: (-control[i], i))
+    half = n // 2
+    top_idx = order[:half]                 # most controlled (likely-strong)
+    bottom_idx = order[-(n - half):]       # least controlled (likely-shaky)
+    keep = set(top_idx) | set(bottom_idx)  # union de-dups any overlap
+    selected = [notable[i] for i in range(m) if i in keep]
+
+    logger.info(
+        "snippet_salience.control_split pool=%d top_n=%d kept=%d "
+        "(provisional-literature-tilted weights, %s baseline)",
+        m, n, len(selected), "ISB" if baseline else "within-recording",
+    )
+    # IMPORTANT (fence/AC-9): control scores NOT attached to outputs.
+    return _chronological(selected)

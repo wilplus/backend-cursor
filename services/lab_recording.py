@@ -161,7 +161,8 @@ def process_lab_recording(
         SEGMENT_MAX_SNIPPETS,
     )
     from services.snippet_salience import (
-        rank_candidates_by_salience, SALIENCE_CANDIDATE_POOL,
+        rank_candidates_by_salience, select_extremes_by_control,
+        SALIENCE_CANDIDATE_POOL, NOTABLE_POOL_SIZE,
     )
     from services.snippet_stickiness import score_snippets_stickiness
     from services.db import db
@@ -218,15 +219,34 @@ def process_lab_recording(
             "metrics": metrics, "transcript": transcript,
         })
 
-    # ── Level 1 SALIENCE SELECTION (replaces naive duration ranking).
-    # Pick the top-N (= existing per-session cap SEGMENT_MAX_SNIPPETS)
-    # most acoustically-salient candidates over the SAME 11-feature
-    # vector. The salience score is transient — never persisted, never
-    # user-facing (split-sink / AC-9); see services/snippet_salience.py
-    # for the methodological fence. Output is ≤ cap, chronological, so
-    # the snippet-count contract (§3.3 / FE ~10) is preserved.
-    prelim: list = rank_candidates_by_salience(
-        candidates, top_n=SEGMENT_MAX_SNIPPETS,
+    # ── SELECTION = two axes (Phase 1 directional re-ranker) ──────────
+    # Goal: the coach's ≤10 should contain the clearest GOODS and the
+    # clearest SHAKIES, not just the 10 most activated.
+    #
+    #  (a) ACTIVATION GATE — keep the notable pool (top NOTABLE_POOL_SIZE
+    #      by acoustic activation). Flat/boring/low-arousal windows drop;
+    #      they're neither coachably-good nor coachably-shaky.
+    #  (b) CONTROL SPLIT — within that pool, surface the top-N/2 by the
+    #      control/polish composite (likely-strong) + bottom-N/2
+    #      (likely-shaky), N = SEGMENT_MAX_SNIPPETS.
+    #
+    # Both the activation salience and the control composite are
+    # TRANSIENT — computed, used to select, discarded. Neither score nor
+    # any likely-strong/shaky DIRECTION is persisted, serialized, shown
+    # to the coach, or made the training label (split-sink / AC-9 / the
+    # §6 label-hygiene decision: coach labels blind). The persisted
+    # snippet still carries the full 11-feature vector unchanged — that
+    # vector is the future bridge to the Phase-2 model, so it stays.
+    #
+    # baseline=None → cold-start within-recording z-score (no per-speaker
+    # acoustic ISB exists yet; the hook upgrades to baseline-relative
+    # when it does — §5). Output ≤ cap, chronological → §3.3 / FE ~10
+    # count unchanged.
+    notable = rank_candidates_by_salience(
+        candidates, top_n=NOTABLE_POOL_SIZE,
+    )
+    prelim: list = select_extremes_by_control(
+        notable, top_n=SEGMENT_MAX_SNIPPETS, baseline=None,
     )
     for idx, p in enumerate(prelim, start=1):
         p["idx"] = idx
