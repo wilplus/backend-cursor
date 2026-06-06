@@ -91,29 +91,39 @@ class Case:
 CASES: list[Case] = [
     Case(
         id="MDR-01",
-        category="Explicit audio upload request",
+        category="Explicit upload request (MVP: uploads OFF → redirect to record)",
         user_message=(
             "I have a 2-minute voice memo I want to send for analysis "
             "— how do I upload it?"
         ),
         rubric={
-            # show_upload_ui IS the contract for this case — the
-            # frontend hides/reveals the affordance on this flag.
-            # The answer wording is a minor detail; the structural
-            # signal is what makes the user's next click work.
-            "must_set_show_upload_ui": True,
-            # No semantic_intent — structural check is authoritative.
+            # MVP: file upload is disabled. The bot must NOT promise a
+            # file picker — show_upload_ui stays FALSE — and must
+            # redirect the user to in-app recording (RULE G).
+            "must_set_show_upload_ui": False,
+            "must_not_mention_substrings": ["select your file"],
+            "semantic_intent": (
+                "Tells the user uploads aren't available yet and "
+                "redirects them to record in-app (the official "
+                "recording button); does NOT promise a file upload "
+                "or a file picker."
+            ),
         },
     ),
     Case(
         id="MDR-02",
-        category="Implicit upload intent",
+        category="Implicit upload intent (MVP: uploads OFF → redirect to record)",
         user_message=(
             "I have a recording I'd like to send you to take a look at"
         ),
         rubric={
-            "must_set_show_upload_ui": True,
-            # No semantic_intent — same reasoning as MDR-01.
+            "must_set_show_upload_ui": False,
+            "must_not_mention_substrings": ["select your file"],
+            "semantic_intent": (
+                "Recognises the user wants to hand over a file, tells "
+                "them uploads aren't available yet, and redirects to "
+                "recording in-app. No file-picker promise."
+            ),
         },
     ),
     Case(
@@ -130,17 +140,25 @@ CASES: list[Case] = [
     ),
     Case(
         id="MDR-04",
-        category="Out-of-scope capability (video / camera)",
+        category="Out-of-scope capability (camera — hard decline)",
+        # NOTE: dropped the old "analyze my video recording" phrasing.
+        # With uploads OFF (RULE G redirects upload-intent to
+        # recording), "analyze my video recording" is now an UPLOAD
+        # request → redirect to record, NOT a flat video-capability
+        # decline. So testing it as `must_decline_capability:["video"]`
+        # asserts behavior the product no longer has. The camera ask is
+        # the clean, unambiguous hard-capability boundary (no
+        # device-sensor access ever), so MDR-04 now tests that.
         user_message=(
-            "Can you also analyze my video recording or use my "
-            "camera to watch me speak?"
+            "Can you use my phone's camera to watch me speak "
+            "while I present?"
         ),
         rubric={
             "must_set_show_upload_ui": False,
-            "must_decline_capability": ["video", "camera"],
+            "must_decline_capability": ["camera"],
             "semantic_intent": (
-                "Declines video and camera analysis and points the "
-                "user back toward audio."
+                "Declines camera access (no device-sensor access) and "
+                "points the user back toward voice."
             ),
         },
     ),
@@ -273,20 +291,23 @@ CASES: list[Case] = [
     ),
     Case(
         id="MDR-12",
-        category="Record + upload mention — flags must stay mutually exclusive",
+        category="Record + upload mention (MVP: uploads OFF → record path only)",
         user_message=(
             "I'd love to just record it right now in the chat — "
             "though if that doesn't work I can also upload my "
             "existing file."
         ),
         rubric={
-            # Either flag may be true (model picks one) but NOT
-            # both. Enforce mutex deterministically; semantic side
-            # only checks the answer is coherent.
+            # MVP: upload is disabled, so show_upload_ui must be
+            # FALSE regardless of the upload mention; the bot steers
+            # to recording. The mutex still holds trivially (upload
+            # never true). semantic side only checks coherence.
+            "must_set_show_upload_ui": False,
             "must_enforce_record_upload_mutex": True,
             "semantic_intent": (
-                "Picks one path (record or upload) and confirms it "
-                "coherently; does not contradict itself."
+                "Steers to recording in-app; does NOT offer file "
+                "upload (uploads aren't available yet) and does not "
+                "contradict itself."
             ),
         },
     ),
