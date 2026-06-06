@@ -182,7 +182,40 @@ def require_auth(f):
             error_msg = str(e)
             logger.warning(f"Authentication failed: {error_msg}")
             return jsonify({"code": "UNAUTHORIZED", "error": error_msg}), 401
-        
+
         return f(*args, **kwargs)
-    
+
+    return decorated_function
+
+
+def optional_auth(f):
+    """Decorator for endpoints that work signed-in OR anonymous.
+
+    The willab Lounge is an unsigned-home (design §3): the Lounge bot /
+    librarian chat must answer without a session. When a valid Bearer
+    token is present we attach ``request.user_id`` + ``token_payload``
+    exactly like ``require_auth``; when the header is missing OR the
+    token is invalid/expired we set ``request.user_id = None`` and
+    proceed — this NEVER returns 401. Handlers MUST treat
+    ``user_id is None`` as anonymous (no per-user reads/writes).
+    """
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        request.user_id = None
+        request.token_payload = None
+        auth_header = request.headers.get("Authorization")
+        if auth_header and auth_header.startswith("Bearer "):
+            token = auth_header.replace("Bearer ", "").strip()
+            if token:
+                try:
+                    payload = verify_supabase_token(token)
+                    uid = payload.get("sub")
+                    if uid:
+                        request.user_id = uid
+                        request.token_payload = payload
+                except Exception as e:
+                    # Lapsed/invalid token → treat as anonymous, never block.
+                    logger.info(f"optional_auth: anonymous (token rejected: {e})")
+        return f(*args, **kwargs)
+
     return decorated_function

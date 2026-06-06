@@ -5,7 +5,7 @@ Lounge, Library, profile). All /v2/admin/* require auth + admin.
 """
 from flask import Blueprint, request, jsonify, make_response
 from config import Config
-from auth import require_auth
+from auth import require_auth, optional_auth
 from routes.admin import require_admin, is_admin
 from services.db import db
 from services.email_service import email_service
@@ -3340,7 +3340,7 @@ def v2_chat_session_state():
 
 
 @v2_bp.route("/chat/query", methods=["POST"])
-@require_auth
+@optional_auth
 def v2_chat_query():
     """Unified chat orchestrator for the /chat page.
 
@@ -3385,12 +3385,12 @@ def v2_chat_query():
       • Per-turn signals — frontend must NOT cache them across
         turns; each answer carries the current state.
 
-    Why @require_auth: the spec says this is the "after signup"
-    surface. Pre-signup users get the on-rails interview flow;
-    once they sign up they can ask freeform questions and we want
-    the request to carry their identity for future per-user
-    analytics on which topics get asked. Anonymous probing of
-    the Q&A is out-of-scope for v1.
+    Why @optional_auth: the willab Lounge is an unsigned-home
+    (design §3) — the Lounge bot / librarian must answer without a
+    session. Signed-in requests carry request.user_id (so the
+    strong-sides library + admin notes layer in); anonymous requests
+    get request.user_id=None and the general bot (no per-user reads/
+    writes, no DSP attribution). NEVER 401s — signed-out chat works.
 
     ─────────────────────────────────────────────────────────────────
     Phase Stress-Contrast (BE-3) — dual-mode body parsing
@@ -3481,30 +3481,34 @@ def v2_chat_query():
         # Pull admin's private notes for this user → don't-ask block
         # in the FAQ chat system prompt. @require_auth guarantees a
         # user_id; best-effort on the DB read.
+        # Per-user layers (admin don't-ask notes + the strong-sides
+        # library) apply only when signed in. Anonymous (unsigned-home,
+        # §3) gets the general bot — no per-user reads. Both best-effort.
         admin_dont_ask_notes: str | None = None
-        try:
-            _settings = db.get_user_settings(request.user_id) or {}
-            admin_dont_ask_notes = (
-                _settings.get("private_admin_notes") or None
-            )
-        except Exception as e:
-            logger.warning(
-                "chat/query: private_admin_notes load failed "
-                "user=%s: %s", request.user_id, e,
-            )
-
-        # willab §3.12 — the user's strong-sides library (coach notes)
-        # for the Lounge bot to retrieve/replay. Best-effort; empty for
-        # users with no published+read sessions yet. The librarian
-        # guardrail (no trajectory/scores) lives in answer_question.
         library_entries: list | None = None
-        try:
-            library_entries = db.get_strong_sides_library(request.user_id) or None
-        except Exception as e:
-            logger.warning(
-                "chat/query: library load failed user=%s: %s",
-                request.user_id, e,
-            )
+        if request.user_id:
+            try:
+                _settings = db.get_user_settings(request.user_id) or {}
+                admin_dont_ask_notes = (
+                    _settings.get("private_admin_notes") or None
+                )
+            except Exception as e:
+                logger.warning(
+                    "chat/query: private_admin_notes load failed "
+                    "user=%s: %s", request.user_id, e,
+                )
+
+            # willab §3.12 — the user's strong-sides library (coach
+            # notes) for the Lounge bot to retrieve/replay. Empty for
+            # users with no published+read sessions yet. The librarian
+            # guardrail (no trajectory/scores) lives in answer_question.
+            try:
+                library_entries = db.get_strong_sides_library(request.user_id) or None
+            except Exception as e:
+                logger.warning(
+                    "chat/query: library load failed user=%s: %s",
+                    request.user_id, e,
+                )
 
         from services.master_doc_rag import answer_question
         payload, debug = answer_question(
@@ -3521,7 +3525,9 @@ def v2_chat_query():
         # microseconds; safe to do before returning. Failure to
         # dispatch is logged and swallowed; the LLM answer still
         # ships.
-        if audio_bytes:
+        # Anonymous (unsigned-home) chat skips DSP capture — there's no
+        # user to attribute the casual-voice benchmark to.
+        if audio_bytes and request.user_id:
             try:
                 from services.casual_voice_analytics import (
                     analyze_casual_audio_async,
