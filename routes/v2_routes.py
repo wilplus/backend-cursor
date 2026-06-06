@@ -13632,6 +13632,25 @@ def v2_user_get_session_readout(session_id):
         published = bool(session.get("results_published_at"))
         if published:
             state = "insights_ready"
+            # willab §7 — ingest this published session's coach-tagged
+            # snippets into the user's strong-sides library ON READ. This
+            # is the SOLE ingest trigger (the library grows per delivered
+            # session the user actually opens); idempotent upsert,
+            # self-guarding, never raises. Read back by the Lounge
+            # librarian bot (master_doc_rag.answer_question).
+            try:
+                from services.strong_sides_library import ingest_session_library
+                n = ingest_session_library(session_id, str(request.user_id))
+                if n:
+                    logger.info(
+                        "library: ingested %d strong-sides rows on read "
+                        "sid=%s user=%s", n, session_id, request.user_id,
+                    )
+            except Exception as _lib_err:
+                logger.warning(
+                    "library: ingest-on-read failed sid=%s err=%s "
+                    "(non-fatal)", session_id, _lib_err,
+                )
         elif session.get("status") == "pending_admin_review":
             state = "review_pending"
         else:
