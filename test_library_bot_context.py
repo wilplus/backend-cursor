@@ -65,6 +65,10 @@ class RenderLibraryBlockTests(unittest.TestCase):
         self.assertIn("LIBRARIAN", out)
         self.assertIn("trajectory", out.lower())
         self.assertIn("am I improving", out)
+        # replay-only: the bot may not author its own coaching/critique
+        self.assertIn("only replay what the coach actually wrote", out)
+        # deflection covers the common drift questions, not just "improving"
+        self.assertIn("what should I work on", out)
 
     def test_skips_empty_notes(self):
         out = self._render([
