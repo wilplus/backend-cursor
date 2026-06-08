@@ -3499,16 +3499,33 @@ def v2_chat_query():
                 )
 
             # willab §3.12 — the user's strong-sides library (coach
-            # notes) for the Lounge bot to retrieve/replay. Empty for
-            # users with no published+read sessions yet. The librarian
+            # notes) for the Lounge bot to retrieve/replay. The librarian
             # guardrail (no trajectory/scores) lives in answer_question.
-            try:
-                library_entries = db.get_strong_sides_library(request.user_id) or None
-            except Exception as e:
-                logger.warning(
-                    "chat/query: library load failed user=%s: %s",
-                    request.user_id, e,
-                )
+            #
+            # B3 — distinguish a GENUINE empty library ([]) from a transient
+            # LOAD FAILURE (None). Both used to collapse to None via
+            # `or None`, so a failed load read as "no notes" for a user who
+            # actually has them — inconsistent turn-to-turn. Retry once, and
+            # log every outcome so the real failure rate is measurable.
+            #   library_entries == []   → genuinely no notes (bot may say so)
+            #   library_entries is None → load FAILED after retry (NOT empty)
+            for _attempt in (1, 2):
+                try:
+                    library_entries = db.get_strong_sides_library(
+                        request.user_id
+                    ) or []
+                    logger.info(
+                        "chat/query: library loaded user=%s entries=%d "
+                        "(attempt %d)", request.user_id,
+                        len(library_entries), _attempt,
+                    )
+                    break
+                except Exception as e:
+                    logger.warning(
+                        "chat/query: library load failed user=%s "
+                        "(attempt %d): %s", request.user_id, _attempt, e,
+                    )
+                    library_entries = None
 
         from services.master_doc_rag import answer_question
         payload, debug = answer_question(

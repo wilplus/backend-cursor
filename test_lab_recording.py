@@ -80,17 +80,27 @@ class FeatureMapTests(unittest.TestCase):
         self.assertIsNone(self._map({"pause_ms": None})["mean_pause"])
         self.assertIsNone(self._map({})["mean_pause"])
 
-    def test_all_eleven_keys_present(self):
+    def test_all_keys_present(self):
         out = self._map({})
         self.assertEqual(set(out.keys()), {
             "f0_mean", "f0_sd", "speech_rate", "mean_pause", "pause_ratio",
             "loudness_range", "voiced_ratio", "f0_slope", "pause_regularity",
             "intensity_envelope", "f0_mid_end_delta",
+            # B2 — display-ready seconds twin of mean_pause (unit in name).
+            "mean_pause_seconds",
         })
+
+    def test_mean_pause_seconds_is_ms_over_1000(self):
+        # B2: the self-describing seconds field = raw mean_pause (ms) / 1000.
+        self.assertEqual(self._map({"pause_ms": 400})["mean_pause_seconds"], 0.4)
+        self.assertEqual(self._map({"pause_ms": 253300})["mean_pause_seconds"], 253.3)
+        self.assertIsNone(self._map({"pause_ms": None})["mean_pause_seconds"])
+        # legacy mean_pause stays raw ms (unchanged contract)
+        self.assertEqual(self._map({"pause_ms": 400})["mean_pause"], 400)
 
     def test_none_metrics_all_none(self):
         out = self._map(None)
-        self.assertEqual(len(out), 11)
+        self.assertEqual(len(out), 12)
         for v in out.values():
             self.assertIsNone(v)
 
