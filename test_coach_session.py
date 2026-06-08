@@ -112,7 +112,8 @@ class CoachSessionReadTests(unittest.TestCase):
         status, data = self._get()
         s = data["snippets"][0]
         for k in ("id", "index", "transcript", "audio_ref", "start_offset_ms",
-                  "duration_ms", "stickiness", "coach_state"):
+                  "duration_ms", "stickiness", "coach_state",
+                  "features"):  # C1/§B.1 — coach packet carries the 11-vector
             self.assertIn(k, s)
         for k in ("direction_label", "note", "tag", "surfaced"):
             self.assertIn(k, s["coach_state"])
