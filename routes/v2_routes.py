@@ -7583,6 +7583,11 @@ def v2_coach_get_session(session_id):
                 "start_offset_ms": snip.get("start_offset_ms"),
                 "duration_ms": snip.get("duration_ms"),
                 "stickiness": snip.get("stickiness") or {"composite": None, "comment": None},
+                # C1 / §B.1 — the coach packet carries the raw acoustic
+                # 11-vector for REFERENCE (render no verdict). Coach surface
+                # only; the split-sink user readout already exposes the same
+                # vector by design. build_readout_from_session computed it.
+                "features": snip.get("features"),
                 "coach_state": cstate.get(str(snip.get("id")), {
                     "direction_label": None, "note": "", "tag": None, "surfaced": False,
                 }),
