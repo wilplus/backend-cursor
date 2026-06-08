@@ -208,6 +208,14 @@ _SYSTEM_PROMPT = with_voice_rules(
     "    do NOT speculate about prices / features / timelines / "
     "    team size / refund policy / anything not in the document. "
     "    If the document doesn't say it, you don't say it.\n"
+    "    HARD PROHIBITION (B1/AC-9): NEVER name, cite, paraphrase, or "
+    "    invent any internal scoring construct — Threat:Challenge "
+    "    Ratio, 'T:C', a KPI, a numeric 'score', or a charisma/stress "
+    "    classifier. The product does not exist in those terms and "
+    "    they are not in the document. If asked what is measured or "
+    "    how it works, explain the Readout (raw acoustics — pace, "
+    "    pauses, pitch range) read by a HUMAN COACH — never a ratio, "
+    "    a score, or a classifier, even if the user names one first.\n"
     "\n"
     "  RULE B — GRACEFUL PIVOT ON OUT-OF-SCOPE:\n"
     "    If the user's question cannot be answered from the document, "
@@ -562,6 +570,7 @@ def answer_question(
     history: Optional[list[dict]] = None,
     admin_dont_ask_notes: Optional[str] = None,
     library_entries: Optional[list] = None,
+    library_load_failed: bool = False,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Run one LLM call grounded in the Master Document.
 
@@ -627,6 +636,17 @@ def answer_question(
     library_block = _render_library_block(library_entries)
     if library_block:
         system_content = system_content + "\n\n" + library_block
+    elif library_load_failed:
+        # B3 — the load FAILED (not a genuinely empty library). Do not let
+        # the bot tell the user they have no notes on a transient error.
+        system_content = system_content + "\n\n" + (
+            "─── LIBRARY UNAVAILABLE THIS TURN ───\n"
+            "The user's strong-sides library could not be loaded right now "
+            "(a transient error — NOT an empty library). Do NOT tell them "
+            "they have no notes or no strong sides. If they ask about past "
+            "coach notes, say you can't reach their library this moment and "
+            "offer to try again shortly.\n"
+        )
 
     messages: list[dict[str, str]] = [
         {"role": "system", "content": system_content},

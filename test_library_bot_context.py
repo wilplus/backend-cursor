@@ -177,5 +177,27 @@ class RenderLibraryBlockTests(unittest.TestCase):
         self.assertIn("current strengths and blockers", out)
 
 
+
+class MasterDocConstructGuardTests(unittest.TestCase):
+    """B1 / AC-9 — the bot's source of truth must never reintroduce the
+    retired scoring construct, and the hard prohibition must stay in the
+    system prompt. Deterministic (no LLM) — the durable guard; the runtime
+    probe lives in tests/evals/master_doc_probe.py."""
+
+    def test_master_document_has_no_retired_construct(self):
+        from services.master_doc_rag import MASTER_DOCUMENT
+        low = MASTER_DOCUMENT.lower()
+        for token in ("threat", "charisma", "t:c", "challenge ratio", "kpi"):
+            self.assertNotIn(
+                token, low,
+                f"retired construct '{token}' is back in the Master Document",
+            )
+
+    def test_system_prompt_carries_the_hard_prohibition(self):
+        from services.master_doc_rag import _SYSTEM_PROMPT
+        self.assertIn("HARD PROHIBITION", _SYSTEM_PROMPT)
+        self.assertIn("Threat:Challenge", _SYSTEM_PROMPT)
+
+
 if __name__ == "__main__":
     unittest.main()
