@@ -54,11 +54,14 @@ class SegmentationTests(unittest.TestCase):
             self.assertGreaterEqual(e - s, 3000)
 
     def test_short_gaps_do_not_split(self):
-        # speech with only 0.3s gaps (< 0.6s) → one merged window
+        # speech with only 0.3s gaps (< 0.6s) → one merged window.
+        # Kept under SEGMENT_MAX_SEC (8s) so this isolates the GAP logic
+        # — the separate max-length split is covered by
+        # test_long_monologue_split_by_max.
         sig = np.concatenate([
-            self._tone(3.0), self._sil(0.3),
-            self._tone(3.0), self._sil(0.3),
-            self._tone(3.0),
+            self._tone(2.0), self._sil(0.3),
+            self._tone(2.0), self._sil(0.3),
+            self._tone(2.0),
         ])
         out = self._seg(sig)
         self.assertEqual(len(out), 1, out)
