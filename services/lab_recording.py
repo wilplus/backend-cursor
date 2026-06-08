@@ -85,21 +85,31 @@ def slice_transcript_for_window(
 def build_readout_features(metrics: Optional[dict]) -> dict:
     """Map an audio_metrics dict to the §3.3 feature block.
 
-    Always returns the full 11-key feature dict (every contract key
-    present, value or None) so the FE renders one stable shape. Pure.
+    Returns the stable feature dict (every contract key present, value or
+    None) so the FE renders one shape. Pure.
 
-    UNITS — mean_pause is emitted as the raw pause_ms value: MILLISECONDS.
-    The FE converts ms→seconds at its mapping boundary (FE PR #62), so the
-    BE deliberately does NOT convert here. Do NOT re-add a server-side
-    ``/1000`` — it double-converts against the FE mapper (a 200ms pause
-    would render "0.0s"). This was tried (BE PR #32) and reverted once the
-    FE landed the mapper-side fix; the FE mapper is the single converter.
+    UNITS (B2 — the pause unit is now locked in the field NAME to end the
+    ms↔s ping-pong that produced "mean pause 253.3s"):
+      • mean_pause          — raw pause_ms, MILLISECONDS (legacy; the FE
+        currently /1000s it). Kept for back-compat during FE migration.
+      • mean_pause_seconds  — display-ready SECONDS (this BE converts it
+        once). Self-describing: the FE should read THIS and render it raw,
+        then drop its own /1000 on BOTH surfaces (ReadoutCard +
+        CoachSnippetReviewCard). After that, `mean_pause` can be removed.
+    Do NOT make `mean_pause` itself seconds — that double-converts against
+    the FE's current /1000 (tried in BE PR #32, reverted). The fix is the
+    NEW, explicitly-named field, not changing the old one's value.
     """
     m = metrics or {}
-    return {
+    out = {
         out_key: m.get(src_key)
         for out_key, src_key in _FEATURE_MAP.items()
     }
+    mp_ms = out.get("mean_pause")
+    out["mean_pause_seconds"] = (
+        round(mp_ms / 1000.0, 1) if isinstance(mp_ms, (int, float)) else None
+    )
+    return out
 
 
 def build_readout_payload(
