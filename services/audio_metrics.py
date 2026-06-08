@@ -35,7 +35,7 @@ PITCH_REF_HZ = 100.0
 # whole-recording snippet. See segment_into_snippets().
 SEGMENT_MAX_SNIPPETS = 10    # §14 top-N cap (~10) — bounds coach load
 SEGMENT_MIN_SEC = 3.0        # shorter than this isn't a meaningful moment
-SEGMENT_MAX_SEC = 15.0       # split longer monologues into chunks
+SEGMENT_MAX_SEC = 8.0       # split longer monologues into chunks
 SEGMENT_GAP_SEC = 0.6        # silence ≥ this delimits a snippet boundary
                              # (longer than a within-utterance MIN_PAUSE_SEC)
 SEGMENT_PAD_SEC = 0.2        # natural-playback padding each side
