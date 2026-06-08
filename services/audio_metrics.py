@@ -202,7 +202,31 @@ def _compute_f0_series(sig: np.ndarray) -> list:
             lag = min_lag + peak_idx
             if lag > 0:
                 pitch_hz_list.append(SAMPLE_RATE / lag)
-    return pitch_hz_list
+    return _reject_octave_outliers(pitch_hz_list)
+
+
+def _reject_octave_outliers(series: list) -> list:
+    """Drop octave-error frames from a bare-autocorrelation F0 series.
+
+    The estimator picks a sub-/super-harmonic on some frames (≈2x or 0.5x
+    the true pitch). The median is robust to these, but they wreck f0_sd
+    (and f0_slope) — e.g. an honest ~30 Hz SD blows up to 100+ Hz. So we
+    reject any frame more than ~0.6 octave (≈1.5x) from the median; octave
+    jumps sit a full octave out and are removed, while genuine expressive
+    variation (well under half an octave frame-to-frame for speech) stays.
+
+    Conservative + None-safe; needs ≥4 frames to act, and never returns
+    fewer than 2 (falls back to the raw series if it would over-prune).
+    NOTE: the 0.6-octave threshold is a sane default — eyeball it against a
+    real recording before treating f0_sd as precise.
+    """
+    if len(series) < 4:
+        return series
+    med = float(np.median(series))
+    if med <= 0:
+        return series
+    kept = [f for f in series if f > 0 and abs(math.log2(f / med)) <= 0.6]
+    return kept if len(kept) >= 2 else series
 
 
 def _pitch_center_st_from_series(series: list) -> Tuple[Optional[float], int]:
