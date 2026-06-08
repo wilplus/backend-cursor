@@ -431,17 +431,95 @@ _LIBRARIAN_GUARDRAIL = (
     "    decline, or any cross-session synthesis ('you're getting "
     "    better', 'you've improved since last time'). That is out of "
     "    scope and the data here cannot support it.\n"
-    "  • You MUST NOT invent a score, ratio, or any number about the "
-    "    user, and MUST NOT pre-empt or second-guess the coach's read.\n"
+    "  • You MUST NOT INVENT a score or ratio about the user, and MUST "
+    "    NOT pre-empt or second-guess the coach's read. You MAY, however, "
+    "    cite the raw Readout metrics of the TWO anchors (best / to-work-"
+    "    on) given in the block below — the user's own factual "
+    "    measurements — but ONLY those two, and NEVER strung into a "
+    "    series, trend, velocity, or cross-session comparison.\n"
     "  • You MUST NOT author new coaching, critique, or advice of your "
     "    own — only replay what the coach actually wrote. If the user "
     "    asks for guidance you have no coach note for, say so plainly and "
     "    invitationally point them at their next Lab session.\n"
-    "  • If asked 'am I improving?' (or 'what should I work on', 'what's "
-    "    my weakness') — do NOT answer with a verdict or your own "
-    "    diagnosis. Invitationally offer to revisit their strong lines, "
-    "    or the ones to work on, in the coach's own words.\n"
+    "  • If asked about performance, history, or 'how am I doing' "
+    "    (incl. 'am I improving?', 'what should I work on', 'what's my "
+    "    weakness') — do NOT provide point-by-point score tracking, "
+    "    velocity charts, or historical trend lines. Redirect to "
+    "    actionable qualitative insights: reference the coach's specific "
+    "    written comments and contrast the current session's best vs "
+    "    to-work-on acoustic anchors. Focus the response on expanding "
+    "    user awareness of their current strengths and blockers. Ground "
+    "    the explanation in the specific text feedback from the coach. "
+    "    Do not allow the user to gamify or obsess over continuous "
+    "    numeric trajectories.\n"
 )
+
+
+def _fmt_anchor_metrics(features: Optional[dict]) -> str:
+    """Compact, human-referenceable render of one anchor's raw Readout
+    metrics. None-safe. mean_pause is stored in ms → shown in seconds."""
+    f = features or {}
+    parts: list = []
+    wpm = f.get("speech_rate")
+    if isinstance(wpm, (int, float)):
+        parts.append(f"pace ~{round(wpm)} wpm")
+    mp = f.get("mean_pause")  # stored as pause_ms (milliseconds)
+    if isinstance(mp, (int, float)):
+        parts.append(f"mean pause ~{round(mp / 1000.0, 1)}s")
+    dr = f.get("loudness_range")
+    if isinstance(dr, (int, float)):
+        parts.append(f"dynamic range ~{round(dr)} dB")
+    f0 = f.get("f0_mean")
+    if isinstance(f0, (int, float)):
+        parts.append(f"pitch ~{round(f0)} Hz")
+    return " · ".join(parts)
+
+
+def _render_two_anchors(entries: Optional[list]) -> str:
+    """BE-3 (Q-BOT): the ONLY raw metrics the bot is ever fed — the
+    current session's two anchors (coach-marked strong = 'best',
+    to_work_on = 'to work on'), never a history array. Anti-trajectory by
+    construction: two points from ONE session, no series, no other
+    sessions. Pure; None-safe.
+
+    NB: willab has no charisma/stress probability (that classifier was
+    excised) — the coach's strong / to_work_on tag IS the best/worst
+    signal, so the anchors are the coach's own picks, not a machine score.
+    """
+    rows = [e for e in (entries or []) if isinstance(e, dict)]
+    if not rows:
+        return ""
+    # "current session" = the most-recent one represented in the library.
+    rows_sorted = sorted(
+        rows, key=lambda e: e.get("created_at") or "", reverse=True,
+    )
+    cur = rows_sorted[0].get("session_id")
+    in_session = (
+        [e for e in rows_sorted if e.get("session_id") == cur]
+        if cur else rows_sorted
+    )
+    best = next((e for e in in_session if e.get("tag") == "strong"), None)
+    worst = next((e for e in in_session if e.get("tag") == "to_work_on"), None)
+    out: list = []
+    for label, e in (
+        ('Best (coach marked "strong")', best),
+        ('To work on (coach marked "to work on")', worst),
+    ):
+        if not e:
+            continue
+        m = _fmt_anchor_metrics((e.get("snippet_ref") or {}).get("features"))
+        note = (e.get("note") or "").strip()
+        line = f"  • {label}: {m or '—'}"
+        if note:
+            line += f' — coach: "{note}"'
+        out.append(line)
+    if not out:
+        return ""
+    return (
+        "\nTWO ANCHORS — current session only (raw Readout metrics; THESE "
+        "TWO ONLY — no history, no trend, no other sessions):\n"
+        + "\n".join(out)
+    )
 
 
 def _render_library_block(entries: Optional[list]) -> str:
@@ -450,7 +528,9 @@ def _render_library_block(entries: Optional[list]) -> str:
     nothing to replay. Pure — unit-tested.
 
     Caps at 20 entries + trims each transcript excerpt so a large library
-    can't blow the prompt budget.
+    can't blow the prompt budget. Appends the current session's TWO
+    anchors (best / to-work-on) with raw metrics — the only numbers the
+    bot is fed (BE-3 / Q-BOT; anti-trajectory).
     """
     if not entries:
         return ""
@@ -472,7 +552,8 @@ def _render_library_block(entries: Optional[list]) -> str:
             lines.append(f'  • [{label}] coach noted: "{note}"')
     if not lines:
         return ""
-    return _LIBRARIAN_GUARDRAIL + "\nYOUR LIBRARY (coach notes to replay on request):\n" + "\n".join(lines)
+    body = "\nYOUR LIBRARY (coach notes to replay on request):\n" + "\n".join(lines)
+    return _LIBRARIAN_GUARDRAIL + body + _render_two_anchors(entries)
 
 
 def answer_question(

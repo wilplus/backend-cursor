@@ -122,6 +122,60 @@ class RenderLibraryBlockTests(unittest.TestCase):
         out = self._render(["garbage", {"tag": "strong", "note": "keep", "snippet_ref": {}}])
         self.assertIn("keep", out)
 
+    # ── BE-3 (Q-BOT): two-anchor metrics + anti-trajectory carve-out ──
+
+    def test_renders_two_anchors_with_metrics(self):
+        out = self._render([
+            {"tag": "strong", "note": "best open", "session_id": "s1",
+             "created_at": "2026-06-06T10:00:00",
+             "snippet_ref": {"features": {
+                 "speech_rate": 145, "mean_pause": 400,
+                 "loudness_range": 12, "f0_mean": 165}}},
+            {"tag": "to_work_on", "note": "rushed close", "session_id": "s1",
+             "created_at": "2026-06-06T10:00:00",
+             "snippet_ref": {"features": {"speech_rate": 190, "mean_pause": 100}}},
+        ])
+        self.assertIn("TWO ANCHORS", out)
+        self.assertIn('Best (coach marked "strong")', out)
+        self.assertIn("To work on", out)
+        self.assertIn("145 wpm", out)
+        self.assertIn("0.4s", out)        # mean_pause 400ms → 0.4s (ms→s)
+        self.assertIn("best open", out)
+
+    def test_anchors_scoped_to_most_recent_session(self):
+        out = self._render([
+            {"tag": "strong", "note": "old", "session_id": "s_old",
+             "created_at": "2026-06-01T10:00:00",
+             "snippet_ref": {"features": {"speech_rate": 100}}},
+            {"tag": "strong", "note": "new", "session_id": "s_new",
+             "created_at": "2026-06-06T10:00:00",
+             "snippet_ref": {"features": {"speech_rate": 150}}},
+        ])
+        # anchor metric comes from the NEWEST session only
+        self.assertIn("150 wpm", out)
+        self.assertNotIn("100 wpm", out)
+
+    def test_anchors_are_only_two_no_series(self):
+        entries = [
+            {"tag": "strong", "note": f"n{i}", "session_id": "s1",
+             "created_at": "2026-06-06T10:00:00",
+             "snippet_ref": {"features": {"speech_rate": 140 + i}}}
+            for i in range(6)
+        ]
+        out = self._render(entries)
+        self.assertEqual(out.count("• Best"), 1)        # one anchor, not a series
+        self.assertNotIn("• To work on", out)            # no to_work_on present
+        # metrics live ONLY in the anchor block, never in the notes list
+        notes_section = out.split("TWO ANCHORS")[0]
+        self.assertNotIn("wpm", notes_section)
+
+    def test_guardrail_carve_out_and_tone(self):
+        out = self._render([{"tag": "strong", "note": "x", "session_id": "s1",
+                             "snippet_ref": {}}])
+        self.assertIn("ONLY those two", out)             # carve-out scope
+        self.assertIn("Do not allow the user to gamify", out)  # exact tone, verbatim
+        self.assertIn("current strengths and blockers", out)
+
 
 if __name__ == "__main__":
     unittest.main()
