@@ -3533,6 +3533,8 @@ def v2_chat_query():
             history=history,
             admin_dont_ask_notes=admin_dont_ask_notes,
             library_entries=library_entries,
+            # B3 — None (after retry) means the load FAILED, not empty.
+            library_load_failed=bool(request.user_id and library_entries is None),
         )
 
         # ── Path B — fire-and-forget DSP extraction. Spawned BEFORE
