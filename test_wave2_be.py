@@ -197,7 +197,8 @@ class CoachStudentsRouteTests(unittest.TestCase):
         self._orig_list = getattr(v2.db, "list_coach_students", None)
         self._orig_prof = getattr(v2.db, "get_user_profile", None)
         v2.db.list_coach_students = lambda **k: [
-            {"user_id": "secret-uid-123", "last_active": "2026-06-08T10:00:00Z"},
+            {"user_id": "secret-uid-123", "last_active": "2026-06-08T10:00:00Z",
+             "session_count": 7},
         ]
         v2.db.get_user_profile = lambda uid: {"domain": "sales", "goal": "x"}
 
@@ -220,6 +221,7 @@ class CoachStudentsRouteTests(unittest.TestCase):
         self.assertTrue(row["pseudonym"])
         self.assertEqual(row["domain"], "sales")
         self.assertIn("last_active", row)
+        self.assertEqual(row["session_count"], 7)  # coach-load drowning guard
         # red-line: no raw identity anywhere in the serialized payload
         self.assertNotIn("user_id", row)
         self.assertNotIn("email", row)

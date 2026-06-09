@@ -7594,6 +7594,9 @@ def v2_coach_students():
                 "pseudonym": _coach_pseudonym(uid),
                 "domain": (prof or {}).get("domain") or "",
                 "last_active": r.get("last_active") or "",
+                # read-only coach-load signal (the beta "drowning guard") —
+                # total Lab sessions for this user. No PII; instrumentation only.
+                "session_count": int(r.get("session_count") or 0),
             })
         return jsonify(out), 200
     except Exception as e:

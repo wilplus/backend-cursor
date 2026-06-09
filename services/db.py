@@ -3303,11 +3303,14 @@ class DatabaseService:
     def list_coach_students(self, *, limit: int = 100, offset: int = 0) -> list[dict]:
         """willab coach roster (UX Wave v2 E3 / §B.4). Distinct users who have
         a willab Lab session, newest-active first. Returns raw rows
-        [{user_id, last_active}]; the route pseudonymizes + attaches the
-        profile domain (NEVER name/email here). Solo-coach beta: every willab
-        student is in scope (no per-coach assignment table yet). Scans up to
-        2000 recent Lab sessions, dedups in Python (PostgREST has no DISTINCT),
-        then pages — fine at beta scale; revisit if the roster grows large.
+        [{user_id, last_active, session_count}]; the route pseudonymizes +
+        attaches the profile domain (NEVER name/email here). session_count =
+        the user's total Lab sessions — the read-only coach-load / heavy-user
+        signal for the beta "drowning guard" (accurate up to the scan cap
+        below). Solo-coach beta: every willab student is in scope (no per-coach
+        assignment table yet). Scans up to 2000 recent Lab sessions, dedups in
+        Python (PostgREST has no DISTINCT), then pages — fine at beta scale;
+        revisit if the roster grows large.
         """
         try:
             res = (
@@ -3325,8 +3328,13 @@ class DatabaseService:
                     continue  # unclaimed guest rows have no user — skip
                 ts = r.get("guest_claimed_at") or r.get("created_at") or ""
                 key = str(uid)
-                if key not in seen or ts > seen[key]["last_active"]:
-                    seen[key] = {"user_id": key, "last_active": ts}
+                entry = seen.get(key)
+                if entry is None:
+                    seen[key] = {"user_id": key, "last_active": ts, "session_count": 1}
+                else:
+                    entry["session_count"] += 1
+                    if ts > entry["last_active"]:
+                        entry["last_active"] = ts
             rows = sorted(seen.values(), key=lambda x: x["last_active"], reverse=True)
             return rows[offset:offset + limit]
         except Exception as e:
