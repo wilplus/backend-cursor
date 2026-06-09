@@ -4075,6 +4075,21 @@ def _merge_anonymous_session_into_user(session_id: str, user_id: str):
                 "error": "Recording was claimed but could not be sent for review. Please retry.",
                 "session_id": sid,
             }, 500)
+        # ── willab credits — charge 1 on send-SUCCESS, first flip only ──
+        # (UX Wave v2 C2). already_sent==True is a re-claim/retry/OAuth-
+        # callback no-op → never re-charge. The lab_credits_charged_at flag
+        # is the real exactly-once guard (all paths resolve to one sid), so
+        # this is belt-and-suspenders. Seed the 15-grant before the first
+        # spend. Best-effort: a credit hiccup must never unwind a sent slot.
+        if not send_result.get("already_sent"):
+            try:
+                db.v2_ensure_credits_initialized(str(user_id))
+                db.v2_charge_lab_credits_once(sid, str(user_id), amount=1)
+            except Exception as _ce:
+                logger.warning(
+                    "willab_lab: credit charge failed sid=%s err=%s (non-fatal)",
+                    sid, _ce,
+                )
         return ({
             "status": "ok",
             "session_id": sid,
@@ -4547,18 +4562,10 @@ def _apply_willab_publish_contract(session_id, body, actor_user_id):
             "(non-fatal)", session_id, _le,
         )
 
-    # ── willab credits — charge 5 once at publish (best-effort, idempotent). ──
-    try:
-        _credit_owner = (db.v2_get_session_by_id(session_id) or {}).get("user_id")
-        if _credit_owner:
-            db.v2_charge_lab_credits_once(
-                session_id, str(_credit_owner), amount=5,
-            )
-    except Exception as _ce:
-        logger.warning(
-            "publish_contract.credit_charge_failed session=%s err=%s "
-            "(non-fatal)", session_id, _ce,
-        )
+    # ── willab credits — charged at SEND now, NOT publish (UX Wave v2). ──
+    # The 1-credit charge relocated to send-success (_willab_send_response →
+    # db.v2_charge_lab_credits_once), so publish no longer touches the ledger.
+    # The per-session lab_credits_charged_at flag keeps it exactly-once.
 
     return None
 
@@ -4725,8 +4732,12 @@ def v2_internal_publish_session_results():
             send_publish_results_email,
         )
 
+        # UX Wave v2 D3 — deep-link into the insights overlay over the mounted
+        # Lounge hub (no /results landing bounce). FE reads ?insight=<id> in
+        # chat/page.tsx and auto-opens InsightsOverlay. Param `insight` is
+        # distinct from the coach `?review=<id>`.
         results_url = (
-            f"{config.PUBLIC_FRONTEND_URL.rstrip('/')}/results/{session_id}"
+            f"{config.PUBLIC_FRONTEND_URL.rstrip('/')}/chat?insight={session_id}"
         )
 
         # notify_client gate (C): the in-app Lounge nudge already fired in the
@@ -7520,6 +7531,75 @@ def _coach_session_state(session, cstate_map):
     if session.get("results_published_at"):
         return "done"
     return "in_progress" if cstate_map else "pending"
+
+
+@v2_bp.route("/user/credits", methods=["GET"])
+@require_auth
+def v2_user_get_credits():
+    """willab credit balance (UX Wave v2 C5 / S.2). GET → {credits: int}.
+
+    Lazy-seeds the 15-credit grant on first touch (idempotent via
+    credits_initialized_at — never re-granted after spend-to-zero), then
+    returns the server-owned balance. The DECREMENT is a side-effect of
+    send-success (the claim/merge path), NEVER a separate FE call.
+    """
+    try:
+        credits = db.v2_ensure_credits_initialized(str(request.user_id))
+        return jsonify({"credits": int(credits)}), 200
+    except Exception as e:
+        logger.error("user/credits GET failed: %s", e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to fetch credits"}), 500
+
+
+@v2_bp.route("/config/recording", methods=["GET"])
+@optional_auth
+def v2_config_recording():
+    """willab recording config (UX Wave v2 D5 / B-3). Single source of truth
+    for the recording floor so the FE stops hardcoding 60s. The SERVER is the
+    real gate — min_content_gate rejects anything under this on upload (422,
+    RECORDING_REJECTED); this just lets the FE preview the same numbers.
+    """
+    from services.min_content_gate import MIN_DURATION_SEC, MIN_VOICED_SEC
+    return jsonify({
+        "min_duration_sec": MIN_DURATION_SEC,
+        "min_voiced_sec": MIN_VOICED_SEC,
+    }), 200
+
+
+@v2_bp.route("/coach/students", methods=["GET"])
+@require_admin_or_coach
+def v2_coach_students():
+    """willab coach roster (UX Wave v2 E3 / §B.4 / S.6). Pseudonymized list of
+    every willab student — solo-coach beta, so no per-coach assignment table
+    yet (every student is in scope). Each row: {pseudonym, domain (profile),
+    last_active}. NEVER user_id / name / email. Paginated (?limit=&offset=),
+    newest-active first.
+    """
+    try:
+        try:
+            limit = max(1, min(200, int(request.args.get("limit", 100))))
+        except (TypeError, ValueError):
+            limit = 100
+        try:
+            offset = max(0, int(request.args.get("offset", 0)))
+        except (TypeError, ValueError):
+            offset = 0
+        rows = db.list_coach_students(limit=limit, offset=offset) or []
+        out = []
+        for r in rows:
+            uid = r.get("user_id")
+            prof = db.get_user_profile(uid) or {}
+            out.append({
+                "pseudonym": _coach_pseudonym(uid),
+                "domain": (prof or {}).get("domain") or "",
+                "last_active": r.get("last_active") or "",
+            })
+        return jsonify(out), 200
+    except Exception as e:
+        logger.error("coach/students GET failed: %s", e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to fetch students"}), 500
 
 
 @v2_bp.route("/coach/queue", methods=["GET"])
