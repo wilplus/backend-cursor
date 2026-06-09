@@ -3157,17 +3157,17 @@ class DatabaseService:
             except Exception:
                 pass
 
-    def v2_charge_lab_credits_once(self, session_id: str, user_id: str, amount: int = 5) -> None:
-        """Deduct `amount` credits once per willab Lab session at publish.
+    def v2_charge_lab_credits_once(self, session_id: str, user_id: str, amount: int = 1) -> None:
+        """Deduct `amount` credits once per willab Lab session at SEND.
 
-        willab "uses credits" (B-decision, publish + soft, 5/session).
-        Idempotent: sets lab_credits_charged_at only when NULL (a re-publish
-        never double-charges), then deducts SOFTLY — v2_deduct_session_credits
-        floors at 0, so it never hard-blocks. On deduct failure, clears the
-        flag so a retry can succeed. Mirrors v2_charge_homework_completion_
-        credits_once but on a willab-specific flag (the publish caller is the
-        gate — no status='completed' check). Best-effort: never raises into
-        the publish path; degrades to a no-op if the column is missing.
+        willab "uses credits" — UX Wave v2 relocated the charge from publish
+        to send-success (1/session, soft). Idempotent: sets
+        lab_credits_charged_at only when NULL (a re-send / re-claim / OAuth
+        re-callback never double-charges — all resolve to one session_id),
+        then deducts SOFTLY — v2_deduct_session_credits floors at 0, so it
+        never hard-blocks. On deduct failure, clears the flag so a retry can
+        succeed. Best-effort: never raises into the send path; degrades to a
+        no-op if the column is missing.
         """
         if not session_id or not user_id:
             return
@@ -3215,6 +3215,130 @@ class DatabaseService:
                 "v2_charge_lab_credits_once: charged %d sid=%s user=%s new_balance=%s",
                 amount, session_id, user_id, new_bal,
             )
+
+    def v2_ensure_credits_initialized(self, user_id: str, grant: int = 15) -> int:
+        """willab credit grant — lazy first-touch seed (UX Wave v2 C1/S.2).
+
+        Grants `grant` credits ONCE per user, the first time we touch their
+        ledger (balance read or first send). Idempotent via the DEDICATED
+        credits_initialized_at flag — never keyed on credits==0/NULL, so a
+        user who spends down to 0 is never re-granted. Preserves any existing
+        balance (e.g. purchased credits): seeds `grant` only when there is no
+        credits value yet; otherwise just stamps the flag. Best-effort —
+        returns the resolved balance; degrades to `grant` if the column is
+        missing (pre-migration) so the balance endpoint still works.
+        """
+        if not user_id:
+            return grant
+        now = datetime.now(timezone.utc).isoformat()
+        try:
+            res = (
+                self.client.table("v2_student_details")
+                .select("credits, credits_initialized_at")
+                .eq("user_id", user_id)
+                .execute()
+            )
+            row = res.data[0] if res.data else None
+        except Exception as e:
+            err_low = str(e).lower()
+            if "credits_initialized_at" in err_low and (
+                "does not exist" in err_low or "pgrst" in err_low
+            ):
+                logger.warning(
+                    "v2_ensure_credits_initialized: column missing (run "
+                    "migrations/add_credits_initialized_at.sql) user=%s", user_id,
+                )
+            else:
+                logger.warning(
+                    "v2_ensure_credits_initialized: read failed user=%s err=%s",
+                    user_id, e,
+                )
+            # Fall back to the legacy implicit default so balance still resolves.
+            try:
+                d = self.v2_get_student_details(user_id)
+                cur = (d or {}).get("credits")
+                return int(cur) if cur is not None else int(grant)
+            except Exception:
+                return int(grant)
+
+        # Already initialized → return the current balance (coerced).
+        if row and row.get("credits_initialized_at"):
+            cur = row.get("credits")
+            return int(cur) if cur is not None else 0
+
+        if row is None:
+            # No row yet → create with the grant (on_conflict survives a race).
+            try:
+                self.client.table("v2_student_details").upsert(
+                    {"user_id": user_id, "credits": int(grant),
+                     "credits_initialized_at": now, "updated_at": now},
+                    on_conflict="user_id",
+                ).execute()
+            except Exception as e:
+                logger.warning(
+                    "v2_ensure_credits_initialized: seed-insert failed user=%s err=%s",
+                    user_id, e,
+                )
+            logger.info("v2_ensure_credits_initialized: granted %d user=%s", grant, user_id)
+            return int(grant)
+
+        # Row exists, flag NULL → seed once. Preserve an existing balance; the
+        # `.is_(... null)` guard means a concurrent send that already flagged +
+        # decremented this row is NOT clobbered (the update matches nothing).
+        existing = row.get("credits")
+        seed = int(existing) if existing is not None else int(grant)
+        try:
+            self.client.table("v2_student_details").update(
+                {"credits": seed, "credits_initialized_at": now, "updated_at": now}
+            ).eq("user_id", user_id).is_("credits_initialized_at", "null").execute()
+        except Exception as e:
+            logger.warning(
+                "v2_ensure_credits_initialized: seed-update failed user=%s err=%s",
+                user_id, e,
+            )
+        if existing is None:
+            logger.info("v2_ensure_credits_initialized: granted %d user=%s", grant, user_id)
+        return seed
+
+    def list_coach_students(self, *, limit: int = 100, offset: int = 0) -> list[dict]:
+        """willab coach roster (UX Wave v2 E3 / §B.4). Distinct users who have
+        a willab Lab session, newest-active first. Returns raw rows
+        [{user_id, last_active}]; the route pseudonymizes + attaches the
+        profile domain (NEVER name/email here). Solo-coach beta: every willab
+        student is in scope (no per-coach assignment table yet). Scans up to
+        2000 recent Lab sessions, dedups in Python (PostgREST has no DISTINCT),
+        then pages — fine at beta scale; revisit if the roster grows large.
+        """
+        try:
+            res = (
+                self.client.table("v2_sessions")
+                .select("user_id, created_at, guest_claimed_at")
+                .eq("source", "audit_upload")
+                .order("created_at", desc=True)
+                .limit(2000)
+                .execute()
+            )
+            seen: dict[str, dict] = {}
+            for r in (res.data or []):
+                uid = r.get("user_id")
+                if not uid:
+                    continue  # unclaimed guest rows have no user — skip
+                ts = r.get("guest_claimed_at") or r.get("created_at") or ""
+                key = str(uid)
+                if key not in seen or ts > seen[key]["last_active"]:
+                    seen[key] = {"user_id": key, "last_active": ts}
+            rows = sorted(seen.values(), key=lambda x: x["last_active"], reverse=True)
+            return rows[offset:offset + limit]
+        except Exception as e:
+            err_low = str(e).lower()
+            if "source" in err_low and "pgrst" in err_low:
+                logger.warning(
+                    "list_coach_students: source column missing (run "
+                    "migrations/add_foundation_discriminators.sql)",
+                )
+                return []
+            logger.warning("list_coach_students failed err=%s", e)
+            return []
 
     def v2_get_student_list_stats(self, user_id: str):
         """Optional stats for admin students list: sessions_count, last_session_at (ISO), avg_performance (0-100)."""
