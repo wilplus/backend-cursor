@@ -52,7 +52,7 @@ _RESPONSE_SCHEMA: dict[str, Any] = {
     "schema": {
         "type": "object",
         "additionalProperties": False,
-        "required": ["answer", "show_upload_ui", "show_record_ui"],
+        "required": ["answer", "show_upload_ui", "show_record_ui", "suggested_action"],
         "properties": {
             "answer": {
                 "type": "string",
@@ -87,6 +87,21 @@ _RESPONSE_SCHEMA: dict[str, Any] = {
                     "are different gestures — set at most ONE of "
                     "show_record_ui / show_upload_ui to TRUE on "
                     "any given turn."
+                ),
+            },
+            "suggested_action": {
+                "type": ["string", "null"],
+                "enum": ["strong_sides", "recordings", "record_again", None],
+                "description": (
+                    "Per-turn intent classification → the ONE contextual "
+                    "button the frontend surfaces. 'strong_sides' when the "
+                    "user asks to see their strong sides / coach notes / "
+                    "what they did well; 'recordings' when they ask to see "
+                    "past recordings / history / previous sessions; "
+                    "'record_again' when they want another training / to "
+                    "record now (same intent as show_record_ui); null on "
+                    "every other turn. Classify the USER'S intent, not your "
+                    "answer."
                 ),
             },
         },
@@ -415,6 +430,21 @@ _SYSTEM_PROMPT = with_voice_rules(
     "    corrected intent is still out-of-scope, follow "
     "    RULE B (pivot to a real Master-Document fact) AFTER "
     "    acknowledging the misread — never instead of.\n"
+    "\n"
+    "  RULE K — SUGGESTED ACTION (contextual button):\n"
+    "    Classify the USER'S intent on THIS turn into the JSON\n"
+    "    field suggested_action — the ONE button the app surfaces:\n"
+    "      • 'strong_sides' — they ask to see their strong sides,\n"
+    "        coach notes, or what they did well / are good at.\n"
+    "      • 'recordings' — they ask to see past recordings,\n"
+    "        their history, or previous sessions / trainings.\n"
+    "      • 'record_again' — they want another training or to\n"
+    "        record now (the SAME intent as RULE I; when you set\n"
+    "        show_record_ui=true, also set\n"
+    "        suggested_action='record_again').\n"
+    "      • null — every other turn (the default).\n"
+    "    Classify intent, not your answer. Set exactly one value\n"
+    "    or null. The app shows the button; you still answer.\n"
     "═════════════════════════════════════════════════\n"
     "\n"
     "MASTER DOCUMENT (verbatim — your only source of truth):\n"
@@ -618,6 +648,7 @@ def answer_question(
                 ),
                 "show_upload_ui": False,
                 "show_record_ui": False,
+                "suggested_action": None,
             },
             {"error": "empty_question"},
         )
@@ -707,12 +738,16 @@ def answer_question(
     # regression. Normalise to the two valid values only.
     show_upload_ui = bool(parsed.get("show_upload_ui"))
     show_record_ui = bool(parsed.get("show_record_ui"))
+    suggested_action = parsed.get("suggested_action")
+    if suggested_action not in ("strong_sides", "recordings", "record_again"):
+        suggested_action = None  # normalise anything off-enum to null
 
     return (
         {
             "answer": answer,
             "show_upload_ui": show_upload_ui,
             "show_record_ui": show_record_ui,
+            "suggested_action": suggested_action,
         },
         {"model": _MODEL, "history_used": len(messages) - 2},
     )
@@ -736,4 +771,5 @@ def _fallback_payload() -> dict[str, Any]:
         ),
         "show_upload_ui": False,
         "show_record_ui": False,
+        "suggested_action": None,
     }

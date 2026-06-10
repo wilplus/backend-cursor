@@ -1836,6 +1836,34 @@ class DatabaseService:
         )
         return len(result.data or [])
 
+    def v2_delete_lab_snippets_for_recording(self, recording_id: str) -> int:
+        """willab re-cut (UX Wave 3 BE-6): delete the auto-cut Lab snippets for
+        a recording so process_lab_recording can re-insert a fresh set. willab
+        snippets are created via create_charisma_snippet with source_type NULL
+        (snippet_type 'unlabeled'), so this targets EXACTLY those — the inverse
+        filter of v2_delete_charisma_snippets_for_recording, so it never
+        touches ML-generator rows (source_type populated) or any other path.
+        Coach authoring lives in the separate training_labels /
+        coach_snippet_drafts tables; those rows are left as-is (orphaned by
+        snippet_id, invisible to the new cut). Returns the delete count."""
+        if not recording_id:
+            return 0
+        try:
+            res = (
+                self.client.table("charisma_snippets")
+                .delete()
+                .eq("recording_id", recording_id)
+                .is_("source_type", "null")
+                .execute()
+            )
+            return len(res.data or [])
+        except Exception as e:
+            logger.warning(
+                "v2_delete_lab_snippets_for_recording failed rec=%s err=%s",
+                recording_id, e,
+            )
+            return 0
+
     def v2_insert_charisma_snippets(self, snippets: list[dict]) -> list[dict]:
         """Bulk insert charisma snippet candidates."""
         if not snippets:
@@ -3347,6 +3375,73 @@ class DatabaseService:
                 return []
             logger.warning("list_coach_students failed err=%s", e)
             return []
+
+    def v2_list_user_lab_sessions(self, user_id: str, *, limit: int = 200) -> list[dict]:
+        """All of a user's willab Lab sessions (source=audit_upload), newest
+        first. Powers the coach drill-down (E-1b), the user_audit assembly
+        (BE-3), and the cumulative recorded-seconds sum (BE-1). Best-effort:
+        [] on missing column / DB hiccup."""
+        if not user_id:
+            return []
+        try:
+            res = (
+                self.client.table("v2_sessions")
+                .select("id, recording_1_id, intake_context, status, "
+                        "created_at, guest_claimed_at, results_published_at, "
+                        "insights_payload")
+                .eq("user_id", user_id)
+                .eq("source", "audit_upload")
+                .order("created_at", desc=True)
+                .limit(limit)
+                .execute()
+            )
+            return res.data or []
+        except Exception as e:
+            err_low = str(e).lower()
+            if "source" in err_low and "pgrst" in err_low:
+                return []
+            logger.warning(
+                "v2_list_user_lab_sessions failed user=%s err=%s", user_id, e,
+            )
+            return []
+
+    def v2_get_cumulative_recorded_seconds(self, user_id: str) -> int:
+        """Sum of the user's Lab recording durations (seconds) — the
+        recording-progress signal (BE-1 / S2). Sums recordings.duration over
+        the recordings linked to the user's Lab sessions. Recordings predating
+        the duration-persistence fix (UX Wave 3) carry duration=0, so
+        historical time undercounts; going forward it is exact. Best-effort:
+        0 on hiccup."""
+        if not user_id:
+            return 0
+        try:
+            sessions = self.v2_list_user_lab_sessions(user_id)
+            rec_ids = [
+                s.get("recording_1_id") for s in sessions if s.get("recording_1_id")
+            ]
+            if not rec_ids:
+                return 0
+            total = 0
+            for i in range(0, len(rec_ids), 100):  # keep the IN() list sane
+                chunk = rec_ids[i:i + 100]
+                res = (
+                    self.client.table("recordings")
+                    .select("id, duration")
+                    .in_("id", chunk)
+                    .execute()
+                )
+                for r in (res.data or []):
+                    try:
+                        total += int(round(float(r.get("duration") or 0)))
+                    except (TypeError, ValueError):
+                        pass
+            return total
+        except Exception as e:
+            logger.warning(
+                "v2_get_cumulative_recorded_seconds failed user=%s err=%s",
+                user_id, e,
+            )
+            return 0
 
     def v2_get_student_list_stats(self, user_id: str):
         """Optional stats for admin students list: sessions_count, last_session_at (ISO), avg_performance (0-100)."""
