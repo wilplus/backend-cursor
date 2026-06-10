@@ -3575,10 +3575,15 @@ def v2_chat_query():
                     request.user_id, cv_err,
                 )
 
+        # S1 — per-turn intent → the one contextual button the FE renders.
+        _sa = payload.get("suggested_action")
+        if _sa not in ("strong_sides", "recordings", "record_again"):
+            _sa = None
         return jsonify({
             "answer": payload.get("answer", ""),
             "show_upload_ui": bool(payload.get("show_upload_ui", False)),
             "show_record_ui": bool(payload.get("show_record_ui", False)),
+            "suggested_action": _sa,
             "debug": debug,
         }), 200
 
@@ -7552,6 +7557,30 @@ def v2_user_get_credits():
         return jsonify({"code": "V2_ERROR", "error": "Failed to fetch credits"}), 500
 
 
+@v2_bp.route("/user/recording-progress", methods=["GET"])
+@require_auth
+def v2_user_recording_progress():
+    """willab recording progress toward the first audit (UX Wave 3 C-2 / S2).
+
+    GET → {recorded_seconds:int, threshold_seconds:int, unlocked:bool}.
+    recorded_seconds = the SERVER's cumulative sum of the user's Lab recording
+    durations (the FE renders bar = recorded/threshold and NEVER sums snippet
+    durations — those are selected windows, not total recorded time).
+    """
+    from services.user_audit import AUDIT_UNLOCK_SECONDS
+    try:
+        recorded = int(db.v2_get_cumulative_recorded_seconds(str(request.user_id)) or 0)
+        return jsonify({
+            "recorded_seconds": recorded,
+            "threshold_seconds": AUDIT_UNLOCK_SECONDS,
+            "unlocked": recorded >= AUDIT_UNLOCK_SECONDS,
+        }), 200
+    except Exception as e:
+        logger.error("user/recording-progress GET failed: %s", e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to fetch progress"}), 500
+
+
 @v2_bp.route("/config/recording", methods=["GET"])
 @optional_auth
 def v2_config_recording():
@@ -7603,6 +7632,108 @@ def v2_coach_students():
         logger.error("coach/students GET failed: %s", e, exc_info=True)
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR", "error": "Failed to fetch students"}), 500
+
+
+@v2_bp.route("/coach/students/<user_id>", methods=["GET"])
+@require_admin_or_coach
+def v2_coach_student_detail(user_id):
+    """willab coach student drill-down (UX Wave 3 E-1b / S6). Pseudonymized:
+    {pseudonym, domain, goal, sessions:[{session_id, topic, created_at, state}]}.
+    NEVER name/email. `goal` is user free-text and may self-identify — inherent,
+    not scrubbable (Flag 1: pseudonymized-default; a real-identity view is an
+    explicit admin-only exception needing founder approval).
+    """
+    if not _is_valid_uuid(user_id):
+        return jsonify({"code": "INVALID_INPUT", "error": "user_id must be a UUID"}), 400
+    try:
+        prof = db.get_user_profile(user_id) or {}
+        rows = db.v2_list_user_lab_sessions(user_id) or []
+        sessions = []
+        for s in rows:
+            ctx = s.get("intake_context") if isinstance(s.get("intake_context"), dict) else {}
+            if s.get("results_published_at"):
+                state = "insights_ready"
+            elif s.get("status") == "pending_admin_review":
+                state = "review_pending"
+            else:
+                state = "readout_ready"
+            sessions.append({
+                "session_id": s.get("id"),
+                "topic": (ctx or {}).get("topic") or "",
+                "created_at": s.get("created_at"),
+                "state": state,
+            })
+        return jsonify({
+            "pseudonym": _coach_pseudonym(user_id),
+            "domain": (prof or {}).get("domain") or "",
+            "goal": (prof or {}).get("goal") or "",
+            "sessions": sessions,
+        }), 200
+    except Exception as e:
+        logger.error("coach/student-detail GET failed user=%s err=%s", user_id, e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to fetch student"}), 500
+
+
+@v2_bp.route("/coach/students/<user_id>/audit", methods=["GET"])
+@require_admin_or_coach
+def v2_coach_student_audit(user_id):
+    """willab user_audit — coach panel DOWNLOAD (UX Wave 3 BE-3 / S5).
+    Assembled from existing insights + strong_sides_library (no generator).
+    `unlocked` reflects the S2 threshold; the coach decides whether to surface
+    'send' on a still-locked audit.
+    """
+    if not _is_valid_uuid(user_id):
+        return jsonify({"code": "INVALID_INPUT", "error": "user_id must be a UUID"}), 400
+    try:
+        from services.user_audit import assemble_user_audit
+        audit = assemble_user_audit(user_id)
+        audit["pseudonym"] = _coach_pseudonym(user_id)
+        return jsonify(audit), 200
+    except Exception as e:
+        logger.error("coach/student-audit GET failed user=%s err=%s", user_id, e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to assemble audit"}), 500
+
+
+@v2_bp.route("/coach/students/<user_id>/audit/send", methods=["POST"])
+@require_admin_or_coach
+def v2_coach_student_audit_send(user_id):
+    """willab user_audit — coach MANUAL email trigger (UX Wave 3 BE-3 / S5).
+    Emails the assembled audit to the student. Gated on S2 unlock (>=10 min
+    cumulative recorded). 409 if still locked; 422 if no email on file.
+    """
+    if not _is_valid_uuid(user_id):
+        return jsonify({"code": "INVALID_INPUT", "error": "user_id must be a UUID"}), 400
+    try:
+        from services.user_audit import (
+            assemble_user_audit, render_user_audit_html, audit_email_subject,
+        )
+        audit = assemble_user_audit(user_id)
+        if not audit.get("unlocked"):
+            return jsonify({
+                "code": "AUDIT_LOCKED",
+                "error": "Audit not unlocked yet (under the recording threshold).",
+                "recorded_seconds": audit.get("recorded_seconds"),
+                "threshold_seconds": audit.get("threshold_seconds"),
+            }), 409
+        email = db.get_user_email_from_auth(user_id)
+        if not email:
+            return jsonify({
+                "code": "NO_EMAIL", "error": "No email on file for this user.",
+            }), 422
+        from services.email_service import send_email_resend
+        send_email_resend(
+            to=email,
+            subject=audit_email_subject(),
+            html=render_user_audit_html(audit),
+        )
+        logger.info("coach: user_audit emailed user=%s", user_id)
+        return jsonify({"status": "sent", "email_sent_to": email}), 200
+    except Exception as e:
+        logger.error("coach/student-audit send failed user=%s err=%s", user_id, e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to send audit"}), 500
 
 
 @v2_bp.route("/coach/queue", methods=["GET"])
@@ -7832,6 +7963,79 @@ def v2_coach_save_snippet(session_id, snippet_id):
         )
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR", "error": "Failed to save snippet"}), 500
+
+
+@v2_bp.route("/coach/sessions/<session_id>/recut", methods=["POST"])
+@require_admin_or_coach
+def v2_coach_session_recut(session_id):
+    """willab admin re-cut (UX Wave 3 E-2 / S7). Re-runs the willab segmenter
+    on the session's STORED parent audio and replaces the auto-cut snippets.
+
+    DEVIATION (reported): the spec named apply_extracted_snippets, but that is
+    the OLD funnel's pipeline (turn rows / session_recordings/full.webm).
+    willab Lab audio lives in the coach bucket and is cut by
+    process_lab_recording, so re-cut re-runs THAT on the re-downloaded parent.
+
+    Guard: refused on a PUBLISHED session (never disturb a delivered report).
+    Caveat: re-cut mints new snippet ids, so any pre-publish coach drafts/
+    labels on the old snippets are orphaned (invisible to the new cut).
+    """
+    if not _is_valid_uuid(session_id):
+        return jsonify({"code": "INVALID_INPUT", "error": "session_id must be a UUID"}), 400
+    try:
+        session = db.v2_get_session_by_id(session_id)
+        if not session:
+            return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found"}), 404
+        if session.get("results_published_at"):
+            return jsonify({
+                "code": "ALREADY_PUBLISHED",
+                "error": "Cannot re-cut a published session.",
+            }), 409
+        recording_id = session.get("recording_1_id")
+        if not recording_id:
+            return jsonify({"code": "NO_RECORDING", "error": "Session has no recording."}), 404
+        rec = db.get_recording(recording_id)
+        if not rec:
+            return jsonify({"code": "NO_RECORDING", "error": "Recording not found."}), 404
+        storage_path = rec.get("storage_path")
+        parent_url = rec.get("audio_url") or storage_path
+        if not storage_path:
+            return jsonify({"code": "NO_AUDIO", "error": "Recording has no stored audio."}), 422
+
+        from services.coach_video_storage import get_coach_object_bytes
+        try:
+            audio_bytes = get_coach_object_bytes("coach_feedback_videos", storage_path)
+        except Exception as fe:
+            logger.error("recut: audio fetch failed sid=%s err=%s", session_id, fe)
+            return jsonify({"code": "AUDIO_FETCH_FAILED", "error": "Could not load stored audio."}), 502
+        if not audio_bytes:
+            return jsonify({"code": "NO_AUDIO", "error": "Stored audio is empty."}), 422
+
+        # Replace the existing auto-cut snippets, then re-run the segmenter.
+        db.v2_delete_lab_snippets_for_recording(recording_id)
+        from services.lab_recording import process_lab_recording
+        readout = process_lab_recording(
+            session_id=session_id,
+            user_id=session.get("user_id"),
+            recording_id=recording_id,
+            audio_bytes=audio_bytes,
+            filename=(storage_path.rsplit("/", 1)[-1] or "lab.webm"),
+            session_context=(
+                session.get("intake_context")
+                if isinstance(session.get("intake_context"), dict) else {}
+            ),
+            parent_audio_url=parent_url,
+        )
+        snippets = (readout or {}).get("snippets") or []
+        logger.info("recut: sid=%s re-cut snippets=%d", session_id, len(snippets))
+        return jsonify({
+            "status": "ok", "session_id": session_id,
+            "snippet_count": len(snippets), "snippets": snippets,
+        }), 200
+    except Exception as e:
+        logger.error("coach/session-recut failed sid=%s err=%s", session_id, e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to re-cut session"}), 500
 
 
 @v2_bp.route("/coach/sessions/<session_id>/video", methods=["POST"])
@@ -8084,10 +8288,18 @@ def v2_lab_create_recording():
         db.set_session_source(guest_session_id, "audit_upload")
 
         # Recording row (recording_origin fallback for pre-migration envs).
+        # BE-1 / S2 — persist the gate's measured duration (was hardcoded 0 +
+        # discarded). This is the source for cumulative recording-progress.
+        _rec_duration = 0
+        try:
+            _rec_duration = int(round(float(gate.get("duration_sec") or 0)))
+        except (TypeError, ValueError):
+            _rec_duration = 0
         rec_payload = {
             "id": recording_id, "user_id": None,
             "session_v2_id": guest_session_id,
-            "storage_path": parent_key, "audio_url": parent_url, "duration": 0,
+            "storage_path": parent_key, "audio_url": parent_url,
+            "duration": _rec_duration,
             "recording_origin": "willab_lab",
         }
         try:
