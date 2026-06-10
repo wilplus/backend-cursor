@@ -7620,6 +7620,11 @@ def v2_coach_students():
             uid = r.get("user_id")
             prof = db.get_user_profile(uid) or {}
             out.append({
+                # Opaque drill key — the FE keys the student detail view
+                # (GET /v2/coach/students/<user_id>) on this and NEVER renders
+                # it. A random UUID is not name/email, so this does not breach
+                # §B.4 (pseudonym + domain are still the only DISPLAYED fields).
+                "user_id": str(uid) if uid else "",
                 "pseudonym": _coach_pseudonym(uid),
                 "domain": (prof or {}).get("domain") or "",
                 "last_active": r.get("last_active") or "",
@@ -7648,6 +7653,14 @@ def v2_coach_student_detail(user_id):
     try:
         prof = db.get_user_profile(user_id) or {}
         rows = db.v2_list_user_lab_sessions(user_id) or []
+        # Unknown id → 404. A real roster student always has >=1 Lab session;
+        # 404 only when there's no footprint at all (no sessions AND no profile)
+        # so a transient sessions-read hiccup can't false-404 a known student.
+        if not rows and not (prof.get("domain") or prof.get("goal")):
+            return jsonify({
+                "code": "STUDENT_NOT_FOUND",
+                "error": "No willab student for that id.",
+            }), 404
         sessions = []
         for s in rows:
             ctx = s.get("intake_context") if isinstance(s.get("intake_context"), dict) else {}
