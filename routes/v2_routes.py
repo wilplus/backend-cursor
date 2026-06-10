@@ -7991,6 +7991,26 @@ def v2_coach_session_recut(session_id):
                 "code": "ALREADY_PUBLISHED",
                 "error": "Cannot re-cut a published session.",
             }), 409
+        # Guard the PARTIALLY-REVIEWED case: re-cut mints new snippet ids, so
+        # any coach labels/drafts already on this session would be orphaned —
+        # and labels are private-lane training signal, not just UX. Refuse
+        # unless ?force=true (a deliberate "discard my N labels" choice the FE
+        # must confirm). On force we delete the now-orphaned rows so they don't
+        # pollute the training set with dead-snippet references.
+        _force = (request.args.get("force") or "").strip().lower() in ("1", "true", "yes")
+        _labels = db.get_training_labels(session_id) or []
+        _drafts = db.get_coach_snippet_drafts(session_id) or []
+        if (_labels or _drafts) and not _force:
+            return jsonify({
+                "code": "RECUT_WOULD_DISCARD_LABELS",
+                "error": (
+                    "Re-cut mints new snippets and would discard the coach "
+                    "labels/notes already on this session. Re-send with "
+                    "?force=true to re-cut and discard them."
+                ),
+                "labels": len(_labels),
+                "drafts": len(_drafts),
+            }), 409
         recording_id = session.get("recording_1_id")
         if not recording_id:
             return jsonify({"code": "NO_RECORDING", "error": "Session has no recording."}), 404
@@ -8012,6 +8032,16 @@ def v2_coach_session_recut(session_id):
             return jsonify({"code": "NO_AUDIO", "error": "Stored audio is empty."}), 422
 
         # Replace the existing auto-cut snippets, then re-run the segmenter.
+        # On a forced re-cut, also clear the now-orphaned coach labels/drafts
+        # (the coach explicitly chose to discard them) so dead-snippet rows
+        # don't linger in the private-lane training set.
+        if _force and (_labels or _drafts):
+            db.delete_training_labels_for_session(session_id)
+            db.delete_coach_snippet_drafts_for_session(session_id)
+            logger.info(
+                "recut: force-discarded coach work sid=%s labels=%d drafts=%d",
+                session_id, len(_labels), len(_drafts),
+            )
         db.v2_delete_lab_snippets_for_recording(recording_id)
         from services.lab_recording import process_lab_recording
         readout = process_lab_recording(

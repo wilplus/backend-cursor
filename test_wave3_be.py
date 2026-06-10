@@ -214,5 +214,43 @@ class AuditSendGateTests(unittest.TestCase):
             ua.assemble_user_audit = orig
 
 
+@unittest.skipIf(_RT_ERR is not None, f"needs app deps: {_RT_ERR}")
+class RecutGuardTests(unittest.TestCase):
+    """BE-6 tightening — re-cut must refuse a PARTIALLY-REVIEWED session
+    (existing labels/drafts) unless ?force=true, so coach training signal is
+    never silently orphaned."""
+
+    def setUp(self):
+        self.app = Flask(__name__)
+        self._o = getattr(v2.db, "v2_get_session_by_id", None)
+        self._l = getattr(v2.db, "get_training_labels", None)
+        self._d = getattr(v2.db, "get_coach_snippet_drafts", None)
+        v2.db.v2_get_session_by_id = lambda sid: {
+            "id": sid, "results_published_at": None, "recording_1_id": "r1",
+        }
+        v2.db.get_training_labels = lambda sid: [
+            {"snippet_id": "a"}, {"snippet_id": "b"},
+            {"snippet_id": "c"}, {"snippet_id": "d"},
+        ]
+        v2.db.get_coach_snippet_drafts = lambda sid: []
+
+    def tearDown(self):
+        if self._o is not None:
+            v2.db.v2_get_session_by_id = self._o
+        if self._l is not None:
+            v2.db.get_training_labels = self._l
+        if self._d is not None:
+            v2.db.get_coach_snippet_drafts = self._d
+
+    def test_refused_without_force_when_labels_exist(self):
+        with self.app.test_request_context():  # no ?force
+            request.user_id = "coach-1"
+            resp, status = v2.v2_coach_session_recut.__wrapped__(UID)
+            self.assertEqual(status, 409)
+            data = resp.get_json()
+            self.assertEqual(data["code"], "RECUT_WOULD_DISCARD_LABELS")
+            self.assertEqual(data["labels"], 4)
+
+
 if __name__ == "__main__":
     unittest.main()
