@@ -8898,6 +8898,50 @@ class DatabaseService:
             )
             return False
 
+    def delete_training_labels_for_session(self, session_id: str) -> int:
+        """Delete ALL training labels for a session. Used by force re-cut
+        (UX Wave 3 BE-6) — re-cut mints new snippet ids, so the old labels
+        would be orphaned; on an explicit force we delete them rather than
+        leave dead-snippet rows polluting the private-lane training signal.
+        Returns the delete count; best-effort."""
+        if not session_id:
+            return 0
+        try:
+            res = (
+                self.client.table("training_labels")
+                .delete()
+                .eq("session_id", session_id)
+                .execute()
+            )
+            return len(res.data or [])
+        except Exception as e:
+            logger.warning(
+                "delete_training_labels_for_session failed sid=%s err=%s",
+                session_id, e,
+            )
+            return 0
+
+    def delete_coach_snippet_drafts_for_session(self, session_id: str) -> int:
+        """Delete ALL coach snippet drafts (note/tag/surfaced/when/examples)
+        for a session. Companion to delete_training_labels_for_session for
+        force re-cut. Returns the delete count; best-effort."""
+        if not session_id:
+            return 0
+        try:
+            res = (
+                self.client.table("coach_snippet_drafts")
+                .delete()
+                .eq("session_id", session_id)
+                .execute()
+            )
+            return len(res.data or [])
+        except Exception as e:
+            logger.warning(
+                "delete_coach_snippet_drafts_for_session failed sid=%s err=%s",
+                session_id, e,
+            )
+            return 0
+
     def list_review_queue(self, *, limit: int = 100) -> list[dict]:
         """willab coach review queue (§3.8/§14): willab Lab sessions sent
         to the coach (status pending_admin_review, source audit_upload)
