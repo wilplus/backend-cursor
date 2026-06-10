@@ -192,6 +192,15 @@ class CoachStudentDetailRouteTests(unittest.TestCase):
             self.assertNotIn("email", data)
             self.assertNotIn(UID, str(data.get("pseudonym")))
 
+    def test_unknown_id_returns_404(self):
+        v2.db.v2_list_user_lab_sessions = lambda uid: []
+        v2.db.get_user_profile = lambda uid: {}
+        with self.app.test_request_context():
+            request.user_id = "coach-1"
+            resp, status = v2.v2_coach_student_detail.__wrapped__(UID)
+            self.assertEqual(status, 404)
+            self.assertEqual(resp.get_json()["code"], "STUDENT_NOT_FOUND")
+
 
 @unittest.skipIf(_RT_ERR is not None, f"needs app deps: {_RT_ERR}")
 class AuditSendGateTests(unittest.TestCase):

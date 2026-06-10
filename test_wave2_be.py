@@ -14,7 +14,6 @@ Run: python3 -m unittest test_wave2_be
 """
 from __future__ import annotations
 
-import json
 import unittest
 
 # ── pure: the min-content thresholds the /config/recording endpoint serves ──
@@ -222,11 +221,12 @@ class CoachStudentsRouteTests(unittest.TestCase):
         self.assertEqual(row["domain"], "sales")
         self.assertIn("last_active", row)
         self.assertEqual(row["session_count"], 7)  # coach-load drowning guard
-        # red-line: no raw identity anywhere in the serialized payload
-        self.assertNotIn("user_id", row)
+        # user_id is the opaque drill key (FE keys the detail view on it, never
+        # renders it) — present, but NOT a displayed field.
+        self.assertEqual(row["user_id"], "secret-uid-123")
+        # red-line: still no name/email (the actual PII).
         self.assertNotIn("email", row)
         self.assertNotIn("name", row)
-        self.assertNotIn("secret-uid-123", json.dumps(data))
 
 
 if __name__ == "__main__":
