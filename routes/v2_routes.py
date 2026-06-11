@@ -8213,10 +8213,11 @@ _PRESENTATION_MAX_MB = 20  # slide decks; FE mirrors this guard
 def v2_lab_presentation_extract():
     """willab slide-deck extract (UX Wave 4 §S / BE-S2). GUEST-ALLOWED.
 
-    Upload a .pptx/.pdf → (a) per-slide {title, body} text for the editable
-    form + analysis, and (b) ONE served PDF the FE renders with PDF.js (pptx
-    converted via headless LibreOffice; pdf passes through). Parse-and-store:
-    the PDF is stored + a browser-fetchable URL returned as presentation_ref.
+    Upload a PDF → (a) per-slide {title, body} text for the editable form +
+    analysis, and (b) the stored PDF the FE renders with PDF.js. Parse-and-
+    store: the PDF is stored + a browser-fetchable URL returned as
+    presentation_ref. (PDF-only — PPTX returns 415 "export to PDF"; the
+    server-side PPTX→PDF path was dropped, see services/deck_parser.py.)
 
       200 { slides:[{title,body}], presentation_ref, slide_count, source, warnings }
       400 missing/empty file · 413 too large · 415 unsupported · 422 unparseable
@@ -8229,7 +8230,11 @@ def v2_lab_presentation_extract():
         ext = os.path.splitext(f.filename or "")[1].lower()
         if ext not in SUPPORTED_EXTS:
             return jsonify({
-                "code": "UNSUPPORTED_TYPE", "error": "Upload a .pptx or .pdf file",
+                "code": "UNSUPPORTED_TYPE",
+                "error": (
+                    "Upload a PDF. (Export PowerPoint/Keynote to PDF first — "
+                    "PPTX isn't supported yet.)"
+                ),
             }), 415
         data = f.read()
         if not data:
