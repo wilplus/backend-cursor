@@ -7797,7 +7797,9 @@ def v2_coach_get_session(session_id):
             return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found"}), 404
 
         from services.lab_recording import build_readout_from_session
-        readout = build_readout_from_session(session_id)
+        # include_slide_scores=True → coach gets Stickiness #2 (per-snippet
+        # on-slide-ness + the per-slide coverage ledger). Coach-only (AC-9).
+        readout = build_readout_from_session(session_id, include_slide_scores=True)
         cstate = _coach_state_map(session_id)
 
         snippets = []
@@ -7819,6 +7821,11 @@ def v2_coach_get_session(session_id):
                 # spoken (from the tap timeline), so the coach reviews delivery
                 # against what the slide claimed. None when no deck.
                 "slide": snip.get("slide"),
+                # Stickiness #2 (coach-only): per-snippet on-slide-ness +
+                # blended overall + rank (annotation, readout stays chronological).
+                "slide_stickiness": snip.get("slide_stickiness"),
+                "overall_score": snip.get("overall_score"),
+                "rank": snip.get("rank"),
                 "coach_state": cstate.get(str(snip.get("id")), {
                     "direction_label": None, "note": "", "tag": None, "surfaced": False,
                 }),
@@ -7839,6 +7846,8 @@ def v2_coach_get_session(session_id):
             # reviewing; per-snippet slide mapping is Phase 2.
             "slides": (ctx or {}).get("slides") or [],
             "presentation_ref": (ctx or {}).get("presentation_ref") or None,
+            # Per-slide coverage ledger (Stickiness #2 (i)) — coach audit.
+            "slide_coverage": readout.get("slide_coverage") or [],
             "snippets": snippets,
         }), 200
     except Exception as e:
@@ -7850,13 +7859,14 @@ def v2_coach_get_session(session_id):
 @v2_bp.route("/coach/sessions/<session_id>/slide-alignment", methods=["GET"])
 @require_admin_or_coach
 def v2_coach_slide_alignment(session_id):
-    """willab slide↔delivery compatibility (UX Wave 4 BE-S5). COACH-REFERENCE
-    ONLY — the human coach reads it and writes the insight; never an auto user
-    verdict (AC-9). Computed on demand on its OWN endpoint so the LLM latency
-    doesn't slow the main coach packet load. Best-effort.
+    """willab slide↔delivery coverage ledger (UX Wave 4, claim-ledger).
+    COACH-REFERENCE ONLY (AC-9). Reads the PERSISTED per-slide ledger computed
+    at processing time (no live LLM call) — the structured "delivered N of M
+    points per slide" audit. Consolidated from the old prose verdict: the
+    ledger is the single source.
 
-      200 { per_slide:[{slide_index, covered, comment}], overall_comment }
-      200 { available: false }   — no deck / no spoken mapping / LLM unavailable
+      200 { slide_coverage:[{slide_index, covered, partial, total, ledger}] }
+      200 { available: false }   — no deck / not scored
     """
     if not _is_valid_uuid(session_id):
         return jsonify({"code": "INVALID_INPUT", "error": "session_id must be a UUID"}), 400
@@ -7864,11 +7874,12 @@ def v2_coach_slide_alignment(session_id):
         session = db.v2_get_session_by_id(session_id)
         if not session:
             return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found"}), 404
-        from services.slide_alignment import compute_slide_compatibility
-        result = compute_slide_compatibility(session_id)
-        if not result:
+        from services.lab_recording import build_readout_from_session
+        readout = build_readout_from_session(session_id, include_slide_scores=True)
+        coverage = readout.get("slide_coverage") or []
+        if not coverage:
             return jsonify({"available": False}), 200
-        return jsonify(result), 200
+        return jsonify({"slide_coverage": coverage}), 200
     except Exception as e:
         logger.error("coach/slide-alignment failed sid=%s err=%s", session_id, e, exc_info=True)
         sentry_sdk.capture_exception(e)

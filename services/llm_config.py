@@ -187,6 +187,31 @@ willab Readout card (design §5). Distinct from the session-level
 stickiness metric (services/stickiness.py)."""
 
 
+SPEC_SLIDE_CLAIMS = LLMSpec(
+    model=CHEAP_MODEL,
+    # Extraction, not judgment — keep it deterministic-ish.
+    temperature=0.2,
+    # One batched call decomposing the whole deck (≤60 slides) into a few
+    # short claims each; bounded output.
+    max_tokens=1500,
+    response_format=None,  # schema via response_format_override
+)
+"""Decompose each slide (title + body) into atomic, checkable claims for the
+slide-delivery claim-ledger (Stickiness #2). Extraction only."""
+
+
+SPEC_SLIDE_ENTAILMENT = LLMSpec(
+    model=CHEAP_MODEL,
+    # Constrained verdicts (covered/partial/not) — low temp for stability.
+    temperature=0.2,
+    # One batched call: per snippet, a verdict per claim of its mapped slide.
+    max_tokens=1500,
+    response_format=None,  # schema via response_format_override
+)
+"""Per-snippet textual entailment of its mapped slide's claims (covered |
+partial | not) — the claim-ledger verdicts behind Stickiness #2."""
+
+
 SPEC_CONTEXTUAL_FOLLOWUP = LLMSpec(
     model=CHEAP_MODEL,
     # Moderate warmth — the question should feel like a coach who
