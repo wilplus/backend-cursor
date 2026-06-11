@@ -3,11 +3,13 @@
 #
 # Runtime: gunicorn must see Nix profile on PATH (see Procfile), or shutil.which("ffmpeg")
 # fails and Python falls back to imageio-ffmpeg.
-# libreoffice-impress (+ its libreoffice-core dep, which provides `soffice`):
-# UX Wave 4 slide-deck feature converts uploaded .pptx → .pdf headless
-# (services/deck_parser.py) so the FE has one PDF.js render path. impress-only
-# keeps the image smaller than full `libreoffice`; the first conversion is
-# warmed at worker boot (gunicorn_conf.py).
+# libreoffice (Nix): UX Wave 4 slide-deck feature converts uploaded .pptx →
+# .pdf headless (services/deck_parser.py) so the FE has one PDF.js render path.
+# Installed via NIX (not apt) — apt's libreoffice-impress did not land `soffice`
+# on this nixpacks runtime (same reason ffmpeg is sourced from Nix); the Nix
+# package puts soffice on the Nix profile, which railway-web.sh + deck_parser
+# already probe. Heavier image (~1GB+) but the reliable path here. First
+# conversion is warmed at worker boot (gunicorn_conf.py).
 [phases.setup]
-nixPkgs = ["ffmpeg"]
-aptPkgs = ["ffmpeg", "libreoffice-impress"]
+nixPkgs = ["ffmpeg", "libreoffice"]
+aptPkgs = ["ffmpeg"]
