@@ -317,6 +317,46 @@ def process_lab_recording(
         {"id": None, "transcript": p["transcript"]} for p in prelim
     ])
 
+    # 2b) Stickiness #2 — slide-delivery claim-ledger (UX Wave 4). BEST-EFFORT:
+    #     any failure here must NOT break the recording or #1. Per-snippet
+    #     on-slide-ness (ii) drives overall/rank; per-slide coverage ledger (i)
+    #     is the coach audit. Computed against the slides as recorded (lock).
+    _slide_per_snip: list = []
+    _slide_coverage: list = []
+    try:
+        _slides_ctx = (session_context or {}).get("slides")
+        if _slides_ctx:
+            from services.slide_alignment import compute_slide_scores
+            _res = compute_slide_scores(
+                [{"start_offset_ms": p["start_ms"], "duration_ms": p["dur_ms"],
+                  "transcript": p["transcript"]} for p in prelim],
+                _slides_ctx,
+                (session_context or {}).get("slide_advances"),
+            )
+            _slide_per_snip = _res.get("per_snippet") or []
+            _slide_coverage = _res.get("slide_coverage") or []
+    except Exception as e:
+        logger.warning(
+            "process_lab_recording: slide scoring failed sid=%s err=%s",
+            session_id, e,
+        )
+
+    # overall = 0.5·#1 + 0.5·#2(ii); #2 null → overall = #1. Rank by overall
+    # desc (tie-break #1, then earliest offset). Ranking only — selection above
+    # is unchanged, so #2 never biases the salience set.
+    _overall: list = []
+    for i, p in enumerate(prelim):
+        _s1 = (sticky[i] if i < len(sticky) else {}).get("composite")
+        _s1 = float(_s1) if isinstance(_s1, (int, float)) else 0.0
+        _ss = _slide_per_snip[i] if i < len(_slide_per_snip) else None
+        _s2 = _ss.get("composite") if isinstance(_ss, dict) else None
+        _ov = (0.5 * _s1 + 0.5 * float(_s2)) if isinstance(_s2, (int, float)) else _s1
+        _overall.append((_ov, _s1, p["start_ms"], i))
+    _rank_by_i = {
+        t[3]: r + 1
+        for r, t in enumerate(sorted(_overall, key=lambda t: (-t[0], -t[1], t[2])))
+    }
+
     # 3) Insert each snippet with stickiness PERSISTED into its metrics
     #    blob (metrics["stickiness"]), so a later re-read rebuilds the
     #    identical §3.3 readout (build_readout_from_session). The
@@ -329,6 +369,14 @@ def process_lab_recording(
             "composite": st.get("composite"),
             "comment": st.get("comment"),
         }
+        # Stickiness #2 (UX Wave 4) — persisted alongside #1.
+        _ss = _slide_per_snip[i] if i < len(_slide_per_snip) else None
+        if isinstance(_ss, dict) and _ss.get("composite") is not None:
+            metrics_full["slide_stickiness"] = _ss
+        metrics_full["overall_score"] = round(_overall[i][0], 3)
+        metrics_full["rank"] = _rank_by_i.get(i)
+        if i == 0 and _slide_coverage:  # per-slide ledger parked once, on snip[0]
+            metrics_full["slide_coverage"] = _slide_coverage
         row = db.create_charisma_snippet(
             session_id=session_id,
             user_id=user_id,
@@ -369,6 +417,7 @@ def build_readout_from_session(
     session_id: str,
     *,
     include_insights: bool = True,
+    include_slide_scores: bool = False,
 ) -> dict:
     """Re-derive the §3.3 Readout from PERSISTED snippets — the canonical
     reader for parked-restore + history (contract: a report loads
@@ -396,7 +445,7 @@ def build_readout_from_session(
         sticky = metrics.get("stickiness") if isinstance(metrics, dict) else None
         if not isinstance(sticky, dict):
             sticky = {}
-        out_snips.append({
+        snip_out = {
             "id": s.get("id"),
             "index": i + 1,
             "transcript": (
@@ -410,7 +459,18 @@ def build_readout_from_session(
                 "composite": sticky.get("composite"),
                 "comment": sticky.get("comment"),
             },
-        })
+        }
+        # Stickiness #2 is COACH-ONLY until calibrated (AC-9) — surfaced only
+        # when include_slide_scores (the coach packet), never on the user readout.
+        if include_slide_scores:
+            ss = metrics.get("slide_stickiness") if isinstance(metrics, dict) else None
+            if isinstance(ss, dict):
+                snip_out["slide_stickiness"] = ss
+            if metrics.get("overall_score") is not None:
+                snip_out["overall_score"] = metrics.get("overall_score")
+            if metrics.get("rank") is not None:
+                snip_out["rank"] = metrics.get("rank")
+        out_snips.append(snip_out)
 
     result: dict = {"snippets": out_snips}
 
@@ -436,6 +496,14 @@ def build_readout_from_session(
                     snip["slide"] = sl
         if ctx.get("presentation_ref"):
             result["presentation_ref"] = ctx.get("presentation_ref")
+
+    # Per-slide coverage ledger (Stickiness #2 (i)) — COACH-ONLY audit; parked
+    # once on the first snippet's metrics at process time.
+    if include_slide_scores and snippets:
+        m0 = snippets[0].get("metrics")
+        cov = m0.get("slide_coverage") if isinstance(m0, dict) else None
+        if cov:
+            result["slide_coverage"] = cov
 
     if include_insights:
         try:
