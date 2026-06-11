@@ -64,6 +64,9 @@ class ValidatorTests(unittest.TestCase):
             "audience": "Engineering team",
             "target_length_seconds": 600,
             "domain_vocabulary": ["keynote", "podium"],
+            "slides": None,
+            "presentation_ref": None,
+            "slide_advances": None,
         })
 
     def test_empty_body_returns_all_nulls(self):
@@ -73,6 +76,9 @@ class ValidatorTests(unittest.TestCase):
             "audience": None,
             "target_length_seconds": None,
             "domain_vocabulary": None,
+            "slides": None,
+            "presentation_ref": None,
+            "slide_advances": None,
         })
 
     def test_partial_body_fills_missing_with_null(self):
@@ -87,13 +93,14 @@ class ValidatorTests(unittest.TestCase):
         self.assertIsNone(out["audience"])
 
     def test_canonical_keys_always_present(self):
-        """Even when the body has only one key, the returned dict has
-        all four canonical keys (willab beta added domain_vocabulary)."""
+        """Even when the body has only one key, the returned dict has all
+        canonical keys (willab beta added domain_vocabulary; UX Wave 4 added
+        slides / presentation_ref / slide_advances)."""
         out = self._validate({"target_length_seconds": 60})
         self.assertEqual(
             set(out.keys()),
-            {"topic", "audience", "target_length_seconds",
-             "domain_vocabulary"},
+            {"topic", "audience", "target_length_seconds", "domain_vocabulary",
+             "slides", "presentation_ref", "slide_advances"},
         )
 
     # ── domain_vocabulary (willab beta §4) ─────────────────────────
@@ -277,6 +284,7 @@ class SnapshotHelperTests(unittest.TestCase):
             out = mod.snapshot_intake_context("sid-x")
         self.assertEqual(set(out.keys()), {
             "topic", "audience", "target_length_seconds", "domain_vocabulary",
+            "slides", "presentation_ref", "slide_advances",
         })
         self.assertEqual(out["topic"], "real topic")
         self.assertIsNone(out["audience"])
@@ -284,8 +292,8 @@ class SnapshotHelperTests(unittest.TestCase):
         self.assertEqual(out["domain_vocabulary"], ["keynote"])
 
     def test_missing_keys_normalize_to_none(self):
-        """A row that only has `topic` set still returns the
-        4-key dict with None for the others."""
+        """A row that only has `topic` set still returns the full canonical
+        dict with None for the others."""
         from services import intake_context as mod
         from services.db import db
         with patch.object(
@@ -297,6 +305,9 @@ class SnapshotHelperTests(unittest.TestCase):
             "audience": None,
             "target_length_seconds": None,
             "domain_vocabulary": None,
+            "slides": None,
+            "presentation_ref": None,
+            "slide_advances": None,
         })
 
 

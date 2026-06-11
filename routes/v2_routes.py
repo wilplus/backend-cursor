@@ -7831,6 +7831,10 @@ def v2_coach_get_session(session_id):
             "state": _coach_session_state(session, cstate),
             "overall_message": (insights or {}).get("overall_message") or "",
             "video_ref": (session.get("coach_video_ref") or None),
+            # Slide-deck context (UX Wave 4 BE-S6a) — coach sees the deck while
+            # reviewing; per-snippet slide mapping is Phase 2.
+            "slides": (ctx or {}).get("slides") or [],
+            "presentation_ref": (ctx or {}).get("presentation_ref") or None,
             "snippets": snippets,
         }), 200
     except Exception as e:
@@ -8201,6 +8205,84 @@ def _parse_lab_vocabulary(raw):
     return [t.strip() for t in s.split(",") if t.strip()]
 
 
+_PRESENTATION_MAX_MB = 20  # slide decks; FE mirrors this guard
+
+
+@v2_bp.route("/lab/presentation/extract", methods=["POST"])
+@optional_auth
+def v2_lab_presentation_extract():
+    """willab slide-deck extract (UX Wave 4 §S / BE-S2). GUEST-ALLOWED.
+
+    Upload a .pptx/.pdf → (a) per-slide {title, body} text for the editable
+    form + analysis, and (b) ONE served PDF the FE renders with PDF.js (pptx
+    converted via headless LibreOffice; pdf passes through). Parse-and-store:
+    the PDF is stored + a browser-fetchable URL returned as presentation_ref.
+
+      200 { slides:[{title,body}], presentation_ref, slide_count, source, warnings }
+      400 missing/empty file · 413 too large · 415 unsupported · 422 unparseable
+    """
+    try:
+        if "file" not in request.files:
+            return jsonify({"code": "INVALID_INPUT", "error": "file is required"}), 400
+        f = request.files.get("file")
+        from services.deck_parser import SUPPORTED_EXTS
+        ext = os.path.splitext(f.filename or "")[1].lower()
+        if ext not in SUPPORTED_EXTS:
+            return jsonify({
+                "code": "UNSUPPORTED_TYPE", "error": "Upload a .pptx or .pdf file",
+            }), 415
+        data = f.read()
+        if not data:
+            return jsonify({"code": "INVALID_INPUT", "error": "file is empty"}), 400
+        if len(data) > _PRESENTATION_MAX_MB * 1024 * 1024:
+            return jsonify({
+                "code": "FILE_TOO_LARGE",
+                "error": f"file exceeds {_PRESENTATION_MAX_MB}MB",
+            }), 413
+
+        from services.deck_parser import extract_deck, DeckParseError
+        try:
+            parsed = extract_deck(data, f.filename or "deck")
+        except DeckParseError as de:
+            return jsonify({"code": "UNPARSEABLE", "error": str(de)}), 422
+        except Exception as pe:
+            logger.error("presentation extract failed: %s", pe, exc_info=True)
+            return jsonify({"code": "UNPARSEABLE", "error": "Could not parse the file."}), 422
+
+        # Store the served PDF; return a browser-fetchable URL. Prefer the
+        # stable public URL (persists for history scroll-back); fall back to a
+        # presigned GET only if the public base isn't configured.
+        from services.coach_video_storage import (
+            put_coach_object_bytes, coach_media_public_url,
+        )
+        key = f"willab_presentations/{uuid.uuid4().hex}.pdf"
+        try:
+            put_coach_object_bytes(
+                "coach_feedback_videos", key, parsed["pdf_bytes"], "application/pdf",
+            )
+        except Exception as se:
+            logger.error("presentation store failed: %s", se, exc_info=True)
+            return jsonify({"code": "V2_ERROR", "error": "Could not store the presentation."}), 502
+        presentation_ref = coach_media_public_url(key)
+        if not presentation_ref:
+            from services.coach_video_storage import presigned_get_coach_object
+            presentation_ref = presigned_get_coach_object(
+                "coach_feedback_videos", key, expires_in=604800,
+            )
+        slides = parsed["slides"]
+        return jsonify({
+            "slides": slides,
+            "presentation_ref": presentation_ref,
+            "slide_count": len(slides),
+            "source": parsed["source"],
+            "warnings": parsed.get("warnings") or [],
+        }), 200
+    except Exception as e:
+        logger.error("lab/presentation/extract failed: %s", e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to process presentation"}), 500
+
+
 @v2_bp.route("/lab/recordings", methods=["POST"])
 def v2_lab_create_recording():
     """willab Lab upload — multipart, synchronous, guest-allowed (§3.3).
@@ -8264,6 +8346,14 @@ def v2_lab_create_recording():
             target_len = int(target_raw) if target_raw not in (None, "") else None
         except (TypeError, ValueError):
             target_len = None
+        def _form_json(name):
+            raw = form.get(name)
+            if raw in (None, ""):
+                return None
+            try:
+                return json.loads(raw)
+            except (ValueError, TypeError):
+                return None
         try:
             session_context = validate_intake_context_body({
                 "topic": form.get("topic"),
@@ -8272,6 +8362,11 @@ def v2_lab_create_recording():
                 "domain_vocabulary": _parse_lab_vocabulary(
                     form.get("domain_vocabulary"),
                 ),
+                # Slide-deck context (UX Wave 4 §S) — JSON multipart fields,
+                # same pattern as domain_vocabulary.
+                "slides": _form_json("slides"),
+                "presentation_ref": form.get("presentation_ref") or None,
+                "slide_advances": _form_json("slide_advances"),
             }, require_topic=True)
         except IntakeContextError as ve:
             return jsonify({"code": "INVALID_INPUT", "error": str(ve)}), 422
