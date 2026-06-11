@@ -92,6 +92,40 @@ def decode_audio_to_pcm(audio_bytes: bytes) -> Optional[np.ndarray]:
         return None
 
 
+def compress_audio_for_whisper(audio_bytes: bytes) -> Optional[bytes]:
+    """Transcode any audio → 16kHz mono mp3 (speech-optimal, small) so a long
+    recording fits under OpenAI Whisper's 25MB upload cap.
+
+    Whisper only needs intelligible speech, so 16kHz mono @48kbps is plenty
+    (~0.36 MB/min → ~70 min under 25MB). The acoustic pipeline keeps using the
+    FULL-quality original; only the transcription copy is compressed. Returns
+    the mp3 bytes, or None on failure (caller falls back to the original)."""
+    ffmpeg_exe = _resolve_ffmpeg_executable()
+    if not ffmpeg_exe:
+        return None
+    try:
+        proc = subprocess.run(
+            [
+                ffmpeg_exe, "-i", "pipe:0",
+                "-ac", "1", "-ar", str(SAMPLE_RATE), "-b:a", "48k",
+                "-f", "mp3", "pipe:1",
+            ],
+            input=audio_bytes,
+            capture_output=True,
+            timeout=120,
+        )
+        if proc.returncode != 0 or not proc.stdout:
+            logger.warning(
+                "compress_audio_for_whisper: ffmpeg rc=%d stderr=%s",
+                proc.returncode, proc.stderr[:300].decode("utf-8", "replace"),
+            )
+            return None
+        return proc.stdout
+    except Exception as e:
+        logger.warning("compress_audio_for_whisper error: %s", e)
+        return None
+
+
 def _frame_rms_db(sig: np.ndarray) -> np.ndarray:
     dbs = []
     for i in range(0, len(sig) - FRAME_SIZE + 1, HOP):
