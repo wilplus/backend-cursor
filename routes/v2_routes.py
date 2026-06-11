@@ -7815,6 +7815,10 @@ def v2_coach_get_session(session_id):
                 # only; the split-sink user readout already exposes the same
                 # vector by design. build_readout_from_session computed it.
                 "features": snip.get("features"),
+                # UX Wave 4 Phase 2 — the slide on screen when this snippet was
+                # spoken (from the tap timeline), so the coach reviews delivery
+                # against what the slide claimed. None when no deck.
+                "slide": snip.get("slide"),
                 "coach_state": cstate.get(str(snip.get("id")), {
                     "direction_label": None, "note": "", "tag": None, "surfaced": False,
                 }),
