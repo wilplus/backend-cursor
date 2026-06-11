@@ -8217,7 +8217,11 @@ def v2_coach_session_video(session_id):
 # If FE wants optional-auth (use the real user_id when a JWT is present)
 # or a separate guest session_context step, say so — small change.
 
-_LAB_MAX_AUDIO_MB = 25  # a 60s+ recording is a few MB; generous headroom
+# Presentation recordings run minutes, not seconds — 25MB was too tight (a
+# real talk 413'd). 100MB headroom; the global MAX_CONTENT_LENGTH (500MB) still
+# bounds it, and oversized audio is compressed to a 16kHz mono mp3 before the
+# OpenAI Whisper call (which itself caps at 25MB) — see process_lab_recording.
+_LAB_MAX_AUDIO_MB = 100
 
 
 def _parse_lab_vocabulary(raw):

@@ -149,6 +149,11 @@ def build_readout_payload(
     return {"snippets": out_snippets}
 
 
+# OpenAI Whisper rejects uploads larger than 25MB; compress above this
+# threshold (a touch under 25MB for multipart/header headroom).
+_WHISPER_MAX_BYTES = 24 * 1024 * 1024
+
+
 def _merge_slide_vocab(session_context):
     """Whisper prime = domain_vocabulary + slide titles (UX Wave 4 BE-S3).
 
@@ -219,8 +224,26 @@ def process_lab_recording(
         ois = OpenAIService()
         if ois.client:
             vocab = _merge_slide_vocab(session_context)
+            # OpenAI Whisper rejects uploads > 25MB. Long presentation
+            # recordings can exceed that, so compress oversized audio to a
+            # 16kHz mono mp3 just for transcription (the acoustic pipeline
+            # above still uses the full-quality original). Best-effort: fall
+            # back to the original bytes if the transcode fails.
+            whisper_bytes = audio_bytes
+            whisper_name = filename or "lab.webm"
+            if len(audio_bytes) > _WHISPER_MAX_BYTES:
+                from services.audio_metrics import compress_audio_for_whisper
+                compressed = compress_audio_for_whisper(audio_bytes)
+                if compressed and len(compressed) < len(audio_bytes):
+                    whisper_bytes = compressed
+                    whisper_name = "lab.mp3"
+                    logger.info(
+                        "process_lab_recording: compressed audio for whisper "
+                        "sid=%s %d→%d bytes", session_id,
+                        len(audio_bytes), len(compressed),
+                    )
             wres = ois.transcribe_audio(
-                BytesIO(audio_bytes), filename or "lab.webm",
+                BytesIO(whisper_bytes), whisper_name,
                 vocabulary=vocab,
             )
             segments = (wres or {}).get("segments") or []
