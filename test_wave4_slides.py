@@ -104,37 +104,19 @@ class DeckParserGuardTests(unittest.TestCase):
         with self.assertRaises(DeckParseError):
             extract_deck(b"hello", "notes.txt")
 
+    def test_pptx_rejected_with_export_hint(self):
+        # PDF-only pivot: PPTX is rejected with an export-to-PDF message.
+        from services.deck_parser import extract_deck, DeckParseError, SUPPORTED_EXTS
+        self.assertEqual(SUPPORTED_EXTS, (".pdf",))
+        with self.assertRaises(DeckParseError) as ctx:
+            extract_deck(b"PK\x03\x04fake", "deck.pptx")
+        self.assertIn("PDF", str(ctx.exception))
+
     def test_ext_and_clip(self):
         from services.deck_parser import _ext, _clip
-        self.assertEqual(_ext("a/b/Deck.PPTX"), ".pptx")
+        self.assertEqual(_ext("a/b/Deck.PDF"), ".pdf")
         self.assertEqual(_clip("  hi  ", 10), "hi")
         self.assertEqual(_clip("abcdef", 3), "abc")
-
-
-class PptxTextExtractionTests(unittest.TestCase):
-    """Exercises the REAL python-pptx extraction (title placeholder→title,
-    body frames→body). Runs in CI (dep installed); skips locally without it.
-    Tests _extract_pptx_text directly to avoid the soffice (PDF) dependency."""
-
-    def setUp(self):
-        try:
-            import pptx  # noqa: F401
-        except ImportError:
-            self.skipTest("python-pptx not installed")
-
-    def test_title_and_body(self):
-        import io
-        from pptx import Presentation
-        prs = Presentation()
-        slide = prs.slides.add_slide(prs.slide_layouts[1])  # title + content
-        slide.shapes.title.text = "My Title"
-        slide.placeholders[1].text = "bullet one\nbullet two"
-        buf = io.BytesIO()
-        prs.save(buf)
-        from services.deck_parser import _extract_pptx_text
-        slides, _warnings = _extract_pptx_text(buf.getvalue())
-        self.assertEqual(slides[0]["title"], "My Title")
-        self.assertIn("bullet one", slides[0]["body"])
 
 
 # ── extract route shape (skip without flask; run in CI) ──

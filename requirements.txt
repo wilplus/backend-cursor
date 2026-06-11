@@ -19,8 +19,7 @@ boto3>=1.34.0
 # (warmed at worker boot via gunicorn_conf.py post_worker_init).
 librosa==0.10.2
 soundfile>=0.12.0
-# Slide-deck parsing (UX Wave 4): python-pptx extracts pptx title/body text;
-# pypdf extracts pdf text. PPTX→PDF rendering is done by system LibreOffice
-# (nixpacks aptPkgs), not these. Both lazy-imported in services/deck_parser.py.
-python-pptx==1.0.2
+# Slide-deck parsing (UX Wave 4, PDF-only): pypdf extracts per-slide text from
+# the uploaded PDF. Lazy-imported in services/deck_parser.py. (PPTX is not
+# converted server-side — users export to PDF; LibreOffice was dropped.)
 pypdf==5.1.0

@@ -3,13 +3,10 @@
 #
 # Runtime: gunicorn must see Nix profile on PATH (see Procfile), or shutil.which("ffmpeg")
 # fails and Python falls back to imageio-ffmpeg.
-# libreoffice (Nix): UX Wave 4 slide-deck feature converts uploaded .pptx →
-# .pdf headless (services/deck_parser.py) so the FE has one PDF.js render path.
-# Installed via NIX (not apt) — apt's libreoffice-impress did not land `soffice`
-# on this nixpacks runtime (same reason ffmpeg is sourced from Nix); the Nix
-# package puts soffice on the Nix profile, which railway-web.sh + deck_parser
-# already probe. Heavier image (~1GB+) but the reliable path here. First
-# conversion is warmed at worker boot (gunicorn_conf.py).
+# (UX Wave 4 slide-deck is PDF-only: decks are uploaded as PDF and rendered
+# client-side via PDF.js, so no server-side LibreOffice/PPTX→PDF conversion —
+# LibreOffice did not provision reliably here and was dropped to keep the build
+# lean. See services/deck_parser.py.)
 [phases.setup]
-nixPkgs = ["ffmpeg", "libreoffice"]
+nixPkgs = ["ffmpeg"]
 aptPkgs = ["ffmpeg"]
