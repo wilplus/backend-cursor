@@ -270,10 +270,14 @@ def process_lab_recording(
     candidates: list = []
     for (start_ms, end_ms) in candidate_windows:
         dur_ms = end_ms - start_ms
+        # Slice the transcript FIRST and pass it in — analyze_pcm_window needs
+        # the words to compute wpm (→ the "speed" / speech_rate metric).
+        # Without it, speech_rate was always null and the card showed "—".
+        transcript = slice_transcript_for_window(segments, start_ms, end_ms)
         metrics = analyze_pcm_window(
             sig, start_offset_ms=start_ms, duration_ms=dur_ms,
+            transcript=transcript,
         ) or {}
-        transcript = slice_transcript_for_window(segments, start_ms, end_ms)
         candidates.append({
             "start_ms": start_ms, "dur_ms": dur_ms,
             "metrics": metrics, "transcript": transcript,
