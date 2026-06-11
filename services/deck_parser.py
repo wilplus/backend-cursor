@@ -137,8 +137,40 @@ def _extract_pdf_text(file_bytes: bytes):
     return slides, warnings
 
 
+# soffice install locations. The Railway runtime PATH often omits the apt/Nix
+# dirs (same reason railway-web.sh hunts ffmpeg), and apt's libreoffice-core
+# sometimes lacks the /usr/bin/soffice symlink — so probe the real binary at
+# /usr/lib/.../program/soffice and the Nix profiles too, not just PATH.
+_SOFFICE_CANDIDATES = (
+    "/usr/bin/soffice",
+    "/usr/bin/libreoffice",
+    "/usr/local/bin/soffice",
+    "/usr/lib/libreoffice/program/soffice",
+    "/opt/libreoffice/program/soffice",
+)
+
+
+def _find_soffice():
+    found = shutil.which("soffice") or shutil.which("libreoffice")
+    if found:
+        return found
+    for p in _SOFFICE_CANDIDATES:
+        if os.path.exists(p):
+            return p
+    # Nix profile dirs (LibreOffice installed via nixPkgs).
+    for base in (
+        os.path.expanduser("~/.nix-profile/bin"),
+        "/root/.nix-profile/bin",
+        "/nix/var/nix/profiles/default/bin",
+    ):
+        cand = os.path.join(base, "soffice")
+        if os.path.exists(cand):
+            return cand
+    return None
+
+
 def _pptx_to_pdf(file_bytes: bytes) -> bytes:
-    soffice = shutil.which("soffice") or shutil.which("libreoffice")
+    soffice = _find_soffice()
     if not soffice:
         raise DeckParseError("LibreOffice not available for PPTX conversion")
     with tempfile.TemporaryDirectory() as td:
