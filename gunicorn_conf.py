@@ -55,3 +55,13 @@ def post_worker_init(worker):
         worker.log.info("[warmup] librosa numba JIT warmed (pid=%s)", worker.pid)
     except Exception as e:  # never block worker boot on the warmup
         worker.log.warning("[warmup] librosa warmup skipped: %s", e)
+
+    # UX Wave 4 — prime the LibreOffice (soffice) profile so the first PPTX→PDF
+    # conversion on /v2/lab/presentation/extract doesn't eat the ~slow cold
+    # start (profile init). Same best-effort pattern as librosa above.
+    try:
+        from services.deck_parser import warmup_soffice
+        warmup_soffice()
+        worker.log.info("[warmup] soffice warmed (pid=%s)", worker.pid)
+    except Exception as e:
+        worker.log.warning("[warmup] soffice warmup skipped: %s", e)

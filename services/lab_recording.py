@@ -149,6 +149,33 @@ def build_readout_payload(
     return {"snippets": out_snippets}
 
 
+def _merge_slide_vocab(session_context):
+    """Whisper prime = domain_vocabulary + slide titles (UX Wave 4 BE-S3).
+
+    Slide titles carry the proper nouns / key terms the speaker will say, so
+    priming Whisper on them sharpens transcription — the "same mechanism as
+    keywords, more precise." Case-insensitive dedup, capped so the prompt
+    stays small. Returns a list or None.
+    """
+    ctx = session_context or {}
+    terms = list(ctx.get("domain_vocabulary") or [])
+    for sl in (ctx.get("slides") or []):
+        if isinstance(sl, dict):
+            t = (sl.get("title") or "").strip()
+            if t:
+                terms.append(t)
+    seen, merged = set(), []
+    for term in terms:
+        k = (term or "").strip().lower()
+        if not k or k in seen:
+            continue
+        seen.add(k)
+        merged.append(term.strip())
+        if len(merged) >= 120:
+            break
+    return merged or None
+
+
 def process_lab_recording(
     *,
     session_id: str,
@@ -191,7 +218,7 @@ def process_lab_recording(
         from services.openai_service import OpenAIService
         ois = OpenAIService()
         if ois.client:
-            vocab = (session_context or {}).get("domain_vocabulary")
+            vocab = _merge_slide_vocab(session_context)
             wres = ois.transcribe_audio(
                 BytesIO(audio_bytes), filename or "lab.webm",
                 vocabulary=vocab,
@@ -363,6 +390,18 @@ def build_readout_from_session(
         })
 
     result: dict = {"snippets": out_snips}
+
+    # Slide-deck context (UX Wave 4 BE-S6a) — session-level so the report can
+    # render the deck (presentation_ref via PDF.js) + the per-snippet slide.
+    try:
+        ctx = db.get_session_intake_context(session_id) or {}
+    except Exception:
+        ctx = {}
+    if isinstance(ctx, dict):
+        if ctx.get("slides"):
+            result["slides"] = ctx.get("slides")
+        if ctx.get("presentation_ref"):
+            result["presentation_ref"] = ctx.get("presentation_ref")
 
     if include_insights:
         try:

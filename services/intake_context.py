@@ -55,9 +55,22 @@ _MAX_TARGET_SECONDS = 7200
 _MAX_VOCAB_TERMS = 50
 _MAX_VOCAB_TERM_LEN = 40
 
+# Slide-deck context (UX Wave 4 §S): per-slide {title, body} (body free text,
+# newlines = bullets) + the served-PDF ref + the tap-advance timeline. Bounded
+# so the JSONB blob stays sane. The slides text feeds Whisper priming + the
+# spoken-vs-slide stickiness/compatibility analysis.
+_MAX_SLIDES = 60
+_MAX_SLIDE_TITLE_LEN = 200
+_MAX_SLIDE_BODY_LEN = 2000
+_MAX_PRESENTATION_REF_LEN = 2000
+_MAX_SLIDE_ADVANCES = 1000
+
 # Canonical key order — every caller iterates this list when
 # building the response so the JSON shape stays stable.
-_FIELDS = ("topic", "audience", "target_length_seconds", "domain_vocabulary")
+_FIELDS = (
+    "topic", "audience", "target_length_seconds", "domain_vocabulary",
+    "slides", "presentation_ref", "slide_advances",
+)
 
 
 class IntakeContextError(ValueError):
@@ -149,6 +162,91 @@ def _norm_vocabulary(value: Any) -> Optional[list[str]]:
     return cleaned or None
 
 
+def _norm_slides(value: Any) -> Optional[list[dict]]:
+    """Normalise slides → list of {title:str, body:str} or None.
+
+    body is FREE TEXT (newlines = bullets) — the locked §S shape. Fully-blank
+    slides (the FE's empty default rows) are dropped; an all-blank list
+    collapses to None. Caps: ≤60 slides, title ≤200, body ≤2000.
+    """
+    if value is None:
+        return None
+    if not isinstance(value, list):
+        raise IntakeContextError("slides: must be a list")
+    if len(value) > _MAX_SLIDES:
+        raise IntakeContextError(f"slides: at most {_MAX_SLIDES} slides")
+    out: list[dict] = []
+    for s in value:
+        if not isinstance(s, dict):
+            raise IntakeContextError("slides: each slide must be an object")
+        title = s.get("title")
+        body = s.get("body")
+        title = "" if title is None else title
+        body = "" if body is None else body
+        if not isinstance(title, str) or not isinstance(body, str):
+            raise IntakeContextError("slides: title and body must be strings")
+        title = title.strip()
+        body = body.strip()
+        if len(title) > _MAX_SLIDE_TITLE_LEN:
+            raise IntakeContextError(
+                f"slides: title must be {_MAX_SLIDE_TITLE_LEN} characters or fewer"
+            )
+        if len(body) > _MAX_SLIDE_BODY_LEN:
+            raise IntakeContextError(
+                f"slides: body must be {_MAX_SLIDE_BODY_LEN} characters or fewer"
+            )
+        if not title and not body:
+            continue  # drop empty default rows
+        out.append({"title": title, "body": body})
+    return out or None
+
+
+def _norm_presentation_ref(value: Any) -> Optional[str]:
+    """Served-PDF URL (or None). String, trimmed, bounded."""
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise IntakeContextError("presentation_ref: must be a string")
+    v = value.strip()
+    if not v:
+        return None
+    if len(v) > _MAX_PRESENTATION_REF_LEN:
+        raise IntakeContextError("presentation_ref: too long")
+    return v
+
+
+def _norm_slide_advances(value: Any) -> Optional[list[dict]]:
+    """Tap-advance timeline → list of {index:int, t_ms:int} or None.
+
+    index = position in slides[]; t_ms = ms from recording start. Bool is
+    rejected (Python bool-is-int). The BE maps each snippet to the slide on
+    screen at its time from this list (greatest t_ms ≤ snippet.start_offset_ms).
+    """
+    if value is None:
+        return None
+    if not isinstance(value, list):
+        raise IntakeContextError("slide_advances: must be a list")
+    if len(value) > _MAX_SLIDE_ADVANCES:
+        raise IntakeContextError(
+            f"slide_advances: at most {_MAX_SLIDE_ADVANCES} entries"
+        )
+    out: list[dict] = []
+    for a in value:
+        if not isinstance(a, dict):
+            raise IntakeContextError("slide_advances: each entry must be an object")
+        idx = a.get("index")
+        t = a.get("t_ms")
+        if (
+            isinstance(idx, bool) or isinstance(t, bool)
+            or not isinstance(idx, int) or not isinstance(t, int)
+        ):
+            raise IntakeContextError("slide_advances: index and t_ms must be integers")
+        if idx < 0 or t < 0:
+            raise IntakeContextError("slide_advances: index and t_ms must be >= 0")
+        out.append({"index": idx, "t_ms": t})
+    return out or None
+
+
 def validate_intake_context_body(
     body: Any,
     *,
@@ -194,6 +292,9 @@ def validate_intake_context_body(
         "domain_vocabulary": _norm_vocabulary(
             body.get("domain_vocabulary"),
         ),
+        "slides": _norm_slides(body.get("slides")),
+        "presentation_ref": _norm_presentation_ref(body.get("presentation_ref")),
+        "slide_advances": _norm_slide_advances(body.get("slide_advances")),
     }
 
     if require_topic and not cleaned["topic"]:
