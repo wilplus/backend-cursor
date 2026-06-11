@@ -398,8 +398,19 @@ def build_readout_from_session(
     except Exception:
         ctx = {}
     if isinstance(ctx, dict):
-        if ctx.get("slides"):
-            result["slides"] = ctx.get("slides")
+        slides = ctx.get("slides")
+        if slides:
+            result["slides"] = slides
+            # BE-S4/S6b — map each snippet to the slide on screen when it was
+            # spoken (exact from the tap timeline; text-overlap fallback only
+            # when no timeline). The user readout renders this slide above the
+            # snippet; it's the user's own deck, not a verdict (AC-9-safe).
+            from services.slide_alignment import slide_for_snippet
+            advances = ctx.get("slide_advances")
+            for snip in out_snips:
+                sl = slide_for_snippet(snip, advances, slides)
+                if sl is not None:
+                    snip["slide"] = sl
         if ctx.get("presentation_ref"):
             result["presentation_ref"] = ctx.get("presentation_ref")
 
