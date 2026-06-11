@@ -144,5 +144,46 @@ class ExtractRouteTests(unittest.TestCase):
             self.assertEqual(resp.get_json()["code"], "INVALID_INPUT")
 
 
+@unittest.skipIf(_RT_ERR is not None, f"needs app deps: {_RT_ERR}")
+class LastSetupRouteTests(unittest.TestCase):
+    """'Do the same as last time' — /v2/user/last-setup prefill."""
+
+    def setUp(self):
+        self.app = Flask(__name__)
+        self._o = getattr(v2.db, "v2_list_user_lab_sessions", None)
+
+    def tearDown(self):
+        if self._o is not None:
+            v2.db.v2_list_user_lab_sessions = self._o
+
+    def _get(self, sessions):
+        v2.db.v2_list_user_lab_sessions = lambda uid, **k: sessions
+        with self.app.test_request_context():
+            request.user_id = "u1"
+            resp, status = v2.v2_user_last_setup.__wrapped__()
+            return status, resp.get_json()
+
+    def test_returns_prefill_without_tap_timeline(self):
+        status, data = self._get([{"intake_context": {
+            "topic": "Q3 pitch", "audience": "leadership",
+            "target_length_seconds": 120, "domain_vocabulary": ["ARR"],
+            "slides": [{"title": "Intro", "body": "hi"}],
+            "presentation_ref": "https://x/y.pdf",
+            "slide_advances": [{"index": 0, "t_ms": 0}],  # must NOT prefill
+        }}])
+        self.assertEqual(status, 200)
+        self.assertTrue(data["available"])
+        self.assertEqual(data["topic"], "Q3 pitch")
+        self.assertEqual(data["target_length_seconds"], 120)
+        self.assertEqual(data["slides"][0]["title"], "Intro")
+        self.assertEqual(data["presentation_ref"], "https://x/y.pdf")
+        self.assertNotIn("slide_advances", data)  # tap timeline is per-recording
+
+    def test_available_false_when_no_history(self):
+        status, data = self._get([])
+        self.assertEqual(status, 200)
+        self.assertFalse(data["available"])
+
+
 if __name__ == "__main__":
     unittest.main()

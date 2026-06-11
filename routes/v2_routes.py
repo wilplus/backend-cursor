@@ -7581,6 +7581,40 @@ def v2_user_recording_progress():
         return jsonify({"code": "V2_ERROR", "error": "Failed to fetch progress"}), 500
 
 
+@v2_bp.route("/user/last-setup", methods=["GET"])
+@require_auth
+def v2_user_last_setup():
+    """willab "do the same as last time" — the user's most-recent training
+    set-up, prefillable into the set-up form. Read-only; cross-device (sources
+    the last session's intake_context server-side, not localStorage).
+
+    Returns the prefillable subset (NOT slide_advances — the tap timeline is
+    per-recording, the new run generates its own):
+      200 { available: true, topic, audience, target_length_seconds,
+            domain_vocabulary, slides, presentation_ref }
+      200 { available: false }   — no prior session
+    """
+    try:
+        sessions = db.v2_list_user_lab_sessions(str(request.user_id), limit=1) or []
+        if not sessions:
+            return jsonify({"available": False}), 200
+        ctx = sessions[0].get("intake_context")
+        ctx = ctx if isinstance(ctx, dict) else {}
+        return jsonify({
+            "available": True,
+            "topic": ctx.get("topic"),
+            "audience": ctx.get("audience"),
+            "target_length_seconds": ctx.get("target_length_seconds"),
+            "domain_vocabulary": ctx.get("domain_vocabulary") or [],
+            "slides": ctx.get("slides") or [],
+            "presentation_ref": ctx.get("presentation_ref"),
+        }), 200
+    except Exception as e:
+        logger.error("user/last-setup GET failed: %s", e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to fetch last setup"}), 500
+
+
 @v2_bp.route("/config/recording", methods=["GET"])
 @optional_auth
 def v2_config_recording():
