@@ -18,12 +18,13 @@ class SpeedMetricTests(unittest.TestCase):
         # absent wpm → speech_rate None (the "—" the user saw)
         self.assertIsNone(build_readout_features({}).get("speech_rate"))
 
-    def test_speech_rate_pct_scales_50wpm_to_100(self):
+    def test_speech_rate_pct_scales_125wpm_to_100(self):
         from services.lab_recording import build_readout_features
-        # 50 wpm = 100%; proportional for anything else.
-        self.assertEqual(build_readout_features({"wpm": 50}).get("speech_rate_pct"), 100)
-        self.assertEqual(build_readout_features({"wpm": 100}).get("speech_rate_pct"), 200)
-        self.assertEqual(build_readout_features({"wpm": 25}).get("speech_rate_pct"), 50)
+        # 125 wpm = 100% (calm/clear public-speaking pace); proportional otherwise.
+        self.assertEqual(build_readout_features({"wpm": 125}).get("speech_rate_pct"), 100)
+        self.assertEqual(build_readout_features({"wpm": 90}).get("speech_rate_pct"), 72)
+        self.assertEqual(build_readout_features({"wpm": 150}).get("speech_rate_pct"), 120)
+        self.assertEqual(build_readout_features({"wpm": 100}).get("speech_rate_pct"), 80)
         # None-safe
         self.assertIsNone(build_readout_features({}).get("speech_rate_pct"))
 
