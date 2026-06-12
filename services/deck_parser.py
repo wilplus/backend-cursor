@@ -56,6 +56,14 @@ def extract_deck(file_bytes: bytes, filename: str) -> dict:
 
 
 def _extract_pdf_text(file_bytes: bytes):
+    """Per-page text from a PDF → one slide per page.
+
+    Index-based iteration (NOT `for page in reader.pages`) — pypdf's _VirtualList
+    is lazy and can bail silently mid-generator on a single malformed page,
+    yielding fewer slides than the deck actually has (a 10-page deck coming back
+    as 8). With explicit indexing, a bad page becomes one empty-slide + warning
+    entry; the rest still come through.
+    """
     try:
         from pypdf import PdfReader
     except ImportError as e:  # pragma: no cover
@@ -64,16 +72,23 @@ def _extract_pdf_text(file_bytes: bytes):
         reader = PdfReader(BytesIO(file_bytes))
     except Exception as e:
         raise DeckParseError(f"could not open pdf: {e}")
+    try:
+        n_pages = len(reader.pages)
+    except Exception as e:  # pragma: no cover - rare malformed root
+        raise DeckParseError(f"could not count pdf pages: {e}")
     slides: list[dict] = []
     warnings: list[str] = []
-    for i, page in enumerate(reader.pages):
+    for i in range(n_pages):
         if len(slides) >= MAX_SLIDES:
             warnings.append(f"deck truncated to {MAX_SLIDES} slides")
             break
+        # Isolate page access AND text extraction so neither can break the loop.
         try:
+            page = reader.pages[i]
             text = (page.extract_text() or "").strip()
-        except Exception:
+        except Exception as e:
             text = ""
+            warnings.append(f"slide {i + 1}: extraction failed ({type(e).__name__})")
         lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
         if not lines:
             slides.append({"title": "", "body": ""})
@@ -83,4 +98,8 @@ def _extract_pdf_text(file_bytes: bytes):
             "title": _clip(lines[0], _TITLE_CAP),
             "body": _clip("\n".join(lines[1:]), _BODY_CAP),
         })
+    # Surface the PDF's real page count so any FE filter that drops empty slides
+    # can spot a mismatch (e.g. 10 pages, 2 returned blank → FE knows 10 ≠ 8).
+    if n_pages and len(slides) < n_pages:
+        warnings.append(f"pdf has {n_pages} pages; returned {len(slides)} slides")
     return slides, warnings
