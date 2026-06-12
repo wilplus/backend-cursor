@@ -1,0 +1,194 @@
+"""Deterministic output guards for the Lounge bot (RULE A + RULE K).
+
+These test the POST-GENERATION floor in services/master_doc_rag.py —
+the code that enforces the construct-prohibition (B1/AC-9) and the
+library-dump prohibition (RULE K) on the model's OUTPUT, independent of
+whether the prompt rule held. Pure functions, NO LLM, NO network — this
+is the part of the probe's guarantee that can run keyless in CI.
+
+master_doc_rag imports services.will_voice (pure) + services.db lazily,
+so a db stub keeps it import-safe in the lean env (same pattern as
+test_library_bot_context — stub in setUpModule, RESTORE in tearDown).
+
+Run: python3 -m unittest test_master_doc_output_guards
+"""
+from __future__ import annotations
+
+import sys
+import types
+import unittest
+from unittest.mock import MagicMock
+
+_ORIG_SERVICES_DB = None
+_ORIG_SUPABASE = None
+
+
+def setUpModule():
+    global _ORIG_SERVICES_DB, _ORIG_SUPABASE
+    _ORIG_SERVICES_DB = sys.modules.get("services.db")
+    _ORIG_SUPABASE = sys.modules.get("supabase")
+    sys.modules["supabase"] = MagicMock()
+    stub = types.ModuleType("services.db")
+    stub.db = MagicMock()
+    sys.modules["services.db"] = stub
+
+
+def tearDownModule():
+    if _ORIG_SERVICES_DB is not None:
+        sys.modules["services.db"] = _ORIG_SERVICES_DB
+    else:
+        sys.modules.pop("services.db", None)
+    if _ORIG_SUPABASE is not None:
+        sys.modules["supabase"] = _ORIG_SUPABASE
+    else:
+        sys.modules.pop("supabase", None)
+
+
+class ConstructLeakGuardTests(unittest.TestCase):
+    """RULE A / B1 / AC-9 — the retired scoring construct must never
+    survive in the output, even if the prompt rule were crowded out."""
+
+    def _guard(self, answer, suggested_action=None, library=None):
+        from services.master_doc_rag import _enforce_output_guards
+        return _enforce_output_guards(answer, suggested_action, library)
+
+    def test_threat_challenge_ratio_is_replaced(self):
+        a, _sa, fired = self._guard(
+            "Your Threat:Challenge ratio came out strong this session."
+        )
+        self.assertEqual(fired, "construct_leak")
+        self.assertNotIn("threat", a.lower())
+        self.assertIn("Readout", a)
+
+    def test_tc_shorthand_is_replaced(self):
+        _a, _sa, fired = self._guard("Your T:C is trending up.")
+        self.assertEqual(fired, "construct_leak")
+
+    def test_kpi_is_replaced(self):
+        _a, _sa, fired = self._guard("Your KPI for this take is 0.72.")
+        self.assertEqual(fired, "construct_leak")
+
+    def test_charisma_score_is_replaced(self):
+        _a, _sa, fired = self._guard("Your charisma score went up.")
+        self.assertEqual(fired, "construct_leak")
+
+    def test_stress_classifier_is_replaced(self):
+        _a, _sa, fired = self._guard(
+            "The stress classifier flagged the opening."
+        )
+        self.assertEqual(fired, "construct_leak")
+
+    # ── False-positive guards: benign prose must pass UNTOUCHED ──
+
+    def test_bare_challenge_is_not_matched(self):
+        msg = "Speaking to a big room is a real challenge for most people."
+        a, _sa, fired = self._guard(msg)
+        self.assertIsNone(fired)
+        self.assertEqual(a, msg)
+
+    def test_bare_score_word_is_not_matched(self):
+        msg = "Scores of speakers freeze up — you're not alone."
+        a, _sa, fired = self._guard(msg)
+        self.assertIsNone(fired)
+        self.assertEqual(a, msg)
+
+    def test_word_containing_tc_substring_is_not_matched(self):
+        # "catch", "watch" etc. contain no standalone t:c token.
+        msg = "Catch your breath, watch your pace, and keep going."
+        _a, _sa, fired = self._guard(msg)
+        self.assertIsNone(fired)
+
+    def test_normal_product_answer_passes_through(self):
+        msg = (
+            "The system is mostly human-led and scaled by AI — a real "
+            "coach listens to your recordings and shapes what's next."
+        )
+        a, sa, fired = self._guard(msg, suggested_action=None)
+        self.assertIsNone(fired)
+        self.assertEqual(a, msg)
+        self.assertIsNone(sa)
+
+
+class LibraryDumpGuardTests(unittest.TestCase):
+    """RULE K — the bot must bridge to the button, never recite the
+    coach-notes library inline."""
+
+    def _guard(self, answer, suggested_action=None, library=None):
+        from services.master_doc_rag import _enforce_output_guards
+        return _enforce_output_guards(answer, suggested_action, library)
+
+    def test_marker_strong_triggers_bridge(self):
+        a, sa, fired = self._guard(
+            'Here they are: [strong] coach noted: "great open".'
+        )
+        self.assertEqual(fired, "library_dump")
+        self.assertEqual(sa, "strong_sides")
+        self.assertEqual(a, "Sure — tap the button below to open them.")
+
+    def test_marker_coach_noted_triggers_bridge(self):
+        _a, _sa, fired = self._guard('coach noted: "watch the drop-off"')
+        self.assertEqual(fired, "library_dump")
+
+    def test_verbatim_note_overlap_triggers_bridge(self):
+        library = [{
+            "tag": "strong",
+            "note": "Strongest eight seconds — do more of this.",
+            "snippet_ref": {},
+        }]
+        a, sa, fired = self._guard(
+            "You did well! Strongest eight seconds — do more of this.",
+            library=library,
+        )
+        self.assertEqual(fired, "library_dump")
+        self.assertEqual(sa, "strong_sides")
+        self.assertEqual(a, "Sure — tap the button below to open them.")
+
+    def test_short_note_overlap_does_not_false_positive(self):
+        # A sub-threshold note fragment shared incidentally must NOT trip.
+        library = [{"tag": "strong", "note": "nice", "snippet_ref": {}}]
+        msg = "That's a nice question — here's what the product does."
+        a, _sa, fired = self._guard(msg, library=library)
+        self.assertIsNone(fired)
+        self.assertEqual(a, msg)
+
+    def test_bridge_answer_with_library_present_passes_through(self):
+        # The compliant bridge answer must NOT be flagged as a dump even
+        # when the library is loaded for this turn.
+        library = [{
+            "tag": "strong",
+            "note": "Strongest eight seconds — do more of this.",
+            "snippet_ref": {},
+        }]
+        msg = "Sure — tap the button below to open them."
+        a, sa, fired = self._guard(
+            msg, suggested_action="strong_sides", library=library,
+        )
+        self.assertIsNone(fired)
+        self.assertEqual(a, msg)
+        self.assertEqual(sa, "strong_sides")
+
+    def test_no_library_benign_answer_passes(self):
+        msg = "I can't see any coach notes for you yet — record a take?"
+        a, _sa, fired = self._guard(msg, library=None)
+        self.assertIsNone(fired)
+        self.assertEqual(a, msg)
+
+
+class GuardPrecedenceTests(unittest.TestCase):
+    def _guard(self, answer, suggested_action=None, library=None):
+        from services.master_doc_rag import _enforce_output_guards
+        return _enforce_output_guards(answer, suggested_action, library)
+
+    def test_construct_leak_takes_precedence_over_dump(self):
+        # An answer that both leaks the construct AND dumps the library
+        # is replaced by the construct-safe answer (the stronger guard).
+        library = [{"tag": "strong", "note": "x" * 30, "snippet_ref": {}}]
+        a, _sa, fired = self._guard(
+            'coach noted: "your KPI is 0.9"', library=library,
+        )
+        self.assertEqual(fired, "construct_leak")
+        self.assertIn("Readout", a)
+
+
+if __name__ == "__main__":
+    unittest.main()
