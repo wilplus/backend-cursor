@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from typing import Any, Optional
 
 
@@ -625,6 +626,103 @@ def _render_library_block(entries: Optional[list]) -> str:
     return _LIBRARIAN_GUARDRAIL + body + _render_two_anchors(entries)
 
 
+# ─────────────────────────────────────────────────────────────────
+# Post-generation output guards (the deterministic floor)
+# ─────────────────────────────────────────────────────────────────
+#
+# RULE A's construct-prohibition and RULE K's library-dump prohibition
+# are BLOCKLIST-shaped: a compliant answer simply never contains the
+# forbidden surface. That makes them enforceable in CODE on the model's
+# OUTPUT, which is strictly stronger than a prompt rule (a prompt can be
+# crowded out under attention pressure — the proven failure mode here —
+# code cannot) AND removes them from the prompt's attention budget once
+# the prose is trimmed. These guards fire ONLY on an answer that is
+# already a violation, so they can never regress a passing turn: a
+# compliant answer has nothing to strip, so it passes through untouched.
+#
+# On a hit we REPLACE the whole answer with a safe deterministic response
+# rather than excising mid-sentence — a leaking answer is a violation in
+# whole, and surgical stripping risks mangling grammar. Detection is
+# high-precision (word-boundary anchored) to avoid false positives on
+# benign prose.
+
+# The retired scoring construct (B1 / AC-9). These never occur in a
+# legitimate willab answer — the product does not exist in these terms.
+# Word-boundary anchored so "challenge"/"score" alone never match; only
+# the construct family does.
+_CONSTRUCT_RE = re.compile(
+    r"\bthreat[\s:\-]*challenge\b"
+    r"|\bt\s*:\s*c\b"
+    r"|\bcharisma\s+(?:score|profile|classifier|ratio)\b"
+    r"|\bstress\s+(?:score|classifier)\b"
+    r"|\bkpi\b",
+    re.IGNORECASE,
+)
+
+# Safe replacement when a construct leak is detected — re-grounds on the
+# Readout exactly as RULE A instructs (raw acoustics read by a human
+# coach; no score, no ratio, no classifier).
+_CONSTRUCT_SAFE_ANSWER = (
+    "What the system looks at is your Readout — the raw sound of your "
+    "delivery, like pace, pauses, and pitch range — which a human coach "
+    "reads to shape what you work on next. There's no score or ratio "
+    "behind it."
+)
+
+# The library block's own structural markers. If the answer carries any
+# of these, the bot recited the coach-notes block verbatim instead of
+# bridging to the button (RULE K library-dump).
+_LIB_DUMP_MARKERS = ("[strong]", "[to work on]", "coach noted:")
+
+# Minimum verbatim coach-note overlap (chars) that counts as a recital
+# rather than an incidental word match.
+_LIB_DUMP_MIN_NOTE_CHARS = 24
+
+# Safe replacement when a library-dump is detected — the bridge line that
+# RULE K mandates (the button is the only path to that content).
+_LIBRARY_BRIDGE_ANSWER = "Sure — tap the button below to open them."
+
+
+def _is_library_dump(answer: str, library_entries: Optional[list]) -> bool:
+    """True when the answer recites the strong-sides library inline
+    (RULE K violation) — detected by the library block's own markers or
+    a verbatim coach-note overlap. Pure; None-safe."""
+    low = (answer or "").lower()
+    if any(m in low for m in _LIB_DUMP_MARKERS):
+        return True
+    for e in (library_entries or []):
+        if not isinstance(e, dict):
+            continue
+        note = (e.get("note") or "").strip()
+        if len(note) >= _LIB_DUMP_MIN_NOTE_CHARS and note.lower() in low:
+            return True
+    return False
+
+
+def _enforce_output_guards(
+    answer: str,
+    suggested_action: Optional[str],
+    library_entries: Optional[list],
+) -> tuple[str, Optional[str], Optional[str]]:
+    """Deterministic post-generation floor under RULE A + RULE K.
+
+    Returns ``(answer, suggested_action, guard_fired|None)``. A return of
+    ``None`` for the guard means the answer was compliant and passed
+    through unchanged (the common case). Otherwise the answer was a
+    violation and has been replaced with a safe deterministic response.
+    """
+    # 1) Retired-construct leak (RULE A / B1 / AC-9).
+    if answer and _CONSTRUCT_RE.search(answer):
+        return (_CONSTRUCT_SAFE_ANSWER, suggested_action, "construct_leak")
+
+    # 2) Library-dump (RULE K) — replace with the bridge + force the
+    #    button so the user still has a path to the content.
+    if _is_library_dump(answer, library_entries):
+        return (_LIBRARY_BRIDGE_ANSWER, "strong_sides", "library_dump")
+
+    return (answer, suggested_action, None)
+
+
 def answer_question(
     question: str,
     *,
@@ -773,6 +871,21 @@ def answer_question(
     if suggested_action not in ("strong_sides", "recordings", "record_again"):
         suggested_action = None  # normalise anything off-enum to null
 
+    # Deterministic output floor (RULE A construct-prohibition + RULE K
+    # library-dump). No-op on a compliant answer; replaces a violating
+    # one with a safe response. Code-enforced so it can't be crowded out
+    # of the prompt under attention pressure.
+    answer, suggested_action, _guard = _enforce_output_guards(
+        answer, suggested_action, library_entries,
+    )
+
+    debug: dict[str, Any] = {
+        "model": _MODEL, "history_used": len(messages) - 2,
+    }
+    if _guard:
+        logger.warning("master_doc_rag: output guard fired: %s", _guard)
+        debug["output_guard"] = _guard
+
     return (
         {
             "answer": answer,
@@ -780,7 +893,7 @@ def answer_question(
             "show_record_ui": show_record_ui,
             "suggested_action": suggested_action,
         },
-        {"model": _MODEL, "history_used": len(messages) - 2},
+        debug,
     )
 
 
