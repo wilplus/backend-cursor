@@ -109,13 +109,14 @@ def build_readout_features(metrics: Optional[dict]) -> dict:
     out["mean_pause_seconds"] = (
         round(mp_ms / 1000.0, 1) if isinstance(mp_ms, (int, float)) else None
     )
-    # Display-ready "speed" percentage so the FE renders 100 -> "100%" without
-    # owning the unit decision. Scaling: 50 wpm = 100% (founder spec); any
-    # other wpm scales proportionally. speech_rate keeps the raw wpm for any
-    # caller / training pipeline that still needs the absolute number.
+    # Display-ready "speed" percentage so the FE renders e.g. 100 -> "100%"
+    # without owning the unit decision. Anchor: 125 wpm = 100% (calm/clear
+    # public-speaking pace); proportional for any other wpm — so 90 wpm shows
+    # 72%, 150 shows 120%, etc. speech_rate keeps the raw wpm for training /
+    # any caller that still needs the absolute number.
     sr_wpm = out.get("speech_rate")
     out["speech_rate_pct"] = (
-        round((sr_wpm / 50.0) * 100) if isinstance(sr_wpm, (int, float)) else None
+        round((sr_wpm / 125.0) * 100) if isinstance(sr_wpm, (int, float)) else None
     )
     return out
 
