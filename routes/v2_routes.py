@@ -7199,7 +7199,56 @@ def v2_user_get_library():
                 "code": "INVALID_INPUT",
                 "error": "tag must be 'strong' or 'to_work_on'",
             }), 400
-        entries = db.get_strong_sides_library(request.user_id, tag=tag)
+        entries = db.get_strong_sides_library(request.user_id, tag=tag) or []
+
+        # Enrich each entry with deck context so the FE can group strong-sides
+        # by training (FE PR #152): per-entry slide (the slide on screen when
+        # this moment was spoken), rank (Stickiness #2), session_topic, and
+        # presentation_ref. Additive — existing consumers (Lounge librarian
+        # bot's _render_library_block) ignore the new fields. Fetches each
+        # session + its snippets ONCE (cached) so the cost is O(unique sessions)
+        # regardless of library size.
+        from services.slide_alignment import slide_for_snippet
+        _session_cache: dict = {}
+        _rank_cache: dict = {}
+
+        def _load(sid):
+            if sid in _session_cache:
+                return _session_cache[sid], _rank_cache[sid]
+            session = db.v2_get_session_by_id(sid) or {}
+            ctx = session.get("intake_context") if isinstance(session.get("intake_context"), dict) else {}
+            _session_cache[sid] = ctx if isinstance(ctx, dict) else {}
+            # rank lookup — one fetch per session, snippet_id → metrics.rank.
+            ranks: dict = {}
+            try:
+                for s in (db.get_snippets_by_session(sid) or []):
+                    m = s.get("metrics") if isinstance(s.get("metrics"), dict) else {}
+                    if isinstance(m, dict):
+                        ranks[str(s.get("id"))] = m.get("rank")
+            except Exception:
+                pass
+            _rank_cache[sid] = ranks
+            return _session_cache[sid], _rank_cache[sid]
+
+        for e in entries:
+            sid = e.get("session_id")
+            if not sid:
+                e.setdefault("slide", None)
+                e.setdefault("rank", None)
+                e.setdefault("session_topic", "")
+                e.setdefault("presentation_ref", None)
+                continue
+            ctx, ranks = _load(sid)
+            slides = ctx.get("slides") or []
+            advances = ctx.get("slide_advances") or []
+            ref = e.get("snippet_ref") if isinstance(e.get("snippet_ref"), dict) else {}
+            # Reuse the same mapping as the readout — timeline-exact, text-
+            # overlap fallback when no advances. None when no deck.
+            e["slide"] = slide_for_snippet(ref, advances, slides) if slides else None
+            e["rank"] = ranks.get(str(e.get("snippet_id")))
+            e["session_topic"] = ctx.get("topic") or ""
+            e["presentation_ref"] = ctx.get("presentation_ref")
+
         return jsonify({"entries": entries, "count": len(entries)}), 200
     except Exception as e:
         logger.error("user/library GET failed: %s", e, exc_info=True)
