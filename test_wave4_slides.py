@@ -104,6 +104,42 @@ class DeckParserGuardTests(unittest.TestCase):
         with self.assertRaises(DeckParseError):
             extract_deck(b"hello", "notes.txt")
 
+    def test_pdf_one_bad_page_does_not_drop_the_rest(self):
+        """The 10-vs-8 bug: pypdf's lazy reader.pages can bail mid-generator
+        on one malformed page → fewer slides than the deck. Index-based
+        iteration must keep the loop running."""
+        import sys, types
+        # Stand up a fake pypdf module exposing exactly what _extract_pdf_text uses.
+        class _Page:
+            def __init__(self, text): self._text = text
+            def extract_text(self): return self._text
+        class _BadPage:
+            def extract_text(self): raise RuntimeError("malformed")
+        class _Pages:
+            def __init__(self): self._items = [
+                _Page(f"Title {i}\nbody") if i != 5 else _BadPage()
+                for i in range(10)
+            ]
+            def __len__(self): return len(self._items)
+            def __getitem__(self, i): return self._items[i]
+        class _Reader:
+            def __init__(self, _): self.pages = _Pages()
+        fake = types.ModuleType("pypdf"); fake.PdfReader = _Reader
+        prev = sys.modules.get("pypdf")
+        sys.modules["pypdf"] = fake
+        try:
+            from services.deck_parser import _extract_pdf_text
+            slides, warnings = _extract_pdf_text(b"%PDF-fake")
+        finally:
+            if prev is None:
+                sys.modules.pop("pypdf", None)
+            else:
+                sys.modules["pypdf"] = prev
+        # all 10 slides present; #6 (1-indexed) is empty + flagged.
+        self.assertEqual(len(slides), 10)
+        self.assertEqual(slides[5], {"title": "", "body": ""})
+        self.assertTrue(any("slide 6" in w for w in warnings))
+
     def test_pptx_rejected_with_export_hint(self):
         # PDF-only pivot: PPTX is rejected with an export-to-PDF message.
         from services.deck_parser import extract_deck, DeckParseError, SUPPORTED_EXTS
