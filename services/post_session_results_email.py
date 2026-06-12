@@ -165,7 +165,10 @@ def send_publish_results_email(
         return {"status": "skipped", "reason": "send_emails_disabled"}
 
     unsubscribe_url = build_unsubscribe_url(user_id)
-    journey_url = f"{cfg.PUBLIC_FRONTEND_URL.rstrip('/')}/results/{session_id}"
+    # Deep-link → Lounge chat. The "insights ready" card is already
+    # appended to the thread on publish; the user lands there and sees
+    # it at the bottom. No overlay auto-open (?insight=) — just chat.
+    journey_url = f"{cfg.PUBLIC_FRONTEND_URL.rstrip('/')}/chat"
 
     props: dict[str, Any] = {
         "userFirstName": (user_first_name or "").strip() or None,
@@ -253,7 +256,7 @@ def _build_subject(snippet_count: int) -> str:
 # user's mailbox part is preserved (extracted from RESEND_FROM_EMAIL);
 # only the friendly-name half is rewritten so inboxes show "Willab"
 # instead of whatever dev account label the global env var holds.
-_BRAND_DISPLAY_NAME = "Willab"
+_BRAND_DISPLAY_NAME = "WillpowerLab"
 
 
 def _willab_branded_from(raw_from: str | None) -> str | None:
@@ -368,7 +371,6 @@ def _render_inline_fallback(props: dict) -> dict:
     </p>
     {theme_line}
     {cta_block}
-    <p style="font-size:13px;color:#666;margin:24px 0 0;">— Team Willab</p>
     {footer_unsub}
   </div>
 </body>
@@ -388,7 +390,6 @@ def _render_inline_fallback(props: dict) -> dict:
         text_lines.append(f"Top theme this session: {top_theme}.")
     if journey_url:
         text_lines.extend(["", f"View your results: {journey_url}"])
-    text_lines.extend(["", "— Team Willab"])
     if unsubscribe_url:
         text_lines.extend(["", f"Unsubscribe: {unsubscribe_url}"])
 
