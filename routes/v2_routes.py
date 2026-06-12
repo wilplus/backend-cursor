@@ -4737,12 +4737,12 @@ def v2_internal_publish_session_results():
             send_publish_results_email,
         )
 
-        # UX Wave v2 D3 — deep-link into the insights overlay over the mounted
-        # Lounge hub (no /results landing bounce). FE reads ?insight=<id> in
-        # chat/page.tsx and auto-opens InsightsOverlay. Param `insight` is
-        # distinct from the coach `?review=<id>`.
+        # Deep-link → Lounge chat. On open the chat auto-scrolls to the
+        # bottom, showing the "insights ready" card the publish contract
+        # already appended to the thread. No overlay param — the user just
+        # lands in the Lounge and sees the recent message.
         results_url = (
-            f"{config.PUBLIC_FRONTEND_URL.rstrip('/')}/chat?insight={session_id}"
+            f"{config.PUBLIC_FRONTEND_URL.rstrip('/')}/chat"
         )
 
         # notify_client gate (C): the in-app Lounge nudge already fired in the
