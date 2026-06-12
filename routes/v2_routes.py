@@ -7258,18 +7258,57 @@ def v2_user_get_library():
         }), 500
 
 
+def _presentation_id_from_slides(slides) -> str:
+    """Stable content hash of a deck's slides, independent of the served PDF
+    URL (which changes on every re-upload). Same deck text → same id → same
+    presentation group. Uses normalized title+body so cosmetic re-uploads
+    don't split the take history."""
+    import hashlib
+    if not slides:
+        return ""
+    parts = []
+    for s in slides:
+        if not isinstance(s, dict):
+            continue
+        t = (s.get("title") or "").strip()
+        b = (s.get("body") or "").strip()
+        parts.append(f"{t}\n{b}")
+    canonical = "\n---\n".join(parts)
+    return hashlib.sha1(canonical.encode("utf-8")).hexdigest()[:16]
+
+
 @v2_bp.route("/user/strengths", methods=["GET"])
 @require_auth
 def v2_user_get_strengths():
-    """Restructured strong-sides view (grouped, deck-aware):
-      general:   strong snippets from sessions with NO deck, newest first
-      trainings: per deck-session (newest first); for each, the deck title-slide
-                 + all slides; each slide carries its strong snippets sorted by
-                 rank (1 = best). Empty slides are kept (prompt to train more).
+    """Strong-sides view grouped by PRESENTATION (the deck), not by session.
 
-    Source: the same strong_sides_library /user/library reads from, regrouped
-    + joined with each session's intake_context (slides + presentation_ref) and
-    each snippet's persisted rank (metrics.rank). Read-only; no migration.
+    Shape (FE handoff):
+      {
+        general:       [{transcript, note, audio_ref, features, start_offset_ms,
+                          duration_ms, rank, session_id, created_at}],
+        presentations: [{
+          presentation_id,                 # stable hash of slides text
+          presentation_ref,                # served PDF url (latest take)
+          topic,                           # from intake_context (latest take)
+          slides:     [{index, title, body}],    # the deck (latest take)
+          best_lines: [{slide_index, title, transcript, note, audio_ref,
+                        features, rank}],       # single best take per slide
+          takes:      [{                          # newest take first
+            session_id, take_number, created_at,
+            slides: [{index, title, body, strong_snippets: [
+              {transcript, note, audio_ref, features, rank, start_offset_ms,
+               duration_ms}
+            ]}]
+          }]
+        }]
+      }
+
+    presentation_id = SHA1 of canonical slides text → stable across re-uploads
+    (URL changes; content doesn't). take_number = chronological order of that
+    deck's recordings (1 = first take, 2 = second, …). best_lines = per slide,
+    the single snippet with the lowest rank across ALL takes of that deck.
+    features = the per-snippet acoustic vector already baked into each library
+    row's snippet_ref (build_readout_features at ingest).
     """
     try:
         from services.slide_alignment import (
@@ -7277,56 +7316,68 @@ def v2_user_get_strengths():
         )
         uid = str(request.user_id)
         library = db.get_strong_sides_library(uid, tag="strong") or []
-        # Group library rows by session, preserving newest-first order via the
-        # FIRST row we see per session (library is already created_at desc).
+
+        # Bucket library rows by session.
         by_session: dict = {}
-        session_order: list = []
         for row in library:
             sid = row.get("session_id")
             if not sid:
                 continue
-            if sid not in by_session:
-                by_session[sid] = []
-                session_order.append(sid)
-            by_session[sid].append(row)
+            by_session.setdefault(sid, []).append(row)
 
-        general: list = []
-        trainings: list = []
-        for sid in session_order:
-            rows = by_session[sid]
+        # Load session metadata + rank lookups ONCE per session.
+        sess_meta: dict = {}
+        for sid in by_session:
             session = db.v2_get_session_by_id(sid) or {}
             ctx = session.get("intake_context") if isinstance(session.get("intake_context"), dict) else {}
+            try:
+                snippets = db.get_snippets_by_session(sid) or []
+            except Exception:
+                snippets = []
+            ranks: dict = {}
+            for s in snippets:
+                m = s.get("metrics") if isinstance(s.get("metrics"), dict) else {}
+                ranks[str(s.get("id"))] = m.get("rank") if isinstance(m, dict) else None
             slides = ctx.get("slides") or []
-            if not slides:
-                # No deck → general bucket (Q1 (a)).
+            sess_meta[sid] = {
+                "ctx": ctx,
+                "ranks": ranks,
+                "slides": slides,
+                "created_at": session.get("created_at") or "",
+                "presentation_id": _presentation_id_from_slides(slides),
+            }
+
+        # Split: no-deck sessions → general; deck sessions → grouped by pid.
+        general: list = []
+        pres_sessions: dict = {}  # pid → [sid, …]
+        for sid, rows in by_session.items():
+            meta = sess_meta[sid]
+            if not meta["slides"]:
                 for row in rows:
                     ref = row.get("snippet_ref") if isinstance(row.get("snippet_ref"), dict) else {}
                     general.append({
                         "transcript": ref.get("transcript") or "",
                         "note": row.get("note") or "",
                         "audio_ref": ref.get("audio_ref"),
+                        "features": ref.get("features"),
                         "start_offset_ms": ref.get("start_offset_ms"),
                         "duration_ms": ref.get("duration_ms"),
+                        "rank": meta["ranks"].get(str(row.get("snippet_id"))),
                         "session_id": sid,
                         "created_at": row.get("created_at"),
                     })
-                continue
+            else:
+                pres_sessions.setdefault(meta["presentation_id"], []).append(sid)
+        # Newest moment first inside `general`.
+        general.sort(key=lambda g: g.get("created_at") or "", reverse=True)
 
-            # Deck session → build training section.
+        def _build_take(sid):
+            """One take = one recording session of a given deck."""
+            meta = sess_meta[sid]
+            ctx = meta["ctx"]
             advances = ctx.get("slide_advances") or []
-            # Rank lookup from each snippet's persisted metrics. One fetch.
-            try:
-                snippets = db.get_snippets_by_session(sid) or []
-            except Exception:
-                snippets = []
-            rank_by_id: dict = {}
-            for s in snippets:
-                m = s.get("metrics") if isinstance(s.get("metrics"), dict) else {}
-                rank_by_id[str(s.get("id"))] = (
-                    m.get("rank") if isinstance(m, dict) else None
-                )
-
-            # Initialize ALL slide buckets (Q3 — empty slides shown).
+            slides = meta["slides"]
+            ranks = meta["ranks"]
             slide_groups = [
                 {
                     "index": i,
@@ -7336,50 +7387,103 @@ def v2_user_get_strengths():
                 }
                 for i, sl in enumerate(slides)
             ]
-
-            # Place each row under its on-screen slide (timeline-exact;
-            # text-overlap fallback when there's no usable timeline).
-            for row in rows:
+            for row in by_session[sid]:
                 ref = row.get("snippet_ref") if isinstance(row.get("snippet_ref"), dict) else {}
                 off = ref.get("start_offset_ms")
                 idx = slide_index_for_offset(off, advances)
                 if idx is None:
                     idx = _best_match_index(ref.get("transcript"), slides)
                 if not isinstance(idx, int) or idx < 0 or idx >= len(slides):
-                    continue  # can't place safely — drop rather than guess
+                    continue
                 slide_groups[idx]["strong_snippets"].append({
                     "transcript": ref.get("transcript") or "",
                     "note": row.get("note") or "",
                     "audio_ref": ref.get("audio_ref"),
+                    "features": ref.get("features"),
                     "start_offset_ms": off,
                     "duration_ms": ref.get("duration_ms"),
-                    "rank": rank_by_id.get(str(row.get("snippet_id"))),
+                    "rank": ranks.get(str(row.get("snippet_id"))),
                 })
-
-            # Within each slide, sort by rank ASC (1 = best); None ranks last.
+            # Sort each slide's strong snippets by rank ASC (1 = best); None last.
             for sg in slide_groups:
                 sg["strong_snippets"].sort(
                     key=lambda s: (s.get("rank") is None, s.get("rank") or 0)
                 )
+            return slide_groups
 
-            title_slide = slide_groups[0] if slide_groups else None
-            trainings.append({
-                "session_id": sid,
-                "topic": ctx.get("topic") or "",
-                "created_at": session.get("created_at") or "",
-                "presentation_ref": ctx.get("presentation_ref"),
-                "title_slide": (
-                    {"index": title_slide["index"], "title": title_slide["title"],
-                     "body": title_slide["body"]} if title_slide else None
-                ),
-                "slides": slide_groups,
+        # Build presentations.
+        presentations: list = []
+        for pid, sids in pres_sessions.items():
+            # take_number assignment — chronological (1 = first take).
+            sids_asc = sorted(sids, key=lambda s: (sess_meta[s]["created_at"], s))
+            take_number = {sid: i + 1 for i, sid in enumerate(sids_asc)}
+            # Response order: newest take first.
+            sids_desc = sorted(sids, key=lambda s: (sess_meta[s]["created_at"], s), reverse=True)
+            latest_meta = sess_meta[sids_desc[0]]
+            latest_slides = latest_meta["slides"]
+
+            takes = []
+            for sid in sids_desc:
+                takes.append({
+                    "session_id": sid,
+                    "take_number": take_number[sid],
+                    "created_at": sess_meta[sid]["created_at"],
+                    "slides": _build_take(sid),
+                })
+
+            # best_lines: per slide_index, the single snippet with the LOWEST
+            # rank across all takes (None ranks lose to any int).
+            best_lines = []
+            for i in range(len(latest_slides)):
+                sl = latest_slides[i] if isinstance(latest_slides[i], dict) else {}
+                best = None
+                best_rank = None
+                for t in takes:
+                    snips = t["slides"][i]["strong_snippets"] if i < len(t["slides"]) else []
+                    if not snips:
+                        continue
+                    top = snips[0]  # already rank-sorted
+                    r = top.get("rank")
+                    if r is None:
+                        if best is None:
+                            best = top
+                        continue
+                    if best_rank is None or r < best_rank:
+                        best_rank = r
+                        best = top
+                if best:
+                    best_lines.append({
+                        "slide_index": i,
+                        "title": sl.get("title") or "",
+                        "transcript": best.get("transcript") or "",
+                        "note": best.get("note") or "",
+                        "audio_ref": best.get("audio_ref"),
+                        "features": best.get("features"),
+                        "rank": best.get("rank"),
+                    })
+
+            presentations.append({
+                "presentation_id": pid,
+                "presentation_ref": latest_meta["ctx"].get("presentation_ref"),
+                "topic": latest_meta["ctx"].get("topic") or "",
+                "slides": [
+                    {
+                        "index": i,
+                        "title": (s.get("title") or "") if isinstance(s, dict) else "",
+                        "body": (s.get("body") or "") if isinstance(s, dict) else "",
+                    }
+                    for i, s in enumerate(latest_slides)
+                ],
+                "best_lines": best_lines,
+                "takes": takes,
             })
 
-        # Q5 — sort trainings by the SESSION's own created_at desc (the
-        # "training date"), not by library ingest order. General stays in the
-        # library's natural newest-first.
-        trainings.sort(key=lambda t: t.get("created_at") or "", reverse=True)
-        return jsonify({"general": general, "trainings": trainings}), 200
+        # Presentations: newest most-recent-take first.
+        presentations.sort(
+            key=lambda p: p["takes"][0]["created_at"] if p["takes"] else "",
+            reverse=True,
+        )
+        return jsonify({"general": general, "presentations": presentations}), 200
     except Exception as e:
         logger.error("user/strengths GET failed: %s", e, exc_info=True)
         sentry_sdk.capture_exception(e)
