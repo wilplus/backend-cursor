@@ -18,6 +18,15 @@ class SpeedMetricTests(unittest.TestCase):
         # absent wpm → speech_rate None (the "—" the user saw)
         self.assertIsNone(build_readout_features({}).get("speech_rate"))
 
+    def test_speech_rate_pct_scales_50wpm_to_100(self):
+        from services.lab_recording import build_readout_features
+        # 50 wpm = 100%; proportional for anything else.
+        self.assertEqual(build_readout_features({"wpm": 50}).get("speech_rate_pct"), 100)
+        self.assertEqual(build_readout_features({"wpm": 100}).get("speech_rate_pct"), 200)
+        self.assertEqual(build_readout_features({"wpm": 25}).get("speech_rate_pct"), 50)
+        # None-safe
+        self.assertIsNone(build_readout_features({}).get("speech_rate_pct"))
+
     def test_window_with_transcript_yields_wpm(self):
         try:
             import numpy as np
