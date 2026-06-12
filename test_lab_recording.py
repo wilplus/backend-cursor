@@ -88,6 +88,8 @@ class FeatureMapTests(unittest.TestCase):
             "intensity_envelope", "f0_mid_end_delta",
             # B2 — display-ready seconds twin of mean_pause (unit in name).
             "mean_pause_seconds",
+            # Display-ready speed % (50 wpm = 100%) — twin of speech_rate.
+            "speech_rate_pct",
         })
 
     def test_mean_pause_seconds_is_ms_over_1000(self):
@@ -100,7 +102,7 @@ class FeatureMapTests(unittest.TestCase):
 
     def test_none_metrics_all_none(self):
         out = self._map(None)
-        self.assertEqual(len(out), 12)
+        self.assertEqual(len(out), 13)
         for v in out.values():
             self.assertIsNone(v)
 
