@@ -92,10 +92,15 @@ jobs:
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           # Placeholders so import-time config guards don't crash; the
-          # probe only needs the real OpenAI key above.
+          # probe only needs the real OpenAI key above. The probe
+          # transitively constructs services.db (DatabaseService() at
+          # import → create_client), which raises on an empty key — so
+          # SUPABASE_SERVICE_ROLE_KEY must be a NON-EMPTY placeholder
+          # (the probe never queries the DB, so any value works).
           JWT_SECRET: ci-placeholder-secret
           SUPABASE_URL: https://ci-placeholder.invalid
           SUPABASE_KEY: ci-placeholder-key
+          SUPABASE_SERVICE_ROLE_KEY: ci-placeholder-service-role-key
         run: |
           if [ -z "$OPENAI_API_KEY" ]; then
             echo "OPENAI_API_KEY not set — skipping the probe gate."
