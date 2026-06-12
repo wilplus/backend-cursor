@@ -7209,6 +7209,134 @@ def v2_user_get_library():
         }), 500
 
 
+@v2_bp.route("/user/strengths", methods=["GET"])
+@require_auth
+def v2_user_get_strengths():
+    """Restructured strong-sides view (grouped, deck-aware):
+      general:   strong snippets from sessions with NO deck, newest first
+      trainings: per deck-session (newest first); for each, the deck title-slide
+                 + all slides; each slide carries its strong snippets sorted by
+                 rank (1 = best). Empty slides are kept (prompt to train more).
+
+    Source: the same strong_sides_library /user/library reads from, regrouped
+    + joined with each session's intake_context (slides + presentation_ref) and
+    each snippet's persisted rank (metrics.rank). Read-only; no migration.
+    """
+    try:
+        from services.slide_alignment import (
+            slide_index_for_offset, _best_match_index,
+        )
+        uid = str(request.user_id)
+        library = db.get_strong_sides_library(uid, tag="strong") or []
+        # Group library rows by session, preserving newest-first order via the
+        # FIRST row we see per session (library is already created_at desc).
+        by_session: dict = {}
+        session_order: list = []
+        for row in library:
+            sid = row.get("session_id")
+            if not sid:
+                continue
+            if sid not in by_session:
+                by_session[sid] = []
+                session_order.append(sid)
+            by_session[sid].append(row)
+
+        general: list = []
+        trainings: list = []
+        for sid in session_order:
+            rows = by_session[sid]
+            session = db.v2_get_session_by_id(sid) or {}
+            ctx = session.get("intake_context") if isinstance(session.get("intake_context"), dict) else {}
+            slides = ctx.get("slides") or []
+            if not slides:
+                # No deck → general bucket (Q1 (a)).
+                for row in rows:
+                    ref = row.get("snippet_ref") if isinstance(row.get("snippet_ref"), dict) else {}
+                    general.append({
+                        "transcript": ref.get("transcript") or "",
+                        "note": row.get("note") or "",
+                        "audio_ref": ref.get("audio_ref"),
+                        "start_offset_ms": ref.get("start_offset_ms"),
+                        "duration_ms": ref.get("duration_ms"),
+                        "session_id": sid,
+                        "created_at": row.get("created_at"),
+                    })
+                continue
+
+            # Deck session → build training section.
+            advances = ctx.get("slide_advances") or []
+            # Rank lookup from each snippet's persisted metrics. One fetch.
+            try:
+                snippets = db.get_snippets_by_session(sid) or []
+            except Exception:
+                snippets = []
+            rank_by_id: dict = {}
+            for s in snippets:
+                m = s.get("metrics") if isinstance(s.get("metrics"), dict) else {}
+                rank_by_id[str(s.get("id"))] = (
+                    m.get("rank") if isinstance(m, dict) else None
+                )
+
+            # Initialize ALL slide buckets (Q3 — empty slides shown).
+            slide_groups = [
+                {
+                    "index": i,
+                    "title": (sl.get("title") or "") if isinstance(sl, dict) else "",
+                    "body": (sl.get("body") or "") if isinstance(sl, dict) else "",
+                    "strong_snippets": [],
+                }
+                for i, sl in enumerate(slides)
+            ]
+
+            # Place each row under its on-screen slide (timeline-exact;
+            # text-overlap fallback when there's no usable timeline).
+            for row in rows:
+                ref = row.get("snippet_ref") if isinstance(row.get("snippet_ref"), dict) else {}
+                off = ref.get("start_offset_ms")
+                idx = slide_index_for_offset(off, advances)
+                if idx is None:
+                    idx = _best_match_index(ref.get("transcript"), slides)
+                if not isinstance(idx, int) or idx < 0 or idx >= len(slides):
+                    continue  # can't place safely — drop rather than guess
+                slide_groups[idx]["strong_snippets"].append({
+                    "transcript": ref.get("transcript") or "",
+                    "note": row.get("note") or "",
+                    "audio_ref": ref.get("audio_ref"),
+                    "start_offset_ms": off,
+                    "duration_ms": ref.get("duration_ms"),
+                    "rank": rank_by_id.get(str(row.get("snippet_id"))),
+                })
+
+            # Within each slide, sort by rank ASC (1 = best); None ranks last.
+            for sg in slide_groups:
+                sg["strong_snippets"].sort(
+                    key=lambda s: (s.get("rank") is None, s.get("rank") or 0)
+                )
+
+            title_slide = slide_groups[0] if slide_groups else None
+            trainings.append({
+                "session_id": sid,
+                "topic": ctx.get("topic") or "",
+                "created_at": session.get("created_at") or "",
+                "presentation_ref": ctx.get("presentation_ref"),
+                "title_slide": (
+                    {"index": title_slide["index"], "title": title_slide["title"],
+                     "body": title_slide["body"]} if title_slide else None
+                ),
+                "slides": slide_groups,
+            })
+
+        # Q5 — sort trainings by the SESSION's own created_at desc (the
+        # "training date"), not by library ingest order. General stays in the
+        # library's natural newest-first.
+        trainings.sort(key=lambda t: t.get("created_at") or "", reverse=True)
+        return jsonify({"general": general, "trainings": trainings}), 200
+    except Exception as e:
+        logger.error("user/strengths GET failed: %s", e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to fetch strengths"}), 500
+
+
 # ── willab beta — Lab readout re-read + history (parked-restore + scroll-back) ─
 
 
