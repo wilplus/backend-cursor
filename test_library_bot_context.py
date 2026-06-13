@@ -179,10 +179,12 @@ class RenderLibraryBlockTests(unittest.TestCase):
 
 
 class MasterDocConstructGuardTests(unittest.TestCase):
-    """B1 / AC-9 — the bot's source of truth must never reintroduce the
-    retired scoring construct, and the hard prohibition must stay in the
-    system prompt. Deterministic (no LLM) — the durable guard; the runtime
-    probe lives in tests/evals/master_doc_probe.py."""
+    """B1 / AC-9 — the bot must never reintroduce the retired scoring
+    construct. The blocklist enforcement moved from prose to CODE
+    (master_doc_rag._CONSTRUCT_RE, covered by test_master_doc_output_guards)
+    so it can't be crowded out of the prompt under attention pressure; the
+    prompt keeps only the positive Readout framing. Deterministic (no LLM);
+    the runtime probe lives in tests/evals/master_doc_probe.py."""
 
     def test_master_document_has_no_retired_construct(self):
         from services.master_doc_rag import MASTER_DOCUMENT
@@ -193,10 +195,21 @@ class MasterDocConstructGuardTests(unittest.TestCase):
                 f"retired construct '{token}' is back in the Master Document",
             )
 
-    def test_system_prompt_carries_the_hard_prohibition(self):
-        from services.master_doc_rag import _SYSTEM_PROMPT
-        self.assertIn("HARD PROHIBITION", _SYSTEM_PROMPT)
-        self.assertIn("Threat:Challenge", _SYSTEM_PROMPT)
+    def test_system_prompt_steers_to_readout_not_score(self):
+        """The forbidden jargon is no longer PRIMED into the prompt itself;
+        the prompt's remaining duty is the positive framing (describe the
+        Readout, never a score/ratio/classifier). The blocklist is enforced
+        in code."""
+        import re
+        from services.master_doc_rag import _SYSTEM_PROMPT, _CONSTRUCT_RE
+        # collapse the multi-space artifacts from string-literal wrapping
+        flat = re.sub(r"\s+", " ", _SYSTEM_PROMPT.lower())
+        self.assertIn("readout", flat)
+        self.assertIn("never present a score, ratio, or classifier", flat)
+        # the retired construct's name is no longer seeded INTO the prompt
+        self.assertNotIn("threat:challenge", flat)
+        # and the blocklist guarantee is enforced in code
+        self.assertTrue(_CONSTRUCT_RE.search("your Threat:Challenge ratio"))
 
 
 if __name__ == "__main__":
