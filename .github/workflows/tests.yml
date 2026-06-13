@@ -92,59 +92,23 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Diagnose OPENAI_API_KEY (TEMPORARY — no secret leak)
-        env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          # Same placeholder env the probe step uses, so importing
-          # services.* (→ services.db) behaves identically here.
-          JWT_SECRET: ci-placeholder-secret
-          SUPABASE_URL: https://ci-placeholder.invalid
-          SUPABASE_KEY: ci-placeholder-key
-          SUPABASE_SERVICE_ROLE_KEY: ci-placeholder-service-role-key
-        run: |
-          if [ -z "$OPENAI_API_KEY" ]; then echo "secret EMPTY in job"; exit 0; fi
-          # Replicate the EXACT path the probe uses: config.OPENAI_API_KEY
-          # + services.openai_service.OpenAIService. Direct os.environ +
-          # bare openai SDK already proved OK, so the divergence (if any)
-          # is in config/services. Prints key facts (len/class), never the
-          # value.
-          python3 - <<'PY'
-          import os
-          from config import Config
-          cfg = Config()
-          k = cfg.OPENAI_API_KEY or ""
-          env = os.environ.get("OPENAI_API_KEY", "")
-          cls = ("sk-proj-" if k.startswith("sk-proj-")
-                 else "sk-" if k.startswith("sk-") else "OTHER/empty")
-          print("config.OPENAI_API_KEY len:", len(k), "| class:", cls,
-                "| equals_env:", k == env)
-          try:
-              from services.openai_service import OpenAIService
-              s = OpenAIService()
-              print("OpenAIService client set?", bool(s.client))
-              r = s.client.chat.completions.create(
-                  model="gpt-4o-mini",
-                  messages=[{"role": "user", "content": "hi"}],
-                  max_tokens=5,
-              )
-              print("services path chat OK:", (r.choices[0].message.content or "")[:20])
-          except Exception as e:
-              print("services path ERROR:", type(e).__name__, "|", str(e)[:300])
-          PY
-
       - name: Run master_doc probe (skips without OPENAI_API_KEY)
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           # Placeholders so import-time config guards don't crash; the
           # probe only needs the real OpenAI key above. The probe
           # transitively constructs services.db (DatabaseService() at
-          # import → create_client), which raises on an empty key — so
-          # SUPABASE_SERVICE_ROLE_KEY must be a NON-EMPTY placeholder
-          # (the probe never queries the DB, so any value works).
+          # import → supabase create_client), which in supabase-py 2.6.0
+          # VALIDATES that the key is a well-formed JWT and raises
+          # SupabaseException("Invalid API key") otherwise — so this
+          # placeholder must be a syntactically-valid (fake) JWT, not an
+          # arbitrary string. It's the public supabase local-dev demo
+          # service_role token; the probe never queries the DB (the URL
+          # is an invalid placeholder), so it connects to nothing.
           JWT_SECRET: ci-placeholder-secret
           SUPABASE_URL: https://ci-placeholder.invalid
           SUPABASE_KEY: ci-placeholder-key
-          SUPABASE_SERVICE_ROLE_KEY: ci-placeholder-service-role-key
+          SUPABASE_SERVICE_ROLE_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU
         run: |
           if [ -z "$OPENAI_API_KEY" ]; then
             echo "OPENAI_API_KEY not set — skipping the probe gate."
