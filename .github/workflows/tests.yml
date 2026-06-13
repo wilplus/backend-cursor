@@ -98,13 +98,19 @@ jobs:
           # Placeholders so import-time config guards don't crash; the
           # probe only needs the real OpenAI key above. The probe
           # transitively constructs services.db (DatabaseService() at
-          # import → create_client), which raises on an empty key — so
-          # SUPABASE_SERVICE_ROLE_KEY must be a NON-EMPTY placeholder
-          # (the probe never queries the DB, so any value works).
+          # import → supabase create_client). supabase-py 2.6.0 VALIDATES
+          # that the key is a well-formed JWT and raises
+          # SupabaseException("Invalid API key") otherwise — so this
+          # placeholder MUST be a syntactically-valid (fake) JWT, not an
+          # arbitrary string (a non-JWT here surfaced disguised as an
+          # OpenAI auth error and sank the whole probe at 0/12). It's the
+          # public supabase local-dev demo service_role token; the probe
+          # never queries the DB (the URL is an invalid placeholder), so
+          # it connects to nothing.
           JWT_SECRET: ci-placeholder-secret
           SUPABASE_URL: https://ci-placeholder.invalid
           SUPABASE_KEY: ci-placeholder-key
-          SUPABASE_SERVICE_ROLE_KEY: ci-placeholder-service-role-key
+          SUPABASE_SERVICE_ROLE_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU
         run: |
           if [ -z "$OPENAI_API_KEY" ]; then
             echo "OPENAI_API_KEY not set — skipping the probe gate."
