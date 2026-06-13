@@ -113,9 +113,32 @@ jobs:
           code=$(curl -s -o /tmp/oa.json -w '%{http_code}' \
             https://api.openai.com/v1/models \
             -H "Authorization: Bearer $OPENAI_API_KEY")
-          echo "openai /v1/models HTTP: $code"
-          grep -o '"code"[^,}]*' /tmp/oa.json | head -1 || true
-          grep -o '"message"[^,}]*' /tmp/oa.json | head -1 || true
+          echo "GET /v1/models HTTP: $code"
+          # The exact endpoint the bot uses — a restricted project key can
+          # pass /v1/models (read) but be denied chat completions.
+          cc=$(curl -s -o /tmp/cc.json -w '%{http_code}' \
+            https://api.openai.com/v1/chat/completions \
+            -H "Authorization: Bearer $OPENAI_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d '{"model":"gpt-4o-mini","messages":[{"role":"user","content":"hi"}],"max_tokens":5}')
+          echo "POST /v1/chat/completions HTTP: $cc"
+          grep -o '"code"[^,}]*' /tmp/cc.json | head -1 || true
+          grep -o '"message":"[^"]*"' /tmp/cc.json | head -1 || true
+          # Reproduce the openai-python path OpenAIService uses, surfacing
+          # the real exception type+message (the probe wrapper hides it).
+          python3 - <<'PY'
+          import os, openai
+          try:
+              c = openai.OpenAI(api_key=os.environ["OPENAI_API_KEY"])
+              r = c.chat.completions.create(
+                  model="gpt-4o-mini",
+                  messages=[{"role": "user", "content": "hi"}],
+                  max_tokens=5,
+              )
+              print("SDK chat OK:", (r.choices[0].message.content or "")[:20])
+          except Exception as e:
+              print("SDK chat ERROR:", type(e).__name__, "|", str(e)[:300])
+          PY
 
       - name: Run master_doc probe (skips without OPENAI_API_KEY)
         env:
