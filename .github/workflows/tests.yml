@@ -92,6 +92,31 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: Diagnose OPENAI_API_KEY (TEMPORARY — no secret leak)
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          if [ -z "$OPENAI_API_KEY" ]; then echo "secret EMPTY in job"; exit 0; fi
+          python3 - <<'PY'
+          import os
+          k = os.environ.get("OPENAI_API_KEY", "")
+          cls = ("sk-proj-" if k.startswith("sk-proj-")
+                 else "sk-" if k.startswith("sk-")
+                 else "OTHER(not-sk)")
+          print("len:", len(k),
+                "| class:", cls,
+                "| trailing_ws:", k != k.strip(),
+                "| inner_ws:", any(c.isspace() for c in k.strip()))
+          PY
+          # Ground truth — exact stored value vs OpenAI. Prints only the
+          # HTTP status + error code field; never the key itself.
+          code=$(curl -s -o /tmp/oa.json -w '%{http_code}' \
+            https://api.openai.com/v1/models \
+            -H "Authorization: Bearer $OPENAI_API_KEY")
+          echo "openai /v1/models HTTP: $code"
+          grep -o '"code"[^,}]*' /tmp/oa.json | head -1 || true
+          grep -o '"message"[^,}]*' /tmp/oa.json | head -1 || true
+
       - name: Run master_doc probe (skips without OPENAI_API_KEY)
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
