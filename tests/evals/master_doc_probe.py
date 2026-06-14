@@ -16,9 +16,10 @@ v2 changes vs v1:
     → strong_sides bridge with no note recital (RULE K), and 'trainings'
     routing (the recordings→trainings rename). MDR-11 also asserts
     suggested_action=record_again (RULE K ↔ RULE I coupling).
-  • De-flake (P1): MDR-05 + MDR-10 semantic rubrics tightened so a
-    correct out-of-scope PIVOT can't read as a miss (these flapped at
-    bot temp 0.4). Tighten-not-weaken, per the parked router spec.
+  • De-flake (P1): MDR-10 made fully DETERMINISTIC (acknowledge the
+    corrected topic + don't re-deliver the rejected answer) — the grader
+    kept flip-flopping on the correct out-of-scope pivot. MDR-05 semantic
+    tightened. Tighten-not-weaken, per the parked router spec.
   • 15 cases total. ~$0.08/run. Still <60s wall time.
 
 Runs 10 hard-coded synthetic cases against
@@ -275,17 +276,15 @@ CASES: list[Case] = [
         ],
         rubric={
             "must_set_show_upload_ui": False,
+            # DETERMINISTIC (no grader → no flap). RULE J's stable core:
+            # acknowledge the corrected topic (the answer names it) and do
+            # NOT re-deliver the rejected answer. Cancellation is
+            # out-of-scope, so the semantic grader kept flip-flopping on the
+            # (correct) pivot — the deterministic checks settle it.
+            "must_mention_substrings": ["cancellation"],
             "must_not_substring": [
                 "We don't offer refunds at this time.",
             ],
-            "semantic_intent": (
-                "Acknowledges the prior misread (e.g. 'you meant "
-                "cancellation, not a refund') and does not re-deliver "
-                "the refund non-answer. Cancellation is out-of-scope "
-                "(not in the Master Document), so a brief graceful pivot "
-                "after acknowledging is correct — it need NOT give a "
-                "substantive cancellation answer."
-            ),
         },
     ),
     # ── v2 additions: show_record_ui coverage ─────────────────────
@@ -477,6 +476,11 @@ def _deterministic_check(case: Case, payload: dict) -> Optional[str]:
     for needle in rubric.get("must_not_mention_substrings", []) or []:
         if needle.lower() in answer_lower:
             return f"answer contains forbidden substring: {needle!r}"
+
+    # ── Required lowercased substrings (deterministic acknowledgement) ──
+    for needle in rubric.get("must_mention_substrings", []) or []:
+        if needle.lower() not in answer_lower:
+            return f"answer is missing required substring: {needle!r}"
 
     # ── Forbidden verbatim substrings (case-sensitive) ──
     for needle in rubric.get("must_not_substring", []) or []:

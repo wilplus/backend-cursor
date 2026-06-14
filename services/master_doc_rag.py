@@ -709,6 +709,50 @@ def _enforce_output_guards(
     return (answer, suggested_action, None)
 
 
+# Soft cap for one chat bubble. A paragraph longer than this gets split on
+# sentence boundaries so a wall of text arrives as a natural sequence of
+# bubbles rather than one slab.
+_BUBBLE_SOFT_MAX = 200
+
+
+def split_answer_into_bubbles(answer: str) -> list[str]:
+    """Split a bot answer into chat-bubble-sized chunks for the FE's
+    ``bubbles[]`` field (FE #157 renders them 1:1, and falls back to
+    splitting ``answer`` on blank lines when ``bubbles`` is absent).
+
+    Blank lines are HARD bubble boundaries; a paragraph longer than
+    ``_BUBBLE_SOFT_MAX`` is further split on sentence boundaries and the
+    sentences greedily repacked into ``<=_BUBBLE_SOFT_MAX`` bubbles. A short
+    answer (a bridge one-liner) returns a single bubble. Pure + None-safe;
+    the bubbles' words concatenate back to ``answer`` (it stays the
+    fallback). Returns ``[]`` for empty input.
+    """
+    text = (answer or "").strip()
+    if not text:
+        return []
+    bubbles: list[str] = []
+    for para in re.split(r"\n\s*\n", text):
+        para = " ".join(para.split())  # normalise intra-paragraph whitespace
+        if not para:
+            continue
+        if len(para) <= _BUBBLE_SOFT_MAX:
+            bubbles.append(para)
+            continue
+        cur = ""
+        for sentence in re.split(r"(?<=[.!?…])\s+", para):
+            sentence = sentence.strip()
+            if not sentence:
+                continue
+            if cur and len(cur) + 1 + len(sentence) > _BUBBLE_SOFT_MAX:
+                bubbles.append(cur)
+                cur = sentence
+            else:
+                cur = f"{cur} {sentence}".strip()
+        if cur:
+            bubbles.append(cur)
+    return bubbles or [text]
+
+
 def answer_question(
     question: str,
     *,

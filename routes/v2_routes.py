@@ -2157,6 +2157,12 @@ def v2_coaching_get(coaching_id):
 def v2_coaching_turn():
     """Run one LLM turn of the awareness stage.
 
+    LIVE — drives the /coach/<id> coach-invite deep-link (FE seam-7a):
+    src/app/coach/[coachingId]/page.tsx → /api/coaching/turn → here. Do
+    NOT excise in a dead-route sweep; it has no inbound link from the main
+    nav but is reached by direct URL, so a reference search comes up empty.
+
+
     Body: { "coaching_id": "<uuid>", "user_message": "..." }
 
     Loads the coaching session + source snippet, builds the awareness
@@ -3527,7 +3533,9 @@ def v2_chat_query():
                     )
                     library_entries = None
 
-        from services.master_doc_rag import answer_question
+        from services.master_doc_rag import (
+            answer_question, split_answer_into_bubbles,
+        )
         payload, debug = answer_question(
             question.strip(),
             history=history,
@@ -3579,8 +3587,13 @@ def v2_chat_query():
         _sa = payload.get("suggested_action")
         if _sa not in ("strong_sides", "trainings", "record_again"):
             _sa = None
+        _answer = payload.get("answer", "")
         return jsonify({
-            "answer": payload.get("answer", ""),
+            "answer": _answer,
+            # FE #157 — pre-split chat bubbles (renders 1:1; falls back to
+            # splitting `answer` on blank lines when absent). `answer` stays
+            # the fallback.
+            "bubbles": split_answer_into_bubbles(_answer),
             "show_upload_ui": bool(payload.get("show_upload_ui", False)),
             "show_record_ui": bool(payload.get("show_record_ui", False)),
             "suggested_action": _sa,
