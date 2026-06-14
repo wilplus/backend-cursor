@@ -119,7 +119,10 @@ class SuggestedActionContractTests(unittest.TestCase):
         self.assertIn("suggested_action", _RESPONSE_SCHEMA["schema"]["required"])
         enum = props["suggested_action"]["enum"]
         self.assertIn("strong_sides", enum)
-        self.assertIn("record_again", enum)
+        self.assertIn("trainings", enum)
+        # record_again removed — record-intent points to the always-present
+        # "Start official recording" button (no per-turn button).
+        self.assertNotIn("record_again", enum)
         self.assertIn(None, enum)
 
 

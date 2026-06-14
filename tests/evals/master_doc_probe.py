@@ -7,15 +7,16 @@ v2 changes vs v1:
   • Tightened semantic_intent strings — one-sentence outcome per
     case, not three-clause aspirations. Less surface area for the
     grader to hallucinate violations.
-  • Added MDR-11 + MDR-12 to probe the show_record_ui field (RULE I)
-    — explicit record intent must flip show_record_ui=true, and an
-    upload mention still steers to the record path (RULE G; uploads
-    are off). (show_upload_ui was removed end-to-end — FE seam-7b.)
+  • MDR-11 + MDR-12 cover record intent (RULE I): record intent now
+    POINTS to the always-present "Start official recording" button — it
+    reveals NO mic (show_record_ui stays false) and offers NO button
+    (suggested_action null); an upload mention still steers to record
+    (RULE G; uploads off). (show_upload_ui removed end-to-end — FE seam-7b;
+    record_again removed — the official recording button is permanent.)
   • MDR-13/14/15 added (all DETERMINISTIC — no grader, so no flap):
     construct_leak guard / absent-construct (RULE A), library-dump i18n
     → strong_sides bridge with no note recital (RULE K), and 'trainings'
-    routing (the recordings→trainings rename). MDR-11 also asserts
-    suggested_action=record_again (RULE K ↔ RULE I coupling).
+    routing (the recordings→trainings rename).
   • De-flake (P1): MDR-10 made fully DETERMINISTIC (acknowledge the
     corrected topic + don't re-deliver the rejected answer) — the grader
     kept flip-flopping on the correct out-of-scope pivot. MDR-05 semantic
@@ -276,23 +277,21 @@ CASES: list[Case] = [
             ],
         },
     ),
-    # ── v2 additions: show_record_ui coverage ─────────────────────
+    # ── record intent → point to the always-present official button ──
     Case(
         id="MDR-11",
-        category="Explicit record intent (in-app mic)",
+        category="Record intent → 'Start official recording' (no mic, no button)",
         user_message="Can I just record it here in the chat?",
         rubric={
-            "must_set_show_record_ui": True,
-            # RULE K ↔ RULE I coupling: record intent → record_again button
-            "must_set_suggested_action": "record_again",
+            # RULE I: point to the always-present button, reveal no mic
+            # and offer no record button.
+            "must_set_show_record_ui": False,
+            "must_set_suggested_action": None,
+            "must_mention_substrings": ["official recording"],
             "must_not_mention_substrings": [
                 "cannot access your microphone",
                 "i cannot access your phone",
             ],
-            "semantic_intent": (
-                "Confirms in-app recording is available; does not "
-                "decline it as a missing capability."
-            ),
         },
     ),
     Case(

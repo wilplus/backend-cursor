@@ -3583,7 +3583,7 @@ def v2_chat_query():
 
         # S1 — per-turn intent → the one contextual button the FE renders.
         _sa = payload.get("suggested_action")
-        if _sa not in ("strong_sides", "trainings", "record_again"):
+        if _sa not in ("strong_sides", "trainings"):
             _sa = None
         _answer = payload.get("answer", "")
         return jsonify({
