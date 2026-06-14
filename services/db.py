@@ -8922,6 +8922,70 @@ class DatabaseService:
             )
             return []
 
+    def get_all_training_labels(self, *, limit: int = 50000) -> list[dict]:
+        """Read ALL direction labels across sessions — the corpus the shadow
+        learner trains on (Phase 4 / Prompt 1, B1 export). PRIVATE training
+        lane; service-role only. Returns [] on missing table (cold start)."""
+        try:
+            res = (
+                self.client.table("training_labels")
+                .select(
+                    "session_id, snippet_id, schema_version, value, "
+                    "was_pre_filled, was_overridden, selection_source, "
+                    "heuristic_version, labeled_at"
+                )
+                .limit(limit)
+                .execute()
+            )
+            return res.data or []
+        except Exception as e:
+            err_low = str(e).lower()
+            if "training_labels" in err_low and (
+                "does not exist" in err_low or "pgrst" in err_low
+            ):
+                return []
+            # selection_source / heuristic_version missing (migration unrun) →
+            # retry without them so export still works pre-migration.
+            if "selection_source" in err_low or "heuristic_version" in err_low:
+                try:
+                    res = (
+                        self.client.table("training_labels")
+                        .select(
+                            "session_id, snippet_id, schema_version, value, "
+                            "was_pre_filled, was_overridden, labeled_at"
+                        )
+                        .limit(limit)
+                        .execute()
+                    )
+                    return res.data or []
+                except Exception:
+                    return []
+            logger.warning("get_all_training_labels failed err=%s", e)
+            return []
+
+    def get_snippet_metrics_by_ids(self, snippet_ids: list[str]) -> dict:
+        """{snippet_id: metrics} for the given charisma snippets — the 11-feature
+        side of the export join. Best-effort; missing rows just absent."""
+        out: dict = {}
+        ids = [s for s in (snippet_ids or []) if s]
+        if not ids:
+            return out
+        try:
+            # chunk to keep the IN() list sane
+            for i in range(0, len(ids), 200):
+                chunk = ids[i:i + 200]
+                res = (
+                    self.client.table("charisma_snippets")
+                    .select("id, metrics")
+                    .in_("id", chunk)
+                    .execute()
+                )
+                for row in (res.data or []):
+                    out[str(row.get("id"))] = row.get("metrics") or {}
+        except Exception as e:
+            logger.warning("get_snippet_metrics_by_ids failed err=%s", e)
+        return out
+
     def delete_training_label(self, session_id: str, snippet_id: str) -> bool:
         """Clear one snippet's direction label (the coach unset it — the FE
         sends direction_label: null). Best-effort; missing table → False."""
