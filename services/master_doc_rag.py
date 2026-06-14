@@ -45,15 +45,16 @@ _MAX_TOKENS = 600
 
 
 # Structured-output contract — the LLM must return JSON matching
-# this schema. ``answer`` is what the user sees; ``show_upload_ui``
-# is the per-turn flag the frontend reads to reveal/hide the
-# upload dropzone in place of the microphone affordance.
+# this schema. ``answer`` is what the user sees; ``show_record_ui``
+# is the per-turn flag the frontend reads to reveal the in-app mic.
+# (show_upload_ui was removed — uploads are off and FE seam-7b cleared
+# the field; upload intent still redirects to record per RULE G.)
 _RESPONSE_SCHEMA: dict[str, Any] = {
     "name": "chat_query_response",
     "schema": {
         "type": "object",
         "additionalProperties": False,
-        "required": ["answer", "show_upload_ui", "show_record_ui", "suggested_action"],
+        "required": ["answer", "show_record_ui", "suggested_action"],
         "properties": {
             "answer": {
                 "type": "string",
@@ -69,14 +70,6 @@ _RESPONSE_SCHEMA: dict[str, Any] = {
                     "newlines — frontend chunks."
                 ),
             },
-            "show_upload_ui": {
-                "type": "boolean",
-                "description": (
-                    "TRUE on the turn where the user expressed "
-                    "intent to upload audio/video; FALSE on every "
-                    "other turn. Per-turn signal, not session state."
-                ),
-            },
             "show_record_ui": {
                 "type": "boolean",
                 "description": (
@@ -84,10 +77,7 @@ _RESPONSE_SCHEMA: dict[str, Any] = {
                     "intent to record in-app via the chat's mic "
                     "(distinct from uploading an existing file). "
                     "FALSE on every other turn. Per-turn signal, "
-                    "not session state. Record and upload intents "
-                    "are different gestures — set at most ONE of "
-                    "show_record_ui / show_upload_ui to TRUE on "
-                    "any given turn."
+                    "not session state."
                 ),
             },
             "suggested_action": {
@@ -337,11 +327,9 @@ _SYSTEM_PROMPT = with_voice_rules(
     "      • \"how do I attach my recording?\"\n"
     "      • \"where do I drop a file?\"\n"
     "      • any phrasing that maps to 'I want to give you a file'\n"
-    "    show_upload_ui is ALWAYS false at this stage — the upload "
-    "    affordance is disabled product-wide. The field stays in "
-    "    the schema for when uploads return post-MVP, but you NEVER "
-    "    set it true now. (Recording intent is a different path — "
-    "    RULE I.)\n"
+    "    Uploads are disabled product-wide at this stage; never "
+    "    promise a file picker or claim they can select a file. "
+    "    (Recording intent is a different path — RULE I.)\n"
     "\n"
     "  RULE H — CAPABILITY BOUNDARIES (POLITE DECLINE):\n"
     "    The app's surface is voice-led, asynchronous, and "
@@ -409,9 +397,6 @@ _SYSTEM_PROMPT = with_voice_rules(
     "    On every OTHER turn (not record intent), set "
     "    show_record_ui=false. Do NOT leave it true across "
     "    turns — it's a per-turn signal, not a session state.\n"
-    "    RULE G (upload) and RULE I (record) are MUTUALLY "
-    "    EXCLUSIVE on any single turn — set at most ONE of "
-    "    show_upload_ui / show_record_ui to TRUE.\n"
     "\n"
     "  RULE J — CORRECTION ACKNOWLEDGEMENT:\n"
     "    When the user's NEW message contradicts or corrects "
@@ -767,15 +752,13 @@ def answer_question(
 
         {
           "answer":         str,   # the chat-bubble text
-          "show_upload_ui": bool,  # per-turn upload-intent signal
           "show_record_ui": bool,  # per-turn record-intent signal
-                                    # (in-app mic; distinct from upload)
+                                    # (in-app mic; reveals the mic)
+          "suggested_action": str | None,  # the one contextual button
         }
 
-    show_upload_ui and show_record_ui are mutually exclusive on
-    any single turn — the LLM is instructed to set at most one of
-    them. The route handler does NOT enforce mutual exclusion; it
-    trusts the schema + prompt rules.
+    (show_upload_ui was removed — uploads are off; upload intent still
+    redirects to record per RULE G, just without a flag.)
 
     On any failure path we still hand back a shape-complete
     payload (polite document-grounded fallback) so the route never
@@ -805,7 +788,6 @@ def answer_question(
                     "about the philosophy, the science, pricing, "
                     "or who's behind it."
                 ),
-                "show_upload_ui": False,
                 "show_record_ui": False,
                 "suggested_action": None,
             },
@@ -894,8 +876,7 @@ def answer_question(
 
     # Defensive coercion — strict schema should guarantee bool,
     # but the wire could in theory carry truthy strings on a model
-    # regression. Normalise to the two valid values only.
-    show_upload_ui = bool(parsed.get("show_upload_ui"))
+    # regression. Normalise to a real bool.
     show_record_ui = bool(parsed.get("show_record_ui"))
     suggested_action = parsed.get("suggested_action")
     if suggested_action not in ("strong_sides", "trainings", "record_again"):
@@ -919,7 +900,6 @@ def answer_question(
     return (
         {
             "answer": answer,
-            "show_upload_ui": show_upload_ui,
             "show_record_ui": show_record_ui,
             "suggested_action": suggested_action,
         },
@@ -943,7 +923,6 @@ def _fallback_payload() -> dict[str, Any]:
             "what you work on next. Try again in a moment, or "
             "ask something more specific."
         ),
-        "show_upload_ui": False,
         "show_record_ui": False,
         "suggested_action": None,
     }

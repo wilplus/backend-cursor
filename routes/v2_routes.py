@@ -3370,26 +3370,24 @@ def v2_chat_query():
 
         200 {
               "answer":         str,    # the chat bubble text
-              "show_upload_ui": bool,   # per-turn upload affordance
-                                         # toggle (RULE G)
+              "bubbles":        [str],  # pre-split chat bubbles (FE #157)
               "show_record_ui": bool,   # per-turn record affordance
-                                         # toggle (RULE I) — in-app
-                                         # mic, distinct from upload
+                                         # toggle (RULE I) — in-app mic
+              "suggested_action": str | None,  # the one contextual button
               "debug":          {...}   # model + history_used / error
             }
         400 INVALID_INPUT — question missing or not a string
         500 V2_ERROR
 
-    show_upload_ui / show_record_ui semantics:
-      • show_upload_ui — TRUE on the turn where the user expressed
-        intent to upload an existing file ("can I send a file?",
-        "I want to upload my recording", etc.). RULE G.
+    show_record_ui semantics:
       • show_record_ui — TRUE on the turn where the user expressed
         intent to RECORD in-app via the chat's mic ("can I record
         here?", "let me just record it", etc.). RULE I.
-      • Mutually exclusive — at most ONE is TRUE on any turn.
-      • Per-turn signals — frontend must NOT cache them across
-        turns; each answer carries the current state.
+      • Per-turn signal — frontend must NOT cache it across turns;
+        each answer carries the current state.
+      • (show_upload_ui was removed — uploads are off and FE seam-7b
+        cleared the field; upload intent still redirects to record
+        per RULE G, just without a flag.)
 
     Why @optional_auth: the willab Lounge is an unsigned-home
     (design §3) — the Lounge bot / librarian must answer without a
@@ -3594,7 +3592,6 @@ def v2_chat_query():
             # splitting `answer` on blank lines when absent). `answer` stays
             # the fallback.
             "bubbles": split_answer_into_bubbles(_answer),
-            "show_upload_ui": bool(payload.get("show_upload_ui", False)),
             "show_record_ui": bool(payload.get("show_record_ui", False)),
             "suggested_action": _sa,
             "debug": debug,
