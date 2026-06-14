@@ -7786,6 +7786,90 @@ def v2_admin_review_queue():
         return jsonify({"code": "V2_ERROR", "error": "Failed to fetch review queue"}), 500
 
 
+# ── willab Phase 4 / Prompt 1 — Learning subsystem (SHADOW) admin surface ──
+# The model trains on training_labels ⋈ the 11 features and predicts in SHADOW
+# only — it influences NOTHING (no selection, no direction pre-fill). These
+# endpoints are the human's window + manual "train now"; auto-retrain (B3) runs
+# off the label/publish hook. All @require_admin_or_coach.
+
+@v2_bp.route("/admin/learning/train", methods=["POST"])
+@require_admin_or_coach
+def v2_admin_learning_train():
+    """Manual 'train now'. export → fit logistic → eval → store artifact +
+    model_versions row (status=shadow). Small corpus → warnings, never junk.
+    200 {version, metrics, corpus_size, warnings}."""
+    try:
+        from services.learning_train import train_and_register
+        result = train_and_register()
+        return jsonify(result), 200
+    except Exception as e:
+        logger.error("admin/learning/train failed: %s", e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Training failed"}), 500
+
+
+@v2_bp.route("/admin/learning/status", methods=["GET"])
+@require_admin_or_coach
+def v2_admin_learning_status():
+    """Corpus + latest-model snapshot. shadow agreement is wired in B3 (the
+    shadow hook); null until predictions exist. SHADOW — influences nothing."""
+    try:
+        from services.learning_export import export_snippet_labels_dataset
+        _rows, summary = export_snippet_labels_dataset()
+        latest = db.get_latest_model_version()
+        latest_out = None
+        if latest:
+            latest_out = {
+                "version": latest.get("version"),
+                "trained_at": latest.get("created_at"),
+                "status": latest.get("status"),
+                "metrics": latest.get("metrics"),
+                "corpus_size": latest.get("corpus_size"),
+            }
+        total = summary.get("total") or 0
+        recommendation = (
+            "collect more labels (provisional)" if total < 50
+            else "corpus sufficient — train when ready"
+        )
+        return jsonify({
+            "corpus": {
+                "total": total,
+                "by_class": summary.get("by_class") or {},
+                "dropped_no_features": summary.get("dropped_no_features") or 0,
+            },
+            "latest_model": latest_out,
+            "shadow": None,  # B3 fills predicted-vs-actual agreement
+            "recommendation": recommendation,
+            "mode": "shadow — influences nothing",
+        }), 200
+    except Exception as e:
+        logger.error("admin/learning/status failed: %s", e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to fetch status"}), 500
+
+
+@v2_bp.route("/admin/learning/models", methods=["GET"])
+@require_admin_or_coach
+def v2_admin_learning_models():
+    """Model history, newest first."""
+    try:
+        rows = db.list_model_versions()
+        return jsonify([
+            {
+                "version": r.get("version"),
+                "trained_at": r.get("created_at"),
+                "status": r.get("status"),
+                "metrics": r.get("metrics"),
+                "corpus_size": r.get("corpus_size"),
+            }
+            for r in rows
+        ]), 200
+    except Exception as e:
+        logger.error("admin/learning/models failed: %s", e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to fetch models"}), 500
+
+
 @v2_bp.route("/admin/sessions/<session_id>/readout", methods=["GET"])
 @require_admin
 def v2_admin_get_session_readout(session_id):

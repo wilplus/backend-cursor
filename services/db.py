@@ -8986,6 +8986,87 @@ class DatabaseService:
             logger.warning("get_snippet_metrics_by_ids failed err=%s", e)
         return out
 
+    def count_training_labels(self) -> int:
+        """Total direction labels across all sessions — corpus size for the
+        learning status + the auto-retrain threshold. 0 on missing table."""
+        try:
+            res = (
+                self.client.table("training_labels")
+                .select("snippet_id", count="exact")
+                .limit(1)
+                .execute()
+            )
+            return int(getattr(res, "count", None) or 0)
+        except Exception as e:
+            if "training_labels" in str(e).lower():
+                return 0
+            logger.warning("count_training_labels failed err=%s", e)
+            return 0
+
+    # ── willab Phase 4 / Prompt 1 — shadow model registry ────────────────
+    def insert_model_version(
+        self, *, version: str, status: str = "shadow",
+        schema_version: Optional[str] = None, corpus_size: Optional[int] = None,
+        metrics: Optional[dict] = None, artifact_ref: Optional[str] = None,
+    ) -> bool:
+        """Register a trained (SHADOW) model. Best-effort; missing-table-safe."""
+        try:
+            self.client.table("model_versions").insert({
+                "version": version,
+                "status": status,
+                "schema_version": schema_version,
+                "corpus_size": corpus_size,
+                "metrics": metrics,
+                "artifact_ref": artifact_ref,
+            }).execute()
+            return True
+        except Exception as e:
+            if "model_versions" in str(e).lower():
+                logger.warning(
+                    "insert_model_version: table missing (run "
+                    "migrations/add_learning_subsystem.sql)",
+                )
+                return False
+            logger.warning("insert_model_version failed v=%s err=%s", version, e)
+            return False
+
+    def get_latest_model_version(self) -> Optional[dict]:
+        """Newest registered model (any status), or None. Missing-table-safe."""
+        try:
+            res = (
+                self.client.table("model_versions")
+                .select("version, created_at, status, schema_version, "
+                        "corpus_size, metrics, artifact_ref")
+                .order("created_at", desc=True)
+                .limit(1)
+                .execute()
+            )
+            rows = res.data or []
+            return rows[0] if rows else None
+        except Exception as e:
+            if "model_versions" in str(e).lower():
+                return None
+            logger.warning("get_latest_model_version failed err=%s", e)
+            return None
+
+    def list_model_versions(self, *, limit: int = 50) -> list[dict]:
+        """All registered models, newest first. [] on missing table."""
+        try:
+            res = (
+                self.client.table("model_versions")
+                .select("version, created_at, status, schema_version, "
+                        "corpus_size, metrics")
+                .order("created_at", desc=True)
+                .limit(limit)
+                .execute()
+            )
+            return res.data or []
+        except Exception as e:
+            if "model_versions" in str(e).lower():
+                return []
+            logger.warning("list_model_versions failed err=%s", e)
+            return []
+
     def delete_training_label(self, session_id: str, snippet_id: str) -> bool:
         """Clear one snippet's direction label (the coach unset it — the FE
         sends direction_label: null). Best-effort; missing table → False."""
