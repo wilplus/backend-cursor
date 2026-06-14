@@ -242,6 +242,33 @@ CHARISMA_DRAFT_SCHEMA: dict[str, Any] = {
 }
 
 
+COACH_NOTE_DRAFT_SCHEMA: dict[str, Any] = {
+    # willab Phase 4 / Prompt 2 — AI-Commentator prefill for the coach note.
+    # Slide-aware: grounded in transcript + the snippet's slide{title,body}.
+    # Terse, second-person, like a real willab coach — the coach types over it.
+    "name": "coach_note_draft_v1",
+    "strict": True,
+    "schema": {
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["coach_note"],
+        "properties": {
+            "coach_note": {
+                "type": "string",
+                "maxLength": 240,
+                "description": (
+                    "One short coach note (1 sentence, 2 max) on how this "
+                    "moment landed for the slide it covers. Second-person, "
+                    "terse, specific; reference the slide's point when it "
+                    "helps. No preamble, no praise inflation. Never start "
+                    "with \"This\" or \"The user\"."
+                ),
+            },
+        },
+    },
+}
+
+
 STRESS_DRAFT_SCHEMA: dict[str, Any] = {
     # Phase 10 — AI prefill for stress_snippets.coach_label_notes.
     # Same shape + tone as the charisma draft. The field name

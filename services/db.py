@@ -6412,6 +6412,56 @@ class DatabaseService:
             )
             return False
 
+    def set_charisma_snippet_ai_draft_coach_note(
+        self,
+        snippet_id: str,
+        draft: str | None,
+    ) -> bool:
+        """Persist the AI-Commentator coach-note draft on a charisma snippet,
+        FROZEN: written only when ai_draft_coach_note is currently NULL, so a
+        re-process never overwrites a draft the coach is already editing
+        against (preserves the (draft, coach-final) diff). willab Phase 4 /
+        Prompt 2. Returns True on a write, False on skip/failure (best-effort;
+        the drafting pipeline keeps running)."""
+        try:
+            existing = (
+                self.client.table("charisma_snippets")
+                .select("ai_draft_coach_note")
+                .eq("id", snippet_id)
+                .limit(1)
+                .execute()
+            )
+            rows = existing.data or []
+            if rows and (rows[0].get("ai_draft_coach_note") or "").strip():
+                return False  # frozen — already has a draft
+            now = datetime.now(timezone.utc).isoformat()
+            (
+                self.client.table("charisma_snippets")
+                .update({
+                    "ai_draft_coach_note": draft,
+                    "ai_draft_coach_note_generated_at": now,
+                    "updated_at": now,
+                })
+                .eq("id", snippet_id)
+                .execute()
+            )
+            return True
+        except Exception as e:
+            err_low = str(e).lower()
+            if "ai_draft_coach_note" in err_low and (
+                "does not exist" in err_low or "pgrst204" in err_low
+            ):
+                logger.warning(
+                    "set_charisma_snippet_ai_draft_coach_note: column missing "
+                    "(run migrations/add_ai_draft_coach_note.sql)",
+                )
+                return False
+            logger.warning(
+                "set_charisma_snippet_ai_draft_coach_note failed %s: %s",
+                snippet_id, e,
+            )
+            return False
+
     def set_charisma_snippet_ai_draft_follow_up(
         self,
         snippet_id: str,

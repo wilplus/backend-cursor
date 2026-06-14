@@ -423,6 +423,25 @@ def process_lab_recording(
         "process_lab_recording: sid=%s snippets=%d transcribed=%s",
         session_id, len(snippets_data), bool(segments),
     )
+
+    # AI-Commentator (Phase 4 / Prompt 2) — fire-and-forget coach-note drafts
+    # for DECK recordings. process_lab_recording is synchronous on the upload
+    # response, so drafting (N LLM calls) runs in a daemon, never blocking it.
+    # Best-effort: a failure here never breaks the readout.
+    try:
+        from services.coach_comment_drafter import dispatch_coach_note_drafts
+        dispatch_coach_note_drafts(
+            session_id,
+            snippets_data,
+            (session_context or {}).get("slides"),
+            (session_context or {}).get("slide_advances"),
+        )
+    except Exception as _draft_err:
+        logger.warning(
+            "process_lab_recording: coach-note draft dispatch failed sid=%s: %s",
+            session_id, _draft_err,
+        )
+
     return build_readout_payload(snippets_data, stickiness_list)
 
 
