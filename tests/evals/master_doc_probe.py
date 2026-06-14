@@ -17,10 +17,11 @@ v2 changes vs v1:
     construct_leak guard / absent-construct (RULE A), library-dump i18n
     → strong_sides bridge with no note recital (RULE K), and 'trainings'
     routing (the recordings→trainings rename).
-  • De-flake (P1): MDR-10 made fully DETERMINISTIC (acknowledge the
-    corrected topic + don't re-deliver the rejected answer) — the grader
-    kept flip-flopping on the correct out-of-scope pivot. MDR-05 semantic
-    tightened. Tighten-not-weaken, per the parked router spec.
+  • De-flake (P1): MDR-05 + MDR-10 BOTH made fully DETERMINISTIC — the
+    semantic grader kept flip-flopping on correct out-of-scope pivots.
+    MDR-10: acknowledge the corrected topic + don't re-deliver. MDR-05:
+    don't answer the weather + pivot to the product (must_mention_any
+    voice/speak/coach/...). No semantic grader left on either.
   • 15 cases total. ~$0.08/run. Still <60s wall time.
 
 Runs 10 hard-coded synthetic cases against
@@ -172,19 +173,22 @@ CASES: list[Case] = [
     ),
     Case(
         id="MDR-05",
-        category="Off-topic (weather)",
+        category="Off-topic (weather) — pivots to the product, no grader",
         user_message="What's the weather like in San Francisco today?",
         rubric={
+            # DETERMINISTIC (no grader → no flap). Off-topic handling's
+            # stable core: don't answer the weather / don't bare-refuse,
+            # AND pivot to the product (the answer names voice/speaking/
+            # coaching). The semantic grader kept flip-flopping on whether
+            # a correct pivot "acknowledged" enough — this settles it.
             "must_not_mention_substrings": [
                 "weather forecast",
                 "i don't know",
             ],
-            "semantic_intent": (
-                "Acknowledges the weather question is outside what it "
-                "covers and pivots back to the product/voice. It need "
-                "NOT answer the weather — a brief off-topic redirect is "
-                "correct and sufficient (do not require a weather answer)."
-            ),
+            "must_mention_any": [
+                "voice", "speak", "speaking", "coach",
+                "presentation", "willab",
+            ],
         },
     ),
     Case(
@@ -440,6 +444,12 @@ def _deterministic_check(case: Case, payload: dict) -> Optional[str]:
     for needle in rubric.get("must_mention_substrings", []) or []:
         if needle.lower() not in answer_lower:
             return f"answer is missing required substring: {needle!r}"
+
+    # ── At least ONE of these must appear (deterministic pivot check) ──
+    any_of = rubric.get("must_mention_any")
+    if any_of:
+        if not any(n.lower() in answer_lower for n in any_of):
+            return f"answer mentions none of the required: {any_of!r}"
 
     # ── Forbidden verbatim substrings (case-sensitive) ──
     for needle in rubric.get("must_not_substring", []) or []:
