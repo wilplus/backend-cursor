@@ -11,7 +11,15 @@ v2 changes vs v1:
     (RULE I, added in 96a012e) — explicit record intent must
     flip show_record_ui=true, and record-vs-upload phrasings
     must remain mutually exclusive (RULE G ⊕ RULE I).
-  • 12 cases total. ~$0.06/run. Still <60s wall time.
+  • MDR-13/14/15 added (all DETERMINISTIC — no grader, so no flap):
+    construct_leak guard / absent-construct (RULE A), library-dump i18n
+    → strong_sides bridge with no note recital (RULE K), and 'trainings'
+    routing (the recordings→trainings rename). MDR-11 also asserts
+    suggested_action=record_again (RULE K ↔ RULE I coupling).
+  • De-flake (P1): MDR-05 + MDR-10 semantic rubrics tightened so a
+    correct out-of-scope PIVOT can't read as a miss (these flapped at
+    bot temp 0.4). Tighten-not-weaken, per the parked router spec.
+  • 15 cases total. ~$0.08/run. Still <60s wall time.
 
 Runs 10 hard-coded synthetic cases against
 ``services.master_doc_rag.answer_question`` and grades each via:
@@ -86,6 +94,9 @@ class Case:
     user_message: str
     rubric: dict
     history: list[dict] = field(default_factory=list)
+    # Optional seeded strong-sides library for the dump/routing cases —
+    # passed straight to answer_question(library_entries=...).
+    library_entries: Optional[list] = None
 
 
 CASES: list[Case] = [
@@ -173,8 +184,10 @@ CASES: list[Case] = [
                 "i don't know",
             ],
             "semantic_intent": (
-                "Acknowledges the question is off-topic, then "
-                "pivots back to the product."
+                "Acknowledges the weather question is outside what it "
+                "covers and pivots back to the product/voice. It need "
+                "NOT answer the weather — a brief off-topic redirect is "
+                "correct and sufficient (do not require a weather answer)."
             ),
         },
     ),
@@ -266,8 +279,12 @@ CASES: list[Case] = [
                 "We don't offer refunds at this time.",
             ],
             "semantic_intent": (
-                "Acknowledges the prior misread and does not "
-                "re-deliver the refund non-answer."
+                "Acknowledges the prior misread (e.g. 'you meant "
+                "cancellation, not a refund') and does not re-deliver "
+                "the refund non-answer. Cancellation is out-of-scope "
+                "(not in the Master Document), so a brief graceful pivot "
+                "after acknowledging is correct — it need NOT give a "
+                "substantive cancellation answer."
             ),
         },
     ),
@@ -279,6 +296,8 @@ CASES: list[Case] = [
         rubric={
             "must_set_show_upload_ui": False,
             "must_set_show_record_ui": True,
+            # RULE K ↔ RULE I coupling: record intent → record_again button
+            "must_set_suggested_action": "record_again",
             "must_not_mention_substrings": [
                 "cannot access your microphone",
                 "i cannot access your phone",
@@ -309,6 +328,56 @@ CASES: list[Case] = [
                 "upload (uploads aren't available yet) and does not "
                 "contradict itself."
             ),
+        },
+    ),
+    # ── v3 additions: construct guard, library-dump i18n, routing rename.
+    # All DETERMINISTIC (no semantic_intent) → no grader flap. They cover
+    # the rules the original 12 predate: RULE A construct-prohibition,
+    # RULE K library-dump, and the recordings→trainings routing rename.
+    Case(
+        id="MDR-13",
+        category="Construct-bait (Threat:Challenge) — construct_leak guard",
+        user_message="What's my Threat:Challenge ratio right now?",
+        rubric={
+            "must_set_show_upload_ui": False,
+            # The post-gen _CONSTRUCT_RE guard strips any leak, so the
+            # FINAL answer must carry none of the retired-construct family
+            # — even though the USER seeded the term.
+            "must_not_match_construct": True,
+        },
+    ),
+    Case(
+        id="MDR-14",
+        category="Library-dump i18n (Polish) — strong_sides bridge, no recital",
+        user_message="Jakie są moje mocne strony?",  # "what are my strong sides?"
+        library_entries=[
+            {"tag": "strong",
+             "note": "Twoje najlepsze osiem sekund — rób tego więcej.",
+             "snippet_ref": {"transcript": "i wtedy zrozumiałem o co chodzi"}},
+            {"tag": "to_work_on",
+             "note": "Zwolnij przy zakończeniu liczb.",
+             "snippet_ref": {"transcript": "część z liczbami"}},
+        ],
+        rubric={
+            "must_set_show_upload_ui": False,
+            # an ask about strong sides in ANY language → route to the button
+            "must_set_suggested_action": "strong_sides",
+            # a bridge, not a recital of the (Polish) coach notes
+            "max_answer_chars": 110,
+            "must_not_mention_substrings": [
+                "najlepsze osiem sekund",
+                "zwolnij przy zakończeniu",
+            ],
+        },
+    ),
+    Case(
+        id="MDR-15",
+        category="RULE K routing — 'trainings' (renamed from 'recordings')",
+        user_message="Can I see all my past trainings?",
+        rubric={
+            "must_set_show_upload_ui": False,
+            "must_set_suggested_action": "trainings",
+            "max_answer_chars": 140,  # bridge-not-dump one-liner
         },
     ),
 ]
@@ -365,6 +434,26 @@ def _deterministic_check(case: Case, payload: dict) -> Optional[str]:
                 f"Expected show_record_ui={want}, got "
                 f"show_record_ui={got!r}"
             )
+
+    # ── suggested_action exact match (RULE K routing) ──
+    if "must_set_suggested_action" in rubric:
+        want = rubric["must_set_suggested_action"]
+        got = payload.get("suggested_action")
+        if got != want:
+            return (
+                f"Expected suggested_action={want!r}, got "
+                f"suggested_action={got!r}"
+            )
+
+    # ── Retired-construct family must be ABSENT (RULE A guard) ──
+    # The post-gen _CONSTRUCT_RE guard strips any leak, so the FINAL
+    # answer the user would see must carry none of the family. We reuse
+    # the production regex so the probe and the guard can never drift.
+    if rubric.get("must_not_match_construct"):
+        from services.master_doc_rag import _CONSTRUCT_RE
+        m = _CONSTRUCT_RE.search(answer)
+        if m:
+            return f"answer contains a retired-construct token: {m.group(0)!r}"
 
     # ── Record/upload mutex (RULE G ⊕ RULE I) ──
     # Both flags simultaneously true is a contract violation — the
@@ -512,6 +601,7 @@ def grade(case: Case) -> Verdict:
         payload, _debug = master_doc_rag.answer_question(
             case.user_message,
             history=case.history or None,
+            library_entries=case.library_entries,
         )
     except Exception as e:
         return Verdict(

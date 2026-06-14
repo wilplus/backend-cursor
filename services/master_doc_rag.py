@@ -92,13 +92,13 @@ _RESPONSE_SCHEMA: dict[str, Any] = {
             },
             "suggested_action": {
                 "type": ["string", "null"],
-                "enum": ["strong_sides", "recordings", "record_again", None],
+                "enum": ["strong_sides", "trainings", "record_again", None],
                 "description": (
                     "Per-turn intent classification → the ONE contextual "
                     "button the frontend surfaces. 'strong_sides' when the "
                     "user asks to see their strong sides / coach notes / "
-                    "what they did well; 'recordings' when they ask to see "
-                    "past recordings / history / previous sessions; "
+                    "what they did well; 'trainings' when they ask to see "
+                    "all their trainings / past sessions (the Trainings tab); "
                     "'record_again' when they want another training / to "
                     "record now (same intent as show_record_ui); null on "
                     "every other turn. Classify the USER'S intent, not your "
@@ -433,8 +433,8 @@ _SYSTEM_PROMPT = with_voice_rules(
     "    field suggested_action — the ONE button the app surfaces:\n"
     "      • 'strong_sides' — they ask to see their strong sides,\n"
     "        coach notes, or what they did well / are good at.\n"
-    "      • 'recordings' — they ask to see past recordings,\n"
-    "        their history, or previous sessions / trainings.\n"
+    "      • 'trainings' — they ask to see all their trainings,\n"
+    "        past sessions, or their history.\n"
     "      • 'record_again' — they want another training or to\n"
     "        record now (the SAME intent as RULE I; when you set\n"
     "        show_record_ui=true, also set\n"
@@ -444,15 +444,15 @@ _SYSTEM_PROMPT = with_voice_rules(
     "    or null. The app shows the button; you still answer.\n"
     "\n"
     "    BRIDGE-NOT-DUMP — when you set suggested_action to a\n"
-    "    NON-null value (strong_sides / recordings / record_again),\n"
+    "    NON-null value (strong_sides / trainings / record_again),\n"
     "    your `answer` MUST be a short one-line bridge that points\n"
     "    the user to the button — NEVER a long answer, NEVER a\n"
     "    dump of the strong-sides library, NEVER a list of past\n"
     "    recordings or coach notes. Examples (use this shape,\n"
     "    vary the wording — under 80 chars, one sentence):\n"
     "      strong_sides : \"Sure — tap the button below to open them.\"\n"
-    "      recordings   : \"Of course — tap the button to open your\n"
-    "                       past recordings.\"\n"
+    "      trainings    : \"Of course — tap the button to open your\n"
+    "                       trainings.\"\n"
     "      record_again : \"Sure — tap the mic to record.\"\n"
     "    The button IS the content; your job is just to bridge to\n"
     "    it. The strong-sides library context below is given to you\n"
@@ -461,7 +461,8 @@ _SYSTEM_PROMPT = with_voice_rules(
     "    This holds in ANY language or spelling (\"Strenghts\",\n"
     "    \"mocne strony\", \"co u mnie dobrze\"): an ask about strong\n"
     "    sides → suggested_action=strong_sides + the one-line\n"
-    "    bridge, never a recital of the coach notes.\n"
+    "    bridge, never a recital of the coach notes — never quote,\n"
+    "    paraphrase, or summarize them — the button is the only path.\n"
     "═════════════════════════════════════════════════\n"
     "\n"
     "MASTER DOCUMENT (verbatim — your only source of truth):\n"
@@ -853,7 +854,7 @@ def answer_question(
     show_upload_ui = bool(parsed.get("show_upload_ui"))
     show_record_ui = bool(parsed.get("show_record_ui"))
     suggested_action = parsed.get("suggested_action")
-    if suggested_action not in ("strong_sides", "recordings", "record_again"):
+    if suggested_action not in ("strong_sides", "trainings", "record_again"):
         suggested_action = None  # normalise anything off-enum to null
 
     # Deterministic output floor (RULE A construct-prohibition + RULE K
