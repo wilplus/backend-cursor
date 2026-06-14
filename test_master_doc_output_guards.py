@@ -235,5 +235,69 @@ class SplitAnswerIntoBubblesTests(unittest.TestCase):
         self.assertTrue(all(b.strip() for b in out))
 
 
+class RouterScaffoldTests(unittest.TestCase):
+    """Part B — deterministic checks on the two-stage router scaffold
+    (flag, lane prompts, classifier schema). No LLM."""
+
+    def test_flag_off_by_default(self):
+        import os
+        from services.master_doc_rag import _router_enabled
+        old = os.environ.pop("LOUNGE_ROUTER_ENABLED", None)
+        try:
+            self.assertFalse(_router_enabled())
+        finally:
+            if old is not None:
+                os.environ["LOUNGE_ROUTER_ENABLED"] = old
+
+    def test_flag_reads_env(self):
+        import os
+        from services.master_doc_rag import _router_enabled
+        old = os.environ.get("LOUNGE_ROUTER_ENABLED")
+        try:
+            for v in ("1", "true", "YES", "on"):
+                os.environ["LOUNGE_ROUTER_ENABLED"] = v
+                self.assertTrue(_router_enabled(), v)
+            os.environ["LOUNGE_ROUTER_ENABLED"] = "0"
+            self.assertFalse(_router_enabled())
+        finally:
+            if old is None:
+                os.environ.pop("LOUNGE_ROUTER_ENABLED", None)
+            else:
+                os.environ["LOUNGE_ROUTER_ENABLED"] = old
+
+    def test_every_intent_has_a_lane_body(self):
+        from services.master_doc_rag import _INTENTS, _LANE_BODIES
+        for intent in _INTENTS:
+            self.assertIn(intent, _LANE_BODIES, intent)
+
+    def test_classifier_schema_enum_matches_intents(self):
+        from services.master_doc_rag import _INTENTS, _CLASSIFIER_SCHEMA
+        enum = _CLASSIFIER_SCHEMA["schema"]["properties"]["intent"]["enum"]
+        self.assertEqual(set(enum), set(_INTENTS))
+
+    def test_grounded_lane_splices_master_doc(self):
+        from services.master_doc_rag import _build_lane_prompt
+        grounded = _build_lane_prompt("product_faq", None, "")
+        self.assertIn("MASTER DOCUMENT", grounded)
+        # an action lane stays focused — no full document
+        action = _build_lane_prompt("record_intent", None, "")
+        self.assertNotIn("MASTER DOCUMENT", action)
+
+    def test_library_recall_lane_includes_library(self):
+        from services.master_doc_rag import _build_lane_prompt
+        out = _build_lane_prompt(
+            "library_recall",
+            [{"tag": "strong", "note": "great open", "snippet_ref": {}}],
+            "",
+        )
+        # the librarian guardrail rides along with the library block
+        self.assertIn("LIBRARIAN", out)
+
+    def test_record_lane_body_sets_record_again(self):
+        from services.master_doc_rag import _LANE_BODIES
+        self.assertIn("record_again", _LANE_BODIES["record_intent"])
+        self.assertIn("show_record_ui", _LANE_BODIES["record_intent"])
+
+
 if __name__ == "__main__":
     unittest.main()
