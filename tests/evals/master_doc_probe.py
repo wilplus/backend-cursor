@@ -280,14 +280,14 @@ CASES: list[Case] = [
     # ── record intent → point to the always-present official button ──
     Case(
         id="MDR-11",
-        category="Record intent → 'Start official recording' (no mic, no button)",
+        category="Record intent → official recording button (no mic, no button)",
         user_message="Can I just record it here in the chat?",
         rubric={
-            # RULE I: point to the always-present button, reveal no mic
-            # and offer no record button.
+            # RULE I: point to the always-present recording button below,
+            # reveal no mic and offer no suggested_action button.
             "must_set_show_record_ui": False,
             "must_set_suggested_action": None,
-            "must_mention_substrings": ["official recording"],
+            "must_mention_substrings": ["button"],
             "must_not_mention_substrings": [
                 "cannot access your microphone",
                 "i cannot access your phone",
@@ -353,8 +353,9 @@ CASES: list[Case] = [
     ),
     Case(
         id="MDR-15",
-        category="RULE K routing — 'trainings' (renamed from 'recordings')",
-        user_message="Can I see all my past trainings?",
+        category="RULE K routing — singular 'training' opens the Trainings page",
+        # Singular 'training' must route to the Trainings page (NOT record).
+        user_message="can I see my training?",
         rubric={
             "must_set_suggested_action": "trainings",
             "max_answer_chars": 140,  # bridge-not-dump one-liner
