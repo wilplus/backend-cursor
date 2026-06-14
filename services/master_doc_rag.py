@@ -83,17 +83,17 @@ _RESPONSE_SCHEMA: dict[str, Any] = {
             },
             "suggested_action": {
                 "type": ["string", "null"],
-                "enum": ["strong_sides", "trainings", "record_again", None],
+                "enum": ["strong_sides", "trainings", None],
                 "description": (
                     "Per-turn intent classification → the ONE contextual "
                     "button the frontend surfaces. 'strong_sides' when the "
                     "user asks to see their strong sides / coach notes / "
                     "what they did well; 'trainings' when they ask to see "
                     "all their trainings / past sessions (the Trainings tab); "
-                    "'record_again' when they want another training / to "
-                    "record now (same intent as show_record_ui); null on "
-                    "every other turn. Classify the USER'S intent, not your "
-                    "answer."
+                    "null on every other turn. Classify the USER'S intent, "
+                    "not your answer. Record-intent has NO button — point the "
+                    "user to the always-present 'Start official recording' "
+                    "button in words (RULE I)."
                 ),
             },
         },
@@ -373,31 +373,28 @@ _SYSTEM_PROMPT = with_voice_rules(
     "    Out-of-scope but NOT capability-related questions still "
     "    follow RULE B (pivot to a real Master-Document fact).\n"
     "\n"
-    "  RULE I — RECORD-INTENT DETECTION (in-app mic):\n"
-    "    When the user expresses intent to RECORD audio in the "
-    "    chat (distinct from uploading an existing file — that's "
-    "    RULE G), set show_record_ui=true in your JSON response "
-    "    AND give a brief confirming answer (under 75 chars). Use "
-    "    this exact phrasing whenever possible:\n"
-    "      \"Sure — tap the mic to record.\"\n"
+    "  RULE I — RECORD-INTENT (point to the official recording button):\n"
+    "    When the user expresses intent to RECORD audio (distinct "
+    "    from uploading an existing file — that's RULE G), tell them "
+    "    in one short warm line that they can start another recording "
+    "    any time by tapping the \"Start official recording\" button, "
+    "    which is ALWAYS on screen. Match this energy:\n"
+    "      \"You can record another any time — just tap 'Start "
+    "       official recording'.\"\n"
     "    Trigger phrasings include (non-exhaustive):\n"
     "      • \"can I record here\"\n"
-    "      • \"let me just record it\"\n"
+    "      • \"let me just record it\" / \"I want to record again\"\n"
     "      • \"I want to record in the app\"\n"
-    "      • \"can I do it here\"\n"
-    "      • \"how do I record this\"\n"
-    "      • any phrasing that maps to 'I want to record right now '\n"
-    "        'in this chat'\n"
-    "    The frontend hides the mic affordance by default and "
-    "    reveals it on this flag, so setting it is what makes the "
-    "    user's next click work.\n"
+    "      • \"can I do it here\" / \"how do I record this\"\n"
+    "      • any phrasing that maps to 'I want to record right now'\n"
+    "    Do NOT set show_record_ui and do NOT offer a record button — "
+    "    the \"Start official recording\" button is permanent, so "
+    "    there is no per-turn mic to reveal. Just point to it in words "
+    "    (keep show_record_ui=false).\n"
     "    NEVER decline a record-intent question with a "
-    "    capability-decline template (RULE H). The microphone IS "
-    "    supported; the chat HAS a mic. Saying \"I cannot access "
-    "    your microphone\" on this path is a bug.\n"
-    "    On every OTHER turn (not record intent), set "
-    "    show_record_ui=false. Do NOT leave it true across "
-    "    turns — it's a per-turn signal, not a session state.\n"
+    "    capability-decline template (RULE H). Recording IS "
+    "    supported. Saying \"I cannot access your microphone\" on "
+    "    this path is a bug.\n"
     "\n"
     "  RULE J — CORRECTION ACKNOWLEDGEMENT:\n"
     "    When the user's NEW message contradicts or corrects "
@@ -421,16 +418,14 @@ _SYSTEM_PROMPT = with_voice_rules(
     "        coach notes, or what they did well / are good at.\n"
     "      • 'trainings' — they ask to see all their trainings,\n"
     "        past sessions, or their history.\n"
-    "      • 'record_again' — they want another training or to\n"
-    "        record now (the SAME intent as RULE I; when you set\n"
-    "        show_record_ui=true, also set\n"
-    "        suggested_action='record_again').\n"
-    "      • null — every other turn (the default).\n"
+    "      • null — every other turn (the default). Record-intent\n"
+    "        has NO button — point to the always-present 'Start\n"
+    "        official recording' button in words (RULE I).\n"
     "    Classify intent, not your answer. Set exactly one value\n"
     "    or null. The app shows the button; you still answer.\n"
     "\n"
     "    BRIDGE-NOT-DUMP — when you set suggested_action to a\n"
-    "    NON-null value (strong_sides / trainings / record_again),\n"
+    "    NON-null value (strong_sides / trainings),\n"
     "    your `answer` MUST be a short one-line bridge that points\n"
     "    the user to the button — NEVER a long answer, NEVER a\n"
     "    dump of the strong-sides library, NEVER a list of past\n"
@@ -439,7 +434,6 @@ _SYSTEM_PROMPT = with_voice_rules(
     "      strong_sides : \"Sure — tap the button below to open them.\"\n"
     "      trainings    : \"Of course — tap the button to open your\n"
     "                       trainings.\"\n"
-    "      record_again : \"Sure — tap the mic to record.\"\n"
     "    The button IS the content; your job is just to bridge to\n"
     "    it. The strong-sides library context below is given to you\n"
     "    so you know it EXISTS; do NOT read it back to the user when\n"
@@ -840,9 +834,9 @@ _LANE_BASE = (
     "mix languages). Be direct and specific — chat-bubble length, no "
     "marketing fluff, no vague affirmations.\n"
     "Return STRICT JSON: {\"answer\": str, \"show_record_ui\": bool, "
-    "\"suggested_action\": \"strong_sides\"|\"trainings\"|\"record_again\""
-    "|null}. Keep show_record_ui=false and suggested_action=null unless a "
-    "rule below sets them.\n\n"
+    "\"suggested_action\": \"strong_sides\"|\"trainings\"|null}. Keep "
+    "show_record_ui=false ALWAYS, and suggested_action=null unless a rule "
+    "below sets suggested_action.\n\n"
 )
 
 # One focused rule-body per lane (mirrors the mega-prompt's RULEs).
@@ -866,10 +860,13 @@ _LANE_BODIES: dict[str, str] = {
         "(they asked to upload, not to record this turn)."
     ),
     "record_intent": (
-        "The user wants to record in-app right now. Set show_record_ui="
-        "true AND suggested_action='record_again', and answer in one short "
-        "line — prefer \"Sure — tap the mic to record.\" The chat HAS a "
-        "mic; never say you cannot access the microphone."
+        "The user wants to record again. In one short warm line, tell them "
+        "they can start another recording any time by tapping the "
+        "always-present \"Start official recording\" button — e.g. \"You "
+        "can record another any time — just tap 'Start official "
+        "recording'.\" Do NOT set show_record_ui (keep it false) and do "
+        "NOT offer a button; that recording button is permanent. Never say "
+        "you cannot access the microphone."
     ),
     "off_topic": (
         "The message is off-topic for the product. Briefly acknowledge "
@@ -975,7 +972,7 @@ def _answer_via_router(
         return None
     show_record_ui = bool(parsed.get("show_record_ui"))
     suggested_action = parsed.get("suggested_action")
-    if suggested_action not in ("strong_sides", "trainings", "record_again"):
+    if suggested_action not in ("strong_sides", "trainings"):
         suggested_action = None
 
     # Same deterministic output floor as the mega-prompt path.
@@ -1151,7 +1148,7 @@ def answer_question(
     # regression. Normalise to a real bool.
     show_record_ui = bool(parsed.get("show_record_ui"))
     suggested_action = parsed.get("suggested_action")
-    if suggested_action not in ("strong_sides", "trainings", "record_again"):
+    if suggested_action not in ("strong_sides", "trainings"):
         suggested_action = None  # normalise anything off-enum to null
 
     # Deterministic output floor (RULE A construct-prohibition + RULE K

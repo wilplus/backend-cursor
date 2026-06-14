@@ -293,10 +293,12 @@ class RouterScaffoldTests(unittest.TestCase):
         # the librarian guardrail rides along with the library block
         self.assertIn("LIBRARIAN", out)
 
-    def test_record_lane_body_sets_record_again(self):
+    def test_record_lane_points_to_official_recording(self):
         from services.master_doc_rag import _LANE_BODIES
-        self.assertIn("record_again", _LANE_BODIES["record_intent"])
-        self.assertIn("show_record_ui", _LANE_BODIES["record_intent"])
+        body = _LANE_BODIES["record_intent"]
+        # record intent → point at the always-present button, no record_again
+        self.assertIn("official recording", body.lower())
+        self.assertNotIn("record_again", body)
 
 
 if __name__ == "__main__":
