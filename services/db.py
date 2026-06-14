@@ -9051,6 +9051,35 @@ class DatabaseService:
             )
             return []
 
+    def delete_strong_sides_library_for_session(
+        self, user_id: str, session_id: str
+    ) -> int:
+        """Delete all strong_sides_library rows for (user_id, session_id).
+        Owner-scoped. Best-effort; returns rows deleted (0 on miss / missing
+        table). Used by the user-facing presentation/take delete."""
+        if not user_id or not session_id:
+            return 0
+        try:
+            res = (
+                self.client.table("strong_sides_library")
+                .delete()
+                .eq("user_id", user_id)
+                .eq("session_id", session_id)
+                .execute()
+            )
+            return len(res.data or [])
+        except Exception as e:
+            err_low = str(e).lower()
+            if "strong_sides_library" in err_low and (
+                "does not exist" in err_low or "pgrst" in err_low
+            ):
+                return 0
+            logger.warning(
+                "delete_strong_sides_library_for_session failed "
+                "user=%s session=%s err=%s", user_id, session_id, e,
+            )
+            return 0
+
     # ── willab beta — insights_payload (design §6b/§14, contract §3.9) ─
 
     def set_session_insights_payload(
