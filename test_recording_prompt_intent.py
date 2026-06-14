@@ -304,11 +304,10 @@ class TestMasterDocRagRecordIntent(unittest.TestCase):
 
     def test_record_intent_sets_show_record_ui_and_avoids_camera_decline(self):
         """answer_question on 'can I just record it here' must return
-        show_record_ui=True, show_upload_ui=False, and an answer that
-        does NOT borrow the camera-decline template."""
+        show_record_ui=True and an answer that does NOT borrow the
+        camera-decline template."""
         canned = json.dumps({
             "answer": "Sure — tap the mic to record.",
-            "show_upload_ui": False,
             "show_record_ui": True,
         })
         self._install_fake(canned)
@@ -316,7 +315,6 @@ class TestMasterDocRagRecordIntent(unittest.TestCase):
             "can I just record it here"
         )
         self.assertTrue(payload["show_record_ui"])
-        self.assertFalse(payload["show_upload_ui"])
         # Spec invariant: must not echo the camera-decline template
         # even if the user says something that brushes capabilities.
         lowered = payload["answer"].lower()
@@ -329,7 +327,6 @@ class TestMasterDocRagRecordIntent(unittest.TestCase):
         the model regresses to the camera decline."""
         canned = json.dumps({
             "answer": "Sure — tap the mic to record.",
-            "show_upload_ui": False,
             "show_record_ui": True,
         })
         captured = self._install_fake(canned)
@@ -357,22 +354,22 @@ class TestMasterDocRagRecordIntent(unittest.TestCase):
             "this is the bug we shipped to fix",
         )
 
-    def test_fallback_payload_defaults_both_intent_flags_false(self):
-        """When the LLM is unavailable, both intent flags must
-        default False. The fallback is a polite document-grounded
-        message, not a record-or-upload prompt."""
+    def test_fallback_payload_defaults_record_flag_false(self):
+        """When the LLM is unavailable, the record flag must default
+        False. The fallback is a polite document-grounded message, not
+        a record prompt. (show_upload_ui was removed end-to-end.)"""
         fallback = master_doc_rag._fallback_payload()
         self.assertIn("answer", fallback)
-        self.assertFalse(fallback["show_upload_ui"])
         self.assertFalse(fallback["show_record_ui"])
+        self.assertNotIn("show_upload_ui", fallback)
 
-    def test_empty_question_returns_both_flags_false(self):
-        """Sanity: the empty-question short-circuit must include both
-        flags so the route handler's lookups don't KeyError."""
+    def test_empty_question_returns_record_flag_false(self):
+        """Sanity: the empty-question short-circuit must include the
+        record flag so the route handler's lookups don't KeyError."""
         payload, debug = master_doc_rag.answer_question("")
         self.assertEqual(debug.get("error"), "empty_question")
-        self.assertFalse(payload["show_upload_ui"])
         self.assertFalse(payload["show_record_ui"])
+        self.assertNotIn("show_upload_ui", payload)
 
 
 if __name__ == "__main__":
