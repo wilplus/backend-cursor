@@ -7500,6 +7500,126 @@ def v2_user_get_strengths():
         return jsonify({"code": "V2_ERROR", "error": "Failed to fetch strengths"}), 500
 
 
+def _user_presentation_groups(user_id: str) -> dict:
+    """{presentation_id: [session_id ordered take 1..N]} for this user.
+
+    MIRRORS the /user/strengths grouping so take_number lines up with what
+    the FE shows: only the user's library (strong-tagged) sessions that have
+    a deck, grouped by the stable slide-text hash, each group ordered by
+    (created_at, session_id) ascending (take 1 = oldest)."""
+    library = db.get_strong_sides_library(user_id, tag="strong") or []
+    seen: dict = {}
+    for row in library:
+        sid = row.get("session_id")
+        if sid:
+            seen.setdefault(sid, True)
+    groups: dict = {}
+    for sid in seen:
+        session = db.v2_get_session_by_id(sid) or {}
+        ctx = session.get("intake_context") if isinstance(session.get("intake_context"), dict) else {}
+        slides = (ctx or {}).get("slides") or []
+        if not slides:
+            continue  # deckless moments live in `general`, not a presentation
+        pid = _presentation_id_from_slides(slides)
+        if not pid:
+            continue
+        groups.setdefault(pid, []).append((session.get("created_at") or "", sid))
+    return {
+        pid: [sid for _, sid in sorted(items, key=lambda t: (t[0], t[1]))]
+        for pid, items in groups.items()
+    }
+
+
+def _hard_delete_session_for_user(user_id: str, session_id: str) -> None:
+    """Durable delete of one take: drop its library rows (so it leaves
+    /user/strengths now) AND the underlying session (so the readout-read
+    re-ingest can't resurrect it). Owner-scoped; best-effort per step."""
+    try:
+        db.delete_strong_sides_library_for_session(user_id, session_id)
+    except Exception as e:
+        logger.warning("presentation delete: library purge failed sid=%s err=%s", session_id, e)
+    try:
+        db.v2_delete_session(session_id, user_id)
+    except Exception as e:
+        logger.warning("presentation delete: session delete failed sid=%s err=%s", session_id, e)
+
+
+@v2_bp.route("/user/presentations/<presentation_id>", methods=["DELETE"])
+@require_auth
+def v2_user_delete_presentation(presentation_id):
+    """Delete a whole presentation (deck) and ALL its takes — owner-scoped,
+    HARD delete (the recordings are gone everywhere, incl. coach history).
+    200 {deleted_sessions} · 404 if the user has no such presentation."""
+    try:
+        uid = str(request.user_id)
+        groups = _user_presentation_groups(uid)
+        sids = groups.get((presentation_id or "").strip())
+        if not sids:
+            return jsonify({
+                "code": "NOT_FOUND",
+                "error": "No such presentation for this user",
+            }), 404
+        for sid in sids:
+            _hard_delete_session_for_user(uid, sid)
+        logger.info(
+            "presentation deleted user=%s pid=%s takes=%d",
+            uid, presentation_id, len(sids),
+        )
+        return jsonify({"status": "ok", "deleted_sessions": len(sids)}), 200
+    except Exception as e:
+        logger.error("user/presentations DELETE failed: %s", e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to delete presentation"}), 500
+
+
+@v2_bp.route(
+    "/user/presentations/<presentation_id>/takes/<take_number>",
+    methods=["DELETE"],
+)
+@require_auth
+def v2_user_delete_take(presentation_id, take_number):
+    """Delete a single take (one recording session) of a presentation —
+    owner-scoped HARD delete. take_number is 1-based, chronological (matches
+    /user/strengths). 200 · 400 bad take_number · 404 unknown presentation/take."""
+    try:
+        uid = str(request.user_id)
+        try:
+            n = int(take_number)
+        except (TypeError, ValueError):
+            return jsonify({
+                "code": "INVALID_INPUT",
+                "error": "take_number must be a positive integer",
+            }), 400
+        if n < 1:
+            return jsonify({
+                "code": "INVALID_INPUT",
+                "error": "take_number must be a positive integer",
+            }), 400
+        groups = _user_presentation_groups(uid)
+        sids = groups.get((presentation_id or "").strip())
+        if not sids:
+            return jsonify({
+                "code": "NOT_FOUND",
+                "error": "No such presentation for this user",
+            }), 404
+        if n > len(sids):
+            return jsonify({
+                "code": "NOT_FOUND",
+                "error": f"take {n} does not exist (presentation has {len(sids)})",
+            }), 404
+        sid = sids[n - 1]  # take_number is 1-based, take 1 = oldest
+        _hard_delete_session_for_user(uid, sid)
+        logger.info(
+            "take deleted user=%s pid=%s take=%d session=%s",
+            uid, presentation_id, n, sid,
+        )
+        return jsonify({"status": "ok", "deleted_session": sid, "take_number": n}), 200
+    except Exception as e:
+        logger.error("user/presentations/takes DELETE failed: %s", e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to delete take"}), 500
+
+
 # ── willab beta — Lab readout re-read + history (parked-restore + scroll-back) ─
 
 
