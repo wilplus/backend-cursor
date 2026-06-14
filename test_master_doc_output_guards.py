@@ -190,5 +190,50 @@ class GuardPrecedenceTests(unittest.TestCase):
         self.assertIn("Readout", a)
 
 
+class SplitAnswerIntoBubblesTests(unittest.TestCase):
+    """P3-1 — server-side chat-bubble splitting for FE #157's bubbles[]."""
+
+    def _split(self, answer):
+        from services.master_doc_rag import split_answer_into_bubbles
+        return split_answer_into_bubbles(answer)
+
+    def test_empty_returns_empty_list(self):
+        self.assertEqual(self._split(""), [])
+        self.assertEqual(self._split(None), [])
+        self.assertEqual(self._split("   "), [])
+
+    def test_short_one_liner_is_single_bubble(self):
+        msg = "Sure — tap the button below to open them."
+        self.assertEqual(self._split(msg), [msg])
+
+    def test_blank_lines_are_hard_boundaries(self):
+        out = self._split("First paragraph.\n\nSecond paragraph.")
+        self.assertEqual(out, ["First paragraph.", "Second paragraph."])
+
+    def test_long_paragraph_splits_on_sentences(self):
+        from services.master_doc_rag import _BUBBLE_SOFT_MAX
+        # Four sentences, comfortably over the 200-char soft cap as one run.
+        s1 = "This is the first sentence and it is fairly wordy on purpose."
+        s2 = "Here is a second sentence that also carries a good deal of text."
+        s3 = "And a third one to push the paragraph well over the soft cap."
+        s4 = "A fourth sentence guarantees we cross the limit and must split."
+        para = f"{s1} {s2} {s3} {s4}"
+        self.assertGreater(len(para), _BUBBLE_SOFT_MAX)  # precondition
+        out = self._split(para)
+        self.assertGreater(len(out), 1)
+        self.assertTrue(all(len(b) <= _BUBBLE_SOFT_MAX for b in out), out)
+
+    def test_words_are_preserved(self):
+        from services.master_doc_rag import split_answer_into_bubbles
+        text = ("Alpha beta gamma. " * 30).strip()
+        joined = " ".join(split_answer_into_bubbles(text))
+        self.assertEqual(joined.split(), text.split())
+
+    def test_never_splits_below_word(self):
+        # No bubble is empty or whitespace-only.
+        out = self._split("One. Two. Three.\n\n" + ("Long sentence here. " * 20))
+        self.assertTrue(all(b.strip() for b in out))
+
+
 if __name__ == "__main__":
     unittest.main()
