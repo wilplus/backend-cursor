@@ -8836,6 +8836,48 @@ class DatabaseService:
 
     # ── willab beta — Lab session source + history ──────────────────
 
+    def set_session_arc(
+        self, session_id: str, arc_id: Optional[str], take_index: Optional[int],
+    ) -> bool:
+        """Link a session into an explore-session arc (Prompt A §3). Best-effort;
+        missing column (migration pending) → False, non-fatal."""
+        if not session_id or not arc_id:
+            return False
+        try:
+            self.client.table("v2_sessions").update({
+                "arc_id": arc_id, "take_index": take_index,
+            }).eq("id", session_id).execute()
+            return True
+        except Exception as e:
+            if "arc_id" in str(e).lower() or "take_index" in str(e).lower():
+                logger.warning(
+                    "set_session_arc: column missing (run "
+                    "migrations/add_explore_arc.sql)",
+                )
+                return False
+            logger.warning("set_session_arc failed sid=%s: %s", session_id, e)
+            return False
+
+    def get_arc_take_count(self, arc_id: Optional[str]) -> int:
+        """How many takes are in an arc (Prompt A §3 take_count). 0 on missing
+        column / no arc."""
+        if not arc_id:
+            return 0
+        try:
+            res = (
+                self.client.table("v2_sessions")
+                .select("id", count="exact")
+                .eq("arc_id", arc_id)
+                .limit(1)
+                .execute()
+            )
+            return int(getattr(res, "count", None) or 0)
+        except Exception as e:
+            if "arc_id" in str(e).lower():
+                return 0
+            logger.warning("get_arc_take_count failed arc=%s: %s", arc_id, e)
+            return 0
+
     def set_session_source(self, session_id: str, source: str) -> bool:
         """Stamp v2_sessions.source (foundation discriminator). The Lab
         handler marks its sessions 'audit_upload' so the history list +
