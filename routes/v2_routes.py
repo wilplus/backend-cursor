@@ -8465,6 +8465,7 @@ def v2_coach_get_session(session_id):
 
         ctx = session.get("intake_context") if isinstance(session.get("intake_context"), dict) else {}
         insights = session.get("insights_payload") if isinstance(session.get("insights_payload"), dict) else {}
+        from services.feelings import shape_coach_feelings
         return jsonify({
             "session_id": session_id,
             "pseudonym": _coach_pseudonym(session.get("user_id")),
@@ -8481,6 +8482,11 @@ def v2_coach_get_session(session_id):
             # Per-slide coverage ledger (Stickiness #2 (i)) — coach audit.
             "slide_coverage": readout.get("slide_coverage") or [],
             "snippets": snippets,
+            # U10 — the pre-recording feeling(s) the student named (nervous/
+            # excited/calm/unsure), shown at the END of the snippets. Coach-only
+            # (split-sink/AC-9, never user-facing); the felt-state input the
+            # coach factors into the audit's "Performance under feeling".
+            "feelings": shape_coach_feelings(db.get_feelings_by_session(session_id)),
         }), 200
     except Exception as e:
         logger.error("coach/get-session failed sid=%s err=%s", session_id, e, exc_info=True)

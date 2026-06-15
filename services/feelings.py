@@ -24,3 +24,32 @@ def normalize_feeling(raw: Any) -> Optional[str]:
         return None
     v = raw.strip().lower()
     return v if v in VALID_FEELINGS else None
+
+
+def shape_coach_feelings(rows: Any) -> list:
+    """Shape raw recording_feelings rows into the coach-facing list shown at the
+    end of the student's snippets. Ordered by take_index then capture time;
+    keeps only what the coach reads ({feeling, take_index, captured_at}). NOT
+    user-facing — coach review only (split-sink). Robust to bad input → []."""
+    if not isinstance(rows, list):
+        return []
+    out = []
+    for r in rows:
+        if not isinstance(r, dict):
+            continue
+        f = normalize_feeling(r.get("feeling"))
+        if not f:
+            continue
+        out.append({
+            "feeling": f,
+            "take_index": r.get("take_index"),
+            "captured_at": r.get("created_at"),
+        })
+
+    def _key(item):
+        ti = item.get("take_index")
+        return (ti if isinstance(ti, int) else 1_000_000,
+                item.get("captured_at") or "")
+
+    out.sort(key=_key)
+    return out
