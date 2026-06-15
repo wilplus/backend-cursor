@@ -176,6 +176,21 @@ fixed facts, exercise/safety caveat) is doctrine and is NEVER invented
 by the LLM — see services/session_cadence.py ``BEATS``."""
 
 
+SPEC_GOAL_UPDATE = LLMSpec(
+    model=CHEAP_MODEL,
+    # Low temp — goal-update DETECTION must be conservative + stable (a
+    # casual "my goal is to relax" must NOT trigger a profile write). The
+    # in-language confirmation it also returns needs no creativity.
+    temperature=0.2,
+    max_tokens=240,
+    # Schema lives in services/goal_update.py, passed at call time.
+    response_format=None,
+)
+"""Explore-Session goal-update intercept (Prompt A §6 C4) — detects an
+explicit "change my goal to X", extracts the new goal, and renders an
+in-language confirmation. Runs BEFORE master_doc_rag (never a rule edit)."""
+
+
 SPEC_ONBOARDING_OPENER = LLMSpec(
     model=CHEAP_MODEL,
     # Low warmth — the ack is a deadpan bridge into a canonical
