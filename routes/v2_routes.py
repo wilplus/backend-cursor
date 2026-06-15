@@ -9325,6 +9325,19 @@ def v2_lab_create_recording():
             db.set_session_arc(guest_session_id, arc_id, take_index)
             arc_take_count = db.get_arc_take_count(arc_id)
 
+        # Pre-recording feeling (U10) — the user named their state before this
+        # take (nervous/excited/calm/unsure). Split-sink / AC-9: stored
+        # privately for the audit-stage correlation, NEVER scored or echoed.
+        # Optional + best-effort: a missing/unknown value just stores nothing.
+        from services.feelings import normalize_feeling
+        _feeling = normalize_feeling(form.get("feeling"))
+        if _feeling:
+            db.insert_recording_feeling(
+                session_id=guest_session_id, feeling=_feeling,
+                user_id=getattr(request, "user_id", None),
+                recording_id=recording_id, arc_id=arc_id, take_index=take_index,
+            )
+
         # Recording row (recording_origin fallback for pre-migration envs).
         # BE-1 / S2 — persist the gate's measured duration (was hardcoded 0 +
         # discarded). This is the source for cumulative recording-progress.
