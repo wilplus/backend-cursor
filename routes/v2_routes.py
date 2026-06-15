@@ -7324,6 +7324,7 @@ def v2_user_get_strengths():
         from services.slide_alignment import (
             slide_index_for_offset, _best_match_index,
         )
+        from services.power_phrase_ranking import power_score
         uid = str(request.user_id)
         library = db.get_strong_sides_library(uid, tag="strong") or []
 
@@ -7345,13 +7346,21 @@ def v2_user_get_strengths():
             except Exception:
                 snippets = []
             ranks: dict = {}
+            sigs: dict = {}  # coach-adjusted power_score inputs per snippet
             for s in snippets:
                 m = s.get("metrics") if isinstance(s.get("metrics"), dict) else {}
-                ranks[str(s.get("id"))] = m.get("rank") if isinstance(m, dict) else None
+                sid_s = str(s.get("id"))
+                ranks[sid_s] = m.get("rank") if isinstance(m, dict) else None
+                _ss = m.get("slide_stickiness") if isinstance(m, dict) else None
+                sigs[sid_s] = {
+                    "overall_score": m.get("overall_score") if isinstance(m, dict) else None,
+                    "slide_stickiness": (_ss or {}).get("composite") if isinstance(_ss, dict) else None,
+                }
             slides = ctx.get("slides") or []
             sess_meta[sid] = {
                 "ctx": ctx,
                 "ranks": ranks,
+                "sigs": sigs,
                 "slides": slides,
                 "created_at": session.get("created_at") or "",
                 "presentation_id": _presentation_id_from_slides(slides),
@@ -7388,6 +7397,7 @@ def v2_user_get_strengths():
             advances = ctx.get("slide_advances") or []
             slides = meta["slides"]
             ranks = meta["ranks"]
+            sigs = meta["sigs"]
             slide_groups = [
                 {
                     "index": i,
@@ -7405,6 +7415,18 @@ def v2_user_get_strengths():
                     idx = _best_match_index(ref.get("transcript"), slides)
                 if not isinstance(idx, int) or idx < 0 or idx >= len(slides):
                     continue
+                sid_s = str(row.get("snippet_id"))
+                _sig = sigs.get(sid_s, {})
+                # Coach-adjusted power_score: these are all coach-tagged
+                # 'strong' (the human gate), ordered by activation + slide
+                # coverage. tag='strong' is uniform here, so it sets the floor;
+                # activation + slide_stickiness do the ordering within.
+                ps = power_score(
+                    activation=_sig.get("overall_score"),
+                    slide_stickiness=_sig.get("slide_stickiness"),
+                    tag="strong",
+                    rank=ranks.get(sid_s),
+                )
                 slide_groups[idx]["strong_snippets"].append({
                     "transcript": ref.get("transcript") or "",
                     "note": row.get("note") or "",
@@ -7412,12 +7434,15 @@ def v2_user_get_strengths():
                     "features": ref.get("features"),
                     "start_offset_ms": off,
                     "duration_ms": ref.get("duration_ms"),
-                    "rank": ranks.get(str(row.get("snippet_id"))),
+                    "rank": ranks.get(sid_s),
+                    "power_score": ps,
                 })
-            # Sort each slide's strong snippets by rank ASC (1 = best); None last.
+            # Order each slide's strong snippets by the coach-adjusted
+            # power_score DESC (higher = better power phrase); None ranks fall
+            # out via a 0-activation floor.
             for sg in slide_groups:
                 sg["strong_snippets"].sort(
-                    key=lambda s: (s.get("rank") is None, s.get("rank") or 0)
+                    key=lambda s: -(s.get("power_score") or 0.0)
                 )
             return slide_groups
 
@@ -7441,25 +7466,25 @@ def v2_user_get_strengths():
                     "slides": _build_take(sid),
                 })
 
-            # best_lines: per slide_index, the single snippet with the LOWEST
-            # rank across all takes (None ranks lose to any int).
+            # best_lines: per slide_index, the single snippet with the HIGHEST
+            # coach-adjusted power_score across all takes (the power phrase for
+            # that slide). Each take's strong_snippets[0] is already the best
+            # for that take (power-sorted).
             best_lines = []
             for i in range(len(latest_slides)):
                 sl = latest_slides[i] if isinstance(latest_slides[i], dict) else {}
                 best = None
-                best_rank = None
+                best_ps = None
                 for t in takes:
                     snips = t["slides"][i]["strong_snippets"] if i < len(t["slides"]) else []
                     if not snips:
                         continue
-                    top = snips[0]  # already rank-sorted
-                    r = top.get("rank")
-                    if r is None:
-                        if best is None:
-                            best = top
-                        continue
-                    if best_rank is None or r < best_rank:
-                        best_rank = r
+                    top = snips[0]  # already power_score-sorted (best first)
+                    ps = top.get("power_score")
+                    if best is None or (
+                        ps is not None and (best_ps is None or ps > best_ps)
+                    ):
+                        best_ps = ps
                         best = top
                 if best:
                     best_lines.append({
@@ -7470,6 +7495,7 @@ def v2_user_get_strengths():
                         "audio_ref": best.get("audio_ref"),
                         "features": best.get("features"),
                         "rank": best.get("rank"),
+                        "power_score": best.get("power_score"),
                     })
 
             presentations.append({
