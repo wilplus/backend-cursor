@@ -8272,6 +8272,12 @@ def v2_coach_student_detail(user_id):
                 "code": "STUDENT_NOT_FOUND",
                 "error": "No willab student for that id.",
             }), 404
+        # U10 rollup — the feeling the student named per session, mapped by
+        # session_id (one batch read) so the coach sees the felt-state spread
+        # across the student's takes in one place. Coach-only (split-sink).
+        _feel_by_session = {}
+        for _fr in db.get_feelings_by_sessions([s.get("id") for s in rows]):
+            _feel_by_session.setdefault(_fr.get("session_id"), _fr.get("feeling"))
         sessions = []
         for s in rows:
             ctx = s.get("intake_context") if isinstance(s.get("intake_context"), dict) else {}
@@ -8286,6 +8292,8 @@ def v2_coach_student_detail(user_id):
                 "topic": (ctx or {}).get("topic") or "",
                 "created_at": s.get("created_at"),
                 "state": state,
+                # nervous/excited/calm/unsure, or null if not captured.
+                "feeling": _feel_by_session.get(s.get("id")),
             })
         return jsonify({
             "pseudonym": _coach_pseudonym(user_id),
@@ -8302,6 +8310,64 @@ def v2_coach_student_detail(user_id):
         logger.error("coach/student-detail GET failed user=%s err=%s", user_id, e, exc_info=True)
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR", "error": "Failed to fetch student"}), 500
+
+
+@v2_bp.route("/coach/students/<user_id>/audit-data", methods=["GET"])
+@require_admin_or_coach
+def v2_coach_audit_data(user_id):
+    """Audit-assembly data — the felt-state correlation for the interactive
+    HTML audit (so it SUCKS UP the user's real data instead of being typed).
+
+    Groups the stored pre-recording feelings (U10) against the existing
+    per-snippet performance signal to produce the audit's "Performance under
+    feeling" + "Stress as fuel" sections. DIRECTIONAL coaching indicators —
+    `headline`s are DRAFTS the coach curates; everything is gated on a minimum
+    number of takes (returns null headlines below it, never a one-take claim).
+
+    Coach-facing assembly (the coach reviews + curates before it reaches the
+    user — the audit is the human-gated deliverable). Compose with
+    GET /v2/user/strengths for the per-slide "best line" sections.
+
+    200 { user_id, performance_under_feeling, stress_as_fuel, takes:[...] }
+    """
+    if not _is_valid_uuid(user_id):
+        return jsonify({"code": "INVALID_INPUT", "error": "user_id must be a UUID"}), 400
+    try:
+        from services.feeling_performance import (
+            correlate_feeling_performance, session_performance, stress_as_fuel,
+        )
+        rows = db.v2_list_user_lab_sessions(user_id) or []
+        feel_by_session = {}
+        for _fr in db.get_feelings_by_sessions([s.get("id") for s in rows]):
+            feel_by_session.setdefault(_fr.get("session_id"), _fr.get("feeling"))
+
+        takes = []
+        pairs = []
+        for s in rows:
+            sid = s.get("id")
+            feeling = feel_by_session.get(sid)
+            if not feeling:
+                continue  # no felt-state → not part of the correlation
+            perf = session_performance(db.get_snippets_by_session(sid))
+            ctx = s.get("intake_context") if isinstance(s.get("intake_context"), dict) else {}
+            takes.append({
+                "session_id": sid,
+                "topic": (ctx or {}).get("topic") or "",
+                "feeling": feeling,
+                "performance": round(perf, 2) if perf is not None else None,
+            })
+            pairs.append({"feeling": feeling, "performance": perf})
+
+        return jsonify({
+            "user_id": user_id,
+            "performance_under_feeling": correlate_feeling_performance(pairs),
+            "stress_as_fuel": stress_as_fuel(pairs),
+            "takes": takes,
+        }), 200
+    except Exception as e:
+        logger.error("coach/audit-data GET failed user=%s err=%s", user_id, e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to assemble audit data"}), 500
 
 
 @v2_bp.route("/coach/students/<user_id>/audit", methods=["GET"])
