@@ -435,6 +435,7 @@ def process_lab_recording(
             snippets_data,
             (session_context or {}).get("slides"),
             (session_context or {}).get("slide_advances"),
+            goal=(session_context or {}).get("topic"),
         )
     except Exception as _draft_err:
         logger.warning(
