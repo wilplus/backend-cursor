@@ -3480,6 +3480,35 @@ def v2_chat_query():
                 "error": "question must be a non-empty string",
             }), 400
 
+        # ── Goal-update intercept (Prompt A §6 C4) — BEFORE the librarian.
+        # §0: never add rules to master_doc_rag (attention ceiling). A
+        # signed-in user saying "change my goal to X" (any language) updates
+        # user_settings.profile_goal and gets an in-language confirmation;
+        # the librarian is short-circuited for that turn. Cheap pre-gate
+        # inside, so normal chat turns spend no extra LLM call. Best-effort:
+        # any failure falls through to the normal answer.
+        if request.user_id:
+            try:
+                from services.goal_update import handle_goal_update
+                from services.master_doc_rag import split_answer_into_bubbles
+                _gu = handle_goal_update(request.user_id, question.strip())
+                if _gu and _gu.get("answer"):
+                    return jsonify({
+                        "answer": _gu["answer"],
+                        "bubbles": split_answer_into_bubbles(_gu["answer"]),
+                        "show_record_ui": False,
+                        "suggested_action": None,
+                        "debug": {
+                            "intent": "goal_update",
+                            "new_goal": _gu.get("new_goal"),
+                        },
+                    }), 200
+            except Exception as _ge:
+                logger.warning(
+                    "chat/query: goal-update intercept failed user=%s: %s",
+                    request.user_id, _ge,
+                )
+
         # ── Path A — LLM answer (the only thing the HTTP response
         # carries back). Unchanged from the pre-BE-3 behavior.
         # Pull admin's private notes for this user → don't-ask block
