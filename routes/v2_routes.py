@@ -8264,6 +8264,11 @@ def v2_coach_student_detail(user_id):
             "pseudonym": _coach_pseudonym(user_id),
             "domain": (prof or {}).get("domain") or "",
             "goal": (prof or {}).get("goal") or "",
+            # Goal-change context (Prompt A §6 C4 follow-up) — what the goal
+            # WAS before the last change + when, so the coach sees old→new.
+            # Null/empty when the goal has never been changed.
+            "previous_goal": (prof or {}).get("previous_goal") or "",
+            "goal_changed_at": (prof or {}).get("goal_changed_at") or "",
             "sessions": sessions,
         }), 200
     except Exception as e:

@@ -47,8 +47,11 @@ class _FakeDB:
     def get_user_profile(self, user_id):
         return dict(self._profile)
 
-    def set_user_profile(self, user_id, *, domain, goal):
-        self.set_calls.append({"user_id": user_id, "domain": domain, "goal": goal})
+    def update_user_goal(self, user_id, new_goal, previous_goal):
+        self.set_calls.append({
+            "user_id": user_id, "new_goal": new_goal,
+            "previous_goal": previous_goal,
+        })
         return self._set_ok
 
 
@@ -82,10 +85,11 @@ class HandleTests(unittest.TestCase):
         self.assertIsNotNone(out)
         self.assertEqual(out["new_goal"], "land my keynote")
         self.assertIn("keynote", out["answer"])
-        # Domain preserved, goal replaced (full-set contract).
+        # The OLD goal is recorded as previous (coach sees old→new).
+        self.assertEqual(out["previous_goal"], "old")
         self.assertEqual(len(fake.set_calls), 1)
-        self.assertEqual(fake.set_calls[0]["domain"], "speaking")
-        self.assertEqual(fake.set_calls[0]["goal"], "land my keynote")
+        self.assertEqual(fake.set_calls[0]["previous_goal"], "old")
+        self.assertEqual(fake.set_calls[0]["new_goal"], "land my keynote")
 
     def test_classifier_says_no_falls_through(self):
         gu._classify_goal_update = lambda m, **k: {

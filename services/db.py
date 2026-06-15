@@ -9679,15 +9679,57 @@ class DatabaseService:
     # feeds). Distinct from v2_speaker_profiles (admin coach-notes).
 
     def get_user_profile(self, user_id: str) -> Optional[dict]:
-        """Read the user's intake profile: {domain, goal}.
+        """Read the user's intake profile: {domain, goal, previous_goal,
+        goal_changed_at}.
 
-        Returns ``{"domain": <enum|None>, "goal": <str|None>}`` — both
-        None pre-intake. None (the whole return) only on a hard DB
-        failure / missing column (migration pending), which the route
-        treats as "no profile yet".
+        Returns all-None pre-intake. ``previous_goal`` / ``goal_changed_at``
+        carry the LAST goal change (Prompt A §6 C4 follow-up) so the coach
+        surface can show "goal: NEW (was PREVIOUS)". None (the whole return)
+        only on a hard DB failure, which the route treats as "no profile yet".
         """
         if not user_id:
             return None
+        # Goal-change columns are a later migration; select them separately so
+        # a pre-migration env still returns {domain, goal} (graceful degrade).
+        try:
+            res = (
+                self.client.table("user_settings")
+                .select("profile_domain, profile_goal, profile_goal_previous, "
+                        "profile_goal_changed_at")
+                .eq("user_id", user_id)
+                .limit(1)
+                .execute()
+            )
+            if not res.data:
+                return {"domain": None, "goal": None,
+                        "previous_goal": None, "goal_changed_at": None}
+            row = res.data[0]
+            return {
+                "domain": row.get("profile_domain"),
+                "goal": row.get("profile_goal"),
+                "previous_goal": row.get("profile_goal_previous"),
+                "goal_changed_at": row.get("profile_goal_changed_at"),
+            }
+        except Exception as e:
+            err_low = str(e).lower()
+            if "profile_goal_previous" in err_low or "profile_goal_changed_at" in err_low:
+                # Change-tracking migration not yet run — fall back to the
+                # base profile so the goal still surfaces.
+                return self._get_user_profile_base(user_id)
+            if "profile_domain" in err_low or "pgrst204" in err_low:
+                logger.warning(
+                    "get_user_profile: column missing (run migrations/"
+                    "add_profile_to_user_settings.sql) user=%s", user_id,
+                )
+                return {"domain": None, "goal": None,
+                        "previous_goal": None, "goal_changed_at": None}
+            logger.warning(
+                "get_user_profile failed user=%s err=%s", user_id, e,
+            )
+            return None
+
+    def _get_user_profile_base(self, user_id: str) -> Optional[dict]:
+        """Pre-migration fallback — {domain, goal} only, change fields None."""
         try:
             res = (
                 self.client.table("user_settings")
@@ -9696,25 +9738,59 @@ class DatabaseService:
                 .limit(1)
                 .execute()
             )
-            if not res.data:
-                return {"domain": None, "goal": None}
-            row = res.data[0]
+            row = (res.data or [{}])[0]
             return {
                 "domain": row.get("profile_domain"),
                 "goal": row.get("profile_goal"),
+                "previous_goal": None, "goal_changed_at": None,
             }
         except Exception as e:
-            err_low = str(e).lower()
-            if "profile_domain" in err_low or "pgrst204" in err_low:
-                logger.warning(
-                    "get_user_profile: column missing (run migrations/"
-                    "add_profile_to_user_settings.sql) user=%s", user_id,
-                )
-                return {"domain": None, "goal": None}
-            logger.warning(
-                "get_user_profile failed user=%s err=%s", user_id, e,
-            )
+            logger.warning("get_user_profile base read failed user=%s: %s",
+                           user_id, e)
             return None
+
+    def update_user_goal(
+        self, user_id: str, new_goal: str, previous_goal: Optional[str],
+    ) -> bool:
+        """Goal-ONLY update from the chat intercept (Prompt A §6 C4). Records
+        the prior goal + change time so the coach sees old→new. Partial upsert:
+        preserves profile_domain (not in the payload). Best-effort; missing
+        change-columns → falls back to a plain goal write (still succeeds)."""
+        if not user_id or not new_goal:
+            return False
+        from datetime import datetime, timezone
+        now_iso = datetime.now(timezone.utc).isoformat()
+        payload = {
+            "user_id": user_id,
+            "profile_goal": new_goal,
+            "profile_goal_previous": previous_goal,
+            "profile_goal_changed_at": now_iso,
+            "updated_at": now_iso,
+        }
+        try:
+            self.client.table("user_settings").upsert(payload).execute()
+            return True
+        except Exception as e:
+            err_low = str(e).lower()
+            if "profile_goal_previous" in err_low or "profile_goal_changed_at" in err_low:
+                # Change-tracking migration not yet run — still persist the
+                # goal so the update isn't lost (history just isn't tracked).
+                try:
+                    self.client.table("user_settings").upsert({
+                        "user_id": user_id, "profile_goal": new_goal,
+                        "updated_at": now_iso,
+                    }).execute()
+                    logger.warning(
+                        "update_user_goal: change-cols missing (run migrations/"
+                        "add_goal_change_tracking.sql) user=%s", user_id,
+                    )
+                    return True
+                except Exception as e2:
+                    logger.error("update_user_goal fallback failed user=%s: %s",
+                                 user_id, e2)
+                    return False
+            logger.error("update_user_goal failed user=%s: %s", user_id, e)
+            return False
 
     def set_user_profile(
         self,

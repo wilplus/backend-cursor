@@ -197,7 +197,16 @@ def _render_beat(
         rules.append(
             "Weave in the user's stated goal naturally (see USER GOAL) so the "
             "framing connects to what they're working toward. Echo it, never "
-            "grade it."
+            "grade it. Then, in ONE short clause, let them know they can change "
+            "their goal anytime by just telling you (e.g. 'and if your goal "
+            "shifts, just say the word')."
+        )
+    elif beat.get("weave_goal"):
+        # Beat wants the goal woven but none is on file yet — invite them to
+        # set one so they know the goal exists + is theirs to steer.
+        rules.append(
+            "The user hasn't set a goal yet. In ONE short, low-pressure clause, "
+            "invite them to tell you their goal so you can keep it in mind."
         )
     if caveat:
         rules.append(
