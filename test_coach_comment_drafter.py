@@ -1,8 +1,9 @@
 """AI-Commentator drafter (willab Phase 4 / Prompt 2).
 
-Tests the testable core (generate_coach_note_draft) with a FAKE OpenAIService
-injected into sys.modules — so it runs in the lean env (no openai, no DB). The
-process hook + frozen DB write are exercised in CI route/db tests.
+Tests the plain-language metric conversion, the take-comparison logic, and the
+generate core with a FAKE OpenAIService injected — so it runs in the lean env
+(no openai, no DB). The metric→plain-language conversion is the key fence: the
+model must NEVER see raw F0/SD/dB.
 
 Run: python3 -m unittest test_coach_comment_drafter
 """
@@ -17,7 +18,10 @@ _ORIG_OPENAI_SVC = None
 _ORIG_DB = None
 _ORIG_SUPABASE = None
 
-_CANNED = '{"coach_note": "You hit the ask, but let the price land next time."}'
+_CANNED = (
+    '{"coach_note": "\\ud83c\\udfa4 Warm, confident open. \\u2705 Your pace is '
+    'comfortable. \\ud83d\\udca1 Tighten the vague phrase next time."}'
+)
 
 
 class _FakeMsg:
@@ -64,8 +68,6 @@ def setUpModule():
     _ORIG_OPENAI_SVC = sys.modules.get("services.openai_service")
     _ORIG_DB = sys.modules.get("services.db")
     _ORIG_SUPABASE = sys.modules.get("supabase")
-    # coach_comment_drafter._draft_all imports services.db lazily; keep import
-    # safe even though these unit tests don't exercise the worker.
     from unittest.mock import MagicMock
     sys.modules["supabase"] = MagicMock()
     stub = types.ModuleType("services.db")
@@ -88,48 +90,102 @@ def tearDownModule():
 
 
 _SLIDE = {"index": 2, "title": "The ask", "body": "We're raising $2M at $10M."}
+_FULL_METRICS = {
+    "wpm": 135, "f0_sd": 30, "pause_ratio": 0.15, "dynamic_db": 10,
+    "stickiness": {"composite": 0.8},
+}
+
+
+class MetricObservationsTests(unittest.TestCase):
+    """The fence: metrics become plain words; raw acoustic terms never appear."""
+
+    def _obs(self, m):
+        from services.coach_comment_drafter import metric_observations
+        return metric_observations(m)
+
+    def test_full_metrics_to_plain_buckets(self):
+        obs = self._obs(_FULL_METRICS)
+        self.assertEqual(set(obs), {"pace", "pitch", "pauses", "volume", "clarity"})
+        self.assertEqual(obs["pace"], "comfortable")
+        self.assertEqual(obs["clarity"], "very clear")
+        # never leak raw acoustic terms into the values
+        blob = " ".join(obs.values()).lower()
+        for jargon in ("f0", "sd", "db", "wpm", "coherence", "%"):
+            self.assertNotIn(jargon, blob)
+
+    def test_fast_slow_buckets(self):
+        self.assertEqual(self._obs({"wpm": 80})["pace"], "a bit slow")
+        self.assertEqual(self._obs({"wpm": 200})["pace"], "a bit fast")
+
+    def test_speech_rate_alias(self):
+        self.assertEqual(self._obs({"speech_rate": 135})["pace"], "comfortable")
+
+    def test_partial_metrics_only_present_buckets(self):
+        obs = self._obs({"wpm": 135})
+        self.assertEqual(set(obs), {"pace"})
+
+    def test_empty_metrics_empty(self):
+        self.assertEqual(self._obs(None), {})
+        self.assertEqual(self._obs({}), {})
+
+    def test_bool_is_not_numeric(self):
+        self.assertNotIn("pace", self._obs({"wpm": True}))
+
+
+class CompareTakesTests(unittest.TestCase):
+    def _cmp(self, a, b):
+        from services.coach_comment_drafter import compare_takes
+        return compare_takes(a, b)
+
+    def test_faster_vs_prior(self):
+        out = self._cmp({"pace": 160}, {"pace": 120})
+        self.assertIn("faster", out)
+
+    def test_more_controlled_vs_prior(self):
+        out = self._cmp({"pace": 120}, {"pace": 160})
+        self.assertIn("controlled", out)
+
+    def test_about_the_same(self):
+        out = self._cmp({"pace": 130}, {"pace": 132})
+        self.assertIn("about the same", out)
+
+    def test_nothing_comparable_returns_none(self):
+        self.assertIsNone(self._cmp({}, {}))
 
 
 class GenerateCoachNoteDraftTests(unittest.TestCase):
-    def _gen(self, transcript, slide=_SLIDE, sticky=None):
+    def _gen(self, transcript, slide=_SLIDE, metrics=None, **kw):
         from services.coach_comment_drafter import generate_coach_note_draft
-        return generate_coach_note_draft(transcript, slide, sticky)
+        return generate_coach_note_draft(transcript, slide, metrics, **kw)
 
-    def test_produces_draft_from_transcript_and_slide(self):
+    def test_produces_draft(self):
         _install_fake_openai()
-        out = self._gen("and that's the ask, two million at ten")
+        out = self._gen("and that's the ask", metrics=_FULL_METRICS,
+                        goal="pitch the raise", take_comparison="pace a bit more controlled")
         self.assertTrue(out)
-        self.assertIn("ask", out.lower())
 
-    def test_empty_transcript_returns_none_without_llm(self):
+    def test_empty_transcript_returns_none(self):
         self.assertIsNone(self._gen(""))
         self.assertIsNone(self._gen("   "))
 
     def test_no_client_returns_none(self):
         _install_fake_openai(has_client=False)
-        self.assertIsNone(self._gen("some real transcript here"))
-        _install_fake_openai()  # restore for other tests
-
-    def test_unparseable_output_returns_none(self):
-        _install_fake_openai(content="not json at all")
-        self.assertIsNone(self._gen("some real transcript here"))
+        self.assertIsNone(self._gen("real transcript", metrics=_FULL_METRICS))
         _install_fake_openai()
 
-    def test_blank_coach_note_returns_none(self):
-        _install_fake_openai(content='{"coach_note": "   "}')
-        self.assertIsNone(self._gen("some real transcript here"))
+    def test_unparseable_returns_none(self):
+        _install_fake_openai(content="not json")
+        self.assertIsNone(self._gen("real transcript"))
         _install_fake_openai()
 
-    def test_stickiness_is_optional(self):
+    def test_works_without_metrics_or_goal(self):
         _install_fake_openai()
-        out = self._gen("the numbers part", sticky={"composite": 0.8})
-        self.assertTrue(out)
+        self.assertTrue(self._gen("real transcript here"))
 
 
 class DispatchTests(unittest.TestCase):
     def test_no_slides_is_noop(self):
         from services.coach_comment_drafter import dispatch_coach_note_drafts
-        # No slides / no snippets → returns without spawning anything.
         self.assertIsNone(dispatch_coach_note_drafts("s1", [{"id": "a"}], None, []))
         self.assertIsNone(dispatch_coach_note_drafts("s1", [], [_SLIDE], []))
 
