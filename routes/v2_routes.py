@@ -7864,7 +7864,7 @@ def v2_admin_learning_status():
                 "dropped_no_features": summary.get("dropped_no_features") or 0,
             },
             "latest_model": latest_out,
-            "shadow": None,  # B3 fills predicted-vs-actual agreement
+            "shadow": db.get_shadow_agreement(),  # predicted-vs-coach agreement
             "recommendation": recommendation,
             "mode": "shadow — influences nothing",
         }), 200
@@ -8393,6 +8393,15 @@ def v2_coach_get_session(session_id):
                 "coach_state": _coach_state,
             })
 
+        # Phase 4 / Prompt 1 (B3) — SHADOW direction predictions for this
+        # session's reviewed snippets. Fire-and-forget; logged to
+        # shadow_predictions, NEVER in this packet, influences nothing.
+        try:
+            from services.learning_serve import dispatch_shadow_predictions
+            dispatch_shadow_predictions(session_id, snippets)
+        except Exception as _shadow_err:
+            logger.warning("coach/get-session: shadow dispatch failed: %s", _shadow_err)
+
         ctx = session.get("intake_context") if isinstance(session.get("intake_context"), dict) else {}
         insights = session.get("insights_payload") if isinstance(session.get("insights_payload"), dict) else {}
         return jsonify({
@@ -8518,6 +8527,17 @@ def v2_coach_save_snippet(session_id, snippet_id):
                     "was_pre_filled": False,
                     "was_overridden": False,
                 }])
+                # Phase 4 / Prompt 1 (B3, SHADOW) — close the loop: backfill the
+                # coach's actual label onto this snippet's shadow prediction, and
+                # auto-retrain in the background if enough new labels accrued
+                # (≥25 new / ≥50 floor, no cron). Both best-effort; the new model
+                # stays status=shadow and influences NOTHING.
+                try:
+                    from services.learning_serve import maybe_auto_retrain
+                    db.backfill_shadow_coach_actual(snippet_id, value)
+                    maybe_auto_retrain()
+                except Exception as _learn_err:
+                    logger.warning("coach/save-snippet: shadow learn hook failed: %s", _learn_err)
             else:
                 return jsonify({
                     "code": "INVALID_INPUT",

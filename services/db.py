@@ -9138,6 +9138,90 @@ class DatabaseService:
             logger.warning("list_model_versions failed err=%s", e)
             return []
 
+    # ── willab Phase 4 / Prompt 1 — shadow prediction log (B3) ───────────
+    def upsert_shadow_prediction(
+        self, *, session_id: str, snippet_id: str, model_version: str,
+        predicted_label: str, confidence: Optional[float] = None,
+    ) -> bool:
+        """Log one SHADOW prediction, deduped on (snippet_id, model_version).
+        Never user/coach-facing. Best-effort; missing-table-safe."""
+        try:
+            existing = (
+                self.client.table("shadow_predictions")
+                .select("id")
+                .eq("snippet_id", snippet_id)
+                .eq("model_version", model_version)
+                .limit(1)
+                .execute()
+            )
+            if existing.data:
+                return False
+            self.client.table("shadow_predictions").insert({
+                "session_id": session_id,
+                "snippet_id": snippet_id,
+                "model_version": model_version,
+                "predicted_label": predicted_label,
+                "confidence": confidence,
+            }).execute()
+            return True
+        except Exception as e:
+            if "shadow_predictions" in str(e).lower():
+                return False
+            logger.warning("upsert_shadow_prediction failed snip=%s: %s", snippet_id, e)
+            return False
+
+    def backfill_shadow_coach_actual(self, snippet_id: str, coach_actual_label: str) -> bool:
+        """When the coach labels a snippet, fill coach_actual_label on its shadow
+        rows (predicted-vs-actual closes the agreement loop). Best-effort."""
+        try:
+            (
+                self.client.table("shadow_predictions")
+                .update({"coach_actual_label": coach_actual_label})
+                .eq("snippet_id", snippet_id)
+                .is_("coach_actual_label", "null")
+                .execute()
+            )
+            return True
+        except Exception as e:
+            if "shadow_predictions" in str(e).lower():
+                return False
+            logger.warning("backfill_shadow_coach_actual failed snip=%s: %s", snippet_id, e)
+            return False
+
+    def get_shadow_agreement(self) -> Optional[dict]:
+        """{agreement_overall, by_class, sample_n} of predicted vs coach_actual.
+        None when no labeled predictions yet. In-distribution (heuristic-selected,
+        range-restricted) — the dashboard must label it as such."""
+        try:
+            res = (
+                self.client.table("shadow_predictions")
+                .select("predicted_label, coach_actual_label")
+                .not_.is_("coach_actual_label", "null")
+                .limit(5000)
+                .execute()
+            )
+            rows = res.data or []
+            if not rows:
+                return None
+            n = len(rows)
+            agree = sum(1 for r in rows if r.get("predicted_label") == r.get("coach_actual_label"))
+            by_class: dict = {}
+            for r in rows:
+                actual = r.get("coach_actual_label")
+                hit, tot = by_class.get(actual, (0, 0))
+                by_class[actual] = (hit + (1 if r.get("predicted_label") == actual else 0), tot + 1)
+            return {
+                "agreement_overall": round(agree / n, 4),
+                "by_class": {k: round(h / t, 4) for k, (h, t) in by_class.items() if t},
+                "sample_n": n,
+                "note": "in-distribution (heuristic-selected); not a held-out estimate",
+            }
+        except Exception as e:
+            if "shadow_predictions" in str(e).lower():
+                return None
+            logger.warning("get_shadow_agreement failed: %s", e)
+            return None
+
     def delete_training_label(self, session_id: str, snippet_id: str) -> bool:
         """Clear one snippet's direction label (the coach unset it — the FE
         sends direction_label: null). Best-effort; missing table → False."""
