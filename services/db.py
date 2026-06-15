@@ -8878,6 +8878,32 @@ class DatabaseService:
             logger.warning("get_arc_take_count failed arc=%s: %s", arc_id, e)
             return 0
 
+    def get_arc_sessions(self, arc_id: Optional[str]) -> list[dict]:
+        """The takes of an explore arc, ORDERED by take_index (Prompt A §3/§5).
+        Powers cross-take selection. Best-effort: [] on missing column / no
+        arc / DB hiccup."""
+        if not arc_id:
+            return []
+        try:
+            res = (
+                self.client.table("v2_sessions")
+                .select("id, user_id, arc_id, take_index, status, "
+                        "created_at, intake_context")
+                .eq("arc_id", arc_id)
+                .order("take_index", desc=False)
+                .execute()
+            )
+            return res.data or []
+        except Exception as e:
+            if "arc_id" in str(e).lower() or "take_index" in str(e).lower():
+                logger.warning(
+                    "get_arc_sessions: column missing (run "
+                    "migrations/add_explore_arc.sql) arc=%s", arc_id,
+                )
+                return []
+            logger.warning("get_arc_sessions failed arc=%s: %s", arc_id, e)
+            return []
+
     def set_session_source(self, session_id: str, source: str) -> bool:
         """Stamp v2_sessions.source (foundation discriminator). The Lab
         handler marks its sessions 'audit_upload' so the history list +

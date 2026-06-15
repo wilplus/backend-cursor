@@ -8980,6 +8980,50 @@ def v2_explore_start():
         return jsonify({"code": "V2_ERROR", "error": "Failed to start explore session"}), 500
 
 
+@v2_bp.route("/explore/arc/<arc_id>/moments", methods=["GET"])
+@require_auth
+def v2_explore_arc_moments(arc_id):
+    """Cross-take selection payoff (willab Prompt A §5) — the arc's strongest
+    material to study.
+
+    The payload carries a `granularity` discriminator (§5.3) so the FE renders
+    the matching surface:
+      • "take" — each take's own strongest moments (§5.2; what ships today).
+      • "line" — strongest delivery of EACH line (§5.1; behind the §5.0
+        alignment gate, currently data-blocked / off).
+
+    AC-9 (§7): score-FREE — text + audio + which take + a plain-language
+    rationale; never a number, verdict, or trajectory.
+
+    Ownership: the arc must contain a session owned by the caller, else 404
+    (the arc_id is otherwise unattributable — explore takes are claimed to the
+    user via the normal guest→signed claim flow).
+
+    Response 200 { arc_id, granularity, take_count, takes:[...] }
+             404 NOT_FOUND — no such arc for this user
+             500 V2_ERROR
+    """
+    try:
+        from services.cross_take_selection import select_cross_take
+        sessions = db.get_arc_sessions(arc_id)
+        owned = any(
+            str(s.get("user_id")) == str(request.user_id) for s in sessions
+        )
+        if not owned:
+            return jsonify({
+                "code": "NOT_FOUND", "error": "arc not found",
+            }), 404
+        payload = select_cross_take(arc_id)
+        return jsonify(payload), 200
+    except Exception as e:
+        logger.error("explore/arc moments failed arc=%s: %s", arc_id, e,
+                     exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({
+            "code": "V2_ERROR", "error": "Failed to load arc moments",
+        }), 500
+
+
 @v2_bp.route("/lab/recordings", methods=["POST"])
 @optional_auth
 def v2_lab_create_recording():
