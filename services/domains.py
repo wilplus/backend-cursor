@@ -66,3 +66,16 @@ def default_domain_vocabulary(domain: Any) -> list[str]:
     if not is_valid_domain(domain):
         return []
     return list(DOMAIN_VOCABULARY_SEED[domain])
+
+
+def resolve_whisper_vocab(existing: Any, domain: Any) -> list[str]:
+    """Pick the Whisper-priming vocab for a recording. The FE dropped the
+    keywords input, so `existing` now arrives empty; fall back to the user's
+    DOMAIN seed so domain jargon still primes Whisper (transcription-only —
+    feeds nothing else). An explicit non-empty list always wins; unknown/None
+    domain → [] (un-primed, the correct degradation)."""
+    if isinstance(existing, list):
+        kept = [str(t).strip() for t in existing if str(t).strip()]
+        if kept:
+            return kept
+    return default_domain_vocabulary(domain)

@@ -62,5 +62,38 @@ class VocabSeedTests(unittest.TestCase):
         )
 
 
+class ResolveWhisperVocabTests(unittest.TestCase):
+    """The auto-seed fallback after the FE dropped the keywords input."""
+
+    def test_explicit_list_wins(self):
+        from services.domains import resolve_whisper_vocab
+        # A non-empty list is kept verbatim (trimmed), domain ignored.
+        self.assertEqual(
+            resolve_whisper_vocab(["Booksy", " ARR "], "sales"),
+            ["Booksy", "ARR"],
+        )
+
+    def test_empty_falls_back_to_domain_seed(self):
+        from services.domains import resolve_whisper_vocab, default_domain_vocabulary
+        self.assertEqual(
+            resolve_whisper_vocab([], "sales"),
+            default_domain_vocabulary("sales"),
+        )
+
+    def test_empty_and_unknown_domain_stays_empty(self):
+        from services.domains import resolve_whisper_vocab
+        self.assertEqual(resolve_whisper_vocab([], None), [])
+        self.assertEqual(resolve_whisper_vocab([], "nope"), [])
+        self.assertEqual(resolve_whisper_vocab(None, None), [])
+
+    def test_blank_only_list_falls_back(self):
+        from services.domains import resolve_whisper_vocab, default_domain_vocabulary
+        # A list of just whitespace is effectively empty → seed.
+        self.assertEqual(
+            resolve_whisper_vocab(["  ", ""], "interview_prep"),
+            default_domain_vocabulary("interview_prep"),
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
