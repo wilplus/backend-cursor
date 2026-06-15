@@ -1,0 +1,133 @@
+"""Explore-Session cadence (willab Prompt A §4). Pure beat-selection + spec
+integrity + the fire path with a stubbed renderer/db (no LLM, no network).
+
+Run: python3 -m unittest test_session_cadence
+"""
+from __future__ import annotations
+
+import unittest
+
+import services.session_cadence as sc
+
+
+class _FakeDB:
+    def __init__(self):
+        self.inserted = []
+
+    def insert_lounge_messages(self, user_id, messages):
+        # Mirror the real upsert-on-(user_id, client_id) idempotency.
+        out = []
+        for m in messages:
+            key = (user_id, m["client_id"])
+            if key in [(u, c) for (u, c, _) in self.inserted]:
+                continue
+            self.inserted.append((user_id, m["client_id"], m))
+            out.append({"id": "srv", **m})
+        return out
+
+
+class BeatSelectionTests(unittest.TestCase):
+    def test_take_1_invites_chill(self):
+        b = sc.select_post_take_beat(1)
+        self.assertEqual(b["beat_no"], 1)
+        self.assertEqual(b["mode"], "Confidant (chill)")
+
+    def test_take_2_invites_data(self):
+        self.assertEqual(sc.select_post_take_beat(2)["beat_no"], 2)
+
+    def test_take_3_spark_gated(self):
+        self.assertIsNone(sc.select_post_take_beat(3, spark_enabled=False))
+        self.assertEqual(
+            sc.select_post_take_beat(3, spark_enabled=True)["beat_no"], 3,
+        )
+
+    def test_after_last_planned_take_is_silent(self):
+        self.assertIsNone(sc.select_post_take_beat(4))
+        self.assertIsNone(sc.select_post_take_beat(4, spark_enabled=True))
+
+    def test_bad_take_index_is_silent(self):
+        self.assertIsNone(sc.select_post_take_beat(None))
+        self.assertIsNone(sc.select_post_take_beat("garbage"))
+
+
+class SpecIntegrityTests(unittest.TestCase):
+    """The doctrine (§4) — these are the load-bearing fence assertions."""
+
+    def test_beat0_frames_with_fixed_facts_and_goal(self):
+        b = sc.BEATS[0]
+        self.assertTrue(b["weave_goal"])
+        joined = " ".join(b["fixed_facts"])
+        self.assertIn("30 minutes", joined)
+        self.assertIn("3 takes", joined)
+
+    def test_spark_beat_carries_full_safety_caveat(self):
+        b = sc.BEATS[3]
+        self.assertTrue(b.get("spark_only"))
+        caveat = b["safety_caveat"].lower()
+        # §7 wellbeing fence — every required clause must be present.
+        for needle in ("optional", "able", "march", "breath",
+                       "skipping", "not medical"):
+            self.assertIn(needle, caveat, needle)
+
+    def test_modes_match_the_three_registers(self):
+        self.assertIsNone(sc.BEATS[0]["mode"])
+        self.assertIn("chill", sc.BEATS[1]["mode"].lower())
+        self.assertIn("data", sc.BEATS[2]["mode"].lower())
+        self.assertIn("energ", sc.BEATS[3]["mode"].lower())
+
+
+class FirePathTests(unittest.TestCase):
+    """fire_* with the renderer stubbed — no LLM, no network."""
+
+    def setUp(self):
+        self._orig = sc._render_beat
+        sc._render_beat = lambda beat, **kw: f"[rendered beat {beat['beat_no']}]"
+
+    def tearDown(self):
+        sc._render_beat = self._orig
+
+    def test_fire_post_take_inserts_cadence_bubble(self):
+        fake = _FakeDB()
+        ok = sc.fire_post_take("u1", "arc1", 1, take_count=1, database=fake)
+        self.assertTrue(ok)
+        self.assertEqual(len(fake.inserted), 1)
+        _, _, msg = fake.inserted[0]
+        self.assertEqual(msg["kind"], "cadence")
+        self.assertEqual(msg["role"], "bot")
+        self.assertEqual(msg["metadata"]["beat"], 1)
+        self.assertEqual(msg["metadata"]["arc_id"], "arc1")
+
+    def test_fire_is_idempotent_per_arc_and_beat(self):
+        fake = _FakeDB()
+        sc.fire_post_take("u1", "arc1", 1, database=fake)
+        sc.fire_post_take("u1", "arc1", 1, database=fake)  # re-fire same beat
+        self.assertEqual(len(fake.inserted), 1)  # no duplicate
+
+    def test_fire_post_take_silent_after_arc_done(self):
+        fake = _FakeDB()
+        self.assertFalse(sc.fire_post_take("u1", "arc1", 3, database=fake))
+        self.assertEqual(len(fake.inserted), 0)
+
+    def test_fire_arc_start_beat0(self):
+        fake = _FakeDB()
+        ok = sc.fire_arc_start("u1", "arc1", goal="land my keynote", database=fake)
+        self.assertTrue(ok)
+        _, _, msg = fake.inserted[0]
+        self.assertEqual(msg["metadata"]["beat"], 0)
+
+    def test_no_user_or_arc_is_noop(self):
+        fake = _FakeDB()
+        self.assertFalse(sc.fire_post_take(None, "arc1", 1, database=fake))
+        self.assertFalse(sc.fire_post_take("u1", None, 1, database=fake))
+        self.assertFalse(sc.fire_arc_start(None, "arc1", database=fake))
+        self.assertEqual(len(fake.inserted), 0)
+
+    def test_render_failure_skips_insert(self):
+        sc._render_beat = lambda beat, **kw: None  # render fails → no hardcode
+        fake = _FakeDB()
+        self.assertFalse(sc.fire_post_take("u1", "arc1", 1, database=fake))
+        self.assertEqual(len(fake.inserted), 0)
+
+
+if __name__ == "__main__":
+    unittest.main()

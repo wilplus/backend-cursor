@@ -155,6 +155,27 @@ SPEC_NEXT_SESSION_ICEBREAKER = LLMSpec(
 """AI-prefilled icebreaker for session N+1 (Task 10)."""
 
 
+SPEC_SESSION_CADENCE = LLMSpec(
+    model=CHEAP_MODEL,
+    # Some warmth so the cadence reads like Will inviting the next take,
+    # not a form letter — but kept moderate because the beat is PINNED
+    # doctrine (fixed facts + safety caveat survive verbatim, §2). The
+    # renderer translates/voices the spec; it must not invent.
+    temperature=0.5,
+    # One short multi-line bubble (intent + facts + optional caveat +
+    # woven goal). 320 leaves headroom for non-Latin scripts (which
+    # tokenize heavier) without ever running long.
+    max_tokens=320,
+    # Schema lives in services/session_cadence.py and is passed at call
+    # time via response_format_override.
+    response_format=None,
+)
+"""Explore-Session cadence bubble — renders a language-neutral beat
+spec into the user's language (Prompt A §2/§4). The protocol (modes,
+fixed facts, exercise/safety caveat) is doctrine and is NEVER invented
+by the LLM — see services/session_cadence.py ``BEATS``."""
+
+
 SPEC_ONBOARDING_OPENER = LLMSpec(
     model=CHEAP_MODEL,
     # Low warmth — the ack is a deadpan bridge into a canonical
