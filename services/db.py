@@ -6462,6 +6462,33 @@ class DatabaseService:
             )
             return False
 
+    def get_ai_draft_coach_notes_by_session(self, session_id: str) -> dict:
+        """{snippet_id: ai_draft_coach_note} for a session — the AI-Commentator
+        pre-fills the coach read serves. Coach-only. {} on missing column/table
+        (pre-migration → coach sees blank fields, same as today)."""
+        if not session_id:
+            return {}
+        try:
+            res = (
+                self.client.table("charisma_snippets")
+                .select("id, ai_draft_coach_note")
+                .eq("session_id", session_id)
+                .execute()
+            )
+            return {
+                str(r.get("id")): r.get("ai_draft_coach_note")
+                for r in (res.data or [])
+                if r.get("ai_draft_coach_note")
+            }
+        except Exception as e:
+            if "ai_draft_coach_note" in str(e).lower():
+                return {}
+            logger.warning(
+                "get_ai_draft_coach_notes_by_session failed sid=%s: %s",
+                session_id, e,
+            )
+            return {}
+
     def set_charisma_snippet_ai_draft_follow_up(
         self,
         snippet_id: str,
@@ -6556,18 +6583,49 @@ class DatabaseService:
                 .select(
                     "id, admin_comment, ai_draft_admin_comment, "
                     "follow_up_question, ai_draft_follow_up_question, "
-                    "follow_up_outcome"
+                    "follow_up_outcome, ai_draft_coach_note"
                 )
                 .eq("session_id", session_id)
                 .execute()
                 .data
             ) or []
         except Exception as e:
-            logger.warning(
-                "record_snippet_publish_annotations: charisma select "
-                "failed session=%s: %s", session_id, e,
-            )
-            charisma_rows = []
+            # Retry without ai_draft_coach_note if that column is unrun, so the
+            # legacy admin captures still fire pre-migration.
+            if "ai_draft_coach_note" in str(e).lower():
+                try:
+                    charisma_rows = (
+                        self.client.table("charisma_snippets")
+                        .select(
+                            "id, admin_comment, ai_draft_admin_comment, "
+                            "follow_up_question, ai_draft_follow_up_question, "
+                            "follow_up_outcome"
+                        )
+                        .eq("session_id", session_id)
+                        .execute()
+                        .data
+                    ) or []
+                except Exception:
+                    charisma_rows = []
+            else:
+                logger.warning(
+                    "record_snippet_publish_annotations: charisma select "
+                    "failed session=%s: %s", session_id, e,
+                )
+                charisma_rows = []
+
+        # willab Phase 4 / Prompt 2 — coach-note comment-clone pair. The draft
+        # lives on charisma_snippets.ai_draft_coach_note; the coach's FINAL note
+        # lives in coach_snippet_drafts.note (a different table). Capture only
+        # when a draft existed (that's the (draft, coach-final) training pair).
+        try:
+            coach_notes_map = {
+                str(d.get("snippet_id")): d.get("note")
+                for d in (self.get_coach_snippet_drafts(session_id) or [])
+                if d.get("snippet_id")
+            }
+        except Exception:
+            coach_notes_map = {}
 
         for row in charisma_rows:
             snippet_id = row.get("id")
@@ -6591,6 +6649,19 @@ class DatabaseService:
                 final=row.get("follow_up_question"),
                 draft_id=str(snippet_id),
             )
+
+            # coach-note (draft, coach-final) pair — only when an AI draft
+            # existed for this snippet (the comment-clone corpus).
+            if (row.get("ai_draft_coach_note") or "").strip():
+                events_written += self._emit_publish_event_if_signal(
+                    session_id=session_id,
+                    admin_user_id=admin_user_id,
+                    section_type="coach_note",
+                    field_name="coach_note",
+                    draft=row.get("ai_draft_coach_note"),
+                    final=coach_notes_map.get(str(snippet_id)),
+                    draft_id=str(snippet_id),
+                )
 
             # Phase 14.x — evaluator rationale review. Gated on
             # admin_reviewed_at so we don't fire spurious "approved
