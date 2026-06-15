@@ -8917,7 +8917,42 @@ def v2_lab_presentation_extract():
         return jsonify({"code": "V2_ERROR", "error": "Failed to process presentation"}), 500
 
 
+@v2_bp.route("/explore/start", methods=["POST"])
+@require_auth
+def v2_explore_start():
+    """Enter an explore session (willab Prompt A §6 C3 — BEAT 0 on-ramp).
+
+    Mints the arc_id BEFORE take 1 and fires the framing cadence bubble
+    (rendered in the user's language, goal-woven) so the FE never has to
+    hardcode that copy (§7 language fence). The FE then POSTs the first
+    /lab/recordings with this arc_id + take_index=1.
+
+    Body (optional JSON): nothing required today; reserved for future
+    spark/appetite hints.
+
+    Response 200 { arc_id, take_index, take_count }.
+    """
+    try:
+        from services.explore_arc import resolve_arc
+        from services.session_cadence import fire_arc_start
+
+        arc_id, take_index = resolve_arc(True, None, None)  # mint a fresh arc
+        goal = (db.get_user_profile(request.user_id) or {}).get("goal")
+        # Best-effort: the arc is valid even if the framing render fails.
+        fire_arc_start(request.user_id, arc_id, goal=goal)
+        return jsonify({
+            "arc_id": arc_id,
+            "take_index": take_index,
+            "take_count": 0,
+        }), 200
+    except Exception as e:
+        logger.error("explore/start failed: %s", e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to start explore session"}), 500
+
+
 @v2_bp.route("/lab/recordings", methods=["POST"])
+@optional_auth
 def v2_lab_create_recording():
     """willab Lab upload — multipart, synchronous, guest-allowed (§3.3).
 
@@ -9121,6 +9156,30 @@ def v2_lab_create_recording():
             guest_session_id, recording_id,
             len(readout.get("snippets") or []),
         )
+
+        # Explore-session cadence (Prompt A §6 C3) — after a take in an arc,
+        # invite the NEXT take as a Lounge bubble. Needs an authenticated
+        # owner (lounge is per-user); guests get no cadence. Best-effort +
+        # idempotent — never blocks or double-fires; never touches the
+        # readout response.
+        _cad_user = getattr(request, "user_id", None)
+        if _cad_user and arc_id:
+            try:
+                from services.session_cadence import fire_post_take
+                _goal = (db.get_user_profile(_cad_user) or {}).get("goal")
+                _spark = str(form.get("spark") or "").strip().lower() in (
+                    "1", "true", "yes", "on",
+                )
+                fire_post_take(
+                    _cad_user, arc_id, take_index,
+                    take_count=arc_take_count,
+                    spark_enabled=_spark,
+                    goal=_goal,
+                )
+            except Exception as _ce:
+                logger.warning("lab: cadence fire failed sid=%s: %s",
+                               guest_session_id, _ce)
+
         return jsonify({
             "status": "ok",
             "session_id": guest_session_id,

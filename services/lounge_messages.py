@@ -31,7 +31,12 @@ from typing import Any, Optional
 # Closed sets — mirror the DB CHECK constraints in
 # migrations/add_lounge_messages_table.sql.
 VALID_ROLES = ("user", "bot", "system")
-VALID_KINDS = ("text", "joke", "status", "recording_summary", "insight")
+# "cadence" = Explore-Session multi-take guidance bubbles (Prompt A §4),
+# bot-only + server-inserted; the FE never sends it. Mirror in the DB
+# CHECK constraint — migrations/add_cadence_lounge_kind.sql.
+VALID_KINDS = (
+    "text", "joke", "status", "recording_summary", "insight", "cadence",
+)
 
 # §7.9 — bound the merge batch. A long unsigned session can produce a
 # big localStorage thread; the FE chunks the replay into batches of at
