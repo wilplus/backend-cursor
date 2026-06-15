@@ -9059,6 +9059,20 @@ def v2_lab_create_recording():
         # the recording row is the send-gate's primary gate).
         db.set_session_source(guest_session_id, "audit_upload")
 
+        # Explore-session arc (Prompt A §3) — link the takes of the SAME talk
+        # so they're comparable. Standalone recordings (no explore_session) →
+        # arc_id stays None; this is fully opt-in.
+        from services.explore_arc import resolve_arc
+        arc_id, take_index = resolve_arc(
+            form.get("explore_session"),
+            form.get("arc_id"),
+            form.get("take_index"),
+        )
+        arc_take_count = None
+        if arc_id:
+            db.set_session_arc(guest_session_id, arc_id, take_index)
+            arc_take_count = db.get_arc_take_count(arc_id)
+
         # Recording row (recording_origin fallback for pre-migration envs).
         # BE-1 / S2 — persist the gate's measured duration (was hardcoded 0 +
         # discarded). This is the source for cumulative recording-progress.
@@ -9117,6 +9131,10 @@ def v2_lab_create_recording():
             "state": "readout_ready",
             "session_context": session_context,
             "readout": readout,
+            # Explore-session arc (Prompt A §3) — null for standalone takes.
+            "arc_id": arc_id,
+            "take_index": take_index,
+            "take_count": arc_take_count,
         }), 201
 
     except Exception as e:
