@@ -8916,6 +8916,31 @@ class DatabaseService:
             )
             return False
 
+    def get_feelings_by_session(self, session_id: str) -> list[dict]:
+        """The pre-recording feeling(s) the student named for a session (U10 —
+        coach review read). Usually one row; [] on missing table / none /
+        error. Coach-only — never serialised to the user."""
+        if not session_id:
+            return []
+        try:
+            res = (
+                self.client.table("recording_feelings")
+                .select("feeling, take_index, recording_id, created_at")
+                .eq("session_id", session_id)
+                .order("created_at", desc=False)
+                .execute()
+            )
+            return res.data or []
+        except Exception as e:
+            err_low = str(e).lower()
+            if "recording_feelings" in err_low and (
+                "does not exist" in err_low or "pgrst" in err_low
+            ):
+                return []
+            logger.warning("get_feelings_by_session failed sid=%s: %s",
+                           session_id, e)
+            return []
+
     def get_arc_sessions(self, arc_id: Optional[str]) -> list[dict]:
         """The takes of an explore arc, ORDERED by take_index (Prompt A §3/§5).
         Powers cross-take selection. Best-effort: [] on missing column / no
