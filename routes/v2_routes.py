@@ -9329,6 +9329,22 @@ def v2_lab_create_recording():
         except IntakeContextError as ve:
             return jsonify({"code": "INVALID_INPUT", "error": str(ve)}), 422
 
+        # Whisper-prime fallback: the FE dropped the keywords input, so
+        # domain_vocabulary now arrives empty. Auto-seed it from the user's
+        # DOMAIN so domain jargon still primes Whisper (transcription-only —
+        # feeds nothing else; an explicit list would still win). Authed only:
+        # guests have no profile domain → stays empty (slide titles still
+        # prime). Best-effort.
+        if getattr(request, "user_id", None):
+            try:
+                from services.domains import resolve_whisper_vocab
+                _dom = (db.get_user_profile(request.user_id) or {}).get("domain")
+                session_context["domain_vocabulary"] = resolve_whisper_vocab(
+                    session_context.get("domain_vocabulary"), _dom,
+                )
+            except Exception as _ve:
+                logger.warning("lab: domain-vocab autoseed failed: %s", _ve)
+
         # ── 3. MIN-CONTENT GATE before processing (§5.5) ────────────
         from services.min_content_gate import evaluate_min_content_bytes
         gate = evaluate_min_content_bytes(file_bytes)
