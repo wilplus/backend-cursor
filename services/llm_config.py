@@ -191,6 +191,20 @@ explicit "change my goal to X", extracts the new goal, and renders an
 in-language confirmation. Runs BEFORE master_doc_rag (never a rule edit)."""
 
 
+SPEC_AUDIT_POINTER = LLMSpec(
+    model=CHEAP_MODEL,
+    # Low temp — one short, in-language line pointing the user to their audit
+    # button. No creativity, no explanation; the line just frames the button.
+    temperature=0.3,
+    max_tokens=120,
+    # Schema lives in services/audit_intent.py, passed at call time.
+    response_format=None,
+)
+"""Explore/Audit — the short in-language bubble line that accompanies the
+'audit' suggested_action button (Prompt C §5). Never explains what an audit
+is; the audit CONTENT is the coach's PDF."""
+
+
 SPEC_ONBOARDING_OPENER = LLMSpec(
     model=CHEAP_MODEL,
     # Low warmth — the ack is a deadpan bridge into a canonical

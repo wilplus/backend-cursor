@@ -3509,6 +3509,31 @@ def v2_chat_query():
                     request.user_id, _ge,
                 )
 
+        # ── Audit intercept (Prompt C §5) — BEFORE the librarian (§0: no
+        # master_doc_rag rule edits). A signed-in user asking for their audit
+        # gets a short bubble + the audit button (suggested_action="audit")
+        # opening the audits page. Deterministic keyword pre-gate inside, so
+        # normal chat pays nothing. Best-effort: any failure falls through.
+        if request.user_id:
+            try:
+                from services.audit_intent import handle_audit_intent
+                from services.master_doc_rag import split_answer_into_bubbles
+                _ai = handle_audit_intent(request.user_id, question.strip())
+                if _ai and _ai.get("suggested_action") == "audit":
+                    _ans = _ai.get("answer") or ""
+                    return jsonify({
+                        "answer": _ans,
+                        "bubbles": split_answer_into_bubbles(_ans),
+                        "show_record_ui": False,
+                        "suggested_action": "audit",
+                        "debug": {"intent": "audit"},
+                    }), 200
+            except Exception as _ae:
+                logger.warning(
+                    "chat/query: audit intercept failed user=%s: %s",
+                    request.user_id, _ae,
+                )
+
         # ── Path A — LLM answer (the only thing the HTTP response
         # carries back). Unchanged from the pre-BE-3 behavior.
         # Pull admin's private notes for this user → don't-ask block
@@ -3611,8 +3636,10 @@ def v2_chat_query():
                 )
 
         # S1 — per-turn intent → the one contextual button the FE renders.
+        # ("audit" is set by the audit intercept above, not the librarian, but
+        # is a valid enum value so the FE contract stays consistent.)
         _sa = payload.get("suggested_action")
-        if _sa not in ("strong_sides", "trainings"):
+        if _sa not in ("strong_sides", "trainings", "audit"):
             _sa = None
         _answer = payload.get("answer", "")
         return jsonify({
@@ -8949,6 +8976,118 @@ def v2_lab_presentation_extract():
         logger.error("lab/presentation/extract failed: %s", e, exc_info=True)
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR", "error": "Failed to process presentation"}), 500
+
+
+@v2_bp.route("/coach/audits", methods=["POST"])
+@require_admin_or_coach
+def v2_coach_create_audit():
+    """willab Audit Delivery (Prompt C §3 C1) — a coach uploads a PDF audit for
+    a user. Stores the PDF in R2, records the row, and emails the user a link.
+
+    multipart/form-data:
+      pdf_file   (required) the audit PDF
+      user_id    (required) the user it's for
+      name       (required) e.g. "Speaking Impact Audit, Booksy pitch"
+      audit_date (optional) ISO timestamp; defaults to now()
+
+    201 { id, name, audit_date, email_sent }
+    400 INVALID_INPUT · 413 FILE_TOO_LARGE · 415 UNSUPPORTED_TYPE · 502 V2_ERROR
+    """
+    try:
+        form = request.form or {}
+        target_user = (form.get("user_id") or "").strip()
+        name = (form.get("name") or "").strip()
+        audit_date = (form.get("audit_date") or "").strip() or None
+        if not _is_valid_uuid(target_user):
+            return jsonify({"code": "INVALID_INPUT", "error": "user_id must be a UUID"}), 400
+        if not name:
+            return jsonify({"code": "INVALID_INPUT", "error": "name is required"}), 400
+
+        f = request.files.get("pdf_file")
+        if f is None or not (f.filename or "").strip():
+            return jsonify({"code": "INVALID_INPUT", "error": "pdf_file is required"}), 400
+        ext = os.path.splitext(secure_filename(f.filename or ""))[1].lower()
+        if ext != ".pdf":
+            return jsonify({
+                "code": "UNSUPPORTED_TYPE",
+                "error": "Upload a PDF. (Export to PDF first.)",
+            }), 415
+        data = f.read() or b""
+        if not data:
+            return jsonify({"code": "INVALID_INPUT", "error": "pdf_file is empty"}), 400
+        if len(data) > _PRESENTATION_MAX_MB * 1024 * 1024:
+            return jsonify({
+                "code": "FILE_TOO_LARGE",
+                "error": f"file exceeds {_PRESENTATION_MAX_MB}MB",
+            }), 413
+
+        from services.coach_video_storage import put_coach_object_bytes
+        key = f"willab_audits/{uuid.uuid4().hex}.pdf"
+        try:
+            put_coach_object_bytes("coach_feedback_videos", key, data, "application/pdf")
+        except Exception as se:
+            logger.error("audit store failed user=%s: %s", target_user, se, exc_info=True)
+            return jsonify({"code": "V2_ERROR", "error": "Could not store the audit."}), 502
+
+        row = db.insert_user_audit(target_user, name, key, audit_date)
+        if not row:
+            return jsonify({"code": "V2_ERROR", "error": "Could not record the audit."}), 502
+
+        # Notify the user (best-effort — the upload already succeeded).
+        email_sent = False
+        try:
+            from services.audit_email import send_audit_ready_email
+            email_sent = send_audit_ready_email(target_user)
+        except Exception as ee:
+            logger.warning("audit: email dispatch failed user=%s: %s", target_user, ee)
+
+        logger.info("audit: uploaded user=%s id=%s email_sent=%s",
+                    target_user, row.get("id"), email_sent)
+        return jsonify({
+            "id": row.get("id"),
+            "name": row.get("name"),
+            "audit_date": row.get("audit_date"),
+            "email_sent": email_sent,
+        }), 201
+    except Exception as e:
+        logger.error("coach/audits POST failed: %s", e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to upload audit"}), 500
+
+
+@v2_bp.route("/user/audits", methods=["GET"])
+@require_auth
+def v2_user_get_audits():
+    """willab Audit Delivery (Prompt C §3 C2) — the signed-in user's audits,
+    newest first, each with a short-lived signed PDF URL. Empty list when none
+    (NEVER 404).
+
+    200 { audits: [ { id, name, date, pdf_url } ] }
+    """
+    try:
+        from services.coach_video_storage import (
+            coach_media_public_url, presigned_get_coach_object,
+        )
+        rows = db.list_user_audits(request.user_id) or []
+        audits = []
+        for r in rows:
+            key = r.get("storage_path") or ""
+            url = coach_media_public_url(key) if key else None
+            if not url and key:
+                url = presigned_get_coach_object(
+                    "coach_feedback_videos", key, expires_in=604800,
+                )
+            audits.append({
+                "id": r.get("id"),
+                "name": r.get("name"),
+                "date": r.get("audit_date"),
+                "pdf_url": url,
+            })
+        return jsonify({"audits": audits}), 200
+    except Exception as e:
+        logger.error("user/audits GET failed: %s", e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to load audits"}), 500
 
 
 @v2_bp.route("/explore/start", methods=["POST"])

@@ -8904,6 +8904,80 @@ class DatabaseService:
             logger.warning("get_arc_sessions failed arc=%s: %s", arc_id, e)
             return []
 
+    # ── willab — Audit Delivery (Prompt C §2/§3) ───────────────────────
+    #
+    # Coach-curated PDF audits, one row per uploaded PDF. Distinct from the
+    # lab Readout ('audit_upload' sessions) — see migrations/add_user_audits.sql.
+
+    def insert_user_audit(
+        self, user_id: str, name: str, storage_path: str,
+        audit_date: Optional[str] = None,
+    ) -> Optional[dict]:
+        """Record an uploaded audit PDF for a user. Returns the row (with id)
+        or None on failure. audit_date defaults to now() server-side."""
+        if not user_id or not name or not storage_path:
+            return None
+        row = {
+            "user_id": user_id, "name": name, "storage_path": storage_path,
+        }
+        if audit_date:
+            row["audit_date"] = audit_date
+        try:
+            res = self.client.table("user_audits").insert(row).execute()
+            return (res.data or [None])[0]
+        except Exception as e:
+            err_low = str(e).lower()
+            if "user_audits" in err_low and (
+                "does not exist" in err_low or "pgrst" in err_low
+            ):
+                logger.warning(
+                    "insert_user_audit: table missing (run "
+                    "migrations/add_user_audits.sql) user=%s", user_id,
+                )
+                return None
+            logger.error("insert_user_audit failed user=%s: %s", user_id, e)
+            return None
+
+    def list_user_audits(self, user_id: str) -> list[dict]:
+        """A user's audits, newest first. [] on missing table / none / error."""
+        if not user_id:
+            return []
+        try:
+            res = (
+                self.client.table("user_audits")
+                .select("id, name, audit_date, storage_path, created_at")
+                .eq("user_id", user_id)
+                .order("audit_date", desc=True)
+                .execute()
+            )
+            return res.data or []
+        except Exception as e:
+            err_low = str(e).lower()
+            if "user_audits" in err_low and (
+                "does not exist" in err_low or "pgrst" in err_low
+            ):
+                return []
+            logger.warning("list_user_audits failed user=%s: %s", user_id, e)
+            return []
+
+    def get_user_audit(self, audit_id: str, user_id: str) -> Optional[dict]:
+        """One audit row, OWNERSHIP-scoped to user_id (None if not theirs)."""
+        if not audit_id or not user_id:
+            return None
+        try:
+            res = (
+                self.client.table("user_audits")
+                .select("id, name, audit_date, storage_path, created_at")
+                .eq("id", audit_id)
+                .eq("user_id", user_id)
+                .limit(1)
+                .execute()
+            )
+            return (res.data or [None])[0]
+        except Exception as e:
+            logger.warning("get_user_audit failed id=%s: %s", audit_id, e)
+            return None
+
     def set_session_source(self, session_id: str, source: str) -> bool:
         """Stamp v2_sessions.source (foundation discriminator). The Lab
         handler marks its sessions 'audit_upload' so the history list +
