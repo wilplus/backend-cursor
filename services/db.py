@@ -8878,6 +8878,44 @@ class DatabaseService:
             logger.warning("get_arc_take_count failed arc=%s: %s", arc_id, e)
             return 0
 
+    def insert_recording_feeling(
+        self, *, session_id: str, feeling: str,
+        user_id: Optional[str] = None, recording_id: Optional[str] = None,
+        arc_id: Optional[str] = None, take_index: Optional[int] = None,
+    ) -> bool:
+        """Persist a pre-recording feeling (U10 — split-sink, audit-stage
+        correlation input). Best-effort + non-fatal: a missing table or a bad
+        value never breaks the recording. The route pre-validates the enum."""
+        if not session_id or not feeling:
+            return False
+        row = {"session_id": session_id, "feeling": feeling}
+        if user_id:
+            row["user_id"] = user_id
+        if recording_id:
+            row["recording_id"] = recording_id
+        if arc_id:
+            row["arc_id"] = arc_id
+        if take_index is not None:
+            row["take_index"] = take_index
+        try:
+            self.client.table("recording_feelings").insert(row).execute()
+            return True
+        except Exception as e:
+            err_low = str(e).lower()
+            if "recording_feelings" in err_low and (
+                "does not exist" in err_low or "pgrst" in err_low
+            ):
+                logger.warning(
+                    "insert_recording_feeling: table missing (run "
+                    "migrations/add_recording_feelings.sql) session=%s",
+                    session_id,
+                )
+                return False
+            logger.warning(
+                "insert_recording_feeling failed session=%s: %s", session_id, e,
+            )
+            return False
+
     def get_arc_sessions(self, arc_id: Optional[str]) -> list[dict]:
         """The takes of an explore arc, ORDERED by take_index (Prompt A §3/§5).
         Powers cross-take selection. Best-effort: [] on missing column / no
