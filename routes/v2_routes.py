@@ -8356,9 +8356,18 @@ def v2_coach_get_session(session_id):
         # on-slide-ness + the per-slide coverage ledger). Coach-only (AC-9).
         readout = build_readout_from_session(session_id, include_slide_scores=True)
         cstate = _coach_state_map(session_id)
+        # Phase 4 / Prompt 2 — the AI-Commentator draft the coach's comment
+        # field opens PRE-FILLED with (frozen; the coach types over it). {} when
+        # the migration hasn't run → blank field, same as before.
+        ai_drafts = db.get_ai_draft_coach_notes_by_session(session_id)
 
         snippets = []
         for snip in (readout.get("snippets") or []):
+            _sid = str(snip.get("id"))
+            _coach_state = dict(cstate.get(_sid, {
+                "direction_label": None, "note": "", "tag": None, "surfaced": False,
+            }))
+            _coach_state["ai_draft_coach_note"] = ai_drafts.get(_sid)
             snippets.append({
                 "id": snip.get("id"),
                 "index": snip.get("index"),
@@ -8381,9 +8390,7 @@ def v2_coach_get_session(session_id):
                 "slide_stickiness": snip.get("slide_stickiness"),
                 "overall_score": snip.get("overall_score"),
                 "rank": snip.get("rank"),
-                "coach_state": cstate.get(str(snip.get("id")), {
-                    "direction_label": None, "note": "", "tag": None, "surfaced": False,
-                }),
+                "coach_state": _coach_state,
             })
 
         ctx = session.get("intake_context") if isinstance(session.get("intake_context"), dict) else {}

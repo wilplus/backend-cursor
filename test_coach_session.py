@@ -44,6 +44,9 @@ class CoachSessionReadTests(unittest.TestCase):
         self._patch_db("get_coach_snippet_drafts", lambda sid: [
             {"snippet_id": "a", "note": "strong open", "tag": "strong", "surfaced": True},
         ])
+        # Phase 4 / Prompt 2 — AI-Commentator draft pre-fill for snippet "a".
+        self._patch_db("get_ai_draft_coach_notes_by_session",
+                       lambda sid: {"a": "🎤 Warm open — your pace lands well."})
         self._orig_build = lab.build_readout_from_session
         lab.build_readout_from_session = lambda sid: {"snippets": [
             {"id": "a", "index": 1, "transcript": "hi", "audio_ref": "p/a.wav",
@@ -107,6 +110,17 @@ class CoachSessionReadTests(unittest.TestCase):
         })
         status, data = self._get()
         self.assertEqual(data["state"], "done")
+
+    def test_ai_draft_coach_note_served_in_coach_state(self):
+        # Prompt 2 PR-2 — the coach comment field opens pre-filled with the
+        # AI-Commentator draft; snippets with no draft get None.
+        status, data = self._get()
+        snips = {s["id"]: s for s in data["snippets"]}
+        self.assertEqual(
+            snips["a"]["coach_state"]["ai_draft_coach_note"],
+            "🎤 Warm open — your pace lands well.",
+        )
+        self.assertIsNone(snips["b"]["coach_state"]["ai_draft_coach_note"])
 
     def test_snippet_shape_matches_fe(self):
         status, data = self._get()
