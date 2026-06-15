@@ -169,13 +169,12 @@ def handle_goal_update(
     if not new_goal:
         return None
 
-    # Full set (domain + goal together) — preserve the existing domain.
+    # Goal-only update — records old→new (previous_goal + changed_at) so the
+    # coach sees what changed; preserves the existing domain.
     try:
-        ok = db.set_user_profile(
-            user_id, domain=profile.get("domain"), goal=new_goal,
-        )
+        ok = db.update_user_goal(user_id, new_goal, current_goal)
     except Exception as e:
-        logger.warning("goal_update: set_user_profile failed user=%s: %s",
+        logger.warning("goal_update: update_user_goal failed user=%s: %s",
                        user_id, e)
         return None
     if not ok:
@@ -190,4 +189,4 @@ def handle_goal_update(
                     user_id)
         return None
     logger.info("goal_update: goal updated user=%s", user_id)
-    return {"answer": answer, "new_goal": new_goal}
+    return {"answer": answer, "new_goal": new_goal, "previous_goal": current_goal}
