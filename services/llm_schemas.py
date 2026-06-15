@@ -255,13 +255,15 @@ COACH_NOTE_DRAFT_SCHEMA: dict[str, Any] = {
         "properties": {
             "coach_note": {
                 "type": "string",
-                "maxLength": 240,
+                "maxLength": 900,
                 "description": (
-                    "One short coach note (1 sentence, 2 max) on how this "
-                    "moment landed for the slide it covers. Second-person, "
-                    "terse, specific; reference the slide's point when it "
-                    "helps. No preamble, no praise inflation. Never start "
-                    "with \"This\" or \"The user\"."
+                    "Warm, plain-language coach feedback on this moment, in "
+                    "the willab Insights voice: short emoji-led lines, overall "
+                    "impression first, tied to the speaker's goal + slide, one "
+                    "thing working + one to improve, a comparison to previous "
+                    "takes when given. Under 120 words, 2-4 emojis, "
+                    "encouragement first. NEVER use technical terms (F0, SD, "
+                    "voiced %, dB, wpm, 'coherence score')."
                 ),
             },
         },
