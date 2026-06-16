@@ -425,7 +425,8 @@ def process_lab_recording(
     )
 
     # AI-Commentator (Phase 4 / Prompt 2) — fire-and-forget coach-note drafts
-    # for DECK recordings. process_lab_recording is synchronous on the upload
+    # for every recording (slides are optional grounding; a deck-less spoken
+    # pitch still drafts). process_lab_recording is synchronous on the upload
     # response, so drafting (N LLM calls) runs in a daemon, never blocking it.
     # Best-effort: a failure here never breaks the readout.
     try:

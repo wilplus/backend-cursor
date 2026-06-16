@@ -9498,6 +9498,30 @@ def v2_lab_create_recording():
                 logger.warning("lab: cadence fire failed sid=%s: %s",
                                guest_session_id, _ce)
 
+        # Recording-progress toward the first audit (BE-4) — so the FE can
+        # refresh the "X:XX left to unlock" line IMMEDIATELY instead of showing
+        # a stale value until the next session load. This upload's session is a
+        # guest session (user_id=None) and is attributed to the user only on a
+        # later claim/merge, so it is NOT yet in the cumulative sum — we project
+        # it by ADDING this recording's duration on top. The authoritative value
+        # remains GET /user/recording-progress after the claim. Auth-only +
+        # best-effort: omitted for guests / on any hiccup.
+        recording_progress = None
+        _prog_user = getattr(request, "user_id", None)
+        if _prog_user:
+            try:
+                from services.user_audit import AUDIT_UNLOCK_SECONDS
+                _base = int(db.v2_get_cumulative_recorded_seconds(str(_prog_user)) or 0)
+                _projected = _base + int(_rec_duration or 0)
+                recording_progress = {
+                    "recorded_seconds": _projected,
+                    "threshold_seconds": AUDIT_UNLOCK_SECONDS,
+                    "unlocked": _projected >= AUDIT_UNLOCK_SECONDS,
+                }
+            except Exception as _pe:
+                logger.warning("lab: recording_progress projection failed sid=%s: %s",
+                               guest_session_id, _pe)
+
         return jsonify({
             "status": "ok",
             "session_id": guest_session_id,
@@ -9512,6 +9536,8 @@ def v2_lab_create_recording():
             "arc_id": arc_id,
             "take_index": take_index,
             "take_count": arc_take_count,
+            # Fresh audit progress (BE-4) — null for guests; see note above.
+            "recording_progress": recording_progress,
         }), 201
 
     except Exception as e:

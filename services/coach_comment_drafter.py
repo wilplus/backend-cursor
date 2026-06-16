@@ -1,12 +1,13 @@
 """AI-Commentator — per-snippet coach-comment draft (willab Phase 4 / Prompt 2).
 
-For each snippet of a deck recording, draft the feedback note in the willab
-Insights voice — friendly, plain-language, encouragement-first — so the coach
-opens the comment PRE-FILLED and only corrects it. The (draft, coach-final)
-diff becomes the comment-clone corpus (captured at publish, separately).
+For each snippet, draft the feedback note in the willab Insights voice —
+friendly, plain-language, encouragement-first — so the coach opens the comment
+PRE-FILLED and only corrects it. The (draft, coach-final) diff becomes the
+comment-clone corpus (captured at publish, separately).
 
 Grounding (founder spec 2026-06-15): the speaker's GOAL (the session topic) +
-the snippet's SLIDE {title, body} + a TAKE-COMPARISON to their previous
+the snippet's SLIDE {title, body} WHEN THERE IS A DECK (optional — a spoken
+pitch with no slides still drafts) + a TAKE-COMPARISON to their previous
 recordings + this moment's metrics CONVERTED TO PLAIN LANGUAGE in code — the
 model never sees F0/SD/voiced%/dB/'coherence score', only "pace: comfortable".
 
@@ -104,7 +105,7 @@ def _user_prompt(transcript, slide, observations, take_comparison, goal) -> str:
 
 def generate_coach_note_draft(
     transcript: str,
-    slide: dict,
+    slide: Optional[dict],
     metrics: Optional[dict] = None,
     *,
     take_comparison: Optional[str] = None,
@@ -238,10 +239,12 @@ def dispatch_coach_note_drafts(
     *,
     goal: Optional[str] = None,
 ) -> None:
-    """Fire-and-forget: draft a coach note for each snippet of a DECK recording,
-    persist it frozen. No-op without slides/snippets. Never raises into the
-    caller (process_lab_recording)."""
-    if not slides or not snippets:
+    """Fire-and-forget: draft a coach note for each snippet, persist it frozen.
+    Slides are OPTIONAL grounding — a deck-less recording (a spoken pitch with
+    no slides) still drafts from transcript + plain-language metrics + goal, so
+    the coach's comment field opens pre-filled either way. No-op only without
+    snippets. Never raises into the caller (process_lab_recording)."""
+    if not snippets:
         return
     try:
         threading.Thread(
@@ -256,6 +259,7 @@ def dispatch_coach_note_drafts(
 def _draft_all(session_id, snippets, slides, advances, goal) -> None:
     from services.slide_alignment import slide_index_for_offset
     from services.db import db
+    slides = slides or []
     # one take-comparison per session (fed to every snippet's draft)
     take_comparison = _build_take_comparison(session_id, _aggregate(snippets))
     written = 0
@@ -265,14 +269,14 @@ def _draft_all(session_id, snippets, slides, advances, goal) -> None:
             transcript = (snip.get("transcript") or "").strip()
             if not sid or not transcript:
                 continue
+            # Slide grounding when this moment maps to one; None otherwise
+            # (deck-less recording) — the drafter handles a missing slide.
             idx = slide_index_for_offset(snip.get("start_offset_ms"), advances)
             slide = (
                 slides[idx]
                 if isinstance(idx, int) and 0 <= idx < len(slides)
                 else None
             )
-            if not isinstance(slide, dict):
-                continue
             draft = generate_coach_note_draft(
                 transcript, slide,
                 snip.get("metrics") if isinstance(snip.get("metrics"), dict) else None,

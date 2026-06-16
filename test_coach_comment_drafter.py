@@ -182,12 +182,29 @@ class GenerateCoachNoteDraftTests(unittest.TestCase):
         _install_fake_openai()
         self.assertTrue(self._gen("real transcript here"))
 
+    def test_deckless_no_slide_still_drafts(self):
+        # BE-2: a spoken pitch with no slide still produces a draft from the
+        # transcript + plain-language metrics (slide=None, not skipped).
+        _install_fake_openai()
+        self.assertTrue(self._gen("real transcript here", slide=None,
+                                  metrics=_FULL_METRICS, goal="pitch the raise"))
+
 
 class DispatchTests(unittest.TestCase):
-    def test_no_slides_is_noop(self):
+    def test_no_snippets_is_noop(self):
+        # The ONLY no-op now: nothing recorded to comment on.
         from services.coach_comment_drafter import dispatch_coach_note_drafts
-        self.assertIsNone(dispatch_coach_note_drafts("s1", [{"id": "a"}], None, []))
         self.assertIsNone(dispatch_coach_note_drafts("s1", [], [_SLIDE], []))
+        self.assertIsNone(dispatch_coach_note_drafts("s1", None, None, []))
+
+    def test_deckless_dispatch_is_not_noop(self):
+        # BE-2: snippets present but no slides → still dispatches (fire-and-
+        # forget). Returns None, must not raise. The empty transcript keeps the
+        # background worker from doing real LLM/db work in the lean env.
+        from services.coach_comment_drafter import dispatch_coach_note_drafts
+        self.assertIsNone(
+            dispatch_coach_note_drafts("s1", [{"id": "a", "transcript": ""}], None, [])
+        )
 
 
 if __name__ == "__main__":
