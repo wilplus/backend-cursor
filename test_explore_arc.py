@@ -11,22 +11,14 @@ from services.explore_arc import resolve_arc
 
 
 class ResolveArcTests(unittest.TestCase):
-    def test_standalone_is_no_arc(self):
-        self.assertEqual(resolve_arc(None, None, None), (None, None))
-        self.assertEqual(resolve_arc(False, None, None), (None, None))
-        self.assertEqual(resolve_arc("", None, None), (None, None))
-
-    def test_explore_session_mints_arc_at_take_1(self):
-        arc_id, ti = resolve_arc(True, None, None)
-        self.assertIsNotNone(arc_id)
-        self.assertEqual(ti, 1)
-        uuid.UUID(arc_id)  # is a valid uuid
-
-    def test_explore_session_truthy_strings(self):
-        for v in ("1", "true", "YES", "on"):
-            arc_id, ti = resolve_arc(v, None, None)
-            self.assertIsNotNone(arc_id, v)
-            self.assertEqual(ti, 1)
+    def test_always_on_mints_even_without_explore_flag(self):
+        # No opt-in anymore: a fresh recording ALWAYS starts an arc at take 1,
+        # regardless of the explore_session flag (None/False/"" all mint).
+        for flag in (None, False, "", True, "1"):
+            arc_id, ti = resolve_arc(flag, None, None)
+            self.assertIsNotNone(arc_id, flag)
+            self.assertEqual(ti, 1, flag)
+            uuid.UUID(arc_id)  # valid uuid
 
     def test_subsequent_take_carries_arc_and_index(self):
         aid = str(uuid.uuid4())
