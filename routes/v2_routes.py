@@ -9240,6 +9240,69 @@ def v2_explore_arc_moments(arc_id):
         }), 500
 
 
+def _arc_owned_by_caller(arc_id):
+    """True iff the arc has a session owned by request.user_id. Returns
+    (owned, sessions) so callers reuse the read."""
+    sessions = db.get_arc_sessions(arc_id)
+    owned = any(
+        str(s.get("user_id")) == str(request.user_id) for s in sessions
+    )
+    return owned, sessions
+
+
+@v2_bp.route("/explore/arc/<arc_id>/best-presentation", methods=["GET"])
+@require_auth
+def v2_explore_arc_best_presentation(arc_id):
+    """Best-Presentation (willab Prompt D) — REPLACES the audit. After the arc's
+    3 takes, the user's strongest CHALLENGE delivery of each slide, lightly
+    stitched into 'ideal presentation' text, with breakthrough markers.
+
+    Challenge-only + SCORE-FREE (AC-9). Ownership: the arc must contain a
+    session owned by the caller, else 404.
+
+    Response 200 { arc_id, ready, progress:{takes_done,takes_target,ready},
+                   slides:[{index,title,text,audio_ref,take_index,breakthrough}] }
+             404 NOT_FOUND · 500 V2_ERROR
+    """
+    try:
+        from services.best_presentation import build_best_presentation
+        owned, _ = _arc_owned_by_caller(arc_id)
+        if not owned:
+            return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
+        return jsonify({"arc_id": arc_id, **build_best_presentation(arc_id)}), 200
+    except Exception as e:
+        logger.error("explore/arc best-presentation failed arc=%s: %s", arc_id,
+                     e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({
+            "code": "V2_ERROR", "error": "Failed to build best presentation",
+        }), 500
+
+
+@v2_bp.route("/explore/arc/<arc_id>/progress", methods=["GET"])
+@require_auth
+def v2_explore_arc_progress(arc_id):
+    """Cheap poll for the 'X takes to your ideal presentation' bar (Prompt D §5).
+
+    Response 200 { arc_id, takes_done, takes_target, ready } · 404 · 500
+    """
+    try:
+        from services.best_presentation import presentation_progress
+        owned, sessions = _arc_owned_by_caller(arc_id)
+        if not owned:
+            return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
+        return jsonify({
+            "arc_id": arc_id, **presentation_progress(len(sessions)),
+        }), 200
+    except Exception as e:
+        logger.error("explore/arc progress failed arc=%s: %s", arc_id, e,
+                     exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({
+            "code": "V2_ERROR", "error": "Failed to load progress",
+        }), 500
+
+
 @v2_bp.route("/lab/recordings", methods=["POST"])
 @optional_auth
 def v2_lab_create_recording():
