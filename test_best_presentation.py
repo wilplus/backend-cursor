@@ -25,14 +25,25 @@ def _cand(slide_index, sid, direction, **kw):
 
 
 class SelectBestPerSlideTests(unittest.TestCase):
-    def test_only_challenge_considered(self):
+    def test_challenge_outranks_threat_by_rating(self):
+        # NOT a hard filter — challenge wins because its rating is boosted
+        # (+1) while threat is penalised (-1), even with lower activation.
         cands = [
             _cand(0, "t", "threat", activation=0.9),
             _cand(0, "c", "challenge", activation=0.4),
         ]
         best = bp.select_best_per_slide(cands)
-        self.assertIn(0, best)
-        self.assertEqual(best[0]["snippet_id"], "c")  # threat dropped
+        self.assertEqual(best[0]["snippet_id"], "c")
+
+    def test_threat_surfaces_when_it_is_all_the_slide_has(self):
+        # No challenge-only filter → a slide with only threat still gets its
+        # best line (never blank).
+        cands = [
+            _cand(0, "lo", "threat", activation=0.2),
+            _cand(0, "hi", "threat", activation=0.8),
+        ]
+        best = bp.select_best_per_slide(cands)
+        self.assertEqual(best[0]["snippet_id"], "hi")
 
     def test_best_challenge_per_slide(self):
         cands = [
@@ -93,15 +104,36 @@ class ComposeTests(unittest.TestCase):
             self.assertNotIn(k, out[0])
         self.assertIn("breakthrough", out[0])  # the marker is allowed
 
+    def test_breakthrough_note_only_when_breakthrough(self):
+        bp._render_composition = lambda picks, slides: {}
+        picks = {
+            0: {**_cand(0, "bt", "challenge", breakthrough=True),
+                "note": "Comfortable pace, natural rise and fall."},
+            1: {**_cand(1, "plain", "challenge"), "note": "Some note."},
+        }
+        out = bp.compose_presentation(picks, [{"title": "S1"}, {"title": "S2"}])
+        # the breakthrough slide carries the "why"; the plain one does not
+        self.assertEqual(out[0]["breakthrough_note"],
+                         "Comfortable pace, natural rise and fall.")
+        self.assertIsNone(out[1]["breakthrough_note"])
+
 
 class ProgressTests(unittest.TestCase):
     def test_counts_and_ready_threshold(self):
-        self.assertEqual(bp.presentation_progress(0),
-                         {"takes_done": 0, "takes_target": 3, "ready": False})
+        self.assertEqual(bp.presentation_progress(0), {
+            "takes_done": 0, "takes_target": 3,
+            "takes_remaining": 3, "ready": False,
+        })
         self.assertTrue(bp.presentation_progress(3)["ready"])
         self.assertTrue(bp.presentation_progress(4)["ready"])
         self.assertFalse(bp.presentation_progress(2)["ready"])
         self.assertEqual(bp.presentation_progress(-5)["takes_done"], 0)
+
+    def test_takes_remaining_drives_the_two_more_message(self):
+        # 1 take → "we need 2 more takes to generate your best lines".
+        self.assertEqual(bp.presentation_progress(1)["takes_remaining"], 2)
+        self.assertEqual(bp.presentation_progress(3)["takes_remaining"], 0)
+        self.assertEqual(bp.presentation_progress(5)["takes_remaining"], 0)
 
 
 class _FakeDB:
