@@ -311,6 +311,10 @@ class Config:
     GUEST_FUNNEL_ENABLED = (os.getenv("GUEST_FUNNEL_ENABLED") or "false").strip().lower() == "true"
     # Per-IP cap (uploads/hour). Cheap insurance against scripted abuse.
     GUEST_FUNNEL_RATE_LIMIT_PER_IP_PER_HOUR = int(os.getenv("GUEST_FUNNEL_RATE_LIMIT_PER_IP_PER_HOUR", "5"))
+    # willab Prompt D — the audit is REPLACED by the Best-Presentation. Default
+    # OFF retires the audit chat surface (the "audit" suggested_action button);
+    # the endpoints/tables stay DORMANT (recoverable — flip ON to restore).
+    AUDIT_SURFACE_ENABLED = (os.getenv("AUDIT_SURFACE_ENABLED") or "false").strip().lower() == "true"
     # Global cap across all IPs (uploads/hour). Stops a botnet from saturating.
     GUEST_FUNNEL_RATE_LIMIT_GLOBAL_PER_HOUR = int(os.getenv("GUEST_FUNNEL_RATE_LIMIT_GLOBAL_PER_HOUR", "200"))
     # Hard size cap on the anonymous upload (smaller than admin's 25 MB —
