@@ -176,6 +176,22 @@ fixed facts, exercise/safety caveat) is doctrine and is NEVER invented
 by the LLM — see services/session_cadence.py ``BEATS``."""
 
 
+SPEC_BEST_PRESENTATION = LLMSpec(
+    model=CHEAP_MODEL,
+    # Very low temp — the composition MOSTLY reuses the user's own best lines
+    # verbatim and may change only a FEW words per slide for continuity +
+    # slide-accuracy. It is NOT creative writing; high temp would invent.
+    temperature=0.2,
+    # A handful of short slide lines; small cap keeps it from running long.
+    max_tokens=600,
+    # Schema lives in services/best_presentation.py, passed at call time.
+    response_format=None,
+)
+"""Best-Presentation composition (Prompt D §4) — lightly stitches the user's
+per-slide best CHALLENGE lines into continuous 'ideal presentation' text.
+Grounded in the recorded transcript + slide{title,body}; no new claims."""
+
+
 SPEC_GOAL_UPDATE = LLMSpec(
     model=CHEAP_MODEL,
     # Low temp — goal-update DETECTION must be conservative + stable (a
