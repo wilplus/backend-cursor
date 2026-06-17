@@ -56,5 +56,42 @@ class PowerScoreTests(unittest.TestCase):
         )
 
 
+class DirectionTermTests(unittest.TestCase):
+    """Prompt D — direction/breakthrough are opt-in, /strengths unchanged."""
+
+    def test_no_direction_is_byte_for_byte_unchanged(self):
+        # The live /strengths path passes neither → identical to before.
+        self.assertEqual(
+            power_score(activation=0.5, slide_stickiness=0.3, tag="strong"),
+            power_score(activation=0.5, slide_stickiness=0.3, tag="strong",
+                        direction=None, breakthrough=False),
+        )
+
+    def test_challenge_outranks_threat(self):
+        ch = power_score(activation=0.5, direction="challenge")
+        th = power_score(activation=0.5, direction="threat")
+        self.assertGreater(ch, th)
+
+    def test_ambiguous_is_neutral(self):
+        self.assertEqual(
+            power_score(activation=0.5, direction="ambiguous"),
+            power_score(activation=0.5),
+        )
+
+    def test_breakthrough_is_top_auto_signal(self):
+        # A breakthrough challenge moment beats a plain challenge one, and even
+        # a high-activation non-breakthrough.
+        bt = power_score(activation=0.3, direction="challenge", breakthrough=True)
+        plain = power_score(activation=0.9, direction="challenge")
+        self.assertGreater(bt, plain)
+
+    def test_coach_verdict_outweighs_direction(self):
+        # The human verdict (w_c=2) dominates the direction term (w_d=1):
+        # a coach-strong moment beats an untagged challenge one.
+        strong = power_score(activation=0.0, tag="strong")
+        untagged_challenge = power_score(activation=0.0, direction="challenge")
+        self.assertGreater(strong, untagged_challenge)
+
+
 if __name__ == "__main__":
     unittest.main()
