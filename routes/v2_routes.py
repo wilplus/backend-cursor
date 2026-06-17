@@ -9461,6 +9461,13 @@ def v2_lab_create_recording():
         # origin path can find it (best-effort; the recording_origin on
         # the recording row is the send-gate's primary gate).
         db.set_session_source(guest_session_id, "audit_upload")
+        # Attribute the take to the user AT RECORD TIME when signed in (Prompt
+        # D): the explore arc + best-presentation/moments/progress are owned
+        # reads, so an authed user's takes must be theirs immediately — not only
+        # after the guest→signed claim flow. Guests stay user_id NULL (claimed
+        # later as before). Best-effort.
+        if getattr(request, "user_id", None):
+            db.set_session_user_id(guest_session_id, request.user_id)
 
         # Explore-session arc (Prompt A §3) — link the takes of the SAME talk
         # so they're comparable. Standalone recordings (no explore_session) →

@@ -8836,6 +8836,21 @@ class DatabaseService:
 
     # ── willab beta — Lab session source + history ──────────────────
 
+    def set_session_user_id(self, session_id: str, user_id: str) -> bool:
+        """Attribute a session to a user (Prompt D — authed lab takes are owned
+        at record time so the explore arc + best-presentation work without
+        waiting for the guest→signed claim flow). Best-effort; non-fatal."""
+        if not session_id or not user_id:
+            return False
+        try:
+            self.client.table("v2_sessions").update(
+                {"user_id": user_id}
+            ).eq("id", session_id).execute()
+            return True
+        except Exception as e:
+            logger.warning("set_session_user_id failed sid=%s: %s", session_id, e)
+            return False
+
     def set_session_arc(
         self, session_id: str, arc_id: Optional[str], take_index: Optional[int],
     ) -> bool:
