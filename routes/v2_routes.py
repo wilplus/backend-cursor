@@ -9555,11 +9555,19 @@ def v2_lab_create_recording():
         _cad_user = getattr(request, "user_id", None)
         if _cad_user and arc_id:
             try:
-                from services.session_cadence import fire_post_take
+                from services.session_cadence import (
+                    fire_arc_start, fire_post_take,
+                )
                 _goal = (db.get_user_profile(_cad_user) or {}).get("goal")
                 _spark = str(form.get("spark") or "").strip().lower() in (
                     "1", "true", "yes", "on",
                 )
+                # Always-on (2026-06-17): there's no opt-in /explore/start step
+                # anymore, so the framing (BEAT 0 — "3 takes, ~30 min, this was
+                # your baseline") fires here on take 1. Idempotent per arc, so a
+                # leftover /explore/start call is a harmless no-op.
+                if take_index == 1:
+                    fire_arc_start(_cad_user, arc_id, goal=_goal)
                 fire_post_take(
                     _cad_user, arc_id, take_index,
                     take_count=arc_take_count,
