@@ -30,21 +30,44 @@ logger = logging.getLogger(__name__)
 TAKES_TARGET = 3
 
 
+def _moment_note(snippet: Any) -> str:
+    """Score-free, plain-language delivery qualities (the breakthrough "why").
+    Reuses the coach drafter's metric→words conversion; "" when nothing
+    computable. AC-9 — never a number."""
+    try:
+        from services.coach_comment_drafter import metric_observations
+        obs = metric_observations(
+            snippet.get("metrics") if isinstance(snippet, dict) else None
+        )
+    except Exception:
+        obs = {}
+    parts = [obs[k] for k in ("pace", "pitch", "pauses", "volume", "clarity")
+             if obs.get(k)]
+    if not parts:
+        return ""
+    phrase = ", ".join(parts)
+    return phrase[0].upper() + phrase[1:] + "."
+
+
 # ── Selection (pure) ────────────────────────────────────────────────────
 def select_best_per_slide(candidates: Any) -> dict:
     """candidates = list of per-snippet dicts: {slide_index, snippet_id,
     transcript, audio_ref, take_index, direction, breakthrough, activation,
     slide_stickiness, tag}. Returns ``{slide_index: winning_candidate}`` — the
-    highest combined-score CHALLENGE snippet per slide (others dropped)."""
-    from services.challenge_threat import is_challenge
+    HIGHEST-RATED snippet per slide.
+
+    NOT a challenge-only filter (founder, 2026-06-17): every moment is eligible,
+    so a slide always shows its best line (never blank). The challenge/threat
+    label is a RATING adjustment inside power_score — challenge ADDS, threat
+    DOWNGRADES, a threat→challenge breakthrough is the top bonus — so challenge
+    moments usually win, but the best threat line still surfaces when it's all a
+    slide has."""
     from services.power_phrase_ranking import power_score
 
     best: dict = {}
     for c in candidates if isinstance(candidates, list) else []:
         if not isinstance(c, dict):
             continue
-        if not is_challenge(c.get("direction")):
-            continue  # surfacing filter — challenge only
         si = c.get("slide_index")
         if not isinstance(si, int) or si < 0:
             continue
@@ -180,13 +203,21 @@ def compose_presentation(picks: dict, slides: list) -> list:
                 "text": edited.get(i) or verbatim,  # light-edit, else verbatim
                 "audio_ref": pick.get("audio_ref"),
                 "take_index": pick.get("take_index"),
+                # "you turned your stress into charisma" badge — set when this
+                # slide's best line was a threat→challenge turn. breakthrough_note
+                # is the score-free "why" the user expands (plain-language
+                # delivery qualities); null when not a breakthrough.
                 "breakthrough": bool(pick.get("breakthrough")),
+                "breakthrough_note": (
+                    (pick.get("note") or None) if pick.get("breakthrough") else None
+                ),
             })
         else:
             out.append({
                 "index": i, "title": slide.get("title") or "",
                 "text": "", "audio_ref": None,
                 "take_index": None, "breakthrough": False,
+                "breakthrough_note": None,
             })
     return out
 
@@ -197,6 +228,8 @@ def presentation_progress(takes_done: int) -> dict:
     return {
         "takes_done": td,
         "takes_target": TAKES_TARGET,
+        # "we need N more takes to generate your best lines" (FE copy).
+        "takes_remaining": max(0, TAKES_TARGET - td),
         "ready": td >= TAKES_TARGET,
     }
 
@@ -273,6 +306,10 @@ def build_best_presentation(arc_id: Optional[str], *, database=None) -> dict:
                 "activation": metrics.get("overall_score"),
                 "slide_stickiness": stick,
                 "tag": None,  # coach 'strong'/'to_work_on' lives in drafts; not here
+                # score-free plain-language delivery qualities — the "why" the
+                # user expands on a breakthrough badge (reuses the cross-take
+                # rationale; AC-9 — no numbers).
+                "note": _moment_note(s),
             })
 
     picks = select_best_per_slide(candidates)
