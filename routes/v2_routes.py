@@ -3514,7 +3514,9 @@ def v2_chat_query():
         # gets a short bubble + the audit button (suggested_action="audit")
         # opening the audits page. Deterministic keyword pre-gate inside, so
         # normal chat pays nothing. Best-effort: any failure falls through.
-        if request.user_id:
+        # Prompt D: RETIRED by default (the Best-Presentation replaces the
+        # audit). AUDIT_SURFACE_ENABLED=1 restores it (endpoints stay dormant).
+        if request.user_id and getattr(config, "AUDIT_SURFACE_ENABLED", False):
             try:
                 from services.audit_intent import handle_audit_intent
                 from services.master_doc_rag import split_answer_into_bubbles
