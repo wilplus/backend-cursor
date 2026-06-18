@@ -8956,6 +8956,69 @@ class DatabaseService:
                            session_id, e)
             return []
 
+    def get_best_presentation_edits(self, arc_id: Optional[str]) -> dict:
+        """Per-slide text overrides for an arc's best-presentation (Prompt D —
+        the user's pencil-edits). Returns {slide_index: text}. {} on missing
+        table / none / error."""
+        if not arc_id:
+            return {}
+        try:
+            res = (
+                self.client.table("best_presentation_edits")
+                .select("slide_index, text")
+                .eq("arc_id", arc_id)
+                .execute()
+            )
+            return {
+                r.get("slide_index"): r.get("text")
+                for r in (res.data or [])
+                if isinstance(r.get("slide_index"), int)
+            }
+        except Exception as e:
+            err_low = str(e).lower()
+            if "best_presentation_edits" in err_low and (
+                "does not exist" in err_low or "pgrst" in err_low
+            ):
+                return {}
+            logger.warning("get_best_presentation_edits failed arc=%s: %s",
+                           arc_id, e)
+            return {}
+
+    def upsert_best_presentation_edit(
+        self, arc_id: str, slide_index: int, text: str,
+        user_id: Optional[str] = None,
+    ) -> bool:
+        """Save the user's edited text for one best-presentation slide (Prompt
+        D). Upserts on (arc_id, slide_index). Best-effort; missing table →
+        False, non-fatal."""
+        if not arc_id or not isinstance(slide_index, int) or not text:
+            return False
+        from datetime import datetime, timezone
+        row = {
+            "arc_id": arc_id, "slide_index": slide_index, "text": text,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+        if user_id:
+            row["user_id"] = user_id
+        try:
+            self.client.table("best_presentation_edits").upsert(
+                row, on_conflict="arc_id,slide_index",
+            ).execute()
+            return True
+        except Exception as e:
+            err_low = str(e).lower()
+            if "best_presentation_edits" in err_low and (
+                "does not exist" in err_low or "pgrst" in err_low
+            ):
+                logger.warning(
+                    "upsert_best_presentation_edit: table missing (run "
+                    "migrations/add_best_presentation_edits.sql) arc=%s", arc_id,
+                )
+                return False
+            logger.error("upsert_best_presentation_edit failed arc=%s: %s",
+                         arc_id, e)
+            return False
+
     def get_feelings_by_sessions(self, session_ids: list) -> list[dict]:
         """Pre-recording feelings for a BATCH of sessions (U10 — the coach
         roster rollup). One query, mapped by the caller. [] on missing table /

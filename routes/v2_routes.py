@@ -9281,6 +9281,37 @@ def v2_explore_arc_best_presentation(arc_id):
         }), 500
 
 
+@v2_bp.route("/explore/arc/<arc_id>/best-presentation/slides/<int:index>",
+             methods=["PUT"])
+@require_auth
+def v2_explore_arc_edit_slide(arc_id, index):
+    """Save the user's edited best-presentation text for one slide (Prompt D —
+    the pencil). Overrides the composed text + sticks across recompositions.
+    Ownership-checked.
+
+    Body: { "text": str }.  200 { ok, arc_id, index } · 400 · 404 · 500
+    """
+    try:
+        owned, _ = _arc_owned_by_caller(arc_id)
+        if not owned:
+            return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
+        body = request.get_json(silent=True) or {}
+        text = (body.get("text") or "").strip() if isinstance(body.get("text"), str) else ""
+        if not text:
+            return jsonify({"code": "INVALID_INPUT", "error": "text is required"}), 400
+        if len(text) > 2000:
+            return jsonify({"code": "INVALID_INPUT", "error": "text too long"}), 400
+        ok = db.upsert_best_presentation_edit(arc_id, index, text, request.user_id)
+        if not ok:
+            return jsonify({"code": "V2_ERROR", "error": "Could not save the edit"}), 500
+        return jsonify({"ok": True, "arc_id": arc_id, "index": index}), 200
+    except Exception as e:
+        logger.error("explore/arc edit-slide failed arc=%s idx=%s: %s",
+                     arc_id, index, e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to save edit"}), 500
+
+
 @v2_bp.route("/explore/arc/<arc_id>/progress", methods=["GET"])
 @require_auth
 def v2_explore_arc_progress(arc_id):
