@@ -192,6 +192,32 @@ class BuildTests(unittest.TestCase):
         self.assertTrue(slide0["breakthrough"])
         self.assertEqual(slide0["audio_ref"], "s3://c1")
 
+    def test_no_coach_labels_no_breakthrough_badge(self):
+        # Coach-confirmed only: with NO coach labels, there's no breakthrough
+        # badge even though the moments would form a threat→challenge sequence
+        # if a model had guessed. Selection falls back to acoustics (the louder
+        # 'nervous open', overall 0.9, wins).
+        sessions = [{
+            "id": "s1", "take_index": 1,
+            "intake_context": {
+                "slides": [{"title": "S1", "body": "p"}],
+                "slide_advances": [{"index": 0, "t_ms": 0}],
+            },
+        }]
+        snips = {"s1": [
+            {"id": "t1", "start_offset_ms": 0, "transcript": "nervous open",
+             "storage_path": "s3://t1", "metrics": {"overall_score": 0.9}},
+            {"id": "c1", "start_offset_ms": 2000, "transcript": "strong close",
+             "storage_path": "s3://c1", "metrics": {"overall_score": 0.4}},
+        ]}
+        out = bp.build_best_presentation(
+            "arc1", database=_FakeDB(sessions, snips, {}),  # no labels
+        )
+        slide0 = out["slides"][0]
+        self.assertFalse(slide0["breakthrough"])
+        self.assertIsNone(slide0["breakthrough_note"])
+        self.assertEqual(slide0["text"], "nervous open")  # acoustic fallback
+
     def test_build_empty_arc(self):
         empty = _FakeDB([], {}, {})
         out = bp.build_best_presentation("arc1", database=empty)

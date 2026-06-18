@@ -236,8 +236,12 @@ def presentation_progress(takes_done: int) -> dict:
 
 # ── Orchestration (DB + shadow model) ───────────────────────────────────
 def _resolve_take_directions(snippets: list, coach_labels: dict) -> list:
-    """Attach a resolved ``direction`` to each snippet (coach blind label →
-    shadow prediction). Returns the snippets with a 'direction' key added."""
+    """Attach directions to each snippet:
+      • ``direction``        — resolved (coach blind label → shadow). Feeds the
+        RANKING (challenge/threat term).
+      • ``coach_direction``  — COACH label ONLY (no shadow). Gates the
+        BREAKTHROUGH badge: a breakthrough must be coach-CONFIRMED (founder —
+        the model's guess never surfaces a badge to the user)."""
     from services.challenge_threat import resolve_direction
     try:
         from services.learning_serve import predict_direction
@@ -255,7 +259,11 @@ def _resolve_take_directions(snippets: list, coach_labels: dict) -> list:
                 shadow = (pred or {}).get("label")
             except Exception:
                 shadow = None
-        out.append({**s, "direction": resolve_direction(coach, shadow)})
+        out.append({
+            **s,
+            "direction": resolve_direction(coach, shadow),
+            "coach_direction": resolve_direction(coach, None),  # coach-only
+        })
     return out
 
 
@@ -285,9 +293,11 @@ def build_best_presentation(arc_id: Optional[str], *, database=None) -> dict:
         }
         directed = _resolve_take_directions(snippets, coach_labels)
         from services.challenge_threat import detect_breakthroughs
+        # COACH-CONFIRMED breakthroughs only (gate on coach_direction, not the
+        # shadow-resolved direction) — the badge never surfaces a model guess.
         breakthroughs = detect_breakthroughs([
             {"id": s.get("id"), "start_offset_ms": s.get("start_offset_ms"),
-             "direction": s.get("direction")}
+             "direction": s.get("coach_direction")}
             for s in directed
         ])
         for s in directed:
