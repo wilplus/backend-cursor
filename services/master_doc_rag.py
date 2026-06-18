@@ -172,6 +172,18 @@ Because public speaking is, in the end, about being in public: real rooms, real 
 
 That's the arrangement. We give you the tool and the push; the real growth happens out there, with people, where it always has.
 
+Getting the best results
+
+A few practical things make every iteration count.
+
+Start simple, then iterate. Don't wait until your presentation is perfect to record it. Start with a very simple version, record it, and try saying it out loud — the act of saying it is how you find what's missing. You'll hear the gaps, adjust the presentation, upload it again, and record again. Say it, spot what's off, adjust, re-record: that loop is the work. The best presentation is the one you arrived at after a few honest passes, not the one you happened to get right on the first try.
+
+Keep your slides uncluttered. A good slide isn't crowded — it has everything it needs and nothing it doesn't. A busy slide pulls attention away from you, and you're the thing the room came to hear. Simple graphics, only what the moment requires.
+
+Change something between takes. Don't record three takes in a row from the same chair. Change the ambience: go for a walk and rehearse while you walk, then record again walking. Walking leaves you a little short of breath, and that shortness of breath is close to what stress does to you during a real presentation — so recording in that state is good practice, not a problem. Do some physical exercise between recordings — a few jumping jacks, move your body, get your heart up before a take. When something changes between recordings, we can actually spot your breakthrough moments — the points where you turn stress into charisma — and the things that lower your stress and put you in a good frame to present.
+
+Don't give up after one take. One recording isn't the finish line; it's the first data point. Try another. Adjust the presentation. Record again. The breakthroughs show up across takes, not within a single one.
+
 Pricing
 
 Pay per iteration — $5. One iteration is one full cycle: you submit, a human analyses it, and you get back a personalized recommendation and whatever that specific step calls for. Sometimes that's a written breakdown. Sometimes a short video. Sometimes a task to go practice in the real world. The format depends on what you need at that point — the work is tailored, not templated.
