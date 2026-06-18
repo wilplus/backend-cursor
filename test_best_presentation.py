@@ -236,6 +236,22 @@ class BuildTests(unittest.TestCase):
         out = bp.build_best_presentation("arc1", database=self._db())
         self.assertFalse(out["slides"][0]["edited"])
 
+    def test_payload_carries_presentation_ref_and_slide_body(self):
+        # FE renders the deck via presentation_ref (PDF) or title/body fallback.
+        sessions = [{
+            "id": "s1", "take_index": 1,
+            "intake_context": {
+                "slides": [{"title": "S1", "body": "the body"}],
+                "slide_advances": [{"index": 0, "t_ms": 0}],
+                "presentation_ref": "https://deck.pdf",
+            },
+        }]
+        snips = {"s1": [{"id": "a", "start_offset_ms": 0, "transcript": "line",
+                         "storage_path": "s3://a", "metrics": {"overall_score": 0.5}}]}
+        out = bp.build_best_presentation("arc1", database=_FakeDB(sessions, snips, {}))
+        self.assertEqual(out["presentation_ref"], "https://deck.pdf")
+        self.assertEqual(out["slides"][0]["body"], "the body")
+
     def test_build_empty_arc(self):
         empty = _FakeDB([], {}, {})
         out = bp.build_best_presentation("arc1", database=empty)
