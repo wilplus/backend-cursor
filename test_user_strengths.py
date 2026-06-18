@@ -106,6 +106,27 @@ class StrengthsV2Tests(unittest.TestCase):
         # features and rank carried through on general moments too
         self.assertEqual(data["general"][0]["features"], {"speech_rate": 110})
 
+    def test_uncoached_presentation_appears_pre_coach(self):
+        # Founder 2026-06-18: a freshly-recorded deck appears on Trainings even
+        # with NO coach strong lines — deck + take + arc_id present, best_lines
+        # empty (they layer in on publish). Only patches the new lab-list source.
+        self._patch("v2_list_user_lab_sessions", lambda uid: [
+            {"id": "rec1", "created_at": "2026-06-20T00:00:00Z", "arc_id": "arc-x",
+             "intake_context": {
+                 "topic": "Brand new talk",
+                 "slides": [{"title": "New", "body": "deck"}],
+                 "presentation_ref": "https://x/rec1.pdf",
+                 "slide_advances": [{"index": 0, "t_ms": 0}]}},
+        ])
+        _, data = self._get()
+        by_arc = {p.get("arc_id"): p for p in data["presentations"]}
+        self.assertIn("arc-x", by_arc)               # the un-coached deck shows up
+        new_pres = by_arc["arc-x"]
+        self.assertEqual(new_pres["presentation_ref"], "https://x/rec1.pdf")
+        self.assertEqual(new_pres["best_lines"], [])  # no coach lines yet
+        self.assertEqual(len(new_pres["takes"]), 1)
+        self.assertEqual(new_pres["takes"][0]["session_id"], "rec1")
+
     def test_stable_presentation_id_groups_by_content_not_url(self):
         # t1 and t2 have DIFFERENT presentation_ref URLs but the SAME deck text
         # → must group under ONE presentation.
