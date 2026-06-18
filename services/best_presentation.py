@@ -200,6 +200,8 @@ def compose_presentation(picks: dict, slides: list) -> list:
             out.append({
                 "index": i,
                 "title": slide.get("title") or "",
+                # slide body — the text-slide fallback when there's no deck PDF.
+                "body": slide.get("body") or "",
                 "text": edited.get(i) or verbatim,  # light-edit, else verbatim
                 "audio_ref": pick.get("audio_ref"),
                 "take_index": pick.get("take_index"),
@@ -215,6 +217,7 @@ def compose_presentation(picks: dict, slides: list) -> list:
         else:
             out.append({
                 "index": i, "title": slide.get("title") or "",
+                "body": slide.get("body") or "",
                 "text": "", "audio_ref": None,
                 "take_index": None, "breakthrough": False,
                 "breakthrough_note": None,
@@ -278,6 +281,7 @@ def build_best_presentation(arc_id: Optional[str], *, database=None) -> dict:
 
     candidates = []
     canonical_slides: list = []
+    canonical_presentation_ref = None
     for sess in sessions:
         sid = sess.get("id")
         ctx = sess.get("intake_context") if isinstance(sess.get("intake_context"), dict) else {}
@@ -285,6 +289,10 @@ def build_best_presentation(arc_id: Optional[str], *, database=None) -> dict:
         advances = ctx.get("slide_advances")
         if slides and len(slides) >= len(canonical_slides):
             canonical_slides = slides  # most-complete deck wins
+            # carry that take's deck PDF (if any) so the FE renders real pages.
+            canonical_presentation_ref = ctx.get("presentation_ref")
+        elif canonical_presentation_ref is None and ctx.get("presentation_ref"):
+            canonical_presentation_ref = ctx.get("presentation_ref")
         take_index = sess.get("take_index")
         snippets = db.get_snippets_by_session(sid) if sid else []
         coach_labels = {
@@ -339,6 +347,9 @@ def build_best_presentation(arc_id: Optional[str], *, database=None) -> dict:
     return {
         "ready": progress["ready"],
         "progress": progress,
+        # the deck PDF so the FE renders real slide pages (null → text-slide
+        # fallback from each slide's title/body).
+        "presentation_ref": canonical_presentation_ref,
         "slides": slides_payload,
     }
 
