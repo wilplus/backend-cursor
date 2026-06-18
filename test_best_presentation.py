@@ -236,6 +236,27 @@ class BuildTests(unittest.TestCase):
         out = bp.build_best_presentation("arc1", database=self._db())
         self.assertFalse(out["slides"][0]["edited"])
 
+    def test_presentation_ref_not_clobbered_by_later_take_without_it(self):
+        # take 1 has the deck PDF; take 2 (equal slides) dropped it → the ref
+        # must SURVIVE (first non-null wins, never clobbered to None).
+        sessions = [
+            {"id": "s1", "take_index": 1, "intake_context": {
+                "slides": [{"title": "S1", "body": "b"}],
+                "slide_advances": [{"index": 0, "t_ms": 0}],
+                "presentation_ref": "https://deck.pdf"}},
+            {"id": "s2", "take_index": 2, "intake_context": {
+                "slides": [{"title": "S1", "body": "b"}],
+                "slide_advances": [{"index": 0, "t_ms": 0}]}},  # no ref
+        ]
+        snips = {
+            "s1": [{"id": "a", "start_offset_ms": 0, "transcript": "x",
+                    "storage_path": "s3://a", "metrics": {"overall_score": 0.5}}],
+            "s2": [{"id": "b", "start_offset_ms": 0, "transcript": "y",
+                    "storage_path": "s3://b", "metrics": {"overall_score": 0.5}}],
+        }
+        out = bp.build_best_presentation("arc1", database=_FakeDB(sessions, snips, {}))
+        self.assertEqual(out["presentation_ref"], "https://deck.pdf")
+
     def test_payload_carries_presentation_ref_and_slide_body(self):
         # FE renders the deck via presentation_ref (PDF) or title/body fallback.
         sessions = [{

@@ -7521,8 +7521,18 @@ def v2_user_get_strengths():
                     "session_id": sid,
                     "take_number": take_number[sid],
                     "created_at": sess_meta[sid]["created_at"],
+                    # the deck PDF for this take (library renders slides from it).
+                    "presentation_ref": sess_meta[sid]["ctx"].get("presentation_ref"),
                     "slides": _build_take(sid),
                 })
+
+            # Group-level ref: the FIRST NON-NULL across takes (a re-take may
+            # have dropped it) so the library always gets a URL. FE reads the
+            # group, falling back to a take — either level works.
+            _pres_ref = next(
+                (t["presentation_ref"] for t in takes if t["presentation_ref"]),
+                None,
+            )
 
             # best_lines: per slide_index, the single snippet with the HIGHEST
             # coach-adjusted power_score across all takes (the power phrase for
@@ -7558,7 +7568,7 @@ def v2_user_get_strengths():
 
             presentations.append({
                 "presentation_id": pid,
-                "presentation_ref": latest_meta["ctx"].get("presentation_ref"),
+                "presentation_ref": _pres_ref,
                 "topic": latest_meta["ctx"].get("topic") or "",
                 "slides": [
                     {
