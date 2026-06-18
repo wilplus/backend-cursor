@@ -153,6 +153,16 @@ class CompareTakesTests(unittest.TestCase):
         self.assertIsNone(self._cmp({}, {}))
 
 
+class SystemPromptLanguageTests(unittest.TestCase):
+    def test_note_must_match_the_users_language(self):
+        # A Polish read → a Polish coach note; the prompt pins the note to the
+        # transcript's language (founder 2026-06-18).
+        from services.coach_comment_drafter import _system_prompt
+        sp = _system_prompt().lower()
+        self.assertIn("same language", sp)
+        self.assertIn("transcript", sp)
+
+
 class GenerateCoachNoteDraftTests(unittest.TestCase):
     def _gen(self, transcript, slide=_SLIDE, metrics=None, **kw):
         from services.coach_comment_drafter import generate_coach_note_draft
