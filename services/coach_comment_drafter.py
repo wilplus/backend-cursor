@@ -79,8 +79,13 @@ def _system_prompt() -> str:
         "4. When the prompt gives a comparison to previous takes, mention it.\n"
         "5. Give ONE thing that's working and ONE thing to improve next.\n"
         "6. Under 120 words. 2-4 emojis max. Encouragement first, correction "
-        "second.\n\n"
-        "FORMAT — short emoji-led lines, e.g.:\n" + _STYLE_EXAMPLE +
+        "second.\n"
+        "7. LANGUAGE: write the ENTIRE note in the SAME language the user spoke "
+        "in — match the transcript's language. A Polish transcript gets a "
+        "Polish note, a Spanish one a Spanish note, and so on. Never default to "
+        "English unless the user spoke English.\n\n"
+        "FORMAT — short emoji-led lines (the example is English; mirror its "
+        "shape in the user's language), e.g.:\n" + _STYLE_EXAMPLE +
         "\n\nOUTPUT: strict JSON with key \"coach_note\" only."
     )
 
