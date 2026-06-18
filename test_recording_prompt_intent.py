@@ -16,10 +16,11 @@ Two surfaces ship the "record here" gesture and both used to break:
      LLM responded to "can I just record here?" with the camera-decline
      template — even though the chat endpoint accepts a multipart
      audio_file and dispatches it to casual_voice_analytics. RULE H
-     now carves the in-app mic out; new RULE I detects record intent
-     and sets show_record_ui=true. The second test class verifies the
-     payload flows that flag through and that the answer never
-     borrows the camera-decline language.
+     now carves the in-app mic out; RULE I owns the record path. NOTE:
+     show_record_ui is now FORCED FALSE in code (the in-app mic was
+     removed — the official-recording button is always present), so the
+     tests verify it stays false even when the model returns true, and
+     that the answer never borrows the camera-decline language.
 
 Tests are pure-Python: the state-machine tests work against the
 prompt builder + schema directly (no LLM call), and the RAG tests
@@ -302,19 +303,21 @@ class TestMasterDocRagRecordIntent(unittest.TestCase):
         self._openai_module.OpenAIService = _factory
         return captured
 
-    def test_record_intent_sets_show_record_ui_and_avoids_camera_decline(self):
-        """answer_question on 'can I just record it here' must return
-        show_record_ui=True and an answer that does NOT borrow the
-        camera-decline template."""
+    def test_record_intent_keeps_show_record_ui_false_and_avoids_camera_decline(self):
+        """answer_question on 'can I just record it here' keeps
+        show_record_ui=FALSE (forced in code — the in-app mic was removed; the
+        official-recording button is always present) EVEN when the model returns
+        true, and the answer does NOT borrow the camera-decline template."""
         canned = json.dumps({
             "answer": "Sure — tap the mic to record.",
-            "show_record_ui": True,
+            "show_record_ui": True,  # the model's value is ignored now
         })
         self._install_fake(canned)
         payload, _debug = master_doc_rag.answer_question(
             "can I just record it here"
         )
-        self.assertTrue(payload["show_record_ui"])
+        # Always false — the model's true is overridden in code.
+        self.assertFalse(payload["show_record_ui"])
         # Spec invariant: must not echo the camera-decline template
         # even if the user says something that brushes capabilities.
         lowered = payload["answer"].lower()

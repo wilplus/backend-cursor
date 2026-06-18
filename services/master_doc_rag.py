@@ -975,7 +975,12 @@ def _answer_via_router(
     answer = (parsed.get("answer") or "").strip()
     if not answer:
         return None
-    show_record_ui = bool(parsed.get("show_record_ui"))
+    # Always false: the in-app mic was removed — the "Start official recording"
+    # button is permanently present, so there is no per-turn record affordance
+    # to toggle. The prompt already says "show_record_ui=false ALWAYS"; the model
+    # occasionally disobeys on strong record-intent, so we force it in code (this
+    # is the documented intent + kills the MDR-11 probe flake).
+    show_record_ui = False
     suggested_action = parsed.get("suggested_action")
     if suggested_action not in ("strong_sides", "trainings"):
         suggested_action = None
@@ -1151,7 +1156,12 @@ def answer_question(
     # Defensive coercion — strict schema should guarantee bool,
     # but the wire could in theory carry truthy strings on a model
     # regression. Normalise to a real bool.
-    show_record_ui = bool(parsed.get("show_record_ui"))
+    # Always false: the in-app mic was removed — the "Start official recording"
+    # button is permanently present, so there is no per-turn record affordance
+    # to toggle. The prompt already says "show_record_ui=false ALWAYS"; the model
+    # occasionally disobeys on strong record-intent, so we force it in code (this
+    # is the documented intent + kills the MDR-11 probe flake).
+    show_record_ui = False
     suggested_action = parsed.get("suggested_action")
     if suggested_action not in ("strong_sides", "trainings"):
         suggested_action = None  # normalise anything off-enum to null
