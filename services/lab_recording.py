@@ -506,6 +506,43 @@ def build_readout_from_session(
                 snip_out["rank"] = metrics.get("rank")
         out_snips.append(snip_out)
 
+    # COACH-CONFIRMED breakthrough markers (F2 — the "you turned your stress
+    # into charisma" badge on the user readout). A challenge snippet following a
+    # threat one, BOTH coach-labelled, within this take. Part of the coach
+    # insights layer, so gated on include_insights. Best-effort: false/null when
+    # the coach hasn't labelled (no shadow guesses surface here — coach only).
+    if include_insights:
+        try:
+            from services.challenge_threat import (
+                detect_breakthroughs, resolve_direction,
+            )
+            from services.best_presentation import _moment_note
+            coach_labels = {
+                str(r.get("snippet_id")): r.get("value")
+                for r in (db.get_training_labels(session_id) or [])
+            }
+            bt_ids = detect_breakthroughs([
+                {"id": s.get("id"), "start_offset_ms": s.get("start_offset_ms"),
+                 "direction": resolve_direction(
+                     coach_labels.get(str(s.get("id"))), None)}
+                for s in snippets
+            ])
+            notes = {str(s.get("id")): _moment_note(s) for s in snippets}
+            for so in out_snips:
+                is_bt = so.get("id") in bt_ids
+                so["breakthrough"] = is_bt
+                so["breakthrough_note"] = (
+                    (notes.get(str(so.get("id"))) or None) if is_bt else None
+                )
+        except Exception as _bt_err:
+            logger.warning(
+                "readout: breakthrough markers failed sid=%s: %s",
+                session_id, _bt_err,
+            )
+            for so in out_snips:
+                so.setdefault("breakthrough", False)
+                so.setdefault("breakthrough_note", None)
+
     result: dict = {"snippets": out_snips}
 
     # Slide-deck context (UX Wave 4 BE-S6a) — session-level so the report can
