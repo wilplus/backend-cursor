@@ -63,6 +63,32 @@ class ReadoutFromSessionTests(unittest.TestCase):
                 "sess1", include_insights=include_insights,
             )
 
+    def test_coach_confirmed_breakthrough_marker(self):
+        # threat then challenge (both coach-labelled, in time order) → the
+        # challenge snippet carries the breakthrough badge; the threat doesn't.
+        from services import lab_recording as mod
+        from services.db import db
+        snips = [
+            _snippet("s1", start_offset_ms=0),
+            _snippet("s2", start_offset_ms=5000),
+        ]
+        labels = [
+            {"snippet_id": "s1", "value": "threat"},
+            {"snippet_id": "s2", "value": "challenge"},
+        ]
+        with patch.object(db, "get_snippets_by_session", return_value=snips), \
+             patch.object(db, "v2_get_session_by_id", return_value={}), \
+             patch.object(db, "get_training_labels", return_value=labels):
+            out = mod.build_readout_from_session("sess1", include_insights=True)
+        by_id = {s["id"]: s for s in out["snippets"]}
+        self.assertTrue(by_id["s2"]["breakthrough"])
+        self.assertFalse(by_id["s1"]["breakthrough"])
+
+    def test_no_breakthrough_without_coach_labels(self):
+        out = self._build([_snippet("a")])  # MagicMock labels → empty
+        self.assertFalse(out["snippets"][0]["breakthrough"])
+        self.assertIsNone(out["snippets"][0]["breakthrough_note"])
+
     def test_rebuilds_features_and_persisted_stickiness(self):
         out = self._build([_snippet("a")])
         snip = out["snippets"][0]
