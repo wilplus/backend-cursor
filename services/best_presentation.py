@@ -289,9 +289,9 @@ def build_best_presentation(arc_id: Optional[str], *, database=None) -> dict:
         advances = ctx.get("slide_advances")
         if slides and len(slides) >= len(canonical_slides):
             canonical_slides = slides  # most-complete deck wins
-            # carry that take's deck PDF (if any) so the FE renders real pages.
-            canonical_presentation_ref = ctx.get("presentation_ref")
-        elif canonical_presentation_ref is None and ctx.get("presentation_ref"):
+        # Deck PDF = the FIRST NON-NULL across takes — NEVER clobbered to None
+        # by a re-take that dropped presentation_ref (so the FE renders pages).
+        if canonical_presentation_ref is None and ctx.get("presentation_ref"):
             canonical_presentation_ref = ctx.get("presentation_ref")
         take_index = sess.get("take_index")
         snippets = db.get_snippets_by_session(sid) if sid else []
