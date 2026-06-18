@@ -3388,7 +3388,7 @@ class DatabaseService:
                 self.client.table("v2_sessions")
                 .select("id, recording_1_id, intake_context, status, "
                         "created_at, guest_claimed_at, results_published_at, "
-                        "insights_payload")
+                        "insights_payload, arc_id, take_index")
                 .eq("user_id", user_id)
                 .eq("source", "audit_upload")
                 .order("created_at", desc=True)
@@ -3400,6 +3400,24 @@ class DatabaseService:
             err_low = str(e).lower()
             if "source" in err_low and "pgrst" in err_low:
                 return []
+            # arc_id/take_index are a later migration — fall back to the base
+            # select if they're not present yet (pre add_explore_arc.sql).
+            if "arc_id" in err_low or "take_index" in err_low:
+                try:
+                    res = (
+                        self.client.table("v2_sessions")
+                        .select("id, recording_1_id, intake_context, status, "
+                                "created_at, guest_claimed_at, "
+                                "results_published_at, insights_payload")
+                        .eq("user_id", user_id)
+                        .eq("source", "audit_upload")
+                        .order("created_at", desc=True)
+                        .limit(limit)
+                        .execute()
+                    )
+                    return res.data or []
+                except Exception:
+                    return []
             logger.warning(
                 "v2_list_user_lab_sessions failed user=%s err=%s", user_id, e,
             )

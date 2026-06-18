@@ -7386,7 +7386,7 @@ def v2_user_get_strengths():
         uid = str(request.user_id)
         library = db.get_strong_sides_library(uid, tag="strong") or []
 
-        # Bucket library rows by session.
+        # Bucket library rows by session (the coach's STRONG lines).
         by_session: dict = {}
         for row in library:
             sid = row.get("session_id")
@@ -7394,26 +7394,39 @@ def v2_user_get_strengths():
                 continue
             by_session.setdefault(sid, []).append(row)
 
-        # Load session metadata + rank lookups ONCE per session.
+        # PRE-COACH inclusion (founder 2026-06-18): a presentation appears on
+        # Trainings the moment it's recorded — not only after the coach
+        # publishes. Seed by_session with EVERY lab session (empty rows = no
+        # strong lines yet; they layer in on publish). Use the list rows as the
+        # session source so we don't re-fetch each one.
+        lab_rows = db.v2_list_user_lab_sessions(uid) or []
+        sess_rows = {str(s.get("id")): s for s in lab_rows if s.get("id")}
+        for sid in sess_rows:
+            by_session.setdefault(sid, [])
+
+        # Load session metadata + rank lookups per session.
         sess_meta: dict = {}
         for sid in by_session:
-            session = db.v2_get_session_by_id(sid) or {}
+            session = sess_rows.get(sid) or db.v2_get_session_by_id(sid) or {}
             ctx = session.get("intake_context") if isinstance(session.get("intake_context"), dict) else {}
-            try:
-                snippets = db.get_snippets_by_session(sid) or []
-            except Exception:
-                snippets = []
             ranks: dict = {}
             sigs: dict = {}  # coach-adjusted power_score inputs per snippet
-            for s in snippets:
-                m = s.get("metrics") if isinstance(s.get("metrics"), dict) else {}
-                sid_s = str(s.get("id"))
-                ranks[sid_s] = m.get("rank") if isinstance(m, dict) else None
-                _ss = m.get("slide_stickiness") if isinstance(m, dict) else None
-                sigs[sid_s] = {
-                    "overall_score": m.get("overall_score") if isinstance(m, dict) else None,
-                    "slide_stickiness": (_ss or {}).get("composite") if isinstance(_ss, dict) else None,
-                }
+            # Snippets (for power_score) are only needed where the coach tagged
+            # STRONG lines — skip the read for un-coached sessions (perf).
+            if by_session[sid]:
+                try:
+                    snippets = db.get_snippets_by_session(sid) or []
+                except Exception:
+                    snippets = []
+                for s in snippets:
+                    m = s.get("metrics") if isinstance(s.get("metrics"), dict) else {}
+                    sid_s = str(s.get("id"))
+                    ranks[sid_s] = m.get("rank") if isinstance(m, dict) else None
+                    _ss = m.get("slide_stickiness") if isinstance(m, dict) else None
+                    sigs[sid_s] = {
+                        "overall_score": m.get("overall_score") if isinstance(m, dict) else None,
+                        "slide_stickiness": (_ss or {}).get("composite") if isinstance(_ss, dict) else None,
+                    }
             slides = ctx.get("slides") or []
             sess_meta[sid] = {
                 "ctx": ctx,
@@ -7421,6 +7434,7 @@ def v2_user_get_strengths():
                 "sigs": sigs,
                 "slides": slides,
                 "created_at": session.get("created_at") or "",
+                "arc_id": session.get("arc_id"),
                 "presentation_id": _presentation_id_from_slides(slides),
             }
 
@@ -7523,16 +7537,20 @@ def v2_user_get_strengths():
                     "created_at": sess_meta[sid]["created_at"],
                     # the deck PDF for this take (library renders slides from it).
                     "presentation_ref": sess_meta[sid]["ctx"].get("presentation_ref"),
+                    # the explore arc this take belongs to (→ best-presentation).
+                    "arc_id": sess_meta[sid].get("arc_id"),
                     "slides": _build_take(sid),
                 })
 
-            # Group-level ref: the FIRST NON-NULL across takes (a re-take may
-            # have dropped it) so the library always gets a URL. FE reads the
-            # group, falling back to a take — either level works.
+            # Group-level ref + arc: the FIRST NON-NULL across takes (a re-take
+            # may have dropped the ref) so the library always gets a URL, and the
+            # FE can open the best-presentation. FE reads the group, falling back
+            # to a take — either level works.
             _pres_ref = next(
                 (t["presentation_ref"] for t in takes if t["presentation_ref"]),
                 None,
             )
+            _arc_id = next((t["arc_id"] for t in takes if t.get("arc_id")), None)
 
             # best_lines: per slide_index, the single snippet with the HIGHEST
             # coach-adjusted power_score across all takes (the power phrase for
@@ -7569,6 +7587,7 @@ def v2_user_get_strengths():
             presentations.append({
                 "presentation_id": pid,
                 "presentation_ref": _pres_ref,
+                "arc_id": _arc_id,
                 "topic": latest_meta["ctx"].get("topic") or "",
                 "slides": [
                     {
