@@ -324,6 +324,18 @@ def build_best_presentation(arc_id: Optional[str], *, database=None) -> dict:
 
     picks = select_best_per_slide(candidates)
     slides_payload = compose_presentation(picks, canonical_slides)
+
+    # Apply the user's saved per-slide edits (the pencil) — they override the
+    # composed text and stick across recompositions. `edited` tells the FE.
+    edits = db.get_best_presentation_edits(arc_id) or {}
+    for s in slides_payload:
+        ov = edits.get(s.get("index"))
+        if isinstance(ov, str) and ov.strip():
+            s["text"] = ov
+            s["edited"] = True
+        else:
+            s["edited"] = False
+
     return {
         "ready": progress["ready"],
         "progress": progress,

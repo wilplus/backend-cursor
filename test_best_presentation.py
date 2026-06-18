@@ -137,10 +137,12 @@ class ProgressTests(unittest.TestCase):
 
 
 class _FakeDB:
-    def __init__(self, sessions, snippets_by_session, labels_by_session):
+    def __init__(self, sessions, snippets_by_session, labels_by_session,
+                 edits=None):
         self._sessions = sessions
         self._snips = snippets_by_session
         self._labels = labels_by_session
+        self._edits = edits or {}
 
     def get_arc_sessions(self, arc_id):
         return list(self._sessions)
@@ -150,6 +152,9 @@ class _FakeDB:
 
     def get_training_labels(self, sid):
         return list(self._labels.get(sid, []))
+
+    def get_best_presentation_edits(self, arc_id):
+        return dict(self._edits)
 
 
 class BuildTests(unittest.TestCase):
@@ -217,6 +222,19 @@ class BuildTests(unittest.TestCase):
         self.assertFalse(slide0["breakthrough"])
         self.assertIsNone(slide0["breakthrough_note"])
         self.assertEqual(slide0["text"], "nervous open")  # acoustic fallback
+
+    def test_saved_edit_overrides_composed_text(self):
+        # A pencil-edit for slide 0 overrides the composed text + flags edited.
+        db = self._db()
+        db._edits = {0: "my hand-edited line"}
+        out = bp.build_best_presentation("arc1", database=db)
+        slide0 = out["slides"][0]
+        self.assertEqual(slide0["text"], "my hand-edited line")
+        self.assertTrue(slide0["edited"])
+
+    def test_unedited_slides_flag_false(self):
+        out = bp.build_best_presentation("arc1", database=self._db())
+        self.assertFalse(out["slides"][0]["edited"])
 
     def test_build_empty_arc(self):
         empty = _FakeDB([], {}, {})
