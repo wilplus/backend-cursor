@@ -8518,6 +8518,19 @@ def v2_coach_get_session(session_id):
         # field opens PRE-FILLED with (frozen; the coach types over it). {} when
         # the migration hasn't run → blank field, same as before.
         ai_drafts = db.get_ai_draft_coach_notes_by_session(session_id)
+        # §1.A/§1.B (FE handoff 2026-06-19) — sane defaults for an UNTOUCHED
+        # snippet (no coach draft row yet): surface it by default (opt-out
+        # surface — every snippet reaches the user unless the coach hides it)
+        # and open the comment field pre-filled with the AI-Commentator draft.
+        # BOTH are READ-TIME only: nothing is persisted here, so the AI draft
+        # stays frozen and re-seeds on every reopen until the coach saves over
+        # it. A coach who UN-surfaced persists surfaced=false in a draft row,
+        # which is in drafted_ids → respected (not re-defaulted).
+        drafted_ids = {
+            str(d.get("snippet_id"))
+            for d in (db.get_coach_snippet_drafts(session_id) or [])
+            if d.get("snippet_id") is not None
+        }
 
         snippets = []
         for snip in (readout.get("snippets") or []):
@@ -8525,7 +8538,16 @@ def v2_coach_get_session(session_id):
             _coach_state = dict(cstate.get(_sid, {
                 "direction_label": None, "note": "", "tag": None, "surfaced": False,
             }))
-            _coach_state["ai_draft_coach_note"] = ai_drafts.get(_sid)
+            _ai_draft = ai_drafts.get(_sid)
+            _coach_state["ai_draft_coach_note"] = _ai_draft
+            # §1.A default-surfaced: no draft row → shown.
+            if _sid not in drafted_ids:
+                _coach_state["surfaced"] = True
+            # §1.B promote the AI draft into the editable note when the coach
+            # hasn't authored one yet. ai_draft_coach_note stays in the payload
+            # as the immutable process-time draft (provenance).
+            if not (_coach_state.get("note") or "").strip() and _ai_draft:
+                _coach_state["note"] = _ai_draft
             snippets.append({
                 "id": snip.get("id"),
                 "index": snip.get("index"),

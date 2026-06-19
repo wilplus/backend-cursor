@@ -52,7 +52,9 @@ def validate_insights_payload(body: Any) -> dict:
     Enforces the publish contract (§3.10, design-resolved):
       - snippet_notes: a list with ≥1 entry (the library floor)
       - every entry: snippet_id (non-empty str), note (non-empty,
-        ≤2000 chars), tag ∈ {strong, to_work_on}
+        ≤2000 chars); tag ∈ {strong, to_work_on} is OPTIONAL — a
+        missing/blank tag defaults to "strong" (§1.C); an explicit
+        wrong value still raises
       - per entry (PR-2, OPTIONAL): when (str ≤1000, empty→None),
         examples (list[str], each ≤500, ≤10 items, empties dropped)
       - overall_message: OPTIONAL str (≤4000), empty/whitespace → None
@@ -120,7 +122,14 @@ def validate_insights_payload(body: Any) -> dict:
                 "characters or fewer"
             )
 
+        # tag — OPTIONAL since the §1.C publish-floor relaxation (FE handoff
+        # 2026-06-19): a missing / null / blank tag defaults to "strong" (the
+        # lenient floor — a present note is what gates publish, not the coach
+        # remembering to tag). An explicit WRONG value still 422s so a typo
+        # surfaces instead of silently flipping to strong.
         tag = n.get("tag")
+        if tag is None or (isinstance(tag, str) and not tag.strip()):
+            tag = "strong"
         if tag not in VALID_TAGS:
             raise InsightsPayloadError(
                 f"snippet_notes[{i}].tag: must be one of "

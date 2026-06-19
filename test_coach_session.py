@@ -82,12 +82,14 @@ class CoachSessionReadTests(unittest.TestCase):
         self.assertEqual(cs["note"], "strong open")
         self.assertEqual(cs["tag"], "strong")
         self.assertTrue(cs["surfaced"])
-        # snippet "b": nothing authored → empty coach_state
+        # snippet "b": nothing authored → empty coach_state, BUT surfaced by
+        # default (§1.A opt-out-surface, FE handoff 2026-06-19 — no draft row
+        # → shown). No AI draft for "b" either, so the note stays empty.
         cb = snips["b"]["coach_state"]
         self.assertIsNone(cb["direction_label"])
         self.assertEqual(cb["note"], "")
         self.assertIsNone(cb["tag"])
-        self.assertFalse(cb["surfaced"])
+        self.assertTrue(cb["surfaced"])
 
     def test_identity_stripped(self):
         status, data = self._get()
@@ -121,6 +123,21 @@ class CoachSessionReadTests(unittest.TestCase):
             "🎤 Warm open — your pace lands well.",
         )
         self.assertIsNone(snips["b"]["coach_state"]["ai_draft_coach_note"])
+
+    def test_ai_draft_promoted_into_empty_note(self):
+        # §1.B (FE handoff 2026-06-19) — an untouched snippet whose comment
+        # field is empty opens PRE-FILLED with the AI draft (read-time; not
+        # persisted). The immutable ai_draft_coach_note stays in the payload.
+        setattr(v2.db, "get_ai_draft_coach_notes_by_session",
+                lambda sid: {"a": "(a already authored)", "b": "🎤 Draft for b."})
+        status, data = self._get()
+        snips = {s["id"]: s for s in data["snippets"]}
+        # "b": untouched (no draft row) → note seeded from its AI draft
+        self.assertEqual(snips["b"]["coach_state"]["note"], "🎤 Draft for b.")
+        self.assertEqual(snips["b"]["coach_state"]["ai_draft_coach_note"],
+                         "🎤 Draft for b.")
+        # "a": already authored "strong open" → AI draft must NOT overwrite it
+        self.assertEqual(snips["a"]["coach_state"]["note"], "strong open")
 
     def test_snippet_shape_matches_fe(self):
         status, data = self._get()

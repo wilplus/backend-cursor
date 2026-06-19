@@ -67,11 +67,16 @@ class ValidateInsightsPayloadTests(unittest.TestCase):
 
     # ── Per-note validation ────────────────────────────────────────
 
-    def test_note_without_tag_rejected(self):
-        from services.insights_payload import InsightsPayloadError
-        with self.assertRaises(InsightsPayloadError) as cm:
-            self._v({"snippet_notes": [{"snippet_id": "s1", "note": "x"}]})
-        self.assertIn("tag", str(cm.exception))
+    def test_note_without_tag_defaults_strong(self):
+        # §1.C (FE handoff 2026-06-19): a missing/blank tag is no longer
+        # rejected — it defaults to "strong" (the lenient publish floor; a
+        # present note is what gates publish, not the tag).
+        out = self._v({"snippet_notes": [{"snippet_id": "s1", "note": "x"}]})
+        self.assertEqual(out["snippet_notes"][0]["tag"], "strong")
+        # a null tag defaults too
+        out2 = self._v({"snippet_notes": [
+            {"snippet_id": "s1", "note": "x", "tag": None}]})
+        self.assertEqual(out2["snippet_notes"][0]["tag"], "strong")
 
     def test_bad_tag_rejected(self):
         from services.insights_payload import InsightsPayloadError
