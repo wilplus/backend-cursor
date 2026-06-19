@@ -64,7 +64,9 @@ class PerSnippetSaveTests(unittest.TestCase):
         return True
 
     def _upsert_draft(self, sid, snip, fields, updated_by=None):
-        d = self.drafts.setdefault(snip, {"note": None, "tag": None, "surfaced": False})
+        # §1.A opt-out-surface — first write defaults surfaced=True (mirrors
+        # db.upsert_coach_snippet_draft). Coach UN-surface persists explicitly.
+        d = self.drafts.setdefault(snip, {"note": None, "tag": None, "surfaced": True})
         d.update(fields)
         return d
 
@@ -111,9 +113,17 @@ class PerSnippetSaveTests(unittest.TestCase):
         self.assertNotIn(SNIP, self.labels)                      # cleared
         self.assertIsNone(data["coach_state"]["direction_label"])
 
-    # ── surfaced defaults false ──
-    def test_note_does_not_auto_surface(self):
-        status, data = self._call({"note": "private context"})
+    # ── surfaced defaults TRUE (§1.A opt-out-surface) ──
+    def test_note_defaults_to_surfaced(self):
+        # A note-only save now reaches the user by default; the coach
+        # explicitly UN-surfaces to hide (§1.A FE handoff 2026-06-19).
+        status, data = self._call({"note": "shown by default"})
+        self.assertTrue(self.drafts[SNIP]["surfaced"])
+        self.assertTrue(data["coach_state"]["surfaced"])
+
+    def test_explicit_unsurface_persists(self):
+        # Coach hides a snippet: explicit surfaced=false sticks.
+        status, data = self._call({"note": "hide me", "surfaced": False})
         self.assertFalse(self.drafts[SNIP]["surfaced"])
         self.assertFalse(data["coach_state"]["surfaced"])
 

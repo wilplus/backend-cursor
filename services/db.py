@@ -9835,9 +9835,11 @@ class DatabaseService:
                 "snippet_id": snippet_id,
                 "note": base.get("note"),
                 "tag": base.get("tag"),
-                # Default false on first write — a snippet reaches the user
-                # only when the coach explicitly surfaces it (FE/spec default).
-                "surfaced": base.get("surfaced", False),
+                # Default TRUE on first write (§1.A opt-out-surface, FE handoff
+                # 2026-06-19): a snippet reaches the user by default; the coach
+                # UN-surfaces the ones to hide (explicit surfaced=false persists
+                # and is respected). Reverses the old opt-in-surface default.
+                "surfaced": base.get("surfaced", True),
                 "when_context": base.get("when_context"),
                 "examples": base.get("examples") or [],
                 "updated_by": updated_by,
