@@ -9314,14 +9314,21 @@ def _arc_owned_by_caller(arc_id):
 @require_auth
 def v2_explore_arc_best_presentation(arc_id):
     """Best-Presentation (willab Prompt D) — REPLACES the audit. After the arc's
-    3 takes, the user's strongest CHALLENGE delivery of each slide, lightly
-    stitched into 'ideal presentation' text, with breakthrough markers.
+    3 takes, the user's strongest-rated delivery of each slide (challenge lifts
+    the rating, threat lowers it), lightly stitched into 'ideal presentation'
+    text, with coach-confirmed breakthrough markers.
 
-    Challenge-only + SCORE-FREE (AC-9). Ownership: the arc must contain a
-    session owned by the caller, else 404.
+    SCORE-FREE (AC-9). Ownership: the arc must contain a session owned by the
+    caller, else 404. Not-ready (<3 takes) still returns 200 with populated
+    slides + progress.takes_remaining — the FE drives its 'need 3 takes' notice
+    off ready / takes_remaining (not off a 404 or an empty body).
 
-    Response 200 { arc_id, ready, progress:{takes_done,takes_target,ready},
-                   slides:[{index,title,text,audio_ref,take_index,breakthrough}] }
+    Response 200 {
+        arc_id, ready, presentation_ref,
+        progress: { takes_done, takes_target, takes_remaining, ready },
+        slides: [ { index, title, body, text, audio_ref, take_index,
+                    breakthrough, breakthrough_note, edited } ]
+    }
              404 NOT_FOUND · 500 V2_ERROR
     """
     try:
@@ -9375,7 +9382,8 @@ def v2_explore_arc_edit_slide(arc_id, index):
 def v2_explore_arc_progress(arc_id):
     """Cheap poll for the 'X takes to your ideal presentation' bar (Prompt D §5).
 
-    Response 200 { arc_id, takes_done, takes_target, ready } · 404 · 500
+    Response 200 { arc_id, takes_done, takes_target, takes_remaining, ready }
+             · 404 · 500
     """
     try:
         from services.best_presentation import presentation_progress
