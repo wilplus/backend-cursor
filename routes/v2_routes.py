@@ -9055,9 +9055,15 @@ def v2_lab_presentation_extract():
         if not data:
             return jsonify({"code": "INVALID_INPUT", "error": "file is empty"}), 400
         if len(data) > _PRESENTATION_MAX_MB * 1024 * 1024:
+            # Single source of truth for the FE "too big" popup: machine-
+            # readable code + the limit as a number (so the FE renders the
+            # message/limit without re-hardcoding it). On-message with the
+            # product's "keep slides simple" guidance — a lighter export, not
+            # silent server-side compression.
             return jsonify({
                 "code": "FILE_TOO_LARGE",
-                "error": f"file exceeds {_PRESENTATION_MAX_MB}MB",
+                "error": f"Deck is over {_PRESENTATION_MAX_MB} MB — export a lighter PDF and try again.",
+                "limit_mb": _PRESENTATION_MAX_MB,
             }), 413
 
         from services.deck_parser import extract_deck, DeckParseError
@@ -9143,7 +9149,8 @@ def v2_coach_create_audit():
         if len(data) > _PRESENTATION_MAX_MB * 1024 * 1024:
             return jsonify({
                 "code": "FILE_TOO_LARGE",
-                "error": f"file exceeds {_PRESENTATION_MAX_MB}MB",
+                "error": f"PDF is over {_PRESENTATION_MAX_MB} MB — export a lighter file and try again.",
+                "limit_mb": _PRESENTATION_MAX_MB,
             }), 413
 
         from services.coach_video_storage import put_coach_object_bytes
