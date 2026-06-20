@@ -7543,15 +7543,35 @@ def v2_user_get_strengths():
                     "slides": _build_take(sid),
                 })
 
-            # Group-level ref + arc: the FIRST NON-NULL across takes (a re-take
-            # may have dropped the ref) so the library always gets a URL, and the
-            # FE can open the best-presentation. FE reads the group, falling back
-            # to a take — either level works.
+            # Group-level ref: the FIRST NON-NULL across takes (a re-take may
+            # have dropped the ref) so the library always gets a URL.
             _pres_ref = next(
                 (t["presentation_ref"] for t in takes if t["presentation_ref"]),
                 None,
             )
-            _arc_id = next((t["arc_id"] for t in takes if t.get("arc_id")), None)
+            # Group-level arc: the best-presentation reads ONE arc, but a deck
+            # re-recorded as a SEPARATE arc spreads its takes across multiple
+            # arc_ids (always-on mints a fresh arc per recording session). Pick
+            # the arc with the MOST takes — the most-developed sequence, most
+            # likely to be ready — NOT just the newest take's arc, which may be
+            # a stray 1-take re-record (that would make the FE's group take-count
+            # disagree with the overlay's per-arc count: "open" → "need 2 more").
+            # Single-arc decks are unaffected (one arc holds all takes). Tie →
+            # newest, since `takes` is newest-first.
+            _arc_counts: dict = {}
+            for _t in takes:
+                _aid = _t.get("arc_id")
+                if _aid:
+                    _arc_counts[_aid] = _arc_counts.get(_aid, 0) + 1
+            if _arc_counts:
+                _max_n = max(_arc_counts.values())
+                _arc_id = next(
+                    (t["arc_id"] for t in takes
+                     if t.get("arc_id") and _arc_counts[t["arc_id"]] == _max_n),
+                    None,
+                )
+            else:
+                _arc_id = None
 
             # best_lines: per slide_index, the single snippet with the HIGHEST
             # coach-adjusted power_score across all takes (the power phrase for

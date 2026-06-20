@@ -127,6 +127,33 @@ class StrengthsV2Tests(unittest.TestCase):
         self.assertEqual(len(new_pres["takes"]), 1)
         self.assertEqual(new_pres["takes"][0]["session_id"], "rec1")
 
+    def test_group_arc_id_picks_the_arc_with_most_takes(self):
+        # A deck re-recorded as a SEPARATE arc spreads takes across arc_ids.
+        # The group-level arc_id (what the FE opens the best-presentation with)
+        # must be the MOST-DEVELOPED arc (most takes), not the newest stray
+        # 1-take re-record — else the FE take-count and the overlay's per-arc
+        # count disagree ("open" → "need 2 more").
+        deck = [{"title": "Canon", "body": "deck"}]
+        adv = [{"index": 0, "t_ms": 0}]
+        self._patch("v2_list_user_lab_sessions", lambda uid: [
+            # arc-A: 2 takes; arc-B: 1 take (the newest). Same deck → one group.
+            {"id": "b1", "created_at": "2026-06-20T03:00:00Z", "arc_id": "arc-B",
+             "intake_context": {"topic": "T", "slides": deck,
+                                "presentation_ref": "https://x/b1.pdf",
+                                "slide_advances": adv}},
+            {"id": "a2", "created_at": "2026-06-20T02:00:00Z", "arc_id": "arc-A",
+             "intake_context": {"topic": "T", "slides": deck,
+                                "presentation_ref": "https://x/a2.pdf",
+                                "slide_advances": adv}},
+            {"id": "a1", "created_at": "2026-06-20T01:00:00Z", "arc_id": "arc-A",
+             "intake_context": {"topic": "T", "slides": deck,
+                                "presentation_ref": "https://x/a1.pdf",
+                                "slide_advances": adv}},
+        ])
+        _, data = self._get()
+        pres = next(p for p in data["presentations"] if len(p["takes"]) == 3)
+        self.assertEqual(pres["arc_id"], "arc-A")  # 2 takes beats arc-B's 1
+
     def test_stable_presentation_id_groups_by_content_not_url(self):
         # t1 and t2 have DIFFERENT presentation_ref URLs but the SAME deck text
         # → must group under ONE presentation.
