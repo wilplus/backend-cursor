@@ -179,6 +179,50 @@ class ValidateInsightsPayloadTests(unittest.TestCase):
         with self.assertRaises(InsightsPayloadError):
             self._v({"snippet_notes": [self._note(when="x" * (_MAX_WHEN_LEN + 1))]})
 
+    # ── breakthrough_video_ref (per-snippet coach video URL) ───────
+
+    def test_breakthrough_video_ref_default_none(self):
+        # Always present on the cleaned note, None when omitted.
+        out = self._v({"snippet_notes": [self._note()]})
+        self.assertIsNone(out["snippet_notes"][0]["breakthrough_video_ref"])
+
+    def test_breakthrough_video_ref_preserved(self):
+        url = "https://media.willpowerlab.com/coach/bt/abc.mp4"
+        out = self._v({"snippet_notes": [self._note(breakthrough_video_ref=url)]})
+        self.assertEqual(
+            out["snippet_notes"][0]["breakthrough_video_ref"], url
+        )
+
+    def test_breakthrough_video_ref_empty_to_none(self):
+        out = self._v({"snippet_notes": [
+            self._note(breakthrough_video_ref="   ")
+        ]})
+        self.assertIsNone(out["snippet_notes"][0]["breakthrough_video_ref"])
+
+    def test_breakthrough_video_ref_non_string_rejected(self):
+        from services.insights_payload import InsightsPayloadError
+        with self.assertRaises(InsightsPayloadError):
+            self._v({"snippet_notes": [self._note(breakthrough_video_ref=123)]})
+
+    def test_breakthrough_video_ref_non_url_rejected(self):
+        # It lands in a learner's <video> src — must be http(s), not
+        # javascript:/data:/a bare string.
+        from services.insights_payload import InsightsPayloadError
+        for bad in ("javascript:alert(1)", "data:video/mp4;base64,AAA", "clip.mp4"):
+            with self.assertRaises(InsightsPayloadError):
+                self._v({"snippet_notes": [
+                    self._note(breakthrough_video_ref=bad)
+                ]})
+
+    def test_breakthrough_video_ref_over_long_rejected(self):
+        from services.insights_payload import (
+            InsightsPayloadError, _MAX_VIDEO_REF_LEN,
+        )
+        with self.assertRaises(InsightsPayloadError):
+            self._v({"snippet_notes": [self._note(
+                breakthrough_video_ref="h" * (_MAX_VIDEO_REF_LEN + 1),
+            )]})
+
 
 if __name__ == "__main__":
     unittest.main()

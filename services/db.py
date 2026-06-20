@@ -9845,7 +9845,16 @@ class DatabaseService:
                 "updated_by": updated_by,
                 "updated_at": now_iso,
             }
-            for k in ("note", "tag", "surfaced", "when_context", "examples"):
+            # breakthrough_video_ref is NOT re-asserted from base — it's only
+            # written when the coach actually changes it (merge loop below). So
+            # a normal note/tag save never references the column, and ON CONFLICT
+            # preserves any existing video. Keeps coach saves working even if
+            # this ships before add_breakthrough_video_ref_to_coach_snippet_drafts.sql
+            # is run (the column is touched only on a video-set save).
+            for k in (
+                "note", "tag", "surfaced", "when_context", "examples",
+                "breakthrough_video_ref",
+            ):
                 if k in fields:
                     row[k] = fields[k]
             res = (
@@ -9877,12 +9886,13 @@ class DatabaseService:
         if not session_id:
             return []
         try:
+            # select(*) (not an explicit column list) so a not-yet-migrated
+            # breakthrough_video_ref column never makes this read fail and wipe
+            # the drafts (which would break resume + publish assembly). Consumers
+            # read named keys via .get(), so extra columns are harmless.
             res = (
                 self.client.table("coach_snippet_drafts")
-                .select(
-                    "snippet_id, note, tag, surfaced, when_context, "
-                    "examples, updated_at"
-                )
+                .select("*")
                 .eq("session_id", session_id)
                 .execute()
             )

@@ -601,5 +601,12 @@ def build_readout_from_session(
                         "when": cn.get("when"),
                         "examples": cn.get("examples") or [],
                     }
+                    # Coach breakthrough video (top-level, beside `breakthrough`):
+                    # a public URL the FE drops into <video> next to the
+                    # breakthrough badge. Null when the coach attached none. The
+                    # explanation text is coach.note (no separate field).
+                    snip["breakthrough_video_ref"] = cn.get(
+                        "breakthrough_video_ref"
+                    )
 
     return result
