@@ -4479,6 +4479,7 @@ def _assemble_insights_from_drafts(session_id, overall_message):
             "tag": d.get("tag"),
             "when": d.get("when_context"),
             "examples": d.get("examples") or [],
+            "breakthrough_video_ref": d.get("breakthrough_video_ref"),
         })
     return {"overall_message": overall_message, "snippet_notes": notes}
 
@@ -8143,6 +8144,7 @@ def _coach_state_map(session_id):
             "note": (d.get("note") or ""),
             "tag": d.get("tag"),
             "surfaced": bool(d.get("surfaced")),
+            "breakthrough_video_ref": d.get("breakthrough_video_ref"),
         }
     return out
 
@@ -8151,6 +8153,7 @@ def _coach_state_for(session_id, snippet_id):
     """One snippet's coach_state (default-empty when nothing authored yet)."""
     return _coach_state_map(session_id).get(str(snippet_id), {
         "direction_label": None, "note": "", "tag": None, "surfaced": False,
+        "breakthrough_video_ref": None,
     })
 
 
@@ -8789,6 +8792,29 @@ def v2_coach_save_snippet(session_id, snippet_id):
                     if isinstance(ex, str) and ex.strip():
                         cleaned_ex.append(ex.strip()[:500])
                 draft_fields["examples"] = cleaned_ex
+        # Breakthrough video — a public URL (str | null). null/empty CLEARS.
+        # The explanation text is the `note`; this stores only the video URL.
+        if "breakthrough_video_ref" in body:
+            bvr_raw = body.get("breakthrough_video_ref")
+            if bvr_raw is not None and not isinstance(bvr_raw, str):
+                return jsonify({
+                    "code": "INVALID_INPUT",
+                    "error": "breakthrough_video_ref: must be a string or null",
+                }), 422
+            bvr = (bvr_raw or "").strip()
+            if len(bvr) > 2048:
+                return jsonify({
+                    "code": "INVALID_INPUT",
+                    "error": "breakthrough_video_ref: 2048 chars max",
+                }), 422
+            if bvr and not (
+                bvr.startswith("https://") or bvr.startswith("http://")
+            ):
+                return jsonify({
+                    "code": "INVALID_INPUT",
+                    "error": "breakthrough_video_ref: must be an http(s) URL",
+                }), 422
+            draft_fields["breakthrough_video_ref"] = bvr or None
 
         if draft_fields:
             db.upsert_coach_snippet_draft(
