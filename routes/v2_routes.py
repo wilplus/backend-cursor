@@ -7751,7 +7751,23 @@ def v2_user_get_session_readout(session_id):
 
     Response 200:
       { "session_id", "published": bool, "state": str,
-        "readout": { "snippets": [...§3.3...], "insights_payload"?: {...} } }
+        "readout": {
+          "snippets": [ {            # §3.3, CHRONOLOGICAL (start_offset_ms ASC)
+              id, index, transcript, audio_ref, start_offset_ms, duration_ms,
+              features, stickiness,
+              slide: { index, title, body },     # slide on screen when spoken
+                                                 # (tap timeline) — GROUP BY slide.index
+              breakthrough: bool, breakthrough_note,   # coach-confirmed (F2)
+              coach: { note, tag, when?, examples? },   # post-publish only
+          } ],
+          "slides"?: [...], "presentation_ref"?: str,   # the deck (render once/group)
+          "insights_payload"?: {...},
+        } }
+
+    The per-snippet `slide` (slide_alignment.slide_for_snippet) plus top-level
+    `slides` / `presentation_ref` are the contract the FE per-slide readout
+    groups by (one slide header → its snippets stacked chronologically) — don't
+    drop them.
     """
     if not _is_valid_uuid(session_id):
         return jsonify({
