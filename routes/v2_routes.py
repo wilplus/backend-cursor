@@ -3536,6 +3536,30 @@ def v2_chat_query():
                     request.user_id, _ae,
                 )
 
+        # ── Lounge-bot deterministic intercepts (chat-audit 2026-06-21) —
+        # BEFORE the librarian (§0: keep these OUT of master_doc_rag's mega-
+        # prompt; the attention ceiling is full and the probe grades the LLM
+        # path). Crisis (safety) → record CTA (the acquisition lever, #4:
+        # show_record_ui + suggested_action="record_again", reversing #119 for
+        # CLEAR intent) → off-mission generative deflect. Runs for anonymous +
+        # signed-in; the goal/audit intercepts above are signed-in-only + more
+        # specific, so they win for those phrasings. Best-effort.
+        try:
+            from services.chat_intents import detect_chat_intent
+            from services.master_doc_rag import split_answer_into_bubbles
+            _ci = detect_chat_intent(question.strip())
+            if _ci:
+                _ans = _ci["answer"]
+                return jsonify({
+                    "answer": _ans,
+                    "bubbles": split_answer_into_bubbles(_ans),
+                    "show_record_ui": _ci["show_record_ui"],
+                    "suggested_action": _ci["suggested_action"],
+                    "debug": {"intent": _ci["intent"]},
+                }), 200
+        except Exception as _cie:
+            logger.warning("chat/query: chat-intent intercept failed: %s", _cie)
+
         # ── Path A — LLM answer (the only thing the HTTP response
         # carries back). Unchanged from the pre-BE-3 behavior.
         # Pull admin's private notes for this user → don't-ask block
