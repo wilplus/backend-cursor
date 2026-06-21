@@ -7664,6 +7664,44 @@ def _user_presentation_groups(user_id: str) -> dict:
     }
 
 
+def _continue_deck_arc(user_id, slides, fresh_arc_id, fresh_take_index):
+    """Continue-one-arc (founder 2026-06-20): every take of the SAME deck (same
+    user) belongs to ONE ever-growing arc — re-recording a talk ADDS a take to
+    its existing arc instead of starting a separate one. (The 3-take minimum
+    only UNLOCKS the best presentation; the arc keeps growing past it and the
+    composition already picks best-of-N per slide.)
+
+    Matches by the stable deck-hash across the user's lab sessions and continues
+    the deck's MOST-developed arc (consistent with the /strengths group arc,
+    #132). Returns (arc_id, take_index). Falls back to the freshly-minted arc
+    for a NEW deck / deckless / guest / any error — never raises into the record
+    path. The current session is skipped because its arc_id isn't set yet.
+    """
+    if not user_id or not slides:
+        return fresh_arc_id, fresh_take_index
+    try:
+        pid = _presentation_id_from_slides(slides)
+        if not pid:
+            return fresh_arc_id, fresh_take_index
+        counts: dict = {}
+        for s in (db.v2_list_user_lab_sessions(user_id) or []):
+            ctx = s.get("intake_context") if isinstance(
+                s.get("intake_context"), dict) else {}
+            s_slides = (ctx or {}).get("slides") or []
+            aid = s.get("arc_id")
+            if not s_slides or not aid:
+                continue
+            if _presentation_id_from_slides(s_slides) == pid:
+                counts[aid] = counts.get(aid, 0) + 1
+        if not counts:
+            return fresh_arc_id, fresh_take_index
+        best_arc = max(counts.items(), key=lambda kv: kv[1])[0]
+        return best_arc, counts[best_arc] + 1
+    except Exception as e:
+        logger.warning("continue_deck_arc failed user=%s: %s", user_id, e)
+        return fresh_arc_id, fresh_take_index
+
+
 def _hard_delete_session_for_user(user_id: str, session_id: str) -> None:
     """Durable delete of one take: drop its library rows (so it leaves
     /user/strengths now) AND the underlying session (so the readout-read
@@ -9639,6 +9677,18 @@ def v2_lab_create_recording():
             form.get("arc_id"),
             form.get("take_index"),
         )
+        # Continue-one-arc (founder 2026-06-20): a re-recording of the SAME deck
+        # (same authed user) joins that deck's existing arc as the next take,
+        # instead of the freshly-minted one — ONE ever-growing arc per deck, so
+        # the best presentation keeps deepening across sittings. New deck / guest
+        # / deckless keep the fresh arc.
+        if getattr(request, "user_id", None) and arc_id:
+            arc_id, take_index = _continue_deck_arc(
+                request.user_id,
+                (session_context or {}).get("slides") or [],
+                arc_id,
+                take_index,
+            )
         arc_take_count = None
         if arc_id:
             db.set_session_arc(guest_session_id, arc_id, take_index)

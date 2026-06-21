@@ -230,5 +230,60 @@ class PresentationIdHashTests(unittest.TestCase):
         self.assertEqual(v2._presentation_id_from_slides(None), "")
 
 
+@unittest.skipIf(_RT_ERR is not None, f"needs app deps: {_RT_ERR}")
+class ContinueDeckArcTests(unittest.TestCase):
+    """Continue-one-arc: a re-recording of the SAME deck joins the deck's
+    existing (most-developed) arc as the next take; a new deck keeps fresh."""
+
+    DECK = [{"title": "Pitch", "body": "the ask"}]
+
+    def setUp(self):
+        self._orig = getattr(v2.db, "v2_list_user_lab_sessions", None)
+
+    def tearDown(self):
+        v2.db.v2_list_user_lab_sessions = self._orig
+
+    def _patch_sessions(self, sessions):
+        v2.db.v2_list_user_lab_sessions = lambda uid: sessions
+
+    def test_continues_the_decks_existing_arc(self):
+        # Two prior takes of this deck live in arc-A → next take is arc-A take 3.
+        self._patch_sessions([
+            {"id": "p1", "arc_id": "arc-A", "intake_context": {"slides": self.DECK}},
+            {"id": "p2", "arc_id": "arc-A", "intake_context": {"slides": self.DECK}},
+        ])
+        arc, ti = v2._continue_deck_arc("u1", self.DECK, "fresh-arc", 1)
+        self.assertEqual(arc, "arc-A")
+        self.assertEqual(ti, 3)
+
+    def test_new_deck_keeps_the_fresh_arc(self):
+        # Prior sessions are a DIFFERENT deck → no match → keep the minted arc.
+        self._patch_sessions([
+            {"id": "p1", "arc_id": "arc-A",
+             "intake_context": {"slides": [{"title": "Other", "body": "x"}]}},
+        ])
+        arc, ti = v2._continue_deck_arc("u1", self.DECK, "fresh-arc", 1)
+        self.assertEqual(arc, "fresh-arc")
+        self.assertEqual(ti, 1)
+
+    def test_picks_the_most_developed_arc(self):
+        # Same deck split across arcs (arc-A: 2, arc-B: 1) → continue arc-A.
+        self._patch_sessions([
+            {"id": "a1", "arc_id": "arc-A", "intake_context": {"slides": self.DECK}},
+            {"id": "a2", "arc_id": "arc-A", "intake_context": {"slides": self.DECK}},
+            {"id": "b1", "arc_id": "arc-B", "intake_context": {"slides": self.DECK}},
+        ])
+        arc, ti = v2._continue_deck_arc("u1", self.DECK, "fresh-arc", 1)
+        self.assertEqual(arc, "arc-A")
+        self.assertEqual(ti, 3)
+
+    def test_guest_or_deckless_keeps_fresh(self):
+        self._patch_sessions([])
+        self.assertEqual(
+            v2._continue_deck_arc(None, self.DECK, "fresh", 1), ("fresh", 1))
+        self.assertEqual(
+            v2._continue_deck_arc("u1", [], "fresh", 2), ("fresh", 2))
+
+
 if __name__ == "__main__":
     unittest.main()
