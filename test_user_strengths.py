@@ -154,6 +154,41 @@ class StrengthsV2Tests(unittest.TestCase):
         pres = next(p for p in data["presentations"] if len(p["takes"]) == 3)
         self.assertEqual(pres["arc_id"], "arc-A")  # 2 takes beats arc-B's 1
 
+    def test_take_slides_carry_full_verbatim_transcript(self):
+        # #6: each take-slide carries the FULL transcript spoken on that slide in
+        # THAT take (all snippets, time-ordered) + audio span — not just the
+        # coach standout — so the take viewer never shows a bare "No moment yet".
+        deck = [{"title": "S0", "body": ""}, {"title": "S1", "body": ""}]
+        adv = [{"index": 0, "t_ms": 0}, {"index": 1, "t_ms": 5000}]
+        self._patch("v2_list_user_lab_sessions", lambda uid: [
+            {"id": "rec9", "created_at": "2026-06-21T00:00:00Z", "arc_id": "arc-9",
+             "intake_context": {"topic": "T", "slides": deck,
+                                "presentation_ref": "https://x/rec9.pdf",
+                                "slide_advances": adv}},
+        ])
+        self._patch("get_snippets_by_session", lambda sid: {
+            "rec9": [
+                {"id": "s1", "transcript": "hello there",
+                 "audio_segment_path": "p/rec9.wav",
+                 "start_offset_ms": 500, "duration_ms": 2000, "metrics": {}},
+                {"id": "s2", "transcript": "welcome everyone",
+                 "audio_segment_path": "p/rec9.wav",
+                 "start_offset_ms": 2600, "duration_ms": 1500, "metrics": {}},
+                {"id": "s3", "transcript": "now the second slide",
+                 "audio_segment_path": "p/rec9.wav",
+                 "start_offset_ms": 6000, "duration_ms": 2000, "metrics": {}},
+            ],
+        }.get(sid, []))
+        _, data = self._get()
+        pres = next(p for p in data["presentations"] if p.get("arc_id") == "arc-9")
+        by_idx = {s["index"]: s for s in pres["takes"][0]["slides"]}
+        # slide 0 = s1+s2 (both before the t_ms=5000 advance), in time order
+        self.assertEqual(by_idx[0]["transcript"], "hello there welcome everyone")
+        self.assertEqual(by_idx[0]["audio_ref"], "p/rec9.wav")
+        self.assertEqual(by_idx[0]["start_offset_ms"], 500)
+        # slide 1 = s3 (after the advance)
+        self.assertEqual(by_idx[1]["transcript"], "now the second slide")
+
     def test_stable_presentation_id_groups_by_content_not_url(self):
         # t1 and t2 have DIFFERENT presentation_ref URLs but the SAME deck text
         # → must group under ONE presentation.

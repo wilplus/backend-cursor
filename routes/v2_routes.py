@@ -7434,16 +7434,20 @@ def v2_user_get_strengths():
         for sid in by_session:
             session = sess_rows.get(sid) or db.v2_get_session_by_id(sid) or {}
             ctx = session.get("intake_context") if isinstance(session.get("intake_context"), dict) else {}
+            slides = ctx.get("slides") or []
             ranks: dict = {}
             sigs: dict = {}  # coach-adjusted power_score inputs per snippet
-            # Snippets (for power_score) are only needed where the coach tagged
-            # STRONG lines — skip the read for un-coached sessions (perf).
-            if by_session[sid]:
+            all_snippets: list = []
+            # Load snippets for coach-tagged sessions (ranks / power_score) AND
+            # for DECK sessions (the per-slide verbatim transcript, #6). Only an
+            # un-coached DECKLESS session skips the read (perf — it has no take
+            # viewer + no power ranking).
+            if by_session[sid] or slides:
                 try:
-                    snippets = db.get_snippets_by_session(sid) or []
+                    all_snippets = db.get_snippets_by_session(sid) or []
                 except Exception:
-                    snippets = []
-                for s in snippets:
+                    all_snippets = []
+                for s in all_snippets:
                     m = s.get("metrics") if isinstance(s.get("metrics"), dict) else {}
                     sid_s = str(s.get("id"))
                     ranks[sid_s] = m.get("rank") if isinstance(m, dict) else None
@@ -7452,12 +7456,12 @@ def v2_user_get_strengths():
                         "overall_score": m.get("overall_score") if isinstance(m, dict) else None,
                         "slide_stickiness": (_ss or {}).get("composite") if isinstance(_ss, dict) else None,
                     }
-            slides = ctx.get("slides") or []
             sess_meta[sid] = {
                 "ctx": ctx,
                 "ranks": ranks,
                 "sigs": sigs,
                 "slides": slides,
+                "all_snippets": all_snippets,
                 "created_at": session.get("created_at") or "",
                 "arc_id": session.get("arc_id"),
                 "presentation_id": _presentation_id_from_slides(slides),
@@ -7540,6 +7544,49 @@ def v2_user_get_strengths():
             for sg in slide_groups:
                 sg["strong_snippets"].sort(
                     key=lambda s: -(s.get("power_score") or 0.0)
+                )
+            # #6 (2026-06-21) — the FULL verbatim transcript per slide for THIS
+            # take (not just the coach standout), so the Trainings take viewer
+            # shows what was actually said on each slide instead of "No standout
+            # moment yet". All the take's snippets (start_offset ASC → time
+            # order), bucketed by slide via the tap timeline, joined verbatim; +
+            # the slide's audio span so the FE can play that slide back.
+            per_text: dict = {i: [] for i in range(len(slides))}
+            per_audio: dict = {}
+            for s in (meta.get("all_snippets") or []):
+                off = s.get("start_offset_ms")
+                si = slide_index_for_offset(off, advances)
+                if si is None:
+                    si = _best_match_index(
+                        s.get("transcript") or s.get("transcription_text"),
+                        slides,
+                    )
+                if not isinstance(si, int) or si < 0 or si >= len(slides):
+                    continue
+                txt = (
+                    s.get("transcript") or s.get("transcription_text") or ""
+                ).strip()
+                if txt:
+                    per_text[si].append(txt)
+                dur = s.get("duration_ms")
+                a = per_audio.setdefault(si, {
+                    "audio_ref": s.get("audio_segment_path"),
+                    "start_offset_ms": off,
+                    "end_ms": (off or 0) + (dur or 0),
+                })
+                if off is not None and dur is not None:
+                    a["end_ms"] = max(a.get("end_ms") or 0, off + dur)
+            for sg in slide_groups:
+                i = sg["index"]
+                sg["transcript"] = " ".join(per_text.get(i) or [])
+                _a = per_audio.get(i) or {}
+                sg["audio_ref"] = _a.get("audio_ref")
+                sg["start_offset_ms"] = _a.get("start_offset_ms")
+                sg["duration_ms"] = (
+                    (_a["end_ms"] - _a["start_offset_ms"])
+                    if _a.get("end_ms") is not None
+                    and _a.get("start_offset_ms") is not None
+                    else None
                 )
             return slide_groups
 
