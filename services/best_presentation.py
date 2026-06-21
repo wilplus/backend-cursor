@@ -50,21 +50,47 @@ def _moment_note(snippet: Any) -> str:
 
 
 # ── Selection (pure) ────────────────────────────────────────────────────
+_SENTENCE_END = (".", "!", "?", "…", '."', '!"', '?"')
+
+
+def _norm_text(t: Any) -> str:
+    """Lowercased, whitespace-collapsed — the cross-slide dedupe key."""
+    return " ".join(str(t or "").lower().split())
+
+
+def _is_complete_sentence(text: Any) -> bool:
+    """Heuristic for a self-contained line — ends with terminal punctuation and
+    isn't a tiny stub. Used to PREFER a complete line over a truncated one (#4),
+    never to discard (a slide still falls back to its best if none are complete).
+    """
+    t = str(text or "").strip()
+    if len(t.split()) < 4:
+        return False
+    return t.endswith(_SENTENCE_END)
+
+
 def select_best_per_slide(candidates: Any) -> dict:
     """candidates = list of per-snippet dicts: {slide_index, snippet_id,
     transcript, audio_ref, take_index, direction, breakthrough, activation,
     slide_stickiness, tag}. Returns ``{slide_index: winning_candidate}`` — the
-    HIGHEST-RATED snippet per slide.
+    best line per slide.
 
     NOT a challenge-only filter (founder, 2026-06-17): every moment is eligible,
     so a slide always shows its best line (never blank). The challenge/threat
     label is a RATING adjustment inside power_score — challenge ADDS, threat
-    DOWNGRADES, a threat→challenge breakthrough is the top bonus — so challenge
-    moments usually win, but the best threat line still surfaces when it's all a
-    slide has."""
+    DOWNGRADES, a threat→challenge breakthrough is the top bonus.
+
+    #4 (2026-06-21) — read as coherent prose:
+      • PREFER a COMPLETE sentence over a higher-scored truncated fragment
+        (ranked complete-first, then by score); if a slide has no complete
+        line, it still keeps its best-scored one (never blank).
+      • DEDUPE across slides — the same line never lands on two slides. Slides
+        (in index order) take their top-ranked line whose text isn't already
+        used; if every alternative is taken, keep the best (a repeat beats a
+        blank). The compose pass stays light (mostly verbatim, founder)."""
     from services.power_phrase_ranking import power_score
 
-    best: dict = {}
+    by_slide: dict = {}
     for c in candidates if isinstance(candidates, list) else []:
         if not isinstance(c, dict):
             continue
@@ -78,9 +104,26 @@ def select_best_per_slide(candidates: Any) -> dict:
             direction=c.get("direction"),
             breakthrough=bool(c.get("breakthrough")),
         )
-        cur = best.get(si)
-        if cur is None or score > cur["_score"]:
-            best[si] = {**c, "_score": score}
+        by_slide.setdefault(si, []).append({**c, "_score": score})
+
+    # Rank each slide's candidates: complete sentence first, then by score.
+    for si in by_slide:
+        by_slide[si].sort(
+            key=lambda c: (_is_complete_sentence(c.get("transcript")), c["_score"]),
+            reverse=True,
+        )
+
+    # Assign in slide order, deduping by normalized text across slides.
+    best: dict = {}
+    used: set = set()
+    for si in sorted(by_slide):
+        ranked = by_slide[si]
+        chosen = next(
+            (c for c in ranked if _norm_text(c.get("transcript")) not in used),
+            ranked[0],  # all alternatives taken → keep best (never blank)
+        )
+        used.add(_norm_text(chosen.get("transcript")))
+        best[si] = chosen
     return best
 
 
