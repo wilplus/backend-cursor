@@ -387,9 +387,21 @@ def build_best_presentation(arc_id: Optional[str], *, database=None) -> dict:
         else:
             s["edited"] = False
 
+    # "Draft / pending coach" (founder 2026-06-20): the best presentation is
+    # auto-composed from the takes BEFORE any coach review — the user sees it
+    # right away, the coach later re-ranks + confirms breakthroughs. coach_
+    # reviewed flips True once a coach has DELIVERED (published) any take in the
+    # arc; until then the FE labels it a draft.
+    coach_reviewed = any(
+        bool(s.get("results_published_at")) for s in sessions
+    )
+
     return {
         "ready": progress["ready"],
         "progress": progress,
+        # False until a coach has published a take → FE shows "draft / pending
+        # coach"; True once the human has confirmed.
+        "coach_reviewed": coach_reviewed,
         # the deck PDF so the FE renders real slide pages (null → text-slide
         # fallback from each slide's title/body).
         "presentation_ref": canonical_presentation_ref,
