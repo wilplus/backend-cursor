@@ -36,25 +36,16 @@ class CrisisTests(unittest.TestCase):
             self.assertIsNone(detect_chat_intent(m), m)
 
 
-class RecordIntentTests(unittest.TestCase):
-    def test_readiness_gets_the_cta(self):
-        r = detect_chat_intent("I want to get better, how do I get started?")
-        self.assertEqual(r["intent"], "record_intent")
-        self.assertTrue(r["show_record_ui"])
-        self.assertEqual(r["suggested_action"], "record_again")
-
-    def test_explicit_record_intent(self):
-        for m in ("Can I record here?", "let me record my talk",
+class NoRecordInterceptTests(unittest.TestCase):
+    def test_record_or_readiness_falls_through_to_the_llm(self):
+        # Deliberately NO record-CTA intercept (pulled 2026-06-21). Record /
+        # readiness intent is the LLM's RULE I: point to the always-present
+        # "Start official recording" button — no mic, no suggested_action. So
+        # none of these are intercepted here.
+        for m in ("I want to get better, how do I get started?",
+                  "Can I record here?", "let me record my talk",
                   "I'm ready", "start recording", "record again",
-                  "I want to record it now"):
-            r = detect_chat_intent(m)
-            self.assertEqual(r["intent"], "record_intent", m)
-            self.assertTrue(r["show_record_ui"], m)
-
-    def test_product_question_is_NOT_record_intent(self):
-        # Questions ABOUT recording aren't readiness — let the LLM answer.
-        for m in ("how does recording work?",
-                  "what happens to my recording after I send it?"):
+                  "how does recording work?"):
             self.assertIsNone(detect_chat_intent(m), m)
 
 
@@ -74,8 +65,8 @@ class GenerativeTests(unittest.TestCase):
 
 
 class PrecedenceAndEmptyTests(unittest.TestCase):
-    def test_crisis_beats_record(self):
-        # "I'm ready" reads as record, but distress wins.
+    def test_distress_with_ready_phrasing_is_crisis(self):
+        # "I'm ready" is no longer a record trigger; distress still fires.
         r = detect_chat_intent("I'm ready to end my life")
         self.assertEqual(r["intent"], "crisis")
 

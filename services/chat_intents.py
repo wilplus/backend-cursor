@@ -6,19 +6,19 @@ the route runs these cheap regex pre-gates BEFORE the librarian; when one fires
 it returns a fixed bubble + the per-turn flags and short-circuits the LLM. Pure
 + unit-tested; no LLM, no I/O. Same pattern as services/audit_intent.
 
-Three intents, in precedence order:
-  • crisis        — acute distress / self-harm → empathetic + emergency redirect
-                    (NEVER a record CTA). TIGHT phrasing so a normal "I panic
-                    before talks" stays a coachable speaking-nerves question.
-  • record_intent — readiness / "how do I get started / record" → the record
-                    CTA (the acquisition lever): show_record_ui=True +
-                    suggested_action="record_again". (Reverses #119's "no CTA"
-                    for clear intent; the LLM fallback in answer_question still
-                    forces show_record_ui=False for everything else.)
-  • generative    — off-mission "write me a haiku / joke / poem" → on-mission
-                    deflect (not a free general-purpose LLM). Whole-speech
-                    ghost-writing is NOT caught here — answer_question declines
-                    that on its own.
+Two intents, in precedence order:
+  • crisis      — acute distress / self-harm → empathetic + emergency redirect
+                  (NEVER a record CTA). TIGHT phrasing so a normal "I panic
+                  before talks" stays a coachable speaking-nerves question.
+  • generative  — off-mission "write me a haiku / joke / poem" → on-mission
+                  deflect (not a free general-purpose LLM). Whole-speech ghost-
+                  writing is NOT caught here — answer_question declines that.
+
+NOTE: there is deliberately NO record-intent intercept. Record/readiness intent
+is owned by the LLM (master_doc_rag RULE I): it POINTS to the always-present
+"Start official recording" button in words — no mic invite (show_record_ui
+stays false), no suggested_action. (A record-CTA intercept was tried and pulled
+2026-06-21 — product wants the permanent button, not an in-chat CTA.)
 """
 from __future__ import annotations
 
@@ -43,20 +43,6 @@ _CRISIS_REPLY = (
     "work on your speaking."
 )
 
-# Readiness / record intent → the record CTA.
-_RECORD = re.compile(
-    r"(how (do i|to) (get )?(start|begin|record)|getting started|get started|"
-    r"ready to (record|start|go)|i'?m ready|start(ing)? recording|"
-    r"record again|let me record|can i record|i (want|'?d like) to record|"
-    r"record (it|this|here|now|right now)|make a recording)",
-    re.IGNORECASE,
-)
-_RECORD_REPLY = (
-    "Love it — let's get your voice on tape. Tap the record button below to "
-    "start a take: you record the real thing you have to say, a human reads how "
-    "it lands, and you work the moments that matter."
-)
-
 # Off-mission generative requests (NOT whole-speech writing — the LLM declines
 # that itself, with the right nuance).
 _GENERATIVE = re.compile(
@@ -76,9 +62,9 @@ _GENERATIVE_REPLY = (
 def detect_chat_intent(message: str) -> Optional[dict]:
     """Return a fixed intercept response for a recognised intent, else None.
 
-    Precedence: crisis (safety) → record (conversion) → generative. The dict
-    carries {intent, answer, show_record_ui, suggested_action}; the route
-    forwards the flags verbatim and adds the bubble split.
+    Precedence: crisis (safety) → generative. The dict carries {intent, answer,
+    show_record_ui, suggested_action}; the route forwards the flags verbatim and
+    adds the bubble split. (No record-intent branch — that's the LLM's RULE I.)
     """
     if not isinstance(message, str) or not message.strip():
         return None
@@ -86,9 +72,6 @@ def detect_chat_intent(message: str) -> Optional[dict]:
     if _CRISIS.search(msg):
         return {"intent": "crisis", "answer": _CRISIS_REPLY,
                 "show_record_ui": False, "suggested_action": None}
-    if _RECORD.search(msg):
-        return {"intent": "record_intent", "answer": _RECORD_REPLY,
-                "show_record_ui": True, "suggested_action": "record_again"}
     if _GENERATIVE.search(msg):
         return {"intent": "generative", "answer": _GENERATIVE_REPLY,
                 "show_record_ui": False, "suggested_action": None}
