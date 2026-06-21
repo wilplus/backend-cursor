@@ -231,6 +231,17 @@ class BuildTests(unittest.TestCase):
         self.assertTrue(slide0["breakthrough"])
         self.assertEqual(slide0["audio_ref"], "s3://c1")
 
+    def test_coach_reviewed_false_pre_publish(self):
+        # Auto-composed from the takes before any coach review → draft.
+        out = bp.build_best_presentation("arc1", database=self._db())
+        self.assertFalse(out["coach_reviewed"])
+
+    def test_coach_reviewed_true_when_a_take_is_published(self):
+        db = self._db()
+        db._sessions[0]["results_published_at"] = "2026-06-21T00:00:00Z"
+        out = bp.build_best_presentation("arc1", database=db)
+        self.assertTrue(out["coach_reviewed"])
+
     def test_no_coach_labels_no_breakthrough_badge(self):
         # Coach-confirmed only: with NO coach labels, there's no breakthrough
         # badge even though the moments would form a threat→challenge sequence
