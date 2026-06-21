@@ -63,6 +63,40 @@ class SelectBestPerSlideTests(unittest.TestCase):
         best = bp.select_best_per_slide(cands)
         self.assertEqual(best[0]["snippet_id"], "bt")
 
+    def test_prefers_complete_sentence_over_higher_scored_fragment(self):
+        # #4: a complete line beats a higher-scored truncated fragment.
+        cands = [
+            _cand(0, "frag", "challenge", activation=0.9,
+                  transcript="and going back to the days when I"),
+            _cand(0, "whole", "challenge", activation=0.3,
+                  transcript="We are raising two million dollars."),
+        ]
+        best = bp.select_best_per_slide(cands)
+        self.assertEqual(best[0]["snippet_id"], "whole")
+
+    def test_keeps_best_when_no_candidate_is_complete(self):
+        # No complete line on the slide → still keep the best-scored (#4: never
+        # blank).
+        cands = [
+            _cand(0, "lo", "challenge", activation=0.2, transcript="a stray bit"),
+            _cand(0, "hi", "challenge", activation=0.9, transcript="another stray"),
+        ]
+        best = bp.select_best_per_slide(cands)
+        self.assertEqual(best[0]["snippet_id"], "hi")
+
+    def test_dedupes_same_line_across_slides(self):
+        # #4: the same line never lands on two slides — slide 1 takes its next.
+        same = "We are raising two million dollars."
+        cands = [
+            _cand(0, "s0", "challenge", activation=0.9, transcript=same),
+            _cand(1, "s1", "challenge", activation=0.9, transcript=same),
+            _cand(1, "alt", "challenge", activation=0.4,
+                  transcript="So here is exactly where it goes."),
+        ]
+        best = bp.select_best_per_slide(cands)
+        self.assertEqual(best[0]["snippet_id"], "s0")
+        self.assertEqual(best[1]["snippet_id"], "alt")  # not the duplicate
+
     def test_drops_bad_slide_index_and_input(self):
         self.assertEqual(bp.select_best_per_slide(None), {})
         self.assertEqual(bp.select_best_per_slide([_cand(-1, "x", "challenge")]), {})
