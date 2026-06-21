@@ -58,8 +58,9 @@ BEATS: dict[int, dict[str, Any]] = {
             "baseline — say it the way you'd say it today."
         ),
         "fixed_facts": [
-            "~30 minutes",
-            "at least 3 takes, with a short reset between each",
+            # #2 (2026-06-21): no time promise — the natural baseline may run
+            # well under 30 min. Just the takes + the reset.
+            "record the same talk 3 times, with a short reset between each",
         ],
         "safety_caveat": None,
     },
@@ -188,11 +189,23 @@ def _render_beat(
             f"This take's style is '{beat['mode']}' — convey that register in "
             "the user's words; you may keep a recognizable label for it."
         )
-    if take_index and take_count:
-        rules.append(
-            f"You MAY include a light 'take {take_index} of {take_count}' "
-            "spine so they know where they are in the arc."
-        )
+    # #3 (2026-06-21) — the "Take N of M" spine. The DENOMINATOR is always the
+    # target (3), not the running count (it was showing "Take 2 of 2"), and the
+    # numerator is the take they're ABOUT to record (beat N invites take N+1).
+    # Framed as an imperative invitation, never a "try again?" retry question
+    # (this is the next take, not a redo). Only on the post-take invite beats —
+    # an invited take past the target (the optional spark) gets no spine.
+    fires_after = beat.get("fires_after_take")
+    if fires_after:
+        invited_take = fires_after + 1
+        if invited_take <= TARGET_TAKES:
+            rules.append(
+                f"Open with 'Take {invited_take} of {TARGET_TAKES}' so they "
+                "know where they are, then give this take's direction as an "
+                "IMPERATIVE invitation to record the same talk again in this "
+                "style — NOT a 'try again?' retry question (it's the next take, "
+                "not a redo of the last one)."
+            )
     if weave_goal:
         rules.append(
             "Weave in the user's stated goal naturally (see USER GOAL) so the "
