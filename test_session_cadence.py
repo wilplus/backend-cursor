@@ -57,8 +57,11 @@ class SpecIntegrityTests(unittest.TestCase):
         b = sc.BEATS[0]
         self.assertTrue(b["weave_goal"])
         joined = " ".join(b["fixed_facts"])
-        self.assertIn("30 minutes", joined)
-        self.assertIn("3 takes", joined)
+        # #2 (2026-06-21): no time promise (the baseline may run under 30 min);
+        # just the 3 takes + the reset.
+        self.assertNotIn("30 minute", joined)
+        self.assertIn("3 times", joined)
+        self.assertIn("reset", joined)
 
     def test_spark_beat_carries_full_safety_caveat(self):
         b = sc.BEATS[3]
