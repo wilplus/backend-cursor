@@ -9100,6 +9100,133 @@ def v2_coach_session_video(session_id):
         return jsonify({"code": "V2_ERROR", "error": "Failed to store coach video"}), 500
 
 
+@v2_bp.route(
+    "/coach/sessions/<session_id>/snippets/<snippet_id>/breakthrough-video",
+    methods=["POST"],
+)
+@require_admin_or_coach
+def v2_coach_snippet_breakthrough_video(session_id, snippet_id):
+    """Per-snippet coach BREAKTHROUGH VIDEO upload (Phase 2 of #131; founder
+    2026-06-20 "upload a file in review").
+
+    A coach attaches one short explanatory video to a breakthrough snippet
+    during review. REUSES the coach video transport/storage (services/coach_
+    video_storage — same bucket/path as the session feedback video; no new
+    infra). Stores the file, persists the public URL on the snippet's DRAFT
+    (coach_snippet_drafts.breakthrough_video_ref); at publish the contract
+    folds it into insights_payload.snippet_notes and build_readout_from_session
+    surfaces it as the snippet's top-level breakthrough_video_ref (all wired in
+    #131). The explanation TEXT is the coach note itself — this stores only the
+    video. Re-upload overwrites (deterministic storage key).
+
+    Requires migrations/add_breakthrough_video_ref_to_coach_snippet_drafts.sql.
+
+    multipart/form-data: video_file (.mp4/.mov/.webm/.m4v).
+    200 { status, session_id, snippet_id, breakthrough_video_ref }
+    400 INVALID_INPUT · 404 SESSION/SNIPPET_NOT_FOUND · 413 · 415 · 502
+    """
+    from services.coach_video_storage import (
+        coach_media_public_url, put_coach_object_bytes,
+    )
+    import os
+
+    if not _is_valid_uuid(session_id) or not _is_valid_uuid(snippet_id):
+        return jsonify({
+            "code": "INVALID_INPUT",
+            "error": "session_id and snippet_id must be UUIDs",
+        }), 400
+    try:
+        session = db.v2_get_session_by_id(session_id)
+        if not session:
+            return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found"}), 404
+        # Snippet must belong to THIS session (no cross-session writes).
+        snips = db.get_snippets_by_session(session_id) or []
+        if snippet_id not in {str(s.get("id")) for s in snips if s.get("id")}:
+            return jsonify({
+                "code": "SNIPPET_NOT_FOUND", "error": "Snippet not in this session",
+            }), 404
+
+        max_video_mb = max(1, int(getattr(config, "COACH_FEEDBACK_VIDEO_MAX_MB", 100)))
+        max_video_bytes = max_video_mb * 1024 * 1024
+        content_length = request.content_length or 0
+        if content_length and content_length > max_video_bytes:
+            return jsonify({
+                "code": "PAYLOAD_TOO_LARGE",
+                "error": f"Video is too large. Max allowed is {max_video_mb}MB.",
+            }), 413
+
+        video_file = request.files.get("video_file")
+        if video_file is None or not (video_file.filename or "").strip():
+            return jsonify({"code": "INVALID_INPUT", "error": "video_file is required"}), 400
+
+        safe_name = secure_filename(video_file.filename or "")
+        ext = os.path.splitext(safe_name)[1].lower()
+        if ext not in {".mp4", ".mov", ".webm", ".m4v"}:
+            return jsonify({
+                "code": "INVALID_VIDEO_FORMAT",
+                "error": "Supported formats: .mp4, .mov, .webm, .m4v",
+            }), 415
+
+        video_bytes = video_file.read() or b""
+        if not video_bytes:
+            return jsonify({"code": "INVALID_INPUT", "error": "video_file is empty"}), 400
+        if len(video_bytes) > max_video_bytes:
+            return jsonify({
+                "code": "PAYLOAD_TOO_LARGE",
+                "error": f"Video is too large. Max allowed is {max_video_mb}MB.",
+            }), 413
+
+        storage_key = f"coach-snippet-breakthrough/{session_id}/{snippet_id}{ext}"
+        bucket = getattr(config, "COACH_FEEDBACK_VIDEO_BUCKET", "coach_feedback_videos")
+        try:
+            put_coach_object_bytes(
+                bucket, storage_key, video_bytes,
+                video_file.content_type or "video/mp4",
+            )
+        except Exception as upload_err:
+            logger.error(
+                "breakthrough video upload failed sid=%s snip=%s err=%s",
+                session_id, snippet_id, upload_err,
+            )
+            return jsonify({"code": "UPLOAD_FAILED", "error": "Failed to upload video to storage."}), 502
+
+        breakthrough_video_ref = coach_media_public_url(storage_key)
+        # Persist on the snippet draft (USER lane) — same field/path as the
+        # publish payload's breakthrough_video_ref. Best-effort: a None return
+        # means the column is missing (run the migration) — the file is stored
+        # and the URL is valid; a re-upload after the migration persists it.
+        saved = db.upsert_coach_snippet_draft(
+            session_id, snippet_id,
+            {"breakthrough_video_ref": breakthrough_video_ref},
+            updated_by=str(request.user_id),
+        )
+        if saved is None:
+            logger.warning(
+                "breakthrough video: draft persist returned None sid=%s snip=%s "
+                "(run add_breakthrough_video_ref_to_coach_snippet_drafts.sql?)",
+                session_id, snippet_id,
+            )
+        logger.info(
+            "breakthrough video stored sid=%s snip=%s key=%s",
+            session_id, snippet_id, storage_key,
+        )
+        return jsonify({
+            "status": "ok",
+            "session_id": session_id,
+            "snippet_id": snippet_id,
+            "breakthrough_video_ref": breakthrough_video_ref,
+        }), 200
+    except Exception as e:
+        logger.error(
+            "coach/snippet-breakthrough-video failed sid=%s snip=%s err=%s",
+            session_id, snippet_id, e, exc_info=True,
+        )
+        sentry_sdk.capture_exception(e)
+        return jsonify({
+            "code": "V2_ERROR", "error": "Failed to store breakthrough video",
+        }), 500
+
+
 # ── willab beta — Lab upload handler (design §4, contract §3.3) ──────
 #
 # The convergence: multipart audio + inline session_context → min-content
