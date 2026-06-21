@@ -10009,6 +10009,24 @@ def v2_lab_create_recording():
                 logger.warning("lab: recording_progress projection failed sid=%s: %s",
                                guest_session_id, _pe)
 
+        # #1 (2026-06-21) — re-derive the RESPONSE readout from the now-persisted
+        # session + snippets so the right-after-recording readout carries the
+        # SAME per-snippet `slide` (+ top-level `slides` / `presentation_ref`)
+        # the GET readout does — process_lab_recording's pure payload has no
+        # slide, so the FE had nothing to render above each snippet's text.
+        # build_readout_from_session maps each snippet to the slide on screen via
+        # the tap timeline. Best-effort: keep the slide-less payload on a hiccup.
+        try:
+            from services.lab_recording import build_readout_from_session
+            _full = build_readout_from_session(guest_session_id)
+            if isinstance(_full, dict) and _full.get("snippets"):
+                readout = _full
+        except Exception as _rre:
+            logger.warning(
+                "lab: readout slide re-derive failed sid=%s: %s",
+                guest_session_id, _rre,
+            )
+
         return jsonify({
             "status": "ok",
             "session_id": guest_session_id,
