@@ -336,5 +336,85 @@ class BuildTests(unittest.TestCase):
         self.assertEqual(out["slides"], [])
 
 
+class ArcBreakthroughsTests(unittest.TestCase):
+    """build_arc_breakthroughs (#5) — every coach-confirmed breakthrough in the
+    arc with playback data, newest → oldest. Same gate as the badge."""
+
+    def _db(self, labels):
+        # take 1: t1(threat)→c1(challenge); take 2: t2(threat)→c2(challenge).
+        sessions = [
+            {"id": "s1", "take_index": 1, "created_at": "2026-06-05T00:00:00Z",
+             "intake_context": {"slides": [{"title": "S1", "body": "p"}],
+                                "slide_advances": [{"index": 0, "t_ms": 0}]}},
+            {"id": "s2", "take_index": 2, "created_at": "2026-06-12T00:00:00Z",
+             "intake_context": {"slides": [{"title": "S1", "body": "p"}],
+                                "slide_advances": [{"index": 0, "t_ms": 0}]}},
+        ]
+        snips = {
+            "s1": [
+                {"id": "t1", "start_offset_ms": 0, "duration_ms": 1800,
+                 "transcript": "nervous open take1", "storage_path": "s3://t1",
+                 "metrics": {"overall_score": 0.9}},
+                {"id": "c1", "start_offset_ms": 2000, "duration_ms": 1500,
+                 "transcript": "strong close take1", "storage_path": "s3://c1",
+                 "metrics": {"overall_score": 0.4}},
+            ],
+            "s2": [
+                {"id": "t2", "start_offset_ms": 0, "duration_ms": 1700,
+                 "transcript": "nervous open take2", "storage_path": "s3://t2",
+                 "metrics": {"overall_score": 0.8}},
+                {"id": "c2", "start_offset_ms": 2000, "duration_ms": 1600,
+                 "transcript": "strong close take2", "storage_path": "s3://c2",
+                 "metrics": {"overall_score": 0.5}},
+            ],
+        }
+        return _FakeDB(sessions, snips, labels)
+
+    def test_collects_coach_confirmed_breakthroughs_newest_first(self):
+        labels = {
+            "s1": [{"snippet_id": "t1", "value": "threat"},
+                   {"snippet_id": "c1", "value": "challenge"}],
+            "s2": [{"snippet_id": "t2", "value": "threat"},
+                   {"snippet_id": "c2", "value": "challenge"}],
+        }
+        out = bp.build_arc_breakthroughs("arc1", database=self._db(labels))
+        self.assertEqual(out["count"], 2)
+        # newest take first (s2 created later than s1)
+        self.assertEqual([b["snippet_id"] for b in out["breakthroughs"]],
+                         ["c2", "c1"])
+        top = out["breakthroughs"][0]
+        # playback data rides through for the FE list
+        self.assertEqual(top["audio_ref"], "s3://c2")
+        self.assertEqual(top["start_offset_ms"], 2000)
+        self.assertEqual(top["duration_ms"], 1600)
+        self.assertEqual(top["session_id"], "s2")
+        self.assertEqual(top["slide_index"], 0)
+
+    def test_only_breakthroughs_no_threat_or_plain(self):
+        labels = {"s1": [{"snippet_id": "t1", "value": "threat"},
+                         {"snippet_id": "c1", "value": "challenge"}]}
+        out = bp.build_arc_breakthroughs("arc1", database=self._db(labels))
+        ids = [b["snippet_id"] for b in out["breakthroughs"]]
+        self.assertEqual(ids, ["c1"])          # the threat t1 is NOT included
+        self.assertNotIn("t1", ids)
+
+    def test_no_coach_labels_empty(self):
+        out = bp.build_arc_breakthroughs("arc1", database=self._db({}))
+        self.assertEqual(out, {"breakthroughs": [], "count": 0})
+
+    def test_ac9_no_scores_leak(self):
+        labels = {"s1": [{"snippet_id": "t1", "value": "threat"},
+                         {"snippet_id": "c1", "value": "challenge"}]}
+        out = bp.build_arc_breakthroughs("arc1", database=self._db(labels))
+        b = out["breakthroughs"][0]
+        for k in ("_score", "activation", "direction", "coach_direction",
+                  "metrics", "slide_stickiness"):
+            self.assertNotIn(k, b)
+
+    def test_empty_arc(self):
+        out = bp.build_arc_breakthroughs("arc1", database=_FakeDB([], {}, {}))
+        self.assertEqual(out, {"breakthroughs": [], "count": 0})
+
+
 if __name__ == "__main__":
     unittest.main()

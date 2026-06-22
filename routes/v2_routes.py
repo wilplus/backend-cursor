@@ -9645,6 +9645,42 @@ def v2_explore_arc_best_presentation(arc_id):
         }), 500
 
 
+@v2_bp.route("/explore/arc/<arc_id>/breakthroughs", methods=["GET"])
+@require_auth
+def v2_explore_arc_breakthroughs(arc_id):
+    """ALL coach-confirmed breakthrough moments in this arc, newest → oldest
+    (founder #5 — the "explore my breakthrough moments" list behind the button
+    below the best presentation). Same gate as the best-presentation badge (a
+    threat→challenge turn on the coach's OWN labels, never a model guess), but
+    every breakthrough snippet across all takes, not just the per-slide winner.
+
+    SCORE-FREE (AC-9). Ownership: the arc must contain a session owned by the
+    caller, else 404. An empty list (no coach-confirmed breakthroughs yet) is a
+    200 with breakthroughs=[] — the FE shows an empty-state, not an error.
+
+    Response 200 {
+        arc_id, count,
+        breakthroughs: [ { snippet_id, session_id, take_index, created_at,
+                           slide_index, transcript, audio_ref,
+                           start_offset_ms, duration_ms, note } ]
+    }
+             404 NOT_FOUND · 500 V2_ERROR
+    """
+    try:
+        from services.best_presentation import build_arc_breakthroughs
+        owned, _ = _arc_owned_by_caller(arc_id)
+        if not owned:
+            return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
+        return jsonify({"arc_id": arc_id, **build_arc_breakthroughs(arc_id)}), 200
+    except Exception as e:
+        logger.error("explore/arc breakthroughs failed arc=%s: %s", arc_id,
+                     e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({
+            "code": "V2_ERROR", "error": "Failed to load breakthroughs",
+        }), 500
+
+
 @v2_bp.route("/explore/arc/<arc_id>/best-presentation/slides/<int:index>",
              methods=["PUT"])
 @require_auth
