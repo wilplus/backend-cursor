@@ -416,5 +416,88 @@ class ArcBreakthroughsTests(unittest.TestCase):
         self.assertEqual(out, {"breakthroughs": [], "count": 0})
 
 
+class _CachingFakeDB(_FakeDB):
+    """_FakeDB + the Part B cache methods + a snippet-read counter."""
+
+    def __init__(self, *a, **k):
+        super().__init__(*a, **k)
+        self._cache: dict = {}
+        self.snippet_reads = 0
+
+    def get_snippets_by_session(self, sid):
+        self.snippet_reads += 1
+        return super().get_snippets_by_session(sid)
+
+    def get_best_presentation_cache(self, arc_id):
+        return self._cache.get(arc_id)
+
+    def upsert_best_presentation_cache(self, arc_id, signature, payload):
+        self._cache[arc_id] = {"signature": signature, "payload": payload}
+        return True
+
+
+class BestPresentationCacheTests(unittest.TestCase):
+    """Part B — the composed slides are cached by arc + content signature."""
+
+    def setUp(self):
+        self._orig = bp._render_composition
+        self.compose_calls = []
+        bp._render_composition = lambda picks, slides: (
+            self.compose_calls.append(1) or None  # verbatim path
+        )
+
+    def tearDown(self):
+        bp._render_composition = self._orig
+
+    def _db(self):
+        sessions = [{"id": "s1", "take_index": 1, "intake_context": {
+            "slides": [{"title": "S1", "body": "p"}],
+            "slide_advances": [{"index": 0, "t_ms": 0}]}}]
+        snips = {"s1": [{"id": "c1", "start_offset_ms": 0, "duration_ms": 1000,
+                         "transcript": "line", "storage_path": "s3://c1",
+                         "metrics": {"overall_score": 0.5}}]}
+        return _CachingFakeDB(sessions, snips, {})
+
+    def test_miss_then_hit_skips_compose_and_snippet_read(self):
+        db = self._db()
+        out1 = bp.build_best_presentation("arc1", database=db)
+        self.assertEqual(len(self.compose_calls), 1)   # composed on the miss
+        self.assertEqual(out1["slides"][0]["text"], "line")
+        self.assertEqual(db.snippet_reads, 1)
+        out2 = bp.build_best_presentation("arc1", database=db)
+        self.assertEqual(len(self.compose_calls), 1)   # HIT → no recompose
+        self.assertEqual(db.snippet_reads, 1)          # HIT → no snippet read
+        self.assertEqual(out2["slides"][0]["text"], "line")
+
+    def test_new_take_busts_cache(self):
+        db = self._db()
+        bp.build_best_presentation("arc1", database=db)
+        db._sessions.append({"id": "s2", "take_index": 2, "intake_context": {
+            "slides": [{"title": "S1", "body": "p"}],
+            "slide_advances": [{"index": 0, "t_ms": 0}]}})
+        db._snips["s2"] = [{"id": "c2", "start_offset_ms": 0,
+                            "duration_ms": 1000, "transcript": "line2",
+                            "storage_path": "s3://c2",
+                            "metrics": {"overall_score": 0.5}}]
+        bp.build_best_presentation("arc1", database=db)
+        self.assertEqual(len(self.compose_calls), 2)   # signature changed
+
+    def test_coach_publish_busts_cache(self):
+        db = self._db()
+        bp.build_best_presentation("arc1", database=db)
+        db._sessions[0]["results_published_at"] = "2026-06-22T00:00:00Z"
+        bp.build_best_presentation("arc1", database=db)
+        self.assertEqual(len(self.compose_calls), 2)
+
+    def test_edits_applied_fresh_on_cache_hit(self):
+        db = self._db()
+        bp.build_best_presentation("arc1", database=db)   # miss → caches
+        db._edits = {0: "my hand edit"}
+        out = bp.build_best_presentation("arc1", database=db)  # hit
+        self.assertEqual(len(self.compose_calls), 1)      # no recompose
+        self.assertEqual(out["slides"][0]["text"], "my hand edit")
+        self.assertTrue(out["slides"][0]["edited"])
+
+
 if __name__ == "__main__":
     unittest.main()

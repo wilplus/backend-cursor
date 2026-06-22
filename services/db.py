@@ -5039,6 +5039,56 @@ class DatabaseService:
             logger.error(f"get_snippets_by_session failed: {e}")
             return []
 
+    def get_snippets_by_sessions(
+        self, session_ids, *, include_words: bool = False,
+    ) -> dict:
+        """Batch read — ALL snippets for many sessions in ONE query per 100 ids
+        (kills the N+1 on /v2/user/strengths). Returns
+        {session_id: [snippets ordered by start_offset_ms]}.
+
+        Excludes the heavy `words` JSONB by default — the Trainings list reads
+        the precomputed slide_transcripts (#A), so per-snippet words aren't
+        needed there. Pass include_words=True where the per-snippet split is
+        used. Best-effort: {} on hiccup; falls back to select(*) if the slim
+        projection trips a missing column."""
+        ids = [str(s) for s in (session_ids or []) if s]
+        if not ids:
+            return {}
+        slim = ("id, session_id, start_offset_ms, duration_ms, transcript, "
+                "audio_segment_path, metrics, snippet_type")
+        cols = "*" if include_words else slim
+        out: dict = {}
+        try:
+            for i in range(0, len(ids), 100):
+                chunk = ids[i:i + 100]
+                try:
+                    res = (
+                        self.client.table("charisma_snippets")
+                        .select(cols)
+                        .in_("session_id", chunk)
+                        .order("start_offset_ms", desc=False)
+                        .execute()
+                    )
+                except Exception:
+                    # Slim projection hit a missing column → fall back to * for
+                    # the rest of the batch (still one query per chunk).
+                    cols = "*"
+                    res = (
+                        self.client.table("charisma_snippets")
+                        .select("*")
+                        .in_("session_id", chunk)
+                        .order("start_offset_ms", desc=False)
+                        .execute()
+                    )
+                for r in (res.data or []):
+                    out.setdefault(str(r.get("session_id")), []).append(r)
+            return out
+        except Exception as e:
+            logger.warning(
+                "get_snippets_by_sessions failed (%d ids): %s", len(ids), e,
+            )
+            return {}
+
     def get_snippets_by_user(self, user_id: str, limit: int = 100, offset: int = 0) -> List[dict]:
         """Get all snippets for a user, paginated, ordered by creation date (newest first)."""
         try:
@@ -9061,6 +9111,63 @@ class DatabaseService:
                          arc_id, e)
             return False
 
+    def get_best_presentation_cache(self, arc_id: Optional[str]) -> Optional[dict]:
+        """The cached composed best-presentation for an arc (Part B — skip the
+        ~2-4s LLM compose when nothing changed). Returns {signature, payload} or
+        None on miss / missing table / error (caller recomputes)."""
+        if not arc_id:
+            return None
+        try:
+            res = (
+                self.client.table("best_presentation_cache")
+                .select("signature, payload")
+                .eq("arc_id", arc_id)
+                .limit(1)
+                .execute()
+            )
+            return (res.data or [None])[0]
+        except Exception as e:
+            err_low = str(e).lower()
+            if "best_presentation_cache" in err_low and (
+                "does not exist" in err_low or "pgrst" in err_low
+            ):
+                return None
+            logger.warning("get_best_presentation_cache failed arc=%s: %s",
+                           arc_id, e)
+            return None
+
+    def upsert_best_presentation_cache(
+        self, arc_id: str, signature: str, payload: dict,
+    ) -> bool:
+        """Store the composed best-presentation keyed by arc + content signature
+        (Part B). Upserts on arc_id. Best-effort; missing table → False (the
+        feature simply doesn't cache, never errors the GET)."""
+        if not arc_id or not signature:
+            return False
+        from datetime import datetime, timezone
+        row = {
+            "arc_id": arc_id, "signature": signature, "payload": payload,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+        try:
+            self.client.table("best_presentation_cache").upsert(
+                row, on_conflict="arc_id",
+            ).execute()
+            return True
+        except Exception as e:
+            err_low = str(e).lower()
+            if "best_presentation_cache" in err_low and (
+                "does not exist" in err_low or "pgrst" in err_low
+            ):
+                logger.warning(
+                    "upsert_best_presentation_cache: table missing (run "
+                    "migrations/add_best_presentation_cache.sql) arc=%s", arc_id,
+                )
+                return False
+            logger.error("upsert_best_presentation_cache failed arc=%s: %s",
+                         arc_id, e)
+            return False
+
     def get_feelings_by_sessions(self, session_ids: list) -> list[dict]:
         """Pre-recording feelings for a BATCH of sessions (U10 — the coach
         roster rollup). One query, mapped by the caller. [] on missing table /
@@ -9095,14 +9202,31 @@ class DatabaseService:
             res = (
                 self.client.table("v2_sessions")
                 .select("id, user_id, arc_id, take_index, status, "
-                        "created_at, intake_context")
+                        "created_at, intake_context, results_published_at")
                 .eq("arc_id", arc_id)
                 .order("take_index", desc=False)
                 .execute()
             )
             return res.data or []
         except Exception as e:
-            if "arc_id" in str(e).lower() or "take_index" in str(e).lower():
+            _e = str(e).lower()
+            # results_published_at is a base column, but be defensive: if the
+            # explicit select trips any missing column, retry without the
+            # optional one (keeps coach_reviewed/cache-signature best-effort).
+            if "results_published_at" in _e:
+                try:
+                    res = (
+                        self.client.table("v2_sessions")
+                        .select("id, user_id, arc_id, take_index, status, "
+                                "created_at, intake_context")
+                        .eq("arc_id", arc_id)
+                        .order("take_index", desc=False)
+                        .execute()
+                    )
+                    return res.data or []
+                except Exception:
+                    return []
+            if "arc_id" in _e or "take_index" in _e:
                 logger.warning(
                     "get_arc_sessions: column missing (run "
                     "migrations/add_explore_arc.sql) arc=%s", arc_id,
