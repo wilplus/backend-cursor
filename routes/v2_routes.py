@@ -7533,6 +7533,7 @@ def v2_user_get_strengths():
         from services.slide_alignment import (
             slide_index_for_offset, _best_match_index,
         )
+        from services.slide_word_split import split_words_by_slides
         from services.power_phrase_ranking import power_score
         uid = str(request.user_id)
         library = db.get_strong_sides_library(uid, tag="strong") or []
@@ -7679,29 +7680,59 @@ def v2_user_get_strengths():
             # the slide's audio span so the FE can play that slide back.
             per_text: dict = {i: [] for i in range(len(slides))}
             per_audio: dict = {}
+
+            def _accrue(si, txt, start_ms, end_ms, audio_ref):
+                """Add a text fragment + its audio span to slide ``si``."""
+                if not isinstance(si, int) or si < 0 or si >= len(slides):
+                    return
+                if txt:
+                    per_text[si].append(txt)
+                a = per_audio.setdefault(si, {
+                    "audio_ref": audio_ref,
+                    "start_offset_ms": start_ms,
+                    "end_ms": start_ms if start_ms is not None else None,
+                })
+                if a.get("audio_ref") is None:
+                    a["audio_ref"] = audio_ref
+                if start_ms is not None and (
+                    a.get("start_offset_ms") is None
+                    or start_ms < a["start_offset_ms"]
+                ):
+                    a["start_offset_ms"] = start_ms
+                if end_ms is not None:
+                    a["end_ms"] = max(a.get("end_ms") or 0, end_ms)
+
             for s in (meta.get("all_snippets") or []):
                 off = s.get("start_offset_ms")
+                dur = s.get("duration_ms")
+                audio_ref = s.get("audio_segment_path")
+                # #6 — PRECISE split: bucket each WORD to the slide on screen at
+                # its timestamp, so words spoken after a mid-snippet slide click
+                # move to the NEW slide. Returns [] (→ legacy whole-snippet
+                # bucketing) when the snippet has no word timestamps or there's
+                # no usable click timeline.
+                frags = split_words_by_slides(s.get("words"), advances, slides)
+                if frags:
+                    for f in frags:
+                        st = f.get("start_offset_ms")
+                        _accrue(
+                            f["slide_index"], f.get("transcript"), st,
+                            (st or 0) + (f.get("duration_ms") or 0),
+                            audio_ref,
+                        )
+                    continue
+                # Fallback (no words / no timeline): whole snippet → start slide.
                 si = slide_index_for_offset(off, advances)
                 if si is None:
                     si = _best_match_index(
                         s.get("transcript") or s.get("transcription_text"),
                         slides,
                     )
-                if not isinstance(si, int) or si < 0 or si >= len(slides):
-                    continue
                 txt = (
                     s.get("transcript") or s.get("transcription_text") or ""
                 ).strip()
-                if txt:
-                    per_text[si].append(txt)
-                dur = s.get("duration_ms")
-                a = per_audio.setdefault(si, {
-                    "audio_ref": s.get("audio_segment_path"),
-                    "start_offset_ms": off,
-                    "end_ms": (off or 0) + (dur or 0),
-                })
-                if off is not None and dur is not None:
-                    a["end_ms"] = max(a.get("end_ms") or 0, off + dur)
+                end_ms = (off + dur) if (off is not None and dur is not None) else None
+                _accrue(si, txt, off, end_ms, audio_ref)
             for sg in slide_groups:
                 i = sg["index"]
                 sg["transcript"] = " ".join(per_text.get(i) or [])

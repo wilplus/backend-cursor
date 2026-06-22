@@ -127,6 +127,44 @@ class StrengthsV2Tests(unittest.TestCase):
         self.assertEqual(len(new_pres["takes"]), 1)
         self.assertEqual(new_pres["takes"][0]["session_id"], "rec1")
 
+    def test_per_slide_transcript_splits_on_word_timeline(self):
+        # #6: a snippet whose words straddle a slide click is SPLIT — the words
+        # spoken after the click land on the NEW slide's transcript (precise
+        # per-slide sync), not all under the slide it started on.
+        self._patch("get_strong_sides_library", lambda uid, tag=None: [])
+        deck = [{"title": "S1", "body": ""}, {"title": "S2", "body": ""}]
+        ctx = {"topic": "Deck", "slides": deck,
+               "slide_advances": [{"index": 0, "t_ms": 0},
+                                  {"index": 1, "t_ms": 5000}]}
+        self._patch("v2_list_user_lab_sessions", lambda uid: [
+            {"id": "rec9", "created_at": "2026-06-20T00:00:00Z",
+             "arc_id": "arc-9",
+             "intake_context": {**ctx, "presentation_ref": "https://x/rec9.pdf"}},
+        ])
+        self._patch("v2_get_session_by_id", lambda sid: {
+            "rec9": {"created_at": "2026-06-20T00:00:00Z", "intake_context": ctx},
+        }.get(sid))
+        self._patch("get_snippets_by_session", lambda sid: {
+            "rec9": [{
+                "id": "w1", "start_offset_ms": 0, "duration_ms": 8000,
+                "transcript": "hi there now go",
+                "audio_segment_path": "p/rec9.wav",
+                "metrics": {"rank": 1, "overall_score": 0.5},
+                "words": [
+                    {"word": "hi", "start": 0.0, "end": 0.5},
+                    {"word": "there", "start": 0.6, "end": 1.0},
+                    {"word": "now", "start": 6.0, "end": 6.4},   # after click@5s
+                    {"word": "go", "start": 6.5, "end": 7.0},
+                ],
+            }],
+        }.get(sid, []))
+        _, data = self._get()
+        by_arc = {p.get("arc_id"): p for p in data["presentations"]}
+        take = by_arc["arc-9"]["takes"][0]
+        slides = {s["index"]: s for s in take["slides"]}
+        self.assertEqual(slides[0]["transcript"], "hi there")  # pre-click words
+        self.assertEqual(slides[1]["transcript"], "now go")    # post-click words
+
     def test_group_arc_id_picks_the_arc_with_most_takes(self):
         # A deck re-recorded as a SEPARATE arc spreads takes across arc_ids.
         # The group-level arc_id (what the FE opens the best-presentation with)
