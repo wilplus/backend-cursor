@@ -184,6 +184,8 @@ Change something between takes. Don't record three takes in a row from the same 
 
 Don't give up after one take. One recording isn't the finish line; it's the first data point. Try another. Adjust the presentation. Record again. The breakthroughs show up across takes, not within a single one.
 
+Long talks — chunk them, don't swallow them whole. If your presentation runs 30–40 minutes or longer, don't try to nail the whole thing at once. Split it. Get the first 5–10 minutes really right — the opening carries the most weight and sets the tone — then move on to the next chunk. Often you won't need to drill every minute: once the beginning is solid and you find your rhythm, the nerves settle and the delivery gets stronger on its own, so the key sections plus a well-prepared opening are usually enough. You don't have to memorize an entire long talk to give it well — master the parts that matter most and get the beginning right.
+
 Pricing
 
 Pay per iteration — $5. One iteration is one full cycle: you submit, a human analyses it, and you get back a personalized recommendation and whatever that specific step calls for. Sometimes that's a written breakdown. Sometimes a short video. Sometimes a task to go practice in the real world. The format depends on what you need at that point — the work is tailored, not templated.
