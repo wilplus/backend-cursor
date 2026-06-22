@@ -169,6 +169,60 @@ class ReadoutFromSessionTests(unittest.TestCase):
         out = self._build([])
         self.assertEqual(out["snippets"], [])
 
+    # ── #A (readout) — COMPLETE per-slide 1:1 transcript on the payload ──
+
+    _DECK_CTX = {
+        "slides": [{"title": "S1", "body": ""}, {"title": "S2", "body": ""}],
+        "slide_advances": [{"index": 0, "t_ms": 0}, {"index": 1, "t_ms": 5000}],
+    }
+
+    def test_attaches_persisted_slide_transcripts(self):
+        from services import lab_recording as mod
+        from services.db import db
+        stx = [
+            {"index": 0, "transcript": "welcome everyone",
+             "start_offset_ms": 1000, "duration_ms": 1000},
+            {"index": 1, "transcript": "here is the pitch",
+             "start_offset_ms": 6000, "duration_ms": 2000},
+        ]
+        with patch.object(db, "get_snippets_by_session", return_value=[_snippet("a")]), \
+             patch.object(db, "v2_get_session_by_id", return_value={}), \
+             patch.object(db, "get_session_intake_context", return_value=self._DECK_CTX), \
+             patch.object(db, "get_session_slide_transcripts", return_value=stx):
+            out = mod.build_readout_from_session("sess1", include_insights=False)
+        self.assertEqual(out["slide_transcripts"], stx)        # surfaced 1:1
+        self.assertEqual(out["slides"], self._DECK_CTX["slides"])
+
+    def test_slide_transcripts_fallback_from_snippet_words(self):
+        # No persisted value (old recording) → best-effort from per-snippet words,
+        # so the quiet first slide is still caught.
+        from services import lab_recording as mod
+        from services.db import db
+        snip = _snippet("a", words=[
+            {"word": "welcome", "start": 1.0, "end": 1.5},
+            {"word": "everyone", "start": 1.6, "end": 2.0},
+            {"word": "the", "start": 6.0, "end": 6.2},
+            {"word": "pitch", "start": 6.3, "end": 6.8},
+        ])
+        with patch.object(db, "get_snippets_by_session", return_value=[snip]), \
+             patch.object(db, "v2_get_session_by_id", return_value={}), \
+             patch.object(db, "get_session_intake_context", return_value=self._DECK_CTX), \
+             patch.object(db, "get_session_slide_transcripts", return_value=None):
+            out = mod.build_readout_from_session("sess1", include_insights=False)
+        by_idx = {t["index"]: t for t in out["slide_transcripts"]}
+        self.assertEqual(by_idx[0]["transcript"], "welcome everyone")
+        self.assertEqual(by_idx[1]["transcript"], "the pitch")
+
+    def test_no_slide_transcripts_when_absent_and_no_words(self):
+        from services import lab_recording as mod
+        from services.db import db
+        with patch.object(db, "get_snippets_by_session", return_value=[_snippet("a")]), \
+             patch.object(db, "v2_get_session_by_id", return_value={}), \
+             patch.object(db, "get_session_intake_context", return_value=self._DECK_CTX), \
+             patch.object(db, "get_session_slide_transcripts", return_value=None):
+            out = mod.build_readout_from_session("sess1", include_insights=False)
+        self.assertNotIn("slide_transcripts", out)  # nothing to surface → omit
+
 
 if __name__ == "__main__":
     unittest.main()

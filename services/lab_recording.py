@@ -502,8 +502,14 @@ def build_readout_from_session(
       - per-snippet ``coach`` {note, tag, when, examples} matched by
         snippet_id (when=None / examples=[] when the note omits them)
 
+    With a deck, also attaches ``slides`` (the deck), per-snippet ``slide``,
+    ``presentation_ref``, and ``slide_transcripts`` — the COMPLETE per-slide 1:1
+    transcript [{index, transcript, start_offset_ms, duration_ms}] so the FE can
+    render each slide with exactly what was said on it (#A); omitted when there's
+    nothing to surface.
+
     Owner-scoping is the caller's job (the route). Returns
-    {"snippets": [...], "insights_payload"?: {...}}.
+    {"snippets": [...], "insights_payload"?: {...}, "slide_transcripts"?: [...]}.
     """
     from services.db import db
 
@@ -600,6 +606,37 @@ def build_readout_from_session(
                 sl = slide_for_snippet(snip, advances, slides)
                 if sl is not None:
                     snip["slide"] = sl
+            # #A (readout) — the COMPLETE per-slide 1:1 transcript so the FE can
+            # show EACH deck slide with exactly what was said while it was on
+            # screen (every word bucketed by the click timeline), including the
+            # quiet first slide the per-snippet view dropped ("first slide not
+            # caught / shifted"). Prefer the value persisted at record time;
+            # fall back to the per-snippet word union for older recordings.
+            _stx = None
+            try:
+                _stx = db.get_session_slide_transcripts(session_id)
+            except Exception:
+                _stx = None
+            if not _stx:
+                try:
+                    from services.slide_word_split import build_slide_transcripts
+                    _union: list = []
+                    for s in snippets:
+                        ws = s.get("words") if isinstance(s, dict) else None
+                        if isinstance(ws, list):
+                            _union.extend(ws)
+                    if _union:
+                        _cand = build_slide_transcripts(_union, advances, slides)
+                        if any((t.get("transcript") or "").strip()
+                               for t in _cand):
+                            _stx = _cand
+                except Exception as _stx_err:
+                    logger.warning(
+                        "readout: slide_transcripts fallback failed sid=%s: %s",
+                        session_id, _stx_err,
+                    )
+            if _stx:
+                result["slide_transcripts"] = _stx
         if ctx.get("presentation_ref"):
             result["presentation_ref"] = ctx.get("presentation_ref")
 
