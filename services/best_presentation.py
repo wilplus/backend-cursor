@@ -220,7 +220,8 @@ def _render_composition(picks_text: list, slides: list) -> Optional[dict]:
 def compose_presentation(picks: dict, slides: list) -> list:
     """``picks`` = {slide_index: winning_candidate}. Returns the per-slide
     payload list (slide order), each
-    {index, title, text, audio_ref, take_index, breakthrough}. The text is the
+    {index, title, text, audio_ref, start_offset_ms, duration_ms, take_index,
+    breakthrough}. The text is the
     lightly-edited line, or the snippet VERBATIM if the LLM didn't return one.
     A slide with no challenge pick is included with empty text (never invented).
     """
@@ -247,6 +248,11 @@ def compose_presentation(picks: dict, slides: list) -> list:
                 "body": slide.get("body") or "",
                 "text": edited.get(i) or verbatim,  # light-edit, else verbatim
                 "audio_ref": pick.get("audio_ref"),
+                # span of THIS line inside the take audio — the FE plays
+                # [start_offset_ms, start_offset_ms+duration_ms] so the spoken
+                # line matches the shown text and isn't cut short (founder #1).
+                "start_offset_ms": pick.get("start_offset_ms"),
+                "duration_ms": pick.get("duration_ms"),
                 "take_index": pick.get("take_index"),
                 # "you turned your stress into charisma" badge — set when this
                 # slide's best line was a threat→challenge turn. breakthrough_note
@@ -262,6 +268,7 @@ def compose_presentation(picks: dict, slides: list) -> list:
                 "index": i, "title": slide.get("title") or "",
                 "body": slide.get("body") or "",
                 "text": "", "audio_ref": None,
+                "start_offset_ms": None, "duration_ms": None,
                 "take_index": None, "breakthrough": False,
                 "breakthrough_note": None,
             })
@@ -361,6 +368,11 @@ def build_best_presentation(arc_id: Optional[str], *, database=None) -> dict:
                 "snippet_id": s.get("id"),
                 "transcript": s.get("transcript") or s.get("transcript_excerpt") or "",
                 "audio_ref": s.get("audio_ref") or s.get("storage_path"),
+                # The snippet's span inside the (concatenated) take audio, so the
+                # FE can clamp playback to THIS line instead of playing the whole
+                # file from 0 and cutting off mid-way (founder #1).
+                "start_offset_ms": s.get("start_offset_ms"),
+                "duration_ms": s.get("duration_ms"),
                 "take_index": take_index,
                 "direction": s.get("direction"),
                 "breakthrough": s.get("id") in breakthroughs,

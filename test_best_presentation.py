@@ -129,6 +129,9 @@ class ComposeTests(unittest.TestCase):
         out = bp.compose_presentation(picks, [{"title": "S1"}, {"title": "S2"}])
         self.assertEqual(out[1]["text"], "")
         self.assertIsNone(out[1]["audio_ref"])
+        # stable shape — the playback span keys exist (null) on a blank slide.
+        self.assertIsNone(out[1]["start_offset_ms"])
+        self.assertIsNone(out[1]["duration_ms"])
 
     def test_ac9_no_internal_score_leaks(self):
         bp._render_composition = lambda picks, slides: {}
@@ -209,9 +212,11 @@ class BuildTests(unittest.TestCase):
             },
         }]
         snips = {"s1": [
-            {"id": "t1", "start_offset_ms": 0, "transcript": "nervous open",
+            {"id": "t1", "start_offset_ms": 0, "duration_ms": 1800,
+             "transcript": "nervous open",
              "storage_path": "s3://t1", "metrics": {"overall_score": 0.9}},
-            {"id": "c1", "start_offset_ms": 2000, "transcript": "strong close",
+            {"id": "c1", "start_offset_ms": 2000, "duration_ms": 1500,
+             "transcript": "strong close",
              "storage_path": "s3://c1", "metrics": {"overall_score": 0.4}},
         ]}
         labels = {"s1": [
@@ -230,6 +235,9 @@ class BuildTests(unittest.TestCase):
         self.assertEqual(slide0["text"], "strong close")
         self.assertTrue(slide0["breakthrough"])
         self.assertEqual(slide0["audio_ref"], "s3://c1")
+        # #1 — the line's span rides through so the FE clamps playback to it.
+        self.assertEqual(slide0["start_offset_ms"], 2000)
+        self.assertEqual(slide0["duration_ms"], 1500)
 
     def test_coach_reviewed_false_pre_publish(self):
         # Auto-composed from the takes before any coach review → draft.
@@ -255,9 +263,11 @@ class BuildTests(unittest.TestCase):
             },
         }]
         snips = {"s1": [
-            {"id": "t1", "start_offset_ms": 0, "transcript": "nervous open",
+            {"id": "t1", "start_offset_ms": 0, "duration_ms": 1800,
+             "transcript": "nervous open",
              "storage_path": "s3://t1", "metrics": {"overall_score": 0.9}},
-            {"id": "c1", "start_offset_ms": 2000, "transcript": "strong close",
+            {"id": "c1", "start_offset_ms": 2000, "duration_ms": 1500,
+             "transcript": "strong close",
              "storage_path": "s3://c1", "metrics": {"overall_score": 0.4}},
         ]}
         out = bp.build_best_presentation(

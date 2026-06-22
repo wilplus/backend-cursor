@@ -9624,7 +9624,8 @@ def v2_explore_arc_best_presentation(arc_id):
     Response 200 {
         arc_id, ready, presentation_ref,
         progress: { takes_done, takes_target, takes_remaining, ready },
-        slides: [ { index, title, body, text, audio_ref, take_index,
+        slides: [ { index, title, body, text, audio_ref,
+                    start_offset_ms, duration_ms, take_index,
                     breakthrough, breakthrough_note, edited } ]
     }
              404 NOT_FOUND · 500 V2_ERROR
