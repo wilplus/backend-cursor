@@ -241,12 +241,31 @@ class OpenAIService:
                 terms = [str(t).strip() for t in vocabulary if str(t).strip()][:40]
                 if terms:
                     prompt = prompt + " " + ", ".join(terms) + "."
-            transcript_response = self.client.audio.transcriptions.create(
+            _create_kwargs = dict(
                 model="whisper-1",
                 file=(filename or "audio.bin", audio_data, ct),
                 response_format="verbose_json",
                 prompt=prompt,
             )
+            try:
+                # Ask for BOTH granularities: segments (existing per-snippet
+                # transcript slicing) AND words (willab #6 — precise per-slide
+                # transcript sync; a word's slide is the one on screen at its
+                # timestamp). Same single call, just a richer response.
+                transcript_response = self.client.audio.transcriptions.create(
+                    timestamp_granularities=["segment", "word"], **_create_kwargs,
+                )
+            except Exception as _gran_err:
+                # SDK too old / API rejects the param → fall back to the prior
+                # segment-only call so transcription is never worse than before
+                # (#6 just loses word timestamps; the readout/transcript stand).
+                logger.warning(
+                    "transcribe_audio: word granularity unavailable, "
+                    "falling back to segments-only: %s", _gran_err,
+                )
+                transcript_response = self.client.audio.transcriptions.create(
+                    **_create_kwargs,
+                )
 
             # Extract duration + per-segment timestamps.
             duration = 0.0
@@ -260,6 +279,28 @@ class OpenAIService:
                         "text": (getattr(seg, "text", "") or "").strip(),
                     })
 
+            # Word-level timestamps (#6) — [{word, start, end}] in SECONDS,
+            # absolute to the recording. ADDITIVE: existing callers ignore it.
+            words: list = []
+            if hasattr(transcript_response, "words") and transcript_response.words:
+                for w in transcript_response.words:
+                    ws = getattr(w, "word", None)
+                    if ws is None and isinstance(w, dict):
+                        ws = w.get("word")
+                    st = getattr(w, "start", None)
+                    if st is None and isinstance(w, dict):
+                        st = w.get("start")
+                    en = getattr(w, "end", None)
+                    if en is None and isinstance(w, dict):
+                        en = w.get("end")
+                    if ws is None or not isinstance(st, (int, float)):
+                        continue
+                    words.append({
+                        "word": str(ws),
+                        "start": float(st),
+                        "end": float(en) if isinstance(en, (int, float)) else float(st),
+                    })
+
             # Whisper verbose_json includes `language` (ISO 639-1). Surface it so
             # callers can persist transcription_language on the recording row for
             # downstream multilingual filler detection (utils/filler_words.py).
@@ -270,6 +311,7 @@ class OpenAIService:
                 "duration": duration,
                 "language": detected_language,
                 "segments": segments,
+                "words": words,
             }
         except Exception as e:
             logger.error(

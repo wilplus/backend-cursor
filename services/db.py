@@ -4963,6 +4963,7 @@ class DatabaseService:
         audio_segment_path: str,
         metrics: dict | None = None,
         transcript: str | None = None,
+        words: list | None = None,
     ) -> dict | None:
         """Create a new charisma snippet record (unlabeled by default).
 
@@ -4972,7 +4973,20 @@ class DatabaseService:
             metrics: Optional JSONB dict of pre-computed acoustic metrics
                      (wpm, pause_ms, dynamic_db, emphasis_per_min, energy_ratio,
                       pitch_center_st, pitch_frame_count, voiced_duration_sec).
+            words: Optional word-level Whisper timestamps [{word, start, end}]
+                   (seconds), for #6 per-slide transcript sync. Stored in the
+                   `words` JSONB column (migrations/add_snippet_transcripts.sql).
+                   If that column isn't applied yet, the insert retries WITHOUT
+                   words so a recording is never lost to a pending migration.
         """
+        def _insert(payload):
+            res = (
+                self.client.table("charisma_snippets")
+                .insert(payload)
+                .execute()
+            )
+            return res.data[0] if res.data and len(res.data) > 0 else None
+
         try:
             payload = {
                 "session_id": session_id,
@@ -4988,14 +5002,22 @@ class DatabaseService:
                 payload["metrics"] = metrics
             if transcript:
                 payload["transcript"] = transcript
-            result = (
-                self.client.table("charisma_snippets")
-                .insert(payload)
-                .execute()
-            )
-            if result.data and len(result.data) > 0:
-                return result.data[0]
-            return None
+            if words:
+                payload["words"] = words
+            try:
+                return _insert(payload)
+            except Exception as col_err:
+                # The `words` column may not be migrated in this env yet — never
+                # let it cost us the snippet. Retry without words (#6 degrades to
+                # the legacy whole-snippet per-slide bucketing).
+                if "words" in payload:
+                    logger.warning(
+                        "create_charisma_snippet: retry without words "
+                        "(run add_snippet_transcripts.sql?): %s", col_err,
+                    )
+                    payload.pop("words", None)
+                    return _insert(payload)
+                raise
         except Exception as e:
             logger.error(f"create_charisma_snippet failed: {e}")
             return None

@@ -216,6 +216,7 @@ def process_lab_recording(
         SALIENCE_CANDIDATE_POOL, NOTABLE_POOL_SIZE,
     )
     from services.snippet_stickiness import score_snippets_stickiness
+    from services.slide_word_split import slice_words_for_window
     from services.db import db
 
     sig = decode_audio_to_pcm(audio_bytes)
@@ -227,6 +228,7 @@ def process_lab_recording(
 
     # Whisper the whole recording ONCE (best-effort), vocab-primed.
     segments: list = []
+    words_all: list = []  # word-level timestamps (#6 per-slide sync)
     try:
         from io import BytesIO
         from services.openai_service import OpenAIService
@@ -256,12 +258,14 @@ def process_lab_recording(
                 vocabulary=vocab,
             )
             segments = (wres or {}).get("segments") or []
+            words_all = (wres or {}).get("words") or []
     except Exception as e:
         logger.warning(
             "process_lab_recording: whisper failed sid=%s err=%s",
             session_id, e,
         )
         segments = []
+        words_all = []
 
     # ── Candidate windows: ask the segmenter for a GENEROUS pool, not
     # the final cap. Level 1 salience selection picks the top-N most
@@ -390,6 +394,14 @@ def process_lab_recording(
         metrics_full["rank"] = _rank_by_i.get(i)
         if i == 0 and _slide_coverage:  # per-slide ledger parked once, on snip[0]
             metrics_full["slide_coverage"] = _slide_coverage
+        # #6 — park this window's word-level timestamps so the take viewer can
+        # split the per-slide transcript at slide-click boundaries later. Sliced
+        # from the whole-recording word list (absolute seconds). Empty when
+        # Whisper returned no words (older path / failure) → take viewer falls
+        # back to whole-snippet bucketing.
+        snip_words = slice_words_for_window(
+            words_all, p["start_ms"], p["start_ms"] + p["dur_ms"],
+        ) if words_all else None
         row = db.create_charisma_snippet(
             session_id=session_id,
             user_id=user_id,
@@ -399,6 +411,7 @@ def process_lab_recording(
             audio_segment_path=parent_audio_url,
             metrics=metrics_full,
             transcript=p["transcript"] or None,
+            words=snip_words or None,
         )
         snippets_data.append({
             "id": row.get("id") if row else None,
