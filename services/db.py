@@ -10122,6 +10122,32 @@ class DatabaseService:
             )
             return False
 
+    def get_session_slide_transcripts(self, session_id: str) -> Optional[list]:
+        """Read the persisted COMPLETE per-slide 1:1 transcript for a session
+        (#A). Returns the list [{index, transcript, start_offset_ms,
+        duration_ms}] or None when absent / missing column / error — the readout
+        then falls back to its per-snippet rendering."""
+        if not session_id:
+            return None
+        try:
+            res = (
+                self.client.table("v2_sessions")
+                .select("slide_transcripts")
+                .eq("id", session_id)
+                .limit(1)
+                .execute()
+            )
+            row = (res.data or [None])[0]
+            st = row.get("slide_transcripts") if isinstance(row, dict) else None
+            return st if isinstance(st, list) else None
+        except Exception as e:
+            err_low = str(e).lower()
+            if "slide_transcripts" in err_low or "pgrst" in err_low:
+                return None
+            logger.warning("get_session_slide_transcripts failed sid=%s: %s",
+                           session_id, e)
+            return None
+
     # ── willab beta — user profile (design §2 / contract §3.1) ──────
     #
     # One-time self-declared {domain, goal} on user_settings (co-located
