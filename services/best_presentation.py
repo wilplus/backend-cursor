@@ -320,14 +320,56 @@ def _resolve_take_directions(snippets: list, coach_labels: dict) -> list:
     return out
 
 
+def _bp_signature(sessions: list) -> str:
+    """Content signature for the best-presentation cache (Part B). Changes
+    EXACTLY when a recompose is needed: a take added/removed, or a coach publish
+    (which re-ranks + confirms breakthroughs). User pencil-edits are applied on
+    READ, so they're intentionally NOT part of the signature. Cheap — computed
+    from the session list the route already loaded, no extra reads."""
+    import hashlib
+    import json as _json
+    key = sorted(
+        (
+            [str(s.get("id")), s.get("take_index"),
+             str(s.get("results_published_at") or "")]
+            for s in (sessions or []) if isinstance(s, dict)
+        ),
+        key=lambda r: r[0],
+    )
+    return hashlib.sha1(
+        _json.dumps(key, sort_keys=True, default=str).encode("utf-8")
+    ).hexdigest()
+
+
 def build_best_presentation(arc_id: Optional[str], *, database=None) -> dict:
     """Assemble the best-presentation payload for an arc. Best-effort; returns
-    a progress-only payload (ready=False) when there's nothing to compose."""
+    a progress-only payload (ready=False) when there's nothing to compose.
+
+    Part B — the composed slides (the ~2-4s LLM pass) are CACHED keyed by arc +
+    content signature; an unchanged arc returns the cached compose (no LLM, no
+    snippet reads). User edits + coach_reviewed are applied fresh on every read.
+    """
     from services.slide_alignment import slide_index_for_offset
     db = database if database is not None else _default_db()
 
     sessions = db.get_arc_sessions(arc_id) if arc_id else []
     progress = presentation_progress(len(sessions))
+
+    # ── Compose cache (Part B). Hit → reuse the composed slides + deck ref,
+    # skipping the snippet reads + LLM. getattr guards keep injected fake dbs
+    # (tests) working without the cache methods.
+    signature = _bp_signature(sessions)
+    _get_cache = getattr(db, "get_best_presentation_cache", None)
+    _put_cache = getattr(db, "upsert_best_presentation_cache", None)
+    cached = _get_cache(arc_id) if (arc_id and callable(_get_cache)) else None
+    if (isinstance(cached, dict) and cached.get("signature") == signature
+            and isinstance(cached.get("payload"), dict)):
+        slides_payload = cached["payload"].get("slides") or []
+        canonical_presentation_ref = cached["payload"].get("presentation_ref")
+        return _finalize_best_presentation(
+            db, arc_id, sessions, progress, slides_payload,
+            canonical_presentation_ref,
+        )
 
     candidates = []
     canonical_slides: list = []
@@ -388,6 +430,26 @@ def build_best_presentation(arc_id: Optional[str], *, database=None) -> dict:
     picks = select_best_per_slide(candidates)
     slides_payload = compose_presentation(picks, canonical_slides)
 
+    # Cache the composed (pre-edit) result keyed by the content signature so the
+    # next open with an unchanged arc skips the LLM. Best-effort.
+    if callable(_put_cache) and arc_id:
+        _put_cache(arc_id, signature, {
+            "slides": slides_payload,
+            "presentation_ref": canonical_presentation_ref,
+        })
+
+    return _finalize_best_presentation(
+        db, arc_id, sessions, progress, slides_payload,
+        canonical_presentation_ref,
+    )
+
+
+def _finalize_best_presentation(
+    db, arc_id, sessions, progress, slides_payload, canonical_presentation_ref,
+) -> dict:
+    """Apply the user's pencil-edits + coach_reviewed and assemble the payload.
+    Runs on BOTH the cache-hit and fresh-compose paths — edits + coach review
+    must be fresh, so they are never part of the cached compose."""
     # Apply the user's saved per-slide edits (the pencil) — they override the
     # composed text and stick across recompositions. `edited` tells the FE.
     edits = db.get_best_presentation_edits(arc_id) or {}

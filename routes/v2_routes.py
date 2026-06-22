@@ -7556,24 +7556,40 @@ def v2_user_get_strengths():
         for sid in sess_rows:
             by_session.setdefault(sid, [])
 
+        # Part B — kill the N+1: resolve every session row once, decide which
+        # need snippets (coach-tagged OR deck sessions), then read ALL their
+        # snippets in ONE batched query. `words` are excluded (the take viewer
+        # reads the precomputed slide_transcripts, #A), slashing the payload.
+        _sessions_by_sid: dict = {}
+        _need_snippets: list = []
+        for sid in by_session:
+            session = sess_rows.get(sid) or db.v2_get_session_by_id(sid) or {}
+            _sessions_by_sid[sid] = session
+            _ctx = session.get("intake_context") if isinstance(session.get("intake_context"), dict) else {}
+            if by_session[sid] or (_ctx.get("slides") or []):
+                _need_snippets.append(sid)
+        _snips_by_sid = db.get_snippets_by_sessions(_need_snippets) or {}
+
         # Load session metadata + rank lookups per session.
         sess_meta: dict = {}
         for sid in by_session:
-            session = sess_rows.get(sid) or db.v2_get_session_by_id(sid) or {}
+            session = _sessions_by_sid.get(sid) or {}
             ctx = session.get("intake_context") if isinstance(session.get("intake_context"), dict) else {}
             slides = ctx.get("slides") or []
             ranks: dict = {}
             sigs: dict = {}  # coach-adjusted power_score inputs per snippet
             all_snippets: list = []
-            # Load snippets for coach-tagged sessions (ranks / power_score) AND
-            # for DECK sessions (the per-slide verbatim transcript, #6). Only an
-            # un-coached DECKLESS session skips the read (perf — it has no take
-            # viewer + no power ranking).
+            # Snippets for coach-tagged sessions (ranks / power_score) AND DECK
+            # sessions (the per-slide verbatim transcript). Un-coached DECKLESS
+            # sessions skip it. Prefer the batched result; fall back to a single
+            # read only when the batch had nothing for this sid.
             if by_session[sid] or slides:
-                try:
-                    all_snippets = db.get_snippets_by_session(sid) or []
-                except Exception:
-                    all_snippets = []
+                all_snippets = _snips_by_sid.get(sid)
+                if all_snippets is None:
+                    try:
+                        all_snippets = db.get_snippets_by_session(sid) or []
+                    except Exception:
+                        all_snippets = []
                 for s in all_snippets:
                     m = s.get("metrics") if isinstance(s.get("metrics"), dict) else {}
                     sid_s = str(s.get("id"))

@@ -80,6 +80,16 @@ class StrengthsV2Tests(unittest.TestCase):
                    {"id": "t2b", "metrics": {"rank": 2}}],
             "t1": [{"id": "t1a", "metrics": {"rank": 3}}],
         }.get(sid, []))
+        # Part B — the route batches snippet reads. Delegate the batch to the
+        # currently-patched singular so every test exercises the batched path
+        # against its own fixture (re-patches of the singular are picked up).
+        self._patch(
+            "get_snippets_by_sessions",
+            lambda ids, include_words=False: {
+                str(s): v2.db.get_snippets_by_session(str(s))
+                for s in (ids or [])
+            },
+        )
 
     def tearDown(self):
         for attr, orig in self._origs.items():
