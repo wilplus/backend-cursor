@@ -165,6 +165,47 @@ class StrengthsV2Tests(unittest.TestCase):
         self.assertEqual(slides[0]["transcript"], "hi there")  # pre-click words
         self.assertEqual(slides[1]["transcript"], "now go")    # post-click words
 
+    def test_precomputed_slide_transcripts_preferred(self):
+        # #A: a session carrying precomputed slide_transcripts (the COMPLETE
+        # per-slide 1:1) drives the take viewer — including a QUIET FIRST SLIDE
+        # that had no salient snippet (the "first slide not caught" fix).
+        self._patch("get_strong_sides_library", lambda uid, tag=None: [])
+        deck = [{"title": "S1", "body": ""}, {"title": "S2", "body": ""}]
+        ctx = {"topic": "Deck", "slides": deck,
+               "slide_advances": [{"index": 0, "t_ms": 0},
+                                  {"index": 1, "t_ms": 5000}]}
+        self._patch("v2_list_user_lab_sessions", lambda uid: [
+            {"id": "recA", "created_at": "2026-06-22T00:00:00Z",
+             "arc_id": "arc-A",
+             "intake_context": {**ctx, "presentation_ref": "https://x/recA.pdf"},
+             "slide_transcripts": [
+                 {"index": 0, "transcript": "welcome everyone",
+                  "start_offset_ms": 1000, "duration_ms": 2000},
+                 {"index": 1, "transcript": "here is the pitch",
+                  "start_offset_ms": 6000, "duration_ms": 3000},
+             ]},
+        ])
+        self._patch("v2_get_session_by_id", lambda sid: {
+            "recA": {"created_at": "2026-06-22T00:00:00Z", "intake_context": ctx},
+        }.get(sid))
+        # Only ONE snippet, on slide 1 — slide 0 had no salient snippet. Proves
+        # the complete slide-0 transcript comes from slide_transcripts, not the
+        # snippet split (which would have left slide 0 blank).
+        self._patch("get_snippets_by_session", lambda sid: {
+            "recA": [{"id": "s1", "start_offset_ms": 6000, "duration_ms": 3000,
+                      "transcript": "here is the pitch",
+                      "audio_segment_path": "p/recA.wav",
+                      "metrics": {"rank": 1, "overall_score": 0.5}}],
+        }.get(sid, []))
+        _, data = self._get()
+        by_arc = {p.get("arc_id"): p for p in data["presentations"]}
+        take = by_arc["arc-A"]["takes"][0]
+        slides = {s["index"]: s for s in take["slides"]}
+        self.assertEqual(slides[0]["transcript"], "welcome everyone")  # caught!
+        self.assertEqual(slides[1]["transcript"], "here is the pitch")
+        self.assertEqual(slides[0]["audio_ref"], "p/recA.wav")
+        self.assertEqual(slides[0]["start_offset_ms"], 1000)
+
     def test_group_arc_id_picks_the_arc_with_most_takes(self):
         # A deck re-recorded as a SEPARATE arc spreads takes across arc_ids.
         # The group-level arc_id (what the FE opens the best-presentation with)

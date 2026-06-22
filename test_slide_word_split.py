@@ -75,6 +75,62 @@ class SplitWordsBySlidesTests(unittest.TestCase):
         self.assertEqual(frags[0]["transcript"], "ok")
 
 
+class BuildSlideTranscriptsTests(unittest.TestCase):
+    """build_slide_transcripts (#A) — COMPLETE per-slide transcript from the
+    whole-recording word list, one entry per deck slide."""
+
+    def _f(self, *args, **kw):
+        from services.slide_word_split import build_slide_transcripts
+        return build_slide_transcripts(*args, **kw)
+
+    def test_one_entry_per_slide_complete_split(self):
+        words = [_w("hi", 0.0, 0.5), _w("there", 0.6, 1.0),
+                 _w("now", 6.0, 6.4), _w("go", 6.5, 7.0)]
+        out = self._f(words, ADV, SLIDES)
+        self.assertEqual([e["index"] for e in out], [0, 1])
+        self.assertEqual(out[0]["transcript"], "hi there")
+        self.assertEqual(out[1]["transcript"], "now go")
+
+    def test_quiet_first_slide_still_caught(self):
+        # The fix: even if the first slide's words weren't a salient snippet,
+        # they're bucketed here from the whole-recording word list.
+        words = [_w("welcome", 1.0, 1.5),                     # slide 0
+                 _w("the", 6.0, 6.2), _w("pitch", 6.3, 6.8)]  # slide 1
+        out = self._f(words, ADV, SLIDES)
+        self.assertEqual(out[0]["transcript"], "welcome")   # NOT empty/shifted
+        self.assertEqual(out[1]["transcript"], "the pitch")
+
+    def test_empty_slide_is_present_with_blank_transcript(self):
+        # Nothing said on slide 1 → it still appears, empty (truthful 1:1).
+        words = [_w("only", 0.0, 0.5), _w("here", 0.6, 1.0)]  # all slide 0
+        out = self._f(words, ADV, SLIDES)
+        self.assertEqual(out[0]["transcript"], "only here")
+        self.assertEqual(out[1]["transcript"], "")
+        self.assertIsNone(out[1]["start_offset_ms"])
+
+    def test_revisited_slide_collects_all_words_in_time_order(self):
+        adv = [{"index": 0, "t_ms": 0}, {"index": 1, "t_ms": 3000},
+               {"index": 0, "t_ms": 6000}]
+        words = [_w("a", 1.0, 1.2), _w("b", 4.0, 4.2), _w("c", 7.0, 7.2)]
+        out = self._f(words, adv, SLIDES)
+        self.assertEqual(out[0]["transcript"], "a c")  # both slide-0 visits
+        self.assertEqual(out[1]["transcript"], "b")
+
+    def test_span_from_word_times(self):
+        words = [_w("x", 6.0, 6.2), _w("y", 6.8, 7.5)]  # slide 1
+        out = self._f(words, ADV, SLIDES)
+        self.assertEqual(out[1]["start_offset_ms"], 6000)
+        self.assertEqual(out[1]["duration_ms"], 1500)
+
+    def test_no_slides_returns_empty(self):
+        self.assertEqual(self._f([_w("x", 0, 1)], ADV, []), [])
+
+    def test_no_words_returns_all_empty_slides(self):
+        out = self._f([], ADV, SLIDES)
+        self.assertEqual([e["transcript"] for e in out], ["", ""])
+        self.assertEqual([e["index"] for e in out], [0, 1])
+
+
 class SliceWordsForWindowTests(unittest.TestCase):
     def test_overlap_window(self):
         words = [_w("a", 0.0, 0.5), _w("b", 1.0, 1.5), _w("c", 3.0, 3.5)]
