@@ -3345,6 +3345,80 @@ def v2_chat_session_state():
         }), 500
 
 
+def _persist_chat_turn(
+    user_id, question, answer, *, suggested_action=None, bubbles=None,
+    intent=None, user_client_id=None, user_created_at=None,
+):
+    """BE-owned persistence of one Lounge chat turn (founder #2 — bubbles must
+    never disappear). Writes the user message + the bot reply to lounge_messages
+    so the thread survives reload + relogin on ANY device, rather than relying on
+    a best-effort FE append that can silently fail or race the auth token.
+
+    Idempotent: client_ids are deterministic (uuid5), so re-posting the same turn
+    is a no-op (UNIQUE(user_id, client_id)). The user-turn id prefers the FE's
+    own client_id (so it de-dupes with the FE's optimistic local copy + preserves
+    merge ordering); the bot-turn id derives from it → exactly one bot row per
+    user turn. The bot row carries suggested_action + bubbles in metadata so the
+    FE reconstructs the contextual chip (trainings / strong_sides / audit) on
+    rehydrate — the chip that was vanishing on relogin. Mirrors the existing
+    server-insert pattern (publish 'insights ready' card, session cadence).
+
+    Returns the bot row's client_id (so the FE can de-dupe its optimistic
+    bubble) or None on failure. Best-effort — never raises to the route.
+    """
+    from datetime import datetime as _dt, timezone as _tz
+
+    q = (question or "").strip()
+    a = (answer or "").strip()
+    if not user_id or not a:
+        return None
+
+    def _is_uuid(v):
+        try:
+            uuid.UUID(str(v))
+            return True
+        except (ValueError, AttributeError, TypeError):
+            return False
+
+    # User-turn id: prefer the FE's own (dedupe + merge order); else derive
+    # deterministically from the text so an identical re-post stays a no-op.
+    if user_client_id and _is_uuid(user_client_id):
+        u_id = str(user_client_id)
+    else:
+        u_id = str(uuid.uuid5(
+            uuid.NAMESPACE_URL, f"willab-chat-user:{user_id}:{q}"))
+    # Bot-turn id derives from the user-turn id → one bot row per user turn.
+    b_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"willab-chat-bot:{u_id}"))
+
+    now_iso = _dt.now(_tz.utc).isoformat()
+    u_ts = (user_created_at if isinstance(user_created_at, str)
+            and user_created_at.strip() else now_iso)
+
+    rows = []
+    if q:
+        rows.append({
+            "client_id": u_id, "role": "user", "kind": "text",
+            "body": q, "metadata": None, "client_created_at": u_ts,
+        })
+    meta = {"intent": intent}
+    if suggested_action:
+        meta["suggested_action"] = suggested_action
+    if bubbles:
+        meta["bubbles"] = bubbles
+    rows.append({
+        "client_id": b_id, "role": "bot", "kind": "text",
+        "body": a, "metadata": meta, "client_created_at": now_iso,
+    })
+
+    try:
+        db.insert_lounge_messages(str(user_id), rows)
+        return b_id
+    except Exception as e:
+        logger.warning(
+            "chat/query: persist turn failed user=%s: %s", user_id, e)
+        return None
+
+
 @v2_bp.route("/chat/query", methods=["POST"])
 @optional_auth
 def v2_chat_query():
@@ -3363,7 +3437,16 @@ def v2_chat_query():
           "history":  [                          // optional
             { "role": "user",      "content": "..." },
             { "role": "assistant", "content": "..." }
-          ]
+          ],
+          // #2 — BE-owned thread persistence (signed-in only). Opt-in: when
+          // persist=true, the user + bot turns are written to lounge_messages
+          // server-side so they survive reload + relogin (no race-prone FE
+          // append). client_id = the user message's FE id (idempotency +
+          // dedupe with the FE's optimistic copy); client_created_at = its
+          // FE timestamp (ordering). All optional; ignored when signed out.
+          "persist":           bool,             // optional, default false
+          "client_id":         "uuid",           // optional (user msg id)
+          "client_created_at": "iso8601"         // optional (user msg ts)
         }
 
     Responses::
@@ -3374,7 +3457,10 @@ def v2_chat_query():
               "show_record_ui": bool,   # per-turn record affordance
                                          # toggle (RULE I) — in-app mic
               "suggested_action": str | None,  # the one contextual button
-              "debug":          {...}   # model + history_used / error
+              "debug":          {...},  # model + history_used / error
+              # present only when persist=true + signed in:
+              "persisted":         bool,   # bot turn written server-side
+              "persisted_client_id": str   # the bot row's client_id (FE dedupe)
             }
         400 INVALID_INPUT — question missing or not a string
         500 V2_ERROR
@@ -3428,6 +3514,15 @@ def v2_chat_query():
         transcript_source = "web_speech"
         audio_duration_sec: float = 0.0
 
+        # #2 — BE-owned thread persistence (signed-in only; FE opt-in). The FE
+        # sends persist=true plus the user message's client_id/client_created_at
+        # so this turn (user + bot) is written to lounge_messages server-side and
+        # survives reload + relogin on any device — instead of the race-prone
+        # best-effort FE append that was dropping bubbles + chips.
+        persist_thread = False
+        user_client_id: str | None = None
+        user_created_at: str | None = None
+
         if is_multipart:
             question = (request.form.get("question") or "").strip()
             history_raw = request.form.get("history")
@@ -3442,6 +3537,12 @@ def v2_chat_query():
                     # Same leniency as the JSON path — bad history
                     # never breaks the answer.
                     history = None
+
+            persist_thread = (request.form.get("persist") or "").strip().lower() in (
+                "1", "true", "yes", "on",
+            )
+            user_client_id = request.form.get("client_id") or None
+            user_created_at = request.form.get("client_created_at") or None
 
             audio_file = request.files.get("audio_file")
             if audio_file is not None:
@@ -3473,12 +3574,37 @@ def v2_chat_query():
             history = body.get("history")
             if history is not None and not isinstance(history, list):
                 history = None
+            persist_thread = bool(body.get("persist"))
+            _cid = body.get("client_id")
+            user_client_id = _cid if isinstance(_cid, str) else None
+            _cca = body.get("client_created_at")
+            user_created_at = _cca if isinstance(_cca, str) else None
 
         if not isinstance(question, str) or not question.strip():
             return jsonify({
                 "code": "INVALID_INPUT",
                 "error": "question must be a non-empty string",
             }), 400
+
+        def _finalize(resp, *, intent=None):
+            """Persist this turn server-side (founder #2) when the FE opted in
+            and the caller is signed in, then return the 200. The bot row carries
+            suggested_action + bubbles in its metadata so the contextual chip
+            (trainings / strong_sides / best-presentation) reconstructs on
+            rehydrate — exactly what was vanishing on relogin. Best-effort: a
+            persist failure never fails the chat response."""
+            if persist_thread and request.user_id:
+                bot_cid = _persist_chat_turn(
+                    request.user_id, question, resp.get("answer"),
+                    suggested_action=resp.get("suggested_action"),
+                    bubbles=resp.get("bubbles"), intent=intent,
+                    user_client_id=user_client_id,
+                    user_created_at=user_created_at,
+                )
+                resp["persisted"] = bool(bot_cid)
+                if bot_cid:
+                    resp["persisted_client_id"] = bot_cid
+            return jsonify(resp), 200
 
         # ── Goal-update intercept (Prompt A §6 C4) — BEFORE the librarian.
         # §0: never add rules to master_doc_rag (attention ceiling). A
@@ -3493,7 +3619,7 @@ def v2_chat_query():
                 from services.master_doc_rag import split_answer_into_bubbles
                 _gu = handle_goal_update(request.user_id, question.strip())
                 if _gu and _gu.get("answer"):
-                    return jsonify({
+                    return _finalize({
                         "answer": _gu["answer"],
                         "bubbles": split_answer_into_bubbles(_gu["answer"]),
                         "show_record_ui": False,
@@ -3502,7 +3628,7 @@ def v2_chat_query():
                             "intent": "goal_update",
                             "new_goal": _gu.get("new_goal"),
                         },
-                    }), 200
+                    }, intent="goal_update")
             except Exception as _ge:
                 logger.warning(
                     "chat/query: goal-update intercept failed user=%s: %s",
@@ -3523,13 +3649,13 @@ def v2_chat_query():
                 _ai = handle_audit_intent(request.user_id, question.strip())
                 if _ai and _ai.get("suggested_action") == "audit":
                     _ans = _ai.get("answer") or ""
-                    return jsonify({
+                    return _finalize({
                         "answer": _ans,
                         "bubbles": split_answer_into_bubbles(_ans),
                         "show_record_ui": False,
                         "suggested_action": "audit",
                         "debug": {"intent": "audit"},
-                    }), 200
+                    }, intent="audit")
             except Exception as _ae:
                 logger.warning(
                     "chat/query: audit intercept failed user=%s: %s",
@@ -3550,13 +3676,13 @@ def v2_chat_query():
             _ci = detect_chat_intent(question.strip())
             if _ci:
                 _ans = _ci["answer"]
-                return jsonify({
+                return _finalize({
                     "answer": _ans,
                     "bubbles": split_answer_into_bubbles(_ans),
                     "show_record_ui": _ci["show_record_ui"],
                     "suggested_action": _ci["suggested_action"],
                     "debug": {"intent": _ci["intent"]},
-                }), 200
+                }, intent=_ci["intent"])
         except Exception as _cie:
             logger.warning("chat/query: chat-intent intercept failed: %s", _cie)
 
@@ -3668,7 +3794,7 @@ def v2_chat_query():
         if _sa not in ("strong_sides", "trainings", "audit"):
             _sa = None
         _answer = payload.get("answer", "")
-        return jsonify({
+        return _finalize({
             "answer": _answer,
             # FE #157 — pre-split chat bubbles (renders 1:1; falls back to
             # splitting `answer` on blank lines when absent). `answer` stays
@@ -3677,7 +3803,7 @@ def v2_chat_query():
             "show_record_ui": bool(payload.get("show_record_ui", False)),
             "suggested_action": _sa,
             "debug": debug,
-        }), 200
+        }, intent=(debug or {}).get("intent") or "faq")
 
     except Exception as e:
         logger.error("chat/query failed: %s", e, exc_info=True)
