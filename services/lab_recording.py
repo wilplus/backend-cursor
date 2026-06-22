@@ -437,6 +437,28 @@ def process_lab_recording(
         session_id, len(snippets_data), bool(segments),
     )
 
+    # #A (2026-06-22) — the COMPLETE per-slide 1:1 transcript, bucketed from the
+    # WHOLE-recording word list by the slide-click timeline (NOT just the salient
+    # snippets, which dropped quiet slides → "first slide not caught / shifted").
+    # Persisted at session level so the take viewer reads it directly (complete +
+    # fast). Best-effort: never break the recording; only persist when there's
+    # real content (else the take viewer keeps its per-snippet fallback).
+    try:
+        _slides_for_tx = (session_context or {}).get("slides")
+        if _slides_for_tx and words_all:
+            from services.slide_word_split import build_slide_transcripts
+            _slide_tx = build_slide_transcripts(
+                words_all, (session_context or {}).get("slide_advances"),
+                _slides_for_tx,
+            )
+            if any((t.get("transcript") or "").strip() for t in _slide_tx):
+                db.set_session_slide_transcripts(session_id, _slide_tx)
+    except Exception as _stx_err:
+        logger.warning(
+            "process_lab_recording: slide_transcripts failed sid=%s: %s",
+            session_id, _stx_err,
+        )
+
     # AI-Commentator (Phase 4 / Prompt 2) — fire-and-forget coach-note drafts
     # for every recording (slides are optional grounding; a deck-less spoken
     # pitch still drafts). process_lab_recording is synchronous on the upload

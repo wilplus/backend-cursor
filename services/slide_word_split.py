@@ -106,3 +106,64 @@ def split_words_by_slides(words: Any, slide_advances: Any, slides: Any) -> list:
         }
         for g in groups
     ]
+
+
+def build_slide_transcripts(words_all: Any, slide_advances: Any,
+                            slides: Any) -> list:
+    """The COMPLETE per-slide transcript for the take viewer (founder Part A —
+    "text under the slide = exactly 1:1 of what was said while that slide was on
+    screen"). Unlike the per-snippet split, this buckets the WHOLE-recording word
+    list so a slide whose speech wasn't in a salient snippet (typically the quiet
+    first slide) still gets its words — fixing "the app doesn't catch the first
+    slide / everything is shifted".
+
+    Returns one entry PER DECK SLIDE (index 0..n-1, in order) —
+    ``{index, transcript, start_offset_ms, duration_ms}`` — even when a slide had
+    no speech (empty transcript is the truthful 1:1). Every word is bucketed to
+    the slide on screen at its timestamp; a word before the first advance clamps
+    to slide 0; a revisited slide collects all its words in time order. The span
+    is [min word start, max word end] for that slide. Returns [] when there are
+    no slides. Pure.
+    """
+    n = len(slides) if isinstance(slides, list) else 0
+    if n == 0:
+        return []
+
+    buckets: dict = {i: [] for i in range(n)}  # i -> [(start_ms, end_ms, token)]
+    if words_all and slide_advances:
+        from services.slide_alignment import slide_index_for_offset
+        for w in words_all:
+            if not isinstance(w, dict):
+                continue
+            st = w.get("start")
+            if not isinstance(st, (int, float)):
+                continue
+            token = (w.get("word") or "").strip()
+            if not token:
+                continue
+            en = w.get("end")
+            en = float(en) if isinstance(en, (int, float)) else float(st)
+            start_ms = int(float(st) * 1000)
+            end_ms = int(en * 1000)
+            si = slide_index_for_offset(start_ms, slide_advances)
+            si = 0 if not isinstance(si, int) else max(0, min(si, n - 1))
+            buckets[si].append((start_ms, end_ms, token))
+
+    out: list = []
+    for i in range(n):
+        ws = sorted(buckets[i], key=lambda t: t[0])
+        transcript = " ".join(t[2] for t in ws).strip()
+        if ws:
+            start_ms = ws[0][0]
+            end_ms = max(t[1] for t in ws)
+            duration_ms = max(0, end_ms - start_ms)
+        else:
+            start_ms = None
+            duration_ms = None
+        out.append({
+            "index": i,
+            "transcript": transcript,
+            "start_offset_ms": start_ms,
+            "duration_ms": duration_ms,
+        })
+    return out

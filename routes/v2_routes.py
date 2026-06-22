@@ -7589,6 +7589,9 @@ def v2_user_get_strengths():
                 "sigs": sigs,
                 "slides": slides,
                 "all_snippets": all_snippets,
+                # #A — the COMPLETE per-slide 1:1 transcript precomputed at
+                # record time (preferred over the per-snippet split below).
+                "slide_transcripts": session.get("slide_transcripts"),
                 "created_at": session.get("created_at") or "",
                 "arc_id": session.get("arc_id"),
                 "presentation_id": _presentation_id_from_slides(slides),
@@ -7672,6 +7675,31 @@ def v2_user_get_strengths():
                 sg["strong_snippets"].sort(
                     key=lambda s: -(s.get("power_score") or 0.0)
                 )
+            # #A (2026-06-22) — PREFER the precomputed COMPLETE per-slide 1:1
+            # transcript (built at record time from the WHOLE-recording word
+            # list). It catches the quiet slides the salient-snippet split
+            # dropped ("first slide not caught / shifted"). Falls back to the #6
+            # per-snippet split (then legacy) for recordings made before this.
+            precomputed = meta.get("slide_transcripts")
+            pre_by_idx = {
+                t["index"]: t for t in precomputed
+                if isinstance(t, dict) and isinstance(t.get("index"), int)
+            } if isinstance(precomputed, list) and precomputed else {}
+            if pre_by_idx:
+                parent_audio = next(
+                    (s.get("audio_segment_path")
+                     for s in (meta.get("all_snippets") or [])
+                     if s.get("audio_segment_path")),
+                    None,
+                )
+                for sg in slide_groups:
+                    pt = pre_by_idx.get(sg["index"]) or {}
+                    sg["transcript"] = pt.get("transcript") or ""
+                    sg["start_offset_ms"] = pt.get("start_offset_ms")
+                    sg["duration_ms"] = pt.get("duration_ms")
+                    sg["audio_ref"] = parent_audio
+                return slide_groups
+
             # #6 (2026-06-21) — the FULL verbatim transcript per slide for THIS
             # take (not just the coach standout), so the Trainings take viewer
             # shows what was actually said on each slide instead of "No standout
