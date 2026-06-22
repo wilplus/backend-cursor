@@ -421,6 +421,71 @@ def build_best_presentation(arc_id: Optional[str], *, database=None) -> dict:
     }
 
 
+def build_arc_breakthroughs(arc_id: Optional[str], *, database=None) -> dict:
+    """ALL coach-confirmed breakthrough moments in an arc, newest → oldest.
+
+    The "explore my breakthrough moments" list (founder #5, scoped to THIS
+    presentation's arc). Same gate as the best-presentation badge — a
+    threat→challenge turn on the coach's OWN labels (``coach_direction``,
+    never a model guess) — but returns EVERY breakthrough snippet across all
+    takes (not just the per-slide winner), each with the playback data the FE
+    needs. Score-free (AC-9); best-effort → empty list when there's nothing.
+    """
+    from services.challenge_threat import detect_breakthroughs
+    from services.slide_alignment import slide_index_for_offset
+    db = database if database is not None else _default_db()
+
+    sessions = db.get_arc_sessions(arc_id) if arc_id else []
+    out: list = []
+    for sess in sessions:
+        sid = sess.get("id")
+        ctx = sess.get("intake_context") if isinstance(sess.get("intake_context"), dict) else {}
+        advances = ctx.get("slide_advances")
+        created_at = sess.get("created_at")
+        take_index = sess.get("take_index")
+        snippets = db.get_snippets_by_session(sid) if sid else []
+        coach_labels = {
+            str(r.get("snippet_id")): r.get("value")
+            for r in (db.get_training_labels(sid) or [])
+        }
+        directed = _resolve_take_directions(snippets, coach_labels)
+        bt = detect_breakthroughs([
+            {"id": s.get("id"), "start_offset_ms": s.get("start_offset_ms"),
+             "direction": s.get("coach_direction")}
+            for s in directed
+        ])
+        for s in directed:
+            if s.get("id") not in bt:
+                continue
+            out.append({
+                "snippet_id": s.get("id"),
+                "session_id": sid,
+                "take_index": take_index,
+                "created_at": created_at,
+                "slide_index": slide_index_for_offset(
+                    s.get("start_offset_ms"), advances),
+                "transcript": (s.get("transcript")
+                               or s.get("transcript_excerpt") or ""),
+                "audio_ref": s.get("audio_ref") or s.get("storage_path"),
+                # span inside the take audio so the FE clamps playback (#1).
+                "start_offset_ms": s.get("start_offset_ms"),
+                "duration_ms": s.get("duration_ms"),
+                # score-free plain-language "why" (AC-9 — never a number).
+                "note": _moment_note(s),
+            })
+
+    # Newest → oldest: latest take first, latest moment within a take first.
+    out.sort(
+        key=lambda b: (
+            b.get("created_at") or "",
+            b["take_index"] if isinstance(b.get("take_index"), int) else -1,
+            b["start_offset_ms"] if isinstance(b.get("start_offset_ms"), int) else -1,
+        ),
+        reverse=True,
+    )
+    return {"breakthroughs": out, "count": len(out)}
+
+
 def _default_db():
     from services.db import db as _db
     return _db
