@@ -9466,6 +9466,43 @@ class DatabaseService:
             )
             return []
 
+    def get_training_labels_by_sessions(self, session_ids) -> dict:
+        """Batch read of per-snippet direction labels for MANY sessions in ONE
+        query per 100 ids (kills the N+1 in build_best_presentation /
+        build_arc_breakthroughs over a long arc). Returns
+        {session_id: [labels]}. Same PRIVATE training lane as
+        get_training_labels. {} on missing table / empty input / error."""
+        ids = [str(s) for s in (session_ids or []) if s]
+        if not ids:
+            return {}
+        out: dict = {}
+        try:
+            for i in range(0, len(ids), 100):
+                chunk = ids[i:i + 100]
+                res = (
+                    self.client.table("training_labels")
+                    .select(
+                        "session_id, snippet_id, schema_version, value, "
+                        "was_pre_filled, was_overridden, labeled_by, labeled_at"
+                    )
+                    .in_("session_id", chunk)
+                    .execute()
+                )
+                for r in (res.data or []):
+                    out.setdefault(str(r.get("session_id")), []).append(r)
+            return out
+        except Exception as e:
+            err_low = str(e).lower()
+            if "training_labels" in err_low and (
+                "does not exist" in err_low or "pgrst" in err_low
+            ):
+                return {}
+            logger.warning(
+                "get_training_labels_by_sessions failed (%d ids): %s",
+                len(ids), e,
+            )
+            return {}
+
     def get_all_training_labels(self, *, limit: int = 50000) -> list[dict]:
         """Read ALL direction labels across sessions — the corpus the shadow
         learner trains on (Phase 4 / Prompt 1, B1 export). PRIVATE training

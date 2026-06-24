@@ -320,6 +320,38 @@ def _resolve_take_directions(snippets: list, coach_labels: dict) -> list:
     return out
 
 
+def _batch_arc_reads(db, sessions):
+    """ONE snippets query + ONE labels query for ALL of an arc's takes — kills
+    the per-take N+1 in build_best_presentation / build_arc_breakthroughs (a
+    28-take arc was ~56 round-trips). Returns ``(snips_by_sid|None,
+    labels_by_sid|None)``; None when the db lacks the batch method (injected
+    fake dbs in tests) → callers fall back to per-session reads. select *
+    (include_words) preserves exact column behavior vs the per-session read."""
+    sess_ids = [s.get("id") for s in (sessions or [])
+                if isinstance(s, dict) and s.get("id")]
+    snips = (db.get_snippets_by_sessions(sess_ids, include_words=True)
+             if sess_ids and hasattr(db, "get_snippets_by_sessions") else None)
+    labels = (db.get_training_labels_by_sessions(sess_ids)
+              if sess_ids and hasattr(db, "get_training_labels_by_sessions")
+              else None)
+    return snips, labels
+
+
+def _arc_snippets(db, snips_batch, sid):
+    """A take's snippets from the batched read, else a per-session fallback."""
+    if snips_batch is not None:
+        return snips_batch.get(str(sid), [])
+    return db.get_snippets_by_session(sid) if sid else []
+
+
+def _arc_labels(db, labels_batch, sid):
+    """A take's training labels from the batched read, else a per-session
+    fallback."""
+    if labels_batch is not None:
+        return labels_batch.get(str(sid), [])
+    return db.get_training_labels(sid) or []
+
+
 def _bp_signature(sessions: list) -> str:
     """Content signature for the best-presentation cache (Part B). Changes
     EXACTLY when a recompose is needed: a take added/removed, or a coach publish
@@ -371,6 +403,13 @@ def build_best_presentation(arc_id: Optional[str], *, database=None) -> dict:
             canonical_presentation_ref,
         )
 
+    # Batch the per-take reads — ONE snippets query + ONE labels query for the
+    # whole arc instead of 2 per take (a 28-take arc was ~56 round-trips on
+    # every cold assembly). select * (include_words) preserves exact column
+    # behavior; getattr guards keep injected fake dbs (tests) on the per-session
+    # fallback below.
+    _snips_batch, _labels_batch = _batch_arc_reads(db, sessions)
+
     candidates = []
     canonical_slides: list = []
     canonical_presentation_ref = None
@@ -386,10 +425,10 @@ def build_best_presentation(arc_id: Optional[str], *, database=None) -> dict:
         if canonical_presentation_ref is None and ctx.get("presentation_ref"):
             canonical_presentation_ref = ctx.get("presentation_ref")
         take_index = sess.get("take_index")
-        snippets = db.get_snippets_by_session(sid) if sid else []
+        snippets = _arc_snippets(db, _snips_batch, sid)
         coach_labels = {
             str(r.get("snippet_id")): r.get("value")
-            for r in (db.get_training_labels(sid) or [])
+            for r in _arc_labels(db, _labels_batch, sid)
         }
         directed = _resolve_take_directions(snippets, coach_labels)
         from services.challenge_threat import detect_breakthroughs
@@ -498,6 +537,7 @@ def build_arc_breakthroughs(arc_id: Optional[str], *, database=None) -> dict:
     db = database if database is not None else _default_db()
 
     sessions = db.get_arc_sessions(arc_id) if arc_id else []
+    _snips_batch, _labels_batch = _batch_arc_reads(db, sessions)
     out: list = []
     for sess in sessions:
         sid = sess.get("id")
@@ -505,10 +545,10 @@ def build_arc_breakthroughs(arc_id: Optional[str], *, database=None) -> dict:
         advances = ctx.get("slide_advances")
         created_at = sess.get("created_at")
         take_index = sess.get("take_index")
-        snippets = db.get_snippets_by_session(sid) if sid else []
+        snippets = _arc_snippets(db, _snips_batch, sid)
         coach_labels = {
             str(r.get("snippet_id")): r.get("value")
-            for r in (db.get_training_labels(sid) or [])
+            for r in _arc_labels(db, _labels_batch, sid)
         }
         directed = _resolve_take_directions(snippets, coach_labels)
         bt = detect_breakthroughs([
