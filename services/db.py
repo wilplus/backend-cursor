@@ -3244,6 +3244,67 @@ class DatabaseService:
                 amount, session_id, user_id, new_bal,
             )
 
+    def v2_charge_feedback_credits_once(
+        self, session_id: str, user_id: str, amount: int = 5,
+    ) -> None:
+        """Deduct `amount` credits once per session WHEN COACH FEEDBACK IS
+        DELIVERED to the user (the publish 'insights ready' moment) — the willab
+        monetization trigger (founder re-lock 2026: 15 free credits = 3 free
+        coach feedbacks at 5 each). Idempotent: sets feedback_credits_charged_at
+        only when NULL, so a re-publish / re-view NEVER re-charges (one charge
+        per session's first feedback delivery), then deducts SOFTLY —
+        v2_deduct_session_credits floors at 0, so a low balance never withholds
+        the coach's work (the gate is on starting the NEXT recording, not on
+        receiving feedback). On deduct failure, clears the flag so a retry can
+        succeed. Best-effort: never raises into the publish path; no-op if the
+        column is missing."""
+        if not session_id or not user_id:
+            return
+        now = datetime.now(timezone.utc).isoformat()
+        try:
+            result = (
+                self.client.table("v2_sessions")
+                .update({"feedback_credits_charged_at": now})
+                .eq("id", session_id)
+                .is_("feedback_credits_charged_at", "null")
+                .execute()
+            )
+            if not result.data:
+                return  # already charged (idempotent no-op), or no such row
+        except Exception as e:
+            err_low = str(e).lower()
+            if "feedback_credits_charged_at" in err_low and (
+                "does not exist" in err_low or "pgrst" in err_low
+            ):
+                logger.warning(
+                    "v2_charge_feedback_credits_once: column missing (run "
+                    "migrations/add_feedback_credits_charged_at.sql) sid=%s",
+                    session_id,
+                )
+            else:
+                logger.warning(
+                    "v2_charge_feedback_credits_once: flag update failed sid=%s "
+                    "err=%s", session_id, e,
+                )
+            return
+        new_bal = self.v2_deduct_session_credits(user_id, amount=amount)
+        if new_bal is None:
+            logger.warning(
+                "v2_charge_feedback_credits_once: deduct failed after flag; "
+                "clearing flag sid=%s user=%s", session_id, user_id,
+            )
+            try:
+                self.client.table("v2_sessions").update(
+                    {"feedback_credits_charged_at": None}
+                ).eq("id", session_id).execute()
+            except Exception:
+                pass
+        else:
+            logger.info(
+                "v2_charge_feedback_credits_once: charged %d sid=%s user=%s "
+                "new_balance=%s", amount, session_id, user_id, new_bal,
+            )
+
     def v2_ensure_credits_initialized(self, user_id: str, grant: int = 15) -> int:
         """willab credit grant — lazy first-touch seed (UX Wave v2 C1/S.2).
 

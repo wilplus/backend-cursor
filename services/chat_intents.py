@@ -43,13 +43,26 @@ _CRISIS_REPLY = (
     "work on your speaking."
 )
 
-# Off-mission generative requests (NOT whole-speech writing — the LLM declines
-# that itself, with the right nuance).
+# Dad-joke request (founder re-lock: a joke ON REQUEST is on-mission). Fires
+# BEFORE generative so "tell me a joke" returns a founder dad joke instead of
+# the deflect. Also the path the FE F7 "want a bad joke?" accept hits (it sends
+# a message containing 'joke'). The set lives in services/dad_jokes (BE-owned).
+_DAD_JOKE = re.compile(
+    r"\b(dad|bad|another|a|the|that|one|your|good|funny|terrible|awful)\s+jokes?\b|"
+    r"\b(tell|hear|crack|got|give|gimme|share|hit\s+me\s+with|want|need|say)\b"
+    r"[\w\s'\-,]{0,24}?\bjokes?\b|"
+    r"\bmake me laugh\b|"
+    r"\bjokes?\b\s*,?\s*(please|pls|yeah|yes|go on)\b",
+    re.IGNORECASE,
+)
+
+# Off-mission generative requests (NOT jokes — those return now — and NOT
+# whole-speech writing, which the LLM declines itself with the right nuance).
 _GENERATIVE = re.compile(
     r"\b(haiku|limerick|sonnet)\b|"
     r"\b(write|compose|sing|recite|tell)\b[\w\s'\-,]{0,24}?"
-    r"\b(poem|story|song|joke|riddle|tale|essay|verse|lyrics?)\b|"
-    r"\b(a|another) (poem|song|joke|riddle|tale|story)\b",
+    r"\b(poem|story|song|riddle|tale|essay|verse|lyrics?)\b|"
+    r"\b(a|another) (poem|song|riddle|tale|story)\b",
     re.IGNORECASE,
 )
 _GENERATIVE_REPLY = (
@@ -62,15 +75,20 @@ _GENERATIVE_REPLY = (
 def detect_chat_intent(message: str) -> Optional[dict]:
     """Return a fixed intercept response for a recognised intent, else None.
 
-    Precedence: crisis (safety) → generative. The dict carries {intent, answer,
-    show_record_ui, suggested_action}; the route forwards the flags verbatim and
-    adds the bubble split. (No record-intent branch — that's the LLM's RULE I.)
+    Precedence: crisis (safety) → dad_joke (on-request joke) → generative. The
+    dict carries {intent, answer, show_record_ui, suggested_action}; the route
+    forwards the flags verbatim and adds the bubble split. (No record-intent
+    branch — that's the LLM's RULE I.)
     """
     if not isinstance(message, str) or not message.strip():
         return None
     msg = message.strip()
     if _CRISIS.search(msg):
         return {"intent": "crisis", "answer": _CRISIS_REPLY,
+                "show_record_ui": False, "suggested_action": None}
+    if _DAD_JOKE.search(msg):
+        from services.dad_jokes import next_dad_joke
+        return {"intent": "dad_joke", "answer": next_dad_joke(),
                 "show_record_ui": False, "suggested_action": None}
     if _GENERATIVE.search(msg):
         return {"intent": "generative", "answer": _GENERATIVE_REPLY,
