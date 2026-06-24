@@ -499,5 +499,91 @@ class BestPresentationCacheTests(unittest.TestCase):
         self.assertTrue(out["slides"][0]["edited"])
 
 
+class _BatchingFakeDB(_FakeDB):
+    """_FakeDB + the batched arc reads — proves build_* uses ONE query each,
+    not the per-take N+1."""
+
+    def __init__(self, *a, **k):
+        super().__init__(*a, **k)
+        self.singular_snippet_calls = 0
+        self.singular_label_calls = 0
+        self.batch_snippet_calls = 0
+        self.batch_label_calls = 0
+
+    def get_snippets_by_session(self, sid):
+        self.singular_snippet_calls += 1
+        return super().get_snippets_by_session(sid)
+
+    def get_training_labels(self, sid):
+        self.singular_label_calls += 1
+        return super().get_training_labels(sid)
+
+    def get_snippets_by_sessions(self, ids, *, include_words=False):
+        self.batch_snippet_calls += 1
+        return {str(s): super(_BatchingFakeDB, self).get_snippets_by_session(s)
+                for s in ids}
+
+    def get_training_labels_by_sessions(self, ids):
+        self.batch_label_calls += 1
+        return {str(s): (super(_BatchingFakeDB, self).get_training_labels(s) or [])
+                for s in ids}
+
+
+class BatchedArcReadsTests(unittest.TestCase):
+    """build_best_presentation / build_arc_breakthroughs read the whole arc in
+    ONE snippets + ONE labels query (no per-take N+1)."""
+
+    def setUp(self):
+        self._orig = bp._render_composition
+        bp._render_composition = lambda picks, slides: None  # verbatim path
+
+    def tearDown(self):
+        bp._render_composition = self._orig
+
+    def _db(self):
+        sessions = [
+            {"id": "s1", "take_index": 1, "intake_context": {
+                "slides": [{"title": "S1", "body": "p"}],
+                "slide_advances": [{"index": 0, "t_ms": 0}]}},
+            {"id": "s2", "take_index": 2, "intake_context": {
+                "slides": [{"title": "S1", "body": "p"}],
+                "slide_advances": [{"index": 0, "t_ms": 0}]}},
+        ]
+        snips = {
+            "s1": [{"id": "a", "start_offset_ms": 0, "transcript": "one",
+                    "storage_path": "s3://a", "metrics": {"overall_score": 0.6}}],
+            "s2": [{"id": "b", "start_offset_ms": 0, "transcript": "two",
+                    "storage_path": "s3://b", "metrics": {"overall_score": 0.5}}],
+        }
+        return _BatchingFakeDB(sessions, snips, {})
+
+    def test_build_best_presentation_uses_one_query_each(self):
+        db = self._db()
+        out = bp.build_best_presentation("arc1", database=db)
+        self.assertEqual(db.batch_snippet_calls, 1)   # ONE snippets query
+        self.assertEqual(db.batch_label_calls, 1)     # ONE labels query
+        self.assertEqual(db.singular_snippet_calls, 0)  # no per-take N+1
+        self.assertEqual(db.singular_label_calls, 0)
+        # behavior intact — slide 0 still composes the best line
+        self.assertEqual(out["slides"][0]["text"], "one")
+
+    def test_build_arc_breakthroughs_uses_one_query_each(self):
+        db = self._db()
+        bp.build_arc_breakthroughs("arc1", database=db)
+        self.assertEqual(db.batch_snippet_calls, 1)
+        self.assertEqual(db.batch_label_calls, 1)
+        self.assertEqual(db.singular_snippet_calls, 0)
+        self.assertEqual(db.singular_label_calls, 0)
+
+    def test_matches_per_session_fallback_result(self):
+        # the batched result equals the legacy per-session path (parity).
+        batched = bp.build_best_presentation("arc1", database=self._db())
+        legacy = bp.build_best_presentation(
+            "arc1", database=_FakeDB(
+                self._db()._sessions, self._db()._snips, {}))
+        self.assertEqual([s["text"] for s in batched["slides"]],
+                         [s["text"] for s in legacy["slides"]])
+
+
 if __name__ == "__main__":
     unittest.main()
