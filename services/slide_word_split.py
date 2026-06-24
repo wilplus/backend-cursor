@@ -17,7 +17,97 @@ reference frame as a snippet's start_offset_ms — so a word's slide is just
 """
 from __future__ import annotations
 
+import os
 from typing import Any
+
+
+# ── Pause-snap (clock-offset robustness, flag-gated default OFF) ──────────
+# The recorder warm-up makes Whisper word-times run slightly EARLIER than the
+# UI tap-times, so the first word(s) after a slide tap can land on the PREVIOUS
+# slide. When the speaker pauses as they tap (the common case), that offset sits
+# inside the silence — so snapping each boundary into the nearest real speech
+# pause recovers the true boundary WITHOUT knowing the offset and WITHOUT any
+# capture change. Ships dark; flip SLIDE_PAUSE_SNAP_ENABLED=1 after observing a
+# leak; instant rollback by flipping it off.
+
+def _pause_snap_enabled() -> bool:
+    return (os.getenv("SLIDE_PAUSE_SNAP_ENABLED") or "").strip().lower() in (
+        "1", "true", "yes", "on",
+    )
+
+
+def _env_int(name: str, default: int) -> int:
+    raw = os.getenv(name)
+    if raw is None or str(raw).strip() == "":
+        return default
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return default
+
+
+def _snap_boundaries_to_pauses(slide_advances: Any, words: Any, *,
+                               window_ms: int, min_gap_ms: int) -> list:
+    """Move each slide-change boundary to the NEAREST real speech pause within
+    ``window_ms``, so a small audio-vs-UI clock offset lands in the silence the
+    speaker leaves when they tap NEXT/BACK. Pure. Returns slide_advances
+    unchanged (same ``{index, t_ms}`` shape) when there's no qualifying pause
+    near a tap (speaker talked straight through) or when inputs are empty. Never
+    reorders or collapses adjacent boundaries (clamps each snap strictly between
+    the previous SNAPPED boundary and the next RAW boundary); the index of every
+    entry is preserved; the first entry at t_ms<=0 (recording start) is never
+    moved."""
+    if not slide_advances or not words:
+        return slide_advances
+
+    # 1) Real pauses → snap-points (gap midpoints, ms). Only gaps bigger than
+    #    normal speech rhythm count (a deliberate pause, not a breath).
+    ws = sorted(
+        (w for w in words if isinstance(w, dict)
+         and isinstance(w.get("start"), (int, float))),
+        key=lambda w: w.get("start") or 0.0,
+    )
+    gaps: list = []
+    for i in range(len(ws) - 1):
+        pe = ws[i].get("end")
+        pe = float(pe) if isinstance(pe, (int, float)) else float(ws[i].get("start") or 0.0)
+        ns = float(ws[i + 1].get("start") or 0.0)
+        if (ns - pe) * 1000.0 >= min_gap_ms:
+            gaps.append((pe + ns) / 2.0 * 1000.0)
+    if not gaps:
+        return slide_advances
+
+    # 2) Boundaries in time order (t_ms is monotonic even with BACK nav).
+    idxs = [i for i, a in enumerate(slide_advances)
+            if isinstance(a, dict) and isinstance(a.get("t_ms"), (int, float))]
+    idxs.sort(key=lambda i: slide_advances[i]["t_ms"])
+
+    snapped: dict = {i: slide_advances[i]["t_ms"] for i in idxs}
+    prev_snapped = None
+    for pos, i in enumerate(idxs):
+        t = slide_advances[i]["t_ms"]
+        if t <= 0:                       # recording start — never snap
+            prev_snapped = snapped[i]
+            continue
+        lo = prev_snapped if prev_snapped is not None else float("-inf")
+        nxt = idxs[pos + 1] if pos + 1 < len(idxs) else None
+        hi = slide_advances[nxt]["t_ms"] if nxt is not None else float("inf")
+        best = None
+        best_d = None
+        for g in gaps:
+            if g <= lo or g >= hi or abs(g - t) > window_ms:
+                continue
+            d = abs(g - t)
+            if best_d is None or d < best_d:
+                best, best_d = g, d
+        snapped[i] = int(round(best)) if best is not None else t
+        prev_snapped = snapped[i]
+
+    # 3) Rebuild preserving original order + index; only t_ms changes.
+    return [
+        ({**a, "t_ms": snapped[i]} if (i in snapped and isinstance(a, dict)) else a)
+        for i, a in enumerate(slide_advances)
+    ]
 
 
 def slice_words_for_window(words: Any, start_ms: int, end_ms: int) -> list:
@@ -128,6 +218,16 @@ def build_slide_transcripts(words_all: Any, slide_advances: Any,
     n = len(slides) if isinstance(slides, list) else 0
     if n == 0:
         return []
+
+    # Pause-snap (flag-gated, default OFF) — absorb the recorder warm-up offset
+    # by moving each slide boundary into the speaker's pause. No-op when off, or
+    # when no qualifying pause is near a tap. Byte-identical to before when off.
+    if words_all and slide_advances and _pause_snap_enabled():
+        slide_advances = _snap_boundaries_to_pauses(
+            slide_advances, words_all,
+            window_ms=_env_int("SLIDE_PAUSE_SNAP_WINDOW_MS", 1200),
+            min_gap_ms=_env_int("SLIDE_PAUSE_SNAP_MIN_GAP_MS", 200),
+        )
 
     buckets: dict = {i: [] for i in range(n)}  # i -> [(start_ms, end_ms, token)]
     if words_all and slide_advances:

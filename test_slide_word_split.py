@@ -148,5 +148,95 @@ class SliceWordsForWindowTests(unittest.TestCase):
         self.assertEqual(slice_words_for_window([], 0, 1000), [])
 
 
+class SnapBoundariesToPausesTests(unittest.TestCase):
+    """The pure pause-snap helper (clock-offset robustness)."""
+
+    def _snap(self, advances, words, window_ms=1200, min_gap_ms=200):
+        from services.slide_word_split import _snap_boundaries_to_pauses
+        return _snap_boundaries_to_pauses(
+            advances, words, window_ms=window_ms, min_gap_ms=min_gap_ms)
+
+    def test_snaps_boundary_into_the_pause(self):
+        # gap 0.9s→1.4s (500ms, midpoint 1150ms); tap logged at 1300ms (offset)
+        words = [_w("a", 0.0, 0.4), _w("b", 0.5, 0.9),
+                 _w("c", 1.4, 1.8), _w("d", 1.9, 2.3)]
+        out = self._snap([{"index": 0, "t_ms": 0}, {"index": 1, "t_ms": 1300}], words)
+        self.assertEqual(out[1]["t_ms"], 1150)     # snapped to the gap midpoint
+        self.assertEqual(out[1]["index"], 1)       # index preserved
+        self.assertEqual(out[0]["t_ms"], 0)        # start never moved
+
+    def test_no_snap_when_no_pause_near(self):
+        words = [_w("a", 0.0, 0.4), _w("b", 0.5, 0.9),
+                 _w("c", 1.4, 1.8), _w("d", 1.9, 2.3)]
+        # tap far from the only pause (|1150-5000| > window) → unchanged
+        out = self._snap([{"index": 0, "t_ms": 0}, {"index": 1, "t_ms": 5000}], words)
+        self.assertEqual(out[1]["t_ms"], 5000)
+
+    def test_tiny_gaps_dont_qualify(self):
+        # all inter-word gaps < min_gap_ms → no snap (normal speech rhythm)
+        words = [_w("a", 0.0, 0.4), _w("b", 0.45, 0.85), _w("c", 0.9, 1.3)]
+        out = self._snap([{"index": 0, "t_ms": 0}, {"index": 1, "t_ms": 900}], words)
+        self.assertEqual(out[1]["t_ms"], 900)
+
+    def test_two_close_taps_dont_collapse(self):
+        # one pause at 1150; two taps at 1300 & 1320 — only the nearer snaps, the
+        # other is clamped out (can't reuse the same gap → no reorder/collapse).
+        words = [_w("a", 0.0, 0.4), _w("b", 0.5, 0.9),
+                 _w("c", 1.4, 1.8), _w("d", 1.9, 2.3)]
+        out = self._snap(
+            [{"index": 0, "t_ms": 0}, {"index": 1, "t_ms": 1300},
+             {"index": 2, "t_ms": 1320}], words)
+        self.assertEqual(out[1]["t_ms"], 1150)
+        self.assertEqual(out[2]["t_ms"], 1320)     # clamped, stays put
+        self.assertLess(out[1]["t_ms"], out[2]["t_ms"])  # still ordered
+
+    def test_back_nav_preserves_indices(self):
+        # forward → back → forward; t_ms monotonic, index non-monotonic
+        words = [_w("a", 0.0, 0.4), _w("b", 0.5, 0.9),
+                 _w("c", 1.4, 1.8)]
+        adv = [{"index": 0, "t_ms": 0}, {"index": 1, "t_ms": 1300},
+               {"index": 0, "t_ms": 9000}]
+        out = self._snap(adv, words)
+        self.assertEqual([a["index"] for a in out], [0, 1, 0])  # indices intact
+
+    def test_empty_safe(self):
+        self.assertEqual(self._snap(None, [_w("a", 0, 1)]), None)
+        self.assertEqual(self._snap([{"index": 0, "t_ms": 0}], None),
+                         [{"index": 0, "t_ms": 0}])
+
+
+class PauseSnapIntegrationTests(unittest.TestCase):
+    """build_slide_transcripts honours the flag end-to-end and fixes the leak."""
+
+    # tap logged at 2000ms; warm-up makes the new slide's first word "the"
+    # appear at 1.85s → without snap it leaks onto slide 0. A 0.9→1.85s pause
+    # sits between, so snapping moves the boundary to 1375ms and "the" lands on
+    # slide 1.
+    WORDS = [_w("we", 0.0, 0.4), _w("begin", 0.5, 0.9),
+             _w("the", 1.85, 2.2), _w("pitch", 2.3, 2.7)]
+    ADV2 = [{"index": 0, "t_ms": 0}, {"index": 1, "t_ms": 2000}]
+
+    def _build(self):
+        from services.slide_word_split import build_slide_transcripts
+        out = build_slide_transcripts(self.WORDS, self.ADV2, SLIDES)
+        return {t["index"]: t["transcript"] for t in out}
+
+    def test_flag_off_is_unchanged_and_leaks(self):
+        import unittest.mock as mock
+        with mock.patch.dict("os.environ", {}, clear=False):
+            import os
+            os.environ.pop("SLIDE_PAUSE_SNAP_ENABLED", None)
+            tx = self._build()
+        self.assertEqual(tx[0], "we begin the")   # "the" leaked onto slide 0
+        self.assertEqual(tx[1], "pitch")
+
+    def test_flag_on_snaps_and_fixes_the_leak(self):
+        import unittest.mock as mock
+        with mock.patch.dict("os.environ", {"SLIDE_PAUSE_SNAP_ENABLED": "1"}):
+            tx = self._build()
+        self.assertEqual(tx[0], "we begin")        # leak fixed
+        self.assertEqual(tx[1], "the pitch")
+
+
 if __name__ == "__main__":
     unittest.main()
