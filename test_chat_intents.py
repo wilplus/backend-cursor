@@ -51,8 +51,9 @@ class NoRecordInterceptTests(unittest.TestCase):
 
 class GenerativeTests(unittest.TestCase):
     def test_off_mission_generative_deflects(self):
-        for m in ("write me a haiku", "tell me a joke",
-                  "write a short story about a dog", "compose a song"):
+        # jokes are no longer here — they RETURN now (DadJokeTests).
+        for m in ("write me a haiku", "write a short story about a dog",
+                  "compose a song", "recite a poem"):
             r = detect_chat_intent(m)
             self.assertEqual(r["intent"], "generative", m)
             self.assertFalse(r["show_record_ui"], m)
@@ -62,6 +63,24 @@ class GenerativeTests(unittest.TestCase):
         for m in ("write me a speech for my wedding",
                   "can you write my presentation?"):
             self.assertIsNone(detect_chat_intent(m), m)
+
+
+class DadJokeTests(unittest.TestCase):
+    def test_joke_requests_return_a_dad_joke(self):
+        from services.dad_jokes import DAD_JOKES
+        for m in ("tell me a joke", "got a dad joke?", "a bad joke please",
+                  "crack a joke", "make me laugh", "another joke",
+                  "yes, give me that bad joke"):
+            r = detect_chat_intent(m)
+            self.assertEqual(r["intent"], "dad_joke", m)
+            self.assertIn(r["answer"], DAD_JOKES, m)
+            self.assertFalse(r["show_record_ui"], m)
+            self.assertIsNone(r["suggested_action"], m)
+
+    def test_dad_joke_beats_generative(self):
+        # precedence: a "joke" request returns, it does NOT deflect.
+        self.assertEqual(detect_chat_intent("write me a joke")["intent"],
+                         "dad_joke")
 
 
 class PrecedenceAndEmptyTests(unittest.TestCase):

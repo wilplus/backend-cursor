@@ -4298,19 +4298,18 @@ def _merge_anonymous_session_into_user(session_id: str, user_id: str):
                 "error": "Recording was claimed but could not be sent for review. Please retry.",
                 "session_id": sid,
             }, 500)
-        # ── willab credits — charge 1 on send-SUCCESS, first flip only ──
-        # (UX Wave v2 C2). already_sent==True is a re-claim/retry/OAuth-
-        # callback no-op → never re-charge. The lab_credits_charged_at flag
-        # is the real exactly-once guard (all paths resolve to one sid), so
-        # this is belt-and-suspenders. Seed the 15-grant before the first
-        # spend. Best-effort: a credit hiccup must never unwind a sent slot.
+        # ── willab credits — seed the 15-grant on send; the CHARGE now happens
+        # on COACH-FEEDBACK DELIVERY (publish), NOT at send (founder re-lock:
+        # 15 free = 3 free feedbacks at 5 each — see _apply_willab_publish_
+        # contract). We only ENSURE the balance is initialized here so a brand-
+        # new user has their 15 before any spend. Best-effort: a credit hiccup
+        # must never unwind a sent slot.
         if not send_result.get("already_sent"):
             try:
                 db.v2_ensure_credits_initialized(str(user_id))
-                db.v2_charge_lab_credits_once(sid, str(user_id), amount=1)
             except Exception as _ce:
                 logger.warning(
-                    "willab_lab: credit charge failed sid=%s err=%s (non-fatal)",
+                    "willab_lab: credit init failed sid=%s err=%s (non-fatal)",
                     sid, _ce,
                 )
         return ({
@@ -4786,10 +4785,25 @@ def _apply_willab_publish_contract(session_id, body, actor_user_id):
             "(non-fatal)", session_id, _le,
         )
 
-    # ── willab credits — charged at SEND now, NOT publish (UX Wave v2). ──
-    # The 1-credit charge relocated to send-success (_willab_send_response →
-    # db.v2_charge_lab_credits_once), so publish no longer touches the ledger.
-    # The per-session lab_credits_charged_at flag keeps it exactly-once.
+    # ── willab credits — charge 5 ON COACH-FEEDBACK DELIVERY (founder re-lock:
+    # 15 free = 3 free feedbacks). This publish IS the delivery (insights_payload
+    # persisted + the "insights ready" card above). Idempotent per session (the
+    # feedback_credits_charged_at flag); a re-publish never re-charges; SOFT
+    # (floors at 0) so a low balance never withholds the coach's work — the gate
+    # is on STARTING the next recording (FE), not on receiving feedback. Best-
+    # effort: a credit hiccup must never unwind a published session.
+    try:
+        _credit_owner = (db.v2_get_session_by_id(session_id) or {}).get("user_id")
+        if _credit_owner:
+            db.v2_ensure_credits_initialized(str(_credit_owner))
+            db.v2_charge_feedback_credits_once(
+                session_id, str(_credit_owner), amount=5,
+            )
+    except Exception as _ce:
+        logger.warning(
+            "publish_contract.credit_charge_failed session=%s err=%s "
+            "(non-fatal)", session_id, _ce,
+        )
 
     return None
 
@@ -8498,16 +8512,21 @@ def _coach_session_state(session, cstate_map):
 @v2_bp.route("/user/credits", methods=["GET"])
 @require_auth
 def v2_user_get_credits():
-    """willab credit balance (UX Wave v2 C5 / S.2). GET → {credits: int}.
+    """willab credit balance. GET → {credits: int, can_start_analysis: bool}.
 
     Lazy-seeds the 15-credit grant on first touch (idempotent via
     credits_initialized_at — never re-granted after spend-to-zero), then
     returns the server-owned balance. The DECREMENT is a side-effect of
-    send-success (the claim/merge path), NEVER a separate FE call.
+    COACH-FEEDBACK DELIVERY (publish: 5/feedback), NEVER a separate FE call.
+    can_start_analysis = balance >= 5 → the FE credit gate (the cost of the
+    next coach feedback); when false the FE surfaces the top-up bubble.
     """
     try:
-        credits = db.v2_ensure_credits_initialized(str(request.user_id))
-        return jsonify({"credits": int(credits)}), 200
+        credits = int(db.v2_ensure_credits_initialized(str(request.user_id)))
+        return jsonify({
+            "credits": credits,
+            "can_start_analysis": credits >= 5,
+        }), 200
     except Exception as e:
         logger.error("user/credits GET failed: %s", e, exc_info=True)
         sentry_sdk.capture_exception(e)

@@ -157,6 +157,36 @@ class CreditGrantLogicTests(unittest.TestCase):
 
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
+class FeedbackChargeTests(unittest.TestCase):
+    """5 credits on coach-feedback delivery, exactly once per session."""
+
+    def _svc(self, store):
+        cls = v2.db.__class__
+        s = cls.__new__(cls)
+        s.client = _FakeClient(store)
+        return s
+
+    def test_charges_5_once_then_idempotent(self):
+        store = {"s1": {"id": "s1", "feedback_credits_charged_at": None}}
+        svc = self._svc(store)
+        calls = []
+        svc.v2_deduct_session_credits = lambda uid, amount=5: (
+            calls.append(amount) or 10)
+        svc.v2_charge_feedback_credits_once("s1", "u1", amount=5)
+        svc.v2_charge_feedback_credits_once("s1", "u1", amount=5)  # re-publish
+        self.assertEqual(calls, [5])                       # charged exactly once
+        self.assertIsNotNone(store["s1"]["feedback_credits_charged_at"])
+
+    def test_clears_flag_when_deduct_fails(self):
+        store = {"s1": {"id": "s1", "feedback_credits_charged_at": None}}
+        svc = self._svc(store)
+        svc.v2_deduct_session_credits = lambda uid, amount=5: None  # fail
+        svc.v2_charge_feedback_credits_once("s1", "u1", amount=5)
+        # flag cleared so a retry can succeed
+        self.assertIsNone(store["s1"]["feedback_credits_charged_at"])
+
+
+@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
 class CreditsRouteTests(unittest.TestCase):
     def setUp(self):
         self.app = Flask(__name__)
@@ -172,7 +202,17 @@ class CreditsRouteTests(unittest.TestCase):
             request.user_id = "u1"
             resp, status = v2.v2_user_get_credits.__wrapped__()
             self.assertEqual(status, 200)
-            self.assertEqual(resp.get_json(), {"credits": 13})
+            # can_start_analysis = balance >= 5 (the FE credit gate)
+            self.assertEqual(resp.get_json(),
+                             {"credits": 13, "can_start_analysis": True})
+
+    def test_gate_false_below_five(self):
+        v2.db.v2_ensure_credits_initialized = lambda uid: 3
+        with self.app.test_request_context():
+            request.user_id = "u1"
+            resp, _ = v2.v2_user_get_credits.__wrapped__()
+            self.assertEqual(resp.get_json(),
+                             {"credits": 3, "can_start_analysis": False})
 
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
