@@ -4761,8 +4761,11 @@ def _apply_willab_publish_contract(session_id, body, actor_user_id):
     # ── User nudge: Lounge "insights ready" card (best-effort, idempotent). ──
     try:
         from datetime import datetime as _dt, timezone as _tz
-        _owner = (db.v2_get_session_by_id(session_id) or {}).get("user_id")
+        _sess = db.v2_get_session_by_id(session_id) or {}
+        _owner = _sess.get("user_id")
         if _owner:
+            _ctx = _sess.get("intake_context") if isinstance(
+                _sess.get("intake_context"), dict) else {}
             db.insert_lounge_messages(str(_owner), [{
                 "client_id": str(uuid.uuid5(
                     uuid.NAMESPACE_URL, f"willab-insight:{session_id}",
@@ -4772,6 +4775,10 @@ def _apply_willab_publish_contract(session_id, body, actor_user_id):
                 "body": "Your coach's insights are ready.",
                 "metadata": {
                     "session_id": session_id, "insight_ref": session_id,
+                    # F4 — so the card reads "Feedback on {topic} (Take N)"
+                    # instead of the date fallback.
+                    "topic": _ctx.get("topic"),
+                    "take_index": _sess.get("take_index"),
                 },
                 "client_created_at": _dt.now(_tz.utc).isoformat(),
             }])

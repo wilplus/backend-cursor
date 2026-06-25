@@ -46,7 +46,11 @@ class PublishContractTests(unittest.TestCase):
         self.drafts = []
         self.labels = []
         self.snippets = [{"id": SNIP1}]
-        self.session_row = {"id": SID, "user_id": "u1", "coach_video_ref": None}
+        self.session_row = {
+            "id": SID, "user_id": "u1", "coach_video_ref": None,
+            "take_index": 2,
+            "intake_context": {"topic": "Q3 pitch"},
+        }
 
         self._patch_db("get_coach_snippet_drafts", lambda sid: self.drafts)
         self._patch_db("get_training_labels", lambda sid: self.labels)
@@ -54,8 +58,10 @@ class PublishContractTests(unittest.TestCase):
         self._patch_db("v2_get_session_by_id", lambda sid: dict(self.session_row))
         self._patch_db("set_session_insights_payload", self._capture_insights)
         self._patch_db("upsert_training_labels", self._capture_labels)
-        self._patch_db("insert_lounge_messages", lambda *a, **k: None)
+        self._patch_db("insert_lounge_messages", self._capture_lounge)
         self._patch_db("v2_charge_lab_credits_once", lambda *a, **k: None)
+        self._patch_db("v2_charge_feedback_credits_once", lambda *a, **k: None)
+        self._patch_db("v2_ensure_credits_initialized", lambda *a, **k: 15)
 
     def tearDown(self):
         for target, attr, orig in self.originals.values():
@@ -72,6 +78,10 @@ class PublishContractTests(unittest.TestCase):
     def _capture_labels(self, session_id, actor, rows):
         self.captured["labels"] = rows
         return len(rows)
+
+    def _capture_lounge(self, user_id, messages):
+        self.captured["lounge"] = messages
+        return [{"id": "srv", **m} for m in messages]
 
     def _run(self, body):
         with self.app.test_request_context():
@@ -91,6 +101,19 @@ class PublishContractTests(unittest.TestCase):
         self.assertEqual(len(ins["snippet_notes"]), 1)
         self.assertEqual(ins["snippet_notes"][0]["note"], "great pause")
         self.assertEqual(ins["snippet_notes"][0]["tag"], "strong")
+
+    def test_insight_card_carries_topic_and_take_index(self):
+        # F4 — the "insights ready" card metadata carries topic + take_index so
+        # the FE reads "Feedback on {topic} (Take N)" instead of the date.
+        self.drafts = [{
+            "snippet_id": SNIP1, "surfaced": True, "note": "n",
+            "tag": "strong", "when_context": None, "examples": [],
+        }]
+        self._run({"notify_client": True, "overall_message": "ok"})
+        meta = self.captured["lounge"][0]["metadata"]
+        self.assertEqual(meta["topic"], "Q3 pitch")
+        self.assertEqual(meta["take_index"], 2)
+        self.assertEqual(meta["session_id"], SID)
 
     def test_unsurfaced_draft_excluded_from_insights(self):
         self.drafts = [
