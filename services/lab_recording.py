@@ -121,6 +121,18 @@ def build_readout_features(metrics: Optional[dict]) -> dict:
     return out
 
 
+def _has_voice_metrics(features: Optional[dict]) -> bool:
+    """True when a snippet's §3.3 features carry at least one real ACOUSTIC
+    value (pitch / volume / voicedness) — i.e. the analyzer found voiced speech.
+    speech_rate is EXCLUDED (it needs the Whisper transcript, not the acoustics),
+    so a transcription hiccup alone never reads as 'no voice'."""
+    f = features or {}
+    return any(
+        isinstance(f.get(k), (int, float))
+        for k in ("f0_mean", "loudness_range", "voiced_ratio")
+    )
+
+
 def build_readout_payload(
     snippets_data: list,
     stickiness_list: list,
@@ -155,7 +167,15 @@ def build_readout_payload(
                 "comment": sticky.get("comment"),
             },
         })
-    return {"snippets": out_snippets}
+    return {
+        "snippets": out_snippets,
+        # False → the FE shows the soft "voice metrics unavailable" notice
+        # instead of an empty/broken metrics block. True when >=1 snippet has
+        # real acoustic data.
+        "voice_metrics_available": any(
+            _has_voice_metrics(s.get("features")) for s in out_snippets
+        ),
+    }
 
 
 # OpenAI Whisper rejects uploads larger than 25MB; compress above this
@@ -221,10 +241,13 @@ def process_lab_recording(
 
     sig = decode_audio_to_pcm(audio_bytes)
     if sig is None:
+        # Diagnostic (telemetry to isolate device/PWA capture issues): the audio
+        # blob couldn't be decoded — empty / truncated / unsupported codec.
         logger.warning(
-            "process_lab_recording: decode failed sid=%s", session_id,
+            "process_lab_recording.voice_metrics_diag sid=%s status=decode_failed "
+            "bytes=%d", session_id, len(audio_bytes or b""),
         )
-        return {"snippets": []}
+        return {"snippets": [], "voice_metrics_available": False}
 
     # Whisper the whole recording ONCE (best-effort), vocab-primed.
     segments: list = []
@@ -261,7 +284,8 @@ def process_lab_recording(
             words_all = (wres or {}).get("words") or []
     except Exception as e:
         logger.warning(
-            "process_lab_recording: whisper failed sid=%s err=%s",
+            "process_lab_recording.voice_metrics_diag sid=%s "
+            "status=transcription_failed err=%s (acoustics still computed)",
             session_id, e,
         )
         segments = []
@@ -437,6 +461,27 @@ def process_lab_recording(
         session_id, len(snippets_data), bool(segments),
     )
 
+    # Voice-metrics diagnostic (telemetry) — distinguish WHY acoustics are empty
+    # so we can isolate device/PWA capture issues before re-engaging the native
+    # mic path. (decode_failed is logged at the early return above.)
+    _voiced = any(
+        _has_voice_metrics(build_readout_features(sd.get("metrics")))
+        for sd in snippets_data
+    )
+    if not snippets_data:
+        _diag = "no_snippets"          # decode ok but no salient windows
+    elif not _voiced:
+        _diag = "no_voiced_speech"     # snippets exist but too quiet/silent
+    elif not segments:
+        _diag = "ok_acoustics_no_transcript"  # voice read; transcript missing
+    else:
+        _diag = "ok"
+    logger.info(
+        "process_lab_recording.voice_metrics_diag sid=%s status=%s "
+        "snippets=%d voiced=%s transcribed=%s",
+        session_id, _diag, len(snippets_data), _voiced, bool(segments),
+    )
+
     # #A (2026-06-22) — the COMPLETE per-slide 1:1 transcript, bucketed from the
     # WHOLE-recording word list by the slide-click timeline (NOT just the salient
     # snippets, which dropped quiet slides → "first slide not caught / shifted").
@@ -584,7 +629,14 @@ def build_readout_from_session(
                 so.setdefault("breakthrough", False)
                 so.setdefault("breakthrough_note", None)
 
-    result: dict = {"snippets": out_snips}
+    result: dict = {
+        "snippets": out_snips,
+        # False → FE shows the soft "voice metrics unavailable" notice (matches
+        # the immediate readout; consistent on re-read / history).
+        "voice_metrics_available": any(
+            _has_voice_metrics(s.get("features")) for s in out_snips
+        ),
+    }
 
     # Slide-deck context (UX Wave 4 BE-S6a) — session-level so the report can
     # render the deck (presentation_ref via PDF.js) + the per-snippet slide.

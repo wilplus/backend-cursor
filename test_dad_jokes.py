@@ -21,14 +21,19 @@ class DadJokesTests(unittest.TestCase):
 
     def test_rotation_never_repeats_back_to_back(self):
         dj._last = -1  # deterministic start
-        seen = [dj.next_dad_joke() for _ in range(30)]
+        seen = [dj.next_dad_joke() for _ in range(50)]
         for a, b in zip(seen, seen[1:]):
             self.assertNotEqual(a, b)          # no immediate repeat
 
-    def test_rotation_cycles_through_all(self):
+    def test_random_reaches_all_over_many_calls(self):
+        # random selection — every joke should appear at least once over enough
+        # draws (no permanently-unreachable index).
         dj._last = -1
-        first_ten = [dj.next_dad_joke() for _ in range(len(dj.DAD_JOKES))]
-        self.assertEqual(set(first_ten), set(dj.DAD_JOKES))  # all appear
+        seen = {dj.next_dad_joke() for _ in range(300)}
+        self.assertEqual(seen, set(dj.DAD_JOKES))
+
+    def test_returns_a_known_joke(self):
+        self.assertIn(dj.next_dad_joke(), dj.DAD_JOKES)
 
 
 if __name__ == "__main__":

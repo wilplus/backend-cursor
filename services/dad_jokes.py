@@ -32,9 +32,11 @@ _last = -1
 
 
 def next_dad_joke() -> str:
-    """Return a joke, rotating so the same one never comes back-to-back —
-    cycles through all of DAD_JOKES before repeating. Thread-safe."""
-    global _last
+    """Return a RANDOMLY chosen joke each time (founder), never the same one
+    twice in a row. Thread-safe."""
+    import random
     with _lock:
-        _last = (_last + 1) % len(DAD_JOKES)
+        global _last
+        choices = [i for i in range(len(DAD_JOKES)) if i != _last]
+        _last = random.choice(choices) if choices else 0
         return DAD_JOKES[_last]
