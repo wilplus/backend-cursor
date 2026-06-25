@@ -130,6 +130,24 @@ class PayloadAssemblyTests(unittest.TestCase):
         self.assertEqual(snip["features"]["speech_rate"], 140)
         self.assertEqual(snip["stickiness"]["composite"], 0.72)
         self.assertEqual(snip["stickiness"]["comment"], "On one idea.")
+        self.assertTrue(out["voice_metrics_available"])   # f0_mean present
+
+    def test_voice_metrics_unavailable_when_no_acoustics(self):
+        # snippet exists but every acoustic metric is null (quiet/silent take) —
+        # and speech_rate alone does NOT count as voice.
+        out = self._build(
+            [{"id": "s1", "index": 1, "metrics": {"wpm": 130}}], [],
+        )
+        self.assertFalse(out["voice_metrics_available"])
+
+    def test_voice_metrics_unavailable_on_empty(self):
+        self.assertFalse(self._build([], [])["voice_metrics_available"])
+
+    def test_voice_metrics_available_on_loudness_only(self):
+        out = self._build(
+            [{"id": "s1", "index": 1, "metrics": {"dynamic_db": 14.0}}], [],
+        )
+        self.assertTrue(out["voice_metrics_available"])   # loudness_range
 
     def test_stickiness_matched_by_id_not_order(self):
         out = self._build(
