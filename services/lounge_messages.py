@@ -34,8 +34,12 @@ VALID_ROLES = ("user", "bot", "system")
 # "cadence" = Explore-Session multi-take guidance bubbles (Prompt A §4),
 # bot-only + server-inserted; the FE never sends it. Mirror in the DB
 # CHECK constraint — migrations/add_cadence_lounge_kind.sql.
+# "best_presentation_ready" = the durable "your best presentation for {topic} is
+# ready" card, dropped when an arc reaches 3 takes (bot-only, server-inserted;
+# the FE never sends it). Mirror — migrations/add_best_presentation_ready_kind.sql.
 VALID_KINDS = (
     "text", "joke", "status", "recording_summary", "insight", "cadence",
+    "best_presentation_ready",
 )
 
 # §7.9 — bound the merge batch. A long unsigned session can produce a

@@ -56,6 +56,16 @@ class ValidateBatchTests(unittest.TestCase):
         out = self._v({"messages": msgs})
         self.assertEqual(len(out), 5)
 
+    def test_best_presentation_ready_is_a_valid_kind(self):
+        # server-inserted card kind (the DB CHECK is the real guard) — must be
+        # in VALID_KINDS so the validate path doesn't reject it.
+        from services.lounge_messages import VALID_KINDS
+        self.assertIn("best_presentation_ready", VALID_KINDS)
+        out = self._v({"messages": [
+            self._msg(role="bot", kind="best_presentation_ready",
+                      metadata={"arc_id": "a1", "topic": "Q3"})]})
+        self.assertEqual(out[0]["kind"], "best_presentation_ready")
+
     def test_missing_body_defaults_to_empty_string(self):
         m = self._msg()
         del m["body"]
