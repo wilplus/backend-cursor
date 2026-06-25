@@ -776,9 +776,15 @@ _INTENTS = (
 
 
 def _router_enabled() -> bool:
-    return (os.getenv("LOUNGE_ROUTER_ENABLED") or "").strip().lower() in (
-        "1", "true", "yes", "on"
-    )
+    """Two-stage intent router is now the DEFAULT (founder 2026-06-25 — the
+    "category decision tree": classify the turn, answer from that one lane, fall
+    back to the full master-doc scan only on low confidence). Verified at parity
+    (the probe runs both variants). Set LOUNGE_ROUTER_ENABLED to a falsey value
+    (0/false/no/off) to force the legacy single mega-prompt path."""
+    raw = (os.getenv("LOUNGE_ROUTER_ENABLED") or "").strip().lower()
+    if raw in ("0", "false", "no", "off"):
+        return False
+    return True
 
 
 _CLASSIFIER_SYSTEM = (

@@ -10249,6 +10249,31 @@ def v2_lab_create_recording():
                 logger.warning("lab: cadence fire failed sid=%s: %s",
                                guest_session_id, _ce)
 
+        # Best-presentation-ready Lounge card — when this arc just reached the
+        # 3-take threshold, drop a durable, tappable "Your best presentation for
+        # {topic} is ready" card. Idempotent per arc (uuid5 client_id → one card
+        # ever, even though this fires on every take >= 3). Best-effort: never
+        # blocks the response; a missing kind-CHECK column just drops the card.
+        if _cad_user and arc_id and (arc_take_count or 0) >= 3:
+            try:
+                from datetime import datetime as _dt2, timezone as _tz2
+                _bp_topic = (session_context or {}).get("topic")
+                db.insert_lounge_messages(str(_cad_user), [{
+                    "client_id": str(uuid.uuid5(
+                        uuid.NAMESPACE_URL, f"willab-bestpres:{arc_id}",
+                    )),
+                    "role": "bot",
+                    "kind": "best_presentation_ready",
+                    "body": (f"Your best presentation for {_bp_topic} is ready."
+                             if _bp_topic
+                             else "Your best presentation is ready."),
+                    "metadata": {"arc_id": arc_id, "topic": _bp_topic},
+                    "client_created_at": _dt2.now(_tz2.utc).isoformat(),
+                }])
+            except Exception as _bpe:
+                logger.warning("lab: best-pres-ready card failed sid=%s: %s",
+                               guest_session_id, _bpe)
+
         # Recording-progress toward the first audit (BE-4) — so the FE can
         # refresh the "X:XX left to unlock" line IMMEDIATELY instead of showing
         # a stale value until the next session load. This upload's session is a

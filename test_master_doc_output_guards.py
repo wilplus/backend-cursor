@@ -239,12 +239,14 @@ class RouterScaffoldTests(unittest.TestCase):
     """Part B — deterministic checks on the two-stage router scaffold
     (flag, lane prompts, classifier schema). No LLM."""
 
-    def test_flag_off_by_default(self):
+    def test_flag_on_by_default(self):
+        # founder 2026-06-25 — the router is now the DEFAULT (category decision
+        # tree). A falsey env value forces the legacy mega-prompt path.
         import os
         from services.master_doc_rag import _router_enabled
         old = os.environ.pop("LOUNGE_ROUTER_ENABLED", None)
         try:
-            self.assertFalse(_router_enabled())
+            self.assertTrue(_router_enabled())
         finally:
             if old is not None:
                 os.environ["LOUNGE_ROUTER_ENABLED"] = old
@@ -254,11 +256,12 @@ class RouterScaffoldTests(unittest.TestCase):
         from services.master_doc_rag import _router_enabled
         old = os.environ.get("LOUNGE_ROUTER_ENABLED")
         try:
-            for v in ("1", "true", "YES", "on"):
+            for v in ("1", "true", "YES", "on", "anything"):
                 os.environ["LOUNGE_ROUTER_ENABLED"] = v
                 self.assertTrue(_router_enabled(), v)
-            os.environ["LOUNGE_ROUTER_ENABLED"] = "0"
-            self.assertFalse(_router_enabled())
+            for v in ("0", "false", "no", "off", "OFF"):
+                os.environ["LOUNGE_ROUTER_ENABLED"] = v
+                self.assertFalse(_router_enabled(), v)
         finally:
             if old is None:
                 os.environ.pop("LOUNGE_ROUTER_ENABLED", None)
