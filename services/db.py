@@ -9296,6 +9296,270 @@ class DatabaseService:
             logger.warning("get_arc_sessions failed arc=%s: %s", arc_id, e)
             return []
 
+    # ── willab — Paid Audits / arc entitlement (BE chunk A1/A4/A5) ──────
+    #
+    # arc_purchases: one row per PAID/passed arc ("audit"). The row IS the
+    # entitlement — take-1 is always free; a purchase unlocks take-2 feedback,
+    # take-3, and the ideal-text report. Distinct from credits + user_audits.
+    # See migrations/add_arc_purchases.sql.
+
+    def get_arc_purchase(self, arc_id: Optional[str]) -> Optional[dict]:
+        """The purchase row for an arc, or None. None on missing table /
+        no purchase / error — never raises (entitlement defaults to NOT
+        entitled, so a hiccup keeps the paywall up, never opens it)."""
+        if not arc_id:
+            return None
+        try:
+            res = (
+                self.client.table("arc_purchases")
+                .select("*")
+                .eq("arc_id", str(arc_id))
+                .limit(1)
+                .execute()
+            )
+            rows = res.data or []
+            return rows[0] if rows else None
+        except Exception as e:
+            err_low = str(e).lower()
+            if "arc_purchases" in err_low and (
+                "does not exist" in err_low or "pgrst" in err_low
+                or "42p01" in err_low
+            ):
+                logger.warning(
+                    "get_arc_purchase: table missing (run "
+                    "migrations/add_arc_purchases.sql) arc=%s", arc_id,
+                )
+                return None
+            logger.warning("get_arc_purchase failed arc=%s: %s", arc_id, e)
+            return None
+
+    def create_arc_purchase(
+        self, arc_id: str, user_id: str, *,
+        kind: str = "paid", source: str = "stripe",
+        currency: Optional[str] = None, amount_minor: Optional[int] = None,
+        stripe_session_id: Optional[str] = None,
+    ) -> Optional[dict]:
+        """Record a paid/passed arc. IDEMPOTENT: unique(arc_id) means a second
+        purchase for the same arc (or a replayed stripe webhook on the same
+        stripe_session_id) no-ops — on conflict we return the EXISTING row, so
+        the caller treats a duplicate exactly like a fresh grant. Returns the
+        row or None on real failure."""
+        if not arc_id or not user_id:
+            return None
+        row = {
+            "arc_id": str(arc_id), "user_id": str(user_id),
+            "kind": kind, "source": source,
+        }
+        if currency:
+            row["currency"] = str(currency).lower()
+        if amount_minor is not None:
+            try:
+                row["amount_minor"] = int(amount_minor)
+            except (TypeError, ValueError):
+                pass
+        if stripe_session_id:
+            row["stripe_session_id"] = str(stripe_session_id)
+        try:
+            res = self.client.table("arc_purchases").insert(row).execute()
+            created = (res.data or [None])[0]
+            if created:
+                return created
+            return self.get_arc_purchase(arc_id)
+        except Exception as e:
+            err_low = str(e).lower()
+            # Unique conflict (arc already purchased / replayed webhook) →
+            # return the existing row; that's the idempotent success path.
+            if (
+                "duplicate" in err_low or "unique" in err_low
+                or "23505" in err_low or "conflict" in err_low
+            ):
+                existing = self.get_arc_purchase(arc_id)
+                if existing:
+                    return existing
+                # conflict was on stripe_session_id for a different arc — fall
+                # through to a best-effort lookup by that session id.
+                if stripe_session_id:
+                    return self.get_arc_purchase_by_stripe_session(
+                        stripe_session_id,
+                    )
+                return None
+            if "arc_purchases" in err_low and (
+                "does not exist" in err_low or "pgrst" in err_low
+                or "42p01" in err_low
+            ):
+                logger.warning(
+                    "create_arc_purchase: table missing (run "
+                    "migrations/add_arc_purchases.sql) arc=%s", arc_id,
+                )
+                return None
+            logger.warning("create_arc_purchase failed arc=%s: %s", arc_id, e)
+            return None
+
+    def get_arc_purchase_by_stripe_session(
+        self, stripe_session_id: Optional[str],
+    ) -> Optional[dict]:
+        """Purchase row keyed by Stripe Checkout Session id (webhook
+        idempotency lookup). None on missing/none/error."""
+        if not stripe_session_id:
+            return None
+        try:
+            res = (
+                self.client.table("arc_purchases")
+                .select("*")
+                .eq("stripe_session_id", str(stripe_session_id))
+                .limit(1)
+                .execute()
+            )
+            rows = res.data or []
+            return rows[0] if rows else None
+        except Exception as e:
+            logger.warning(
+                "get_arc_purchase_by_stripe_session failed sid=%s: %s",
+                stripe_session_id, e,
+            )
+            return None
+
+    def mark_arc_delivered(self, arc_id: Optional[str]) -> bool:
+        """Stamp delivered_at when the coach has delivered the arc's audit.
+        Idempotent (sets only when NULL). Best-effort → False on any hiccup."""
+        if not arc_id:
+            return False
+        now = datetime.now(timezone.utc).isoformat()
+        try:
+            res = (
+                self.client.table("arc_purchases")
+                .update({"delivered_at": now})
+                .eq("arc_id", str(arc_id))
+                .is_("delivered_at", "null")
+                .execute()
+            )
+            return bool(res.data)
+        except Exception as e:
+            logger.warning("mark_arc_delivered failed arc=%s: %s", arc_id, e)
+            return False
+
+    # arc_invite_codes — founding free-pass codes (A4).
+
+    def get_arc_invite_code(self, code: Optional[str]) -> Optional[dict]:
+        """An invite code row, or None. None on missing table / unknown
+        code / error."""
+        if not code:
+            return None
+        try:
+            res = (
+                self.client.table("arc_invite_codes")
+                .select("*")
+                .eq("code", str(code).strip())
+                .limit(1)
+                .execute()
+            )
+            rows = res.data or []
+            return rows[0] if rows else None
+        except Exception as e:
+            err_low = str(e).lower()
+            if "arc_invite_codes" in err_low and (
+                "does not exist" in err_low or "pgrst" in err_low
+                or "42p01" in err_low
+            ):
+                logger.warning(
+                    "get_arc_invite_code: table missing (run "
+                    "migrations/add_arc_invite_codes.sql) code=%s", code,
+                )
+                return None
+            logger.warning("get_arc_invite_code failed code=%s: %s", code, e)
+            return None
+
+    def consume_arc_invite_code(self, code: Optional[str]) -> bool:
+        """Atomically claim ONE use of an active code with uses < max_uses.
+        Guards on uses (conditional update) so two concurrent redeems can't
+        over-spend a code. Returns True iff a use was claimed. Caller mints the
+        purchase only on True."""
+        if not code:
+            return False
+        row = self.get_arc_invite_code(code)
+        if not row or not row.get("active"):
+            return False
+        try:
+            uses = int(row.get("uses") or 0)
+            max_uses = int(row.get("max_uses") or 0)
+        except (TypeError, ValueError):
+            return False
+        if uses >= max_uses:
+            return False
+        try:
+            # Conditional update: only bump when uses still equals what we read
+            # (optimistic lock). A racing redeem changed uses → 0 rows → retry
+            # is the caller's choice; here we just report no-claim.
+            res = (
+                self.client.table("arc_invite_codes")
+                .update({"uses": uses + 1})
+                .eq("code", str(code).strip())
+                .eq("uses", uses)
+                .eq("active", True)
+                .execute()
+            )
+            return bool(res.data)
+        except Exception as e:
+            logger.warning("consume_arc_invite_code failed code=%s: %s", code, e)
+            return False
+
+    def create_arc_invite_code(
+        self, code: str, *, max_uses: int = 1, note: Optional[str] = None,
+    ) -> Optional[dict]:
+        """Mint an invite code (admin/seed, A4). Idempotent: a re-run of the
+        same code returns the existing row. None on real failure."""
+        if not code:
+            return None
+        row = {"code": str(code).strip(), "max_uses": int(max_uses)}
+        if note:
+            row["note"] = str(note)
+        try:
+            res = self.client.table("arc_invite_codes").insert(row).execute()
+            created = (res.data or [None])[0]
+            return created or self.get_arc_invite_code(code)
+        except Exception as e:
+            err_low = str(e).lower()
+            if (
+                "duplicate" in err_low or "unique" in err_low
+                or "23505" in err_low or "conflict" in err_low
+            ):
+                return self.get_arc_invite_code(code)
+            logger.warning("create_arc_invite_code failed code=%s: %s", code, e)
+            return None
+
+    def set_session_presentation_duration(
+        self, session_id: Optional[str], seconds: Optional[int],
+    ) -> bool:
+        """Persist the gate's measured duration onto the session (A5 — the
+        length→audits read). Best-effort: no-op (False) on missing column /
+        bad value / error; the recording row keeps the authoritative copy."""
+        if not session_id or seconds is None:
+            return False
+        try:
+            secs = int(round(float(seconds)))
+        except (TypeError, ValueError):
+            return False
+        try:
+            self.client.table("v2_sessions").update(
+                {"presentation_duration_seconds": secs}
+            ).eq("id", session_id).execute()
+            return True
+        except Exception as e:
+            err_low = str(e).lower()
+            if "presentation_duration_seconds" in err_low and (
+                "does not exist" in err_low or "pgrst" in err_low
+            ):
+                logger.warning(
+                    "set_session_presentation_duration: column missing (run "
+                    "migrations/add_session_duration.sql) sid=%s", session_id,
+                )
+                return False
+            logger.warning(
+                "set_session_presentation_duration failed sid=%s: %s",
+                session_id, e,
+            )
+            return False
+
     # ── willab — Audit Delivery (Prompt C §2/§3) ───────────────────────
     #
     # Coach-curated PDF audits, one row per uploaded PDF. Distinct from the

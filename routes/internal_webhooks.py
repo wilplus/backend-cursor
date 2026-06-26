@@ -109,6 +109,19 @@ def stripe_checkout_webhook():
     if not session_id:
         return jsonify({"code": "INVALID_EVENT", "error": "missing session id"}), 400
 
+    # willab Paid Audits (A3): a session tagged with metadata.arc_id is an
+    # AUDIT purchase, not a credits top-up. Route it to the arc path and return
+    # BEFORE the credits branch (which stays exactly as it was). The metadata is
+    # on the event object, so no extra retrieve to discriminate.
+    md = obj.get("metadata") or {}
+    if isinstance(md, dict) and md.get("arc_id"):
+        from services.arc_checkout import apply_completed_arc_checkout
+        arc_result = apply_completed_arc_checkout(str(session_id), config)
+        arc_payload = dict(arc_result.payload)
+        if arc_result.ok:
+            arc_payload["received"] = True
+        return jsonify(arc_payload), arc_result.http_status
+
     result = apply_paid_checkout_session_credits(str(session_id), auth_user_id=None, app_config=config)
     payload = dict(result.payload)
     if result.ok:
