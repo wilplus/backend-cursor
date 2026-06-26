@@ -32,41 +32,34 @@ class IsChallengeTests(unittest.TestCase):
 
 
 class BreakthroughTests(unittest.TestCase):
-    def test_challenge_after_threat_is_breakthrough(self):
+    # founder 2026-06-26: a breakthrough = a coach `challenge` mark (the
+    # threat→challenge-transition rule is retired). Every challenge counts.
+    def test_every_challenge_is_a_breakthrough(self):
         snips = [
             {"id": "a", "start_offset_ms": 0, "direction": "threat"},
             {"id": "b", "start_offset_ms": 1000, "direction": "challenge"},
         ]
         self.assertEqual(detect_breakthroughs(snips), {"b"})
 
-    def test_challenge_without_prior_threat_is_not(self):
+    def test_lone_challenge_with_no_prior_threat_now_counts(self):
+        # the exact regression: a single coach challenge used to surface nothing.
         snips = [
             {"id": "a", "start_offset_ms": 0, "direction": "challenge"},
             {"id": "b", "start_offset_ms": 1000, "direction": "challenge"},
         ]
-        self.assertEqual(detect_breakthroughs(snips), set())
+        self.assertEqual(detect_breakthroughs(snips), {"a", "b"})
 
-    def test_latch_resets_after_breakthrough(self):
-        # threat → challenge (breakthrough) → challenge (NOT) → threat → challenge (breakthrough)
-        snips = [
-            {"id": "a", "start_offset_ms": 0, "direction": "threat"},
-            {"id": "b", "start_offset_ms": 1, "direction": "challenge"},
-            {"id": "c", "start_offset_ms": 2, "direction": "challenge"},
-            {"id": "d", "start_offset_ms": 3, "direction": "threat"},
-            {"id": "e", "start_offset_ms": 4, "direction": "challenge"},
-        ]
-        self.assertEqual(detect_breakthroughs(snips), {"b", "e"})
-
-    def test_ambiguous_does_not_break_the_latch(self):
-        # threat → ambiguous → challenge still counts the challenge.
+    def test_threat_and_ambiguous_never_count(self):
         snips = [
             {"id": "a", "start_offset_ms": 0, "direction": "threat"},
             {"id": "x", "start_offset_ms": 1, "direction": "ambiguous"},
-            {"id": "b", "start_offset_ms": 2, "direction": "challenge"},
+            {"id": "n", "start_offset_ms": 2, "direction": None},
+            {"id": "b", "start_offset_ms": 3, "direction": "challenge"},
         ]
         self.assertEqual(detect_breakthroughs(snips), {"b"})
 
-    def test_sorts_by_time_not_input_order(self):
+    def test_order_is_irrelevant(self):
+        # no latch → input order has no effect.
         snips = [
             {"id": "b", "start_offset_ms": 1000, "direction": "challenge"},
             {"id": "a", "start_offset_ms": 0, "direction": "threat"},

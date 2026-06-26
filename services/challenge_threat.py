@@ -6,12 +6,12 @@ Three pure pieces:
   • resolve_direction — the COACH's blind label wins; else the SHADOW model's
     prediction (Phase 4 / Prompt 1). The shadow label is NEVER shown to the
     coach — the coach labels independently and the system learns from the diff.
-  • detect_breakthroughs — the threat→challenge transition: walking a take in
-    time order, a challenge moment that follows a threat one is a "breakthrough"
-    (paralyzing stress → motivating). That's the KEY moment.
+  • detect_breakthroughs — the coach-confirmed breakthrough moments. A
+    breakthrough = a coach ``challenge`` mark (founder 2026-06-26: the coach's
+    challenge mark in the panel IS the breakthrough mark). The earlier
+    threat→challenge-transition rule is RETIRED — see the function.
   • is_challenge — the SURFACING filter: the user sees ONLY challenge moments;
-    threat informs ranking + marks where the breakthrough started, but is never
-    shown (Prompt D §0/§7).
+    threat informs ranking but is never shown (Prompt D §0/§7).
 """
 from __future__ import annotations
 
@@ -40,35 +40,26 @@ def is_challenge(direction: Any) -> bool:
 
 
 def detect_breakthroughs(snippets: Any) -> set:
-    """Return the set of snippet ids that are threat→challenge BREAKTHROUGHS.
+    """Return the set of snippet ids that are coach-confirmed BREAKTHROUGHS.
 
-    ``snippets`` = list of dicts with ``id``, ``start_offset_ms``, ``direction``.
-    Walking each take in TIME order: a ``challenge`` moment is a breakthrough iff
-    the most recent prior direction was ``threat`` (the user broke through).
-    Reaching challenge resets the latch — later challenges aren't breakthroughs
-    until another threat. ``ambiguous`` doesn't change the latch.
+    BREAKTHROUGH = a coach ``challenge`` mark (founder 2026-06-26). The coach's
+    challenge mark in the panel IS the breakthrough mark — so every snippet the
+    coach labelled ``challenge`` is a breakthrough.
 
-    Pass ONE take's snippets at a time (or tag them with take so transitions
-    don't cross takes); the caller groups by take_index.
+    The earlier threat→challenge-TRANSITION rule is RETIRED: it required a coach
+    ``threat`` immediately before the ``challenge`` in the same take, so a coach
+    who marked a single ``challenge`` (no preceding threat) saw NO breakthrough
+    surface anywhere — the reported "I chose one and it wasn't shown" bug.
+
+    ``snippets`` = list of dicts with ``id`` and ``direction`` (callers still
+    pass ``start_offset_ms``; it's accepted and ignored — order no longer
+    matters without the latch). The coach-only gate lives at the call sites
+    (``coach_direction``), so no model guess ever reaches this set.
     """
     if not isinstance(snippets, list):
         return set()
-    ordered = sorted(
-        (s for s in snippets if isinstance(s, dict)),
-        key=lambda s: (s.get("start_offset_ms")
-                       if isinstance(s.get("start_offset_ms"), (int, float))
-                       and not isinstance(s.get("start_offset_ms"), bool)
-                       else 0),
-    )
-    out = set()
-    prev_threat = False
-    for s in ordered:
-        d = s.get("direction")
-        if d == "challenge":
-            if prev_threat:
-                out.add(s.get("id"))
-            prev_threat = False
-        elif d == "threat":
-            prev_threat = True
-        # ambiguous / None: leave the latch as-is
-    return out
+    return {
+        s.get("id")
+        for s in snippets
+        if isinstance(s, dict) and s.get("direction") == "challenge"
+    }
