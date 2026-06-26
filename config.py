@@ -258,6 +258,20 @@ class Config:
     # JSON object: Stripe Price id → integer credits to add, e.g. {"price_abc":15,"price_def":40}
     STRIPE_CHECKOUT_PRICE_CREDITS_JSON = (os.getenv("STRIPE_CHECKOUT_PRICE_CREDITS_JSON") or "").strip()
 
+    # ── willab — Paid Audits (BE chunk A3). An "audit" = an explore arc
+    # (3 takes + the ideal-text report). One price; take-1 is always free.
+    # AUDIT_PRICE_AMOUNT_MINOR is in minor units (15000 = 150.00 PLN).
+    AUDIT_PRICE_CURRENCY = (os.getenv("AUDIT_PRICE_CURRENCY") or "pln").strip().lower() or "pln"
+    AUDIT_PRICE_AMOUNT_MINOR = int(os.getenv("AUDIT_PRICE_AMOUNT_MINOR") or "15000")
+    # Stripe Price id for the audit (mode=payment Checkout). Empty → checkout
+    # builds a one-off price_data line from the amount/currency above.
+    STRIPE_AUDIT_PRICE_ID = (os.getenv("STRIPE_AUDIT_PRICE_ID") or "").strip()
+    # Delivery SLA surfaced in the 402 / paywall copy (hours).
+    AUDIT_SLA_HOURS = int(os.getenv("AUDIT_SLA_HOURS") or "48")
+    # Checkout redirect targets (FE pages). success_url gets the arc id.
+    AUDIT_CHECKOUT_SUCCESS_URL = (os.getenv("AUDIT_CHECKOUT_SUCCESS_URL") or "").strip() or None
+    AUDIT_CHECKOUT_CANCEL_URL = (os.getenv("AUDIT_CHECKOUT_CANCEL_URL") or "").strip() or None
+
     # Optional: annotation event export (cron / internal). See POST /v2/internal/annotation-export
     ANNOTATION_EXPORT_CRON_SECRET = (os.getenv("ANNOTATION_EXPORT_CRON_SECRET") or "").strip()
     ANNOTATION_EXPORT_BUCKET = (os.getenv("ANNOTATION_EXPORT_BUCKET") or "").strip() or None

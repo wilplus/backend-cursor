@@ -1082,6 +1082,15 @@ def v2_user_get_results(session_id):
         if not session:
             return jsonify({"code": "NOT_FOUND", "error": "Session not found"}), 404
 
+        # Paid Audits (A2): take 2+ of an arc is paywalled (take 1 / non-arc
+        # always free — live-loop fence). Mirrors the readout GET gate so the
+        # legacy /results page is not a back-door around the paywall.
+        _arc_gate = _arc_payment_gate(
+            session.get("arc_id"), session.get("take_index"),
+        )
+        if _arc_gate is not None:
+            return _arc_gate
+
         # BE-3: stress contrast is opt-in via query param so callers
         # that don't render the dashboard section don't pay for two
         # extra table reads. Cheap when included (≤10 indexed rows
@@ -4800,11 +4809,22 @@ def _apply_willab_publish_contract(session_id, body, actor_user_id):
     # is on STARTING the next recording (FE), not on receiving feedback. Best-
     # effort: a credit hiccup must never unwind a published session.
     try:
-        _credit_owner = (db.v2_get_session_by_id(session_id) or {}).get("user_id")
-        if _credit_owner:
+        _sess_for_credit = db.v2_get_session_by_id(session_id) or {}
+        _credit_owner = _sess_for_credit.get("user_id")
+        # Paid Audits (A2): an ARC session ("audit") is monetized per-arc via
+        # arc_purchases, NOT credits — so the #154 lab-publish 5-credit soft-
+        # deduct is SKIPPED for arc sessions. Non-arc (homework / standalone
+        # lab) sessions keep the credit charge exactly as before.
+        _is_arc_session = bool(_sess_for_credit.get("arc_id"))
+        if _credit_owner and not _is_arc_session:
             db.v2_ensure_credits_initialized(str(_credit_owner))
             db.v2_charge_feedback_credits_once(
                 session_id, str(_credit_owner), amount=5,
+            )
+        elif _is_arc_session:
+            logger.info(
+                "publish_contract.credit_skip_arc session=%s — arc audit "
+                "monetized via arc_purchases, not credits", session_id,
             )
     except Exception as _ce:
         logger.warning(
@@ -8132,6 +8152,14 @@ def v2_user_get_session_readout(session_id):
                 "code": "SESSION_NOT_FOUND", "error": "Session not found",
             }), 404
 
+        # Paid Audits (A2): take 2+ of an arc is behind the paywall. Take 1 (and
+        # any non-arc / standalone session) is always free (live-loop fence).
+        _arc_gate = _arc_payment_gate(
+            session.get("arc_id"), session.get("take_index"),
+        )
+        if _arc_gate is not None:
+            return _arc_gate
+
         from services.lab_recording import build_readout_from_session
         readout = build_readout_from_session(session_id)
 
@@ -9835,6 +9863,30 @@ def _arc_owned_by_caller(arc_id):
     return owned, sessions
 
 
+def _arc_payment_gate(arc_id, take_index=None):
+    """willab Paid Audits (A2) — the 402 entitlement gate.
+
+    Returns a ``(response, 402)`` tuple to return when this arc/take is behind
+    the paywall and the caller isn't entitled, else None (proceed).
+
+    LIVE-LOOP FENCE: take 1 is NEVER gated. Pass ``take_index`` for a
+    take-keyed read (gates take 2+ only); omit it for a deliverable read
+    (best-presentation / ideal-text — gated whenever unpaid, since those only
+    exist after 3 takes). Admin/coach bypass (force-publish / review)."""
+    from services.arc_entitlement import (
+        is_arc_entitled, take_requires_payment, payment_required_payload,
+    )
+    if not arc_id:
+        return None
+    if take_index is not None and not take_requires_payment(take_index):
+        return None
+    if is_admin(request.user_id) or is_coach(request.user_id):
+        return None
+    if is_arc_entitled(db, arc_id, request.user_id):
+        return None
+    return jsonify(payment_required_payload(arc_id, config)), 402
+
+
 @v2_bp.route("/explore/arc/<arc_id>/best-presentation", methods=["GET"])
 @require_auth
 def v2_explore_arc_best_presentation(arc_id):
@@ -9862,6 +9914,10 @@ def v2_explore_arc_best_presentation(arc_id):
         owned, _ = _arc_owned_by_caller(arc_id)
         if not owned:
             return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
+        # Paid Audits (A2): the ideal-text deliverable is behind the paywall.
+        gated = _arc_payment_gate(arc_id)
+        if gated is not None:
+            return gated
         return jsonify({"arc_id": arc_id, **build_best_presentation(arc_id)}), 200
     except Exception as e:
         logger.error("explore/arc best-presentation failed arc=%s: %s", arc_id,
@@ -9961,6 +10017,156 @@ def v2_explore_arc_progress(arc_id):
         sentry_sdk.capture_exception(e)
         return jsonify({
             "code": "V2_ERROR", "error": "Failed to load progress",
+        }), 500
+
+
+@v2_bp.route("/explore/arc/<arc_id>/take-comparison", methods=["GET"])
+@require_auth
+def v2_explore_arc_take_comparison(arc_id):
+    """Take-1-vs-take-2 comparison (Paid Audits A6) — the NEUTRAL teaser at the
+    paywall. RAW acoustic aggregates (mean pitch, speech rate, pitch range,
+    mean pause) for take 1 vs take 2 + a neutral pitch-range movement word
+    (widened / narrowed / steadied).
+
+    FREE on purpose — this is the unpaid teaser, so it is NOT behind the A2
+    paywall (only ownership-gated). AC-9 / D8: no score, ratio, verdict word, or
+    charisma vocabulary; raw values + neutral movement only.
+
+    Response 200 { arc_id, take_count, takes:[...], comparison|null }
+             404 NOT_FOUND · 500 V2_ERROR
+    """
+    try:
+        from services.take_comparison import build_take_comparison
+        owned, _ = _arc_owned_by_caller(arc_id)
+        if not owned:
+            return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
+        return jsonify(build_take_comparison(arc_id)), 200
+    except Exception as e:
+        logger.error("explore/arc take-comparison failed arc=%s: %s", arc_id, e,
+                     exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({
+            "code": "V2_ERROR", "error": "Failed to load take comparison",
+        }), 500
+
+
+@v2_bp.route("/arc/<arc_id>/checkout", methods=["POST"])
+@require_auth
+def v2_arc_checkout(arc_id):
+    """Start Stripe Checkout for ONE audit = this arc (Paid Audits A3).
+
+    Ownership-gated (the arc must be the caller's). Already-entitled arcs short-
+    circuit (no duplicate charge). Body (optional): { success_url, cancel_url }.
+
+    Response 200 { checkout_url, checkout_session_id, arc_id }
+             200 { already_entitled: true, arc_id }   (purchase exists)
+             404 NOT_FOUND · 4xx/5xx from Stripe/config
+    """
+    try:
+        from services.arc_entitlement import is_arc_entitled
+        from services.arc_checkout import create_arc_checkout_session
+        owned, _ = _arc_owned_by_caller(arc_id)
+        if not owned:
+            return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
+        if is_arc_entitled(db, arc_id, request.user_id):
+            return jsonify({"already_entitled": True, "arc_id": arc_id}), 200
+        body = request.get_json(silent=True) or {}
+        result = create_arc_checkout_session(
+            str(arc_id), str(request.user_id), config,
+            success_url=(body.get("success_url") or None),
+            cancel_url=(body.get("cancel_url") or None),
+        )
+        return jsonify(result.payload), result.http_status
+    except Exception as e:
+        logger.error("arc checkout failed arc=%s: %s", arc_id, e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({
+            "code": "V2_ERROR", "error": "Failed to start checkout",
+        }), 500
+
+
+@v2_bp.route("/arc/<arc_id>/redeem", methods=["POST"])
+@require_auth
+def v2_arc_redeem(arc_id):
+    """Redeem a founding free-pass invite code for this arc (Paid Audits A4).
+
+    Ownership-gated. Body: { code }. An active code with uses < max_uses mints a
+    'founding_pass' purchase (source='invite_code') and burns one use.
+
+    Response 200 { ok: true, arc_id, kind: 'founding_pass' }
+             200 { already_entitled: true, arc_id }
+             400 INVALID_INPUT (no code) · 404 NOT_FOUND (arc)
+             409 CODE_INVALID (unknown / inactive / exhausted) · 500
+    """
+    try:
+        from services.arc_entitlement import is_arc_entitled
+        owned, _ = _arc_owned_by_caller(arc_id)
+        if not owned:
+            return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
+        if is_arc_entitled(db, arc_id, request.user_id):
+            return jsonify({"already_entitled": True, "arc_id": arc_id}), 200
+        body = request.get_json(silent=True) or {}
+        code = (body.get("code") or "").strip() if isinstance(body.get("code"), str) else ""
+        if not code:
+            return jsonify({"code": "INVALID_INPUT", "error": "code is required"}), 400
+        if not db.consume_arc_invite_code(code):
+            return jsonify({
+                "code": "CODE_INVALID",
+                "error": "That code is not valid, inactive, or fully used.",
+            }), 409
+        purchase = db.create_arc_purchase(
+            str(arc_id), str(request.user_id),
+            kind="founding_pass", source="invite_code",
+        )
+        if not purchase:
+            # The use was burned but the purchase failed — log loudly; the user
+            # can retry with another code (rare; arc_purchases table missing).
+            logger.error(
+                "arc redeem: code consumed but purchase failed arc=%s code=%s",
+                arc_id, code,
+            )
+            return jsonify({
+                "code": "V2_ERROR", "error": "Could not record the pass",
+            }), 500
+        return jsonify({"ok": True, "arc_id": arc_id, "kind": "founding_pass"}), 200
+    except Exception as e:
+        logger.error("arc redeem failed arc=%s: %s", arc_id, e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({
+            "code": "V2_ERROR", "error": "Failed to redeem code",
+        }), 500
+
+
+@v2_bp.route("/talks/<talk_id>/ideal-text", methods=["GET"])
+@require_auth
+def v2_talk_ideal_text(talk_id):
+    """The Ideal-Text report for a talk (Paid Audits A7). A talk IS an arc, so
+    talk_id == arc_id.
+
+    Ownership-gated + A2 paywall (the report is the paid deliverable). L1: the
+    idealText is the verbatim-selected best take of each slide, never re-
+    summarised. AC-9: no score/verdict.
+
+    Response 200 { talkId, talkTitle, ready, coachReviewed, presentationRef,
+                   slides:[ {index, label, title, body, thumbnailUrl,
+                             idealText, takeRoute, breakthrough} ] }
+             402 PAYMENT_REQUIRED · 404 NOT_FOUND · 500 V2_ERROR
+    """
+    try:
+        from services.ideal_text_report import build_ideal_text_report
+        owned, _ = _arc_owned_by_caller(talk_id)
+        if not owned:
+            return jsonify({"code": "NOT_FOUND", "error": "talk not found"}), 404
+        gated = _arc_payment_gate(talk_id)
+        if gated is not None:
+            return gated
+        return jsonify(build_ideal_text_report(talk_id)), 200
+    except Exception as e:
+        logger.error("talk ideal-text failed talk=%s: %s", talk_id, e,
+                     exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({
+            "code": "V2_ERROR", "error": "Failed to build ideal text",
         }), 500
 
 
@@ -10122,6 +10328,12 @@ def v2_lab_create_recording():
         # origin path can find it (best-effort; the recording_origin on
         # the recording row is the send-gate's primary gate).
         db.set_session_source(guest_session_id, "audit_upload")
+        # Paid Audits (A5): persist the gate's measured duration on the session
+        # so the length→audits read (audits_needed) needs no recording join.
+        # Best-effort — no-op if the column is missing pre-migration.
+        db.set_session_presentation_duration(
+            guest_session_id, gate.get("duration_sec"),
+        )
         # Attribute the take to the user AT RECORD TIME when signed in (Prompt
         # D): the explore arc + best-presentation/moments/progress are owned
         # reads, so an authed user's takes must be theirs immediately — not only
@@ -10155,6 +10367,24 @@ def v2_lab_create_recording():
         if arc_id:
             db.set_session_arc(guest_session_id, arc_id, take_index)
             arc_take_count = db.get_arc_take_count(arc_id)
+
+        # Paid Audits (A2): take 3+ of an arc requires entitlement. Take 1 & 2
+        # are ALWAYS free to record + upload (live-loop fence) — the gate kicks
+        # in only at take 3 for an unentitled, non-admin/coach user. (Defense in
+        # depth: the FE gates record-start; this rejects a forged take-3 before
+        # the heavy Whisper/analysis pass.) Admin/coach force-publish bypasses.
+        if (arc_id and isinstance(take_index, int) and take_index >= 3
+                and getattr(request, "user_id", None)):
+            from services.arc_entitlement import (
+                is_arc_entitled, payment_required_payload,
+            )
+            if (not (is_admin(request.user_id) or is_coach(request.user_id))
+                    and not is_arc_entitled(db, arc_id, request.user_id)):
+                logger.info(
+                    "lab: take-3 gated (unpaid) arc=%s take=%s user=%s",
+                    arc_id, take_index, request.user_id,
+                )
+                return jsonify(payment_required_payload(arc_id, config)), 402
 
         # Pre-recording feeling (U10) — the user named their state before this
         # take (nervous/excited/calm/unsure). Split-sink / AC-9: stored
@@ -10316,10 +10546,21 @@ def v2_lab_create_recording():
                 guest_session_id, _rre,
             )
 
+        # Paid Audits (A5): length → how many audits this presentation needs.
+        # MINUTES drive the count (founder D5), NOT slide count: one audit per
+        # 10 minutes, floor of one. duration_minutes is this take's measured
+        # length (from the min-content gate).
+        _dur_secs = int(_rec_duration or 0)
+        duration_minutes = round(_dur_secs / 60.0, 1)
+        audits_needed = max(1, -(-_dur_secs // 600))  # ceil(seconds / 600)
+
         return jsonify({
             "status": "ok",
             "session_id": guest_session_id,
             "recording_id": recording_id,
+            # Length → audits (A5). duration_minutes = this take's length.
+            "duration_minutes": duration_minutes,
+            "audits_needed": audits_needed,
             # A fresh upload is always readout_ready (processed, not yet sent).
             # Explicit so the 201 is self-describing + matches the re-read /
             # history `state` field (FE asked: Q2 of the last-pass handoff).
