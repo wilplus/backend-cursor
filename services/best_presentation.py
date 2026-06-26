@@ -509,9 +509,27 @@ def _finalize_best_presentation(
         bool(s.get("results_published_at")) for s in sessions
     )
 
+    # Presentation NAME — the arc's topic, so the FE can title the best
+    # presentation + the deep link / ready-card show a real name (founder
+    # 2026-06-26). Take the latest take's topic (the convention elsewhere is
+    # "topic from intake_context, latest take"), else any non-empty one.
+    name = None
+    _best_ti = -1
+    for s in sessions:
+        if not isinstance(s, dict):
+            continue
+        ctx = s.get("intake_context") if isinstance(s.get("intake_context"), dict) else {}
+        topic = ctx.get("topic")
+        ti = s.get("take_index") if isinstance(s.get("take_index"), int) else -1
+        if isinstance(topic, str) and topic.strip() and ti >= _best_ti:
+            name = topic.strip()
+            _best_ti = ti
+
     return {
         "ready": progress["ready"],
         "progress": progress,
+        # the presentation's title (arc topic) — null when no take carried one.
+        "name": name,
         # False until a coach has published a take → FE shows "draft / pending
         # coach"; True once the human has confirmed.
         "coach_reviewed": coach_reviewed,
