@@ -5085,6 +5085,49 @@ class DatabaseService:
             logger.error(f"create_charisma_snippet failed: {e}")
             return None
 
+    def insert_candidate_windows(self, rows: list | None) -> int:
+        """Persist the FULL candidate-window pool for a recording (automation-
+        audit fix #1 — the 'offered vs chosen' selection signal). Append-only,
+        training-bound (never read by any user/coach surface; AC-9: storing !=
+        surfacing). Idempotent per (recording_id, start_offset_ms) — a re-process
+        no-ops via ON CONFLICT DO NOTHING.
+
+        Best-effort: returns the count written; 0 on missing table / bad input /
+        error — NEVER raises (live-loop fence: capture must not break the
+        recording pipeline). See migrations/add_candidate_windows.sql."""
+        if not rows:
+            return 0
+        clean = [
+            r for r in rows
+            if isinstance(r, dict) and r.get("start_offset_ms") is not None
+        ]
+        if not clean:
+            return 0
+        try:
+            res = self.client.table("candidate_windows").upsert(
+                clean,
+                on_conflict="recording_id,start_offset_ms",
+                ignore_duplicates=True,
+            ).execute()
+            # Report ACTUAL inserted rows when the client returns them (a
+            # re-process skips dups via ON CONFLICT DO NOTHING) so the telemetry
+            # doesn't overcount; fall back to attempted on older clients.
+            data = getattr(res, "data", None)
+            return len(data) if isinstance(data, list) else len(clean)
+        except Exception as e:
+            err_low = str(e).lower()
+            if "candidate_windows" in err_low and (
+                "does not exist" in err_low or "pgrst" in err_low
+                or "42p01" in err_low
+            ):
+                logger.warning(
+                    "insert_candidate_windows: table missing (run "
+                    "migrations/add_candidate_windows.sql) — pool not captured",
+                )
+                return 0
+            logger.warning("insert_candidate_windows failed: %s", e)
+            return 0
+
     def get_snippets_by_session(self, session_id: str) -> List[dict]:
         """Get all snippets for a session, ordered by start time."""
         try:
