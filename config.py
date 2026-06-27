@@ -279,6 +279,12 @@ class Config:
     ANNOTATION_EXPORT_OUTPUT_DIR = (os.getenv("ANNOTATION_EXPORT_OUTPUT_DIR") or "").strip() or None
     STRESS_BASELINE_MODEL_PATH = (os.getenv("STRESS_BASELINE_MODEL_PATH") or "").strip() or None
     STRESS_MODEL_TRAIN_SECRET = (os.getenv("STRESS_MODEL_TRAIN_SECRET") or "").strip()
+    # Graduated-autonomy floor for the shadow DIRECTION fallback (readiness rig
+    # #3). 0.0 (default) = OFF: the shadow label is used whenever present, as
+    # before. >0 = use the shadow fallback ONLY when its confidence >= this
+    # floor; low-confidence snippets route to the human (no machine direction
+    # term). Flip on (e.g. 0.8) only once the holdout agreement says it's ready.
+    DIRECTION_SHADOW_MIN_CONFIDENCE = float(os.getenv("DIRECTION_SHADOW_MIN_CONFIDENCE") or "0")
     # Supabase Storage bucket for trained stress baseline JSON (see migrations/add_stress_models_storage_bucket.sql).
     STRESS_MODEL_BUCKET = (os.getenv("STRESS_MODEL_BUCKET") or "stress_models").strip() or "stress_models"
 

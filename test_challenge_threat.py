@@ -24,6 +24,39 @@ class ResolveDirectionTests(unittest.TestCase):
         self.assertIsNone(resolve_direction("nope", "alsonope"))
 
 
+class ConfidenceGateTests(unittest.TestCase):
+    # Readiness rig #3 — graduated autonomy (default-OFF).
+    def test_no_gate_by_default_uses_shadow(self):
+        # min_confidence=None → identical to before (shadow used regardless).
+        self.assertEqual(resolve_direction(None, "challenge"), "challenge")
+        self.assertEqual(
+            resolve_direction(None, "challenge", shadow_confidence=0.1), "challenge")
+
+    def test_high_confidence_shadow_passes_the_floor(self):
+        self.assertEqual(
+            resolve_direction(None, "challenge",
+                              shadow_confidence=0.9, min_confidence=0.8),
+            "challenge")
+
+    def test_low_confidence_shadow_routes_to_human(self):
+        # below the floor → None (no machine direction term; goes to the human).
+        self.assertIsNone(
+            resolve_direction(None, "challenge",
+                              shadow_confidence=0.5, min_confidence=0.8))
+
+    def test_missing_confidence_under_a_floor_is_dropped(self):
+        self.assertIsNone(
+            resolve_direction(None, "threat",
+                              shadow_confidence=None, min_confidence=0.8))
+
+    def test_coach_label_never_gated_by_confidence(self):
+        # the coach always wins, regardless of any confidence floor.
+        self.assertEqual(
+            resolve_direction("challenge", "threat",
+                              shadow_confidence=0.0, min_confidence=0.99),
+            "challenge")
+
+
 class IsChallengeTests(unittest.TestCase):
     def test_only_challenge_passes(self):
         self.assertTrue(is_challenge("challenge"))

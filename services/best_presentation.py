@@ -300,21 +300,37 @@ def _resolve_take_directions(snippets: list, coach_labels: dict) -> list:
         from services.learning_serve import predict_direction
     except Exception:
         predict_direction = None  # type: ignore
+    # Graduated-autonomy floor (readiness rig #3, default-OFF): when set, a
+    # low-confidence shadow guess is NOT used for the ranking direction term —
+    # the snippet routes to the human (no machine term) instead. Read once.
+    _min_conf = None
+    try:
+        from config import Config
+        _mc = Config().DIRECTION_SHADOW_MIN_CONFIDENCE
+        _min_conf = float(_mc) if _mc and float(_mc) > 0 else None
+    except Exception:
+        _min_conf = None
     out = []
     for s in snippets or []:
         if not isinstance(s, dict):
             continue
         coach = coach_labels.get(str(s.get("id")))
         shadow = None
+        shadow_conf = None
         if predict_direction and isinstance(s.get("metrics"), dict):
             try:
                 pred = predict_direction(s.get("metrics"))
                 shadow = (pred or {}).get("label")
+                shadow_conf = (pred or {}).get("confidence")
             except Exception:
                 shadow = None
+                shadow_conf = None
         out.append({
             **s,
-            "direction": resolve_direction(coach, shadow),
+            "direction": resolve_direction(
+                coach, shadow,
+                shadow_confidence=shadow_conf, min_confidence=_min_conf,
+            ),
             "coach_direction": resolve_direction(coach, None),  # coach-only
         })
     return out
