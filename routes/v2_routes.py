@@ -9081,7 +9081,9 @@ def v2_coach_save_snippet(session_id, snippet_id):
     200 { status, session_id, snippet_id, saved: { label?, draft? } }
     400 INVALID_INPUT · 404 SESSION_NOT_FOUND / SNIPPET_NOT_FOUND · 422 invalid value
     """
-    from services.training_labels import VALID_VALUES, SCHEMA_VERSION
+    from services.training_labels import (
+        VALID_VALUES, SCHEMA_VERSION, derive_override_flags,
+    )
     from services.insights_payload import VALID_TAGS
 
     if not _is_valid_uuid(session_id) or not _is_valid_uuid(snippet_id):
@@ -9109,12 +9111,23 @@ def v2_coach_save_snippet(session_id, snippet_id):
             if value is None:
                 db.delete_training_label(session_id, snippet_id)
             elif value in VALID_VALUES:
+                # Override signal (audit fix #2a): is this a fresh label or a
+                # revision of a prior one? Derived from the snippet's existing
+                # stored label (was hardcoded False → revisions were invisible).
+                # The publish path re-persists from this store, so the flags
+                # carry through. Coach labels BLIND → this is coach-vs-own-prior.
+                _prior_val = None
+                for _r in (db.get_training_labels(session_id) or []):
+                    if str(_r.get("snippet_id")) == snippet_id:
+                        _prior_val = _r.get("value")
+                        break
+                _pre_filled, _overridden = derive_override_flags(_prior_val, value)
                 db.upsert_training_labels(session_id, str(request.user_id), [{
                     "snippet_id": snippet_id,
                     "schema_version": SCHEMA_VERSION,
                     "value": value,
-                    "was_pre_filled": False,
-                    "was_overridden": False,
+                    "was_pre_filled": _pre_filled,
+                    "was_overridden": _overridden,
                 }])
                 # Phase 4 / Prompt 1 (B3, SHADOW) — close the loop: backfill the
                 # coach's actual label onto this snippet's shadow prediction, and
@@ -10279,6 +10292,25 @@ def v2_lab_create_recording():
         from services.min_content_gate import evaluate_min_content_bytes
         gate = evaluate_min_content_bytes(file_bytes)
         if not gate["ok"]:
+            # Survivorship capture (audit fix #2c): gate-failed takes are dropped
+            # before any storage, so we had no "bad take" record. Log the gate
+            # METRICS only (no audio — privacy + cost). Best-effort, never blocks
+            # the 422 re-record prompt.
+            try:
+                db.insert_rejected_take(
+                    reason=gate.get("reason"),
+                    duration_sec=gate.get("duration_sec"),
+                    voiced_sec=gate.get("voiced_sec"),
+                    thresholds=gate.get("thresholds"),
+                    user_id=getattr(request, "user_id", None),
+                    guest_session_id=(form.get("guest_session_id") or None),
+                    arc_id=(form.get("arc_id") or None),
+                    take_index=form.get("take_index"),
+                )
+            except Exception as _rej_err:
+                logger.warning(
+                    "lab: rejected-take capture failed: %s (non-fatal)", _rej_err,
+                )
             return jsonify({
                 "code": "RECORDING_REJECTED",
                 "error": (
@@ -10407,8 +10439,14 @@ def v2_lab_create_recording():
             _rec_duration = int(round(float(gate.get("duration_sec") or 0)))
         except (TypeError, ValueError):
             _rec_duration = 0
+        # Speaker attribution at RECORD TIME (audit fix #2b): stamp the authed
+        # uploader on the recording + the snippets/candidate-pool it produces,
+        # instead of leaving them NULL until a guest-claim backfill (so per-
+        # speaker baselines don't depend on a v2_sessions join). Guests legit-
+        # imately stay NULL and are backfilled on claim — unchanged.
+        _uploader_id = getattr(request, "user_id", None)
         rec_payload = {
-            "id": recording_id, "user_id": None,
+            "id": recording_id, "user_id": _uploader_id,
             "session_v2_id": guest_session_id,
             "storage_path": parent_key, "audio_url": parent_url,
             "duration": _rec_duration,
@@ -10434,7 +10472,7 @@ def v2_lab_create_recording():
         from services.lab_recording import process_lab_recording
         readout = process_lab_recording(
             session_id=guest_session_id,
-            user_id=None,
+            user_id=_uploader_id,  # fix #2b: attribute snippets at record time
             recording_id=recording_id,
             audio_bytes=file_bytes,
             filename=audio_file.filename or "lab.webm",

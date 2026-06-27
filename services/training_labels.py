@@ -27,6 +27,25 @@ SCHEMA_VERSION = "direction-v1"
 VALID_VALUES = ("threat", "ambiguous", "challenge")
 
 
+def derive_override_flags(prior_value: Any, new_value: Any) -> tuple[bool, bool]:
+    """The override signal (automation-audit fix #2a). Returns
+    ``(was_pre_filled, was_overridden)`` for a direction label save:
+
+      • ``was_pre_filled`` — a label already existed for this snippet (the
+        coach is revising, not labelling fresh).
+      • ``was_overridden`` — pre-filled AND the new value differs from it.
+
+    Pure. The coach labels BLIND (the shadow guess is never shown), so this is
+    the coach's OWN edit history — first-pass vs revision — NOT a machine-vs-
+    coach comparison (that lives in shadow_predictions). Previously both were
+    hardcoded False at the per-snippet save, so a revision was indistinguishable
+    from a first label — lost on every edit until now.
+    """
+    pre_filled = prior_value is not None
+    overridden = pre_filled and (prior_value != new_value)
+    return pre_filled, overridden
+
+
 class TrainingLabelError(ValueError):
     """Validation error with an FE-renderable message. The publish
     route catches and 422s with the message verbatim."""
