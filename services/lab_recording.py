@@ -542,10 +542,11 @@ def process_lab_recording(
             if any((t.get("transcript") or "").strip() for t in _slide_tx):
                 db.set_session_slide_transcripts(session_id, _slide_tx)
     except Exception as _stx_err:
-        logger.warning(
-            "process_lab_recording: slide_transcripts failed sid=%s: %s",
-            session_id, _stx_err,
-        )
+        # F1a (per-slide 1:1 transcript) degraded → the take viewer falls back to
+        # coarser per-snippet bucketing. Make it observable (no payload change).
+        from services.f1_observability import observe_f1_degrade
+        observe_f1_degrade("slide_transcript_failed", exc=_stx_err,
+                           session_id=session_id)
 
     # AI-Commentator (Phase 4 / Prompt 2) — fire-and-forget coach-note drafts
     # for every recording (slides are optional grounding; a deck-less spoken

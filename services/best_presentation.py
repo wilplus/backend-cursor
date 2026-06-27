@@ -141,7 +141,8 @@ def _render_composition(picks_text: list, slides: list) -> Optional[dict]:
         from services.llm_config import SPEC_BEST_PRESENTATION
         from services.will_voice import with_voice_rules
     except Exception as e:  # pragma: no cover - import guard
-        logger.warning("best_presentation: llm import failed: %s", e)
+        from services.f1_observability import observe_f1_degrade
+        observe_f1_degrade("polish_import_failed", exc=e)
         return None
 
     system = with_voice_rules("\n".join(f"- {r}" for r in [
@@ -198,15 +199,22 @@ def _render_composition(picks_text: list, slides: list) -> Optional[dict]:
             response_format_override={"type": "json_schema", "json_schema": schema},
         )
     except Exception as e:
-        logger.warning("best_presentation: compose call failed: %s", e)
+        from services.f1_observability import observe_f1_degrade
+        observe_f1_degrade("polish_compose_failed", exc=e,
+                           slides=len(picks_text))
         return None
     if not result:
+        from services.f1_observability import observe_f1_degrade
+        observe_f1_degrade("polish_empty_result", slides=len(picks_text))
         return None
     parsed = result.parsed
     if not isinstance(parsed, dict):
         try:
             parsed = _json.loads((result.text or "").strip())
-        except Exception:
+        except Exception as e:
+            from services.f1_observability import observe_f1_degrade
+            observe_f1_degrade("polish_parse_failed", exc=e,
+                               slides=len(picks_text))
             return None
     out = {}
     for row in (parsed.get("slides") if isinstance(parsed, dict) else []) or []:

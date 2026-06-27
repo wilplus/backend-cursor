@@ -10710,10 +10710,12 @@ def v2_lab_create_recording():
             if isinstance(_full, dict) and _full.get("snippets"):
                 readout = _full
         except Exception as _rre:
-            logger.warning(
-                "lab: readout slide re-derive failed sid=%s: %s",
-                guest_session_id, _rre,
-            )
+            # F1: the 201 readout falls back to the slide-less payload (no
+            # per-slide grouping in the immediate response). Observe it (the
+            # wire response is unchanged — still 201, just degraded).
+            from services.f1_observability import observe_f1_degrade
+            observe_f1_degrade("readout_rederive_failed", exc=_rre,
+                               session_id=guest_session_id)
 
         # Paid Audits (A5): length → how many audits this presentation needs.
         # MINUTES drive the count (founder D5), NOT slide count: one audit per
