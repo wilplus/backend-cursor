@@ -3897,6 +3897,21 @@ def v2_user_snippet_label(snippet_id):
                 "error": "Snippet not found or not owned by user",
             }), 404
 
+        # Subsystem-S multi-rater lane: also record this as a SECOND-ORDER peer
+        # signal in the shape that holds N raters (the single user_charisma_label
+        # boolean can't), so the future swipe game + the model's below-coach
+        # blend have a clean source from day one. Best-effort — never affects the
+        # primary label write.
+        try:
+            db.insert_snippet_peer_label(
+                snippet_id=snippet_id, rater_id=str(user_id),
+                label=("charisma" if label else "not_charisma"),
+                source="self_verification",
+            )
+        except Exception as _pl_err:
+            logger.warning("user_snippet_label: peer-label capture failed: %s "
+                           "(non-fatal)", _pl_err)
+
         return jsonify({
             "status": "ok",
             "snippet_id": snippet_id,

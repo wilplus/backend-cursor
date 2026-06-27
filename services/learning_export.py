@@ -39,22 +39,35 @@ def _extract_features(metrics: Any) -> Optional[dict]:
 
 
 def build_export_rows(
-    labels: list[dict], metrics_by_snippet: dict
+    labels: list[dict], metrics_by_snippet: dict,
+    data_origin_by_snippet: Optional[dict] = None,
 ) -> tuple[list[dict], dict]:
     """Pure join: (labels, {snippet_id: metrics}) → (rows, summary).
 
     A label is DROPPED (not exported) when its snippet has no metrics or an
     incomplete 11-feature vector — that's the §7 integrity signal, surfaced in
     summary.dropped_no_features rather than emitting junk rows.
+
+    SUBSYSTEM-S WALL: this is the coach-TRUTH corpus. Any snippet whose
+    ``data_origin`` is ``'synthetic'`` is HARD-EXCLUDED (counted in
+    summary.dropped_synthetic) so generated data can never contaminate the truth
+    set or, downstream, a validation/holdout drawn from it. ``data_origin_by_
+    snippet`` is optional + defaults to {} → no exclusion, so existing callers
+    and tests are unaffected until provenance is populated.
     """
+    origin = data_origin_by_snippet or {}
     rows: list[dict] = []
     by_class: dict = {}
     dropped = 0
+    dropped_synthetic = 0
     for lab in (labels or []):
         sid = lab.get("snippet_id")
         value = lab.get("value")
         if not sid or not value:
             dropped += 1
+            continue
+        if origin.get(sid) == "synthetic":
+            dropped_synthetic += 1
             continue
         feats = _extract_features(metrics_by_snippet.get(sid))
         if not feats or len(feats) < len(FEATURES_11):
@@ -76,6 +89,7 @@ def build_export_rows(
         "total": len(rows),
         "by_class": by_class,
         "dropped_no_features": dropped,
+        "dropped_synthetic": dropped_synthetic,
         "feature_count": len(FEATURES_11),
         "coaches": len({
             r["session_id"] for r in rows if r.get("session_id")
@@ -85,12 +99,18 @@ def build_export_rows(
 
 
 def export_snippet_labels_dataset() -> tuple[list[dict], dict]:
-    """DB-backed export: all training_labels ⋈ their snippet features."""
+    """DB-backed export: all training_labels ⋈ their snippet features.
+
+    Subsystem-S wall: fetches each snippet's data_origin too, so synthetic rows
+    are hard-excluded from the truth corpus (build_export_rows). Pre-migration /
+    missing column → empty origin map → no exclusion (there is no synthetic data
+    yet anyway)."""
     from services.db import db
     labels = db.get_all_training_labels() or []
     sids = [l.get("snippet_id") for l in labels if l.get("snippet_id")]
     metrics = db.get_snippet_metrics_by_ids(sids) or {}
-    return build_export_rows(labels, metrics)
+    origins = db.get_snippet_data_origin_by_ids(sids) or {}
+    return build_export_rows(labels, metrics, origins)
 
 
 def write_jsonl(rows: list[dict], path: str) -> int:

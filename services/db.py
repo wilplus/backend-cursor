@@ -10149,6 +10149,81 @@ class DatabaseService:
             logger.warning("get_snippet_metrics_by_ids failed err=%s", e)
         return out
 
+    def get_snippet_data_origin_by_ids(self, snippet_ids: list[str]) -> dict:
+        """{snippet_id: data_origin} for the given charisma snippets (Subsystem-S
+        wall — lets the export hard-exclude synthetic from the truth corpus).
+        Best-effort: a missing column (pre-migration) returns {} so EVERYTHING is
+        treated as real — safe, since no synthetic data exists pre-migration."""
+        out: dict = {}
+        ids = [s for s in (snippet_ids or []) if s]
+        if not ids:
+            return out
+        try:
+            for i in range(0, len(ids), 200):
+                chunk = ids[i:i + 200]
+                res = (
+                    self.client.table("charisma_snippets")
+                    .select("id, data_origin")
+                    .in_("id", chunk)
+                    .execute()
+                )
+                for row in (res.data or []):
+                    out[str(row.get("id"))] = row.get("data_origin")
+        except Exception as e:
+            err_low = str(e).lower()
+            if "data_origin" in err_low and (
+                "does not exist" in err_low or "pgrst" in err_low
+            ):
+                logger.warning(
+                    "get_snippet_data_origin_by_ids: column missing (run "
+                    "migrations/add_synthetic_provenance_walls.sql) — treating "
+                    "all as real",
+                )
+                return {}
+            logger.warning("get_snippet_data_origin_by_ids failed err=%s", e)
+        return out
+
+    def insert_snippet_peer_label(
+        self, *, snippet_id: str, rater_id: Optional[str], label: Optional[str],
+        source: Optional[str] = None, is_second_order: bool = True,
+        weight: float = 1.0, shown_origin: Optional[str] = None,
+    ) -> bool:
+        """Record a SECOND-ORDER (non-coach) peer/self-verification label
+        (Subsystem-S multi-rater lane). Separate from training_labels (the
+        coach-truth corpus) — a future model blends this BELOW coach truth.
+        Best-effort, append-only, missing-table-safe; NEVER raises."""
+        if not snippet_id:
+            return False
+        row: dict = {
+            "snippet_id": str(snippet_id),
+            "is_second_order": bool(is_second_order),
+            "weight": float(weight),
+        }
+        if rater_id:
+            row["rater_id"] = str(rater_id)
+        if label is not None:
+            row["label"] = str(label)
+        if source:
+            row["source"] = str(source)
+        if shown_origin:
+            row["shown_origin"] = str(shown_origin)
+        try:
+            self.client.table("snippet_peer_labels").insert(row).execute()
+            return True
+        except Exception as e:
+            err_low = str(e).lower()
+            if "snippet_peer_labels" in err_low and (
+                "does not exist" in err_low or "pgrst" in err_low
+                or "42p01" in err_low
+            ):
+                logger.warning(
+                    "insert_snippet_peer_label: table missing (run "
+                    "migrations/add_synthetic_provenance_walls.sql)",
+                )
+                return False
+            logger.warning("insert_snippet_peer_label failed: %s", e)
+            return False
+
     def count_training_labels(self) -> int:
         """Total direction labels across all sessions — corpus size for the
         learning status + the auto-retrain threshold. 0 on missing table."""
