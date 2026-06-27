@@ -8955,6 +8955,15 @@ def v2_coach_get_session(session_id):
         if not session:
             return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found"}), 404
 
+        # Readiness rig #3 — first-touch coach-time baseline: stamp when the
+        # coach first OPENS this session for review (set-once). Best-effort;
+        # never affects the review payload.
+        try:
+            db.stamp_review_opened(session_id)
+        except Exception as _ro_err:
+            logger.warning("coach/get-session: review_opened stamp failed sid=%s: %s",
+                           session_id, _ro_err)
+
         from services.lab_recording import build_readout_from_session
         # include_slide_scores=True → coach gets Stickiness #2 (per-snippet
         # on-slide-ness + the per-slide coverage ledger). Coach-only (AC-9).

@@ -116,8 +116,15 @@ def train_and_register() -> dict:
     from services.db import db
 
     rows, summary = export_snippet_labels_dataset()
-    artifact, metrics, warnings = train_direction_classifier(rows)
+    # Readiness rig #3: NEVER train on the frozen holdout — it is reserved for an
+    # uncontaminated machine-vs-coach agreement read (scripts/eval_direction_
+    # holdout.py). The model is shadow (influences nothing), so reserving ~20%
+    # costs no product behavior and makes the readiness metric honest.
+    train_rows = [r for r in rows if not r.get("is_holdout")]
+    artifact, metrics, warnings = train_direction_classifier(train_rows)
     metrics["export_summary"] = summary
+    metrics["trained_on"] = len(train_rows)
+    metrics["holdout_reserved"] = summary.get("holdout", 0)
 
     version = (
         f"{_SCHEMA_VERSION}-"

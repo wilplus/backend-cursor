@@ -5128,6 +5128,33 @@ class DatabaseService:
             logger.warning("insert_candidate_windows failed: %s", e)
             return 0
 
+    def stamp_review_opened(self, session_id: Optional[str]) -> bool:
+        """First-touch stamp of when the coach OPENED a session for review
+        (readiness rig #3 — coach-time baseline = results_published_at -
+        review_opened_at). Idempotent: set ONLY when NULL, so the first open
+        wins. Best-effort → False on missing column / error; NEVER raises into
+        the coach review path."""
+        if not session_id:
+            return False
+        now = datetime.now(timezone.utc).isoformat()
+        try:
+            res = (
+                self.client.table("v2_sessions")
+                .update({"review_opened_at": now})
+                .eq("id", session_id)
+                .is_("review_opened_at", "null")
+                .execute()
+            )
+            return bool(res.data)
+        except Exception as e:
+            err_low = str(e).lower()
+            if "review_opened_at" in err_low and (
+                "does not exist" in err_low or "pgrst" in err_low
+            ):
+                return False
+            logger.warning("stamp_review_opened failed sid=%s: %s", session_id, e)
+            return False
+
     def insert_rejected_take(
         self, *, reason: str | None,
         duration_sec=None, voiced_sec=None, thresholds=None,
