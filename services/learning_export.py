@@ -15,6 +15,8 @@ import json
 import logging
 from typing import Any, Optional
 
+from services.holdout import is_holdout
+
 logger = logging.getLogger(__name__)
 
 # The 11 acoustic features (the raw metric keys on charisma_snippets.metrics).
@@ -83,6 +85,10 @@ def build_export_rows(
             "was_overridden": bool(lab.get("was_overridden")),
             "selection_source": lab.get("selection_source") or "heuristic",
             "labeled_at": lab.get("labeled_at"),
+            # Readiness rig #3: the FROZEN holdout bit (deterministic in
+            # snippet_id). Training EXCLUDES these; the eval scores ONLY these,
+            # so machine-vs-coach agreement is uncontaminated.
+            "is_holdout": is_holdout(sid),
         })
         by_class[value] = by_class.get(value, 0) + 1
     summary = {
@@ -90,6 +96,7 @@ def build_export_rows(
         "by_class": by_class,
         "dropped_no_features": dropped,
         "dropped_synthetic": dropped_synthetic,
+        "holdout": sum(1 for r in rows if r.get("is_holdout")),
         "feature_count": len(FEATURES_11),
         "coaches": len({
             r["session_id"] for r in rows if r.get("session_id")
