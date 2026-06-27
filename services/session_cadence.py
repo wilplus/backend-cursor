@@ -54,13 +54,25 @@ BEATS: dict[int, dict[str, Any]] = {
         "intent": (
             "For the best result you'll deliver the SAME talk a few times, "
             "each in a different style, so together we find your strongest "
-            "version of each line. This first one is just your natural "
-            "baseline — say it the way you'd say it today."
+            "version of each line. Try to record each take in a different "
+            "setup — a different room or place, not just a different voice — "
+            "and if you can, space at least one out to another day; varied "
+            "surroundings and a little spacing give a cleaner read than doing "
+            "them all back-to-back in the same spot. This first one is just "
+            "your natural baseline — say it the way you'd say it today, "
+            "wherever you are right now."
         ),
         "fixed_facts": [
             # #2 (2026-06-21): no time promise — the natural baseline may run
             # well under 30 min. Just the takes + the reset.
             "record the same talk 3 times, with a short reset between each",
+            # 2026-06-27 (founder recording-cadence guidance): 3 different
+            # SETUPS is a structural count, parallel to "3 times". The SOFT
+            # day-spacing nudge ("at least one on a different day") stays in
+            # `intent`, NOT here — pinning soft prose in the verbatim fixed-
+            # fact channel would read as a floor/requirement (the never-gate
+            # fence); in `intent` the renderer can voice + soften it.
+            "3 different setups",
         ],
         "safety_caveat": None,
     },
@@ -73,7 +85,8 @@ BEATS: dict[int, dict[str, Any]] = {
         "intent": (
             "That's your baseline. Now record the SAME talk again, loosened: "
             "like you're telling one trusted friend over coffee — slower, "
-            "warmer, no audience."
+            "warmer, no audience. A fresh spot — and ideally another day — "
+            "gives the cleanest read, but if you're ready now, go ahead."
         ),
         "fixed_facts": [],
         "safety_caveat": None,
@@ -87,7 +100,9 @@ BEATS: dict[int, dict[str, Any]] = {
         "intent": (
             "The SAME talk once more, in authority gear: slow down, drop your "
             "pitch slightly, put weight on the key numbers and claims — like "
-            "the person who knows this cold."
+            "the person who knows this cold. Ideally somewhere different again "
+            "— a day apart gives a cleaner read — or right now if you'd "
+            "rather; it's your call."
         ),
         "fixed_facts": [],
         "safety_caveat": None,
