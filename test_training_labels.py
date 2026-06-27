@@ -97,5 +97,26 @@ class ValidatePublishLabelsTests(unittest.TestCase):
         self.assertEqual(set(VALID_VALUES), {"threat", "ambiguous", "challenge"})
 
 
+class DeriveOverrideFlagsTests(unittest.TestCase):
+    # Audit fix #2a: the override signal (was a label fresh or a revision?).
+    def _d(self, prior, new):
+        from services.training_labels import derive_override_flags
+        return derive_override_flags(prior, new)
+
+    def test_fresh_label_no_prior(self):
+        # No prior label → neither pre-filled nor overridden.
+        self.assertEqual(self._d(None, "challenge"), (False, False))
+
+    def test_revision_to_different_value_is_override(self):
+        self.assertEqual(self._d("threat", "challenge"), (True, True))
+
+    def test_resave_same_value_is_pre_filled_not_override(self):
+        # A pre-existing label re-saved unchanged: pre-filled but NOT overridden.
+        self.assertEqual(self._d("challenge", "challenge"), (True, False))
+
+    def test_ambiguous_prior_counts_as_pre_filled(self):
+        self.assertEqual(self._d("ambiguous", "threat"), (True, True))
+
+
 if __name__ == "__main__":
     unittest.main()

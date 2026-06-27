@@ -5128,6 +5128,53 @@ class DatabaseService:
             logger.warning("insert_candidate_windows failed: %s", e)
             return 0
 
+    def insert_rejected_take(
+        self, *, reason: str | None,
+        duration_sec=None, voiced_sec=None, thresholds=None,
+        user_id=None, guest_session_id=None, arc_id=None, take_index=None,
+    ) -> bool:
+        """Log a gate-rejected take's METRICS (automation-audit fix #2c —
+        survivorship: gate-failed takes were dropped before any storage, so we
+        had no 'bad take' record). Metrics ONLY, never audio. Best-effort,
+        append-only, missing-table-safe; NEVER raises (live-loop fence). See
+        migrations/add_rejected_takes.sql."""
+        row: dict = {"reason": reason}
+        if user_id:
+            row["user_id"] = user_id
+        if guest_session_id:
+            row["guest_session_id"] = str(guest_session_id)
+        if arc_id:
+            row["arc_id"] = str(arc_id)
+        if take_index is not None:
+            try:
+                row["take_index"] = int(take_index)
+            except (TypeError, ValueError):
+                pass
+        for k, v in (("duration_sec", duration_sec), ("voiced_sec", voiced_sec)):
+            if v is not None:
+                try:
+                    row[k] = float(v)
+                except (TypeError, ValueError):
+                    pass
+        if isinstance(thresholds, dict):
+            row["thresholds"] = thresholds
+        try:
+            self.client.table("rejected_takes").insert(row).execute()
+            return True
+        except Exception as e:
+            err_low = str(e).lower()
+            if "rejected_takes" in err_low and (
+                "does not exist" in err_low or "pgrst" in err_low
+                or "42p01" in err_low
+            ):
+                logger.warning(
+                    "insert_rejected_take: table missing (run "
+                    "migrations/add_rejected_takes.sql) — reject not captured",
+                )
+                return False
+            logger.warning("insert_rejected_take failed: %s", e)
+            return False
+
     def get_snippets_by_session(self, session_id: str) -> List[dict]:
         """Get all snippets for a session, ordered by start time."""
         try:
