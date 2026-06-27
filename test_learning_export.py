@@ -85,5 +85,43 @@ class BuildExportRowsTests(unittest.TestCase):
         self.assertEqual(summary["by_class"], {})
 
 
+class SyntheticExclusionTests(unittest.TestCase):
+    # Subsystem-S wall: synthetic snippets are HARD-EXCLUDED from the coach-truth
+    # corpus so generated data can never contaminate it (or a downstream holdout).
+    def _labels(self):
+        return [
+            {"snippet_id": "real1", "value": "challenge", "session_id": "x"},
+            {"snippet_id": "synth1", "value": "challenge", "session_id": "x"},
+            {"snippet_id": "real2", "value": "threat", "session_id": "x"},
+        ]
+
+    def _metrics(self):
+        return {k: _full_metrics() for k in ("real1", "synth1", "real2")}
+
+    def test_no_origin_map_keeps_everything(self):
+        # Backward-compatible default: no exclusion until provenance is populated.
+        rows, summary = build_export_rows(self._labels(), self._metrics())
+        self.assertEqual(summary["total"], 3)
+        self.assertEqual(summary["dropped_synthetic"], 0)
+
+    def test_synthetic_is_excluded(self):
+        rows, summary = build_export_rows(
+            self._labels(), self._metrics(),
+            {"real1": "real", "synth1": "synthetic", "real2": None},
+        )
+        ids = {r["snippet_id"] for r in rows}
+        self.assertEqual(ids, {"real1", "real2"})       # synth1 gone
+        self.assertEqual(summary["total"], 2)
+        self.assertEqual(summary["dropped_synthetic"], 1)
+        self.assertEqual(summary["by_class"], {"challenge": 1, "threat": 1})
+
+    def test_null_and_real_origins_both_kept(self):
+        rows, _ = build_export_rows(
+            [{"snippet_id": "a", "value": "challenge", "session_id": "x"}],
+            {"a": _full_metrics()}, {"a": None},
+        )
+        self.assertEqual(len(rows), 1)
+
+
 if __name__ == "__main__":
     unittest.main()
