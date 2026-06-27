@@ -66,8 +66,24 @@ def payment_required_payload(arc_id: Any, config: Any) -> dict:
     """The 402 PAYMENT_REQUIRED body the FE renders the paywall from."""
     return {
         "code": "PAYMENT_REQUIRED",
+        # Phase-1: the single per-arc paid flag the FE gates locked affordances
+        # on. False here by construction — a 402 only fires on an unpaid arc.
+        "audit_paid": False,
         "arc_id": arc_id,
         "price": audit_price(config),
         "sla_hours": int(getattr(config, "AUDIT_SLA_HOURS", _DEFAULT_SLA_HOURS)
                           or _DEFAULT_SLA_HOURS),
     }
+
+
+def next_take_requires_payment(take_count: Any) -> bool:
+    """Would the user's NEXT take on an arc with ``take_count`` recorded takes
+    sit behind the paywall? The next take is ``take_count + 1``; take 1 is free,
+    take 2+ is paid. Used by the session-status gate to flip can_start_analysis
+    false once the free first take is in the bank on an unpaid arc.
+    """
+    try:
+        tc = int(take_count)
+    except (TypeError, ValueError):
+        return False
+    return take_requires_payment(tc + 1)

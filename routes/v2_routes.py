@@ -8160,8 +8160,16 @@ def v2_user_get_session_readout(session_id):
         if _arc_gate is not None:
             return _arc_gate
 
+        # Phase-1 free/paid scope: take 1 of an UNPAID arc is free but teaser-
+        # scoped (acoustic + breakthrough badges + one breakthrough video; no
+        # written commentary / session video / ideal text). Paid arc, non-arc
+        # session, and admin/coach all get the full coach layer.
+        _audit_paid = _arc_audit_paid(
+            session.get("arc_id"), request.user_id,
+        )
+
         from services.lab_recording import build_readout_from_session
-        readout = build_readout_from_session(session_id)
+        readout = build_readout_from_session(session_id, audit_paid=_audit_paid)
 
         published = bool(session.get("results_published_at"))
         if published:
@@ -8194,6 +8202,9 @@ def v2_user_get_session_readout(session_id):
             "session_id": session_id,
             "published": published,
             "state": state,
+            # Phase-1: per-arc paid flag, mirrored top-level (also inside the
+            # readout) so the FE gates locked affordances without digging.
+            "audit_paid": _audit_paid,
             "readout": readout,
         }), 200
     except Exception as e:
@@ -8544,28 +8555,94 @@ def _coach_session_state(session, cstate_map):
     return "in_progress" if cstate_map else "pending"
 
 
+def _build_user_session_status(user_id):
+    """The willab session-status surface (credits + the Phase-1 audit gate).
+
+    Returns {credits, can_start_analysis, audit_paid, audit_price}.
+
+    can_start_analysis is the FE's "can I start the next recording" gate, the
+    AND of two conditions:
+      • credits gate — balance >= 5 (the cost of the next coach feedback; the
+        credit engine stays);
+      • audit gate — Phase-1: once the free first take is recorded on the
+        user's latest UNPAID arc, the next take is paid → block. A fresh user
+        (no arc), a paid arc, and admin/coach all pass.
+    audit_paid mirrors the latest arc's entitlement so the FE can gate locked
+    affordances globally; audit_price is the headline $50 (minor units) so the
+    pricing card can show it without provoking a 402.
+    """
+    from services.arc_entitlement import (
+        is_arc_entitled, next_take_requires_payment, audit_price,
+    )
+    credits = int(db.v2_ensure_credits_initialized(str(user_id)))
+    credits_ok = credits >= 5
+
+    audit_paid = False
+    audit_ok = True
+    if is_admin(user_id) or is_coach(user_id):
+        # Coach/admin are never gated — they review every arc.
+        audit_paid = True
+    else:
+        try:
+            latest = db.v2_list_user_lab_sessions(str(user_id), limit=1) or []
+        except Exception:
+            latest = []
+        arc_id = latest[0].get("arc_id") if latest else None
+        if arc_id:
+            entitled = is_arc_entitled(db, arc_id, user_id)
+            audit_paid = bool(entitled)
+            if not entitled and next_take_requires_payment(
+                db.get_arc_take_count(arc_id)
+            ):
+                audit_ok = False
+
+    return {
+        "credits": credits,
+        "can_start_analysis": credits_ok and audit_ok,
+        "audit_paid": audit_paid,
+        "audit_price": audit_price(config),
+    }
+
+
 @v2_bp.route("/user/credits", methods=["GET"])
 @require_auth
 def v2_user_get_credits():
-    """willab credit balance. GET → {credits: int, can_start_analysis: bool}.
+    """willab credit balance + the Phase-1 audit gate.
+
+    GET → {credits, can_start_analysis, audit_paid, audit_price}.
 
     Lazy-seeds the 15-credit grant on first touch (idempotent via
-    credits_initialized_at — never re-granted after spend-to-zero), then
-    returns the server-owned balance. The DECREMENT is a side-effect of
-    COACH-FEEDBACK DELIVERY (publish: 5/feedback), NEVER a separate FE call.
-    can_start_analysis = balance >= 5 → the FE credit gate (the cost of the
-    next coach feedback); when false the FE surfaces the top-up bubble.
+    credits_initialized_at — never re-granted after spend-to-zero). The credit
+    DECREMENT is a side-effect of COACH-FEEDBACK DELIVERY (publish: 5/feedback),
+    NEVER a separate FE call. can_start_analysis now also flips false once the
+    free first take is in the bank on an unpaid arc (see
+    _build_user_session_status). Same payload as GET /v2/session/status.
     """
     try:
-        credits = int(db.v2_ensure_credits_initialized(str(request.user_id)))
-        return jsonify({
-            "credits": credits,
-            "can_start_analysis": credits >= 5,
-        }), 200
+        return jsonify(_build_user_session_status(request.user_id)), 200
     except Exception as e:
         logger.error("user/credits GET failed: %s", e, exc_info=True)
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR", "error": "Failed to fetch credits"}), 500
+
+
+@v2_bp.route("/session/status", methods=["GET"])
+@require_auth
+def v2_session_status():
+    """willab session status — the FE's getStatus() seam (homeworkApi).
+
+    GET → {credits, can_start_analysis, audit_paid, audit_price}. Identical
+    payload to GET /v2/user/credits; this is the endpoint the FE's BFF proxies
+    (/v2/session/status). can_start_analysis drives the Lounge credit/paywall
+    gate; audit_paid drives locked affordances; audit_price shows the headline
+    $50 on the pricing card.
+    """
+    try:
+        return jsonify(_build_user_session_status(request.user_id)), 200
+    except Exception as e:
+        logger.error("session/status GET failed: %s", e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to fetch status"}), 500
 
 
 @v2_bp.route("/user/recording-progress", methods=["GET"])
@@ -9900,6 +9977,19 @@ def _arc_payment_gate(arc_id, take_index=None):
     return jsonify(payment_required_payload(arc_id, config)), 402
 
 
+def _arc_audit_paid(arc_id, user_id):
+    """Phase-1 per-arc paid flag (the FE's ``audit_paid``). True when the scope
+    should be FULL: a non-arc / standalone session (no paywall concept), an
+    admin/coach (always sees everything), or an entitled arc. False only for an
+    unpaid arc — the free-take teaser scope."""
+    from services.arc_entitlement import is_arc_entitled
+    if not arc_id:
+        return True
+    if user_id and (is_admin(user_id) or is_coach(user_id)):
+        return True
+    return is_arc_entitled(db, arc_id, user_id)
+
+
 @v2_bp.route("/explore/arc/<arc_id>/best-presentation", methods=["GET"])
 @require_auth
 def v2_explore_arc_best_presentation(arc_id):
@@ -9931,7 +10021,12 @@ def v2_explore_arc_best_presentation(arc_id):
         gated = _arc_payment_gate(arc_id)
         if gated is not None:
             return gated
-        return jsonify({"arc_id": arc_id, **build_best_presentation(arc_id)}), 200
+        # Past the gate → entitled (or admin/coach). Phase-1: echo audit_paid so
+        # the FE confirms the deliverable is unlocked (unpaid arcs 402 instead).
+        return jsonify({
+            "arc_id": arc_id, "audit_paid": True,
+            **build_best_presentation(arc_id),
+        }), 200
     except Exception as e:
         logger.error("explore/arc best-presentation failed arc=%s: %s", arc_id,
                      e, exc_info=True)
@@ -10173,7 +10268,10 @@ def v2_talk_ideal_text(talk_id):
         gated = _arc_payment_gate(talk_id)
         if gated is not None:
             return gated
-        return jsonify(build_ideal_text_report(talk_id)), 200
+        # Past the gate → entitled (or admin/coach); echo audit_paid (Phase-1).
+        return jsonify({
+            "audit_paid": True, **build_ideal_text_report(talk_id),
+        }), 200
     except Exception as e:
         logger.error("talk ideal-text failed talk=%s: %s", talk_id, e,
                      exc_info=True)
@@ -10573,9 +10671,15 @@ def v2_lab_create_recording():
         # slide, so the FE had nothing to render above each snippet's text.
         # build_readout_from_session maps each snippet to the slide on screen via
         # the tap timeline. Best-effort: keep the slide-less payload on a hiccup.
+        # Phase-1 free/paid scope: an unpaid arc's readout is teaser-scoped. At
+        # upload there's no coach layer yet (nothing to withhold), but pass the
+        # flag so the embedded readout.audit_paid matches the GET readout.
+        _audit_paid = _arc_audit_paid(arc_id, getattr(request, "user_id", None))
         try:
             from services.lab_recording import build_readout_from_session
-            _full = build_readout_from_session(guest_session_id)
+            _full = build_readout_from_session(
+                guest_session_id, audit_paid=_audit_paid,
+            )
             if isinstance(_full, dict) and _full.get("snippets"):
                 readout = _full
         except Exception as _rre:
@@ -10609,6 +10713,9 @@ def v2_lab_create_recording():
             "arc_id": arc_id,
             "take_index": take_index,
             "take_count": arc_take_count,
+            # Phase-1 per-arc paid flag (free first take → false; the FE gates
+            # take-2 + locked affordances off this).
+            "audit_paid": _audit_paid,
             # Fresh audit progress (BE-4) — null for guests; see note above.
             "recording_progress": recording_progress,
         }), 201

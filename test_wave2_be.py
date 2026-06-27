@@ -188,31 +188,82 @@ class FeedbackChargeTests(unittest.TestCase):
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
 class CreditsRouteTests(unittest.TestCase):
+    """GET /user/credits + GET /session/status (same payload). Phase-1 adds the
+    audit gate (can_start_analysis also flips on an unpaid arc) + audit_paid +
+    audit_price to the credits-only shape."""
+
     def setUp(self):
+        from unittest.mock import patch
         self.app = Flask(__name__)
         self._orig = getattr(v2.db, "v2_ensure_credits_initialized", None)
         v2.db.v2_ensure_credits_initialized = lambda uid: 13
+        # Phase-1 deps — default to "no coach, no arc yet" (fresh free user).
+        self._p = [
+            patch.object(v2, "is_admin", lambda uid: False),
+            patch.object(v2, "is_coach", lambda uid: False),
+            patch.object(v2.db, "v2_list_user_lab_sessions",
+                         lambda uid, limit=200: []),
+            patch.object(v2.db, "get_arc_take_count", lambda arc: 0),
+            patch.object(v2.db, "get_arc_purchase", lambda arc: None),
+        ]
+        for p in self._p:
+            p.start()
 
     def tearDown(self):
+        for p in self._p:
+            p.stop()
         if self._orig is not None:
             v2.db.v2_ensure_credits_initialized = self._orig
 
-    def test_returns_balance(self):
+    def _status(self, handler=None):
         with self.app.test_request_context():
             request.user_id = "u1"
-            resp, status = v2.v2_user_get_credits.__wrapped__()
-            self.assertEqual(status, 200)
-            # can_start_analysis = balance >= 5 (the FE credit gate)
-            self.assertEqual(resp.get_json(),
-                             {"credits": 13, "can_start_analysis": True})
+            resp, status = (handler or v2.v2_user_get_credits).__wrapped__()
+            return resp.get_json(), status
+
+    def test_returns_status_shape(self):
+        body, status = self._status()
+        self.assertEqual(status, 200)
+        self.assertEqual(body["credits"], 13)
+        # Fresh user, no arc → credit gate open, nothing paid yet.
+        self.assertTrue(body["can_start_analysis"])
+        self.assertFalse(body["audit_paid"])
+        # Headline $50 (minor units) so the FE pricing card can show it.
+        self.assertEqual(body["audit_price"],
+                         {"amount_minor": 5000, "currency": "usd"})
 
     def test_gate_false_below_five(self):
         v2.db.v2_ensure_credits_initialized = lambda uid: 3
-        with self.app.test_request_context():
-            request.user_id = "u1"
-            resp, _ = v2.v2_user_get_credits.__wrapped__()
-            self.assertEqual(resp.get_json(),
-                             {"credits": 3, "can_start_analysis": False})
+        body, _ = self._status()
+        self.assertEqual(body["credits"], 3)
+        self.assertFalse(body["can_start_analysis"])
+
+    def test_audit_gate_blocks_after_free_take_on_unpaid_arc(self):
+        # Latest arc is unpaid with take 1 banked → the next take (2) is paid,
+        # so the gate closes even though credits are fine.
+        v2.db.v2_list_user_lab_sessions = lambda uid, limit=200: [
+            {"arc_id": "arc1", "take_index": 1}]
+        v2.db.get_arc_take_count = lambda arc: 1
+        v2.db.get_arc_purchase = lambda arc: None            # unpaid
+        body, _ = self._status()
+        self.assertFalse(body["can_start_analysis"])
+        self.assertFalse(body["audit_paid"])
+
+    def test_paid_arc_opens_gate_and_audit_paid_true(self):
+        v2.db.v2_list_user_lab_sessions = lambda uid, limit=200: [
+            {"arc_id": "arc1", "take_index": 2}]
+        v2.db.get_arc_take_count = lambda arc: 2
+        v2.db.get_arc_purchase = lambda arc: {"arc_id": "arc1", "user_id": "u1"}
+        body, _ = self._status()
+        self.assertTrue(body["can_start_analysis"])
+        self.assertTrue(body["audit_paid"])
+
+    def test_session_status_route_matches_credits(self):
+        # GET /v2/session/status is the FE's getStatus() seam — identical body.
+        credits_body, _ = self._status()
+        status_body, code = self._status(v2.v2_session_status)
+        self.assertEqual(code, 200)
+        self.assertEqual(status_body, credits_body)
 
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
