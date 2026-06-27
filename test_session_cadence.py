@@ -56,12 +56,41 @@ class SpecIntegrityTests(unittest.TestCase):
     def test_beat0_frames_with_fixed_facts_and_goal(self):
         b = sc.BEATS[0]
         self.assertTrue(b["weave_goal"])
-        joined = " ".join(b["fixed_facts"])
+        joined = " ".join(b["fixed_facts"]).lower()
         # #2 (2026-06-21): no time promise (the baseline may run under 30 min);
         # just the 3 takes + the reset.
         self.assertNotIn("30 minute", joined)
+        self.assertNotIn("30 min", joined)
+        # Hard COUNTS survive verbatim in the fixed-fact channel (the renderer
+        # preserves them): the 3 takes, the reset, and the 3 setups.
         self.assertIn("3 times", joined)
         self.assertIn("reset", joined)
+        self.assertIn("3 different setups", joined)
+        # FENCE: the SOFT day-spacing nudge must NOT live in fixed_facts —
+        # pinned verbatim it reads as a floor/requirement. It belongs in
+        # `intent` (asserted below), where the renderer can voice + soften it.
+        self.assertNotIn("different day", joined)
+
+    def test_recording_cadence_nudge_lives_in_translatable_intent(self):
+        # founder 2026-06-27 (recording-cadence guidance): 3 different setups +
+        # at least one on a different day — back-to-back/same-setup lowers the
+        # analysis quality. NUDGE-ONLY: it lives in the translatable BEAT 0
+        # intent, framed as an invitation, never gated/pinned as a fact.
+        intent = sc.BEATS[0]["intent"].lower()
+        self.assertIn("setup", intent)
+        self.assertIn("day", intent)
+
+    def test_core_take_beats_stay_invitational(self):
+        # The cadence INVITES, never gates/grades — no requirement language and
+        # no time promise leaks into the three core-take beats (0, 1, 2). The
+        # new spacing nudge is purely relative ("another day"), never an
+        # absolute duration commitment (preserves the 2026-06-21 no-time rule).
+        for n in (0, 1, 2):
+            intent = sc.BEATS[n]["intent"].lower()
+            for gate in ("must", "required", "have to", "need to"):
+                self.assertNotIn(gate, intent, f"beat {n}: gate word '{gate}'")
+            for t in ("30 min", "minute", "hour"):
+                self.assertNotIn(t, intent, f"beat {n}: time promise '{t}'")
 
     def test_spark_beat_carries_full_safety_caveat(self):
         b = sc.BEATS[3]
