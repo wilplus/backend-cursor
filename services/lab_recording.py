@@ -456,6 +456,49 @@ def process_lab_recording(
         for i in range(len(snippets_data))
     ]
 
+    # ── Candidate-pool capture (automation-audit fix #1: "offered vs chosen") ──
+    # The pipeline scored the FULL `candidates` pool, kept `notable`, surfaced
+    # `prelim` (<=10) — and would now discard the rest. Persist the WHOLE pool +
+    # each window's raw feature vector + which cut it made, so the SELECTION
+    # step can later be LEARNED instead of re-coded (the dropped windows are the
+    # only signal for "which moments to surface"; lost otherwise, every session).
+    #
+    # Training-bound / split-sink (AC-9: storing != surfacing) and FENCE-safe
+    # (snippet_salience.py): we store the raw `metrics` vector + the heuristic's
+    # PROVISIONAL surfaced/notable decision, NEVER the transient salience score.
+    # Best-effort: a failure here NEVER breaks the recording (live-loop fence).
+    try:
+        from services.candidate_capture import (
+            build_candidate_rows, SELECTOR_VERSION,
+        )
+        _surfaced_info = {
+            p["start_ms"]: {
+                "rank": _rank_by_i.get(i),
+                "snippet_id": (snippets_data[i]["id"]
+                               if i < len(snippets_data) else None),
+            }
+            for i, p in enumerate(prelim)
+        }
+        _cap_rows = build_candidate_rows(
+            candidates,
+            notable_starts={n.get("start_ms") for n in notable},
+            surfaced_info=_surfaced_info,
+            session_id=session_id,
+            recording_id=recording_id,
+            user_id=user_id,
+            heuristic_version=SELECTOR_VERSION,
+        )
+        _n_cap = db.insert_candidate_windows(_cap_rows)
+        logger.info(
+            "process_lab_recording: candidate pool captured sid=%s windows=%d "
+            "surfaced=%d", session_id, _n_cap, len(prelim),
+        )
+    except Exception as _cap_err:
+        logger.warning(
+            "process_lab_recording: candidate-pool capture failed sid=%s "
+            "err=%s (non-fatal)", session_id, _cap_err,
+        )
+
     logger.info(
         "process_lab_recording: sid=%s snippets=%d transcribed=%s",
         session_id, len(snippets_data), bool(segments),
