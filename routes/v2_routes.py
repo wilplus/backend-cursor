@@ -4767,6 +4767,34 @@ def _apply_willab_publish_contract(session_id, body, actor_user_id):
         bool(clean_insights["overall_message"]), labels_written,
     )
 
+    # Subsystem V — freeze the FINAL delivered comment onto each current coach
+    # video take (write-once; the comment→video training pair as delivered).
+    # take_summary ← overall_message; breakthrough ← that snippet's note. Best-
+    # effort: never affects the publish.
+    try:
+        _cur_assets = db.get_current_coach_video_assets_for_session(session_id)
+        if _cur_assets:
+            _note_by_snip = {
+                str(n.get("snippet_id")): n.get("note")
+                for n in (clean_insights.get("snippet_notes") or [])
+                if isinstance(n, dict) and n.get("snippet_id")
+            }
+            _overall = (clean_insights.get("overall_message") or "").strip() or None
+            for _a in _cur_assets:
+                if _a.get("comment_text_at_publish"):
+                    continue  # already frozen
+                if _a.get("content_type") == "take_summary":
+                    _final = _overall
+                else:
+                    _final = _note_by_snip.get(str(_a.get("snippet_id")))
+                if _final:
+                    db.set_coach_video_comment_at_publish(_a.get("id"), _final)
+    except Exception as _cv_err:
+        logger.warning(
+            "publish_contract.coach_video_snapshot_failed session=%s err=%s "
+            "(non-fatal)", session_id, _cv_err,
+        )
+
     # ── User nudge: Lounge "insights ready" card (best-effort, idempotent). ──
     try:
         from datetime import datetime as _dt, timezone as _tz
@@ -9392,8 +9420,24 @@ def v2_coach_session_video(session_id):
                 "error": f"Video is too large. Max allowed is {max_video_mb}MB.",
             }), 413
 
-        storage_key = f"coach-feedback/{session_id}{ext}"
+        # Subsystem V — idempotency (retry dedupe). A re-upload of the SAME
+        # record action (same key) reuses the stored take instead of creating a
+        # phantom one. Best-effort: a missing table just falls through.
+        _idem = (request.form.get("upload_idempotency_key") or "").strip() or None
+        if _idem:
+            _existing = db.get_coach_video_asset_by_idempotency_key(_idem)
+            if _existing and _existing.get("video_ref"):
+                db.set_session_coach_video_ref(session_id, _existing["video_ref"])
+                return jsonify({
+                    "status": "ok", "session_id": session_id,
+                    "video_ref": _existing["video_ref"], "deduped": True,
+                }), 200
+
         bucket = getattr(config, "COACH_FEEDBACK_VIDEO_BUCKET", "coach_feedback_videos")
+        # Subsystem V — NON-deterministic key so a re-record does NOT overwrite
+        # the prior take (which is training/preference data). The user-facing ref
+        # is repointed to the newest take below.
+        storage_key = f"coach-feedback/{session_id}/{uuid.uuid4().hex}{ext}"
         try:
             put_coach_object_bytes(
                 bucket, storage_key, video_bytes,
@@ -9406,6 +9450,27 @@ def v2_coach_session_video(session_id):
         video_ref = coach_media_public_url(storage_key)
         db.set_session_coach_video_ref(session_id, video_ref)
         logger.info("coach video stored sid=%s key=%s", session_id, storage_key)
+
+        # Subsystem V — capture the take into the training corpus (best-effort;
+        # NEVER breaks the upload). take_summary's comment ("overall message")
+        # only exists at publish, so comment_text_snapshot is null here and the
+        # real text is captured as comment_text_at_publish later.
+        try:
+            from services.coach_video_capture import capture_coach_video
+            capture_coach_video(
+                database=db, session_id=session_id, content_type="take_summary",
+                recorded_by=str(request.user_id), video_ref=video_ref,
+                comment_text=None, snippet_id=None,
+                device=(request.form.get("device") or None),
+                source=(request.form.get("source") or None),
+                duration=request.form.get("duration"),
+                idempotency_key=_idem,
+                video_bytes=video_bytes, filename=safe_name,
+            )
+        except Exception as _cap_err:
+            logger.warning("coach video corpus capture failed sid=%s: %s (non-fatal)",
+                           session_id, _cap_err)
+
         return jsonify({
             "status": "ok", "session_id": session_id, "video_ref": video_ref,
         }), 200
@@ -9491,8 +9556,25 @@ def v2_coach_snippet_breakthrough_video(session_id, snippet_id):
                 "error": f"Video is too large. Max allowed is {max_video_mb}MB.",
             }), 413
 
-        storage_key = f"coach-snippet-breakthrough/{session_id}/{snippet_id}{ext}"
+        # Subsystem V — idempotency (retry dedupe): reuse the stored take.
+        _idem = (request.form.get("upload_idempotency_key") or "").strip() or None
+        if _idem:
+            _existing = db.get_coach_video_asset_by_idempotency_key(_idem)
+            if _existing and _existing.get("video_ref"):
+                db.upsert_coach_snippet_draft(
+                    session_id, snippet_id,
+                    {"breakthrough_video_ref": _existing["video_ref"]},
+                    updated_by=str(request.user_id),
+                )
+                return jsonify({
+                    "status": "ok", "session_id": session_id, "snippet_id": snippet_id,
+                    "breakthrough_video_ref": _existing["video_ref"], "deduped": True,
+                }), 200
+
         bucket = getattr(config, "COACH_FEEDBACK_VIDEO_BUCKET", "coach_feedback_videos")
+        # Subsystem V — NON-deterministic key so a re-record does NOT overwrite
+        # the prior take. User-facing ref is repointed to the newest below.
+        storage_key = f"coach-snippet-breakthrough/{session_id}/{snippet_id}/{uuid.uuid4().hex}{ext}"
         try:
             put_coach_object_bytes(
                 bucket, storage_key, video_bytes,
@@ -9515,6 +9597,31 @@ def v2_coach_snippet_breakthrough_video(session_id, snippet_id):
             {"breakthrough_video_ref": breakthrough_video_ref},
             updated_by=str(request.user_id),
         )
+        # Subsystem V — capture the take into the training corpus (best-effort;
+        # NEVER breaks the upload). The breakthrough comment IS the snippet note
+        # (read whatever exists at record time; may be NULL if not written yet).
+        try:
+            from services.coach_video_capture import capture_coach_video
+            _note_now = None
+            for _d in (db.get_coach_snippet_drafts(session_id) or []):
+                if str(_d.get("snippet_id")) == snippet_id:
+                    _note_now = (_d.get("note") or None)
+                    break
+            capture_coach_video(
+                database=db, session_id=session_id, content_type="breakthrough",
+                recorded_by=str(request.user_id), video_ref=breakthrough_video_ref,
+                comment_text=_note_now, snippet_id=snippet_id,
+                device=(request.form.get("device") or None),
+                source=(request.form.get("source") or None),
+                duration=request.form.get("duration"),
+                idempotency_key=_idem,
+                video_bytes=video_bytes, filename=safe_name,
+            )
+        except Exception as _cap_err:
+            logger.warning(
+                "breakthrough video corpus capture failed sid=%s snip=%s: %s (non-fatal)",
+                session_id, snippet_id, _cap_err,
+            )
         if saved is None:
             logger.warning(
                 "breakthrough video: draft persist returned None sid=%s snip=%s "

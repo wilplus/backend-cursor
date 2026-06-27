@@ -5175,6 +5175,173 @@ class DatabaseService:
             logger.warning("insert_rejected_take failed: %s", e)
             return False
 
+    # ── willab — coach-video corpus (Subsystem V) ─────────────────────────
+    #
+    # Private/training-bound lane (RLS service-role only). Capture only; never
+    # read by a user surface. See migrations/add_coach_video_assets.sql +
+    # services/coach_video_capture.py. All best-effort: NEVER raise into the
+    # video-upload path (live-loop fence).
+
+    def get_coach_video_asset_by_idempotency_key(
+        self, key: Optional[str],
+    ) -> Optional[dict]:
+        """The asset for a client record-action key (retry dedupe). None on
+        missing table / unknown key / error."""
+        if not key:
+            return None
+        try:
+            res = (
+                self.client.table("coach_video_assets")
+                .select("*")
+                .eq("upload_idempotency_key", str(key))
+                .limit(1)
+                .execute()
+            )
+            rows = res.data or []
+            return rows[0] if rows else None
+        except Exception as e:
+            err_low = str(e).lower()
+            if "coach_video_assets" in err_low and (
+                "does not exist" in err_low or "pgrst" in err_low
+                or "42p01" in err_low
+            ):
+                return None
+            logger.warning("get_coach_video_asset_by_idempotency_key failed: %s", e)
+            return None
+
+    def get_current_coach_video_asset(
+        self, session_id: str, content_type: str,
+        snippet_id: Optional[str] = None,
+    ) -> Optional[dict]:
+        """The CURRENT (is_current) take for a session/content (+snippet for
+        breakthrough). None on missing table / none / error."""
+        if not session_id or not content_type:
+            return None
+        try:
+            q = (
+                self.client.table("coach_video_assets")
+                .select("*")
+                .eq("session_id", session_id)
+                .eq("content_type", content_type)
+                .eq("is_current", True)
+            )
+            if snippet_id:
+                q = q.eq("snippet_id", snippet_id)
+            else:
+                q = q.is_("snippet_id", "null")
+            res = q.limit(1).execute()
+            rows = res.data or []
+            return rows[0] if rows else None
+        except Exception as e:
+            err_low = str(e).lower()
+            if "coach_video_assets" in err_low and (
+                "does not exist" in err_low or "pgrst" in err_low
+                or "42p01" in err_low
+            ):
+                return None
+            logger.warning("get_current_coach_video_asset failed: %s", e)
+            return None
+
+    def insert_coach_video_asset(self, row: dict) -> Optional[dict]:
+        """Append a coach-video TAKE. Returns the created row (with id) or None on
+        missing table / error. Best-effort — never raises."""
+        if not isinstance(row, dict) or not row.get("session_id"):
+            return None
+        try:
+            res = self.client.table("coach_video_assets").insert(row).execute()
+            return (res.data or [None])[0]
+        except Exception as e:
+            err_low = str(e).lower()
+            if "coach_video_assets" in err_low and (
+                "does not exist" in err_low or "pgrst" in err_low
+                or "42p01" in err_low
+            ):
+                logger.warning(
+                    "insert_coach_video_asset: table missing (run "
+                    "migrations/add_coach_video_assets.sql) — not captured",
+                )
+                return None
+            logger.warning("insert_coach_video_asset failed: %s", e)
+            return None
+
+    def supersede_coach_video_asset(
+        self, prev_id: str, new_id: str,
+    ) -> bool:
+        """Mark a prior take as superseded by a new one (is_current=false +
+        superseded_by). Best-effort → False on error."""
+        if not prev_id or not new_id:
+            return False
+        try:
+            self.client.table("coach_video_assets").update(
+                {"is_current": False, "superseded_by": str(new_id)}
+            ).eq("id", str(prev_id)).execute()
+            return True
+        except Exception as e:
+            logger.warning("supersede_coach_video_asset failed prev=%s: %s", prev_id, e)
+            return False
+
+    def update_coach_video_transcript(
+        self, asset_id: str, transcript: Optional[str], status: str,
+    ) -> bool:
+        """Backfill the async transcript + status. Best-effort → False on error."""
+        if not asset_id:
+            return False
+        try:
+            self.client.table("coach_video_assets").update(
+                {"transcript": transcript, "transcription_status": status}
+            ).eq("id", str(asset_id)).execute()
+            return True
+        except Exception as e:
+            logger.warning("update_coach_video_transcript failed asset=%s: %s", asset_id, e)
+            return False
+
+    def get_current_coach_video_assets_for_session(
+        self, session_id: str,
+    ) -> list[dict]:
+        """All CURRENT takes for a session (publish snapshot). [] on missing
+        table / none / error."""
+        if not session_id:
+            return []
+        try:
+            res = (
+                self.client.table("coach_video_assets")
+                .select("id, content_type, snippet_id, comment_text_at_publish")
+                .eq("session_id", session_id)
+                .eq("is_current", True)
+                .execute()
+            )
+            return res.data or []
+        except Exception as e:
+            err_low = str(e).lower()
+            if "coach_video_assets" in err_low and (
+                "does not exist" in err_low or "pgrst" in err_low
+                or "42p01" in err_low
+            ):
+                return []
+            logger.warning("get_current_coach_video_assets_for_session failed: %s", e)
+            return []
+
+    def set_coach_video_comment_at_publish(
+        self, asset_id: str, text: Optional[str],
+    ) -> bool:
+        """Write-once the FINAL delivered comment at publish (only when currently
+        NULL, so a re-publish never clobbers the first delivered text).
+        Best-effort → False on error/no-op."""
+        if not asset_id or not text:
+            return False
+        try:
+            res = (
+                self.client.table("coach_video_assets")
+                .update({"comment_text_at_publish": text})
+                .eq("id", str(asset_id))
+                .is_("comment_text_at_publish", "null")
+                .execute()
+            )
+            return bool(res.data)
+        except Exception as e:
+            logger.warning("set_coach_video_comment_at_publish failed asset=%s: %s", asset_id, e)
+            return False
+
     def get_snippets_by_session(self, session_id: str) -> List[dict]:
         """Get all snippets for a session, ordered by start time."""
         try:
