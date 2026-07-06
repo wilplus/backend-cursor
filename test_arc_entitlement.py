@@ -7,8 +7,8 @@ from __future__ import annotations
 import unittest
 
 from services.arc_entitlement import (
-    audit_price, is_arc_entitled, payment_required_payload,
-    take_requires_payment,
+    audit_price, is_arc_entitled, next_take_requires_payment,
+    payment_required_payload, take_requires_payment,
 )
 
 
@@ -68,6 +68,24 @@ class TakeBoundaryTests(unittest.TestCase):
         self.assertFalse(take_requires_payment("nope"))
 
 
+class NextTakeGateTests(unittest.TestCase):
+    """Phase-1 — the session-status gate: once the free first take is in the
+    bank on an unpaid arc, the NEXT take is paid → can_start_analysis flips."""
+
+    def test_zero_takes_next_is_free(self):
+        # Fresh arc (or no arc yet): next take is take 1 → free.
+        self.assertFalse(next_take_requires_payment(0))
+
+    def test_one_take_next_requires_payment(self):
+        # Free take 1 done → next take is take 2 → paid.
+        self.assertTrue(next_take_requires_payment(1))
+        self.assertTrue(next_take_requires_payment(2))
+
+    def test_bad_count_is_free(self):
+        self.assertFalse(next_take_requires_payment(None))
+        self.assertFalse(next_take_requires_payment("nope"))
+
+
 class PayloadTests(unittest.TestCase):
     def test_price_minor_units_and_lowercase_currency(self):
         p = audit_price(_Cfg())
@@ -80,6 +98,8 @@ class PayloadTests(unittest.TestCase):
         self.assertEqual(body["arc_id"], "a1")
         self.assertEqual(body["price"]["amount_minor"], 15000)
         self.assertEqual(body["sla_hours"], 48)
+        # Phase-1: a 402 only fires on an unpaid arc, so the body says so.
+        self.assertFalse(body["audit_paid"])
 
 
 if __name__ == "__main__":

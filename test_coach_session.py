@@ -48,7 +48,9 @@ class CoachSessionReadTests(unittest.TestCase):
         self._patch_db("get_ai_draft_coach_notes_by_session",
                        lambda sid: {"a": "🎤 Warm open — your pace lands well."})
         self._orig_build = lab.build_readout_from_session
-        lab.build_readout_from_session = lambda sid: {"snippets": [
+        # The coach get-session route calls build_readout_from_session(sid,
+        # include_slide_scores=True); accept whatever kwargs the real fn takes.
+        lab.build_readout_from_session = lambda sid, **kw: {"snippets": [
             {"id": "a", "index": 1, "transcript": "hi", "audio_ref": "p/a.wav",
              "start_offset_ms": 0, "duration_ms": 8000,
              "stickiness": {"composite": 0.5, "comment": "c"}},

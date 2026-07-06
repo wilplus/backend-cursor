@@ -260,9 +260,11 @@ class Config:
 
     # ── willab — Paid Audits (BE chunk A3). An "audit" = an explore arc
     # (3 takes + the ideal-text report). One price; take-1 is always free.
-    # AUDIT_PRICE_AMOUNT_MINOR is in minor units (15000 = 150.00 PLN).
-    AUDIT_PRICE_CURRENCY = (os.getenv("AUDIT_PRICE_CURRENCY") or "pln").strip().lower() or "pln"
-    AUDIT_PRICE_AMOUNT_MINOR = int(os.getenv("AUDIT_PRICE_AMOUNT_MINOR") or "15000")
+    # Phase-1 pricing (locked 2026-06-27): $50 = one full audit, free first
+    # take, money-back. AUDIT_PRICE_AMOUNT_MINOR is in minor units
+    # (5000 = $50.00 USD). Override via env in any market that re-prices.
+    AUDIT_PRICE_CURRENCY = (os.getenv("AUDIT_PRICE_CURRENCY") or "usd").strip().lower() or "usd"
+    AUDIT_PRICE_AMOUNT_MINOR = int(os.getenv("AUDIT_PRICE_AMOUNT_MINOR") or "5000")
     # Stripe Price id for the audit (mode=payment Checkout). Empty → checkout
     # builds a one-off price_data line from the amount/currency above.
     STRIPE_AUDIT_PRICE_ID = (os.getenv("STRIPE_AUDIT_PRICE_ID") or "").strip()
