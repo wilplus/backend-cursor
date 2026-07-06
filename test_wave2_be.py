@@ -228,9 +228,10 @@ class CreditsRouteTests(unittest.TestCase):
         # Fresh user, no arc → credit gate open, nothing paid yet.
         self.assertTrue(body["can_start_analysis"])
         self.assertFalse(body["audit_paid"])
-        # Headline $50 (minor units) so the FE pricing card can show it.
+        # Headline $25 / 25 credits (2026-07-06 re-price) so the FE pricing
+        # card can show either representation.
         self.assertEqual(body["audit_price"],
-                         {"amount_minor": 5000, "currency": "usd"})
+                         {"amount_minor": 2500, "currency": "usd", "credits": 25})
 
     def test_recording_never_blocked_low_credits(self):
         # Founder re-lock 2026-07-06: recording is NEVER blocked — low credits

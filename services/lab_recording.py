@@ -668,7 +668,6 @@ def build_readout_from_session(
     include_insights: bool = True,
     include_slide_scores: bool = False,
     audit_paid: bool = True,
-    include_coach_layer: bool | None = None,
 ) -> dict:
     """Re-derive the §3.3 Readout from PERSISTED snippets — the canonical
     reader for parked-restore + history (contract: a report loads
@@ -679,21 +678,22 @@ def build_readout_from_session(
     + the persisted stickiness sub-key), in chronological order
     (start_offset_ms ASC — the honest "what happened" order).
 
-    Post-publish (include_insights), folds the coach layer:
+    Post-publish (include_insights), folds the coach layer UNCONDITIONALLY —
+    founder re-price 2026-07-06 RETIRES the per-take/free-intro teaser scoping
+    (there is no more take-level or first-arc-ever branching here):
       - top-level ``insights_payload`` (overall_message + snippet_notes)
-      - per-snippet ``coach`` {note, tag, when, examples} matched by
-        snippet_id (when=None / examples=[] when the note omits them)
+      - per-snippet ``coach`` {note, tag, transcript_corrected, when, examples}
+        matched by snippet_id (null/[] when the note omits them)
+    This is FREE for every take of every arc the instant the coach saves +
+    surfaces it — no payment check. Only FOUR surfaces stay paid: the coach-
+    corrected ideal text (services/best_presentation.py coach_finalized),
+    the cross-take breakthroughs LIST, the game, and the snippet library —
+    none of which this function serves.
 
-    Free/paid scope boundary. ``audit_paid`` = the ARC-level paid flag the FE
-    gates locked affordances on (echoed in the payload). ``include_coach_layer``
-    decides whether the coach HUMAN layer is folded for THIS take — it defaults
-    to ``audit_paid`` but the route passes it TAKE-AWARE (founder 2026-07-06):
-    a paid arc folds every take's human layer; take 1 of the user's FIRST-EVER
-    arc folds it free (the one-time intro); otherwise the human layer is
-    withheld and the readout exposes ONLY acoustic metrics + the coach-confirmed
-    breakthrough badges + the single strongest breakthrough coach video (the
-    teaser hook). Withheld fields are ABSENT (not null). The AUTOMATIC readout
-    is never withheld. AC-9: still score-free.
+    ``audit_paid`` = the ARC-level paid flag, kept ONLY as a top-level echo so
+    the FE can contextualize its OWN paid-deliverable CTAs (ideal text /
+    breakthroughs list / game / library) from the readout screen — it no
+    longer withholds anything IN this readout. AC-9: still score-free.
 
     With a deck, also attaches ``slides`` (the deck), per-snippet ``slide``,
     ``presentation_ref``, and ``slide_transcripts`` — the COMPLETE per-slide 1:1
@@ -864,14 +864,10 @@ def build_readout_from_session(
         if cov:
             result["slide_coverage"] = cov
 
-    # Free/paid scope: audit_paid = the ARC-level paid flag; human_feedback_
-    # visible = whether THIS take's coach layer is folded (take-aware — covers
-    # the one-time free-intro take 1). Both carried so the readout is self-
-    # describing for the FE's locked affordances.
-    if include_coach_layer is None:
-        include_coach_layer = bool(audit_paid)
+    # audit_paid = the ARC-level paid flag — an ECHO only (kept so the FE can
+    # contextualize its paid-deliverable CTAs from this screen); it no longer
+    # withholds anything below (founder re-price 2026-07-06).
     result["audit_paid"] = bool(audit_paid)
-    result["human_feedback_visible"] = bool(include_coach_layer)
 
     if include_insights:
         try:
@@ -885,71 +881,34 @@ def build_readout_from_session(
                 for n in (ip.get("snippet_notes") or [])
                 if isinstance(n, dict) and n.get("snippet_id")
             }
-            if include_coach_layer:
-                # PAID — the full coach layer.
-                result["insights_payload"] = ip
-                for snip in out_snips:
-                    cn = notes_by_id.get(snip["id"])
-                    if cn:
-                        snip["coach"] = {
-                            "note": cn.get("note"),
-                            "tag": cn.get("tag"),
-                            # PR-2 — optional coach fields; None/[] when the
-                            # note omits them (FE hides when absent). Older
-                            # published payloads predate these keys → absent.
-                            "when": cn.get("when"),
-                            "examples": cn.get("examples") or [],
-                        }
-                        # Coach breakthrough video (top-level, beside
-                        # `breakthrough`): a public URL the FE drops into
-                        # <video> next to the breakthrough badge. Null when the
-                        # coach attached none. The explanation text is
-                        # coach.note (no separate field).
-                        snip["breakthrough_video_ref"] = cn.get(
-                            "breakthrough_video_ref"
-                        )
-            else:
-                # UNPAID (teaser) — withhold insights_payload, written
-                # commentary, and the session feedback video. Surface ONLY the
-                # single strongest breakthrough's coach video as the teaser
-                # hook. Everything else stays absent so the FE locks it.
-                _sid, _vref = _strongest_breakthrough_video(
-                    out_snips, notes_by_id, snippets,
-                )
-                if _vref:
-                    for snip in out_snips:
-                        if snip.get("id") == _sid:
-                            snip["breakthrough_video_ref"] = _vref
-                            break
+            # UNCONDITIONAL fold — free for every take of every arc the instant
+            # the coach saves + surfaces it (no payment check at all).
+            result["insights_payload"] = ip
+            for snip in out_snips:
+                cn = notes_by_id.get(snip["id"])
+                if cn:
+                    snip["coach"] = {
+                        "note": cn.get("note"),
+                        "tag": cn.get("tag"),
+                        # A real coach-authored artifact (founder 2026-07-06),
+                        # distinct from the immutable raw transcript above.
+                        # None until the coach saves one.
+                        "transcript_corrected": cn.get("transcript_corrected"),
+                        # PR-2 — optional coach fields; None/[] when the
+                        # note omits them (FE hides when absent). Older
+                        # published payloads predate these keys → absent.
+                        "when": cn.get("when"),
+                        "examples": cn.get("examples") or [],
+                    }
+                    # Coach breakthrough video (top-level, beside
+                    # `breakthrough`): a public URL the FE drops into
+                    # <video> next to the breakthrough badge. Null when the
+                    # coach attached none. The explanation text is
+                    # coach.note (no separate field).
+                    snip["breakthrough_video_ref"] = cn.get(
+                        "breakthrough_video_ref"
+                    )
 
     return result
 
 
-def _strongest_breakthrough_video(out_snips, notes_by_id, snippets):
-    """Pick the single STRONGEST coach-confirmed breakthrough that carries a
-    coach video (the free-take teaser's one video). Strongest = best (lowest)
-    coach rank; ties / unranked → earliest in the take. Returns
-    ``(snippet_id, video_ref)`` or ``(None, None)`` when no breakthrough has a
-    video. Rank is read from the raw snippet metrics (coach-only, never
-    surfaced) purely to order the pick — AC-9 stays intact."""
-    rank_by_id = {
-        str(s.get("id")): (s.get("metrics") or {}).get("rank")
-        for s in snippets
-        if isinstance(s, dict)
-    }
-    best_key = None
-    best_sid = None
-    best_vref = None
-    for snip in out_snips:
-        if not snip.get("breakthrough"):
-            continue
-        cn = notes_by_id.get(snip.get("id"))
-        vref = cn.get("breakthrough_video_ref") if isinstance(cn, dict) else None
-        if not vref:
-            continue
-        rank = rank_by_id.get(str(snip.get("id")))
-        rank_key = rank if isinstance(rank, (int, float)) else float("inf")
-        key = (rank_key, snip.get("start_offset_ms") or 0)
-        if best_key is None or key < best_key:
-            best_key, best_sid, best_vref = key, snip.get("id"), vref
-    return best_sid, best_vref

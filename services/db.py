@@ -9310,78 +9310,115 @@ class DatabaseService:
             logger.warning("set_session_arc failed sid=%s: %s", session_id, e)
             return False
 
-    def get_free_intro_arc_id(self, user_id: Optional[str]) -> Optional[str]:
-        """The user's SET-ONCE free-intro arc marker (take-1 human feedback free
-        on this arc only). Deliberately NOT derived from surviving sessions —
-        the take delete hard-deletes them, which would re-open the intro on the
-        next arc (review must-fix, fail-open). None on unset / missing column /
-        error → the human layer stays hidden, never opens."""
-        if not user_id:
+    def deduct_credits_strict(
+        self, user_id: Optional[str], amount: int,
+    ) -> Optional[int]:
+        """HARD atomic deduct for the $25/25-credit arc unlock (2026-07-06) —
+        unlike v2_deduct_session_credits (soft, floors at 0, read-then-write),
+        this NEVER oversells: it fails (returns None) when the balance is
+        insufficient, using a compare-and-swap so a concurrent write can never
+        race it into a negative or double-spent balance.
+
+        Returns the NEW balance on success, or None on insufficient funds / a
+        db hiccup / exhausted CAS retries (the caller must treat None as
+        "did not charge" and roll back whatever it reserved)."""
+        if not user_id or not isinstance(amount, int) or amount <= 0:
             return None
+        from datetime import datetime, timezone
+        for _ in range(3):
+            details = self.v2_get_student_details(str(user_id)) or {}
+            current = details.get("credits")
+            current = int(current) if current is not None else 15
+            if current < amount:
+                return None  # genuinely insufficient — no point retrying
+            new_val = current - amount
+            try:
+                res = (
+                    self.client.table("v2_student_details")
+                    .update({
+                        "credits": new_val,
+                        "updated_at": datetime.now(timezone.utc).isoformat(),
+                    })
+                    .eq("user_id", str(user_id))
+                    .eq("credits", current)  # CAS guard on the value we read
+                    .execute()
+                )
+            except Exception as e:
+                logger.warning("deduct_credits_strict failed user=%s: %s",
+                               user_id, e)
+                return None
+            if res.data:
+                return new_val
+            # Someone else changed the balance between our read and write —
+            # benign race, not insufficiency. Retry with a fresh read.
+        logger.warning(
+            "deduct_credits_strict: CAS retries exhausted user=%s amount=%s",
+            user_id, amount,
+        )
+        return None
+
+    def get_coach_best_presentation_edits(self, arc_id: Optional[str]) -> dict:
+        """Per-slide COACH corrections to an arc's ideal text (founder
+        2026-07-06 — the coach-owned counterpart to the user's pencil-edit).
+        Returns {slide_index: text}. {} on missing table / none / error."""
+        if not arc_id:
+            return {}
         try:
             res = (
-                self.client.table("v2_student_details")
-                .select("free_intro_arc_id")
-                .eq("user_id", str(user_id))
-                .limit(1)
+                self.client.table("coach_best_presentation_edits")
+                .select("slide_index, text")
+                .eq("arc_id", arc_id)
                 .execute()
             )
-            rows = res.data or []
-            val = rows[0].get("free_intro_arc_id") if rows else None
-            return str(val) if val else None
+            return {
+                r.get("slide_index"): r.get("text")
+                for r in (res.data or [])
+                if isinstance(r.get("slide_index"), int)
+            }
         except Exception as e:
             err_low = str(e).lower()
-            if "free_intro_arc_id" in err_low and (
+            if "coach_best_presentation_edits" in err_low and (
                 "does not exist" in err_low or "pgrst" in err_low
             ):
-                return None  # pre-migration → no intro (fail-closed)
-            logger.warning("get_free_intro_arc_id failed user=%s: %s", user_id, e)
-            return None
+                return {}
+            logger.warning("get_coach_best_presentation_edits failed arc=%s: %s",
+                           arc_id, e)
+            return {}
 
-    def claim_free_intro_arc(self, user_id: Optional[str],
-                             arc_id: Optional[str]) -> bool:
-        """SET-ONCE claim of the free-intro arc (only when currently NULL, so
-        the first claim wins forever — deleting takes can't move it). Creates
-        the details row if missing. Best-effort → False; never raises into the
-        record path."""
-        if not user_id or not arc_id:
+    def upsert_coach_best_presentation_edit(
+        self, arc_id: str, slide_index: int, text: str,
+        coach_user_id: Optional[str] = None,
+    ) -> bool:
+        """Save the coach's corrected text for one ideal-text slide. Upserts on
+        (arc_id, slide_index); freely re-editable. Best-effort; missing table →
+        False, non-fatal."""
+        if not arc_id or not isinstance(slide_index, int) or not text:
             return False
+        from datetime import datetime, timezone
+        row = {
+            "arc_id": arc_id, "slide_index": slide_index, "text": text,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+        if coach_user_id:
+            row["edited_by"] = coach_user_id
         try:
-            res = (
-                self.client.table("v2_student_details")
-                .update({"free_intro_arc_id": str(arc_id)})
-                .eq("user_id", str(user_id))
-                .is_("free_intro_arc_id", "null")
-                .execute()
-            )
-            if res.data:
-                return True
-            # No row updated: either already claimed (fine) or no details row
-            # yet — try to create one carrying the marker.
-            existing = (
-                self.client.table("v2_student_details")
-                .select("user_id")
-                .eq("user_id", str(user_id))
-                .limit(1)
-                .execute()
-            )
-            if existing.data:
-                return False  # row exists with a marker already — set-once holds
-            self.client.table("v2_student_details").insert(
-                {"user_id": str(user_id), "free_intro_arc_id": str(arc_id)}
+            self.client.table("coach_best_presentation_edits").upsert(
+                row, on_conflict="arc_id,slide_index",
             ).execute()
             return True
         except Exception as e:
             err_low = str(e).lower()
-            if "free_intro_arc_id" in err_low and (
+            if "coach_best_presentation_edits" in err_low and (
                 "does not exist" in err_low or "pgrst" in err_low
             ):
                 logger.warning(
-                    "claim_free_intro_arc: column missing (run "
-                    "migrations/add_free_intro_arc.sql) user=%s", user_id,
+                    "upsert_coach_best_presentation_edit: table missing (run "
+                    "migrations/add_coach_best_presentation_edits.sql) arc=%s",
+                    arc_id,
                 )
                 return False
-            logger.warning("claim_free_intro_arc failed user=%s: %s", user_id, e)
+            logger.error("upsert_coach_best_presentation_edit failed arc=%s: %s",
+                        arc_id, e)
             return False
 
     def count_arc_sessions(
@@ -9776,6 +9813,46 @@ class DatabaseService:
                 )
                 return None
             logger.warning("create_arc_purchase failed arc=%s: %s", arc_id, e)
+            return None
+
+    def create_arc_purchase_exclusive(
+        self, arc_id: str, user_id: str, *,
+        kind: str = "paid", source: str = "credits",
+        credits_charged: Optional[int] = None,
+    ) -> Optional[dict]:
+        """Purpose-built for the credits unlock (2026-07-06): unlike
+        ``create_arc_purchase`` (which returns the EXISTING row on a unique
+        conflict — the right idempotent behavior for a replayed Stripe
+        webhook), this returns None on ANY conflict, so the caller can tell
+        "I just created the entitlement" from "someone else already has it" —
+        the caller MUST NOT deduct credits unless this returns a fresh row
+        (else a race could charge twice for one arc)."""
+        if not arc_id or not user_id:
+            return None
+        row = {
+            "arc_id": str(arc_id), "user_id": str(user_id),
+            "kind": kind, "source": source,
+        }
+        if credits_charged is not None:
+            try:
+                row["credits_charged"] = int(credits_charged)
+            except (TypeError, ValueError):
+                pass
+        try:
+            res = self.client.table("arc_purchases").insert(row).execute()
+            return (res.data or [None])[0]
+        except Exception as e:
+            err_low = str(e).lower()
+            if "arc_purchases" in err_low and (
+                "does not exist" in err_low or "pgrst" in err_low
+                or "42p01" in err_low
+            ):
+                logger.warning(
+                    "create_arc_purchase_exclusive: table missing (run "
+                    "migrations/add_arc_purchases.sql) arc=%s", arc_id,
+                )
+            # Any conflict (unique(arc_id)) or other error → None, deliberately
+            # (never the existing row) so the caller never double-charges.
             return None
 
     def get_arc_purchase_by_stripe_session(
@@ -10813,15 +10890,14 @@ class DatabaseService:
                 "updated_by": updated_by,
                 "updated_at": now_iso,
             }
-            # breakthrough_video_ref is NOT re-asserted from base — it's only
-            # written when the coach actually changes it (merge loop below). So
-            # a normal note/tag save never references the column, and ON CONFLICT
-            # preserves any existing video. Keeps coach saves working even if
-            # this ships before add_breakthrough_video_ref_to_coach_snippet_drafts.sql
-            # is run (the column is touched only on a video-set save).
+            # breakthrough_video_ref / transcript_corrected are NOT re-asserted
+            # from base — each is only written when the coach actually sets it
+            # (merge loop below). A normal note/tag save never references either
+            # column, and ON CONFLICT preserves whatever was already there —
+            # keeps coach saves working even before their migrations run.
             for k in (
                 "note", "tag", "surfaced", "when_context", "examples",
-                "breakthrough_video_ref",
+                "breakthrough_video_ref", "transcript_corrected",
             ):
                 if k in fields:
                     row[k] = fields[k]

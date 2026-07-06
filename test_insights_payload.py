@@ -223,6 +223,43 @@ class ValidateInsightsPayloadTests(unittest.TestCase):
                 breakthrough_video_ref="h" * (_MAX_VIDEO_REF_LEN + 1),
             )]})
 
+    # ── transcript_corrected (founder 2026-07-06 — a real coach-authored
+    # correction of the transcript, FREE unconditionally once surfaced) ──
+
+    def test_transcript_corrected_default_none(self):
+        out = self._v({"snippet_notes": [self._note()]})
+        self.assertIsNone(out["snippet_notes"][0]["transcript_corrected"])
+
+    def test_transcript_corrected_preserved(self):
+        text = "The corrected line, verbatim."
+        out = self._v({"snippet_notes": [
+            self._note(transcript_corrected=text),
+        ]})
+        self.assertEqual(
+            out["snippet_notes"][0]["transcript_corrected"], text)
+
+    def test_transcript_corrected_whitespace_to_none(self):
+        out = self._v({"snippet_notes": [
+            self._note(transcript_corrected="   "),
+        ]})
+        self.assertIsNone(out["snippet_notes"][0]["transcript_corrected"])
+
+    def test_transcript_corrected_non_string_rejected(self):
+        from services.insights_payload import InsightsPayloadError
+        with self.assertRaises(InsightsPayloadError):
+            self._v({"snippet_notes": [
+                self._note(transcript_corrected=123),
+            ]})
+
+    def test_transcript_corrected_over_long_rejected(self):
+        from services.insights_payload import (
+            InsightsPayloadError, _MAX_TRANSCRIPT_CORRECTED_LEN,
+        )
+        with self.assertRaises(InsightsPayloadError):
+            self._v({"snippet_notes": [self._note(
+                transcript_corrected="x" * (_MAX_TRANSCRIPT_CORRECTED_LEN + 1),
+            )]})
+
 
 if __name__ == "__main__":
     unittest.main()

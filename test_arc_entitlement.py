@@ -1,4 +1,4 @@
-"""Paid Audits — arc entitlement gate (BE chunk A2). Pure.
+"""Paid Audits — arc entitlement gate. Pure.
 
 Run: python3 -m unittest test_arc_entitlement
 """
@@ -7,8 +7,8 @@ from __future__ import annotations
 import unittest
 
 from services.arc_entitlement import (
-    audit_price, is_arc_entitled, next_take_requires_payment,
-    payment_required_payload, take_requires_payment,
+    audit_price, is_arc_entitled, paid_deliverables_visible,
+    payment_required_payload,
 )
 
 
@@ -26,9 +26,10 @@ class _FakeDB:
 
 
 class _Cfg:
-    AUDIT_PRICE_AMOUNT_MINOR = 15000
-    AUDIT_PRICE_CURRENCY = "PLN"
+    AUDIT_PRICE_AMOUNT_MINOR = 2500
+    AUDIT_PRICE_CURRENCY = "usd"
     AUDIT_SLA_HOURS = 48
+    ARC_UNLOCK_CREDITS = 25
 
 
 class IsEntitledTests(unittest.TestCase):
@@ -52,103 +53,51 @@ class IsEntitledTests(unittest.TestCase):
         db = _FakeDB({"arc_id": "a1", "user_id": "u1", "kind": "founding_pass"})
         self.assertTrue(is_arc_entitled(db, "a1", "u1"))
 
+    def test_legacy_stripe_direct_purchase_still_entitled(self):
+        # Grandfathered $50 rows (source='stripe', no credits_charged) —
+        # entitlement is row-existence, never the charge shape.
+        db = _FakeDB({"arc_id": "a1", "user_id": "u1", "kind": "paid",
+                      "source": "stripe", "amount_minor": 5000})
+        self.assertTrue(is_arc_entitled(db, "a1", "u1"))
 
-class TakeBoundaryTests(unittest.TestCase):
-    def test_take_one_is_free(self):
-        # LIVE-LOOP FENCE: take 1 never requires payment.
-        self.assertFalse(take_requires_payment(1))
-
-    def test_take_two_and_three_require_payment(self):
-        self.assertTrue(take_requires_payment(2))
-        self.assertTrue(take_requires_payment(3))
-
-    def test_unknown_take_is_free(self):
-        # None / non-numeric (standalone / pre-arc) is never gated by take.
-        self.assertFalse(take_requires_payment(None))
-        self.assertFalse(take_requires_payment("nope"))
+    def test_credits_purchase_entitled(self):
+        db = _FakeDB({"arc_id": "a1", "user_id": "u1", "kind": "paid",
+                      "source": "credits", "credits_charged": 25})
+        self.assertTrue(is_arc_entitled(db, "a1", "u1"))
 
 
-class NextTakeGateTests(unittest.TestCase):
-    """Phase-1 — the session-status gate: once the free first take is in the
-    bank on an unpaid arc, the NEXT take is paid → can_start_analysis flips."""
+class PaidDeliverablesVisibleTests(unittest.TestCase):
+    """Founder re-price 2026-07-06: the ONLY gate for the four paid surfaces
+    (coach-corrected ideal text, breakthroughs list, game, library). Single
+    condition — no take-level branching, no free-intro exception (retired)."""
 
-    def test_zero_takes_next_is_free(self):
-        # Fresh arc (or no arc yet): next take is take 1 → free.
-        self.assertFalse(next_take_requires_payment(0))
+    def test_alias_of_is_arc_entitled(self):
+        entitled_db = _FakeDB({"arc_id": "a1", "user_id": "u1"})
+        unentitled_db = _FakeDB(None)
+        self.assertTrue(paid_deliverables_visible(entitled_db, "a1", "u1"))
+        self.assertFalse(paid_deliverables_visible(unentitled_db, "a1", "u1"))
 
-    def test_one_take_next_requires_payment(self):
-        # Free take 1 done → next take is take 2 → paid.
-        self.assertTrue(next_take_requires_payment(1))
-        self.assertTrue(next_take_requires_payment(2))
-
-    def test_bad_count_is_free(self):
-        self.assertFalse(next_take_requires_payment(None))
-        self.assertFalse(next_take_requires_payment("nope"))
-
-
-class HumanFeedbackVisibleTests(unittest.TestCase):
-    """Founder re-lock 2026-07-06: coach HUMAN feedback is paid per arc, with a
-    ONE-TIME free intro — take 1 of the user's first arc, keyed by the SET-ONCE
-    marker (never a scan of surviving sessions — deleting takes must not
-    re-open the intro on a later arc)."""
-
-    class _DB:
-        def __init__(self, purchase=None, first_arc=None):
-            self._p = purchase
-            self._first = first_arc
-
-        def get_arc_purchase(self, arc_id):
-            return self._p
-
-        def get_free_intro_arc_id(self, user_id):
-            return self._first
-
-    def _v(self, db, arc, user, take):
-        from services.arc_entitlement import human_feedback_visible
-        return human_feedback_visible(db, arc, user, take)
-
-    def test_paid_arc_shows_every_take(self):
-        db = self._DB(purchase={"arc_id": "a1", "user_id": "u1"})
-        for take in (1, 2, 3):
-            self.assertTrue(self._v(db, "a1", "u1", take))
-
-    def test_free_intro_take1_on_first_ever_arc(self):
-        db = self._DB(purchase=None, first_arc="a1")
-        self.assertTrue(self._v(db, "a1", "u1", 1))
-
-    def test_take1_on_a_later_arc_is_not_free(self):
-        # The intro is once per user EVER — a second training's take 1 is paid.
-        db = self._DB(purchase=None, first_arc="a0")
-        self.assertFalse(self._v(db, "a1", "u1", 1))
-
-    def test_take2_on_first_arc_is_not_free(self):
-        db = self._DB(purchase=None, first_arc="a1")
-        self.assertFalse(self._v(db, "a1", "u1", 2))
-        self.assertFalse(self._v(db, "a1", "u1", 3))
-
-    def test_non_arc_session_has_no_paywall(self):
-        db = self._DB()
-        self.assertTrue(self._v(db, None, "u1", 1))
-
-    def test_no_first_arc_lookup_stays_hidden(self):
-        # db hiccup / no arcs → the human layer stays hidden, never opens.
-        db = self._DB(purchase=None, first_arc=None)
-        self.assertFalse(self._v(db, "a1", "u1", 1))
+    def test_db_hiccup_stays_hidden(self):
+        # get_arc_purchase never raises in prod; a failure keeps this False.
+        self.assertFalse(
+            paid_deliverables_visible(_FakeDB(None), "a1", "u1"))
 
 
 class PayloadTests(unittest.TestCase):
-    def test_price_minor_units_and_lowercase_currency(self):
+    def test_price_minor_units_and_lowercase_currency_and_credits(self):
         p = audit_price(_Cfg())
-        self.assertEqual(p["amount_minor"], 15000)
-        self.assertEqual(p["currency"], "pln")
+        self.assertEqual(p["amount_minor"], 2500)
+        self.assertEqual(p["currency"], "usd")
+        self.assertEqual(p["credits"], 25)
 
     def test_402_payload_shape(self):
         body = payment_required_payload("a1", _Cfg())
         self.assertEqual(body["code"], "PAYMENT_REQUIRED")
         self.assertEqual(body["arc_id"], "a1")
-        self.assertEqual(body["price"]["amount_minor"], 15000)
+        self.assertEqual(body["price"]["amount_minor"], 2500)
+        self.assertEqual(body["price"]["credits"], 25)
         self.assertEqual(body["sla_hours"], 48)
-        # Phase-1: a 402 only fires on an unpaid arc, so the body says so.
+        # A 402 only fires on an unpaid arc, so the body says so.
         self.assertFalse(body["audit_paid"])
 
 

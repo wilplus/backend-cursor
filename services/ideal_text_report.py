@@ -50,6 +50,10 @@ def build_ideal_text_report(talk_id: Optional[str], *, database=None) -> dict:
         "talkTitle": bp.get("name"),
         "ready": bp.get("ready"),
         "coachReviewed": bp.get("coach_reviewed"),
+        # HARD gate (founder 2026-07-06): False → idealText is "" on every
+        # slide (never the raw auto draft) — the FE shows "still being
+        # prepared by your coach", distinct from the payment paywall.
+        "coachFinalized": bp.get("coach_finalized"),
         "presentationRef": bp.get("presentation_ref"),
         "slides": out_slides,
     }

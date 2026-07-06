@@ -1,20 +1,28 @@
-"""willab — arc Lounge cards/notes, in ONE place (founder bug-batch 2026-07-06).
+"""willab — arc Lounge cards/notes, in ONE place (founder bug-batch 2026-07-06,
+re-priced to $25/25 credits 2026-07-06 same day).
 
 Owns every arc-lifecycle bubble so each has ONE idempotent client_id (uuid5 per
 arc + kind) and fires from every trigger without duplication:
 
-  • best_presentation_ready — ONLY when the arc has >=3 takes AND the coach has
-    reviewed (published) AND the arc is PAID. Fired from: lab upload (take >=3),
-    publish (review lands), checkout (payment lands) — whichever completes last.
-  • transcript_ready — the unpaid/unreviewed >=3-takes counterpart: the user
+  • best_presentation_ready — ONLY when the arc has >=3 takes AND
+    coach_finalized (the coach has corrected EVERY slide — the REAL signal
+    from services.best_presentation, NOT a proxy like "all takes published";
+    a coach can publish every take's automatic review + commentary without
+    having done the separate ideal-text correction pass) AND the arc is PAID.
+    Fired from: lab upload (take >=3), publish (a take lands, may complete
+    coach_finalized), checkout (payment lands), and the coach's own edit save
+    — whichever completes the condition last.
+  • transcript_ready — the unpaid/unfinalized >=3-takes counterpart: the user
     gets the transcript-text affordance + strong sides, NOT the best-pres
     buttons (founder #1: never present the best presentation before the coach
-    has checked + assembled it and it's paid).
+    has actually corrected it AND it's paid).
   • human_check note — after take 1: the automatic overview was shown and the
     exercise is undergoing a human check.
-  • pay note — after take 2 is SENT on an UNPAID arc: $50 unlocks take-2/3
-    human feedback + the coach-corrected best presentation. metadata carries
-    the arc_id + a suggested_action so the FE taps straight into checkout.
+  • pay note — after take 2 is SENT on an UNPAID arc: 25 credits ($25) unlocks
+    the coach-corrected ideal text + breakthroughs list + game + library.
+    (Per-take coach commentary/transcript-correction is FREE unconditionally
+    now — the pay-note must NOT claim otherwise.) metadata carries the arc_id
+    + a suggested_action so the FE taps straight into the unlock flow.
 
 All best-effort (never raise into the record/publish path); all copy is
 user-facing → FOUNDER SIGN-OFF; AC-9: a "human check" note is fine, no
@@ -50,14 +58,12 @@ def _insert(db, user_id: str, *, client_key: str, kind: str, body: str,
         return False
 
 
-def _arc_owner_and_state(db, arc_id: str) -> tuple[Optional[str], int, bool, Any]:
-    """(owner_user_id, take_count, coach_reviewed, topic) for an arc.
-
-    ``coach_reviewed`` = EVERY take published (review must-fix): with the free
-    take-1 human check + auto-send, "any one take published" is vacuously true
-    by take 3 — the bp card would fire from take-3's UPLOAD, before the coach
-    checked/assembled the whole thing. All-takes-published is the available
-    signal for "the coach has been through this arc"."""
+def _arc_owner_and_topic(db, arc_id: str) -> tuple[Optional[str], int, Any]:
+    """(owner_user_id, take_count, topic) for an arc — the cheap facts. The
+    review-readiness signal itself (coach_finalized) comes from
+    services.best_presentation, not from here (see maybe_fire_best_
+    presentation_ready) — "all takes published" is NOT the same thing as "the
+    coach corrected the ideal text" and must not be conflated."""
     sessions = [s for s in (db.get_arc_sessions(arc_id) or [])
                 if isinstance(s, dict)]
     owner = None
@@ -68,30 +74,35 @@ def _arc_owner_and_state(db, arc_id: str) -> tuple[Optional[str], int, bool, Any
         ctx = s.get("intake_context") if isinstance(s.get("intake_context"), dict) else {}
         if ctx.get("topic"):
             topic = ctx.get("topic")
-    reviewed = bool(sessions) and all(
-        s.get("results_published_at") for s in sessions
-    )
-    return owner, len(sessions), reviewed, topic
+    return owner, len(sessions), topic
 
 
 def maybe_fire_best_presentation_ready(db, arc_id: Any) -> Optional[str]:
     """Fire the right >=3-takes card for the arc's CURRENT state:
 
-      reviewed AND paid  → best_presentation_ready (the real buttons)
-      otherwise          → transcript_ready (transcript text + strong sides)
+      coach_finalized AND paid  → best_presentation_ready (the real buttons)
+      otherwise                 → transcript_ready (transcript + strong sides)
 
-    Idempotent per (arc, kind); safe to call from upload, publish, and checkout
-    — the terminal card fires exactly once, whichever trigger completes the
+    coach_finalized is the REAL signal (services.best_presentation — has the
+    coach corrected EVERY slide?), not a proxy. Idempotent per (arc, kind);
+    safe to call from upload, publish, checkout, and the coach's edit save —
+    the terminal card fires exactly once, whichever trigger completes the
     condition. Returns the kind fired, or None. Never raises."""
     try:
         if not arc_id:
             return None
-        owner, take_count, reviewed, topic = _arc_owner_and_state(db, arc_id)
+        owner, take_count, topic = _arc_owner_and_topic(db, arc_id)
         if not owner or take_count < TAKES_TARGET:
             return None
         from services.arc_entitlement import is_arc_entitled
+        from services.best_presentation import build_best_presentation
         paid = is_arc_entitled(db, arc_id, owner)
-        if reviewed and paid:
+        # Cache-aware (Part B) — a repeated call with an unchanged arc/edits
+        # skips the LLM compose, so this is cheap on the common no-op path.
+        finalized = bool(
+            build_best_presentation(arc_id, database=db).get("coach_finalized")
+        )
+        if finalized and paid:
             body = (f"Your best presentation for {topic} is ready."
                     if topic else "Your best presentation is ready.")
             _insert(
@@ -136,10 +147,13 @@ def fire_human_check_note(db, user_id: Any, arc_id: Any) -> bool:
 
 
 def fire_pay_note(db, user_id: Any, arc_id: Any) -> bool:
-    """After take 2 is sent on an UNPAID arc: the $50 unlock note. Skipped when
-    the arc is already entitled. Idempotent per arc. metadata.suggested_action
-    lets the FE tap straight into the arc checkout (clean paywall — never an
-    error). Copy = founder sign-off."""
+    """After take 2 is sent on an UNPAID arc: the 25-credit ($25) unlock note.
+    Skipped when the arc is already entitled. Idempotent per arc. Per-take
+    coach commentary + corrected transcript are FREE unconditionally now — the
+    note must correctly sell only what's actually paid: the coach-CORRECTED
+    ideal text + the breakthroughs list + game + library. metadata.
+    suggested_action lets the FE tap straight into POST /v2/arc/<id>/unlock
+    (clean paywall — never an error). Copy = founder sign-off."""
     if not user_id or not arc_id:
         return False
     try:
@@ -148,7 +162,7 @@ def fire_pay_note(db, user_id: Any, arc_id: Any) -> bool:
             return False  # already paid — no note
     except Exception:
         # Fail SILENT (review): on an entitlement-check hiccup, skip the note —
-        # never show a paying user the $50 ask. The note re-fires on a later
+        # never show a paying user a stale ask. The note re-fires on a later
         # trigger if the arc really is unpaid.
         return False
     return _insert(
@@ -156,14 +170,14 @@ def fire_pay_note(db, user_id: Any, arc_id: Any) -> bool:
         client_key=f"willab-paynote:{arc_id}",
         kind="text",
         body=(
-            "You keep getting the automatic overview free on every take. To "
-            "receive your coach's personal feedback on takes 2 and 3 — plus "
-            "your best presentation, corrected by the coach — unlock this "
-            "training for $50."
+            "You keep getting your coach's feedback and corrected transcript "
+            "free on every take. To also unlock your best presentation — "
+            "corrected by your coach — plus your breakthrough moments, "
+            "unlock this training for 25 credits ($25)."
         ),
         metadata={
             "arc_id": str(arc_id),
             "note": "payment",
-            "suggested_action": "arc_checkout",
+            "suggested_action": "arc_unlock",
         },
     )
