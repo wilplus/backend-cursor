@@ -232,21 +232,23 @@ class CreditsRouteTests(unittest.TestCase):
         self.assertEqual(body["audit_price"],
                          {"amount_minor": 5000, "currency": "usd"})
 
-    def test_gate_false_below_five(self):
+    def test_recording_never_blocked_low_credits(self):
+        # Founder re-lock 2026-07-06: recording is NEVER blocked — low credits
+        # don't close the gate (payment scopes only the human-feedback view).
         v2.db.v2_ensure_credits_initialized = lambda uid: 3
         body, _ = self._status()
         self.assertEqual(body["credits"], 3)
-        self.assertFalse(body["can_start_analysis"])
+        self.assertTrue(body["can_start_analysis"])
 
-    def test_audit_gate_blocks_after_free_take_on_unpaid_arc(self):
-        # Latest arc is unpaid with take 1 banked → the next take (2) is paid,
-        # so the gate closes even though credits are fine.
+    def test_recording_never_blocked_on_unpaid_arc(self):
+        # Unpaid arc with take 1 banked: the user can STILL record takes 2/3
+        # (they always reach the coach); only the human-feedback VIEW is paid.
         v2.db.v2_list_user_lab_sessions = lambda uid, limit=200: [
             {"arc_id": "arc1", "take_index": 1}]
         v2.db.get_arc_take_count = lambda arc: 1
         v2.db.get_arc_purchase = lambda arc: None            # unpaid
         body, _ = self._status()
-        self.assertFalse(body["can_start_analysis"])
+        self.assertTrue(body["can_start_analysis"])
         self.assertFalse(body["audit_paid"])
 
     def test_paid_arc_opens_gate_and_audit_paid_true(self):

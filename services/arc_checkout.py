@@ -165,6 +165,17 @@ def apply_completed_arc_checkout(checkout_session_id: str, config: Any) -> ArcCh
         )
 
     logger.info("arc checkout applied arc=%s user=%s session=%s", arc_id, user_id, sid)
+
+    # Arc lifecycle (founder #1, 2026-07-06): payment may complete the
+    # "reviewed AND paid" condition — fire the best-presentation-ready card now
+    # (idempotent; no-op until the arc also has >=3 takes + a coach review).
+    try:
+        from services.arc_notifications import maybe_fire_best_presentation_ready
+        maybe_fire_best_presentation_ready(db, str(arc_id))
+    except Exception as e:
+        logger.warning("arc checkout: bp-ready card check failed arc=%s: %s",
+                       arc_id, e)
+
     return ArcCheckoutResult.success(
         200, arc_id=arc_id, user_id=str(user_id), purchase_id=purchase.get("id"),
     )

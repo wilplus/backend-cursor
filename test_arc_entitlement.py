@@ -86,6 +86,56 @@ class NextTakeGateTests(unittest.TestCase):
         self.assertFalse(next_take_requires_payment("nope"))
 
 
+class HumanFeedbackVisibleTests(unittest.TestCase):
+    """Founder re-lock 2026-07-06: coach HUMAN feedback is paid per arc, with a
+    ONE-TIME free intro — take 1 of the user's first arc, keyed by the SET-ONCE
+    marker (never a scan of surviving sessions — deleting takes must not
+    re-open the intro on a later arc)."""
+
+    class _DB:
+        def __init__(self, purchase=None, first_arc=None):
+            self._p = purchase
+            self._first = first_arc
+
+        def get_arc_purchase(self, arc_id):
+            return self._p
+
+        def get_free_intro_arc_id(self, user_id):
+            return self._first
+
+    def _v(self, db, arc, user, take):
+        from services.arc_entitlement import human_feedback_visible
+        return human_feedback_visible(db, arc, user, take)
+
+    def test_paid_arc_shows_every_take(self):
+        db = self._DB(purchase={"arc_id": "a1", "user_id": "u1"})
+        for take in (1, 2, 3):
+            self.assertTrue(self._v(db, "a1", "u1", take))
+
+    def test_free_intro_take1_on_first_ever_arc(self):
+        db = self._DB(purchase=None, first_arc="a1")
+        self.assertTrue(self._v(db, "a1", "u1", 1))
+
+    def test_take1_on_a_later_arc_is_not_free(self):
+        # The intro is once per user EVER — a second training's take 1 is paid.
+        db = self._DB(purchase=None, first_arc="a0")
+        self.assertFalse(self._v(db, "a1", "u1", 1))
+
+    def test_take2_on_first_arc_is_not_free(self):
+        db = self._DB(purchase=None, first_arc="a1")
+        self.assertFalse(self._v(db, "a1", "u1", 2))
+        self.assertFalse(self._v(db, "a1", "u1", 3))
+
+    def test_non_arc_session_has_no_paywall(self):
+        db = self._DB()
+        self.assertTrue(self._v(db, None, "u1", 1))
+
+    def test_no_first_arc_lookup_stays_hidden(self):
+        # db hiccup / no arcs → the human layer stays hidden, never opens.
+        db = self._DB(purchase=None, first_arc=None)
+        self.assertFalse(self._v(db, "a1", "u1", 1))
+
+
 class PayloadTests(unittest.TestCase):
     def test_price_minor_units_and_lowercase_currency(self):
         p = audit_price(_Cfg())

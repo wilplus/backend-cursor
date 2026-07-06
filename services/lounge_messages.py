@@ -32,14 +32,16 @@ from typing import Any, Optional
 # migrations/add_lounge_messages_table.sql.
 VALID_ROLES = ("user", "bot", "system")
 # "cadence" = Explore-Session multi-take guidance bubbles (Prompt A §4),
-# bot-only + server-inserted; the FE never sends it. Mirror in the DB
-# CHECK constraint — migrations/add_cadence_lounge_kind.sql.
-# "best_presentation_ready" = the durable "your best presentation for {topic} is
-# ready" card, dropped when an arc reaches 3 takes (bot-only, server-inserted;
-# the FE never sends it). Mirror — migrations/add_best_presentation_ready_kind.sql.
+# bot-only + server-inserted; the FE never sends it. The AUTHORITATIVE DB
+# CHECK mirror is the LATEST kind migration:
+# migrations/add_transcript_ready_lounge_kind.sql.
+# "best_presentation_ready" = the durable "your best presentation is ready"
+# card — fired ONLY when the arc has >=3 takes AND is coach-reviewed AND paid.
+# "transcript_ready" = its unpaid/unreviewed counterpart (transcript text +
+# strong sides). Both bot-only, server-inserted; the FE never sends them.
 VALID_KINDS = (
     "text", "joke", "status", "recording_summary", "insight", "cadence",
-    "best_presentation_ready",
+    "best_presentation_ready", "transcript_ready",
 )
 
 # §7.9 — bound the merge batch. A long unsigned session can produce a
