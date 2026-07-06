@@ -9310,6 +9310,105 @@ class DatabaseService:
             logger.warning("set_session_arc failed sid=%s: %s", session_id, e)
             return False
 
+    def get_free_intro_arc_id(self, user_id: Optional[str]) -> Optional[str]:
+        """The user's SET-ONCE free-intro arc marker (take-1 human feedback free
+        on this arc only). Deliberately NOT derived from surviving sessions —
+        the take delete hard-deletes them, which would re-open the intro on the
+        next arc (review must-fix, fail-open). None on unset / missing column /
+        error → the human layer stays hidden, never opens."""
+        if not user_id:
+            return None
+        try:
+            res = (
+                self.client.table("v2_student_details")
+                .select("free_intro_arc_id")
+                .eq("user_id", str(user_id))
+                .limit(1)
+                .execute()
+            )
+            rows = res.data or []
+            val = rows[0].get("free_intro_arc_id") if rows else None
+            return str(val) if val else None
+        except Exception as e:
+            err_low = str(e).lower()
+            if "free_intro_arc_id" in err_low and (
+                "does not exist" in err_low or "pgrst" in err_low
+            ):
+                return None  # pre-migration → no intro (fail-closed)
+            logger.warning("get_free_intro_arc_id failed user=%s: %s", user_id, e)
+            return None
+
+    def claim_free_intro_arc(self, user_id: Optional[str],
+                             arc_id: Optional[str]) -> bool:
+        """SET-ONCE claim of the free-intro arc (only when currently NULL, so
+        the first claim wins forever — deleting takes can't move it). Creates
+        the details row if missing. Best-effort → False; never raises into the
+        record path."""
+        if not user_id or not arc_id:
+            return False
+        try:
+            res = (
+                self.client.table("v2_student_details")
+                .update({"free_intro_arc_id": str(arc_id)})
+                .eq("user_id", str(user_id))
+                .is_("free_intro_arc_id", "null")
+                .execute()
+            )
+            if res.data:
+                return True
+            # No row updated: either already claimed (fine) or no details row
+            # yet — try to create one carrying the marker.
+            existing = (
+                self.client.table("v2_student_details")
+                .select("user_id")
+                .eq("user_id", str(user_id))
+                .limit(1)
+                .execute()
+            )
+            if existing.data:
+                return False  # row exists with a marker already — set-once holds
+            self.client.table("v2_student_details").insert(
+                {"user_id": str(user_id), "free_intro_arc_id": str(arc_id)}
+            ).execute()
+            return True
+        except Exception as e:
+            err_low = str(e).lower()
+            if "free_intro_arc_id" in err_low and (
+                "does not exist" in err_low or "pgrst" in err_low
+            ):
+                logger.warning(
+                    "claim_free_intro_arc: column missing (run "
+                    "migrations/add_free_intro_arc.sql) user=%s", user_id,
+                )
+                return False
+            logger.warning("claim_free_intro_arc failed user=%s: %s", user_id, e)
+            return False
+
+    def count_arc_sessions(
+        self, arc_id: Optional[str], exclude_session_id: Optional[str] = None,
+    ) -> Optional[int]:
+        """STRICT arc-session count for take numbering: returns None on ANY
+        error (so the caller can fail CLOSED and keep the FE-sent index instead
+        of mislabeling a real take-2/3 as take-1), and can EXCLUDE the current
+        session (an upload retry already arc-linked must not double-count
+        itself)."""
+        if not arc_id:
+            return None
+        try:
+            q = (
+                self.client.table("v2_sessions")
+                .select("id", count="exact")
+                .eq("arc_id", arc_id)
+            )
+            if exclude_session_id:
+                q = q.neq("id", str(exclude_session_id))
+            res = q.limit(1).execute()
+            cnt = getattr(res, "count", None)
+            return int(cnt) if cnt is not None else 0
+        except Exception as e:
+            logger.warning("count_arc_sessions failed arc=%s: %s", arc_id, e)
+            return None
+
     def get_arc_take_count(self, arc_id: Optional[str]) -> int:
         """How many takes are in an arc (Prompt A §3 take_count). 0 on missing
         column / no arc."""

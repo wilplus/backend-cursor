@@ -82,6 +82,43 @@ def slice_transcript_for_window(
     return " ".join(parts).strip()
 
 
+def dedupe_window_transcripts(windows: list, segments: list) -> list:
+    """Claim-once transcript attribution (founder bug #2, 2026-07-06).
+
+    ``slice_transcript_for_window`` includes ANY overlapping Whisper segment, so
+    a sentence straddling two adjacent windows appears in BOTH snippets — the
+    user saw the same sentence twice. This assigns each segment to EXACTLY ONE
+    window — the one with the LARGEST time-overlap (ties → the earlier window) —
+    so every spoken sentence appears once, where it was mostly spoken.
+
+    ``windows``  = [(start_ms, end_ms)] CHRONOLOGICAL (the surfaced set).
+    ``segments`` = whole-recording Whisper segments [{start(s), end(s), text}].
+    Returns one transcript string per window (possibly ""). Pure.
+    """
+    texts: list = [[] for _ in windows]
+    if not windows or not segments:
+        return ["" for _ in windows]
+    for seg in segments:
+        if not isinstance(seg, dict):
+            continue
+        s = seg.get("start")
+        e = seg.get("end")
+        text = (seg.get("text") or "").strip()
+        if not text or not isinstance(s, (int, float)) or not isinstance(e, (int, float)):
+            continue
+        s_ms, e_ms = s * 1000.0, e * 1000.0
+        best_i = None
+        best_overlap = 0.0
+        for i, (w_start, w_end) in enumerate(windows):
+            overlap = min(e_ms, w_end) - max(s_ms, w_start)
+            if overlap > best_overlap:
+                best_overlap = overlap
+                best_i = i
+        if best_i is not None:
+            texts[best_i].append(text)
+    return [" ".join(t).strip() for t in texts]
+
+
 def build_readout_features(metrics: Optional[dict]) -> dict:
     """Map an audio_metrics dict to the §3.3 feature block.
 
@@ -352,6 +389,27 @@ def process_lab_recording(
     for idx, p in enumerate(prelim, start=1):
         p["idx"] = idx
 
+    # Claim-once transcript attribution (founder bug #2): the candidate-stage
+    # slices include ANY overlapping Whisper segment, so a sentence straddling
+    # two surfaced windows showed up TWICE. Re-slice the SURFACED set so each
+    # segment lands in exactly one snippet (largest overlap wins). The acoustic
+    # metrics keep their full padded window (playback + analysis unchanged);
+    # only the display/persisted text is deduped. Candidate-pool capture keeps
+    # the raw per-window slices (training wants the window-local text).
+    if segments and prelim:
+        _deduped = dedupe_window_transcripts(
+            [(p["start_ms"], p["start_ms"] + p["dur_ms"]) for p in prelim],
+            segments,
+        )
+        for i, p in enumerate(prelim):
+            # keep the raw window-local slice for the candidate-pool capture
+            # (training wants window-local text, not the deduped display text).
+            p.setdefault("transcript_raw", p["transcript"])
+            # A short window can lose ALL its text to a bigger neighbour —
+            # fall back to the raw slice rather than a textless snippet card
+            # (a rare local dup beats missing text).
+            p["transcript"] = _deduped[i] or p["transcript"]
+
     # 2) Stickiness over transcripts BEFORE insert (one batch). Scored
     #    by transcript/position, so no snippet ids are needed yet.
     sticky = score_snippets_stickiness([
@@ -479,8 +537,16 @@ def process_lab_recording(
             }
             for i, p in enumerate(prelim)
         }
+        # Surfaced candidates carry the DEDUPED display text after the claim-
+        # once pass; the capture wants each window's RAW window-local slice
+        # (preserved as transcript_raw) — restore it on shallow copies.
+        _cap_candidates = [
+            ({**c, "transcript": c.get("transcript_raw")}
+             if c.get("transcript_raw") is not None else c)
+            for c in candidates
+        ]
         _cap_rows = build_candidate_rows(
-            candidates,
+            _cap_candidates,
             notable_starts={n.get("start_ms") for n in notable},
             surfaced_info=_surfaced_info,
             session_id=session_id,
@@ -541,6 +607,31 @@ def process_lab_recording(
             )
             if any((t.get("transcript") or "").strip() for t in _slide_tx):
                 db.set_session_slide_transcripts(session_id, _slide_tx)
+        elif not _slides_for_tx and segments:
+            # DECKLESS ONLY (founder bug #2) — the guard matters: a DECK session
+            # whose Whisper fell back to segments-only (no words) must NOT land
+            # here, or the whole talk gets persisted under pseudo-slide 0 and
+            # the per-slide reader would prefer it (review must-fix).
+            # The salient snippets are a SUBSET of
+            # the recording, so without slides the user had no complete text.
+            # Persist the WHOLE recording's transcript as a single entry (same
+            # column, index 0) — the readout folds it as `full_transcript` so
+            # everything registered via audio is there, once.
+            _full = " ".join(
+                (seg.get("text") or "").strip()
+                for seg in segments
+                if isinstance(seg, dict) and (seg.get("text") or "").strip()
+            ).strip()
+            if _full:
+                _last_end = max(
+                    (seg.get("end") or 0) for seg in segments
+                    if isinstance(seg, dict)
+                )
+                db.set_session_slide_transcripts(session_id, [{
+                    "index": 0, "transcript": _full,
+                    "start_offset_ms": 0,
+                    "duration_ms": int(float(_last_end) * 1000),
+                }])
     except Exception as _stx_err:
         # F1a (per-slide 1:1 transcript) degraded → the take viewer falls back to
         # coarser per-snippet bucketing. Make it observable (no payload change).
@@ -577,6 +668,7 @@ def build_readout_from_session(
     include_insights: bool = True,
     include_slide_scores: bool = False,
     audit_paid: bool = True,
+    include_coach_layer: bool | None = None,
 ) -> dict:
     """Re-derive the §3.3 Readout from PERSISTED snippets — the canonical
     reader for parked-restore + history (contract: a report loads
@@ -592,14 +684,16 @@ def build_readout_from_session(
       - per-snippet ``coach`` {note, tag, when, examples} matched by
         snippet_id (when=None / examples=[] when the note omits them)
 
-    Phase-1 free/paid scope boundary (``audit_paid``). On a PAID arc (default)
-    the full coach layer is folded. On an UNPAID arc (``audit_paid=False`` —
-    the free first take's teaser) the readout exposes ONLY acoustic metrics +
-    the coach-confirmed breakthrough badges + the single strongest breakthrough
-    coach video; it WITHHOLDS the written commentary, the session feedback
-    video (insights_payload.video_ref), every other breakthrough video, and the
-    whole insights_payload. The withheld fields are ABSENT (not null), so the FE
-    renders a locked affordance off ``audit_paid``. AC-9: still score-free.
+    Free/paid scope boundary. ``audit_paid`` = the ARC-level paid flag the FE
+    gates locked affordances on (echoed in the payload). ``include_coach_layer``
+    decides whether the coach HUMAN layer is folded for THIS take — it defaults
+    to ``audit_paid`` but the route passes it TAKE-AWARE (founder 2026-07-06):
+    a paid arc folds every take's human layer; take 1 of the user's FIRST-EVER
+    arc folds it free (the one-time intro); otherwise the human layer is
+    withheld and the readout exposes ONLY acoustic metrics + the coach-confirmed
+    breakthrough badges + the single strongest breakthrough coach video (the
+    teaser hook). Withheld fields are ABSENT (not null). The AUTOMATIC readout
+    is never withheld. AC-9: still score-free.
 
     With a deck, also attaches ``slides`` (the deck), per-snippet ``slide``,
     ``presentation_ref``, and ``slide_transcripts`` — the COMPLETE per-slide 1:1
@@ -743,6 +837,22 @@ def build_readout_from_session(
                     )
             if _stx:
                 result["slide_transcripts"] = _stx
+        else:
+            # DECKLESS (founder bug #2): fold the persisted whole-recording
+            # transcript (stored as a single slide_transcripts entry at record
+            # time) as a plain string — the FE's transcript-text surface.
+            try:
+                _stx = db.get_session_slide_transcripts(session_id)
+                if _stx:
+                    _full = " ".join(
+                        (t.get("transcript") or "").strip()
+                        for t in _stx
+                        if isinstance(t, dict) and (t.get("transcript") or "").strip()
+                    ).strip()
+                    if _full:
+                        result["full_transcript"] = _full
+            except Exception:
+                pass
         if ctx.get("presentation_ref"):
             result["presentation_ref"] = ctx.get("presentation_ref")
 
@@ -754,10 +864,14 @@ def build_readout_from_session(
         if cov:
             result["slide_coverage"] = cov
 
-    # Phase-1 free/paid scope: the single per-arc paid flag the FE gates locked
-    # affordances on. Carried in both scopes so a teaser readout is self-
-    # describing.
+    # Free/paid scope: audit_paid = the ARC-level paid flag; human_feedback_
+    # visible = whether THIS take's coach layer is folded (take-aware — covers
+    # the one-time free-intro take 1). Both carried so the readout is self-
+    # describing for the FE's locked affordances.
+    if include_coach_layer is None:
+        include_coach_layer = bool(audit_paid)
     result["audit_paid"] = bool(audit_paid)
+    result["human_feedback_visible"] = bool(include_coach_layer)
 
     if include_insights:
         try:
@@ -771,7 +885,7 @@ def build_readout_from_session(
                 for n in (ip.get("snippet_notes") or [])
                 if isinstance(n, dict) and n.get("snippet_id")
             }
-            if audit_paid:
+            if include_coach_layer:
                 # PAID — the full coach layer.
                 result["insights_payload"] = ip
                 for snip in out_snips:

@@ -1082,14 +1082,9 @@ def v2_user_get_results(session_id):
         if not session:
             return jsonify({"code": "NOT_FOUND", "error": "Session not found"}), 404
 
-        # Paid Audits (A2): take 2+ of an arc is paywalled (take 1 / non-arc
-        # always free — live-loop fence). Mirrors the readout GET gate so the
-        # legacy /results page is not a back-door around the paywall.
-        _arc_gate = _arc_payment_gate(
-            session.get("arc_id"), session.get("take_index"),
-        )
-        if _arc_gate is not None:
-            return _arc_gate
+        # Founder re-lock 2026-07-06: the automatic results read is never
+        # 402-gated (payment scopes only the coach HUMAN layer, and this legacy
+        # route carries the old coaching shape the willab FE doesn't use).
 
         # BE-3: stress contrast is opt-in via query param so callers
         # that don't render the dashboard section don't pay for two
@@ -4782,6 +4777,24 @@ def _apply_willab_publish_contract(session_id, body, actor_user_id):
         bool(clean_insights["overall_message"]), labels_written,
     )
 
+    # Arc lifecycle (founder #1, 2026-07-06): a publish may complete the
+    # "coach-reviewed" condition — fire the right >=3-takes card now
+    # (best_presentation_ready only when reviewed AND paid; else
+    # transcript_ready). Idempotent per (arc, kind); best-effort.
+    try:
+        _pub_sess = db.v2_get_session_by_id(session_id) or {}
+        _pub_arc = _pub_sess.get("arc_id")
+        if _pub_arc:
+            from services.arc_notifications import (
+                maybe_fire_best_presentation_ready,
+            )
+            maybe_fire_best_presentation_ready(db, _pub_arc)
+    except Exception as _an_err:
+        logger.warning(
+            "publish_contract.arc_card_failed session=%s err=%s (non-fatal)",
+            session_id, _an_err,
+        )
+
     # Subsystem V — freeze the FINAL delivered comment onto each current coach
     # video take (write-once; the comment→video training pair as delivered).
     # take_summary ← overall_message; breakthrough ← that snippet's note. Best-
@@ -8058,6 +8071,44 @@ def _continue_deck_arc(user_id, slides, fresh_arc_id, fresh_take_index):
         return fresh_arc_id, fresh_take_index
 
 
+def _continue_topic_arc(user_id, topic, fresh_arc_id, fresh_take_index):
+    """Continue-one-arc for DECKLESS takes (founder bug #4/#6, 2026-07-06):
+    the conversational practice flow has no deck, so the deck-hash continue
+    never matched and every take minted a FRESH arc — splitting one training
+    across arcs (wrong counter, cadence mismatch, coach saw one take per arc).
+
+    Same doctrine as _continue_deck_arc, keyed on the NORMALIZED TOPIC (the
+    "same talk"): re-recording the same-titled talk joins its most-developed
+    existing arc. New topic / guest / no topic / any error → the fresh arc.
+    Never raises into the record path."""
+    if not user_id or not isinstance(topic, str) or not topic.strip():
+        return fresh_arc_id, fresh_take_index
+    try:
+        norm = " ".join(topic.strip().lower().split())
+        counts: dict = {}
+        for s in (db.v2_list_user_lab_sessions(user_id) or []):
+            ctx = s.get("intake_context") if isinstance(
+                s.get("intake_context"), dict) else {}
+            s_topic = (ctx or {}).get("topic")
+            aid = s.get("arc_id")
+            if not aid or not isinstance(s_topic, str):
+                continue
+            # DECKLESS candidates only (review): a deckless take must not join
+            # a DECK arc that happens to share the topic — mixing alignment-
+            # less takes into a per-slide best-presentation arc.
+            if (ctx or {}).get("slides"):
+                continue
+            if " ".join(s_topic.strip().lower().split()) == norm:
+                counts[aid] = counts.get(aid, 0) + 1
+        if not counts:
+            return fresh_arc_id, fresh_take_index
+        best_arc = max(counts.items(), key=lambda kv: kv[1])[0]
+        return best_arc, counts[best_arc] + 1
+    except Exception as e:
+        logger.warning("continue_topic_arc failed user=%s: %s", user_id, e)
+        return fresh_arc_id, fresh_take_index
+
+
 def _hard_delete_session_for_user(user_id: str, session_id: str) -> None:
     """Durable delete of one take: drop its library rows (so it leaves
     /user/strengths now) AND the underlying session (so the readout-read
@@ -8195,24 +8246,31 @@ def v2_user_get_session_readout(session_id):
                 "code": "SESSION_NOT_FOUND", "error": "Session not found",
             }), 404
 
-        # Paid Audits (A2): take 2+ of an arc is behind the paywall. Take 1 (and
-        # any non-arc / standalone session) is always free (live-loop fence).
-        _arc_gate = _arc_payment_gate(
-            session.get("arc_id"), session.get("take_index"),
-        )
-        if _arc_gate is not None:
-            return _arc_gate
-
-        # Phase-1 free/paid scope: take 1 of an UNPAID arc is free but teaser-
-        # scoped (acoustic + breakthrough badges + one breakthrough video; no
-        # written commentary / session video / ideal text). Paid arc, non-arc
-        # session, and admin/coach all get the full coach layer.
+        # Founder re-lock 2026-07-06: the AUTOMATIC readout is NEVER 402-gated —
+        # every take of every arc reads free (the old take-2+ 402 here rendered
+        # as "Analysis failed" and broke the FE flow, which is why takes 2/3
+        # never got sent). Payment only scopes the coach HUMAN layer below.
+        #
+        # Free/paid scope, TAKE-AWARE: the coach human layer folds when the arc
+        # is paid OR this is take 1 of the user's FIRST-EVER arc (the one-time
+        # free intro). Admin/coach always see everything. The automatic
+        # (acoustic) readout is always full.
         _audit_paid = _arc_audit_paid(
             session.get("arc_id"), request.user_id,
         )
+        _human_visible = _audit_paid
+        if not _human_visible:
+            from services.arc_entitlement import human_feedback_visible
+            _human_visible = human_feedback_visible(
+                db, session.get("arc_id"), request.user_id,
+                session.get("take_index"),
+            )
 
         from services.lab_recording import build_readout_from_session
-        readout = build_readout_from_session(session_id, audit_paid=_audit_paid)
+        readout = build_readout_from_session(
+            session_id, audit_paid=_audit_paid,
+            include_coach_layer=_human_visible,
+        )
 
         published = bool(session.get("results_published_at"))
         if published:
@@ -8248,6 +8306,9 @@ def v2_user_get_session_readout(session_id):
             # Phase-1: per-arc paid flag, mirrored top-level (also inside the
             # readout) so the FE gates locked affordances without digging.
             "audit_paid": _audit_paid,
+            # Take-aware human layer (covers the one-time free-intro take 1) —
+            # True when this take's coach feedback is folded in the readout.
+            "human_feedback_visible": _human_visible,
             "readout": readout,
         }), 200
     except Exception as e:
@@ -8599,29 +8660,23 @@ def _coach_session_state(session, cstate_map):
 
 
 def _build_user_session_status(user_id):
-    """The willab session-status surface (credits + the Phase-1 audit gate).
+    """The willab session-status surface.
 
     Returns {credits, can_start_analysis, audit_paid, audit_price}.
 
-    can_start_analysis is the FE's "can I start the next recording" gate, the
-    AND of two conditions:
-      • credits gate — balance >= 5 (the cost of the next coach feedback; the
-        credit engine stays);
-      • audit gate — Phase-1: once the free first take is recorded on the
-        user's latest UNPAID arc, the next take is paid → block. A fresh user
-        (no arc), a paid arc, and admin/coach all pass.
+    Founder re-lock 2026-07-06: RECORDING IS NEVER BLOCKED — every take of
+    every arc records/analyzes/sends free, so ``can_start_analysis`` is always
+    True (kept in the payload for FE back-compat). Payment gates only the coach
+    HUMAN-feedback view + the best-presentation deliverable; the $50 ask lives
+    in the chat pay-note + the deliverable paywall, not a recording gate.
     audit_paid mirrors the latest arc's entitlement so the FE can gate locked
     affordances globally; audit_price is the headline $50 (minor units) so the
     pricing card can show it without provoking a 402.
     """
-    from services.arc_entitlement import (
-        is_arc_entitled, next_take_requires_payment, audit_price,
-    )
+    from services.arc_entitlement import is_arc_entitled, audit_price
     credits = int(db.v2_ensure_credits_initialized(str(user_id)))
-    credits_ok = credits >= 5
 
     audit_paid = False
-    audit_ok = True
     if is_admin(user_id) or is_coach(user_id):
         # Coach/admin are never gated — they review every arc.
         audit_paid = True
@@ -8632,16 +8687,11 @@ def _build_user_session_status(user_id):
             latest = []
         arc_id = latest[0].get("arc_id") if latest else None
         if arc_id:
-            entitled = is_arc_entitled(db, arc_id, user_id)
-            audit_paid = bool(entitled)
-            if not entitled and next_take_requires_payment(
-                db.get_arc_take_count(arc_id)
-            ):
-                audit_ok = False
+            audit_paid = bool(is_arc_entitled(db, arc_id, user_id))
 
     return {
         "credits": credits,
-        "can_start_analysis": credits_ok and audit_ok,
+        "can_start_analysis": True,
         "audit_paid": audit_paid,
         "audit_price": audit_price(config),
     }
@@ -8657,9 +8707,9 @@ def v2_user_get_credits():
     Lazy-seeds the 15-credit grant on first touch (idempotent via
     credits_initialized_at — never re-granted after spend-to-zero). The credit
     DECREMENT is a side-effect of COACH-FEEDBACK DELIVERY (publish: 5/feedback),
-    NEVER a separate FE call. can_start_analysis now also flips false once the
-    free first take is in the bank on an unpaid arc (see
-    _build_user_session_status). Same payload as GET /v2/session/status.
+    NEVER a separate FE call. can_start_analysis is always True (founder
+    2026-07-06 — recording is never blocked; payment gates only the human-
+    feedback view). Same payload as GET /v2/session/status.
     """
     try:
         return jsonify(_build_user_session_status(request.user_id)), 200
@@ -10193,6 +10243,12 @@ def v2_explore_arc_breakthroughs(arc_id):
         owned, _ = _arc_owned_by_caller(arc_id)
         if not owned:
             return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
+        # Paid deliverable (founder model 2026-07-06): the breakthrough-moments
+        # list is part of the paid layer (the readout teaser keeps badges + one
+        # video; the full cross-take list needs the purchase). Clean 402 paywall.
+        gated = _arc_payment_gate(arc_id)
+        if gated is not None:
+            return gated
         return jsonify({"arc_id": arc_id, **build_arc_breakthroughs(arc_id)}), 200
     except Exception as e:
         logger.error("explore/arc breakthroughs failed arc=%s: %s", arc_id,
@@ -10615,37 +10671,57 @@ def v2_lab_create_recording():
         # Continue-one-arc (founder 2026-06-20): a re-recording of the SAME deck
         # (same authed user) joins that deck's existing arc as the next take,
         # instead of the freshly-minted one — ONE ever-growing arc per deck, so
-        # the best presentation keeps deepening across sittings. New deck / guest
-        # / deckless keep the fresh arc.
+        # the best presentation keeps deepening across sittings. Extended
+        # 2026-07-06 (founder bug #4/#6): DECKLESS takes of the SAME TALK (same
+        # normalized topic) also continue one arc — the conversational practice
+        # flow is deckless, and fresh-arc-per-take split the training across
+        # arcs (counter said "1 of 3" while the bubble said "Take 3 of 3", and
+        # the coach saw one take per arc). Guests keep the fresh arc.
         if getattr(request, "user_id", None) and arc_id:
-            arc_id, take_index = _continue_deck_arc(
-                request.user_id,
-                (session_context or {}).get("slides") or [],
-                arc_id,
-                take_index,
-            )
+            _slides_for_arc = (session_context or {}).get("slides") or []
+            if _slides_for_arc:
+                arc_id, take_index = _continue_deck_arc(
+                    request.user_id, _slides_for_arc, arc_id, take_index,
+                )
+            else:
+                arc_id, take_index = _continue_topic_arc(
+                    request.user_id,
+                    (session_context or {}).get("topic"),
+                    arc_id, take_index,
+                )
         arc_take_count = None
         if arc_id:
-            db.set_session_arc(guest_session_id, arc_id, take_index)
-            arc_take_count = db.get_arc_take_count(arc_id)
-
-        # Paid Audits (A2): take 3+ of an arc requires entitlement. Take 1 & 2
-        # are ALWAYS free to record + upload (live-loop fence) — the gate kicks
-        # in only at take 3 for an unentitled, non-admin/coach user. (Defense in
-        # depth: the FE gates record-start; this rejects a forged take-3 before
-        # the heavy Whisper/analysis pass.) Admin/coach force-publish bypasses.
-        if (arc_id and isinstance(take_index, int) and take_index >= 3
-                and getattr(request, "user_id", None)):
-            from services.arc_entitlement import (
-                is_arc_entitled, payment_required_payload,
-            )
-            if (not (is_admin(request.user_id) or is_coach(request.user_id))
-                    and not is_arc_entitled(db, arc_id, request.user_id)):
-                logger.info(
-                    "lab: take-3 gated (unpaid) arc=%s take=%s user=%s",
-                    arc_id, take_index, request.user_id,
+            # ONE take-count source of truth (founder bug #6): the server-side
+            # arc session count numbers this take — never the FE-sent index
+            # (which drifted and produced "Take 3 of 3" beside "1 of 3 takes").
+            # Review hardening: (a) a RETRY of an already-arc-linked session
+            # keeps its existing number (never double-counts itself); (b) the
+            # count EXCLUDES the current session; (c) a failed count read keeps
+            # the FE-sent index (fail CLOSED — never mislabel a real take-2/3
+            # as take-1, which would open the free-intro human layer).
+            _sess_row = db.v2_get_session_by_id(guest_session_id) or {}
+            if _sess_row.get("arc_id") and _sess_row.get("take_index"):
+                arc_id = _sess_row["arc_id"]
+                take_index = int(_sess_row["take_index"])
+            else:
+                _cnt = db.count_arc_sessions(
+                    arc_id, exclude_session_id=guest_session_id,
                 )
-                return jsonify(payment_required_payload(arc_id, config)), 402
+                if _cnt is not None:
+                    take_index = _cnt + 1
+                db.set_session_arc(guest_session_id, arc_id, take_index)
+            arc_take_count = take_index
+            # Free-intro marker (set-once, review must-fix): the user's first
+            # take-1 upload claims their intro arc durably — deleting takes can
+            # never move it to a later arc. Best-effort.
+            if take_index == 1 and getattr(request, "user_id", None):
+                db.claim_free_intro_arc(str(request.user_id), arc_id)
+
+        # Founder re-lock 2026-07-06: recording/analysis/send are NEVER
+        # payment-gated — every take of every arc records, analyzes, and reaches
+        # the coach free. (The old take-3 402 here aborted unpaid takes before
+        # they persisted — the "coach only received take 1" bug.) Payment gates
+        # only the coach-HUMAN-feedback VIEW + the best-presentation deliverable.
 
         # Pre-recording feeling (U10) — the user named their state before this
         # take (nervous/excited/calm/unsure). Split-sink / AC-9: stored
@@ -10746,29 +10822,50 @@ def v2_lab_create_recording():
                 logger.warning("lab: cadence fire failed sid=%s: %s",
                                guest_session_id, _ce)
 
-        # Best-presentation-ready Lounge card — when this arc just reached the
-        # 3-take threshold, drop a durable, tappable "Your best presentation for
-        # {topic} is ready" card. Idempotent per arc (uuid5 client_id → one card
-        # ever, even though this fires on every take >= 3). Best-effort: never
-        # blocks the response; a missing kind-CHECK column just drops the card.
-        if _cad_user and arc_id and (arc_take_count or 0) >= 3:
+        # AUTO-SEND to the coach (founder re-lock 2026-07-06, bug #4): EVERY
+        # registered recording reaches the coach queue — the send no longer
+        # depends on the FE surviving to a separate merge/claim call (a broken
+        # FE flow silently kept takes 2/3 out of the queue). Idempotent
+        # (pending/completed = no-op) + best-effort: a send hiccup never fails
+        # the upload; the merge-path send stays as the guest fallback.
+        _sent_to_coach = False
+        if _cad_user:
             try:
-                from datetime import datetime as _dt2, timezone as _tz2
-                _bp_topic = (session_context or {}).get("topic")
-                db.insert_lounge_messages(str(_cad_user), [{
-                    "client_id": str(uuid.uuid5(
-                        uuid.NAMESPACE_URL, f"willab-bestpres:{arc_id}",
-                    )),
-                    "role": "bot",
-                    "kind": "best_presentation_ready",
-                    "body": (f"Your best presentation for {_bp_topic} is ready."
-                             if _bp_topic
-                             else "Your best presentation is ready."),
-                    "metadata": {"arc_id": arc_id, "topic": _bp_topic},
-                    "client_created_at": _dt2.now(_tz2.utc).isoformat(),
-                }])
+                from services.lab_send import send_lab_recording_to_coach
+                _send_res = send_lab_recording_to_coach(
+                    guest_session_id, str(_cad_user),
+                )
+                _sent_to_coach = bool(_send_res.get("ok"))
+                logger.info(
+                    "lab: auto-send sid=%s ok=%s already=%s",
+                    guest_session_id, _send_res.get("ok"),
+                    _send_res.get("already_sent"),
+                )
+            except Exception as _send_err:
+                logger.warning("lab: auto-send failed sid=%s: %s (non-fatal)",
+                               guest_session_id, _send_err)
+
+        # Arc lifecycle cards + notes (founder #1/#11) — one owner, idempotent
+        # per (arc, kind), best-effort (services/arc_notifications):
+        #   >=3 takes → best_presentation_ready ONLY when coach-reviewed AND
+        #   paid, else transcript_ready (transcript text + strong sides — never
+        #   present an unchecked best presentation).
+        #   take 1 → "automatic overview + human check underway" note.
+        #   take 2 sent on an UNPAID arc → the $50 unlock note.
+        if _cad_user and arc_id:
+            try:
+                from services.arc_notifications import (
+                    fire_human_check_note, fire_pay_note,
+                    maybe_fire_best_presentation_ready,
+                )
+                if take_index == 1:
+                    fire_human_check_note(db, _cad_user, arc_id)
+                elif take_index == 2:
+                    fire_pay_note(db, _cad_user, arc_id)
+                if (arc_take_count or 0) >= 3:
+                    maybe_fire_best_presentation_ready(db, arc_id)
             except Exception as _bpe:
-                logger.warning("lab: best-pres-ready card failed sid=%s: %s",
+                logger.warning("lab: arc cards failed sid=%s: %s (non-fatal)",
                                guest_session_id, _bpe)
 
         # Recording-progress toward the first audit (BE-4) — so the FE can
@@ -10802,14 +10899,22 @@ def v2_lab_create_recording():
         # slide, so the FE had nothing to render above each snippet's text.
         # build_readout_from_session maps each snippet to the slide on screen via
         # the tap timeline. Best-effort: keep the slide-less payload on a hiccup.
-        # Phase-1 free/paid scope: an unpaid arc's readout is teaser-scoped. At
-        # upload there's no coach layer yet (nothing to withhold), but pass the
-        # flag so the embedded readout.audit_paid matches the GET readout.
+        # Free/paid scope: pass the SAME take-aware flags the GET readout uses,
+        # so the embedded readout's audit_paid + human_feedback_visible match
+        # the re-read exactly (review: the 201 said locked while the GET said
+        # free-intro-open). At upload there's no coach layer yet anyway.
         _audit_paid = _arc_audit_paid(arc_id, getattr(request, "user_id", None))
+        _human_visible = _audit_paid
+        if not _human_visible:
+            from services.arc_entitlement import human_feedback_visible
+            _human_visible = human_feedback_visible(
+                db, arc_id, getattr(request, "user_id", None), take_index,
+            )
         try:
             from services.lab_recording import build_readout_from_session
             _full = build_readout_from_session(
                 guest_session_id, audit_paid=_audit_paid,
+                include_coach_layer=_human_visible,
             )
             if isinstance(_full, dict) and _full.get("snippets"):
                 readout = _full
@@ -10836,10 +10941,11 @@ def v2_lab_create_recording():
             # Length → audits (A5). duration_minutes = this take's length.
             "duration_minutes": duration_minutes,
             "audits_needed": audits_needed,
-            # A fresh upload is always readout_ready (processed, not yet sent).
-            # Explicit so the 201 is self-describing + matches the re-read /
-            # history `state` field (FE asked: Q2 of the last-pass handoff).
-            "state": "readout_ready",
+            # Self-describing + matches the re-read/history `state` field. With
+            # auto-send (founder 2026-07-06) an authed upload is ALREADY in the
+            # coach queue → review_pending; guests / a send hiccup stay
+            # readout_ready (the merge-path send picks them up).
+            "state": ("review_pending" if _sent_to_coach else "readout_ready"),
             "session_context": session_context,
             "readout": readout,
             # Explore-session arc (Prompt A §3) — null for standalone takes.
