@@ -175,11 +175,12 @@ class ProgressTests(unittest.TestCase):
 
 class _FakeDB:
     def __init__(self, sessions, snippets_by_session, labels_by_session,
-                 edits=None):
+                 edits=None, coach_edits=None):
         self._sessions = sessions
         self._snips = snippets_by_session
         self._labels = labels_by_session
         self._edits = edits or {}
+        self._coach_edits = coach_edits or {}
 
     def get_arc_sessions(self, arc_id):
         return list(self._sessions)
@@ -192,6 +193,9 @@ class _FakeDB:
 
     def get_best_presentation_edits(self, arc_id):
         return dict(self._edits)
+
+    def get_coach_best_presentation_edits(self, arc_id):
+        return dict(self._coach_edits)
 
 
 class BuildTests(unittest.TestCase):
@@ -226,7 +230,13 @@ class BuildTests(unittest.TestCase):
         return _FakeDB(sessions, snips, labels)
 
     def test_build_surfaces_challenge_breakthrough(self):
-        out = bp.build_best_presentation("arc1", database=self._db())
+        # coach_view=True: this test verifies COMPOSITION/SELECTION logic, the
+        # surface where the auto-assembled draft is actually visible (founder
+        # 2026-07-06 — the student never sees it pre-coach-correction; see
+        # CoachFinalizedGateTests below for that gate itself).
+        out = bp.build_best_presentation(
+            "arc1", database=self._db(), coach_view=True,
+        )
         self.assertEqual(out["progress"]["takes_done"], 1)
         self.assertFalse(out["ready"])  # only 1 of 3 takes
         slide0 = out["slides"][0]
@@ -272,6 +282,7 @@ class BuildTests(unittest.TestCase):
         ]}
         out = bp.build_best_presentation(
             "arc1", database=_FakeDB(sessions, snips, {}),  # no labels
+            coach_view=True,  # composition-logic test — see module docstring
         )
         slide0 = out["slides"][0]
         self.assertFalse(slide0["breakthrough"])
@@ -280,10 +291,14 @@ class BuildTests(unittest.TestCase):
 
     def test_saved_edit_overrides_composed_text(self):
         # A pencil-edit for slide 0 overrides the composed text + flags edited.
+        # User edits only apply once coach_finalized (founder 2026-07-06), so
+        # seed a coach edit too — the user's edit still wins on top of it.
         db = self._db()
+        db._coach_edits = {0: "the coach's corrected line"}
         db._edits = {0: "my hand-edited line"}
         out = bp.build_best_presentation("arc1", database=db)
         slide0 = out["slides"][0]
+        self.assertTrue(out["coach_finalized"])
         self.assertEqual(slide0["text"], "my hand-edited line")
         self.assertTrue(slide0["edited"])
 
@@ -334,6 +349,126 @@ class BuildTests(unittest.TestCase):
         self.assertFalse(out["ready"])
         self.assertEqual(out["progress"]["takes_done"], 0)
         self.assertEqual(out["slides"], [])
+
+
+class CoachFinalizedGateTests(unittest.TestCase):
+    """Founder 2026-07-06 — the coach-owned ideal-text correction. The raw
+    auto-assembled draft must NEVER reach the student: every slide's `text`
+    is hidden ("") until the coach has corrected EVERY slide (coach_finalized),
+    regardless of arc payment (payment is a separate, route-level 402 gate).
+    ``coach_view=True`` (the coach's OWN editing surface) always sees the
+    current draft/progress, never hidden, and does not apply the student's
+    pencil-edits."""
+
+    def setUp(self):
+        self._orig = bp._render_composition
+        bp._render_composition = lambda picks, slides: None  # verbatim path
+
+    def tearDown(self):
+        bp._render_composition = self._orig
+
+    def _two_slide_db(self, coach_edits=None, user_edits=None):
+        sessions = [{
+            "id": "s1", "take_index": 1,
+            "intake_context": {
+                "slides": [{"title": "Slide 1", "body": "p1"},
+                           {"title": "Slide 2", "body": "p2"}],
+                "slide_advances": [{"index": 0, "t_ms": 0},
+                                   {"index": 1, "t_ms": 5000}],
+            },
+        }]
+        snips = {"s1": [
+            {"id": "a", "start_offset_ms": 0, "duration_ms": 1000,
+             "transcript": "auto line one", "storage_path": "s3://a",
+             "metrics": {"overall_score": 0.5}},
+            {"id": "b", "start_offset_ms": 5000, "duration_ms": 1000,
+             "transcript": "auto line two", "storage_path": "s3://b",
+             "metrics": {"overall_score": 0.5}},
+        ]}
+        return _FakeDB(sessions, snips, {}, edits=user_edits,
+                       coach_edits=coach_edits)
+
+    def test_no_coach_edits_not_finalized_student_sees_nothing(self):
+        out = bp.build_best_presentation(
+            "arc1", database=self._two_slide_db(),
+        )
+        self.assertFalse(out["coach_finalized"])
+        for s in out["slides"]:
+            self.assertEqual(s["text"], "")
+            self.assertFalse(s["coach_edited"])
+
+    def test_partial_coach_edits_still_not_finalized(self):
+        # Only slide 0 corrected → the WHOLE arc stays hidden from the student
+        # (all-or-nothing, mirrors the "every take published" precedent).
+        out = bp.build_best_presentation(
+            "arc1", database=self._two_slide_db(
+                coach_edits={0: "coach fixed slide one"}),
+        )
+        self.assertFalse(out["coach_finalized"])
+        for s in out["slides"]:
+            self.assertEqual(s["text"], "")
+
+    def test_every_slide_corrected_finalizes_and_shows_coach_text(self):
+        out = bp.build_best_presentation(
+            "arc1", database=self._two_slide_db(coach_edits={
+                0: "coach fixed slide one", 1: "coach fixed slide two",
+            }),
+        )
+        self.assertTrue(out["coach_finalized"])
+        self.assertEqual(out["slides"][0]["text"], "coach fixed slide one")
+        self.assertEqual(out["slides"][1]["text"], "coach fixed slide two")
+        self.assertTrue(out["slides"][0]["coach_edited"])
+        self.assertTrue(out["slides"][1]["coach_edited"])
+
+    def test_user_pencil_edit_wins_over_coach_text_once_finalized(self):
+        out = bp.build_best_presentation(
+            "arc1", database=self._two_slide_db(
+                coach_edits={0: "coach fixed slide one",
+                             1: "coach fixed slide two"},
+                user_edits={0: "user's own tweak"},
+            ),
+        )
+        self.assertEqual(out["slides"][0]["text"], "user's own tweak")
+        self.assertTrue(out["slides"][0]["edited"])
+        # slide 1 has no user edit — coach text stands.
+        self.assertEqual(out["slides"][1]["text"], "coach fixed slide two")
+        self.assertFalse(out["slides"][1]["edited"])
+
+    def test_coach_view_always_shows_draft_even_unfinalized(self):
+        # coach_view=True: the coach's own preview — never hidden, no
+        # "still preparing" state, regardless of finalized status.
+        out = bp.build_best_presentation(
+            "arc1", database=self._two_slide_db(), coach_view=True,
+        )
+        self.assertFalse(out["coach_finalized"])
+        self.assertEqual(out["slides"][0]["text"], "auto line one")
+        self.assertEqual(out["slides"][1]["text"], "auto line two")
+
+    def test_coach_view_shows_own_partial_progress(self):
+        out = bp.build_best_presentation(
+            "arc1", database=self._two_slide_db(
+                coach_edits={0: "coach fixed slide one"}),
+            coach_view=True,
+        )
+        self.assertEqual(out["slides"][0]["text"], "coach fixed slide one")
+        self.assertTrue(out["slides"][0]["coach_edited"])
+        # slide 1 untouched by the coach — shows the auto draft, not hidden.
+        self.assertEqual(out["slides"][1]["text"], "auto line two")
+        self.assertFalse(out["slides"][1]["coach_edited"])
+
+    def test_coach_view_ignores_user_pencil_edits(self):
+        # The coach's editing surface is not confused by the student's own
+        # personalization — it always shows auto/coach text, never the user's.
+        out = bp.build_best_presentation(
+            "arc1", database=self._two_slide_db(
+                coach_edits={0: "coach fixed slide one",
+                             1: "coach fixed slide two"},
+                user_edits={0: "user's own tweak"},
+            ),
+            coach_view=True,
+        )
+        self.assertEqual(out["slides"][0]["text"], "coach fixed slide one")
+        self.assertNotIn("edited", out["slides"][0])  # user-edit key not set
 
 
 class ArcBreakthroughsTests(unittest.TestCase):
@@ -460,11 +595,13 @@ class BestPresentationCacheTests(unittest.TestCase):
 
     def test_miss_then_hit_skips_compose_and_snippet_read(self):
         db = self._db()
-        out1 = bp.build_best_presentation("arc1", database=db)
+        # coach_view=True: verifying cache behavior on the actual composed
+        # text, the surface where it's visible pre-coach-finalization.
+        out1 = bp.build_best_presentation("arc1", database=db, coach_view=True)
         self.assertEqual(len(self.compose_calls), 1)   # composed on the miss
         self.assertEqual(out1["slides"][0]["text"], "line")
         self.assertEqual(db.snippet_reads, 1)
-        out2 = bp.build_best_presentation("arc1", database=db)
+        out2 = bp.build_best_presentation("arc1", database=db, coach_view=True)
         self.assertEqual(len(self.compose_calls), 1)   # HIT → no recompose
         self.assertEqual(db.snippet_reads, 1)          # HIT → no snippet read
         self.assertEqual(out2["slides"][0]["text"], "line")
@@ -490,11 +627,16 @@ class BestPresentationCacheTests(unittest.TestCase):
         self.assertEqual(len(self.compose_calls), 2)
 
     def test_edits_applied_fresh_on_cache_hit(self):
+        # User edits only apply once coach_finalized (founder 2026-07-06) —
+        # seed a coach edit up front so the user edit added AFTER the cache is
+        # warm still lands fresh on the hit (edits are never part of the cache).
         db = self._db()
+        db._coach_edits = {0: "the coach's corrected line"}
         bp.build_best_presentation("arc1", database=db)   # miss → caches
         db._edits = {0: "my hand edit"}
         out = bp.build_best_presentation("arc1", database=db)  # hit
         self.assertEqual(len(self.compose_calls), 1)      # no recompose
+        self.assertTrue(out["coach_finalized"])
         self.assertEqual(out["slides"][0]["text"], "my hand edit")
         self.assertTrue(out["slides"][0]["edited"])
 
@@ -559,7 +701,10 @@ class BatchedArcReadsTests(unittest.TestCase):
 
     def test_build_best_presentation_uses_one_query_each(self):
         db = self._db()
-        out = bp.build_best_presentation("arc1", database=db)
+        # coach_view=True: verifying compose behavior, the surface where the
+        # auto draft is visible (founder 2026-07-06 gate — see
+        # CoachFinalizedGateTests).
+        out = bp.build_best_presentation("arc1", database=db, coach_view=True)
         self.assertEqual(db.batch_snippet_calls, 1)   # ONE snippets query
         self.assertEqual(db.batch_label_calls, 1)     # ONE labels query
         self.assertEqual(db.singular_snippet_calls, 0)  # no per-take N+1
@@ -577,10 +722,16 @@ class BatchedArcReadsTests(unittest.TestCase):
 
     def test_matches_per_session_fallback_result(self):
         # the batched result equals the legacy per-session path (parity).
-        batched = bp.build_best_presentation("arc1", database=self._db())
+        # coach_view=True so the compared text is the actual composed content,
+        # not both sides trivially "" (student view hides pre-finalization).
+        batched = bp.build_best_presentation(
+            "arc1", database=self._db(), coach_view=True,
+        )
         legacy = bp.build_best_presentation(
             "arc1", database=_FakeDB(
-                self._db()._sessions, self._db()._snips, {}))
+                self._db()._sessions, self._db()._snips, {}),
+            coach_view=True,
+        )
         self.assertEqual([s["text"] for s in batched["slides"]],
                          [s["text"] for s in legacy["slides"]])
 

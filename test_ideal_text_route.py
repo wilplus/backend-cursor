@@ -1,0 +1,123 @@
+"""GET /v2/talks/<talk_id>/ideal-text — ROUTE-level composition test (review
+gap: the 402 payment gate and the coach_finalized content gate are separate
+mechanisms that must compose correctly; only the service function was
+covered before this file — see test_ideal_text_report.py for the pure
+build_ideal_text_report mapping tests, and test_best_presentation.py's
+CoachFinalizedGateTests for the gate itself).
+
+Run: python3 -m unittest test_ideal_text_route
+"""
+from __future__ import annotations
+
+import unittest
+from unittest.mock import patch
+
+try:
+    from flask import Flask, request
+    from routes import v2_routes as v2
+    _IMPORT_ERROR = None
+except Exception as e:  # pragma: no cover
+    Flask = None
+    request = None
+    v2 = None
+    _IMPORT_ERROR = e
+
+
+def _sess(sid="s1"):
+    return {
+        "id": sid, "user_id": "u1", "take_index": 1,
+        "intake_context": {
+            "topic": "My talk",
+            "slides": [{"title": "Slide 1", "body": "p"}],
+            "slide_advances": [{"index": 0, "t_ms": 0}],
+        },
+    }
+
+
+def _snip(sid):
+    return {"id": sid, "start_offset_ms": 0, "duration_ms": 1000,
+            "transcript": "a line", "storage_path": f"s3://{sid}",
+            "metrics": {"overall_score": 0.5}}
+
+
+@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
+class IdealTextRouteCompositionTests(unittest.TestCase):
+    """Composes the 402 gate (paid_deliverables_visible) with the SEPARATE
+    coach_finalized content gate (services.best_presentation) — verifies the
+    route never conflates "paid" with "the coach actually finished"."""
+
+    def setUp(self):
+        self.app = Flask(__name__)
+        sessions = [_sess(f"s{i}") for i in range(3)]
+        snips = {f"s{i}": [_snip(f"c{i}")] for i in range(3)}
+        self._p = [
+            patch.object(v2, "_arc_owned_by_caller",
+                        lambda arc_id: (True, sessions)),
+            patch.object(v2, "is_admin", lambda uid: False),
+            patch.object(v2, "is_coach", lambda uid: False),
+            patch.object(v2.db, "get_arc_sessions", lambda arc_id: sessions),
+            patch.object(v2.db, "get_snippets_by_session",
+                        lambda sid: snips.get(sid, [])),
+            patch.object(v2.db, "get_training_labels", lambda sid: []),
+            patch.object(v2.db, "get_best_presentation_edits",
+                        lambda arc_id: {}),
+        ]
+        for p in self._p:
+            p.start()
+        self._coach_edits = {}
+        self._purchase = None
+        _edits_patch = patch.object(
+            v2.db, "get_coach_best_presentation_edits",
+            lambda arc_id: dict(self._coach_edits),
+        )
+        _purchase_patch = patch.object(
+            v2.db, "get_arc_purchase", lambda arc_id: self._purchase,
+        )
+        self._p += [_edits_patch, _purchase_patch]
+        _edits_patch.start()
+        _purchase_patch.start()
+
+    def tearDown(self):
+        for p in self._p:
+            p.stop()
+
+    def _call(self, talk_id="a1"):
+        with self.app.test_request_context():
+            request.user_id = "u1"
+            resp, status = v2.v2_talk_ideal_text.__wrapped__(talk_id)
+            return resp.get_json(), status
+
+    def test_unpaid_arc_402s_before_any_content(self):
+        self._purchase = None
+        self._coach_edits = {0: "coach's corrected line"}  # even if finalized!
+        body, status = self._call()
+        self.assertEqual(status, 402)
+        self.assertEqual(body["code"], "PAYMENT_REQUIRED")
+
+    def test_paid_but_not_finalized_returns_200_with_empty_ideal_text(self):
+        self._purchase = {"arc_id": "a1", "user_id": "u1"}
+        self._coach_edits = {}  # coach hasn't corrected anything yet
+        body, status = self._call()
+        self.assertEqual(status, 200)
+        self.assertFalse(body["coachFinalized"])
+        for s in body["slides"]:
+            self.assertEqual(s["idealText"], "")
+
+    def test_paid_and_finalized_returns_real_ideal_text(self):
+        self._purchase = {"arc_id": "a1", "user_id": "u1"}
+        self._coach_edits = {0: "coach's corrected line"}
+        body, status = self._call()
+        self.assertEqual(status, 200)
+        self.assertTrue(body["coachFinalized"])
+        self.assertEqual(body["slides"][0]["idealText"],
+                         "coach's corrected line")
+
+    def test_not_owner_404s(self):
+        with patch.object(v2, "_arc_owned_by_caller",
+                          lambda arc_id: (False, [])):
+            body, status = self._call()
+        self.assertEqual(status, 404)
+
+
+if __name__ == "__main__":
+    unittest.main()

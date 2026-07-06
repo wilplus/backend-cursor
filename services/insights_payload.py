@@ -41,6 +41,10 @@ _MAX_EXAMPLES = 10
 # Per-snippet coach breakthrough video — a public URL (no new text field; the
 # breakthrough explanation is the note itself). Optional; empty → None.
 _MAX_VIDEO_REF_LEN = 2048
+# Coach-corrected transcript (founder 2026-07-06) — a real coach-authored
+# artifact, distinct from `note` (commentary) and the immutable raw
+# transcript. Optional; empty → None.
+_MAX_TRANSCRIPT_CORRECTED_LEN = 4000
 
 
 class InsightsPayloadError(ValueError):
@@ -210,6 +214,24 @@ def validate_insights_payload(body: Any) -> dict:
                     )
                 breakthrough_video_ref = bvr
 
+        # Coach-corrected transcript (founder 2026-07-06) — optional str,
+        # empty → None.
+        tx_raw = n.get("transcript_corrected")
+        transcript_corrected: Optional[str] = None
+        if tx_raw is not None:
+            if not isinstance(tx_raw, str):
+                raise InsightsPayloadError(
+                    f"snippet_notes[{i}].transcript_corrected: must be a string"
+                )
+            tx = tx_raw.strip()
+            if tx:
+                if len(tx) > _MAX_TRANSCRIPT_CORRECTED_LEN:
+                    raise InsightsPayloadError(
+                        f"snippet_notes[{i}].transcript_corrected: must be "
+                        f"{_MAX_TRANSCRIPT_CORRECTED_LEN} characters or fewer"
+                    )
+                transcript_corrected = tx
+
         cleaned_notes.append({
             "snippet_id": sid,
             "note": note,
@@ -217,6 +239,7 @@ def validate_insights_payload(body: Any) -> dict:
             "when": when_val,
             "examples": examples_val,
             "breakthrough_video_ref": breakthrough_video_ref,
+            "transcript_corrected": transcript_corrected,
         })
 
     return {

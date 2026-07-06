@@ -224,18 +224,18 @@ class ReadoutFromSessionTests(unittest.TestCase):
         self.assertNotIn("slide_transcripts", out)  # nothing to surface → omit
 
 
-class TeaserScopeTests(unittest.TestCase):
-    """Phase-1 free/paid scope boundary in build_readout_from_session.
-
-    PAID (audit_paid=True, default) → full coach layer. UNPAID (audit_paid=
-    False, the free-take teaser) → acoustic + breakthrough badges + the single
-    strongest breakthrough video ONLY; insights_payload, written commentary,
-    the session video, and the other breakthrough videos are all ABSENT."""
+class CoachLayerAlwaysFreeTests(unittest.TestCase):
+    """Founder re-price 2026-07-06: the coach layer (note, tag, transcript_
+    corrected, breakthrough badge + video) folds UNCONDITIONALLY the instant
+    the coach saves + surfaces it — regardless of ``audit_paid``. The old
+    per-take/free-intro teaser scoping (withhold on an unpaid arc) is RETIRED;
+    only the coach-corrected IDEAL TEXT, the breakthroughs LIST, the game, and
+    the snippet library remain paid — none of which this function serves."""
 
     @staticmethod
     def _session_with_two_breakthroughs():
         # Two coach-labelled breakthroughs (threat→challenge twice), each with a
-        # coach video; ranks pick s4 (rank 1) over s2 (rank 3) as strongest.
+        # coach video + a corrected transcript on one of them.
         return {
             "id": "sess1",
             "insights_payload": {
@@ -245,7 +245,8 @@ class TeaserScopeTests(unittest.TestCase):
                     {"snippet_id": "s2", "note": "nice recovery", "tag": "strong",
                      "breakthrough_video_ref": "https://x/bt-s2.webm"},
                     {"snippet_id": "s4", "note": "the best moment", "tag": "strong",
-                     "breakthrough_video_ref": "https://x/bt-s4.webm"},
+                     "breakthrough_video_ref": "https://x/bt-s4.webm",
+                     "transcript_corrected": "The corrected line, verbatim."},
                 ],
             },
         }
@@ -270,7 +271,7 @@ class TeaserScopeTests(unittest.TestCase):
         {"snippet_id": "s4", "value": "challenge"},
     ]
 
-    def _build(self, *, audit_paid):
+    def _build(self, *, audit_paid=True):
         from services import lab_recording as mod
         from services.db import db
         with patch.object(db, "get_snippets_by_session",
@@ -282,47 +283,37 @@ class TeaserScopeTests(unittest.TestCase):
                 "sess1", include_insights=True, audit_paid=audit_paid,
             )
 
-    def test_paid_full_scope(self):
-        out = self._build(audit_paid=True)
-        self.assertTrue(out["audit_paid"])
-        # Full coach layer present.
+    def test_unpaid_arc_still_gets_full_coach_layer(self):
+        out = self._build(audit_paid=False)
+        self.assertFalse(out["audit_paid"])  # echoed as-is
+        # Coach layer folds anyway — no payment gate on it.
         self.assertEqual(out["insights_payload"]["overall_message"],
                          "Strong throughout.")
         by_id = {s["id"]: s for s in out["snippets"]}
         self.assertEqual(by_id["s2"]["coach"]["note"], "nice recovery")
         self.assertEqual(by_id["s4"]["coach"]["note"], "the best moment")
-        # BOTH breakthrough videos delivered.
+        # BOTH breakthrough videos delivered (no "strongest only" narrowing).
         self.assertEqual(by_id["s2"]["breakthrough_video_ref"],
                          "https://x/bt-s2.webm")
         self.assertEqual(by_id["s4"]["breakthrough_video_ref"],
                          "https://x/bt-s4.webm")
 
-    def test_teaser_withholds_commentary_and_session_video(self):
-        out = self._build(audit_paid=False)
-        self.assertFalse(out["audit_paid"])
-        # insights_payload (carries overall_message + session video_ref) absent.
-        self.assertNotIn("insights_payload", out)
-        # No written commentary on any snippet.
-        for s in out["snippets"]:
-            self.assertNotIn("coach", s)
-
-    def test_teaser_keeps_only_strongest_breakthrough_video(self):
+    def test_coach_corrected_transcript_folds_when_present(self):
         out = self._build(audit_paid=False)
         by_id = {s["id"]: s for s in out["snippets"]}
-        # Acoustic + breakthrough badges survive.
-        self.assertTrue(by_id["s2"]["breakthrough"])
-        self.assertTrue(by_id["s4"]["breakthrough"])
-        self.assertIn("features", by_id["s4"])
-        # Exactly ONE breakthrough video — the strongest (s4, rank 1).
-        with_video = [s["id"] for s in out["snippets"]
-                      if s.get("breakthrough_video_ref")]
-        self.assertEqual(with_video, ["s4"])
-        self.assertEqual(by_id["s4"]["breakthrough_video_ref"],
-                         "https://x/bt-s4.webm")
-        self.assertNotIn("breakthrough_video_ref", by_id["s2"])
+        self.assertEqual(by_id["s4"]["coach"]["transcript_corrected"],
+                         "The corrected line, verbatim.")
+        # s2 never got one — present as None, not missing.
+        self.assertIsNone(by_id["s2"]["coach"]["transcript_corrected"])
 
-    def test_audit_paid_defaults_to_full(self):
-        # Existing callers (no audit_paid kwarg) keep the full scope.
+    def test_paid_arc_identical_coach_layer(self):
+        # Payment changes nothing about this function's output.
+        out_paid = self._build(audit_paid=True)
+        out_unpaid = self._build(audit_paid=False)
+        for k in ("insights_payload", "snippets"):
+            self.assertEqual(out_paid[k], out_unpaid[k])
+
+    def test_audit_paid_defaults_to_true_and_coach_layer_present(self):
         from services import lab_recording as mod
         from services.db import db
         with patch.object(db, "get_snippets_by_session",

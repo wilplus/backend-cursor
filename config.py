@@ -258,21 +258,28 @@ class Config:
     # JSON object: Stripe Price id → integer credits to add, e.g. {"price_abc":15,"price_def":40}
     STRIPE_CHECKOUT_PRICE_CREDITS_JSON = (os.getenv("STRIPE_CHECKOUT_PRICE_CREDITS_JSON") or "").strip()
 
-    # ── willab — Paid Audits (BE chunk A3). An "audit" = an explore arc
-    # (3 takes + the ideal-text report). One price; take-1 is always free.
-    # Phase-1 pricing (locked 2026-06-27): $50 = one full audit, free first
-    # take, money-back. AUDIT_PRICE_AMOUNT_MINOR is in minor units
-    # (5000 = $50.00 USD). Override via env in any market that re-prices.
+    # ── willab — Paid Audits. An "audit" = an explore arc (3 takes + the
+    # coach-corrected ideal text). Re-priced 2026-07-06: $25, spent as
+    # ARC_UNLOCK_CREDITS from the existing credits balance (NOT a second
+    # Stripe SKU — see POST /v2/arc/<arc_id>/unlock). AUDIT_PRICE_AMOUNT_MINOR/
+    # CURRENCY are kept ONLY as the display-price the credits are worth + to
+    # honor legacy $50 Stripe-direct grandfathered arcs (services/arc_checkout.py
+    # — dormant, no longer advertised for new purchases).
     AUDIT_PRICE_CURRENCY = (os.getenv("AUDIT_PRICE_CURRENCY") or "usd").strip().lower() or "usd"
-    AUDIT_PRICE_AMOUNT_MINOR = int(os.getenv("AUDIT_PRICE_AMOUNT_MINOR") or "5000")
-    # Stripe Price id for the audit (mode=payment Checkout). Empty → checkout
-    # builds a one-off price_data line from the amount/currency above.
+    AUDIT_PRICE_AMOUNT_MINOR = int(os.getenv("AUDIT_PRICE_AMOUNT_MINOR") or "2500")
+    # Stripe Price id for the LEGACY audit checkout (mode=payment). Dormant.
     STRIPE_AUDIT_PRICE_ID = (os.getenv("STRIPE_AUDIT_PRICE_ID") or "").strip()
     # Delivery SLA surfaced in the 402 / paywall copy (hours).
     AUDIT_SLA_HOURS = int(os.getenv("AUDIT_SLA_HOURS") or "48")
-    # Checkout redirect targets (FE pages). success_url gets the arc id.
+    # Checkout redirect targets (legacy FE pages). Dormant alongside the above.
     AUDIT_CHECKOUT_SUCCESS_URL = (os.getenv("AUDIT_CHECKOUT_SUCCESS_URL") or "").strip() or None
     AUDIT_CHECKOUT_CANCEL_URL = (os.getenv("AUDIT_CHECKOUT_CANCEL_URL") or "").strip() or None
+    # THE live price (2026-07-06): credits spent by POST /v2/arc/<arc_id>/unlock.
+    # 1 credit = $1 (this model's founding peg — no Stripe pack pricing was
+    # configured in env before this, so there is no prior peg to violate).
+    # OPERATIONAL: at least one Stripe credit pack (STRIPE_CHECKOUT_PRICE_
+    # CREDITS_JSON) must map a Price id to >=25 credits before this ships live.
+    ARC_UNLOCK_CREDITS = int(os.getenv("ARC_UNLOCK_CREDITS") or "25")
 
     # Optional: annotation event export (cron / internal). See POST /v2/internal/annotation-export
     ANNOTATION_EXPORT_CRON_SECRET = (os.getenv("ANNOTATION_EXPORT_CRON_SECRET") or "").strip()

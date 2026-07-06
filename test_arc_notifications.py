@@ -14,9 +14,12 @@ from services.lab_recording import dedupe_window_transcripts
 
 
 class _FakeDB:
-    def __init__(self, sessions=None, purchase=None):
+    def __init__(self, sessions=None, purchase=None, coach_edits=None,
+                 snips_by_sid=None):
         self._sessions = sessions or []
         self._purchase = purchase
+        self._coach_edits = coach_edits or {}
+        self._snips = snips_by_sid or {}
         self.inserted = []
 
     def get_arc_sessions(self, arc_id):
@@ -25,58 +28,96 @@ class _FakeDB:
     def get_arc_purchase(self, arc_id):
         return self._purchase
 
+    def get_snippets_by_session(self, sid):
+        return list(self._snips.get(sid, []))
+
+    def get_training_labels(self, sid):
+        return []
+
+    def get_coach_best_presentation_edits(self, arc_id):
+        return dict(self._coach_edits)
+
+    def get_best_presentation_edits(self, arc_id):
+        return {}
+
     def insert_lounge_messages(self, user_id, messages):
         for m in messages:
             self.inserted.append((user_id, m))
         return messages
 
 
-def _sess(uid="u1", published=False, topic="My talk"):
+def _sess(sid="s1", uid="u1", published=False, topic="My talk"):
+    # ONE slide, ONE snippet — build_best_presentation composes exactly one
+    # slide so coach_finalized only needs {0: <text>} to control it.
     return {
+        "id": sid,
         "user_id": uid,
         "results_published_at": "2026-07-06T00:00:00Z" if published else None,
-        "intake_context": {"topic": topic},
+        "intake_context": {
+            "topic": topic,
+            "slides": [{"title": "Slide 1", "body": "p"}],
+            "slide_advances": [{"index": 0, "t_ms": 0}],
+        },
     }
+
+
+def _snip(sid):
+    return {"id": sid, "start_offset_ms": 0, "duration_ms": 1000,
+            "transcript": "a line", "storage_path": f"s3://{sid}",
+            "metrics": {"overall_score": 0.5}}
 
 
 class BestPresentationCardTests(unittest.TestCase):
     # Founder #1: the best-presentation buttons appear ONLY when the coach has
-    # reviewed AND the arc is paid; otherwise the transcript card.
+    # FINALIZED the ideal text (corrected every slide — the real signal from
+    # services.best_presentation) AND the arc is paid; otherwise the
+    # transcript card.
+    def _sessions(self, n, **kw):
+        return [_sess(sid=f"s{i}", **kw) for i in range(n)]
+
+    def _snips(self, n):
+        return {f"s{i}": [_snip(f"c{i}")] for i in range(n)}
+
     def test_under_three_takes_fires_nothing(self):
-        db = _FakeDB(sessions=[_sess(), _sess()])
+        db = _FakeDB(sessions=self._sessions(2), snips_by_sid=self._snips(2))
         self.assertIsNone(maybe_fire_best_presentation_ready(db, "a1"))
         self.assertEqual(db.inserted, [])
 
-    def test_three_takes_unreviewed_fires_transcript_ready(self):
-        db = _FakeDB(sessions=[_sess(), _sess(), _sess()])
+    def test_three_takes_unfinalized_fires_transcript_ready(self):
+        db = _FakeDB(sessions=self._sessions(3), snips_by_sid=self._snips(3))
         self.assertEqual(
             maybe_fire_best_presentation_ready(db, "a1"), "transcript_ready")
         _, msg = db.inserted[0]
         self.assertEqual(msg["kind"], "transcript_ready")
 
-    def test_reviewed_but_unpaid_still_transcript_ready(self):
-        db = _FakeDB(sessions=[_sess(published=True)] * 3, purchase=None)
+    def test_finalized_but_unpaid_still_transcript_ready(self):
+        db = _FakeDB(sessions=self._sessions(3), snips_by_sid=self._snips(3),
+                     purchase=None, coach_edits={0: "coach's corrected line"})
         self.assertEqual(
             maybe_fire_best_presentation_ready(db, "a1"), "transcript_ready")
 
-    def test_paid_but_unreviewed_still_transcript_ready(self):
-        db = _FakeDB(sessions=[_sess(), _sess(), _sess()],
+    def test_paid_but_unfinalized_still_transcript_ready(self):
+        db = _FakeDB(sessions=self._sessions(3), snips_by_sid=self._snips(3),
                      purchase={"arc_id": "a1", "user_id": "u1"})
         self.assertEqual(
             maybe_fire_best_presentation_ready(db, "a1"), "transcript_ready")
 
-    def test_paid_but_only_partially_reviewed_still_transcript_ready(self):
-        # Review must-fix: "reviewed" = EVERY take published — with the free
-        # take-1 human check, any-one-published is vacuously true by take 3
-        # and the bp card would fire from take-3's UPLOAD.
-        db = _FakeDB(sessions=[_sess(published=True), _sess(), _sess()],
-                     purchase={"arc_id": "a1", "user_id": "u1"})
+    def test_paid_and_all_takes_published_but_not_finalized_still_transcript(self):
+        # Review must-fix (retained): "all takes published" is NOT the same as
+        # coach_finalized — with the free take-1 human check + auto-publish,
+        # a proxy on published-status alone would fire the bp card too early.
+        db = _FakeDB(
+            sessions=self._sessions(3, published=True),
+            snips_by_sid=self._snips(3),
+            purchase={"arc_id": "a1", "user_id": "u1"},
+        )
         self.assertEqual(
             maybe_fire_best_presentation_ready(db, "a1"), "transcript_ready")
 
-    def test_reviewed_and_paid_fires_best_presentation_ready(self):
-        db = _FakeDB(sessions=[_sess(published=True)] * 3,
-                     purchase={"arc_id": "a1", "user_id": "u1"})
+    def test_finalized_and_paid_fires_best_presentation_ready(self):
+        db = _FakeDB(sessions=self._sessions(3), snips_by_sid=self._snips(3),
+                     purchase={"arc_id": "a1", "user_id": "u1"},
+                     coach_edits={0: "coach's corrected line"})
         self.assertEqual(
             maybe_fire_best_presentation_ready(db, "a1"),
             "best_presentation_ready")
@@ -85,7 +126,7 @@ class BestPresentationCardTests(unittest.TestCase):
         self.assertIn("My talk", msg["body"])
 
     def test_idempotent_client_id_per_arc_and_kind(self):
-        db = _FakeDB(sessions=[_sess(), _sess(), _sess()])
+        db = _FakeDB(sessions=self._sessions(3), snips_by_sid=self._snips(3))
         maybe_fire_best_presentation_ready(db, "a1")
         maybe_fire_best_presentation_ready(db, "a1")
         ids = [m["client_id"] for _, m in db.inserted]
@@ -105,12 +146,16 @@ class NotesTests(unittest.TestCase):
         self.assertFalse(fire_pay_note(db, "u1", "a1"))
         self.assertEqual(db.inserted, [])
 
-    def test_pay_note_fires_on_unpaid_arc_with_checkout_action(self):
+    def test_pay_note_fires_on_unpaid_arc_with_unlock_action(self):
         db = _FakeDB(purchase=None)
         self.assertTrue(fire_pay_note(db, "u1", "a1"))
         _, msg = db.inserted[0]
-        self.assertEqual(msg["metadata"]["suggested_action"], "arc_checkout")
-        self.assertIn("$50", msg["body"])
+        self.assertEqual(msg["metadata"]["suggested_action"], "arc_unlock")
+        self.assertIn("25 credits", msg["body"])
+        self.assertIn("$25", msg["body"])
+        # Must NOT claim per-take feedback is part of the paid ask — it's
+        # free unconditionally now.
+        self.assertNotIn("$50", msg["body"])
 
 
 class DedupeWindowTranscriptsTests(unittest.TestCase):

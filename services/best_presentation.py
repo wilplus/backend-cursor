@@ -397,13 +397,26 @@ def _bp_signature(sessions: list) -> str:
     ).hexdigest()
 
 
-def build_best_presentation(arc_id: Optional[str], *, database=None) -> dict:
+def build_best_presentation(
+    arc_id: Optional[str], *, database=None, coach_view: bool = False,
+) -> dict:
     """Assemble the best-presentation payload for an arc. Best-effort; returns
     a progress-only payload (ready=False) when there's nothing to compose.
 
     Part B — the composed slides (the ~2-4s LLM pass) are CACHED keyed by arc +
     content signature; an unchanged arc returns the cached compose (no LLM, no
-    snippet reads). User edits + coach_reviewed are applied fresh on every read.
+    snippet reads). Edits + coach_reviewed/coach_finalized are applied fresh on
+    every read.
+
+    ``coach_view`` (founder 2026-07-06 — coach-owned ideal-text correction):
+      • False (default, the STUDENT-facing read): the raw auto-assembled draft
+        is NEVER served. Slide text is emptied unless ``coach_finalized`` (every
+        slide has a coach correction) — see ``_finalize_best_presentation``.
+        User pencil-edits still layer on top once finalized.
+      • True (the COACH's own editing surface): always the CURRENT text (auto,
+        or the coach's own edit where saved) regardless of finalized state —
+        the coach needs to see their own progress. User pencil-edits are NOT
+        applied here (irrelevant to the coach's correction pass).
     """
     from services.slide_alignment import slide_index_for_offset
     db = database if database is not None else _default_db()
@@ -424,7 +437,7 @@ def build_best_presentation(arc_id: Optional[str], *, database=None) -> dict:
         canonical_presentation_ref = cached["payload"].get("presentation_ref")
         return _finalize_best_presentation(
             db, arc_id, sessions, progress, slides_payload,
-            canonical_presentation_ref,
+            canonical_presentation_ref, coach_view=coach_view,
         )
 
     # Batch the per-take reads — ONE snippets query + ONE labels query for the
@@ -503,32 +516,68 @@ def build_best_presentation(arc_id: Optional[str], *, database=None) -> dict:
 
     return _finalize_best_presentation(
         db, arc_id, sessions, progress, slides_payload,
-        canonical_presentation_ref,
+        canonical_presentation_ref, coach_view=coach_view,
     )
 
 
 def _finalize_best_presentation(
     db, arc_id, sessions, progress, slides_payload, canonical_presentation_ref,
+    coach_view: bool = False,
 ) -> dict:
-    """Apply the user's pencil-edits + coach_reviewed and assemble the payload.
-    Runs on BOTH the cache-hit and fresh-compose paths — edits + coach review
+    """Apply coach + user edits, coach_finalized, and assemble the payload.
+    Runs on BOTH the cache-hit and fresh-compose paths — edits + review state
     must be fresh, so they are never part of the cached compose."""
-    # Apply the user's saved per-slide edits (the pencil) — they override the
-    # composed text and stick across recompositions. `edited` tells the FE.
-    edits = db.get_best_presentation_edits(arc_id) or {}
+    # COACH corrections (founder 2026-07-06 — the real "corrected ideal text").
+    # Applied to EVERY view (coach + student) since this IS the corrected
+    # content; only the STUDENT view additionally hides it until finalized
+    # (below). `coach_edited` tells the FE this slide has been through the
+    # coach's own pass (vs still the machine's auto-pick).
+    coach_edits = db.get_coach_best_presentation_edits(arc_id) or {}
     for s in slides_payload:
-        ov = edits.get(s.get("index"))
-        if isinstance(ov, str) and ov.strip():
-            s["text"] = ov
-            s["edited"] = True
+        cov = coach_edits.get(s.get("index"))
+        if isinstance(cov, str) and cov.strip():
+            s["text"] = cov
+            s["coach_edited"] = True
         else:
-            s["edited"] = False
+            s["coach_edited"] = False
 
-    # "Draft / pending coach" (founder 2026-06-20): the best presentation is
-    # auto-composed from the takes BEFORE any coach review — the user sees it
-    # right away, the coach later re-ranks + confirms breakthroughs. coach_
-    # reviewed flips True once a coach has DELIVERED (published) any take in the
-    # arc; until then the FE labels it a draft.
+    # coach_finalized: has the coach corrected EVERY slide? This — NOT payment
+    # — is what decides whether the student sees ANY text at all (founder: the
+    # raw auto-assembled draft must NEVER reach the student; only the coach
+    # sees the in-progress draft, via coach_view=True).
+    coach_finalized = bool(slides_payload) and all(
+        isinstance(coach_edits.get(s.get("index")), str)
+        and coach_edits[s.get("index")].strip()
+        for s in slides_payload
+    )
+
+    if not coach_view:
+        if coach_finalized:
+            # Apply the user's saved per-slide edits (the pencil) — they
+            # override the coach-corrected text and stick across
+            # recompositions. `edited` tells the FE. Unchanged behavior.
+            edits = db.get_best_presentation_edits(arc_id) or {}
+            for s in slides_payload:
+                ov = edits.get(s.get("index"))
+                if isinstance(ov, str) and ov.strip():
+                    s["text"] = ov
+                    s["edited"] = True
+                else:
+                    s["edited"] = False
+        else:
+            # NOT finalized — hide ALL slide text (never the raw draft),
+            # regardless of payment state. The route's payment gate runs
+            # separately/first; this hides content even on a PAID arc until
+            # the coach has actually finished.
+            for s in slides_payload:
+                s["text"] = ""
+                s["edited"] = False
+
+    # "Draft / pending coach" (founder 2026-06-20, retained as a SEPARATE,
+    # softer signal from coach_finalized): flips True once a coach has
+    # DELIVERED (published) any take in the arc — the older "is a human
+    # involved at all yet" cosmetic label. coach_finalized (above) is the hard
+    # gate on content; this stays for any existing FE surface reading it.
     coach_reviewed = any(
         bool(s.get("results_published_at")) for s in sessions
     )
@@ -557,6 +606,10 @@ def _finalize_best_presentation(
         # False until a coach has published a take → FE shows "draft / pending
         # coach"; True once the human has confirmed.
         "coach_reviewed": coach_reviewed,
+        # HARD gate on content (founder 2026-07-06): True once the coach has
+        # corrected every slide. Until then the student sees no slide text
+        # (regardless of payment) — only coach_view=True ever sees the draft.
+        "coach_finalized": coach_finalized,
         # the deck PDF so the FE renders real slide pages (null → text-slide
         # fallback from each slide's title/body).
         "presentation_ref": canonical_presentation_ref,

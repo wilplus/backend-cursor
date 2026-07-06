@@ -4648,6 +4648,10 @@ def _assemble_insights_from_drafts(session_id, overall_message):
             "when": d.get("when_context"),
             "examples": d.get("examples") or [],
             "breakthrough_video_ref": d.get("breakthrough_video_ref"),
+            # Free tier (founder 2026-07-06): a real coach-authored correction
+            # of the transcript, distinct from the immutable raw Whisper text.
+            # None until the coach saves one.
+            "transcript_corrected": d.get("transcript_corrected"),
         })
     return {"overall_message": overall_message, "snippet_notes": notes}
 
@@ -8246,30 +8250,20 @@ def v2_user_get_session_readout(session_id):
                 "code": "SESSION_NOT_FOUND", "error": "Session not found",
             }), 404
 
-        # Founder re-lock 2026-07-06: the AUTOMATIC readout is NEVER 402-gated —
-        # every take of every arc reads free (the old take-2+ 402 here rendered
-        # as "Analysis failed" and broke the FE flow, which is why takes 2/3
-        # never got sent). Payment only scopes the coach HUMAN layer below.
-        #
-        # Free/paid scope, TAKE-AWARE: the coach human layer folds when the arc
-        # is paid OR this is take 1 of the user's FIRST-EVER arc (the one-time
-        # free intro). Admin/coach always see everything. The automatic
-        # (acoustic) readout is always full.
+        # Founder re-lock 2026-07-06: the AUTOMATIC readout AND the coach's
+        # per-take layer (note, corrected transcript, breakthrough badge+video)
+        # are NEVER 402-gated — every take of every arc reads free the instant
+        # the coach saves + surfaces it. Payment gates ONLY the four dedicated
+        # deliverables (ideal text, breakthroughs list, game, library), not
+        # this readout. audit_paid is kept as a top-level echo (the FE uses it
+        # to contextualize those OTHER surfaces' CTAs from this screen).
         _audit_paid = _arc_audit_paid(
             session.get("arc_id"), request.user_id,
         )
-        _human_visible = _audit_paid
-        if not _human_visible:
-            from services.arc_entitlement import human_feedback_visible
-            _human_visible = human_feedback_visible(
-                db, session.get("arc_id"), request.user_id,
-                session.get("take_index"),
-            )
 
         from services.lab_recording import build_readout_from_session
         readout = build_readout_from_session(
             session_id, audit_paid=_audit_paid,
-            include_coach_layer=_human_visible,
         )
 
         published = bool(session.get("results_published_at"))
@@ -8303,12 +8297,10 @@ def v2_user_get_session_readout(session_id):
             "session_id": session_id,
             "published": published,
             "state": state,
-            # Phase-1: per-arc paid flag, mirrored top-level (also inside the
-            # readout) so the FE gates locked affordances without digging.
+            # Per-arc paid flag, mirrored top-level (also inside the readout) —
+            # an echo for the FE's OTHER paid-deliverable CTAs; this readout's
+            # own coach layer is unconditionally free (2026-07-06 re-price).
             "audit_paid": _audit_paid,
-            # Take-aware human layer (covers the one-time free-intro take 1) —
-            # True when this take's coach feedback is folded in the readout.
-            "human_feedback_visible": _human_visible,
             "readout": readout,
         }), 200
     except Exception as e:
@@ -8639,6 +8631,7 @@ def _coach_state_map(session_id):
             "tag": d.get("tag"),
             "surfaced": bool(d.get("surfaced")),
             "breakthrough_video_ref": d.get("breakthrough_video_ref"),
+            "transcript_corrected": d.get("transcript_corrected"),
         }
     return out
 
@@ -8647,7 +8640,7 @@ def _coach_state_for(session_id, snippet_id):
     """One snippet's coach_state (default-empty when nothing authored yet)."""
     return _coach_state_map(session_id).get(str(snippet_id), {
         "direction_label": None, "note": "", "tag": None, "surfaced": False,
-        "breakthrough_video_ref": None,
+        "breakthrough_video_ref": None, "transcript_corrected": None,
     })
 
 
@@ -8664,14 +8657,15 @@ def _build_user_session_status(user_id):
 
     Returns {credits, can_start_analysis, audit_paid, audit_price}.
 
-    Founder re-lock 2026-07-06: RECORDING IS NEVER BLOCKED — every take of
+    Founder re-price 2026-07-06: RECORDING IS NEVER BLOCKED — every take of
     every arc records/analyzes/sends free, so ``can_start_analysis`` is always
-    True (kept in the payload for FE back-compat). Payment gates only the coach
-    HUMAN-feedback view + the best-presentation deliverable; the $50 ask lives
-    in the chat pay-note + the deliverable paywall, not a recording gate.
-    audit_paid mirrors the latest arc's entitlement so the FE can gate locked
-    affordances globally; audit_price is the headline $50 (minor units) so the
-    pricing card can show it without provoking a 402.
+    True (kept in the payload for FE back-compat). Payment (POST /v2/arc/<id>
+    /unlock, 25 credits = $25) gates only the FOUR paid deliverables (coach-
+    corrected ideal text, breakthroughs list, game, library) — never the
+    per-take readout (coach note/transcript-correction there is free
+    unconditionally). audit_paid mirrors the latest arc's entitlement so the
+    FE can gate those locked affordances globally; audit_price carries both
+    the display price AND its live credits cost (see arc_entitlement.audit_price).
     """
     from services.arc_entitlement import is_arc_entitled, audit_price
     credits = int(db.v2_ensure_credits_initialized(str(user_id)))
@@ -9244,6 +9238,7 @@ def v2_coach_save_snippet(session_id, snippet_id):
           "note"?:    "..."        // empty/whitespace -> cleared
           "tag"?:     "strong"|"to_work_on"
           "surfaced"?: bool         // does this snippet reach the user?
+          "transcript_corrected"?: "..."  // FREE tier the instant it's saved (2026-07-06)
           "when"?:    "...", "examples"?: ["..."] }       // optional PR-2 fields
 
     TWO-LANE write, NO cross-derivation (split-sink §2 / S.1):
@@ -9391,6 +9386,23 @@ def v2_coach_save_snippet(session_id, snippet_id):
                     "error": "breakthrough_video_ref: must be an http(s) URL",
                 }), 422
             draft_fields["breakthrough_video_ref"] = bvr or None
+        # Coach-corrected transcript (founder 2026-07-06) — a real coach-
+        # authored artifact, distinct from `note`. Free tier the instant it's
+        # saved + surfaced (no payment check anywhere in this path).
+        if "transcript_corrected" in body:
+            tx_raw = body.get("transcript_corrected")
+            if tx_raw is not None and not isinstance(tx_raw, str):
+                return jsonify({
+                    "code": "INVALID_INPUT",
+                    "error": "transcript_corrected: must be a string",
+                }), 422
+            tx = (tx_raw or "").strip()
+            if len(tx) > 4000:
+                return jsonify({
+                    "code": "INVALID_INPUT",
+                    "error": "transcript_corrected: 4000 chars max",
+                }), 422
+            draft_fields["transcript_corrected"] = tx or None
 
         if draft_fields:
             db.upsert_coach_snippet_draft(
@@ -10134,26 +10146,22 @@ def _arc_owned_by_caller(arc_id):
     return owned, sessions
 
 
-def _arc_payment_gate(arc_id, take_index=None):
-    """willab Paid Audits (A2) — the 402 entitlement gate.
+def _arc_payment_gate(arc_id):
+    """The 402 entitlement gate — founder re-price 2026-07-06: this now guards
+    ONLY the four paid deliverables (coach-corrected ideal text, breakthroughs
+    LIST, game, snippet library). Recording/analysis/the readout's automatic +
+    coach layers are NEVER gated (no take-level branching here anymore).
 
-    Returns a ``(response, 402)`` tuple to return when this arc/take is behind
-    the paywall and the caller isn't entitled, else None (proceed).
-
-    LIVE-LOOP FENCE: take 1 is NEVER gated. Pass ``take_index`` for a
-    take-keyed read (gates take 2+ only); omit it for a deliverable read
-    (best-presentation / ideal-text — gated whenever unpaid, since those only
-    exist after 3 takes). Admin/coach bypass (force-publish / review)."""
+    Returns a ``(response, 402)`` tuple when the arc is unpaid and the caller
+    isn't entitled, else None (proceed). Admin/coach bypass."""
     from services.arc_entitlement import (
-        is_arc_entitled, take_requires_payment, payment_required_payload,
+        paid_deliverables_visible, payment_required_payload,
     )
     if not arc_id:
         return None
-    if take_index is not None and not take_requires_payment(take_index):
-        return None
     if is_admin(request.user_id) or is_coach(request.user_id):
         return None
-    if is_arc_entitled(db, arc_id, request.user_id):
+    if paid_deliverables_visible(db, arc_id, request.user_id):
         return None
     return jsonify(payment_required_payload(arc_id, config)), 402
 
@@ -10184,12 +10192,20 @@ def v2_explore_arc_best_presentation(arc_id):
     slides + progress.takes_remaining — the FE drives its 'need 3 takes' notice
     off ready / takes_remaining (not off a 404 or an empty body).
 
+    Founder 2026-07-06: 402 gates this endpoint (paid deliverable). PAST the
+    gate, ``coach_finalized`` is a SEPARATE, harder gate on CONTENT — the raw
+    auto-assembled draft is NEVER served to the student; every slide's `text`
+    is "" until the coach has corrected EVERY slide (build_best_presentation
+    handles this transparently), regardless of payment. The FE shows "still
+    being prepared by your coach" when paid but not yet coach_finalized —
+    distinct from the 402 paywall.
+
     Response 200 {
-        arc_id, ready, presentation_ref,
+        arc_id, ready, coach_finalized, presentation_ref,
         progress: { takes_done, takes_target, takes_remaining, ready },
         slides: [ { index, title, body, text, audio_ref,
                     start_offset_ms, duration_ms, take_index,
-                    breakthrough, breakthrough_note, edited } ]
+                    breakthrough, breakthrough_note, coach_edited, edited } ]
     }
              404 NOT_FOUND · 500 V2_ERROR
     """
@@ -10438,11 +10454,17 @@ def v2_talk_ideal_text(talk_id):
     """The Ideal-Text report for a talk (Paid Audits A7). A talk IS an arc, so
     talk_id == arc_id.
 
-    Ownership-gated + A2 paywall (the report is the paid deliverable). L1: the
+    Ownership-gated + paywall (the report is the paid deliverable). L1: the
     idealText is the verbatim-selected best take of each slide, never re-
-    summarised. AC-9: no score/verdict.
+    summarised — but it is a COACH correction now (founder 2026-07-06): the
+    raw auto-assembled draft is NEVER served here. ``coachFinalized`` is a
+    SEPARATE, harder gate on content past the 402 — every slide's idealText is
+    "" until the coach has corrected EVERY slide, regardless of payment. The
+    FE shows "still being prepared by your coach" when paid but not finalized.
+    AC-9: no score/verdict.
 
-    Response 200 { talkId, talkTitle, ready, coachReviewed, presentationRef,
+    Response 200 { talkId, talkTitle, ready, coachReviewed, coachFinalized,
+                   presentationRef,
                    slides:[ {index, label, title, body, thumbnailUrl,
                              idealText, takeRoute, breakthrough} ] }
              402 PAYMENT_REQUIRED · 404 NOT_FOUND · 500 V2_ERROR
@@ -10465,6 +10487,204 @@ def v2_talk_ideal_text(talk_id):
         sentry_sdk.capture_exception(e)
         return jsonify({
             "code": "V2_ERROR", "error": "Failed to build ideal text",
+        }), 500
+
+
+# ── willab — $25/25-credit arc unlock (founder re-price 2026-07-06) ─────
+
+@v2_bp.route("/arc/<arc_id>/unlock", methods=["POST"])
+@require_auth
+def v2_arc_unlock(arc_id):
+    """Unlock the four paid deliverables (coach-corrected ideal text,
+    breakthroughs list, game, snippet library) for one arc — CREDITS-based,
+    replacing the legacy $50 Stripe-direct checkout as the advertised path
+    (that route/webhook stay alive, dormant, honoring any in-flight session).
+
+    Ordering is DELIBERATE (review must-fix — closes a transient double-free
+    window): DEDUCT CREDITS FIRST, insert arc_purchases SECOND. This means an
+    arc_purchases row can only ever exist once payment has actually,
+    atomically succeeded — a concurrent reader of is_arc_entitled can NEVER
+    observe a phantom "already_entitled" during an in-flight charge (the
+    earlier insert-first ordering had exactly that window: a purchase row
+    could be briefly visible before its paired deduct was confirmed, and a
+    concurrent /unlock or entitlement check could act on it before a failed
+    deduct rolled it back).
+
+      1. Conditional atomic credit deduct (CAS) — 0 rows matched means
+         insufficient funds; NOTHING is written to arc_purchases yet.
+      2. INSERT arc_purchases — unique(arc_id) is the atomic double-charge
+         guard. If this conflicts (someone else's concurrent unlock already
+         landed), REFUND the credits we just deducted (this request never
+         gets to double-spend) and report the pre-existing entitlement.
+
+    Response 200 { unlocked: true, arc_id, credits_remaining }
+             200 { already_entitled: true, arc_id }   (pre-check: already paid)
+             409 { code: ARC_ALREADY_PAID, arc_id }   (raced after deduct —
+                                                        refunded, no net charge)
+             402 { code: INSUFFICIENT_CREDITS, required, current }
+             404 NOT_FOUND (not the caller's arc) · 500 V2_ERROR
+    """
+    try:
+        from services.arc_entitlement import is_arc_entitled
+        owned, _ = _arc_owned_by_caller(arc_id)
+        if not owned:
+            return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
+        if is_arc_entitled(db, arc_id, request.user_id):
+            return jsonify({"already_entitled": True, "arc_id": arc_id}), 200
+
+        amount = int(getattr(config, "ARC_UNLOCK_CREDITS", 25) or 25)
+
+        # 1) Deduct FIRST. Nothing entitles anyone yet — a concurrent reader
+        # sees no arc_purchases row at all during this step.
+        new_balance = db.deduct_credits_strict(str(request.user_id), amount)
+        if new_balance is None:
+            details = db.v2_get_student_details(str(request.user_id)) or {}
+            current = int(details.get("credits") or 0)
+            return jsonify({
+                "code": "INSUFFICIENT_CREDITS",
+                "required": amount, "current": current,
+            }), 402
+
+        # 2) Exclusive insert: unique(arc_id) makes this the atomic claim.
+        # Returns None on ANY conflict — someone else's concurrent unlock
+        # landed the purchase between our pre-check and this insert.
+        purchase = db.create_arc_purchase_exclusive(
+            str(arc_id), str(request.user_id),
+            kind="paid", source="credits", credits_charged=amount,
+        )
+        if not purchase:
+            # Refund — this request must never end up double-charging for an
+            # arc someone else already secured.
+            db.v2_increment_student_credits(str(request.user_id), amount)
+            if is_arc_entitled(db, arc_id, request.user_id):
+                return jsonify({"code": "ARC_ALREADY_PAID", "arc_id": arc_id}), 409
+            return jsonify({
+                "code": "V2_ERROR", "error": "Could not start the unlock",
+            }), 500
+
+        return jsonify({
+            "unlocked": True, "arc_id": arc_id, "credits_remaining": new_balance,
+        }), 200
+    except Exception as e:
+        logger.error("arc unlock failed arc=%s: %s", arc_id, e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to unlock"}), 500
+
+
+# ── willab — coach-owned ideal-text correction (founder 2026-07-06) ─────
+#
+# The coach's OWN editing surface: always shows the CURRENT draft (auto, or
+# the coach's own correction where saved), regardless of coach_finalized —
+# the coach needs to see their own in-progress work. Never gated by payment
+# (constraint: the coach always reviews every take/arc, independent of the
+# student's payment state).
+
+@v2_bp.route("/coach/arc/<arc_id>/best-presentation", methods=["GET"])
+@require_admin_or_coach
+def v2_coach_arc_best_presentation(arc_id):
+    """The coach's own preview of the auto-assembled draft + their own
+    corrections so far. Ungated by ownership/payment — coach-only auth is the
+    gate. Response shape matches the student route, plus always-populated
+    `text` regardless of coach_finalized.
+    """
+    try:
+        from services.best_presentation import build_best_presentation
+        return jsonify({
+            "arc_id": arc_id,
+            **build_best_presentation(arc_id, coach_view=True),
+        }), 200
+    except Exception as e:
+        logger.error("coach/arc best-presentation failed arc=%s: %s", arc_id,
+                     e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({
+            "code": "V2_ERROR", "error": "Failed to load best presentation",
+        }), 500
+
+
+@v2_bp.route(
+    "/coach/arc/<arc_id>/best-presentation/slides/<int:index>",
+    methods=["PUT"],
+)
+@require_admin_or_coach
+def v2_coach_arc_edit_slide(arc_id, index):
+    """Save the coach's corrected text for one ideal-text slide — THE real
+    "coach-corrected ideal text" artifact (founder 2026-07-06). Freely
+    re-editable. Once every slide has been corrected, ``coach_finalized``
+    flips true and the (paid) student-facing routes start serving this text.
+
+    Body: { "text": str }.  200 { ok, arc_id, index } · 400 · 500
+    """
+    try:
+        body = request.get_json(silent=True) or {}
+        text = (body.get("text") or "").strip() if isinstance(body.get("text"), str) else ""
+        if not text:
+            return jsonify({"code": "INVALID_INPUT", "error": "text is required"}), 400
+        if len(text) > 2000:
+            return jsonify({"code": "INVALID_INPUT", "error": "text too long"}), 400
+        ok = db.upsert_coach_best_presentation_edit(
+            arc_id, index, text, str(request.user_id),
+        )
+        if not ok:
+            return jsonify({"code": "V2_ERROR", "error": "Could not save the edit"}), 500
+        return jsonify({"ok": True, "arc_id": arc_id, "index": index}), 200
+    except Exception as e:
+        logger.error("coach/arc edit-slide failed arc=%s idx=%s: %s",
+                     arc_id, index, e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to save edit"}), 500
+
+
+# ── willab — game + snippet library (founder 2026-07-06: PAID, STUBBED) ─
+#
+# Neither feature exists yet — these are gated stubs so the FE can wire the
+# paywall now: unpaid → 402 (drives purchase intent pre-launch); PAID → an
+# honest 501 "not yet available" (never a fake unlock).
+
+@v2_bp.route("/arc/<arc_id>/game", methods=["GET"])
+@require_auth
+def v2_arc_game(arc_id):
+    """Stub — the breakthroughs swipe game (not yet built). 402 unpaid, 501
+    paid-but-unavailable."""
+    try:
+        owned, _ = _arc_owned_by_caller(arc_id)
+        if not owned:
+            return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
+        gated = _arc_payment_gate(arc_id)
+        if gated is not None:
+            return gated
+        return jsonify({
+            "code": "NOT_YET_AVAILABLE",
+            "message": "The breakthroughs game is coming soon.",
+        }), 501
+    except Exception as e:
+        logger.error("arc game failed arc=%s: %s", arc_id, e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to load game"}), 500
+
+
+@v2_bp.route("/arc/<arc_id>/snippet-library", methods=["GET"])
+@require_auth
+def v2_arc_snippet_library(arc_id):
+    """Stub — the per-user snippet library (not yet built). 402 unpaid, 501
+    paid-but-unavailable."""
+    try:
+        owned, _ = _arc_owned_by_caller(arc_id)
+        if not owned:
+            return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
+        gated = _arc_payment_gate(arc_id)
+        if gated is not None:
+            return gated
+        return jsonify({
+            "code": "NOT_YET_AVAILABLE",
+            "message": "Your snippet library is coming soon.",
+        }), 501
+    except Exception as e:
+        logger.error("arc snippet-library failed arc=%s: %s", arc_id, e,
+                     exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({
+            "code": "V2_ERROR", "error": "Failed to load snippet library",
         }), 500
 
 
@@ -10711,11 +10931,6 @@ def v2_lab_create_recording():
                     take_index = _cnt + 1
                 db.set_session_arc(guest_session_id, arc_id, take_index)
             arc_take_count = take_index
-            # Free-intro marker (set-once, review must-fix): the user's first
-            # take-1 upload claims their intro arc durably — deleting takes can
-            # never move it to a later arc. Best-effort.
-            if take_index == 1 and getattr(request, "user_id", None):
-                db.claim_free_intro_arc(str(request.user_id), arc_id)
 
         # Founder re-lock 2026-07-06: recording/analysis/send are NEVER
         # payment-gated — every take of every arc records, analyzes, and reaches
@@ -10899,22 +11114,14 @@ def v2_lab_create_recording():
         # slide, so the FE had nothing to render above each snippet's text.
         # build_readout_from_session maps each snippet to the slide on screen via
         # the tap timeline. Best-effort: keep the slide-less payload on a hiccup.
-        # Free/paid scope: pass the SAME take-aware flags the GET readout uses,
-        # so the embedded readout's audit_paid + human_feedback_visible match
-        # the re-read exactly (review: the 201 said locked while the GET said
-        # free-intro-open). At upload there's no coach layer yet anyway.
+        # Free/paid scope: echo the same audit_paid the GET readout uses. The
+        # readout's own coach layer is unconditionally free (2026-07-06
+        # re-price) — nothing take-aware to compute here anymore.
         _audit_paid = _arc_audit_paid(arc_id, getattr(request, "user_id", None))
-        _human_visible = _audit_paid
-        if not _human_visible:
-            from services.arc_entitlement import human_feedback_visible
-            _human_visible = human_feedback_visible(
-                db, arc_id, getattr(request, "user_id", None), take_index,
-            )
         try:
             from services.lab_recording import build_readout_from_session
             _full = build_readout_from_session(
                 guest_session_id, audit_paid=_audit_paid,
-                include_coach_layer=_human_visible,
             )
             if isinstance(_full, dict) and _full.get("snippets"):
                 readout = _full
@@ -10952,8 +11159,9 @@ def v2_lab_create_recording():
             "arc_id": arc_id,
             "take_index": take_index,
             "take_count": arc_take_count,
-            # Phase-1 per-arc paid flag (free first take → false; the FE gates
-            # take-2 + locked affordances off this).
+            # Per-arc paid flag — an echo for the FE's paid-deliverable CTAs
+            # (ideal text / breakthroughs list / game / library). This upload
+            # response's own readout is unconditionally free (2026-07-06).
             "audit_paid": _audit_paid,
             # Fresh audit progress (BE-4) — null for guests; see note above.
             "recording_progress": recording_progress,
