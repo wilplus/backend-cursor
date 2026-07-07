@@ -238,5 +238,49 @@ class PauseSnapIntegrationTests(unittest.TestCase):
         self.assertEqual(tx[1], "the pitch")
 
 
+class ChunkTranscriptByWordsTests(unittest.TestCase):
+    """Deckless full-transcript chunking (no click timeline → word-count
+    chunks for the FE's single-artificial-slide stacked layout)."""
+
+    def _chunk(self, text, chunk_size=None):
+        from services.slide_word_split import chunk_transcript_by_words
+        if chunk_size is None:
+            return chunk_transcript_by_words(text)
+        return chunk_transcript_by_words(text, chunk_size)
+
+    def test_empty_or_blank_returns_empty(self):
+        self.assertEqual(self._chunk(""), [])
+        self.assertEqual(self._chunk(None), [])
+        self.assertEqual(self._chunk("   "), [])
+
+    def test_short_text_is_a_single_chunk(self):
+        out = self._chunk("we begin the pitch", chunk_size=50)
+        self.assertEqual(out, [{"index": 0, "transcript": "we begin the pitch"}])
+
+    def test_splits_at_exact_chunk_size(self):
+        words = [f"w{i}" for i in range(10)]
+        out = self._chunk(" ".join(words), chunk_size=4)
+        self.assertEqual([c["index"] for c in out], [0, 1, 2])
+        self.assertEqual(out[0]["transcript"], "w0 w1 w2 w3")
+        self.assertEqual(out[1]["transcript"], "w4 w5 w6 w7")
+        self.assertEqual(out[2]["transcript"], "w8 w9")  # trailing remainder
+
+    def test_words_never_reordered_or_dropped(self):
+        words = [f"w{i}" for i in range(137)]
+        out = self._chunk(" ".join(words), chunk_size=50)
+        rebuilt = " ".join(c["transcript"] for c in out)
+        self.assertEqual(rebuilt, " ".join(words))
+
+    def test_default_chunk_size_is_fifty(self):
+        words = [f"w{i}" for i in range(101)]
+        out = self._chunk(" ".join(words))
+        self.assertEqual(len(out), 3)  # 50 + 50 + 1
+
+    def test_non_positive_chunk_size_falls_back_to_default(self):
+        words = [f"w{i}" for i in range(60)]
+        out = self._chunk(" ".join(words), chunk_size=0)
+        self.assertEqual(len(out), 2)  # falls back to 50-word default
+
+
 if __name__ == "__main__":
     unittest.main()

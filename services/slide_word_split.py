@@ -267,3 +267,31 @@ def build_slide_transcripts(words_all: Any, slide_advances: Any,
             "duration_ms": duration_ms,
         })
     return out
+
+
+# ── Deckless chunking (founder 2026-07-07) ─────────────────────────────────
+# No deck → no click timeline to bucket by, so the whole-recording transcript
+# (already persisted as a single slide_transcripts entry, see
+# lab_recording.build_readout_from_session's DECKLESS fold) is exposed as one
+# unbroken string today. Split it into fixed-size word chunks so the FE can
+# lay it out as readable stacked paragraphs under one artificial "slide"
+# (no next/prev — there's nothing to page between) instead of one wall of
+# text. Word-count, not time — there's no tap timeline to chop by.
+
+_DECKLESS_CHUNK_WORDS = 50
+
+
+def chunk_transcript_by_words(text: Any, chunk_size: int = _DECKLESS_CHUNK_WORDS) -> list:
+    """Split a flat transcript string into ~chunk_size-word groups, in order.
+
+    Returns ``[{index, transcript}, ...]``; ``[]`` for blank/whitespace-only
+    input. Pure.
+    """
+    words = (text or "").split()
+    if not words:
+        return []
+    size = chunk_size if isinstance(chunk_size, int) and chunk_size > 0 else _DECKLESS_CHUNK_WORDS
+    return [
+        {"index": i // size, "transcript": " ".join(words[i:i + size])}
+        for i in range(0, len(words), size)
+    ]
