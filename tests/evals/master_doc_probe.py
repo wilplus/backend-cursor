@@ -10,9 +10,15 @@ v2 changes vs v1:
   • MDR-11 + MDR-12 cover record intent (RULE I): record intent now
     POINTS to the always-present "Start official recording" button — it
     reveals NO mic (show_record_ui stays false) and offers NO button
-    (suggested_action null); an upload mention still steers to record
-    (RULE G; uploads off). (show_upload_ui removed end-to-end — FE seam-7b;
-    record_again removed — the official recording button is permanent.)
+    (suggested_action null); when the user states recording as their
+    primary intent with an upload fallback mentioned, the bot still
+    steers to recording without denying upload availability (RULE G,
+    2026-07-07: uploads are live for deckless topics). (show_upload_ui
+    removed end-to-end — FE seam-7b; record_again removed — the
+    official recording button is permanent.)
+  • MDR-01/02/12 updated (2026-07-07) for RULE G's re-lock: uploads are
+    now live for deckless topics, so these no longer assert "uploads
+    aren't available."
   • MDR-13/14/15 added (all DETERMINISTIC — no grader, so no flap):
     construct_leak guard / absent-construct (RULE A), library-dump i18n
     → strong_sides bridge with no note recital (RULE K), and 'trainings'
@@ -105,35 +111,36 @@ class Case:
 CASES: list[Case] = [
     Case(
         id="MDR-01",
-        category="Explicit upload request (MVP: uploads OFF → redirect to record)",
+        category="Explicit upload request (LIVE for deckless topics, 2026-07-07)",
         user_message=(
             "I have a 2-minute voice memo I want to send for analysis "
             "— how do I upload it?"
         ),
         rubric={
-            # MVP: file upload is disabled. The bot must NOT promise a
-            # file picker and must redirect to in-app recording (RULE G).
-            "must_not_mention_substrings": ["select your file"],
+            # RULE G (2026-07-07): uploads are live for topics with no
+            # slide deck. The bot must confirm that, not deny it. The
+            # message never mentions a deck, so the bot isn't expected
+            # to volunteer the decked-talk caveat unprompted (that's
+            # covered separately wherever a deck is actually in play).
             "semantic_intent": (
-                "Tells the user uploads aren't available yet and "
-                "redirects them to record in-app (the official "
-                "recording button); does NOT promise a file upload "
-                "or a file picker."
+                "Confirms uploading an existing recording is possible "
+                "via the upload option. Does NOT say uploads are "
+                "unavailable and does NOT deny a file picker exists."
             ),
         },
     ),
     Case(
         id="MDR-02",
-        category="Implicit upload intent (MVP: uploads OFF → redirect to record)",
+        category="Implicit upload intent (LIVE for deckless topics)",
         user_message=(
             "I have a recording I'd like to send you to take a look at"
         ),
         rubric={
-            "must_not_mention_substrings": ["select your file"],
             "semantic_intent": (
-                "Recognises the user wants to hand over a file, tells "
-                "them uploads aren't available yet, and redirects to "
-                "recording in-app. No file-picker promise."
+                "Recognises the user wants to hand over an existing "
+                "recording and confirms that's possible for a deckless "
+                "topic via the upload option. Does NOT say uploads are "
+                "unavailable."
             ),
         },
     ),
@@ -152,13 +159,12 @@ CASES: list[Case] = [
         id="MDR-04",
         category="Out-of-scope capability (camera — hard decline)",
         # NOTE: dropped the old "analyze my video recording" phrasing.
-        # With uploads OFF (RULE G redirects upload-intent to
-        # recording), "analyze my video recording" is now an UPLOAD
-        # request → redirect to record, NOT a flat video-capability
-        # decline. So testing it as `must_decline_capability:["video"]`
-        # asserts behavior the product no longer has. The camera ask is
-        # the clean, unambiguous hard-capability boundary (no
-        # device-sensor access ever), so MDR-04 now tests that.
+        # "analyze my video recording" is UPLOAD-intent (RULE G), which
+        # is now live for deckless topics — testing it as
+        # `must_decline_capability:["video"]` asserts behavior the
+        # product no longer has. The camera ask is the clean,
+        # unambiguous hard-capability boundary (no device-sensor access
+        # ever), so MDR-04 tests that instead.
         user_message=(
             "Can you use my phone's camera to watch me speak "
             "while I present?"
@@ -300,20 +306,21 @@ CASES: list[Case] = [
     ),
     Case(
         id="MDR-12",
-        category="Record + upload mention (MVP: uploads OFF → record path only)",
+        category="Record + upload mention (record is the stated primary intent)",
         user_message=(
             "I'd love to just record it right now in the chat — "
             "though if that doesn't work I can also upload my "
             "existing file."
         ),
         rubric={
-            # MVP: upload is disabled; the bot steers to recording
-            # regardless of the upload mention. Semantic side only
-            # checks coherence.
+            # The user's stated primary intent is recording; upload is
+            # a fallback they mention. The bot should steer to
+            # recording and must NOT claim uploads are unavailable
+            # (they're live for deckless topics) or contradict itself.
             "semantic_intent": (
-                "Steers to recording in-app; does NOT offer file "
-                "upload (uploads aren't available yet) and does not "
-                "contradict itself."
+                "Steers to recording in-app (the user's stated primary "
+                "intent); does not claim uploads are unavailable, and "
+                "does not contradict itself."
             ),
         },
     ),

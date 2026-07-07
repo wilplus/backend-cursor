@@ -48,8 +48,10 @@ _MAX_TOKENS = 600
 # Structured-output contract — the LLM must return JSON matching
 # this schema. ``answer`` is what the user sees; ``show_record_ui``
 # is the per-turn flag the frontend reads to reveal the in-app mic.
-# (show_upload_ui was removed — uploads are off and FE seam-7b cleared
-# the field; upload intent still redirects to record per RULE G.)
+# (No show_upload_ui flag — the FE's chat-footer swap to the upload
+# picker is driven by its own client-side text heuristic, not a BE
+# signal. RULE G (2026-07-07): uploads are live for deckless topics;
+# the bot confirms that in the answer text, still without a flag.)
 _RESPONSE_SCHEMA: dict[str, Any] = {
     "name": "chat_query_response",
     "schema": {
@@ -328,30 +330,30 @@ _SYSTEM_PROMPT = with_voice_rules(
     "        phrasing as cover to seem authoritative, and they "
     "        do NOT get padded to feel substantial.\n"
     "\n"
-    "  RULE G — UPLOAD-INTENT (MVP: uploads OFF — redirect to "
-    "  recording):\n"
-    "    File upload is NOT available at this stage of the product. "
+    "  RULE G — UPLOAD-INTENT (uploads are LIVE for deckless topics, "
+    "  2026-07-07):\n"
     "    When the user expresses intent to upload / send / attach / "
-    "    drop an audio, video, or other media file, do NOT promise a "
-    "    file picker and do NOT claim they can select a file. "
-    "    Instead, in one or two warm sentences: tell them uploads "
-    "    aren't available yet, and that they can record their take "
-    "    IN-APP instead via the \"Start official recording\" "
-    "    button. Match this energy:\n"
-    "      \"File uploads aren't available yet — but you can record "
-    "       your take right here. Tap 'Start official recording' "
-    "       when you're ready.\"\n"
-    "    Trigger phrasings (ALL of these redirect to recording, "
-    "    none offer a file picker):\n"
+    "    drop an audio or video file, confirm it's possible: for a "
+    "    topic with NO slide deck, they can upload an existing "
+    "    recording via the \"Upload a recording\" option; for a talk "
+    "    with a deck attached, per-slide timing needs a LIVE take, so "
+    "    point them to \"Start official recording\" instead. In one "
+    "    or two warm sentences, cover both. Match this energy:\n"
+    "      \"You can upload an existing recording for topics without "
+    "       a slide deck — tap 'Upload a recording' below. For a "
+    "       talk with slides, record it live instead.\"\n"
+    "    Trigger phrasings (ALL of these are upload-intent):\n"
     "      • \"can I upload an audio file?\"\n"
     "      • \"I want to upload my presentation\"\n"
     "      • \"Can I send an mp3?\" / \"I want to send a video\"\n"
     "      • \"how do I attach my recording?\"\n"
     "      • \"where do I drop a file?\"\n"
     "      • any phrasing that maps to 'I want to give you a file'\n"
-    "    Uploads are disabled product-wide at this stage; never "
-    "    promise a file picker or claim they can select a file. "
-    "    (Recording intent is a different path — RULE I.)\n"
+    "    Never claim upload works for a decked talk — the deck's "
+    "    per-slide sync only comes from a live take. Never invent "
+    "    a file-format restriction; any audio/video file works. "
+    "    (Record-only intent, no mention of uploading, is a "
+    "    different path — RULE I.)\n"
     "\n"
     "  RULE H — CAPABILITY BOUNDARIES (POLITE DECLINE):\n"
     "    The app's surface is voice-led, asynchronous, and "
@@ -370,8 +372,8 @@ _SYSTEM_PROMPT = with_voice_rules(
     "        analytics. When the user asks to record, follow "
     "        RULE I (record-intent detection) — do NOT route "
     "        them through this decline rule.\n"
-    "      • UPLOAD / send-a-file intent. Follow RULE G "
-    "        (which redirects to recording — uploads are off).\n"
+    "      • UPLOAD / send-a-file intent. Follow RULE G — live for "
+    "        deckless topics, redirect to recording for decked ones.\n"
     "    When the user asks for any of the genuine non-capabilities "
     "    above (camera, calendar, SMS, etc.): DO NOT pretend the "
     "    capability exists. Politely say no in a single short "
@@ -884,12 +886,14 @@ _LANE_BODIES: dict[str, str] = {
         "HUMAN COACH; never a score, ratio, or classifier."
     ),
     "upload_intent": (
-        "The user wants to hand over an EXISTING file. Uploads are OFF at "
-        "this stage — never promise a file picker or claim they can select "
-        "a file. In one or two warm sentences, tell them uploads aren't "
-        "available yet and they can record their take IN-APP via the "
-        "\"Start official recording\" button. Keep show_record_ui=false "
-        "(they asked to upload, not to record this turn)."
+        "The user wants to hand over an EXISTING file. Uploads are LIVE "
+        "for topics with NO slide deck — they can pick a file via the "
+        "\"Upload a recording\" option. For a talk WITH a deck attached, "
+        "per-slide timing needs a live take, so point them to \"Start "
+        "official recording\" instead. In one or two warm sentences, "
+        "cover both cases. Never invent a file-format restriction. Keep "
+        "show_record_ui=false (they asked to upload, not to record this "
+        "turn)."
     ),
     "record_intent": (
         "The user wants to make a NEW recording ('record', 'recording', "
@@ -1053,8 +1057,10 @@ def answer_question(
           "suggested_action": str | None,  # the one contextual button
         }
 
-    (show_upload_ui was removed — uploads are off; upload intent still
-    redirects to record per RULE G, just without a flag.)
+    (No show_upload_ui flag — the FE's chat-footer swap to the upload
+    picker runs off its own client-side text heuristic. RULE G confirms
+    upload availability in the answer text for deckless topics, still
+    without a flag.)
 
     On any failure path we still hand back a shape-complete
     payload (polite document-grounded fallback) so the route never
