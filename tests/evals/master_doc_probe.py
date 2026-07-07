@@ -118,12 +118,14 @@ CASES: list[Case] = [
         ),
         rubric={
             # RULE G (2026-07-07): uploads are live for topics with no
-            # slide deck. The bot must confirm that, not deny it.
+            # slide deck. The bot must confirm that, not deny it. The
+            # message never mentions a deck, so the bot isn't expected
+            # to volunteer the decked-talk caveat unprompted (that's
+            # covered separately wherever a deck is actually in play).
             "semantic_intent": (
                 "Confirms uploading an existing recording is possible "
-                "for a topic with no slide deck (points to the upload "
-                "option), and notes a decked talk needs a live take "
-                "instead. Does NOT say uploads are unavailable."
+                "via the upload option. Does NOT say uploads are "
+                "unavailable and does NOT deny a file picker exists."
             ),
         },
     ),
