@@ -223,6 +223,38 @@ class ReadoutFromSessionTests(unittest.TestCase):
             out = mod.build_readout_from_session("sess1", include_insights=False)
         self.assertNotIn("slide_transcripts", out)  # nothing to surface → omit
 
+    # ── Deckless full transcript, chunked (founder 2026-07-07) ────────────
+
+    _DECKLESS_CTX: dict = {}  # no "slides" key at all → the deckless branch
+
+    def test_deckless_full_transcript_is_chunked(self):
+        from services import lab_recording as mod
+        from services.db import db
+        words = [f"w{i}" for i in range(60)]
+        stx = [{"index": 0, "transcript": " ".join(words),
+                "start_offset_ms": 0, "duration_ms": 30000}]
+        with patch.object(db, "get_snippets_by_session", return_value=[_snippet("a")]), \
+             patch.object(db, "v2_get_session_by_id", return_value={}), \
+             patch.object(db, "get_session_intake_context", return_value=self._DECKLESS_CTX), \
+             patch.object(db, "get_session_slide_transcripts", return_value=stx):
+            out = mod.build_readout_from_session("sess1", include_insights=False)
+        self.assertEqual(out["full_transcript"], " ".join(words))  # unchanged
+        self.assertEqual(len(out["full_transcript_chunks"]), 2)    # 50 + 10
+        self.assertEqual(out["full_transcript_chunks"][0]["index"], 0)
+        self.assertNotIn("slides", out)          # no deck → no slides key
+        self.assertNotIn("slide_transcripts", out)  # decked-only field
+
+    def test_deckless_no_persisted_transcript_omits_both_fields(self):
+        from services import lab_recording as mod
+        from services.db import db
+        with patch.object(db, "get_snippets_by_session", return_value=[_snippet("a")]), \
+             patch.object(db, "v2_get_session_by_id", return_value={}), \
+             patch.object(db, "get_session_intake_context", return_value=self._DECKLESS_CTX), \
+             patch.object(db, "get_session_slide_transcripts", return_value=None):
+            out = mod.build_readout_from_session("sess1", include_insights=False)
+        self.assertNotIn("full_transcript", out)
+        self.assertNotIn("full_transcript_chunks", out)
+
 
 class CoachLayerAlwaysFreeTests(unittest.TestCase):
     """Founder re-price 2026-07-06: the coach layer (note, tag, transcript_

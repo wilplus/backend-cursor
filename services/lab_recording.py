@@ -851,6 +851,16 @@ def build_readout_from_session(
                     ).strip()
                     if _full:
                         result["full_transcript"] = _full
+                        # 2026-07-07 — the same complete transcript, chopped
+                        # into readable ~50-word stacked paragraphs (no click
+                        # timeline to bucket by, so word-count is the unit)
+                        # for the FE's single-artificial-slide layout.
+                        from services.slide_word_split import (
+                            chunk_transcript_by_words,
+                        )
+                        result["full_transcript_chunks"] = (
+                            chunk_transcript_by_words(_full)
+                        )
             except Exception:
                 pass
         if ctx.get("presentation_ref"):
