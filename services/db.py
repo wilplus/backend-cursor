@@ -10621,6 +10621,60 @@ class DatabaseService:
             logger.warning("get_snippet_data_origin_by_ids failed err=%s", e)
         return out
 
+    def insert_game_save(self, user_id: str, arc_id: str) -> bool:
+        """Save a game session under TODAY's date (Engine 5 daily practice).
+        Idempotent per (user, arc, date) — a re-save the same day no-ops.
+        Best-effort; missing table (run migrations/add_game_saves.sql) →
+        False."""
+        if not user_id or not arc_id:
+            return False
+        from datetime import datetime, timezone
+        row = {
+            "user_id": str(user_id), "arc_id": str(arc_id),
+            "saved_date": datetime.now(timezone.utc).date().isoformat(),
+        }
+        try:
+            self.client.table("game_saves").upsert(
+                row, on_conflict="user_id,arc_id,saved_date",
+            ).execute()
+            return True
+        except Exception as e:
+            err_low = str(e).lower()
+            if "game_saves" in err_low and (
+                "does not exist" in err_low or "pgrst" in err_low
+            ):
+                logger.warning(
+                    "insert_game_save: table missing (run "
+                    "migrations/add_game_saves.sql)",
+                )
+                return False
+            logger.warning("insert_game_save failed user=%s arc=%s: %s",
+                           user_id, arc_id, e)
+            return False
+
+    def list_game_saves(self, user_id: str) -> list:
+        """The user's saved game sessions, newest first (the Game tab's
+        key-moments archive). [] on missing table / none / error."""
+        if not user_id:
+            return []
+        try:
+            res = (
+                self.client.table("game_saves")
+                .select("arc_id, saved_date, created_at")
+                .eq("user_id", str(user_id))
+                .order("saved_date", desc=True)
+                .execute()
+            )
+            return [r for r in (res.data or []) if isinstance(r, dict)]
+        except Exception as e:
+            err_low = str(e).lower()
+            if "game_saves" in err_low and (
+                "does not exist" in err_low or "pgrst" in err_low
+            ):
+                return []
+            logger.warning("list_game_saves failed user=%s: %s", user_id, e)
+            return []
+
     def insert_snippet_peer_label(
         self, *, snippet_id: str, rater_id: Optional[str], label: Optional[str],
         source: Optional[str] = None, is_second_order: bool = True,
