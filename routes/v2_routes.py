@@ -8312,6 +8312,130 @@ def v2_user_get_session_readout(session_id):
         return jsonify({"code": "V2_ERROR", "error": "Failed to fetch readout"}), 500
 
 
+_TRANSCRIPT_EDIT_MAX_LEN = 2000
+
+
+@v2_bp.route("/user/sessions/<session_id>/transcript-edits", methods=["PUT"])
+@require_auth
+def v2_user_put_transcript_edit(session_id):
+    """Save the user's corrected transcript text for ONE target on their own
+    readout (founder 2026-07-07) — either a snippet's transcript or a
+    deckless full-transcript chunk. Display layer ONLY: the coach keeps
+    reviewing the ORIGINAL transcript; readout reads carry the edit as
+    ``user_edited_text`` beside (never instead of) ``transcript``.
+
+    Owner-scoped: non-owner → 404 (no existence leak).
+
+    Body: { "text": str (required, ≤2000 chars),
+            "snippet_id": uuid XOR "chunk_index": int≥0 }
+
+    Response 200 { saved: true, session_id, snippet_id?, chunk_index? }
+             400 INVALID_INPUT · 404 SESSION_NOT_FOUND · 500 V2_ERROR
+    """
+    if not _is_valid_uuid(session_id):
+        return jsonify({
+            "code": "INVALID_INPUT", "error": "session_id must be a valid UUID",
+        }), 400
+    try:
+        session = db.v2_get_session_by_id(session_id)
+        if not session or str(session.get("user_id") or "") != str(request.user_id):
+            return jsonify({
+                "code": "SESSION_NOT_FOUND", "error": "Session not found",
+            }), 404
+
+        body = request.get_json(silent=True) or {}
+        # Type-check BEFORE .strip() — a truthy non-string ({"text": 5})
+        # must be a clean 400, not an AttributeError → 500 + Sentry noise
+        # (review finding).
+        text_raw = body.get("text")
+        if text_raw is not None and not isinstance(text_raw, str):
+            return jsonify({
+                "code": "INVALID_INPUT", "error": "text must be a string",
+            }), 400
+        text = (text_raw or "").strip()
+        if not text:
+            return jsonify({
+                "code": "INVALID_INPUT", "error": "text is required",
+            }), 400
+        if len(text) > _TRANSCRIPT_EDIT_MAX_LEN:
+            return jsonify({
+                "code": "INVALID_INPUT",
+                "error": f"text exceeds {_TRANSCRIPT_EDIT_MAX_LEN} characters",
+            }), 400
+
+        snippet_raw = body.get("snippet_id")
+        if snippet_raw is not None and not isinstance(snippet_raw, str):
+            return jsonify({
+                "code": "INVALID_INPUT", "error": "snippet_id must be a string",
+            }), 400
+        snippet_id = (snippet_raw or "").strip() or None
+        chunk_index = body.get("chunk_index")
+        has_snip = snippet_id is not None
+        has_chunk = isinstance(chunk_index, int) and not isinstance(
+            chunk_index, bool) and chunk_index >= 0
+        if has_snip == has_chunk:
+            return jsonify({
+                "code": "INVALID_INPUT",
+                "error": "exactly one of snippet_id or chunk_index is required",
+            }), 400
+        if has_snip and not _is_valid_uuid(snippet_id):
+            return jsonify({
+                "code": "INVALID_INPUT", "error": "snippet_id must be a UUID",
+            }), 400
+
+        # Target-existence checks (review must-fix): an edit may only land on
+        # a target this session actually has — otherwise orphan rows accrue
+        # invisibly (accepted with 200 but never surfaced by the readout
+        # fold), unbounded chunk_index rows bloat every readout re-read
+        # (including the coach view), and an INT4-overflow chunk_index would
+        # 500 at insert instead of 400 here.
+        if has_snip:
+            snip_row = db.get_snippet_by_id(snippet_id)
+            if not snip_row or str(snip_row.get("session_id") or "") != str(session_id):
+                return jsonify({
+                    "code": "SNIPPET_NOT_FOUND",
+                    "error": "That moment is not part of this session",
+                }), 404
+        else:
+            from services.slide_word_split import chunk_transcript_by_words
+            _stx = db.get_session_slide_transcripts(session_id) or []
+            _full = " ".join(
+                (t.get("transcript") or "").strip()
+                for t in _stx
+                if isinstance(t, dict) and (t.get("transcript") or "").strip()
+            ).strip()
+            n_chunks = len(chunk_transcript_by_words(_full))
+            if chunk_index >= n_chunks:
+                return jsonify({
+                    "code": "INVALID_INPUT",
+                    "error": "chunk_index is out of range for this session",
+                }), 400
+
+        ok = db.upsert_user_transcript_edit(
+            str(session_id),
+            snippet_id=snippet_id if has_snip else None,
+            chunk_index=chunk_index if has_chunk else None,
+            text=text,
+        )
+        if not ok:
+            return jsonify({
+                "code": "V2_ERROR", "error": "Could not save the edit",
+            }), 500
+        out = {"saved": True, "session_id": session_id}
+        if has_snip:
+            out["snippet_id"] = snippet_id
+        else:
+            out["chunk_index"] = chunk_index
+        return jsonify(out), 200
+    except Exception as e:
+        logger.error(
+            "transcript-edit PUT failed sid=%s err=%s",
+            session_id, e, exc_info=True,
+        )
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to save edit"}), 500
+
+
 @v2_bp.route("/user/readouts", methods=["GET"])
 @require_auth
 def v2_user_list_readouts():

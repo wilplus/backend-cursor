@@ -6899,6 +6899,52 @@ class DatabaseService:
             )
             return False
 
+    def set_charisma_snippet_say_it_stronger(
+        self,
+        snippet_id: str,
+        payload: Optional[dict],
+    ) -> bool:
+        """Persist the 'Say It Stronger' suggestion on a charisma snippet,
+        write-once (only when say_it_stronger is currently NULL) so duplicate
+        daemon runs are idempotent. Best-effort — missing column (run
+        migrations/add_say_it_stronger.sql) or any error returns False and
+        never breaks the generation loop."""
+        if not snippet_id or not isinstance(payload, dict):
+            return False
+        try:
+            existing = (
+                self.client.table("charisma_snippets")
+                .select("say_it_stronger")
+                .eq("id", snippet_id)
+                .limit(1)
+                .execute()
+            )
+            rows = existing.data or []
+            if rows and rows[0].get("say_it_stronger"):
+                return False  # write-once — already generated
+            (
+                self.client.table("charisma_snippets")
+                .update({"say_it_stronger": payload})
+                .eq("id", snippet_id)
+                .execute()
+            )
+            return True
+        except Exception as e:
+            err_low = str(e).lower()
+            if "say_it_stronger" in err_low and (
+                "does not exist" in err_low or "pgrst204" in err_low
+            ):
+                logger.warning(
+                    "set_charisma_snippet_say_it_stronger: column missing "
+                    "(run migrations/add_say_it_stronger.sql)",
+                )
+                return False
+            logger.warning(
+                "set_charisma_snippet_say_it_stronger failed %s: %s",
+                snippet_id, e,
+            )
+            return False
+
     def get_ai_draft_coach_notes_by_session(self, session_id: str) -> dict:
         """{snippet_id: ai_draft_coach_note} for a session — the AI-Commentator
         pre-fills the coach read serves. Coach-only. {} on missing column/table
@@ -9590,6 +9636,116 @@ class DatabaseService:
                 return False
             logger.error("upsert_best_presentation_edit failed arc=%s: %s",
                          arc_id, e)
+            return False
+
+    def get_user_transcript_edits(self, session_id: Optional[str]) -> list:
+        """The user's own transcript corrections for a session (founder
+        2026-07-07) — display layer only, the coach keeps the original.
+        Returns [{snippet_id, chunk_index, text}]; [] on missing table /
+        none / error."""
+        if not session_id:
+            return []
+        try:
+            res = (
+                self.client.table("user_transcript_edits")
+                .select("snippet_id, chunk_index, text")
+                .eq("session_id", session_id)
+                .execute()
+            )
+            return [r for r in (res.data or []) if isinstance(r, dict)]
+        except Exception as e:
+            err_low = str(e).lower()
+            if "user_transcript_edits" in err_low and (
+                "does not exist" in err_low or "pgrst" in err_low
+            ):
+                return []
+            logger.warning("get_user_transcript_edits failed sid=%s: %s",
+                           session_id, e)
+            return []
+
+    def upsert_user_transcript_edit(
+        self,
+        session_id: str,
+        *,
+        snippet_id: Optional[str] = None,
+        chunk_index: Optional[int] = None,
+        text: str,
+    ) -> bool:
+        """Save the user's corrected transcript text for ONE target — a
+        snippet (snippet_id) or a deckless full-transcript chunk
+        (chunk_index). Exactly one target must be set.
+
+        Manual select→update-or-insert rather than a single on_conflict
+        upsert: the table serves TWO row kinds against two different
+        unique pairs — (session_id, snippet_id) and (session_id,
+        chunk_index) — and PostgREST's upsert takes one on_conflict target,
+        so one call shape can't serve both kinds. The unique constraints DO
+        enforce per-kind dedupe (the target column is non-NULL for its own
+        kind), which means a concurrent first-save race surfaces as a
+        unique-violation on our insert — caught below and retried as the
+        update it really is. Best-effort; missing table → False."""
+        has_snip = bool(snippet_id)
+        has_chunk = isinstance(chunk_index, int) and chunk_index >= 0
+        if not session_id or not text or has_snip == has_chunk:
+            return False
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc).isoformat()
+
+        def _select_existing():
+            q = (
+                self.client.table("user_transcript_edits")
+                .select("id")
+                .eq("session_id", session_id)
+            )
+            q = q.eq("snippet_id", snippet_id) if has_snip \
+                else q.eq("chunk_index", chunk_index)
+            return (q.limit(1).execute()).data or []
+
+        def _update(row_id):
+            (
+                self.client.table("user_transcript_edits")
+                .update({"text": text, "updated_at": now})
+                .eq("id", row_id)
+                .execute()
+            )
+
+        try:
+            rows = _select_existing()
+            if rows:
+                _update(rows[0]["id"])
+                return True
+            row = {"session_id": session_id, "text": text, "updated_at": now}
+            if has_snip:
+                row["snippet_id"] = snippet_id
+            else:
+                row["chunk_index"] = chunk_index
+            try:
+                self.client.table("user_transcript_edits").insert(row).execute()
+                return True
+            except Exception as ins_err:
+                ins_low = str(ins_err).lower()
+                if "23505" in ins_low or "duplicate key" in ins_low \
+                        or "unique" in ins_low:
+                    # Lost a concurrent first-save race — the row exists now;
+                    # this request becomes the update it really is.
+                    rows = _select_existing()
+                    if rows:
+                        _update(rows[0]["id"])
+                        return True
+                raise
+        except Exception as e:
+            err_low = str(e).lower()
+            if "user_transcript_edits" in err_low and (
+                "does not exist" in err_low or "pgrst" in err_low
+            ):
+                logger.warning(
+                    "upsert_user_transcript_edit: table missing (run "
+                    "migrations/add_user_transcript_edits.sql) sid=%s",
+                    session_id,
+                )
+                return False
+            logger.error("upsert_user_transcript_edit failed sid=%s: %s",
+                         session_id, e)
             return False
 
     def get_best_presentation_cache(self, arc_id: Optional[str]) -> Optional[dict]:

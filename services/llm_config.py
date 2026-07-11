@@ -278,6 +278,22 @@ SPEC_SLIDE_ENTAILMENT = LLMSpec(
 partial | not) — the claim-ledger verdicts behind Stickiness #2."""
 
 
+SPEC_SAY_IT_STRONGER = LLMSpec(
+    model=CHEAP_MODEL,
+    # Founder spec 2026-07-07: deterministic enough to be consistent,
+    # creative enough to give real alternatives.
+    temperature=0.5,
+    # Up to 3 word-level upgrades + two full-sentence rewrites + a
+    # short qualitative "why".
+    max_tokens=1200,
+    response_format=None,  # strict json_schema via override (next to the service)
+)
+"""'Say It Stronger' — per-snippet rewrite suggestions on the user
+readout (replaces the raw acoustic NUMBERS there; the metrics stay in
+the data/ranking/coach view). Suggestion overlay ONLY — never feeds the
+best-presentation/ideal-text assembly (L1)."""
+
+
 SPEC_CONTEXTUAL_FOLLOWUP = LLMSpec(
     model=CHEAP_MODEL,
     # Moderate warmth — the question should feel like a coach who
