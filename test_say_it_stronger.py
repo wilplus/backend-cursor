@@ -191,6 +191,22 @@ class CleanPayloadTests(unittest.TestCase):
         out = self._c(self._valid(upgrades=ups))
         self.assertEqual(len(out["upgrades"]), 3)
 
+    def test_kind_carried_and_defaulted(self):
+        out = self._c(self._valid(upgrades=[
+            {"original": "like", "upgrade": "for example",
+             "reason": "ok", "kind": "filler"},
+            {"original": "great", "upgrade": "compelling",
+             "reason": "ok", "kind": "overuse"},
+            {"original": "a", "upgrade": "b", "reason": "ok"},  # no kind
+        ]))
+        kinds = [u["kind"] for u in out["upgrades"]]
+        self.assertEqual(kinds, ["filler", "overuse", "upgrade"])
+        # unknown kind defaults, never round-trips garbage
+        out2 = self._c(self._valid(upgrades=[
+            {"original": "x", "upgrade": "y", "reason": "ok",
+             "kind": "banana"}]))
+        self.assertEqual(out2["upgrades"][0]["kind"], "upgrade")
+
     def test_missing_rewrites_unusable(self):
         self.assertIsNone(self._c(self._valid(rewrite_your_voice="")))
         self.assertIsNone(self._c(self._valid(rewrite_polished="   ")))
@@ -228,6 +244,58 @@ class GenerateTests(unittest.TestCase):
         self.assertEqual(out["rewrite_polished"], "We will ship it.")
         self.assertIn("model", out)
         self.assertIn("generated_at", out)
+
+    def test_context_reaches_the_prompt(self):
+        # Founder 2026-07-11: audience + talk length + the FULL take
+        # transcript ride the call so the MODEL judges filler/overuse itself.
+        from services import say_it_stronger as mod
+        captured = {}
+
+        def _capture(**kwargs):
+            captured.update(kwargs)
+            return None
+
+        with patch("services.llm.chat_complete", side_effect=_capture):
+            mod.generate_say_it_stronger(
+                "we ship it", {}, {},
+                context={"topic": "Q3 pitch", "audience": "investors",
+                         "target_length_seconds": 300, "duration_sec": 420,
+                         "full_transcript": "we ship it like basically like"},
+            )
+        user_msg = captured.get("user") or ""
+        self.assertIn("investors", user_msg)
+        self.assertIn("Q3 pitch", user_msg)
+        self.assertIn("about 5 min", user_msg)      # target
+        self.assertIn("about 7 min", user_msg)      # actual
+        self.assertIn("we ship it like basically like", user_msg)
+
+    def test_long_full_transcript_capped(self):
+        from services import say_it_stronger as mod
+        captured = {}
+
+        def _capture(**kwargs):
+            captured.update(kwargs)
+            return None
+
+        with patch("services.llm.chat_complete", side_effect=_capture):
+            mod.generate_say_it_stronger(
+                "hi", {}, {},
+                context={"full_transcript": "word " * 3000},  # 15k chars
+            )
+        user_msg = captured.get("user") or ""
+        self.assertLess(len(user_msg), 8000)
+
+    def test_no_context_still_works(self):
+        from services import say_it_stronger as mod
+        with patch("services.llm.chat_complete", return_value=None):
+            self.assertIsNone(mod.generate_say_it_stronger("we ship", {}, {}))
+
+    def test_system_prompt_teaches_filler_and_overuse(self):
+        from services.say_it_stronger import _SYSTEM_PROMPT
+        self.assertIn("FILLER", _SYSTEM_PROMPT)
+        self.assertIn("OVERUSE", _SYSTEM_PROMPT.upper())
+        self.assertIn("kind='filler'", _SYSTEM_PROMPT)
+        self.assertIn("kind='overuse'", _SYSTEM_PROMPT)
 
     def test_model_never_sees_raw_numbers(self):
         from services import say_it_stronger as mod
@@ -328,6 +396,92 @@ class L1FenceTests(unittest.TestCase):
         from services import best_presentation as bp
         body = inspect.getsource(bp.select_best_per_slide)
         self.assertNotIn("say_it_stronger", body)
+
+
+try:
+    from flask import Flask, request as _flask_request
+    from routes import v2_routes as _v2
+    _ROUTE_IMPORT_ERROR = None
+except Exception as _e:  # pragma: no cover
+    Flask = None
+    _flask_request = None
+    _v2 = None
+    _ROUTE_IMPORT_ERROR = _e
+
+
+@unittest.skipIf(_ROUTE_IMPORT_ERROR is not None,
+                 f"needs app deps: {_ROUTE_IMPORT_ERROR}")
+class CoachSayItStrongerRouteTests(unittest.TestCase):
+    """PUT /v2/coach/snippets/<id>/say-it-stronger — coach-corrected card."""
+
+    _SNIP = "22222222-2222-4222-8222-222222222222"
+
+    def setUp(self):
+        self.app = Flask(__name__)
+        self._snippet_row = {"id": self._SNIP, "session_id": "s1",
+                             "transcript": "we ship it"}
+        self._saved = {}
+
+        def _set_final(sid, payload):
+            self._saved[sid] = payload
+            return True
+
+        self._p = [
+            patch.object(_v2.db, "get_snippet_by_id",
+                         lambda sid: self._snippet_row),
+            patch.object(_v2.db, "set_charisma_snippet_say_it_stronger_final",
+                         _set_final),
+        ]
+        for p_ in self._p:
+            p_.start()
+
+    def tearDown(self):
+        for p_ in self._p:
+            p_.stop()
+
+    def _card(self, **over):
+        base = {"already_strong": False,
+                "upgrades": [{"original": "like", "upgrade": "for example",
+                              "reason": "One hedge is enough.",
+                              "kind": "filler"}],
+                "rewrite_your_voice": "We ship it.",
+                "rewrite_polished": "We will ship it.",
+                "why": "Direct beats hedged."}
+        base.update(over)
+        return base
+
+    def _call(self, body, snippet_id=None):
+        with self.app.test_request_context(json=body):
+            _flask_request.user_id = "coach1"
+            resp, status = _v2.v2_coach_put_say_it_stronger.__wrapped__(
+                snippet_id or self._SNIP)
+            return resp.get_json(), status
+
+    def test_valid_card_saves_with_coach_mark(self):
+        body, status = self._call(self._card())
+        self.assertEqual(status, 200)
+        saved = self._saved[self._SNIP]
+        self.assertTrue(saved["edited_by_coach"])
+        self.assertEqual(saved["upgrades"][0]["kind"], "filler")
+
+    def test_numeric_why_guarded_even_from_coach(self):
+        body, status = self._call(self._card(why="pause is 0.2s"))
+        self.assertEqual(status, 200)
+        self.assertIsNone(self._saved[self._SNIP]["why"])  # AC-9 holds
+
+    def test_invalid_card_400s(self):
+        _, status = self._call({"nonsense": True})
+        self.assertEqual(status, 400)
+        self.assertEqual(self._saved, {})
+
+    def test_unknown_snippet_404s(self):
+        self._snippet_row = None
+        _, status = self._call(self._card())
+        self.assertEqual(status, 404)
+
+    def test_bad_uuid_400s(self):
+        _, status = self._call(self._card(), snippet_id="nope")
+        self.assertEqual(status, 400)
 
 
 if __name__ == "__main__":

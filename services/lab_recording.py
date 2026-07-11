@@ -687,7 +687,24 @@ def process_lab_recording(
     # null). Best-effort: never blocks or breaks the recording.
     try:
         from services.say_it_stronger import dispatch_say_it_stronger
-        dispatch_say_it_stronger(session_id, snippets_data)
+        from services.audio_metrics import SAMPLE_RATE
+        _ctx = session_context or {}
+        _full_tx = " ".join(
+            (seg.get("text") or "").strip()
+            for seg in (segments or [])
+            if isinstance(seg, dict) and (seg.get("text") or "").strip()
+        ).strip() or " ".join(
+            (w.get("word") or "").strip()
+            for w in (words_all or [])
+            if isinstance(w, dict) and (w.get("word") or "").strip()
+        ).strip()
+        dispatch_say_it_stronger(session_id, snippets_data, context={
+            "topic": _ctx.get("topic"),
+            "audience": _ctx.get("audience"),
+            "target_length_seconds": _ctx.get("target_length_seconds"),
+            "duration_sec": (len(sig) / float(SAMPLE_RATE)) if sig is not None else None,
+            "full_transcript": _full_tx,
+        })
     except Exception as _sis_err:
         logger.warning(
             "process_lab_recording: say-it-stronger dispatch failed sid=%s: %s",
@@ -786,8 +803,10 @@ def build_readout_from_session(
             # null until the post-upload daemon lands it (FE renders the
             # shimmer / nothing). L1: display overlay only.
             "say_it_stronger": (
-                s.get("say_it_stronger")
-                if isinstance(s.get("say_it_stronger"), dict) else None
+                s.get("say_it_stronger_final")
+                if isinstance(s.get("say_it_stronger_final"), dict)
+                else (s.get("say_it_stronger")
+                      if isinstance(s.get("say_it_stronger"), dict) else None)
             ),
             # The user's corrected text for THIS moment (null = no edit);
             # display-preferred on the FE, never shown to the coach as the
@@ -797,6 +816,9 @@ def build_readout_from_session(
         # Stickiness #2 is COACH-ONLY until calibrated (AC-9) — surfaced only
         # when include_slide_scores (the coach packet), never on the user readout.
         if include_slide_scores:
+            # Coach editor: the auto draft beside the (possibly folded) final.
+            if isinstance(s.get("say_it_stronger"), dict):
+                snip_out["say_it_stronger_draft"] = s.get("say_it_stronger")
             ss = metrics.get("slide_stickiness") if isinstance(metrics, dict) else None
             if isinstance(ss, dict):
                 snip_out["slide_stickiness"] = ss

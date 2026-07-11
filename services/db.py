@@ -6945,6 +6945,41 @@ class DatabaseService:
             )
             return False
 
+    def set_charisma_snippet_say_it_stronger_final(
+        self,
+        snippet_id: str,
+        payload: Optional[dict],
+    ) -> bool:
+        """Persist the COACH-corrected 'Say It Stronger' card (Engine 1,
+        founder 2026-07-11). Plain update — RE-editable (unlike the write-once
+        auto draft; the coach may revise until publish). Best-effort — missing
+        column (run migrations/add_say_it_stronger_final.sql) → False."""
+        if not snippet_id or not isinstance(payload, dict):
+            return False
+        try:
+            (
+                self.client.table("charisma_snippets")
+                .update({"say_it_stronger_final": payload})
+                .eq("id", snippet_id)
+                .execute()
+            )
+            return True
+        except Exception as e:
+            err_low = str(e).lower()
+            if "say_it_stronger_final" in err_low and (
+                "does not exist" in err_low or "pgrst204" in err_low
+            ):
+                logger.warning(
+                    "set_charisma_snippet_say_it_stronger_final: column "
+                    "missing (run migrations/add_say_it_stronger_final.sql)",
+                )
+                return False
+            logger.warning(
+                "set_charisma_snippet_say_it_stronger_final failed %s: %s",
+                snippet_id, e,
+            )
+            return False
+
     def get_ai_draft_coach_notes_by_session(self, session_id: str) -> dict:
         """{snippet_id: ai_draft_coach_note} for a session — the AI-Commentator
         pre-fills the coach read serves. Coach-only. {} on missing column/table

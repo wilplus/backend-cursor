@@ -145,11 +145,13 @@ _RESPONSE_SCHEMA = {
             "upgrades": {"type": "array", "maxItems": _MAX_UPGRADES, "items": {
                 "type": "object",
                 "additionalProperties": False,
-                "required": ["original", "upgrade", "reason"],
+                "required": ["original", "upgrade", "reason", "kind"],
                 "properties": {
                     "original": {"type": "string", "maxLength": 200},
                     "upgrade": {"type": "string", "maxLength": 200},
                     "reason": {"type": "string", "maxLength": 300},
+                    "kind": {"type": "string",
+                             "enum": ["upgrade", "filler", "overuse"]},
                 },
             }},
             "rewrite_your_voice": {"type": "string", "maxLength": _MAX_REWRITE_LEN},
@@ -185,6 +187,18 @@ _SYSTEM_PROMPT = (
     "genuinely supports the advice, weave it in — e.g. a speaker whose "
     "pauses run shorter than their own average can be told they have room "
     "to just use silence and it won't feel awkward to the audience.\n\n"
+    "FILLER & OVERUSE (you do this analysis yourself — judge from the full "
+    "take transcript provided as context):\n"
+    "- Spot FILLER words/phrases in the sentence (e.g. 'sort of', 'like', "
+    "'you know', 'basically') — chains of them are noise; mark such an "
+    "upgrade with kind='filler'.\n"
+    "- Spot words the speaker OVERUSES across the whole take (used "
+    "noticeably more than everything else) — when this sentence uses one, "
+    "propose a synonym suited to the audience and mark kind='overuse'.\n"
+    "- Every other word-level improvement is kind='upgrade'.\n"
+    "- Fit suggestions to the CONTEXT you are given: who the audience is, "
+    "and how long the talk is meant to be vs how long it ran (a talk over "
+    "its target rewards tighter phrasing).\n\n"
     "Hard rules:\n"
     "- Never add facts, numbers, or claims not in the original sentence.\n"
     "- Never change the speaker's technical content or intent.\n"
@@ -204,17 +218,46 @@ _SYSTEM_PROMPT = (
 )
 
 
-def _user_prompt(transcript: str, observations: dict) -> str:
+_MAX_CONTEXT_TRANSCRIPT_CHARS = 6000
+
+
+def _user_prompt(transcript: str, observations: dict,
+                 context: Optional[dict] = None) -> str:
     obs = "; ".join(f"{k.replace('_', ' ')}: {v}"
                     for k, v in (observations or {}).items())
-    return (
+    ctx = context if isinstance(context, dict) else {}
+    lines = [
         "Rewrite the following sentence a speaker said during a practice "
-        "presentation.\n"
+        "presentation.",
+    ]
+    if (ctx.get("topic") or "").strip():
+        lines.append(f"The talk is about: \"{ctx['topic'].strip()}\".")
+    if (ctx.get("audience") or "").strip():
+        lines.append(f"The audience: {ctx['audience'].strip()}.")
+    tgt = ctx.get("target_length_seconds")
+    dur = ctx.get("duration_sec")
+    if isinstance(tgt, (int, float)) and tgt and isinstance(dur, (int, float)) and dur:
+        lines.append(
+            f"Planned length: about {round(tgt / 60)} min; this take ran "
+            f"about {max(1, round(dur / 60))} min."
+        )
+    elif isinstance(dur, (int, float)) and dur:
+        lines.append(f"This take ran about {max(1, round(dur / 60))} min.")
+    full = (ctx.get("full_transcript") or "").strip()
+    if full:
+        if len(full) > _MAX_CONTEXT_TRANSCRIPT_CHARS:
+            full = full[:_MAX_CONTEXT_TRANSCRIPT_CHARS].rstrip() + "…"
+        lines.append(
+            "Full take transcript (context for judging filler chains and "
+            f"overused words): \"{full}\""
+        )
+    lines.append(
         f"Their voice in this moment vs. their own average across the take: "
-        f"{obs or '(no voice read available)'}.\n"
-        f"Sentence: \"{transcript}\"\n"
-        "Return JSON per the schema."
+        f"{obs or '(no voice read available)'}."
     )
+    lines.append(f"Sentence: \"{transcript}\"")
+    lines.append("Return JSON per the schema.")
+    return "\n".join(lines)
 
 
 def _clean_payload(parsed: Any, transcript: str) -> Optional[dict]:
@@ -236,11 +279,15 @@ def _clean_payload(parsed: Any, transcript: str) -> Optional[dict]:
             upg = (u.get("upgrade") or "").strip()
             if not orig or not upg:
                 continue
+            kind = u.get("kind")
+            if kind not in ("upgrade", "filler", "overuse"):
+                kind = "upgrade"
             upgrades_out.append({
                 "original": orig[:200],
                 "upgrade": upg[:200],
                 # A reason that trips the guard is dropped, the pair kept.
                 "reason": _guard_copy(u.get("reason")),
+                "kind": kind,
             })
     return {
         "already_strong": already,
@@ -256,6 +303,7 @@ def generate_say_it_stronger(
     transcript: str,
     metrics: Optional[dict],
     session_means: Optional[dict],
+    context: Optional[dict] = None,
 ) -> Optional[dict]:
     """One LLM call → the persisted suggestion payload, or None on empty
     transcript / no LLM / failure. Metrics become plain-language
@@ -274,7 +322,7 @@ def generate_say_it_stronger(
         result = chat_complete(
             spec=SPEC_SAY_IT_STRONGER,
             system=_SYSTEM_PROMPT,
-            user=_user_prompt(transcript, observations),
+            user=_user_prompt(transcript, observations, context),
             surface="say_it_stronger",
             response_format_override={
                 "type": "json_schema", "json_schema": _RESPONSE_SCHEMA,
@@ -300,7 +348,8 @@ def generate_say_it_stronger(
 
 # ── fire-and-forget dispatch (mirrors coach_comment_drafter) ───────────────
 
-def dispatch_say_it_stronger(session_id: str, snippets: list) -> None:
+def dispatch_say_it_stronger(session_id: str, snippets: list,
+                             context: Optional[dict] = None) -> None:
     """Fire-and-forget: generate + persist a suggestion for each snippet.
     Never raises into the caller (process_lab_recording). No-op without
     snippets."""
@@ -309,7 +358,7 @@ def dispatch_say_it_stronger(session_id: str, snippets: list) -> None:
     try:
         threading.Thread(
             target=_generate_all,
-            args=(session_id, snippets),
+            args=(session_id, snippets, context),
             daemon=True,
         ).start()
     except Exception as e:
@@ -317,7 +366,7 @@ def dispatch_say_it_stronger(session_id: str, snippets: list) -> None:
             "say_it_stronger: dispatch failed sid=%s: %s", session_id, e)
 
 
-def _generate_all(session_id, snippets) -> None:
+def _generate_all(session_id, snippets, context=None) -> None:
     from services.db import db
     means = aggregate_session_means(snippets)
     written = 0
@@ -331,6 +380,7 @@ def _generate_all(session_id, snippets) -> None:
                 transcript,
                 snip.get("metrics") if isinstance(snip.get("metrics"), dict) else None,
                 means,
+                context,
             )
             if payload and db.set_charisma_snippet_say_it_stronger(sid, payload):
                 written += 1

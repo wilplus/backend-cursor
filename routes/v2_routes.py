@@ -9409,6 +9409,60 @@ def v2_coach_slide_alignment(session_id):
         return jsonify({"code": "V2_ERROR", "error": "Failed to compute slide alignment"}), 500
 
 
+@v2_bp.route("/coach/snippets/<snippet_id>/say-it-stronger", methods=["PUT"])
+@require_admin_or_coach
+def v2_coach_put_say_it_stronger(snippet_id):
+    """Coach-corrected 'Say It Stronger' card (Engine 1, founder 2026-07-11).
+
+    The auto card generates instantly at upload; the coach edits it here.
+    The user readout folds FINAL over AUTO the moment this saves — the auto
+    draft column stays untouched (the (draft, final) pair is the future
+    correction corpus). Validated through the SAME cleaner as generation
+    (shape, ≤3 upgrades, kind enum, AC-9 guard on why/reasons — digits and
+    construct vocabulary are nulled, coach input included).
+
+    Body: the card object {already_strong, upgrades, rewrite_your_voice,
+          rewrite_polished, why}.
+    200 { saved, snippet_id, say_it_stronger } · 400 · 404 · 500
+    """
+    if not _is_valid_uuid(snippet_id):
+        return jsonify({
+            "code": "INVALID_INPUT", "error": "snippet_id must be a valid UUID",
+        }), 400
+    try:
+        snip = db.get_snippet_by_id(snippet_id)
+        if not snip:
+            return jsonify({
+                "code": "SNIPPET_NOT_FOUND", "error": "Snippet not found",
+            }), 404
+        body = request.get_json(silent=True)
+        from services.say_it_stronger import _clean_payload
+        cleaned = _clean_payload(
+            body, (snip.get("transcript")
+                   or snip.get("transcription_text") or ""),
+        )
+        if cleaned is None:
+            return jsonify({
+                "code": "INVALID_INPUT",
+                "error": "Not a valid Say It Stronger card",
+            }), 400
+        cleaned["edited_by_coach"] = True
+        if not db.set_charisma_snippet_say_it_stronger_final(
+                str(snippet_id), cleaned):
+            return jsonify({
+                "code": "V2_ERROR", "error": "Could not save the card",
+            }), 500
+        return jsonify({
+            "saved": True, "snippet_id": snippet_id,
+            "say_it_stronger": cleaned,
+        }), 200
+    except Exception as e:
+        logger.error("coach say-it-stronger PUT failed snip=%s: %s",
+                     snippet_id, e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to save card"}), 500
+
+
 @v2_bp.route("/coach/sessions/<session_id>/snippets/<snippet_id>", methods=["POST"])
 @require_admin_or_coach
 def v2_coach_save_snippet(session_id, snippet_id):
