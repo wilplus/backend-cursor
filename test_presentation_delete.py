@@ -52,6 +52,11 @@ class PresentationDeleteTests(unittest.TestCase):
         self.deleted_sessions: list = []
         self._patch_db("get_strong_sides_library", lambda uid, **kw: list(self._lib))
         self._patch_db("v2_get_session_by_id", lambda sid: dict(self._sessions.get(sid, {}), id=sid))
+        # 4.4 fix: the presentation DELETE now resolves its target set from
+        # the user's lab sessions (complete set), not the library grouping.
+        self._patch_db("v2_list_user_lab_sessions", lambda uid, **kw: [
+            dict(meta, id=sid) for sid, meta in self._sessions.items()
+        ])
         self._patch_db(
             "delete_strong_sides_library_for_session",
             lambda uid, sid: self.deleted_lib.append((uid, sid)) or 1,
