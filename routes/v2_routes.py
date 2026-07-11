@@ -8145,16 +8145,39 @@ def _hard_delete_session_for_user(user_id: str, session_id: str) -> None:
         logger.warning("presentation delete: session delete failed sid=%s err=%s", session_id, e)
 
 
+def _user_presentation_sessions_all(user_id: str, presentation_id: str) -> list:
+    """EVERY lab session of this user whose deck hashes to presentation_id —
+    the COMPLETE delete set (backlog 4.4). The library grouping
+    (_user_presentation_groups) under-counts on purpose for take NUMBERING
+    (it mirrors what /user/strengths shows), but a DELETE built on it left
+    survivors: takes without coach-published 'strong' library rows were
+    invisible to it, so a "deleted" training kept resurfacing in any
+    session-backed list — the reported bug. Chronological (created_at, id)."""
+    pid = (presentation_id or "").strip()
+    if not pid:
+        return []
+    matches = []
+    for s in (db.v2_list_user_lab_sessions(user_id) or []):
+        ctx = s.get("intake_context") if isinstance(
+            s.get("intake_context"), dict) else {}
+        slides = (ctx or {}).get("slides") or []
+        if slides and _presentation_id_from_slides(slides) == pid:
+            matches.append((s.get("created_at") or "", str(s.get("id"))))
+    return [sid for _, sid in sorted(matches)]
+
+
 @v2_bp.route("/user/presentations/<presentation_id>", methods=["DELETE"])
 @require_auth
 def v2_user_delete_presentation(presentation_id):
     """Delete a whole presentation (deck) and ALL its takes — owner-scoped,
     HARD delete (the recordings are gone everywhere, incl. coach history).
+    Deletes the COMPLETE session set for the deck (not just the
+    library-visible takes — backlog 4.4 fix; see
+    _user_presentation_sessions_all).
     200 {deleted_sessions} · 404 if the user has no such presentation."""
     try:
         uid = str(request.user_id)
-        groups = _user_presentation_groups(uid)
-        sids = groups.get((presentation_id or "").strip())
+        sids = _user_presentation_sessions_all(uid, presentation_id)
         if not sids:
             return jsonify({
                 "code": "NOT_FOUND",
@@ -8219,6 +8242,35 @@ def v2_user_delete_take(presentation_id, take_number):
         logger.error("user/presentations/takes DELETE failed: %s", e, exc_info=True)
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR", "error": "Failed to delete take"}), 500
+
+
+@v2_bp.route("/user/sessions/<session_id>", methods=["DELETE"])
+@require_auth
+def v2_user_delete_session(session_id):
+    """Delete ONE recording session directly by id — owner-scoped HARD delete
+    (library rows + session; same helper as the presentation/take deletes).
+    This is the delete path for DECKLESS trainings, which have no
+    presentation_id and were previously undeletable (backlog 4.4).
+    200 {deleted_session} · 400 bad uuid · 404 not found / not the owner."""
+    if not _is_valid_uuid(session_id):
+        return jsonify({
+            "code": "INVALID_INPUT", "error": "session_id must be a valid UUID",
+        }), 400
+    try:
+        uid = str(request.user_id)
+        session = db.v2_get_session_by_id(session_id)
+        if not session or str(session.get("user_id") or "") != uid:
+            return jsonify({
+                "code": "SESSION_NOT_FOUND", "error": "Session not found",
+            }), 404
+        _hard_delete_session_for_user(uid, session_id)
+        logger.info("session deleted user=%s sid=%s", uid, session_id)
+        return jsonify({"status": "ok", "deleted_session": session_id}), 200
+    except Exception as e:
+        logger.error("user/sessions DELETE failed sid=%s: %s",
+                     session_id, e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to delete session"}), 500
 
 
 # ── willab beta — Lab readout re-read + history (parked-restore + scroll-back) ─
