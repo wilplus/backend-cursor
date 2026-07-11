@@ -9466,9 +9466,35 @@ class DatabaseService:
                            arc_id, e)
             return {}
 
+    def get_coach_best_presentation_key_phrases(self, arc_id) -> dict:
+        """{slide_index: [phrases]} — the coach-corrected key phrases (Engine
+        2, 2026-07-11). {} on missing table/column / none / error (the auto-
+        derived set serves)."""
+        if not arc_id:
+            return {}
+        try:
+            res = (
+                self.client.table("coach_best_presentation_edits")
+                .select("slide_index, key_phrases")
+                .eq("arc_id", arc_id)
+                .execute()
+            )
+            out = {}
+            for r in (res.data or []):
+                kp = r.get("key_phrases")
+                if isinstance(r.get("slide_index"), int) and isinstance(kp, list):
+                    phrases = [str(x).strip() for x in kp
+                               if isinstance(x, str) and str(x).strip()]
+                    if phrases:
+                        out[r["slide_index"]] = phrases
+            return out
+        except Exception:
+            return {}
+
     def upsert_coach_best_presentation_edit(
         self, arc_id: str, slide_index: int, text: str,
         coach_user_id: Optional[str] = None,
+        key_phrases: Optional[list] = None,
     ) -> bool:
         """Save the coach's corrected text for one ideal-text slide. Upserts on
         (arc_id, slide_index); freely re-editable. Best-effort; missing table →
@@ -9482,10 +9508,28 @@ class DatabaseService:
         }
         if coach_user_id:
             row["edited_by"] = coach_user_id
+        if key_phrases is not None:
+            row["key_phrases"] = key_phrases
         try:
-            self.client.table("coach_best_presentation_edits").upsert(
-                row, on_conflict="arc_id,slide_index",
-            ).execute()
+            try:
+                self.client.table("coach_best_presentation_edits").upsert(
+                    row, on_conflict="arc_id,slide_index",
+                ).execute()
+            except Exception as kp_err:
+                # key_phrases column pre-migration → retry without it (the
+                # text edit must never be lost to the newer column).
+                if "key_phrases" in str(kp_err).lower() and "key_phrases" in row:
+                    logger.warning(
+                        "upsert_coach_best_presentation_edit: key_phrases "
+                        "column missing (run migrations/"
+                        "add_bp_coach_key_phrases.sql) — saved text only",
+                    )
+                    row.pop("key_phrases", None)
+                    self.client.table("coach_best_presentation_edits").upsert(
+                        row, on_conflict="arc_id,slide_index",
+                    ).execute()
+                else:
+                    raise
             return True
         except Exception as e:
             err_low = str(e).lower()
