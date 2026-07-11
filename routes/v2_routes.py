@@ -8037,18 +8037,27 @@ def _user_presentation_groups(user_id: str) -> dict:
     }
 
 
+# One analysis batch = exactly this many takes (founder RE-LOCK 2026-07-11,
+# backlog 4.1 — supersedes the 2026-06-20/2026-07-06 "arc keeps growing, no
+# take cap" rule). An arc that already holds a full batch is never joined:
+# the next take of the same deck/topic automatically starts a NEW arc, the
+# take counter resets to 1, and the $25 unlock stays per-arc ("1 analysis =
+# 3 takes = $25" with zero pricing-code changes).
+_ARC_BATCH_TAKES = 3
+
+
 def _continue_deck_arc(user_id, slides, fresh_arc_id, fresh_take_index):
-    """Continue-one-arc (founder 2026-06-20): every take of the SAME deck (same
-    user) belongs to ONE ever-growing arc — re-recording a talk ADDS a take to
-    its existing arc instead of starting a separate one. (The 3-take minimum
-    only UNLOCKS the best presentation; the arc keeps growing past it and the
-    composition already picks best-of-N per slide.)
+    """Continue-one-arc, batch-capped (founder re-lock 2026-07-11): every take
+    of the SAME deck (same user) joins that deck's most-developed arc UNTIL the
+    arc holds a full batch (_ARC_BATCH_TAKES); a full batch → the fresh arc
+    (the next analysis batch starts automatically, counter back to 1/3).
 
     Matches by the stable deck-hash across the user's lab sessions and continues
     the deck's MOST-developed arc (consistent with the /strengths group arc,
     #132). Returns (arc_id, take_index). Falls back to the freshly-minted arc
-    for a NEW deck / deckless / guest / any error — never raises into the record
-    path. The current session is skipped because its arc_id isn't set yet.
+    for a NEW deck / deckless / guest / a full batch / any error — never raises
+    into the record path. The current session is skipped because its arc_id
+    isn't set yet.
     """
     if not user_id or not slides:
         return fresh_arc_id, fresh_take_index
@@ -8066,10 +8075,15 @@ def _continue_deck_arc(user_id, slides, fresh_arc_id, fresh_take_index):
                 continue
             if _presentation_id_from_slides(s_slides) == pid:
                 counts[aid] = counts.get(aid, 0) + 1
-        if not counts:
+        # Batch cap (founder re-lock 2026-07-11): only arcs with an OPEN
+        # batch are joinable — the most-developed open one wins (so take 5
+        # fills batch 2 instead of minting a third arc). All full → the
+        # fresh arc starts the next batch, counter back to take 1.
+        open_arcs = {a: c for a, c in counts.items() if c < _ARC_BATCH_TAKES}
+        if not open_arcs:
             return fresh_arc_id, fresh_take_index
-        best_arc = max(counts.items(), key=lambda kv: kv[1])[0]
-        return best_arc, counts[best_arc] + 1
+        best_arc = max(open_arcs.items(), key=lambda kv: kv[1])[0]
+        return best_arc, open_arcs[best_arc] + 1
     except Exception as e:
         logger.warning("continue_deck_arc failed user=%s: %s", user_id, e)
         return fresh_arc_id, fresh_take_index
@@ -8083,7 +8097,9 @@ def _continue_topic_arc(user_id, topic, fresh_arc_id, fresh_take_index):
 
     Same doctrine as _continue_deck_arc, keyed on the NORMALIZED TOPIC (the
     "same talk"): re-recording the same-titled talk joins its most-developed
-    existing arc. New topic / guest / no topic / any error → the fresh arc.
+    existing arc UNTIL that arc holds a full batch (_ARC_BATCH_TAKES) — then
+    the fresh arc starts the next analysis batch (founder re-lock 2026-07-11).
+    New topic / guest / no topic / any error → the fresh arc.
     Never raises into the record path."""
     if not user_id or not isinstance(topic, str) or not topic.strip():
         return fresh_arc_id, fresh_take_index
@@ -8104,10 +8120,12 @@ def _continue_topic_arc(user_id, topic, fresh_arc_id, fresh_take_index):
                 continue
             if " ".join(s_topic.strip().lower().split()) == norm:
                 counts[aid] = counts.get(aid, 0) + 1
-        if not counts:
+        # Batch cap — same open-batch rule as _continue_deck_arc.
+        open_arcs = {a: c for a, c in counts.items() if c < _ARC_BATCH_TAKES}
+        if not open_arcs:
             return fresh_arc_id, fresh_take_index
-        best_arc = max(counts.items(), key=lambda kv: kv[1])[0]
-        return best_arc, counts[best_arc] + 1
+        best_arc = max(open_arcs.items(), key=lambda kv: kv[1])[0]
+        return best_arc, open_arcs[best_arc] + 1
     except Exception as e:
         logger.warning("continue_topic_arc failed user=%s: %s", user_id, e)
         return fresh_arc_id, fresh_take_index
@@ -10440,7 +10458,15 @@ def v2_explore_arc_edit_slide(arc_id, index):
 def v2_explore_arc_progress(arc_id):
     """Cheap poll for the 'X takes to your ideal presentation' bar (Prompt D §5).
 
-    Response 200 { arc_id, takes_done, takes_target, takes_remaining, ready }
+    coach_finalized (backlog 4.2, 2026-07-11): whether the coach has corrected
+    EVERY slide of the ideal text — at 3/3 takes with coach_finalized=false the
+    FE shows "Now we are waiting for the coach to assemble your speech!".
+    Computed cheaply here (one edits read + the deck size from the sessions
+    already loaded), mirroring services/best_presentation.py's definition —
+    the ideal-text payload stays the authoritative gate.
+
+    Response 200 { arc_id, takes_done, takes_target, takes_remaining, ready,
+                   coach_finalized }
              · 404 · 500
     """
     try:
@@ -10448,8 +10474,23 @@ def v2_explore_arc_progress(arc_id):
         owned, sessions = _arc_owned_by_caller(arc_id)
         if not owned:
             return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
+        # Canonical deck size = the most-complete deck across takes (same
+        # rule as compose); deckless arcs (no deck) are never "finalized".
+        _n_slides = 0
+        for _s in sessions:
+            _ctx = _s.get("intake_context") if isinstance(
+                _s.get("intake_context"), dict) else {}
+            _n_slides = max(_n_slides, len((_ctx or {}).get("slides") or []))
+        _coach_finalized = False
+        if _n_slides:
+            _edits = db.get_coach_best_presentation_edits(arc_id) or {}
+            _coach_finalized = all(
+                isinstance(_edits.get(i), str) and _edits[i].strip()
+                for i in range(_n_slides)
+            )
         return jsonify({
             "arc_id": arc_id, **presentation_progress(len(sessions)),
+            "coach_finalized": _coach_finalized,
         }), 200
     except Exception as e:
         logger.error("explore/arc progress failed arc=%s: %s", arc_id, e,
