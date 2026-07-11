@@ -659,6 +659,20 @@ def process_lab_recording(
             session_id, _draft_err,
         )
 
+    # "Say It Stronger" (founder 2026-07-07) — per-snippet rewrite suggestions
+    # for the user readout, replacing the raw acoustic numbers there. Same
+    # fire-and-forget daemon pattern as the drafter above; the suggestions
+    # appear on the readout RE-READ once generated (the 201 below carries
+    # null). Best-effort: never blocks or breaks the recording.
+    try:
+        from services.say_it_stronger import dispatch_say_it_stronger
+        dispatch_say_it_stronger(session_id, snippets_data)
+    except Exception as _sis_err:
+        logger.warning(
+            "process_lab_recording: say-it-stronger dispatch failed sid=%s: %s",
+            session_id, _sis_err,
+        )
+
     return build_readout_payload(snippets_data, stickiness_list)
 
 
@@ -707,6 +721,24 @@ def build_readout_from_session(
     from services.db import db
 
     snippets = db.get_snippets_by_session(session_id) or []
+
+    # User transcript edits (founder 2026-07-07) — the user's OWN display
+    # layer; the coach keeps reviewing the original. One read, mapped to both
+    # target kinds (snippet / deckless chunk). Best-effort — {} pre-migration.
+    _edits_by_snippet: dict = {}
+    _edits_by_chunk: dict = {}
+    try:
+        for _e in db.get_user_transcript_edits(session_id) or []:
+            _txt = (_e.get("text") or "").strip()
+            if not _txt:
+                continue
+            if _e.get("snippet_id"):
+                _edits_by_snippet[str(_e["snippet_id"])] = _txt
+            elif isinstance(_e.get("chunk_index"), int):
+                _edits_by_chunk[_e["chunk_index"]] = _txt
+    except Exception:
+        pass
+
     out_snips: list = []
     for i, s in enumerate(snippets):
         metrics = s.get("metrics") if isinstance(s.get("metrics"), dict) else {}
@@ -727,6 +759,19 @@ def build_readout_from_session(
                 "composite": sticky.get("composite"),
                 "comment": sticky.get("comment"),
             },
+            # "Say It Stronger" — the qualitative rewrite-suggestion card
+            # that REPLACES the raw acoustic numbers on the user view (the
+            # numbers above stay in the payload for the coach surface).
+            # null until the post-upload daemon lands it (FE renders the
+            # shimmer / nothing). L1: display overlay only.
+            "say_it_stronger": (
+                s.get("say_it_stronger")
+                if isinstance(s.get("say_it_stronger"), dict) else None
+            ),
+            # The user's corrected text for THIS moment (null = no edit);
+            # display-preferred on the FE, never shown to the coach as the
+            # original.
+            "user_edited_text": _edits_by_snippet.get(str(s.get("id"))),
         }
         # Stickiness #2 is COACH-ONLY until calibrated (AC-9) — surfaced only
         # when include_slide_scores (the coach packet), never on the user readout.
@@ -854,13 +899,17 @@ def build_readout_from_session(
                         # 2026-07-07 — the same complete transcript, chopped
                         # into readable ~50-word stacked paragraphs (no click
                         # timeline to bucket by, so word-count is the unit)
-                        # for the FE's single-artificial-slide layout.
+                        # for the FE's single-artificial-slide layout. Each
+                        # chunk carries the user's own edit when one exists
+                        # (chunk_index-keyed; display layer only).
                         from services.slide_word_split import (
                             chunk_transcript_by_words,
                         )
-                        result["full_transcript_chunks"] = (
-                            chunk_transcript_by_words(_full)
-                        )
+                        _chunks = chunk_transcript_by_words(_full)
+                        for _c in _chunks:
+                            _c["user_edited_text"] = _edits_by_chunk.get(
+                                _c.get("index"))
+                        result["full_transcript_chunks"] = _chunks
             except Exception:
                 pass
         if ctx.get("presentation_ref"):

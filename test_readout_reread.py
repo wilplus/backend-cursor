@@ -255,6 +255,56 @@ class ReadoutFromSessionTests(unittest.TestCase):
         self.assertNotIn("full_transcript", out)
         self.assertNotIn("full_transcript_chunks", out)
 
+    # ── "Say It Stronger" + user transcript edits (founder 2026-07-07) ────
+
+    def test_say_it_stronger_folds_from_persisted_row(self):
+        from services import lab_recording as mod
+        from services.db import db
+        sis = {"already_strong": False, "upgrades": [],
+               "rewrite_your_voice": "We ship it.",
+               "rewrite_polished": "We will ship it.",
+               "why": "Direct beats hedged.", "version": 1}
+        snips = [_snippet("a", say_it_stronger=sis), _snippet("b")]
+        with patch.object(db, "get_snippets_by_session", return_value=snips), \
+             patch.object(db, "v2_get_session_by_id", return_value={}), \
+             patch.object(db, "get_user_transcript_edits", return_value=[]):
+            out = mod.build_readout_from_session("sess1", include_insights=False)
+        by_id = {s["id"]: s for s in out["snippets"]}
+        self.assertEqual(by_id["a"]["say_it_stronger"], sis)
+        self.assertIsNone(by_id["b"]["say_it_stronger"])  # not generated yet
+
+    def test_user_edited_text_folds_per_snippet(self):
+        from services import lab_recording as mod
+        from services.db import db
+        edits = [{"snippet_id": "a", "chunk_index": None, "text": "fixed text"}]
+        with patch.object(db, "get_snippets_by_session",
+                          return_value=[_snippet("a"), _snippet("b")]), \
+             patch.object(db, "v2_get_session_by_id", return_value={}), \
+             patch.object(db, "get_user_transcript_edits", return_value=edits):
+            out = mod.build_readout_from_session("sess1", include_insights=False)
+        by_id = {s["id"]: s for s in out["snippets"]}
+        self.assertEqual(by_id["a"]["user_edited_text"], "fixed text")
+        self.assertIsNone(by_id["b"]["user_edited_text"])
+        # the original transcript is NEVER replaced — edit rides beside it
+        self.assertEqual(by_id["a"]["transcript"], "transcript a")
+
+    def test_user_edited_text_folds_on_deckless_chunks(self):
+        from services import lab_recording as mod
+        from services.db import db
+        words = [f"w{i}" for i in range(60)]
+        stx = [{"index": 0, "transcript": " ".join(words),
+                "start_offset_ms": 0, "duration_ms": 30000}]
+        edits = [{"snippet_id": None, "chunk_index": 1, "text": "my fix"}]
+        with patch.object(db, "get_snippets_by_session", return_value=[_snippet("a")]), \
+             patch.object(db, "v2_get_session_by_id", return_value={}), \
+             patch.object(db, "get_session_intake_context", return_value=self._DECKLESS_CTX), \
+             patch.object(db, "get_session_slide_transcripts", return_value=stx), \
+             patch.object(db, "get_user_transcript_edits", return_value=edits):
+            out = mod.build_readout_from_session("sess1", include_insights=False)
+        chunks = out["full_transcript_chunks"]
+        self.assertIsNone(chunks[0]["user_edited_text"])
+        self.assertEqual(chunks[1]["user_edited_text"], "my fix")
+
 
 class CoachLayerAlwaysFreeTests(unittest.TestCase):
     """Founder re-price 2026-07-06: the coach layer (note, tag, transcript_
