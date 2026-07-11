@@ -10948,8 +10948,19 @@ def v2_coach_arc_edit_slide(arc_id, index):
 @v2_bp.route("/arc/<arc_id>/game", methods=["GET"])
 @require_auth
 def v2_arc_game(arc_id):
-    """Stub — the breakthroughs swipe game (not yet built). 402 unpaid, 501
-    paid-but-unavailable."""
+    """Engine 5 (founder 2026-07-11) — the key-moments game, replacing the
+    501 stub. Same $25 gate as before (one of the four paid surfaces).
+
+    Rounds mix the arc's coach-confirmed key moments with the user's OWN
+    coach-unmarked moments as decoys; truth is NEVER in this payload (the
+    FE learns it by answering). Deterministic order; ?snippet=<id> pins
+    that round first (deep links from the Key-moment button / PDF).
+
+    Response 200 { arc_id, rounds:[{round, snippet_id, transcript,
+                   audio_ref, start_offset_ms, duration_ms}] }
+             200 { arc_id, rounds: [], reason: "NO_KEY_MOMENTS_YET" }
+             402 · 404 · 500
+    """
     try:
         owned, _ = _arc_owned_by_caller(arc_id)
         if not owned:
@@ -10957,14 +10968,112 @@ def v2_arc_game(arc_id):
         gated = _arc_payment_gate(arc_id)
         if gated is not None:
             return gated
-        return jsonify({
-            "code": "NOT_YET_AVAILABLE",
-            "message": "The breakthroughs game is coming soon.",
-        }), 501
+        from services.game_engine import build_game_rounds
+        rounds = build_game_rounds(
+            db, arc_id, request.user_id,
+            first_snippet=(request.args.get("snippet") or None),
+        )
+        body = {"arc_id": arc_id, "rounds": rounds}
+        if not rounds:
+            # honest empty state — the coach hasn't confirmed key moments yet
+            body["reason"] = "NO_KEY_MOMENTS_YET"
+        return jsonify(body), 200
     except Exception as e:
         logger.error("arc game failed arc=%s: %s", arc_id, e, exc_info=True)
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR", "error": "Failed to load game"}), 500
+
+
+@v2_bp.route("/arc/<arc_id>/game/answers", methods=["POST"])
+@require_auth
+def v2_arc_game_answer(arc_id):
+    """One game answer → verdict + the "Here is why" content (Engine 5).
+
+    Persists the answer into snippet_peer_labels (source='game') as
+    SECOND-ORDER signal below coach truth (L2/L3 — never joined into the
+    coach corpus). The why paragraphs are qualitative-only (AC-9): the
+    moment's load-bearing words, this user's mined acoustic patterns
+    (Engine 4), and the moment's delivery technique; plus the coach's
+    breakthrough video when one is attached.
+
+    Body: { "snippet_id": uuid, "answer_is_key": bool }
+    200 { correct, truth_is_key, why: {paragraphs, keywords, video_ref} }
+    400 · 402 · 404 · 500
+    """
+    try:
+        owned, _ = _arc_owned_by_caller(arc_id)
+        if not owned:
+            return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
+        gated = _arc_payment_gate(arc_id)
+        if gated is not None:
+            return gated
+        body = request.get_json(silent=True) or {}
+        snippet_id = body.get("snippet_id")
+        if not isinstance(snippet_id, str) or not _is_valid_uuid(snippet_id):
+            return jsonify({
+                "code": "INVALID_INPUT", "error": "snippet_id must be a UUID",
+            }), 400
+        if not isinstance(body.get("answer_is_key"), bool):
+            return jsonify({
+                "code": "INVALID_INPUT",
+                "error": "answer_is_key must be a boolean",
+            }), 400
+        from services.game_engine import answer_round
+        result = answer_round(
+            db, arc_id, request.user_id, snippet_id, body["answer_is_key"],
+        )
+        if result is None:
+            return jsonify({
+                "code": "SNIPPET_NOT_FOUND",
+                "error": "That moment is not part of this training",
+            }), 404
+        return jsonify(result), 200
+    except Exception as e:
+        logger.error("arc game answer failed arc=%s: %s", arc_id, e,
+                     exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to judge answer"}), 500
+
+
+@v2_bp.route("/arc/<arc_id>/game/save", methods=["POST"])
+@require_auth
+def v2_arc_game_save(arc_id):
+    """"Save to daily practice" — bookmark this game under today's date
+    (Engine 5 / backlog 3.3). Idempotent per (user, arc, day).
+    200 { saved } · 402 · 404 · 500"""
+    try:
+        owned, _ = _arc_owned_by_caller(arc_id)
+        if not owned:
+            return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
+        gated = _arc_payment_gate(arc_id)
+        if gated is not None:
+            return gated
+        if not db.insert_game_save(str(request.user_id), str(arc_id)):
+            return jsonify({
+                "code": "V2_ERROR", "error": "Could not save the practice",
+            }), 500
+        return jsonify({"saved": True, "arc_id": arc_id}), 200
+    except Exception as e:
+        logger.error("arc game save failed arc=%s: %s", arc_id, e,
+                     exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to save"}), 500
+
+
+@v2_bp.route("/user/game-sessions", methods=["GET"])
+@require_auth
+def v2_user_game_sessions():
+    """The Game tab's archive — saved practice sessions by date, newest
+    first (Engine 5 / backlog 3.3). 200 { sessions: [{arc_id, saved_date,
+    created_at}] } · 500"""
+    try:
+        return jsonify({
+            "sessions": db.list_game_saves(str(request.user_id)),
+        }), 200
+    except Exception as e:
+        logger.error("user game-sessions failed: %s", e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to list"}), 500
 
 
 @v2_bp.route("/arc/<arc_id>/snippet-library", methods=["GET"])
