@@ -782,5 +782,200 @@ class KeyPhrasesTests(unittest.TestCase):
         self.assertEqual(out[1]["key_phrases"], [])  # no pick -> empty
 
 
+
+class CorrectedVerbatimTests(unittest.TestCase):
+    """Engine 2 (2026-07-11): the assembler's verbatim source is the COACH-
+    corrected transcript when one exists — assembled from the corrected
+    takes (L1: the coach's verbatim, never an AI rewrite)."""
+
+    def setUp(self):
+        self._orig = bp._render_composition
+        bp._render_composition = lambda picks, slides: None  # verbatim path
+
+    def tearDown(self):
+        bp._render_composition = self._orig
+
+    def _db(self, corrected=None):
+        sessions = [{
+            "id": "s1", "take_index": 1,
+            "intake_context": {
+                "slides": [{"title": "Slide 1", "body": "p"}],
+                "slide_advances": [{"index": 0, "t_ms": 0}],
+            },
+        }]
+        snips = {"s1": [
+            {"id": "c1", "start_offset_ms": 0, "duration_ms": 1500,
+             "transcript": "strong close",
+             "storage_path": "s3://c1", "metrics": {"overall_score": 0.9}},
+        ]}
+        labels = {"s1": [{"snippet_id": "c1", "value": "challenge"}]}
+        db = _FakeDB(sessions, snips, labels)
+        if corrected is not None:
+            db.get_coach_snippet_drafts = lambda sid: [
+                {"snippet_id": "c1", "transcript_corrected": corrected},
+            ]
+        return db
+
+    def test_corrected_transcript_wins(self):
+        out = bp.build_best_presentation(
+            "arc1", database=self._db(corrected="the corrected close"),
+            coach_view=True,
+        )
+        self.assertEqual(out["slides"][0]["text"], "the corrected close")
+
+    def test_no_correction_keeps_raw_verbatim(self):
+        out = bp.build_best_presentation(
+            "arc1", database=self._db(), coach_view=True)
+        self.assertEqual(out["slides"][0]["text"], "strong close")
+
+    def test_signature_changes_with_corrections(self):
+        sessions = [{"id": "s1", "take_index": 1,
+                     "results_published_at": None}]
+        a = bp._bp_signature(sessions, {})
+        b = bp._bp_signature(sessions, {"c1": "corrected"})
+        c = bp._bp_signature(sessions, {"c1": "corrected v2"})
+        self.assertNotEqual(a, b)
+        self.assertNotEqual(b, c)
+
+
+class SelectBestDecklessTests(unittest.TestCase):
+    """Deckless section selection — same blended ranking, speech order."""
+
+    def _cand(self, sid, text, offset, score=0.5, direction="challenge"):
+        return {"snippet_id": sid, "transcript": text,
+                "start_offset_ms": offset, "duration_ms": 1000,
+                "direction": direction, "breakthrough": False,
+                "activation": score, "slide_stickiness": None,
+                "tag": None, "slide_index": None}
+
+    def test_top_k_in_speech_order(self):
+        out = bp.select_best_deckless([
+            self._cand("a", "Late but strongest line.", 9000, score=0.9),
+            self._cand("b", "Early good line.", 1000, score=0.7),
+            self._cand("c", "Middling line here.", 5000, score=0.5),
+        ], max_sections=2)
+        # top-2 by score = a, b; ordered by offset = b (1000) then a (9000)
+        self.assertEqual([c["snippet_id"] for c in out.values()], ["b", "a"])
+        self.assertEqual(sorted(out), [0, 1])
+
+    def test_dedupes_identical_text(self):
+        out = bp.select_best_deckless([
+            self._cand("a", "Same line.", 1000, score=0.9),
+            self._cand("b", "same   LINE.", 2000, score=0.8),
+            self._cand("c", "Different line.", 3000, score=0.1),
+        ])
+        self.assertEqual(len(out), 2)
+
+    def test_empty_safe(self):
+        self.assertEqual(bp.select_best_deckless([]), {})
+        self.assertEqual(bp.select_best_deckless(None), {})
+        self.assertEqual(bp.select_best_deckless(
+            [self._cand("a", "   ", 0)]), {})
+
+
+class DecklessBuildTests(unittest.TestCase):
+    """Deckless end-to-end: sections compose, the coach corrects them in the
+    same editor, the student sees nothing until every section is corrected."""
+
+    def setUp(self):
+        self._orig = bp._render_composition
+        bp._render_composition = lambda picks, slides: None
+
+    def tearDown(self):
+        bp._render_composition = self._orig
+
+    def _db(self, coach_edits=None):
+        sessions = [{
+            "id": "s1", "take_index": 1,
+            "intake_context": {"topic": "My pitch"},  # NO slides — deckless
+        }]
+        snips = {"s1": [
+            {"id": "c1", "start_offset_ms": 1000, "duration_ms": 1500,
+             "transcript": "Early strong line.",
+             "storage_path": "s3://c1", "metrics": {"overall_score": 0.9}},
+            {"id": "c2", "start_offset_ms": 6000, "duration_ms": 1500,
+             "transcript": "Later strong close.",
+             "storage_path": "s3://c2", "metrics": {"overall_score": 0.8}},
+        ]}
+        labels = {"s1": [{"snippet_id": "c1", "value": "challenge"},
+                         {"snippet_id": "c2", "value": "challenge"}]}
+        return _FakeDB(sessions, snips, labels, coach_edits=coach_edits)
+
+    def test_sections_compose_in_speech_order(self):
+        out = bp.build_best_presentation(
+            "arc1", database=self._db(), coach_view=True)
+        texts = [s["text"] for s in out["slides"]]
+        self.assertEqual(texts, ["Early strong line.", "Later strong close."])
+        self.assertEqual([s["index"] for s in out["slides"]], [0, 1])
+
+    def test_student_hidden_until_every_section_corrected(self):
+        out = bp.build_best_presentation(
+            "arc1", database=self._db(coach_edits={0: "fixed one"}))
+        self.assertFalse(out["coach_finalized"])
+        self.assertEqual([s["text"] for s in out["slides"]], ["", ""])
+
+    def test_finalizes_when_all_sections_corrected(self):
+        out = bp.build_best_presentation(
+            "arc1", database=self._db(
+                coach_edits={0: "fixed one", 1: "fixed two"}))
+        self.assertTrue(out["coach_finalized"])
+        self.assertEqual([s["text"] for s in out["slides"]],
+                         ["fixed one", "fixed two"])
+
+
+class CoachKeyPhrasesTests(unittest.TestCase):
+    """Coach-corrected key phrases override the auto set; both hide with the
+    text until coach_finalized."""
+
+    def setUp(self):
+        self._orig = bp._render_composition
+        bp._render_composition = lambda picks, slides: None
+
+    def tearDown(self):
+        bp._render_composition = self._orig
+
+    def _db(self, coach_edits=None, coach_kp=None):
+        sis = {"already_strong": False,
+               "upgrades": [{"original": "x", "upgrade": "auto phrase",
+                             "reason": None, "kind": "upgrade"}],
+               "rewrite_your_voice": "x", "rewrite_polished": "x",
+               "why": None, "version": 1}
+        sessions = [{
+            "id": "s1", "take_index": 1,
+            "intake_context": {
+                "slides": [{"title": "Slide 1", "body": "p"}],
+                "slide_advances": [{"index": 0, "t_ms": 0}],
+            },
+        }]
+        snips = {"s1": [
+            {"id": "c1", "start_offset_ms": 0, "duration_ms": 1500,
+             "transcript": "strong close", "say_it_stronger": sis,
+             "storage_path": "s3://c1", "metrics": {"overall_score": 0.9}},
+        ]}
+        labels = {"s1": [{"snippet_id": "c1", "value": "challenge"}]}
+        db = _FakeDB(sessions, snips, labels, coach_edits=coach_edits)
+        if coach_kp is not None:
+            db.get_coach_best_presentation_key_phrases = lambda arc: dict(coach_kp)
+        return db
+
+    def test_auto_phrases_without_coach_set(self):
+        out = bp.build_best_presentation(
+            "arc1", database=self._db(), coach_view=True)
+        self.assertEqual(out["slides"][0]["key_phrases"], ["auto phrase"])
+
+    def test_coach_set_overrides_auto(self):
+        out = bp.build_best_presentation(
+            "arc1", database=self._db(coach_kp={0: ["coach phrase"]}),
+            coach_view=True)
+        self.assertEqual(out["slides"][0]["key_phrases"], ["coach phrase"])
+
+    def test_phrases_hidden_with_text_pre_finalize(self):
+        out = bp.build_best_presentation(
+            "arc1", database=self._db(coach_kp={0: ["coach phrase"]}))
+        self.assertFalse(out["coach_finalized"])
+        self.assertEqual(out["slides"][0]["text"], "")
+        self.assertEqual(out["slides"][0]["key_phrases"], [])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -225,6 +225,53 @@ def _render_composition(picks_text: list, slides: list) -> Optional[dict]:
     return out
 
 
+_DECKLESS_MAX_SECTIONS = 5
+
+
+def select_best_deckless(candidates: Any, max_sections: int = _DECKLESS_MAX_SECTIONS) -> dict:
+    """Deckless analogue of select_best_per_slide: rank ALL the arc's moments
+    with the SAME blended power_score (complete sentences preferred), take the
+    top ``max_sections`` distinct-text winners, and order them by where they
+    sit in the talk (start_offset_ms — every take covers the same talk, so
+    offset is the speech-order proxy). Returns {section_index: candidate},
+    section_index 0..K-1. Pure; {} on no usable candidates."""
+    from services.power_phrase_ranking import power_score
+
+    pool = []
+    for c in candidates if isinstance(candidates, list) else []:
+        if not isinstance(c, dict):
+            continue
+        if not (c.get("transcript") or "").strip():
+            continue
+        score = power_score(
+            activation=c.get("activation"),
+            slide_stickiness=c.get("slide_stickiness"),
+            tag=c.get("tag"),
+            direction=c.get("direction"),
+            breakthrough=bool(c.get("breakthrough")),
+        )
+        pool.append({**c, "_score": score})
+    if not pool:
+        return {}
+    pool.sort(
+        key=lambda c: (_is_complete_sentence(c.get("transcript")), c["_score"]),
+        reverse=True,
+    )
+    winners: list = []
+    seen_text: set = set()
+    for c in pool:
+        norm = " ".join((c.get("transcript") or "").lower().split())
+        if norm in seen_text:
+            continue
+        seen_text.add(norm)
+        winners.append(c)
+        if len(winners) >= max_sections:
+            break
+    # Speech order — the assembled text must read start-to-finish.
+    winners.sort(key=lambda c: (c.get("start_offset_ms") or 0))
+    return {i: c for i, c in enumerate(winners)}
+
+
 _MAX_KEY_PHRASES = 5
 _MAX_KEY_PHRASE_LEN = 60
 
@@ -415,7 +462,7 @@ def _arc_labels(db, labels_batch, sid):
 _BP_PAYLOAD_VERSION = "v2"
 
 
-def _bp_signature(sessions: list) -> str:
+def _bp_signature(sessions: list, corrections: Optional[dict] = None) -> str:
     """Content signature for the best-presentation cache (Part B). Changes
     EXACTLY when a recompose is needed: a take added/removed, a coach publish
     (which re-ranks + confirms breakthroughs), or a payload-shape version bump.
@@ -432,9 +479,14 @@ def _bp_signature(sessions: list) -> str:
         ),
         key=lambda r: r[0],
     )
+    corr_key = sorted(
+        (str(k), hashlib.sha1(str(v).encode("utf-8")).hexdigest())
+        for k, v in (corrections or {}).items()
+    )
     return hashlib.sha1(
         (_BP_PAYLOAD_VERSION + "|" + _json.dumps(
-            key, sort_keys=True, default=str)).encode("utf-8")
+            key, sort_keys=True, default=str)
+         + "|" + _json.dumps(corr_key)).encode("utf-8")
     ).hexdigest()
 
 
@@ -465,10 +517,29 @@ def build_best_presentation(
     sessions = db.get_arc_sessions(arc_id) if arc_id else []
     progress = presentation_progress(len(sessions))
 
+    # Coach transcript corrections (Engine 2, founder 2026-07-11): the
+    # assembler's verbatim source is the COACH-corrected transcript of a
+    # moment when one exists (raw Whisper otherwise) — "assembled from the
+    # corrected takes". Read BEFORE the cache check so corrections are part
+    # of the content signature (a new correction invalidates the compose).
+    # Batch-cap keeps arcs ≤3-4 takes, so a per-session read is cheap.
+    corrections: dict = {}
+    _get_drafts = getattr(db, "get_coach_snippet_drafts", None)
+    if callable(_get_drafts):
+        for _sess in sessions:
+            try:
+                for _d in (_get_drafts(_sess.get("id")) or []):
+                    _tc = _d.get("transcript_corrected")
+                    if isinstance(_tc, str) and _tc.strip() \
+                            and _d.get("snippet_id") is not None:
+                        corrections[str(_d["snippet_id"])] = _tc.strip()
+            except Exception:
+                continue
+
     # ── Compose cache (Part B). Hit → reuse the composed slides + deck ref,
     # skipping the snippet reads + LLM. getattr guards keep injected fake dbs
     # (tests) working without the cache methods.
-    signature = _bp_signature(sessions)
+    signature = _bp_signature(sessions, corrections)
     _get_cache = getattr(db, "get_best_presentation_cache", None)
     _put_cache = getattr(db, "upsert_best_presentation_cache", None)
     cached = _get_cache(arc_id) if (arc_id and callable(_get_cache)) else None
@@ -530,7 +601,12 @@ def build_best_presentation(
                 # phrases (derived in compose_presentation). Display hints
                 # only — never touches the composed text (L1).
                 "say_it_stronger": s.get("say_it_stronger"),
-                "transcript": s.get("transcript") or s.get("transcript_excerpt") or "",
+                # Engine 2: the coach-corrected transcript IS the verbatim
+                # (L1 — the coach's verbatim, never an AI rewrite).
+                "transcript": (
+                    corrections.get(str(s.get("id")))
+                    or s.get("transcript") or s.get("transcript_excerpt") or ""
+                ),
                 "audio_ref": s.get("audio_ref") or s.get("storage_path"),
                 # The snippet's span inside the (concatenated) take audio, so the
                 # FE can clamp playback to THIS line instead of playing the whole
@@ -549,7 +625,15 @@ def build_best_presentation(
                 "note": _moment_note(s),
             })
 
-    picks = select_best_per_slide(candidates)
+    if canonical_slides:
+        picks = select_best_per_slide(candidates)
+    else:
+        # DECKLESS assembly (Engine 2, founder 2026-07-11): no slides to
+        # bucket by, so the ideal text = the user's best moments across the
+        # batch's takes, in speech order, as numbered SECTIONS under the
+        # FE's single mock slide. Same coach editor + coach_finalized gate
+        # (edits key by section index exactly like slide index).
+        picks = select_best_deckless(candidates)
     slides_payload = compose_presentation(picks, canonical_slides)
 
     # Cache the composed (pre-edit) result keyed by the content signature so the
@@ -579,6 +663,11 @@ def _finalize_best_presentation(
     # (below). `coach_edited` tells the FE this slide has been through the
     # coach's own pass (vs still the machine's auto-pick).
     coach_edits = db.get_coach_best_presentation_edits(arc_id) or {}
+    # Coach-corrected key phrases (Engine 2, 2026-07-11): override the
+    # auto-derived set per slide once the coach saves theirs. getattr guard
+    # keeps injected fake dbs (tests) working.
+    _get_kp = getattr(db, "get_coach_best_presentation_key_phrases", None)
+    coach_kp = (_get_kp(arc_id) or {}) if callable(_get_kp) else {}
     for s in slides_payload:
         cov = coach_edits.get(s.get("index"))
         if isinstance(cov, str) and cov.strip():
@@ -586,6 +675,9 @@ def _finalize_best_presentation(
             s["coach_edited"] = True
         else:
             s["coach_edited"] = False
+        kp = coach_kp.get(s.get("index"))
+        if isinstance(kp, list) and kp:
+            s["key_phrases"] = kp
 
     # coach_finalized: has the coach corrected EVERY slide? This — NOT payment
     # — is what decides whether the student sees ANY text at all (founder: the
@@ -614,10 +706,13 @@ def _finalize_best_presentation(
             # NOT finalized — hide ALL slide text (never the raw draft),
             # regardless of payment state. The route's payment gate runs
             # separately/first; this hides content even on a PAID arc until
-            # the coach has actually finished.
+            # the coach has actually finished. Key phrases hide with the
+            # text: the coach-corrected set is deliverable content, and the
+            # auto set describes a draft the student must not infer.
             for s in slides_payload:
                 s["text"] = ""
                 s["edited"] = False
+                s["key_phrases"] = []
 
     # "Draft / pending coach" (founder 2026-06-20, retained as a SEPARATE,
     # softer signal from coach_finalized): flips True once a coach has

@@ -10889,7 +10889,10 @@ def v2_coach_arc_edit_slide(arc_id, index):
     re-editable. Once every slide has been corrected, ``coach_finalized``
     flips true and the (paid) student-facing routes start serving this text.
 
-    Body: { "text": str }.  200 { ok, arc_id, index } · 400 · 500
+    Body: { "text": str, "key_phrases"?: [str] }   (key_phrases: ≤5 strings,
+          ≤60 chars each — the coach-corrected glance set; omitted = keep
+          whatever is saved; [] = explicitly clear back to the auto set).
+    200 { ok, arc_id, index } · 400 · 500
     """
     try:
         body = request.get_json(silent=True) or {}
@@ -10898,8 +10901,33 @@ def v2_coach_arc_edit_slide(arc_id, index):
             return jsonify({"code": "INVALID_INPUT", "error": "text is required"}), 400
         if len(text) > 2000:
             return jsonify({"code": "INVALID_INPUT", "error": "text too long"}), 400
+        key_phrases = body.get("key_phrases", None)
+        if key_phrases is not None:
+            if not isinstance(key_phrases, list) or len(key_phrases) > 5:
+                return jsonify({
+                    "code": "INVALID_INPUT",
+                    "error": "key_phrases must be a list of at most 5 strings",
+                }), 400
+            cleaned_kp = []
+            for kp in key_phrases:
+                if not isinstance(kp, str):
+                    return jsonify({
+                        "code": "INVALID_INPUT",
+                        "error": "key_phrases entries must be strings",
+                    }), 400
+                kp = re.sub(r"<[^>]*>", "", kp).strip()
+                if not kp:
+                    continue
+                if len(kp) > 60:
+                    return jsonify({
+                        "code": "INVALID_INPUT",
+                        "error": "each key phrase must be at most 60 characters",
+                    }), 400
+                cleaned_kp.append(kp)
+            key_phrases = cleaned_kp
         ok = db.upsert_coach_best_presentation_edit(
             arc_id, index, text, str(request.user_id),
+            key_phrases=key_phrases,
         )
         if not ok:
             return jsonify({"code": "V2_ERROR", "error": "Could not save the edit"}), 500
