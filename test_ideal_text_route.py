@@ -119,5 +119,60 @@ class IdealTextRouteCompositionTests(unittest.TestCase):
         self.assertEqual(status, 404)
 
 
+@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
+class PencilEditRichFormatTests(unittest.TestCase):
+    """Backlog 1.7 (B6): the pencil-edit route passes the marker subset
+    (**b** *i* __u__ ==hl==) through as plain text and strips raw HTML."""
+
+    def setUp(self):
+        self.app = Flask(__name__)
+        self._saved = {}
+
+        def _upsert(arc_id, index, text, user_id=None):
+            self._saved["text"] = text
+            return True
+
+        self._p = [
+            patch.object(v2, "_arc_owned_by_caller", lambda a: (True, [])),
+            patch.object(v2.db, "upsert_best_presentation_edit", _upsert),
+        ]
+        for p in self._p:
+            p.start()
+
+    def tearDown(self):
+        for p in self._p:
+            p.stop()
+
+    def _call(self, text):
+        with self.app.test_request_context(json={"text": text}):
+            request.user_id = "u1"
+            resp, status = v2.v2_explore_arc_edit_slide.__wrapped__("a1", 0)
+            return resp.get_json(), status
+
+    def test_marker_subset_passes_through(self):
+        _, status = self._call("**bold** and *italic* and __under__ ==hl==")
+        self.assertEqual(status, 200)
+        self.assertEqual(self._saved["text"],
+                         "**bold** and *italic* and __under__ ==hl==")
+
+    def test_html_tags_stripped(self):
+        _, status = self._call('<script>x()</script>**keep** <b>drop tags</b>')
+        self.assertEqual(status, 200)
+        self.assertNotIn("<", self._saved["text"])
+        self.assertIn("**keep**", self._saved["text"])
+        self.assertIn("drop tags", self._saved["text"])  # inner text kept
+
+    def test_tags_only_body_is_400(self):
+        body, status = self._call("<b></b><i></i>")
+        self.assertEqual(status, 400)
+
+    def test_tags_cannot_smuggle_past_length_cap(self):
+        # Post-strip length is what the cap checks.
+        _, status = self._call("<b>" + "x" * 2000 + "</b>")
+        self.assertEqual(status, 200)  # exactly at cap after strip
+        _, status = self._call("<b>" + "x" * 2001 + "</b>")
+        self.assertEqual(status, 400)
+
+
 if __name__ == "__main__":
     unittest.main()

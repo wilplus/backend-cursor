@@ -19,7 +19,8 @@ _FAKE_BP = {
     "slides": [
         {"index": 0, "title": "Opening", "body": "the hook",
          "text": "We are raising two million dollars.", "take_index": 2,
-         "breakthrough": True},
+         "breakthrough": True,
+         "key_phrases": ["genuinely good", "firmly structured"]},
         {"index": 1, "title": "Market", "body": "the size",
          "text": "The market is forty billion.", "take_index": 1,
          "breakthrough": False},
@@ -64,6 +65,19 @@ class IdealTextReportTests(unittest.TestCase):
         self.assertFalse(out["ready"])
         self.assertIsNone(out["talkTitle"])
         self.assertEqual(out["slides"], [])
+
+
+
+class KeyPhrasesMappingTests(unittest.TestCase):
+    def test_key_phrases_map_to_camel_case(self):
+        with mock.patch(
+            "services.best_presentation.build_best_presentation",
+            return_value=_FAKE_BP,
+        ):
+            out = build_ideal_text_report("arc1")
+        self.assertEqual(out["slides"][0]["keyPhrases"],
+                         ["genuinely good", "firmly structured"])
+        self.assertEqual(out["slides"][1]["keyPhrases"], [])  # absent -> []
 
 
 if __name__ == "__main__":

@@ -736,5 +736,51 @@ class BatchedArcReadsTests(unittest.TestCase):
                          [s["text"] for s in legacy["slides"]])
 
 
+
+class KeyPhrasesTests(unittest.TestCase):
+    """Backlog 1.7 — per-slide glanceable phrases from the winning pick's
+    Say-It-Stronger upgrades. Display hints only (L1: never the text)."""
+
+    def _sis(self, *upgrades):
+        return {"already_strong": False,
+                "upgrades": [{"original": o, "upgrade": u, "reason": None}
+                             for o, u in upgrades],
+                "rewrite_your_voice": "x", "rewrite_polished": "x",
+                "why": None, "version": 1}
+
+    def test_phrases_from_upgrades_dedup_and_cap(self):
+        pick = {"say_it_stronger": self._sis(
+            ("holds it tightly", "is firmly structured"),
+            ("HOLDS IT TIGHTLY", "Is Firmly Structured"),  # dup, case-insens
+            ("a", "b"), ("c", "d"), ("e", "f"), ("g", "h"), ("i", "j"),
+        )}
+        out = bp._key_phrases(pick)
+        self.assertEqual(out[0], "is firmly structured")
+        self.assertEqual(len(out), 5)  # capped
+        self.assertEqual(len({p.lower() for p in out}), 5)  # deduped
+
+    def test_over_long_phrase_skipped(self):
+        pick = {"say_it_stronger": self._sis(("x", "y" * 61), ("a", "keep"))}
+        self.assertEqual(bp._key_phrases(pick), ["keep"])
+
+    def test_no_suggestions_empty(self):
+        self.assertEqual(bp._key_phrases({}), [])
+        self.assertEqual(bp._key_phrases({"say_it_stronger": None}), [])
+        self.assertEqual(bp._key_phrases(None), [])
+
+    def test_compose_carries_key_phrases_per_slide(self):
+        picks = {0: {"transcript": "strong close", "say_it_stronger": self._sis(
+            ("sort of good", "genuinely good"))}}
+        slides = [{"title": "S1", "body": ""}, {"title": "S2", "body": ""}]
+        orig = bp._render_composition
+        bp._render_composition = lambda p, s: None
+        try:
+            out = bp.compose_presentation(picks, slides)
+        finally:
+            bp._render_composition = orig
+        self.assertEqual(out[0]["key_phrases"], ["genuinely good"])
+        self.assertEqual(out[1]["key_phrases"], [])  # no pick -> empty
+
+
 if __name__ == "__main__":
     unittest.main()
