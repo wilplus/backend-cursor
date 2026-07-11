@@ -238,48 +238,133 @@ class PauseSnapIntegrationTests(unittest.TestCase):
         self.assertEqual(tx[1], "the pitch")
 
 
-class ChunkTranscriptByWordsTests(unittest.TestCase):
-    """Deckless full-transcript chunking (no click timeline → word-count
-    chunks for the FE's single-artificial-slide stacked layout)."""
+class ChunkWordsByCharsTests(unittest.TestCase):
+    """Deckless chunking v2 (founder 2026-07-11): ≤200-char pieces broken at
+    word boundaries, each with its audio span from the word timestamps."""
 
-    def _chunk(self, text, chunk_size=None):
-        from services.slide_word_split import chunk_transcript_by_words
-        if chunk_size is None:
-            return chunk_transcript_by_words(text)
-        return chunk_transcript_by_words(text, chunk_size)
+    def _chunk(self, words, max_chars=None):
+        from services.slide_word_split import chunk_words_by_chars
+        if max_chars is None:
+            return chunk_words_by_chars(words)
+        return chunk_words_by_chars(words, max_chars)
+
+    def test_empty_safe(self):
+        self.assertEqual(self._chunk([]), [])
+        self.assertEqual(self._chunk(None), [])
+
+    def test_short_take_is_one_chunk_with_span(self):
+        out = self._chunk([_w("we", 0.0, 0.4), _w("ship", 0.5, 0.9)])
+        self.assertEqual(out, [{
+            "index": 0, "transcript": "we ship",
+            "start_offset_ms": 0, "duration_ms": 900,
+        }])
+
+    def test_splits_at_char_cap_never_mid_word(self):
+        # "alpha beta" = 10 chars; cap 10 → "gamma" starts chunk 2.
+        out = self._chunk([
+            _w("alpha", 0.0, 0.5), _w("beta", 0.6, 1.0),
+            _w("gamma", 1.2, 1.7),
+        ], max_chars=10)
+        self.assertEqual([c["transcript"] for c in out],
+                         ["alpha beta", "gamma"])
+        self.assertEqual(out[0]["start_offset_ms"], 0)
+        self.assertEqual(out[0]["duration_ms"], 1000)
+        self.assertEqual(out[1]["start_offset_ms"], 1200)
+        self.assertEqual(out[1]["duration_ms"], 500)
+
+    def test_word_longer_than_cap_gets_own_chunk(self):
+        out = self._chunk([
+            _w("hi", 0.0, 0.2),
+            _w("supercalifragilistic", 0.3, 1.5),
+            _w("ok", 1.6, 1.8),
+        ], max_chars=10)
+        self.assertEqual([c["transcript"] for c in out],
+                         ["hi", "supercalifragilistic", "ok"])
+
+    def test_no_text_dropped_or_reordered(self):
+        words = [_w(f"w{i}", i * 0.5, i * 0.5 + 0.4) for i in range(120)]
+        out = self._chunk(words)
+        rebuilt = " ".join(c["transcript"] for c in out)
+        self.assertEqual(rebuilt, " ".join(w["word"] for w in words))
+        for c in out:
+            self.assertLessEqual(len(c["transcript"]), 200)
+        # spans are monotonic — text and audio can't drift
+        starts = [c["start_offset_ms"] for c in out]
+        self.assertEqual(starts, sorted(starts))
+
+    def test_out_of_order_words_sorted_by_time(self):
+        out = self._chunk([_w("second", 1.0, 1.4), _w("first", 0.0, 0.4)])
+        self.assertEqual(out[0]["transcript"], "first second")
+        self.assertEqual(out[0]["start_offset_ms"], 0)
+
+
+class ChunkTranscriptByCharsTests(unittest.TestCase):
+    """Text-only fallback for legacy single-blob deckless persists."""
+
+    def _chunk(self, text, max_chars=None):
+        from services.slide_word_split import chunk_transcript_by_chars
+        if max_chars is None:
+            return chunk_transcript_by_chars(text)
+        return chunk_transcript_by_chars(text, max_chars)
 
     def test_empty_or_blank_returns_empty(self):
         self.assertEqual(self._chunk(""), [])
         self.assertEqual(self._chunk(None), [])
         self.assertEqual(self._chunk("   "), [])
 
-    def test_short_text_is_a_single_chunk(self):
-        out = self._chunk("we begin the pitch", chunk_size=50)
-        self.assertEqual(out, [{"index": 0, "transcript": "we begin the pitch"}])
+    def test_short_text_single_chunk(self):
+        self.assertEqual(self._chunk("we begin"),
+                         [{"index": 0, "transcript": "we begin"}])
 
-    def test_splits_at_exact_chunk_size(self):
-        words = [f"w{i}" for i in range(10)]
-        out = self._chunk(" ".join(words), chunk_size=4)
-        self.assertEqual([c["index"] for c in out], [0, 1, 2])
-        self.assertEqual(out[0]["transcript"], "w0 w1 w2 w3")
-        self.assertEqual(out[1]["transcript"], "w4 w5 w6 w7")
-        self.assertEqual(out[2]["transcript"], "w8 w9")  # trailing remainder
+    def test_word_boundary_split_and_no_loss(self):
+        out = self._chunk("alpha beta gamma", max_chars=10)
+        self.assertEqual([c["transcript"] for c in out],
+                         ["alpha beta", "gamma"])
+        text = " ".join(f"w{i}" for i in range(200))
+        out = self._chunk(text)
+        self.assertEqual(" ".join(c["transcript"] for c in out), text)
+        for c in out:
+            self.assertLessEqual(len(c["transcript"]), 200)
 
-    def test_words_never_reordered_or_dropped(self):
-        words = [f"w{i}" for i in range(137)]
-        out = self._chunk(" ".join(words), chunk_size=50)
-        rebuilt = " ".join(c["transcript"] for c in out)
-        self.assertEqual(rebuilt, " ".join(words))
 
-    def test_default_chunk_size_is_fifty(self):
-        words = [f"w{i}" for i in range(101)]
-        out = self._chunk(" ".join(words))
-        self.assertEqual(len(out), 3)  # 50 + 50 + 1
+class DecklessChunksFromStxTests(unittest.TestCase):
+    """The shared canonical chunk list (readout fold + edit-route bound)."""
 
-    def test_non_positive_chunk_size_falls_back_to_default(self):
-        words = [f"w{i}" for i in range(60)]
-        out = self._chunk(" ".join(words), chunk_size=0)
-        self.assertEqual(len(out), 2)  # falls back to 50-word default
+    def _f(self, stx):
+        from services.slide_word_split import deckless_chunks_from_stx
+        return deckless_chunks_from_stx(stx)
+
+    def test_new_style_multi_entry_returned_with_spans(self):
+        stx = [
+            {"index": 0, "transcript": "part one",
+             "start_offset_ms": 0, "duration_ms": 3000},
+            {"index": 1, "transcript": "part two",
+             "start_offset_ms": 3200, "duration_ms": 2500},
+        ]
+        out = self._f(stx)
+        self.assertEqual(len(out), 2)
+        self.assertEqual(out[1]["transcript"], "part two")
+        self.assertEqual(out[1]["start_offset_ms"], 3200)
+
+    def test_single_short_entry_keeps_its_span(self):
+        stx = [{"index": 0, "transcript": "short take",
+                "start_offset_ms": 0, "duration_ms": 8000}]
+        out = self._f(stx)
+        self.assertEqual(out[0]["duration_ms"], 8000)
+
+    def test_legacy_long_blob_rechunks_without_spans(self):
+        blob = " ".join(f"word{i}" for i in range(80))  # >> 200 chars
+        stx = [{"index": 0, "transcript": blob,
+                "start_offset_ms": 0, "duration_ms": 60000}]
+        out = self._f(stx)
+        self.assertGreater(len(out), 1)
+        self.assertNotIn("start_offset_ms", out[0])  # no fake spans
+        self.assertEqual(" ".join(c["transcript"] for c in out), blob)
+
+    def test_empty_safe(self):
+        self.assertEqual(self._f([]), [])
+        self.assertEqual(self._f(None), [])
+        self.assertEqual(self._f([{"index": 0, "transcript": "  "}]), [])
 
 
 if __name__ == "__main__":

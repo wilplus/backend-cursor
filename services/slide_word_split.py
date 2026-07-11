@@ -269,29 +269,127 @@ def build_slide_transcripts(words_all: Any, slide_advances: Any,
     return out
 
 
-# ── Deckless chunking (founder 2026-07-07) ─────────────────────────────────
+# ── Deckless chunking (founder 2026-07-11, supersedes the 50-word cut) ──────
 # No deck → no click timeline to bucket by, so the whole-recording transcript
-# (already persisted as a single slide_transcripts entry, see
-# lab_recording.build_readout_from_session's DECKLESS fold) is exposed as one
-# unbroken string today. Split it into fixed-size word chunks so the FE can
-# lay it out as readable stacked paragraphs under one artificial "slide"
-# (no next/prev — there's nothing to page between) instead of one wall of
-# text. Word-count, not time — there's no tap timeline to chop by.
+# is split into max-200-CHARACTER chunks broken at word boundaries, each with
+# its audio span derived from the Whisper word timestamps — so every chunk's
+# playback control plays exactly its own segment of the single take audio,
+# and text/audio boundaries can never drift (both come from the same words).
 
-_DECKLESS_CHUNK_WORDS = 50
+_DECKLESS_CHUNK_CHARS = 200
 
 
-def chunk_transcript_by_words(text: Any, chunk_size: int = _DECKLESS_CHUNK_WORDS) -> list:
-    """Split a flat transcript string into ~chunk_size-word groups, in order.
+def chunk_words_by_chars(words: Any, max_chars: int = _DECKLESS_CHUNK_CHARS) -> list:
+    """Chunk the whole-recording word list into ≤max_chars text pieces with
+    per-chunk audio spans.
 
-    Returns ``[{index, transcript}, ...]``; ``[]`` for blank/whitespace-only
-    input. Pure.
+    ``words`` = [{word, start, end}] in SECONDS (Whisper verbose_json).
+    A chunk closes when adding the next word would exceed ``max_chars``
+    (a word is never split; a single over-long word gets its own chunk).
+    Returns ``[{index, transcript, start_offset_ms, duration_ms}, ...]``
+    in time order; ``[]`` when there are no usable words. Pure.
     """
+    cap = max_chars if isinstance(max_chars, int) and max_chars > 0 \
+        else _DECKLESS_CHUNK_CHARS
+    ordered = sorted(
+        (w for w in (words or []) if isinstance(w, dict)
+         and isinstance(w.get("start"), (int, float))
+         and (w.get("word") or "").strip()),
+        key=lambda w: w.get("start") or 0.0,
+    )
+    out: list = []
+    tokens: list = []
+    cur_len = 0
+    start_ms = 0
+    end_ms = 0
+    def _close():
+        if tokens:
+            out.append({
+                "index": len(out),
+                "transcript": " ".join(tokens),
+                "start_offset_ms": start_ms,
+                "duration_ms": max(0, end_ms - start_ms),
+            })
+    for w in ordered:
+        token = (w.get("word") or "").strip()
+        st = float(w.get("start") or 0.0)
+        en = w.get("end")
+        en = float(en) if isinstance(en, (int, float)) else st
+        w_start = int(st * 1000)
+        w_end = int(en * 1000)
+        cost = len(token) + (1 if tokens else 0)
+        if tokens and cur_len + cost > cap:
+            _close()
+            tokens = []
+            cur_len = 0
+        if not tokens:
+            start_ms = w_start
+            end_ms = w_end
+        tokens.append(token)
+        cur_len += len(token) + (1 if cur_len else 0)
+        end_ms = max(end_ms, w_end)
+    _close()
+    return out
+
+
+def chunk_transcript_by_chars(text: Any, max_chars: int = _DECKLESS_CHUNK_CHARS) -> list:
+    """Text-only fallback for LEGACY deckless recordings persisted as one
+    blob with no word list: same ≤max_chars word-boundary split, but no
+    audio spans (the FE hides the per-chunk play control).
+
+    Returns ``[{index, transcript}, ...]``; ``[]`` for blank input. Pure.
+    """
+    cap = max_chars if isinstance(max_chars, int) and max_chars > 0 \
+        else _DECKLESS_CHUNK_CHARS
     words = (text or "").split()
     if not words:
         return []
-    size = chunk_size if isinstance(chunk_size, int) and chunk_size > 0 else _DECKLESS_CHUNK_WORDS
-    return [
-        {"index": i // size, "transcript": " ".join(words[i:i + size])}
-        for i in range(0, len(words), size)
-    ]
+    out: list = []
+    tokens: list = []
+    cur_len = 0
+    for token in words:
+        cost = len(token) + (1 if tokens else 0)
+        if tokens and cur_len + cost > cap:
+            out.append({"index": len(out), "transcript": " ".join(tokens)})
+            tokens = []
+            cur_len = 0
+        tokens.append(token)
+        cur_len += len(token) + (1 if cur_len else 0)
+    if tokens:
+        out.append({"index": len(out), "transcript": " ".join(tokens)})
+    return out
+
+
+def deckless_chunks_from_stx(stx: Any) -> list:
+    """The ONE canonical deckless chunk list for a session, from its persisted
+    ``slide_transcripts`` entries — shared by the readout fold AND the
+    transcript-edit route's chunk-bound check so their counts can never drift.
+
+    New-style persists (2026-07-11+) store the chunks THEMSELVES as multiple
+    entries with audio spans → returned as-is (re-indexed, span-preserving).
+    A single entry whose text still fits one chunk is also span-preserving.
+    A legacy single-blob entry (text longer than one chunk, no per-chunk
+    spans) falls back to the text-only split. Returns [] for no entries. Pure.
+    """
+    entries = [t for t in (stx or []) if isinstance(t, dict)
+               and (t.get("transcript") or "").strip()]
+    if not entries:
+        return []
+    if len(entries) == 1:
+        text = entries[0]["transcript"].strip()
+        pieces = chunk_transcript_by_chars(text)
+        if len(pieces) > 1:
+            return pieces  # legacy blob → text-only chunks, no spans
+        # fits one chunk → keep the entry's own span
+        e = entries[0]
+        return [{
+            "index": 0, "transcript": text,
+            "start_offset_ms": e.get("start_offset_ms"),
+            "duration_ms": e.get("duration_ms"),
+        }]
+    return [{
+        "index": i,
+        "transcript": e["transcript"].strip(),
+        "start_offset_ms": e.get("start_offset_ms"),
+        "duration_ms": e.get("duration_ms"),
+    } for i, e in enumerate(entries)]
