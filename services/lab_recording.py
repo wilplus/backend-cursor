@@ -206,6 +206,12 @@ def build_readout_payload(
         })
     return {
         "snippets": out_snippets,
+        # The FULL-take audio (parent+offset model — every snippet's audio_ref
+        # is the parent recording URL); mirrors the re-read payload's field so
+        # the FE section playback works on the immediate 201 too.
+        "parent_audio_ref": (
+            out_snippets[0].get("audio_ref") if out_snippets else None
+        ),
         # False → the FE shows the soft "voice metrics unavailable" notice
         # instead of an empty/broken metrics block. True when >=1 snippet has
         # real acoustic data.
@@ -607,31 +613,46 @@ def process_lab_recording(
             )
             if any((t.get("transcript") or "").strip() for t in _slide_tx):
                 db.set_session_slide_transcripts(session_id, _slide_tx)
-        elif not _slides_for_tx and segments:
-            # DECKLESS ONLY (founder bug #2) — the guard matters: a DECK session
-            # whose Whisper fell back to segments-only (no words) must NOT land
-            # here, or the whole talk gets persisted under pseudo-slide 0 and
-            # the per-slide reader would prefer it (review must-fix).
-            # The salient snippets are a SUBSET of
-            # the recording, so without slides the user had no complete text.
-            # Persist the WHOLE recording's transcript as a single entry (same
-            # column, index 0) — the readout folds it as `full_transcript` so
-            # everything registered via audio is there, once.
-            _full = " ".join(
-                (seg.get("text") or "").strip()
-                for seg in segments
-                if isinstance(seg, dict) and (seg.get("text") or "").strip()
-            ).strip()
-            if _full:
-                _last_end = max(
-                    (seg.get("end") or 0) for seg in segments
-                    if isinstance(seg, dict)
-                )
-                db.set_session_slide_transcripts(session_id, [{
-                    "index": 0, "transcript": _full,
-                    "start_offset_ms": 0,
-                    "duration_ms": int(float(_last_end) * 1000),
-                }])
+        elif not _slides_for_tx and (words_all or segments):
+            # DECKLESS (the deck guard matters: a DECK session whose Whisper
+            # fell back to segments-only must NOT land here, or the whole talk
+            # gets persisted under pseudo-slide 0 and the per-slide reader
+            # would prefer it — review must-fix).
+            #
+            # With word timestamps (founder 2026-07-11): persist the whole
+            # recording pre-chunked — ≤200-char pieces broken at word
+            # boundaries, EACH with its audio span from the word times — so
+            # every chunk's playback control plays exactly its own segment
+            # and text/audio boundaries share one source (no drift).
+            # An empty chunk list (malformed words) falls THROUGH to the
+            # segments blob below rather than silently persisting nothing
+            # (review fix — elif chains would have eaten the fallback).
+            _chunks: list = []
+            if words_all:
+                from services.slide_word_split import chunk_words_by_chars
+                _chunks = chunk_words_by_chars(words_all)
+            if _chunks:
+                db.set_session_slide_transcripts(session_id, _chunks)
+            elif segments:
+                # Segments-only Whisper fallback (no usable word timestamps):
+                # persist the WHOLE recording's transcript as a single legacy
+                # blob (index 0) — the readout re-chunks it at read time,
+                # text-only (no per-chunk spans).
+                _full = " ".join(
+                    (seg.get("text") or "").strip()
+                    for seg in segments
+                    if isinstance(seg, dict) and (seg.get("text") or "").strip()
+                ).strip()
+                if _full:
+                    _last_end = max(
+                        (seg.get("end") or 0) for seg in segments
+                        if isinstance(seg, dict)
+                    )
+                    db.set_session_slide_transcripts(session_id, [{
+                        "index": 0, "transcript": _full,
+                        "start_offset_ms": 0,
+                        "duration_ms": int(float(_last_end) * 1000),
+                    }])
     except Exception as _stx_err:
         # F1a (per-slide 1:1 transcript) degraded → the take viewer falls back to
         # coarser per-snippet bucketing. Make it observable (no payload change).
@@ -829,6 +850,14 @@ def build_readout_from_session(
         "voice_metrics_available": any(
             _has_voice_metrics(s.get("features")) for s in out_snips
         ),
+        # The FULL-take audio (parent+offset model: every snippet's
+        # audio_segment_path IS the parent recording URL). The FE seeks one
+        # <audio> on this per section span (slide_transcripts /
+        # full_transcript_chunks start_offset_ms + duration_ms). Null when
+        # the session has no snippets (nothing recorded → nothing to play).
+        "parent_audio_ref": (
+            snippets[0].get("audio_segment_path") if snippets else None
+        ),
     }
 
     # Slide-deck context (UX Wave 4 BE-S6a) — session-level so the report can
@@ -883,9 +912,14 @@ def build_readout_from_session(
             if _stx:
                 result["slide_transcripts"] = _stx
         else:
-            # DECKLESS (founder bug #2): fold the persisted whole-recording
-            # transcript (stored as a single slide_transcripts entry at record
-            # time) as a plain string — the FE's transcript-text surface.
+            # DECKLESS (founder bug #2, re-cut 2026-07-11): fold the persisted
+            # whole-recording transcript as a plain string PLUS the canonical
+            # ≤200-char chunk list — new-style persists carry per-chunk audio
+            # spans (start_offset_ms/duration_ms against parent_audio_ref) so
+            # each chunk's play control plays exactly its segment; legacy
+            # single-blob persists re-chunk at read time, text-only (the FE
+            # hides the play control when a chunk has no span). Each chunk
+            # carries the user's own edit when one exists (display layer).
             try:
                 _stx = db.get_session_slide_transcripts(session_id)
                 if _stx:
@@ -896,16 +930,10 @@ def build_readout_from_session(
                     ).strip()
                     if _full:
                         result["full_transcript"] = _full
-                        # 2026-07-07 — the same complete transcript, chopped
-                        # into readable ~50-word stacked paragraphs (no click
-                        # timeline to bucket by, so word-count is the unit)
-                        # for the FE's single-artificial-slide layout. Each
-                        # chunk carries the user's own edit when one exists
-                        # (chunk_index-keyed; display layer only).
                         from services.slide_word_split import (
-                            chunk_transcript_by_words,
+                            deckless_chunks_from_stx,
                         )
-                        _chunks = chunk_transcript_by_words(_full)
+                        _chunks = deckless_chunks_from_stx(_stx)
                         for _c in _chunks:
                             _c["user_edited_text"] = _edits_by_chunk.get(
                                 _c.get("index"))

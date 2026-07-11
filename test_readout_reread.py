@@ -223,26 +223,57 @@ class ReadoutFromSessionTests(unittest.TestCase):
             out = mod.build_readout_from_session("sess1", include_insights=False)
         self.assertNotIn("slide_transcripts", out)  # nothing to surface → omit
 
-    # ── Deckless full transcript, chunked (founder 2026-07-07) ────────────
+    # ── Deckless full transcript, chunked (founder 2026-07-11 re-cut) ─────
 
     _DECKLESS_CTX: dict = {}  # no "slides" key at all → the deckless branch
 
-    def test_deckless_full_transcript_is_chunked(self):
+    def test_deckless_new_style_chunks_fold_with_spans(self):
+        # New-style persist: the chunks THEMSELVES are the entries, each with
+        # its audio span — folded as-is so playback can't drift from text.
         from services import lab_recording as mod
         from services.db import db
-        words = [f"w{i}" for i in range(60)]
-        stx = [{"index": 0, "transcript": " ".join(words),
-                "start_offset_ms": 0, "duration_ms": 30000}]
+        stx = [
+            {"index": 0, "transcript": "part one",
+             "start_offset_ms": 0, "duration_ms": 3000},
+            {"index": 1, "transcript": "part two",
+             "start_offset_ms": 3200, "duration_ms": 2500},
+        ]
         with patch.object(db, "get_snippets_by_session", return_value=[_snippet("a")]), \
              patch.object(db, "v2_get_session_by_id", return_value={}), \
              patch.object(db, "get_session_intake_context", return_value=self._DECKLESS_CTX), \
-             patch.object(db, "get_session_slide_transcripts", return_value=stx):
+             patch.object(db, "get_session_slide_transcripts", return_value=stx), \
+             patch.object(db, "get_user_transcript_edits", return_value=[]):
             out = mod.build_readout_from_session("sess1", include_insights=False)
-        self.assertEqual(out["full_transcript"], " ".join(words))  # unchanged
-        self.assertEqual(len(out["full_transcript_chunks"]), 2)    # 50 + 10
-        self.assertEqual(out["full_transcript_chunks"][0]["index"], 0)
+        self.assertEqual(out["full_transcript"], "part one part two")
+        chunks = out["full_transcript_chunks"]
+        self.assertEqual(len(chunks), 2)
+        self.assertEqual(chunks[1]["start_offset_ms"], 3200)
+        self.assertEqual(chunks[1]["duration_ms"], 2500)
         self.assertNotIn("slides", out)          # no deck → no slides key
         self.assertNotIn("slide_transcripts", out)  # decked-only field
+
+    def test_deckless_legacy_blob_rechunks_without_spans(self):
+        from services import lab_recording as mod
+        from services.db import db
+        blob = " ".join(f"word{i}" for i in range(80))  # >> 200 chars
+        stx = [{"index": 0, "transcript": blob,
+                "start_offset_ms": 0, "duration_ms": 60000}]
+        with patch.object(db, "get_snippets_by_session", return_value=[_snippet("a")]), \
+             patch.object(db, "v2_get_session_by_id", return_value={}), \
+             patch.object(db, "get_session_intake_context", return_value=self._DECKLESS_CTX), \
+             patch.object(db, "get_session_slide_transcripts", return_value=stx), \
+             patch.object(db, "get_user_transcript_edits", return_value=[]):
+            out = mod.build_readout_from_session("sess1", include_insights=False)
+        chunks = out["full_transcript_chunks"]
+        self.assertGreater(len(chunks), 1)
+        self.assertNotIn("start_offset_ms", chunks[0])  # no fake spans
+        self.assertEqual(" ".join(c["transcript"] for c in chunks), blob)
+
+    def test_parent_audio_ref_exposed(self):
+        # Parent+offset model: every snippet's audio_segment_path IS the
+        # full-take audio — surfaced top-level for section playback.
+        out = self._build([_snippet("a")])
+        self.assertEqual(out["parent_audio_ref"], "https://x/parent.webm")
 
     def test_deckless_no_persisted_transcript_omits_both_fields(self):
         from services import lab_recording as mod

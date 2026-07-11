@@ -8397,14 +8397,10 @@ def v2_user_put_transcript_edit(session_id):
                     "error": "That moment is not part of this session",
                 }), 404
         else:
-            from services.slide_word_split import chunk_transcript_by_words
+            # SAME helper the readout fold uses — the two counts can't drift.
+            from services.slide_word_split import deckless_chunks_from_stx
             _stx = db.get_session_slide_transcripts(session_id) or []
-            _full = " ".join(
-                (t.get("transcript") or "").strip()
-                for t in _stx
-                if isinstance(t, dict) and (t.get("transcript") or "").strip()
-            ).strip()
-            n_chunks = len(chunk_transcript_by_words(_full))
+            n_chunks = len(deckless_chunks_from_stx(_stx))
             if chunk_index >= n_chunks:
                 return jsonify({
                     "code": "INVALID_INPUT",

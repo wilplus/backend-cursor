@@ -35,7 +35,8 @@ class TranscriptEditRouteTests(unittest.TestCase):
         self._session = {"id": _SID, "user_id": "u1"}
         self._saved = []
         # Target-existence fixtures: the snippet _SNIP belongs to _SID; the
-        # deckless transcript yields exactly 2 chunks (60 words / 50).
+        # deckless transcript yields exactly 2 chunks (legacy blob ~289
+        # chars re-chunked at <=200 chars).
         self._snippet_row = {"id": _SNIP, "session_id": _SID}
         self._stx = [{"index": 0,
                       "transcript": " ".join(f"w{i}" for i in range(60))}]
@@ -158,7 +159,7 @@ class TranscriptEditRouteTests(unittest.TestCase):
         self.assertEqual(self._saved, [])
 
     def test_chunk_index_out_of_range_400s(self):
-        # 60 words / 50 → 2 chunks; index 2 is past the end.
+        # legacy blob → 2 chunks under the 200-char cut; index 2 is past the end.
         body, status = self._call({"chunk_index": 2, "text": "x"})
         self.assertEqual(status, 400)
         self.assertEqual(self._saved, [])
