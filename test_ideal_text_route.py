@@ -174,5 +174,59 @@ class PencilEditRichFormatTests(unittest.TestCase):
         self.assertEqual(status, 400)
 
 
+@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
+class ArcProgressCoachFinalizedTests(unittest.TestCase):
+    """Backlog 4.2 (B8): the cheap progress poll carries coach_finalized so
+    the FE can show "waiting for the coach to assemble" at 3/3."""
+
+    def setUp(self):
+        self.app = Flask(__name__)
+        deck = {"slides": [{"title": "S1", "body": ""},
+                           {"title": "S2", "body": ""}]}
+        self._sessions = [
+            {"id": f"s{i}", "user_id": "u1", "take_index": i + 1,
+             "intake_context": dict(deck)}
+            for i in range(3)
+        ]
+        self._coach_edits = {}
+        self._p = [
+            patch.object(v2, "_arc_owned_by_caller",
+                         lambda arc_id: (True, self._sessions)),
+            patch.object(v2.db, "get_coach_best_presentation_edits",
+                         lambda arc_id: dict(self._coach_edits)),
+        ]
+        for p_ in self._p:
+            p_.start()
+
+    def tearDown(self):
+        for p_ in self._p:
+            p_.stop()
+
+    def _call(self):
+        with self.app.test_request_context():
+            request.user_id = "u1"
+            resp, status = v2.v2_explore_arc_progress.__wrapped__("a1")
+            return resp.get_json(), status
+
+    def test_not_finalized_until_every_slide_corrected(self):
+        self._coach_edits = {0: "corrected one"}  # 1 of 2 slides
+        body, status = self._call()
+        self.assertEqual(status, 200)
+        self.assertEqual(body["takes_done"], 3)
+        self.assertFalse(body["coach_finalized"])
+
+    def test_finalized_when_all_slides_corrected(self):
+        self._coach_edits = {0: "one", 1: "two"}
+        body, _ = self._call()
+        self.assertTrue(body["coach_finalized"])
+
+    def test_deckless_arc_never_finalized(self):
+        for s in self._sessions:
+            s["intake_context"] = {"topic": "t"}
+        self._coach_edits = {0: "x"}
+        body, _ = self._call()
+        self.assertFalse(body["coach_finalized"])
+
+
 if __name__ == "__main__":
     unittest.main()

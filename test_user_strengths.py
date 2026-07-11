@@ -408,6 +408,69 @@ class ContinueDeckArcTests(unittest.TestCase):
         self.assertEqual(
             v2._continue_deck_arc("u1", [], "fresh", 2), ("fresh", 2))
 
+    # ── 3-take batch cycle (founder re-lock 2026-07-11, backlog 4.1) ──────
+
+    def test_full_batch_starts_a_new_arc(self):
+        # arc-A already holds a FULL batch (3 takes) → the next take does NOT
+        # join it; the fresh arc starts batch 2, counter back to take 1.
+        self._patch_sessions([
+            {"id": f"p{i}", "arc_id": "arc-A",
+             "intake_context": {"slides": self.DECK}}
+            for i in range(3)
+        ])
+        arc, ti = v2._continue_deck_arc("u1", self.DECK, "fresh-arc", 1)
+        self.assertEqual(arc, "fresh-arc")
+        self.assertEqual(ti, 1)
+
+    def test_two_takes_still_joins_as_third(self):
+        # 2/3 → joining as take 3 completes the batch (the boundary case).
+        self._patch_sessions([
+            {"id": "p1", "arc_id": "arc-A", "intake_context": {"slides": self.DECK}},
+            {"id": "p2", "arc_id": "arc-A", "intake_context": {"slides": self.DECK}},
+        ])
+        self.assertEqual(
+            v2._continue_deck_arc("u1", self.DECK, "fresh", 1), ("arc-A", 3))
+
+    def test_second_batch_grows_until_full(self):
+        # Batch 1 full (arc-A ×3), batch 2 open (arc-B ×1). arc-A is the
+        # most-developed but FULL — take 5 must fill batch 2 (arc-B take 2),
+        # NOT mint a third arc (the open-batch rule).
+        self._patch_sessions([
+            *[{"id": f"a{i}", "arc_id": "arc-A",
+               "intake_context": {"slides": self.DECK}} for i in range(3)],
+            {"id": "b1", "arc_id": "arc-B", "intake_context": {"slides": self.DECK}},
+        ])
+        arc, ti = v2._continue_deck_arc("u1", self.DECK, "fresh-arc", 1)
+        self.assertEqual((arc, ti), ("arc-B", 2))
+
+
+@unittest.skipIf(_RT_ERR is not None, f"needs app deps: {_RT_ERR}")
+class ContinueTopicArcBatchTests(unittest.TestCase):
+    """Deckless continue-one-arc honors the same 3-take batch cap."""
+
+    def setUp(self):
+        self._orig = getattr(v2.db, "v2_list_user_lab_sessions", None)
+
+    def tearDown(self):
+        v2.db.v2_list_user_lab_sessions = self._orig
+
+    def _patch_sessions(self, sessions):
+        v2.db.v2_list_user_lab_sessions = lambda uid: sessions
+
+    def _deckless(self, sid, arc, topic="My Talk"):
+        return {"id": sid, "arc_id": arc, "intake_context": {"topic": topic}}
+
+    def test_joins_open_batch(self):
+        self._patch_sessions([self._deckless("p1", "arc-A")])
+        self.assertEqual(
+            v2._continue_topic_arc("u1", "my talk", "fresh", 1), ("arc-A", 2))
+
+    def test_full_batch_starts_new_arc(self):
+        self._patch_sessions(
+            [self._deckless(f"p{i}", "arc-A") for i in range(3)])
+        self.assertEqual(
+            v2._continue_topic_arc("u1", "My Talk", "fresh", 1), ("fresh", 1))
+
 
 if __name__ == "__main__":
     unittest.main()
