@@ -314,6 +314,28 @@ class ReadoutFromSessionTests(unittest.TestCase):
 
     # ── "Say It Stronger" + user transcript edits (founder 2026-07-07) ────
 
+    def test_coach_final_card_wins_over_auto(self):
+        # Engine 1 (2026-07-11): the coach-corrected card replaces the auto
+        # one on the user readout; the coach packet keeps the draft beside it.
+        from services import lab_recording as mod
+        from services.db import db
+        auto = {"already_strong": False, "upgrades": [],
+                "rewrite_your_voice": "auto", "rewrite_polished": "auto",
+                "why": None, "version": 1}
+        final = {**auto, "rewrite_polished": "coach corrected",
+                 "edited_by_coach": True}
+        snips = [_snippet("a", say_it_stronger=auto,
+                          say_it_stronger_final=final)]
+        with patch.object(db, "get_snippets_by_session", return_value=snips), \
+             patch.object(db, "v2_get_session_by_id", return_value={}), \
+             patch.object(db, "get_user_transcript_edits", return_value=[]):
+            out = mod.build_readout_from_session("sess1", include_insights=False)
+            coach = mod.build_readout_from_session(
+                "sess1", include_insights=False, include_slide_scores=True)
+        self.assertEqual(out["snippets"][0]["say_it_stronger"], final)
+        self.assertNotIn("say_it_stronger_draft", out["snippets"][0])
+        self.assertEqual(coach["snippets"][0]["say_it_stronger_draft"], auto)
+
     def test_say_it_stronger_folds_from_persisted_row(self):
         from services import lab_recording as mod
         from services.db import db
