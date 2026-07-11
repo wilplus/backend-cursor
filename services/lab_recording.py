@@ -867,6 +867,13 @@ def build_readout_from_session(
     except Exception:
         ctx = {}
     if isinstance(ctx, dict):
+        # Audience (backlog 1.4) — the training-setup field the FE suffixes
+        # onto insight one-liners ("(audience: investors)"). Deck and
+        # deckless alike; absent/blank → key omitted (FE hides the suffix).
+        _aud = (ctx.get("audience") or "").strip() \
+            if isinstance(ctx.get("audience"), str) else ""
+        if _aud:
+            result["audience"] = _aud
         slides = ctx.get("slides")
         if slides:
             result["slides"] = slides

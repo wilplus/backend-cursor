@@ -44,6 +44,10 @@ def build_ideal_text_report(talk_id: Optional[str], *, database=None) -> dict:
             "takeRoute": (f"/audit/{talk_id}/take/{take_index}"
                           if take_index is not None else None),
             "breakthrough": bool(s.get("breakthrough")),
+            # Glanceable per-slide phrases for the presenter's mid-talk look
+            # (backlog 1.7) — derived from the winning pick's Say-It-Stronger
+            # upgrades in compose; display hints only, never the text (L1).
+            "keyPhrases": s.get("key_phrases") or [],
         })
     return {
         "talkId": talk_id,

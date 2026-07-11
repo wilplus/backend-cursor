@@ -10403,6 +10403,12 @@ def v2_explore_arc_edit_slide(arc_id, index):
     the pencil). Overrides the composed text + sticks across recompositions.
     Ownership-checked.
 
+    Rich formatting (backlog 1.7, founder 2026-07-11): the FE's ideal-text
+    editor persists a tiny marker subset — **bold**, *italic*, __underline__,
+    ==highlight== — INSIDE this same text field. The markers pass through as
+    plain text (they degrade readably on every other surface); raw HTML tags
+    are stripped server-side so markup can never round-trip into a renderer.
+
     Body: { "text": str }.  200 { ok, arc_id, index } · 400 · 404 · 500
     """
     try:
@@ -10411,6 +10417,9 @@ def v2_explore_arc_edit_slide(arc_id, index):
             return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
         body = request.get_json(silent=True) or {}
         text = (body.get("text") or "").strip() if isinstance(body.get("text"), str) else ""
+        # Strip HTML tags (keep the marker subset — it's plain text). Length
+        # is checked AFTER stripping so tags can't smuggle past the cap.
+        text = re.sub(r"<[^>]*>", "", text).strip()
         if not text:
             return jsonify({"code": "INVALID_INPUT", "error": "text is required"}), 400
         if len(text) > 2000:

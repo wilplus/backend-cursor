@@ -280,15 +280,54 @@ class DispatchTests(unittest.TestCase):
 
 
 class L1FenceTests(unittest.TestCase):
-    """L1 — the suggestions are a display overlay ONLY: the best-presentation
-    / ideal-text assembly must never read them."""
+    """L1 — the suggestions are a display overlay ONLY. Founder 2026-07-11
+    carved out ONE sanctioned read: per-slide ideal-text key_phrases derive
+    from the winning pick's upgrades (glance hints beside the text). The
+    invariant is therefore BEHAVIORAL: say_it_stronger must never alter the
+    composed/selected TEXT itself."""
 
-    def test_assembly_paths_never_reference_say_it_stronger(self):
+    def test_compose_text_identical_with_and_without_suggestions(self):
+        from services import best_presentation as bp
+        sis = {"already_strong": False,
+               "upgrades": [{"original": "weak", "upgrade": "strong",
+                             "reason": None}],
+               "rewrite_your_voice": "REWRITTEN A",
+               "rewrite_polished": "REWRITTEN B",
+               "why": None, "version": 1}
+        base_pick = {"transcript": "the verbatim line",
+                     "audio_ref": None, "start_offset_ms": 0,
+                     "duration_ms": 1000, "take_index": 1,
+                     "breakthrough": False, "note": None}
+        slides = [{"title": "S1", "body": ""}]
+        orig = bp._render_composition
+        bp._render_composition = lambda p, s: None  # verbatim path
+        try:
+            without = bp.compose_presentation({0: dict(base_pick)}, slides)
+            with_sis = bp.compose_presentation(
+                {0: {**base_pick, "say_it_stronger": sis}}, slides)
+        finally:
+            bp._render_composition = orig
+        self.assertEqual(without[0]["text"], "the verbatim line")
+        self.assertEqual(with_sis[0]["text"], without[0]["text"])
+        # the rewrites never leak into any text field
+        for s in with_sis:
+            self.assertNotIn("REWRITTEN", s["text"])
+
+    def test_ideal_text_report_never_reads_the_raw_field(self):
+        # The report consumes the derived key_phrases, never say_it_stronger
+        # itself — the raw suggestion object stays off the paid deliverable.
         import pathlib
-        for fname in ("services/best_presentation.py",
-                      "services/ideal_text_report.py"):
-            src = pathlib.Path(fname).read_text(encoding="utf-8")
-            self.assertNotIn("say_it_stronger", src, f"{fname} breaches L1")
+        src = pathlib.Path("services/ideal_text_report.py").read_text(
+            encoding="utf-8")
+        self.assertNotIn("say_it_stronger", src)
+
+    def test_selection_never_reads_suggestions(self):
+        # Ranking/selection (select_best_per_slide) must not consult the
+        # suggestion object — grep its function body only.
+        import inspect
+        from services import best_presentation as bp
+        body = inspect.getsource(bp.select_best_per_slide)
+        self.assertNotIn("say_it_stronger", body)
 
 
 if __name__ == "__main__":

@@ -225,11 +225,41 @@ def _render_composition(picks_text: list, slides: list) -> Optional[dict]:
     return out
 
 
+_MAX_KEY_PHRASES = 5
+_MAX_KEY_PHRASE_LEN = 60
+
+
+def _key_phrases(pick: Any) -> list:
+    """Glanceable key phrases for one slide (ideal-text view, backlog 1.7) —
+    derived from the winning pick's Say-It-Stronger upgrades (the strengthened
+    wordings). Deduped case-insensitively, capped, over-long entries skipped.
+    Display hints only — never fed back into any composed text (L1). Pure."""
+    sis = pick.get("say_it_stronger") if isinstance(pick, dict) else None
+    if not isinstance(sis, dict):
+        return []
+    out: list = []
+    seen: set = set()
+    for u in (sis.get("upgrades") or []):
+        if not isinstance(u, dict):
+            continue
+        phrase = (u.get("upgrade") or "").strip()
+        if not phrase or len(phrase) > _MAX_KEY_PHRASE_LEN:
+            continue
+        k = phrase.lower()
+        if k in seen:
+            continue
+        seen.add(k)
+        out.append(phrase)
+        if len(out) >= _MAX_KEY_PHRASES:
+            break
+    return out
+
+
 def compose_presentation(picks: dict, slides: list) -> list:
     """``picks`` = {slide_index: winning_candidate}. Returns the per-slide
     payload list (slide order), each
     {index, title, text, audio_ref, start_offset_ms, duration_ms, take_index,
-    breakthrough}. The text is the
+    breakthrough, key_phrases}. The text is the
     lightly-edited line, or the snippet VERBATIM if the LLM didn't return one.
     A slide with no challenge pick is included with empty text (never invented).
     """
@@ -270,6 +300,8 @@ def compose_presentation(picks: dict, slides: list) -> list:
                 "breakthrough_note": (
                     (pick.get("note") or None) if pick.get("breakthrough") else None
                 ),
+                # Glanceable phrases for the ideal-text view (backlog 1.7).
+                "key_phrases": _key_phrases(pick),
             })
         else:
             out.append({
@@ -279,6 +311,7 @@ def compose_presentation(picks: dict, slides: list) -> list:
                 "start_offset_ms": None, "duration_ms": None,
                 "take_index": None, "breakthrough": False,
                 "breakthrough_note": None,
+                "key_phrases": [],
             })
     return out
 
@@ -376,12 +409,19 @@ def _arc_labels(db, labels_batch, sid):
     return db.get_training_labels(sid) or []
 
 
+# Bump when the cached compose PAYLOAD shape changes (a new per-slide field
+# must force one recompute per arc — the content signature alone can't see
+# shape changes). v2: + key_phrases (backlog 1.7, 2026-07-11).
+_BP_PAYLOAD_VERSION = "v2"
+
+
 def _bp_signature(sessions: list) -> str:
     """Content signature for the best-presentation cache (Part B). Changes
-    EXACTLY when a recompose is needed: a take added/removed, or a coach publish
-    (which re-ranks + confirms breakthroughs). User pencil-edits are applied on
-    READ, so they're intentionally NOT part of the signature. Cheap — computed
-    from the session list the route already loaded, no extra reads."""
+    EXACTLY when a recompose is needed: a take added/removed, a coach publish
+    (which re-ranks + confirms breakthroughs), or a payload-shape version bump.
+    User pencil-edits are applied on READ, so they're intentionally NOT part
+    of the signature. Cheap — computed from the session list the route
+    already loaded, no extra reads."""
     import hashlib
     import json as _json
     key = sorted(
@@ -393,7 +433,8 @@ def _bp_signature(sessions: list) -> str:
         key=lambda r: r[0],
     )
     return hashlib.sha1(
-        _json.dumps(key, sort_keys=True, default=str).encode("utf-8")
+        (_BP_PAYLOAD_VERSION + "|" + _json.dumps(
+            key, sort_keys=True, default=str)).encode("utf-8")
     ).hexdigest()
 
 
@@ -484,6 +525,11 @@ def build_best_presentation(
             candidates.append({
                 "slide_index": slide_index_for_offset(s.get("start_offset_ms"), advances),
                 "snippet_id": s.get("id"),
+                # Ideal-text key phrases (backlog 1.7): the winning pick's
+                # Say-It-Stronger upgrades become the slide's glanceable
+                # phrases (derived in compose_presentation). Display hints
+                # only — never touches the composed text (L1).
+                "say_it_stronger": s.get("say_it_stronger"),
                 "transcript": s.get("transcript") or s.get("transcript_excerpt") or "",
                 "audio_ref": s.get("audio_ref") or s.get("storage_path"),
                 # The snippet's span inside the (concatenated) take audio, so the

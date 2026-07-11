@@ -269,6 +269,32 @@ class ReadoutFromSessionTests(unittest.TestCase):
         self.assertNotIn("start_offset_ms", chunks[0])  # no fake spans
         self.assertEqual(" ".join(c["transcript"] for c in chunks), blob)
 
+    def test_audience_exposed_from_setup(self):
+        # Backlog 1.4 — the training-setup audience rides the readout so the
+        # FE can suffix insight one-liners "(audience: investors)".
+        from services import lab_recording as mod
+        from services.db import db
+        with patch.object(db, "get_snippets_by_session", return_value=[_snippet("a")]), \
+             patch.object(db, "v2_get_session_by_id", return_value={}), \
+             patch.object(db, "get_session_intake_context",
+                          return_value={"audience": "  investors  "}), \
+             patch.object(db, "get_session_slide_transcripts", return_value=None), \
+             patch.object(db, "get_user_transcript_edits", return_value=[]):
+            out = mod.build_readout_from_session("sess1", include_insights=False)
+        self.assertEqual(out["audience"], "investors")
+
+    def test_blank_audience_omitted(self):
+        from services import lab_recording as mod
+        from services.db import db
+        with patch.object(db, "get_snippets_by_session", return_value=[_snippet("a")]), \
+             patch.object(db, "v2_get_session_by_id", return_value={}), \
+             patch.object(db, "get_session_intake_context",
+                          return_value={"audience": "   "}), \
+             patch.object(db, "get_session_slide_transcripts", return_value=None), \
+             patch.object(db, "get_user_transcript_edits", return_value=[]):
+            out = mod.build_readout_from_session("sess1", include_insights=False)
+        self.assertNotIn("audience", out)
+
     def test_parent_audio_ref_exposed(self):
         # Parent+offset model: every snippet's audio_segment_path IS the
         # full-take audio — surfaced top-level for section playback.
