@@ -19,7 +19,7 @@ _FAKE_BP = {
     "slides": [
         {"index": 0, "title": "Opening", "body": "the hook",
          "text": "We are raising two million dollars.", "take_index": 2,
-         "breakthrough": True,
+         "breakthrough": True, "snippet_id": "snip-abc",
          "key_phrases": ["genuinely good", "firmly structured"]},
         {"index": 1, "title": "Market", "body": "the size",
          "text": "The market is forty billion.", "take_index": 1,
@@ -78,6 +78,17 @@ class KeyPhrasesMappingTests(unittest.TestCase):
         self.assertEqual(out["slides"][0]["keyPhrases"],
                          ["genuinely good", "firmly structured"])
         self.assertEqual(out["slides"][1]["keyPhrases"], [])  # absent -> []
+
+
+class SnippetIdMappingTests(unittest.TestCase):
+    def test_snippet_id_maps_to_camel_case(self):
+        with mock.patch(
+            "services.best_presentation.build_best_presentation",
+            return_value=_FAKE_BP,
+        ):
+            out = build_ideal_text_report("arc1")
+        self.assertEqual(out["slides"][0]["snippetId"], "snip-abc")
+        self.assertIsNone(out["slides"][1]["snippetId"])  # absent -> None
 
 
 if __name__ == "__main__":

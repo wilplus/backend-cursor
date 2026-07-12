@@ -137,9 +137,13 @@ class ComposeTests(unittest.TestCase):
         bp._render_composition = lambda picks, slides: {}
         picks = {0: _cand(0, "c", "challenge")}
         out = bp.compose_presentation(picks, [{"title": "S1"}])
-        for k in ("_score", "activation", "slide_stickiness", "direction", "snippet_id"):
+        # RANKING internals must never leak (AC-9). snippet_id is NOT one —
+        # it's an opaque reference the FE deep-links the PDF's "Key moment"
+        # to /game?snippet=<id> (P8), same class as take_index / audio_ref.
+        for k in ("_score", "activation", "slide_stickiness", "direction"):
             self.assertNotIn(k, out[0])
         self.assertIn("breakthrough", out[0])  # the marker is allowed
+        self.assertEqual(out[0]["snippet_id"], "c")  # the sanctioned deep-link id
 
     def test_breakthrough_note_only_when_breakthrough(self):
         bp._render_composition = lambda picks, slides: {}
