@@ -79,7 +79,9 @@ def build_game_rounds(db, arc_id: Any, user_id: Any,
         s = by_id[snip_id]
         rounds.append({
             "round": i,
-            "snippet_id": snip_id,
+            # round_id IS the snippet id — the FE reads this as its round
+            "round_id": snip_id,     # identity and sends it BACK on answer;
+            "snippet_id": snip_id,   # kept as an explicit alias.
             "transcript": s.get("transcript") or "",
             "audio_ref": s.get("audio_segment_path") or s.get("audio_ref"),
             "start_offset_ms": s.get("start_offset_ms"),
@@ -120,7 +122,9 @@ def build_why(snippet: Any, patterns: list, truth_is_key: bool) -> dict:
     paragraphs: list = []
     keywords = _keywords_for(snippet)
     if keywords:
-        joined = ", ".join(f"“{k}”" for k in keywords)
+        # Wrap each keyword in **…** INLINE so the FE tints it orange
+        # (services/api/arcGame.ts splitTintedSegments reads **kw**/==kw==).
+        joined = ", ".join(f"**{k}**" for k in keywords)
         paragraphs.append(
             (f"The load-bearing words in this moment: {joined}."
              if truth_is_key else
@@ -181,8 +185,14 @@ def answer_round(db, arc_id: Any, user_id: Any, snippet_id: Any,
 
     from services.user_patterns import build_user_patterns
     patterns = build_user_patterns(user_id, database=db)
+    why_obj = build_why(snippet, patterns, truth_is_key)
+    # FE-aligned verdict shape (services/api/arcGame.ts submitGameAnswer):
+    # `why` is a FLAT string array (keywords already **-wrapped inline) and
+    # `video_ref` is TOP-LEVEL, not nested under `why`.
     return {
         "correct": answer == truth_is_key,
         "truth_is_key": truth_is_key,
-        "why": build_why(snippet, patterns, truth_is_key),
+        "why": why_obj.get("paragraphs") or [],
+        "keywords": why_obj.get("keywords") or [],
+        "video_ref": why_obj.get("video_ref"),
     }

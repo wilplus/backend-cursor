@@ -10660,12 +10660,18 @@ class DatabaseService:
         try:
             res = (
                 self.client.table("game_saves")
-                .select("arc_id, saved_date, created_at")
+                .select("id, arc_id, saved_date, created_at")
                 .eq("user_id", str(user_id))
                 .order("saved_date", desc=True)
                 .execute()
             )
-            return [r for r in (res.data or []) if isinstance(r, dict)]
+            # saved_at alias = the DATE it was filed under (the FE reads
+            # saved_at first; created_at is the row timestamp fallback).
+            out = []
+            for r in (res.data or []):
+                if isinstance(r, dict):
+                    out.append({**r, "saved_at": r.get("saved_date")})
+            return out
         except Exception as e:
             err_low = str(e).lower()
             if "game_saves" in err_low and (
