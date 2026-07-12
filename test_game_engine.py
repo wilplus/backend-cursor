@@ -108,6 +108,12 @@ class BuildRoundsTests(unittest.TestCase):
         b = [r["snippet_id"] for r in self._rounds()]
         self.assertEqual(a, b)
 
+    def test_round_id_is_the_snippet_id(self):
+        # The FE reads round_id and echoes it back on answer — it MUST be the
+        # snippet id the answer route resolves against (else every answer 404s).
+        for r in self._rounds():
+            self.assertEqual(r["round_id"], r["snippet_id"])
+
     def test_deep_link_pins_first(self):
         rounds = self._rounds(first="k1")
         self.assertEqual(rounds[0]["snippet_id"], "k1")
@@ -167,17 +173,24 @@ class AnswerTests(unittest.TestCase):
         self.assertIsNone(out)
         self.assertEqual(db.peer_labels, [])
 
-    def test_why_carries_coach_video_when_attached(self):
+    def test_verdict_shape_is_fe_aligned(self):
+        # FE (services/api/arcGame.ts): why = FLAT string array, video_ref
+        # TOP-LEVEL, correct boolean.
+        db, out = self._answer("k1", True)
+        self.assertIsInstance(out["why"], list)
+        self.assertIn("video_ref", out)
+        self.assertIsInstance(out["correct"], bool)
+
+    def test_why_carries_coach_video_top_level(self):
         drafts = {"s1": [{"snippet_id": "k1",
                           "breakthrough_video_ref": "https://v/clip.mp4"}]}
         db, out = self._answer("k1", True, db=_db(drafts=drafts))
-        self.assertEqual(out["why"]["video_ref"], "https://v/clip.mp4")
+        self.assertEqual(out["video_ref"], "https://v/clip.mp4")
 
     def test_why_paragraphs_qualitative_and_capped(self):
         db, out = self._answer("k1", False)
-        why = out["why"]
-        self.assertLessEqual(len(why["paragraphs"]), 3)
-        for p in why["paragraphs"]:
+        self.assertLessEqual(len(out["why"]), 3)
+        for p in out["why"]:
             self.assertNotRegex(p, r"\d")  # AC-9 — no numbers reach the user
 
 
@@ -190,7 +203,8 @@ class BuildWhyTests(unittest.TestCase):
                           "kind": "upgrade", "reason": None}]})
         why = build_why(snip, [], True)
         self.assertEqual(why["keywords"], ["holds it tightly"])
-        self.assertIn("holds it tightly", why["paragraphs"][0])
+        # keyword is **-wrapped INLINE so the FE tints it (arcGame.ts).
+        self.assertIn("**holds it tightly**", why["paragraphs"][0])
 
     def test_pattern_statement_matches_verdict_kind(self):
         from services.game_engine import build_why
@@ -270,32 +284,59 @@ class GameRouteTests(unittest.TestCase):
         self.assertEqual(status, 402)
 
     def test_answer_validates_body(self):
-        with self.app.test_request_context(json={"snippet_id": "nope",
-                                                 "answer_is_key": True}):
+        # FE field names: round_id + answer.
+        with self.app.test_request_context(json={"round_id": "nope",
+                                                 "answer": True}):
             _rq.user_id = "u1"
             _, status = _v2.v2_arc_game_answer.__wrapped__("a1")
         self.assertEqual(status, 400)
-        with self.app.test_request_context(json={"snippet_id": self._SNIP,
-                                                 "answer_is_key": "yes"}):
+        with self.app.test_request_context(json={"round_id": self._SNIP,
+                                                 "answer": "yes"}):
             _rq.user_id = "u1"
             _, status = _v2.v2_arc_game_answer.__wrapped__("a1")
         self.assertEqual(status, 400)
 
-    def test_answer_round_trip(self):
+    def test_answer_round_trip_fe_shape(self):
+        # The FE sends { round_id, answer } and reads { correct, why[],
+        # video_ref } — assert the whole verdict passes through.
         result = {"correct": True, "truth_is_key": True,
-                  "why": {"paragraphs": [], "keywords": [], "video_ref": None}}
-        with patch("services.game_engine.answer_round", return_value=result):
+                  "why": ["**word** matters."], "keywords": ["word"],
+                  "video_ref": "https://v/clip.mp4"}
+        captured = {}
+
+        def _capture(db, arc, uid, snip, ans):
+            captured["snip"] = snip
+            captured["ans"] = ans
+            return result
+
+        with patch("services.game_engine.answer_round", side_effect=_capture):
             with self.app.test_request_context(json={
-                    "snippet_id": self._SNIP, "answer_is_key": True}):
+                    "round_id": self._SNIP, "answer": True}):
                 _rq.user_id = "u1"
                 resp, status = _v2.v2_arc_game_answer.__wrapped__("a1")
         self.assertEqual(status, 200)
-        self.assertTrue(resp.get_json()["correct"])
+        body = resp.get_json()
+        self.assertTrue(body["correct"])
+        self.assertEqual(body["why"], ["**word** matters."])
+        self.assertEqual(body["video_ref"], "https://v/clip.mp4")
+        self.assertEqual(captured["snip"], self._SNIP)  # round_id → snippet id
+        self.assertIs(captured["ans"], True)
+
+    def test_answer_accepts_legacy_aliases(self):
+        # snippet_id / answer_is_key still work (belt-and-braces).
+        with patch("services.game_engine.answer_round",
+                   return_value={"correct": False, "truth_is_key": False,
+                                 "why": [], "keywords": [], "video_ref": None}):
+            with self.app.test_request_context(json={
+                    "snippet_id": self._SNIP, "answer_is_key": False}):
+                _rq.user_id = "u1"
+                _, status = _v2.v2_arc_game_answer.__wrapped__("a1")
+        self.assertEqual(status, 200)
 
     def test_answer_unknown_snippet_404s(self):
         with patch("services.game_engine.answer_round", return_value=None):
             with self.app.test_request_context(json={
-                    "snippet_id": self._SNIP, "answer_is_key": True}):
+                    "round_id": self._SNIP, "answer": True}):
                 _rq.user_id = "u1"
                 _, status = _v2.v2_arc_game_answer.__wrapped__("a1")
         self.assertEqual(status, 404)
@@ -305,8 +346,9 @@ class GameRouteTests(unittest.TestCase):
         with patch.object(_v2.db, "insert_game_save",
                           lambda uid, arc: saves.append((uid, arc)) or True), \
              patch.object(_v2.db, "list_game_saves",
-                          lambda uid: [{"arc_id": "a1",
+                          lambda uid: [{"id": "g1", "arc_id": "a1",
                                         "saved_date": "2026-07-11",
+                                        "saved_at": "2026-07-11",
                                         "created_at": "t"}]):
             with self.app.test_request_context():
                 _rq.user_id = "u1"
@@ -315,7 +357,9 @@ class GameRouteTests(unittest.TestCase):
                 resp2, status2 = _v2.v2_user_game_sessions.__wrapped__()
         self.assertEqual(saves, [("u1", "a1")])
         self.assertEqual(status2, 200)
-        self.assertEqual(resp2.get_json()["sessions"][0]["arc_id"], "a1")
+        sess0 = resp2.get_json()["sessions"][0]
+        self.assertEqual(sess0["arc_id"], "a1")
+        self.assertEqual(sess0["saved_at"], "2026-07-11")  # FE reads this first
 
 
 if __name__ == "__main__":

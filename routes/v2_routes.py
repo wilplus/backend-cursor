@@ -10996,8 +10996,10 @@ def v2_arc_game_answer(arc_id):
     (Engine 4), and the moment's delivery technique; plus the coach's
     breakthrough video when one is attached.
 
-    Body: { "snippet_id": uuid, "answer_is_key": bool }
-    200 { correct, truth_is_key, why: {paragraphs, keywords, video_ref} }
+    Body: { "round_id": uuid, "answer": bool }
+      (round_id IS the moment's snippet id, echoed from the game GET;
+       `snippet_id` / `answer_is_key` accepted as aliases.)
+    200 { correct, truth_is_key, why: [str], keywords: [str], video_ref }
     400 · 402 · 404 · 500
     """
     try:
@@ -11008,19 +11010,22 @@ def v2_arc_game_answer(arc_id):
         if gated is not None:
             return gated
         body = request.get_json(silent=True) or {}
-        snippet_id = body.get("snippet_id")
+        snippet_id = body.get("round_id") or body.get("snippet_id")
         if not isinstance(snippet_id, str) or not _is_valid_uuid(snippet_id):
             return jsonify({
-                "code": "INVALID_INPUT", "error": "snippet_id must be a UUID",
+                "code": "INVALID_INPUT", "error": "round_id must be a UUID",
             }), 400
-        if not isinstance(body.get("answer_is_key"), bool):
+        answer = body.get("answer")
+        if answer is None:
+            answer = body.get("answer_is_key")
+        if not isinstance(answer, bool):
             return jsonify({
                 "code": "INVALID_INPUT",
-                "error": "answer_is_key must be a boolean",
+                "error": "answer must be a boolean",
             }), 400
         from services.game_engine import answer_round
         result = answer_round(
-            db, arc_id, request.user_id, snippet_id, body["answer_is_key"],
+            db, arc_id, request.user_id, snippet_id, answer,
         )
         if result is None:
             return jsonify({
