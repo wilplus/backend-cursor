@@ -332,6 +332,11 @@ def compose_presentation(picks: dict, slides: list) -> list:
                 # slide body — the text-slide fallback when there's no deck PDF.
                 "body": slide.get("body") or "",
                 "text": edited.get(i) or verbatim,  # light-edit, else verbatim
+                # the winning moment's snippet id — the FE deep-links the
+                # exported PDF's "Key moment" link to /game?snippet=<id>
+                # (P8). Metadata, not deliverable text: NOT hidden pre-finalize
+                # (same class as take_index / breakthrough).
+                "snippet_id": pick.get("snippet_id"),
                 "audio_ref": pick.get("audio_ref"),
                 # span of THIS line inside the take audio — the FE plays
                 # [start_offset_ms, start_offset_ms+duration_ms] so the spoken
@@ -354,7 +359,7 @@ def compose_presentation(picks: dict, slides: list) -> list:
             out.append({
                 "index": i, "title": slide.get("title") or "",
                 "body": slide.get("body") or "",
-                "text": "", "audio_ref": None,
+                "text": "", "snippet_id": None, "audio_ref": None,
                 "start_offset_ms": None, "duration_ms": None,
                 "take_index": None, "breakthrough": False,
                 "breakthrough_note": None,
@@ -459,7 +464,7 @@ def _arc_labels(db, labels_batch, sid):
 # Bump when the cached compose PAYLOAD shape changes (a new per-slide field
 # must force one recompute per arc — the content signature alone can't see
 # shape changes). v2: + key_phrases (backlog 1.7, 2026-07-11).
-_BP_PAYLOAD_VERSION = "v2"
+_BP_PAYLOAD_VERSION = "v3"
 
 
 def _bp_signature(sessions: list, corrections: Optional[dict] = None) -> str:

@@ -48,6 +48,9 @@ def build_ideal_text_report(talk_id: Optional[str], *, database=None) -> dict:
             # (backlog 1.7) — derived from the winning pick's Say-It-Stronger
             # upgrades in compose; display hints only, never the text (L1).
             "keyPhrases": s.get("key_phrases") or [],
+            # The winning moment's snippet id — the exported PDF deep-links
+            # this slide's "Key moment" to /game?snippet=<id> (P8).
+            "snippetId": s.get("snippet_id"),
         })
     return {
         "talkId": talk_id,
