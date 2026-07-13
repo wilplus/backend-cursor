@@ -14,6 +14,18 @@ config = Config()
 logger = logging.getLogger(__name__)
 
 
+def _free_credit_grant() -> int:
+    """The upfront free credit grant (config.WILLAB_FREE_CREDIT_GRANT, 25 for
+    the testing phase, env-tunable). Single source of truth for both the lazy
+    seed AND every "unseeded user" balance fallback, so they can never drift
+    apart (a mismatch would wrongly tell a new user 'insufficient')."""
+    try:
+        from config import Config
+        return int(getattr(Config, "WILLAB_FREE_CREDIT_GRANT", 25) or 25)
+    except Exception:
+        return 25
+
+
 class DatabaseService:
     def __init__(self):
         self.client: Client = self._build_supabase_client()
@@ -3086,7 +3098,7 @@ class DatabaseService:
             details = self.v2_get_student_details(user_id)
             current = (details or {}).get("credits")
             if current is None:
-                current = 15
+                current = _free_credit_grant()
             new_credits = max(0, int(current) - amount)
             result = (
                 self.client.table("v2_student_details")
@@ -3104,7 +3116,7 @@ class DatabaseService:
             details = self.v2_get_student_details(user_id)
             current = (details or {}).get("credits")
             if current is None:
-                current = 15
+                current = _free_credit_grant()
             new_credits = max(0, int(current) + d)
             result = (
                 self.client.table("v2_student_details")
@@ -3365,11 +3377,7 @@ class DatabaseService:
         missing (pre-migration) so the balance endpoint still works.
         """
         if grant is None:
-            try:
-                from config import Config
-                grant = int(getattr(Config, "WILLAB_FREE_CREDIT_GRANT", 25) or 25)
-            except Exception:
-                grant = 25
+            grant = _free_credit_grant()
         if not user_id:
             return grant
         now = datetime.now(timezone.utc).isoformat()
@@ -9462,7 +9470,9 @@ class DatabaseService:
         for _ in range(3):
             details = self.v2_get_student_details(str(user_id)) or {}
             current = details.get("credits")
-            current = int(current) if current is not None else 15
+            # Unseeded user → the lazy-seed default (config, 25) so a brand-new
+            # user isn't wrongly told "insufficient" before their row exists.
+            current = int(current) if current is not None else _free_credit_grant()
             if current < amount:
                 return None  # genuinely insufficient — no point retrying
             new_val = current - amount
