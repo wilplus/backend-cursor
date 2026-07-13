@@ -251,6 +251,15 @@ class Config:
     # Optional: shared secret for POST /v2/internal/student-credits/increment (Stripe webhook / BFF).
     INTERNAL_CREDITS_WEBHOOK_SECRET = (os.getenv("INTERNAL_CREDITS_WEBHOOK_SECRET") or "").strip()
 
+    # willab — upfront free credit grant seeded on a user's first ledger touch
+    # (founder testing 2026-07-13: bumped 15 → 25 so every user can unlock one
+    # $25 arc during testing). Env-tunable so it can move without a deploy.
+    WILLAB_FREE_CREDIT_GRANT = int(os.getenv("WILLAB_FREE_CREDIT_GRANT") or "25")
+
+    # Password for the testing-phase credits admin page (body field, not a
+    # header — the browser page sends it). Blank ⇒ the endpoints 503 (disabled).
+    CREDIT_ADMIN_PASSWORD = (os.getenv("CREDIT_ADMIN_PASSWORD") or "").strip()
+
     # Stripe Checkout → credits (POST /v2/internal/stripe/webhook). Webhook signing secret from Stripe Dashboard.
     STRIPE_WEBHOOK_SECRET = (os.getenv("STRIPE_WEBHOOK_SECRET") or "").strip()
     # Secret key used to expand/verify Checkout Session line items in the webhook handler.

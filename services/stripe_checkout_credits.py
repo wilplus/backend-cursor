@@ -154,7 +154,8 @@ def apply_paid_checkout_session_credits(
         details = db.v2_get_student_details(db_user_id) or {}
         cur = details.get("credits")
         if cur is None:
-            cur = 15
+            from services.db import _free_credit_grant
+            cur = _free_credit_grant()
         logger.info("stripe checkout credits duplicate session=%s user=%s credits=%s", sid, db_user_id, cur)
         return CheckoutCreditsApplyResult.success(
             200,

@@ -109,14 +109,18 @@ class DeductCreditsStrictTests(unittest.TestCase):
         svc, _ = self._svc({"u1": 25})
         self.assertEqual(svc.deduct_credits_strict("u1", 25), 0)
 
-    def test_missing_user_defaults_to_15_lazy_seed(self):
+    def test_missing_user_defaults_to_lazy_seed(self):
         # v2_get_student_details returns {} for an unknown user — the deduct
-        # treats that as the 15-credit lazy-seed default (matches
-        # v2_ensure_credits_initialized's grant elsewhere in the codebase).
+        # treats that as the lazy-seed default (config.WILLAB_FREE_CREDIT_GRANT,
+        # 25 for the testing phase — consistent with the seed + the unlock
+        # amount so a brand-new user can unlock before their row is written).
+        from config import Config
+        seed = int(Config.WILLAB_FREE_CREDIT_GRANT)
         svc1, _ = self._svc({})
-        self.assertIsNone(svc1.deduct_credits_strict("u1", 25))  # 15 < 25
+        # seed == 25 and unlock == 25 → exactly enough → succeeds to 0
+        self.assertEqual(svc1.deduct_credits_strict("u1", 25), seed - 25)
         svc2, _ = self._svc({})
-        self.assertEqual(svc2.deduct_credits_strict("u1", 10), 5)  # 15 >= 10
+        self.assertEqual(svc2.deduct_credits_strict("u1", 10), seed - 10)
 
     def test_bad_args_return_none(self):
         svc, _ = self._svc({"u1": 30})

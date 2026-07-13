@@ -125,11 +125,15 @@ class CreditGrantLogicTests(unittest.TestCase):
         s.client = _FakeClient(store)
         return s
 
-    def test_grants_15_on_first_touch(self):
+    def test_grants_default_on_first_touch(self):
+        # Founder testing 2026-07-13: the default grant is now
+        # config.WILLAB_FREE_CREDIT_GRANT (25), not the old hardcoded 15.
+        from config import Config
+        expected = int(Config.WILLAB_FREE_CREDIT_GRANT)
         store = {}
         bal = self._svc(store).v2_ensure_credits_initialized("u1")
-        self.assertEqual(bal, 15)
-        self.assertEqual(store["u1"]["credits"], 15)
+        self.assertEqual(bal, expected)
+        self.assertEqual(store["u1"]["credits"], expected)
         self.assertTrue(store["u1"]["credits_initialized_at"])
 
     def test_spend_to_zero_is_never_regranted(self):
@@ -150,10 +154,12 @@ class CreditGrantLogicTests(unittest.TestCase):
         self.assertTrue(store["u1"]["credits_initialized_at"])
 
     def test_seeds_when_row_exists_but_credits_null(self):
+        from config import Config
+        expected = int(Config.WILLAB_FREE_CREDIT_GRANT)
         store = {"u1": {"user_id": "u1", "credits": None}}
         bal = self._svc(store).v2_ensure_credits_initialized("u1")
-        self.assertEqual(bal, 15)
-        self.assertEqual(store["u1"]["credits"], 15)
+        self.assertEqual(bal, expected)
+        self.assertEqual(store["u1"]["credits"], expected)
 
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")

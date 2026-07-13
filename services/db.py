@@ -14,6 +14,18 @@ config = Config()
 logger = logging.getLogger(__name__)
 
 
+def _free_credit_grant() -> int:
+    """The upfront free credit grant (config.WILLAB_FREE_CREDIT_GRANT, 25 for
+    the testing phase, env-tunable). Single source of truth for both the lazy
+    seed AND every "unseeded user" balance fallback, so they can never drift
+    apart (a mismatch would wrongly tell a new user 'insufficient')."""
+    try:
+        from config import Config
+        return int(getattr(Config, "WILLAB_FREE_CREDIT_GRANT", 25) or 25)
+    except Exception:
+        return 25
+
+
 class DatabaseService:
     def __init__(self):
         self.client: Client = self._build_supabase_client()
@@ -3086,7 +3098,7 @@ class DatabaseService:
             details = self.v2_get_student_details(user_id)
             current = (details or {}).get("credits")
             if current is None:
-                current = 15
+                current = _free_credit_grant()
             new_credits = max(0, int(current) - amount)
             result = (
                 self.client.table("v2_student_details")
@@ -3104,7 +3116,7 @@ class DatabaseService:
             details = self.v2_get_student_details(user_id)
             current = (details or {}).get("credits")
             if current is None:
-                current = 15
+                current = _free_credit_grant()
             new_credits = max(0, int(current) + d)
             result = (
                 self.client.table("v2_student_details")
@@ -3123,6 +3135,51 @@ class DatabaseService:
                 e,
                 exc_info=True,
             )
+            return None
+
+    def v2_set_student_credits(self, user_id: str, credits: int) -> int | None:
+        """Set the credit balance to an ABSOLUTE value (testing admin tool,
+        founder 2026-07-13). Floors at 0; marks credits_initialized_at so the
+        lazy seed never re-grants over it. Returns the new balance or None."""
+        try:
+            c = max(0, int(credits))
+            now = datetime.now(timezone.utc).isoformat()
+            result = (
+                self.client.table("v2_student_details")
+                .upsert(
+                    {"user_id": user_id, "credits": c,
+                     "credits_initialized_at": now, "updated_at": now},
+                    on_conflict="user_id",
+                )
+                .execute()
+            )
+            return (result.data[0] or {}).get("credits") if result.data else c
+        except Exception as e:
+            logger.warning("v2_set_student_credits failed user_id=%s credits=%s: %s",
+                           user_id, credits, e, exc_info=True)
+            return None
+
+    def v2_find_user_id_by_email(self, email: str) -> Optional[str]:
+        """Resolve a Supabase auth user_id from an email (case-insensitive) —
+        for the testing credits-admin page (founder enters an email, not a
+        UUID). Scans the Auth Admin user list; fine for the testing user count.
+        None when not found / on error."""
+        target = (email or "").strip().lower()
+        if not target:
+            return None
+        try:
+            offset = 0
+            for _ in range(20):  # up to 20 * 50 = 1000 users, then give up
+                page = self.v2_list_auth_users(limit=50, offset=offset) or []
+                for u in page:
+                    if (u.get("email") or "").strip().lower() == target:
+                        return u.get("user_id") or u.get("id")
+                if len(page) < 50:
+                    break
+                offset += 50
+            return None
+        except Exception as e:
+            logger.warning("v2_find_user_id_by_email failed: %s", e)
             return None
 
     def stripe_checkout_grant_claim(self, checkout_session_id: str) -> bool:
@@ -3305,11 +3362,13 @@ class DatabaseService:
                 "new_balance=%s", amount, session_id, user_id, new_bal,
             )
 
-    def v2_ensure_credits_initialized(self, user_id: str, grant: int = 15) -> int:
+    def v2_ensure_credits_initialized(self, user_id: str, grant: Optional[int] = None) -> int:
         """willab credit grant — lazy first-touch seed (UX Wave v2 C1/S.2).
 
         Grants `grant` credits ONCE per user, the first time we touch their
-        ledger (balance read or first send). Idempotent via the DEDICATED
+        ledger (balance read or first send). `grant` defaults to
+        config.WILLAB_FREE_CREDIT_GRANT (25 for the testing phase, env-tunable).
+        Idempotent via the DEDICATED
         credits_initialized_at flag — never keyed on credits==0/NULL, so a
         user who spends down to 0 is never re-granted. Preserves any existing
         balance (e.g. purchased credits): seeds `grant` only when there is no
@@ -3317,6 +3376,8 @@ class DatabaseService:
         returns the resolved balance; degrades to `grant` if the column is
         missing (pre-migration) so the balance endpoint still works.
         """
+        if grant is None:
+            grant = _free_credit_grant()
         if not user_id:
             return grant
         now = datetime.now(timezone.utc).isoformat()
@@ -9409,7 +9470,9 @@ class DatabaseService:
         for _ in range(3):
             details = self.v2_get_student_details(str(user_id)) or {}
             current = details.get("credits")
-            current = int(current) if current is not None else 15
+            # Unseeded user → the lazy-seed default (config, 25) so a brand-new
+            # user isn't wrongly told "insufficient" before their row exists.
+            current = int(current) if current is not None else _free_credit_grant()
             if current < amount:
                 return None  # genuinely insufficient — no point retrying
             new_val = current - amount

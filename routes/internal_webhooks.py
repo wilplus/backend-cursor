@@ -61,7 +61,7 @@ def internal_increment_student_credits():
         details = db.v2_get_student_details(user_id.strip()) or {}
         cur = details.get("credits")
         if cur is None:
-            cur = 15
+            cur = int(getattr(config, "WILLAB_FREE_CREDIT_GRANT", 25) or 25)
         return jsonify({"status": "ok", "user_id": user_id.strip(), "credits": int(cur), "delta_applied": 0}), 200
 
     new_bal = db.v2_increment_student_credits(user_id.strip(), d)
@@ -69,6 +69,88 @@ def internal_increment_student_credits():
         return jsonify({"code": "V2_ERROR", "error": "Could not update credits"}), 500
     logger.info("internal_increment_student_credits user_id=%s delta=%s new_credits=%s", user_id, d, new_bal)
     return jsonify({"status": "ok", "user_id": user_id.strip(), "credits": new_bal, "delta_applied": d}), 200
+
+
+# ── Testing-phase credits admin (founder 2026-07-13) ──────────────────────
+# A password-protected pair for the internal credits page. Unlike the
+# server-to-server increment above (X-Internal-Secret HEADER), these take the
+# password in the BODY so a browser page can send it from a form field. Gated
+# on config.CREDIT_ADMIN_PASSWORD — blank ⇒ 503 (disabled).
+
+def _credit_admin_ok():
+    """(authorized, error_response). error_response is None when authorized."""
+    pw = (getattr(config, "CREDIT_ADMIN_PASSWORD", None) or "").strip()
+    if not pw:
+        return False, (jsonify({
+            "code": "DISABLED",
+            "error": "CREDIT_ADMIN_PASSWORD not configured",
+        }), 503)
+    body = request.get_json(silent=True) or {}
+    if (body.get("password") or "").strip() != pw:
+        return False, (jsonify({
+            "code": "UNAUTHORIZED", "error": "Wrong password",
+        }), 401)
+    return True, None
+
+
+def _credit_admin_resolve_user(body):
+    """(user_id, error_response). Resolves by user_id or email."""
+    uid = (body.get("user_id") or "").strip()
+    if uid:
+        return uid, None
+    email = (body.get("email") or "").strip()
+    if email:
+        resolved = db.v2_find_user_id_by_email(email)
+        if not resolved:
+            return None, (jsonify({
+                "code": "USER_NOT_FOUND",
+                "error": f"No user for email {email}",
+            }), 404)
+        return resolved, None
+    return None, (jsonify({
+        "code": "INVALID_INPUT", "error": "user_id or email is required",
+    }), 400)
+
+
+@internal_webhooks_bp.route("/v2/internal/student-credits/lookup", methods=["POST"])
+def internal_lookup_student_credits():
+    """Testing credits page — current balance. Body: { password, user_id|email }.
+    200 { user_id, credits } · 400 · 401 · 404 · 503"""
+    ok, err = _credit_admin_ok()
+    if not ok:
+        return err
+    body = request.get_json(silent=True) or {}
+    user_id, err = _credit_admin_resolve_user(body)
+    if err:
+        return err
+    details = db.v2_get_student_details(user_id) or {}
+    cur = details.get("credits")
+    return jsonify({"user_id": user_id, "credits": int(cur) if cur is not None else 0}), 200
+
+
+@internal_webhooks_bp.route("/v2/internal/student-credits/set", methods=["POST"])
+def internal_set_student_credits():
+    """Testing credits page — SET an absolute balance. Body:
+    { password, user_id|email, credits }.
+    200 { user_id, credits } · 400 · 401 · 404 · 500 · 503"""
+    ok, err = _credit_admin_ok()
+    if not ok:
+        return err
+    body = request.get_json(silent=True) or {}
+    user_id, err = _credit_admin_resolve_user(body)
+    if err:
+        return err
+    try:
+        credits = int(body.get("credits"))
+    except (TypeError, ValueError):
+        return jsonify({"code": "INVALID_INPUT", "error": "credits must be an integer"}), 400
+    if credits < 0:
+        return jsonify({"code": "INVALID_INPUT", "error": "credits must be >= 0"}), 400
+    new_bal = db.v2_set_student_credits(user_id, credits)
+    if new_bal is None:
+        return jsonify({"code": "V2_ERROR", "error": "Could not set credits"}), 500
+    logger.info("internal_set_student_credits user_id=%s credits=%s", user_id, new_bal)
+    return jsonify({"user_id": user_id, "credits": new_bal}), 200
 
 
 @internal_webhooks_bp.route("/v2/internal/stripe/webhook", methods=["POST"])
