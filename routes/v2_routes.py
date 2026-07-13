@@ -8382,6 +8382,72 @@ def v2_user_get_session_readout(session_id):
         return jsonify({"code": "V2_ERROR", "error": "Failed to fetch readout"}), 500
 
 
+@v2_bp.route("/lab/recordings/<session_id>/readout", methods=["GET"])
+@optional_auth
+def v2_guest_get_recording_readout(session_id):
+    """Re-read a GUEST recording's readout — the unauth twin of
+    /user/sessions/<id>/readout (bug fix 2026-07-13).
+
+    Why it exists: a signed-out user records, gets the inline 201 readout,
+    but the Say-It-Stronger cards generate a few seconds LATER (async
+    daemon), and re-opening the recording (the "Your Recording" chat
+    bubble) previously hit the @require_auth re-read → 401 → the FE's
+    "We couldn't load these insights" screen. This endpoint lets the FE
+    (a) POLL until the synonym cards populate and (b) re-open the
+    recording, both without auth.
+
+    Ownership model = the guest funnel's: the unguessable session UUID is
+    the capability. HARD RULE — only an UNCLAIMED session (user_id IS
+    NULL) is served without auth; once a session is CLAIMED by a user,
+    only that owner may read it (else 404, no existence leak). So this can
+    never surface a signed-in user's readout to a bare id.
+
+    Response mirrors the authed readout: 200 { session_id, state, readout }
+             · 400 bad uuid · 404 not found / claimed-by-another · 500
+    """
+    if not _is_valid_uuid(session_id):
+        return jsonify({
+            "code": "INVALID_INPUT", "error": "session_id must be a valid UUID",
+        }), 400
+    try:
+        session = db.v2_get_session_by_id(session_id)
+        if not session:
+            return jsonify({
+                "code": "SESSION_NOT_FOUND", "error": "Recording not found",
+            }), 404
+        owner = session.get("user_id")
+        caller = getattr(request, "user_id", None)
+        # Claimed session → owner-only (they should use the authed route,
+        # but honor it here for the owner too). Unclaimed → open to the id.
+        if owner and str(owner) != str(caller or ""):
+            return jsonify({
+                "code": "SESSION_NOT_FOUND", "error": "Recording not found",
+            }), 404
+
+        from services.lab_recording import build_readout_from_session
+        readout = build_readout_from_session(session_id)
+
+        if session.get("results_published_at"):
+            state = "insights_ready"
+        elif session.get("status") == "pending_admin_review":
+            state = "review_pending"
+        else:
+            state = "readout_ready"
+
+        return jsonify({
+            "session_id": session_id,
+            "state": state,
+            "readout": readout,
+        }), 200
+    except Exception as e:
+        logger.error(
+            "lab/recordings/<id>/readout GET failed sid=%s err=%s",
+            session_id, e, exc_info=True,
+        )
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to fetch readout"}), 500
+
+
 _TRANSCRIPT_EDIT_MAX_LEN = 2000
 
 
@@ -10081,6 +10147,11 @@ def v2_coach_snippet_breakthrough_video(session_id, snippet_id):
 # bounds it, and oversized audio is compressed to a 16kHz mono mp3 before the
 # OpenAI Whisper call (which itself caps at 25MB) — see process_lab_recording.
 _LAB_MAX_AUDIO_MB = 100
+# Video-ONLY extensions rejected at the Lab upload (BE-2 defensive guard).
+# Deliberately excludes "webm" — the live mic records audio/webm (.webm).
+_VIDEO_UPLOAD_EXTS = (
+    "mp4", "mov", "m4v", "avi", "mkv", "mpeg", "mpg", "wmv", "flv", "3gp",
+)
 
 
 def _parse_lab_vocabulary(raw):
@@ -11159,6 +11230,18 @@ def v2_lab_create_recording():
                 "code": "FILE_TOO_LARGE",
                 "error": f"audio_file exceeds {_LAB_MAX_AUDIO_MB}MB",
             }), 413
+        # Reject VIDEO (defensive — the FE picker blocks it and the Vercel
+        # edge caps size, but a video that slips through should fail clean,
+        # not as a confusing downstream decode error). By mimetype (incl.
+        # video/webm) OR a video-only extension. NOTE: never include "webm"
+        # here — the live mic records audio/webm (.webm); that must pass.
+        _up_ct = (audio_file.mimetype or "").strip().lower()
+        _up_ext = os.path.splitext(audio_file.filename or "")[1].lower().lstrip(".")
+        if _up_ct.startswith("video/") or _up_ext in _VIDEO_UPLOAD_EXTS:
+            return jsonify({
+                "code": "AUDIO_ONLY",
+                "error": "Upload an audio file — video isn't supported.",
+            }), 415
 
         # ── 2. session_context (inline; topic required) ─────────────
         from services.intake_context import (
