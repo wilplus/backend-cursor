@@ -295,6 +295,53 @@ class ReadoutFromSessionTests(unittest.TestCase):
             out = mod.build_readout_from_session("sess1", include_insights=False)
         self.assertNotIn("audience", out)
 
+    # ── Take-N setup restore (founder bug 2026-07-13) ────────────────────
+
+    def test_setup_block_rides_the_readout(self):
+        from services import lab_recording as mod
+        from services.db import db
+        ctx = {"topic": "My pitch", "audience": "investors",
+               "target_length_seconds": 300,
+               "slides": [{"title": "S1", "body": "b"}],
+               "presentation_ref": "https://cdn/deck.pdf",
+               "slide_advances": [{"index": 0, "t_ms": 0}]}
+        with patch.object(db, "get_snippets_by_session", return_value=[_snippet("a")]), \
+             patch.object(db, "v2_get_session_by_id", return_value={}), \
+             patch.object(db, "get_session_intake_context", return_value=ctx), \
+             patch.object(db, "get_session_slide_transcripts", return_value=None), \
+             patch.object(db, "get_user_transcript_edits", return_value=[]):
+            out = mod.build_readout_from_session("sess1", include_insights=False)
+        self.assertEqual(out["setup"], {
+            "topic": "My pitch", "audience": "investors",
+            "target_length_seconds": 300,
+            "slides": [{"title": "S1", "body": "b"}],
+            "presentation_ref": "https://cdn/deck.pdf",
+        })  # slide_advances deliberately NOT in setup (per-recording timeline)
+
+    def test_setup_block_deckless_topic_only(self):
+        from services import lab_recording as mod
+        from services.db import db
+        with patch.object(db, "get_snippets_by_session", return_value=[_snippet("a")]), \
+             patch.object(db, "v2_get_session_by_id", return_value={}), \
+             patch.object(db, "get_session_intake_context",
+                          return_value={"topic": "My talk"}), \
+             patch.object(db, "get_session_slide_transcripts", return_value=None), \
+             patch.object(db, "get_user_transcript_edits", return_value=[]):
+            out = mod.build_readout_from_session("sess1", include_insights=False)
+        self.assertEqual(out["setup"]["topic"], "My talk")
+        self.assertEqual(out["setup"]["slides"], [])
+
+    def test_setup_omitted_when_context_empty(self):
+        from services import lab_recording as mod
+        from services.db import db
+        with patch.object(db, "get_snippets_by_session", return_value=[_snippet("a")]), \
+             patch.object(db, "v2_get_session_by_id", return_value={}), \
+             patch.object(db, "get_session_intake_context", return_value={}), \
+             patch.object(db, "get_session_slide_transcripts", return_value=None), \
+             patch.object(db, "get_user_transcript_edits", return_value=[]):
+            out = mod.build_readout_from_session("sess1", include_insights=False)
+        self.assertNotIn("setup", out)
+
     def test_parent_audio_ref_exposed(self):
         # Parent+offset model: every snippet's audio_segment_path IS the
         # full-take audio — surfaced top-level for section playback.

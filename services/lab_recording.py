@@ -889,6 +889,21 @@ def build_readout_from_session(
     except Exception:
         ctx = {}
     if isinstance(ctx, dict):
+        # Take-N setup restore (founder bug 2026-07-13: "second recording
+        # doesn't work" — the FE restored the deck from localStorage only, so
+        # a fresh tab / evicted PWA storage / guest killed take 2 with
+        # "Couldn't load your presentation"). Ride the training's setup on
+        # the readout so "Record the next take" prefills SERVER-side, on the
+        # authed AND guest re-read routes alike. Omitted when the context
+        # carries nothing usable.
+        if (ctx.get("topic") or ctx.get("slides")):
+            result["setup"] = {
+                "topic": ctx.get("topic"),
+                "audience": ctx.get("audience"),
+                "target_length_seconds": ctx.get("target_length_seconds"),
+                "slides": ctx.get("slides") or [],
+                "presentation_ref": ctx.get("presentation_ref"),
+            }
         # Audience (backlog 1.4) — the training-setup field the FE suffixes
         # onto insight one-liners ("(audience: investors)"). Deck and
         # deckless alike; absent/blank → key omitted (FE hides the suffix).
