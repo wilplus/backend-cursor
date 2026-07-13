@@ -534,5 +534,125 @@ class CoachLayerAlwaysFreeTests(unittest.TestCase):
         self.assertIn("insights_payload", out)
 
 
+class InstantChunksTests(unittest.TestCase):
+    """instant_chunks (founder 2026-07-13) — the ONE deduped chunk list for
+    the instant synonym view: every spoken span exactly once, the snippet's
+    say_it_stronger card attached to the chunk it was spoken in."""
+
+    _SIS = {"already_strong": False,
+            "upgrades": [{"original": "good", "upgrade": "compelling",
+                          "kind": "upgrade"}],
+            "why": "Sharper verb."}
+
+    def _deckless(self, stx, snippets):
+        from services import lab_recording as mod
+        from services.db import db
+        with patch.object(db, "get_snippets_by_session", return_value=snippets), \
+             patch.object(db, "v2_get_session_by_id", return_value={}), \
+             patch.object(db, "get_session_intake_context", return_value={}), \
+             patch.object(db, "get_session_slide_transcripts", return_value=stx), \
+             patch.object(db, "get_user_transcript_edits", return_value=[]):
+            return mod.build_readout_from_session(
+                "sess1", include_insights=False,
+            )
+
+    def test_deckless_card_attaches_to_the_chunk_it_was_spoken_in(self):
+        stx = [
+            {"index": 0, "transcript": "part one",
+             "start_offset_ms": 0, "duration_ms": 3000},
+            {"index": 1, "transcript": "part two",
+             "start_offset_ms": 3200, "duration_ms": 2500},
+        ]
+        snips = [
+            # midpoint 4200ms → chunk 1's span [3200, 5700)
+            _snippet("a", start_offset_ms=3700, duration_ms=1000,
+                     say_it_stronger=self._SIS),
+        ]
+        out = self._deckless(stx, snips)
+        ic = out["instant_chunks"]
+        self.assertEqual(len(ic), 2)
+        self.assertIsNone(ic[0]["say_it_stronger"])
+        self.assertIsNone(ic[0]["snippet_id"])
+        self.assertEqual(ic[1]["say_it_stronger"], self._SIS)
+        self.assertEqual(ic[1]["snippet_id"], "a")
+        # the chunk text/spans are the canonical ones — nothing doubled.
+        self.assertEqual(ic[1]["transcript"], "part two")
+        self.assertEqual(ic[1]["start_offset_ms"], 3200)
+
+    def test_each_snippet_attaches_to_exactly_one_chunk(self):
+        # A snippet whose span straddles both chunks still lands on ONE
+        # (its midpoint's) — never rendered twice.
+        stx = [
+            {"index": 0, "transcript": "part one",
+             "start_offset_ms": 0, "duration_ms": 3000},
+            {"index": 1, "transcript": "part two",
+             "start_offset_ms": 3000, "duration_ms": 3000},
+        ]
+        snips = [
+            # spans 2000→5000, midpoint 3500 → chunk 1 only
+            _snippet("a", start_offset_ms=2000, duration_ms=3000,
+                     say_it_stronger=self._SIS),
+        ]
+        out = self._deckless(stx, snips)
+        ic = out["instant_chunks"]
+        attached = [c for c in ic if c["say_it_stronger"] is not None]
+        self.assertEqual(len(attached), 1)
+        self.assertEqual(attached[0]["index"], 1)
+
+    def test_coach_final_card_rides_the_chunk(self):
+        # The chunk carries the same final-over-draft resolution as
+        # snippets[] — the coach's corrected card wins.
+        final = {"already_strong": True, "upgrades": [],
+                 "why": "Coach approved.", "edited_by_coach": True}
+        stx = [{"index": 0, "transcript": "part one",
+                "start_offset_ms": 0, "duration_ms": 3000}]
+        snips = [_snippet("a", start_offset_ms=500, duration_ms=1000,
+                          say_it_stronger=self._SIS,
+                          say_it_stronger_final=final)]
+        out = self._deckless(stx, snips)
+        self.assertEqual(out["instant_chunks"][0]["say_it_stronger"], final)
+
+    def test_legacy_blob_chunks_have_no_spans_and_no_cards(self):
+        # Legacy single-blob persist → text-only chunks (no spans) → no span
+        # match → cards stay on snippets[]; the instant list still renders.
+        blob = " ".join(f"word{i}" for i in range(80))
+        stx = [{"index": 0, "transcript": blob,
+                "start_offset_ms": 0, "duration_ms": 60000}]
+        snips = [_snippet("a", say_it_stronger=self._SIS)]
+        out = self._deckless(stx, snips)
+        ic = out["instant_chunks"]
+        self.assertGreater(len(ic), 1)
+        self.assertTrue(all(c["say_it_stronger"] is None for c in ic))
+
+    def test_decked_one_chunk_per_slide_with_card(self):
+        from services import lab_recording as mod
+        from services.db import db
+        ctx = {"topic": "T", "slides": [{"title": "A"}, {"title": "B"}],
+               "slide_advances": None}
+        stx = [
+            {"index": 0, "transcript": "slide one words",
+             "start_offset_ms": 0, "duration_ms": 4000},
+            {"index": 1, "transcript": "slide two words",
+             "start_offset_ms": 4000, "duration_ms": 4000},
+        ]
+        snips = [_snippet("a", start_offset_ms=4500, duration_ms=1000,
+                          say_it_stronger=self._SIS)]
+        with patch.object(db, "get_snippets_by_session", return_value=snips), \
+             patch.object(db, "v2_get_session_by_id", return_value={}), \
+             patch.object(db, "get_session_intake_context", return_value=ctx), \
+             patch.object(db, "get_session_slide_transcripts", return_value=stx), \
+             patch.object(db, "get_user_transcript_edits", return_value=[]):
+            out = mod.build_readout_from_session(
+                "sess1", include_insights=False,
+            )
+        ic = out["instant_chunks"]
+        self.assertEqual(len(ic), 2)
+        self.assertEqual(ic[0]["slide_index"], 0)
+        self.assertEqual(ic[1]["slide_index"], 1)
+        self.assertIsNone(ic[0]["say_it_stronger"])
+        self.assertEqual(ic[1]["say_it_stronger"], self._SIS)
+        self.assertEqual(ic[1]["snippet_id"], "a")
+
+
 if __name__ == "__main__":
     unittest.main()
