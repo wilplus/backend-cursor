@@ -9482,6 +9482,11 @@ def v2_coach_get_session(session_id):
             # (split-sink/AC-9, never user-facing); the felt-state input the
             # coach factors into the audit's "Performance under feeling".
             "feelings": shape_coach_feelings(db.get_feelings_by_session(session_id)),
+            # Pre-take priming manipulation (founder 2026-07-13) — which framing
+            # this take was recorded under (threat/challenge/balanced). Coach-
+            # only, from the session row; never user-facing (AC-9 — a research
+            # manipulation label, not user content). Null on older/unprimed takes.
+            "priming_condition": session.get("priming_condition"),
         }), 200
     except Exception as e:
         logger.error("coach/get-session failed sid=%s err=%s", session_id, e, exc_info=True)
@@ -11571,6 +11576,12 @@ def v2_lab_create_recording():
       audience              (optional)
       target_length_seconds (optional, int)
       domain_vocabulary     (optional, JSON array or comma-separated)
+      feeling               (optional) pre-take felt state (U10)
+      priming_condition     (optional) pre-take framing manipulation —
+                            threat|challenge|balanced (live takes only;
+                            unknown → stored null). PRIVATE research signal,
+                            coach-only, never user-facing.
+      priming_phrase        (optional) the exact framing phrase shown (verbatim)
       guest_session_id      (optional) reuse an existing guest session;
                             else a fresh one is minted + returned
 
@@ -11834,6 +11845,23 @@ def v2_lab_create_recording():
                 user_id=getattr(request, "user_id", None),
                 recording_id=recording_id, arc_id=arc_id, take_index=take_index,
             )
+
+        # Pre-take priming manipulation (founder 2026-07-13) — the framing panel
+        # the student saw before this live take (threat/challenge/balanced, one
+        # condition per batch position + the exact phrase). Same private
+        # correlation lane as the feeling: stored on the take's session row,
+        # surfaced to the COACH review only, NEVER echoed to the readout /
+        # instant view / student batch (AC-9 — it's a manipulation label, not
+        # user content). Unknown condition → stored null; absent on uploads.
+        # Best-effort + a SEPARATE write from the feeling, so a pre-migration
+        # hiccup here can never regress the feeling capture above.
+        from services.priming import (
+            normalize_priming_condition, normalize_priming_phrase,
+        )
+        _prime_cond = normalize_priming_condition(form.get("priming_condition"))
+        _prime_phrase = normalize_priming_phrase(form.get("priming_phrase"))
+        if _prime_cond or _prime_phrase:
+            db.set_session_priming(guest_session_id, _prime_cond, _prime_phrase)
 
         # Recording row (recording_origin fallback for pre-migration envs).
         # BE-1 / S2 — persist the gate's measured duration (was hardcoded 0 +
