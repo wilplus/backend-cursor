@@ -4828,10 +4828,15 @@ def _apply_willab_publish_contract(session_id, body, actor_user_id):
         )
 
     # ── User nudge: Lounge "insights ready" card (best-effort, idempotent). ──
+    # suppress_lounge_card (founder 2026-07-13): the ARC-BATCH publish door
+    # publishes every take in one action and fires ONE arc-level card instead
+    # — it opts out of the per-take card here. Per-take doors never set it.
     try:
         from datetime import datetime as _dt, timezone as _tz
         _sess = db.v2_get_session_by_id(session_id) or {}
         _owner = _sess.get("user_id")
+        if body.get("suppress_lounge_card") is True:
+            _owner = None  # skip the card; everything else unchanged
         if _owner:
             _ctx = _sess.get("intake_context") if isinstance(
                 _sess.get("intake_context"), dict) else {}
@@ -4927,6 +4932,45 @@ def v2_internal_publish_session_results():
                 "code": "NOT_FOUND",
                 "error": "Session not found",
             }), 404
+
+        # Save-at-publish (founder 2026-07-13): the FE no longer autosaves
+        # per keystroke — it may send the coach's full per-snippet authoring
+        # inline as ``snippets: [{id, note?, tag?, surfaced?, direction?|
+        # direction_label?, ...}]``. Persist each through the SAME two-lane
+        # helper as /coach/sessions/<id>/snippets/<id> (validators/caps/
+        # stores shared — the doors cannot drift), BEFORE the contract runs
+        # so assemble-mode reads the fresh drafts. Optional + backward-
+        # compatible: absent → today's behavior (pre-saved coach_state).
+        _inline_snips = body.get("snippets")
+        if isinstance(_inline_snips, list) and _inline_snips:
+            _known_ids = {
+                str(s.get("id"))
+                for s in (db.get_snippets_by_session(session_id) or [])
+                if s.get("id")
+            }
+            for _entry in _inline_snips:
+                if not isinstance(_entry, dict):
+                    return jsonify({
+                        "code": "INVALID_INPUT",
+                        "error": "snippets: entries must be objects",
+                    }), 422
+                _snip_id = str(_entry.get("id") or "").strip()
+                if _snip_id not in _known_ids:
+                    return jsonify({
+                        "code": "SNIPPET_NOT_FOUND",
+                        "error": f"snippet {_snip_id or '(missing id)'} "
+                                 "not in this session",
+                    }), 404
+                _fields = dict(_entry)
+                _fields.pop("id", None)
+                # FE alias: `direction` → the store's `direction_label`.
+                if "direction" in _fields and "direction_label" not in _fields:
+                    _fields["direction_label"] = _fields.pop("direction")
+                _lane_err = _save_coach_snippet_lanes(
+                    session_id, _snip_id, _fields,
+                )
+                if _lane_err is not None:
+                    return _lane_err
 
         # willab publish-contract (§3.9/§3.10) — SHARED gate, see
         # _apply_willab_publish_contract. Opt-in on `insights_payload`;
@@ -9529,6 +9573,156 @@ def v2_coach_put_say_it_stronger(snippet_id):
         return jsonify({"code": "V2_ERROR", "error": "Failed to save card"}), 500
 
 
+def _save_coach_snippet_lanes(session_id, snippet_id, body):
+    """SHARED two-lane persist for one snippet's coach authoring — used by
+    BOTH the per-snippet immediate-save route AND the publish route's inline
+    ``snippets[]`` batch (founder 2026-07-13: the FE saves everything at
+    Publish instead of per keystroke). One implementation so the two doors
+    physically cannot drift (same validators, same caps, same stores).
+
+    Runs inside a request context (reads ``request.user_id``). Returns None
+    on success, or a ``(flask_response, status)`` tuple to return directly.
+    Split-sink §2 unchanged: label → PRIVATE training_labels; note/tag/
+    surfaced/when/examples/transcript_corrected → USER coach_snippet_drafts.
+    """
+    from services.training_labels import (
+        VALID_VALUES, SCHEMA_VERSION, derive_override_flags,
+    )
+    from services.insights_payload import VALID_TAGS
+
+    # ── PRIVATE lane — direction label (training_labels). ──
+    # `direction_label` (str | null). null CLEARS; a value upserts.
+    if "direction_label" in body:
+        value = body["direction_label"]
+        if value is None:
+            db.delete_training_label(session_id, snippet_id)
+        elif value in VALID_VALUES:
+            # Override signal (audit fix #2a): fresh label vs revision of a
+            # prior one, derived from the snippet's existing stored label.
+            # Coach labels BLIND → this is coach-vs-own-prior.
+            _prior_val = None
+            for _r in (db.get_training_labels(session_id) or []):
+                if str(_r.get("snippet_id")) == snippet_id:
+                    _prior_val = _r.get("value")
+                    break
+            _pre_filled, _overridden = derive_override_flags(_prior_val, value)
+            db.upsert_training_labels(session_id, str(request.user_id), [{
+                "snippet_id": snippet_id,
+                "schema_version": SCHEMA_VERSION,
+                "value": value,
+                "was_pre_filled": _pre_filled,
+                "was_overridden": _overridden,
+            }])
+            # Phase 4 / Prompt 1 (B3, SHADOW) — backfill the coach's actual
+            # label onto the shadow prediction + best-effort auto-retrain.
+            # The new model stays status=shadow and influences NOTHING.
+            try:
+                from services.learning_serve import maybe_auto_retrain
+                db.backfill_shadow_coach_actual(snippet_id, value)
+                maybe_auto_retrain()
+            except Exception as _learn_err:
+                logger.warning(
+                    "coach/save-snippet: shadow learn hook failed: %s",
+                    _learn_err,
+                )
+        else:
+            return jsonify({
+                "code": "INVALID_INPUT",
+                "error": f"direction_label: must be one of {', '.join(VALID_VALUES)} or null",
+            }), 422
+
+    # ── USER lane — note / tag / surfaced / when / examples (drafts). ──
+    draft_fields: dict = {}
+    if "note" in body:
+        note_raw = body.get("note")
+        if note_raw is not None and not isinstance(note_raw, str):
+            return jsonify({"code": "INVALID_INPUT", "error": "note: must be a string"}), 422
+        note = (note_raw or "").strip()
+        if len(note) > 2000:
+            return jsonify({"code": "INVALID_INPUT", "error": "note: 2000 chars max"}), 422
+        draft_fields["note"] = note or None
+    if "tag" in body:
+        tag = body.get("tag")
+        if tag is not None and tag not in VALID_TAGS:
+            return jsonify({
+                "code": "INVALID_INPUT",
+                "error": f"tag: must be one of {', '.join(VALID_TAGS)}",
+            }), 422
+        draft_fields["tag"] = tag
+    if "surfaced" in body:
+        surfaced = body.get("surfaced")
+        if not isinstance(surfaced, bool):
+            return jsonify({"code": "INVALID_INPUT", "error": "surfaced: must be a boolean"}), 422
+        draft_fields["surfaced"] = surfaced
+    if "when" in body:
+        when_raw = body.get("when")
+        if when_raw is not None and not isinstance(when_raw, str):
+            return jsonify({"code": "INVALID_INPUT", "error": "when: must be a string"}), 422
+        when = (when_raw or "").strip()
+        if len(when) > 1000:
+            return jsonify({"code": "INVALID_INPUT", "error": "when: 1000 chars max"}), 422
+        draft_fields["when_context"] = when or None
+    if "examples" in body:
+        ex_raw = body.get("examples")
+        if ex_raw is None:
+            draft_fields["examples"] = []
+        elif not isinstance(ex_raw, list):
+            return jsonify({"code": "INVALID_INPUT", "error": "examples: must be a list"}), 422
+        else:
+            cleaned_ex = []
+            for ex in ex_raw[:10]:
+                if isinstance(ex, str) and ex.strip():
+                    cleaned_ex.append(ex.strip()[:500])
+            draft_fields["examples"] = cleaned_ex
+    # Breakthrough video — a public URL (str | null). null/empty CLEARS.
+    # The explanation text is the `note`; this stores only the video URL.
+    if "breakthrough_video_ref" in body:
+        bvr_raw = body.get("breakthrough_video_ref")
+        if bvr_raw is not None and not isinstance(bvr_raw, str):
+            return jsonify({
+                "code": "INVALID_INPUT",
+                "error": "breakthrough_video_ref: must be a string or null",
+            }), 422
+        bvr = (bvr_raw or "").strip()
+        if len(bvr) > 2048:
+            return jsonify({
+                "code": "INVALID_INPUT",
+                "error": "breakthrough_video_ref: 2048 chars max",
+            }), 422
+        if bvr and not (
+            bvr.startswith("https://") or bvr.startswith("http://")
+        ):
+            return jsonify({
+                "code": "INVALID_INPUT",
+                "error": "breakthrough_video_ref: must be an http(s) URL",
+            }), 422
+        draft_fields["breakthrough_video_ref"] = bvr or None
+    # Coach-corrected transcript (founder 2026-07-06) — a real coach-
+    # authored artifact, distinct from `note`. Free tier the instant it's
+    # saved + surfaced (no payment check anywhere in this path).
+    if "transcript_corrected" in body:
+        tx_raw = body.get("transcript_corrected")
+        if tx_raw is not None and not isinstance(tx_raw, str):
+            return jsonify({
+                "code": "INVALID_INPUT",
+                "error": "transcript_corrected: must be a string",
+            }), 422
+        tx = (tx_raw or "").strip()
+        if len(tx) > 4000:
+            return jsonify({
+                "code": "INVALID_INPUT",
+                "error": "transcript_corrected: 4000 chars max",
+            }), 422
+        draft_fields["transcript_corrected"] = tx or None
+
+    if draft_fields:
+        db.upsert_coach_snippet_draft(
+            session_id, snippet_id, draft_fields,
+            updated_by=str(request.user_id),
+        )
+    return None
+
+
 @v2_bp.route("/coach/sessions/<session_id>/snippets/<snippet_id>", methods=["POST"])
 @require_admin_or_coach
 def v2_coach_save_snippet(session_id, snippet_id):
@@ -9565,11 +9759,6 @@ def v2_coach_save_snippet(session_id, snippet_id):
     200 { status, session_id, snippet_id, saved: { label?, draft? } }
     400 INVALID_INPUT · 404 SESSION_NOT_FOUND / SNIPPET_NOT_FOUND · 422 invalid value
     """
-    from services.training_labels import (
-        VALID_VALUES, SCHEMA_VERSION, derive_override_flags,
-    )
-    from services.insights_payload import VALID_TAGS
-
     if not _is_valid_uuid(session_id) or not _is_valid_uuid(snippet_id):
         return jsonify({
             "code": "INVALID_INPUT", "error": "session_id and snippet_id must be UUIDs",
@@ -9588,136 +9777,11 @@ def v2_coach_save_snippet(session_id, snippet_id):
 
         body = request.get_json(silent=True) or {}
 
-        # ── PRIVATE lane — direction label (training_labels). ──
-        # FE sends `direction_label` (str | null). null CLEARS; a value upserts.
-        if "direction_label" in body:
-            value = body["direction_label"]
-            if value is None:
-                db.delete_training_label(session_id, snippet_id)
-            elif value in VALID_VALUES:
-                # Override signal (audit fix #2a): is this a fresh label or a
-                # revision of a prior one? Derived from the snippet's existing
-                # stored label (was hardcoded False → revisions were invisible).
-                # The publish path re-persists from this store, so the flags
-                # carry through. Coach labels BLIND → this is coach-vs-own-prior.
-                _prior_val = None
-                for _r in (db.get_training_labels(session_id) or []):
-                    if str(_r.get("snippet_id")) == snippet_id:
-                        _prior_val = _r.get("value")
-                        break
-                _pre_filled, _overridden = derive_override_flags(_prior_val, value)
-                db.upsert_training_labels(session_id, str(request.user_id), [{
-                    "snippet_id": snippet_id,
-                    "schema_version": SCHEMA_VERSION,
-                    "value": value,
-                    "was_pre_filled": _pre_filled,
-                    "was_overridden": _overridden,
-                }])
-                # Phase 4 / Prompt 1 (B3, SHADOW) — close the loop: backfill the
-                # coach's actual label onto this snippet's shadow prediction, and
-                # auto-retrain in the background if enough new labels accrued
-                # (≥25 new / ≥50 floor, no cron). Both best-effort; the new model
-                # stays status=shadow and influences NOTHING.
-                try:
-                    from services.learning_serve import maybe_auto_retrain
-                    db.backfill_shadow_coach_actual(snippet_id, value)
-                    maybe_auto_retrain()
-                except Exception as _learn_err:
-                    logger.warning("coach/save-snippet: shadow learn hook failed: %s", _learn_err)
-            else:
-                return jsonify({
-                    "code": "INVALID_INPUT",
-                    "error": f"direction_label: must be one of {', '.join(VALID_VALUES)} or null",
-                }), 422
-
-        # ── USER lane — note / tag / surfaced / when / examples (drafts). ──
-        draft_fields: dict = {}
-        if "note" in body:
-            note_raw = body.get("note")
-            if note_raw is not None and not isinstance(note_raw, str):
-                return jsonify({"code": "INVALID_INPUT", "error": "note: must be a string"}), 422
-            note = (note_raw or "").strip()
-            if len(note) > 2000:
-                return jsonify({"code": "INVALID_INPUT", "error": "note: 2000 chars max"}), 422
-            draft_fields["note"] = note or None
-        if "tag" in body:
-            tag = body.get("tag")
-            if tag is not None and tag not in VALID_TAGS:
-                return jsonify({
-                    "code": "INVALID_INPUT",
-                    "error": f"tag: must be one of {', '.join(VALID_TAGS)}",
-                }), 422
-            draft_fields["tag"] = tag
-        if "surfaced" in body:
-            surfaced = body.get("surfaced")
-            if not isinstance(surfaced, bool):
-                return jsonify({"code": "INVALID_INPUT", "error": "surfaced: must be a boolean"}), 422
-            draft_fields["surfaced"] = surfaced
-        if "when" in body:
-            when_raw = body.get("when")
-            if when_raw is not None and not isinstance(when_raw, str):
-                return jsonify({"code": "INVALID_INPUT", "error": "when: must be a string"}), 422
-            when = (when_raw or "").strip()
-            if len(when) > 1000:
-                return jsonify({"code": "INVALID_INPUT", "error": "when: 1000 chars max"}), 422
-            draft_fields["when_context"] = when or None
-        if "examples" in body:
-            ex_raw = body.get("examples")
-            if ex_raw is None:
-                draft_fields["examples"] = []
-            elif not isinstance(ex_raw, list):
-                return jsonify({"code": "INVALID_INPUT", "error": "examples: must be a list"}), 422
-            else:
-                cleaned_ex = []
-                for ex in ex_raw[:10]:
-                    if isinstance(ex, str) and ex.strip():
-                        cleaned_ex.append(ex.strip()[:500])
-                draft_fields["examples"] = cleaned_ex
-        # Breakthrough video — a public URL (str | null). null/empty CLEARS.
-        # The explanation text is the `note`; this stores only the video URL.
-        if "breakthrough_video_ref" in body:
-            bvr_raw = body.get("breakthrough_video_ref")
-            if bvr_raw is not None and not isinstance(bvr_raw, str):
-                return jsonify({
-                    "code": "INVALID_INPUT",
-                    "error": "breakthrough_video_ref: must be a string or null",
-                }), 422
-            bvr = (bvr_raw or "").strip()
-            if len(bvr) > 2048:
-                return jsonify({
-                    "code": "INVALID_INPUT",
-                    "error": "breakthrough_video_ref: 2048 chars max",
-                }), 422
-            if bvr and not (
-                bvr.startswith("https://") or bvr.startswith("http://")
-            ):
-                return jsonify({
-                    "code": "INVALID_INPUT",
-                    "error": "breakthrough_video_ref: must be an http(s) URL",
-                }), 422
-            draft_fields["breakthrough_video_ref"] = bvr or None
-        # Coach-corrected transcript (founder 2026-07-06) — a real coach-
-        # authored artifact, distinct from `note`. Free tier the instant it's
-        # saved + surfaced (no payment check anywhere in this path).
-        if "transcript_corrected" in body:
-            tx_raw = body.get("transcript_corrected")
-            if tx_raw is not None and not isinstance(tx_raw, str):
-                return jsonify({
-                    "code": "INVALID_INPUT",
-                    "error": "transcript_corrected: must be a string",
-                }), 422
-            tx = (tx_raw or "").strip()
-            if len(tx) > 4000:
-                return jsonify({
-                    "code": "INVALID_INPUT",
-                    "error": "transcript_corrected: 4000 chars max",
-                }), 422
-            draft_fields["transcript_corrected"] = tx or None
-
-        if draft_fields:
-            db.upsert_coach_snippet_draft(
-                session_id, snippet_id, draft_fields, updated_by=str(request.user_id),
-            )
+        # SHARED two-lane persist (also the publish route's inline snippets[]
+        # path) — one implementation so the two doors cannot drift.
+        _lane_err = _save_coach_snippet_lanes(session_id, snippet_id, body)
+        if _lane_err is not None:
+            return _lane_err
 
         # Echo the persisted coach_state (BOTH lanes folded) — the FE writes
         # this back into its local state, so it must reflect what's stored.
@@ -11008,6 +11072,316 @@ def v2_coach_arc_edit_slide(arc_id, index):
                      arc_id, index, e, exc_info=True)
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR", "error": "Failed to save edit"}), 500
+
+
+@v2_bp.route("/coach/arc/<arc_id>/publish", methods=["POST"])
+@require_admin_or_coach
+def v2_coach_arc_publish(arc_id):
+    """The explicit "Publish arc" batch action (founder 2026-07-13) — the
+    coach delivers the WHOLE training to the student as ONE batch: every
+    take's labelled snippets + the finalized ideal text. The per-take publish
+    (/internal/publish-session-results) is unchanged and coexists.
+
+    ORDER (founder): the coach edits the ideal text FIRST, then publishes the
+    batch — so coach_finalized (every slide/section corrected) is a hard
+    precondition here, 409 IDEAL_TEXT_INCOMPLETE with the pending slide
+    indexes until it holds.
+
+    What it does, in order:
+      1. coach_finalized precondition (above).
+      2. For every take with surfaced coach notes but no
+         results_published_at: run the SAME publish contract as the per-take
+         door (assemble mode — insights from the persisted drafts + labels),
+         then flip status/results_published_at. Already-published takes are
+         skipped (idempotent re-publish); takes with no surfaced notes are
+         skipped (nothing labelled to deliver on them).
+      3. Stamp arc_batch_deliveries + fire the ONE arc-level notification
+         (idempotent maybe_fire_best_presentation_ready) — no per-take
+         emails from this door.
+
+    200 { published, arc_id, takes_published, takes_already_published,
+          takes_skipped_no_coach_notes }
+    404 NOT_FOUND · 409 IDEAL_TEXT_INCOMPLETE · 422/5xx TAKE_PUBLISH_FAILED
+    """
+    try:
+        sessions = db.get_arc_sessions(arc_id)
+        if not sessions:
+            return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
+
+        # 1) Ideal text must be fully coach-corrected BEFORE the batch goes.
+        from services.best_presentation import build_best_presentation
+        bp = build_best_presentation(arc_id, coach_view=True)
+        if not bp.get("coach_finalized"):
+            pending = [
+                s.get("index") for s in (bp.get("slides") or [])
+                if not s.get("coach_edited")
+            ]
+            return jsonify({
+                "code": "IDEAL_TEXT_INCOMPLETE",
+                "error": "Correct every ideal-text slide before publishing "
+                         "the arc batch.",
+                "slides_pending": pending,
+            }), 409
+
+        # 2) Publish every take that has surfaced coach work, per-take-door
+        #    semantics (same contract), no per-take emails.
+        published, already, skipped = [], [], []
+        for s in sessions:
+            sid = str(s.get("id"))
+            if s.get("results_published_at"):
+                already.append(sid)
+                continue
+            drafts = db.get_coach_snippet_drafts(sid) or []
+            has_surfaceable = any(
+                d.get("surfaced") and (d.get("note") or "").strip()
+                for d in drafts
+            )
+            if not has_surfaceable:
+                skipped.append(sid)
+                continue
+            _err = _apply_willab_publish_contract(
+                sid,
+                {"notify_client": False, "suppress_lounge_card": True},
+                request.user_id,
+            )
+            if _err is not None:
+                _resp, _status = _err
+                return jsonify({
+                    "code": "TAKE_PUBLISH_FAILED",
+                    "session_id": sid,
+                    "detail": (_resp.get_json()
+                               if hasattr(_resp, "get_json") else None),
+                    "published_before_failure": published,
+                }), _status
+            try:
+                db.v2_update_session_status_unscoped(sid, "completed")
+            except Exception as _flip_err:
+                logger.warning(
+                    "coach/arc publish: status flip failed sid=%s: %s "
+                    "(non-fatal)", sid, _flip_err,
+                )
+            db.v2_publish_session_results(sid)
+            published.append(sid)
+
+        # 3) The batch marker + ONE arc-level notification.
+        owner = next(
+            (s.get("user_id") for s in sessions if s.get("user_id")), None,
+        )
+        db.mark_arc_batch_delivered(arc_id, owner, str(request.user_id))
+        try:
+            from services.arc_notifications import (
+                maybe_fire_best_presentation_ready,
+            )
+            maybe_fire_best_presentation_ready(db, arc_id)
+        except Exception as _n_err:
+            logger.warning("coach/arc publish: notification failed arc=%s: %s",
+                           arc_id, _n_err)
+
+        return jsonify({
+            "published": True,
+            "arc_id": arc_id,
+            "takes_published": len(published),
+            "takes_already_published": len(already),
+            "takes_skipped_no_coach_notes": len(skipped),
+        }), 200
+    except Exception as e:
+        logger.error("coach/arc publish failed arc=%s: %s", arc_id, e,
+                     exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({
+            "code": "V2_ERROR", "error": "Failed to publish the arc",
+        }), 500
+
+
+@v2_bp.route("/explore/arc/<arc_id>/batch", methods=["GET"])
+@require_auth
+def v2_explore_arc_batch(arc_id):
+    """The student's ONE-batch review of a delivered training (founder
+    2026-07-13): the coach-labelled snippets of each take, in take order,
+    with the finalized ideal text at the end.
+
+    DELIBERATE EXCLUSIONS (fences): NO say_it_stronger anywhere — the
+    synonym/rewrite card lives ONLY on the instant per-recording readout;
+    NO direction labels or any private-lane value (BLIND COACH); no scores
+    (AC-9). The ideal text is the coach-corrected verbatim assembly (L1) —
+    build_best_presentation's student view, already coach_finalized-gated.
+
+    Response 200 { arc_id, delivered:false }                    — not sent yet
+             200 { arc_id, delivered:true, delivered_at,
+                   takes:[{session_id, take_index, created_at,
+                           snippets:[{snippet_id, transcript, audio_ref,
+                                      start_offset_ms, duration_ms,
+                                      coach:{note, tag, when, examples,
+                                             transcript_corrected,
+                                             breakthrough_video_ref}}]}],
+                   ideal_text:{name, presentation_ref, coach_finalized,
+                               slides:[...]} }
+             402 · 404 · 500
+    """
+    try:
+        owned, sessions = _arc_owned_by_caller(arc_id)
+        if not owned:
+            return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
+        gated = _arc_payment_gate(arc_id)
+        if gated is not None:
+            return gated
+        delivery = db.get_arc_batch_delivery(arc_id)
+        if not delivery:
+            return jsonify({"arc_id": arc_id, "delivered": False}), 200
+
+        takes = []
+        for s in sorted(sessions,
+                        key=lambda x: (x.get("take_index") or 0)):
+            sid = str(s.get("id"))
+            drafts = {
+                str(d.get("snippet_id")): d
+                for d in (db.get_coach_snippet_drafts(sid) or [])
+                if d.get("snippet_id")
+            }
+            snips = db.get_snippets_by_session(sid) or []
+            take_snips = []
+            for sn in sorted(snips,
+                             key=lambda x: (x.get("start_offset_ms") or 0)):
+                d = drafts.get(str(sn.get("id")))
+                # "Labelled" for the student = surfaced with a coach note —
+                # the same bar as the per-take insights fold.
+                if not d or not d.get("surfaced"):
+                    continue
+                note = (d.get("note") or "").strip()
+                if not note:
+                    continue
+                corrected = (d.get("transcript_corrected") or "").strip()
+                take_snips.append({
+                    "snippet_id": sn.get("id"),
+                    # Coach-corrected verbatim preferred (L1) — the raw
+                    # machine transcript only when no correction exists.
+                    "transcript": corrected or (
+                        sn.get("transcript")
+                        or sn.get("transcription_text") or ""
+                    ),
+                    "audio_ref": sn.get("audio_segment_path"),
+                    "start_offset_ms": sn.get("start_offset_ms"),
+                    "duration_ms": sn.get("duration_ms"),
+                    "coach": {
+                        "note": note,
+                        "tag": d.get("tag"),
+                        "when": d.get("when_context"),
+                        "examples": d.get("examples") or [],
+                        "transcript_corrected": corrected or None,
+                        "breakthrough_video_ref":
+                            d.get("breakthrough_video_ref"),
+                    },
+                })
+            takes.append({
+                "session_id": sid,
+                "take_index": s.get("take_index"),
+                "created_at": s.get("created_at"),
+                "snippets": take_snips,
+            })
+
+        from services.best_presentation import build_best_presentation
+        bp = build_best_presentation(arc_id)  # student view — gated text
+        return jsonify({
+            "arc_id": arc_id,
+            "delivered": True,
+            "delivered_at": delivery.get("published_at"),
+            "takes": takes,
+            "ideal_text": {
+                "name": bp.get("name"),
+                "presentation_ref": bp.get("presentation_ref"),
+                "coach_finalized": bp.get("coach_finalized"),
+                "slides": bp.get("slides") or [],
+            },
+        }), 200
+    except Exception as e:
+        logger.error("explore/arc batch failed arc=%s: %s", arc_id, e,
+                     exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({
+            "code": "V2_ERROR", "error": "Failed to load the batch",
+        }), 500
+
+
+@v2_bp.route("/user/trainings", methods=["GET"])
+@require_auth
+def v2_user_list_trainings():
+    """The training tab, grouped BY ARC (founder 2026-07-13) — one card per
+    3-take training, DECKLESS included (the deck-hash grouping in
+    /user/strengths dropped deckless takes into the flat general bucket, so
+    they never appeared as a training). Replaces /user/strengths as the
+    training-tab source on the FE.
+
+    Per training: the takes (all recordings, take order), `batch_verified`
+    (the coach's explicit arc publish landed), and `ideal_ready` (the
+    ideal-presentation button can open). AC-9: no scores anywhere.
+
+    Response 200 { trainings: [ { arc_id, topic, created_at, take_count,
+        takes_target, takes:[{session_id, take_index, created_at, has_slides,
+        coach_reviewed}], batch_verified, delivered_at, ideal_ready } ] }
+    """
+    try:
+        from services.best_presentation import TAKES_TARGET
+        rows = db.list_user_arc_sessions(request.user_id) or []
+        by_arc: dict = {}
+        for r in rows:
+            _aid = r.get("arc_id")
+            if _aid:
+                by_arc.setdefault(str(_aid), []).append(r)
+        deliveries = db.list_arc_batch_deliveries(list(by_arc.keys())) or {}
+
+        trainings = []
+        for aid, sess in by_arc.items():
+            sess.sort(key=lambda s: (s.get("take_index") or 0))
+            topic = None
+            n_slides = 0
+            for s in sess:
+                ctx = s.get("intake_context") if isinstance(
+                    s.get("intake_context"), dict) else {}
+                t = ctx.get("topic")
+                if isinstance(t, str) and t.strip():
+                    topic = t.strip()  # latest take wins (take order)
+                n_slides = max(n_slides, len((ctx or {}).get("slides") or []))
+            takes = [{
+                "session_id": str(s.get("id")),
+                "take_index": s.get("take_index"),
+                "created_at": s.get("created_at"),
+                "has_slides": bool((
+                    s.get("intake_context")
+                    if isinstance(s.get("intake_context"), dict) else {}
+                ).get("slides")),
+                "coach_reviewed": bool(s.get("results_published_at")),
+            } for s in sess]
+            delivered = deliveries.get(aid)
+            # Cheap coach_finalized mirror (same rule as /progress): every
+            # deck slide coach-corrected. Deckless arcs (no deck) become
+            # ideal_ready via the batch delivery itself (whose publish
+            # already required the full coach_finalized).
+            coach_finalized = False
+            if n_slides:
+                _edits = db.get_coach_best_presentation_edits(aid) or {}
+                coach_finalized = all(
+                    isinstance(_edits.get(i), str) and _edits[i].strip()
+                    for i in range(n_slides)
+                )
+            trainings.append({
+                "arc_id": aid,
+                "topic": topic,
+                "created_at": sess[0].get("created_at") if sess else None,
+                "take_count": len(sess),
+                "takes_target": TAKES_TARGET,
+                "takes": takes,
+                "batch_verified": bool(delivered),
+                "delivered_at": (delivered or {}).get("published_at"),
+                "ideal_ready": bool(delivered) or coach_finalized,
+            })
+        trainings.sort(key=lambda t: t.get("created_at") or "", reverse=True)
+        return jsonify({"trainings": trainings}), 200
+    except Exception as e:
+        logger.error("user/trainings failed: %s", e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({
+            "code": "V2_ERROR", "error": "Failed to load trainings",
+        }), 500
 
 
 # ── willab — game + snippet library (founder 2026-07-06: PAID, STUBBED) ─

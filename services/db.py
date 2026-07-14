@@ -10014,6 +10014,123 @@ class DatabaseService:
             logger.warning("get_arc_sessions failed arc=%s: %s", arc_id, e)
             return []
 
+    def list_user_arc_sessions(self, user_id: Optional[str]) -> list[dict]:
+        """Every arc-linked session the user owns — the /user/trainings source
+        (the route groups per arc). Arc-keyed on purpose, so DECKLESS trainings
+        appear too (the deck-hash grouping in /user/strengths drops them into
+        the flat general bucket). Best-effort: [] on missing column / hiccup."""
+        if not user_id:
+            return []
+        try:
+            res = (
+                self.client.table("v2_sessions")
+                .select("id, arc_id, take_index, status, created_at, "
+                        "intake_context, results_published_at")
+                .eq("user_id", str(user_id))
+                .not_.is_("arc_id", "null")
+                .order("created_at", desc=False)
+                .execute()
+            )
+            return res.data or []
+        except Exception as e:
+            _e = str(e).lower()
+            if "arc_id" in _e or "take_index" in _e:
+                logger.warning(
+                    "list_user_arc_sessions: column missing (run "
+                    "migrations/add_explore_arc.sql) user=%s", user_id,
+                )
+                return []
+            logger.warning("list_user_arc_sessions failed user=%s: %s",
+                           user_id, e)
+            return []
+
+    # ── willab — arc batch delivery (founder 2026-07-13) ────────────────
+    #
+    # arc_batch_deliveries: one row per arc, stamped by the coach's explicit
+    # "Publish arc" action — the WHOLE training (all takes' labelled snippets
+    # + the finalized ideal text) delivered to the student as ONE batch.
+    # Coexists with the per-take publish. See
+    # migrations/add_arc_batch_deliveries.sql.
+
+    def mark_arc_batch_delivered(
+        self, arc_id: str, user_id: Optional[str], coach_id: Optional[str],
+    ) -> bool:
+        """Upsert the one-row-per-arc batch-delivery marker. Idempotent — a
+        re-publish refreshes published_at (the batch simply went out again)."""
+        if not arc_id:
+            return False
+        try:
+            self.client.table("arc_batch_deliveries").upsert({
+                "arc_id": str(arc_id),
+                "user_id": str(user_id) if user_id else None,
+                "coach_id": str(coach_id) if coach_id else None,
+                "published_at": datetime.now(timezone.utc).isoformat(),
+            }, on_conflict="arc_id").execute()
+            return True
+        except Exception as e:
+            _e = str(e).lower()
+            if "arc_batch_deliveries" in _e and (
+                "does not exist" in _e or "pgrst" in _e
+            ):
+                logger.warning(
+                    "mark_arc_batch_delivered: table missing (run "
+                    "migrations/add_arc_batch_deliveries.sql) arc=%s", arc_id,
+                )
+                return False
+            logger.warning("mark_arc_batch_delivered failed arc=%s: %s",
+                           arc_id, e)
+            return False
+
+    def get_arc_batch_delivery(self, arc_id: Optional[str]) -> Optional[dict]:
+        """The batch-delivery row for an arc, or None. None on missing table /
+        error — the batch defaults to NOT delivered (the student view shows
+        'waiting for your coach', never a phantom delivery)."""
+        if not arc_id:
+            return None
+        try:
+            res = (
+                self.client.table("arc_batch_deliveries")
+                .select("*")
+                .eq("arc_id", str(arc_id))
+                .limit(1)
+                .execute()
+            )
+            rows = res.data or []
+            return rows[0] if rows else None
+        except Exception as e:
+            _e = str(e).lower()
+            if "arc_batch_deliveries" in _e and (
+                "does not exist" in _e or "pgrst" in _e
+            ):
+                return None  # pre-migration → never delivered
+            logger.warning("get_arc_batch_delivery failed arc=%s: %s",
+                           arc_id, e)
+            return None
+
+    def list_arc_batch_deliveries(self, arc_ids: list) -> dict:
+        """{arc_id: row} for the given arcs — ONE read for the trainings
+        list (no per-arc N+1). {} on missing table / error (not delivered)."""
+        ids = [str(a) for a in (arc_ids or []) if a]
+        if not ids:
+            return {}
+        try:
+            res = (
+                self.client.table("arc_batch_deliveries")
+                .select("*")
+                .in_("arc_id", ids)
+                .execute()
+            )
+            return {str(r.get("arc_id")): r for r in (res.data or [])
+                    if r.get("arc_id")}
+        except Exception as e:
+            _e = str(e).lower()
+            if "arc_batch_deliveries" in _e and (
+                "does not exist" in _e or "pgrst" in _e
+            ):
+                return {}
+            logger.warning("list_arc_batch_deliveries failed: %s", e)
+            return {}
+
     # ── willab — Paid Audits / arc entitlement (BE chunk A1/A4/A5) ──────
     #
     # arc_purchases: one row per PAID/passed arc ("audit"). The row IS the

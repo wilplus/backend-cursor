@@ -714,6 +714,53 @@ def process_lab_recording(
     return build_readout_payload(snippets_data, stickiness_list)
 
 
+def _attach_suggestions_to_chunks(chunks: list, out_snips: list) -> list:
+    """Instant-view assembly (founder 2026-07-13): ONE deduped chunk list —
+    each span of the full transcript appears EXACTLY once, with the salient
+    snippet's say_it_stronger card attached to the chunk it was spoken in
+    (matched by the snippet's audio-span midpoint). Kills the deckless double
+    render (the same sentence riding both ``snippets[]`` and
+    ``full_transcript_chunks[]``) and gives the FE the founder's display
+    order per chunk: text → corrections (upgrades) → commentary (why).
+
+    Each snippet attaches to AT MOST one chunk (first span match, offset
+    order); snippets without a span, without a card, or outside every chunk
+    span attach nowhere (still available on ``snippets[]``). Pure — returns
+    new dicts, never mutates the source entries.
+    """
+    out: list = []
+    used: set = set()
+    for c in chunks:
+        if not isinstance(c, dict):
+            continue
+        cc = dict(c)
+        cc.setdefault("say_it_stronger", None)
+        cc.setdefault("snippet_id", None)
+        cs, cd = cc.get("start_offset_ms"), cc.get("duration_ms")
+        if (isinstance(cs, (int, float)) and isinstance(cd, (int, float))
+                and cd > 0):
+            for sn in out_snips:
+                sid = str(sn.get("id"))
+                if sid in used:
+                    continue
+                if not isinstance(sn.get("say_it_stronger"), dict):
+                    continue
+                ss, sd = sn.get("start_offset_ms"), sn.get("duration_ms")
+                if not isinstance(ss, (int, float)):
+                    continue
+                mid = ss + (
+                    sd / 2.0
+                    if isinstance(sd, (int, float)) and sd > 0 else 0
+                )
+                if cs <= mid < cs + cd:
+                    cc["say_it_stronger"] = sn.get("say_it_stronger")
+                    cc["snippet_id"] = sn.get("id")
+                    used.add(sid)
+                    break
+        out.append(cc)
+    return out
+
+
 def build_readout_from_session(
     session_id: str,
     *,
@@ -955,6 +1002,23 @@ def build_readout_from_session(
                     )
             if _stx:
                 result["slide_transcripts"] = _stx
+                # Instant synonym view (founder 2026-07-13) — DECKED: the deck
+                # IS the chunking (one chunk per slide, the slide's own audio
+                # span), each carrying the say_it_stronger card of the salient
+                # snippet spoken on it. The FE renders the instant view from
+                # THIS list alone — no snippet/chunk double render.
+                _ic_src = [{
+                    "index": i,
+                    "slide_index": t.get("index"),
+                    "transcript": (t.get("transcript") or "").strip(),
+                    "start_offset_ms": t.get("start_offset_ms"),
+                    "duration_ms": t.get("duration_ms"),
+                } for i, t in enumerate(_stx)
+                    if isinstance(t, dict)
+                    and (t.get("transcript") or "").strip()]
+                result["instant_chunks"] = _attach_suggestions_to_chunks(
+                    _ic_src, out_snips,
+                )
         else:
             # DECKLESS (founder bug #2, re-cut 2026-07-11): fold the persisted
             # whole-recording transcript as a plain string PLUS the canonical
@@ -982,6 +1046,16 @@ def build_readout_from_session(
                             _c["user_edited_text"] = _edits_by_chunk.get(
                                 _c.get("index"))
                         result["full_transcript_chunks"] = _chunks
+                        # Instant synonym view (founder 2026-07-13) —
+                        # DECKLESS: the canonical ≤200-char chunks, each
+                        # carrying the say_it_stronger card of the snippet
+                        # spoken in it. The FE renders the instant view from
+                        # THIS list alone (chunk text → corrections →
+                        # commentary) — never snippets[] AND chunks[], which
+                        # doubled the same sentence.
+                        result["instant_chunks"] = (
+                            _attach_suggestions_to_chunks(_chunks, out_snips)
+                        )
             except Exception:
                 pass
         if ctx.get("presentation_ref"):
