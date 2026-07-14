@@ -114,11 +114,16 @@ class CoachArcPublishTests(unittest.TestCase):
              patch.object(v2.db, "v2_publish_session_results") as m_pub, \
              patch.object(v2.db, "mark_arc_batch_delivered",
                           return_value=True) as m_mark, \
+             patch.object(v2.db, "get_arc_batch_delivery",
+                          return_value={"published_at":
+                                        "2026-07-13T16:00:00Z"}), \
              patch("services.arc_notifications."
                    "maybe_fire_best_presentation_ready") as m_fire:
             body, status = self._call()
         self.assertEqual(status, 200)
         self.assertTrue(body["published"])
+        # delivered_at echoed from the stamped marker row (FE shows it).
+        self.assertEqual(body["delivered_at"], "2026-07-13T16:00:00Z")
         # take 1 already published → skipped; takes 2+3 published now.
         self.assertEqual(body["takes_published"], 2)
         self.assertEqual(body["takes_already_published"], 1)
@@ -143,6 +148,9 @@ class CoachArcPublishTests(unittest.TestCase):
              patch.object(v2.db, "v2_publish_session_results") as m_pub, \
              patch.object(v2.db, "mark_arc_batch_delivered",
                           return_value=True) as m_mark, \
+             patch.object(v2.db, "get_arc_batch_delivery",
+                          return_value={"published_at":
+                                        "2026-07-13T16:00:00Z"}), \
              patch("services.arc_notifications."
                    "maybe_fire_best_presentation_ready"):
             body, status = self._call()
@@ -252,10 +260,15 @@ class StudentArcBatchTests(unittest.TestCase):
         # ONLY the surfaced+noted snippet rides; the unsurfaced one doesn't.
         self.assertEqual(len(take1["snippets"]), 1)
         s = take1["snippets"][0]
+        # FLAT shape the FE mapper reads: id / coach_note / tag (NOT
+        # snippet_id / nested coach.{note,tag}).
+        self.assertEqual(s["id"], "sn1")
+        self.assertNotIn("snippet_id", s)
+        self.assertNotIn("coach", s)  # no nested object
         # L1: the coach-corrected verbatim IS the transcript served.
         self.assertEqual(s["transcript"], "coach corrected words")
-        self.assertEqual(s["coach"]["note"], "Land it here.")
-        self.assertEqual(s["coach"]["tag"], "strong")
+        self.assertEqual(s["coach_note"], "Land it here.")
+        self.assertEqual(s["tag"], "strong")
         # Ideal text at the end (student view).
         self.assertEqual(body["ideal_text"]["slides"][0]["text"],
                          "Coach-corrected verbatim.")
