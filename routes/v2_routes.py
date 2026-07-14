@@ -11168,6 +11168,9 @@ def v2_coach_arc_publish(arc_id):
             (s.get("user_id") for s in sessions if s.get("user_id")), None,
         )
         db.mark_arc_batch_delivered(arc_id, owner, str(request.user_id))
+        # Read the stamped row back for the exact delivered_at the FE shows
+        # (best-effort — a marker-read hiccup just omits the timestamp).
+        _delivery = db.get_arc_batch_delivery(arc_id) or {}
         try:
             from services.arc_notifications import (
                 maybe_fire_best_presentation_ready,
@@ -11180,6 +11183,7 @@ def v2_coach_arc_publish(arc_id):
         return jsonify({
             "published": True,
             "arc_id": arc_id,
+            "delivered_at": _delivery.get("published_at"),
             "takes_published": len(published),
             "takes_already_published": len(already),
             "takes_skipped_no_coach_notes": len(skipped),
@@ -11251,8 +11255,12 @@ def v2_explore_arc_batch(arc_id):
                 if not note:
                     continue
                 corrected = (d.get("transcript_corrected") or "").strip()
+                # FLAT shape (FE ArcBatchView / mapper is strict): `id`,
+                # `coach_note`, `tag` at top level — NOT snippet_id / nested
+                # coach.{note,tag}. transcript_corrected already IS the
+                # served transcript (below), so it isn't echoed separately.
                 take_snips.append({
-                    "snippet_id": sn.get("id"),
+                    "id": sn.get("id"),
                     # Coach-corrected verbatim preferred (L1) — the raw
                     # machine transcript only when no correction exists.
                     "transcript": corrected or (
@@ -11262,15 +11270,12 @@ def v2_explore_arc_batch(arc_id):
                     "audio_ref": sn.get("audio_segment_path"),
                     "start_offset_ms": sn.get("start_offset_ms"),
                     "duration_ms": sn.get("duration_ms"),
-                    "coach": {
-                        "note": note,
-                        "tag": d.get("tag"),
-                        "when": d.get("when_context"),
-                        "examples": d.get("examples") or [],
-                        "transcript_corrected": corrected or None,
-                        "breakthrough_video_ref":
-                            d.get("breakthrough_video_ref"),
-                    },
+                    "coach_note": note,
+                    "tag": d.get("tag"),
+                    # A coach's breakthrough video for this moment, if any
+                    # (flat, harmless extra the FE can surface later). NO
+                    # say_it_stronger, NO direction — fences (AC-9 / blind).
+                    "breakthrough_video_ref": d.get("breakthrough_video_ref"),
                 })
             takes.append({
                 "session_id": sid,
@@ -11365,7 +11370,11 @@ def v2_user_list_trainings():
                 )
             trainings.append({
                 "arc_id": aid,
+                # FE also accepts "title"; the ideal-presentation deep link
+                # uses best_presentation_arc_id (== arc_id here) — sent
+                # explicitly though the FE falls back to arc_id if omitted.
                 "topic": topic,
+                "best_presentation_arc_id": aid,
                 "created_at": sess[0].get("created_at") if sess else None,
                 "take_count": len(sess),
                 "takes_target": TAKES_TARGET,
