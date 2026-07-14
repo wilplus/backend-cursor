@@ -12298,9 +12298,11 @@ def v2_admin_dad_jokes_health():
 #   3. /onboarding/opener/next   → body {joke_id, user_reply, after_punchline: true}
 #                                  returns {stage: 'pivot', pivot_line, done: true}
 #
-# Auth: @require_auth — the opener fires inside the authenticated
-# onboarding flow, after JWT issue. Pre-auth users see a different
-# landing path that doesn't touch this endpoint.
+# Auth: @optional_auth — GUEST-ALLOWED (founder 2026-07-14 regression fix).
+# The round-4 flow moved onboarding SIGNED-OUT-FIRST (record before signup),
+# so a guest hitting the old @require_auth opener got 401 → no joke → "it
+# can't." The opener reads NO user data (it just picks a random joke and
+# echoes the reply), so anonymous is safe: request.user_id is simply None.
 #
 # Canonical PIVOT_LINE lives in services/onboarding_opener.py and
 # is never LLM-generated. The LLM only produces the optional ack
@@ -12308,7 +12310,7 @@ def v2_admin_dad_jokes_health():
 
 
 @v2_bp.route("/onboarding/opener/start", methods=["POST"])
-@require_auth
+@optional_auth
 def v2_onboarding_opener_start():
     """Begin the dad-joke onboarding opener.
 
@@ -12352,7 +12354,7 @@ def v2_onboarding_opener_start():
 
 
 @v2_bp.route("/onboarding/opener/next", methods=["POST"])
-@require_auth
+@optional_auth
 def v2_onboarding_opener_next():
     """Advance the opener to the next bubble.
 
