@@ -198,6 +198,57 @@ def split_words_by_slides(words: Any, slide_advances: Any, slides: Any) -> list:
     ]
 
 
+def _bucket_words_by_slide(words_all: Any, slide_advances: Any,
+                           slides: Any) -> dict:
+    """Bucket the WHOLE-recording word list to the slide on screen at each
+    word's timestamp — the ONE shared bucketing for both the per-slide
+    transcript view AND the ≤200-char piece cutter, so the two views can never
+    disagree about which slide a word belongs to.
+
+    Returns {slide_index: [original word dicts, time-sorted]} for every slide
+    0..n-1 (empty list when the slide had no speech), or {} when there are no
+    slides. Words keep their original {word, start, end}-in-seconds shape so
+    downstream chunkers can derive exact audio spans. A word before the first
+    advance clamps to slide 0; no advances at all → every word clamps to
+    slide 0 truthfully (the deck never advanced past it). Pause-snap
+    (flag-gated, default OFF) is applied here so every consumer inherits the
+    boundary robustness. Pure.
+    """
+    n = len(slides) if isinstance(slides, list) else 0
+    if n == 0:
+        return {}
+
+    # Pause-snap (flag-gated, default OFF) — absorb the recorder warm-up offset
+    # by moving each slide boundary into the speaker's pause. No-op when off, or
+    # when no qualifying pause is near a tap. Byte-identical to before when off.
+    if words_all and slide_advances and _pause_snap_enabled():
+        slide_advances = _snap_boundaries_to_pauses(
+            slide_advances, words_all,
+            window_ms=_env_int("SLIDE_PAUSE_SNAP_WINDOW_MS", 1200),
+            min_gap_ms=_env_int("SLIDE_PAUSE_SNAP_MIN_GAP_MS", 200),
+        )
+
+    buckets: dict = {i: [] for i in range(n)}
+    if words_all and slide_advances:
+        from services.slide_alignment import slide_index_for_offset
+        for w in words_all:
+            if not isinstance(w, dict):
+                continue
+            st = w.get("start")
+            if not isinstance(st, (int, float)):
+                continue
+            token = (w.get("word") or "").strip()
+            if not token:
+                continue
+            start_ms = int(float(st) * 1000)
+            si = slide_index_for_offset(start_ms, slide_advances)
+            si = 0 if not isinstance(si, int) else max(0, min(si, n - 1))
+            buckets[si].append(w)
+    for i in range(n):
+        buckets[i].sort(key=lambda w: w.get("start") or 0.0)
+    return buckets
+
+
 def build_slide_transcripts(words_all: Any, slide_advances: Any,
                             slides: Any) -> list:
     """The COMPLETE per-slide transcript for the take viewer (founder Part A —
@@ -213,49 +264,29 @@ def build_slide_transcripts(words_all: Any, slide_advances: Any,
     the slide on screen at its timestamp; a word before the first advance clamps
     to slide 0; a revisited slide collects all its words in time order. The span
     is [min word start, max word end] for that slide. Returns [] when there are
-    no slides. Pure.
+    no slides. Pure. (Bucketing shared with chunk_slide_words_by_chars via
+    _bucket_words_by_slide — the two views cannot drift.)
     """
     n = len(slides) if isinstance(slides, list) else 0
     if n == 0:
         return []
-
-    # Pause-snap (flag-gated, default OFF) — absorb the recorder warm-up offset
-    # by moving each slide boundary into the speaker's pause. No-op when off, or
-    # when no qualifying pause is near a tap. Byte-identical to before when off.
-    if words_all and slide_advances and _pause_snap_enabled():
-        slide_advances = _snap_boundaries_to_pauses(
-            slide_advances, words_all,
-            window_ms=_env_int("SLIDE_PAUSE_SNAP_WINDOW_MS", 1200),
-            min_gap_ms=_env_int("SLIDE_PAUSE_SNAP_MIN_GAP_MS", 200),
-        )
-
-    buckets: dict = {i: [] for i in range(n)}  # i -> [(start_ms, end_ms, token)]
-    if words_all and slide_advances:
-        from services.slide_alignment import slide_index_for_offset
-        for w in words_all:
-            if not isinstance(w, dict):
-                continue
-            st = w.get("start")
-            if not isinstance(st, (int, float)):
-                continue
-            token = (w.get("word") or "").strip()
-            if not token:
-                continue
-            en = w.get("end")
-            en = float(en) if isinstance(en, (int, float)) else float(st)
-            start_ms = int(float(st) * 1000)
-            end_ms = int(en * 1000)
-            si = slide_index_for_offset(start_ms, slide_advances)
-            si = 0 if not isinstance(si, int) else max(0, min(si, n - 1))
-            buckets[si].append((start_ms, end_ms, token))
+    buckets = _bucket_words_by_slide(words_all, slide_advances, slides)
+    # No advances at all → the legacy behavior was empty buckets (all-empty
+    # transcripts). _bucket_words_by_slide clamps everything to slide 0 only
+    # when advances EXIST; without advances it also produces empty buckets
+    # (the words loop is gated on slide_advances) — preserved.
 
     out: list = []
     for i in range(n):
-        ws = sorted(buckets[i], key=lambda t: t[0])
-        transcript = " ".join(t[2] for t in ws).strip()
-        if ws:
-            start_ms = ws[0][0]
-            end_ms = max(t[1] for t in ws)
+        ws = buckets.get(i) or []
+        tokens = [(int(float(w.get("start") or 0.0) * 1000),
+                   int(float(w.get("end") if isinstance(w.get("end"), (int, float))
+                             else (w.get("start") or 0.0)) * 1000),
+                   (w.get("word") or "").strip()) for w in ws]
+        transcript = " ".join(t[2] for t in tokens).strip()
+        if tokens:
+            start_ms = tokens[0][0]
+            end_ms = max(t[1] for t in tokens)
             duration_ms = max(0, end_ms - start_ms)
         else:
             start_ms = None
@@ -329,6 +360,82 @@ def chunk_words_by_chars(words: Any, max_chars: int = _DECKLESS_CHUNK_CHARS) -> 
         cur_len += len(token) + (1 if cur_len else 0)
         end_ms = max(end_ms, w_end)
     _close()
+    return out
+
+
+def _contiguous_slide_runs(words_all: Any, slide_advances: Any,
+                           slides: Any) -> list:
+    """Split the WHOLE-recording word list into CONTIGUOUS per-slide runs in
+    time order — a new run starts whenever the slide on screen changes. A
+    slide revisited later (back-navigation A→B→A) yields TWO separate runs,
+    never one merged bucket, so a piece cut from a run can never span a slide
+    boundary or swallow another slide's audio.
+
+    Returns ``[(slide_index, [word dicts]), ...]`` time-ordered. Shares the
+    pause-snap boundary robustness with build_slide_transcripts. Pure.
+    """
+    n = len(slides) if isinstance(slides, list) else 0
+    if n == 0 or not words_all or not slide_advances:
+        return []
+    adv = slide_advances
+    if _pause_snap_enabled():
+        adv = _snap_boundaries_to_pauses(
+            slide_advances, words_all,
+            window_ms=_env_int("SLIDE_PAUSE_SNAP_WINDOW_MS", 1200),
+            min_gap_ms=_env_int("SLIDE_PAUSE_SNAP_MIN_GAP_MS", 200),
+        )
+    from services.slide_alignment import slide_index_for_offset
+    ordered = sorted(
+        (w for w in words_all if isinstance(w, dict)
+         and isinstance(w.get("start"), (int, float))
+         and (w.get("word") or "").strip()),
+        key=lambda w: w.get("start") or 0.0,
+    )
+    runs: list = []
+    cur_si = None
+    cur: list = []
+    for w in ordered:
+        start_ms = int(float(w.get("start")) * 1000)
+        si = slide_index_for_offset(start_ms, adv)
+        si = 0 if not isinstance(si, int) else max(0, min(si, n - 1))
+        if si != cur_si:
+            if cur:
+                runs.append((cur_si, cur))
+            cur_si, cur = si, [w]
+        else:
+            cur.append(w)
+    if cur:
+        runs.append((cur_si, cur))
+    return runs
+
+
+def chunk_slide_words_by_chars(words_all: Any, slide_advances: Any,
+                               slides: Any,
+                               max_chars: int = _DECKLESS_CHUNK_CHARS) -> list:
+    """The DECKED piece cutter (founder 2026-07-14 — the core unit): slide
+    boundaries FIRST (the tap timeline), then ≤max_chars word-boundary pieces
+    WITHIN each contiguous slide visit. By construction a piece can never
+    cross a slide boundary — a REVISITED slide is a separate run, so a piece's
+    audio span is always exact and contiguous (never swallows another slide's
+    speech). Same span math as the deckless cutter, so text/audio can't drift.
+
+    Returns ``[{index, slide_index, transcript, start_offset_ms,
+    duration_ms}, ...]`` — ``index`` is the GLOBAL running ordinal in time
+    order across the take; ``slide_index`` is the deck slide the piece was
+    spoken on (a revisited slide appears under its index again, later in the
+    list). Silent slides contribute no pieces. Returns [] when there are no
+    slides or no usable words. Pure.
+    """
+    n = len(slides) if isinstance(slides, list) else 0
+    if n == 0:
+        return []
+    out: list = []
+    for slide_index, run_words in _contiguous_slide_runs(
+            words_all, slide_advances, slides):
+        for piece in chunk_words_by_chars(run_words, max_chars):
+            piece["index"] = len(out)      # global time-ordered ordinal
+            piece["slide_index"] = slide_index
+            out.append(piece)
     return out
 
 

@@ -440,6 +440,7 @@ def analyze_pcm_window(
     start_offset_ms: int,
     duration_ms: int,
     transcript: str = "",
+    include_librosa: bool = True,
 ) -> Optional[Dict]:
     """Analyze a window of an ALREADY-DECODED PCM array.
 
@@ -447,6 +448,12 @@ def analyze_pcm_window(
     (for segmentation) and then calls this per segment — avoiding the N
     re-decodes that ``analyze_audio_window`` (bytes → decode → slice)
     would incur when carving one recording into many snippets.
+
+    ``include_librosa`` (pieces-canonical 2026-07-14): when False, the
+    expensive MFCC/chroma/spectral block is skipped — the pieces path runs
+    this per ≤200-char piece, and the librosa keys feed nothing in the
+    acoustic_read / salience / shadow-feature lanes, so skipping them for the
+    non-budget pieces roughly halves the per-piece CPU on long takes.
 
     Returns the metrics dict for the slice, or None when the window is
     too short (< 1s) for stable analysis.
@@ -457,7 +464,9 @@ def analyze_pcm_window(
     if sliced is None:
         return None
     duration_sec = len(sliced) / float(SAMPLE_RATE)
-    return _analyze_pcm(sliced, transcript=transcript, duration_sec=duration_sec)
+    return _analyze_pcm(sliced, transcript=transcript,
+                        duration_sec=duration_sec,
+                        include_librosa=include_librosa)
 
 
 def extract_window_as_wav(
@@ -524,6 +533,7 @@ def _analyze_pcm(
     transcript: str = "",
     duration_sec: float = 0.0,
     fallback_wpm: Optional[float] = None,
+    include_librosa: bool = True,
 ) -> Optional[Dict]:
     """Run the full metric suite on an already-decoded PCM array.
 
@@ -645,15 +655,16 @@ def _analyze_pcm(
     # columnar feature store can come later when the classifier is
     # trained (spec §11 training-annotation store); for the beta the
     # JSONB blob is the feature sink.
-    try:
-        librosa_features = _compute_librosa_features(sig)
-        if librosa_features:
-            result.update(librosa_features)
-    except Exception as lib_err:
-        logger.warning(
-            "_analyze_pcm: librosa block failed (non-fatal) err=%s",
-            lib_err,
-        )
+    if include_librosa:
+        try:
+            librosa_features = _compute_librosa_features(sig)
+            if librosa_features:
+                result.update(librosa_features)
+        except Exception as lib_err:
+            logger.warning(
+                "_analyze_pcm: librosa block failed (non-fatal) err=%s",
+                lib_err,
+            )
 
     return result
 

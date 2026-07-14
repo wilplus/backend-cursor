@@ -534,6 +534,139 @@ class CoachLayerAlwaysFreeTests(unittest.TestCase):
         self.assertIn("insights_payload", out)
 
 
+class PiecesCanonicalReadoutTests(unittest.TestCase):
+    """Pieces-canonical read side (founder 2026-07-14): identity
+    instant_chunks (no midpoint guessing), the user-facing auto_comment
+    (guarded), and the HARD fences — acoustic_read/potentiometer NEVER on the
+    user readout, ONLY on the coach packet."""
+
+    def _piece_row(self, sid, piece_index, slide_index=None, **over):
+        m = {
+            "wpm": 140, "f0_sd": 30.0, "pause_regularity": 0.5,
+            "dynamic_db": 12.0, "voiced_ratio": 0.7,
+            "piece": {"index": piece_index},
+            "acoustic_read": {"potentiometer": 0.72,
+                              "outside_normal_range": True,
+                              "baseline": "take",
+                              "version": "acoustic-read-v1"},
+            # The record-time LEARNED tone word (founder carve-out) — the
+            # USER surface's comment tone. The coach surface must ignore it.
+            "user_tone_word": "confident",
+            "stickiness": {"composite": None, "comment": None},
+        }
+        if slide_index is not None:
+            m["piece"]["slide_index"] = slide_index
+        base = {
+            "id": sid, "transcript": f"piece text {piece_index}",
+            "audio_segment_path": "https://x/parent.webm",
+            "start_offset_ms": piece_index * 4000, "duration_ms": 3500,
+            "metrics": m,
+            # a coach LLM draft on the row — must NEVER leak to the user
+            "ai_draft_coach_note": "Coach-only draft with a number 42.",
+        }
+        base.update(over)
+        return base
+
+    def _build(self, rows, include_slide_scores=False, stx=None, ctx=None):
+        from services import lab_recording as mod
+        from services.db import db
+        with patch.object(db, "get_snippets_by_session", return_value=rows), \
+             patch.object(db, "v2_get_session_by_id", return_value={}), \
+             patch.object(db, "get_session_intake_context",
+                          return_value=(ctx if ctx is not None else {})), \
+             patch.object(db, "get_session_slide_transcripts",
+                          return_value=stx), \
+             patch.object(db, "get_user_transcript_edits", return_value=[]):
+            return mod.build_readout_from_session(
+                "sess1", include_insights=False,
+                include_slide_scores=include_slide_scores,
+            )
+
+    def test_identity_instant_chunks_one_entry_per_piece(self):
+        rows = [self._piece_row("a", 0, slide_index=0),
+                self._piece_row("b", 1, slide_index=0),
+                self._piece_row("c", 2, slide_index=1)]
+        out = self._build(rows)
+        ic = out["instant_chunks"]
+        self.assertEqual(len(ic), 3)                       # 1:1, nothing doubled
+        self.assertEqual([c["index"] for c in ic], [0, 1, 2])
+        self.assertEqual([c["snippet_id"] for c in ic], ["a", "b", "c"])
+        self.assertEqual(ic[2]["slide_index"], 1)
+        self.assertEqual(ic[0]["transcript"], "piece text 0")
+        self.assertEqual(ic[0]["start_offset_ms"], 0)
+        # USER surface: the serve-time comment carries the LEARNED tone word
+        # (user_tone_word) — never the coach's draft text.
+        self.assertIn("sounded rather confident", ic[0]["auto_comment"])
+        self.assertNotIn("Coach-only draft", ic[0]["auto_comment"])
+
+    def test_duplicate_piece_indexes_dedup(self):
+        # A retry/re-process can leave two full piece sets — the instant view
+        # keeps the FIRST row per piece_index, never renders a chunk twice.
+        rows = [self._piece_row("a", 0), self._piece_row("a2", 0),
+                self._piece_row("b", 1)]
+        out = self._build(rows)
+        ic = out["instant_chunks"]
+        self.assertEqual([c["index"] for c in ic], [0, 1])
+        self.assertEqual(ic[0]["snippet_id"], "a")
+
+    def test_user_readout_never_carries_the_potentiometer(self):
+        # AC-9 / coach-only: acoustic_read must not appear ANYWHERE in the
+        # user-facing readout — not on snippets, not on instant_chunks. The
+        # coach's ai_draft text must not leak either.
+        import json as _json
+        rows = [self._piece_row("a", 0)]
+        out = self._build(rows, include_slide_scores=False)
+        raw = _json.dumps(out)
+        self.assertNotIn("acoustic_read", raw)
+        self.assertNotIn("potentiometer", raw)
+        self.assertNotIn("outside_normal_range", raw)
+        self.assertNotIn("Coach-only draft", raw)
+
+    def test_coach_packet_carries_the_potentiometer_and_acoustic_tone(self):
+        rows = [self._piece_row("a", 0)]
+        out = self._build(rows, include_slide_scores=True)
+        snip = out["snippets"][0]
+        self.assertEqual(snip["acoustic_read"]["potentiometer"], 0.72)
+        self.assertTrue(snip["acoustic_read"]["outside_normal_range"])
+        # COACH surface: the comment tone comes from the ACOUSTIC lean only —
+        # blind of the learned user_tone_word. (Here both say "confident",
+        # but the source is the potentiometer; the blind-source test lives in
+        # test_acoustic_read.ToneWordResolutionTests.)
+        self.assertIn("sounded rather confident", snip["auto_comment"])
+
+    def test_coach_comment_tone_is_acoustic_not_learned(self):
+        # The decisive blind test: learned word says "stressed", acoustic
+        # lean says "confident" → the COACH surface must say confident (the
+        # model's guess never reaches the labeling surface), the USER surface
+        # says stressed (the founder carve-out).
+        rows = [self._piece_row("a", 0)]
+        rows[0]["metrics"]["user_tone_word"] = "stressed"
+        coach = self._build([dict(rows[0], metrics=dict(
+            rows[0]["metrics"]))], include_slide_scores=True)
+        user = self._build(rows, include_slide_scores=False)
+        self.assertIn("confident", coach["snippets"][0]["auto_comment"])
+        self.assertIn("stressed", user["snippets"][0]["auto_comment"])
+
+    def test_legacy_rows_get_no_auto_comment_at_all(self):
+        # Legacy salient-window sessions must NOT retroactively surface any
+        # machine comment to users (the ai_draft was never user-facing copy).
+        legacy = _snippet("a", start_offset_ms=500, duration_ms=1000)
+        legacy["ai_draft_coach_note"] = "Legacy coach-only draft."
+        out = self._build([legacy])
+        self.assertNotIn("auto_comment", out["snippets"][0])
+
+    def test_legacy_window_rows_keep_midpoint_join(self):
+        # No piece provenance → the legacy path: instant_chunks come from the
+        # persisted chunk list with midpoint attach, exactly as before.
+        legacy = _snippet("a", start_offset_ms=500, duration_ms=1000)
+        stx = [{"index": 0, "transcript": "part one",
+                "start_offset_ms": 0, "duration_ms": 3000}]
+        out = self._build([legacy], stx=stx)
+        ic = out["instant_chunks"]
+        self.assertEqual(len(ic), 1)
+        self.assertEqual(ic[0]["transcript"], "part one")
+
+
 class PrimingFenceTests(unittest.TestCase):
     """The pre-take priming manipulation (founder 2026-07-13) is a PRIVATE
     coach/research signal on the session row — it must NEVER surface in the

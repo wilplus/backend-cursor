@@ -156,7 +156,25 @@ class CleanPayloadTests(unittest.TestCase):
         self.assertEqual(out["rewrite_your_voice"], "Sort of a good point.")
         self.assertEqual(out["upgrades"][0]["upgrade"], "sort of")
         self.assertEqual(out["why"], "Stacked hedges read as doubt.")
-        self.assertEqual(out["version"], 1)
+        # v2 (2026-07-14): upgrades carry scope word|phrase.
+        from services.say_it_stronger import _SUGGESTION_VERSION
+        self.assertEqual(out["version"], _SUGGESTION_VERSION)
+
+    def test_scope_normalized_word_vs_phrase(self):
+        # Model omitted/mangled scope → deterministic fallback from the
+        # original text: a space = phrase, single token = word.
+        out = self._c(self._valid(upgrades=[
+            {"original": "sort of like", "upgrade": "sort of",
+             "reason": "r", "scope": "banana"},
+            {"original": "good", "upgrade": "compelling", "reason": "r"},
+            {"original": "nice", "upgrade": "sharp", "reason": "r",
+             "scope": "phrase"},   # model's explicit scope respected
+        ]))
+        ups = out["upgrades"]
+        self.assertEqual(len(ups), 3)
+        self.assertEqual(ups[0]["scope"], "phrase")   # fallback: has space
+        self.assertEqual(ups[1]["scope"], "word")     # fallback: one token
+        self.assertEqual(ups[2]["scope"], "phrase")   # explicit kept
 
     def test_already_strong_forces_original_and_no_upgrades(self):
         out = self._c(self._valid(

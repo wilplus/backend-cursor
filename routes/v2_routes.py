@@ -8612,6 +8612,107 @@ def v2_user_put_transcript_edit(session_id):
         return jsonify({"code": "V2_ERROR", "error": "Failed to save edit"}), 500
 
 
+_SUGGESTION_TARGETS = ("upgrade", "rewrite_your_voice", "rewrite_polished",
+                       "comment", "comment_video")
+_SUGGESTION_ACTIONS = ("applied", "preferred", "apply_all")
+
+
+@v2_bp.route("/user/snippets/<snippet_id>/suggestion-feedback",
+             methods=["POST"])
+@optional_auth
+def v2_user_suggestion_feedback(snippet_id):
+    """Record one Apply / ✓-prefer tap on a suggestion row (founder
+    2026-07-14) — the four cases: word/phrase upgrade, rewrite, the comment,
+    the comment-with-video, plus the per-piece "apply all". A SECOND-ORDER
+    preference signal (below coach truth); capture only, never echoed back
+    as any score (AC-9).
+
+    Guest-allowed with the SAME capability rule as the guest readout: an
+    UNCLAIMED session (user_id NULL) is writable to a bare session id; a
+    claimed session is owner-only (404 to any other/no caller — no existence
+    leak).
+
+    Body: { "session_id": uuid (required),
+            "target": "upgrade"|"rewrite_your_voice"|"rewrite_polished"|
+                      "comment"|"comment_video",
+            "action": "applied"|"preferred"|"apply_all",
+            "upgrade_index"?: int ≥ 0 (target=upgrade),
+            "suggestion_version"?: str }
+    200 { saved } · 400 · 404 · 500
+    """
+    try:
+        body = request.get_json(silent=True) or {}
+        session_id = (body.get("session_id") or "").strip()
+        if not _is_valid_uuid(snippet_id) or not _is_valid_uuid(session_id):
+            return jsonify({
+                "code": "INVALID_INPUT",
+                "error": "snippet_id and session_id must be UUIDs",
+            }), 400
+        target = body.get("target")
+        if target not in _SUGGESTION_TARGETS:
+            return jsonify({
+                "code": "INVALID_INPUT",
+                "error": f"target: must be one of {', '.join(_SUGGESTION_TARGETS)}",
+            }), 400
+        action = body.get("action")
+        if action not in _SUGGESTION_ACTIONS:
+            return jsonify({
+                "code": "INVALID_INPUT",
+                "error": f"action: must be one of {', '.join(_SUGGESTION_ACTIONS)}",
+            }), 400
+        upgrade_index = body.get("upgrade_index")
+        if upgrade_index is not None and (
+            not isinstance(upgrade_index, int)
+            or isinstance(upgrade_index, bool) or upgrade_index < 0
+        ):
+            return jsonify({
+                "code": "INVALID_INPUT",
+                "error": "upgrade_index: must be a non-negative integer",
+            }), 400
+
+        session = db.v2_get_session_by_id(session_id)
+        if not session:
+            return jsonify({"code": "NOT_FOUND", "error": "Not found"}), 404
+        owner = session.get("user_id")
+        caller = getattr(request, "user_id", None)
+        # Claimed → owner-only; unclaimed → bare-capability (guest). Same
+        # no-existence-leak rule as the guest readout.
+        if owner and str(owner) != str(caller or ""):
+            return jsonify({"code": "NOT_FOUND", "error": "Not found"}), 404
+
+        snip = db.get_snippet_by_id(snippet_id)
+        if not snip or str(snip.get("session_id")) != session_id:
+            return jsonify({
+                "code": "SNIPPET_NOT_FOUND",
+                "error": "That moment is not part of this session",
+            }), 404
+
+        ok = db.insert_user_suggestion_feedback(
+            snippet_id=snippet_id,
+            session_id=session_id,
+            user_id=caller,
+            target=target,
+            action=action,
+            upgrade_index=upgrade_index,
+            suggestion_version=(
+                str(body.get("suggestion_version"))
+                if body.get("suggestion_version") is not None else None
+            ),
+        )
+        # Degrade gracefully (standing constraint): this is a best-effort,
+        # capture-only second-order signal. A missing table (migration pending)
+        # or a transient write hiccup returns 200 {saved:false} — the Apply/✓
+        # tap must never error in the user's face over a training-side write.
+        return jsonify({"saved": bool(ok)}), 200
+    except Exception as e:
+        logger.error("suggestion-feedback failed snip=%s err=%s",
+                     snippet_id, e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({
+            "code": "V2_ERROR", "error": "Failed to save feedback",
+        }), 500
+
+
 @v2_bp.route("/user/readouts", methods=["GET"])
 @require_auth
 def v2_user_list_readouts():
@@ -9446,6 +9547,15 @@ def v2_coach_get_session(session_id):
                 "slide_stickiness": snip.get("slide_stickiness"),
                 "overall_score": snip.get("overall_score"),
                 "rank": snip.get("rank"),
+                # Stress↔charisma potentiometer + outside-normal-range triage
+                # flag (founder 2026-07-14) — the coach's breakthrough-hunt
+                # signal. Deterministic acoustic-only, COACH-ONLY (the user
+                # readout never carries it). Present on pieces rows.
+                "acoustic_read": snip.get("acoustic_read"),
+                # The deterministic auto-comment (acoustic tone) pre-filling
+                # the comment slot for pieces the coach hasn't authored yet —
+                # blind of any learned direction guess.
+                "auto_comment": snip.get("auto_comment"),
                 "coach_state": _coach_state,
             })
 

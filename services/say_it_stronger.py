@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 _MAX_UPGRADES = 3
 _MAX_WHY_LEN = 500
 _MAX_REWRITE_LEN = 600
-_SUGGESTION_VERSION = 1
+_SUGGESTION_VERSION = 2  # v2: upgrades carry scope word|phrase (2026-07-14)
 
 # AC-9 output guard — user-facing coaching copy must stay qualitative:
 # any digit, or any of the retired construct family, kills the field.
@@ -145,13 +145,17 @@ _RESPONSE_SCHEMA = {
             "upgrades": {"type": "array", "maxItems": _MAX_UPGRADES, "items": {
                 "type": "object",
                 "additionalProperties": False,
-                "required": ["original", "upgrade", "reason", "kind"],
+                "required": ["original", "upgrade", "reason", "kind", "scope"],
                 "properties": {
                     "original": {"type": "string", "maxLength": 200},
                     "upgrade": {"type": "string", "maxLength": 200},
                     "reason": {"type": "string", "maxLength": 300},
                     "kind": {"type": "string",
                              "enum": ["upgrade", "filler", "overuse"]},
+                    # word → the FE's "old word → new word" row;
+                    # phrase → the "old phrase → new phrase" row
+                    # (founder design 2026-07-14).
+                    "scope": {"type": "string", "enum": ["word", "phrase"]},
                 },
             }},
             "rewrite_your_voice": {"type": "string", "maxLength": _MAX_REWRITE_LEN},
@@ -169,8 +173,11 @@ _SYSTEM_PROMPT = (
     "never add information that wasn't in the original sentence. You only "
     "restructure, strengthen, and remove verbal noise.\n\n"
     "Your job for each sentence you receive:\n\n"
-    "1. Suggest up to 3 word-level upgrades (only where the original word "
-    "is genuinely weak — do not force upgrades for their own sake).\n\n"
+    "1. Suggest up to 3 upgrades (only where the original is genuinely "
+    "weak — do not force upgrades for their own sake). Each upgrade is "
+    "either scope='word' (one word swapped for a stronger one) or "
+    "scope='phrase' (a whole weak phrase replaced by a stronger "
+    "alternative) — set the scope honestly by what you are replacing.\n\n"
     "2. Generate TWO full-sentence rewrites:\n"
     "- rewrite_your_voice (\"your voice\"): Preserve the speaker's natural "
     "tone. Only remove hedging, filler chains, and weak closers. Keep "
@@ -282,12 +289,19 @@ def _clean_payload(parsed: Any, transcript: str) -> Optional[dict]:
             kind = u.get("kind")
             if kind not in ("upgrade", "filler", "overuse"):
                 kind = "upgrade"
+            # scope: word vs phrase row on the FE (founder 2026-07-14).
+            # Deterministic fallback from the original text when the model
+            # misses/mangles it — a space means it replaced a phrase.
+            scope = u.get("scope")
+            if scope not in ("word", "phrase"):
+                scope = "phrase" if " " in orig else "word"
             upgrades_out.append({
                 "original": orig[:200],
                 "upgrade": upg[:200],
                 # A reason that trips the guard is dropped, the pair kept.
                 "reason": _guard_copy(u.get("reason")),
                 "kind": kind,
+                "scope": scope,
             })
     return {
         "already_strong": already,
@@ -349,16 +363,23 @@ def generate_say_it_stronger(
 # ── fire-and-forget dispatch (mirrors coach_comment_drafter) ───────────────
 
 def dispatch_say_it_stronger(session_id: str, snippets: list,
-                             context: Optional[dict] = None) -> None:
+                             context: Optional[dict] = None,
+                             means: Optional[dict] = None) -> None:
     """Fire-and-forget: generate + persist a suggestion for each snippet.
     Never raises into the caller (process_lab_recording). No-op without
-    snippets."""
+    snippets.
+
+    ``means`` (pieces-canonical 2026-07-14): the "your average" reference. In
+    pieces mode only the LLM-BUDGET subset is passed as ``snippets`` (cost
+    cap), but the self-comparisons must be against the WHOLE take's average —
+    so the caller passes the full-take means here. None → computed from
+    ``snippets`` (legacy: snippets already IS the whole take)."""
     if not snippets:
         return
     try:
         threading.Thread(
             target=_generate_all,
-            args=(session_id, snippets, context),
+            args=(session_id, snippets, context, means),
             daemon=True,
         ).start()
     except Exception as e:
@@ -366,9 +387,10 @@ def dispatch_say_it_stronger(session_id: str, snippets: list,
             "say_it_stronger: dispatch failed sid=%s: %s", session_id, e)
 
 
-def _generate_all(session_id, snippets, context=None) -> None:
+def _generate_all(session_id, snippets, context=None, means=None) -> None:
     from services.db import db
-    means = aggregate_session_means(snippets)
+    if not isinstance(means, dict):
+        means = aggregate_session_means(snippets)
     written = 0
     for snip in (snippets or []):
         try:
