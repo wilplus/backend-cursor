@@ -269,5 +269,57 @@ class PickRandomJokeTests(unittest.TestCase):
         self.assertIsNone(out)
 
 
+# ── Guest access (founder 2026-07-14 regression fix) ──────────────────
+# The opener endpoints moved @require_auth → @optional_auth so the joke
+# fires in the round-4 SIGNED-OUT-FIRST onboarding (record before signup).
+# A guest (request.user_id is None) must get the setup payload, not 401.
+try:
+    from flask import Flask, request
+    from routes import v2_routes as _v2
+    _V2_IMPORT_ERROR = None
+except Exception as _e:  # pragma: no cover
+    Flask = None
+    request = None
+    _v2 = None
+    _V2_IMPORT_ERROR = _e
+
+
+@unittest.skipIf(_V2_IMPORT_ERROR is not None, f"needs app deps: {_V2_IMPORT_ERROR}")
+class OpenerGuestAccessTests(unittest.TestCase):
+    """Handler is guest-SAFE (no crash on anonymous). The decorator swap to
+    @optional_auth is what makes the endpoint reachable without a token; this
+    proves the handler logic itself never depends on a signed-in user."""
+
+    def setUp(self):
+        self.app = Flask(__name__)
+
+    def test_start_returns_setup_for_a_guest(self):
+        joke = {"id": "11111111-1111-1111-1111-111111111111",
+                "setup": "Why did the slide cross the deck?",
+                "punchline": "To get to the other slide.", "emoji": "🎤"}
+        with self.app.test_request_context(json={}):
+            request.user_id = None  # anonymous — the guest case
+            with patch("services.onboarding_opener.pick_random_joke",
+                       return_value=joke):
+                out = _v2.v2_onboarding_opener_start.__wrapped__()
+        resp, status = out if isinstance(out, tuple) else (out, 200)
+        self.assertEqual(status, 200)
+        body = resp.get_json()
+        self.assertEqual(body["stage"], "setup")
+        self.assertEqual(body["joke_id"], joke["id"])
+        self.assertTrue(body["setup"])
+
+    def test_start_no_joke_returns_204_for_a_guest_no_crash(self):
+        # Empty table → 204 (silent skip), and the no-joke log path that
+        # touches request.user_id must not crash for an anonymous caller.
+        with self.app.test_request_context(json={}):
+            request.user_id = None
+            with patch("services.onboarding_opener.pick_random_joke",
+                       return_value=None):
+                out = _v2.v2_onboarding_opener_start.__wrapped__()
+        _resp, status = out if isinstance(out, tuple) else (out, 200)
+        self.assertEqual(status, 204)
+
+
 if __name__ == "__main__":
     unittest.main()
