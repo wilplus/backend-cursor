@@ -12,6 +12,7 @@ from __future__ import annotations
 import io
 import logging
 import threading
+import time
 from typing import Any, Optional
 
 from services.learning_export import FEATURES_11
@@ -23,14 +24,31 @@ _RETRAIN_MIN_TOTAL = 50    # floor — don't train below this
 _RETRAIN_NEW_DELTA = 25    # retrain once this many new labels since last model
 
 _cache: dict = {"version": None, "bundle": None}
+# Short TTL cache of the get_latest_model_version() DB read — a take's
+# per-piece predict_direction burst (~270 calls at record time, pieces-
+# canonical) would otherwise fire one DB query EACH just to learn the version.
+_version_cache: dict = {"row": None, "at": 0.0}
+_VERSION_TTL_SEC = 30.0
 _retrain_lock = threading.Lock()
+
+
+def _latest_model_row():
+    """get_latest_model_version() behind a short TTL cache (see above)."""
+    now = time.monotonic()
+    if _version_cache["row"] is not None and \
+            (now - _version_cache["at"]) < _VERSION_TTL_SEC:
+        return _version_cache["row"]
+    from services.db import db
+    row = db.get_latest_model_version()
+    _version_cache["row"] = row
+    _version_cache["at"] = now
+    return row
 
 
 def _latest_bundle():
     """(version, bundle) of the newest model, cached by version. (None, None)
     when there's no model / load fails."""
-    from services.db import db
-    latest = db.get_latest_model_version()
+    latest = _latest_model_row()
     if not latest or not latest.get("artifact_ref"):
         return None, None
     version = latest.get("version")

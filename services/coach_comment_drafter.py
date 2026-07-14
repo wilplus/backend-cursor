@@ -243,25 +243,36 @@ def dispatch_coach_note_drafts(
     advances: Optional[list],
     *,
     goal: Optional[str] = None,
+    llm_ids: Optional[set] = None,
 ) -> None:
     """Fire-and-forget: draft a coach note for each snippet, persist it frozen.
     Slides are OPTIONAL grounding — a deck-less recording (a spoken pitch with
     no slides) still drafts from transcript + plain-language metrics + goal, so
     the coach's comment field opens pre-filled either way. No-op only without
-    snippets. Never raises into the caller (process_lab_recording)."""
+    snippets. Never raises into the caller (process_lab_recording).
+
+    ``llm_ids`` (pieces-canonical, founder 2026-07-14): when given, ONLY
+    snippet ids in the set get an LLM-drafted note; every other piece writes
+    NOTHING here (its comment is the deterministic auto-comment computed at
+    serve time — services/auto_comment.py — so no LLM cost, no ai_draft flood
+    of the clone corpus, and publish emits ≤budget annotation events). The
+    coach labeling surface stays blind: the draft carries NO tone word (the
+    learned direction guess never reaches the note). None (legacy) → LLM for
+    all snippets, unchanged."""
     if not snippets:
         return
     try:
         threading.Thread(
             target=_draft_all,
-            args=(session_id, snippets, slides, advances, goal),
+            args=(session_id, snippets, slides, advances, goal, llm_ids),
             daemon=True,
         ).start()
     except Exception as e:
         logger.warning("coach_comment_drafter: dispatch failed sid=%s: %s", session_id, e)
 
 
-def _draft_all(session_id, snippets, slides, advances, goal) -> None:
+def _draft_all(session_id, snippets, slides, advances, goal,
+               llm_ids=None) -> None:
     from services.slide_alignment import slide_index_for_offset
     from services.db import db
     slides = slides or []
@@ -274,6 +285,14 @@ def _draft_all(session_id, snippets, slides, advances, goal) -> None:
             transcript = (snip.get("transcript") or "").strip()
             if not sid or not transcript:
                 continue
+            # Pieces-canonical: non-budget pieces write NOTHING here — their
+            # comment is the serve-time deterministic auto-comment. Only the
+            # budget set gets an LLM draft (keeps the ai_draft/clone corpus at
+            # ≤budget rows, not one per piece).
+            if llm_ids is not None and str(sid) not in llm_ids:
+                continue
+            _metrics = (snip.get("metrics")
+                        if isinstance(snip.get("metrics"), dict) else None)
             # Slide grounding when this moment maps to one; None otherwise
             # (deck-less recording) — the drafter handles a missing slide.
             idx = slide_index_for_offset(snip.get("start_offset_ms"), advances)
@@ -282,9 +301,13 @@ def _draft_all(session_id, snippets, slides, advances, goal) -> None:
                 if isinstance(idx, int) and 0 <= idx < len(slides)
                 else None
             )
+            # NO tone clause is appended — the coach labels blind, so the
+            # learned direction guess must never reach this note (BLIND
+            # COACH). The tone word lives only on the USER's serve-time
+            # comment.
             draft = generate_coach_note_draft(
                 transcript, slide,
-                snip.get("metrics") if isinstance(snip.get("metrics"), dict) else None,
+                _metrics,
                 take_comparison=take_comparison,
                 goal=goal,
             )

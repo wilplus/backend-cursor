@@ -226,6 +226,31 @@ def build_readout_payload(
 _WHISPER_MAX_BYTES = 24 * 1024 * 1024
 
 
+def _pieces_canonical_enabled() -> bool:
+    """PIECES-CANONICAL kill-switch (founder 2026-07-14). Default ON: every
+    ≤200-char transcript piece becomes a first-class charisma_snippets row
+    (the moment the user reads = the moment the coach labels = the learning
+    unit). Set PIECES_CANONICAL_ENABLED=0 to fall back to the legacy
+    salient-window cutter (live-loop safety valve)."""
+    import os
+    return (os.getenv("PIECES_CANONICAL_ENABLED") or "1").strip().lower() \
+        not in ("0", "false", "no")
+
+
+def _piece_llm_budget() -> int:
+    """How many pieces per take get the LLM layers (stickiness comment,
+    say-it-stronger card, LLM coach-note draft). Every piece always gets
+    metrics + the acoustic read + a deterministic auto-comment; the budget
+    only caps the model calls so a 60-minute talk (~270 pieces) can't fire
+    hundreds of LLM requests. Default 16 covers a typical 3–5-min take
+    fully."""
+    import os
+    try:
+        return max(1, int(os.getenv("WILLAB_PIECE_LLM_BUDGET") or "16"))
+    except (TypeError, ValueError):
+        return 16
+
+
 def _merge_slide_vocab(session_context):
     """Whisper prime = domain_vocabulary + slide titles (UX Wave 4 BE-S3).
 
@@ -334,93 +359,207 @@ def process_lab_recording(
         segments = []
         words_all = []
 
-    # ── Candidate windows: ask the segmenter for a GENEROUS pool, not
-    # the final cap. Level 1 salience selection picks the top-N most
-    # acoustically-activated of these, so it must score across the whole
-    # recording's moments rather than re-order a pre-capped few. (For
-    # typical Lab recordings the real window count is well under the
-    # pool, so salience scores over ALL of the recording's windows.)
-    candidate_windows = segment_into_snippets(
-        sig, max_snippets=SALIENCE_CANDIDATE_POOL,
-    )
-
-    # 1) Features + transcript per CANDIDATE window (in-memory; no insert
-    #    yet; index assigned AFTER selection so persisted snippets are
-    #    1..N chronological).
-    candidates: list = []
-    for (start_ms, end_ms) in candidate_windows:
-        dur_ms = end_ms - start_ms
-        # Slice the transcript FIRST and pass it in — analyze_pcm_window needs
-        # the words to compute wpm (→ the "speed" / speech_rate metric).
-        # Without it, speech_rate was always null and the card showed "—".
-        transcript = slice_transcript_for_window(segments, start_ms, end_ms)
-        metrics = analyze_pcm_window(
-            sig, start_offset_ms=start_ms, duration_ms=dur_ms,
-            transcript=transcript,
-        ) or {}
-        candidates.append({
-            "start_ms": start_ms, "dur_ms": dur_ms,
-            "metrics": metrics, "transcript": transcript,
-        })
-
-    # ── SELECTION = two axes (Phase 1 directional re-ranker) ──────────
-    # Goal: the coach's ≤10 should contain the clearest GOODS and the
-    # clearest SHAKIES, not just the 10 most activated.
-    #
-    #  (a) ACTIVATION GATE — keep the notable pool (top NOTABLE_POOL_SIZE
-    #      by acoustic activation). Flat/boring/low-arousal windows drop;
-    #      they're neither coachably-good nor coachably-shaky.
-    #  (b) CONTROL SPLIT — within that pool, surface the top-N/2 by the
-    #      control/polish composite (likely-strong) + bottom-N/2
-    #      (likely-shaky), N = SEGMENT_MAX_SNIPPETS.
-    #
-    # Both the activation salience and the control composite are
-    # TRANSIENT — computed, used to select, discarded. Neither score nor
-    # any likely-strong/shaky DIRECTION is persisted, serialized, shown
-    # to the coach, or made the training label (split-sink / AC-9 / the
-    # §6 label-hygiene decision: coach labels blind). The persisted
-    # snippet still carries the full 11-feature vector unchanged — that
-    # vector is the future bridge to the Phase-2 model, so it stays.
-    #
-    # baseline=None → cold-start within-recording z-score (no per-speaker
-    # acoustic ISB exists yet; the hook upgrades to baseline-relative
-    # when it does — §5). Output ≤ cap, chronological → §3.3 / FE ~10
-    # count unchanged.
-    notable = rank_candidates_by_salience(
-        candidates, top_n=NOTABLE_POOL_SIZE,
-    )
-    prelim: list = select_extremes_by_control(
-        notable, top_n=SEGMENT_MAX_SNIPPETS, baseline=None,
-    )
-    for idx, p in enumerate(prelim, start=1):
-        p["idx"] = idx
-
-    # Claim-once transcript attribution (founder bug #2): the candidate-stage
-    # slices include ANY overlapping Whisper segment, so a sentence straddling
-    # two surfaced windows showed up TWICE. Re-slice the SURFACED set so each
-    # segment lands in exactly one snippet (largest overlap wins). The acoustic
-    # metrics keep their full padded window (playback + analysis unchanged);
-    # only the display/persisted text is deduped. Candidate-pool capture keeps
-    # the raw per-window slices (training wants the window-local text).
-    if segments and prelim:
-        _deduped = dedupe_window_transcripts(
-            [(p["start_ms"], p["start_ms"] + p["dur_ms"]) for p in prelim],
-            segments,
+    # ── PIECES-CANONICAL (founder 2026-07-14 — "the piece IS the moment") ──
+    # With word timestamps, the take is cut into ≤200-char TEXT pieces —
+    # slide tap-boundaries FIRST (a piece never crosses a slide), then the
+    # char cap within each slide; deckless is the flat ≤200-char cut. EVERY
+    # piece becomes a charisma_snippets row with its exact word-derived audio
+    # span + its own acoustic metrics: what the user reads = what the coach
+    # hears and labels = what the model learns from. The legacy acoustic
+    # salient-window cutter below survives ONLY as (a) the no-word-timestamps
+    # fallback (segments-only Whisper) and (b) the PIECES_CANONICAL_ENABLED=0
+    # kill-switch.
+    _pieces_mode = False
+    _piece_list: list = []
+    _slides_ctx0 = (session_context or {}).get("slides")
+    if words_all and _pieces_canonical_enabled():
+        from services.slide_word_split import (
+            chunk_slide_words_by_chars, chunk_words_by_chars,
         )
-        for i, p in enumerate(prelim):
-            # keep the raw window-local slice for the candidate-pool capture
-            # (training wants window-local text, not the deduped display text).
-            p.setdefault("transcript_raw", p["transcript"])
-            # A short window can lose ALL its text to a bigger neighbour —
-            # fall back to the raw slice rather than a textless snippet card
-            # (a rare local dup beats missing text).
-            p["transcript"] = _deduped[i] or p["transcript"]
+        if _slides_ctx0:
+            _piece_list = chunk_slide_words_by_chars(
+                words_all, (session_context or {}).get("slide_advances"),
+                _slides_ctx0,
+            )
+        else:
+            _piece_list = chunk_words_by_chars(words_all)
+        _piece_list = [pc for pc in (_piece_list or [])
+                       if (pc.get("transcript") or "").strip()]
+        _pieces_mode = bool(_piece_list)
 
-    # 2) Stickiness over transcripts BEFORE insert (one batch). Scored
-    #    by transcript/position, so no snippet ids are needed yet.
-    sticky = score_snippets_stickiness([
-        {"id": None, "transcript": p["transcript"]} for p in prelim
-    ])
+    _llm_budget_idx: set = set()
+    if _pieces_mode:
+        # The LLM budget FIRST (needs only text length) — the most
+        # acoustically-activated pieces get the model layers; but we don't have
+        # metrics yet, so budget after a cheap first metrics pass below.
+        _budget_n = _piece_llm_budget()
+        # Pass 1: FULL metrics (incl. librosa) only for pieces we MIGHT budget;
+        # a piece under the 1s floor gets {}. We don't yet know the budget set,
+        # so pass 1 computes the cheap acoustic core for ALL pieces (librosa
+        # OFF — not needed for acoustic_read/salience/shadow), then pass 2 adds
+        # librosa to the budget winners. Halves the per-piece CPU on long takes.
+        prelim = []
+        for pc in _piece_list:
+            _p_start = int(pc.get("start_offset_ms") or 0)
+            _p_dur = int(pc.get("duration_ms") or 0)
+            _mtx = analyze_pcm_window(
+                sig, start_offset_ms=_p_start, duration_ms=_p_dur,
+                transcript=pc.get("transcript") or "", include_librosa=False,
+            ) or {}
+            _prov = {"index": pc.get("index")}
+            if pc.get("slide_index") is not None:
+                _prov["slide_index"] = pc.get("slide_index")
+            _mtx["piece"] = _prov
+            prelim.append({
+                "start_ms": _p_start, "dur_ms": _p_dur,
+                "metrics": _mtx, "transcript": pc.get("transcript") or "",
+            })
+        for idx, p in enumerate(prelim, start=1):
+            p["idx"] = idx
+
+        # Budget selection (salience over the cheap core metrics).
+        if len(prelim) > _budget_n:
+            _budget_objs = {id(p) for p in rank_candidates_by_salience(
+                prelim, top_n=_budget_n)}
+            _llm_budget_idx = {
+                i for i, p in enumerate(prelim) if id(p) in _budget_objs
+            }
+        else:
+            _llm_budget_idx = set(range(len(prelim)))
+
+        # Pass 2: librosa (MFCC/chroma) ONLY for the budget winners — they're
+        # the ones whose full vector feeds the richer downstream corpus.
+        for i in sorted(_llm_budget_idx):
+            p = prelim[i]
+            _lib = analyze_pcm_window(
+                sig, start_offset_ms=p["start_ms"], duration_ms=p["dur_ms"],
+                transcript=p["transcript"], include_librosa=True,
+            ) or {}
+            _piece_prov = p["metrics"].get("piece")
+            p["metrics"] = _lib
+            if _piece_prov is not None:
+                p["metrics"]["piece"] = _piece_prov
+
+        # ── Capture BEFORE the derived reads are stamped ──────────────────
+        # The candidate corpus must stay RAW (validation-sample independence):
+        # snapshot the raw metrics NOW, before acoustic_read/user_tone_word go
+        # on, so build_candidate_rows can never persist a derived composite.
+        _cap_snapshot = [dict(p["metrics"]) for p in prelim]
+
+        # Coach potentiometer + outside-normal-range triage flag per piece —
+        # deterministic acoustic-only, COACH-ONLY (metrics["acoustic_read"],
+        # never on the user readout — fence-tested). The LEARNED shadow model
+        # stays out of this needle by design (labels blind).
+        try:
+            from services.acoustic_read import (
+                attach_acoustic_read, build_user_baseline,
+            )
+            attach_acoustic_read(
+                prelim, baseline=build_user_baseline(user_id),
+            )
+        except Exception as _ar_err:
+            logger.warning(
+                "process_lab_recording: acoustic read failed sid=%s: %s "
+                "(non-fatal)", session_id, _ar_err,
+            )
+
+        # The USER tone word (founder carve-out) — the LEARNED read colors the
+        # user's serve-time comment. Computed ONCE here (model cached), stored
+        # user-only; NEVER on the coach draft (blind coach). Best-effort.
+        try:
+            from services.auto_comment import learned_tone_word
+            for p in prelim:
+                _tw = learned_tone_word(p["metrics"])
+                if _tw:
+                    p["metrics"]["user_tone_word"] = _tw
+        except Exception as _tw_err:
+            logger.warning(
+                "process_lab_recording: user tone word failed sid=%s: %s "
+                "(non-fatal)", session_id, _tw_err,
+            )
+
+        # Capture corpus semantics: offered = every piece, notable = budget set.
+        candidates = prelim
+        notable = [prelim[i] for i in sorted(_llm_budget_idx)]
+    else:
+        # ── LEGACY acoustic salient-window path (fallback) ─────────────
+        # Candidate windows: ask the segmenter for a GENEROUS pool, not
+        # the final cap. Level 1 salience selection picks the top-N most
+        # acoustically-activated of these, so it must score across the whole
+        # recording's moments rather than re-order a pre-capped few.
+        candidate_windows = segment_into_snippets(
+            sig, max_snippets=SALIENCE_CANDIDATE_POOL,
+        )
+
+        # 1) Features + transcript per CANDIDATE window (in-memory; no insert
+        #    yet; index assigned AFTER selection so persisted snippets are
+        #    1..N chronological).
+        candidates = []
+        for (start_ms, end_ms) in candidate_windows:
+            dur_ms = end_ms - start_ms
+            # Slice the transcript FIRST and pass it in — analyze_pcm_window
+            # needs the words to compute wpm (→ the speech_rate metric).
+            transcript = slice_transcript_for_window(segments, start_ms, end_ms)
+            metrics = analyze_pcm_window(
+                sig, start_offset_ms=start_ms, duration_ms=dur_ms,
+                transcript=transcript,
+            ) or {}
+            candidates.append({
+                "start_ms": start_ms, "dur_ms": dur_ms,
+                "metrics": metrics, "transcript": transcript,
+            })
+
+        # ── SELECTION = two axes (Phase 1 directional re-ranker) ──────────
+        #  (a) ACTIVATION GATE — top NOTABLE_POOL_SIZE by acoustic activation.
+        #  (b) CONTROL SPLIT — top-N/2 by control composite (likely-strong) +
+        #      bottom-N/2 (likely-shaky), N = SEGMENT_MAX_SNIPPETS.
+        # Both composites are TRANSIENT — computed, used to select, discarded
+        # (split-sink / AC-9 / §6 label hygiene: coach labels blind).
+        # baseline=None → cold-start within-recording z-score.
+        notable = rank_candidates_by_salience(
+            candidates, top_n=NOTABLE_POOL_SIZE,
+        )
+        prelim = select_extremes_by_control(
+            notable, top_n=SEGMENT_MAX_SNIPPETS, baseline=None,
+        )
+        for idx, p in enumerate(prelim, start=1):
+            p["idx"] = idx
+
+        # Claim-once transcript attribution (founder bug #2): a sentence
+        # straddling two surfaced windows showed up TWICE. Re-slice the
+        # SURFACED set so each segment lands in exactly one snippet (largest
+        # overlap wins). Pieces mode never needs this — piece text comes from
+        # the word list directly, non-overlapping by construction.
+        if segments and prelim:
+            _deduped = dedupe_window_transcripts(
+                [(p["start_ms"], p["start_ms"] + p["dur_ms"]) for p in prelim],
+                segments,
+            )
+            for i, p in enumerate(prelim):
+                # keep the raw window-local slice for the candidate-pool
+                # capture (training wants window-local text).
+                p.setdefault("transcript_raw", p["transcript"])
+                # A short window can lose ALL its text to a bigger neighbour —
+                # fall back to the raw slice rather than a textless card.
+                p["transcript"] = _deduped[i] or p["transcript"]
+
+    # 2) Stickiness over transcripts BEFORE insert (one batch). Scored by
+    #    transcript/position, so no snippet ids are needed yet. Pieces mode:
+    #    only the LLM-budget pieces are scored (cost cap) — the rest carry
+    #    stickiness {composite: None} honestly.
+    if _pieces_mode:
+        _b_order = sorted(_llm_budget_idx)
+        _sticky_b = score_snippets_stickiness([
+            {"id": None, "transcript": prelim[i]["transcript"]}
+            for i in _b_order
+        ])
+        sticky = [{} for _ in prelim]
+        for j, i in enumerate(_b_order):
+            sticky[i] = _sticky_b[j] if j < len(_sticky_b) else {}
+    else:
+        sticky = score_snippets_stickiness([
+            {"id": None, "transcript": p["transcript"]} for p in prelim
+        ])
 
     # 2b) Stickiness #2 — slide-delivery claim-ledger (UX Wave 4). BEST-EFFORT:
     #     any failure here must NOT break the recording or #1. Per-snippet
@@ -430,7 +569,13 @@ def process_lab_recording(
     _slide_coverage: list = []
     try:
         _slides_ctx = (session_context or {}).get("slides")
-        if _slides_ctx:
+        # Pieces mode SKIPS the slide-delivery LLM entailment: each piece
+        # already carries an EXACT slide_index from the cutter, so the
+        # "which slide does this window belong to" inference is unneeded —
+        # and running _entail_batch over ~270 pieces in ONE prompt would
+        # blow the context and block the 201. slide_stickiness stays None
+        # (an optional ranking input); ranking uses stickiness #1 alone.
+        if _slides_ctx and not _pieces_mode:
             from services.slide_alignment import compute_slide_scores
             _res = compute_slide_scores(
                 [{"start_offset_ms": p["start_ms"], "duration_ms": p["dur_ms"],
@@ -449,17 +594,30 @@ def process_lab_recording(
     # overall = 0.5·#1 + 0.5·#2(ii); #2 null → overall = #1. Rank by overall
     # desc (tie-break #1, then earliest offset). Ranking only — selection above
     # is unchanged, so #2 never biases the salience set.
-    _overall: list = []
-    for i, p in enumerate(prelim):
+    #
+    # Pieces mode: ONLY the budget pieces were delivery-scored (#1). A
+    # non-budget piece has no delivery signal, so it gets overall_score/rank =
+    # None (NOT 0.0 — a stored 0.0 would make power_score treat it as
+    # worst-activation and the 1/rank fallback would turn chronology into a
+    # ranking signal; None keeps it neutral — it competes on coach direction +
+    # slide_stickiness only, which is honest). _scored_i = the indices that get
+    # a real overall/rank.
+    _scored_i = (sorted(_llm_budget_idx) if _pieces_mode
+                 else list(range(len(prelim))))
+    _overall_by_i: dict = {}
+    _rank_inputs: list = []
+    for i in _scored_i:
+        p = prelim[i]
         _s1 = (sticky[i] if i < len(sticky) else {}).get("composite")
         _s1 = float(_s1) if isinstance(_s1, (int, float)) else 0.0
         _ss = _slide_per_snip[i] if i < len(_slide_per_snip) else None
         _s2 = _ss.get("composite") if isinstance(_ss, dict) else None
         _ov = (0.5 * _s1 + 0.5 * float(_s2)) if isinstance(_s2, (int, float)) else _s1
-        _overall.append((_ov, _s1, p["start_ms"], i))
+        _overall_by_i[i] = _ov
+        _rank_inputs.append((_ov, _s1, p["start_ms"], i))
     _rank_by_i = {
         t[3]: r + 1
-        for r, t in enumerate(sorted(_overall, key=lambda t: (-t[0], -t[1], t[2])))
+        for r, t in enumerate(sorted(_rank_inputs, key=lambda t: (-t[0], -t[1], t[2])))
     }
 
     # 3) Insert each snippet with stickiness PERSISTED into its metrics
@@ -467,6 +625,8 @@ def process_lab_recording(
     #    identical §3.3 readout (build_readout_from_session). The
     #    feature mapper ignores the "stickiness" sub-key.
     snippets_data: list = []
+    _rows_to_insert: list = []   # pieces mode: one bulk insert
+    _metrics_by_i: list = []
     for i, p in enumerate(prelim):
         st = sticky[i] if i < len(sticky) else {}
         metrics_full = dict(p["metrics"])
@@ -478,38 +638,58 @@ def process_lab_recording(
         _ss = _slide_per_snip[i] if i < len(_slide_per_snip) else None
         if isinstance(_ss, dict) and _ss.get("composite") is not None:
             metrics_full["slide_stickiness"] = _ss
-        metrics_full["overall_score"] = round(_overall[i][0], 3)
-        metrics_full["rank"] = _rank_by_i.get(i)
+        # overall_score / rank: ONLY for delivery-scored pieces (all in legacy;
+        # the budget set in pieces mode). Non-budget pieces omit both → neutral
+        # downstream (see the _scored_i note above).
+        if i in _overall_by_i:
+            metrics_full["overall_score"] = round(_overall_by_i[i], 3)
+            metrics_full["rank"] = _rank_by_i.get(i)
         if i == 0 and _slide_coverage:  # per-slide ledger parked once, on snip[0]
             metrics_full["slide_coverage"] = _slide_coverage
         # #6 — park this window's word-level timestamps so the take viewer can
-        # split the per-slide transcript at slide-click boundaries later. Sliced
-        # from the whole-recording word list (absolute seconds). Empty when
-        # Whisper returned no words (older path / failure) → take viewer falls
-        # back to whole-snippet bucketing.
+        # split the per-slide transcript at slide-click boundaries later.
         snip_words = slice_words_for_window(
             words_all, p["start_ms"], p["start_ms"] + p["dur_ms"],
         ) if words_all else None
-        row = db.create_charisma_snippet(
-            session_id=session_id,
-            user_id=user_id,
-            recording_id=recording_id,
-            start_offset_ms=p["start_ms"],
-            duration_ms=p["dur_ms"],
-            audio_segment_path=parent_audio_url,
-            metrics=metrics_full,
-            transcript=p["transcript"] or None,
-            words=snip_words or None,
-        )
-        snippets_data.append({
-            "id": row.get("id") if row else None,
-            "index": p["idx"],
-            "transcript": p["transcript"],
-            "audio_ref": parent_audio_url,
-            "start_offset_ms": p["start_ms"],
-            "duration_ms": p["dur_ms"],
-            "metrics": metrics_full,
-        })
+        _metrics_by_i.append(metrics_full)
+        if _pieces_mode:
+            _rows_to_insert.append({
+                "session_id": session_id, "user_id": user_id,
+                "recording_id": recording_id,
+                "start_offset_ms": p["start_ms"], "duration_ms": p["dur_ms"],
+                "audio_segment_path": parent_audio_url,
+                "metrics": metrics_full,
+                "transcript": p["transcript"] or None,
+                "words": snip_words or None,
+            })
+        else:
+            row = db.create_charisma_snippet(
+                session_id=session_id, user_id=user_id,
+                recording_id=recording_id,
+                start_offset_ms=p["start_ms"], duration_ms=p["dur_ms"],
+                audio_segment_path=parent_audio_url, metrics=metrics_full,
+                transcript=p["transcript"] or None, words=snip_words or None,
+            )
+            snippets_data.append({
+                "id": row.get("id") if row else None, "index": p["idx"],
+                "transcript": p["transcript"], "audio_ref": parent_audio_url,
+                "start_offset_ms": p["start_ms"], "duration_ms": p["dur_ms"],
+                "metrics": metrics_full,
+            })
+
+    if _pieces_mode:
+        # ONE bulk insert instead of ~N sequential REST round-trips — the
+        # live-loop cost fix for long takes (a 60-min take is ~270 pieces).
+        # Ids come back in insert order; on a bulk hiccup, fall back to
+        # per-row so a recording is never lost.
+        _ids = db.create_charisma_snippets_bulk(_rows_to_insert)
+        for i, p in enumerate(prelim):
+            snippets_data.append({
+                "id": _ids[i] if i < len(_ids) else None, "index": p["idx"],
+                "transcript": p["transcript"], "audio_ref": parent_audio_url,
+                "start_offset_ms": p["start_ms"], "duration_ms": p["dur_ms"],
+                "metrics": _metrics_by_i[i],
+            })
 
     stickiness_list = [
         {
@@ -546,11 +726,27 @@ def process_lab_recording(
         # Surfaced candidates carry the DEDUPED display text after the claim-
         # once pass; the capture wants each window's RAW window-local slice
         # (preserved as transcript_raw) — restore it on shallow copies.
-        _cap_candidates = [
-            ({**c, "transcript": c.get("transcript_raw")}
-             if c.get("transcript_raw") is not None else c)
-            for c in candidates
-        ]
+        #
+        # Pieces mode: use the RAW metrics snapshot taken BEFORE acoustic_read
+        # / user_tone_word were stamped, so the training corpus never carries
+        # a derived composite (the documented fence: candidate_windows stays
+        # RAW — validation-sample independence). The 'piece' provenance key is
+        # also stripped (it isn't an acoustic feature).
+        if _pieces_mode:
+            _cap_candidates = []
+            for i, c in enumerate(candidates):
+                _raw_m = dict(_cap_snapshot[i]) if i < len(_cap_snapshot) else {}
+                _raw_m.pop("piece", None)
+                _cap_candidates.append({
+                    "start_ms": c["start_ms"], "dur_ms": c["dur_ms"],
+                    "metrics": _raw_m, "transcript": c.get("transcript"),
+                })
+        else:
+            _cap_candidates = [
+                ({**c, "transcript": c.get("transcript_raw")}
+                 if c.get("transcript_raw") is not None else c)
+                for c in candidates
+            ]
         _cap_rows = build_candidate_rows(
             _cap_candidates,
             notable_starts={n.get("start_ms") for n in notable},
@@ -558,7 +754,12 @@ def process_lab_recording(
             session_id=session_id,
             recording_id=recording_id,
             user_id=user_id,
-            heuristic_version=SELECTOR_VERSION,
+            # Pieces mode re-versions the corpus semantics: offered = every
+            # ≤200-char piece (all surfaced), notable = the LLM-budget set.
+            # The legacy selector version stays on legacy-path rows so the
+            # two regimes never mix in training.
+            heuristic_version=("pieces-200char-v1" if _pieces_mode
+                               else SELECTOR_VERSION),
         )
         _n_cap = db.insert_candidate_windows(_cap_rows)
         logger.info(
@@ -667,12 +868,23 @@ def process_lab_recording(
     # Best-effort: a failure here never breaks the readout.
     try:
         from services.coach_comment_drafter import dispatch_coach_note_drafts
+        # Pieces mode: only the LLM-budget pieces get the model-drafted note;
+        # every OTHER piece gets the deterministic auto-comment in the same
+        # write-once draft lane (the comment slot is never empty). Legacy
+        # mode: unchanged (every window drafts via the LLM).
+        _llm_ids = None
+        if _pieces_mode:
+            _llm_ids = {
+                str(snippets_data[i]["id"]) for i in _llm_budget_idx
+                if i < len(snippets_data) and snippets_data[i].get("id")
+            }
         dispatch_coach_note_drafts(
             session_id,
             snippets_data,
             (session_context or {}).get("slides"),
             (session_context or {}).get("slide_advances"),
             goal=(session_context or {}).get("topic"),
+            llm_ids=_llm_ids,
         )
     except Exception as _draft_err:
         logger.warning(
@@ -698,13 +910,27 @@ def process_lab_recording(
             for w in (words_all or [])
             if isinstance(w, dict) and (w.get("word") or "").strip()
         ).strip()
-        dispatch_say_it_stronger(session_id, snippets_data, context={
+        # Pieces mode: cards only for the LLM-budget pieces (cost cap) —
+        # the instant view's suggestions ride the most salient moments;
+        # the other pieces still carry text/audio/auto-comment.
+        _sis_snips = snippets_data
+        _sis_means = None
+        if _pieces_mode:
+            _sis_snips = [
+                snippets_data[i] for i in sorted(_llm_budget_idx)
+                if i < len(snippets_data)
+            ]
+            # "your average" must be the WHOLE take's, not the budget subset's
+            # (the budget set is the most-activated extremes → biased mean).
+            from services.say_it_stronger import aggregate_session_means
+            _sis_means = aggregate_session_means(snippets_data)
+        dispatch_say_it_stronger(session_id, _sis_snips, context={
             "topic": _ctx.get("topic"),
             "audience": _ctx.get("audience"),
             "target_length_seconds": _ctx.get("target_length_seconds"),
             "duration_sec": (len(sig) / float(SAMPLE_RATE)) if sig is not None else None,
             "full_transcript": _full_tx,
-        })
+        }, means=_sis_means)
     except Exception as _sis_err:
         logger.warning(
             "process_lab_recording: say-it-stronger dispatch failed sid=%s: %s",
@@ -860,6 +1086,15 @@ def build_readout_from_session(
             # original.
             "user_edited_text": _edits_by_snippet.get(str(s.get("id"))),
         }
+        # Piece provenance (pieces-canonical 2026-07-14) — which ≤200-char
+        # piece / deck slide this row IS. Rides both views (it's the user's
+        # own text structure, not a verdict); absent on legacy window rows.
+        _piece = metrics.get("piece") if isinstance(metrics, dict) else None
+        _is_piece = isinstance(_piece, dict)
+        if _is_piece:
+            snip_out["piece_index"] = _piece.get("index")
+            if _piece.get("slide_index") is not None:
+                snip_out["slide_index"] = _piece.get("slide_index")
         # Stickiness #2 is COACH-ONLY until calibrated (AC-9) — surfaced only
         # when include_slide_scores (the coach packet), never on the user readout.
         if include_slide_scores:
@@ -873,7 +1108,48 @@ def build_readout_from_session(
                 snip_out["overall_score"] = metrics.get("overall_score")
             if metrics.get("rank") is not None:
                 snip_out["rank"] = metrics.get("rank")
+            # The stress↔charisma potentiometer + outside-normal-range triage
+            # flag (founder 2026-07-14) — deterministic acoustic-only read,
+            # COACH-ONLY by fence (never on the user branch above).
+            _ar = metrics.get("acoustic_read") if isinstance(metrics, dict) else None
+            if isinstance(_ar, dict):
+                snip_out["acoustic_read"] = _ar
         out_snips.append(snip_out)
+
+    # Auto-comment (founder 2026-07-14) — the qualitative sentence in the
+    # comment slot, computed HERE at serve time from each piece's own metrics
+    # (never from the coach's ai_draft, so legacy coach drafts never leak to
+    # users). PIECES rows only. Two flavours by surface:
+    #   * USER readout      → observations + the LEARNED tone word (persisted
+    #                         metrics.user_tone_word) — the founder carve-out.
+    #   * COACH packet      → observations + the ACOUSTIC tone word only (the
+    #     (include_slide_scores)  deterministic lean) — the coach labels blind
+    #                         of any model direction guess.
+    # The coach's own edited note (post-publish coach.note) still wins on the
+    # FE; this only fills the slot before a coach note exists.
+    _piece_rows_present = any(so.get("piece_index") is not None for so in out_snips)
+    if _piece_rows_present:
+        try:
+            from services.auto_comment import (
+                build_auto_comment, acoustic_tone_word,
+            )
+            from services.say_it_stronger import aggregate_session_means
+            _means = aggregate_session_means(
+                [{"metrics": s.get("metrics")} for s in snippets])
+            _by_id = {str(s.get("id")): s for s in snippets}
+            for so in out_snips:
+                if so.get("piece_index") is None:
+                    continue
+                _sm = _by_id.get(str(so.get("id"))) or {}
+                _m = _sm.get("metrics") if isinstance(_sm.get("metrics"), dict) else {}
+                if include_slide_scores:
+                    _tw = acoustic_tone_word(_m)          # coach: acoustic only
+                else:
+                    _tw = _m.get("user_tone_word")        # user: learned
+                so["auto_comment"] = build_auto_comment(_m, _means, tone_word=_tw)
+        except Exception as _ac_err:
+            logger.warning("readout: auto_comment fold failed sid=%s: %s",
+                           session_id, _ac_err)
 
     # COACH-CONFIRMED breakthrough markers (F2 — the "you turned your stress
     # into charisma" badge on the user readout). A challenge snippet following a
@@ -928,6 +1204,46 @@ def build_readout_from_session(
             snippets[0].get("audio_segment_path") if snippets else None
         ),
     }
+
+    # PIECES-CANONICAL identity join (founder 2026-07-14): when this session's
+    # rows ARE the ≤200-char pieces (metrics.piece provenance present), the
+    # instant view list is the rows themselves — 1:1 by construction, no
+    # midpoint guessing, nothing rendered twice. Each entry: the piece text +
+    # exact span + its own card/comment/edit. The legacy midpoint join below
+    # keeps serving OLD sessions (salient-window rows) untouched.
+    _piece_rows = [
+        so for so in out_snips if so.get("piece_index") is not None
+    ]
+    if _piece_rows:
+        # Dedup by piece_index — a retry/re-process can leave two full piece
+        # sets on the session (create has no conflict guard); keep the FIRST
+        # per index so the instant view never renders a chunk twice.
+        _seen_pi: set = set()
+        _ic_rows = []
+        for so in sorted(_piece_rows, key=lambda x: (x.get("piece_index") or 0)):
+            _pi = so.get("piece_index")
+            if _pi in _seen_pi:
+                continue
+            _seen_pi.add(_pi)
+            _ic_rows.append(so)
+        result["instant_chunks"] = [{
+            "index": so.get("piece_index"),
+            **({"slide_index": so.get("slide_index")}
+               if so.get("slide_index") is not None else {}),
+            "transcript": so.get("transcript") or "",
+            "start_offset_ms": so.get("start_offset_ms"),
+            "duration_ms": so.get("duration_ms"),
+            "snippet_id": so.get("id"),
+            "say_it_stronger": so.get("say_it_stronger"),
+            "auto_comment": so.get("auto_comment"),
+            # Edit surfaces whether the FE keyed by snippet_id (preferred for
+            # pieces) OR by chunk_index (deckless legacy pattern → the piece
+            # ordinal): fold both so a saved edit never disappears.
+            "user_edited_text": (
+                so.get("user_edited_text")
+                or _edits_by_chunk.get(so.get("piece_index"))
+            ),
+        } for so in _ic_rows]
 
     # Slide-deck context (UX Wave 4 BE-S6a) — session-level so the report can
     # render the deck (presentation_ref via PDF.js) + the per-snippet slide.
@@ -1007,18 +1323,19 @@ def build_readout_from_session(
                 # span), each carrying the say_it_stronger card of the salient
                 # snippet spoken on it. The FE renders the instant view from
                 # THIS list alone — no snippet/chunk double render.
-                _ic_src = [{
-                    "index": i,
-                    "slide_index": t.get("index"),
-                    "transcript": (t.get("transcript") or "").strip(),
-                    "start_offset_ms": t.get("start_offset_ms"),
-                    "duration_ms": t.get("duration_ms"),
-                } for i, t in enumerate(_stx)
-                    if isinstance(t, dict)
-                    and (t.get("transcript") or "").strip()]
-                result["instant_chunks"] = _attach_suggestions_to_chunks(
-                    _ic_src, out_snips,
-                )
+                if "instant_chunks" not in result:  # pieces identity wins
+                    _ic_src = [{
+                        "index": i,
+                        "slide_index": t.get("index"),
+                        "transcript": (t.get("transcript") or "").strip(),
+                        "start_offset_ms": t.get("start_offset_ms"),
+                        "duration_ms": t.get("duration_ms"),
+                    } for i, t in enumerate(_stx)
+                        if isinstance(t, dict)
+                        and (t.get("transcript") or "").strip()]
+                    result["instant_chunks"] = _attach_suggestions_to_chunks(
+                        _ic_src, out_snips,
+                    )
         else:
             # DECKLESS (founder bug #2, re-cut 2026-07-11): fold the persisted
             # whole-recording transcript as a plain string PLUS the canonical
@@ -1052,10 +1369,13 @@ def build_readout_from_session(
                         # spoken in it. The FE renders the instant view from
                         # THIS list alone (chunk text → corrections →
                         # commentary) — never snippets[] AND chunks[], which
-                        # doubled the same sentence.
-                        result["instant_chunks"] = (
-                            _attach_suggestions_to_chunks(_chunks, out_snips)
-                        )
+                        # doubled the same sentence. Pieces-canonical
+                        # sessions already built the identity list above.
+                        if "instant_chunks" not in result:
+                            result["instant_chunks"] = (
+                                _attach_suggestions_to_chunks(
+                                    _chunks, out_snips)
+                            )
             except Exception:
                 pass
         if ctx.get("presentation_ref"):

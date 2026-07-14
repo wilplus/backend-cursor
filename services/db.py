@@ -5146,6 +5146,88 @@ class DatabaseService:
             logger.error(f"create_charisma_snippet failed: {e}")
             return None
 
+    def create_charisma_snippets_bulk(self, rows: list | None) -> list:
+        """Bulk-insert charisma_snippets in ONE round-trip (pieces-canonical
+        2026-07-14 — a long take is ~270 pieces; N sequential inserts would
+        add 15-40s to the synchronous upload). Each row dict mirrors
+        create_charisma_snippet's payload keys (session_id, user_id?,
+        recording_id, start_offset_ms, duration_ms, audio_segment_path,
+        metrics?, transcript?, words?).
+
+        Returns the inserted ids in INPUT ORDER (Supabase preserves insert
+        order in the returned rows). On a bulk failure it retries the whole
+        batch WITHOUT the `words` column (pending migration), then finally
+        falls back to per-row create_charisma_snippet so a recording is never
+        lost. Missing ids come back as None (aligned by index)."""
+        rows = rows or []
+        if not rows:
+            return []
+
+        def _payload(r, with_words=True):
+            p = {
+                "session_id": r.get("session_id"),
+                "recording_id": r.get("recording_id"),
+                "start_offset_ms": r.get("start_offset_ms"),
+                "duration_ms": r.get("duration_ms"),
+                "audio_segment_path": r.get("audio_segment_path"),
+                "snippet_type": "unlabeled",
+            }
+            if r.get("user_id"):
+                p["user_id"] = r["user_id"]
+            if r.get("metrics"):
+                p["metrics"] = r["metrics"]
+            if r.get("transcript"):
+                p["transcript"] = r["transcript"]
+            if with_words and r.get("words"):
+                p["words"] = r["words"]
+            return p
+
+        def _bulk(with_words):
+            res = (
+                self.client.table("charisma_snippets")
+                .insert([_payload(r, with_words) for r in rows])
+                .execute()
+            )
+            data = res.data or []
+            return [d.get("id") for d in data]
+
+        try:
+            ids = _bulk(True)
+            if len(ids) == len(rows):
+                return ids
+            # Partial/empty return → fall through to the safe per-row path.
+            raise RuntimeError(f"bulk returned {len(ids)} of {len(rows)}")
+        except Exception as bulk_err:
+            _e = str(bulk_err).lower()
+            if "words" in _e:
+                try:
+                    ids = _bulk(False)
+                    if len(ids) == len(rows):
+                        logger.warning(
+                            "create_charisma_snippets_bulk: inserted without "
+                            "words (run add_snippet_transcripts.sql?)")
+                        return ids
+                except Exception as e2:
+                    logger.warning(
+                        "create_charisma_snippets_bulk: no-words retry "
+                        "failed: %s", e2)
+            logger.warning(
+                "create_charisma_snippets_bulk: bulk failed (%s) — per-row "
+                "fallback", bulk_err)
+            out = []
+            for r in rows:
+                row = self.create_charisma_snippet(
+                    session_id=r.get("session_id"), user_id=r.get("user_id"),
+                    recording_id=r.get("recording_id"),
+                    start_offset_ms=r.get("start_offset_ms"),
+                    duration_ms=r.get("duration_ms"),
+                    audio_segment_path=r.get("audio_segment_path"),
+                    metrics=r.get("metrics"), transcript=r.get("transcript"),
+                    words=r.get("words"),
+                )
+                out.append(row.get("id") if row else None)
+            return out
+
     def insert_candidate_windows(self, rows: list | None) -> int:
         """Persist the FULL candidate-window pool for a recording (automation-
         audit fix #1 — the 'offered vs chosen' selection signal). Append-only,
@@ -5463,31 +5545,48 @@ class DatabaseService:
         slim = ("id, session_id, start_offset_ms, duration_ms, transcript, "
                 "audio_segment_path, metrics, snippet_type")
         cols = "*" if include_words else slim
+        # Pieces-canonical (2026-07-14): a session can carry ~15-270 piece
+        # rows (was ≤10 windows), so 100 sessions per query can exceed
+        # PostgREST's server-side max-rows (default 1000) — which TRUNCATES
+        # SILENTLY, and because rows are ordered by start_offset_ms the
+        # dropped rows are systematically the ENDS of talks. Two guards:
+        # smaller id chunks + explicit .range() pagination until a short page.
+        _page = 1000
         out: dict = {}
         try:
-            for i in range(0, len(ids), 100):
-                chunk = ids[i:i + 100]
-                try:
-                    res = (
-                        self.client.table("charisma_snippets")
-                        .select(cols)
-                        .in_("session_id", chunk)
-                        .order("start_offset_ms", desc=False)
-                        .execute()
-                    )
-                except Exception:
-                    # Slim projection hit a missing column → fall back to * for
-                    # the rest of the batch (still one query per chunk).
-                    cols = "*"
-                    res = (
-                        self.client.table("charisma_snippets")
-                        .select("*")
-                        .in_("session_id", chunk)
-                        .order("start_offset_ms", desc=False)
-                        .execute()
-                    )
-                for r in (res.data or []):
-                    out.setdefault(str(r.get("session_id")), []).append(r)
+            for i in range(0, len(ids), 20):
+                chunk = ids[i:i + 20]
+                offset = 0
+                while True:
+                    try:
+                        res = (
+                            self.client.table("charisma_snippets")
+                            .select(cols)
+                            .in_("session_id", chunk)
+                            .order("start_offset_ms", desc=False)
+                            .order("id", desc=False)  # total order for paging
+                            .range(offset, offset + _page - 1)
+                            .execute()
+                        )
+                    except Exception:
+                        # Slim projection hit a missing column → fall back to *
+                        # for the rest of the batch (still paged).
+                        cols = "*"
+                        res = (
+                            self.client.table("charisma_snippets")
+                            .select("*")
+                            .in_("session_id", chunk)
+                            .order("start_offset_ms", desc=False)
+                            .order("id", desc=False)
+                            .range(offset, offset + _page - 1)
+                            .execute()
+                        )
+                    rows = res.data or []
+                    for r in rows:
+                        out.setdefault(str(r.get("session_id")), []).append(r)
+                    if len(rows) < _page:
+                        break
+                    offset += _page
             return out
         except Exception as e:
             logger.warning(
@@ -10931,6 +11030,49 @@ class DatabaseService:
                 )
                 return False
             logger.warning("insert_snippet_peer_label failed: %s", e)
+            return False
+
+    def insert_user_suggestion_feedback(
+        self, *, snippet_id: str, session_id: Optional[str],
+        user_id: Optional[str], target: str, action: str,
+        upgrade_index: Optional[int] = None,
+        suggestion_version: Optional[str] = None,
+    ) -> bool:
+        """Record one Apply / ✓-prefer tap on a suggestion row (founder
+        2026-07-14) — a SECOND-ORDER preference signal strictly below coach
+        truth (mirrors insert_snippet_peer_label). Never joined into
+        training_labels; never surfaced back as a score (AC-9 — capture
+        only). Best-effort, append-only, missing-table-safe; NEVER raises."""
+        if not snippet_id or not target or not action:
+            return False
+        row: dict = {
+            "snippet_id": str(snippet_id),
+            "target": str(target),
+            "action": str(action),
+        }
+        if session_id:
+            row["session_id"] = str(session_id)
+        if user_id:
+            row["user_id"] = str(user_id)
+        if isinstance(upgrade_index, int) and not isinstance(upgrade_index, bool):
+            row["upgrade_index"] = upgrade_index
+        if suggestion_version is not None:
+            row["suggestion_version"] = str(suggestion_version)
+        try:
+            self.client.table("user_suggestion_feedback").insert(row).execute()
+            return True
+        except Exception as e:
+            err_low = str(e).lower()
+            if "user_suggestion_feedback" in err_low and (
+                "does not exist" in err_low or "pgrst" in err_low
+                or "42p01" in err_low
+            ):
+                logger.warning(
+                    "insert_user_suggestion_feedback: table missing (run "
+                    "migrations/add_user_suggestion_feedback.sql)",
+                )
+                return False
+            logger.warning("insert_user_suggestion_feedback failed: %s", e)
             return False
 
     def count_training_labels(self) -> int:
