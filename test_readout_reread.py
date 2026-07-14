@@ -534,6 +534,35 @@ class CoachLayerAlwaysFreeTests(unittest.TestCase):
         self.assertIn("insights_payload", out)
 
 
+class PrimingFenceTests(unittest.TestCase):
+    """The pre-take priming manipulation (founder 2026-07-13) is a PRIVATE
+    coach/research signal on the session row — it must NEVER surface in the
+    user-facing readout (AC-9). build_readout_from_session reads snippets +
+    intake_context, not the session's priming columns, so this asserts the
+    fence holds even when the session row carries priming."""
+
+    def test_priming_never_leaks_into_readout(self):
+        import json as _json
+        from services import lab_recording as mod
+        from services.db import db
+        # A session row LOADED with the manipulation label + phrase.
+        session = {
+            "priming_condition": "challenge",
+            "priming_phrase": "This talk will be graded on delivery.",
+            "insights_payload": None,
+        }
+        with patch.object(db, "get_snippets_by_session",
+                          return_value=[_snippet("a")]), \
+             patch.object(db, "v2_get_session_by_id", return_value=session), \
+             patch.object(db, "get_session_intake_context", return_value={}), \
+             patch.object(db, "get_user_transcript_edits", return_value=[]):
+            out = mod.build_readout_from_session("sess1")
+        raw = _json.dumps(out)
+        self.assertNotIn("priming", raw)
+        self.assertNotIn("challenge", raw)
+        self.assertNotIn("graded", raw)
+
+
 class InstantChunksTests(unittest.TestCase):
     """instant_chunks (founder 2026-07-13) — the ONE deduped chunk list for
     the instant synonym view: every spoken span exactly once, the snippet's

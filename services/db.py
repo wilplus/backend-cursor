@@ -9452,6 +9452,37 @@ class DatabaseService:
             logger.warning("set_session_arc failed sid=%s: %s", session_id, e)
             return False
 
+    def set_session_priming(
+        self, session_id: str,
+        condition: Optional[str], phrase: Optional[str],
+    ) -> bool:
+        """Persist the pre-take priming manipulation (founder 2026-07-13) on the
+        take's session row — the framing the student saw before this live take.
+        PRIVATE research-correlation signal (see services/priming.py); the route
+        pre-validates the condition enum. Best-effort: missing column (migration
+        pending) → False, non-fatal (the take is still recorded). A separate
+        write from the feeling capture, so a pre-migration failure here can
+        never regress feeling."""
+        if not session_id or not (condition or phrase):
+            return False
+        try:
+            self.client.table("v2_sessions").update({
+                "priming_condition": condition,
+                "priming_phrase": phrase,
+            }).eq("id", session_id).execute()
+            return True
+        except Exception as e:
+            if "priming_condition" in str(e).lower() or \
+                    "priming_phrase" in str(e).lower():
+                logger.warning(
+                    "set_session_priming: column missing (run "
+                    "migrations/add_session_priming.sql) sid=%s", session_id,
+                )
+                return False
+            logger.warning("set_session_priming failed sid=%s: %s",
+                           session_id, e)
+            return False
+
     def deduct_credits_strict(
         self, user_id: Optional[str], amount: int,
     ) -> Optional[int]:
