@@ -161,8 +161,9 @@ class TranscriptEditRouteTests(unittest.TestCase):
         self.assertEqual(self._saved, [])
 
     def test_chunk_index_out_of_range_400s(self):
-        # legacy blob → 2 chunks under the 200-char cut; index 2 is past the end.
-        body, status = self._call({"chunk_index": 2, "text": "x"})
+        # the 409-char legacy blob re-splits into 3 chunks (200-char cut);
+        # index 3 is past the end.
+        body, status = self._call({"chunk_index": 3, "text": "x"})
         self.assertEqual(status, 400)
         self.assertEqual(self._saved, [])
 
@@ -171,7 +172,7 @@ class TranscriptEditRouteTests(unittest.TestCase):
         self.assertEqual(status, 400)  # bounded by real count, never hits INT4
 
     def test_last_valid_chunk_index_saves(self):
-        _, status = self._call({"chunk_index": 1, "text": "x"})
+        _, status = self._call({"chunk_index": 2, "text": "x"})  # 3 chunks → last = 2
         self.assertEqual(status, 200)
 
     def test_chunk_edit_on_no_transcript_session_400s(self):
