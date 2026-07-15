@@ -9886,60 +9886,10 @@ class DatabaseService:
         except Exception:
             return {}
 
-    def upsert_coach_best_presentation_edit(
-        self, arc_id: str, slide_index: int, text: str,
-        coach_user_id: Optional[str] = None,
-        key_phrases: Optional[list] = None,
-    ) -> bool:
-        """Save the coach's corrected text for one ideal-text slide. Upserts on
-        (arc_id, slide_index); freely re-editable. Best-effort; missing table →
-        False, non-fatal."""
-        if not arc_id or not isinstance(slide_index, int) or not text:
-            return False
-        from datetime import datetime, timezone
-        row = {
-            "arc_id": arc_id, "slide_index": slide_index, "text": text,
-            "updated_at": datetime.now(timezone.utc).isoformat(),
-        }
-        if coach_user_id:
-            row["edited_by"] = coach_user_id
-        if key_phrases is not None:
-            row["key_phrases"] = key_phrases
-        try:
-            try:
-                self.client.table("coach_best_presentation_edits").upsert(
-                    row, on_conflict="arc_id,slide_index",
-                ).execute()
-            except Exception as kp_err:
-                # key_phrases column pre-migration → retry without it (the
-                # text edit must never be lost to the newer column).
-                if "key_phrases" in str(kp_err).lower() and "key_phrases" in row:
-                    logger.warning(
-                        "upsert_coach_best_presentation_edit: key_phrases "
-                        "column missing (run migrations/"
-                        "add_bp_coach_key_phrases.sql) — saved text only",
-                    )
-                    row.pop("key_phrases", None)
-                    self.client.table("coach_best_presentation_edits").upsert(
-                        row, on_conflict="arc_id,slide_index",
-                    ).execute()
-                else:
-                    raise
-            return True
-        except Exception as e:
-            err_low = str(e).lower()
-            if "coach_best_presentation_edits" in err_low and (
-                "does not exist" in err_low or "pgrst" in err_low
-            ):
-                logger.warning(
-                    "upsert_coach_best_presentation_edit: table missing (run "
-                    "migrations/add_coach_best_presentation_edits.sql) arc=%s",
-                    arc_id,
-                )
-                return False
-            logger.error("upsert_coach_best_presentation_edit failed arc=%s: %s",
-                        arc_id, e)
-            return False
+    # (upsert_coach_best_presentation_edit DELETED 2026-07-15 — the per-
+    #  slide coach editor was replaced by the ONE-block ideal text
+    #  (coach_arc_ideal_text); the readers below stay: compose still
+    #  folds edits saved before the switch.)
 
     def count_arc_sessions(
         self, arc_id: Optional[str], exclude_session_id: Optional[str] = None,
