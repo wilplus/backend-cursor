@@ -56,13 +56,16 @@ def _sessions():
 
 
 def _snips(sid):
+    # The real pipeline stamps metrics.recording_kind per session — the READ
+    # session's pieces carry 'read' (this is what labels its key moments).
+    kind = "read" if sid == READ1 else "spoken"
     return [{
         "id": f"{sid}-p0", "session_id": sid,
         "transcript": f"raw words of {sid}",
         "audio_segment_path": "https://x/p.webm",
         "start_offset_ms": 0, "duration_ms": 4000,
         "metrics": {"piece": {"index": 0, "slide_index": 0},
-                    "recording_kind": "spoken",
+                    "recording_kind": kind,
                     "acoustic_read": {"potentiometer": 0.8,
                                       "outside_normal_range": True},
                     "overall_score": 0.9},
