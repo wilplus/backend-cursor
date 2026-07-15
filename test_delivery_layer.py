@@ -162,23 +162,35 @@ class IdealTextRoutesTests(unittest.TestCase):
         self.app = Flask(__name__)
 
     def test_coach_get_prefers_saved_block_over_auto(self):
+        # updated_by set = a human owns the block → source "coach"
+        # (updated_by NULL would be the eager MACHINE draft → "machine").
         with self.app.test_request_context():
             request.user_id = "coach1"
-            with patch.object(v2.db, "get_coach_arc_ideal_text",
+            with patch.object(v2.db, "get_arc_sessions",
+                              return_value=_sessions()), \
+                 patch.object(v2.db, "get_coach_arc_ideal_text",
                               return_value={"text": "coach block",
+                                            "updated_by": "coach1",
                                             "approved_at": None}):
                 resp, status = v2.v2_coach_get_ideal_text.__wrapped__(ARC)
                 body = resp.get_json()
         self.assertEqual(status, 200)
         self.assertEqual(body["source"], "coach")
         self.assertEqual(body["text"], "coach block")
+        self.assertEqual(body["assembly_state"], "ready")
         self.assertFalse(body["approved"])
 
     def test_coach_get_falls_back_to_auto(self):
+        # ≥3 spoken takes + no persisted row → the cold lazy fallback still
+        # serves (and eager-persists for next open) — the panel is never dead.
         with self.app.test_request_context():
             request.user_id = "coach1"
-            with patch.object(v2.db, "get_coach_arc_ideal_text",
+            with patch.object(v2.db, "get_arc_sessions",
+                              return_value=_sessions()), \
+                 patch.object(v2.db, "get_coach_arc_ideal_text",
                               return_value=None), \
+                 patch("services.ideal_text_block.maybe_assemble_ideal_text",
+                       return_value=True), \
                  patch("services.ideal_text_block.assemble_ideal_text_block",
                        return_value={"text": "auto block",
                                      "key_moments": [], "ready": True}):
@@ -187,6 +199,7 @@ class IdealTextRoutesTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(body["source"], "auto")
         self.assertEqual(body["text"], "auto block")
+        self.assertEqual(body["assembly_state"], "ready")
 
     def test_approve_persists_auto_when_no_block_saved(self):
         with self.app.test_request_context():
