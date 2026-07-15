@@ -243,7 +243,10 @@ class IdealTextRoutesTests(unittest.TestCase):
             {"text": "final block", "approved_at": "2026-07-15T10:00:00Z"})
         self.assertEqual(status, 200)
         self.assertEqual(body["text"], "final block")
+        # the notebook copy rides under all three keys the FE mapper reads
         self.assertEqual(body["notes_text"], "my notes")
+        self.assertEqual(body["notes"], "my notes")
+        self.assertEqual(body["user_notes"], "my notes")
         self.assertTrue(body["approved"])
 
     def test_notes_put_never_touches_canonical(self):
@@ -267,17 +270,63 @@ class SavePublishTests(unittest.TestCase):
     def setUp(self):
         self.app = Flask(__name__)
 
-    def test_save_feedback_stamps(self):
+    def test_save_feedback_persists_body_then_stamps(self):
+        # The FE sends the OLD publish body at Save (snippets + labels +
+        # insights_payload) — snippets/labels must PERSIST (the coach's work
+        # is otherwise lost); insights_payload is ignored (publish-time only —
+        # persisting it early would leak the coach layer to the readout).
         sid = "11111111-1111-4111-8111-111111111111"
-        with self.app.test_request_context():
+        snip = "22222222-2222-4222-8222-222222222222"
+        body = {
+            "snippets": [{"id": snip, "note": "Key turn.", "tag": "strong",
+                          "surfaced": True, "direction": "challenge"}],
+            "labels": [{"snippet_id": snip, "value": "challenge"}],
+            "insights_payload": {"overall_message": "ignored",
+                                 "snippet_notes": []},
+            "notify_client": False,
+        }
+        with self.app.test_request_context(json=body):
             request.user_id = "coach1"
             with patch.object(v2.db, "v2_get_session_by_id",
                               return_value={"id": sid}), \
+                 patch.object(v2.db, "get_snippets_by_session",
+                              return_value=[{"id": snip}]), \
+                 patch.object(v2, "_save_coach_snippet_lanes",
+                              return_value=None) as m_lanes, \
+                 patch("services.training_labels.validate_publish_labels",
+                       side_effect=lambda raw, ids, require_all: raw), \
+                 patch.object(v2.db, "upsert_training_labels",
+                              return_value=1) as m_labels, \
+                 patch.object(v2.db, "set_session_insights_payload") as m_ip, \
                  patch.object(v2.db, "set_session_feedback_saved",
                               return_value=True) as m_save:
                 resp, status = v2.v2_coach_save_feedback.__wrapped__(sid)
         self.assertEqual(status, 200)
-        self.assertTrue(resp.get_json()["saved"])
+        out = resp.get_json()
+        self.assertTrue(out["saved"])
+        self.assertEqual(out["snippets_saved"], 1)
+        # the snippet went through the shared two-lane helper (direction alias
+        # folded, id stripped)
+        args = m_lanes.call_args.args
+        self.assertEqual(args[1], snip)
+        self.assertEqual(args[2]["direction_label"], "challenge")
+        self.assertNotIn("id", args[2])
+        m_labels.assert_called_once()
+        m_ip.assert_not_called()      # insights NEVER persisted at Save
+        m_save.assert_called_once_with(sid)
+
+    def test_save_feedback_no_body_still_stamps(self):
+        sid = "11111111-1111-4111-8111-111111111111"
+        with self.app.test_request_context(json={}):
+            request.user_id = "coach1"
+            with patch.object(v2.db, "v2_get_session_by_id",
+                              return_value={"id": sid}), \
+                 patch.object(v2, "_save_coach_snippet_lanes") as m_lanes, \
+                 patch.object(v2.db, "set_session_feedback_saved",
+                              return_value=True) as m_save:
+                resp, status = v2.v2_coach_save_feedback.__wrapped__(sid)
+        self.assertEqual(status, 200)
+        m_lanes.assert_not_called()
         m_save.assert_called_once_with(sid)
 
     def _publish(self, sessions, ideal_row, drafts=lambda sid: []):
@@ -357,12 +406,33 @@ class AsyncReadoutStateTests(unittest.TestCase):
             {"user_id": None, "analysis_state": "processing"})
         self.assertEqual(status, 200)
         self.assertEqual(body["state"], "processing")
+        self.assertEqual(body["analysis_state"], "processing")
         self.assertIsNone(body["readout"])
 
     def test_failed_state_served(self):
         body, status = self._guest(
             {"user_id": None, "analysis_state": "failed"})
         self.assertEqual(body["state"], "failed")
+        self.assertEqual(body["analysis_state"], "failed")
+
+    def test_terminal_serves_analysis_state_ready(self):
+        # Past processing|failed the poll's terminal is analysis_state=ready —
+        # the lifecycle `state` stays readout_ready/review_pending/… (the FE
+        # must NOT need to enumerate those to stop polling).
+        from unittest.mock import MagicMock
+        import services.lab_recording as lab
+        orig = lab.build_readout_from_session
+        lab.build_readout_from_session = MagicMock(
+            return_value={"snippets": []})
+        try:
+            body, status = self._guest(
+                {"user_id": None, "analysis_state": "ready",
+                 "results_published_at": None, "status": "x"})
+        finally:
+            lab.build_readout_from_session = orig
+        self.assertEqual(status, 200)
+        self.assertEqual(body["analysis_state"], "ready")
+        self.assertEqual(body["state"], "readout_ready")
 
     def test_async_flag_default_off(self):
         import os
