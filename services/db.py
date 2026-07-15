@@ -9551,6 +9551,36 @@ class DatabaseService:
             logger.warning("set_session_arc failed sid=%s: %s", session_id, e)
             return False
 
+    def set_session_recording_kind(
+        self, session_id: str, kind: str,
+        paired_session_id: Optional[str] = None,
+    ) -> bool:
+        """Tag a session as the SPOKEN take or its READ variant (founder
+        2026-07-14). ``paired_session_id`` links a read back to the spoken
+        take it corrects. Best-effort: missing column (migration pending) →
+        False, non-fatal (the recording still processes; it just reads as
+        'spoken' by default downstream)."""
+        if not session_id or kind not in ("spoken", "read"):
+            return False
+        payload: dict = {"recording_kind": kind}
+        if paired_session_id:
+            payload["paired_session_id"] = str(paired_session_id)
+        try:
+            self.client.table("v2_sessions").update(payload).eq(
+                "id", session_id).execute()
+            return True
+        except Exception as e:
+            _e = str(e).lower()
+            if "recording_kind" in _e or "paired_session_id" in _e:
+                logger.warning(
+                    "set_session_recording_kind: column missing (run "
+                    "migrations/add_recording_kind.sql) sid=%s", session_id,
+                )
+                return False
+            logger.warning("set_session_recording_kind failed sid=%s: %s",
+                           session_id, e)
+            return False
+
     def set_session_priming(
         self, session_id: str,
         condition: Optional[str], phrase: Optional[str],
@@ -9746,21 +9776,39 @@ class DatabaseService:
         error (so the caller can fail CLOSED and keep the FE-sent index instead
         of mislabeling a real take-2/3 as take-1), and can EXCLUDE the current
         session (an upload retry already arc-linked must not double-count
-        itself)."""
+        itself).
+
+        Counts SPOKEN takes only (founder 2026-07-14): a read is a paired
+        variant of its take (paired_session_id set), not a take of its own —
+        so `paired_session_id IS NULL` isolates the real takes. Falls back to
+        the unfiltered count when the column is not migrated."""
         if not arc_id:
             return None
-        try:
+
+        def _q(with_paired_filter):
             q = (
                 self.client.table("v2_sessions")
                 .select("id", count="exact")
                 .eq("arc_id", arc_id)
             )
+            if with_paired_filter:
+                q = q.is_("paired_session_id", "null")
             if exclude_session_id:
                 q = q.neq("id", str(exclude_session_id))
-            res = q.limit(1).execute()
+            return q.limit(1).execute()
+
+        try:
+            res = _q(True)
             cnt = getattr(res, "count", None)
             return int(cnt) if cnt is not None else 0
         except Exception as e:
+            if "paired_session_id" in str(e).lower():
+                try:  # pre-migration → count all arc sessions
+                    res = _q(False)
+                    cnt = getattr(res, "count", None)
+                    return int(cnt) if cnt is not None else 0
+                except Exception:
+                    return None
             logger.warning("count_arc_sessions failed arc=%s: %s", arc_id, e)
             return None
 

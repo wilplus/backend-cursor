@@ -237,6 +237,16 @@ def _pieces_canonical_enabled() -> bool:
         not in ("0", "false", "no")
 
 
+def _coach_prefill_enabled() -> bool:
+    """Coach-comment pre-fill (the AI-Commentator draft). Default OFF (founder
+    2026-07-14): the coach writes the key-moment comment from scratch and the
+    system learns from that. Set COACH_PREFILL_ENABLED=1 to restore the
+    machine pre-fill without a redeploy."""
+    import os
+    return (os.getenv("COACH_PREFILL_ENABLED") or "0").strip().lower() \
+        in ("1", "true", "yes")
+
+
 def _piece_llm_budget() -> int:
     """How many pieces per take get the LLM layers (stickiness comment,
     say-it-stronger card, LLM coach-note draft). Every piece always gets
@@ -287,6 +297,7 @@ def process_lab_recording(
     filename: str,
     session_context: Optional[dict],
     parent_audio_url: str,
+    recording_kind: str = "spoken",
 ) -> dict:
     """Run the full pipeline → §3.3 Readout payload.
 
@@ -294,7 +305,14 @@ def process_lab_recording(
     already stored at ``parent_audio_url`` (the shared audio_ref for
     every snippet, parent+offset model). Persists one charisma_snippets
     row per window. Returns {"snippets": [...]}.
+
+    ``recording_kind`` (founder 2026-07-14) — 'spoken' (the original take)
+    or 'read' (the re-read of the suggestion-corrected text). Stamped on
+    every snippet's metrics so the coach sees, per snippet, which delivery
+    it was; the acoustic pipeline is identical for both.
     """
+    _rec_kind = recording_kind if recording_kind in ("spoken", "read") \
+        else "spoken"
     from services.audio_metrics import (
         decode_audio_to_pcm, segment_into_snippets, analyze_pcm_window,
         SEGMENT_MAX_SNIPPETS,
@@ -410,6 +428,7 @@ def process_lab_recording(
             if pc.get("slide_index") is not None:
                 _prov["slide_index"] = pc.get("slide_index")
             _mtx["piece"] = _prov
+            _mtx["recording_kind"] = _rec_kind
             prelim.append({
                 "start_ms": _p_start, "dur_ms": _p_dur,
                 "metrics": _mtx, "transcript": pc.get("transcript") or "",
@@ -630,6 +649,7 @@ def process_lab_recording(
     for i, p in enumerate(prelim):
         st = sticky[i] if i < len(sticky) else {}
         metrics_full = dict(p["metrics"])
+        metrics_full["recording_kind"] = _rec_kind
         metrics_full["stickiness"] = {
             "composite": st.get("composite"),
             "comment": st.get("comment"),
@@ -861,36 +881,35 @@ def process_lab_recording(
         observe_f1_degrade("slide_transcript_failed", exc=_stx_err,
                            session_id=session_id)
 
-    # AI-Commentator (Phase 4 / Prompt 2) — fire-and-forget coach-note drafts
-    # for every recording (slides are optional grounding; a deck-less spoken
-    # pitch still drafts). process_lab_recording is synchronous on the upload
-    # response, so drafting (N LLM calls) runs in a daemon, never blocking it.
-    # Best-effort: a failure here never breaks the readout.
-    try:
-        from services.coach_comment_drafter import dispatch_coach_note_drafts
-        # Pieces mode: only the LLM-budget pieces get the model-drafted note;
-        # every OTHER piece gets the deterministic auto-comment in the same
-        # write-once draft lane (the comment slot is never empty). Legacy
-        # mode: unchanged (every window drafts via the LLM).
-        _llm_ids = None
-        if _pieces_mode:
-            _llm_ids = {
-                str(snippets_data[i]["id"]) for i in _llm_budget_idx
-                if i < len(snippets_data) and snippets_data[i].get("id")
-            }
-        dispatch_coach_note_drafts(
-            session_id,
-            snippets_data,
-            (session_context or {}).get("slides"),
-            (session_context or {}).get("slide_advances"),
-            goal=(session_context or {}).get("topic"),
-            llm_ids=_llm_ids,
-        )
-    except Exception as _draft_err:
-        logger.warning(
-            "process_lab_recording: coach-note draft dispatch failed sid=%s: %s",
-            session_id, _draft_err,
-        )
+    # AI-Commentator coach-note pre-fill — RETIRED by default (founder
+    # 2026-07-14): "no pre-filled comment; the system should learn from what
+    # the coach writes." The coach now writes the key-moment comment from
+    # scratch, and the (coach_snippet_drafts.note × the snippet's acoustic
+    # metrics) pair IS the training signal for the future comment-from-acoustic
+    # model — no machine draft needed. Kept behind a default-OFF flag so the
+    # pre-fill can be re-enabled without a redeploy if the direction changes.
+    if _coach_prefill_enabled():
+        try:
+            from services.coach_comment_drafter import dispatch_coach_note_drafts
+            _llm_ids = None
+            if _pieces_mode:
+                _llm_ids = {
+                    str(snippets_data[i]["id"]) for i in _llm_budget_idx
+                    if i < len(snippets_data) and snippets_data[i].get("id")
+                }
+            dispatch_coach_note_drafts(
+                session_id,
+                snippets_data,
+                (session_context or {}).get("slides"),
+                (session_context or {}).get("slide_advances"),
+                goal=(session_context or {}).get("topic"),
+                llm_ids=_llm_ids,
+            )
+        except Exception as _draft_err:
+            logger.warning(
+                "process_lab_recording: coach-note draft dispatch failed "
+                "sid=%s: %s", session_id, _draft_err,
+            )
 
     # "Say It Stronger" (founder 2026-07-07) — per-snippet rewrite suggestions
     # for the user readout, replacing the raw acoustic numbers there. Same
@@ -1095,6 +1114,12 @@ def build_readout_from_session(
             snip_out["piece_index"] = _piece.get("index")
             if _piece.get("slide_index") is not None:
                 snip_out["slide_index"] = _piece.get("slide_index")
+        # Spoken vs read (founder 2026-07-14) — the delivery this row is. The
+        # coach labels each snippet by it; not a verdict, so it rides both
+        # views (the user already knows which they did).
+        _rk = metrics.get("recording_kind") if isinstance(metrics, dict) else None
+        if _rk in ("spoken", "read"):
+            snip_out["recording_kind"] = _rk
         # Stickiness #2 is COACH-ONLY until calibrated (AC-9) — surfaced only
         # when include_slide_scores (the coach packet), never on the user readout.
         if include_slide_scores:
@@ -1127,8 +1152,14 @@ def build_readout_from_session(
     #                         of any model direction guess.
     # The coach's own edited note (post-publish coach.note) still wins on the
     # FE; this only fills the slot before a coach note exists.
+    #
+    # DEFAULT-OFF (founder 2026-07-14): "no comment from the coach at all at
+    # this point [user side], just the suggestions" AND "no pre-filled comment
+    # [coach side]." So the machine comment is retired from BOTH surfaces
+    # unless COACH_PREFILL_ENABLED restores it. The coach potentiometer
+    # (acoustic_read, above) is unaffected — it is not a comment.
     _piece_rows_present = any(so.get("piece_index") is not None for so in out_snips)
-    if _piece_rows_present:
+    if _piece_rows_present and _coach_prefill_enabled():
         try:
             from services.auto_comment import (
                 build_auto_comment, acoustic_tone_word,
@@ -1234,6 +1265,8 @@ def build_readout_from_session(
             "start_offset_ms": so.get("start_offset_ms"),
             "duration_ms": so.get("duration_ms"),
             "snippet_id": so.get("id"),
+            **({"recording_kind": so.get("recording_kind")}
+               if so.get("recording_kind") else {}),
             "say_it_stronger": so.get("say_it_stronger"),
             "auto_comment": so.get("auto_comment"),
             # Edit surfaces whether the FE keyed by snippet_id (preferred for
