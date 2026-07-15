@@ -39,7 +39,9 @@ class TranscriptEditRouteTests(unittest.TestCase):
         # chars re-chunked at <=200 chars).
         self._snippet_row = {"id": _SNIP, "session_id": _SID}
         self._stx = [{"index": 0,
-                      "transcript": " ".join(f"w{i}" for i in range(60))}]
+                      "transcript": " ".join(f"word{i}" for i in range(60))}]  # >300 chars
+        # → a TRUE legacy blob: re-splits into 2+ chunks (the read-back
+        # probe only re-splits past the 300 hard cap since 2026-07-15)
 
         def _upsert(session_id, *, snippet_id=None, chunk_index=None, text):
             self._saved.append({
