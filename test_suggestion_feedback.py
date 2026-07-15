@@ -113,6 +113,20 @@ class SuggestionFeedbackTests(unittest.TestCase):
         _, s2 = self._call(self._ok_body(), caller="u1", snippet_id="nope")
         self.assertEqual((s1, s2), (400, 400))
 
+    def test_reverted_action_accepted(self):
+        # Approve is a reversible toggle (2026-07-15) — the undo reports as
+        # action='reverted' so applied→reverted pairs stay honest.
+        with patch.object(v2.db, "v2_get_session_by_id",
+                          return_value={"id": SESS, "user_id": "u1"}), \
+             patch.object(v2.db, "get_snippet_by_id",
+                          return_value={"id": SNIP, "session_id": SESS}), \
+             patch.object(v2.db, "insert_user_suggestion_feedback",
+                          return_value=True) as m_ins:
+            body, status = self._call(
+                self._ok_body(action="reverted"), caller="u1")
+        self.assertEqual(status, 200)
+        self.assertEqual(m_ins.call_args.kwargs["action"], "reverted")
+
     def test_apply_all_case(self):
         with patch.object(v2.db, "v2_get_session_by_id",
                           return_value={"id": SESS, "user_id": "u1"}), \

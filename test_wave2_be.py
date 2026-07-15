@@ -24,7 +24,7 @@ import unittest
 class MinContentConstantsTests(unittest.TestCase):
     def test_constants(self):
         from services.min_content_gate import MIN_DURATION_SEC, MIN_VOICED_SEC
-        self.assertEqual(MIN_DURATION_SEC, 60.0)
+        self.assertEqual(MIN_DURATION_SEC, 0.0)  # retired 2026-07-15 (no minimum)
         self.assertEqual(MIN_VOICED_SEC, 3.0)
 
 

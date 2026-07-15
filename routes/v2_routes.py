@@ -8653,7 +8653,10 @@ def v2_user_put_transcript_edit(session_id):
 
 _SUGGESTION_TARGETS = ("upgrade", "rewrite_your_voice", "rewrite_polished",
                        "comment", "comment_video")
-_SUGGESTION_ACTIONS = ("applied", "preferred", "apply_all")
+# "reverted" (2026-07-15): Approve is a reversible toggle on the FE — the
+# undo reports here so applied→reverted pairs keep the preference signal
+# honest (second-order lane, below coach truth, as ever).
+_SUGGESTION_ACTIONS = ("applied", "preferred", "apply_all", "reverted")
 
 
 @v2_bp.route("/user/snippets/<snippet_id>/suggestion-feedback",
@@ -12175,13 +12178,12 @@ def v2_lab_create_recording():
                 logger.warning(
                     "lab: rejected-take capture failed: %s (non-fatal)", _rej_err,
                 )
+            # Minimum duration RETIRED (founder 2026-07-15) — the only
+            # rejections left are no_speech / no_audio (pipeline validity,
+            # not a UX minimum).
             return jsonify({
                 "code": "RECORDING_REJECTED",
-                "error": (
-                    "Recording too short — record at least 60 seconds."
-                    if gate["reason"] == "too_short"
-                    else "No speech detected — try recording again."
-                ),
+                "error": "No speech detected — try recording again.",
                 "gate": gate,  # {reason, duration_sec, voiced_sec, thresholds}
             }), 422
 

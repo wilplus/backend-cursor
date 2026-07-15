@@ -22,13 +22,17 @@ from __future__ import annotations
 from typing import Any, Optional
 
 
-# Salvaged threshold from the old gate. 60s keeps the recording
-# substantial enough for a coach review + a stable acoustic read.
-MIN_DURATION_SEC = 60.0
+# Minimum duration RETIRED (founder 2026-07-15): there is NO minimum
+# recording time anywhere — main takes and seconds-long snippet re-reads
+# alike are accepted. Kept at 0.0 (not deleted) so the thresholds echo the
+# FE reads stays shape-stable; the too_short reason can no longer fire.
+MIN_DURATION_SEC = 0.0
 
 # Has-speech floor: at least this many seconds of voiced audio, so a
-# 60s near-silent / dead-air recording fails "no_speech" rather than
-# passing on duration alone.
+# near-silent / dead-air recording fails "no_speech" — this one protects
+# the pipeline (nothing to transcribe/analyze), not a UX minimum. A very
+# short but VOICED clip passes: voiced_sec is capped by duration, so the
+# floor scales down to the clip length for sub-3s recordings.
 MIN_VOICED_SEC = 3.0
 
 
@@ -72,10 +76,13 @@ def evaluate_min_content(sig: Any) -> dict:
     voiced_frames = int(np.sum(dbs >= SILENCE_DB_THRESHOLD)) if len(dbs) else 0
     voiced_sec = round(voiced_frames * (FRAME_MS / 1000.0), 1)
 
-    if duration_sec < MIN_DURATION_SEC:
-        reason: Optional[str] = "too_short"
-    elif voiced_sec < MIN_VOICED_SEC:
-        reason = "no_speech"
+    # No duration minimum (founder 2026-07-15) — too_short retired. The
+    # has-speech floor scales DOWN for short clips (a 2s fully-voiced
+    # re-read passes; 2s of silence still fails): require voiced audio of
+    # at least min(3s, half the clip), never less than one frame.
+    _floor = min(MIN_VOICED_SEC, max(0.1, duration_sec * 0.5))
+    if voiced_sec < _floor:
+        reason: Optional[str] = "no_speech"
     else:
         reason = None
 

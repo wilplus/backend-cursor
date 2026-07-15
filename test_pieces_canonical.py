@@ -54,6 +54,223 @@ def _words(text_per_slide, word_dur=0.4, tap_gap_s=1.0):
     return words, advances
 
 
+class RestorePunctuationTests(unittest.TestCase):
+    """BE-1a (founder 2026-07-15): deterministic segment→word punctuation
+    alignment, ghost-word-proof."""
+
+    def _words(self, tokens, t0=0.0, dur=0.4):
+        return [{"word": w, "start": round(t0 + i * dur, 2),
+                 "end": round(t0 + i * dur + dur, 2)}
+                for i, w in enumerate(tokens)]
+
+    def _restore(self, word_tokens, seg_text):
+        from services.slide_word_split import restore_punctuation
+        words = self._words(word_tokens)
+        segs = [{"text": seg_text, "start": 0, "end": 99}]
+        return restore_punctuation(words, segs)
+
+    def test_clean_alignment_takes_segment_form(self):
+        out = self._restore(["i", "went", "to", "the", "store"],
+                            "I went to the store.")
+        self.assertEqual([w["word"] for w in out],
+                         ["I", "went", "to", "the", "store."])
+
+    def test_ghost_word_dropped_filler_resyncs(self):
+        # THE founder-added edge case: segment says "So, um, I went to the
+        # store." but the word array dropped the fillers. Alignment must
+        # resync at "I" and the fillers' punctuation must not garble the rest.
+        out = self._restore(["i", "went", "to", "the", "store"],
+                            "So, um, I went to the store.")
+        self.assertEqual([w["word"] for w in out],
+                         ["I", "went", "to", "the", "store."])
+
+    def test_mid_sentence_ghost_donates_punctuation_to_previous(self):
+        # "well," dropped mid-stream → its comma lands on the previous
+        # aligned word; remainder stays aligned.
+        out = self._restore(["i", "think", "we", "ship"],
+                            "I think, well, we ship!")
+        self.assertEqual([w["word"] for w in out],
+                         ["I", "think,,", "we", "ship!"])
+        # (both the think-comma and the ghost's comma carry — punctuation is
+        # never LOST; cosmetic doubling is acceptable and rare)
+
+    def test_array_side_ghost_passes_through(self):
+        # The word array has a token the segment text lacks — it passes
+        # through raw and alignment continues.
+        out = self._restore(["i", "uh", "went", "home"], "I went home.")
+        self.assertEqual([w["word"] for w in out],
+                         ["I", "uh", "went", "home."])
+
+    def test_unalignable_segment_never_garbles(self):
+        # Total mismatch (pathological) → words pass through unpunctuated.
+        out = self._restore(["alpha", "beta", "gamma"],
+                            "completely different text here entirely.")
+        self.assertEqual([w["word"] for w in out],
+                         ["alpha", "beta", "gamma"])
+
+    def test_spans_strictly_untouched(self):
+        words = self._words(["i", "went"])
+        before = [(w["start"], w["end"]) for w in words]
+        from services.slide_word_split import restore_punctuation
+        out = restore_punctuation(words, [{"text": "I went."}])
+        self.assertEqual([(w["start"], w["end"]) for w in out], before)
+
+    def test_no_segments_passthrough(self):
+        from services.slide_word_split import restore_punctuation
+        words = self._words(["hello", "there"])
+        self.assertEqual(restore_punctuation(words, []), words)
+        self.assertEqual(restore_punctuation(words, None), words)
+
+    def test_long_ghost_run_recovers_mutual_skip(self):
+        # REVIEW-CONFIRMED bug (2026-07-15): a filler run LONGER than the
+        # look-ahead window froze the text pointer and stripped punctuation
+        # from the whole rest of the take. Mutual skip must recover.
+        out = self._restore(["we", "win", "big", "today"],
+                            "we uh um er ah win big today.")
+        self.assertEqual([w["word"] for w in out],
+                         ["we", "win", "big", "today."])
+
+    def test_ghost_run_mid_take_keeps_later_sentences(self):
+        # The reviewer's second repro: 4 ghosts mid-stream must not kill the
+        # later sentence breaks.
+        out = self._restore(
+            ["we", "grow", "fast", "and", "then", "we", "scale"],
+            "We grow, uh, um, well, like, fast. And then we scale.")
+        words = [w["word"] for w in out]
+        self.assertEqual(words[-1], "scale.")
+        self.assertIn("fast.", words)
+
+    def test_desync_contained_to_one_segment(self):
+        # Per-segment anchoring: a pathological first segment must not
+        # damage the second (words carry timestamps; segments carry spans).
+        from services.slide_word_split import restore_punctuation
+        words = (self._words(["xxx", "yyy"], t0=0.0)
+                 + self._words(["clean", "sentence"], t0=10.0))
+        segs = [
+            {"text": "totally different tokens here entirely.",
+             "start": 0.0, "end": 9.0},
+            {"text": "Clean sentence.", "start": 10.0, "end": 12.0},
+        ]
+        out = restore_punctuation(words, segs)
+        self.assertEqual([w["word"] for w in out][-2:],
+                         ["Clean", "sentence."])
+
+
+class DecklessReadBackTests(unittest.TestCase):
+    """REVIEW-CONFIRMED bug (2026-07-15): the read-back legacy-blob probe at
+    the 200 target re-split a legit single sentence-extended piece into
+    span-less phantom chunks. The probe now uses the HARD cap (300)."""
+
+    def test_single_extended_piece_keeps_its_span(self):
+        from services.slide_word_split import deckless_chunks_from_stx
+        text = ("word " * 49).strip() + "."       # 245 chars, one sentence
+        stx = [{"index": 0, "transcript": text,
+                "start_offset_ms": 0, "duration_ms": 12300}]
+        chunks = deckless_chunks_from_stx(stx)
+        self.assertEqual(len(chunks), 1)          # never re-split
+        self.assertEqual(chunks[0]["start_offset_ms"], 0)
+        self.assertEqual(chunks[0]["duration_ms"], 12300)
+        self.assertEqual(chunks[0]["transcript"], text)
+
+    def test_true_legacy_blob_still_resplits(self):
+        from services.slide_word_split import deckless_chunks_from_stx
+        blob = " ".join(f"w{i}" for i in range(120))   # ≫300 chars
+        stx = [{"index": 0, "transcript": blob,
+                "start_offset_ms": 0, "duration_ms": 60000}]
+        chunks = deckless_chunks_from_stx(stx)
+        self.assertGreater(len(chunks), 1)
+        self.assertNotIn("start_offset_ms", chunks[0])  # legacy = span-less
+
+    def test_persist_then_read_round_trip(self):
+        # END-TO-END: the persist-time cutter's own output must round-trip
+        # through the read-back helper unchanged (the drift the review
+        # flagged for edit indexes / card attachment).
+        from services.slide_word_split import (
+            chunk_words_by_chars, deckless_chunks_from_stx,
+        )
+        words, t = [], 0.0
+        for i in range(48):
+            w = "tok" + ("." if i == 47 else "")
+            words.append({"word": w, "start": round(t, 2),
+                          "end": round(t + 0.3, 2)})
+            t += 0.3
+        persisted = chunk_words_by_chars(words)   # one ~235-char piece
+        read_back = deckless_chunks_from_stx(persisted)
+        self.assertEqual(len(read_back), len(persisted))
+        for a, b in zip(persisted, read_back):
+            self.assertEqual(a["transcript"], b["transcript"])
+            self.assertEqual(a["start_offset_ms"], b["start_offset_ms"])
+
+
+class SentenceAwareChunkTests(unittest.TestCase):
+    """BE-1b (founder 2026-07-15): pieces never end mid-sentence; target 200,
+    sentence extension to the 300 hard cap (founder-locked '300')."""
+
+    def _words_from_sentences(self, sentences, dur=0.3):
+        words, t = [], 0.0
+        for s in sentences:
+            for w in s.split():
+                words.append({"word": w, "start": round(t, 2),
+                              "end": round(t + dur, 2)})
+                t += dur
+        return words
+
+    def _cut(self, sentences, max_chars=200):
+        from services.slide_word_split import chunk_words_by_chars
+        return chunk_words_by_chars(
+            self._words_from_sentences(sentences), max_chars)
+
+    def test_closes_at_sentence_end_before_target(self):
+        # Sentence end at ~180 chars, next sentence would cross 200 → the
+        # piece closes AT the sentence end, never mid-sentence.
+        s1 = " ".join(["word"] * 35) + "."          # ~179 chars
+        s2 = " ".join(["next"] * 30) + "."
+        pieces = self._cut([s1, s2])
+        self.assertTrue(pieces[0]["transcript"].endswith("word."))
+        self.assertLessEqual(len(pieces[0]["transcript"]), 200)
+
+    def test_extension_window_reaches_first_sentence_end(self):
+        # No sentence end before 200; the first one lands at ~230 → the piece
+        # EXTENDS past the target and closes there (≤300).
+        s1 = " ".join(["alpha"] * 38) + "."          # ~233 chars, one sentence
+        s2 = " ".join(["beta"] * 10) + "."
+        pieces = self._cut([s1, s2])
+        self.assertTrue(pieces[0]["transcript"].endswith("alpha."))
+        self.assertGreater(len(pieces[0]["transcript"]), 200)
+        self.assertLessEqual(len(pieces[0]["transcript"]), 300)
+
+    def test_run_on_sentence_hard_cuts_before_300(self):
+        # A 400-char sentence with no end in the window → word-boundary cut
+        # before the hard cap (the escape hatch).
+        s1 = " ".join(["run"] * 100) + "."           # ~399 chars
+        pieces = self._cut([s1])
+        self.assertGreater(len(pieces), 1)
+        self.assertLessEqual(len(pieces[0]["transcript"]), 300)
+
+    def test_never_mid_sentence_when_end_within_cap(self):
+        # Several short sentences: every piece boundary lands on a sentence
+        # end (no piece ends mid-sentence).
+        sentences = [(" ".join(["tok"] * 12) + ".") for _ in range(8)]
+        pieces = self._cut(sentences)
+        for p in pieces[:-1]:
+            self.assertTrue(p["transcript"].rstrip().endswith("."),
+                            f"mid-sentence cut: …{p['transcript'][-30:]}")
+
+    def test_unpunctuated_degrades_to_hard_cap_cuts(self):
+        pieces = self._cut([" ".join(["plain"] * 100)])  # no punctuation
+        self.assertGreater(len(pieces), 1)
+        for p in pieces:
+            self.assertLessEqual(len(p["transcript"]), 300)
+
+    def test_spans_exact_and_ordered(self):
+        s = [(" ".join(["tok"] * 12) + ".") for _ in range(6)]
+        pieces = self._cut(s)
+        for a, b in zip(pieces, pieces[1:]):
+            self.assertLessEqual(
+                a["start_offset_ms"] + a["duration_ms"],
+                b["start_offset_ms"] + 1)
+
+
 class ChunkSlideWordsTests(unittest.TestCase):
 
     def _cut(self, text_per_slide, **kw):
@@ -77,7 +294,10 @@ class ChunkSlideWordsTests(unittest.TestCase):
         pieces = self._cut([" ".join(["word"] * 100)])  # ~500 chars, 1 slide
         self.assertGreater(len(pieces), 1)
         for p in pieces:
-            self.assertLessEqual(len(p["transcript"]), 200)
+            # Unpunctuated input cuts at the HARD cap (300 = target+100,
+            # founder-locked 2026-07-15); punctuated input closes at
+            # sentence ends — see SentenceAwareChunkTests.
+            self.assertLessEqual(len(p["transcript"]), 300)
             self.assertIsInstance(p["start_offset_ms"], int)
             self.assertIsInstance(p["duration_ms"], int)
             self.assertGreater(p["duration_ms"], 0)

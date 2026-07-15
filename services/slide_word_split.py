@@ -18,6 +18,7 @@ reference frame as a snippet's start_offset_ms — so a word's slide is just
 from __future__ import annotations
 
 import os
+import re
 from typing import Any
 
 
@@ -302,26 +303,187 @@ def build_slide_transcripts(words_all: Any, slide_advances: Any,
 
 # ── Deckless chunking (founder 2026-07-11, supersedes the 50-word cut) ──────
 # No deck → no click timeline to bucket by, so the whole-recording transcript
-# is split into max-200-CHARACTER chunks broken at word boundaries, each with
+# is split into ~200-CHARACTER pieces broken at word boundaries, each with
 # its audio span derived from the Whisper word timestamps — so every chunk's
 # playback control plays exactly its own segment of the single take audio,
 # and text/audio boundaries can never drift (both come from the same words).
+#
+# SENTENCE-AWARE since 2026-07-15 (founder BE-1): a piece never ends
+# mid-sentence when a sentence end exists — 200 is the TARGET; a sentence may
+# extend a piece up to the 300-char hard cap (founder-locked) before the
+# run-on escape hatch cuts at a word boundary.
 
 _DECKLESS_CHUNK_CHARS = 200
 
+# The sentence-extension window: a piece may run past the target up to
+# target+100 (=300 for default pieces) to reach a sentence end. Founder-locked
+# 2026-07-15 ("300").
+_SENTENCE_EXTENSION_CHARS = 100
+
+# A token that ENDS a sentence: terminal . ! ? … optionally followed by
+# closing quotes/brackets ("word." / "word!”" / "word?')").
+_SENTENCE_END_RE = re.compile(r'[.!?…]["\'’”)\]]*$')
+
+# Trailing punctuation worth carrying from a skipped (ghost) segment token
+# onto the previous aligned word.
+_TRAILING_PUNCT_RE = re.compile(r'[.,!?;:…"\'’”)\]]+$')
+
+# Normalization key for alignment: letters/digits only, lowercased —
+# "Store," ≡ store; "don't" ≡ dont.
+_NORM_RE = re.compile(r"[\W_]+", re.UNICODE)
+
+# Bounded skip window for the two-pointer alignment (the "ghost word"
+# problem): a mismatch may skip at most this many tokens on the segment
+# side before we declare the word unalignable — never the whole segment.
+_ALIGN_SKIP_WINDOW = 3
+
+
+def _norm_token(token: Any) -> str:
+    return _NORM_RE.sub("", str(token or "")).lower()
+
+
+def _ends_sentence(token: str) -> bool:
+    return bool(_SENTENCE_END_RE.search(token))
+
+
+def _align_segment(seg_words: list, seg_tokens: list, out: list) -> None:
+    """Align ONE segment's words against its punctuated tokens (appends the
+    decorated word dicts to ``out``). Two-pointer + bounded look-ahead +
+    MUTUAL SKIP: when no match lands within _ALIGN_SKIP_WINDOW, the text
+    pointer consumes one token (donating its trailing punctuation to the
+    previous aligned word) and retries — the pointer can NEVER freeze, so a
+    long ghost run (filler chains, spelled-out numbers) costs at most its
+    own tokens, never the rest of the take (review fix 2026-07-15)."""
+    j = 0
+    n = len(seg_tokens)
+
+    def _donate_tail(upto):
+        nonlocal j
+        while j < upto:
+            m = _TRAILING_PUNCT_RE.search(seg_tokens[j])
+            if m:
+                for k in range(len(out) - 1, -1, -1):
+                    if isinstance(out[k], dict) and out[k].get("word"):
+                        out[k] = dict(out[k])
+                        out[k]["word"] = out[k]["word"] + m.group(0)
+                        break
+            j += 1
+
+    for w in seg_words:
+        if not isinstance(w, dict) or not (w.get("word") or "").strip():
+            out.append(w)
+            continue
+        wkey = _norm_token(w.get("word"))
+        matched = None
+        if wkey:
+            probe = j
+            while probe < n:
+                # bounded look-ahead from the current probe position
+                hit = None
+                for dj in range(0, _ALIGN_SKIP_WINDOW + 1):
+                    if probe + dj < n and \
+                            _norm_token(seg_tokens[probe + dj]) == wkey:
+                        hit = probe + dj
+                        break
+                if hit is not None:
+                    matched = hit
+                    break
+                # MUTUAL SKIP — consume one text token and retry (never
+                # freeze); its punctuation lands on the previous word.
+                probe += 1
+        if matched is None:
+            out.append(dict(w))   # array-side ghost — raw, text untouched
+            continue
+        _donate_tail(matched)     # text-side ghosts donate punctuation
+        nw = dict(w)
+        nw["word"] = seg_tokens[matched]  # punctuated + properly cased
+        out.append(nw)
+        j = matched + 1
+
+
+def restore_punctuation(words: Any, segments: Any) -> list:
+    """Re-attach punctuation (and casing) to the timestamped word stream from
+    the Whisper SEGMENT text (founder BE-1a, 2026-07-15). Deterministic — no
+    LLM anywhere.
+
+    Whisper's word-level timestamps arrive punctuation-less; the segments
+    carry the punctuated text. Alignment is ANCHORED PER SEGMENT by the
+    timestamps both sides already carry (a word belongs to the segment whose
+    time range it starts in), then aligned within the segment via a
+    two-pointer walk with bounded look-ahead + mutual skip (the "ghost word"
+    problem: the streams are NOT a reliable 1:1 — fillers dropped from one
+    side, contractions merged, numbers spelled out). Any residual mismatch is
+    therefore contained to ONE segment — it can never derail the rest of the
+    take (review fix 2026-07-15):
+
+      * aligned word → takes the SEGMENT token verbatim (punctuation + case);
+      * skipped segment tokens (text-side ghosts) → their trailing
+        punctuation carries onto the PREVIOUS aligned word;
+      * unalignable word (array-side ghost) → passes through unchanged;
+      * no segments at all → the input passes through unchanged.
+
+    Returns NEW word dicts; ``start``/``end`` spans are STRICTLY untouched
+    (this decorates the ``word`` strings only). Pure.
+    """
+    src = list(words or [])
+    segs = [s for s in (segments or []) if isinstance(s, dict)
+            and (s.get("text") or "").strip()]
+    if not src or not segs:
+        return src
+
+    out: list = []
+    wi = 0
+    n_words = len(src)
+    for si, seg in enumerate(segs):
+        seg_end = seg.get("end")
+        seg_end = float(seg_end) if isinstance(seg_end, (int, float)) else None
+        # This segment's words: consume while the word STARTS before the
+        # segment ends (the last segment takes everything left).
+        seg_words: list = []
+        while wi < n_words:
+            w = src[wi]
+            if si < len(segs) - 1 and seg_end is not None \
+                    and isinstance(w, dict) \
+                    and isinstance(w.get("start"), (int, float)) \
+                    and float(w["start"]) >= seg_end:
+                break
+            seg_words.append(w)
+            wi += 1
+        if not seg_words:
+            continue
+        _align_segment(seg_words, (seg.get("text") or "").split(), out)
+    # words past the last segment (shouldn't happen, but never drop text)
+    out.extend(dict(w) if isinstance(w, dict) else w for w in src[wi:])
+    return out
+
 
 def chunk_words_by_chars(words: Any, max_chars: int = _DECKLESS_CHUNK_CHARS) -> list:
-    """Chunk the whole-recording word list into ≤max_chars text pieces with
-    per-chunk audio spans.
+    """Chunk the word list into ~max_chars text pieces with per-chunk audio
+    spans — SENTENCE-AWARE (founder BE-1b, 2026-07-15).
 
-    ``words`` = [{word, start, end}] in SECONDS (Whisper verbose_json).
-    A chunk closes when adding the next word would exceed ``max_chars``
-    (a word is never split; a single over-long word gets its own chunk).
-    Returns ``[{index, transcript, start_offset_ms, duration_ms}, ...]``
-    in time order; ``[]`` when there are no usable words. Pure.
+    ``words`` = [{word, start, end}] in SECONDS (Whisper verbose_json),
+    ideally punctuation-restored first (restore_punctuation). Rules:
+
+      * ``max_chars`` (200) is the TARGET. When the buffer would exceed it:
+        close at the LAST sentence end in the buffer when one exists (the
+        remainder opens the next piece);
+      * no sentence end yet → keep extending; close at the FIRST sentence
+        end within the hard cap (target+100 = 300, founder-locked);
+      * still none at the hard cap → close at the word boundary before it
+        (the run-on-sentence escape hatch);
+      * a word is never split; a single over-long word gets its own piece.
+
+    Unpunctuated input (no sentence ends anywhere) degrades to plain
+    word-boundary cuts at the HARD cap. Returns ``[{index, transcript,
+    start_offset_ms, duration_ms}, ...]`` in time order, exact word-derived
+    spans; ``[]`` when there are no usable words. Pure.
     """
     cap = max_chars if isinstance(max_chars, int) and max_chars > 0 \
         else _DECKLESS_CHUNK_CHARS
+    # Extension is PROPORTIONAL (half the target, capped at +100) so the
+    # founder-locked default holds exactly (200 → 300) while small custom
+    # caps keep sane windows instead of being swallowed by a flat +100.
+    hard_cap = cap + min(_SENTENCE_EXTENSION_CHARS, cap // 2)
     ordered = sorted(
         (w for w in (words or []) if isinstance(w, dict)
          and isinstance(w.get("start"), (int, float))
@@ -329,37 +491,57 @@ def chunk_words_by_chars(words: Any, max_chars: int = _DECKLESS_CHUNK_CHARS) -> 
         key=lambda w: w.get("start") or 0.0,
     )
     out: list = []
-    tokens: list = []
+    buf: list = []          # [(token, start_ms, end_ms)]
     cur_len = 0
-    start_ms = 0
-    end_ms = 0
-    def _close():
-        if tokens:
+    last_sent = None        # index in buf of the last sentence-ending token
+
+    def _emit(entries):
+        if entries:
+            start_ms = entries[0][1]
+            end_ms = max(e[2] for e in entries)
             out.append({
                 "index": len(out),
-                "transcript": " ".join(tokens),
+                "transcript": " ".join(e[0] for e in entries),
                 "start_offset_ms": start_ms,
                 "duration_ms": max(0, end_ms - start_ms),
             })
+
+    def _close_upto(idx):
+        # Emit buf[:idx+1]; the remainder stays as the next piece's start.
+        nonlocal buf, cur_len, last_sent
+        _emit(buf[:idx + 1])
+        buf = buf[idx + 1:]
+        cur_len = sum(len(e[0]) for e in buf) + max(0, len(buf) - 1)
+        last_sent = None
+        for i, e in enumerate(buf):
+            if _ends_sentence(e[0]):
+                last_sent = i
+
     for w in ordered:
         token = (w.get("word") or "").strip()
         st = float(w.get("start") or 0.0)
         en = w.get("end")
         en = float(en) if isinstance(en, (int, float)) else st
-        w_start = int(st * 1000)
-        w_end = int(en * 1000)
-        cost = len(token) + (1 if tokens else 0)
-        if tokens and cur_len + cost > cap:
-            _close()
-            tokens = []
-            cur_len = 0
-        if not tokens:
-            start_ms = w_start
-            end_ms = w_end
-        tokens.append(token)
-        cur_len += len(token) + (1 if cur_len else 0)
-        end_ms = max(end_ms, w_end)
-    _close()
+        entry = (token, int(st * 1000), int(en * 1000))
+        cost = len(token) + (1 if buf else 0)
+        if buf and cur_len + cost > cap:
+            if last_sent is not None:
+                # never end mid-sentence when a sentence end exists
+                _close_upto(last_sent)
+                cost = len(token) + (1 if buf else 0)
+            if buf and cur_len + cost > hard_cap:
+                # run-on escape hatch — word boundary before the hard cap
+                _close_upto(len(buf) - 1)
+                cost = len(token)
+        buf.append(entry)
+        cur_len += cost
+        if _ends_sentence(token):
+            if cur_len >= cap:
+                _close_upto(len(buf) - 1)   # first sentence end ≤ hard cap
+            else:
+                last_sent = len(buf) - 1
+    if buf:
+        _close_upto(len(buf) - 1)
     return out
 
 
@@ -484,10 +666,20 @@ def deckless_chunks_from_stx(stx: Any) -> list:
         return []
     if len(entries) == 1:
         text = entries[0]["transcript"].strip()
-        pieces = chunk_transcript_by_chars(text)
-        if len(pieces) > 1:
-            return pieces  # legacy blob → text-only chunks, no spans
-        # fits one chunk → keep the entry's own span
+        # Legacy-blob probe at the HARD cap (review fix 2026-07-15): the
+        # sentence-aware persist cutter legitimately emits a single piece up
+        # to target+extension (300) — probing at the 200 target re-split
+        # such a piece into span-less phantom chunks (play control lost,
+        # cards unattachable, edit indexes drifting from the canonical
+        # piece). Only text LONGER than the hard cap can be a legacy blob.
+        _hard = _DECKLESS_CHUNK_CHARS + min(
+            _SENTENCE_EXTENSION_CHARS, _DECKLESS_CHUNK_CHARS // 2)
+        if len(text) > _hard:
+            pieces = chunk_transcript_by_chars(text)
+            if len(pieces) > 1:
+                return pieces  # legacy blob → text-only chunks, no spans
+            # a single unsplittable over-long token → keep the span below
+        # fits one (possibly sentence-extended) piece → keep the entry's span
         e = entries[0]
         return [{
             "index": 0, "transcript": text,
