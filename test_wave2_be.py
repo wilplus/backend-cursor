@@ -24,7 +24,7 @@ import unittest
 class MinContentConstantsTests(unittest.TestCase):
     def test_constants(self):
         from services.min_content_gate import MIN_DURATION_SEC, MIN_VOICED_SEC
-        self.assertEqual(MIN_DURATION_SEC, 60.0)
+        self.assertEqual(MIN_DURATION_SEC, 0.0)  # retired 2026-07-15 (no minimum)
         self.assertEqual(MIN_VOICED_SEC, 3.0)
 
 
@@ -285,7 +285,7 @@ class ConfigRecordingRouteTests(unittest.TestCase):
             resp, status = v2.v2_config_recording.__wrapped__()
             data = resp.get_json()
             self.assertEqual(status, 200)
-            self.assertEqual(data["min_duration_sec"], 60.0)
+            self.assertEqual(data["min_duration_sec"], 0.0)  # retired 2026-07-15
             self.assertEqual(data["min_voiced_sec"], 3.0)
 
 

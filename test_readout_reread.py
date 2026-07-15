@@ -417,7 +417,9 @@ class ReadoutFromSessionTests(unittest.TestCase):
     def test_user_edited_text_folds_on_deckless_chunks(self):
         from services import lab_recording as mod
         from services.db import db
-        words = [f"w{i}" for i in range(60)]
+        # >300 chars → a TRUE legacy blob (the read-back probe re-splits
+        # only past the 300 hard cap since the 2026-07-15 sentence work).
+        words = [f"word{i}" for i in range(60)]
         stx = [{"index": 0, "transcript": " ".join(words),
                 "start_offset_ms": 0, "duration_ms": 30000}]
         edits = [{"snippet_id": None, "chunk_index": 1, "text": "my fix"}]

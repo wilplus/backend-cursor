@@ -287,7 +287,10 @@ class ChunkWordsByCharsTests(unittest.TestCase):
         rebuilt = " ".join(c["transcript"] for c in out)
         self.assertEqual(rebuilt, " ".join(w["word"] for w in words))
         for c in out:
-            self.assertLessEqual(len(c["transcript"]), 200)
+            # unpunctuated input cuts at the HARD cap (300 = 200+100,
+            # founder-locked 2026-07-15); sentence-aware behavior is
+            # covered in test_pieces_canonical.SentenceAwareChunkTests
+            self.assertLessEqual(len(c["transcript"]), 300)
         # spans are monotonic — text and audio can't drift
         starts = [c["start_offset_ms"] for c in out]
         self.assertEqual(starts, sorted(starts))
@@ -324,7 +327,10 @@ class ChunkTranscriptByCharsTests(unittest.TestCase):
         out = self._chunk(text)
         self.assertEqual(" ".join(c["transcript"] for c in out), text)
         for c in out:
-            self.assertLessEqual(len(c["transcript"]), 200)
+            # unpunctuated input cuts at the HARD cap (300 = 200+100,
+            # founder-locked 2026-07-15); sentence-aware behavior is
+            # covered in test_pieces_canonical.SentenceAwareChunkTests
+            self.assertLessEqual(len(c["transcript"]), 300)
 
 
 class DecklessChunksFromStxTests(unittest.TestCase):

@@ -377,6 +377,23 @@ def process_lab_recording(
         segments = []
         words_all = []
 
+    # Punctuation restoration (founder BE-1a, 2026-07-15): Whisper's word
+    # timestamps arrive punctuation-less; the segments carry the punctuated
+    # text. Restore it ONCE here — every consumer downstream (piece cutting,
+    # per-slide transcripts, persisted snippet words, feedback full text,
+    # ideal-text assembly) inherits punctuated tokens. Deterministic
+    # two-pointer alignment (no LLM); spans untouched; best-effort — any
+    # hiccup keeps the raw words (degraded, never garbled).
+    if words_all and segments:
+        try:
+            from services.slide_word_split import restore_punctuation
+            words_all = restore_punctuation(words_all, segments)
+        except Exception as _punct_err:
+            logger.warning(
+                "process_lab_recording: punctuation restore failed sid=%s: "
+                "%s (raw words kept)", session_id, _punct_err,
+            )
+
     # ── PIECES-CANONICAL (founder 2026-07-14 — "the piece IS the moment") ──
     # With word timestamps, the take is cut into ≤200-char TEXT pieces —
     # slide tap-boundaries FIRST (a piece never crosses a slide), then the

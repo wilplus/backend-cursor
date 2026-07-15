@@ -1,8 +1,9 @@
 """Validation of the willab Lab min-content gate (design §4 / §5.5).
 
 numpy-guarded: runs where numpy is installed, skips in the lean env.
-Confirms the salvaged content-validity rule (≥60s + has-speech, NO
-contrast requirement).
+Confirms the content-validity rule: has-speech ONLY — the minimum duration
+was RETIRED (founder 2026-07-15: no minimum anywhere, seconds-long snippet
+re-reads included). The has-speech floor scales down for short clips.
 
 Run: python3 -m unittest test_min_content_gate
 """
@@ -46,15 +47,24 @@ class MinContentGateTests(unittest.TestCase):
         out = self._eval(self._tone(60.0))
         self.assertTrue(out["ok"], out)
 
-    def test_30s_too_short(self):
+    def test_30s_voiced_passes_no_minimum(self):
+        # Founder 2026-07-15: minimum duration RETIRED — 30s voiced passes.
         out = self._eval(self._tone(30.0))
-        self.assertFalse(out["ok"])
-        self.assertEqual(out["reason"], "too_short")
+        self.assertTrue(out["ok"], out)
+        self.assertIsNone(out["reason"])
 
-    def test_just_under_60s_too_short(self):
-        out = self._eval(self._tone(59.0))
+    def test_seconds_long_reread_passes(self):
+        # A 2s fully-voiced snippet re-read passes (the has-speech floor
+        # scales down to half the clip length for short clips).
+        out = self._eval(self._tone(2.0))
+        self.assertTrue(out["ok"], out)
+
+    def test_short_silence_still_fails_no_speech(self):
+        # 2s of dead air is still rejected — the has-speech floor protects
+        # the pipeline; it is not a UX minimum.
+        out = self._eval(self._sil(2.0))
         self.assertFalse(out["ok"])
-        self.assertEqual(out["reason"], "too_short")
+        self.assertEqual(out["reason"], "no_speech")
 
     def test_60s_of_silence_no_speech(self):
         out = self._eval(self._sil(62.0))
@@ -86,7 +96,8 @@ class MinContentGateTests(unittest.TestCase):
 
     def test_thresholds_echoed(self):
         out = self._eval(self._tone(61.0))
-        self.assertEqual(out["thresholds"]["min_duration_sec"], 60.0)
+        # min_duration_sec retired → 0.0 (key kept for FE shape stability)
+        self.assertEqual(out["thresholds"]["min_duration_sec"], 0.0)
         self.assertEqual(out["thresholds"]["min_voiced_sec"], 3.0)
 
 
