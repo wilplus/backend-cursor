@@ -9581,6 +9581,178 @@ class DatabaseService:
                            session_id, e)
             return False
 
+    # ── willab — delivery layer (founder 2026-07-15) ────────────────────
+    # Async analysis state · per-take coach Save · the one-block ideal text
+    # · the user's notebook copy. See migrations/add_analysis_state.sql,
+    # add_coach_feedback_saved.sql, add_coach_arc_ideal_text.sql,
+    # add_user_arc_ideal_notes.sql.
+
+    def set_session_analysis_state(
+        self, session_id: str, state: str, error: Optional[str] = None,
+    ) -> bool:
+        """Flip the async-analysis job state on the session row
+        (processing | ready | failed). Best-effort; missing column
+        (migration pending) → False (the sync path never reads it)."""
+        if not session_id or state not in ("processing", "ready", "failed"):
+            return False
+        payload: dict = {"analysis_state": state}
+        if state == "failed":
+            payload["analysis_error"] = (str(error) if error else "unknown")[:500]
+        try:
+            self.client.table("v2_sessions").update(payload).eq(
+                "id", session_id).execute()
+            return True
+        except Exception as e:
+            if "analysis_state" in str(e).lower():
+                logger.warning(
+                    "set_session_analysis_state: column missing (run "
+                    "migrations/add_analysis_state.sql) sid=%s", session_id,
+                )
+                return False
+            logger.warning("set_session_analysis_state failed sid=%s: %s",
+                           session_id, e)
+            return False
+
+    def set_session_feedback_saved(self, session_id: str) -> bool:
+        """Stamp the per-take coach 'Save' checkpoint (nothing delivered —
+        the publish requires all 3 takes saved). Best-effort."""
+        if not session_id:
+            return False
+        try:
+            self.client.table("v2_sessions").update({
+                "coach_feedback_saved_at":
+                    datetime.now(timezone.utc).isoformat(),
+            }).eq("id", session_id).execute()
+            return True
+        except Exception as e:
+            if "coach_feedback_saved_at" in str(e).lower():
+                logger.warning(
+                    "set_session_feedback_saved: column missing (run "
+                    "migrations/add_coach_feedback_saved.sql) sid=%s",
+                    session_id,
+                )
+                return False
+            logger.warning("set_session_feedback_saved failed sid=%s: %s",
+                           session_id, e)
+            return False
+
+    def get_coach_arc_ideal_text(self, arc_id: Optional[str]) -> Optional[dict]:
+        """The coach's one-block ideal text row for an arc, or None (no row /
+        missing table / error → the caller falls back to the auto draft)."""
+        if not arc_id:
+            return None
+        try:
+            res = (
+                self.client.table("coach_arc_ideal_text")
+                .select("*")
+                .eq("arc_id", str(arc_id))
+                .limit(1)
+                .execute()
+            )
+            rows = res.data or []
+            return rows[0] if rows else None
+        except Exception as e:
+            _e = str(e).lower()
+            if "coach_arc_ideal_text" in _e and (
+                "does not exist" in _e or "pgrst" in _e
+            ):
+                return None
+            logger.warning("get_coach_arc_ideal_text failed arc=%s: %s",
+                           arc_id, e)
+            return None
+
+    def upsert_coach_arc_ideal_text(
+        self, arc_id: str, text: str, updated_by: Optional[str],
+        *, approve: bool = False,
+    ) -> bool:
+        """Save (and optionally approve) the coach's one-block ideal text.
+        approve=True stamps approved_at — the gate the student GET requires.
+        Re-saving after approval keeps approved_at (edits post-approval stay
+        approved; the coach explicitly owns the content either way)."""
+        if not arc_id or not isinstance(text, str) or not text.strip():
+            return False
+        payload: dict = {
+            "arc_id": str(arc_id),
+            "text": text,
+            "updated_by": str(updated_by) if updated_by else None,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+        if approve:
+            payload["approved_at"] = datetime.now(timezone.utc).isoformat()
+        try:
+            self.client.table("coach_arc_ideal_text").upsert(
+                payload, on_conflict="arc_id").execute()
+            return True
+        except Exception as e:
+            _e = str(e).lower()
+            if "coach_arc_ideal_text" in _e and (
+                "does not exist" in _e or "pgrst" in _e
+            ):
+                logger.warning(
+                    "upsert_coach_arc_ideal_text: table missing (run "
+                    "migrations/add_coach_arc_ideal_text.sql) arc=%s", arc_id,
+                )
+                return False
+            logger.warning("upsert_coach_arc_ideal_text failed arc=%s: %s",
+                           arc_id, e)
+            return False
+
+    def get_user_arc_ideal_notes(
+        self, arc_id: Optional[str], user_id: Optional[str],
+    ) -> Optional[str]:
+        """The user's personal notebook copy of the ideal text (or None)."""
+        if not arc_id or not user_id:
+            return None
+        try:
+            res = (
+                self.client.table("user_arc_ideal_notes")
+                .select("text")
+                .eq("arc_id", str(arc_id))
+                .eq("user_id", str(user_id))
+                .limit(1)
+                .execute()
+            )
+            rows = res.data or []
+            return rows[0].get("text") if rows else None
+        except Exception as e:
+            _e = str(e).lower()
+            if "user_arc_ideal_notes" in _e and (
+                "does not exist" in _e or "pgrst" in _e
+            ):
+                return None
+            logger.warning("get_user_arc_ideal_notes failed arc=%s: %s",
+                           arc_id, e)
+            return None
+
+    def upsert_user_arc_ideal_notes(
+        self, arc_id: str, user_id: str, text: str,
+    ) -> bool:
+        """Save the user's personal notebook copy. NEVER touches the coach
+        canonical (L1 — the deliverable stays the coach-approved select)."""
+        if not arc_id or not user_id or not isinstance(text, str):
+            return False
+        try:
+            self.client.table("user_arc_ideal_notes").upsert({
+                "arc_id": str(arc_id),
+                "user_id": str(user_id),
+                "text": text,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }, on_conflict="arc_id,user_id").execute()
+            return True
+        except Exception as e:
+            _e = str(e).lower()
+            if "user_arc_ideal_notes" in _e and (
+                "does not exist" in _e or "pgrst" in _e
+            ):
+                logger.warning(
+                    "upsert_user_arc_ideal_notes: table missing (run "
+                    "migrations/add_user_arc_ideal_notes.sql) arc=%s", arc_id,
+                )
+                return False
+            logger.warning("upsert_user_arc_ideal_notes failed arc=%s: %s",
+                           arc_id, e)
+            return False
+
     def set_session_priming(
         self, session_id: str,
         condition: Optional[str], phrase: Optional[str],
@@ -10151,11 +10323,33 @@ class DatabaseService:
 
     def get_arc_sessions(self, arc_id: Optional[str]) -> list[dict]:
         """The takes of an explore arc, ORDERED by take_index (Prompt A §3/§5).
-        Powers cross-take selection. Best-effort: [] on missing column / no
-        arc / DB hiccup."""
+        Powers cross-take selection + the delivery layer (spoken/read split,
+        per-take Save state). Best-effort: [] on missing column / no arc /
+        DB hiccup; the delivery-layer columns degrade to absent pre-migration
+        (older rows read as spoken/unsaved)."""
         if not arc_id:
             return []
+        _full_cols = ("id, user_id, arc_id, take_index, status, "
+                      "created_at, intake_context, results_published_at, "
+                      "recording_kind, paired_session_id, "
+                      "coach_feedback_saved_at")
         try:
+            try:
+                res = (
+                    self.client.table("v2_sessions")
+                    .select(_full_cols)
+                    .eq("arc_id", arc_id)
+                    .order("take_index", desc=False)
+                    .execute()
+                )
+                return res.data or []
+            except Exception as _e_full:
+                _low = str(_e_full).lower()
+                # Delivery-layer columns not migrated yet → the legacy list.
+                if not any(c in _low for c in (
+                        "recording_kind", "paired_session_id",
+                        "coach_feedback_saved_at")):
+                    raise
             res = (
                 self.client.table("v2_sessions")
                 .select("id, user_id, arc_id, take_index, status, "
@@ -10199,11 +10393,28 @@ class DatabaseService:
         the flat general bucket). Best-effort: [] on missing column / hiccup."""
         if not user_id:
             return []
+        _legacy_cols = ("id, arc_id, take_index, status, created_at, "
+                        "intake_context, results_published_at")
+        _full_cols = _legacy_cols + ", recording_kind, paired_session_id"
         try:
+            try:
+                res = (
+                    self.client.table("v2_sessions")
+                    .select(_full_cols)
+                    .eq("user_id", str(user_id))
+                    .not_.is_("arc_id", "null")
+                    .order("created_at", desc=False)
+                    .execute()
+                )
+                return res.data or []
+            except Exception as _ef:
+                _lowf = str(_ef).lower()
+                if not ("recording_kind" in _lowf
+                        or "paired_session_id" in _lowf):
+                    raise
             res = (
                 self.client.table("v2_sessions")
-                .select("id, arc_id, take_index, status, created_at, "
-                        "intake_context, results_published_at")
+                .select(_legacy_cols)
                 .eq("user_id", str(user_id))
                 .not_.is_("arc_id", "null")
                 .order("created_at", desc=False)

@@ -337,6 +337,9 @@ def compose_presentation(picks: dict, slides: list) -> list:
                 # (P8). Metadata, not deliverable text: NOT hidden pre-finalize
                 # (same class as take_index / breakthrough).
                 "snippet_id": pick.get("snippet_id"),
+                # The take this pick came from — feedback-page deep link
+                # (metadata, same class as take_index; null on filler slides).
+                "session_id": pick.get("session_id"),
                 "audio_ref": pick.get("audio_ref"),
                 # span of THIS line inside the take audio — the FE plays
                 # [start_offset_ms, start_offset_ms+duration_ms] so the spoken
@@ -359,7 +362,8 @@ def compose_presentation(picks: dict, slides: list) -> list:
             out.append({
                 "index": i, "title": slide.get("title") or "",
                 "body": slide.get("body") or "",
-                "text": "", "snippet_id": None, "audio_ref": None,
+                "text": "", "snippet_id": None, "session_id": None,
+                "audio_ref": None,
                 "start_offset_ms": None, "duration_ms": None,
                 "take_index": None, "breakthrough": False,
                 "breakthrough_note": None,
@@ -464,7 +468,7 @@ def _arc_labels(db, labels_batch, sid):
 # Bump when the cached compose PAYLOAD shape changes (a new per-slide field
 # must force one recompute per arc — the content signature alone can't see
 # shape changes). v2: + key_phrases (backlog 1.7, 2026-07-11).
-_BP_PAYLOAD_VERSION = "v3"
+_BP_PAYLOAD_VERSION = "v4"  # v4: picks carry session_id (delivery layer)
 
 
 def _bp_signature(sessions: list, corrections: Optional[dict] = None) -> str:
@@ -601,6 +605,10 @@ def build_best_presentation(
             candidates.append({
                 "slide_index": slide_index_for_offset(s.get("start_offset_ms"), advances),
                 "snippet_id": s.get("id"),
+                # The take this pick came from — the feedback-page deep link
+                # (ideal-text key-moment anchors) + the FE's snippet lookup.
+                # Metadata, same class as take_index.
+                "session_id": sid,
                 # Ideal-text key phrases (backlog 1.7): the winning pick's
                 # Say-It-Stronger upgrades become the slide's glanceable
                 # phrases (derived in compose_presentation). Display hints

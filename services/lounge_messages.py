@@ -39,9 +39,14 @@ VALID_ROLES = ("user", "bot", "system")
 # card — fired ONLY when the arc has >=3 takes AND is coach-reviewed AND paid.
 # "transcript_ready" = its unpaid/unreviewed counterpart (transcript text +
 # strong sides). Both bot-only, server-inserted; the FE never sends them.
+# "feedback" (grey ×3) + "ideal_text" (purple ×1) = the delivery-layer
+# bubbles (founder 2026-07-15), inserted server-side by the coach's
+# "Save and Publish full analysis"; the FE opens the feedback page /
+# ideal-text notebook from their metadata.
 VALID_KINDS = (
     "text", "joke", "status", "recording_summary", "insight", "cadence",
     "best_presentation_ready", "transcript_ready",
+    "feedback", "ideal_text",
 )
 
 # §7.9 — bound the merge batch. A long unsigned session can produce a
