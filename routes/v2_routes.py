@@ -8372,12 +8372,14 @@ def v2_user_get_session_readout(session_id):
         if _an_state == "processing":
             return jsonify({
                 "session_id": session_id, "published": False,
-                "state": "processing", "readout": None,
+                "state": "processing", "analysis_state": "processing",
+                "readout": None,
             }), 200
         if _an_state == "failed":
             return jsonify({
                 "session_id": session_id, "published": False,
-                "state": "failed", "readout": None,
+                "state": "failed", "analysis_state": "failed",
+                "readout": None,
             }), 200
 
         # Founder re-lock 2026-07-06: the AUTOMATIC readout AND the coach's
@@ -8427,6 +8429,10 @@ def v2_user_get_session_readout(session_id):
             "session_id": session_id,
             "published": published,
             "state": state,
+            # The async job's TERMINAL signal, unambiguous for the FE poll:
+            # anything past processing|failed is "ready" (NULL = legacy/sync
+            # rows, only ever persisted after a completed analysis).
+            "analysis_state": "ready",
             # Per-arc paid flag, mirrored top-level (also inside the readout) —
             # an echo for the FE's OTHER paid-deliverable CTAs; this readout's
             # own coach layer is unconditionally free (2026-07-06 re-price).
@@ -8485,17 +8491,17 @@ def v2_guest_get_recording_readout(session_id):
             }), 404
 
         # Async analysis (founder 2026-07-15) — job state first; the FE polls
-        # this route (guests included) until ready|failed.
+        # this route (guests included) until analysis_state ready|failed.
         _an_state = session.get("analysis_state")
         if _an_state == "processing":
             return jsonify({
                 "session_id": session_id, "state": "processing",
-                "readout": None,
+                "analysis_state": "processing", "readout": None,
             }), 200
         if _an_state == "failed":
             return jsonify({
                 "session_id": session_id, "state": "failed",
-                "readout": None,
+                "analysis_state": "failed", "readout": None,
             }), 200
 
         from services.lab_recording import build_readout_from_session
@@ -8511,6 +8517,9 @@ def v2_guest_get_recording_readout(session_id):
         return jsonify({
             "session_id": session_id,
             "state": state,
+            # Unambiguous poll terminal (see the authed twin): past
+            # processing|failed everything is "ready".
+            "analysis_state": "ready",
             "readout": readout,
         }), 200
     except Exception as e:
@@ -11866,11 +11875,15 @@ def v2_explore_get_ideal_text(arc_id):
                 "arc_id": arc_id, "locked": True, "reason": "NOT_APPROVED",
             }), 200
         from services.ideal_text_block import extract_key_moments
+        _notes = db.get_user_arc_ideal_notes(arc_id, request.user_id)
         return jsonify({
             "arc_id": arc_id,
             "text": row["text"],
-            "notes_text": db.get_user_arc_ideal_notes(
-                arc_id, request.user_id),
+            # The personal notebook copy — served under three keys (the FE
+            # mapper historically read notes/user_notes; keep all aligned).
+            "notes_text": _notes,
+            "notes": _notes,
+            "user_notes": _notes,
             "key_moments": extract_key_moments(row["text"]),
             "approved": True,
         }), 200
@@ -11920,21 +11933,92 @@ def v2_explore_put_ideal_notes(arc_id):
 @v2_bp.route("/coach/sessions/<session_id>/save-feedback", methods=["POST"])
 @require_admin_or_coach
 def v2_coach_save_feedback(session_id):
-    """The per-take coach 'Save' checkpoint (founder 2026-07-15): stamps the
-    take as reviewed-and-saved so the coach can move to the next recording.
-    Delivers NOTHING — the single 'Save and Publish full analysis' does.
-    200 {saved:true} · 400 · 404 · 500"""
+    """The per-take coach 'Save' checkpoint (founder 2026-07-15): PERSISTS the
+    coach's authoring for this take and stamps it reviewed-and-saved so the
+    coach can move to the next recording. Delivers NOTHING to the student —
+    the single 'Save and Publish full analysis' does.
+
+    Body (FE sends the same shape the old publish door took — save-at-once,
+    no per-keystroke autosave):
+      snippets?: [{id, note?, tag?, surfaced?, direction?|direction_label?,
+                   transcript_corrected?, ...}]   → the two-lane store, via
+                  the SAME shared helper as every other door (no drift);
+      labels?:   [{snippet_id, value, ...}]       → private training_labels
+                  (harmless duplicate of snippets[].direction — idempotent);
+      insights_payload? / overall_message? / notify_client?  → accepted and
+                  IGNORED here (assembly happens at publish; persisting
+                  insights_payload pre-publish would leak the coach layer to
+                  the user readout, which folds it whenever present).
+
+    200 {saved:true, snippets_saved} · 400 · 404 · 422 · 500"""
     if not _is_valid_uuid(session_id):
         return jsonify({"code": "INVALID_INPUT",
                         "error": "session_id must be a UUID"}), 400
     try:
-        if not db.v2_get_session_by_id(session_id):
+        session = db.v2_get_session_by_id(session_id)
+        if not session:
             return jsonify({"code": "SESSION_NOT_FOUND",
                             "error": "Session not found"}), 404
+        body = request.get_json(silent=True) or {}
+
+        # ── Persist the inline authoring (same doors-can't-drift helper). ──
+        _n_saved = 0
+        _inline = body.get("snippets")
+        if isinstance(_inline, list) and _inline:
+            _known = {
+                str(s.get("id"))
+                for s in (db.get_snippets_by_session(session_id) or [])
+                if s.get("id")
+            }
+            for _entry in _inline:
+                if not isinstance(_entry, dict):
+                    return jsonify({
+                        "code": "INVALID_INPUT",
+                        "error": "snippets: entries must be objects",
+                    }), 422
+                _snip_id = str(_entry.get("id") or "").strip()
+                if _snip_id not in _known:
+                    return jsonify({
+                        "code": "SNIPPET_NOT_FOUND",
+                        "error": f"snippet {_snip_id or '(missing id)'} "
+                                 "not in this session",
+                    }), 404
+                _fields = dict(_entry)
+                _fields.pop("id", None)
+                if "direction" in _fields and "direction_label" not in _fields:
+                    _fields["direction_label"] = _fields.pop("direction")
+                _lane_err = _save_coach_snippet_lanes(
+                    session_id, _snip_id, _fields,
+                )
+                if _lane_err is not None:
+                    return _lane_err
+                _n_saved += 1
+
+        # ── labels[] (old publish-body shape) — private lane, idempotent. ──
+        _labels = body.get("labels")
+        if isinstance(_labels, list) and _labels:
+            try:
+                from services.training_labels import validate_publish_labels
+                _known = {
+                    str(s.get("id"))
+                    for s in (db.get_snippets_by_session(session_id) or [])
+                    if s.get("id")
+                }
+                clean = validate_publish_labels(
+                    _labels, _known, require_all=False)
+                db.upsert_training_labels(
+                    session_id, str(request.user_id), clean)
+            except Exception as _lab_err:
+                return jsonify({
+                    "code": "INVALID_INPUT",
+                    "error": f"labels: {_lab_err}",
+                }), 422
+
         if not db.set_session_feedback_saved(session_id):
             return jsonify({"code": "V2_ERROR",
                             "error": "Could not save"}), 500
-        return jsonify({"saved": True, "session_id": session_id}), 200
+        return jsonify({"saved": True, "session_id": session_id,
+                        "snippets_saved": _n_saved}), 200
     except Exception as e:
         logger.error("save-feedback failed sid=%s: %s", session_id, e,
                      exc_info=True)
