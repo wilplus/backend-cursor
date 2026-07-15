@@ -23,12 +23,18 @@ app.config["MAX_CONTENT_LENGTH"] = max(
     int(getattr(config, "MAX_AUDIO_SIZE_MB", 25)),
     int(getattr(config, "MAX_REFERENCE_VIDEO_SIZE_MB", 500)),
 ) * 1024 * 1024
-# Explicit headers so browser uploads from Next admin (Bearer + multipart) pass preflight.
+# Explicit headers so browser uploads from Next admin (Bearer + multipart) pass
+# preflight. Accept + X-Requested-With added 2026-07-15: big deck uploads
+# (>~4.5MB) bypass the Vercel BFF body cap and hit
+# POST /v2/lab/presentation/extract DIRECTLY from the browser — the fetch
+# sends those two headers, and a preflight fails on ANY unlisted header even
+# when the origin matches.
 CORS(
     app,
     origins=config.CORS_ORIGINS,
     supports_credentials=True,
-    allow_headers=["Authorization", "Content-Type", "X-Internal-Secret"],
+    allow_headers=["Authorization", "Content-Type", "X-Internal-Secret",
+                   "Accept", "X-Requested-With"],
     methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
 )
 

@@ -684,6 +684,83 @@ class PiecesCanonicalReadoutTests(unittest.TestCase):
         self.assertEqual(ic[0]["transcript"], "part one")
 
 
+class AppliedUpgradesReplayTests(unittest.TestCase):
+    """replay_applied_upgrades + the readout fold (founder 2026-07-15):
+    the FE's Approve toggle survives reload."""
+
+    def test_applied_then_reverted_then_applied(self):
+        from services.lab_recording import replay_applied_upgrades
+        rows = [
+            {"snippet_id": "a", "target": "upgrade", "upgrade_index": 0,
+             "action": "applied"},
+            {"snippet_id": "a", "target": "upgrade", "upgrade_index": 1,
+             "action": "applied"},
+            {"snippet_id": "a", "target": "upgrade", "upgrade_index": 0,
+             "action": "reverted"},
+            {"snippet_id": "a", "target": "upgrade", "upgrade_index": 0,
+             "action": "applied"},
+        ]
+        out = replay_applied_upgrades(rows, {"a": 3})
+        self.assertEqual(out, {"a": [0, 1]})
+
+    def test_apply_all_expands_then_single_revert(self):
+        from services.lab_recording import replay_applied_upgrades
+        rows = [
+            {"snippet_id": "a", "target": "comment", "action": "apply_all"},
+            {"snippet_id": "a", "target": "upgrade", "upgrade_index": 1,
+             "action": "reverted"},
+        ]
+        out = replay_applied_upgrades(rows, {"a": 3})
+        self.assertEqual(out, {"a": [0, 2]})
+
+    def test_indexes_outside_current_card_dropped(self):
+        from services.lab_recording import replay_applied_upgrades
+        rows = [{"snippet_id": "a", "target": "upgrade", "upgrade_index": 5,
+                 "action": "applied"},
+                {"snippet_id": "a", "target": "upgrade", "upgrade_index": 1,
+                 "action": "applied"}]
+        out = replay_applied_upgrades(rows, {"a": 2})
+        self.assertEqual(out, {"a": [1]})
+
+    def test_fully_reverted_snippet_omitted(self):
+        from services.lab_recording import replay_applied_upgrades
+        rows = [{"snippet_id": "a", "target": "upgrade", "upgrade_index": 0,
+                 "action": "applied"},
+                {"snippet_id": "a", "target": "upgrade", "upgrade_index": 0,
+                 "action": "reverted"}]
+        self.assertEqual(replay_applied_upgrades(rows, {"a": 2}), {})
+        self.assertEqual(replay_applied_upgrades([], {"a": 2}), {})
+        self.assertEqual(replay_applied_upgrades(None, {}), {})
+
+    def test_readout_folds_applied_state_onto_pieces_and_chunks(self):
+        from services import lab_recording as mod
+        from services.db import db
+        card = {"already_strong": False,
+                "upgrades": [{"original": "good", "upgrade": "strong",
+                              "kind": "upgrade", "scope": "word"},
+                             {"original": "very nice", "upgrade": "sharp",
+                              "kind": "upgrade", "scope": "phrase"}],
+                "why": None, "version": 2}
+        row = _snippet("a", say_it_stronger=card)
+        row["metrics"]["piece"] = {"index": 0}
+        rows_fb = [{"snippet_id": "a", "target": "upgrade",
+                    "upgrade_index": 1, "action": "applied",
+                    "created_at": "2026-07-15T10:00:00Z"}]
+        with patch.object(db, "get_snippets_by_session", return_value=[row]), \
+             patch.object(db, "v2_get_session_by_id", return_value={}), \
+             patch.object(db, "get_session_intake_context", return_value={}), \
+             patch.object(db, "get_session_slide_transcripts",
+                          return_value=None), \
+             patch.object(db, "get_user_transcript_edits", return_value=[]), \
+             patch.object(db, "get_suggestion_feedback_by_session",
+                          return_value=rows_fb):
+            out = mod.build_readout_from_session(
+                "sess1", include_insights=False)
+        self.assertEqual(out["snippets"][0]["applied_upgrade_indexes"], [1])
+        self.assertEqual(out["instant_chunks"][0]["applied_upgrade_indexes"],
+                         [1])
+
+
 class PrimingFenceTests(unittest.TestCase):
     """The pre-take priming manipulation (founder 2026-07-13) is a PRIVATE
     coach/research signal on the session row — it must NEVER surface in the
