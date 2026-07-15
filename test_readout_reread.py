@@ -552,6 +552,7 @@ class PiecesCanonicalReadoutTests(unittest.TestCase):
             # The record-time LEARNED tone word (founder carve-out) — the
             # USER surface's comment tone. The coach surface must ignore it.
             "user_tone_word": "confident",
+            "recording_kind": "spoken",
             "stickiness": {"composite": None, "comment": None},
         }
         if slide_index is not None:
@@ -567,10 +568,14 @@ class PiecesCanonicalReadoutTests(unittest.TestCase):
         base.update(over)
         return base
 
-    def _build(self, rows, include_slide_scores=False, stx=None, ctx=None):
+    def _build(self, rows, include_slide_scores=False, stx=None, ctx=None,
+               prefill=False):
         from services import lab_recording as mod
         from services.db import db
-        with patch.object(db, "get_snippets_by_session", return_value=rows), \
+        # Machine comment is DEFAULT-OFF (founder 2026-07-14); the comment-
+        # content tests opt in via prefill=True (COACH_PREFILL_ENABLED).
+        with patch.object(mod, "_coach_prefill_enabled", return_value=prefill), \
+             patch.object(db, "get_snippets_by_session", return_value=rows), \
              patch.object(db, "v2_get_session_by_id", return_value={}), \
              patch.object(db, "get_session_intake_context",
                           return_value=(ctx if ctx is not None else {})), \
@@ -594,6 +599,20 @@ class PiecesCanonicalReadoutTests(unittest.TestCase):
         self.assertEqual(ic[2]["slide_index"], 1)
         self.assertEqual(ic[0]["transcript"], "piece text 0")
         self.assertEqual(ic[0]["start_offset_ms"], 0)
+
+    def test_no_machine_comment_by_default(self):
+        # Founder 2026-07-14: the user instant view is suggestions-only — no
+        # machine comment unless COACH_PREFILL_ENABLED is set.
+        rows = [self._piece_row("a", 0)]
+        out = self._build(rows)               # prefill=False (default)
+        self.assertIsNone(out["instant_chunks"][0].get("auto_comment"))
+        self.assertNotIn("Coach-only draft",
+                         out["snippets"][0].get("auto_comment") or "")
+
+    def test_user_comment_learned_tone_when_prefill_on(self):
+        rows = [self._piece_row("a", 0, slide_index=0)]
+        out = self._build(rows, prefill=True)
+        ic = out["instant_chunks"]
         # USER surface: the serve-time comment carries the LEARNED tone word
         # (user_tone_word) — never the coach's draft text.
         self.assertIn("sounded rather confident", ic[0]["auto_comment"])
@@ -622,28 +641,26 @@ class PiecesCanonicalReadoutTests(unittest.TestCase):
         self.assertNotIn("outside_normal_range", raw)
         self.assertNotIn("Coach-only draft", raw)
 
-    def test_coach_packet_carries_the_potentiometer_and_acoustic_tone(self):
+    def test_coach_packet_carries_the_potentiometer(self):
+        # The potentiometer is served REGARDLESS of the comment flag (it is
+        # not a comment) — this is the coach's key-moment triage signal.
         rows = [self._piece_row("a", 0)]
-        out = self._build(rows, include_slide_scores=True)
+        out = self._build(rows, include_slide_scores=True)  # prefill=False
         snip = out["snippets"][0]
         self.assertEqual(snip["acoustic_read"]["potentiometer"], 0.72)
         self.assertTrue(snip["acoustic_read"]["outside_normal_range"])
-        # COACH surface: the comment tone comes from the ACOUSTIC lean only —
-        # blind of the learned user_tone_word. (Here both say "confident",
-        # but the source is the potentiometer; the blind-source test lives in
-        # test_acoustic_read.ToneWordResolutionTests.)
-        self.assertIn("sounded rather confident", snip["auto_comment"])
+        self.assertEqual(snip["recording_kind"], "spoken")
 
-    def test_coach_comment_tone_is_acoustic_not_learned(self):
-        # The decisive blind test: learned word says "stressed", acoustic
-        # lean says "confident" → the COACH surface must say confident (the
-        # model's guess never reaches the labeling surface), the USER surface
-        # says stressed (the founder carve-out).
+    def test_coach_comment_tone_is_acoustic_not_learned_when_prefill_on(self):
+        # The decisive blind test (only relevant when the pre-fill is on):
+        # learned word says "stressed", acoustic lean says "confident" → the
+        # COACH surface says confident (the model's guess never reaches the
+        # labeling surface), the USER surface says stressed (the carve-out).
         rows = [self._piece_row("a", 0)]
         rows[0]["metrics"]["user_tone_word"] = "stressed"
         coach = self._build([dict(rows[0], metrics=dict(
-            rows[0]["metrics"]))], include_slide_scores=True)
-        user = self._build(rows, include_slide_scores=False)
+            rows[0]["metrics"]))], include_slide_scores=True, prefill=True)
+        user = self._build(rows, include_slide_scores=False, prefill=True)
         self.assertIn("confident", coach["snippets"][0]["auto_comment"])
         self.assertIn("stressed", user["snippets"][0]["auto_comment"])
 
