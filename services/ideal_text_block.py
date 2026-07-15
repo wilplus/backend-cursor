@@ -85,6 +85,45 @@ def assemble_ideal_text_block(arc_id: str, *, database=None) -> dict:
     }
 
 
+def maybe_assemble_ideal_text(arc_id: Optional[str], *, database=None) -> bool:
+    """EAGER assembly (founder 2026-07-15): called from the analysis pipeline
+    when a SPOKEN take completes — the moment the arc's 3rd spoken take is in,
+    assemble the draft and PERSIST it as the machine block, so the coach's
+    panel opens instantly and the coach list can badge "ideal text ready to
+    review". Idempotent + guard-safe:
+      * <3 spoken takes → no-op;
+      * a coach-edited or approved block → never touched (db guard);
+      * a machine block → refreshed (a re-record improves the draft).
+    Best-effort: any failure returns False, never raises into the pipeline."""
+    if not arc_id:
+        return False
+    try:
+        if database is None:
+            from services.db import db as database
+        from services.best_presentation import (
+            TAKES_TARGET, spoken_arc_sessions,
+        )
+        spoken = spoken_arc_sessions(database.get_arc_sessions(arc_id))
+        if len(spoken) < TAKES_TARGET:
+            return False
+        row = database.get_coach_arc_ideal_text(arc_id)
+        if row and (row.get("updated_by") or row.get("approved_at")):
+            return False  # coach owns it — nothing to do
+        auto = assemble_ideal_text_block(arc_id, database=database)
+        text = (auto.get("text") or "").strip()
+        if not auto.get("ready") or not text:
+            return False
+        ok = database.persist_auto_ideal_text(arc_id, text)
+        if ok:
+            logger.info("ideal_text: eager draft persisted arc=%s chars=%d",
+                        arc_id, len(text))
+        return ok
+    except Exception as e:
+        logger.warning("ideal_text: eager assembly failed arc=%s: %s",
+                       arc_id, e)
+        return False
+
+
 def extract_key_moments(text: Any) -> list:
     """Parse the [[moment:…]] anchors out of a (possibly coach-edited) block —
     the served key_moments list always reflects the CURRENT text, so a coach

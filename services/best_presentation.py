@@ -372,6 +372,19 @@ def compose_presentation(picks: dict, slides: list) -> list:
     return out
 
 
+def spoken_arc_sessions(sessions: Any) -> list:
+    """Only the SPOKEN takes of an arc (founder 2026-07-15 — reads are paired
+    variants, coach-listening material): a read must never count toward the
+    3-take readiness NOR compete as an ideal-text candidate. Rows without
+    recording_kind (legacy / pre-migration) read as spoken. Pure."""
+    return [
+        s for s in (sessions or [])
+        if isinstance(s, dict)
+        and s.get("recording_kind") != "read"
+        and not s.get("paired_session_id")
+    ]
+
+
 # ── Progress ────────────────────────────────────────────────────────────
 def presentation_progress(takes_done: int) -> dict:
     td = takes_done if isinstance(takes_done, int) and takes_done >= 0 else 0
@@ -523,7 +536,11 @@ def build_best_presentation(
     from services.slide_alignment import slide_index_for_offset
     db = database if database is not None else _default_db()
 
-    sessions = db.get_arc_sessions(arc_id) if arc_id else []
+    # SPOKEN takes only (founder 2026-07-15): reads must neither count toward
+    # readiness nor feed the candidate pool — one filter at the load point so
+    # progress, corrections, the cache signature, candidates, and finalize all
+    # inherit it.
+    sessions = spoken_arc_sessions(db.get_arc_sessions(arc_id)) if arc_id else []
     progress = presentation_progress(len(sessions))
 
     # Coach transcript corrections (Engine 2, founder 2026-07-11): the
