@@ -64,8 +64,10 @@ def _arc_owner_and_topic(db, arc_id: str) -> tuple[Optional[str], int, Any]:
     services.best_presentation, not from here (see maybe_fire_best_
     presentation_ready) — "all takes published" is NOT the same thing as "the
     coach corrected the ideal text" and must not be conflated."""
-    sessions = [s for s in (db.get_arc_sessions(arc_id) or [])
-                if isinstance(s, dict)]
+    from services.best_presentation import spoken_arc_sessions
+    # SPOKEN takes only (2026-07-15) — a read never counts toward the ≥3
+    # lifecycle trigger.
+    sessions = spoken_arc_sessions(db.get_arc_sessions(arc_id))
     owner = None
     topic = None
     for s in sessions:

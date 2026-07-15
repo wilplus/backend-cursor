@@ -3510,7 +3510,8 @@ class DatabaseService:
                 self.client.table("v2_sessions")
                 .select("id, recording_1_id, intake_context, status, "
                         "created_at, guest_claimed_at, results_published_at, "
-                        "insights_payload, arc_id, take_index, slide_transcripts")
+                        "insights_payload, arc_id, take_index, "
+                        "slide_transcripts, coach_feedback_saved_at")
                 .eq("user_id", user_id)
                 .eq("source", "audit_upload")
                 .order("created_at", desc=True)
@@ -3522,11 +3523,12 @@ class DatabaseService:
             err_low = str(e).lower()
             if "source" in err_low and "pgrst" in err_low:
                 return []
-            # arc_id/take_index/slide_transcripts are later migrations — fall
-            # back to the base select if any isn't present yet (pre
-            # add_explore_arc.sql / add_slide_transcripts.sql).
+            # arc_id/take_index/slide_transcripts/coach_feedback_saved_at are
+            # later migrations — fall back to the base select if any isn't
+            # present yet.
             if any(c in err_low for c in
-                   ("arc_id", "take_index", "slide_transcripts")):
+                   ("arc_id", "take_index", "slide_transcripts",
+                    "coach_feedback_saved_at")):
                 try:
                     res = (
                         self.client.table("v2_sessions")
@@ -9694,6 +9696,40 @@ class DatabaseService:
                 )
                 return False
             logger.warning("upsert_coach_arc_ideal_text failed arc=%s: %s",
+                           arc_id, e)
+            return False
+
+    def persist_auto_ideal_text(self, arc_id: str, text: str) -> bool:
+        """Persist the MACHINE-assembled ideal-text draft (eager assembly at
+        take 3, founder 2026-07-15). Writes only when no row exists, or the
+        existing row is machine-written (updated_by IS NULL) and UNAPPROVED —
+        a re-record refreshes the auto draft, a coach's edit or approval is
+        NEVER overwritten. updated_by stays NULL (the machine's signature).
+        Best-effort; False on guard-refuse / missing table / error."""
+        if not arc_id or not isinstance(text, str) or not text.strip():
+            return False
+        try:
+            row = self.get_coach_arc_ideal_text(arc_id)
+            if row and (row.get("updated_by") or row.get("approved_at")):
+                return False  # the coach owns it now — never clobber
+            self.client.table("coach_arc_ideal_text").upsert({
+                "arc_id": str(arc_id),
+                "text": text,
+                "updated_by": None,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }, on_conflict="arc_id").execute()
+            return True
+        except Exception as e:
+            _e = str(e).lower()
+            if "coach_arc_ideal_text" in _e and (
+                "does not exist" in _e or "pgrst" in _e
+            ):
+                logger.warning(
+                    "persist_auto_ideal_text: table missing (run "
+                    "migrations/add_coach_arc_ideal_text.sql) arc=%s", arc_id,
+                )
+                return False
+            logger.warning("persist_auto_ideal_text failed arc=%s: %s",
                            arc_id, e)
             return False
 

@@ -9328,18 +9328,43 @@ def v2_coach_student_detail(user_id):
                 state = "review_pending"
             else:
                 state = "readout_ready"
+            # Founder 2026-07-15: "saved feedback means REVIEWED." Three
+            # explicit states beside the legacy `state` (additive — the FE
+            # maps review_state safe-ahead): delivered (published) →
+            # reviewed (coach saved the take's feedback) → to_review.
+            if s.get("results_published_at"):
+                review_state = "delivered"
+            elif s.get("coach_feedback_saved_at"):
+                review_state = "reviewed"
+            else:
+                review_state = "to_review"
             sessions.append({
                 "session_id": s.get("id"),
                 "topic": (ctx or {}).get("topic") or "",
                 "created_at": s.get("created_at"),
                 "state": state,
+                "review_state": review_state,
+                "arc_id": s.get("arc_id"),
                 # nervous/excited/calm/unsure, or null if not captured.
                 "feeling": _feel_by_session.get(s.get("id")),
             })
+        # "Ideal text ready to review" badges (founder 2026-07-15) — the arcs
+        # with a persisted MACHINE draft awaiting the coach (unapproved).
+        _ideal_ready_arcs = []
+        for _aid in {s.get("arc_id") for s in sessions if s.get("arc_id")}:
+            try:
+                _row = db.get_coach_arc_ideal_text(_aid)
+                if _row and (_row.get("text") or "").strip() \
+                        and not _row.get("approved_at"):
+                    _ideal_ready_arcs.append(str(_aid))
+            except Exception:
+                continue
         return jsonify({
             "pseudonym": _coach_pseudonym(user_id),
             "domain": (prof or {}).get("domain") or "",
             "goal": (prof or {}).get("goal") or "",
+            # Arcs whose ideal text awaits coach review/approval.
+            "ideal_ready_arc_ids": _ideal_ready_arcs,
             # Goal-change context (Prompt A §6 C4 follow-up) — what the goal
             # WAS before the last change + when, so the coach sees old→new.
             # Null/empty when the goal has never been changed.
@@ -9599,6 +9624,25 @@ def v2_coach_get_session(session_id):
         ctx = session.get("intake_context") if isinstance(session.get("intake_context"), dict) else {}
         insights = session.get("insights_payload") if isinstance(session.get("insights_payload"), dict) else {}
         from services.feelings import shape_coach_feelings
+        # "Ideal text ready to review" (founder 2026-07-15) — a persisted,
+        # unapproved machine draft exists for this session's arc.
+        _arc_ideal_ready = False
+        if session.get("arc_id"):
+            try:
+                _it_row = db.get_coach_arc_ideal_text(session.get("arc_id"))
+                _arc_ideal_ready = bool(
+                    _it_row and (_it_row.get("text") or "").strip()
+                    and not _it_row.get("approved_at"))
+            except Exception:
+                _arc_ideal_ready = False
+        # Founder 2026-07-15: saved = REVIEWED (three explicit states beside
+        # the legacy `state`; additive, FE maps safe-ahead).
+        if session.get("results_published_at"):
+            _review_state = "delivered"
+        elif session.get("coach_feedback_saved_at"):
+            _review_state = "reviewed"
+        else:
+            _review_state = "to_review"
         return jsonify({
             "session_id": session_id,
             "pseudonym": _coach_pseudonym(session.get("user_id")),
@@ -9606,6 +9650,9 @@ def v2_coach_get_session(session_id):
             "topic": (ctx or {}).get("topic") or "",
             "sent_at": session.get("guest_claimed_at") or session.get("created_at") or "",
             "state": _coach_session_state(session, cstate),
+            "review_state": _review_state,
+            "arc_id": session.get("arc_id"),
+            "arc_ideal_ready": _arc_ideal_ready,
             "overall_message": (insights or {}).get("overall_message") or "",
             "video_ref": (session.get("coach_video_ref") or None),
             # Slide-deck context (UX Wave 4 BE-S6a) — coach sees the deck while
@@ -10874,8 +10921,11 @@ def v2_explore_arc_progress(arc_id):
                 isinstance(_edits.get(i), str) and _edits[i].strip()
                 for i in range(_n_slides)
             )
+        from services.best_presentation import spoken_arc_sessions
         return jsonify({
-            "arc_id": arc_id, **presentation_progress(len(sessions)),
+            # SPOKEN takes only (2026-07-15) — a read never inflates N/3.
+            "arc_id": arc_id,
+            **presentation_progress(len(spoken_arc_sessions(sessions))),
             "coach_finalized": _coach_finalized,
         }), 200
     except Exception as e:
@@ -11464,17 +11514,33 @@ def v2_explore_arc_feedback(arc_id):
 @v2_bp.route("/coach/arc/<arc_id>/ideal-text", methods=["GET"])
 @require_admin_or_coach
 def v2_coach_get_ideal_text(arc_id):
-    """The coach's review copy of the ONE-BLOCK ideal text: the saved coach
-    block when one exists, else the AUTO-assembled draft (build_best_
-    presentation picks collapsed, **bold** openings + [[moment:…]] anchors).
-    Same design/markers the user later sees — a look before final.
+    """The coach's review copy of the ONE-BLOCK ideal text. Since 2026-07-15
+    the draft is assembled EAGERLY when the arc's 3rd spoken take lands (see
+    maybe_assemble_ideal_text) — this GET normally serves the PERSISTED block
+    instantly. The lazy compute stays as the cold fallback so the panel is
+    never dead.
 
-    200 { arc_id, text, key_moments, approved, ready, source: "coach"|"auto" }
+    ``assembly_state`` + spoken take counts make the panel observable:
+      "pending" — fewer than 3 spoken takes (show "N of 3 takes recorded");
+      "ready"   — a block is served (persisted machine draft, coach edit, or
+                  the lazy-computed fallback).
+
+    200 { arc_id, text, key_moments, approved, ready,
+          source: "coach"|"machine"|"auto",
+          assembly_state, takes_done, takes_target }
     """
     try:
         from services.ideal_text_block import (
             assemble_ideal_text_block, extract_key_moments,
+            maybe_assemble_ideal_text,
         )
+        from services.best_presentation import (
+            TAKES_TARGET, spoken_arc_sessions,
+        )
+        _spoken_n = len(spoken_arc_sessions(db.get_arc_sessions(arc_id)))
+        _counts = {"takes_done": min(_spoken_n, TAKES_TARGET),
+                   "takes_target": TAKES_TARGET}
+
         row = db.get_coach_arc_ideal_text(arc_id)
         if row and (row.get("text") or "").strip():
             text = row["text"]
@@ -11482,14 +11548,33 @@ def v2_coach_get_ideal_text(arc_id):
                 "arc_id": arc_id, "text": text,
                 "key_moments": extract_key_moments(text),
                 "approved": bool(row.get("approved_at")),
-                "ready": True, "source": "coach",
+                "ready": True,
+                # coach = a human edited/owns it; machine = the eager draft
+                "source": ("coach" if row.get("updated_by") else "machine"),
+                "assembly_state": "ready",
+                **_counts,
             }), 200
+
+        # No persisted block. <3 spoken takes → honest pending (the FE shows
+        # the count); ≥3 → the eager job hasn't landed (older arc / hiccup):
+        # assemble NOW, persist for next time, serve it.
+        if _spoken_n < TAKES_TARGET:
+            return jsonify({
+                "arc_id": arc_id, "text": "",
+                "key_moments": [], "approved": False, "ready": False,
+                "source": "auto", "assembly_state": "pending",
+                **_counts,
+            }), 200
+        maybe_assemble_ideal_text(arc_id)  # persist for the next open
         auto = assemble_ideal_text_block(arc_id)
         return jsonify({
             "arc_id": arc_id, "text": auto.get("text") or "",
             "key_moments": auto.get("key_moments") or [],
             "approved": False,
-            "ready": bool(auto.get("ready")), "source": "auto",
+            "ready": bool(auto.get("ready")),
+            "source": "auto",
+            "assembly_state": ("ready" if auto.get("ready") else "pending"),
+            **_counts,
         }), 200
     except Exception as e:
         logger.error("coach ideal-text GET failed arc=%s: %s", arc_id, e,
@@ -12490,6 +12575,23 @@ def v2_lab_create_recording():
                     logger.warning(
                         "lab: arc cards failed sid=%s: %s (non-fatal)",
                         guest_session_id, _bpe,
+                    )
+
+            # EAGER ideal-text assembly (founder 2026-07-15): the moment the
+            # arc's 3rd SPOKEN take finishes analysis, assemble + persist the
+            # machine draft so the coach's panel opens instantly ("no loading
+            # or anything" fixed at the source). Idempotent; never clobbers a
+            # coach edit; a read never triggers it. Best-effort.
+            if arc_id and _rec_kind == "spoken":
+                try:
+                    from services.ideal_text_block import (
+                        maybe_assemble_ideal_text,
+                    )
+                    maybe_assemble_ideal_text(arc_id)
+                except Exception as _ea_err:
+                    logger.warning(
+                        "lab: eager ideal-text failed sid=%s: %s (non-fatal)",
+                        guest_session_id, _ea_err,
                     )
             return readout_local, sent_local
 
