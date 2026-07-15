@@ -11284,6 +11284,32 @@ class DatabaseService:
             logger.warning("insert_user_suggestion_feedback failed: %s", e)
             return False
 
+    def get_suggestion_feedback_by_session(self, session_id: str) -> list[dict]:
+        """All Apply/✓/revert taps for a session, CHRONOLOGICAL — the readout
+        replays them into per-snippet applied_upgrade_indexes so the FE's
+        Approve state (and its reversibility) survives reload (founder
+        2026-07-15). [] on missing table / none / error."""
+        if not session_id:
+            return []
+        try:
+            res = (
+                self.client.table("user_suggestion_feedback")
+                .select("snippet_id, target, upgrade_index, action, created_at")
+                .eq("session_id", str(session_id))
+                .order("created_at", desc=False)
+                .execute()
+            )
+            return res.data or []
+        except Exception as e:
+            _e = str(e).lower()
+            if "user_suggestion_feedback" in _e and (
+                "does not exist" in _e or "pgrst" in _e
+            ):
+                return []
+            logger.warning("get_suggestion_feedback_by_session failed sid=%s: %s",
+                           session_id, e)
+            return []
+
     def count_training_labels(self) -> int:
         """Total direction labels across all sessions — corpus size for the
         learning status + the auto-retrain threshold. 0 on missing table."""

@@ -976,6 +976,47 @@ def process_lab_recording(
     return build_readout_payload(snippets_data, stickiness_list)
 
 
+def replay_applied_upgrades(feedback_rows: list, card_sizes: dict) -> dict:
+    """Rebuild each snippet's CURRENT applied-suggestion set from the
+    chronological Apply/revert tap log (founder 2026-07-15 — the FE's
+    Approve toggle must survive reload):
+
+      * action='applied',  target='upgrade' → add that upgrade_index;
+      * action='reverted', target='upgrade' → remove it;
+      * action='apply_all'                  → add EVERY index of the
+        snippet's card (card_sizes[snippet_id] = len(upgrades) at serve).
+
+    Returns {snippet_id: sorted [indexes]} — only sets that end non-empty.
+    Indexes outside the card's current size are dropped (a regenerated card
+    can shrink). Pure; unknown rows skipped."""
+    applied: dict = {}
+    for r in (feedback_rows or []):
+        if not isinstance(r, dict):
+            continue
+        sid = str(r.get("snippet_id") or "")
+        if not sid:
+            continue
+        action = r.get("action")
+        target = r.get("target")
+        idx = r.get("upgrade_index")
+        cur = applied.setdefault(sid, set())
+        if action == "apply_all":
+            cur.update(range(int(card_sizes.get(sid) or 0)))
+        elif target == "upgrade" and isinstance(idx, int) \
+                and not isinstance(idx, bool):
+            if action == "applied":
+                cur.add(idx)
+            elif action == "reverted":
+                cur.discard(idx)
+    out: dict = {}
+    for sid, idxs in applied.items():
+        size = int(card_sizes.get(sid) or 0)
+        kept = sorted(i for i in idxs if 0 <= i < size)
+        if kept:
+            out[sid] = kept
+    return out
+
+
 def _attach_suggestions_to_chunks(chunks: list, out_snips: list) -> list:
     """Instant-view assembly (founder 2026-07-13): ONE deduped chunk list —
     each span of the full transcript appears EXACTLY once, with the salient
@@ -1158,6 +1199,29 @@ def build_readout_from_session(
                 snip_out["acoustic_read"] = _ar
         out_snips.append(snip_out)
 
+    # Applied-suggestion state (founder 2026-07-15) — replay the session's
+    # Apply/revert tap log so the FE's Approve toggle survives reload: each
+    # snippet with a card gets ``applied_upgrade_indexes`` (the indexes the
+    # user has currently applied). The user's OWN actions echoed back —
+    # nothing derived, no fence concern. Best-effort: [] pre-migration.
+    try:
+        _fb_rows = db.get_suggestion_feedback_by_session(session_id)
+        if _fb_rows:
+            _card_sizes = {
+                str(so.get("id")): len(
+                    (so.get("say_it_stronger") or {}).get("upgrades") or [])
+                for so in out_snips
+                if isinstance(so.get("say_it_stronger"), dict)
+            }
+            _applied = replay_applied_upgrades(_fb_rows, _card_sizes)
+            for so in out_snips:
+                _ap = _applied.get(str(so.get("id")))
+                if _ap:
+                    so["applied_upgrade_indexes"] = _ap
+    except Exception as _ap_err:
+        logger.warning("readout: applied-state fold failed sid=%s: %s",
+                       session_id, _ap_err)
+
     # Auto-comment (founder 2026-07-14) — the qualitative sentence in the
     # comment slot, computed HERE at serve time from each piece's own metrics
     # (never from the coach's ai_draft, so legacy coach drafts never leak to
@@ -1285,6 +1349,10 @@ def build_readout_from_session(
             **({"recording_kind": so.get("recording_kind")}
                if so.get("recording_kind") else {}),
             "say_it_stronger": so.get("say_it_stronger"),
+            # The user's currently-applied suggestion indexes (Approve state
+            # survives reload — founder 2026-07-15). Absent when none.
+            **({"applied_upgrade_indexes": so.get("applied_upgrade_indexes")}
+               if so.get("applied_upgrade_indexes") else {}),
             "auto_comment": so.get("auto_comment"),
             # Edit surfaces whether the FE keyed by snippet_id (preferred for
             # pieces) OR by chunk_index (deckless legacy pattern → the piece

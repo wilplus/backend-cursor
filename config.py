@@ -6,8 +6,17 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
+# The production app origin — CODE-guaranteed in the CORS allow-list
+# (2026-07-15): browser-direct calls (big deck uploads past the Vercel BFF
+# body cap → POST /v2/lab/presentation/extract) must never depend on a
+# Railway env var being set correctly to pass preflight.
+_PROD_APP_ORIGIN = "https://www.willpowerlab.com"
+
+
 def _merge_cors_origins() -> list:
-    """Comma-separated CORS_ORIGINS plus FRONTEND_URL origin (so admin browsers can poll the API when only FRONTEND_URL is set)."""
+    """Comma-separated CORS_ORIGINS plus FRONTEND_URL origin (so admin browsers
+    can poll the API when only FRONTEND_URL is set) plus the hard-coded
+    production app origin."""
     raw = os.getenv("CORS_ORIGINS", "http://localhost:3000")
     origins = [o.strip().rstrip("/") for o in raw.split(",") if o.strip()]
     fe = (os.getenv("FRONTEND_URL") or "").strip()
@@ -20,6 +29,8 @@ def _merge_cors_origins() -> list:
                     origins.append(origin)
         except Exception:
             pass
+    if _PROD_APP_ORIGIN not in origins:
+        origins.append(_PROD_APP_ORIGIN)
     return origins or ["http://localhost:3000"]
 
 
