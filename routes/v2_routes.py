@@ -8364,6 +8364,22 @@ def v2_user_get_session_readout(session_id):
                 "code": "SESSION_NOT_FOUND", "error": "Session not found",
             }), 404
 
+        # Async analysis (founder 2026-07-15) — while the background daemon
+        # is still running (or after it failed), serve the job state instead
+        # of a partial readout; the FE polls until ready|failed. NULL state =
+        # legacy/sync rows → fall through to the normal read.
+        _an_state = session.get("analysis_state")
+        if _an_state == "processing":
+            return jsonify({
+                "session_id": session_id, "published": False,
+                "state": "processing", "readout": None,
+            }), 200
+        if _an_state == "failed":
+            return jsonify({
+                "session_id": session_id, "published": False,
+                "state": "failed", "readout": None,
+            }), 200
+
         # Founder re-lock 2026-07-06: the AUTOMATIC readout AND the coach's
         # per-take layer (note, corrected transcript, breakthrough badge+video)
         # are NEVER 402-gated — every take of every arc reads free the instant
@@ -8467,6 +8483,20 @@ def v2_guest_get_recording_readout(session_id):
             return jsonify({
                 "code": "SESSION_NOT_FOUND", "error": "Recording not found",
             }), 404
+
+        # Async analysis (founder 2026-07-15) — job state first; the FE polls
+        # this route (guests included) until ready|failed.
+        _an_state = session.get("analysis_state")
+        if _an_state == "processing":
+            return jsonify({
+                "session_id": session_id, "state": "processing",
+                "readout": None,
+            }), 200
+        if _an_state == "failed":
+            return jsonify({
+                "session_id": session_id, "state": "failed",
+                "readout": None,
+            }), 200
 
         from services.lab_recording import build_readout_from_session
         readout = build_readout_from_session(session_id)
@@ -11439,9 +11469,17 @@ def v2_user_list_trainings():
 
         trainings = []
         for aid, sess in by_arc.items():
+            # Reads are paired variants of their spoken take (2026-07-14) —
+            # they must not appear/count as takes of their own.
+            sess = [s for s in sess
+                    if s.get("recording_kind") != "read"
+                    and not s.get("paired_session_id")]
             sess.sort(key=lambda s: (s.get("take_index") or 0))
+            if not sess:
+                continue
             topic = None
             n_slides = 0
+            cover_ref = None
             for s in sess:
                 ctx = s.get("intake_context") if isinstance(
                     s.get("intake_context"), dict) else {}
@@ -11449,6 +11487,10 @@ def v2_user_list_trainings():
                 if isinstance(t, str) and t.strip():
                     topic = t.strip()  # latest take wins (take order)
                 n_slides = max(n_slides, len((ctx or {}).get("slides") or []))
+                # Trainings-page header image (founder 2026-07-15) — the deck
+                # PDF; first non-null across takes; null → FE mock picture.
+                if cover_ref is None and ctx.get("presentation_ref"):
+                    cover_ref = ctx.get("presentation_ref")
             takes = [{
                 "session_id": str(s.get("id")),
                 "take_index": s.get("take_index"),
@@ -11458,6 +11500,9 @@ def v2_user_list_trainings():
                     if isinstance(s.get("intake_context"), dict) else {}
                 ).get("slides")),
                 "coach_reviewed": bool(s.get("results_published_at")),
+                # The take opens its FEEDBACK page once published (founder
+                # 2026-07-15) — alias kept beside coach_reviewed for the FE.
+                "feedback_available": bool(s.get("results_published_at")),
             } for s in sess]
             delivered = deliveries.get(aid)
             # Cheap coach_finalized mirror (same rule as /progress): every
@@ -11478,6 +11523,7 @@ def v2_user_list_trainings():
                 # explicitly though the FE falls back to arc_id if omitted.
                 "topic": topic,
                 "best_presentation_arc_id": aid,
+                "cover_ref": cover_ref,
                 "created_at": sess[0].get("created_at") if sess else None,
                 "take_count": len(sess),
                 "takes_target": TAKES_TARGET,
@@ -11493,6 +11539,530 @@ def v2_user_list_trainings():
         sentry_sdk.capture_exception(e)
         return jsonify({
             "code": "V2_ERROR", "error": "Failed to load trainings",
+        }), 500
+
+
+# ── willab — delivery layer (founder 2026-07-15) ────────────────────────
+#
+# The post-core delivery: per-take FEEDBACK (full text + key moments), the
+# one-block IDEAL TEXT (coach-approved, $25-gated), the coach Save/Publish
+# flow, and the 4-bubble delivery (3 grey feedback + 1 purple ideal text).
+# Supersedes the #186 single batch card (kept below, deprecated, until the
+# FE switches) and the per-slide coach ideal-text editing (same deal).
+
+
+def _async_analysis_enabled() -> bool:
+    """Async analysis (founder 2026-07-15): the upload 202s immediately and
+    the pipeline finishes in a server-side daemon — closing the tab / locking
+    the phone never kills it; the FE polls the readout GET. DEFAULT OFF until
+    the FE ships polling (deploy order: BE → FE handles 202 → flip
+    ASYNC_ANALYSIS_ENABLED=1 in Railway). LIVE-LOOP safe by construction."""
+    return (os.getenv("ASYNC_ANALYSIS_ENABLED") or "0").strip().lower() \
+        in ("1", "true", "yes")
+
+
+def _spoken_takes_and_reads(sessions):
+    """Split an arc's sessions into spoken takes (ordered by take_index) and
+    a {spoken_session_id: read_session} map. Rows without recording_kind
+    (pre-migration / legacy) read as spoken."""
+    spoken, reads = [], {}
+    for s in sessions:
+        if (s.get("recording_kind") == "read") or s.get("paired_session_id"):
+            if s.get("paired_session_id"):
+                reads[str(s.get("paired_session_id"))] = s
+        else:
+            spoken.append(s)
+    spoken.sort(key=lambda x: (x.get("take_index") or 0))
+    return spoken, reads
+
+
+def _take_full_text(session_id):
+    """A take's feedback text: pieces in speech order, per piece the coach
+    correction > the user's approved edit > the raw transcript (locked
+    assumption A1). Plain text, no playback, no scores."""
+    snips = db.get_snippets_by_session(session_id) or []
+    corrections = {}
+    for d in (db.get_coach_snippet_drafts(session_id) or []):
+        _sid = str(d.get("snippet_id"))
+        _tx = (d.get("transcript_corrected") or "").strip()
+        if _sid and _tx:
+            corrections[_sid] = _tx
+    edits = {}
+    try:
+        for e in (db.get_user_transcript_edits(session_id) or []):
+            if e.get("snippet_id") and (e.get("text") or "").strip():
+                edits[str(e["snippet_id"])] = e["text"].strip()
+    except Exception:
+        pass
+    parts = []
+    for s in sorted(snips, key=lambda x: (x.get("start_offset_ms") or 0)):
+        _sid = str(s.get("id"))
+        txt = (corrections.get(_sid) or edits.get(_sid)
+               or s.get("transcript") or s.get("transcription_text") or "")
+        txt = txt.strip()
+        if txt:
+            parts.append(txt)
+    return " ".join(parts)
+
+
+def _take_key_moments(session_id, read_session_id=None):
+    """A take's key moments (locked assumption A2/A3): coach-SURFACED snippets
+    marked 'challenge' (the key-moment/breakthrough label), from the spoken
+    take AND its paired read. Each: playback span + the coach's comment (text
+    and/or video) + recording_kind + slide_index. No scores (AC-9); the
+    private direction label itself is never serialized — it only SELECTS."""
+    out = []
+    for sid, kind_default in ((session_id, "spoken"),
+                              (read_session_id, "read")):
+        if not sid:
+            continue
+        labels = {
+            str(r.get("snippet_id")): r.get("value")
+            for r in (db.get_training_labels(sid) or [])
+        }
+        drafts = {
+            str(d.get("snippet_id")): d
+            for d in (db.get_coach_snippet_drafts(sid) or [])
+            if d.get("snippet_id")
+        }
+        for s in sorted(db.get_snippets_by_session(sid) or [],
+                        key=lambda x: (x.get("start_offset_ms") or 0)):
+            _sid = str(s.get("id"))
+            d = drafts.get(_sid)
+            if not d or not d.get("surfaced"):
+                continue
+            if labels.get(_sid) != "challenge":
+                continue
+            m = s.get("metrics") if isinstance(s.get("metrics"), dict) else {}
+            _piece = m.get("piece") if isinstance(m.get("piece"), dict) else {}
+            out.append({
+                "snippet_id": s.get("id"),
+                "take_session_id": sid,
+                "slide_index": _piece.get("slide_index"),
+                "recording_kind": m.get("recording_kind") or kind_default,
+                "transcript": (
+                    (d.get("transcript_corrected") or "").strip()
+                    or s.get("transcript") or s.get("transcription_text") or ""
+                ),
+                "audio_ref": s.get("audio_segment_path"),
+                "start_offset_ms": s.get("start_offset_ms"),
+                "duration_ms": s.get("duration_ms"),
+                "comment_text": (d.get("note") or "").strip() or None,
+                "comment_video_ref": d.get("breakthrough_video_ref"),
+            })
+    return out
+
+
+def _paywall_block(arc_id):
+    """The paywall info the FE renders the overlay from: price + the caller's
+    current credit balance. Pricing copy, not a surfaced score (AC-9-safe)."""
+    from services.arc_entitlement import audit_price
+    credits_current = None
+    try:
+        _uid = getattr(request, "user_id", None)
+        if _uid:
+            det = db.v2_get_student_details(str(_uid)) or {}
+            _c = det.get("credits")
+            credits_current = int(_c) if _c is not None else None
+    except Exception:
+        credits_current = None
+    return {
+        "price": audit_price(config),
+        "credits_current": credits_current,
+        "arc_id": arc_id,
+    }
+
+
+@v2_bp.route("/explore/arc/<arc_id>/feedback", methods=["GET"])
+@require_auth
+def v2_explore_arc_feedback(arc_id):
+    """The per-take FEEDBACK the user opens from the grey bubbles (founder
+    2026-07-15): the take's full text all together (NO playback) + the KEY
+    MOMENTS (grouped by slide on the FE), each with its snippet playback and
+    the coach's comment (text or video). No suggestions, no scores.
+
+    Paywall: take 1 is FREE; takes 2/3 lock until the $25 arc unlock — a
+    locked take returns {take_index, session_id, free:false, locked:true}
+    with NO content (no leak). Reads fold into their paired take.
+
+    Response 200 { arc_id, takes:[{take_index, session_id, free,
+        locked?, full_text?, key_moments?:[…]}], ideal_ready, paywall? }
+    404 · 500
+    """
+    try:
+        owned, sessions = _arc_owned_by_caller(arc_id)
+        if not owned:
+            return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
+        from services.arc_entitlement import is_arc_entitled
+        entitled = is_arc_entitled(db, arc_id, request.user_id) \
+            or is_admin(request.user_id) or is_coach(request.user_id)
+
+        spoken, reads = _spoken_takes_and_reads(sessions)
+        takes = []
+        any_locked = False
+        for s in spoken:
+            sid = str(s.get("id"))
+            ti = s.get("take_index") or (len(takes) + 1)
+            free = (ti == 1)
+            if not free and not entitled:
+                any_locked = True
+                takes.append({
+                    "take_index": ti, "session_id": sid,
+                    "free": False, "locked": True,
+                })
+                continue
+            read_row = reads.get(sid)
+            takes.append({
+                "take_index": ti, "session_id": sid,
+                "free": free, "locked": False,
+                "full_text": _take_full_text(sid),
+                "key_moments": _take_key_moments(
+                    sid, str(read_row.get("id")) if read_row else None),
+            })
+        ideal = db.get_coach_arc_ideal_text(arc_id)
+        body = {
+            "arc_id": arc_id,
+            "takes": takes,
+            "ideal_ready": bool(ideal and ideal.get("approved_at")),
+        }
+        if any_locked or not entitled:
+            body["paywall"] = _paywall_block(arc_id)
+        return jsonify(body), 200
+    except Exception as e:
+        logger.error("explore/arc feedback failed arc=%s: %s", arc_id, e,
+                     exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({
+            "code": "V2_ERROR", "error": "Failed to load feedback",
+        }), 500
+
+
+@v2_bp.route("/coach/arc/<arc_id>/ideal-text", methods=["GET"])
+@require_admin_or_coach
+def v2_coach_get_ideal_text(arc_id):
+    """The coach's review copy of the ONE-BLOCK ideal text: the saved coach
+    block when one exists, else the AUTO-assembled draft (build_best_
+    presentation picks collapsed, **bold** openings + [[moment:…]] anchors).
+    Same design/markers the user later sees — a look before final.
+
+    200 { arc_id, text, key_moments, approved, ready, source: "coach"|"auto" }
+    """
+    try:
+        from services.ideal_text_block import (
+            assemble_ideal_text_block, extract_key_moments,
+        )
+        row = db.get_coach_arc_ideal_text(arc_id)
+        if row and (row.get("text") or "").strip():
+            text = row["text"]
+            return jsonify({
+                "arc_id": arc_id, "text": text,
+                "key_moments": extract_key_moments(text),
+                "approved": bool(row.get("approved_at")),
+                "ready": True, "source": "coach",
+            }), 200
+        auto = assemble_ideal_text_block(arc_id)
+        return jsonify({
+            "arc_id": arc_id, "text": auto.get("text") or "",
+            "key_moments": auto.get("key_moments") or [],
+            "approved": False,
+            "ready": bool(auto.get("ready")), "source": "auto",
+        }), 200
+    except Exception as e:
+        logger.error("coach ideal-text GET failed arc=%s: %s", arc_id, e,
+                     exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({
+            "code": "V2_ERROR", "error": "Failed to load ideal text",
+        }), 500
+
+
+@v2_bp.route("/coach/arc/<arc_id>/ideal-text", methods=["PUT"])
+@require_admin_or_coach
+def v2_coach_put_ideal_text(arc_id):
+    """Save the coach's one-block edit (markers travel with the text; raw
+    HTML stripped; ≤20000 chars). Body: {text}. 200 {ok} · 400 · 500"""
+    try:
+        body = request.get_json(silent=True) or {}
+        text = body.get("text")
+        if not isinstance(text, str) or not text.strip():
+            return jsonify({"code": "INVALID_INPUT",
+                            "error": "text is required"}), 400
+        text = re.sub(r"<[^>]*>", "", text).strip()
+        if len(text) > 20000:
+            return jsonify({"code": "INVALID_INPUT",
+                            "error": "text too long"}), 400
+        ok = db.upsert_coach_arc_ideal_text(
+            arc_id, text, str(request.user_id))
+        if not ok:
+            return jsonify({"code": "V2_ERROR",
+                            "error": "Could not save"}), 500
+        return jsonify({"ok": True, "arc_id": arc_id}), 200
+    except Exception as e:
+        logger.error("coach ideal-text PUT failed arc=%s: %s", arc_id, e,
+                     exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to save"}), 500
+
+
+@v2_bp.route("/coach/arc/<arc_id>/ideal-text/approve", methods=["POST"])
+@require_admin_or_coach
+def v2_coach_approve_ideal_text(arc_id):
+    """Approve the ideal text for delivery (the Publish precondition). With
+    no saved coach block yet, the AUTO draft is persisted as the block and
+    approved in one deterministic action (review-without-edit approval).
+    200 {ok, approved:true} · 409 IDEAL_TEXT_EMPTY · 500"""
+    try:
+        row = db.get_coach_arc_ideal_text(arc_id)
+        text = (row or {}).get("text") or ""
+        if not text.strip():
+            from services.ideal_text_block import assemble_ideal_text_block
+            auto = assemble_ideal_text_block(arc_id)
+            text = auto.get("text") or ""
+            if not text.strip():
+                return jsonify({
+                    "code": "IDEAL_TEXT_EMPTY",
+                    "error": "Nothing to approve — the arc has no "
+                             "assembled ideal text yet.",
+                }), 409
+        ok = db.upsert_coach_arc_ideal_text(
+            arc_id, text, str(request.user_id), approve=True)
+        if not ok:
+            return jsonify({"code": "V2_ERROR",
+                            "error": "Could not approve"}), 500
+        return jsonify({"ok": True, "arc_id": arc_id, "approved": True}), 200
+    except Exception as e:
+        logger.error("coach ideal-text approve failed arc=%s: %s", arc_id, e,
+                     exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to approve"}), 500
+
+
+@v2_bp.route("/explore/arc/<arc_id>/ideal-text", methods=["GET"])
+@require_auth
+def v2_explore_get_ideal_text(arc_id):
+    """The user's ideal-text notebook (the purple bubble): the coach-APPROVED
+    one-block text ($25-gated) + the user's personal notes copy. LOCKED until
+    approved — the draft never reaches the student (L1 held: canonical is the
+    coach-approved block; notes are a separate personal copy).
+
+    200 { arc_id, text, notes_text, key_moments, approved:true }
+    200 { arc_id, locked:true, reason:"NOT_APPROVED" }  — approved gate
+    402 (paywall body incl. price + credits_current) · 404 · 500
+    """
+    try:
+        owned, _sessions = _arc_owned_by_caller(arc_id)
+        if not owned:
+            return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
+        gated = _arc_payment_gate(arc_id)
+        if gated is not None:
+            resp, status = gated
+            payload = resp.get_json() or {}
+            payload.update(_paywall_block(arc_id))
+            return jsonify(payload), status
+        row = db.get_coach_arc_ideal_text(arc_id)
+        if not row or not row.get("approved_at") \
+                or not (row.get("text") or "").strip():
+            return jsonify({
+                "arc_id": arc_id, "locked": True, "reason": "NOT_APPROVED",
+            }), 200
+        from services.ideal_text_block import extract_key_moments
+        return jsonify({
+            "arc_id": arc_id,
+            "text": row["text"],
+            "notes_text": db.get_user_arc_ideal_notes(
+                arc_id, request.user_id),
+            "key_moments": extract_key_moments(row["text"]),
+            "approved": True,
+        }), 200
+    except Exception as e:
+        logger.error("explore ideal-text GET failed arc=%s: %s", arc_id, e,
+                     exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({
+            "code": "V2_ERROR", "error": "Failed to load ideal text",
+        }), 500
+
+
+@v2_bp.route("/explore/arc/<arc_id>/ideal-text/notes", methods=["PUT"])
+@require_auth
+def v2_explore_put_ideal_notes(arc_id):
+    """Save the user's PERSONAL notebook copy (never the canonical — L1).
+    Same gates as reading it (owned + paid + approved). Body: {text ≤20000}.
+    200 {ok} · 400 · 402 · 404 · 500"""
+    try:
+        owned, _sessions = _arc_owned_by_caller(arc_id)
+        if not owned:
+            return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
+        gated = _arc_payment_gate(arc_id)
+        if gated is not None:
+            return gated
+        body = request.get_json(silent=True) or {}
+        text = body.get("text")
+        if not isinstance(text, str):
+            return jsonify({"code": "INVALID_INPUT",
+                            "error": "text is required"}), 400
+        text = re.sub(r"<[^>]*>", "", text).strip()
+        if len(text) > 20000:
+            return jsonify({"code": "INVALID_INPUT",
+                            "error": "text too long"}), 400
+        ok = db.upsert_user_arc_ideal_notes(arc_id, str(request.user_id), text)
+        if not ok:
+            return jsonify({"code": "V2_ERROR",
+                            "error": "Could not save"}), 500
+        return jsonify({"ok": True, "arc_id": arc_id}), 200
+    except Exception as e:
+        logger.error("ideal-notes PUT failed arc=%s: %s", arc_id, e,
+                     exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to save"}), 500
+
+
+@v2_bp.route("/coach/sessions/<session_id>/save-feedback", methods=["POST"])
+@require_admin_or_coach
+def v2_coach_save_feedback(session_id):
+    """The per-take coach 'Save' checkpoint (founder 2026-07-15): stamps the
+    take as reviewed-and-saved so the coach can move to the next recording.
+    Delivers NOTHING — the single 'Save and Publish full analysis' does.
+    200 {saved:true} · 400 · 404 · 500"""
+    if not _is_valid_uuid(session_id):
+        return jsonify({"code": "INVALID_INPUT",
+                        "error": "session_id must be a UUID"}), 400
+    try:
+        if not db.v2_get_session_by_id(session_id):
+            return jsonify({"code": "SESSION_NOT_FOUND",
+                            "error": "Session not found"}), 404
+        if not db.set_session_feedback_saved(session_id):
+            return jsonify({"code": "V2_ERROR",
+                            "error": "Could not save"}), 500
+        return jsonify({"saved": True, "session_id": session_id}), 200
+    except Exception as e:
+        logger.error("save-feedback failed sid=%s: %s", session_id, e,
+                     exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to save"}), 500
+
+
+@v2_bp.route("/coach/arc/<arc_id>/publish-analysis", methods=["POST"])
+@require_admin_or_coach
+def v2_coach_publish_analysis(arc_id):
+    """'Save and Publish full analysis' (founder 2026-07-15) — THE delivery.
+
+    Preconditions (409 with the pending list otherwise):
+      * every spoken take carries coach_feedback_saved_at (the per-take Save);
+      * the ideal text is APPROVED (coach_arc_ideal_text.approved_at).
+
+    Then, idempotently:
+      1. per take: run the same publish contract as always (assemble insights
+         from the saved drafts; per-take Lounge cards suppressed) + flip
+         results_published_at — takes with no surfaced work just flip;
+      2. insert the FOUR bubbles, in order: 3× kind='feedback' (grey; take 1
+         free, 2/3 paywalled on open) + 1× kind='ideal_text' (purple);
+      3. stamp arc_batch_deliveries (the delivered marker).
+
+    200 { published, takes_published, bubbles: 4 }
+    404 · 409 TAKES_NOT_SAVED / IDEAL_TEXT_NOT_APPROVED · 4xx/5xx per-take
+    """
+    try:
+        sessions = db.get_arc_sessions(arc_id)
+        if not sessions:
+            return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
+        spoken, _reads = _spoken_takes_and_reads(sessions)
+
+        pending = [str(s.get("id")) for s in spoken
+                   if not s.get("coach_feedback_saved_at")]
+        if pending:
+            return jsonify({
+                "code": "TAKES_NOT_SAVED",
+                "error": "Save each recording's feedback first.",
+                "pending_session_ids": pending,
+            }), 409
+        ideal = db.get_coach_arc_ideal_text(arc_id)
+        if not ideal or not ideal.get("approved_at"):
+            return jsonify({
+                "code": "IDEAL_TEXT_NOT_APPROVED",
+                "error": "Approve the ideal text before publishing.",
+            }), 409
+
+        published = []
+        for s in spoken:
+            sid = str(s.get("id"))
+            if s.get("results_published_at"):
+                published.append(sid)
+                continue
+            drafts = db.get_coach_snippet_drafts(sid) or []
+            if any(d.get("surfaced") and (d.get("note") or "").strip()
+                   for d in drafts):
+                _err = _apply_willab_publish_contract(
+                    sid,
+                    {"notify_client": False, "suppress_lounge_card": True},
+                    request.user_id,
+                )
+                if _err is not None:
+                    _resp, _status = _err
+                    return jsonify({
+                        "code": "TAKE_PUBLISH_FAILED", "session_id": sid,
+                        "detail": (_resp.get_json()
+                                   if hasattr(_resp, "get_json") else None),
+                    }), _status
+            try:
+                db.v2_update_session_status_unscoped(sid, "completed")
+            except Exception:
+                pass
+            db.v2_publish_session_results(sid)
+            published.append(sid)
+
+        # ── The 4 bubbles, in order (idempotent client_ids). ──
+        owner = next(
+            (s.get("user_id") for s in sessions if s.get("user_id")), None,
+        )
+        bubbles = 0
+        if owner:
+            from datetime import datetime as _dt, timedelta as _td, \
+                timezone as _tz
+            _msgs = []
+            _base = _dt.now(_tz.utc)
+            for i, s in enumerate(spoken):
+                sid = str(s.get("id"))
+                ti = s.get("take_index") or (i + 1)
+                _msgs.append({
+                    "client_id": str(uuid.uuid5(
+                        uuid.NAMESPACE_URL, f"willab-feedback:{sid}")),
+                    "role": "bot", "kind": "feedback",
+                    "body": f"Your feedback for take {ti} is ready.",
+                    "metadata": {
+                        "arc_id": str(arc_id), "take_session_id": sid,
+                        "take_index": ti, "free": bool(ti == 1),
+                    },
+                    # +i ms so the thread orders 1 → 2 → 3 → ideal.
+                    "client_created_at": (
+                        _base + _td(milliseconds=i)).isoformat(),
+                })
+            _msgs.append({
+                "client_id": str(uuid.uuid5(
+                    uuid.NAMESPACE_URL, f"willab-idealtext:{arc_id}")),
+                "role": "bot", "kind": "ideal_text",
+                "body": "Your ideal presentation text is ready.",
+                "metadata": {"arc_id": str(arc_id)},
+                "client_created_at": (
+                    _base + _td(milliseconds=len(spoken))).isoformat(),
+            })
+            try:
+                db.insert_lounge_messages(str(owner), _msgs)
+                bubbles = len(_msgs)
+            except Exception as _lb_err:
+                logger.warning("publish-analysis: bubbles failed arc=%s: %s",
+                               arc_id, _lb_err)
+        db.mark_arc_batch_delivered(arc_id, owner, str(request.user_id))
+        return jsonify({
+            "published": True, "arc_id": arc_id,
+            "takes_published": len(published), "bubbles": bubbles,
+        }), 200
+    except Exception as e:
+        logger.error("publish-analysis failed arc=%s: %s", arc_id, e,
+                     exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({
+            "code": "V2_ERROR", "error": "Failed to publish the analysis",
         }), 500
 
 
@@ -12027,101 +12597,148 @@ def v2_lab_create_recording():
         except Exception as le:
             logger.warning("lab: link recording failed (non-fatal): %s", le)
 
-        # ── 5. process → Readout payload (sync) ─────────────────────
+        # ── 5. process → Readout payload ─────────────────────────────
+        # The FULL analysis pipeline (transcribe → cut pieces → metrics →
+        # persist → cadence → auto-send → arc cards) as ONE worker so it can
+        # run either synchronously (legacy) or in a background daemon (async
+        # mode, founder 2026-07-15: closing the tab / locking the phone must
+        # never kill the analysis). Everything request-scoped is captured
+        # HERE — the daemon must never touch flask.request.
         from services.lab_recording import process_lab_recording
-        readout = process_lab_recording(
-            session_id=guest_session_id,
-            user_id=_uploader_id,  # fix #2b: attribute snippets at record time
-            recording_id=recording_id,
-            audio_bytes=file_bytes,
-            filename=audio_file.filename or "lab.webm",
-            session_context=session_context,
-            parent_audio_url=parent_url,
-            recording_kind=_rec_kind,  # spoken | read (founder 2026-07-14)
-        )
-
-        logger.info(
-            "lab: recording processed sid=%s rec=%s snippets=%d",
-            guest_session_id, recording_id,
-            len(readout.get("snippets") or []),
-        )
-
-        # Explore-session cadence (Prompt A §6 C3) — after a take in an arc,
-        # invite the NEXT take as a Lounge bubble. Needs an authenticated
-        # owner (lounge is per-user); guests get no cadence. Best-effort +
-        # idempotent — never blocks or double-fires; never touches the
-        # readout response.
         _cad_user = getattr(request, "user_id", None)
-        if _cad_user and arc_id:
-            try:
-                from services.session_cadence import (
-                    fire_arc_start, fire_post_take,
-                )
-                _goal = (db.get_user_profile(_cad_user) or {}).get("goal")
-                _spark = str(form.get("spark") or "").strip().lower() in (
-                    "1", "true", "yes", "on",
-                )
-                # Always-on (2026-06-17): there's no opt-in /explore/start step
-                # anymore, so the framing (BEAT 0 — "3 takes, ~30 min, this was
-                # your baseline") fires here on take 1. Idempotent per arc, so a
-                # leftover /explore/start call is a harmless no-op.
-                if take_index == 1:
-                    fire_arc_start(_cad_user, arc_id, goal=_goal)
-                fire_post_take(
-                    _cad_user, arc_id, take_index,
-                    take_count=arc_take_count,
-                    spark_enabled=_spark,
-                    goal=_goal,
-                )
-            except Exception as _ce:
-                logger.warning("lab: cadence fire failed sid=%s: %s",
-                               guest_session_id, _ce)
+        _worker_filename = audio_file.filename or "lab.webm"
+        _worker_spark = str(form.get("spark") or "").strip().lower() in (
+            "1", "true", "yes", "on",
+        )
 
-        # AUTO-SEND to the coach (founder re-lock 2026-07-06, bug #4): EVERY
-        # registered recording reaches the coach queue — the send no longer
-        # depends on the FE surviving to a separate merge/claim call (a broken
-        # FE flow silently kept takes 2/3 out of the queue). Idempotent
-        # (pending/completed = no-op) + best-effort: a send hiccup never fails
-        # the upload; the merge-path send stays as the guest fallback.
-        _sent_to_coach = False
-        if _cad_user:
-            try:
-                from services.lab_send import send_lab_recording_to_coach
-                _send_res = send_lab_recording_to_coach(
-                    guest_session_id, str(_cad_user),
-                )
-                _sent_to_coach = bool(_send_res.get("ok"))
-                logger.info(
-                    "lab: auto-send sid=%s ok=%s already=%s",
-                    guest_session_id, _send_res.get("ok"),
-                    _send_res.get("already_sent"),
-                )
-            except Exception as _send_err:
-                logger.warning("lab: auto-send failed sid=%s: %s (non-fatal)",
-                               guest_session_id, _send_err)
+        def _run_analysis_pipeline():
+            """Runs to completion server-side. Returns (readout, sent)."""
+            readout_local = process_lab_recording(
+                session_id=guest_session_id,
+                user_id=_uploader_id,  # fix #2b: attribute at record time
+                recording_id=recording_id,
+                audio_bytes=file_bytes,
+                filename=_worker_filename,
+                session_context=session_context,
+                parent_audio_url=parent_url,
+                recording_kind=_rec_kind,  # spoken | read (2026-07-14)
+            )
+            logger.info(
+                "lab: recording processed sid=%s rec=%s snippets=%d",
+                guest_session_id, recording_id,
+                len(readout_local.get("snippets") or []),
+            )
 
-        # Arc lifecycle cards + notes (founder #1/#11) — one owner, idempotent
-        # per (arc, kind), best-effort (services/arc_notifications):
-        #   >=3 takes → best_presentation_ready ONLY when coach-reviewed AND
-        #   paid, else transcript_ready (transcript text + strong sides — never
-        #   present an unchecked best presentation).
-        #   take 1 → "automatic overview + human check underway" note.
-        #   take 2 sent on an UNPAID arc → the $50 unlock note.
-        if _cad_user and arc_id:
-            try:
-                from services.arc_notifications import (
-                    fire_human_check_note, fire_pay_note,
-                    maybe_fire_best_presentation_ready,
-                )
-                if take_index == 1:
-                    fire_human_check_note(db, _cad_user, arc_id)
-                elif take_index == 2:
-                    fire_pay_note(db, _cad_user, arc_id)
-                if (arc_take_count or 0) >= 3:
-                    maybe_fire_best_presentation_ready(db, arc_id)
-            except Exception as _bpe:
-                logger.warning("lab: arc cards failed sid=%s: %s (non-fatal)",
-                               guest_session_id, _bpe)
+            # Explore-session cadence (Prompt A §6 C3) — after a take in an
+            # arc, invite the NEXT take as a Lounge bubble. Authed only;
+            # best-effort + idempotent.
+            if _cad_user and arc_id:
+                try:
+                    from services.session_cadence import (
+                        fire_arc_start, fire_post_take,
+                    )
+                    _goal = (db.get_user_profile(_cad_user) or {}).get("goal")
+                    # Always-on (2026-06-17): the framing fires here on take 1.
+                    # Idempotent per arc.
+                    if take_index == 1:
+                        fire_arc_start(_cad_user, arc_id, goal=_goal)
+                    fire_post_take(
+                        _cad_user, arc_id, take_index,
+                        take_count=arc_take_count,
+                        spark_enabled=_worker_spark,
+                        goal=_goal,
+                    )
+                except Exception as _ce:
+                    logger.warning("lab: cadence fire failed sid=%s: %s",
+                                   guest_session_id, _ce)
+
+            # AUTO-SEND to the coach (founder re-lock 2026-07-06, bug #4):
+            # EVERY registered recording reaches the coach queue. Idempotent
+            # + best-effort; the merge-path send stays the guest fallback.
+            sent_local = False
+            if _cad_user:
+                try:
+                    from services.lab_send import send_lab_recording_to_coach
+                    _send_res = send_lab_recording_to_coach(
+                        guest_session_id, str(_cad_user),
+                    )
+                    sent_local = bool(_send_res.get("ok"))
+                    logger.info(
+                        "lab: auto-send sid=%s ok=%s already=%s",
+                        guest_session_id, _send_res.get("ok"),
+                        _send_res.get("already_sent"),
+                    )
+                except Exception as _send_err:
+                    logger.warning(
+                        "lab: auto-send failed sid=%s: %s (non-fatal)",
+                        guest_session_id, _send_err,
+                    )
+
+            # Arc lifecycle cards + notes (founder #1/#11) — idempotent per
+            # (arc, kind), best-effort.
+            if _cad_user and arc_id:
+                try:
+                    from services.arc_notifications import (
+                        fire_human_check_note, fire_pay_note,
+                        maybe_fire_best_presentation_ready,
+                    )
+                    if take_index == 1:
+                        fire_human_check_note(db, _cad_user, arc_id)
+                    elif take_index == 2:
+                        fire_pay_note(db, _cad_user, arc_id)
+                    if (arc_take_count or 0) >= 3:
+                        maybe_fire_best_presentation_ready(db, arc_id)
+                except Exception as _bpe:
+                    logger.warning(
+                        "lab: arc cards failed sid=%s: %s (non-fatal)",
+                        guest_session_id, _bpe,
+                    )
+            return readout_local, sent_local
+
+        # ASYNC mode (founder 2026-07-15, flag default OFF until the FE ships
+        # polling): flip the session to 'processing', run the pipeline in a
+        # daemon that survives client disconnect, and 202 immediately. The FE
+        # polls the readout GET until state ready|failed. Accepted gap
+        # (decision 2026-07-15): a backend redeploy mid-job strands that one
+        # job in 'processing' — the FE times out at ~3 min and offers
+        # re-record.
+        if _async_analysis_enabled():
+            db.set_session_analysis_state(guest_session_id, "processing")
+
+            def _analysis_daemon():
+                try:
+                    _run_analysis_pipeline()
+                    db.set_session_analysis_state(guest_session_id, "ready")
+                except Exception as _bg_err:
+                    logger.error(
+                        "lab: ASYNC analysis failed sid=%s: %s",
+                        guest_session_id, _bg_err, exc_info=True,
+                    )
+                    sentry_sdk.capture_exception(_bg_err)
+                    db.set_session_analysis_state(
+                        guest_session_id, "failed", str(_bg_err),
+                    )
+
+            import threading as _threading
+            _threading.Thread(target=_analysis_daemon, daemon=True).start()
+
+            _dur_secs_a = int(_rec_duration or 0)
+            return jsonify({
+                "status": "processing",
+                "state": "processing",
+                "session_id": guest_session_id,
+                "recording_id": recording_id,
+                "duration_minutes": round(_dur_secs_a / 60.0, 1),
+                "audits_needed": max(1, -(-_dur_secs_a // 600)),
+                "session_context": session_context,
+                "readout": None,
+                "arc_id": arc_id,
+                "take_index": take_index,
+                "take_count": arc_take_count,
+                "audit_paid": _arc_audit_paid(arc_id, _cad_user),
+            }), 202
+
+        readout, _sent_to_coach = _run_analysis_pipeline()
 
         # Recording-progress toward the first audit (BE-4) — so the FE can
         # refresh the "X:XX left to unlock" line IMMEDIATELY instead of showing
