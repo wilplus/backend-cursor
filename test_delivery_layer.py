@@ -342,8 +342,14 @@ class SavePublishTests(unittest.TestCase):
         m_lanes.assert_not_called()
         m_save.assert_called_once_with(sid)
 
-    def _publish(self, sessions, ideal_row, drafts=lambda sid: []):
+    def _publish(self, sessions, ideal_row, drafts=lambda sid: [],
+                 insert_returns=None):
         captured = {}
+
+        def _insert(uid, msgs):
+            captured.update({"uid": uid, "msgs": msgs})
+            return msgs if insert_returns is None else insert_returns
+
         with self.app.test_request_context(json={}):
             request.user_id = "coach1"
             with patch.object(v2.db, "get_arc_sessions",
@@ -357,8 +363,7 @@ class SavePublishTests(unittest.TestCase):
                  patch.object(v2.db, "v2_update_session_status_unscoped"), \
                  patch.object(v2.db, "v2_publish_session_results"), \
                  patch.object(v2.db, "insert_lounge_messages",
-                              side_effect=lambda uid, msgs: captured.update(
-                                  {"uid": uid, "msgs": msgs}) or msgs), \
+                              side_effect=_insert), \
                  patch.object(v2.db, "mark_arc_batch_delivered",
                               return_value=True):
                 resp, status = v2.v2_coach_publish_analysis.__wrapped__(ARC)
@@ -396,6 +401,29 @@ class SavePublishTests(unittest.TestCase):
         stamps = [m["client_created_at"] for m in msgs]
         self.assertEqual(stamps, sorted(stamps))
         self.assertEqual(cap["uid"], "u1")
+
+    def test_bubbles_reports_the_true_inserted_count(self):
+        # BE-1 (fix-pack 2026-07-16): insert_lounge_messages swallows DB
+        # errors and returns [] — publish must report what actually landed
+        # (and log loudly), never a fabricated 4.
+        with self.assertLogs("routes.v2_routes", level="ERROR") as logs:
+            body, status, cap = self._publish(
+                _sessions(),
+                {"text": "x", "approved_at": "2026-07-15T10:00:00Z"},
+                insert_returns=[])
+        self.assertEqual(status, 200)          # takes still published
+        self.assertTrue(body["published"])
+        self.assertEqual(body["bubbles"], 0)   # the honest count
+        self.assertEqual(len(cap["msgs"]), 4)  # 4 were intended
+        self.assertTrue(any("bubbles dropped" in line for line in logs.output))
+
+    def test_partial_insert_reports_partial_count(self):
+        body, status, cap = self._publish(
+            _sessions(),
+            {"text": "x", "approved_at": "2026-07-15T10:00:00Z"},
+            insert_returns=[{"id": "row1"}, {"id": "row2"}])
+        self.assertEqual(status, 200)
+        self.assertEqual(body["bubbles"], 2)
 
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")

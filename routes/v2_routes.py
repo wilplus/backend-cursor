@@ -11954,8 +11954,17 @@ def v2_coach_publish_analysis(arc_id):
                     _base + _td(milliseconds=len(spoken))).isoformat(),
             })
             try:
-                db.insert_lounge_messages(str(owner), _msgs)
-                bubbles = len(_msgs)
+                _persisted = db.insert_lounge_messages(str(owner), _msgs)
+                bubbles = len(_persisted or [])
+                if bubbles < len(_msgs):
+                    # insert_lounge_messages swallows DB errors and returns
+                    # [] — without this check a CHECK-constraint rejection
+                    # reads as `bubbles: 4` while the Lounge gets nothing.
+                    logger.error(
+                        "publish-analysis: lounge bubbles dropped arc=%s "
+                        "intended=%d inserted=%d — check the kind CHECK "
+                        "(migrations/add_feedback_ideal_lounge_kinds.sql)",
+                        arc_id, len(_msgs), bubbles)
             except Exception as _lb_err:
                 logger.warning("publish-analysis: bubbles failed arc=%s: %s",
                                arc_id, _lb_err)
