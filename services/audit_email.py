@@ -24,21 +24,28 @@ def send_audit_ready_email(
     if not user_id:
         return False
     try:
-        import config
+        # BUGFIX (2026-07-16, found while adding threading): this used to be
+        # ``import config`` + ``config.PUBLIC_FRONTEND_URL`` — but those are
+        # attributes of the Config CLASS, not the module, so EVERY send hit
+        # AttributeError, got swallowed by the except below and returned
+        # False. The audit-ready email never actually went out.
+        from config import Config
         from services.db import db
         from services.email_service import send_email_resend
+        from services.email_threading import user_thread_headers
         from services.post_session_results_email import _willab_branded_from
     except Exception as e:  # pragma: no cover - import guard
         logger.warning("audit_email: import failed: %s", e)
         return False
 
     try:
+        cfg = Config()
         email = (user_email or "").strip() or db.get_user_email_from_auth(user_id)
         if not email:
             logger.warning("audit_email: no email for user=%s", user_id)
             return False
 
-        audits_url = f"{config.PUBLIC_FRONTEND_URL.rstrip('/')}/audits"
+        audits_url = f"{cfg.PUBLIC_FRONTEND_URL.rstrip('/')}/audits"
         subject = "Your audit is ready"
         # Short + no explanation — just the link (founder rule).
         html = (
@@ -54,7 +61,10 @@ def send_audit_ready_email(
 
         res = send_email_resend(
             to=email, subject=subject, html=html, text=text,
-            from_addr=_willab_branded_from(config.RESEND_FROM_EMAIL),
+            from_addr=_willab_branded_from(cfg.RESEND_FROM_EMAIL),
+            # Per-user thread root (fix-pack BE-3c) — groups with the other
+            # coach→user mails for this user in their mail client.
+            headers=user_thread_headers(user_id) or None,
         )
         sent = bool(res and res.get("sent"))
         logger.info("audit_email: user=%s sent=%s", user_id, sent)
