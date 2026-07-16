@@ -373,5 +373,114 @@ class DecklessChunksFromStxTests(unittest.TestCase):
         self.assertEqual(self._f([{"index": 0, "transcript": "  "}]), [])
 
 
+class SplitRunonSentencesTests(unittest.TestCase):
+    """Run-on sentence boundaries (founder BE-1c, 2026-07-16): a real pause
+    after an already-long sentence is promoted to a full stop — punctuation +
+    casing only, words + spans strictly untouched."""
+
+    def _stream(self, groups, gap_s=0.8):
+        """Words at a tight 0.1s rhythm; a ``gap_s`` pause between groups."""
+        words, t = [], 0.0
+        for gi, group in enumerate(groups):
+            if gi:
+                t += gap_s
+            for tok in group.split():
+                words.append({"word": tok, "start": round(t, 2),
+                              "end": round(t + 0.3, 2)})
+                t = round(t + 0.4, 2)
+        return words
+
+    def _split(self, groups, gap_s=0.8, **kw):
+        from services.slide_word_split import split_runon_sentences
+        kw.setdefault("min_gap_ms", 500)
+        kw.setdefault("min_chars", 40)
+        return split_runon_sentences(self._stream(groups, gap_s), **kw)
+
+    def _text(self, out):
+        return " ".join(w["word"] for w in out)
+
+    def test_comma_splice_upgrades_to_period(self):
+        out = self._split(["you can train yourself to know what to say it,",
+                           "can be trained on demand"])
+        self.assertIn("say it. Can be trained", self._text(out))
+
+    def test_unpunctuated_runon_gets_period_and_capital(self):
+        out = self._split(["i think we should go build this thing right now",
+                           "the next take will show it"])
+        self.assertIn("right now. The next take", self._text(out))
+
+    def test_short_pause_is_hesitation_not_a_boundary(self):
+        groups = ["i think we should go build this thing right now",
+                  "the next take will show it"]
+        out = self._split(groups, gap_s=0.3)
+        self.assertEqual(self._text(out), " ".join(groups))
+
+    def test_short_sentence_left_alone(self):
+        groups = ["we ship it,", "tomorrow morning at nine"]
+        out = self._split(groups)
+        self.assertEqual(self._text(out), " ".join(groups))
+
+    def test_dangling_connective_blocks_the_split(self):
+        # A pause after "the" is retrieval hesitation, never a period.
+        groups = ["we should really go and think about all of the",
+                  "options here"]
+        out = self._split(groups)
+        self.assertEqual(self._text(out), " ".join(groups))
+
+    def test_existing_sentence_end_resets_not_doubled(self):
+        groups = ["we finally did the whole thing everyone wanted done.",
+                  "next we scale it"]
+        out = self._split(groups)
+        self.assertEqual(self._text(out), " ".join(groups))
+
+    def test_period_stays_inside_closing_quote(self):
+        out = self._split(['he said this is the best thing you can "say,"',
+                           "then we moved on"])
+        self.assertIn('"say." Then we', self._text(out))
+
+    def test_words_and_spans_strictly_untouched(self):
+        import re as _re
+        words = self._stream(
+            ["you can train yourself to know what to say it,",
+             "can be trained on demand"])
+        spans_before = [(w["start"], w["end"]) for w in words]
+        norm_before = [_re.sub(r"[\W_]+", "", w["word"]).lower()
+                       for w in words]
+        from services.slide_word_split import split_runon_sentences
+        out = split_runon_sentences(words, min_gap_ms=500, min_chars=40)
+        self.assertEqual([(w["start"], w["end"]) for w in out], spans_before)
+        self.assertEqual([_re.sub(r"[\W_]+", "", w["word"]).lower()
+                          for w in out], norm_before)
+
+    def test_empty_safe(self):
+        from services.slide_word_split import split_runon_sentences
+        self.assertEqual(split_runon_sentences(None), [])
+        self.assertEqual(split_runon_sentences([]), [])
+
+    def test_kill_switch_default_on_env_off(self):
+        import unittest.mock as mock
+        from services.slide_word_split import runon_split_enabled
+        with mock.patch.dict("os.environ", {}, clear=False):
+            import os
+            os.environ.pop("SENTENCE_BOUNDARY_SPLIT_ENABLED", None)
+            self.assertTrue(runon_split_enabled())
+        with mock.patch.dict("os.environ",
+                             {"SENTENCE_BOUNDARY_SPLIT_ENABLED": "0"}):
+            self.assertFalse(runon_split_enabled())
+
+    def test_chunker_closes_at_the_promoted_boundary(self):
+        # The end-to-end win: the sentence-aware cutter can now close a piece
+        # at the promoted period instead of running to the hard cap.
+        long_a = ("we spent the whole quarter rebuilding the pipeline and "
+                  "the team pushed through every single blocker on the list")
+        long_b = ("the next quarter is where all of that work finally starts "
+                  "paying off for every customer we have")
+        out = self._split([long_a, long_b])
+        from services.slide_word_split import chunk_words_by_chars
+        pieces = chunk_words_by_chars(out, 110)
+        self.assertTrue(pieces[0]["transcript"].endswith("list."))
+        self.assertTrue(pieces[1]["transcript"].startswith("The next"))
+
+
 if __name__ == "__main__":
     unittest.main()
