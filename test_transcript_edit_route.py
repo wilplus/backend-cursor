@@ -78,6 +78,26 @@ class TranscriptEditRouteTests(unittest.TestCase):
         self.assertTrue(body["saved"])
         self.assertEqual(body["snippet_id"], _SNIP)
         self.assertEqual(self._saved[0]["snippet_id"], _SNIP)
+
+    def test_guest_on_unclaimed_session_saves(self):
+        # Round-4 signed-out-first (2026-07-16): the instant view's Approve
+        # writes through here BEFORE signup. Unclaimed session + no caller →
+        # capability by session id (mirrors the guest readout).
+        self._session = {"id": _SID, "user_id": None}
+        body, status = self._call({"snippet_id": _SNIP, "text": "fixed"},
+                                  user_id=None)
+        self.assertEqual(status, 200)
+        self.assertTrue(body["saved"])
+
+    def test_claimed_session_hidden_from_guest_and_stranger(self):
+        # user_id "u1" on the session (the setUp default): a guest or another
+        # user gets 404 — no existence leak, nothing saved.
+        _, s_guest = self._call({"snippet_id": _SNIP, "text": "x"},
+                                user_id=None)
+        _, s_other = self._call({"snippet_id": _SNIP, "text": "x"},
+                                user_id="intruder")
+        self.assertEqual((s_guest, s_other), (404, 404))
+        self.assertEqual(self._saved, [])
         self.assertIsNone(self._saved[0]["chunk_index"])
 
     def test_chunk_edit_saves(self):

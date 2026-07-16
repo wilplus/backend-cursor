@@ -8535,7 +8535,7 @@ _TRANSCRIPT_EDIT_MAX_LEN = 2000
 
 
 @v2_bp.route("/user/sessions/<session_id>/transcript-edits", methods=["PUT"])
-@require_auth
+@optional_auth
 def v2_user_put_transcript_edit(session_id):
     """Save the user's corrected transcript text for ONE target on their own
     readout (founder 2026-07-07) — either a snippet's transcript or a
@@ -8543,7 +8543,12 @@ def v2_user_put_transcript_edit(session_id):
     reviewing the ORIGINAL transcript; readout reads carry the edit as
     ``user_edited_text`` beside (never instead of) ``transcript``.
 
-    Owner-scoped: non-owner → 404 (no existence leak).
+    GUEST-capable since 2026-07-16 (the round-4 signed-out-first flow: the
+    instant view's Approve taps write through here BEFORE signup — they were
+    silently 401-ing for guests). Same capability rule as the guest readout:
+    an UNCLAIMED session (user_id NULL) is writable to the bare session id; a
+    claimed session is owner-only — 404 to any other/no caller (no existence
+    leak). Edits ride the session, so a later claim keeps them.
 
     Body: { "text": str (required, ≤2000 chars),
             "snippet_id": uuid XOR "chunk_index": int≥0 }
@@ -8557,7 +8562,13 @@ def v2_user_put_transcript_edit(session_id):
         }), 400
     try:
         session = db.v2_get_session_by_id(session_id)
-        if not session or str(session.get("user_id") or "") != str(request.user_id):
+        if not session:
+            return jsonify({
+                "code": "SESSION_NOT_FOUND", "error": "Session not found",
+            }), 404
+        _owner = session.get("user_id")
+        _caller = getattr(request, "user_id", None)
+        if _owner and str(_owner) != str(_caller or ""):
             return jsonify({
                 "code": "SESSION_NOT_FOUND", "error": "Session not found",
             }), 404
@@ -10887,7 +10898,7 @@ def v2_explore_arc_edit_slide(arc_id, index):
 
 
 @v2_bp.route("/explore/arc/<arc_id>/progress", methods=["GET"])
-@require_auth
+@optional_auth
 def v2_explore_arc_progress(arc_id):
     """Cheap poll for the 'X takes to your ideal presentation' bar (Prompt D §5).
 
@@ -10898,14 +10909,26 @@ def v2_explore_arc_progress(arc_id):
     already loaded), mirroring services/best_presentation.py's definition —
     the ideal-text payload stays the authoritative gate.
 
+    GUEST-capable since 2026-07-16 (the signed-out-first flow polls this from
+    the instant readout — it was 401-ing): a FULLY-UNCLAIMED arc (every
+    session user_id NULL) is readable to the bare arc id — the same
+    capability-by-uuid rule as the guest readout; any claimed session in the
+    arc → owner-only (404 to any other/no caller, no existence leak).
+
     Response 200 { arc_id, takes_done, takes_target, takes_remaining, ready,
                    coach_finalized }
              · 404 · 500
     """
     try:
         from services.best_presentation import presentation_progress
-        owned, sessions = _arc_owned_by_caller(arc_id)
-        if not owned:
+        sessions = db.get_arc_sessions(arc_id)
+        if not sessions:
+            return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
+        _caller = getattr(request, "user_id", None)
+        _owners = {str(s.get("user_id")) for s in sessions if s.get("user_id")}
+        _owned = bool(_caller) and str(_caller) in _owners
+        _guest_ok = not _owners  # fully-unclaimed arc → capability by uuid
+        if not (_owned or _guest_ok):
             return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
         # Canonical deck size = the most-complete deck across takes (same
         # rule as compose); deckless arcs (no deck) are never "finalized".
