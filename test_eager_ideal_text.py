@@ -280,8 +280,12 @@ class FourBubbleEndToEndTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertTrue(body["published"])
         self.assertEqual(body["bubbles"], 4)
-        self.assertEqual(m_pub.call_count, 3)          # the read never publishes
-        self.assertEqual(m_contract.call_count, 3)
+        # 3 spoken takes + the paired read's lifecycle flip (2026-07-16 —
+        # folded reads close at publish so the queue never keeps zombies).
+        self.assertEqual(m_pub.call_count, 4)
+        self.assertEqual(m_contract.call_count, 3)     # contract = spoken only
+        _flipped = {c.args[0] for c in m_pub.call_args_list}
+        self.assertIn("r-s1", _flipped)
         msgs = captured["msgs"]
         self.assertEqual([m["kind"] for m in msgs],
                          ["feedback", "feedback", "feedback", "ideal_text"])

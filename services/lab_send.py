@@ -75,19 +75,31 @@ def send_lab_recording_to_coach(session_id: str, user_id: str) -> dict:
         return {"ok": False, "already_sent": False, "status": current}
 
     # Best-effort admin notification — a nudge, not part of send-success.
-    try:
-        from services.session_publish import _send_admin_notification
-        snippets = db.get_snippets_by_session(session_id) or []
-        _send_admin_notification(
-            session_id=session_id,
-            user_id=user_id,
-            snippet_count=len(snippets),
+    # Founder 2026-07-16 (BE-3a): a mid-take RE-READ is part of its parent
+    # take — it still enters the review flow (the coach packet folds it),
+    # but it NEVER fires its own "homework completed" email. One email per
+    # spoken take ⇒ max 3 per arc.
+    _is_read = (session.get("recording_kind") == "read"
+                or bool(session.get("paired_session_id")))
+    if _is_read:
+        logger.info(
+            "lab_send: re-read sid=%s — admin email skipped (folds into "
+            "take %s)", session_id, session.get("paired_session_id"),
         )
-    except Exception as e:
-        logger.warning(
-            "lab_send: admin notify failed sid=%s err=%s (non-fatal)",
-            session_id, e,
-        )
+    else:
+        try:
+            from services.session_publish import _send_admin_notification
+            snippets = db.get_snippets_by_session(session_id) or []
+            _send_admin_notification(
+                session_id=session_id,
+                user_id=user_id,
+                snippet_count=len(snippets),
+            )
+        except Exception as e:
+            logger.warning(
+                "lab_send: admin notify failed sid=%s err=%s (non-fatal)",
+                session_id, e,
+            )
 
     logger.info("lab_send: sent to coach sid=%s user=%s", session_id, user_id)
     return {"ok": True, "already_sent": False, "status": "pending_admin_review"}
