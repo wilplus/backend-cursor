@@ -45,6 +45,7 @@ import httpx
 from config import Config
 from services.db import db
 from services.email_service import send_email_resend
+from services.email_threading import user_thread_headers
 
 
 logger = logging.getLogger(__name__)
@@ -199,8 +200,11 @@ def send_publish_results_email(
         rendered = _render_inline_fallback(props)
         render_mode = "fallback"
 
-    subject = _build_subject(snippet_count)
-    headers: dict[str, str] = {}
+    subject = _build_subject()
+    # Per-user thread root (fix-pack BE-3c): together with the stable
+    # subject this stacks every publish-results mail for one user into
+    # ONE conversation in their mail client.
+    headers: dict[str, str] = dict(user_thread_headers(user_id))
     if unsubscribe_url:
         # RFC 8058 — Gmail / Apple show a one-click unsubscribe
         # button when both headers are present.
@@ -242,14 +246,11 @@ def send_publish_results_email(
         return {"status": "send_failed", "error": str(e)}
 
 
-def _build_subject(snippet_count: int) -> str:
-    """Match the contract example: "N new voice moments are ready"."""
-    n = max(0, int(snippet_count or 0))
-    return (
-        "Your voice moments are ready"
-        if n == 0
-        else f"{n} new voice moments are ready"
-    )
+def _build_subject() -> str:
+    """STABLE subject (fix-pack BE-3c): mailbox threading needs the same
+    subject on every send, so the old count-varying form ("N new voice
+    moments are ready") is gone — the count still lives in the body."""
+    return "Your feedback from WillpowerLab"
 
 
 # Display name baked into every Post-Session-Results envelope. The
