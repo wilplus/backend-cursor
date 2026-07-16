@@ -13,6 +13,19 @@ load_dotenv()
 _PROD_APP_ORIGIN = "https://www.willpowerlab.com"
 
 
+def _env_int(name: str, default: int) -> int:
+    """Integer env var with a safe fallback: unset, blank, or malformed
+    values return the default instead of raising — a bad env value must
+    never crash import (live loop)."""
+    raw = (os.getenv(name) or "").strip()
+    if not raw:
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        return default
+
+
 def _merge_cors_origins() -> list:
     """Comma-separated CORS_ORIGINS plus FRONTEND_URL origin (so admin browsers
     can poll the API when only FRONTEND_URL is set) plus the hard-coded
@@ -80,6 +93,12 @@ class Config:
     AUDIO_BUCKET_NAME = "audio_recordings"
     SIGNED_URL_EXPIRY_SECONDS = 3600
     COACH_FEEDBACK_VIDEO_BUCKET = (os.getenv("COACH_FEEDBACK_VIDEO_BUCKET") or "coach_feedback_videos").strip() or "coach_feedback_videos"
+    # Upload size cap (MB) for coach feedback videos — the per-take summary
+    # video (POST /v2/coach/sessions/<sid>/video) and the key-moment video
+    # (POST .../snippets/<snip_id>/breakthrough-video) both read this.
+    # Env-tunable so the cap can move without a deploy; a malformed value
+    # falls back to 100 (never crash import — live loop).
+    COACH_FEEDBACK_VIDEO_MAX_MB = _env_int("COACH_FEEDBACK_VIDEO_MAX_MB", 100)
     # Cloudflare R2 (S3 API) for coach/reference/feedback videos — set all four to use R2 instead of Supabase Storage.
     R2_ACCOUNT_ID = (os.getenv("R2_ACCOUNT_ID") or "").strip()
     R2_ACCESS_KEY_ID = (os.getenv("R2_ACCESS_KEY_ID") or "").strip()
