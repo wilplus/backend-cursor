@@ -78,6 +78,7 @@ class TranscriptEditRouteTests(unittest.TestCase):
         self.assertTrue(body["saved"])
         self.assertEqual(body["snippet_id"], _SNIP)
         self.assertEqual(self._saved[0]["snippet_id"], _SNIP)
+        self.assertIsNone(self._saved[0]["chunk_index"])
 
     def test_guest_on_unclaimed_session_saves(self):
         # Round-4 signed-out-first (2026-07-16): the instant view's Approve
@@ -98,7 +99,6 @@ class TranscriptEditRouteTests(unittest.TestCase):
                                 user_id="intruder")
         self.assertEqual((s_guest, s_other), (404, 404))
         self.assertEqual(self._saved, [])
-        self.assertIsNone(self._saved[0]["chunk_index"])
 
     def test_chunk_edit_saves(self):
         body, status = self._call({"chunk_index": 0, "text": "fixed"})
