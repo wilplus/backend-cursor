@@ -210,6 +210,41 @@ class ReviewStateTests(unittest.TestCase):
 
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
+class GuestProgressTests(unittest.TestCase):
+    """GET /explore/arc/<id>/progress — guest-capable for fully-unclaimed
+    arcs (2026-07-16: the signed-out instant readout polls it; was 401)."""
+
+    def _call(self, sessions, caller=None):
+        app = Flask(__name__)
+        with app.test_request_context():
+            request.user_id = caller
+            with patch.object(v2.db, "get_arc_sessions",
+                              return_value=sessions), \
+                 patch.object(v2.db, "get_coach_best_presentation_edits",
+                              return_value={}):
+                resp, status = v2.v2_explore_arc_progress.__wrapped__(ARC)
+                return resp.get_json(), status
+
+    def test_guest_reads_fully_unclaimed_arc(self):
+        unclaimed = [dict(_spoken(i), user_id=None) for i in (1, 2)]
+        body, status = self._call(unclaimed, caller=None)
+        self.assertEqual(status, 200)
+        self.assertEqual(body["takes_done"], 2)
+
+    def test_claimed_arc_hidden_from_guest_and_stranger(self):
+        claimed = [_spoken(1)]  # user_id u1
+        _, s_guest = self._call(claimed, caller=None)
+        _, s_other = self._call(claimed, caller="intruder")
+        self.assertEqual((s_guest, s_other), (404, 404))
+
+    def test_owner_still_reads_and_reads_dont_count(self):
+        body, status = self._call([_spoken(1), _spoken(2), _read("s1")],
+                                  caller="u1")
+        self.assertEqual(status, 200)
+        self.assertEqual(body["takes_done"], 2)   # spoken-only
+
+
+@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
 class FourBubbleEndToEndTests(unittest.TestCase):
     """BE-C — the crystal-clean guarantee: the whole chain to 4 bubbles."""
 

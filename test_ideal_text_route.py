@@ -190,8 +190,10 @@ class ArcProgressCoachFinalizedTests(unittest.TestCase):
         ]
         self._coach_edits = {}
         self._p = [
-            patch.object(v2, "_arc_owned_by_caller",
-                         lambda arc_id: (True, self._sessions)),
+            # 2026-07-16: the guest-capable progress route reads
+            # db.get_arc_sessions directly (no _arc_owned_by_caller).
+            patch.object(v2.db, "get_arc_sessions",
+                         lambda arc_id: list(self._sessions)),
             patch.object(v2.db, "get_coach_best_presentation_edits",
                          lambda arc_id: dict(self._coach_edits)),
         ]
