@@ -72,8 +72,12 @@ def _snips(sid):
     }]
 
 
-@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
-class FeedbackRouteTests(unittest.TestCase):
+class _FeedbackHarness(unittest.TestCase):
+    """Shared harness for GET /explore/arc/<id>/feedback route tests.
+
+    ``label_value`` / ``surfaced`` / ``video_ref`` parameterize the coach's
+    private direction label and draft on EVERY snippet, so tests can steer
+    what the key-moments SELECT sees."""
 
     def setUp(self):
         self.app = Flask(__name__)
@@ -86,7 +90,8 @@ class FeedbackRouteTests(unittest.TestCase):
         for p in self._p:
             p.stop()
 
-    def _call(self, entitled=False, caller="u1"):
+    def _call(self, entitled=False, caller="u1", label_value="challenge",
+              surfaced=True, video_ref=None):
         with self.app.test_request_context():
             request.user_id = caller
             with patch("services.arc_entitlement.is_arc_entitled",
@@ -97,15 +102,16 @@ class FeedbackRouteTests(unittest.TestCase):
                               side_effect=lambda sid: _snips(sid)), \
                  patch.object(v2.db, "get_coach_snippet_drafts",
                               side_effect=lambda sid: [{
-                                  "snippet_id": f"{sid}-p0", "surfaced": True,
+                                  "snippet_id": f"{sid}-p0",
+                                  "surfaced": surfaced,
                                   "note": "This is the turn.",
                                   "transcript_corrected": f"corrected {sid}",
-                                  "breakthrough_video_ref": None,
+                                  "breakthrough_video_ref": video_ref,
                               }]), \
                  patch.object(v2.db, "get_training_labels",
                               side_effect=lambda sid: [{
                                   "snippet_id": f"{sid}-p0",
-                                  "value": "challenge"}]), \
+                                  "value": label_value}]), \
                  patch.object(v2.db, "get_user_transcript_edits",
                               return_value=[]), \
                  patch.object(v2.db, "get_coach_arc_ideal_text",
@@ -114,6 +120,10 @@ class FeedbackRouteTests(unittest.TestCase):
                               return_value={"credits": 7}):
                 resp, status = v2.v2_explore_arc_feedback.__wrapped__(ARC)
                 return resp.get_json(), status
+
+
+@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
+class FeedbackRouteTests(_FeedbackHarness):
 
     def test_take1_free_takes23_locked_with_paywall(self):
         body, status = self._call(entitled=False)
@@ -153,6 +163,74 @@ class FeedbackRouteTests(unittest.TestCase):
         for banned in ("potentiometer", "acoustic_read", "overall_score",
                        "outside_normal_range", "rank"):
             self.assertNotIn(banned, raw)
+
+
+@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
+class ThreatKeyMomentTests(_FeedbackHarness):
+    """BE-6 (founder fix-pack 2026-07-16): the coach's video may ride a
+    THREAT-labeled moment too — a coach-SURFACED threat moment shows on the
+    feedback page exactly like a challenge one (same fields, same
+    comment_video_ref lane, no badge). The private direction label still
+    only SELECTS: it is never serialized (AC-9 / blind coach), and the
+    breakthrough badge stays challenge-only."""
+
+    VIDEO = "https://x/coach-video.webm"
+
+    def test_threat_moment_with_video_surfaces(self):
+        body, status = self._call(entitled=True, label_value="threat",
+                                  video_ref=self.VIDEO)
+        self.assertEqual(status, 200)
+        takes = {t["take_index"]: t for t in body["takes"]}
+        moments = takes[1]["key_moments"]
+        self.assertTrue(moments)
+        for m in moments:
+            self.assertEqual(m["comment_video_ref"], self.VIDEO)
+            self.assertEqual(m["comment_text"], "This is the turn.")
+        # the paired READ's threat moment folds in too, same as challenge
+        kinds = {m["recording_kind"] for m in moments}
+        self.assertEqual(kinds, {"spoken", "read"})
+
+    def test_threat_moment_without_surfaced_stays_hidden(self):
+        body, _ = self._call(entitled=True, label_value="threat",
+                             surfaced=False, video_ref=self.VIDEO)
+        for t in body["takes"]:
+            self.assertEqual(t.get("key_moments"), [])
+        # nothing leaks around the surfaced gate — not even the video ref
+        self.assertNotIn(self.VIDEO, json.dumps(body))
+
+    def test_other_labels_stay_hidden(self):
+        for value in ("ambiguous", None, ""):
+            body, _ = self._call(entitled=True, label_value=value,
+                                 video_ref=self.VIDEO)
+            for t in body["takes"]:
+                self.assertEqual(t.get("key_moments"), [], value)
+
+    def test_label_is_never_serialized(self):
+        # the direction label SELECTS the moment but never ships (AC-9 /
+        # blind coach): no label field, no 'threat'/'challenge' anywhere.
+        for value in ("threat", "challenge"):
+            body, _ = self._call(entitled=True, label_value=value,
+                                 video_ref=self.VIDEO)
+            raw = json.dumps(body)
+            self.assertNotIn("threat", raw)
+            self.assertNotIn("challenge", raw)
+            takes = {t["take_index"]: t for t in body["takes"]}
+            for m in takes[1]["key_moments"]:
+                self.assertEqual(set(m.keys()), {
+                    "snippet_id", "take_session_id", "slide_index",
+                    "recording_kind", "transcript", "audio_ref",
+                    "start_offset_ms", "duration_ms", "comment_text",
+                    "comment_video_ref",
+                })
+
+    def test_breakthrough_badge_remains_challenge_only(self):
+        # BE-6 widens the key-moments SELECT, not the badge: a threat mark
+        # is still never a breakthrough (services/challenge_threat.py).
+        from services.challenge_threat import detect_breakthroughs
+        self.assertEqual(detect_breakthroughs([
+            {"id": "t1", "direction": "threat"},
+            {"id": "c1", "direction": "challenge"},
+        ]), {"c1"})
 
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
