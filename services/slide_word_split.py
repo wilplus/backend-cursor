@@ -457,6 +457,124 @@ def restore_punctuation(words: Any, segments: Any) -> list:
     return out
 
 
+# ── Run-on sentence boundaries (founder BE-1c, 2026-07-16) ─────────────────
+# Whisper under-punctuates long spoken run-ons — several clauses arrive
+# comma-spliced or with no punctuation at all, and the reader gets a wall of
+# text. The missing boundary is in the DELIVERY: a sentence end is a pause
+# you can hear, and the word timestamps already carry it. Where a real pause
+# follows an already-long sentence, the boundary is promoted to a full stop.
+# Punctuation + casing ONLY — words are never added, removed, or reordered
+# (the L1 verbatim fence) and spans are strictly untouched.
+
+# A trailing comma/semicolon/colon (kept inside closing quotes) that a
+# promotion upgrades to a period.
+_UPGRADEABLE_TAIL_RE = re.compile(r'[,;:](["\'’”)\]]*)$')
+
+# Trailing closing quotes/brackets — an appended period lands BEFORE them
+# ("word\"" → "word.\""). Always matches (possibly empty).
+_CLOSERS_TAIL_RE = re.compile(r'(["\'’”)\]]*)$')
+
+# Words an English sentence essentially never ends on — a pause after one of
+# these is hesitation ("the... [pause] biggest thing"), never a period.
+# Deliberately excludes particles/pronouns that legitimately end sentences
+# ("give up.", "come in.", "I like that.", "thank you.").
+_NON_FINAL_WORDS = frozenset("""
+    a an the and but or nor so yet because although though while whereas if
+    unless until than which whose whom of to into onto upon from with without
+    toward towards versus via per at for as my your his her its our their
+    am is are was were be been being do does will would can could shall
+    should may might must have has had very really quite such i
+""".split())
+
+
+def runon_split_enabled() -> bool:
+    """Run-on sentence-boundary kill-switch. Default ON; set
+    SENTENCE_BOUNDARY_SPLIT_ENABLED=0 to fall back to Whisper's own
+    punctuation only (live-loop safety valve, no redeploy)."""
+    return (os.getenv("SENTENCE_BOUNDARY_SPLIT_ENABLED") or "1") \
+        .strip().lower() not in ("0", "false", "no", "off")
+
+
+def _promote_token(token: str) -> str:
+    """End ``token`` with a period: upgrade a trailing , ; : — or append —
+    keeping any closing quotes/brackets outside it. Whitespace preserved."""
+    lead = token[:len(token) - len(token.lstrip())]
+    trail = token[len(token.rstrip()):]
+    core = token.strip()
+    m = _UPGRADEABLE_TAIL_RE.search(core)
+    if m is None:
+        m = _CLOSERS_TAIL_RE.search(core)
+    return lead + core[:m.start()] + "." + m.group(1) + trail
+
+
+def _capitalize_token(token: str) -> str:
+    """Uppercase the first letter (skipping any opening quote/bracket)."""
+    for i, ch in enumerate(token):
+        if ch.isalpha():
+            return token[:i] + ch.upper() + token[i + 1:]
+    return token
+
+
+def split_runon_sentences(words: Any, *, min_gap_ms: int | None = None,
+                          min_chars: int | None = None) -> list:
+    """Promote real speech pauses to sentence boundaries in the (ideally
+    punctuation-restored) word stream — the run-on fix (founder BE-1c,
+    2026-07-16). Deterministic; no LLM.
+
+    A boundary between adjacent speech words is promoted to a full stop when
+    ALL of these hold:
+
+      * the pause between them is >= ``min_gap_ms`` (default 600, env
+        SENTENCE_SPLIT_MIN_GAP_MS) — sentence-end pauses run long,
+        hesitations short;
+      * the running sentence is already >= ``min_chars`` (default 60, env
+        SENTENCE_SPLIT_MIN_CHARS) since the last sentence end — short
+        sentences are left alone;
+      * the previous word doesn't already end a sentence;
+      * the previous word isn't a dangling connective (_NON_FINAL_WORDS).
+
+    Promotion: the previous word's trailing comma/semicolon/colon upgrades
+    to ``.`` (an appended ``.`` stays inside closing quotes) and the next
+    word is capitalized. Words are NEVER added, removed, or reordered —
+    punctuation and casing only; ``start``/``end`` spans are STRICTLY
+    untouched. Returns NEW word dicts (malformed entries pass through).
+    Pure given env.
+    """
+    gap_need = min_gap_ms if isinstance(min_gap_ms, int) \
+        else _env_int("SENTENCE_SPLIT_MIN_GAP_MS", 600)
+    chars_need = min_chars if isinstance(min_chars, int) \
+        else _env_int("SENTENCE_SPLIT_MIN_CHARS", 60)
+    src = list(words or [])
+    if not src:
+        return src
+    out = [dict(w) if isinstance(w, dict) else w for w in src]
+    idxs = [i for i, w in enumerate(out)
+            if isinstance(w, dict) and (w.get("word") or "").strip()
+            and isinstance(w.get("start"), (int, float))]
+
+    run_chars = 0  # chars since the last sentence end
+    for pos, i in enumerate(idxs):
+        tok = out[i]["word"].strip()
+        run_chars += len(tok) + (1 if run_chars else 0)
+        if _ends_sentence(tok):
+            run_chars = 0
+            continue
+        if pos + 1 >= len(idxs):
+            break
+        nxt = out[idxs[pos + 1]]
+        pe = out[i].get("end")
+        pe = float(pe) if isinstance(pe, (int, float)) \
+            else float(out[i]["start"])
+        if (float(nxt["start"]) - pe) * 1000.0 < gap_need:
+            continue
+        if run_chars < chars_need or _norm_token(tok) in _NON_FINAL_WORDS:
+            continue
+        out[i]["word"] = _promote_token(out[i]["word"])
+        nxt["word"] = _capitalize_token(nxt["word"])
+        run_chars = 0
+    return out
+
+
 def chunk_words_by_chars(words: Any, max_chars: int = _DECKLESS_CHUNK_CHARS) -> list:
     """Chunk the word list into ~max_chars text pieces with per-chunk audio
     spans — SENTENCE-AWARE (founder BE-1b, 2026-07-15).

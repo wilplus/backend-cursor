@@ -394,6 +394,25 @@ def process_lab_recording(
                 "%s (raw words kept)", session_id, _punct_err,
             )
 
+    # Run-on sentence boundaries (founder BE-1c, 2026-07-16): Whisper
+    # under-punctuates spoken run-ons; the speaker's own pauses carry the
+    # missing boundary, and the word timestamps already hold them. Promote
+    # qualifying pauses to full stops — punctuation + casing only, words +
+    # spans strictly untouched, so every downstream consumer stays verbatim-
+    # faithful. Deterministic; SENTENCE_BOUNDARY_SPLIT_ENABLED=0 kills it.
+    if words_all:
+        try:
+            from services.slide_word_split import (
+                runon_split_enabled, split_runon_sentences,
+            )
+            if runon_split_enabled():
+                words_all = split_runon_sentences(words_all)
+        except Exception as _runon_err:
+            logger.warning(
+                "process_lab_recording: run-on sentence split failed "
+                "sid=%s: %s (words kept as-is)", session_id, _runon_err,
+            )
+
     # ── PIECES-CANONICAL (founder 2026-07-14 — "the piece IS the moment") ──
     # With word timestamps, the take is cut into ≤200-char TEXT pieces —
     # slide tap-boundaries FIRST (a piece never crosses a slide), then the
