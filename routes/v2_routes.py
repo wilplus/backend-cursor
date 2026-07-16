@@ -9702,8 +9702,9 @@ def v2_coach_get_session(session_id):
             try:
                 _r_readout = build_readout_from_session(
                     _rid, include_slide_scores=True)
+                _r_cstate = _coach_state_map(_rid)
                 _r_snips = [
-                    _shape_snip(s, _coach_state_map(_rid), _rid, "read")
+                    _shape_snip(s, _r_cstate, _rid, "read")
                     for s in (_r_readout.get("snippets") or [])
                 ]
             except Exception as _rf_err:
