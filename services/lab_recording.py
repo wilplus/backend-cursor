@@ -624,13 +624,32 @@ def process_lab_recording(
     _slide_coverage: list = []
     try:
         _slides_ctx = (session_context or {}).get("slides")
-        # Pieces mode SKIPS the slide-delivery LLM entailment: each piece
-        # already carries an EXACT slide_index from the cutter, so the
-        # "which slide does this window belong to" inference is unneeded —
-        # and running _entail_batch over ~270 pieces in ONE prompt would
-        # blow the context and block the 201. slide_stickiness stays None
-        # (an optional ranking input); ranking uses stickiness #1 alone.
-        if _slides_ctx and not _pieces_mode:
+        # Pieces mode (founder fix-pack BE-5, 2026-07-16 — REVIVED): each
+        # piece already carries an EXACT slide_index from the cutter, so no
+        # window→slide inference is needed; what the original skip dropped
+        # was the text↔slide SCORE itself (cost: ~270 pieces can't all run
+        # entailment). Restored two-tier: EVERY piece gets a deterministic
+        # lexical relatedness vs its OWN slide (degraded=true, zero model
+        # cost); the LLM-budget subset (_llm_budget_idx, default 16) is
+        # upgraded via the legacy claim-decomposition (sha1-cached per
+        # slide → one call per deck) + entailment pipeline. Coach-only
+        # (include_slide_scores) + an L2 ranking input (power_score w_s);
+        # runs AFTER the _cap_snapshot above, so the raw candidate-window
+        # capture never sees it. Best-effort — LLM failure keeps the
+        # lexical tier; never blocks the 201 (live loop).
+        if _slides_ctx and _pieces_mode:
+            from services.slide_alignment import compute_piece_slide_scores
+            _slide_per_snip = compute_piece_slide_scores(
+                [{"transcript": p["transcript"], "duration_ms": p["dur_ms"],
+                  "slide_index": (
+                      (p["metrics"].get("piece") or {}).get("slide_index")
+                      if isinstance(p["metrics"].get("piece"), dict) else None
+                  )}
+                 for p in prelim],
+                _slides_ctx,
+                llm_budget_idx=_llm_budget_idx,
+            ) or []
+        elif _slides_ctx:
             from services.slide_alignment import compute_slide_scores
             _res = compute_slide_scores(
                 [{"start_offset_ms": p["start_ms"], "duration_ms": p["dur_ms"],
