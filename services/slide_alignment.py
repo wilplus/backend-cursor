@@ -328,6 +328,129 @@ def _entail_batch(work):
         return None
 
 
+# ── Pieces-canonical Stickiness #2 (founder fix-pack BE-5, 2026-07-16) ────
+
+# Deterministic pseudo-claim split: body lines first, then sentence-ish
+# boundaries within a line. Zero model cost.
+_PSEUDO_CLAIM_SPLIT = re.compile(r"[\n\r]+|(?<=[.!?;])\s+")
+
+
+def _deterministic_claims(slide):
+    """Slide text → pseudo-claims WITHOUT the LLM: the title plus each body
+    line / sentence, non-empty. Stand-ins for the SPEC_SLIDE_CLAIMS output so
+    EVERY piece can carry a lexical relatedness verdict at zero model cost
+    (the real decomposition upgrades the LLM-budget subset). Pure."""
+    claims = []
+    if isinstance(slide, dict):
+        title = (slide.get("title") or "").strip()
+        if title:
+            claims.append(title)
+        for part in _PSEUDO_CLAIM_SPLIT.split(slide.get("body") or ""):
+            part = part.strip()
+            if part:
+                claims.append(part)
+    return claims
+
+
+def compute_piece_slide_scores(pieces, slides, llm_budget_idx=None):
+    """Pieces-mode Stickiness #2 (founder fix-pack BE-5) — per-piece slide
+    relatedness against the piece's OWN slide. The cutter already stamped the
+    exact ``slide_index`` on every piece, so the window→slide inference of
+    :func:`compute_slide_scores` is unneeded; what pieces mode lost was the
+    text↔slide SCORE itself (skipped for cost). This restores it in two tiers:
+
+      * EVERY piece — deterministic lexical verdicts (:func:`_lexical_verdict`)
+        against the slide's pseudo-claims (title + body lines) → composite,
+        ``degraded=True`` (honest: coarser than entailment).
+      * The LLM-budget subset (``llm_budget_idx``) — the legacy claim-ledger:
+        SPEC_SLIDE_CLAIMS decomposition (sha1-cached per slide text → one
+        decomposition per deck, however many pieces) + SPEC_SLIDE_ENTAILMENT,
+        ``degraded=False``. Any LLM failure keeps the lexical tier and never
+        raises (live loop).
+
+    ``pieces``: [{"transcript", "duration_ms", "slide_index"}], aligned to the
+    caller's piece list. ``slide_index`` None / out of range / empty slide →
+    composite None (no score). Same abstain semantics as the legacy path
+    (word floor → null).
+
+    Returns a list aligned to ``pieces`` of
+    {"composite": float|None, "on_slide": bool, "degraded": bool}.
+    """
+    n = len(pieces or [])
+    out = [{"composite": None, "on_slide": False, "degraded": False}
+           for _ in range(n)]
+    if not slides or not pieces:
+        return out
+
+    def _piece(i):
+        return pieces[i] if isinstance(pieces[i], dict) else {}
+
+    # 1. validate each piece's own slide_index (exact — stamped by the cutter)
+    mapped = {}
+    for i in range(n):
+        idx = _piece(i).get("slide_index")
+        if (isinstance(idx, int) and not isinstance(idx, bool)
+                and 0 <= idx < len(slides) and _slide_text(slides[idx])):
+            mapped[i] = idx
+
+    # 2. lexical tier — every mapped piece, zero model cost
+    for i, idx in mapped.items():
+        claims = _deterministic_claims(slides[idx])
+        reason = abstain_reason(_piece(i).get("transcript"),
+                                _piece(i).get("duration_ms"),
+                                slides[idx], claims)
+        if reason == "zero":
+            out[i] = {"composite": 0.0, "on_slide": False, "degraded": False}
+            continue
+        if reason == "null":
+            continue  # unscorable → stays null
+        verdicts = [_lexical_verdict(_piece(i).get("transcript"), c)
+                    for c in claims]
+        score = on_slide_score(verdicts)
+        out[i] = {"composite": round(score, 2),
+                  "on_slide": score >= _ON_SLIDE_THRESHOLD,
+                  "degraded": True}
+
+    # 3. LLM tier — the budget subset only; any failure keeps the lexical tier
+    try:
+        budget = {i for i in (llm_budget_idx or ())
+                  if isinstance(i, int) and not isinstance(i, bool)}
+        b_mapped = {i: idx for i, idx in mapped.items() if i in budget}
+        if not b_mapped:
+            return out
+        used_slides = {idx: slides[idx] for idx in set(b_mapped.values())}
+        claims_by_idx = decompose_slides_to_claims(used_slides)
+        work = []
+        for i, idx in sorted(b_mapped.items()):
+            claims = claims_by_idx.get(idx) or []
+            if not claims:
+                continue  # decomposition unavailable → the lexical tier stands
+            if abstain_reason(_piece(i).get("transcript"),
+                              _piece(i).get("duration_ms"),
+                              slides[idx], claims) is not None:
+                continue
+            work.append({"ref": i,
+                         "transcript": _piece(i).get("transcript") or "",
+                         "claims": claims})
+        if not work:
+            return out
+        verdicts_by_ref = _entail_batch(work)
+        if verdicts_by_ref is None:
+            return out  # LLM down → the lexical tier stands (degraded)
+        for w in work:
+            verdicts = verdicts_by_ref.get(str(w["ref"]))
+            if not verdicts:
+                continue  # this ref missing from the reply → lexical stands
+            score = on_slide_score(verdicts)
+            out[w["ref"]] = {"composite": round(score, 2),
+                             "on_slide": score >= _ON_SLIDE_THRESHOLD,
+                             "degraded": False}
+    except Exception as e:
+        logger.warning(
+            "piece_slide_scores: llm tier failed: %s (lexical tier kept)", e)
+    return out
+
+
 def compute_slide_scores(snippets, slides, slide_advances):
     """Orchestrate the claim-ledger. Returns
       {"per_snippet": [{composite|null, on_slide, degraded}],  # aligned to snippets
