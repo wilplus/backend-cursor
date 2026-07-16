@@ -34,7 +34,9 @@ VALID_ROLES = ("user", "bot", "system")
 # "cadence" = Explore-Session multi-take guidance bubbles (Prompt A §4),
 # bot-only + server-inserted; the FE never sends it. The AUTHORITATIVE DB
 # CHECK mirror is the LATEST kind migration:
-# migrations/add_transcript_ready_lounge_kind.sql.
+# migrations/add_feedback_ideal_lounge_kinds.sql (pinned by
+# test_lounge_kind_migration.py — adding a kind here without a new
+# migration fails CI).
 # "best_presentation_ready" = the durable "your best presentation is ready"
 # card — fired ONLY when the arc has >=3 takes AND is coach-reviewed AND paid.
 # "transcript_ready" = its unpaid/unreviewed counterpart (transcript text +
