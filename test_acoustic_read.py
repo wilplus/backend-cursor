@@ -110,6 +110,122 @@ class AttachAcousticReadTests(unittest.TestCase):
         attach_acoustic_read([{"metrics": "not-a-dict"}, 42, None])
 
 
+class RereadBaselineTests(unittest.TestCase):
+    """Founder 2026-07-17: "I need this measure based on acoustic data on the
+    re-read snippets too."
+
+    THE BUG: a mid-take re-read is a 1–2-piece recording. With no user
+    baseline it fell under the within-take cold-start floor → every re-read
+    piece read a fake-neutral 0.0 (the needle pegged dead centre). Its parent
+    SPOKEN take is the honest reference."""
+
+    class _Db:
+        """Parent take = 8 pieces of a real distribution; the re-read = 1."""
+
+        def __init__(self, parent_pieces=8):
+            self._parent = [
+                {"metrics": _metrics(f0_sd=30.0 + i, dynamic_db=12.0 + i * 0.5)}
+                for i in range(parent_pieces)
+            ]
+
+        def get_snippets_by_session(self, sid):
+            return self._parent if sid == "parent" else []
+
+        def v2_list_user_lab_sessions(self, uid, limit=5):
+            return []          # no cross-take history → no user baseline
+
+    def test_parent_take_becomes_the_reference_for_a_read(self):
+        from services.acoustic_read import resolve_read_baseline
+        base, kind = resolve_read_baseline(
+            None, recording_kind="read", paired_session_id="parent",
+            database=self._Db())
+        self.assertIsNotNone(base)
+        self.assertEqual(kind, "parent_take")
+        self.assertIn("f0_sd", base)
+
+    def test_short_reread_gets_a_real_needle_not_pegged_neutral(self):
+        from services.acoustic_read import (
+            attach_acoustic_read, resolve_read_baseline,
+        )
+        base, kind = resolve_read_baseline(
+            None, recording_kind="read", paired_session_id="parent",
+            database=self._Db())
+        # ONE piece, strongly atypical vs the parent take's spread.
+        pieces = [{"start_ms": 0, "dur_ms": 3000,
+                   "metrics": _metrics(f0_sd=90.0, dynamic_db=30.0),
+                   "transcript": "the re-read"}]
+        attach_acoustic_read(pieces, baseline=base, baseline_kind=kind)
+        read = pieces[0]["metrics"]["acoustic_read"]
+        self.assertEqual(read["baseline"], "parent_take")
+        self.assertNotEqual(read["potentiometer"], 0.0)   # the bug
+        self.assertTrue(-1.0 <= read["potentiometer"] <= 1.0)
+
+    def test_without_a_parent_a_short_read_still_pegs_neutral(self):
+        # The unchanged degradation when there IS no reference to lean on.
+        from services.acoustic_read import (
+            attach_acoustic_read, resolve_read_baseline,
+        )
+        base, kind = resolve_read_baseline(
+            None, recording_kind="read", paired_session_id=None,
+            database=self._Db())
+        self.assertIsNone(base)
+        pieces = [{"start_ms": 0, "dur_ms": 3000,
+                   "metrics": _metrics(f0_sd=90.0), "transcript": "x"}]
+        attach_acoustic_read(pieces, baseline=base, baseline_kind=kind)
+        read = pieces[0]["metrics"]["acoustic_read"]
+        self.assertEqual(read["potentiometer"], 0.0)
+        self.assertEqual(read["baseline"], "take")
+
+    def test_user_baseline_still_wins_over_the_parent_take(self):
+        from services.acoustic_read import resolve_read_baseline
+
+        class _WithHistory(RereadBaselineTests._Db):
+            def v2_list_user_lab_sessions(self, uid, limit=5):
+                return [{"id": "hist"}]
+
+            def get_snippets_by_session(self, sid):
+                if sid == "hist":
+                    return [{"metrics": _metrics(f0_sd=25.0 + i)}
+                            for i in range(10)]
+                return super().get_snippets_by_session(sid)
+
+        base, kind = resolve_read_baseline(
+            "u1", recording_kind="read", paired_session_id="parent",
+            database=_WithHistory())
+        self.assertEqual(kind, "user")
+
+    def test_spoken_take_never_borrows_a_parent(self):
+        from services.acoustic_read import resolve_read_baseline
+        base, kind = resolve_read_baseline(
+            None, recording_kind="spoken", paired_session_id="parent",
+            database=self._Db())
+        self.assertIsNone(base)
+        self.assertIsNone(kind)
+
+    def test_too_short_parent_is_not_a_reference(self):
+        from services.acoustic_read import resolve_read_baseline
+        base, kind = resolve_read_baseline(
+            None, recording_kind="read", paired_session_id="parent",
+            database=self._Db(parent_pieces=3))   # under the evidence bar
+        self.assertIsNone(base)
+
+    def test_resolve_never_raises_on_a_broken_db(self):
+        from services.acoustic_read import resolve_read_baseline
+
+        class _Boom:
+            def v2_list_user_lab_sessions(self, uid, limit=5):
+                raise RuntimeError("db down")
+
+            def get_snippets_by_session(self, sid):
+                raise RuntimeError("db down")
+
+        base, kind = resolve_read_baseline(
+            "u1", recording_kind="read", paired_session_id="parent",
+            database=_Boom())
+        self.assertIsNone(base)
+        self.assertIsNone(kind)
+
+
 class ToneHintTests(unittest.TestCase):
 
     def test_founder_mapping(self):

@@ -10202,6 +10202,9 @@ def v2_coach_session_recut(session_id):
             parent_audio_url=parent_url,
             # Preserve the session's spoken/read kind across a re-cut.
             recording_kind=(session.get("recording_kind") or "spoken"),
+            # …and its parent take, so a re-cut re-read keeps the acoustic
+            # reference that makes its needle honest (2026-07-17).
+            paired_session_id=session.get("paired_session_id"),
         )
         snippets = (readout or {}).get("snippets") or []
         logger.info("recut: sid=%s re-cut snippets=%d", session_id, len(snippets))
@@ -11674,7 +11677,10 @@ def v2_coach_get_ideal_text(arc_id):
     ``assembly_state`` + spoken take counts make the panel observable:
       "pending" — fewer than 3 spoken takes (show "N of 3 takes recorded");
       "ready"   — a block is served (persisted machine draft, coach edit, or
-                  the lazy-computed fallback).
+                  the lazy-computed fallback);
+      "empty"   — 3 takes in, but the assembler has nothing to select yet
+                  (no coach-confirmed picks). NEVER served as "ready" with an
+                  empty block: that renders as a dead panel (2026-07-17).
 
     200 { arc_id, text, key_moments, approved, ready,
           source: "coach"|"machine"|"auto",
@@ -11718,13 +11724,23 @@ def v2_coach_get_ideal_text(arc_id):
             }), 200
         maybe_assemble_ideal_text(arc_id)  # persist for the next open
         auto = assemble_ideal_text_block(arc_id)
+        _auto_text = (auto.get("text") or "").strip()
+        # 3 takes in but the assembler produced NOTHING (no coach-confirmed
+        # picks to select from yet) is a real, distinct state — serving it as
+        # "ready" hands the panel an empty block and reads to the coach as a
+        # dead screen. Say so honestly (founder 2026-07-17).
+        if not _auto_text:
+            logger.info(
+                "ideal-text: %d spoken takes but the assembler produced no "
+                "block arc=%s (no coach-confirmed picks yet?)",
+                _spoken_n, arc_id)
         return jsonify({
-            "arc_id": arc_id, "text": auto.get("text") or "",
+            "arc_id": arc_id, "text": _auto_text,
             "key_moments": auto.get("key_moments") or [],
             "approved": False,
-            "ready": bool(auto.get("ready")),
+            "ready": bool(_auto_text),
             "source": "auto",
-            "assembly_state": ("ready" if auto.get("ready") else "pending"),
+            "assembly_state": ("ready" if _auto_text else "empty"),
             **_counts,
         }), 200
     except Exception as e:
@@ -11983,6 +11999,99 @@ def v2_coach_save_feedback(session_id):
                      exc_info=True)
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR", "error": "Failed to save"}), 500
+
+
+@v2_bp.route("/coach/arc/<arc_id>/review-state", methods=["GET"])
+@require_admin_or_coach
+def v2_coach_arc_review_state(arc_id):
+    """The coach's arc wrap-up state (founder 2026-07-17) — ONE read that
+    answers "what's left before I can publish?", so the post-last-take screen
+    (Open the ideal text → PUBLISH) needs no client-side inference across
+    per-take calls.
+
+    The publish preconditions are the SAME ones publish-analysis enforces
+    (every spoken take saved + the ideal text approved) — served here as data
+    instead of only as a 409, so the FE can render the button's state up front
+    rather than discovering it on a failed POST.
+
+    200 {
+      arc_id, published,
+      takes: [{session_id, take_index, review_state, has_reread}],   # spoken
+      takes_saved, takes_total, takes_target,
+      ideal: {assembly_state, ready, approved, source, takes_done},
+      can_publish, blockers: ["TAKES_NOT_SAVED"|"IDEAL_TEXT_NOT_APPROVED"|
+                              "NO_TAKES"],
+      pending_session_ids: [...]        # the unsaved takes, for the FE's copy
+    }
+    404 · 500
+    """
+    try:
+        sessions = db.get_arc_sessions(arc_id)
+        if not sessions:
+            return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
+        spoken, reads = _spoken_takes_and_reads(sessions)
+
+        takes = []
+        pending = []
+        for s in spoken:
+            sid = str(s.get("id"))
+            if s.get("results_published_at"):
+                _rs = "delivered"
+            elif s.get("coach_feedback_saved_at"):
+                _rs = "reviewed"
+            else:
+                _rs = "to_review"
+                pending.append(sid)
+            takes.append({
+                "session_id": sid,
+                "take_index": s.get("take_index"),
+                "review_state": _rs,
+                "has_reread": bool(reads.get(sid)),
+            })
+
+        from services.best_presentation import TAKES_TARGET
+        row = db.get_coach_arc_ideal_text(arc_id) or {}
+        _ideal_text = (row.get("text") or "").strip()
+        _approved = bool(row.get("approved_at"))
+        ideal = {
+            # "ready" the moment a block exists to review; "pending" until the
+            # eager assembly at spoken take 3 has something to show.
+            "assembly_state": ("ready" if _ideal_text else "pending"),
+            "ready": bool(_ideal_text),
+            "approved": _approved,
+            "source": ("coach" if row.get("updated_by")
+                       else ("machine" if _ideal_text else None)),
+            "takes_done": min(len(spoken), TAKES_TARGET),
+        }
+
+        blockers = []
+        if not spoken:
+            blockers.append("NO_TAKES")
+        if pending:
+            blockers.append("TAKES_NOT_SAVED")
+        if not _approved:
+            blockers.append("IDEAL_TEXT_NOT_APPROVED")
+
+        return jsonify({
+            "arc_id": arc_id,
+            "published": bool(spoken) and all(
+                s.get("results_published_at") for s in spoken),
+            "takes": takes,
+            "takes_saved": len(spoken) - len(pending),
+            "takes_total": len(spoken),
+            "takes_target": TAKES_TARGET,
+            "ideal": ideal,
+            "can_publish": not blockers,
+            "blockers": blockers,
+            "pending_session_ids": pending,
+        }), 200
+    except Exception as e:
+        logger.error("coach/arc review-state failed arc=%s: %s", arc_id, e,
+                     exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({
+            "code": "V2_ERROR", "error": "Failed to load the review state",
+        }), 500
 
 
 @v2_bp.route("/coach/arc/<arc_id>/publish-analysis", methods=["POST"])
@@ -12692,6 +12801,9 @@ def v2_lab_create_recording():
                 session_context=session_context,
                 parent_audio_url=parent_url,
                 recording_kind=_rec_kind,  # spoken | read (2026-07-14)
+                # A re-read z-scores against its PARENT take (2026-07-17) —
+                # 1–2 pieces can't be their own reference.
+                paired_session_id=_paired_session_id,
             )
             logger.info(
                 "lab: recording processed sid=%s rec=%s snippets=%d",

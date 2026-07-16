@@ -125,7 +125,7 @@ class CoachIdealGetStatesTests(unittest.TestCase):
     def setUp(self):
         self.app = Flask(__name__)
 
-    def _get(self, sessions, row=None):
+    def _get(self, sessions, row=None, auto=None):
         with self.app.test_request_context():
             request.user_id = "coach1"
             with patch.object(v2.db, "get_arc_sessions",
@@ -135,10 +135,23 @@ class CoachIdealGetStatesTests(unittest.TestCase):
                  patch("services.ideal_text_block.maybe_assemble_ideal_text",
                        return_value=False), \
                  patch("services.ideal_text_block.assemble_ideal_text_block",
-                       return_value={"text": "cold fallback",
-                                     "key_moments": [], "ready": True}):
+                       return_value=(auto or {"text": "cold fallback",
+                                              "key_moments": [],
+                                              "ready": True})):
                 resp, status = v2.v2_coach_get_ideal_text.__wrapped__(ARC)
                 return resp.get_json(), status
+
+    def test_three_takes_but_nothing_assembled_reads_empty_not_ready(self):
+        # Founder 2026-07-17: serving assembly_state "ready" with an empty
+        # block hands the coach a dead panel. The honest state is "empty".
+        body, status = self._get(
+            [_spoken(1), _spoken(2), _spoken(3)],
+            auto={"text": "", "key_moments": [], "ready": True})
+        self.assertEqual(status, 200)
+        self.assertEqual(body["assembly_state"], "empty")
+        self.assertFalse(body["ready"])
+        self.assertEqual(body["text"], "")
+        self.assertEqual(body["takes_done"], 3)   # not a take-count problem
 
     def test_pending_below_three_spoken_with_counts(self):
         body, status = self._get([_spoken(1), _spoken(2), _read("s1")])
@@ -242,6 +255,85 @@ class GuestProgressTests(unittest.TestCase):
                                   caller="u1")
         self.assertEqual(status, 200)
         self.assertEqual(body["takes_done"], 2)   # spoken-only
+
+
+@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
+class ArcReviewStateTests(unittest.TestCase):
+    """GET /coach/arc/<id>/review-state (founder 2026-07-17) — the one read
+    the post-last-take screen renders from: Open the ideal text → PUBLISH.
+    Its can_publish must mirror publish-analysis' own 409 preconditions."""
+
+    def setUp(self):
+        self.app = Flask(__name__)
+
+    def _get(self, sessions, ideal_row=None):
+        with self.app.test_request_context():
+            request.user_id = "coach1"
+            with patch.object(v2.db, "get_arc_sessions",
+                              return_value=sessions), \
+                 patch.object(v2.db, "get_coach_arc_ideal_text",
+                              return_value=ideal_row):
+                out = v2.v2_coach_arc_review_state.__wrapped__(ARC)
+                resp, status = out if isinstance(out, tuple) else (out, 200)
+                return resp.get_json(), status
+
+    def test_unknown_arc_404s(self):
+        _body, status = self._get([])
+        self.assertEqual(status, 404)
+
+    def test_all_saved_and_approved_can_publish(self):
+        body, status = self._get(
+            [_spoken(1), _spoken(2), _spoken(3), _read("s1")],
+            {"text": "block", "updated_by": "coach1",
+             "approved_at": "2026-07-16T12:00:00Z"})
+        self.assertEqual(status, 200)
+        self.assertTrue(body["can_publish"])
+        self.assertEqual(body["blockers"], [])
+        self.assertEqual(body["takes_saved"], 3)
+        self.assertEqual(body["takes_total"], 3)   # the read is never a take
+        self.assertEqual(body["ideal"]["assembly_state"], "ready")
+        self.assertTrue(body["ideal"]["approved"])
+        self.assertEqual(body["ideal"]["source"], "coach")
+        # the read folds into take 1's row, it does not become its own
+        takes = {t["take_index"]: t for t in body["takes"]}
+        self.assertTrue(takes[1]["has_reread"])
+        self.assertFalse(takes[2]["has_reread"])
+        self.assertEqual(takes[1]["review_state"], "reviewed")
+
+    def test_unsaved_take_blocks_and_names_it(self):
+        body, _ = self._get(
+            [_spoken(1), _spoken(2, saved=False), _spoken(3)],
+            {"text": "b", "approved_at": "2026-07-16T12:00:00Z"})
+        self.assertFalse(body["can_publish"])
+        self.assertIn("TAKES_NOT_SAVED", body["blockers"])
+        self.assertEqual(body["pending_session_ids"], ["s2"])
+        self.assertEqual(body["takes_saved"], 2)
+
+    def test_unapproved_ideal_blocks(self):
+        body, _ = self._get(
+            [_spoken(1), _spoken(2), _spoken(3)],
+            {"text": "machine draft", "updated_by": None,
+             "approved_at": None})
+        self.assertFalse(body["can_publish"])
+        self.assertEqual(body["blockers"], ["IDEAL_TEXT_NOT_APPROVED"])
+        self.assertEqual(body["ideal"]["source"], "machine")
+        self.assertTrue(body["ideal"]["ready"])   # there IS a block to open
+
+    def test_no_ideal_row_reads_pending_and_blocks(self):
+        body, _ = self._get([_spoken(1), _spoken(2), _spoken(3)], None)
+        self.assertEqual(body["ideal"]["assembly_state"], "pending")
+        self.assertFalse(body["ideal"]["ready"])
+        self.assertIsNone(body["ideal"]["source"])
+        self.assertIn("IDEAL_TEXT_NOT_APPROVED", body["blockers"])
+
+    def test_published_arc_reports_published(self):
+        rows = [dict(_spoken(i), results_published_at="2026-07-16T13:00:00Z")
+                for i in (1, 2, 3)]
+        body, _ = self._get(rows, {"text": "b",
+                                   "approved_at": "2026-07-16T12:00:00Z"})
+        self.assertTrue(body["published"])
+        self.assertEqual({t["review_state"] for t in body["takes"]},
+                         {"delivered"})
 
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")

@@ -75,14 +75,65 @@ _MIN_PIECES_FOR_WITHIN_TAKE_READ = 6
 _BASELINE_MAX_SESSIONS = 5
 _BASELINE_MIN_SAMPLES = 8
 
+# Parent-take reference floor (founder 2026-07-17). A mid-take RE-READ is a
+# 1–2-piece recording: with no user baseline it fell under the within-take
+# cold-start floor and every re-read piece read a fake-neutral 0.0 — the
+# needle pegged dead centre, which is exactly what the coach saw. Its parent
+# SPOKEN take is the honest reference (same speaker, same session, same mic)
+# AND the meaningful comparison: "did the re-read land differently than the
+# take it re-reads?". Same evidence bar as the within-take rule.
+_BASELINE_MIN_SAMPLES_PARENT = _MIN_PIECES_FOR_WITHIN_TAKE_READ
+
+
+def _baseline_from_metrics(metric_dicts: list, min_samples: int) -> Optional[dict]:
+    """{feature_key: (mean, sd)} over a pool of piece-metric dicts, keeping
+    only features with >= min_samples usable values and a non-zero spread.
+    None when nothing clears the bar. Pure."""
+    cols: dict = {name: [] for name, _w in _CONTROL_COMPONENTS}
+    for m in metric_dicts:
+        if not isinstance(m, dict):
+            continue
+        for name, _w in _CONTROL_COMPONENTS:
+            v = m.get(name)
+            if isinstance(v, (int, float)) and not isinstance(v, bool):
+                cols[name].append(float(v))
+    out: dict = {}
+    for name, vals in cols.items():
+        if len(vals) < min_samples:
+            continue
+        mean = sum(vals) / len(vals)
+        var = sum((v - mean) ** 2 for v in vals) / len(vals)
+        sd = math.sqrt(var)
+        if sd > 0:
+            out[name] = (mean, sd)
+    return out or None
+
+
+def _session_piece_metrics(session_id: Any, *, database=None) -> list:
+    """Every stored piece's metrics dict for one session. Best-effort: []."""
+    if not session_id:
+        return []
+    try:
+        if database is None:
+            from services.db import db as database
+        return [
+            snip.get("metrics")
+            for snip in (database.get_snippets_by_session(str(session_id)) or [])
+            if isinstance(snip.get("metrics"), dict)
+        ]
+    except Exception as e:
+        logger.warning("acoustic_read: session metrics read failed sid=%s: %s",
+                       session_id, e)
+        return []
+
 
 def build_user_baseline(user_id: Optional[str], *, database=None) -> Optional[dict]:
     """Per-speaker acoustic baseline: {feature_key: (mean, sd)} over the
     user's historical piece metrics — the ISB hook score_control_direction
     always had. None for guests / too-little history (< _BASELINE_MIN_SAMPLES
-    moments) → callers fall back to within-take z-scores. Best-effort: any
-    read hiccup returns None, never raises (a baseline must never break a
-    recording)."""
+    moments) → callers fall back to the parent take / within-take z-scores.
+    Best-effort: any read hiccup returns None, never raises (a baseline must
+    never break a recording)."""
     if not user_id:
         return None
     try:
@@ -90,52 +141,82 @@ def build_user_baseline(user_id: Optional[str], *, database=None) -> Optional[di
             from services.db import db as database
         sessions = database.v2_list_user_lab_sessions(
             user_id, limit=_BASELINE_MAX_SESSIONS) or []
-        cols: dict = {name: [] for name, _w in _CONTROL_COMPONENTS}
+        pool = []
         for s in sessions:
-            sid = str(s.get("id") or "")
-            if not sid:
-                continue
-            for snip in (database.get_snippets_by_session(sid) or []):
-                m = snip.get("metrics") if isinstance(snip.get("metrics"), dict) else {}
-                for name, _w in _CONTROL_COMPONENTS:
-                    v = m.get(name)
-                    if isinstance(v, (int, float)) and not isinstance(v, bool):
-                        cols[name].append(float(v))
-        out: dict = {}
-        for name, vals in cols.items():
-            if len(vals) < _BASELINE_MIN_SAMPLES:
-                continue
-            mean = sum(vals) / len(vals)
-            var = sum((v - mean) ** 2 for v in vals) / len(vals)
-            sd = math.sqrt(var)
-            if sd > 0:
-                out[name] = (mean, sd)
-        return out or None
+            pool.extend(_session_piece_metrics(s.get("id"), database=database))
+        return _baseline_from_metrics(pool, _BASELINE_MIN_SAMPLES)
     except Exception as e:
         logger.warning("acoustic_read: baseline build failed user=%s: %s",
                        user_id, e)
         return None
 
 
-def attach_acoustic_read(pieces: list, *, baseline: Optional[dict] = None) -> None:
+def build_parent_take_baseline(parent_session_id: Any, *,
+                               database=None) -> Optional[dict]:
+    """The reference for a mid-take RE-READ (founder 2026-07-17): the parent
+    SPOKEN take's own pieces. A re-read is 1–2 pieces — far too few to z-score
+    against itself — so without this it fell to the cold-start neutral and the
+    coach's needle never moved. None when the parent take is too short to be a
+    reference (callers then keep the existing degradation). Best-effort."""
+    return _baseline_from_metrics(
+        _session_piece_metrics(parent_session_id, database=database),
+        _BASELINE_MIN_SAMPLES_PARENT,
+    )
+
+
+def resolve_read_baseline(user_id: Optional[str], *, recording_kind: str = "spoken",
+                          paired_session_id: Any = None,
+                          database=None) -> tuple:
+    """The reference this recording's z-scores are measured against, in
+    priority order (founder 2026-07-17):
+
+      1. the speaker's own cross-take baseline (stable, best);
+      2. for a RE-READ with no user baseline: its PARENT take's pieces —
+         same speaker/session/mic, and the comparison the coach wants;
+      3. None → the caller's within-take / cold-start behaviour, unchanged.
+
+    Returns (baseline|None, kind) where kind ∈ {"user", "parent_take", None}
+    — `kind` rides the stamped blob so the coach packet is honest about what
+    the needle was measured against. Best-effort; never raises."""
+    try:
+        base = build_user_baseline(user_id, database=database)
+        if base:
+            return base, "user"
+        if recording_kind == "read" and paired_session_id:
+            parent = build_parent_take_baseline(
+                paired_session_id, database=database)
+            if parent:
+                return parent, "parent_take"
+    except Exception as e:
+        logger.warning("acoustic_read: baseline resolve failed: %s", e)
+    return None, None
+
+
+def attach_acoustic_read(pieces: list, *, baseline: Optional[dict] = None,
+                         baseline_kind: Optional[str] = None) -> None:
     """Stamp metrics["acoustic_read"] on every piece dict (in place):
 
         {"potentiometer": float in [-1, 1],   # stress −1 … +1 charisma
          "outside_normal_range": bool,        # any component |z| ≥ 2.0
-         "baseline": "user" | "take",         # which reference was used
+         "baseline": "user" | "parent_take" | "take",   # the reference used
          "version": "acoustic-read-v1"}
 
     ``pieces`` = the record-time piece dicts (each with a "metrics" dict —
     a piece whose metrics are missing/empty gets NO read stamped: an honest
-    absence, not a fake-neutral 0.0). Deterministic; never raises."""
+    absence, not a fake-neutral 0.0). ``baseline_kind`` names the reference
+    for the coach packet's provenance (defaults to "user" when a baseline is
+    passed without a kind — the pre-2026-07-17 behaviour). Deterministic;
+    never raises."""
     try:
         usable = [p for p in (pieces or []) if isinstance(p, dict)]
         if not usable:
             return
+        _kind = baseline_kind or ("user" if baseline else "take")
         # Cold-start floor — within-take z on too few pieces is noise. Stamp a
         # neutral read (so the coach still sees "computed, nothing notable")
-        # rather than a pegged needle. Bypassed when a real user baseline
-        # anchors the z-scores.
+        # rather than a pegged needle. Bypassed whenever a REAL reference (the
+        # speaker's baseline, or a re-read's parent take) anchors the z-scores
+        # against a stable distribution rather than the tiny local pool.
         cold_start = not baseline
         if cold_start and len(usable) < _MIN_PIECES_FOR_WITHIN_TAKE_READ:
             for p in usable:
@@ -183,7 +264,7 @@ def attach_acoustic_read(pieces: list, *, baseline: Optional[dict] = None) -> No
                 "potentiometer": round(
                     math.tanh(_SQUASH_SCALE * float(z_sum)), 3),
                 "outside_normal_range": bool(max_abs_z >= _OUT_OF_RANGE_Z),
-                "baseline": "user" if baseline else "take",
+                "baseline": _kind,
                 "version": _READ_VERSION,
             }
     except Exception as e:
