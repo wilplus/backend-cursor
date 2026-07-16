@@ -3511,7 +3511,8 @@ class DatabaseService:
                 .select("id, recording_1_id, intake_context, status, "
                         "created_at, guest_claimed_at, results_published_at, "
                         "insights_payload, arc_id, take_index, "
-                        "slide_transcripts, coach_feedback_saved_at")
+                        "slide_transcripts, coach_feedback_saved_at, "
+                        "recording_kind, paired_session_id")
                 .eq("user_id", user_id)
                 .eq("source", "audit_upload")
                 .order("created_at", desc=True)
@@ -3523,12 +3524,13 @@ class DatabaseService:
             err_low = str(e).lower()
             if "source" in err_low and "pgrst" in err_low:
                 return []
-            # arc_id/take_index/slide_transcripts/coach_feedback_saved_at are
-            # later migrations — fall back to the base select if any isn't
-            # present yet.
+            # arc_id/take_index/slide_transcripts/coach_feedback_saved_at/
+            # recording_kind/paired_session_id are later migrations — fall
+            # back to the base select if any isn't present yet.
             if any(c in err_low for c in
                    ("arc_id", "take_index", "slide_transcripts",
-                    "coach_feedback_saved_at")):
+                    "coach_feedback_saved_at",
+                    "recording_kind", "paired_session_id")):
                 try:
                     res = (
                         self.client.table("v2_sessions")
@@ -10307,6 +10309,36 @@ class DatabaseService:
             logger.warning("get_feelings_by_sessions failed: %s", e)
             return []
 
+    def get_read_sessions_for(self, spoken_session_id) -> list[dict]:
+        """The paired mid-take RE-READ sessions of a spoken take
+        (recording_kind='read', paired_session_id=<take>), oldest first —
+        the fold order the coach packet appends them in (founder 2026-07-16:
+        "re-reads are part of the take, never separate items"). Uses
+        idx_v2_sessions_paired. Best-effort: [] pre-migration / on hiccup
+        (the packet degrades to the parent take alone)."""
+        if not spoken_session_id:
+            return []
+        try:
+            res = (
+                self.client.table("v2_sessions")
+                .select("id, user_id, arc_id, take_index, status, "
+                        "created_at, results_published_at, "
+                        "recording_kind, paired_session_id")
+                .eq("paired_session_id", str(spoken_session_id))
+                .order("created_at", desc=False)
+                .execute()
+            )
+            return res.data or []
+        except Exception as e:
+            err_low = str(e).lower()
+            if "paired_session_id" in err_low:
+                return []  # pre-migration — no read rows can exist either
+            logger.warning(
+                "get_read_sessions_for failed sid=%s err=%s",
+                spoken_session_id, e,
+            )
+            return []
+
     def get_arc_sessions(self, arc_id: Optional[str]) -> list[dict]:
         """The takes of an explore arc, ORDERED by take_index (Prompt A §3/§5).
         Powers cross-take selection + the delivery layer (spoken/read split,
@@ -11581,31 +11613,79 @@ class DatabaseService:
             )
             return 0
 
+    @staticmethod
+    def fold_reads_out_of_queue(rows: list[dict]) -> list[dict]:
+        """Founder 2026-07-16: a mid-take RE-READ is part of its parent take,
+        never its own queue item — the coach packet folds its snippets in.
+        Drops read rows (recording_kind='read' / paired_session_id set) and
+        stamps has_reread=True on parents present in the same page. Pure
+        (unit-tested directly); legacy rows without the columns pass through
+        untouched."""
+        parents_with_reads = {
+            str(r.get("paired_session_id")) for r in rows
+            if r.get("paired_session_id")
+        }
+        out = []
+        for r in rows:
+            if r.get("recording_kind") == "read" or r.get("paired_session_id"):
+                continue
+            if str(r.get("id")) in parents_with_reads:
+                r = dict(r)
+                r["has_reread"] = True
+            out.append(r)
+        return out
+
     def list_review_queue(self, *, limit: int = 100) -> list[dict]:
         """willab coach review queue (§3.8/§14): willab Lab sessions sent
         to the coach (status pending_admin_review, source audit_upload)
         and not yet published, newest-sent first. Returns raw rows; the
         route pseudonymizes user_id (§14 red-line 6 — never the real id in
         the list) + shapes the response. (results_published_at filtered in
-        Python to avoid PostgREST is-null quirks.)
+        Python to avoid PostgREST is-null quirks.) Read rows are folded out
+        (fold_reads_out_of_queue) — a re-read reviews INSIDE its parent
+        take's packet, never as its own row.
         """
+        _full_cols = (
+            "id, user_id, intake_context, guest_claimed_at, "
+            "created_at, results_published_at, "
+            "recording_kind, paired_session_id, arc_id, take_index"
+        )
+        _base_cols = (
+            "id, user_id, intake_context, guest_claimed_at, "
+            "created_at, results_published_at"
+        )
         try:
-            res = (
-                self.client.table("v2_sessions")
-                .select(
-                    "id, user_id, intake_context, guest_claimed_at, "
-                    "created_at, results_published_at"
+            try:
+                res = (
+                    self.client.table("v2_sessions")
+                    .select(_full_cols)
+                    .eq("status", "pending_admin_review")
+                    .eq("source", "audit_upload")
+                    .order("guest_claimed_at", desc=True)
+                    .limit(limit)
+                    .execute()
                 )
-                .eq("status", "pending_admin_review")
-                .eq("source", "audit_upload")
-                .order("guest_claimed_at", desc=True)
-                .limit(limit)
-                .execute()
-            )
-            return [
-                r for r in (res.data or [])
-                if not r.get("results_published_at")
-            ]
+                rows = res.data or []
+            except Exception as _e_full:
+                _low = str(_e_full).lower()
+                # Fold/arc columns not migrated yet → the legacy select
+                # (no read rows can exist without the columns either).
+                if not any(c in _low for c in (
+                        "recording_kind", "paired_session_id",
+                        "arc_id", "take_index")):
+                    raise
+                res = (
+                    self.client.table("v2_sessions")
+                    .select(_base_cols)
+                    .eq("status", "pending_admin_review")
+                    .eq("source", "audit_upload")
+                    .order("guest_claimed_at", desc=True)
+                    .limit(limit)
+                    .execute()
+                )
+                rows = res.data or []
+            rows = [r for r in rows if not r.get("results_published_at")]
+            return self.fold_reads_out_of_queue(rows)
         except Exception as e:
             err_low = str(e).lower()
             if "source" in err_low and "pgrst" in err_low:

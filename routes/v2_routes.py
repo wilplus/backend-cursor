@@ -9098,6 +9098,30 @@ def _coach_state_for(session_id, snippet_id):
     })
 
 
+def _snippet_owner_map(session_id):
+    """snippet_id → OWNING session id, across a take AND its folded mid-take
+    re-reads (founder 2026-07-16: the coach edits the MERGED packet under the
+    spoken take's path). Every write must persist under the row's own session
+    — the downstream readers (key moments, labels export, the learning loop)
+    are all keyed by the read's session id. Best-effort on the read lookup:
+    a hiccup degrades to the parent take's snippets alone."""
+    owners = {}
+    for s in (db.get_snippets_by_session(session_id) or []):
+        if s.get("id"):
+            owners[str(s.get("id"))] = str(session_id)
+    try:
+        for r in (db.get_read_sessions_for(session_id) or []):
+            rid = str(r.get("id"))
+            for s in (db.get_snippets_by_session(rid) or []):
+                if s.get("id"):
+                    owners.setdefault(str(s.get("id")), rid)
+    except Exception as e:
+        logger.warning(
+            "snippet owner map: read lookup failed sid=%s: %s", session_id, e,
+        )
+    return owners
+
+
 def _coach_session_state(session, cstate_map):
     """FE lifecycle state: done (published) > in_progress (any authoring) >
     pending (nothing authored yet)."""
@@ -9330,6 +9354,15 @@ def v2_coach_student_detail(user_id):
         _feel_by_session = {}
         for _fr in db.get_feelings_by_sessions([s.get("id") for s in rows]):
             _feel_by_session.setdefault(_fr.get("session_id"), _fr.get("feeling"))
+        # Founder 2026-07-16: a mid-take RE-READ is part of its parent take —
+        # never an extra row on the drill-down. Hide read rows; mark parents.
+        _reread_parents = {
+            str(s.get("paired_session_id")) for s in rows
+            if s.get("paired_session_id")
+        }
+        rows = [s for s in rows
+                if not (s.get("recording_kind") == "read"
+                        or s.get("paired_session_id"))]
         sessions = []
         for s in rows:
             ctx = s.get("intake_context") if isinstance(s.get("intake_context"), dict) else {}
@@ -9358,6 +9391,8 @@ def v2_coach_student_detail(user_id):
                 "arc_id": s.get("arc_id"),
                 # nervous/excited/calm/unsure, or null if not captured.
                 "feeling": _feel_by_session.get(s.get("id")),
+                # This take has folded mid-take re-read(s) in its packet.
+                "has_reread": str(s.get("id")) in _reread_parents,
             })
         # "Ideal text ready to review" badges (founder 2026-07-15) — the arcs
         # with a persisted MACHINE draft awaiting the coach (unapproved).
@@ -9512,8 +9547,14 @@ def v2_coach_student_audit_send(user_id):
 @require_admin_or_coach
 def v2_coach_queue():
     """① Coach review queue (FE PR2 → /v2/coach/queue). Pseudonymized rows,
-    FIFO (oldest sent first). Each row: {session_id, pseudonym, domain, topic,
-    n_snippets, state, sent_at} — NEVER user_id / name / email."""
+    FIFO (oldest sent first). Each row: {session_id, user_id, pseudonym,
+    domain, topic, n_snippets, state, sent_at, arc_id?, take_index?,
+    has_reread?}. `user_id` is the same OPAQUE drill key the roster exposes
+    (founder 2026-07-16, BE-4 — the FE groups the queue per student and opens
+    the student list from it; a random UUID is not name/email, so §14
+    red-line 6 still holds: pseudonym + domain remain the only DISPLAYED
+    fields). Read rows are folded into their parent take (never listed);
+    has_reread marks the parent."""
     try:
         rows = db.list_review_queue() or []
         out = []
@@ -9523,12 +9564,20 @@ def v2_coach_queue():
             cstate = _coach_state_map(sid)
             out.append({
                 "session_id": sid,
+                # Opaque drill key — mirrors GET /v2/coach/students (never
+                # rendered; keys the per-student grouping + drill-down).
+                "user_id": str(r.get("user_id")) if r.get("user_id") else "",
                 "pseudonym": _coach_pseudonym(r.get("user_id")),
                 "domain": (ctx or {}).get("domain") or "",
                 "topic": (ctx or {}).get("topic") or "",
                 "n_snippets": len(db.get_snippets_by_session(sid) or []),
                 "state": _coach_session_state(r, cstate),
                 "sent_at": r.get("guest_claimed_at") or r.get("created_at") or "",
+                # Grouping labels (additive; None on pre-arc rows).
+                "arc_id": r.get("arc_id"),
+                "take_index": r.get("take_index"),
+                # This take has folded mid-take re-read(s) inside its packet.
+                "has_reread": bool(r.get("has_reread")),
             })
         out.sort(key=lambda x: x.get("sent_at") or "")  # FIFO, oldest first
         return jsonify(out), 200
@@ -9579,13 +9628,12 @@ def v2_coach_get_session(session_id):
         # key/breakthrough. (The ai_draft column is no longer generated by
         # default; it stays readable behind COACH_PREFILL_ENABLED for a
         # possible revert, but is neither surfaced nor promoted here.)
-        snippets = []
-        for snip in (readout.get("snippets") or []):
+        def _shape_snip(snip, cstate_map, owning_sid, kind_default=None):
             _sid = str(snip.get("id"))
-            _coach_state = dict(cstate.get(_sid, {
+            _coach_state = dict(cstate_map.get(_sid, {
                 "direction_label": None, "note": "", "tag": None, "surfaced": False,
             }))
-            snippets.append({
+            return {
                 "id": snip.get("id"),
                 "index": snip.get("index"),
                 "transcript": snip.get("transcript") or "",
@@ -9615,20 +9663,73 @@ def v2_coach_get_session(session_id):
                 "acoustic_read": snip.get("acoustic_read"),
                 # Spoken vs read (founder 2026-07-14) — which delivery this
                 # snippet is: the original spoken take or the re-read of the
-                # corrected text. The coach labels each by it.
-                "recording_kind": snip.get("recording_kind"),
+                # corrected text. The coach labels each by it; the FE renders
+                # the small "re-read" chip from it.
+                "recording_kind": snip.get("recording_kind") or kind_default,
+                # Which session this row PERSISTS under (founder 2026-07-16 —
+                # the folded packet spans the take + its re-reads; writes on
+                # this snippet route to this session).
+                "take_session_id": owning_sid,
                 # NO machine comment pre-fill (founder 2026-07-14): the coach
                 # writes the key-moment comment from scratch; the system learns
                 # from what they write.
                 "coach_state": _coach_state,
-            })
+            }
+
+        snippets = [
+            _shape_snip(s, cstate, str(session_id))
+            for s in (readout.get("snippets") or [])
+        ]
+
+        # Fold the paired mid-take RE-READS into this take's packet (founder
+        # 2026-07-16: "re-reads are part of the take, revealed by clicking
+        # next, never separate items"). Appended AFTER the parent's pieces —
+        # NEVER sorted across sessions by start_offset_ms (the read's clock
+        # restarts at 0). Best-effort: a fold hiccup degrades to the parent
+        # take alone (LIVE LOOP).
+        _shadow_groups = [(str(session_id), list(snippets))]
+        read_sessions = []
+        try:
+            read_sessions = [
+                r for r in (db.get_read_sessions_for(session_id) or [])
+                if isinstance(r, dict) and r.get("id")
+            ]
+        except Exception as _rl_err:
+            logger.warning("coach/get-session: read lookup failed sid=%s: %s",
+                           session_id, _rl_err)
+        for _r in read_sessions:
+            _rid = str(_r.get("id"))
+            try:
+                _r_readout = build_readout_from_session(
+                    _rid, include_slide_scores=True)
+                _r_snips = [
+                    _shape_snip(s, _coach_state_map(_rid), _rid, "read")
+                    for s in (_r_readout.get("snippets") or [])
+                ]
+            except Exception as _rf_err:
+                logger.warning(
+                    "coach/get-session: read fold failed sid=%s read=%s: %s",
+                    session_id, _rid, _rf_err)
+                continue
+            try:
+                db.stamp_review_opened(_rid)
+            except Exception:
+                pass
+            snippets.extend(_r_snips)
+            _shadow_groups.append((_rid, _r_snips))
+        # One continuous "next" sequence across the merged packet.
+        for _i, _s in enumerate(snippets):
+            _s["index"] = _i
 
         # Phase 4 / Prompt 1 (B3) — SHADOW direction predictions for this
         # session's reviewed snippets. Fire-and-forget; logged to
         # shadow_predictions, NEVER in this packet, influences nothing.
+        # Dispatched per OWNING session — a read's snippets must log under
+        # the read's own session id, never the spoken take's.
         try:
             from services.learning_serve import dispatch_shadow_predictions
-            dispatch_shadow_predictions(session_id, snippets)
+            for _own_sid, _grp in _shadow_groups:
+                dispatch_shadow_predictions(_own_sid, _grp)
         except Exception as _shadow_err:
             logger.warning("coach/get-session: shadow dispatch failed: %s", _shadow_err)
 
@@ -9664,6 +9765,11 @@ def v2_coach_get_session(session_id):
             "review_state": _review_state,
             "arc_id": session.get("arc_id"),
             "arc_ideal_ready": _arc_ideal_ready,
+            # Folded mid-take re-reads (founder 2026-07-16): their snippets
+            # ride in snippets[] after the parent's, each stamped with its
+            # owning take_session_id + recording_kind='read'.
+            "has_reread": bool(read_sessions),
+            "read_session_ids": [str(r.get("id")) for r in read_sessions],
             "overall_message": (insights or {}).get("overall_message") or "",
             "video_ref": (session.get("coach_video_ref") or None),
             # Slide-deck context (UX Wave 4 BE-S6a) — coach sees the deck while
@@ -9969,9 +10075,14 @@ def v2_coach_save_snippet(session_id, snippet_id):
         if not session:
             return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found"}), 404
 
-        # Snippet must belong to THIS session (no cross-session writes).
-        snips = db.get_snippets_by_session(session_id) or []
-        if snippet_id not in {str(s.get("id")) for s in snips if s.get("id")}:
+        # Snippet must belong to THIS session OR one of its folded mid-take
+        # re-reads (founder 2026-07-16 — the coach edits the MERGED packet
+        # under the spoken take's path). The write ROUTES to the snippet's
+        # OWNING session so every downstream reader (key moments, labels
+        # export, learning loop) — all keyed by the read's own session id —
+        # sees it.
+        _owner_sid = _snippet_owner_map(session_id).get(snippet_id)
+        if not _owner_sid:
             return jsonify({
                 "code": "SNIPPET_NOT_FOUND", "error": "Snippet not in this session",
             }), 404
@@ -9980,14 +10091,14 @@ def v2_coach_save_snippet(session_id, snippet_id):
 
         # SHARED two-lane persist (also the publish route's inline snippets[]
         # path) — one implementation so the two doors cannot drift.
-        _lane_err = _save_coach_snippet_lanes(session_id, snippet_id, body)
+        _lane_err = _save_coach_snippet_lanes(_owner_sid, snippet_id, body)
         if _lane_err is not None:
             return _lane_err
 
         # Echo the persisted coach_state (BOTH lanes folded) — the FE writes
         # this back into its local state, so it must reflect what's stored.
         return jsonify({
-            "coach_state": _coach_state_for(session_id, snippet_id),
+            "coach_state": _coach_state_for(_owner_sid, snippet_id),
         }), 200
     except Exception as e:
         logger.error(
@@ -10259,9 +10370,12 @@ def v2_coach_snippet_breakthrough_video(session_id, snippet_id):
         session = db.v2_get_session_by_id(session_id)
         if not session:
             return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found"}), 404
-        # Snippet must belong to THIS session (no cross-session writes).
-        snips = db.get_snippets_by_session(session_id) or []
-        if snippet_id not in {str(s.get("id")) for s in snips if s.get("id")}:
+        # Snippet must belong to THIS session OR one of its folded mid-take
+        # re-reads (founder 2026-07-16) — the video persists under the
+        # snippet's OWNING session (the draft round-trips via the read's own
+        # session id in the merged packet).
+        _owner_sid = _snippet_owner_map(session_id).get(snippet_id)
+        if not _owner_sid:
             return jsonify({
                 "code": "SNIPPET_NOT_FOUND", "error": "Snippet not in this session",
             }), 404
@@ -10302,19 +10416,20 @@ def v2_coach_snippet_breakthrough_video(session_id, snippet_id):
             _existing = db.get_coach_video_asset_by_idempotency_key(_idem)
             if _existing and _existing.get("video_ref"):
                 db.upsert_coach_snippet_draft(
-                    session_id, snippet_id,
+                    _owner_sid, snippet_id,
                     {"breakthrough_video_ref": _existing["video_ref"]},
                     updated_by=str(request.user_id),
                 )
                 return jsonify({
                     "status": "ok", "session_id": session_id, "snippet_id": snippet_id,
+                    "take_session_id": _owner_sid,
                     "breakthrough_video_ref": _existing["video_ref"], "deduped": True,
                 }), 200
 
         bucket = getattr(config, "COACH_FEEDBACK_VIDEO_BUCKET", "coach_feedback_videos")
         # Subsystem V — NON-deterministic key so a re-record does NOT overwrite
         # the prior take. User-facing ref is repointed to the newest below.
-        storage_key = f"coach-snippet-breakthrough/{session_id}/{snippet_id}/{uuid.uuid4().hex}{ext}"
+        storage_key = f"coach-snippet-breakthrough/{_owner_sid}/{snippet_id}/{uuid.uuid4().hex}{ext}"
         try:
             put_coach_object_bytes(
                 bucket, storage_key, video_bytes,
@@ -10333,7 +10448,7 @@ def v2_coach_snippet_breakthrough_video(session_id, snippet_id):
         # means the column is missing (run the migration) — the file is stored
         # and the URL is valid; a re-upload after the migration persists it.
         saved = db.upsert_coach_snippet_draft(
-            session_id, snippet_id,
+            _owner_sid, snippet_id,
             {"breakthrough_video_ref": breakthrough_video_ref},
             updated_by=str(request.user_id),
         )
@@ -10343,12 +10458,12 @@ def v2_coach_snippet_breakthrough_video(session_id, snippet_id):
         try:
             from services.coach_video_capture import capture_coach_video
             _note_now = None
-            for _d in (db.get_coach_snippet_drafts(session_id) or []):
+            for _d in (db.get_coach_snippet_drafts(_owner_sid) or []):
                 if str(_d.get("snippet_id")) == snippet_id:
                     _note_now = (_d.get("note") or None)
                     break
             capture_coach_video(
-                database=db, session_id=session_id, content_type="breakthrough",
+                database=db, session_id=_owner_sid, content_type="breakthrough",
                 recorded_by=str(request.user_id), video_ref=breakthrough_video_ref,
                 comment_text=_note_now, snippet_id=snippet_id,
                 device=(request.form.get("device") or None),
@@ -10376,6 +10491,9 @@ def v2_coach_snippet_breakthrough_video(session_id, snippet_id):
             "status": "ok",
             "session_id": session_id,
             "snippet_id": snippet_id,
+            # The session the draft actually persists under (a folded re-read
+            # snippet routes to its own session, 2026-07-16).
+            "take_session_id": _owner_sid,
             "breakthrough_video_ref": breakthrough_video_ref,
         }), 200
     except Exception as e:
@@ -11360,16 +11478,20 @@ def _async_analysis_enabled() -> bool:
 
 def _spoken_takes_and_reads(sessions):
     """Split an arc's sessions into spoken takes (ordered by take_index) and
-    a {spoken_session_id: read_session} map. Rows without recording_kind
-    (pre-migration / legacy) read as spoken."""
+    a {spoken_session_id: [read_session, ...]} map — a take can carry SEVERAL
+    mid-take re-reads and ALL of them fold into it (founder 2026-07-16),
+    oldest first. Rows without recording_kind (pre-migration / legacy) read
+    as spoken."""
     spoken, reads = [], {}
     for s in sessions:
         if (s.get("recording_kind") == "read") or s.get("paired_session_id"):
             if s.get("paired_session_id"):
-                reads[str(s.get("paired_session_id"))] = s
+                reads.setdefault(str(s.get("paired_session_id")), []).append(s)
         else:
             spoken.append(s)
     spoken.sort(key=lambda x: (x.get("take_index") or 0))
+    for _lst in reads.values():
+        _lst.sort(key=lambda x: (x.get("created_at") or ""))
     return spoken, reads
 
 
@@ -11402,15 +11524,19 @@ def _take_full_text(session_id):
     return " ".join(parts)
 
 
-def _take_key_moments(session_id, read_session_id=None):
+def _take_key_moments(session_id, read_session_ids=None):
     """A take's key moments (locked assumption A2/A3): coach-SURFACED snippets
     marked 'challenge' (the key-moment/breakthrough label), from the spoken
-    take AND its paired read. Each: playback span + the coach's comment (text
-    and/or video) + recording_kind + slide_index. No scores (AC-9); the
-    private direction label itself is never serialized — it only SELECTS."""
+    take AND ALL its paired mid-take re-reads. Each: playback span + the
+    coach's comment (text and/or video) + recording_kind + slide_index. No
+    scores (AC-9); the private direction label itself is never serialized —
+    it only SELECTS."""
+    _reads = read_session_ids or []
+    if isinstance(_reads, str):
+        _reads = [_reads]
     out = []
-    for sid, kind_default in ((session_id, "spoken"),
-                              (read_session_id, "read")):
+    for sid, kind_default in ([(session_id, "spoken")]
+                              + [(r, "read") for r in _reads]):
         if not sid:
             continue
         labels = {
@@ -11508,13 +11634,13 @@ def v2_explore_arc_feedback(arc_id):
                     "free": False, "locked": True,
                 })
                 continue
-            read_row = reads.get(sid)
+            read_rows = reads.get(sid) or []
             takes.append({
                 "take_index": ti, "session_id": sid,
                 "free": free, "locked": False,
                 "full_text": _take_full_text(sid),
                 "key_moments": _take_key_moments(
-                    sid, str(read_row.get("id")) if read_row else None),
+                    sid, [str(r.get("id")) for r in read_rows if r.get("id")]),
             })
         ideal = db.get_coach_arc_ideal_text(arc_id)
         body = {
@@ -11784,15 +11910,20 @@ def v2_coach_save_feedback(session_id):
                             "error": "Session not found"}), 404
         body = request.get_json(silent=True) or {}
 
+        # Founder 2026-07-16: the coach saves the MERGED packet (the take +
+        # its folded mid-take re-reads) under the spoken take's path — every
+        # row routes to its OWNING session (a read snippet persists under
+        # the read's own session id, where all downstream readers look).
+        _owners = {}
+        _inline = body.get("snippets")
+        _labels = body.get("labels")
+        if (isinstance(_inline, list) and _inline) \
+                or (isinstance(_labels, list) and _labels):
+            _owners = _snippet_owner_map(session_id)
+
         # ── Persist the inline authoring (same doors-can't-drift helper). ──
         _n_saved = 0
-        _inline = body.get("snippets")
         if isinstance(_inline, list) and _inline:
-            _known = {
-                str(s.get("id"))
-                for s in (db.get_snippets_by_session(session_id) or [])
-                if s.get("id")
-            }
             for _entry in _inline:
                 if not isinstance(_entry, dict):
                     return jsonify({
@@ -11800,7 +11931,7 @@ def v2_coach_save_feedback(session_id):
                         "error": "snippets: entries must be objects",
                     }), 422
                 _snip_id = str(_entry.get("id") or "").strip()
-                if _snip_id not in _known:
+                if _snip_id not in _owners:
                     return jsonify({
                         "code": "SNIPPET_NOT_FOUND",
                         "error": f"snippet {_snip_id or '(missing id)'} "
@@ -11811,26 +11942,29 @@ def v2_coach_save_feedback(session_id):
                 if "direction" in _fields and "direction_label" not in _fields:
                     _fields["direction_label"] = _fields.pop("direction")
                 _lane_err = _save_coach_snippet_lanes(
-                    session_id, _snip_id, _fields,
+                    _owners[_snip_id], _snip_id, _fields,
                 )
                 if _lane_err is not None:
                     return _lane_err
                 _n_saved += 1
 
         # ── labels[] (old publish-body shape) — private lane, idempotent. ──
-        _labels = body.get("labels")
         if isinstance(_labels, list) and _labels:
             try:
                 from services.training_labels import validate_publish_labels
-                _known = {
-                    str(s.get("id"))
-                    for s in (db.get_snippets_by_session(session_id) or [])
-                    if s.get("id")
-                }
                 clean = validate_publish_labels(
-                    _labels, _known, require_all=False)
-                db.upsert_training_labels(
-                    session_id, str(request.user_id), clean)
+                    _labels, set(_owners), require_all=False)
+                # Group by owning session — a label on a folded read snippet
+                # must store under the read's session id (that's where the
+                # key-moment selection and the learning export read them).
+                _by_owner = {}
+                for _lab in clean:
+                    _own = _owners.get(str(_lab.get("snippet_id"))) \
+                        or str(session_id)
+                    _by_owner.setdefault(_own, []).append(_lab)
+                for _own, _own_labels in _by_owner.items():
+                    db.upsert_training_labels(
+                        _own, str(request.user_id), _own_labels)
             except Exception as _lab_err:
                 return jsonify({
                     "code": "INVALID_INPUT",
@@ -11917,6 +12051,25 @@ def v2_coach_publish_analysis(arc_id):
                 pass
             db.v2_publish_session_results(sid)
             published.append(sid)
+
+        # ── Close the READ lifecycle too (founder 2026-07-16): a mid-take
+        # re-read is folded into its take and never independently reviewed —
+        # flip it here so hidden reads can't accumulate as queue zombies.
+        # Best-effort per row; reads never run the publish contract.
+        for s in sessions:
+            if not (s.get("recording_kind") == "read"
+                    or s.get("paired_session_id")):
+                continue
+            if s.get("results_published_at"):
+                continue
+            _rid = str(s.get("id"))
+            try:
+                db.v2_update_session_status_unscoped(_rid, "completed")
+                db.v2_publish_session_results(_rid)
+            except Exception as _rd_err:
+                logger.warning(
+                    "publish-analysis: read flip failed arc=%s read=%s: %s",
+                    arc_id, _rid, _rd_err)
 
         # ── The 4 bubbles, in order (idempotent client_ids). ──
         owner = next(
