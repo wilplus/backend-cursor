@@ -11527,11 +11527,12 @@ def _take_full_text(session_id):
 
 def _take_key_moments(session_id, read_session_ids=None):
     """A take's key moments (locked assumption A2/A3): coach-SURFACED snippets
-    marked 'challenge' (the key-moment/breakthrough label), from the spoken
-    take AND ALL its paired mid-take re-reads. Each: playback span + the
-    coach's comment (text and/or video) + recording_kind + slide_index. No
-    scores (AC-9); the private direction label itself is never serialized —
-    it only SELECTS."""
+    marked 'challenge' OR 'threat' (founder 2026-07-16: the coach's video may
+    ride a threat-labeled moment too — 'challenge' alone remains the
+    breakthrough badge), from the spoken take AND ALL its paired mid-take
+    re-reads. Each: playback span + the coach's comment (text and/or video) +
+    recording_kind + slide_index. No scores (AC-9); the private direction
+    label itself is never serialized — it only SELECTS."""
     _reads = read_session_ids or []
     if isinstance(_reads, str):
         _reads = [_reads]
@@ -11555,7 +11556,7 @@ def _take_key_moments(session_id, read_session_ids=None):
             d = drafts.get(_sid)
             if not d or not d.get("surfaced"):
                 continue
-            if labels.get(_sid) != "challenge":
+            if labels.get(_sid) not in ("challenge", "threat"):
                 continue
             m = s.get("metrics") if isinstance(s.get("metrics"), dict) else {}
             _piece = m.get("piece") if isinstance(m.get("piece"), dict) else {}
