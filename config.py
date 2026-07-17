@@ -103,6 +103,15 @@ class Config:
     # opening a presentation's key-moment explanations. 5 credits ($5),
     # one-time per presentation. Env-tunable, malformed → 5.
     MOMENTS_UNLOCK_CREDITS = _env_int("MOMENTS_UNLOCK_CREDITS", 5)
+    # Star suggestions (founder 2026-07-18): a slide-stickiness composite at
+    # or below this low band triggers a REPLACE suggestion ("highly
+    # inadequate" relatedness). 0..1 scale; stored ×100 as an int so the
+    # env stays simple (15 = 0.15). Malformed → 15.
+    MOMENT_REPLACE_STICKINESS_MAX_PCT = _env_int(
+        "MOMENT_REPLACE_STICKINESS_MAX_PCT", 15)
+    # Cap on suggestion LLM generations per take (cost bound).
+    MOMENT_SUGGESTIONS_MAX_PER_TAKE = _env_int(
+        "MOMENT_SUGGESTIONS_MAX_PER_TAKE", 8)
     # Cloudflare R2 (S3 API) for coach/reference/feedback videos — set all four to use R2 instead of Supabase Storage.
     R2_ACCOUNT_ID = (os.getenv("R2_ACCOUNT_ID") or "").strip()
     R2_ACCESS_KEY_ID = (os.getenv("R2_ACCESS_KEY_ID") or "").strip()

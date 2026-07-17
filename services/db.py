@@ -10014,6 +10014,64 @@ class DatabaseService:
                            arc_id, e)
             return False
 
+    def upsert_moment_suggestion(
+        self, snippet_id: str, arc_id: str, kind: str,
+        replacement_text: Optional[str], why: Optional[str],
+        trigger: Optional[str],
+    ) -> bool:
+        """One star suggestion per snippet (founder 2026-07-18). Idempotent
+        on snippet_id (a reassembly regenerates in place). Best-effort."""
+        if not snippet_id or not arc_id or kind not in ("emphasize", "replace"):
+            return False
+        try:
+            self.client.table("moment_suggestions").upsert({
+                "snippet_id": str(snippet_id),
+                "arc_id": str(arc_id),
+                "kind": kind,
+                "replacement_text": replacement_text,
+                "why": why,
+                "trigger": trigger,
+            }, on_conflict="snippet_id").execute()
+            return True
+        except Exception as e:
+            _e = str(e).lower()
+            if "moment_suggestions" in _e and (
+                "does not exist" in _e or "pgrst" in _e
+            ):
+                logger.warning(
+                    "upsert_moment_suggestion: table missing (run "
+                    "migrations/add_moment_suggestions.sql)")
+                return False
+            logger.warning("upsert_moment_suggestion failed snip=%s: %s",
+                           snippet_id, e)
+            return False
+
+    def get_moment_suggestions_by_arc(self, arc_id: Optional[str]) -> dict:
+        """{snippet_id: suggestion row} for one presentation. Best-effort:
+        {} on missing table / error (no stars, never a break)."""
+        if not arc_id:
+            return {}
+        try:
+            res = (
+                self.client.table("moment_suggestions")
+                .select("*")
+                .eq("arc_id", str(arc_id))
+                .execute()
+            )
+            return {
+                str(r.get("snippet_id")): r
+                for r in (res.data or []) if r.get("snippet_id")
+            }
+        except Exception as e:
+            _e = str(e).lower()
+            if "moment_suggestions" in _e and (
+                "does not exist" in _e or "pgrst" in _e
+            ):
+                return {}
+            logger.warning("get_moment_suggestions_by_arc failed arc=%s: %s",
+                           arc_id, e)
+            return {}
+
     def set_session_priming(
         self, session_id: str,
         condition: Optional[str], phrase: Optional[str],
