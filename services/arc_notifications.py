@@ -182,6 +182,61 @@ def fire_instant_ideal_ready(db, user_id: Any, arc_id: Any) -> bool:
         return False
 
 
+def _fire_ideal_bubble(db, user_id: Any, arc_id: Any, *, client_key: str,
+                       body: str, variant: str, version: Any) -> bool:
+    """One idempotent ideal-text lifecycle bubble with an HONEST insert
+    count (the #201 lesson: a swallowed CHECK rejection must never read as
+    fired). Shared by the per-version ready + verified bubbles."""
+    if not user_id or not arc_id:
+        return False
+    try:
+        persisted = db.insert_lounge_messages(str(user_id), [{
+            "client_id": str(uuid.uuid5(uuid.NAMESPACE_URL, client_key)),
+            "role": "bot",
+            "kind": "ideal_text",
+            "body": body,
+            "metadata": {"arc_id": str(arc_id), "variant": variant,
+                         "version": version},
+            "client_created_at": datetime.now(timezone.utc).isoformat(),
+        }])
+        if not persisted:
+            logger.error(
+                "arc_notifications: ideal bubble dropped arc=%s key=%s",
+                arc_id, client_key)
+            return False
+        return True
+    except Exception as e:
+        logger.warning("arc_notifications: ideal bubble failed arc=%s: %s",
+                       arc_id, e)
+        return False
+
+
+def fire_ideal_version_ready(db, user_id: Any, arc_id: Any,
+                             version: Any) -> bool:
+    """Single deliverable (founder 2026-07-17): a NEW ideal-text version just
+    assembled → the per-VERSION ready bubble. Keyed on arc+version, so an
+    unchanged reassembly (same version) dedupes and every real new version
+    announces once. Copy = founder sign-off."""
+    return _fire_ideal_bubble(
+        db, user_id, arc_id,
+        client_key=f"willab-ideal-ready:{arc_id}:{version}",
+        body="Your ideal text is ready.",
+        variant="ready", version=version,
+    )
+
+
+def fire_ideal_verified(db, user_id: Any, arc_id: Any, version: Any) -> bool:
+    """Single deliverable (founder 2026-07-17): the coach VERIFIED the
+    current version → the per-version verified bubble. Copy = founder
+    sign-off."""
+    return _fire_ideal_bubble(
+        db, user_id, arc_id,
+        client_key=f"willab-ideal-verified:{arc_id}:{version}",
+        body="Your ideal text was verified by your coach.",
+        variant="verified", version=version,
+    )
+
+
 def fire_pay_note(db, user_id: Any, arc_id: Any) -> bool:
     """After take 2 is sent on an UNPAID arc: the 25-credit ($25) unlock note.
     Skipped when the arc is already entitled. Idempotent per arc. Per-take

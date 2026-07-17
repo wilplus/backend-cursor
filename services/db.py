@@ -9728,6 +9728,19 @@ class DatabaseService:
                 "auto_text": text,
                 "auto_updated_at": _now,
             }
+            # Versioning (single deliverable, 2026-07-17): a CHANGED machine
+            # copy bumps the version — which implicitly resets verification
+            # (verified_version < version reads as unverified). An unchanged
+            # reassembly is a no-op on the version, so verify stays stable
+            # across idle re-opens. Pre-migration rows: version key rides the
+            # same upsert and the missing-column fallback below drops it.
+            _old_auto = (row or {}).get("auto_text") or (
+                (row or {}).get("text") if row and not coach_owned else None)
+            if row is None:
+                payload["version"] = 1
+            elif (_old_auto or "").strip() != text.strip():
+                _v = row.get("version")
+                payload["version"] = (int(_v) + 1) if isinstance(_v, int) else 2
             if not coach_owned:
                 payload.update({
                     "text": text,
@@ -9740,6 +9753,14 @@ class DatabaseService:
                 return True
             except Exception as _e_auto:
                 _low = str(_e_auto).lower()
+                if "version" in _low and "version" in payload:
+                    # Versioning columns not migrated yet (run
+                    # migrations/add_ideal_text_versioning.sql) — write the
+                    # copies without the version bump.
+                    payload.pop("version", None)
+                    self.client.table("coach_arc_ideal_text").upsert(
+                        payload, on_conflict="arc_id").execute()
+                    return True
                 if "auto_text" not in _low and "auto_updated_at" not in _low:
                     raise
                 # auto columns not migrated yet → the legacy behavior
@@ -9770,6 +9791,97 @@ class DatabaseService:
             logger.warning("persist_auto_ideal_text failed arc=%s: %s",
                            arc_id, e)
             return False
+
+    def verify_ideal_text(self, arc_id: str, coach_id: Optional[str]) -> Optional[str]:
+        """Coach VERIFY (single deliverable, founder 2026-07-17): snapshot the
+        current best text as the VERIFIED copy of the CURRENT version — the
+        coach's working copy when a human owns the row, else the machine copy.
+        The snapshot keeps the served "verified" text stable even while the
+        coach keeps editing afterwards; a later reassembly bumps `version`,
+        which implicitly resets status to unverified.
+
+        Returns 'verified' | 'already' (current version already verified) |
+        None (nothing to verify / error)."""
+        if not arc_id:
+            return None
+        try:
+            row = self.get_coach_arc_ideal_text(arc_id)
+            if not row:
+                return None
+            coach_owned = bool(row.get("updated_by") or row.get("approved_at"))
+            best = ((row.get("text") or "") if coach_owned
+                    else (row.get("auto_text") or row.get("text") or ""))
+            best = best.strip()
+            if not best:
+                return None
+            _v = row.get("version")
+            version = int(_v) if isinstance(_v, int) else 1
+            _vv = row.get("verified_version")
+            if isinstance(_vv, int) and _vv == version:
+                return "already"
+            self.client.table("coach_arc_ideal_text").upsert({
+                "arc_id": str(arc_id),
+                "verified_version": version,
+                "verified_text": best,
+                "verified_at": datetime.now(timezone.utc).isoformat(),
+                "verified_by": str(coach_id) if coach_id else None,
+            }, on_conflict="arc_id").execute()
+            return "verified"
+        except Exception as e:
+            logger.warning("verify_ideal_text failed arc=%s: %s", arc_id, e)
+            return None
+
+    def get_moment_unlock(self, arc_id: Optional[str]) -> Optional[dict]:
+        """The presentation's key-moment unlock row (single deliverable,
+        founder 2026-07-17 — the ONLY paid item: 5 credits, one-time per
+        presentation, covers all current AND future moments). Deliberately a
+        SEPARATE table from the retired $25 arc_purchases — no grandfathering
+        (founder-explicit). None on missing table / no row / error."""
+        if not arc_id:
+            return None
+        try:
+            res = (
+                self.client.table("moment_unlocks")
+                .select("*")
+                .eq("arc_id", str(arc_id))
+                .limit(1)
+                .execute()
+            )
+            rows = res.data or []
+            return rows[0] if rows else None
+        except Exception as e:
+            _e = str(e).lower()
+            if "moment_unlocks" in _e and (
+                "does not exist" in _e or "pgrst" in _e
+            ):
+                return None  # migration pending → locked (never open)
+            logger.warning("get_moment_unlock failed arc=%s: %s", arc_id, e)
+            return None
+
+    def insert_moment_unlock(
+        self, arc_id: str, user_id: str, credits_spent: int,
+    ) -> Optional[dict]:
+        """Exclusive claim of the moments unlock — unique(arc_id) is the
+        atomic double-charge guard (mirrors arc_purchases). Returns the row,
+        or None on ANY conflict/error (the caller refunds)."""
+        if not arc_id or not user_id:
+            return None
+        try:
+            res = (
+                self.client.table("moment_unlocks")
+                .insert({
+                    "arc_id": str(arc_id),
+                    "user_id": str(user_id),
+                    "credits_spent": int(credits_spent),
+                })
+                .execute()
+            )
+            rows = res.data or []
+            return rows[0] if rows else None
+        except Exception as e:
+            logger.warning("insert_moment_unlock conflict/failure arc=%s: %s",
+                           arc_id, e)
+            return None
 
     def get_user_arc_ideal_notes(
         self, arc_id: Optional[str], user_id: Optional[str],

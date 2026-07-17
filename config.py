@@ -99,6 +99,10 @@ class Config:
     # Env-tunable so the cap can move without a deploy; a malformed value
     # falls back to 100 (never crash import — live loop).
     COACH_FEEDBACK_VIDEO_MAX_MB = _env_int("COACH_FEEDBACK_VIDEO_MAX_MB", 100)
+    # Single deliverable (founder re-shape 2026-07-17): the ONLY paid item —
+    # opening a presentation's key-moment explanations. 5 credits ($5),
+    # one-time per presentation. Env-tunable, malformed → 5.
+    MOMENTS_UNLOCK_CREDITS = _env_int("MOMENTS_UNLOCK_CREDITS", 5)
     # Cloudflare R2 (S3 API) for coach/reference/feedback videos — set all four to use R2 instead of Supabase Storage.
     R2_ACCOUNT_ID = (os.getenv("R2_ACCOUNT_ID") or "").strip()
     R2_ACCESS_KEY_ID = (os.getenv("R2_ACCESS_KEY_ID") or "").strip()
