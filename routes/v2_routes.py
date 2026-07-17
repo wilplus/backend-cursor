@@ -12104,13 +12104,11 @@ def v2_coach_arc_review_state(arc_id):
         }), 500
 
 
-# Legacy-path ALIAS (founder bug 2026-07-17): the FE's publish button still
-# relays to /coach/arc/<id>/publish — the OLD #186 route deleted in #195.
-# Nobody hit the 404 until the ideal-text panel became reachable (the FE
-# stacking fix): the deletion assumed an FE switch that never happened on
-# this button. Both paths now run THE one publish contract below; the FE
-# retargets to /publish-analysis at its own pace, then the alias can go.
-@v2_bp.route("/coach/arc/<arc_id>/publish", methods=["POST"])
+# The /coach/arc/<id>/publish ALIAS is RETIRED (FE handoff 2026-07-17):
+# the FE relay now targets /publish-analysis directly (their commit
+# 63be223, FE-4). History: the alias briefly restored the OLD #186 path
+# (deleted in #195) after the FE's publish button 404'd on its first-ever
+# reachable click.
 @v2_bp.route("/coach/arc/<arc_id>/publish-analysis", methods=["POST"])
 @require_admin_or_coach
 def v2_coach_publish_analysis(arc_id):
