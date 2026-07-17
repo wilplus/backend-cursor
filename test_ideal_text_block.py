@@ -95,8 +95,24 @@ class ExtractKeyMomentsTests(unittest.TestCase):
                 f"and again [[moment:{SNIP}|{SESS}]]dup[[/moment]].")
         out = extract_key_moments(text)
         self.assertEqual(out, [
-            {"snippet_id": SNIP, "take_session_id": SESS},
+            # anchor = the moment's inner text (the FE's underline fragment)
+            {"snippet_id": SNIP, "take_session_id": SESS, "anchor": "the turn"},
         ])  # deduped
+
+    def test_anchor_is_the_inner_span_verbatim(self):
+        from services.ideal_text_block import extract_key_moments
+        # inner text carries nested formatting → the anchor keeps it verbatim
+        # (a substring of the served text, so the FE's indexOf matches).
+        text = f"[[moment:{SNIP}|{SESS}]]This is **the** turn[[/moment]]"
+        out = extract_key_moments(text)
+        self.assertEqual(out[0]["anchor"], "This is **the** turn")
+
+    def test_legacy_unclosed_marker_still_parses_with_empty_anchor(self):
+        from services.ideal_text_block import extract_key_moments
+        out = extract_key_moments(f"[[moment:{SNIP}|{SESS}]]no closing tag")
+        self.assertEqual(out, [
+            {"snippet_id": SNIP, "take_session_id": SESS, "anchor": ""},
+        ])
 
     def test_deleted_anchor_deletes_the_deep_link(self):
         from services.ideal_text_block import extract_key_moments

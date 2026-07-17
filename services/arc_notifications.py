@@ -220,7 +220,9 @@ def fire_ideal_version_ready(db, user_id: Any, arc_id: Any,
     return _fire_ideal_bubble(
         db, user_id, arc_id,
         client_key=f"willab-ideal-ready:{arc_id}:{version}",
-        body="Your ideal text is ready.",
+        # Invites the next rep (founder handoff 2026-07-17). No em-dash.
+        body=("Your ideal text is ready. You can keep refining it by "
+              "recording another take."),
         variant="ready", version=version,
     )
 
