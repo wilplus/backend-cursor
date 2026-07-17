@@ -11900,9 +11900,17 @@ def v2_coach_get_ideal_text(arc_id):
         from services.best_presentation import (
             TAKES_TARGET, spoken_arc_sessions,
         )
-        _spoken_n = len(spoken_arc_sessions(db.get_arc_sessions(arc_id)))
+        _arc_sessions = db.get_arc_sessions(arc_id)
+        _spoken_n = len(spoken_arc_sessions(_arc_sessions))
         _counts = {"takes_done": min(_spoken_n, TAKES_TARGET),
                    "takes_target": TAKES_TARGET}
+        # The STUDENT's own edit, read-only reference for the coach (BE-3):
+        # {text, version, updated_at} | null. Separate lane — the coach
+        # reconciles it by hand; it never overwrites the coach text (L1).
+        _owner = next(
+            (s.get("user_id") for s in (_arc_sessions or [])
+             if s.get("user_id")), None)
+        _user_edit = db.get_user_ideal_edit(arc_id, _owner) if _owner else None
 
         row = db.get_coach_arc_ideal_text(arc_id)
         if row and (row.get("text") or "").strip():
@@ -11915,6 +11923,7 @@ def v2_coach_get_ideal_text(arc_id):
                 # coach = a human edited/owns it; machine = the eager draft
                 "source": ("coach" if row.get("updated_by") else "machine"),
                 "assembly_state": "ready",
+                "user_edit": _user_edit,
                 **_counts,
             }), 200
 
@@ -11926,6 +11935,7 @@ def v2_coach_get_ideal_text(arc_id):
                 "arc_id": arc_id, "text": "",
                 "key_moments": [], "approved": False, "ready": False,
                 "source": "auto", "assembly_state": "pending",
+                "user_edit": _user_edit,
                 **_counts,
             }), 200
         maybe_assemble_ideal_text(arc_id)  # persist for the next open
@@ -11947,6 +11957,7 @@ def v2_coach_get_ideal_text(arc_id):
             "ready": bool(_auto_text),
             "source": "auto",
             "assembly_state": ("ready" if _auto_text else "empty"),
+            "user_edit": _user_edit,
             **_counts,
         }), 200
     except Exception as e:
@@ -12106,7 +12117,18 @@ def v2_explore_get_ideal_text(arc_id):
             _vtext = (_r.get("verified_text") or "").strip()
             _verified = bool(_version is not None
                              and _vv == _version and _vtext)
-            _text = _vtext if _verified else _machine
+            _base_text = _vtext if _verified else _machine
+            # The student's in-place edit WINS display while it was made
+            # against the CURRENT version (BE-2). A new take supersedes it —
+            # the edit is retained (coach signal) but the fresh machine text
+            # shows. `status` still reflects the coach's verification of the
+            # version, independent of the student's own tweaks on top.
+            _edit = db.get_user_ideal_edit(arc_id, request.user_id)
+            _user_edited = bool(
+                _edit and _version is not None
+                and _edit.get("version") == _version
+                and (_edit.get("text") or "").strip())
+            _text = _edit["text"] if _user_edited else _base_text
             from services.ideal_text_block import extract_key_moments
             _moments = extract_key_moments(_text)
             _has_expl = _moment_explanations_map(
@@ -12117,6 +12139,9 @@ def v2_explore_get_ideal_text(arc_id):
                 "version": _version,
                 "status": "verified" if _verified else "unverified",
                 "text": _text,
+                # True when the served text is the student's own edit of the
+                # current version (the FE labels it).
+                "user_edited": _user_edited,
                 "key_moments": [{
                     "id": m.get("snippet_id"),
                     # The literal text fragment the FE underlines + taps
@@ -12231,6 +12256,70 @@ def v2_explore_put_ideal_notes(arc_id):
         return jsonify({"ok": True, "arc_id": arc_id}), 200
     except Exception as e:
         logger.error("ideal-notes PUT failed arc=%s: %s", arc_id, e,
+                     exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to save"}), 500
+
+
+@v2_bp.route("/explore/arc/<arc_id>/ideal-text/user-edit", methods=["PUT"])
+@require_auth
+def v2_explore_put_ideal_user_edit(arc_id):
+    """Persist the student's IN-PLACE edit of the SD ideal text (founder
+    2026-07-17). The post-recording screen IS the ideal text 1.0, editable in
+    place — this makes that edit survive reloads + show on every surface. The
+    edit is stamped with the ideal-text VERSION it was made against; it wins
+    display only while that equals the current version (a new take supersedes
+    it — retained, not shown; BE-2 pinned default). NEVER overwrites the coach
+    canonical or the legacy notebook copy (L1 — separate lanes).
+
+    Body: {text ≤20000, version:int}.
+    200 {saved: true, version}
+    400 INVALID_INPUT · 404 · 409 VERSION_SUPERSEDED {current_version} · 500
+    """
+    try:
+        owned, _sessions = _arc_owned_by_caller(arc_id)
+        if not owned:
+            return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
+        body = request.get_json(silent=True) or {}
+        text = body.get("text")
+        if not isinstance(text, str):
+            return jsonify({"code": "INVALID_INPUT",
+                            "error": "text is required"}), 400
+        _v = body.get("version")
+        if not isinstance(_v, int) or isinstance(_v, bool) or _v < 1:
+            return jsonify({"code": "INVALID_INPUT",
+                            "error": "version must be a positive integer"}), 400
+        text = re.sub(r"<[^>]*>", "", text).strip()   # markers ride through
+        if len(text) > 20000:
+            return jsonify({"code": "INVALID_INPUT",
+                            "error": "text too long"}), 400
+
+        # The current version — the edit only sticks against it. A newer
+        # version having assembled since → 409 so the FE refetches + re-offers.
+        _row = db.get_coach_arc_ideal_text(arc_id) or {}
+        _machine = ((_row.get("auto_text") or "").strip()
+                    or ((_row.get("text") or "").strip()
+                        if not (_row.get("updated_by")
+                                or _row.get("approved_at")) else ""))
+        current = _row.get("version") or (1 if _machine else None)
+        if not isinstance(current, int):
+            return jsonify({"code": "NOTHING_TO_EDIT",
+                            "error": "No ideal text to edit yet."}), 409
+        if _v != current:
+            return jsonify({
+                "code": "VERSION_SUPERSEDED",
+                "current_version": current,
+            }), 409
+
+        ok = db.upsert_user_ideal_edit(
+            arc_id, str(request.user_id), text, current)
+        if not ok:
+            return jsonify({"code": "V2_ERROR",
+                            "error": "Could not save"}), 500
+        return jsonify({"saved": True, "arc_id": arc_id,
+                        "version": current}), 200
+    except Exception as e:
+        logger.error("ideal user-edit PUT failed arc=%s: %s", arc_id, e,
                      exc_info=True)
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR", "error": "Failed to save"}), 500
@@ -13271,9 +13360,27 @@ def v2_lab_create_recording():
                                 fire_ideal_version_ready,
                             )
                             _row = db.get_coach_arc_ideal_text(arc_id) or {}
+                            _new_v = _row.get("version") or 1
                             fire_ideal_version_ready(
-                                db, _cad_user, arc_id,
-                                _row.get("version") or 1)
+                                db, _cad_user, arc_id, _new_v)
+                            # BE-4: a student edit of a PRIOR version is the
+                            # strongest phrasing-preference signal the corpus
+                            # gets. The assembler has no per-user selection
+                            # channel yet, so capture it as structured
+                            # metadata (selection-influence = named follow-up).
+                            try:
+                                _pe = db.get_user_ideal_edit(arc_id, _cad_user)
+                                if _pe and isinstance(_pe.get("version"), int) \
+                                        and _pe["version"] < _new_v:
+                                    logger.info(
+                                        "ideal_text: user-edit superseded "
+                                        "arc=%s edited_v=%s new_v=%s chars=%d "
+                                        "(preference signal; assembler "
+                                        "selection-influence is a follow-up)",
+                                        arc_id, _pe["version"], _new_v,
+                                        len(_pe.get("text") or ""))
+                            except Exception:
+                                pass
                     else:
                         _eager_ok = maybe_assemble_ideal_text(arc_id)
                         # Instant lane (2026-07-17, flag-gated): the machine
