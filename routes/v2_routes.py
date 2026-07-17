@@ -8123,7 +8123,14 @@ def _continue_deck_arc(user_id, slides, fresh_arc_id, fresh_take_index):
         # batch are joinable — the most-developed open one wins (so take 5
         # fills batch 2 instead of minting a third arc). All full → the
         # fresh arc starts the next batch, counter back to take 1.
-        open_arcs = {a: c for a, c in counts.items() if c < _ARC_BATCH_TAKES}
+        # SINGLE DELIVERABLE (founder re-shape 2026-07-17, cap lock
+        # overturned): takes append to the presentation FOREVER — one deck =
+        # one presentation; only a new deck/topic mints a new one.
+        if _single_deliverable_enabled():
+            open_arcs = dict(counts)
+        else:
+            open_arcs = {a: c for a, c in counts.items()
+                         if c < _ARC_BATCH_TAKES}
         if not open_arcs:
             return fresh_arc_id, fresh_take_index
         best_arc = max(open_arcs.items(), key=lambda kv: kv[1])[0]
@@ -8164,8 +8171,13 @@ def _continue_topic_arc(user_id, topic, fresh_arc_id, fresh_take_index):
                 continue
             if " ".join(s_topic.strip().lower().split()) == norm:
                 counts[aid] = counts.get(aid, 0) + 1
-        # Batch cap — same open-batch rule as _continue_deck_arc.
-        open_arcs = {a: c for a, c in counts.items() if c < _ARC_BATCH_TAKES}
+        # Batch cap — same open-batch rule as _continue_deck_arc; lifted
+        # entirely under the single deliverable (takes append forever).
+        if _single_deliverable_enabled():
+            open_arcs = dict(counts)
+        else:
+            open_arcs = {a: c for a, c in counts.items()
+                         if c < _ARC_BATCH_TAKES}
         if not open_arcs:
             return fresh_arc_id, fresh_take_index
         best_arc = max(open_arcs.items(), key=lambda kv: kv[1])[0]
@@ -11286,6 +11298,15 @@ def v2_arc_unlock(arc_id):
              404 NOT_FOUND (not the caller's arc) · 500 V2_ERROR
     """
     try:
+        # Single deliverable (founder re-shape 2026-07-17): the $25 arc
+        # unlock is RETIRED — the only paid item is the 5-credit moments
+        # unlock (POST /presentation/<id>/unlock-moments). No grandfathering.
+        if _single_deliverable_enabled():
+            return jsonify({
+                "code": "GONE",
+                "error": "This product was retired. The ideal text is free; "
+                         "key-moment explanations unlock for 5 credits.",
+            }), 410
         from services.arc_entitlement import is_arc_entitled
         owned, _ = _arc_owned_by_caller(arc_id)
         if not owned:
@@ -11330,6 +11351,120 @@ def v2_arc_unlock(arc_id):
         logger.error("arc unlock failed arc=%s: %s", arc_id, e, exc_info=True)
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR", "error": "Failed to unlock"}), 500
+
+
+@v2_bp.route("/arc/<arc_id>/unlock-moments", methods=["POST"])
+@require_auth
+def v2_unlock_moments(arc_id):
+    """THE one paid item under the single deliverable (founder re-shape
+    2026-07-17): open the presentation's key-moment EXPLANATIONS (the coach's
+    note/video per moment) — 5 credits, one-time per presentation, covering
+    all current AND future moments. The ideal text itself is always free.
+    ARC-KEYED path — the FE contract pin (their 748c33d).
+
+    Same deduct-first atomic ordering as the retired arc unlock (deduct →
+    exclusive insert → refund on conflict), against the SEPARATE
+    moment_unlocks table (no grandfathering from arc_purchases).
+
+    200 { unlocked: true, arc_id, credits_remaining }
+    200 { already_entitled: true, arc_id }
+    402 { code: INSUFFICIENT_CREDITS, required, current }
+    404 · 409 (raced; refunded) · 500
+    """
+    try:
+        owned, _ = _arc_owned_by_caller(arc_id)
+        if not owned:
+            return jsonify({"code": "NOT_FOUND",
+                            "error": "presentation not found"}), 404
+        if _moments_entitled(arc_id):
+            return jsonify({"already_entitled": True,
+                            "arc_id": arc_id}), 200
+
+        amount = int(getattr(config, "MOMENTS_UNLOCK_CREDITS", 5) or 5)
+
+        new_balance = db.deduct_credits_strict(str(request.user_id), amount)
+        if new_balance is None:
+            details = db.v2_get_student_details(str(request.user_id)) or {}
+            current = int(details.get("credits") or 0)
+            return jsonify({
+                "code": "INSUFFICIENT_CREDITS",
+                "required": amount, "current": current,
+            }), 402
+
+        unlock = db.insert_moment_unlock(
+            str(arc_id), str(request.user_id), amount)
+        if not unlock:
+            db.v2_increment_student_credits(str(request.user_id), amount)
+            if _moments_entitled(arc_id):
+                return jsonify({"code": "MOMENTS_ALREADY_UNLOCKED",
+                                "arc_id": arc_id}), 409
+            return jsonify({
+                "code": "V2_ERROR", "error": "Could not start the unlock",
+            }), 500
+
+        return jsonify({
+            "unlocked": True, "arc_id": arc_id,
+            "credits_remaining": new_balance,
+        }), 200
+    except Exception as e:
+        logger.error("unlock-moments failed arc=%s: %s", arc_id, e,
+                     exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to unlock"}), 500
+
+
+@v2_bp.route("/explore/arc/<arc_id>/moments/<moment_id>", methods=["GET"])
+@require_auth
+def v2_get_moment_explanation(arc_id, moment_id):
+    """ONE key moment's EXPLANATION (single deliverable, founder 2026-07-17;
+    per-moment path = the FE contract pin, their 748c33d): the coach's note
+    text and/or video + playback span for the tapped moment. Gated by the
+    5-credit moments unlock; the 402 carries the price so the unlock prompt
+    renders from this response alone. AC-9: qualitative content only — no
+    scores, and the private direction label never serializes (it only
+    selects, same rule as the feedback page).
+
+    200 { arc_id, moment: {id, take_session_id, transcript, audio_ref,
+          start_offset_ms, duration_ms, slide_index, recording_kind,
+          comment_text, comment_video_ref} }
+    402 { code: MOMENTS_LOCKED, price_credits } · 404 · 500
+    """
+    try:
+        owned, sessions = _arc_owned_by_caller(arc_id)
+        if not owned:
+            return jsonify({"code": "NOT_FOUND",
+                            "error": "presentation not found"}), 404
+        if not _moments_entitled(arc_id):
+            return jsonify({
+                "code": "MOMENTS_LOCKED",
+                "price_credits": int(getattr(
+                    config, "MOMENTS_UNLOCK_CREDITS", 5) or 5),
+            }), 402
+        spoken, reads = _spoken_takes_and_reads(sessions)
+        _want = str(moment_id)
+        for s in spoken:
+            sid = str(s.get("id"))
+            read_rows = reads.get(sid) or []
+            for m in _take_key_moments(
+                    sid, [str(r.get("id")) for r in read_rows if r.get("id")]):
+                if str(m.get("snippet_id")) != _want:
+                    continue
+                return jsonify({"arc_id": arc_id, "moment": {
+                    "id": m.get("snippet_id"), **{
+                        k: m.get(k) for k in (
+                            "take_session_id", "transcript", "audio_ref",
+                            "start_offset_ms", "duration_ms", "slide_index",
+                            "recording_kind", "comment_text",
+                            "comment_video_ref")
+                    }}}), 200
+        return jsonify({"code": "MOMENT_NOT_FOUND",
+                        "error": "Not a key moment of this presentation"}), 404
+    except Exception as e:
+        logger.error("moment explanation failed arc=%s moment=%s: %s",
+                     arc_id, moment_id, e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR",
+                        "error": "Failed to load the moment"}), 500
 
 
 # ── willab — coach-owned ideal-text correction (founder 2026-07-06) ─────
@@ -11490,6 +11625,20 @@ def _async_analysis_enabled() -> bool:
         in ("1", "true", "yes")
 
 
+def _single_deliverable_enabled() -> bool:
+    """The single-deliverable re-shape (founder 2026-07-17): the product
+    delivers ONE thing — the ideal text. Record a take → instant ideal text
+    vN (unverified) → the coach verifies in the background (always, paid or
+    not) → the verified text displays FREE. The ONLY paid item: opening the
+    key-moment explanations (5 credits, one-time per presentation). Locks
+    consciously overturned by the founder (listed in the re-shape PR): the
+    3-take batch, the 4-bubble publish delivery, the $25 arc unlock (no
+    grandfathering), approve+publish (→ verify). DEFAULT OFF; deploy order
+    BE → FE → flip SINGLE_DELIVERABLE_ENABLED=1 in Railway."""
+    return (os.getenv("SINGLE_DELIVERABLE_ENABLED") or "0").strip().lower() \
+        in ("1", "true", "yes")
+
+
 def _instant_ideal_enabled() -> bool:
     """Instant ideal text (founder re-lock 2026-07-17): the MACHINE draft is
     served to the student FREE the moment take 3 lands — the June "the raw
@@ -11600,6 +11749,34 @@ def _take_key_moments(session_id, read_session_ids=None):
                 "comment_text": (d.get("note") or "").strip() or None,
                 "comment_video_ref": d.get("breakthrough_video_ref"),
             })
+    return out
+
+
+def _moments_entitled(arc_id) -> bool:
+    """Single deliverable: is the presentation's key-moment unlock owned?
+    Reads ONLY moment_unlocks — the retired $25 arc_purchases never grants
+    this (founder-explicit: no grandfathering)."""
+    try:
+        return bool(db.get_moment_unlock(arc_id))
+    except Exception:
+        return False
+
+
+def _moment_explanations_map(session_ids) -> dict:
+    """snippet_id → whether a coach EXPLANATION exists (a surfaced draft
+    carrying a note and/or video). Batch per session; best-effort."""
+    out: dict = {}
+    for sid in {str(s) for s in (session_ids or []) if s}:
+        try:
+            for d in (db.get_coach_snippet_drafts(sid) or []):
+                _snip = d.get("snippet_id")
+                if _snip is None or not d.get("surfaced"):
+                    continue
+                if (d.get("note") or "").strip() \
+                        or d.get("breakthrough_video_ref"):
+                    out[str(_snip)] = True
+        except Exception:
+            continue
     return out
 
 
@@ -11802,6 +11979,50 @@ def v2_coach_put_ideal_text(arc_id):
         return jsonify({"code": "V2_ERROR", "error": "Failed to save"}), 500
 
 
+@v2_bp.route("/coach/arc/<arc_id>/verify", methods=["POST"])
+@require_admin_or_coach
+def v2_coach_verify_ideal_text(arc_id):
+    """VERIFY — the coach's ONE action under the single deliverable (founder
+    re-shape 2026-07-17; replaces approve + publish). Marks the CURRENT
+    ideal-text version verified (who/when stamped, the served text
+    snapshotted), and fires the per-version "verified" bubble to the owner.
+    The student GET then serves the verified text FREE — no payment gate on
+    the text, ever. A new take afterwards bumps the version → status resets
+    to unverified and the loop continues. Idempotent per version.
+
+    200 { verified: true, arc_id, version }
+    200 { already_verified: true, arc_id, version }
+    409 NOTHING_TO_VERIFY · 404 · 500
+    """
+    try:
+        sessions = db.get_arc_sessions(arc_id)
+        if not sessions:
+            return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
+        outcome = db.verify_ideal_text(arc_id, str(request.user_id))
+        if outcome is None:
+            return jsonify({
+                "code": "NOTHING_TO_VERIFY",
+                "error": "No ideal-text version to verify yet.",
+            }), 409
+        row = db.get_coach_arc_ideal_text(arc_id) or {}
+        version = row.get("version") or 1
+        if outcome == "already":
+            return jsonify({"already_verified": True, "arc_id": arc_id,
+                            "version": version}), 200
+        owner = next(
+            (s.get("user_id") for s in sessions if s.get("user_id")), None)
+        if owner:
+            from services.arc_notifications import fire_ideal_verified
+            fire_ideal_verified(db, owner, arc_id, version)
+        return jsonify({"verified": True, "arc_id": arc_id,
+                        "version": version}), 200
+    except Exception as e:
+        logger.error("coach/verify failed arc=%s: %s", arc_id, e,
+                     exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to verify"}), 500
+
+
 @v2_bp.route("/coach/arc/<arc_id>/ideal-text/approve", methods=["POST"])
 @require_admin_or_coach
 def v2_coach_approve_ideal_text(arc_id):
@@ -11861,8 +12082,46 @@ def v2_explore_get_ideal_text(arc_id):
         owned, _sessions = _arc_owned_by_caller(arc_id)
         if not owned:
             return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
-        gated = _arc_payment_gate(arc_id)
         row = db.get_coach_arc_ideal_text(arc_id)
+
+        # ── SINGLE DELIVERABLE (founder re-shape 2026-07-17): the ideal
+        # text is FREE in both states — no 402 on this endpoint, ever. The
+        # only paid thing in the app is the key-moment EXPLANATIONS
+        # (GET /presentation/<id>/moments, 5 credits). ──
+        if _single_deliverable_enabled():
+            _r = row or {}
+            _coach_owned = bool(_r.get("updated_by") or _r.get("approved_at"))
+            _machine = ((_r.get("auto_text") or "").strip()
+                        or ((_r.get("text") or "").strip()
+                            if not _coach_owned else ""))
+            _version = _r.get("version") or (1 if _machine else None)
+            _vv = _r.get("verified_version")
+            _vtext = (_r.get("verified_text") or "").strip()
+            _verified = bool(_version is not None
+                             and _vv == _version and _vtext)
+            _text = _vtext if _verified else _machine
+            from services.ideal_text_block import extract_key_moments
+            _moments = extract_key_moments(_text)
+            _has_expl = _moment_explanations_map(
+                [m.get("take_session_id") for m in _moments])
+            _notes = db.get_user_arc_ideal_notes(arc_id, request.user_id)
+            return jsonify({
+                "arc_id": arc_id,
+                "version": _version,
+                "status": "verified" if _verified else "unverified",
+                "text": _text,
+                "key_moments": [{
+                    "id": m.get("snippet_id"),
+                    "take_session_id": m.get("take_session_id"),
+                    "has_explanation": bool(_has_expl.get(
+                        str(m.get("snippet_id")))),
+                } for m in _moments],
+                "moments_unlocked": _moments_entitled(arc_id),
+                # The personal notebook copy — free with the text now.
+                "notes_text": _notes, "notes": _notes, "user_notes": _notes,
+            }), 200
+
+        gated = _arc_payment_gate(arc_id)
         _approved_text = (row or {}).get("text") or ""
         _is_perfected_ready = bool(
             row and row.get("approved_at") and _approved_text.strip())
@@ -11936,9 +12195,12 @@ def v2_explore_put_ideal_notes(arc_id):
         owned, _sessions = _arc_owned_by_caller(arc_id)
         if not owned:
             return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
-        gated = _arc_payment_gate(arc_id)
-        if gated is not None:
-            return gated
+        # Single deliverable (2026-07-17): the text is free → so is the
+        # personal notebook copy. Only the legacy lanes keep the gate.
+        if not _single_deliverable_enabled():
+            gated = _arc_payment_gate(arc_id)
+            if gated is not None:
+                return gated
         body = request.get_json(silent=True) or {}
         text = body.get("text")
         if not isinstance(text, str):
@@ -12135,7 +12397,7 @@ def v2_coach_arc_review_state(arc_id):
         if not _approved:
             blockers.append("IDEAL_TEXT_NOT_APPROVED")
 
-        return jsonify({
+        _body = {
             "arc_id": arc_id,
             "published": bool(spoken) and all(
                 s.get("results_published_at") for s in spoken),
@@ -12147,7 +12409,22 @@ def v2_coach_arc_review_state(arc_id):
             "can_publish": not blockers,
             "blockers": blockers,
             "pending_session_ids": pending,
-        }), 200
+        }
+        # Single deliverable (2026-07-17): the wrap-up's action is VERIFY —
+        # available whenever a current version exists and isn't verified yet.
+        if _single_deliverable_enabled():
+            _v = row.get("version") or (1 if _ideal_text else None)
+            _vv = row.get("verified_version")
+            _verified = bool(_v is not None and _vv == _v
+                             and (row.get("verified_text") or "").strip())
+            _body.update({
+                "version": _v,
+                "verification_status": (
+                    "verified" if _verified
+                    else ("unverified" if _ideal_text else None)),
+                "verify_available": bool(_ideal_text and not _verified),
+            })
+        return jsonify(_body), 200
     except Exception as e:
         logger.error("coach/arc review-state failed arc=%s: %s", arc_id, e,
                      exc_info=True)
@@ -12181,8 +12458,15 @@ def v2_coach_publish_analysis(arc_id):
 
     200 { published, takes_published, bubbles: 4 }
     404 · 409 TAKES_NOT_SAVED / IDEAL_TEXT_NOT_APPROVED · 4xx/5xx per-take
+    410 under SINGLE_DELIVERABLE_ENABLED — VERIFY replaced publish.
     """
     try:
+        if _single_deliverable_enabled():
+            return jsonify({
+                "code": "GONE",
+                "error": "Publish was replaced by Verify "
+                         "(POST /v2/coach/arc/<arc_id>/verify).",
+            }), 410
         sessions = db.get_arc_sessions(arc_id)
         if not sessions:
             return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
@@ -12934,9 +13218,13 @@ def v2_lab_create_recording():
                     )
                     if take_index == 1:
                         fire_human_check_note(db, _cad_user, arc_id)
-                    elif take_index == 2:
+                    elif take_index == 2 and not _single_deliverable_enabled():
+                        # Single deliverable: the $25 pitch is RETIRED —
+                        # the pay note must never sell it.
                         fire_pay_note(db, _cad_user, arc_id)
-                    if (arc_take_count or 0) >= 3:
+                    if (arc_take_count or 0) >= 3 \
+                            and not _single_deliverable_enabled():
+                        # Superseded by the per-version ideal-text bubbles.
                         maybe_fire_best_presentation_ready(db, arc_id)
                 except Exception as _bpe:
                     logger.warning(
@@ -12949,20 +13237,40 @@ def v2_lab_create_recording():
             # machine draft so the coach's panel opens instantly ("no loading
             # or anything" fixed at the source). Idempotent; never clobbers a
             # coach edit; a read never triggers it. Best-effort.
-            if arc_id and _rec_kind == "spoken":
+            if arc_id and (_rec_kind == "spoken"
+                           or _single_deliverable_enabled()):
                 try:
                     from services.ideal_text_block import (
                         maybe_assemble_ideal_text,
                     )
-                    _eager_ok = maybe_assemble_ideal_text(arc_id)
-                    # Instant lane (2026-07-17, flag-gated): the machine
-                    # draft just persisted → the FREE instant bubble.
-                    # Idempotent per arc; a take-4 re-record won't re-fire.
-                    if _eager_ok and _cad_user and _instant_ideal_enabled():
-                        from services.arc_notifications import (
-                            fire_instant_ideal_ready,
-                        )
-                        fire_instant_ideal_ready(db, _cad_user, arc_id)
+                    if _single_deliverable_enabled():
+                        # Single deliverable (2026-07-17): assemble after
+                        # EVERY take (take 1 included) AND every re-read;
+                        # a changed compose bumps the version, resetting
+                        # verification. The per-VERSION ready bubble fires
+                        # idempotently (a no-op reassembly re-fires the
+                        # same version key → deduped).
+                        _eager_ok = maybe_assemble_ideal_text(
+                            arc_id, require_target=False)
+                        if _eager_ok and _cad_user:
+                            from services.arc_notifications import (
+                                fire_ideal_version_ready,
+                            )
+                            _row = db.get_coach_arc_ideal_text(arc_id) or {}
+                            fire_ideal_version_ready(
+                                db, _cad_user, arc_id,
+                                _row.get("version") or 1)
+                    else:
+                        _eager_ok = maybe_assemble_ideal_text(arc_id)
+                        # Instant lane (2026-07-17, flag-gated): the machine
+                        # draft just persisted → the FREE instant bubble.
+                        # Idempotent per arc.
+                        if _eager_ok and _cad_user \
+                                and _instant_ideal_enabled():
+                            from services.arc_notifications import (
+                                fire_instant_ideal_ready,
+                            )
+                            fire_instant_ideal_ready(db, _cad_user, arc_id)
                 except Exception as _ea_err:
                     logger.warning(
                         "lab: eager ideal-text failed sid=%s: %s (non-fatal)",

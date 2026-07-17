@@ -41,7 +41,8 @@ MOMENT_RE = re.compile(
 _MAX_BLOCK_CHARS = 20000
 
 
-def assemble_ideal_text_block(arc_id: str, *, database=None) -> dict:
+def assemble_ideal_text_block(arc_id: str, *, database=None,
+                              require_ready: bool = True) -> dict:
     """The AUTO draft: build_best_presentation's per-slide/section picks
     collapsed into one marker-carrying block.
 
@@ -61,7 +62,10 @@ def assemble_ideal_text_block(arc_id: str, *, database=None) -> dict:
         if _accepts_database(build_best_presentation) \
         else build_best_presentation(arc_id, coach_view=True)
 
-    if not bp.get("ready"):
+    # require_ready=False (single deliverable, founder 2026-07-17): the ideal
+    # text assembles from take 1 — bp["ready"] is only the legacy 3-take
+    # progress flag; the compose itself runs on any takes present.
+    if require_ready and not bp.get("ready"):
         return {"text": "", "key_moments": [], "ready": False}
 
     paragraphs: list = []
@@ -93,7 +97,8 @@ def assemble_ideal_text_block(arc_id: str, *, database=None) -> dict:
     }
 
 
-def maybe_assemble_ideal_text(arc_id: Optional[str], *, database=None) -> bool:
+def maybe_assemble_ideal_text(arc_id: Optional[str], *, database=None,
+                              require_target: bool = True) -> bool:
     """EAGER assembly (founder 2026-07-15): called from the analysis pipeline
     when a SPOKEN take completes — the moment the arc's 3rd spoken take is in,
     assemble the draft and PERSIST it as the machine block, so the coach's
@@ -114,11 +119,17 @@ def maybe_assemble_ideal_text(arc_id: Optional[str], *, database=None) -> bool:
             TAKES_TARGET, spoken_arc_sessions,
         )
         spoken = spoken_arc_sessions(database.get_arc_sessions(arc_id))
-        if len(spoken) < TAKES_TARGET:
+        # require_target=False (single deliverable, 2026-07-17): assemble
+        # after EVERY take, take 1 included; the legacy lanes keep the
+        # 3-take trigger.
+        if require_target and len(spoken) < TAKES_TARGET:
             return False
-        auto = assemble_ideal_text_block(arc_id, database=database)
+        if not spoken:
+            return False
+        auto = assemble_ideal_text_block(
+            arc_id, database=database, require_ready=require_target)
         text = (auto.get("text") or "").strip()
-        if not auto.get("ready") or not text:
+        if not text:
             return False
         ok = database.persist_auto_ideal_text(arc_id, text)
         if ok:
