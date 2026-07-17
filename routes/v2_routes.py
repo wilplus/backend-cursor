@@ -11490,6 +11490,18 @@ def _async_analysis_enabled() -> bool:
         in ("1", "true", "yes")
 
 
+def _instant_ideal_enabled() -> bool:
+    """Instant ideal text (founder re-lock 2026-07-17): the MACHINE draft is
+    served to the student FREE the moment take 3 lands — the June "the raw
+    auto-assembled draft must NEVER reach the student" gate is explicitly
+    reversed for this labeled instant lane. The coach-perfected text + takes
+    2/3 feedback stay behind approval + the $25 unlock. DEFAULT OFF until the
+    FE ships variant handling (deploy order: BE → FE → flip
+    INSTANT_IDEAL_TEXT_ENABLED=1 in Railway)."""
+    return (os.getenv("INSTANT_IDEAL_TEXT_ENABLED") or "0").strip().lower() \
+        in ("1", "true", "yes")
+
+
 def _spoken_takes_and_reads(sessions):
     """Split an arc's sessions into spoken takes (ordered by take_index) and
     a {spoken_session_id: [read_session, ...]} map — a take can carry SEVERAL
@@ -11826,12 +11838,22 @@ def v2_coach_approve_ideal_text(arc_id):
 @v2_bp.route("/explore/arc/<arc_id>/ideal-text", methods=["GET"])
 @require_auth
 def v2_explore_get_ideal_text(arc_id):
-    """The user's ideal-text notebook (the purple bubble): the coach-APPROVED
-    one-block text ($25-gated) + the user's personal notes copy. LOCKED until
-    approved — the draft never reaches the student (L1 held: canonical is the
-    coach-approved block; notes are a separate personal copy).
+    """The user's ideal-text notebook (the purple bubble).
 
-    200 { arc_id, text, notes_text, key_moments, approved:true }
+    TWO variants since the instant lane (founder re-lock 2026-07-17,
+    INSTANT_IDEAL_TEXT_ENABLED):
+      * "perfected" — the coach-APPROVED block, $25-gated, + the personal
+        notes copy (today's behavior, unchanged gates);
+      * "instant"  — the frozen MACHINE copy (auto_text), served FREE the
+        moment it exists, no approval/payment; labeled so the FE renders the
+        draft banner + upsell. NEVER the coach's working text (L1: coach
+        content stays behind approval + payment).
+    Flag OFF → byte-for-byte the legacy behavior.
+
+    200 { arc_id, variant:"perfected", text, notes_text, key_moments,
+          approved:true }
+    200 { arc_id, variant:"instant", text, key_moments, approved:false,
+          paywall? }                     — flag ON, machine copy available
     200 { arc_id, locked:true, reason:"NOT_APPROVED" }  — approved gate
     402 (paywall body incl. price + credits_current) · 404 · 500
     """
@@ -11840,29 +11862,56 @@ def v2_explore_get_ideal_text(arc_id):
         if not owned:
             return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
         gated = _arc_payment_gate(arc_id)
+        row = db.get_coach_arc_ideal_text(arc_id)
+        _approved_text = (row or {}).get("text") or ""
+        _is_perfected_ready = bool(
+            row and row.get("approved_at") and _approved_text.strip())
+
+        if gated is None and _is_perfected_ready:
+            from services.ideal_text_block import extract_key_moments
+            _notes = db.get_user_arc_ideal_notes(arc_id, request.user_id)
+            return jsonify({
+                "arc_id": arc_id,
+                "variant": "perfected",
+                "text": row["text"],
+                # The personal notebook copy — served under three keys (the
+                # FE mapper historically read notes/user_notes; keep aligned).
+                "notes_text": _notes,
+                "notes": _notes,
+                "user_notes": _notes,
+                "key_moments": extract_key_moments(row["text"]),
+                "approved": True,
+            }), 200
+
+        # ── The FREE instant lane (2026-07-17, flag-gated). ──
+        if _instant_ideal_enabled():
+            _auto = ((row or {}).get("auto_text") or "").strip()
+            if not _auto and row and not row.get("updated_by") \
+                    and not row.get("approved_at"):
+                # Pre-backfill machine-owned row: text IS the machine copy.
+                _auto = ((row or {}).get("text") or "").strip()
+            if _auto:
+                from services.ideal_text_block import extract_key_moments
+                _body = {
+                    "arc_id": arc_id,
+                    "variant": "instant",
+                    "text": _auto,
+                    "key_moments": extract_key_moments(_auto),
+                    "approved": False,
+                }
+                if gated is not None:
+                    # Not entitled → carry the upsell info for the banner.
+                    _body["paywall"] = _paywall_block(arc_id)
+                return jsonify(_body), 200
+
+        # ── Legacy fallthrough (also the whole flow when the flag is OFF). ──
         if gated is not None:
             resp, status = gated
             payload = resp.get_json() or {}
             payload.update(_paywall_block(arc_id))
             return jsonify(payload), status
-        row = db.get_coach_arc_ideal_text(arc_id)
-        if not row or not row.get("approved_at") \
-                or not (row.get("text") or "").strip():
-            return jsonify({
-                "arc_id": arc_id, "locked": True, "reason": "NOT_APPROVED",
-            }), 200
-        from services.ideal_text_block import extract_key_moments
-        _notes = db.get_user_arc_ideal_notes(arc_id, request.user_id)
         return jsonify({
-            "arc_id": arc_id,
-            "text": row["text"],
-            # The personal notebook copy — served under three keys (the FE
-            # mapper historically read notes/user_notes; keep all aligned).
-            "notes_text": _notes,
-            "notes": _notes,
-            "user_notes": _notes,
-            "key_moments": extract_key_moments(row["text"]),
-            "approved": True,
+            "arc_id": arc_id, "locked": True, "reason": "NOT_APPROVED",
         }), 200
     except Exception as e:
         logger.error("explore ideal-text GET failed arc=%s: %s", arc_id, e,
@@ -12901,7 +12950,15 @@ def v2_lab_create_recording():
                     from services.ideal_text_block import (
                         maybe_assemble_ideal_text,
                     )
-                    maybe_assemble_ideal_text(arc_id)
+                    _eager_ok = maybe_assemble_ideal_text(arc_id)
+                    # Instant lane (2026-07-17, flag-gated): the machine
+                    # draft just persisted → the FREE instant bubble.
+                    # Idempotent per arc; a take-4 re-record won't re-fire.
+                    if _eager_ok and _cad_user and _instant_ideal_enabled():
+                        from services.arc_notifications import (
+                            fire_instant_ideal_ready,
+                        )
+                        fire_instant_ideal_ready(db, _cad_user, arc_id)
                 except Exception as _ea_err:
                     logger.warning(
                         "lab: eager ideal-text failed sid=%s: %s (non-fatal)",

@@ -96,13 +96,18 @@ class EagerAssemblyTests(unittest.TestCase):
         self.assertFalse(ok)
         self.assertNotIn("persisted", calls)
 
-    def test_coach_owned_row_never_touched(self):
+    def test_coach_owned_row_still_refreshes_machine_copy(self):
+        # Instant lane (2026-07-17): a coach edit no longer stops the eager
+        # assembly — the frozen MACHINE copy (auto_text) keeps refreshing so
+        # the free instant surface improves on re-record. The never-clobber
+        # of the coach's WORKING text moved into persist_auto_ideal_text
+        # (pinned in test_instant_ideal_text.py).
         ok, calls = self._run(
             [_spoken(1), _spoken(2), _spoken(3)],
             existing_row={"text": "coach edit", "updated_by": "coach1",
                           "approved_at": None})
-        self.assertFalse(ok)
-        self.assertNotIn("persisted", calls)
+        self.assertTrue(ok)
+        self.assertEqual(calls["persisted"], "assembled block")
 
     def test_machine_row_refreshed_on_rerecord(self):
         ok, calls = self._run(
