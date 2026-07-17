@@ -100,8 +100,10 @@ def maybe_assemble_ideal_text(arc_id: Optional[str], *, database=None) -> bool:
     panel opens instantly and the coach list can badge "ideal text ready to
     review". Idempotent + guard-safe:
       * <3 spoken takes → no-op;
-      * a coach-edited or approved block → never touched (db guard);
-      * a machine block → refreshed (a re-record improves the draft).
+      * the WORKING text: a coach-edited or approved block is never touched
+        (persist_auto_ideal_text's guard);
+      * the frozen MACHINE copy (auto_text): always refreshed — a re-record
+        improves the free instant surface even mid-coach-edit (2026-07-17).
     Best-effort: any failure returns False, never raises into the pipeline."""
     if not arc_id:
         return False
@@ -114,9 +116,6 @@ def maybe_assemble_ideal_text(arc_id: Optional[str], *, database=None) -> bool:
         spoken = spoken_arc_sessions(database.get_arc_sessions(arc_id))
         if len(spoken) < TAKES_TARGET:
             return False
-        row = database.get_coach_arc_ideal_text(arc_id)
-        if row and (row.get("updated_by") or row.get("approved_at")):
-            return False  # coach owns it — nothing to do
         auto = assemble_ideal_text_block(arc_id, database=database)
         text = (auto.get("text") or "").strip()
         if not auto.get("ready") or not text:

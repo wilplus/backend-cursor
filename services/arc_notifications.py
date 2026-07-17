@@ -148,6 +148,40 @@ def fire_human_check_note(db, user_id: Any, arc_id: Any) -> bool:
     )
 
 
+def fire_instant_ideal_ready(db, user_id: Any, arc_id: Any) -> bool:
+    """The INSTANT ideal-text bubble (founder re-lock 2026-07-17): fired the
+    moment the arc's machine draft persists at spoken take 3 — the free,
+    labeled instant lane. Distinct from the publish-time purple bubble
+    (client_id uuid5 "willab-idealtext:<arc>"; this key differs, no
+    collision); the FE tells them apart by metadata.variant. Reuses the
+    existing 'ideal_text' lounge kind — no CHECK migration. Idempotent per
+    arc; counts the ACTUAL insert (a swallowed rejection must not read as
+    fired). Copy = founder sign-off."""
+    if not user_id or not arc_id:
+        return False
+    try:
+        persisted = db.insert_lounge_messages(str(user_id), [{
+            "client_id": str(uuid.uuid5(
+                uuid.NAMESPACE_URL, f"willab-idealtext-instant:{arc_id}")),
+            "role": "bot",
+            "kind": "ideal_text",
+            "body": ("Your instant ideal text is ready. Your coach is "
+                     "still polishing the full version."),
+            "metadata": {"arc_id": str(arc_id), "variant": "instant"},
+            "client_created_at": datetime.now(timezone.utc).isoformat(),
+        }])
+        if not persisted:
+            logger.error(
+                "arc_notifications: instant ideal bubble dropped arc=%s "
+                "(check the lounge kind CHECK)", arc_id)
+            return False
+        return True
+    except Exception as e:
+        logger.warning("arc_notifications: instant ideal bubble failed "
+                       "arc=%s: %s", arc_id, e)
+        return False
+
+
 def fire_pay_note(db, user_id: Any, arc_id: Any) -> bool:
     """After take 2 is sent on an UNPAID arc: the 25-credit ($25) unlock note.
     Skipped when the arc is already entitled. Idempotent per arc. Per-take

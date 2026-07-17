@@ -9703,24 +9703,60 @@ class DatabaseService:
 
     def persist_auto_ideal_text(self, arc_id: str, text: str) -> bool:
         """Persist the MACHINE-assembled ideal-text draft (eager assembly at
-        take 3, founder 2026-07-15). Writes only when no row exists, or the
-        existing row is machine-written (updated_by IS NULL) and UNAPPROVED —
-        a re-record refreshes the auto draft, a coach's edit or approval is
-        NEVER overwritten. updated_by stays NULL (the machine's signature).
-        Best-effort; False on guard-refuse / missing table / error."""
+        take 3, founder 2026-07-15; instant lane 2026-07-17).
+
+        TWO copies since the instant lane:
+          * ``auto_text`` — the frozen machine copy: ALWAYS refreshed (a
+            re-record improves the free instant surface even after the coach
+            starts editing). Never carries coach content.
+          * ``text`` — the working/perfected copy: written only while the
+            machine still owns it (updated_by IS NULL, unapproved). A coach's
+            edit or approval is NEVER overwritten.
+        updated_by stays NULL on machine writes (the machine's signature).
+        Migration-pending fallback (auto_text column missing): the legacy
+        single-column write with the legacy guard. Best-effort; False on
+        guard-refuse / missing table / error."""
         if not arc_id or not isinstance(text, str) or not text.strip():
             return False
         try:
             row = self.get_coach_arc_ideal_text(arc_id)
-            if row and (row.get("updated_by") or row.get("approved_at")):
-                return False  # the coach owns it now — never clobber
-            self.client.table("coach_arc_ideal_text").upsert({
+            coach_owned = bool(
+                row and (row.get("updated_by") or row.get("approved_at")))
+            _now = datetime.now(timezone.utc).isoformat()
+            payload = {
                 "arc_id": str(arc_id),
-                "text": text,
-                "updated_by": None,
-                "updated_at": datetime.now(timezone.utc).isoformat(),
-            }, on_conflict="arc_id").execute()
-            return True
+                "auto_text": text,
+                "auto_updated_at": _now,
+            }
+            if not coach_owned:
+                payload.update({
+                    "text": text,
+                    "updated_by": None,
+                    "updated_at": _now,
+                })
+            try:
+                self.client.table("coach_arc_ideal_text").upsert(
+                    payload, on_conflict="arc_id").execute()
+                return True
+            except Exception as _e_auto:
+                _low = str(_e_auto).lower()
+                if "auto_text" not in _low and "auto_updated_at" not in _low:
+                    raise
+                # auto columns not migrated yet → the legacy behavior
+                # (run migrations/add_ideal_text_auto_copy.sql).
+                logger.warning(
+                    "persist_auto_ideal_text: auto columns missing (run "
+                    "migrations/add_ideal_text_auto_copy.sql) arc=%s", arc_id,
+                )
+                if coach_owned:
+                    return False  # legacy guard: never clobber the coach
+                self.client.table("coach_arc_ideal_text").upsert({
+                    "arc_id": str(arc_id),
+                    "text": text,
+                    "updated_by": None,
+                    "updated_at": _now,
+                }, on_conflict="arc_id").execute()
+                return True
         except Exception as e:
             _e = str(e).lower()
             if "coach_arc_ideal_text" in _e and (
