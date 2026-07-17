@@ -2,14 +2,22 @@
 arc's takes, reviewed/approved by the coach in the same minimalist editor the
 user later sees, served to the student only once approved + unlocked ($25).
 
-MARKER CONTRACT (shared with the FE renderer/editor):
-  * ``**…**``  — bold: the key OPENING fragments (from the coach key_phrases).
-  * ``[[moment:<snippet_id>|<take_session_id>]]…[[/moment]]`` — an underlined
-    KEY MOMENT: tapping it in the notebook deep-links back to that exact
-    moment on the take's feedback page.
+MARKER CONTRACT (shared with the FE renderer/editor — BOTH the coach panel
+and the student notebook use the same set; founder 2026-07-17: the coach
+gets every formatting affordance the student later has):
+  * ``**…**``          — bold: the key OPENING fragments (from key_phrases).
+  * ``__…__``          — underline.
+  * ``//…//``          — italic (cursive).
+  * ``{{orange:…}}``   — the ONE accent color (brand orange; no other
+                          colors by design).
+  * ``[[moment:<snippet_id>|<take_session_id>]]…[[/moment]]`` — a KEY
+    MOMENT: tapping it in the notebook deep-links back to that exact
+    moment on the take's feedback page (FE styles it distinctly from a
+    plain ``__underline__``).
 Markers are plain text (degrade readably anywhere); raw HTML is stripped at
-the save routes. The coach's edit REPLACES the whole block, markers included —
-the anchors travel with the text.
+the save routes, markers survive untouched — the BE never parses any of
+them except MOMENT_RE. The coach's edit REPLACES the whole block, markers
+included — the anchors travel with the text.
 
 L1: the auto draft is assembled from the takes' COACH-CORRECTED verbatim picks
 (build_best_presentation — selection + light stitch, never an AI rewrite);
