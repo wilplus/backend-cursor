@@ -62,16 +62,14 @@ class EmailService:
         if score is not None:
             pct = round(float(score) * 100)
             score_str = f"Final performance score: {pct}%."
-        # ``or ""`` guards the guest case (user_id=None AND no email) —
-        # the old ``(student_email or user_id).strip()`` crashed on None.
-        who = (student_email or user_id or "").strip() or (user_id or "Guest")
+        from services.coach_pseudonym import coach_pseudonym
 
-        coach_message = f"Student completed homework.\n\nStudent: {who}"
-        if score_str:
-            coach_message += f"\n\n{score_str}"
-        if preview:
-            coach_message += f"\n\nReport preview: {preview}"
-        coach_message += "\n\nOpen the student profile to review and send next homework."
+        _pseudonym = coach_pseudonym(user_id)
+        _mail = (student_email or "").strip()
+        # Body identity (founder 2026-07-17): the student's EMAIL when known;
+        # else the pseudonym — never a raw UUID (the old fallback), never a
+        # crash on the guest case (both None → "Anonymous").
+        who = _mail or _pseudonym
 
         html = build_admin_homework_completed_email_html(
             student_email=who,
@@ -88,11 +86,14 @@ class EmailService:
         # Stable per-student subject + synthetic thread root → one coach-
         # inbox conversation per student (BE-3b). The session id stays out
         # of the subject on purpose; the profile link in the body is the
-        # per-event pointer.
-        from services.coach_pseudonym import coach_pseudonym
+        # per-event pointer. Founder 2026-07-17: the student's EMAIL rides
+        # the subject when known — the coach reads the inbox LIST, not just
+        # the body. Still stable per student (and References is the primary
+        # thread key regardless).
         from services.email_threading import student_thread_headers
 
-        subject = f"Homework — {coach_pseudonym(user_id)}"
+        subject = (f"Homework — {_pseudonym} ({_mail})" if _mail
+                   else f"Homework — {_pseudonym}")
         headers = student_thread_headers(user_id)
 
         text = f"A student has completed a homework lesson.\n\nStudent: {who}\n"

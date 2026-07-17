@@ -145,16 +145,38 @@ class LessonCompleteToAdminTests(unittest.TestCase):
         return result, mock_send
 
     def test_stable_subject_no_session_id(self):
+        # Founder 2026-07-17: the student's email rides the subject when
+        # known — still stable per student, still no session id.
         from services.coach_pseudonym import coach_pseudonym
         result, mock_send = self._send(user_id=UID)
         self.assertEqual(result["status"], "sent")
         kwargs = mock_send.call_args.kwargs
-        self.assertEqual(kwargs["subject"], f"Homework — {coach_pseudonym(UID)}")
+        self.assertEqual(kwargs["subject"],
+                         f"Homework — {coach_pseudonym(UID)} (s@x.com)")
         self.assertNotIn("sess", kwargs["subject"].lower())
         self.assertNotIn("abcdef12", kwargs["subject"])
         # Same user, different session → SAME subject (this is the thread).
         _, mock_send2 = self._send(user_id=UID, session_id="sess-99999999")
         self.assertEqual(mock_send2.call_args.kwargs["subject"], kwargs["subject"])
+
+    def test_email_rides_body_and_text(self):
+        _, mock_send = self._send(user_id=UID)
+        kwargs = mock_send.call_args.kwargs
+        self.assertIn("s@x.com", kwargs["html"])
+        self.assertIn("s@x.com", kwargs["text"])
+
+    def test_no_email_falls_back_to_pseudonym_never_uuid(self):
+        # Auth lookup failed → the body shows the pseudonym, not a raw UUID,
+        # and the subject keeps its legacy email-less form.
+        from services.coach_pseudonym import coach_pseudonym
+        _, mock_send = self._send(user_id=UID, student_email=None)
+        kwargs = mock_send.call_args.kwargs
+        self.assertEqual(kwargs["subject"],
+                         f"Homework — {coach_pseudonym(UID)}")
+        # The identity LINE shows the pseudonym, never the bare UUID (the
+        # profile URL may legitimately carry the id — that's a link).
+        self.assertIn(f"Student: {coach_pseudonym(UID)}", kwargs["text"])
+        self.assertNotIn(f"Student: {UID}", kwargs["text"])
 
     def test_per_student_thread_headers(self):
         _, mock_send = self._send(user_id=UID)
