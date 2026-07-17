@@ -38,6 +38,15 @@ MOMENT_RE = re.compile(
     r"(?P<session_id>[0-9a-fA-F-]{8,})\]\]"
 )
 
+# The FULL moment span, capturing the inner text (the FE's `anchor` — "the
+# literal text fragment inside `text` to underline"). DOTALL so a moment can
+# wrap a multi-line span.
+MOMENT_SPAN_RE = re.compile(
+    r"\[\[moment:(?P<snippet_id>[0-9a-fA-F-]{8,})\|"
+    r"(?P<session_id>[0-9a-fA-F-]{8,})\]\](?P<inner>.*?)\[\[/moment\]\]",
+    re.DOTALL,
+)
+
 _MAX_BLOCK_CHARS = 20000
 
 
@@ -145,11 +154,28 @@ def maybe_assemble_ideal_text(arc_id: Optional[str], *, database=None,
 def extract_key_moments(text: Any) -> list:
     """Parse the [[moment:…]] anchors out of a (possibly coach-edited) block —
     the served key_moments list always reflects the CURRENT text, so a coach
-    deleting a moment's paragraph deletes its deep-link too. Pure."""
+    deleting a moment's paragraph deletes its deep-link too.
+
+    Each entry carries ``anchor`` — the moment's inner text, the literal
+    fragment the FE locates in the served text to make tappable (the SD
+    contract pin: the FE drops a key moment with no anchor). Falls back to
+    the bare opening-token parse for a legacy block that has no closing
+    ``[[/moment]]``. Pure."""
     if not isinstance(text, str) or not text:
         return []
     out = []
     seen = set()
+    for m in MOMENT_SPAN_RE.finditer(text):
+        key = (m.group("snippet_id"), m.group("session_id"))
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append({
+            "snippet_id": m.group("snippet_id"),
+            "take_session_id": m.group("session_id"),
+            "anchor": (m.group("inner") or "").strip(),
+        })
+    # Legacy fallback: opening tokens with no matching [[/moment]] close.
     for m in MOMENT_RE.finditer(text):
         key = (m.group("snippet_id"), m.group("session_id"))
         if key in seen:
@@ -158,6 +184,7 @@ def extract_key_moments(text: Any) -> list:
         out.append({
             "snippet_id": m.group("snippet_id"),
             "take_session_id": m.group("session_id"),
+            "anchor": "",
         })
     return out
 

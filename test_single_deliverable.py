@@ -238,6 +238,7 @@ class StudentGetSingleDeliverableTests(unittest.TestCase):
         self.assertEqual(body["text"], "machine text")
         self.assertFalse(body["moments_unlocked"])
         self.assertEqual(body["notes_text"], "notes")
+        self.assertEqual(body["price_credits"], 5)   # FE reads this top-level
         self.assertNotIn("paywall", body)
 
     def test_verified_serves_the_snapshot(self):
@@ -256,15 +257,19 @@ class StudentGetSingleDeliverableTests(unittest.TestCase):
         self.assertEqual(body["status"], "unverified")
         self.assertNotIn("coach secret", json.dumps(body))
 
-    def test_key_moments_carry_has_explanation(self):
+    def test_key_moments_carry_id_anchor_has_explanation(self):
         text = ("[[moment:aaaa1111-aaaa-1111-aaaa-111111111111|"
-                "bbbb2222-bbbb-2222-bbbb-222222222222]]hello[[/moment]]")
+                "bbbb2222-bbbb-2222-bbbb-222222222222]]hello there[[/moment]]")
         body, _ = self._get(
             _row(auto_text=text, text=text),
             expl={"aaaa1111-aaaa-1111-aaaa-111111111111": True})
         self.assertEqual(len(body["key_moments"]), 1)
         m = body["key_moments"][0]
         self.assertEqual(m["id"], "aaaa1111-aaaa-1111-aaaa-111111111111")
+        # anchor = the inner span, a verbatim substring of `text` the FE
+        # underlines (the FE DROPS a moment with no anchor — contract pin).
+        self.assertEqual(m["anchor"], "hello there")
+        self.assertIn(m["anchor"], body["text"])
         self.assertTrue(m["has_explanation"])
 
     def test_ac9_score_free(self):
@@ -377,13 +382,14 @@ class MomentExplanationGetTests(unittest.TestCase):
         self.assertEqual(body["code"], "MOMENTS_LOCKED")
         self.assertEqual(body["price_credits"], 5)
 
-    def test_entitled_serves_the_one_explanation_label_free(self):
+    def test_entitled_serves_flat_note_and_video_ref(self):
         body, status = self._get(entitled=True)
         self.assertEqual(status, 200)
-        m = body["moment"]
-        self.assertEqual(m["id"], "sn1")
-        self.assertEqual(m["comment_text"], "This is the turn.")
-        self.assertEqual(m["comment_video_ref"], "https://x/v.mp4")
+        # FLAT top-level note/video_ref — the ONLY fields the FE reads.
+        self.assertEqual(body["id"], "sn1")
+        self.assertEqual(body["note"], "This is the turn.")
+        self.assertEqual(body["video_ref"], "https://x/v.mp4")
+        self.assertNotIn("moment", body)        # not nested
         raw = json.dumps(body)
         self.assertNotIn("direction", raw)     # the label never serializes
         self.assertNotIn("challenge", raw)

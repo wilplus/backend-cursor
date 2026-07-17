@@ -11424,9 +11424,9 @@ def v2_get_moment_explanation(arc_id, moment_id):
     scores, and the private direction label never serializes (it only
     selects, same rule as the feedback page).
 
-    200 { arc_id, moment: {id, take_session_id, transcript, audio_ref,
-          start_offset_ms, duration_ms, slide_index, recording_kind,
-          comment_text, comment_video_ref} }
+    Response is FLAT (the FE reads top-level `note` + `video_ref`):
+    200 { arc_id, id, note, video_ref, transcript, audio_ref,
+          start_offset_ms, duration_ms, slide_index, recording_kind }
     402 { code: MOMENTS_LOCKED, price_credits } · 404 · 500
     """
     try:
@@ -11449,14 +11449,21 @@ def v2_get_moment_explanation(arc_id, moment_id):
                     sid, [str(r.get("id")) for r in read_rows if r.get("id")]):
                 if str(m.get("snippet_id")) != _want:
                     continue
-                return jsonify({"arc_id": arc_id, "moment": {
-                    "id": m.get("snippet_id"), **{
-                        k: m.get(k) for k in (
-                            "take_session_id", "transcript", "audio_ref",
-                            "start_offset_ms", "duration_ms", "slide_index",
-                            "recording_kind", "comment_text",
-                            "comment_video_ref")
-                    }}}), 200
+                # FLAT top-level note/video_ref (the FE reads exactly these);
+                # the playback fields ride along for the moment player.
+                return jsonify({
+                    "arc_id": arc_id,
+                    "id": m.get("snippet_id"),
+                    "note": (m.get("comment_text") or None),
+                    "video_ref": (m.get("comment_video_ref") or None),
+                    "take_session_id": m.get("take_session_id"),
+                    "transcript": m.get("transcript"),
+                    "audio_ref": m.get("audio_ref"),
+                    "start_offset_ms": m.get("start_offset_ms"),
+                    "duration_ms": m.get("duration_ms"),
+                    "slide_index": m.get("slide_index"),
+                    "recording_kind": m.get("recording_kind"),
+                }), 200
         return jsonify({"code": "MOMENT_NOT_FOUND",
                         "error": "Not a key moment of this presentation"}), 404
     except Exception as e:
@@ -12112,11 +12119,18 @@ def v2_explore_get_ideal_text(arc_id):
                 "text": _text,
                 "key_moments": [{
                     "id": m.get("snippet_id"),
+                    # The literal text fragment the FE underlines + taps
+                    # (SD contract pin — a moment with no anchor is dropped).
+                    "anchor": m.get("anchor") or "",
                     "take_session_id": m.get("take_session_id"),
                     "has_explanation": bool(_has_expl.get(
                         str(m.get("snippet_id")))),
                 } for m in _moments],
                 "moments_unlocked": _moments_entitled(arc_id),
+                # The moments-unlock price, top level (the FE reads it here
+                # for the locked-moment prompt — the only paid item).
+                "price_credits": int(getattr(
+                    config, "MOMENTS_UNLOCK_CREDITS", 5) or 5),
                 # The personal notebook copy — free with the text now.
                 "notes_text": _notes, "notes": _notes, "user_notes": _notes,
             }), 200
