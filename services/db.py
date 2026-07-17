@@ -9939,6 +9939,81 @@ class DatabaseService:
                            arc_id, e)
             return False
 
+    def get_user_ideal_edit(
+        self, arc_id: Optional[str], user_id: Optional[str],
+    ) -> Optional[dict]:
+        """The student's in-place SD edit of the ideal text (founder
+        2026-07-17): {text, version, updated_at} or None. Sibling columns on
+        user_arc_ideal_notes — never the legacy `text` notebook copy. Missing
+        column (migration pending) / no row / error → None."""
+        if not arc_id or not user_id:
+            return None
+        try:
+            res = (
+                self.client.table("user_arc_ideal_notes")
+                .select("user_text, user_text_version, updated_at")
+                .eq("arc_id", str(arc_id))
+                .eq("user_id", str(user_id))
+                .limit(1)
+                .execute()
+            )
+            rows = res.data or []
+            if not rows:
+                return None
+            r = rows[0]
+            _text = r.get("user_text")
+            if not isinstance(_text, str) or not _text.strip():
+                return None
+            return {
+                "text": _text,
+                "version": r.get("user_text_version"),
+                "updated_at": r.get("updated_at"),
+            }
+        except Exception as e:
+            _e = str(e).lower()
+            if any(c in _e for c in (
+                "user_text", "user_arc_ideal_notes",
+            )) and ("does not exist" in _e or "pgrst" in _e):
+                return None
+            logger.warning("get_user_ideal_edit failed arc=%s: %s", arc_id, e)
+            return None
+
+    def upsert_user_ideal_edit(
+        self, arc_id: str, user_id: str, text: str, version: Optional[int],
+    ) -> bool:
+        """Persist the student's in-place SD edit + the version it was made
+        against (sibling columns; NEVER touches the coach canonical or the
+        legacy `text` notebook — L1). Best-effort; False on missing column
+        (migration pending) / error."""
+        if not arc_id or not user_id or not isinstance(text, str):
+            return False
+        try:
+            self.client.table("user_arc_ideal_notes").upsert({
+                "arc_id": str(arc_id),
+                "user_id": str(user_id),
+                # user_arc_ideal_notes.text is NOT NULL — keep the row valid
+                # without disturbing a real notebook copy: only default it to
+                # "" when creating a fresh row (the coalesce keeps any existing
+                # notebook text on a pure edit-update via on_conflict).
+                "user_text": text,
+                "user_text_version": (
+                    int(version) if isinstance(version, int) else None),
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }, on_conflict="arc_id,user_id").execute()
+            return True
+        except Exception as e:
+            _e = str(e).lower()
+            if any(c in _e for c in (
+                "user_text", "user_arc_ideal_notes",
+            )) and ("does not exist" in _e or "pgrst" in _e):
+                logger.warning(
+                    "upsert_user_ideal_edit: column/table missing (run "
+                    "migrations/add_user_ideal_edit.sql) arc=%s", arc_id)
+                return False
+            logger.warning("upsert_user_ideal_edit failed arc=%s: %s",
+                           arc_id, e)
+            return False
+
     def set_session_priming(
         self, session_id: str,
         condition: Optional[str], phrase: Optional[str],
