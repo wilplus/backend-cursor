@@ -505,19 +505,26 @@ class SavePublishTests(unittest.TestCase):
 
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
-class PublishAliasRouteTests(unittest.TestCase):
-    """Founder bug 2026-07-17: the FE publish button relays to the legacy
-    /coach/arc/<id>/publish path (deleted in #195) → 404 on the first-ever
-    real click. Both paths must route to THE one publish-analysis handler."""
+class PublishRouteContractTests(unittest.TestCase):
+    """The publish contract points after the 2026-07-17 FE handoff:
+    /publish-analysis is THE door (the FE relay targets it since their
+    63be223); the briefly-restored legacy /publish alias is retired; the
+    review-state read + approve-without-publish routes stand."""
 
-    def test_legacy_publish_path_aliases_publish_analysis(self):
+    def _rules(self):
         app = Flask(__name__)
         app.register_blueprint(v2.v2_bp, url_prefix="/v2")
-        rules = {r.rule: r.endpoint for r in app.url_map.iter_rules()}
-        self.assertIn("/v2/coach/arc/<arc_id>/publish", rules)
+        return {r.rule: r.endpoint for r in app.url_map.iter_rules()}
+
+    def test_publish_analysis_is_the_only_publish_door(self):
+        rules = self._rules()
         self.assertIn("/v2/coach/arc/<arc_id>/publish-analysis", rules)
-        self.assertEqual(rules["/v2/coach/arc/<arc_id>/publish"],
-                         rules["/v2/coach/arc/<arc_id>/publish-analysis"])
+        self.assertNotIn("/v2/coach/arc/<arc_id>/publish", rules)  # retired
+
+    def test_wrapup_contract_points_stand(self):
+        rules = self._rules()
+        self.assertIn("/v2/coach/arc/<arc_id>/review-state", rules)
+        self.assertIn("/v2/coach/arc/<arc_id>/ideal-text/approve", rules)
 
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
