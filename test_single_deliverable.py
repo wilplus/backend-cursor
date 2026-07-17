@@ -339,11 +339,14 @@ class MomentsUnlockTests(unittest.TestCase):
 
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
-class MomentsGetTests(unittest.TestCase):
+class MomentExplanationGetTests(unittest.TestCase):
+    """The FE contract pin: per-moment GET at
+    /v2/explore/arc/<id>/moments/<moment_id>; the 402 carries price_credits."""
+
     def setUp(self):
         self.app = Flask(__name__)
 
-    def _get(self, *, entitled):
+    def _get(self, *, entitled, moment_id="sn1"):
         sessions = [{"id": "s1", "user_id": "u1", "take_index": 1,
                      "recording_kind": "spoken", "paired_session_id": None}]
         with self.app.test_request_context():
@@ -364,7 +367,7 @@ class MomentsGetTests(unittest.TestCase):
                                   "comment_text": "This is the turn.",
                                   "comment_video_ref": "https://x/v.mp4",
                               }]):
-                out = v2.v2_get_presentation_moments.__wrapped__(ARC)
+                out = v2.v2_get_moment_explanation.__wrapped__(ARC, moment_id)
                 resp, status = out if isinstance(out, tuple) else (out, 200)
                 return resp.get_json(), status
 
@@ -374,10 +377,10 @@ class MomentsGetTests(unittest.TestCase):
         self.assertEqual(body["code"], "MOMENTS_LOCKED")
         self.assertEqual(body["price_credits"], 5)
 
-    def test_entitled_serves_explanations_label_free(self):
+    def test_entitled_serves_the_one_explanation_label_free(self):
         body, status = self._get(entitled=True)
         self.assertEqual(status, 200)
-        m = body["moments"][0]
+        m = body["moment"]
         self.assertEqual(m["id"], "sn1")
         self.assertEqual(m["comment_text"], "This is the turn.")
         self.assertEqual(m["comment_video_ref"], "https://x/v.mp4")
@@ -385,6 +388,21 @@ class MomentsGetTests(unittest.TestCase):
         self.assertNotIn("direction", raw)     # the label never serializes
         self.assertNotIn("challenge", raw)
         self.assertNotIn("threat", raw)
+
+    def test_unknown_moment_404s(self):
+        body, status = self._get(entitled=True, moment_id="nope")
+        self.assertEqual(status, 404)
+        self.assertEqual(body["code"], "MOMENT_NOT_FOUND")
+
+    def test_route_paths_match_the_fe_pin(self):
+        app = Flask(__name__)
+        app.register_blueprint(v2.v2_bp, url_prefix="/v2")
+        rules = {r.rule for r in app.url_map.iter_rules()}
+        self.assertIn("/v2/explore/arc/<arc_id>/moments/<moment_id>", rules)
+        self.assertIn("/v2/arc/<arc_id>/unlock-moments", rules)
+        self.assertNotIn("/v2/presentation/<presentation_id>/moments", rules)
+        self.assertNotIn(
+            "/v2/presentation/<presentation_id>/unlock-moments", rules)
 
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")

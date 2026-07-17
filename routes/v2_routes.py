@@ -11353,24 +11353,24 @@ def v2_arc_unlock(arc_id):
         return jsonify({"code": "V2_ERROR", "error": "Failed to unlock"}), 500
 
 
-@v2_bp.route("/presentation/<presentation_id>/unlock-moments", methods=["POST"])
+@v2_bp.route("/arc/<arc_id>/unlock-moments", methods=["POST"])
 @require_auth
-def v2_unlock_moments(presentation_id):
+def v2_unlock_moments(arc_id):
     """THE one paid item under the single deliverable (founder re-shape
     2026-07-17): open the presentation's key-moment EXPLANATIONS (the coach's
     note/video per moment) — 5 credits, one-time per presentation, covering
     all current AND future moments. The ideal text itself is always free.
+    ARC-KEYED path — the FE contract pin (their 748c33d).
 
     Same deduct-first atomic ordering as the retired arc unlock (deduct →
     exclusive insert → refund on conflict), against the SEPARATE
     moment_unlocks table (no grandfathering from arc_purchases).
 
-    200 { unlocked: true, presentation_id, credits_remaining }
-    200 { already_entitled: true, presentation_id }
+    200 { unlocked: true, arc_id, credits_remaining }
+    200 { already_entitled: true, arc_id }
     402 { code: INSUFFICIENT_CREDITS, required, current }
     404 · 409 (raced; refunded) · 500
     """
-    arc_id = presentation_id
     try:
         owned, _ = _arc_owned_by_caller(arc_id)
         if not owned:
@@ -11378,7 +11378,7 @@ def v2_unlock_moments(presentation_id):
                             "error": "presentation not found"}), 404
         if _moments_entitled(arc_id):
             return jsonify({"already_entitled": True,
-                            "presentation_id": arc_id}), 200
+                            "arc_id": arc_id}), 200
 
         amount = int(getattr(config, "MOMENTS_UNLOCK_CREDITS", 5) or 5)
 
@@ -11397,13 +11397,13 @@ def v2_unlock_moments(presentation_id):
             db.v2_increment_student_credits(str(request.user_id), amount)
             if _moments_entitled(arc_id):
                 return jsonify({"code": "MOMENTS_ALREADY_UNLOCKED",
-                                "presentation_id": arc_id}), 409
+                                "arc_id": arc_id}), 409
             return jsonify({
                 "code": "V2_ERROR", "error": "Could not start the unlock",
             }), 500
 
         return jsonify({
-            "unlocked": True, "presentation_id": arc_id,
+            "unlocked": True, "arc_id": arc_id,
             "credits_remaining": new_balance,
         }), 200
     except Exception as e:
@@ -11413,22 +11413,22 @@ def v2_unlock_moments(presentation_id):
         return jsonify({"code": "V2_ERROR", "error": "Failed to unlock"}), 500
 
 
-@v2_bp.route("/presentation/<presentation_id>/moments", methods=["GET"])
+@v2_bp.route("/explore/arc/<arc_id>/moments/<moment_id>", methods=["GET"])
 @require_auth
-def v2_get_presentation_moments(presentation_id):
-    """The key-moment EXPLANATIONS (single deliverable, founder 2026-07-17):
-    per surfaced key moment, the coach's note text and/or video + playback
-    span — across ALL of the presentation's takes and re-reads. Gated by the
-    5-credit moments unlock; the 402 carries the price. AC-9: qualitative
-    content only — no scores, and the private direction label never
-    serializes (it only selects, same rule as the feedback page).
+def v2_get_moment_explanation(arc_id, moment_id):
+    """ONE key moment's EXPLANATION (single deliverable, founder 2026-07-17;
+    per-moment path = the FE contract pin, their 748c33d): the coach's note
+    text and/or video + playback span for the tapped moment. Gated by the
+    5-credit moments unlock; the 402 carries the price so the unlock prompt
+    renders from this response alone. AC-9: qualitative content only — no
+    scores, and the private direction label never serializes (it only
+    selects, same rule as the feedback page).
 
-    200 { presentation_id, moments: [{id, take_session_id, transcript,
-          audio_ref, start_offset_ms, duration_ms, slide_index,
-          recording_kind, comment_text, comment_video_ref}] }
+    200 { arc_id, moment: {id, take_session_id, transcript, audio_ref,
+          start_offset_ms, duration_ms, slide_index, recording_kind,
+          comment_text, comment_video_ref} }
     402 { code: MOMENTS_LOCKED, price_credits } · 404 · 500
     """
-    arc_id = presentation_id
     try:
         owned, sessions = _arc_owned_by_caller(arc_id)
         if not owned:
@@ -11441,26 +11441,30 @@ def v2_get_presentation_moments(presentation_id):
                     config, "MOMENTS_UNLOCK_CREDITS", 5) or 5),
             }), 402
         spoken, reads = _spoken_takes_and_reads(sessions)
-        moments = []
+        _want = str(moment_id)
         for s in spoken:
             sid = str(s.get("id"))
             read_rows = reads.get(sid) or []
             for m in _take_key_moments(
                     sid, [str(r.get("id")) for r in read_rows if r.get("id")]):
-                moments.append({"id": m.get("snippet_id"), **{
-                    k: m.get(k) for k in (
-                        "take_session_id", "transcript", "audio_ref",
-                        "start_offset_ms", "duration_ms", "slide_index",
-                        "recording_kind", "comment_text",
-                        "comment_video_ref")
-                }})
-        return jsonify({"presentation_id": arc_id, "moments": moments}), 200
+                if str(m.get("snippet_id")) != _want:
+                    continue
+                return jsonify({"arc_id": arc_id, "moment": {
+                    "id": m.get("snippet_id"), **{
+                        k: m.get(k) for k in (
+                            "take_session_id", "transcript", "audio_ref",
+                            "start_offset_ms", "duration_ms", "slide_index",
+                            "recording_kind", "comment_text",
+                            "comment_video_ref")
+                    }}}), 200
+        return jsonify({"code": "MOMENT_NOT_FOUND",
+                        "error": "Not a key moment of this presentation"}), 404
     except Exception as e:
-        logger.error("presentation moments failed arc=%s: %s", arc_id, e,
-                     exc_info=True)
+        logger.error("moment explanation failed arc=%s moment=%s: %s",
+                     arc_id, moment_id, e, exc_info=True)
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR",
-                        "error": "Failed to load moments"}), 500
+                        "error": "Failed to load the moment"}), 500
 
 
 # ── willab — coach-owned ideal-text correction (founder 2026-07-06) ─────
