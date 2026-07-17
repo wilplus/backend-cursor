@@ -10428,6 +10428,10 @@ def v2_coach_snippet_breakthrough_video(session_id, snippet_id):
                     "status": "ok", "session_id": session_id, "snippet_id": snippet_id,
                     "take_session_id": _owner_sid,
                     "breakthrough_video_ref": _existing["video_ref"], "deduped": True,
+                    # Authoritative echo (founder 2026-07-17: the direction
+                    # chip un-marked after an upload) — the FE writes THIS
+                    # back instead of clobbering its local coach_state.
+                    "coach_state": _coach_state_for(_owner_sid, snippet_id),
                 }), 200
 
         bucket = getattr(config, "COACH_FEEDBACK_VIDEO_BUCKET", "coach_feedback_videos")
@@ -10499,6 +10503,12 @@ def v2_coach_snippet_breakthrough_video(session_id, snippet_id):
             # snippet routes to its own session, 2026-07-16).
             "take_session_id": _owner_sid,
             "breakthrough_video_ref": breakthrough_video_ref,
+            # Authoritative echo (founder 2026-07-17: the direction chip
+            # un-marked after an upload) — carries the persisted
+            # direction_label/note/tag/surfaced + the fresh video ref, so
+            # the FE restores the chips from truth instead of clobbering
+            # its local coach_state.
+            "coach_state": _coach_state_for(_owner_sid, snippet_id),
         }), 200
     except Exception as e:
         logger.error(

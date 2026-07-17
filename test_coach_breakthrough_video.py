@@ -84,6 +84,25 @@ class CoachBreakthroughVideoTests(unittest.TestCase):
         self.assertEqual(body["breakthrough_video_ref"], self.stored["ref"])
         self.assertEqual(body["snippet_id"], SNIP)
 
+    def test_response_echoes_persisted_coach_state(self):
+        # Founder 2026-07-17: the direction chip un-marked after an upload.
+        # The response now carries the authoritative coach_state (both lanes
+        # folded) so the FE restores the chips from truth instead of
+        # clobbering its local state.
+        self._patch_db("get_training_labels",
+                       lambda sid: [{"snippet_id": SNIP, "value": "threat"}])
+        self._patch_db("get_coach_snippet_drafts",
+                       lambda sid: [{"snippet_id": SNIP, "note": "the turn",
+                                     "tag": "strong", "surfaced": True,
+                                     "breakthrough_video_ref": None}])
+        resp, status = self._post("clip.mp4")
+        self.assertEqual(status, 200)
+        cs = resp.get_json()["coach_state"]
+        self.assertEqual(cs["direction_label"], "threat")
+        self.assertEqual(cs["note"], "the turn")
+        self.assertEqual(cs["tag"], "strong")
+        self.assertTrue(cs["surfaced"])
+
     def test_bad_extension_415_no_store(self):
         _, status = self._post("clip.txt")
         self.assertEqual(status, 415)
