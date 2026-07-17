@@ -298,6 +298,7 @@ def process_lab_recording(
     session_context: Optional[dict],
     parent_audio_url: str,
     recording_kind: str = "spoken",
+    paired_session_id: Optional[str] = None,
 ) -> dict:
     """Run the full pipeline → §3.3 Readout payload.
 
@@ -310,6 +311,11 @@ def process_lab_recording(
     or 'read' (the re-read of the suggestion-corrected text). Stamped on
     every snippet's metrics so the coach sees, per snippet, which delivery
     it was; the acoustic pipeline is identical for both.
+
+    ``paired_session_id`` (founder 2026-07-17) — for a 'read', its parent
+    SPOKEN take. A re-read is 1–2 pieces, far too few to z-score against
+    itself, so the parent take's pieces become the acoustic reference: the
+    coach's needle reads honestly on re-reads instead of pegging neutral.
     """
     _rec_kind = recording_kind if recording_kind in ("spoken", "read") \
         else "spoken"
@@ -507,10 +513,17 @@ def process_lab_recording(
         # stays out of this needle by design (labels blind).
         try:
             from services.acoustic_read import (
-                attach_acoustic_read, build_user_baseline,
+                attach_acoustic_read, resolve_read_baseline,
+            )
+            # Reference priority: the speaker's own baseline → (for a re-read)
+            # its PARENT take's pieces → within-take/cold-start. Without the
+            # parent fallback a 1–2-piece re-read pegged the needle neutral.
+            _ar_base, _ar_kind = resolve_read_baseline(
+                user_id, recording_kind=_rec_kind,
+                paired_session_id=paired_session_id,
             )
             attach_acoustic_read(
-                prelim, baseline=build_user_baseline(user_id),
+                prelim, baseline=_ar_base, baseline_kind=_ar_kind,
             )
         except Exception as _ar_err:
             logger.warning(

@@ -505,6 +505,22 @@ class SavePublishTests(unittest.TestCase):
 
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
+class PublishAliasRouteTests(unittest.TestCase):
+    """Founder bug 2026-07-17: the FE publish button relays to the legacy
+    /coach/arc/<id>/publish path (deleted in #195) → 404 on the first-ever
+    real click. Both paths must route to THE one publish-analysis handler."""
+
+    def test_legacy_publish_path_aliases_publish_analysis(self):
+        app = Flask(__name__)
+        app.register_blueprint(v2.v2_bp, url_prefix="/v2")
+        rules = {r.rule: r.endpoint for r in app.url_map.iter_rules()}
+        self.assertIn("/v2/coach/arc/<arc_id>/publish", rules)
+        self.assertIn("/v2/coach/arc/<arc_id>/publish-analysis", rules)
+        self.assertEqual(rules["/v2/coach/arc/<arc_id>/publish"],
+                         rules["/v2/coach/arc/<arc_id>/publish-analysis"])
+
+
+@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
 class AsyncReadoutStateTests(unittest.TestCase):
 
     def setUp(self):
