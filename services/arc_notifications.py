@@ -141,7 +141,7 @@ def fire_human_check_note(db, user_id: Any, arc_id: Any) -> bool:
         client_key=f"willab-humancheck:{arc_id}",
         kind="text",
         body=(
-            "This was your automatic overview — your take is also being "
+            "This was your automatic overview. Your take is also being "
             "checked by your coach."
         ),
         metadata={"arc_id": str(arc_id), "note": "human_check"},
@@ -207,8 +207,8 @@ def fire_pay_note(db, user_id: Any, arc_id: Any) -> bool:
         kind="text",
         body=(
             "You keep getting your coach's feedback and corrected transcript "
-            "free on every take. To also unlock your best presentation — "
-            "corrected by your coach — plus your breakthrough moments, "
+            "free on every take. To also unlock your best presentation, "
+            "corrected by your coach, plus your breakthrough moments, "
             "unlock this training for 25 credits ($25)."
         ),
         metadata={

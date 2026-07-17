@@ -304,5 +304,35 @@ class RouterScaffoldTests(unittest.TestCase):
         self.assertNotIn("record_again", body)
 
 
+class DeliverableHonestyPinTests(unittest.TestCase):
+    """Founder 2026-07-17: the persona must promise what the product
+    delivers (the ideal text of your own talk + your strongest moments),
+    never immediate charisma / a confidence transformation / an anxiety
+    cure. String-presence pins on BOTH personas (the mega-prompt and the
+    router's product_faq lane) so a prompt trim can't silently drop the
+    constraint."""
+
+    @staticmethod
+    def _flat(text):
+        # The prompt literals concatenate with per-line indentation —
+        # normalize runs of whitespace so pins can cross line joins.
+        return " ".join(text.lower().split())
+
+    def test_mega_prompt_carries_the_deliverable_framing(self):
+        from services.master_doc_rag import _SYSTEM_PROMPT
+        low = self._flat(_SYSTEM_PROMPT)
+        self.assertIn("ideal text of their own talk", low)
+        self.assertIn("strongest moments", low)
+        self.assertIn("never promise immediate charisma", low)
+        self.assertIn("journey", low)
+
+    def test_router_faq_lane_carries_the_deliverable_framing(self):
+        from services.master_doc_rag import _LANE_BODIES
+        low = self._flat(_LANE_BODIES["product_faq"])
+        self.assertIn("ideal text of their own talk", low)
+        self.assertIn("strongest moments", low)
+        self.assertIn("never promise immediate charisma", low)
+
+
 if __name__ == "__main__":
     unittest.main()
