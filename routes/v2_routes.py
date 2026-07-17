@@ -11898,6 +11898,10 @@ def v2_explore_get_ideal_text(arc_id):
                     "text": _auto,
                     "key_moments": extract_key_moments(_auto),
                     "approved": False,
+                    # Paid-but-unapproved (FE ask 2026-07-17): a fresh open
+                    # must suppress the Buy CTA too, not just an in-session
+                    # unlock — the FE reads this safe-ahead.
+                    "entitled": gated is None,
                 }
                 if gated is not None:
                     # Not entitled → carry the upsell info for the banner.

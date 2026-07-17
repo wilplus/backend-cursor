@@ -165,7 +165,7 @@ def fire_instant_ideal_ready(db, user_id: Any, arc_id: Any) -> bool:
                 uuid.NAMESPACE_URL, f"willab-idealtext-instant:{arc_id}")),
             "role": "bot",
             "kind": "ideal_text",
-            "body": ("Your instant ideal text is ready — your coach is "
+            "body": ("Your instant ideal text is ready. Your coach is "
                      "still polishing the full version."),
             "metadata": {"arc_id": str(arc_id), "variant": "instant"},
             "client_created_at": datetime.now(timezone.utc).isoformat(),

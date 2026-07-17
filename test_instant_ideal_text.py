@@ -92,14 +92,18 @@ class StudentIdealTextVariantsTests(unittest.TestCase):
         self.assertEqual(body["variant"], "instant")
         self.assertEqual(body["text"], "machine auto")
         self.assertFalse(body["approved"])
+        self.assertFalse(body["entitled"])      # Buy CTA may render
         self.assertIn("paywall", body)          # the upsell info
         self.assertNotIn("notes_text", body)    # notes stay perfected-lane
         self.assertNotIn("notes", body)
 
     def test_flag_on_paid_unapproved_serves_instant_without_paywall(self):
+        # FE ask 2026-07-17: entitled=true on a fresh open suppresses the
+        # Buy CTA for a paid-but-unapproved arc.
         body, status = self._get(flag=True, paid=True, row=_machine_row())
         self.assertEqual(status, 200)
         self.assertEqual(body["variant"], "instant")
+        self.assertTrue(body["entitled"])
         self.assertNotIn("paywall", body)       # already entitled
 
     def test_coach_working_text_never_leaks_through_the_free_lane(self):
