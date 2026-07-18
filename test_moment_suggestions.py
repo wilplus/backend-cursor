@@ -168,6 +168,90 @@ class GenerationTests(unittest.TestCase):
 
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
+class StructuralDetectionTests(unittest.TestCase):
+    TRANS = "It is not about winning, it is about growing every single day."
+
+    def _detect(self, parsed, transcript=None):
+        from services import moment_suggestions as ms
+        result = type("R", (), {"parsed": parsed, "text": ""})()
+        with patch("services.llm.chat_complete", return_value=result):
+            return ms.detect_structural_device(transcript or self.TRANS)
+
+    def test_contrast_with_verbatim_quote(self):
+        out = self._detect({"device": "contrast",
+                            "quote": "not about winning, it is about growing"})
+        self.assertEqual(out["device"], "contrast")
+        self.assertIn(out["quote"].lower(), self.TRANS.lower())
+
+    def test_quote_not_a_substring_is_dropped(self):
+        # THE anti-hallucination pin: an invented quote → no star.
+        out = self._detect({"device": "list_of_three",
+                            "quote": "faith, hope, and charity"})
+        self.assertIsNone(out)
+
+    def test_case_insensitive_substring_ok(self):
+        out = self._detect({"device": "contrast",
+                            "quote": "NOT ABOUT WINNING"})
+        self.assertIsNotNone(out)
+
+    def test_none_device_is_dropped(self):
+        self.assertIsNone(self._detect({"device": "none", "quote": ""}))
+        self.assertIsNone(self._detect({"device": "metaphor",
+                                        "quote": "growing every single day"}))
+
+    def test_blank_transcript(self):
+        from services.moment_suggestions import detect_structural_device
+        self.assertIsNone(detect_structural_device("   "))
+
+
+class StructuralPassTests(unittest.TestCase):
+    """The second pass: only no-acoustic-star snippets, own cap, flag-gated,
+    acoustic stars never displaced."""
+
+    class _Db:
+        def __init__(self):
+            self.calls = []
+
+        def upsert_moment_suggestion(self, snip, arc, kind, repl, why, trig):
+            self.calls.append((snip, kind, why, trig))
+            return True
+
+    def _run(self, candidates, *, flag="1", cap=2, detect=None):
+        import os
+        from services import moment_suggestions as ms
+        db = self._Db()
+        _det = detect or (lambda t, user_id=None: {
+            "device": "contrast", "quote": t})
+        with patch.dict(os.environ, {"STRUCTURAL_STARS_ENABLED": flag}), \
+             patch.object(ms, "detect_structural_device", side_effect=_det), \
+             patch("config.Config") as MC:
+            MC.return_value.STRUCTURAL_STARS_MAX_PER_TAKE = cap
+            n = ms._generate_structural(db, "arc1", candidates)
+        return n, db
+
+    def test_stores_up_to_cap(self):
+        cands = [("s1", "a not b"), ("s2", "x not y"), ("s3", "p not q")]
+        n, db = self._run(cands, cap=2)
+        self.assertEqual(n, 2)                      # capped
+        self.assertEqual([c[1] for c in db.calls], ["structure", "structure"])
+        self.assertEqual([c[3] for c in db.calls], ["contrast", "contrast"])
+
+    def test_flag_off_stores_nothing(self):
+        n, db = self._run([("s1", "a not b")], flag="0")
+        self.assertEqual(n, 0)
+        self.assertEqual(db.calls, [])
+
+    def test_no_device_no_store(self):
+        n, db = self._run([("s1", "plain sentence")],
+                          detect=lambda t, user_id=None: None)
+        self.assertEqual(n, 0)
+
+    def test_quote_is_stored_as_why_verbatim(self):
+        n, db = self._run([("s1", "it is not X, it is Y")], cap=1)
+        self.assertEqual(db.calls[0][2], "it is not X, it is Y")  # why=quote
+
+
+@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
 class AppliedMapAndFoldTests(unittest.TestCase):
     def test_last_action_wins(self):
         rows = [
@@ -301,6 +385,33 @@ class StudentGetStarTests(unittest.TestCase):
         m = body["key_moments"][0]
         self.assertNotIn("star", m)          # consumed — already in the text
         self.assertNotIn("suggestion", m)
+
+    def _struct(self, device="contrast", quote="the turn"):
+        return {SNIP: {"snippet_id": SNIP, "arc_id": ARC, "kind": "structure",
+                       "replacement_text": None, "why": quote,
+                       "trigger": device}}
+
+    def test_structural_star_serves_device_and_quote(self):
+        body, _ = self._get(sugs=self._struct())
+        m = body["key_moments"][0]
+        self.assertEqual(m["star"], "suggestion")
+        s = m["suggestion"]
+        self.assertEqual(s["kind"], "structure")
+        self.assertEqual(s["device"], "contrast")
+        self.assertEqual(s["quote"], "the turn")   # the user's own words
+        self.assertIsNone(s["why"])                # no generated prose served
+        self.assertNotIn("replacement", s)
+
+    def test_structural_star_never_consumed_by_applied(self):
+        # A structural star is a delivery prompt — even a stray feedback row
+        # must never fold it away or drop it.
+        feedback = [{"snippet_id": SNIP, "target": "moment_structure",
+                     "action": "applied"}]
+        body, _ = self._get(sugs=self._struct(), feedback=feedback)
+        m = body["key_moments"][0]
+        self.assertEqual(m["star"], "suggestion")
+        self.assertEqual(m["suggestion"]["kind"], "structure")
+        self.assertNotIn("[[moment:", body["text"])   # never folded
 
     def test_verified_star_beats_suggestion(self):
         drafts = [{"snippet_id": SNIP, "surfaced": True,
