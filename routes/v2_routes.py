@@ -4331,6 +4331,30 @@ def _merge_anonymous_session_into_user(session_id: str, user_id: str):
                     "willab_lab: credit init failed sid=%s err=%s (non-fatal)",
                     sid, _ce,
                 )
+        # Back-fill the ideal-text version bubbles (founder bug 2026-07-18):
+        # the worker only fires them for a KNOWN owner, so a guest's takes
+        # left the chat empty — and the chat IS the version history. Runs on
+        # every claim path (this helper is the shared willab exit) and is
+        # idempotent per (arc, version). Best-effort: never unwind a claim.
+        if _single_deliverable_enabled():
+            try:
+                from services.arc_notifications import backfill_ideal_bubbles
+                _arc = (session_row or {}).get("arc_id")
+                if not _arc:
+                    # Defensive: never let a narrow row silently skip the
+                    # back-fill (the whole point is the empty-chat bug).
+                    _arc = (db.v2_get_session_by_id(sid) or {}).get("arc_id")
+                if _arc:
+                    backfill_ideal_bubbles(db, str(user_id), _arc)
+                else:
+                    logger.warning(
+                        "willab_lab: no arc_id for claimed sid=%s — ideal "
+                        "bubbles not back-filled", sid)
+            except Exception as _bf:
+                logger.warning(
+                    "willab_lab: ideal back-fill failed sid=%s err=%s "
+                    "(non-fatal)", sid, _bf,
+                )
         return ({
             "status": "ok",
             "session_id": sid,
