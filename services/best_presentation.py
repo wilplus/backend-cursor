@@ -326,12 +326,21 @@ def compose_presentation(picks: dict, slides: list) -> list:
         pick = picks.get(i)
         if pick:
             verbatim = pick.get("transcript") or ""
+            _edited_text = (edited.get(i) or "").strip()
             out.append({
                 "index": i,
                 "title": slide.get("title") or "",
                 # slide body — the text-slide fallback when there's no deck PDF.
                 "body": slide.get("body") or "",
                 "text": edited.get(i) or verbatim,  # light-edit, else verbatim
+                # The RAW words the speaker actually said (founder 2026-07-18):
+                # the polish-as-suggestions lane serves THIS and offers the
+                # edit as an approvable star, instead of silently replacing.
+                "verbatim": verbatim,
+                # True when the light polish changed the words (an approvable
+                # diff exists). Trivial whitespace-only diffs don't count.
+                "polished": bool(
+                    _edited_text and _edited_text != (verbatim or "").strip()),
                 # the winning moment's snippet id — the FE deep-links the
                 # exported PDF's "Key moment" link to /game?snippet=<id>
                 # (P8). Metadata, not deliverable text: NOT hidden pre-finalize
@@ -481,7 +490,10 @@ def _arc_labels(db, labels_batch, sid):
 # Bump when the cached compose PAYLOAD shape changes (a new per-slide field
 # must force one recompute per arc — the content signature alone can't see
 # shape changes). v2: + key_phrases (backlog 1.7, 2026-07-11).
-_BP_PAYLOAD_VERSION = "v4"  # v4: picks carry session_id (delivery layer)
+_BP_PAYLOAD_VERSION = "v5"  # v5: slides carry verbatim+polished (polish-as-
+                            # suggestions) — forces one recompute per warm
+                            # arc so the new fields exist on cache hits
+                            # (v4: picks carry session_id, delivery layer)
 
 
 def _bp_signature(sessions: list, corrections: Optional[dict] = None) -> str:

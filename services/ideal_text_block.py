@@ -19,19 +19,34 @@ the save routes, markers survive untouched — the BE never parses any of
 them except MOMENT_RE. The coach's edit REPLACES the whole block, markers
 included — the anchors travel with the text.
 
-L1: the auto draft is assembled from the takes' COACH-CORRECTED verbatim picks
-(build_best_presentation — selection + light stitch, never an AI rewrite);
-the coach's one-block edit then owns it. The user's notebook copy is a
-separate personal row (user_arc_ideal_notes) — editing it never touches this
-canonical. AC-9: text only, no scores anywhere.
+L1 (docstring-truth fix 2026-07-18 — the old "never an AI rewrite" wording
+overclaimed): the auto draft is assembled from the takes' COACH-CORRECTED
+verbatim picks via build_best_presentation, whose compose step IS a
+constrained LLM pass — "mostly verbatim, a few words per slide for
+continuity, never new claims" (the founder-sanctioned light polish, i.e.
+seam-smoothing, not a free rewrite). Under POLISH_AS_SUGGESTIONS_ENABLED
+even that polish stops being silent: the VERBATIM words are served and the
+polish is offered as an approvable star. The coach's one-block edit then
+owns the canonical. The user's notebook copy is a separate personal row
+(user_arc_ideal_notes) — editing it never touches this canonical. AC-9:
+text only, no scores anywhere.
 """
 from __future__ import annotations
 
 import logging
+import os
 import re
 from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
+
+
+def _polish_as_suggestions_enabled() -> bool:
+    """Serve the VERBATIM ideal text and offer the light polish as approvable
+    stars, instead of silently replacing (founder 2026-07-18). DEFAULT OFF —
+    on top of MOMENT_SUGGESTIONS_ENABLED (the star machinery it reuses)."""
+    return (os.getenv("POLISH_AS_SUGGESTIONS_ENABLED") or "0").strip().lower() \
+        in ("1", "true", "yes")
 
 MOMENT_RE = re.compile(
     r"\[\[moment:(?P<snippet_id>[0-9a-fA-F-]{8,})\|"
@@ -78,24 +93,39 @@ def assemble_ideal_text_block(arc_id: str, *, database=None,
     if require_ready and not bp.get("ready"):
         return {"text": "", "key_moments": [], "ready": False}
 
+    # POLISH-AS-SUGGESTIONS (founder 2026-07-18): serve the speaker's VERBATIM
+    # words and offer the light polish as an approvable star, instead of
+    # silently replacing. More L1-faithful — the deliverable is what they
+    # actually said until THEY accept a change. `polish` collects the diffs
+    # for the worker to persist as suggestions.
+    _polish_on = _polish_as_suggestions_enabled()
     paragraphs: list = []
     key_moments: list = []
+    polish: list = []
     for s in (bp.get("slides") or []):
-        text = (s.get("text") or "").strip()
+        _edited = (s.get("text") or "").strip()
+        _verbatim = (s.get("verbatim") or "").strip()
+        text = (_verbatim if _polish_on else _edited) or _edited
         if not text:
             continue
-        # Bold the key openings — first occurrence of each phrase.
-        for kp in (s.get("key_phrases") or [])[:5]:
-            kp = (kp or "").strip()
-            if kp and kp in text and f"**{kp}**" not in text:
-                text = text.replace(kp, f"**{kp}**", 1)
-        # Key-moment anchor — a coach-confirmed breakthrough pick wraps
-        # whole; so does a star-suggestion pick (extra_anchor_ids, founder
-        # 2026-07-18 — the grey star needs an in-text anchor to attach to).
         snip_id = s.get("snippet_id")
         take_sid = s.get("session_id") or s.get("take_session_id")
+        # A polish diff → an approvable suggestion; anchor the pick so its
+        # star attaches. (When polish is OFF, key_phrases still bold as before.)
+        _is_polish = bool(_polish_on and s.get("polished")
+                          and snip_id and take_sid and _verbatim != _edited)
+        if not _polish_on:
+            # Bold the key openings — first occurrence of each phrase.
+            for kp in (s.get("key_phrases") or [])[:5]:
+                kp = (kp or "").strip()
+                if kp and kp in text and f"**{kp}**" not in text:
+                    text = text.replace(kp, f"**{kp}**", 1)
+        # Key-moment anchor — a coach-confirmed breakthrough pick wraps
+        # whole; so does a star-suggestion pick (extra_anchor_ids, founder
+        # 2026-07-18 — the grey star needs an in-text anchor to attach to);
+        # so does a polished pick (the polish star folds verbatim→edited).
         _extra = extra_anchor_ids or set()
-        if (s.get("breakthrough")
+        if (s.get("breakthrough") or _is_polish
                 or (snip_id and str(snip_id) in _extra)) \
                 and snip_id and take_sid:
             text = (f"[[moment:{snip_id}|{take_sid}]]{text}[[/moment]]")
@@ -103,11 +133,17 @@ def assemble_ideal_text_block(arc_id: str, *, database=None,
                 "snippet_id": str(snip_id),
                 "take_session_id": str(take_sid),
             })
+            if _is_polish:
+                polish.append({
+                    "snippet_id": str(snip_id),
+                    "edited": _edited,          # the fold target on Approve
+                })
         paragraphs.append(text)
 
     return {
         "text": "\n\n".join(paragraphs)[:_MAX_BLOCK_CHARS],
         "key_moments": key_moments,
+        "polish": polish,   # [{snippet_id, edited}] — the worker persists these
         "ready": True,
     }
 
@@ -161,6 +197,32 @@ def maybe_assemble_ideal_text(arc_id: Optional[str], *, database=None,
         if ok:
             logger.info("ideal_text: eager draft persisted arc=%s chars=%d",
                         arc_id, len(text))
+        # Persist the polish diffs as approvable suggestions (founder
+        # 2026-07-18) — kind='replace' + trigger='polish', replacement =
+        # the light-edited version, so Approve folds verbatim→edited via the
+        # existing serve fold. The served text stays verbatim. Never displaces
+        # an acoustic/structural star already on that snippet (upsert is
+        # snippet-keyed; acoustic stars are stored earlier in the same worker
+        # pass, so 'replace'/'structure' win — a polish only lands where the
+        # snippet had no other star). Best-effort.
+        if ok and _polish_as_suggestions_enabled():
+            try:
+                _existing = database.get_moment_suggestions_by_arc(arc_id) or {}
+                for p in (auto.get("polish") or []):
+                    _sid = str(p.get("snippet_id"))
+                    _prior = _existing.get(_sid)
+                    # An acoustic/structural star owns this snippet → leave it.
+                    # A prior POLISH row may refresh (a re-record can re-edit).
+                    if _prior and _prior.get("trigger") != "polish":
+                        continue
+                    _edited = (p.get("edited") or "").strip()
+                    if not _edited:
+                        continue
+                    database.upsert_moment_suggestion(
+                        _sid, str(arc_id), "replace", _edited, None, "polish")
+            except Exception as _pe:
+                logger.warning("ideal_text: polish persist failed arc=%s: %s",
+                               arc_id, _pe)
         return ok
     except Exception as e:
         logger.warning("ideal_text: eager assembly failed arc=%s: %s",

@@ -343,10 +343,29 @@ class StudentGetStarTests(unittest.TestCase):
                 m_auto.assert_not_called()
                 return resp.get_json(), status
 
-    def _sug(self, kind="replace", replacement="steady words"):
+    def _sug(self, kind="replace", replacement="steady words",
+             trigger="threat"):
         return {SNIP: {"snippet_id": SNIP, "arc_id": ARC, "kind": kind,
                        "replacement_text": replacement,
-                       "why": "It reads calmer.", "trigger": "threat"}}
+                       "why": "It reads calmer.", "trigger": trigger}}
+
+    def test_replace_star_trigger_clamped_to_polish_or_none(self):
+        # The FE labels a 'polish' replace differently from the rest — but
+        # the raw internal vocabulary (threat/charisma/...) must NEVER ride
+        # a user payload (CONSTRUCT/AC-9; adversarial review 2026-07-18).
+        body, _ = self._get(sugs=self._sug(trigger="polish", replacement="X"))
+        self.assertEqual(body["key_moments"][0]["suggestion"]["trigger"],
+                         "polish")
+        body, _ = self._get(sugs=self._sug(trigger="threat"))
+        m = body["key_moments"][0]
+        self.assertIsNone(m["suggestion"]["trigger"])
+        self.assertNotIn("threat", json.dumps(m))
+        body, _ = self._get(sugs=self._sug(kind="emphasize",
+                                           replacement=None,
+                                           trigger="charisma"))
+        m = body["key_moments"][0]
+        self.assertIsNone(m["suggestion"]["trigger"])
+        self.assertNotIn("charisma", json.dumps(m))
 
     def test_grey_suggestion_star(self):
         body, status = self._get(sugs=self._sug())
