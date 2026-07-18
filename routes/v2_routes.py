@@ -11804,6 +11804,39 @@ def _moment_explanations_map(session_ids) -> dict:
     return out
 
 
+def _moment_playback_map(session_ids) -> dict:
+    """snippet_id → {snippet_audio_ref, start_offset_ms, duration_ms} for
+    FREE in-modal playback of the student's own recording (audit
+    2026-07-18: the star sheet plays the snippet above the paywall, so this
+    can NEVER come from the paid moments GET).
+
+    Parent+offset model: the ref is usually the WHOLE take's audio, so the
+    offsets ride along and the FE must clamp to [start, start+duration].
+    Uses the shared column-resolver so post-finalize rows (audio_segment_
+    path NULL) still play. Batched per session; best-effort → no player."""
+    out: dict = {}
+    for sid in {str(s) for s in (session_ids or []) if s}:
+        try:
+            for s in (db.get_snippets_by_session(sid) or []):
+                _snip = s.get("id")
+                if _snip is None:
+                    continue
+                try:
+                    _url = _resolve_snippet_audio_url(s)
+                except Exception:
+                    _url = s.get("audio_segment_path")
+                if not _url:
+                    continue
+                out[str(_snip)] = {
+                    "snippet_audio_ref": _url,
+                    "start_offset_ms": s.get("start_offset_ms"),
+                    "duration_ms": s.get("duration_ms"),
+                }
+        except Exception:
+            continue
+    return out
+
+
 def _moment_applied_map(session_ids) -> dict:
     """snippet_id → True when the LAST moment_* suggestion action was
     'applied' (Approve is reversible; last action wins). Best-effort."""
@@ -11827,7 +11860,7 @@ def _fold_applied_moments(text, moments) -> str:
     """Serve-time fold of APPLIED star suggestions into the displayed text
     (founder sign-off 2026-07-18 — the canonical ideal text is NEVER
     mutated; this rewrites the response string only):
-      * emphasize → the moment's inner span wraps in **{{orange:…}}**
+      * emphasize → the moment's inner span wraps in {{orange:…}}
         ("these words hold particular value");
       * replace   → the inner span is swapped for the generated replacement
         (not bold, not orange — just replaced).
@@ -11853,8 +11886,12 @@ def _fold_applied_moments(text, moments) -> str:
                 text, count=1)
         elif sug.get("kind") == "emphasize":
             text = _pat.sub(
-                lambda mt: (f"[[moment:{_id}|{_sid}]]**{{{{orange:"
-                            f"{mt.group('inner')}}}}}**[[/moment]]"),
+                # SINGLE marker, never nested (audit 2026-07-18): the FE's
+                # rich-marker parser is FLAT — a nested `**{{orange:…}}**`
+                # printed its raw syntax to the student. The accent marker
+                # alone carries "these words hold particular value".
+                lambda mt: (f"[[moment:{_id}|{_sid}]]{{{{orange:"
+                            f"{mt.group('inner')}}}}}[[/moment]]"),
                 text, count=1)
     return text
 
@@ -12234,18 +12271,36 @@ def v2_explore_get_ideal_text(arc_id):
                     _text = _fold_applied_moments(_text, _fold_info)
 
             _moments = extract_key_moments(_text)
+            # Serve the ANCHOR path, never both (audit 2026-07-18): the FE
+            # drops any anchor sitting inside a marker token, which is
+            # exactly where the [[moment:…]] wrapper puts it — with the
+            # wrappers present every star is lost AND a free suggestion
+            # falls through to the paid affordance. Extract first, then
+            # strip, so each anchor is plain text in the served string.
+            from services.ideal_text_block import strip_moment_markers
+            _text = strip_moment_markers(_text)
             _has_expl = _moment_explanations_map(
+                [m.get("take_session_id") for m in _moments])
+            _playback = _moment_playback_map(
                 [m.get("take_session_id") for m in _moments])
 
             def _decorate(m):
                 _mid = str(m.get("snippet_id"))
                 entry = {
                     "id": m.get("snippet_id"),
+                    # Both keys on purpose: `id` is the moment-explanation
+                    # identity, `snippet_id` is what the Approve/Revert
+                    # feedback POST keys on (audit 2026-07-18 — its absence
+                    # sent an EMPTY snippet id and Approve never persisted).
+                    "snippet_id": m.get("snippet_id"),
                     # The literal text fragment the FE underlines + taps
                     # (SD contract pin — a moment with no anchor is dropped).
                     "anchor": m.get("anchor") or "",
                     "take_session_id": m.get("take_session_id"),
                     "has_explanation": bool(_has_expl.get(_mid)),
+                    # FREE playback of the student's own recording (parent+
+                    # offset → the FE clamps to [start, start+duration]).
+                    **(_playback.get(_mid) or {}),
                 }
                 if not _stars_on:
                     return entry
@@ -12259,7 +12314,12 @@ def v2_explore_get_ideal_text(arc_id):
                         "has_video": bool(
                             _has_expl[_mid].get("has_video")),
                     }
-                elif _mid in _sugs:
+                elif _mid in _sugs and not _applied.get(_mid):
+                    # An APPLIED suggestion is CONSUMED: its result is
+                    # already folded into the served text, so no star is
+                    # emitted (audit 2026-07-18 — the FE documents exactly
+                    # this expectation; keeping the star re-offered work
+                    # the student had already accepted).
                     _s = _sugs[_mid]
                     entry["star"] = "suggestion"
                     entry["suggestion"] = {
@@ -12267,7 +12327,7 @@ def v2_explore_get_ideal_text(arc_id):
                         "replacement": _s.get("replacement_text"),
                         "why": _s.get("why"),
                     }
-                    entry["applied"] = bool(_applied.get(_mid))
+                    entry["applied"] = False
                 return entry
 
             _notes = db.get_user_arc_ideal_notes(arc_id, request.user_id)
