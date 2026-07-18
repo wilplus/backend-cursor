@@ -487,6 +487,36 @@ class StudentGetStarTests(unittest.TestCase):
         self.assertNotIn("suggestion", m)
         self.assertNotIn("applied", m)
 
+    def test_delivery_star_serves_device_only(self):
+        # Measured delivery star (founder 2026-07-18): behavioural prompt,
+        # no prose, no numbers — the FE renders approved copy from device.
+        sugs = {SNIP: {"snippet_id": SNIP, "arc_id": ARC, "kind": "delivery",
+                       "replacement_text": None, "why": None,
+                       "trigger": "pace_fast"}}
+        body, _ = self._get(sugs=sugs)
+        m = body["key_moments"][0]
+        self.assertEqual(m["star"], "suggestion")
+        self.assertEqual(m["suggestion"]["kind"], "delivery")
+        self.assertEqual(m["suggestion"]["device"], "pace_fast")
+        self.assertIsNone(m["suggestion"]["quote"])
+        self.assertIsNone(m["suggestion"]["why"])
+        raw = json.dumps(body)
+        for banned in ("wpm", "z_score", "f0_sd", "dynamic_db",
+                       "pause_ratio"):
+            self.assertNotIn(banned, raw)   # nothing numeric rides along
+
+    def test_delivery_unknown_device_yields_no_star(self):
+        # The FE renders copy PURELY from device (pinned) — an unknown
+        # spelling must yield NO star, and must NOT fall through to the
+        # generic text-suggestion branch either.
+        sugs = {SNIP: {"snippet_id": SNIP, "arc_id": ARC, "kind": "delivery",
+                       "replacement_text": None, "why": None,
+                       "trigger": "volume_up"}}
+        body, _ = self._get(sugs=sugs)
+        m = body["key_moments"][0]
+        self.assertNotIn("star", m)
+        self.assertNotIn("suggestion", m)
+
     def test_ac9_score_free(self):
         body, _ = self._get(sugs=self._sug())
         raw = json.dumps(body)

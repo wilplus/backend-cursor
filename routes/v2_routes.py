@@ -12280,6 +12280,9 @@ def v2_explore_get_ideal_text(arc_id):
             # The ONLY two structural devices the FE has copy for — an
             # unknown spelling must yield no star (FE contract pin).
             from services.moment_suggestions import _STRUCT_DEVICES
+            from services.delivery_stars import (
+                DELIVERY_DEVICES as _DELIVERY_DEVICES,
+            )
             _applied = {}
             if _stars_on and _sugs:
                 _pre = extract_key_moments(_text)
@@ -12346,6 +12349,22 @@ def v2_explore_get_ideal_text(arc_id):
                         "has_video": bool(
                             _has_expl[_mid].get("has_video")),
                     }
+                elif _mid in _sugs and _sugs[_mid].get("kind") == "delivery" \
+                        and _sugs[_mid].get("trigger") in _DELIVERY_DEVICES:
+                    # MEASURED delivery star (founder decisions 2026-07-18):
+                    # a behavioural prompt, not an edit — no approve/fold;
+                    # the modal's action is the FE's snippet re-record mic.
+                    # The FE renders the approved copy PURELY from `device`
+                    # (same pinned dependency as structural: unknown device
+                    # → no star), and nothing numeric rides this payload
+                    # (AC-9: the z-scores stay server-side).
+                    entry["star"] = "suggestion"
+                    entry["suggestion"] = {
+                        "kind": "delivery",
+                        "device": _sugs[_mid].get("trigger"),
+                        "quote": None,
+                        "why": None,
+                    }
                 elif _mid in _sugs and _sugs[_mid].get("kind") == "structure" \
                         and _sugs[_mid].get("trigger") in _STRUCT_DEVICES:
                     # STRUCTURAL star (founder 2026-07-18): a delivery
@@ -12365,7 +12384,13 @@ def v2_explore_get_ideal_text(arc_id):
                         "quote": _s.get("why"),
                         "why": None,
                     }
-                elif _mid in _sugs and not _applied.get(_mid):
+                elif _mid in _sugs \
+                        and _sugs[_mid].get("kind") not in (
+                            "structure", "delivery") \
+                        and not _applied.get(_mid):
+                    # TEXT suggestions only — a structure/delivery row with
+                    # an unknown device must yield NO star (the FE renders
+                    # copy purely from device), never fall through here.
                     # An APPLIED suggestion is CONSUMED: its result is
                     # already folded into the served text, so no star is
                     # emitted (audit 2026-07-18 — the FE documents exactly
@@ -13626,8 +13651,19 @@ def v2_lab_create_recording():
                             )
                             _row = db.get_coach_arc_ideal_text(arc_id) or {}
                             _new_v = _row.get("version") or 1
+                            # Spoken take count → the takes-1-and-2 nudge
+                            # line (bug token 3c; soft nudge, never a gate).
+                            try:
+                                from services.best_presentation import (
+                                    spoken_arc_sessions,
+                                )
+                                _n_spoken = len(spoken_arc_sessions(
+                                    db.get_arc_sessions(arc_id)))
+                            except Exception:
+                                _n_spoken = None
                             fire_ideal_version_ready(
-                                db, _cad_user, arc_id, _new_v)
+                                db, _cad_user, arc_id, _new_v,
+                                spoken_take_count=_n_spoken)
                             # BE-4: a student edit of a PRIOR version is the
                             # strongest phrasing-preference signal the corpus
                             # gets. The assembler has no per-user selection
