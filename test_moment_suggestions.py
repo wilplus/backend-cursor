@@ -196,7 +196,10 @@ class AppliedMapAndFoldTests(unittest.TestCase):
             "id": SNIP, "take_session_id": SESS, "applied": True,
             "suggestion": {"kind": "emphasize"},
         }])
-        self.assertIn("**{{orange:shaky bit}}**", folded2)
+        # SINGLE accent marker — never nested (the flat FE parser printed
+        # a nested `**{{orange:…}}**` as raw syntax to the student).
+        self.assertIn("{{orange:shaky bit}}", folded2)
+        self.assertNotIn("**{{orange:", folded2)
 
     def test_unapplied_untouched(self):
         text = f"[[moment:{SNIP}|{SESS}]]x[[/moment]]"
@@ -318,7 +321,11 @@ class StudentGetStarTests(unittest.TestCase):
         self.assertIn("steady words", body["text"])
         self.assertNotIn("the turn", body["text"])
         m = body["key_moments"][0]
-        self.assertTrue(m["applied"])
+        # The suggestion is CONSUMED — no star re-offering it (its result is
+        # already in the text); the moment itself stays, anchored to the
+        # replacement so the FE can still locate it.
+        self.assertNotIn("star", m)
+        self.assertNotIn("applied", m)
         self.assertEqual(m["anchor"], "steady words")   # matches served text
         self.assertIn(m["anchor"], body["text"])
 
