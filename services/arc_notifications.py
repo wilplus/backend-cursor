@@ -239,6 +239,55 @@ def fire_ideal_verified(db, user_id: Any, arc_id: Any, version: Any) -> bool:
     )
 
 
+def backfill_ideal_bubbles(db, user_id: Any, arc_id: Any) -> int:
+    """Back-fill the ideal-text version bubbles for a JUST-CLAIMED guest
+    session (founder bug 2026-07-18).
+
+    THE BUG: the per-version bubbles fire in the analysis worker only when
+    the take has a known owner (`_cad_user`). A GUEST has no lounge thread,
+    so their takes produced no bubbles at all — and signing in afterwards
+    never back-filled them, so the version history started empty. The
+    founder's core ask is that the chat IS the version history (1.0
+    unverified → N.0 verified), so an empty thread is a broken product.
+
+    Fires, for the arc's CURRENT state: the 'ready' bubble for the current
+    version, plus 'verified' when that version is coach-verified. Only the
+    current version can be back-filled — earlier versions' texts are not
+    retained (a version bump overwrites the machine copy), and inventing
+    bubbles for versions we can no longer show would be dishonest.
+
+    Idempotent by construction: both bubbles are keyed per (arc, version),
+    so a re-claim or a later worker run dedupes. Returns how many fired;
+    best-effort, never raises into the claim path."""
+    if not user_id or not arc_id:
+        return 0
+    try:
+        row = db.get_coach_arc_ideal_text(arc_id) or {}
+        _coach_owned = bool(row.get("updated_by") or row.get("approved_at"))
+        _machine = ((row.get("auto_text") or "").strip()
+                    or ((row.get("text") or "").strip()
+                        if not _coach_owned else ""))
+        version = row.get("version") or (1 if _machine else None)
+        if not isinstance(version, int):
+            return 0
+        fired = 0
+        if fire_ideal_version_ready(db, user_id, arc_id, version):
+            fired += 1
+        _vv = row.get("verified_version")
+        if _vv == version and (row.get("verified_text") or "").strip():
+            if fire_ideal_verified(db, user_id, arc_id, version):
+                fired += 1
+        if fired:
+            logger.info(
+                "arc_notifications: back-filled %d ideal bubble(s) arc=%s "
+                "version=%s on guest claim", fired, arc_id, version)
+        return fired
+    except Exception as e:
+        logger.warning("arc_notifications: ideal back-fill failed arc=%s: %s",
+                       arc_id, e)
+        return 0
+
+
 def fire_pay_note(db, user_id: Any, arc_id: Any) -> bool:
     """After take 2 is sent on an UNPAID arc: the 25-credit ($25) unlock note.
     Skipped when the arc is already entitled. Idempotent per arc. Per-take
