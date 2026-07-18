@@ -12377,6 +12377,14 @@ def v2_explore_get_ideal_text(arc_id):
                         "kind": _s.get("kind"),
                         "replacement": _s.get("replacement_text"),
                         "why": _s.get("why"),
+                        # CLAMPED to 'polish'|None (adversarial review
+                        # 2026-07-18): the FE only needs to distinguish a
+                        # flow-polish replace from the rest; the raw trigger
+                        # vocabulary (threat/charisma/…) is INTERNAL —
+                        # surfacing it would breach the CONSTRUCT/AC-9
+                        # fences (a classifier verdict on a user payload).
+                        "trigger": ("polish" if _s.get("trigger") == "polish"
+                                    else None),
                     }
                     entry["applied"] = False
                 return entry
