@@ -12277,6 +12277,9 @@ def v2_explore_get_ideal_text(arc_id):
             _stars_on = _moment_suggestions_enabled()
             _sugs = db.get_moment_suggestions_by_arc(arc_id) \
                 if _stars_on else {}
+            # The ONLY two structural devices the FE has copy for — an
+            # unknown spelling must yield no star (FE contract pin).
+            from services.moment_suggestions import _STRUCT_DEVICES
             _applied = {}
             if _stars_on and _sugs:
                 _pre = extract_key_moments(_text)
@@ -12343,12 +12346,17 @@ def v2_explore_get_ideal_text(arc_id):
                         "has_video": bool(
                             _has_expl[_mid].get("has_video")),
                     }
-                elif _mid in _sugs and _sugs[_mid].get("kind") == "structure":
+                elif _mid in _sugs and _sugs[_mid].get("kind") == "structure" \
+                        and _sugs[_mid].get("trigger") in _STRUCT_DEVICES:
                     # STRUCTURAL star (founder 2026-07-18): a delivery
                     # prompt, not an edit — never applied, never folded,
                     # always shown. The FE renders fixed signed-off copy
                     # from `device`; NO generated prose is served. `quote`
                     # is the user's own verbatim words.
+                    # The device guard is the FE's pinned dependency: it
+                    # renders the sheet copy PURELY from `device`, so an
+                    # unknown spelling must yield NO star rather than a
+                    # star with no copy behind it.
                     _s = _sugs[_mid]
                     entry["star"] = "suggestion"
                     entry["suggestion"] = {
