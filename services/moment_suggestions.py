@@ -137,9 +137,16 @@ def detect_structural_device(transcript: str, *,
         if device not in _STRUCT_DEVICES or not quote:
             return None
         # THE pin: the quote must literally occur in the transcript.
-        if quote.lower() not in transcript.lower():
+        _idx = transcript.lower().find(quote.lower())
+        if _idx < 0:
             logger.info("structural_star: quote not verbatim — dropped")
             return None
+        # Take the TRANSCRIPT's own characters at the matched span, not the
+        # model's echo: the match is case-insensitive, so the model can
+        # return "it's not about speed..." for a passage that actually began
+        # capitalised. The FE displays this quote as-is, so "verbatim" has
+        # to mean character-for-character what the speaker said.
+        quote = transcript[_idx:_idx + len(quote)]
         return {"device": device, "quote": quote}
     except Exception as e:
         logger.warning("structural_star: detection failed: %s", e)

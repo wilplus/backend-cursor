@@ -483,5 +483,45 @@ class SuggestionTargetTests(unittest.TestCase):
         self.assertIn("moment_replace", v2._SUGGESTION_TARGETS)
 
 
+class StructuralQuoteVerbatimTests(unittest.TestCase):
+    """FE contract pin (founder 2026-07-18): the sheet copy is rendered
+    PURELY from `device`, so it must be exactly "contrast"/"list_of_three";
+    and the `quote` is displayed as-is, so it must be character-for-character
+    what the speaker said."""
+
+    TX = "It's Not About Speed, it's about clarity."
+
+    def _detect(self, parsed):
+        from services import moment_suggestions as ms
+        res = type("R", (), {"parsed": parsed, "text": ""})()
+        with patch("services.llm.chat_complete", return_value=res):
+            return ms.detect_structural_device(self.TX)
+
+    def test_quote_takes_the_transcripts_own_casing(self):
+        # the model echoes different casing than the speaker used
+        out = self._detect({"device": "contrast",
+                            "quote": "it's not about speed, IT'S ABOUT CLARITY"})
+        self.assertEqual(out["quote"], "It's Not About Speed, it's about clarity")
+        self.assertIn(out["quote"], self.TX)   # character-exact substring
+
+    def test_device_normalised_to_the_two_exact_spellings(self):
+        self.assertEqual(self._detect(
+            {"device": "CONTRAST", "quote": "It's Not About Speed"})["device"],
+            "contrast")
+        self.assertEqual(self._detect(
+            {"device": " List_Of_Three ", "quote": "it's about clarity"}
+        )["device"], "list_of_three")
+
+    def test_unknown_device_yields_no_star(self):
+        self.assertIsNone(self._detect(
+            {"device": "anaphora", "quote": "It's Not About Speed"}))
+        self.assertIsNone(self._detect(
+            {"device": "none", "quote": ""}))
+
+    def test_hallucinated_quote_dropped(self):
+        self.assertIsNone(self._detect(
+            {"device": "contrast", "quote": "words never spoken"}))
+
+
 if __name__ == "__main__":
     unittest.main()
