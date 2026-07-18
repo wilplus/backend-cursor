@@ -19,11 +19,17 @@ the save routes, markers survive untouched — the BE never parses any of
 them except MOMENT_RE. The coach's edit REPLACES the whole block, markers
 included — the anchors travel with the text.
 
-L1: the auto draft is assembled from the takes' COACH-CORRECTED verbatim picks
-(build_best_presentation — selection + light stitch, never an AI rewrite);
-the coach's one-block edit then owns it. The user's notebook copy is a
-separate personal row (user_arc_ideal_notes) — editing it never touches this
-canonical. AC-9: text only, no scores anywhere.
+L1 (docstring-truth fix 2026-07-18 — the old "never an AI rewrite" wording
+overclaimed): the auto draft is assembled from the takes' COACH-CORRECTED
+verbatim picks via build_best_presentation, whose compose step IS a
+constrained LLM pass — "mostly verbatim, a few words per slide for
+continuity, never new claims" (the founder-sanctioned light polish, i.e.
+seam-smoothing, not a free rewrite). Under POLISH_AS_SUGGESTIONS_ENABLED
+even that polish stops being silent: the VERBATIM words are served and the
+polish is offered as an approvable star. The coach's one-block edit then
+owns the canonical. The user's notebook copy is a separate personal row
+(user_arc_ideal_notes) — editing it never touches this canonical. AC-9:
+text only, no scores anywhere.
 """
 from __future__ import annotations
 

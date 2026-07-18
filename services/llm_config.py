@@ -290,8 +290,10 @@ SPEC_SAY_IT_STRONGER = LLMSpec(
 )
 """'Say It Stronger' — per-snippet rewrite suggestions on the user
 readout (replaces the raw acoustic NUMBERS there; the metrics stay in
-the data/ranking/coach view). Suggestion overlay ONLY — never feeds the
-best-presentation/ideal-text assembly (L1)."""
+the data/ranking/coach view). Suggestion overlay for the composed WORDS
+(L1): upgrades never become assembled text — best_presentation reads them
+only as key-phrase DISPLAY HINTS (bolding spans already verbatim-present;
+off entirely under POLISH_AS_SUGGESTIONS)."""
 
 
 SPEC_MOMENT_SUGGESTION = LLMSpec(

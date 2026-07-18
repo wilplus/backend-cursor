@@ -8,9 +8,16 @@ ranking blend, and on the coach view — this is presentation-layer only.
 
 FENCES
 ------
-* L1 — suggestion overlay ONLY. This module's output must never be read by
-  services/best_presentation.py / ideal_text_report.py or any assembly
-  path; the best-presentation text stays verbatim-select + coach-corrected.
+* L1 — suggestion overlay ONLY for the composed WORDS: no upgrade/rewrite
+  string may ever become part of the assembled best-presentation/ideal
+  text. HONESTY NOTE (docstring-truth fix 2026-07-18 — the old absolute
+  "never read by best_presentation.py" claim was false): best_presentation
+  DOES read this module's upgrades, but only as DISPLAY HINTS — the
+  per-slide ``key_phrases`` used to bold spans that ALREADY occur verbatim
+  in the text (``if kp in text``; a rewrite that isn't a substring bolds
+  nothing). The composed words themselves stay verbatim-select +
+  coach-corrected; under POLISH_AS_SUGGESTIONS the key-phrase bolding is
+  off entirely and edits reach the text only via user-approved stars.
 * AC-9 / CONSTRUCT — the user-facing ``why`` / ``reason`` copy is guarded in
   code: no digits, none of the retired construct vocabulary. Acoustic
   evidence is expressed qualitatively and ONLY relative to the speaker's
