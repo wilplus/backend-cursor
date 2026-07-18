@@ -8678,7 +8678,12 @@ _SUGGESTION_TARGETS = ("upgrade", "rewrite_your_voice", "rewrite_polished",
                        "comment", "comment_video",
                        # Star suggestions (2026-07-18): per-star Approve /
                        # Revert on the SD ideal text (no apply_all surfaced).
-                       "moment_emphasize", "moment_replace")
+                       "moment_emphasize", "moment_replace",
+                       # Structural stars are delivery prompts (no Approve);
+                       # this target is accepted forward-compatibly for
+                       # engagement feedback but changes NO serve behavior
+                       # (never in the applied-map / fold).
+                       "moment_structure")
 # "reverted" (2026-07-15): Approve is a reversible toggle on the FE — the
 # undo reports here so applied→reverted pairs keep the preference signal
 # honest (second-order lane, below coach truth, as ever).
@@ -12313,6 +12318,20 @@ def v2_explore_get_ideal_text(arc_id):
                         "has_message": True,
                         "has_video": bool(
                             _has_expl[_mid].get("has_video")),
+                    }
+                elif _mid in _sugs and _sugs[_mid].get("kind") == "structure":
+                    # STRUCTURAL star (founder 2026-07-18): a delivery
+                    # prompt, not an edit — never applied, never folded,
+                    # always shown. The FE renders fixed signed-off copy
+                    # from `device`; NO generated prose is served. `quote`
+                    # is the user's own verbatim words.
+                    _s = _sugs[_mid]
+                    entry["star"] = "suggestion"
+                    entry["suggestion"] = {
+                        "kind": "structure",
+                        "device": _s.get("trigger"),
+                        "quote": _s.get("why"),
+                        "why": None,
                     }
                 elif _mid in _sugs and not _applied.get(_mid):
                     # An APPLIED suggestion is CONSUMED: its result is

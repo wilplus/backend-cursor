@@ -10021,7 +10021,8 @@ class DatabaseService:
     ) -> bool:
         """One star suggestion per snippet (founder 2026-07-18). Idempotent
         on snippet_id (a reassembly regenerates in place). Best-effort."""
-        if not snippet_id or not arc_id or kind not in ("emphasize", "replace"):
+        if not snippet_id or not arc_id \
+                or kind not in ("emphasize", "replace", "structure"):
             return False
         try:
             self.client.table("moment_suggestions").upsert({

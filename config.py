@@ -112,6 +112,11 @@ class Config:
     # Cap on suggestion LLM generations per take (cost bound).
     MOMENT_SUGGESTIONS_MAX_PER_TAKE = _env_int(
         "MOMENT_SUGGESTIONS_MAX_PER_TAKE", 8)
+    # Structural stars (founder 2026-07-18): amber "practice this" prompts on
+    # a contrast / list-of-three, on snippets with no acoustic star. Applied
+    # AFTER the acoustic cap so acoustic stars are never displaced.
+    STRUCTURAL_STARS_MAX_PER_TAKE = _env_int(
+        "STRUCTURAL_STARS_MAX_PER_TAKE", 2)
     # Cloudflare R2 (S3 API) for coach/reference/feedback videos — set all four to use R2 instead of Supabase Storage.
     R2_ACCOUNT_ID = (os.getenv("R2_ACCOUNT_ID") or "").strip()
     R2_ACCESS_KEY_ID = (os.getenv("R2_ACCESS_KEY_ID") or "").strip()
