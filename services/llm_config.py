@@ -294,6 +294,20 @@ the data/ranking/coach view). Suggestion overlay ONLY — never feeds the
 best-presentation/ideal-text assembly (L1)."""
 
 
+SPEC_MOMENT_SUGGESTION = LLMSpec(
+    model=CHEAP_MODEL,
+    # Same balance as Say-It-Stronger: consistent, but real alternatives.
+    temperature=0.5,
+    # One short why-line (+ one replacement phrase for replace-kind).
+    max_tokens=300,
+    response_format={"type": "json_object"},
+)
+"""Star suggestions (founder 2026-07-18): per key-moment snippet, the short
+qualitative 'why' (+ an audience-appropriate replacement phrase for the
+replace kind). Suggestion overlay ONLY — approved replacements write the
+student's own copy at serve time, never the canonical ideal text (L1)."""
+
+
 SPEC_CONTEXTUAL_FOLLOWUP = LLMSpec(
     model=CHEAP_MODEL,
     # Moderate warmth — the question should feel like a coach who

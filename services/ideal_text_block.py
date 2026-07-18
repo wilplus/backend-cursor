@@ -51,7 +51,8 @@ _MAX_BLOCK_CHARS = 20000
 
 
 def assemble_ideal_text_block(arc_id: str, *, database=None,
-                              require_ready: bool = True) -> dict:
+                              require_ready: bool = True,
+                              extra_anchor_ids=None) -> dict:
     """The AUTO draft: build_best_presentation's per-slide/section picks
     collapsed into one marker-carrying block.
 
@@ -88,10 +89,15 @@ def assemble_ideal_text_block(arc_id: str, *, database=None,
             kp = (kp or "").strip()
             if kp and kp in text and f"**{kp}**" not in text:
                 text = text.replace(kp, f"**{kp}**", 1)
-        # Key-moment anchor — a coach-confirmed breakthrough pick wraps whole.
+        # Key-moment anchor — a coach-confirmed breakthrough pick wraps
+        # whole; so does a star-suggestion pick (extra_anchor_ids, founder
+        # 2026-07-18 — the grey star needs an in-text anchor to attach to).
         snip_id = s.get("snippet_id")
         take_sid = s.get("session_id") or s.get("take_session_id")
-        if s.get("breakthrough") and snip_id and take_sid:
+        _extra = extra_anchor_ids or set()
+        if (s.get("breakthrough")
+                or (snip_id and str(snip_id) in _extra)) \
+                and snip_id and take_sid:
             text = (f"[[moment:{snip_id}|{take_sid}]]{text}[[/moment]]")
             key_moments.append({
                 "snippet_id": str(snip_id),
@@ -107,7 +113,8 @@ def assemble_ideal_text_block(arc_id: str, *, database=None,
 
 
 def maybe_assemble_ideal_text(arc_id: Optional[str], *, database=None,
-                              require_target: bool = True) -> bool:
+                              require_target: bool = True,
+                              include_suggestion_anchors: bool = False) -> bool:
     """EAGER assembly (founder 2026-07-15): called from the analysis pipeline
     when a SPOKEN take completes — the moment the arc's 3rd spoken take is in,
     assemble the draft and PERSIST it as the machine block, so the coach's
@@ -135,8 +142,18 @@ def maybe_assemble_ideal_text(arc_id: Optional[str], *, database=None,
             return False
         if not spoken:
             return False
+        _extra = None
+        if include_suggestion_anchors:
+            # Star suggestions (2026-07-18): a suggestion-flagged pick gets
+            # an in-text anchor so its grey star can attach. Best-effort.
+            try:
+                _extra = set(
+                    database.get_moment_suggestions_by_arc(arc_id) or {})
+            except Exception:
+                _extra = None
         auto = assemble_ideal_text_block(
-            arc_id, database=database, require_ready=require_target)
+            arc_id, database=database, require_ready=require_target,
+            extra_anchor_ids=_extra)
         text = (auto.get("text") or "").strip()
         if not text:
             return False

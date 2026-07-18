@@ -8675,7 +8675,10 @@ def v2_user_put_transcript_edit(session_id):
 
 
 _SUGGESTION_TARGETS = ("upgrade", "rewrite_your_voice", "rewrite_polished",
-                       "comment", "comment_video")
+                       "comment", "comment_video",
+                       # Star suggestions (2026-07-18): per-star Approve /
+                       # Revert on the SD ideal text (no apply_all surfaced).
+                       "moment_emphasize", "moment_replace")
 # "reverted" (2026-07-15): Approve is a reversible toggle on the FE — the
 # undo reports here so applied→reverted pairs keep the preference signal
 # honest (second-order lane, below coach truth, as ever).
@@ -11646,6 +11649,16 @@ def _single_deliverable_enabled() -> bool:
         in ("1", "true", "yes")
 
 
+def _moment_suggestions_enabled() -> bool:
+    """Star suggestions on the SD ideal text (founder 2026-07-18): grey
+    suggestion stars (emphasize / replace) resolved coach-label-first, else
+    the deterministic potentiometer (NEVER the shadow model — blind coach);
+    orange verified stars carry the paid coach message. DEFAULT OFF; rides
+    on top of SINGLE_DELIVERABLE_ENABLED."""
+    return (os.getenv("MOMENT_SUGGESTIONS_ENABLED") or "0").strip().lower() \
+        in ("1", "true", "yes")
+
+
 def _instant_ideal_enabled() -> bool:
     """Instant ideal text (founder re-lock 2026-07-17): the MACHINE draft is
     served to the student FREE the moment take 3 lands — the June "the raw
@@ -11770,8 +11783,10 @@ def _moments_entitled(arc_id) -> bool:
 
 
 def _moment_explanations_map(session_ids) -> dict:
-    """snippet_id → whether a coach EXPLANATION exists (a surfaced draft
-    carrying a note and/or video). Batch per session; best-effort."""
+    """snippet_id → {"has_video": bool} for every coach EXPLANATION (a
+    surfaced draft carrying a note and/or video). Key presence = an
+    explanation exists (the ORANGE verified star); has_video drives the
+    blurred-video affordance. Batch per session; best-effort."""
     out: dict = {}
     for sid in {str(s) for s in (session_ids or []) if s}:
         try:
@@ -11781,10 +11796,67 @@ def _moment_explanations_map(session_ids) -> dict:
                     continue
                 if (d.get("note") or "").strip() \
                         or d.get("breakthrough_video_ref"):
-                    out[str(_snip)] = True
+                    out[str(_snip)] = {
+                        "has_video": bool(d.get("breakthrough_video_ref")),
+                    }
         except Exception:
             continue
     return out
+
+
+def _moment_applied_map(session_ids) -> dict:
+    """snippet_id → True when the LAST moment_* suggestion action was
+    'applied' (Approve is reversible; last action wins). Best-effort."""
+    out: dict = {}
+    for sid in {str(s) for s in (session_ids or []) if s}:
+        try:
+            rows = db.get_suggestion_feedback_by_session(sid) or []
+        except Exception:
+            continue
+        for r in rows:   # rows assumed chronological; last write wins
+            if r.get("target") not in ("moment_emphasize", "moment_replace"):
+                continue
+            _snip = r.get("snippet_id")
+            if _snip is None:
+                continue
+            out[str(_snip)] = (r.get("action") == "applied")
+    return {k: v for k, v in out.items() if v}
+
+
+def _fold_applied_moments(text, moments) -> str:
+    """Serve-time fold of APPLIED star suggestions into the displayed text
+    (founder sign-off 2026-07-18 — the canonical ideal text is NEVER
+    mutated; this rewrites the response string only):
+      * emphasize → the moment's inner span wraps in **{{orange:…}}**
+        ("these words hold particular value");
+      * replace   → the inner span is swapped for the generated replacement
+        (not bold, not orange — just replaced).
+    The [[moment:…]] anchor survives (revert stays addressable). Pure."""
+    if not isinstance(text, str) or not text:
+        return text
+    for m in moments or []:
+        if not m.get("applied"):
+            continue
+        sug = m.get("suggestion") or {}
+        _id, _sid = m.get("id"), m.get("take_session_id")
+        if not _id or not _sid:
+            continue
+        _pat = re.compile(
+            r"\[\[moment:" + re.escape(str(_id)) + r"\|"
+            + re.escape(str(_sid)) + r"\]\](?P<inner>.*?)\[\[/moment\]\]",
+            re.DOTALL,
+        )
+        if sug.get("kind") == "replace" and (sug.get("replacement") or "").strip():
+            _new = sug["replacement"].strip()
+            text = _pat.sub(
+                lambda mt: f"[[moment:{_id}|{_sid}]]{_new}[[/moment]]",
+                text, count=1)
+        elif sug.get("kind") == "emphasize":
+            text = _pat.sub(
+                lambda mt: (f"[[moment:{_id}|{_sid}]]**{{{{orange:"
+                            f"{mt.group('inner')}}}}}**[[/moment]]"),
+                text, count=1)
+    return text
 
 
 def _paywall_block(arc_id):
@@ -12130,9 +12202,74 @@ def v2_explore_get_ideal_text(arc_id):
                 and (_edit.get("text") or "").strip())
             _text = _edit["text"] if _user_edited else _base_text
             from services.ideal_text_block import extract_key_moments
+
+            # ── Star suggestions (2026-07-18, flag-gated). Fold APPLIED
+            # suggestions into the DISPLAYED text FIRST (unless the user's
+            # free-form edit won — that wins wholesale), then extract the
+            # anchors from the folded text so they always match what's
+            # served. The canonical row is never touched (L1). ──
+            _stars_on = _moment_suggestions_enabled()
+            _sugs = db.get_moment_suggestions_by_arc(arc_id) \
+                if _stars_on else {}
+            _applied = {}
+            if _stars_on and _sugs:
+                _pre = extract_key_moments(_text)
+                _applied = _moment_applied_map(
+                    [m.get("take_session_id") for m in _pre])
+                if not _user_edited and _applied:
+                    _fold_info = []
+                    for m in _pre:
+                        _mid = str(m.get("snippet_id"))
+                        if _mid in _sugs and _applied.get(_mid):
+                            _s = _sugs[_mid]
+                            _fold_info.append({
+                                "id": m.get("snippet_id"),
+                                "take_session_id": m.get("take_session_id"),
+                                "applied": True,
+                                "suggestion": {
+                                    "kind": _s.get("kind"),
+                                    "replacement": _s.get("replacement_text"),
+                                },
+                            })
+                    _text = _fold_applied_moments(_text, _fold_info)
+
             _moments = extract_key_moments(_text)
             _has_expl = _moment_explanations_map(
                 [m.get("take_session_id") for m in _moments])
+
+            def _decorate(m):
+                _mid = str(m.get("snippet_id"))
+                entry = {
+                    "id": m.get("snippet_id"),
+                    # The literal text fragment the FE underlines + taps
+                    # (SD contract pin — a moment with no anchor is dropped).
+                    "anchor": m.get("anchor") or "",
+                    "take_session_id": m.get("take_session_id"),
+                    "has_explanation": bool(_has_expl.get(_mid)),
+                }
+                if not _stars_on:
+                    return entry
+                if _has_expl.get(_mid):
+                    # Coach override wins: the ORANGE verified star —
+                    # permanent, re-openable; message content stays behind
+                    # the paid moments GET.
+                    entry["star"] = "verified"
+                    entry["coach"] = {
+                        "has_message": True,
+                        "has_video": bool(
+                            _has_expl[_mid].get("has_video")),
+                    }
+                elif _mid in _sugs:
+                    _s = _sugs[_mid]
+                    entry["star"] = "suggestion"
+                    entry["suggestion"] = {
+                        "kind": _s.get("kind"),
+                        "replacement": _s.get("replacement_text"),
+                        "why": _s.get("why"),
+                    }
+                    entry["applied"] = bool(_applied.get(_mid))
+                return entry
+
             _notes = db.get_user_arc_ideal_notes(arc_id, request.user_id)
             return jsonify({
                 "arc_id": arc_id,
@@ -12142,15 +12279,7 @@ def v2_explore_get_ideal_text(arc_id):
                 # True when the served text is the student's own edit of the
                 # current version (the FE labels it).
                 "user_edited": _user_edited,
-                "key_moments": [{
-                    "id": m.get("snippet_id"),
-                    # The literal text fragment the FE underlines + taps
-                    # (SD contract pin — a moment with no anchor is dropped).
-                    "anchor": m.get("anchor") or "",
-                    "take_session_id": m.get("take_session_id"),
-                    "has_explanation": bool(_has_expl.get(
-                        str(m.get("snippet_id")))),
-                } for m in _moments],
+                "key_moments": [_decorate(m) for m in _moments],
                 "moments_unlocked": _moments_entitled(arc_id),
                 # The moments-unlock price, top level (the FE reads it here
                 # for the locked-moment prompt — the only paid item).
@@ -13347,6 +13476,21 @@ def v2_lab_create_recording():
                         maybe_assemble_ideal_text,
                     )
                     if _single_deliverable_enabled():
+                        # Star suggestions (2026-07-18): generate BEFORE the
+                        # assembly so the fresh text's anchors include the
+                        # suggestion-flagged picks. Best-effort.
+                        if _moment_suggestions_enabled():
+                            try:
+                                from services.moment_suggestions import (
+                                    generate_for_session,
+                                )
+                                generate_for_session(
+                                    guest_session_id, arc_id)
+                            except Exception as _ms_err:
+                                logger.warning(
+                                    "lab: moment suggestions failed "
+                                    "sid=%s: %s (non-fatal)",
+                                    guest_session_id, _ms_err)
                         # Single deliverable (2026-07-17): assemble after
                         # EVERY take (take 1 included) AND every re-read;
                         # a changed compose bumps the version, resetting
@@ -13354,7 +13498,9 @@ def v2_lab_create_recording():
                         # idempotently (a no-op reassembly re-fires the
                         # same version key → deduped).
                         _eager_ok = maybe_assemble_ideal_text(
-                            arc_id, require_target=False)
+                            arc_id, require_target=False,
+                            include_suggestion_anchors=(
+                                _moment_suggestions_enabled()))
                         if _eager_ok and _cad_user:
                             from services.arc_notifications import (
                                 fire_ideal_version_ready,
