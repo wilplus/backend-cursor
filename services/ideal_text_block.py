@@ -206,6 +206,26 @@ def extract_key_moments(text: Any) -> list:
     return out
 
 
+def strip_moment_markers(text: Any) -> str:
+    """Drop the [[moment:…]] / [[/moment]] WRAPPERS, keeping their inner
+    text (founder audit 2026-07-18).
+
+    Why the SD lane serves stripped text: the FE locates each star by
+    finding the moment's `anchor` in the served text, but its segmenter
+    REFUSES a range that sits inside a marker token — and the anchor (the
+    moment's inner text) sits exactly inside the [[moment:…]] wrapper. With
+    the wrappers present every star candidate is dropped, the whole
+    star/suggestion layer goes dark, and a FREE grey suggestion falls
+    through to the paid coach affordance. Serving the anchor path OR the
+    marker path — never both — is the fix. Other rich markers (**bold**,
+    {{orange:…}}, __underline__, //italic//) are untouched. Pure."""
+    if not isinstance(text, str) or not text:
+        return text if isinstance(text, str) else ""
+    out = MOMENT_SPAN_RE.sub(lambda m: m.group("inner"), text)
+    # Any unclosed opening token left behind (legacy blocks) goes too.
+    return MOMENT_RE.sub("", out)
+
+
 def _accepts_database(fn) -> bool:
     try:
         import inspect

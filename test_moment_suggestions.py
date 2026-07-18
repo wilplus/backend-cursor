@@ -236,6 +236,13 @@ class StudentGetStarTests(unittest.TestCase):
                               return_value=(sugs or {})), \
                  patch.object(v2.db, "get_coach_snippet_drafts",
                               return_value=(drafts or [])), \
+                 patch.object(v2.db, "get_snippets_by_session",
+                              return_value=[{
+                                  "id": SNIP,
+                                  "audio_segment_path": "https://cdn/take.webm",
+                                  "start_offset_ms": 1500,
+                                  "duration_ms": 900,
+                              }]), \
                  patch.object(v2.db, "get_suggestion_feedback_by_session",
                               return_value=(feedback or [])), \
                  patch.object(v2.db, "get_user_arc_ideal_notes",
@@ -263,6 +270,34 @@ class StudentGetStarTests(unittest.TestCase):
         self.assertEqual(m["suggestion"]["replacement"], "steady words")
         self.assertFalse(m["applied"])
         self.assertEqual(m["anchor"], "the turn")   # unapplied → original
+        # BOTH id keys: `snippet_id` is what the feedback POST keys on
+        # (audit 2026-07-18 — its absence sent an empty snippet id).
+        self.assertEqual(m["snippet_id"], SNIP)
+        self.assertEqual(m["id"], SNIP)
+
+    def test_served_text_has_no_moment_wrappers_and_anchor_is_plain(self):
+        # THE audit's headline gap: an anchor inside a [[moment:…]] token is
+        # refused by the FE segmenter → every star lost + free content sold.
+        body, _ = self._get(sugs=self._sug())
+        self.assertNotIn("[[moment:", body["text"])
+        self.assertNotIn("[[/moment]]", body["text"])
+        m = body["key_moments"][0]
+        self.assertIn(m["anchor"], body["text"])   # plain-text occurrence
+
+    def test_free_snippet_playback_fields(self):
+        body, _ = self._get(sugs=self._sug())
+        m = body["key_moments"][0]
+        self.assertEqual(m["snippet_audio_ref"], "https://cdn/take.webm")
+        self.assertEqual(m["start_offset_ms"], 1500)
+        self.assertEqual(m["duration_ms"], 900)
+
+    def test_applied_suggestion_emits_no_star(self):
+        feedback = [{"snippet_id": SNIP, "target": "moment_replace",
+                     "action": "applied"}]
+        body, _ = self._get(sugs=self._sug(), feedback=feedback)
+        m = body["key_moments"][0]
+        self.assertNotIn("star", m)          # consumed — already in the text
+        self.assertNotIn("suggestion", m)
 
     def test_verified_star_beats_suggestion(self):
         drafts = [{"snippet_id": SNIP, "surfaced": True,
@@ -287,13 +322,16 @@ class StudentGetStarTests(unittest.TestCase):
         self.assertEqual(m["anchor"], "steady words")   # matches served text
         self.assertIn(m["anchor"], body["text"])
 
-    def test_applied_emphasize_folds_bold_orange(self):
+    def test_applied_emphasize_folds_single_accent_marker(self):
+        # NEVER nested (**{{orange:…}}**): the FE's marker parser is FLAT and
+        # printed the raw syntax to the student (audit 2026-07-18).
         feedback = [{"snippet_id": SNIP, "target": "moment_emphasize",
                      "action": "applied"}]
         body, _ = self._get(sugs=self._sug(kind="emphasize",
                                            replacement=None),
                             feedback=feedback)
-        self.assertIn("**{{orange:the turn}}**", body["text"])
+        self.assertIn("{{orange:the turn}}", body["text"])
+        self.assertNotIn("**{{orange:", body["text"])
 
     def test_user_edit_wins_wholesale_no_fold(self):
         feedback = [{"snippet_id": SNIP, "target": "moment_replace",
