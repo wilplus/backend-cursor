@@ -12252,11 +12252,15 @@ def v2_explore_get_ideal_text(arc_id):
     SINGLE_DELIVERABLE mode (flag ON) instead returns
     200 { arc_id, version, status:"verified"|"unverified", title,
           updated_at, latest_take_session_id, reread_done, text,
-          user_edited, key_moments, moments_unlocked, price_credits,
-          notes_text } — free in both states, never 402s. The crucial-bubble
-    fields (founder 2026-07-20): `title` = latest take's topic,
-    `latest_take_session_id` = the re-read pairing target, `reread_done` =
-    a re-read of the CURRENT version exists (the FE's two-state mic).
+          user_edited, key_moments, moments_unlocked,
+          explanations_available, price_credits, notes_text } — free in
+    both states, never 402s. The crucial-bubble fields (founder
+    2026-07-20): `title` = latest take's topic, `latest_take_session_id` =
+    the re-read pairing target, `reread_done` = a re-read of the CURRENT
+    version exists (the FE's two-state mic). `explanations_available`
+    gates the unlock CTA (true only when a coach explanation exists);
+    text-suggestion stars carry `quote` (the narrow underline span, or
+    null = icon only).
     """
     try:
         owned, _sessions = _arc_owned_by_caller(arc_id)
@@ -12421,9 +12425,35 @@ def v2_explore_get_ideal_text(arc_id):
                     # this expectation; keeping the star re-offered work
                     # the student had already accepted).
                     _s = _sugs[_mid]
+                    # Quote narrowing (founder 2026-07-20): underline the
+                    # PHRASE, not the piece. Deterministic per trigger —
+                    # polish → the trimmed verbatim-vs-polished diff span;
+                    # a profanity replace → the carrying sentence; anything
+                    # else → None = star icon only, NO underline (the FE
+                    # contract). Guarded: a quote must be an exact
+                    # substring of the anchor (and so of the served text)
+                    # or it is dropped (the #219 lesson).
+                    _anchor_txt = m.get("anchor") or ""
+                    _quote = None
+                    try:
+                        from services.suggestion_quotes import (
+                            diff_quote, profanity_sentence,
+                        )
+                        from services.text_flags import has_profanity
+                        if _s.get("trigger") == "polish":
+                            _quote = diff_quote(
+                                _anchor_txt, _s.get("replacement_text"))
+                        elif _s.get("kind") == "replace" \
+                                and has_profanity(_anchor_txt):
+                            _quote = profanity_sentence(_anchor_txt)
+                    except Exception:
+                        _quote = None
+                    if _quote and _quote not in _anchor_txt:
+                        _quote = None
                     entry["star"] = "suggestion"
                     entry["suggestion"] = {
                         "kind": _s.get("kind"),
+                        "quote": _quote,
                         "replacement": _s.get("replacement_text"),
                         "why": _s.get("why"),
                         # CLAMPED to 'polish'|None (adversarial review
@@ -12491,6 +12521,12 @@ def v2_explore_get_ideal_text(arc_id):
                 "user_edited": _user_edited,
                 "key_moments": [_decorate(m) for m in _moments],
                 "moments_unlocked": _moments_entitled(arc_id),
+                # Founder 2026-07-20: the 5-credit unlock buys COACH
+                # explanations — the FE must show the unlock CTA ONLY when
+                # at least one exists (unverified text → nothing behind the
+                # paywall → no paywall shown). Automatic moments are free
+                # regardless.
+                "explanations_available": bool(_has_expl),
                 # The moments-unlock price, top level (the FE reads it here
                 # for the locked-moment prompt — the only paid item).
                 "price_credits": int(getattr(

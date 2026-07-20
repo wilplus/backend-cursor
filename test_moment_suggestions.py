@@ -349,6 +349,42 @@ class StudentGetStarTests(unittest.TestCase):
                        "replacement_text": replacement,
                        "why": "It reads calmer.", "trigger": trigger}}
 
+    def test_polish_star_carries_narrow_diff_quote(self):
+        # Quote narrowing (founder 2026-07-20): a polish star underlines
+        # ONLY the changed span, computed from the verbatim-vs-polished
+        # diff — never the whole piece.
+        body, _ = self._get(sugs=self._sug(
+            trigger="polish", kind="replace", replacement="the pivot"))
+        sug = body["key_moments"][0]["suggestion"]
+        self.assertEqual(sug["quote"], "turn")
+        self.assertIn(sug["quote"], body["text"])
+
+    def test_threat_replace_is_icon_only_no_quote(self):
+        body, _ = self._get(sugs=self._sug(trigger="threat"))
+        self.assertIsNone(body["key_moments"][0]["suggestion"]["quote"])
+
+    def test_emphasize_is_icon_only_no_quote(self):
+        body, _ = self._get(sugs=self._sug(kind="emphasize",
+                                           replacement=None,
+                                           trigger="charisma"))
+        self.assertIsNone(body["key_moments"][0]["suggestion"]["quote"])
+
+    def test_profanity_replace_quotes_the_carrying_sentence(self):
+        self.text = (f"Hello. [[moment:{SNIP}|{SESS}]]We tried hard. "
+                     "Then the damn projector died. We laughed."
+                     "[[/moment]] goodbye.")
+        body, _ = self._get(sugs=self._sug(trigger="threat"))
+        sug = body["key_moments"][0]["suggestion"]
+        self.assertEqual(sug["quote"], "Then the damn projector died.")
+        self.assertIn(sug["quote"], body["text"])
+
+    def test_explanations_available_tracks_coach_explanations(self):
+        body, _ = self._get(sugs=self._sug())
+        self.assertFalse(body["explanations_available"])
+        body, _ = self._get(sugs=self._sug(), drafts=[
+            {"snippet_id": SNIP, "surfaced": True, "note": "watch this"}])
+        self.assertTrue(body["explanations_available"])
+
     def test_replace_star_trigger_clamped_to_polish_or_none(self):
         # The FE labels a 'polish' replace differently from the rest — but
         # the raw internal vocabulary (threat/charisma/...) must NEVER ride
