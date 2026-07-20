@@ -10272,11 +10272,15 @@ class DatabaseService:
                            arc_id, e)
             return False
 
-    def list_ideal_piece_provenance(self, arc_id: Optional[str]) -> list:
-        """All provenance rows of an arc, slot order. [] pre-migration /
-        on hiccup — assembly degrades to today's behavior."""
+    def list_ideal_piece_provenance(self,
+                                    arc_id: Optional[str]) -> Optional[list]:
+        """All provenance rows of an arc, slot order. READ-FAIL ≠ EMPTY
+        (adversarial review 2026-07-20): None on ANY failure — table
+        missing OR a transient error — so callers SKIP discernment for
+        the pass instead of first-sighting winners over pending/rejected
+        state. [] only on a successful empty read."""
         if not arc_id:
-            return []
+            return None
         try:
             res = (
                 self.client.table("ideal_piece_provenance")
@@ -10288,13 +10292,30 @@ class DatabaseService:
             return res.data or []
         except Exception as e:
             _e = str(e).lower()
-            if "ideal_piece_provenance" in _e and (
-                "does not exist" in _e or "pgrst" in _e
-            ):
-                return []
-            logger.warning("list_ideal_piece_provenance failed arc=%s: %s",
+            if not ("ideal_piece_provenance" in _e and (
+                    "does not exist" in _e or "pgrst" in _e)):
+                logger.warning(
+                    "list_ideal_piece_provenance failed arc=%s: %s",
+                    arc_id, e)
+            return None
+
+    def delete_ideal_piece_provenance(self, arc_id: str,
+                                      piece_key: int) -> bool:
+        """Prune one provenance row — a slot the current assembly no
+        longer produces must not serve a phantom piece. Best-effort."""
+        if not arc_id or not isinstance(piece_key, int):
+            return False
+        try:
+            (self.client.table("ideal_piece_provenance")
+             .delete()
+             .eq("arc_id", str(arc_id))
+             .eq("piece_key", piece_key)
+             .execute())
+            return True
+        except Exception as e:
+            logger.warning("delete_ideal_piece_provenance failed arc=%s: %s",
                            arc_id, e)
-            return []
+            return False
 
     def get_ideal_piece_provenance(self, arc_id: Optional[str],
                                    piece_key: Any) -> Optional[dict]:

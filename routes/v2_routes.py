@@ -12768,19 +12768,29 @@ def _discernment_pieces(arc_id) -> dict:
     piece: {piece_key, text, take_index (the badge), snippet_id,
     take_session_id, status, challenger{take_index, text, why,
     snippet_id}|null}. `why` is the template key — the whole vocabulary
-    on this surface (AC-9/CONSTRUCT)."""
+    on this surface (AC-9/CONSTRUCT).
+
+    CONTRACT NOTE (FE-pinned): pieces is the MACHINE lane. When the
+    top-level payload serves the student's own edit (user_edited) or the
+    coach-verified snapshot, per-piece text may lag the top-level text —
+    the FE renders badges/pending sheets from pieces but the READING text
+    from the top-level `text`, never a piece-by-piece reconstruction."""
     try:
         from services.piece_provenance import WHY_KEYS, discernment_enabled
         if not discernment_enabled():
             return {}
-        rows = db.list_ideal_piece_provenance(str(arc_id)) or []
-        if not rows:
+        rows = db.list_ideal_piece_provenance(str(arc_id))
+        if not rows:   # None (read failed / pre-migration) or truly empty
             return {}
         pieces = []
         for r in rows:
             ch = None
             if r.get("status") == "pending_swap" \
-                    and r.get("challenger_snippet_id"):
+                    and r.get("challenger_snippet_id") \
+                    and str(r.get("challenger_snippet_id")) != str(
+                        r.get("incumbent_snippet_id")):
+                # (the identity clamp: a racing stale write can leave a
+                # self-pending row — served settled, healed next assembly)
                 _why = r.get("challenger_why")
                 ch = {
                     "snippet_id": r.get("challenger_snippet_id"),
@@ -12869,7 +12879,14 @@ def v2_explore_piece_swap(arc_id, piece_key):
             _rej = [str(x) for x in (row.get("rejected_snippet_ids") or [])
                     if x]
             _rej.append(str(row.get("challenger_snippet_id")))
+            # FULL-ROW write incl. the incumbent block (the #221 bug
+            # class: a partial upsert would violate the table's NOT NULL
+            # on its INSERT arm and fail silently).
             fields = {
+                "incumbent_snippet_id": row.get("incumbent_snippet_id"),
+                "incumbent_session_id": row.get("incumbent_session_id"),
+                "incumbent_take_index": row.get("incumbent_take_index"),
+                "incumbent_text": row.get("incumbent_text"),
                 "status": "settled",
                 "rejected_snippet_ids": sorted(set(_rej)),
                 "challenger_snippet_id": None,

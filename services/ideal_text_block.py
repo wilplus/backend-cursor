@@ -124,14 +124,21 @@ def assemble_ideal_text_block(arc_id: str, *, database=None,
     )
     _slides_in = bp.get("slides") or []
     _piece_meta: list = []
+    _prov_rows = None
     _discern_on = discernment_enabled()
     if _discern_on:
         try:
             _prov_rows = database.list_ideal_piece_provenance(str(arc_id))
         except Exception:
-            _prov_rows = []
-        _slides_in, _piece_meta = resolve_discernment(
-            _slides_in, _prov_rows, database, arc_id)
+            _prov_rows = None
+        if _prov_rows is None:
+            # READ-FAIL ≠ EMPTY (adversarial review 2026-07-20): a failed
+            # provenance read (or pre-migration) must never re-pin winners
+            # over pending/rejected state — skip discernment this pass.
+            _discern_on = False
+        else:
+            _slides_in, _piece_meta = resolve_discernment(
+                _slides_in, _prov_rows, database, arc_id)
     _meta_by_key = {m["piece_key"]: m for m in _piece_meta}
 
     paragraphs: list = []
@@ -189,7 +196,8 @@ def assemble_ideal_text_block(arc_id: str, *, database=None,
 
     if _discern_on and _piece_meta:
         try:
-            persist_piece_meta(database, arc_id, _piece_meta)
+            persist_piece_meta(database, arc_id, _piece_meta,
+                               existing_rows=_prov_rows)
         except Exception as _pp_err:
             logger.warning("ideal_text: piece provenance persist failed "
                            "arc=%s: %s", arc_id, _pp_err)

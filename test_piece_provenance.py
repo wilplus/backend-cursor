@@ -71,6 +71,10 @@ class ResolveDiscernmentTests(unittest.TestCase):
         self.assertIsNone(meta[0]["challenger"])
         # any stale challenger clears on the way through
         self.assertIsNone(meta[0]["_row_write"]["challenger_snippet_id"])
+        # full-row write + the incumbent text REFRESHES from the live pick
+        self.assertEqual(meta[0]["_row_write"]["incumbent_snippet_id"], S_V1)
+        self.assertEqual(meta[0]["_row_write"]["incumbent_text"],
+                         "the old words")
 
     def test_better_challenger_pends_and_incumbent_displays(self):
         slides, meta = resolve_discernment(
@@ -80,12 +84,21 @@ class ResolveDiscernmentTests(unittest.TestCase):
         self.assertEqual(slides[0]["verbatim"], "the old words")
         self.assertEqual(slides[0]["take_index"], 1)
         self.assertFalse(slides[0]["polished"])
+        # Clean substitution: nothing of the WINNER rides the incumbent —
+        # no breakthrough badge, no key phrases, no audio span.
+        self.assertFalse(slides[0]["breakthrough"])
+        self.assertIsNone(slides[0]["breakthrough_note"])
+        self.assertEqual(slides[0]["key_phrases"], [])
+        self.assertIsNone(slides[0]["audio_ref"])
         m = meta[0]
         self.assertEqual(m["status"], "pending_swap")
         self.assertEqual(m["challenger"]["snippet_id"], S_V2)
         self.assertEqual(m["challenger"]["take_index"], 2)
         self.assertEqual(m["challenger"]["text"], "the new words")
         self.assertIn(m["challenger"]["why"], WHY_KEYS)
+        # FULL-ROW write (the #221 class): the incumbent block rides
+        # every transition so the upsert INSERT arm satisfies NOT NULL.
+        self.assertEqual(m["_row_write"]["incumbent_snippet_id"], S_V1)
 
     def test_rejected_challenger_never_reoffers(self):
         slides, meta = resolve_discernment(
@@ -93,6 +106,64 @@ class ResolveDiscernmentTests(unittest.TestCase):
         self.assertEqual(slides[0]["snippet_id"], S_V1)   # pinned
         self.assertEqual(meta[0]["status"], "settled")
         self.assertIsNone(meta[0]["challenger"])
+        self.assertEqual(meta[0]["_row_write"]["incumbent_snippet_id"], S_V1)
+
+    def test_incumbent_freezes_the_DISPLAYED_text_not_raw_verbatim(self):
+        # Adversarial review 2026-07-20: with polish-as-suggestions OFF
+        # the loop displays s['text'] (light-edited / coach-corrected) —
+        # THAT is what the incumbent freezes as, so a later challenger
+        # can never silently flip the piece back to raw verbatim.
+        slide = _slide(verbatim="so um I built the team")
+        slide["text"] = "So I built the team"
+        _, meta = resolve_discernment([slide], [], object(), ARC)
+        self.assertEqual(meta[0]["_row_write"]["incumbent_text"],
+                         "So I built the team")
+
+    def test_slot_shift_realigns_by_snippet_identity(self):
+        # Adversarial review 2026-07-20: deckless slots are positional.
+        # Take 2 inserts an earlier-offset winner X → every section
+        # shifts one slot. Provenance must FOLLOW the snippets (held
+        # ground at the new slots), X first-sights — no duplicated
+        # pieces, no bogus pending swaps.
+        A, B, C, X = "snip-A", "snip-B", "snip-C", "snip-X"
+        rows = [
+            {**_row(0, inc=A), "incumbent_text": "text A"},
+            {**_row(1, inc=B), "incumbent_text": "text B"},
+            {**_row(2, inc=C), "incumbent_text": "text C"},
+        ]
+        slides = [
+            _slide(0, snip=X, verbatim="text X"),
+            _slide(1, snip=A, verbatim="text A"),
+            _slide(2, snip=B, verbatim="text B"),
+            _slide(3, snip=C, verbatim="text C"),
+        ]
+        out, meta = resolve_discernment(slides, rows, object(), ARC)
+        texts = [sl["text"] for sl in out]
+        self.assertEqual(texts, ["text X", "text A", "text B", "text C"])
+        self.assertEqual(len(texts), len(set(texts)))   # no duplication
+        self.assertTrue(all(m["status"] == "settled" for m in meta))
+        self.assertEqual([m["snippet_id"] for m in meta], [X, A, B, C])
+
+    def test_realignment_carries_the_rejected_memory(self):
+        A = "snip-A"
+        rows = [{**_row(0, inc=A, rejected=["snip-old-challenger"]),
+                 "incumbent_text": "text A"}]
+        slides = [_slide(0, snip="snip-new"), _slide(1, snip=A,
+                                                     verbatim="text A")]
+        _, meta = resolve_discernment(slides, rows, object(), ARC)
+        carried = next(m for m in meta if m["snippet_id"] == A)
+        self.assertEqual(carried["piece_key"], 1)
+        self.assertEqual(carried["_row_write"]["rejected_snippet_ids"],
+                         ["snip-old-challenger"])
+
+    def test_empty_frozen_text_repins_the_winner(self):
+        # An unusable frozen text must never serve a hole — the slot
+        # honestly re-pins the winner.
+        row = _row(0)
+        row["incumbent_text"] = "   "
+        slides, meta = resolve_discernment([_slide()], [row], object(), ARC)
+        self.assertEqual(slides[0]["snippet_id"], S_V2)
+        self.assertEqual(meta[0]["_row_write"]["incumbent_snippet_id"], S_V2)
 
     def test_filler_slot_passes_through(self):
         filler = {"index": 3, "snippet_id": None, "text": ""}
@@ -148,6 +219,33 @@ class PersistMetaTests(unittest.TestCase):
         self.assertEqual((arc, key), (ARC, 0))
         self.assertEqual(fields["display_text"], "final baked words")
 
+    def test_unchanged_row_skips_the_write(self):
+        db = self._Db()
+        row = {"piece_key": 0, "status": "settled",
+               "incumbent_snippet_id": S_V1, "display_text": "same words",
+               "rejected_snippet_ids": []}
+        n = persist_piece_meta(db, ARC, [{
+            "piece_key": 0, "text": "same words",
+            "_row_write": {"status": "settled",
+                           "incumbent_snippet_id": S_V1}}],
+            existing_rows=[row])
+        self.assertEqual((n, db.writes), (0, []))
+
+    def test_vanished_slots_are_pruned(self):
+        class _Db2(self._Db):
+            def __init__(self):
+                super().__init__()
+                self.deleted = []
+
+            def delete_ideal_piece_provenance(self, arc, key):
+                self.deleted.append(key)
+                return True
+        db = _Db2()
+        persist_piece_meta(db, ARC, [{
+            "piece_key": 0, "text": "t", "_row_write": {"status": "settled"}}],
+            existing_rows=[{"piece_key": 0}, {"piece_key": 7}])
+        self.assertEqual(db.deleted, [7])
+
     def test_broken_db_never_raises(self):
         self.assertEqual(persist_piece_meta(object(), ARC, [
             {"piece_key": 0, "_row_write": {}}]), 0)
@@ -202,6 +300,29 @@ class AssemblyDiscernmentTests(unittest.TestCase):
         out, db = self._assemble([_row()], flag=False)
         self.assertIn("the new words", out["text"])
         self.assertEqual(db.piece_writes, [])
+
+    def test_read_failure_skips_discernment_never_repins(self):
+        # Adversarial review 2026-07-20: a failed provenance read (None)
+        # must NOT be treated as "no rows" — first-sighting winners over
+        # pending/rejected state would erase decisions. The pass simply
+        # skips discernment (today's behavior) and writes nothing.
+        import services.ideal_text_block as mod
+
+        class _DbNone(self._Db):
+            def list_ideal_piece_provenance(self, arc_id):
+                return None
+
+        bp = {"ready": True, "slides": [_slide()]}
+        db = _DbNone([])
+        with patch("services.best_presentation.build_best_presentation",
+                   return_value=bp), \
+             patch.object(mod, "_polish_as_suggestions_enabled",
+                          return_value=True), \
+             patch.dict("os.environ",
+                        {"DISCERNMENT_PROVENANCE_ENABLED": "1"}):
+            out = mod.assemble_ideal_text_block(ARC, database=db)
+        self.assertIn("the new words", out["text"])   # winner, untouched
+        self.assertEqual(db.piece_writes, [])          # and NO re-pin
 
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
@@ -265,6 +386,8 @@ class SwapEndpointTests(unittest.TestCase):
         fields = m_up.call_args.args[2]
         self.assertEqual(fields["status"], "settled")
         self.assertIn(S_V2, fields["rejected_snippet_ids"])
+        # full-row write (the #221 class): the incumbent block rides along
+        self.assertEqual(fields["incumbent_snippet_id"], S_V1)
         m_asm.assert_not_called()           # nothing changed → no bump
 
     def test_stale_echo_409s(self):
@@ -310,6 +433,18 @@ class ServePiecesTests(unittest.TestCase):
         for banned in ("score", "power_score", "_score", "potentiometer",
                        "charisma", "threat"):
             self.assertNotIn(banned, raw)
+
+    def test_self_pending_row_serves_settled(self):
+        # A racing stale write can leave challenger == incumbent — the
+        # serve clamp renders it settled; the next assembly heals the row.
+        row = self._served_row()
+        row["challenger_snippet_id"] = row["incumbent_snippet_id"]
+        with patch.dict("os.environ",
+                        {"DISCERNMENT_PROVENANCE_ENABLED": "1"}), \
+             patch.object(v2.db, "list_ideal_piece_provenance",
+                          return_value=[row]):
+            out = v2._discernment_pieces(ARC)
+        self.assertIsNone(out["pieces"][0]["challenger"])
 
     def test_flag_off_or_no_rows_is_absent(self):
         with patch.dict("os.environ",
