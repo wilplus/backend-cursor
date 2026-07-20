@@ -281,6 +281,123 @@ class StudentGetSingleDeliverableTests(unittest.TestCase):
 
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
+class CrucialBubbleFieldTests(unittest.TestCase):
+    """Founder 2026-07-20 — the crucial-bubble fields on the student GET:
+    title (latest take's topic), updated_at, latest_take_session_id (the
+    re-read pairing target; reads never qualify) and reread_done (a re-read
+    of the CURRENT version exists → the FE's two-state mic)."""
+
+    def setUp(self):
+        self.app = Flask(__name__)
+
+    @staticmethod
+    def _spoken(sid, ti, topic=None):
+        return {"id": sid, "take_index": ti, "recording_kind": "spoken",
+                "paired_session_id": None,
+                "intake_context": {"topic": topic} if topic else {}}
+
+    @staticmethod
+    def _read(sid, paired, ctx=None):
+        return {"id": sid, "take_index": None, "recording_kind": "read",
+                "paired_session_id": paired, "intake_context": ctx or {}}
+
+    def _get(self, row, sessions):
+        with self.app.test_request_context():
+            request.user_id = "u1"
+            with patch.object(v2, "_arc_owned_by_caller",
+                              return_value=(True, sessions)), \
+                 patch.object(v2, "_single_deliverable_enabled",
+                              return_value=True), \
+                 patch.object(v2, "_moments_entitled", return_value=False), \
+                 patch.object(v2, "_moment_explanations_map",
+                              return_value={}), \
+                 patch.object(v2.db, "get_coach_arc_ideal_text",
+                              return_value=row), \
+                 patch.object(v2.db, "get_user_arc_ideal_notes",
+                              return_value=None):
+                out = v2.v2_explore_get_ideal_text.__wrapped__(ARC)
+                resp, status = out if isinstance(out, tuple) else (out, 200)
+                return resp.get_json(), status
+
+    def test_title_latest_take_wins_and_reads_excluded(self):
+        body, _ = self._get(_row(updated_at="2026-07-20T10:00:00Z"), [
+            self._spoken("t1", 1, topic="old topic"),
+            self._spoken("t2", 2, topic="new topic"),
+            self._read("r1", "t2", {"topic": "read topic must not win"}),
+        ])
+        self.assertEqual(body["title"], "new topic")
+        self.assertEqual(body["updated_at"], "2026-07-20T10:00:00Z")
+        self.assertEqual(body["latest_take_session_id"], "t2")
+
+    def test_reread_done_current_version_only(self):
+        row = _row(version=3)
+        sess = [self._spoken("t1", 1),
+                self._read("r1", "t1", {"read_target": "ideal_text",
+                                        "ideal_version": 2})]
+        body, _ = self._get(row, sess)
+        self.assertFalse(body["reread_done"])   # stale-version re-read
+        sess.append(self._read("r2", "t1", {"read_target": "ideal_text",
+                                            "ideal_version": 3}))
+        body, _ = self._get(row, sess)
+        self.assertTrue(body["reread_done"])
+
+    def test_reread_version_match_is_type_tolerant(self):
+        # Form-encoded contexts may carry the version as a string.
+        body, _ = self._get(_row(version=3), [
+            self._spoken("t1", 1),
+            self._read("r1", "t1", {"read_target": "ideal_text",
+                                    "ideal_version": "3"})])
+        self.assertTrue(body["reread_done"])
+
+    def test_untagged_read_never_flips_reread_done(self):
+        # A per-take re-read (no read_target) is not an ideal-text re-read.
+        body, _ = self._get(_row(version=3), [
+            self._spoken("t1", 1),
+            self._read("r1", "t1", {"ideal_version": 3})])
+        self.assertFalse(body["reread_done"])
+
+    def test_null_safe_on_empty_sessions(self):
+        body, status = self._get(_row(updated_at=None), [])
+        self.assertEqual(status, 200)
+        self.assertIsNone(body["title"])
+        self.assertIsNone(body["latest_take_session_id"])
+        self.assertFalse(body["reread_done"])
+
+
+@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
+class RecordingFlowTagTests(unittest.TestCase):
+    """The flat-field → session_context fold (founder 2026-07-20). The
+    intake validator strips unknown keys, so these tags ONLY exist because
+    _recording_flow_tags folds them — pinned so a validator refactor can't
+    silently drop the re-read/star-re-record contracts."""
+
+    SNIP = "aaaa1111-aaaa-1111-aaaa-111111111111"
+
+    def test_ideal_read_tags_fold(self):
+        tags = v2._recording_flow_tags({"read_target": "ideal_text",
+                                        "ideal_version": "4"})
+        self.assertEqual(tags, {"read_target": "ideal_text",
+                                "ideal_version": 4})
+
+    def test_bad_version_drops_but_target_stays(self):
+        tags = v2._recording_flow_tags({"read_target": "IDEAL_TEXT",
+                                        "ideal_version": "soon"})
+        self.assertEqual(tags, {"read_target": "ideal_text"})
+
+    def test_unknown_target_and_no_fields_fold_nothing(self):
+        self.assertEqual(v2._recording_flow_tags(
+            {"read_target": "slide_7"}), {})
+        self.assertEqual(v2._recording_flow_tags({}), {})
+
+    def test_paired_snippet_uuid_guard(self):
+        self.assertEqual(
+            v2._recording_flow_tags({"paired_snippet_id": self.SNIP}),
+            {"paired_snippet_id": self.SNIP})
+        self.assertEqual(
+            v2._recording_flow_tags({"paired_snippet_id": "not-a-uuid"}), {})
+
+
+@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
 class MomentsUnlockTests(unittest.TestCase):
     """BE-5 — the 5-credit unlock, atomic, no grandfathering."""
 

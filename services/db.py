@@ -10605,7 +10605,7 @@ class DatabaseService:
                 self.client.table("v2_sessions")
                 .select("id, user_id, arc_id, take_index, status, "
                         "created_at, results_published_at, "
-                        "recording_kind, paired_session_id")
+                        "recording_kind, paired_session_id, intake_context")
                 .eq("paired_session_id", str(spoken_session_id))
                 .order("created_at", desc=False)
                 .execute()
