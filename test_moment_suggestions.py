@@ -856,5 +856,82 @@ class PolishRecurrenceProtectionTests(unittest.TestCase):
         self.assertEqual(ups, [(SNIP, "polish")])
 
 
+@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
+class VersionSnapshotWriteTests(unittest.TestCase):
+    """The worker freezes each persisted version (founder 2026-07-20):
+    text WITH anchors + the step's sanitized reasoning, idempotent per
+    (arc, version); a missing snapshot table never breaks assembly."""
+
+    class _Db:
+        def __init__(self):
+            self.snapshots = []
+
+        def get_arc_sessions(self, arc_id):
+            return [{"id": "t0", "take_index": 1,
+                     "recording_kind": "spoken"}]
+
+        def get_snippets_by_session(self, sid):
+            return [{"transcript": "a line"}]
+
+        def list_ideal_decisions(self, arc_id):
+            return []
+
+        def get_moment_suggestions_by_arc(self, arc_id):
+            return {SNIP: {"snippet_id": SNIP, "kind": "replace",
+                           "replacement_text": "calmer", "why": "why",
+                           "trigger": "threat"}}
+
+        def persist_auto_ideal_text(self, arc_id, text):
+            return True
+
+        def get_coach_arc_ideal_text(self, arc_id):
+            return {"arc_id": arc_id, "version": 4}
+
+        def upsert_moment_suggestion(self, *a):
+            return True
+
+        def upsert_ideal_text_version(self, arc_id, version, text, moments):
+            self.snapshots.append((arc_id, version, text, moments))
+            return True
+
+    def test_snapshot_written_with_sanitized_moments(self):
+        import services.ideal_text_block as mod
+        bp = {"ready": True, "slides": [{
+            "text": "a strong line", "verbatim": "a strong line",
+            "polished": False, "snippet_id": SNIP, "session_id": SESS,
+            "breakthrough": True, "key_phrases": [],
+        }]}
+        db = self._Db()
+        with patch("services.best_presentation.build_best_presentation",
+                   return_value=bp), \
+             patch.object(mod, "_polish_as_suggestions_enabled",
+                          return_value=True):
+            ok = mod.maybe_assemble_ideal_text(ARC, database=db,
+                                               require_target=False)
+        self.assertTrue(ok)
+        arc, version, text, moments = db.snapshots[0]
+        self.assertEqual((arc, version), (ARC, 4))
+        self.assertIn(f"[[moment:{SNIP}|{SESS}]]", text)  # anchors kept
+        self.assertEqual(moments[0]["snippet_id"], SNIP)
+        self.assertIsNone(moments[0]["trigger"])          # clamped at write
+        self.assertEqual(moments[0]["replacement"], "calmer")
+
+    def test_missing_snapshot_table_never_breaks_assembly(self):
+        import services.ideal_text_block as mod
+        db = self._Db()
+        db.upsert_ideal_text_version = None   # not callable → best-effort
+        bp = {"ready": True, "slides": [{
+            "text": "a strong line", "verbatim": "a strong line",
+            "polished": False, "snippet_id": SNIP, "session_id": SESS,
+            "breakthrough": False, "key_phrases": [],
+        }]}
+        with patch("services.best_presentation.build_best_presentation",
+                   return_value=bp), \
+             patch.object(mod, "_polish_as_suggestions_enabled",
+                          return_value=True):
+            self.assertTrue(mod.maybe_assemble_ideal_text(
+                ARC, database=db, require_target=False))
+
+
 if __name__ == "__main__":
     unittest.main()

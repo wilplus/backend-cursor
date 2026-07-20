@@ -257,11 +257,60 @@ def maybe_assemble_ideal_text(arc_id: Optional[str], *, database=None,
             except Exception as _pe:
                 logger.warning("ideal_text: polish persist failed arc=%s: %s",
                                arc_id, _pe)
+        # ── Per-VERSION snapshot (founder 2026-07-20): freeze this
+        # version's text (with anchors) + its pending reasoning, so the
+        # version bubble stays readable after later versions supersede it
+        # (the GET's ?version form serves it). Runs AFTER the polish
+        # persist so the step's suggestions are complete. Sanitized at
+        # write time — AC-9/CONSTRUCT hold in storage, not just at serve.
+        # Best-effort; pre-migration → no history, today's behavior. ──
+        if ok:
+            try:
+                _row_now = database.get_coach_arc_ideal_text(arc_id) or {}
+                _v_now = _row_now.get("version") or 1
+                _sugs_now = database.get_moment_suggestions_by_arc(
+                    arc_id) or {}
+                database.upsert_ideal_text_version(
+                    str(arc_id), int(_v_now), text,
+                    sanitize_suggestions_snapshot(_sugs_now))
+            except Exception as _sv_err:
+                logger.warning(
+                    "ideal_text: version snapshot failed arc=%s: %s",
+                    arc_id, _sv_err)
         return ok
     except Exception as e:
         logger.warning("ideal_text: eager assembly failed arc=%s: %s",
                        arc_id, e)
         return False
+
+
+def sanitize_suggestions_snapshot(sugs: Any) -> list:
+    """The user-safe projection of the pending suggestions for a version
+    SNAPSHOT (founder 2026-07-20) — mirrors the serve shapes exactly, so
+    AC-9/CONSTRUCT hold in STORAGE: structure/delivery keep only their
+    device vocabulary; text suggestions keep replacement/why with the
+    trigger clamped to 'polish'|None (the raw threat/charisma vocabulary
+    never lands in a row a user payload is built from). Pure."""
+    out = []
+    for sid, s in (sugs or {}).items():
+        if not isinstance(s, dict):
+            continue
+        kind = s.get("kind")
+        if kind in ("structure", "delivery"):
+            out.append({
+                "snippet_id": str(sid), "kind": kind,
+                "device": s.get("trigger"),
+                "quote": (s.get("why") if kind == "structure" else None),
+            })
+        elif kind in ("emphasize", "replace"):
+            out.append({
+                "snippet_id": str(sid), "kind": kind,
+                "replacement": s.get("replacement_text"),
+                "why": s.get("why"),
+                "trigger": ("polish" if s.get("trigger") == "polish"
+                            else None),
+            })
+    return out
 
 
 def extract_key_moments(text: Any) -> list:
