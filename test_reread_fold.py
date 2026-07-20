@@ -157,12 +157,40 @@ class CoachGetFoldTests(unittest.TestCase):
         opened = {c.args[0] for c in m_open.call_args_list}
         self.assertEqual(opened, {SPOKEN, READ})
 
+    def test_reads_array_carries_ideal_text_tags(self):
+        # Founder 2026-07-20: an ideal-text re-read carries read_target +
+        # ideal_version in its intake_context → the coach UI labels it
+        # "Re-read of ideal text vN". Per-take re-reads carry nulls.
+        body, status, _, _ = self._get([
+            {"id": READ, "created_at": "2026-07-16T11:00:00Z",
+             "intake_context": {"read_target": "ideal_text",
+                                "ideal_version": 3}},
+        ])
+        self.assertEqual(status, 200)
+        self.assertEqual(body["reads"], [{
+            "session_id": READ,
+            "created_at": "2026-07-16T11:00:00Z",
+            "read_target": "ideal_text",
+            "ideal_version": 3,
+        }])
+
+    def test_reads_array_null_tags_on_per_take_reread(self):
+        body, _, _, _ = self._get(
+            [{"id": READ, "created_at": "2026-07-16T11:00:00Z"}])
+        self.assertEqual(body["reads"], [{
+            "session_id": READ,
+            "created_at": "2026-07-16T11:00:00Z",
+            "read_target": None,
+            "ideal_version": None,
+        }])
+
     def test_no_reads_packet_unchanged(self):
         body, status, dispatched, _ = self._get([])
         self.assertEqual(status, 200)
         self.assertEqual(len(body["snippets"]), 2)
         self.assertFalse(body["has_reread"])
         self.assertEqual(body["read_session_ids"], [])
+        self.assertEqual(body["reads"], [])
         self.assertEqual(dispatched, [(SPOKEN, [PSNIP1, PSNIP2])])
 
 

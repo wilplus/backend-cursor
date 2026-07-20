@@ -9815,6 +9815,21 @@ def v2_coach_get_session(session_id):
             # owning take_session_id + recording_kind='read'.
             "has_reread": bool(read_sessions),
             "read_session_ids": [str(r.get("id")) for r in read_sessions],
+            # Per-read tags (founder 2026-07-20): an ideal-text re-read
+            # carries read_target='ideal_text' + ideal_version in its
+            # session_context → the coach UI labels it "Re-read of ideal
+            # text vN". Additive beside read_session_ids; per-take re-reads
+            # simply carry nulls. Coach-only surface.
+            "reads": [{
+                "session_id": str(r.get("id")),
+                "created_at": r.get("created_at"),
+                "read_target": (r.get("intake_context") or {}).get(
+                    "read_target") if isinstance(
+                    r.get("intake_context"), dict) else None,
+                "ideal_version": (r.get("intake_context") or {}).get(
+                    "ideal_version") if isinstance(
+                    r.get("intake_context"), dict) else None,
+            } for r in read_sessions],
             "overall_message": (insights or {}).get("overall_message") or "",
             "video_ref": (session.get("coach_video_ref") or None),
             # Slide-deck context (UX Wave 4 BE-S6a) — coach sees the deck while
@@ -12233,6 +12248,15 @@ def v2_explore_get_ideal_text(arc_id):
           paywall? }                     — flag ON, machine copy available
     200 { arc_id, locked:true, reason:"NOT_APPROVED" }  — approved gate
     402 (paywall body incl. price + credits_current) · 404 · 500
+
+    SINGLE_DELIVERABLE mode (flag ON) instead returns
+    200 { arc_id, version, status:"verified"|"unverified", title,
+          updated_at, latest_take_session_id, reread_done, text,
+          user_edited, key_moments, moments_unlocked, price_credits,
+          notes_text } — free in both states, never 402s. The crucial-bubble
+    fields (founder 2026-07-20): `title` = latest take's topic,
+    `latest_take_session_id` = the re-read pairing target, `reread_done` =
+    a re-read of the CURRENT version exists (the FE's two-state mic).
     """
     try:
         owned, _sessions = _arc_owned_by_caller(arc_id)
@@ -12415,10 +12439,52 @@ def v2_explore_get_ideal_text(arc_id):
                 return entry
 
             _notes = db.get_user_arc_ideal_notes(arc_id, request.user_id)
+
+            # ── Crucial-bubble fields (founder 2026-07-20): title, last
+            # update, the re-read pairing target and the two-state mic's
+            # `reread_done` — all derived from the ownership read
+            # (_sessions), zero extra queries. Reads are paired variants,
+            # never takes: they're excluded from title/latest-take and are
+            # exactly what reread_done counts. ──
+            _spoken_rows, _read_rows = [], []
+            for _s in (_sessions or []):
+                if (_s.get("recording_kind") == "read") \
+                        or _s.get("paired_session_id"):
+                    _read_rows.append(_s)
+                else:
+                    _spoken_rows.append(_s)
+            _spoken_rows.sort(key=lambda s: (s.get("take_index") or 0))
+            _title = None
+            for _s in _spoken_rows:   # latest take wins (trainings parity)
+                _ctx = _s.get("intake_context") if isinstance(
+                    _s.get("intake_context"), dict) else {}
+                _t = _ctx.get("topic")
+                if isinstance(_t, str) and _t.strip():
+                    _title = _t.strip()
+            _latest_take_sid = (str(_spoken_rows[-1].get("id"))
+                                if _spoken_rows else None)
+            _reread_done = False
+            if _version is not None:
+                for _s in _read_rows:
+                    _ctx = _s.get("intake_context") if isinstance(
+                        _s.get("intake_context"), dict) else {}
+                    _iv = _ctx.get("ideal_version")
+                    # Tolerant match: the FE's form-encoded session_context
+                    # may carry the version as int or string.
+                    if _ctx.get("read_target") == "ideal_text" \
+                            and _iv is not None \
+                            and str(_iv) == str(_version):
+                        _reread_done = True
+                        break
+
             return jsonify({
                 "arc_id": arc_id,
                 "version": _version,
                 "status": "verified" if _verified else "unverified",
+                "title": _title,
+                "updated_at": _r.get("updated_at"),
+                "latest_take_session_id": _latest_take_sid,
+                "reread_done": _reread_done,
                 "text": _text,
                 # True when the served text is the student's own edit of the
                 # current version (the FE labels it).
@@ -13141,6 +13207,33 @@ def v2_arc_snippet_library(arc_id):
         }), 500
 
 
+def _recording_flow_tags(form) -> dict:
+    """The optional recording-flow tags a take can carry (founder
+    2026-07-20), read from FLAT multipart fields and folded into the
+    session_context AFTER validation (the validator strips unknown keys —
+    nothing rides through on its own). All optional, all bounded:
+
+      read_target        'ideal_text' — this read is a re-read of the ideal
+                         text (labels it on the coach packet; anything else
+                         is dropped)
+      ideal_version      the ideal-text version that was read (int; drives
+                         the student GET's reread_done; non-int dropped)
+      paired_snippet_id  a delivery-star snippet re-record's target snippet
+                         (UUID; invalid dropped)
+    """
+    tags: dict = {}
+    if (form.get("read_target") or "").strip().lower() == "ideal_text":
+        tags["read_target"] = "ideal_text"
+        try:
+            tags["ideal_version"] = int(form.get("ideal_version"))
+        except (TypeError, ValueError):
+            pass
+    _psnip = (form.get("paired_snippet_id") or "").strip()
+    if _psnip and _is_valid_uuid(_psnip):
+        tags["paired_snippet_id"] = _psnip
+    return tags
+
+
 @v2_bp.route("/lab/recordings", methods=["POST"])
 @optional_auth
 def v2_lab_create_recording():
@@ -13160,6 +13253,15 @@ def v2_lab_create_recording():
       priming_phrase        (optional) the exact framing phrase shown (verbatim)
       guest_session_id      (optional) reuse an existing guest session;
                             else a fresh one is minted + returned
+      recording_kind        (optional) spoken (default) | read — a read is a
+                            paired variant, never a take of its own
+      paired_session_id     (required for read) the spoken take this read
+                            folds under; an unpaired read is invisible
+      read_target           (optional) 'ideal_text' — this read is a re-read
+                            of the ideal text (coach label + reread_done)
+      ideal_version         (optional, int) the ideal-text version read
+      paired_snippet_id     (optional, UUID) a delivery-star snippet
+                            re-record's target snippet
 
     Flow (invariant order):
       1. read audio
@@ -13328,6 +13430,12 @@ def v2_lab_create_recording():
                 return jsonify({
                     "code": "V2_ERROR", "error": "Failed to create session",
                 }), 500
+
+        # Recording-flow tags (founder 2026-07-20): the intake-context
+        # validator returns ONLY its canonical keys, so the flow tags the
+        # FE sends as flat multipart fields are folded in EXPLICITLY here
+        # (nothing "rides through" on its own).
+        session_context.update(_recording_flow_tags(form))
 
         # Persist session_context on the session row.
         db.set_session_intake_context(guest_session_id, session_context)
