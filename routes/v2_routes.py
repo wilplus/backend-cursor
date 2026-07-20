@@ -12368,6 +12368,18 @@ def v2_explore_get_ideal_text(arc_id):
                         for m in (_snap.get("moments") or [])
                         if isinstance(m, dict) and m.get("snippet_id")
                     }
+                    # The star is EXPLICIT on historical payloads too (FE
+                    # relay 2026-07-20): the device guard is BE-owned
+                    # contract logic (#218/#219 pin — the FE renders copy
+                    # purely from device and must never infer star
+                    # semantics). Same rule as live: an unknown kind or
+                    # device yields NO star and NO suggestion.
+                    from services.delivery_stars import (
+                        DELIVERY_DEVICES as _H_DELIVERY,
+                    )
+                    from services.moment_suggestions import (
+                        _STRUCT_DEVICES as _H_STRUCT,
+                    )
                     _s_out = []
                     for m in _s_moments:
                         _e = {
@@ -12378,12 +12390,24 @@ def v2_explore_get_ideal_text(arc_id):
                         }
                         _sm = _s_sugs.get(str(m.get("snippet_id")))
                         if _sm:
-                            _e["suggestion"] = {
-                                k: _sm.get(k)
-                                for k in ("kind", "device", "quote",
-                                          "replacement", "why", "trigger")
-                                if k in _sm
-                            }
+                            _kind = _sm.get("kind")
+                            _dev = _sm.get("device")
+                            _star_ok = (
+                                _kind in ("emphasize", "replace")
+                                or (_kind == "structure"
+                                    and _dev in _H_STRUCT)
+                                or (_kind == "delivery"
+                                    and _dev in _H_DELIVERY)
+                            )
+                            if _star_ok:
+                                _e["star"] = "suggestion"
+                                _e["suggestion"] = {
+                                    k: _sm.get(k)
+                                    for k in ("kind", "device", "quote",
+                                              "replacement", "why",
+                                              "trigger")
+                                    if k in _sm
+                                }
                         _s_out.append(_e)
                     return jsonify({
                         "arc_id": arc_id,
