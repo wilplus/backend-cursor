@@ -212,17 +212,27 @@ def _fire_ideal_bubble(db, user_id: Any, arc_id: Any, *, client_key: str,
 
 
 def fire_ideal_version_ready(db, user_id: Any, arc_id: Any,
-                             version: Any) -> bool:
+                             version: Any, *,
+                             spoken_take_count: Any = None) -> bool:
     """Single deliverable (founder 2026-07-17): a NEW ideal-text version just
     assembled → the per-VERSION ready bubble. Keyed on arc+version, so an
     unchanged reassembly (same version) dedupes and every real new version
-    announces once. Copy = founder sign-off."""
+    announces once.
+
+    Founder 2026-07-18 (bug token 3c): on takes ONE and TWO the body gains
+    the three-takes encouragement line — a SOFT NUDGE only, never a gate or
+    counter (the SD re-shape removed completion semantics on purpose; no
+    "N of 3" anywhere). Copy = founder-approved verbatim."""
+    body = ("Your ideal text is ready. You can keep refining it by "
+            "recording another take.")
+    if isinstance(spoken_take_count, int) and 1 <= spoken_take_count <= 2:
+        body = ("Your ideal text is ready. Your ideal text gets sharper "
+                "with more takes — three is where it really lands. Record "
+                "another when you're ready.")
     return _fire_ideal_bubble(
         db, user_id, arc_id,
         client_key=f"willab-ideal-ready:{arc_id}:{version}",
-        # Invites the next rep (founder handoff 2026-07-17). No em-dash.
-        body=("Your ideal text is ready. You can keep refining it by "
-              "recording another take."),
+        body=body,
         variant="ready", version=version,
     )
 
@@ -271,7 +281,15 @@ def backfill_ideal_bubbles(db, user_id: Any, arc_id: Any) -> int:
         if not isinstance(version, int):
             return 0
         fired = 0
-        if fire_ideal_version_ready(db, user_id, arc_id, version):
+        _n_spoken = None
+        try:
+            from services.best_presentation import spoken_arc_sessions
+            _n_spoken = len(spoken_arc_sessions(
+                db.get_arc_sessions(arc_id)))
+        except Exception:
+            _n_spoken = None
+        if fire_ideal_version_ready(db, user_id, arc_id, version,
+                                    spoken_take_count=_n_spoken):
             fired += 1
         _vv = row.get("verified_version")
         if _vv == version and (row.get("verified_text") or "").strip():

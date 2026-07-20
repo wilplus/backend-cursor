@@ -26,6 +26,18 @@ def _env_int(name: str, default: int) -> int:
         return default
 
 
+def _env_float(name: str, default: float) -> float:
+    """Float env var with a safe fallback — same never-crash contract as
+    _env_int (live loop)."""
+    raw = (os.getenv(name) or "").strip()
+    if not raw:
+        return default
+    try:
+        return float(raw)
+    except ValueError:
+        return default
+
+
 def _merge_cors_origins() -> list:
     """Comma-separated CORS_ORIGINS plus FRONTEND_URL origin (so admin browsers
     can poll the API when only FRONTEND_URL is set) plus the hard-coded
@@ -112,11 +124,17 @@ class Config:
     # Cap on suggestion LLM generations per take (cost bound).
     MOMENT_SUGGESTIONS_MAX_PER_TAKE = _env_int(
         "MOMENT_SUGGESTIONS_MAX_PER_TAKE", 8)
+    # Measured delivery stars (founder 2026-07-18): |z| vs the speaker's own
+    # baseline before a delivery suggestion fires. Deliberately looser than
+    # the 2.0 outside-normal-range triage bar — a coaching nudge, not an
+    # anomaly flag. Deterministic, no LLM.
+    DELIVERY_STAR_Z = _env_float("DELIVERY_STAR_Z", 1.2)
+    DELIVERY_STARS_MAX_PER_TAKE = _env_int("DELIVERY_STARS_MAX_PER_TAKE", 3)
     # Structural stars (founder 2026-07-18): amber "practice this" prompts on
     # a contrast / list-of-three, on snippets with no acoustic star. Applied
     # AFTER the acoustic cap so acoustic stars are never displaced.
     STRUCTURAL_STARS_MAX_PER_TAKE = _env_int(
-        "STRUCTURAL_STARS_MAX_PER_TAKE", 2)
+        "STRUCTURAL_STARS_MAX_PER_TAKE", 3)   # founder 2026-07-18: 2-3 → 3
     # Cloudflare R2 (S3 API) for coach/reference/feedback videos — set all four to use R2 instead of Supabase Storage.
     R2_ACCOUNT_ID = (os.getenv("R2_ACCOUNT_ID") or "").strip()
     R2_ACCESS_KEY_ID = (os.getenv("R2_ACCESS_KEY_ID") or "").strip()

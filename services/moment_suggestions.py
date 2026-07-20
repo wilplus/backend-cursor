@@ -195,6 +195,51 @@ def _generate_structural(database, arc_id, candidates, *,
     return stored
 
 
+def _delivery_stars_enabled() -> bool:
+    import os
+    return (os.getenv("DELIVERY_STARS_ENABLED") or "0").strip().lower() \
+        in ("1", "true", "yes")
+
+
+def _generate_delivery(database, arc_id, candidates, baseline) -> list:
+    """Measured delivery stars (founder 2026-07-18): deterministic, no LLM.
+    ``candidates`` = [(snip_id, features_dict), ...] for the snippets with
+    NO acoustic star. Persists up to DELIVERY_STARS_MAX_PER_TAKE rows
+    (kind='delivery', trigger=device, no replacement, no why — the FE
+    renders the approved copy from `device`). Returns the snip_ids that
+    got a delivery star (so structural skips them — never double-star)."""
+    if not _delivery_stars_enabled() or not arc_id \
+            or not candidates or not baseline:
+        return []
+    from services.delivery_stars import detect_delivery_issue
+    try:
+        from config import Config
+        _cap = max(0, int(Config().DELIVERY_STARS_MAX_PER_TAKE))
+        _z = float(Config().DELIVERY_STAR_Z)
+    except Exception:
+        _cap, _z = 3, 1.2
+    if _cap <= 0:
+        return []
+    starred: list = []
+    for snip_id, feats in candidates:
+        if len(starred) >= _cap:
+            break
+        try:
+            device = detect_delivery_issue(feats, baseline, z_threshold=_z)
+            if not device:
+                continue
+            if database.upsert_moment_suggestion(
+                    snip_id, str(arc_id), "delivery", None, None, device):
+                starred.append(snip_id)
+        except Exception as e:
+            logger.warning("delivery_star: snippet failed snip=%s: %s",
+                           snip_id, e)
+            continue
+    if starred:
+        logger.info("delivery_star: stored %d arc=%s", len(starred), arc_id)
+    return starred
+
+
 def generate_for_session(session_id: str, arc_id: Optional[str], *,
                          database=None) -> int:
     """Analysis-time hook (flag-gated at the caller): resolve + generate +
@@ -237,10 +282,11 @@ def generate_for_session(session_id: str, arc_id: Optional[str], *,
         audience = (ctx or {}).get("audience") or None
 
         stored = 0
-        # Snippets with NO acoustic star → candidates for a structural star
-        # (contrast / list-of-three). A snippet that earned an acoustic star
-        # is never a candidate — acoustic keeps priority, no double-star.
-        _structural_candidates = []
+        # Snippets with NO acoustic star → candidates for a DELIVERY star
+        # (measured, deterministic), then a STRUCTURAL star. Priority per
+        # founder 2026-07-18: acoustic > delivery > structural; a snippet
+        # only ever carries ONE star.
+        _unstarred = []   # (snip_id, transcript, features_dict)
         for snip in (readout.get("snippets") or []):
             try:
                 snip_id = snip.get("id")
@@ -256,7 +302,8 @@ def generate_for_session(session_id: str, arc_id: Optional[str], *,
                     direction, transcript,
                     slide_stickiness=_stick, stickiness_max=_sticky_max)
                 if kind is None:
-                    _structural_candidates.append((str(snip_id), transcript))
+                    _unstarred.append((str(snip_id), transcript,
+                                       snip.get("features") or {}))
                     continue
                 if stored >= _cap:
                     logger.info(
@@ -284,10 +331,39 @@ def generate_for_session(session_id: str, arc_id: Optional[str], *,
                     session_id, snip.get("id"), _snip_err)
                 continue
 
-        # ── Structural stars, SECOND (founder 2026-07-18, flag-gated). Only
-        # snippets with no acoustic star; own budget; verbatim-quote pinned.
+        # ── Delivery stars, SECOND (founder decisions 2026-07-18):
+        # deterministic vs the speaker's own reference — cross-take baseline
+        # first, else within-take means at >= 6 pieces (decision BE-1a(b)),
+        # else silent. No LLM. Only no-acoustic-star snippets.
+        from services.delivery_stars import (
+            emphasis_z, resolve_delivery_baseline,
+        )
+        _baseline = resolve_delivery_baseline(
+            session.get("user_id"),
+            [s.get("features") or {}
+             for s in (readout.get("snippets") or [])],
+            database=database)
+        _delivery_starred = set(_generate_delivery(
+            database, arc_id,
+            [(sid, feats) for (sid, _t, feats) in _unstarred],
+            _baseline))
+        stored += len(_delivery_starred)
+
+        # ── Structural stars, THIRD (flag-gated; verbatim-quote pinned).
+        # Structural INTENSITY (founder #5): scan the flattest-delivered
+        # candidates FIRST — a contrast already delivered with lift needs no
+        # practice prompt; a flat one does. Unmeasurable flatness sorts last.
+        _structural_candidates = [
+            (sid, transcript, emphasis_z(feats, _baseline))
+            for (sid, transcript, feats) in _unstarred
+            if sid not in _delivery_starred
+        ]
+        _structural_candidates.sort(
+            key=lambda t: t[2] if t[2] is not None else float("inf"))
         stored += _generate_structural(
-            database, arc_id, _structural_candidates,
+            database, arc_id,
+            [(sid, transcript) for (sid, transcript, _z) in
+             _structural_candidates],
             user_id=session.get("user_id"))
 
         if stored:
