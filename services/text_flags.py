@@ -33,3 +33,13 @@ def has_profanity(text: Any) -> bool:
     if not isinstance(text, str) or not text:
         return False
     return bool(_PROFANITY_RE.search(text))
+
+
+def find_profanity(text: Any):
+    """Character offset of the FIRST profanity hit, or None. Same matcher
+    as has_profanity — the quote-narrowing pass (founder 2026-07-20) uses
+    it to underline only the carrying sentence. Pure."""
+    if not isinstance(text, str) or not text:
+        return None
+    m = _PROFANITY_RE.search(text)
+    return m.start() if m else None
