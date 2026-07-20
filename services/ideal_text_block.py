@@ -158,6 +158,7 @@ def assemble_ideal_text_block(arc_id: str, *, database=None,
                 polish.append({
                     "snippet_id": str(snip_id),
                     "edited": _edited,          # the fold target on Approve
+                    "verbatim": _verbatim,      # recurrence check (rule 4a)
                 })
         paragraphs.append(text)
 
@@ -228,6 +229,14 @@ def maybe_assemble_ideal_text(arc_id: Optional[str], *, database=None,
         # snippet had no other star). Best-effort.
         if ok and _polish_as_suggestions_enabled():
             try:
+                # Protected phrases (founder 2026-07-20, rule 4a): a polish
+                # whose changed span is wording the speaker uses in >= 2
+                # takes is THEIR phrasing — the smoothing is never offered.
+                from services.protected_phrases import (
+                    collect_take_texts, phrase_recurs,
+                )
+                from services.suggestion_quotes import diff_quote
+                _take_texts = collect_take_texts(database, arc_id)
                 _existing = database.get_moment_suggestions_by_arc(arc_id) or {}
                 for p in (auto.get("polish") or []):
                     _sid = str(p.get("snippet_id"))
@@ -239,6 +248,10 @@ def maybe_assemble_ideal_text(arc_id: Optional[str], *, database=None,
                     _edited = (p.get("edited") or "").strip()
                     if not _edited:
                         continue
+                    _span = diff_quote(p.get("verbatim"), _edited) \
+                        or (p.get("verbatim") or "")
+                    if phrase_recurs(_span, _take_texts):
+                        continue   # their wording — keep it (rule 4a)
                     database.upsert_moment_suggestion(
                         _sid, str(arc_id), "replace", _edited, None, "polish")
             except Exception as _pe:

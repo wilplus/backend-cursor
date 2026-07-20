@@ -293,6 +293,16 @@ def generate_for_session(session_id: str, arc_id: Optional[str], *,
         except Exception:
             _decided_keys = set()
 
+        # Protected phrases (founder 2026-07-20, rule 4a): wording the
+        # speaker repeats across takes is THEIR voice — stickiness
+        # replaces never target it. Threat/profanity keep their carve-out
+        # (harmful content is still flagged). Best-effort: [] → no
+        # protection, today's behavior.
+        from services.protected_phrases import (
+            collect_take_texts, phrase_recurs,
+        )
+        _take_texts = collect_take_texts(database, arc_id)
+
         stored = 0
         # Snippets with NO acoustic star → candidates for a DELIVERY star
         # (measured, deterministic), then a STRUCTURAL star. Priority per
@@ -334,6 +344,17 @@ def generate_for_session(session_id: str, arc_id: Optional[str], *,
                                        snip.get("features") or {}))
                     continue
                 from services.text_flags import has_profanity
+                # Rule 4a: a STICKINESS replace (no direction, no
+                # profanity) on wording the speaker uses in >= 2 takes is
+                # their voice — never forced. Threat and profanity still
+                # replace (the harmful carve-out). The snippet stays
+                # eligible for the behavioural lanes.
+                if kind == "replace" and direction is None \
+                        and not has_profanity(transcript) \
+                        and phrase_recurs(transcript, _take_texts):
+                    _unstarred.append((str(snip_id), transcript,
+                                       snip.get("features") or {}))
+                    continue
                 trigger = ("threat" if direction == "threat"
                            else "profanity" if has_profanity(transcript)
                            else "stickiness" if kind == "replace"

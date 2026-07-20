@@ -733,5 +733,128 @@ class SuggestionKindGuardPinTests(unittest.TestCase):
             {"emphasize", "replace", "structure", "delivery"})
 
 
+@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
+class GenerationRecurrenceProtectionTests(unittest.TestCase):
+    """Rule 4a (founder 2026-07-20): a stickiness replace never targets
+    wording the speaker uses in >= 2 takes; threat/profanity keep the
+    harmful carve-out."""
+
+    class _Db:
+        def __init__(self, take_texts):
+            self._takes = take_texts
+            self.upserts = []
+
+        def v2_get_session_by_id(self, sid):
+            return {"id": sid, "user_id": None, "intake_context": {}}
+
+        def list_ideal_decisions(self, arc_id):
+            return []
+
+        def get_arc_sessions(self, arc_id):
+            return [{"id": f"t{i}", "take_index": i + 1,
+                     "recording_kind": "spoken"}
+                    for i in range(len(self._takes))]
+
+        def get_snippets_by_session(self, sid):
+            i = int(sid[1:])
+            return [{"transcript": self._takes[i]}]
+
+        def upsert_moment_suggestion(self, snip, arc, kind, repl, why, trig):
+            self.upserts.append((snip, kind, trig))
+            return True
+
+    def _run(self, transcript, take_texts):
+        from services import moment_suggestions as ms
+        db = self._Db(take_texts)
+        readout = {"snippets": [
+            {"id": "s1", "transcript": transcript,
+             "acoustic_read": {"potentiometer": 0.0},
+             "slide_stickiness": 0.05},
+        ]}
+        result = type("R", (), {"parsed": {"why": "Calmer.",
+                                           "replacement": "steady words"},
+                                "text": ""})()
+        with patch("services.lab_recording.build_readout_from_session",
+                   return_value=readout), \
+             patch("services.llm.chat_complete", return_value=result):
+            ms.generate_for_session("sess-1", ARC, database=db)
+        return db.upserts
+
+    def test_recurring_wording_is_protected_from_stickiness_replace(self):
+        phrase = "our boom town phrase closes it"
+        ups = self._run(phrase, [f"first take {phrase}",
+                                 f"second take {phrase} again"])
+        self.assertNotIn(("s1", "replace", "stickiness"), ups)
+
+    def test_profanity_still_replaces_even_when_recurring(self):
+        phrase = "this damn phrase closes it"
+        ups = self._run(phrase, [f"first take {phrase}",
+                                 f"second take {phrase} again"])
+        self.assertIn(("s1", "replace", "profanity"), ups)
+
+    def test_non_recurring_stickiness_still_replaces(self):
+        ups = self._run("a one off weak line here",
+                        ["totally other take", "and another one"])
+        self.assertIn(("s1", "replace", "stickiness"), ups)
+
+
+@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
+class PolishRecurrenceProtectionTests(unittest.TestCase):
+    """Rule 4a on the polish lane: a smoothing whose changed span is the
+    speaker's recurring wording is never offered."""
+
+    class _Db:
+        def __init__(self, take_texts):
+            self._takes = take_texts
+            self.upserts = []
+
+        def get_arc_sessions(self, arc_id):
+            return [{"id": f"t{i}", "take_index": i + 1,
+                     "recording_kind": "spoken"}
+                    for i in range(len(self._takes))]
+
+        def get_snippets_by_session(self, sid):
+            i = int(sid[1:])
+            return [{"transcript": self._takes[i]}]
+
+        def list_ideal_decisions(self, arc_id):
+            return []
+
+        def get_moment_suggestions_by_arc(self, arc_id):
+            return {}
+
+        def persist_auto_ideal_text(self, arc_id, text):
+            return True
+
+        def upsert_moment_suggestion(self, snip, arc, kind, repl, why, trig):
+            self.upserts.append((snip, trig))
+            return True
+
+    def _run(self, take_texts):
+        import services.ideal_text_block as mod
+        bp = {"ready": True, "slides": [{
+            "text": "we are going to win this",
+            "verbatim": "we gonna win this", "polished": True,
+            "snippet_id": SNIP, "session_id": SESS,
+            "breakthrough": False, "key_phrases": [],
+        }]}
+        db = self._Db(take_texts)
+        with patch("services.best_presentation.build_best_presentation",
+                   return_value=bp), \
+             patch.object(mod, "_polish_as_suggestions_enabled",
+                          return_value=True):
+            mod.maybe_assemble_ideal_text(ARC, database=db,
+                                          require_target=False)
+        return db.upserts
+
+    def test_recurring_span_suppresses_the_polish(self):
+        ups = self._run(["i gonna say it plain", "gonna win again here"])
+        self.assertEqual(ups, [])
+
+    def test_non_recurring_span_still_offers_polish(self):
+        ups = self._run(["a clean first take", "a clean second take"])
+        self.assertEqual(ups, [(SNIP, "polish")])
+
+
 if __name__ == "__main__":
     unittest.main()
