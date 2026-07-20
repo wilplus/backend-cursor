@@ -608,5 +608,130 @@ class StructuralQuoteVerbatimTests(unittest.TestCase):
             {"device": "contrast", "quote": "words never spoken"}))
 
 
+@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
+class LedgerBakeAssemblyTests(unittest.TestCase):
+    """Gradual refinement rule 1 (founder 2026-07-20): APPROVED decisions
+    bake into every future machine copy at ASSEMBLY time; decided phrases
+    (either direction) are never re-offered as polish stars."""
+
+    class _Db:
+        def __init__(self, rows):
+            self._rows = rows
+
+        def list_ideal_decisions(self, arc_id):
+            return self._rows
+
+    def _assemble(self, rows, *, verbatim="the old words carry it",
+                  edited="the polished words carry it", polished=True):
+        import services.ideal_text_block as mod
+        bp = {"ready": True, "slides": [{
+            "text": edited, "verbatim": verbatim, "polished": polished,
+            "snippet_id": SNIP, "session_id": SESS,
+            "breakthrough": False, "key_phrases": [],
+        }]}
+        with patch("services.best_presentation.build_best_presentation",
+                   return_value=bp), \
+             patch.object(mod, "_polish_as_suggestions_enabled",
+                          return_value=True):
+            return mod.assemble_ideal_text_block(
+                ARC, database=self._Db(rows))
+
+    def test_approved_replace_bakes_into_the_text(self):
+        out = self._assemble([{
+            "kind": "replace", "target_phrase": "the old words",
+            "display_phrase": "the old words",
+            "replacement_text": "the brave words",
+            "decision": "approved"}])
+        self.assertIn("the brave words carry it", out["text"])
+        self.assertNotIn("the old words", out["text"])
+
+    def test_approved_polish_bakes_and_is_not_reoffered(self):
+        out = self._assemble([{
+            "kind": "polish",
+            "target_phrase": "the old words carry it",
+            "display_phrase": "the old words carry it",
+            "replacement_text": "the polished words carry it",
+            "decision": "approved"}])
+        self.assertIn("the polished words carry it", out["text"])
+        self.assertEqual(out["polish"], [])   # decided → no star again
+
+    def test_dismissed_polish_stays_verbatim_and_silent(self):
+        out = self._assemble([{
+            "kind": "polish",
+            "target_phrase": "the old words carry it",
+            "display_phrase": "the old words carry it",
+            "replacement_text": "the polished words carry it",
+            "decision": "dismissed"}])
+        self.assertIn("the old words carry it", out["text"])
+        self.assertEqual(out["polish"], [])   # remembered → never again
+
+    def test_no_ledger_keeps_todays_behavior(self):
+        out = self._assemble([])
+        self.assertIn("the old words carry it", out["text"])  # verbatim
+        self.assertEqual(len(out["polish"]), 1)               # star offered
+
+    def test_approved_emphasize_bakes_orange(self):
+        out = self._assemble([{
+            "kind": "emphasize", "target_phrase": "old words",
+            "display_phrase": "old words", "replacement_text": None,
+            "decision": "approved"}], polished=False)
+        self.assertIn("{{orange:old words}}", out["text"])
+
+
+@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
+class LedgerGenerationFilterTests(unittest.TestCase):
+    """Rules 2/3: a decided phrase never regenerates a star — each
+    version's stars are that version's delta only."""
+
+    class _Db:
+        def __init__(self, decided_rows):
+            self.decided = decided_rows
+            self.upserts = []
+
+        def v2_get_session_by_id(self, sid):
+            return {"id": sid, "user_id": None, "intake_context": {}}
+
+        def list_ideal_decisions(self, arc_id):
+            return self.decided
+
+        def upsert_moment_suggestion(self, snip, arc, kind, repl, why, trig):
+            self.upserts.append((snip, kind, trig))
+            return True
+
+    def test_decided_phrase_skipped_fresh_phrase_generated(self):
+        from services import moment_suggestions as ms
+        db = self._Db([{"kind": "emphasize",
+                        "target_phrase": "keep this phrase",
+                        "decision": "dismissed"}])
+        readout = {"snippets": [
+            {"id": "s1", "transcript": "Keep   THIS phrase",
+             "acoustic_read": {"potentiometer": 0.9}},
+            {"id": "s2", "transcript": "a fresh phrase lands",
+             "acoustic_read": {"potentiometer": 0.9}},
+        ]}
+        result = type("R", (), {"parsed": {"why": "Plain and strong.",
+                                           "replacement": None},
+                                "text": ""})()
+        with patch("services.lab_recording.build_readout_from_session",
+                   return_value=readout), \
+             patch("services.llm.chat_complete", return_value=result):
+            ms.generate_for_session("sess-1", ARC, database=db)
+        kinds = [(snip, kind) for (snip, kind, _t) in db.upserts]
+        self.assertNotIn(("s1", "emphasize"), kinds)   # decided → skipped
+        self.assertIn(("s2", "emphasize"), kinds)      # the delta
+
+
+@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
+class SuggestionKindGuardPinTests(unittest.TestCase):
+    def test_db_guard_mirrors_the_kind_check(self):
+        # The 2026-07-20 lesson: #221 widened the DB CHECK to 'delivery'
+        # but not the python guard — the feature ran silently inert in
+        # prod. The guard is now a pinned constant.
+        from services.db import DatabaseService
+        self.assertEqual(
+            set(DatabaseService.SUGGESTION_KINDS),
+            {"emphasize", "replace", "structure", "delivery"})
+
+
 if __name__ == "__main__":
     unittest.main()

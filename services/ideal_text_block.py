@@ -99,6 +99,21 @@ def assemble_ideal_text_block(arc_id: str, *, database=None,
     # actually said until THEY accept a change. `polish` collects the diffs
     # for the worker to persist as suggestions.
     _polish_on = _polish_as_suggestions_enabled()
+
+    # ── DECISION LEDGER (founder 2026-07-20, gradual refinement rule 1):
+    # every change the student APPROVED bakes into this machine copy
+    # wherever its phrase still occurs — plain text, no star, never
+    # reversed. Decided phrases (approved OR dismissed) are also excluded
+    # from re-offering (rule 2/3: each version's stars = its delta).
+    # Best-effort: no ledger (pre-migration) → today's behavior. ──
+    from services.ideal_decision_ledger import (
+        bake_piece, ledger_keys, load_ledger, normalize_phrase,
+    )
+    _ledger_rows = load_ledger(database, arc_id)
+    _approved = [r for r in _ledger_rows
+                 if r.get("decision") == "approved"]
+    _decided = ledger_keys(_ledger_rows)
+
     paragraphs: list = []
     key_moments: list = []
     polish: list = []
@@ -108,12 +123,18 @@ def assemble_ideal_text_block(arc_id: str, *, database=None,
         text = (_verbatim if _polish_on else _edited) or _edited
         if not text:
             continue
+        if _approved:
+            text = bake_piece(text, _approved)
         snip_id = s.get("snippet_id")
         take_sid = s.get("session_id") or s.get("take_session_id")
         # A polish diff → an approvable suggestion; anchor the pick so its
         # star attaches. (When polish is OFF, key_phrases still bold as before.)
+        # A phrase the student already DECIDED on (approved → just baked
+        # above; dismissed → remembered) is never re-offered.
         _is_polish = bool(_polish_on and s.get("polished")
-                          and snip_id and take_sid and _verbatim != _edited)
+                          and snip_id and take_sid and _verbatim != _edited
+                          and ("polish", normalize_phrase(_verbatim))
+                          not in _decided)
         if not _polish_on:
             # Bold the key openings — first occurrence of each phrase.
             for kp in (s.get("key_phrases") or [])[:5]:

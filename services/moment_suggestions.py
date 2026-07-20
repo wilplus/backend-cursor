@@ -281,6 +281,18 @@ def generate_for_session(session_id: str, arc_id: Optional[str], *,
             if isinstance(session.get("intake_context"), dict) else {}
         audience = (ctx or {}).get("audience") or None
 
+        # Decision ledger (founder 2026-07-20): phrases the student already
+        # decided on (approved → baked / dismissed → remembered) never
+        # regenerate. Best-effort — empty pre-migration.
+        from services.ideal_decision_ledger import (
+            ledger_keys, normalize_phrase as _norm_phrase,
+        )
+        try:
+            _decided_keys = ledger_keys(
+                database.list_ideal_decisions(str(arc_id)))
+        except Exception:
+            _decided_keys = set()
+
         stored = 0
         # Snippets with NO acoustic star → candidates for a DELIVERY star
         # (measured, deterministic), then a STRUCTURAL star. Priority per
@@ -311,6 +323,16 @@ def generate_for_session(session_id: str, arc_id: Optional[str], *,
                         _cap, session_id)
                     continue   # keep scanning: later snippets may be
                     #            structural candidates (a different budget)
+                # DECISION LEDGER (founder 2026-07-20, rules 2/3): a phrase
+                # the student already decided on — approved (baked at
+                # assembly) or dismissed — is never re-offered; each
+                # version's stars are its delta only. The snippet still
+                # counts as unstarred for the delivery/structural lanes
+                # (those are behavioural prompts, not text edits).
+                if (kind, _norm_phrase(transcript)) in _decided_keys:
+                    _unstarred.append((str(snip_id), transcript,
+                                       snip.get("features") or {}))
+                    continue
                 from services.text_flags import has_profanity
                 trigger = ("threat" if direction == "threat"
                            else "profanity" if has_profanity(transcript)

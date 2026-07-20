@@ -10014,6 +10014,13 @@ class DatabaseService:
                            arc_id, e)
             return False
 
+    # The star-suggestion kinds. MUST mirror the moment_suggestions kind
+    # CHECK (alter_moment_suggestions_kind_delivery.sql) — the 2026-07-20
+    # lesson: #221 widened the DB CHECK but not this guard, so 'delivery'
+    # rows were rejected HERE and the feature ran silently inert in prod.
+    # Pinned by test_delivery_stars.
+    SUGGESTION_KINDS = ("emphasize", "replace", "structure", "delivery")
+
     def upsert_moment_suggestion(
         self, snippet_id: str, arc_id: str, kind: str,
         replacement_text: Optional[str], why: Optional[str],
@@ -10022,7 +10029,7 @@ class DatabaseService:
         """One star suggestion per snippet (founder 2026-07-18). Idempotent
         on snippet_id (a reassembly regenerates in place). Best-effort."""
         if not snippet_id or not arc_id \
-                or kind not in ("emphasize", "replace", "structure"):
+                or kind not in self.SUGGESTION_KINDS:
             return False
         try:
             self.client.table("moment_suggestions").upsert({
@@ -10072,6 +10079,110 @@ class DatabaseService:
             logger.warning("get_moment_suggestions_by_arc failed arc=%s: %s",
                            arc_id, e)
             return {}
+
+    # ── ideal-text decision ledger (founder 2026-07-20) ──────────────
+    # Phrase-keyed memory of approved/dismissed suggestions; see
+    # services/ideal_decision_ledger.py + add_ideal_decision_ledger.sql.
+    # All best-effort with the table-missing degradation (LIVE LOOP).
+
+    def upsert_ideal_decision(self, *, arc_id: str, kind: str,
+                              target_phrase: str,
+                              display_phrase: Optional[str],
+                              replacement_text: Optional[str],
+                              decision: str, source: Optional[str],
+                              snippet_id: Optional[str],
+                              version: Optional[int]) -> bool:
+        """One decision per (arc, kind, phrase) — last write wins (an
+        applied→dismissed flip updates in place). Best-effort."""
+        if not arc_id or not target_phrase \
+                or kind not in ("polish", "replace", "emphasize") \
+                or decision not in ("approved", "dismissed"):
+            return False
+        try:
+            self.client.table("ideal_decision_ledger").upsert({
+                "arc_id": str(arc_id),
+                "kind": kind,
+                "target_phrase": target_phrase,
+                "display_phrase": display_phrase,
+                "replacement_text": replacement_text,
+                "decision": decision,
+                "source": source,
+                "snippet_id": snippet_id,
+                "version": version,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }, on_conflict="arc_id,kind,target_phrase").execute()
+            return True
+        except Exception as e:
+            _e = str(e).lower()
+            if "ideal_decision_ledger" in _e and (
+                "does not exist" in _e or "pgrst" in _e
+            ):
+                logger.warning(
+                    "upsert_ideal_decision: table missing (run "
+                    "migrations/add_ideal_decision_ledger.sql)")
+                return False
+            logger.warning("upsert_ideal_decision failed arc=%s: %s",
+                           arc_id, e)
+            return False
+
+    def delete_moment_suggestion(self, snippet_id: Optional[str]) -> bool:
+        """Drop one star row — a DISMISSED star must not survive to the
+        next serve/anchor pass (founder 2026-07-20 rule 2; the ledger
+        remembers the decision, this removes the offer). Best-effort."""
+        if not snippet_id:
+            return False
+        try:
+            (self.client.table("moment_suggestions")
+             .delete()
+             .eq("snippet_id", str(snippet_id))
+             .execute())
+            return True
+        except Exception as e:
+            logger.warning("delete_moment_suggestion failed snip=%s: %s",
+                           snippet_id, e)
+            return False
+
+    def delete_ideal_decision(self, arc_id: str, kind: str,
+                              target_phrase: str) -> bool:
+        """A reverted approval wipes the row — the phrase becomes
+        suggestible again. Best-effort."""
+        if not arc_id or not kind or not target_phrase:
+            return False
+        try:
+            (self.client.table("ideal_decision_ledger")
+             .delete()
+             .eq("arc_id", str(arc_id))
+             .eq("kind", kind)
+             .eq("target_phrase", target_phrase)
+             .execute())
+            return True
+        except Exception as e:
+            logger.warning("delete_ideal_decision failed arc=%s: %s",
+                           arc_id, e)
+            return False
+
+    def list_ideal_decisions(self, arc_id: Optional[str]) -> list:
+        """All ledger rows of an arc. [] pre-migration / on hiccup —
+        callers degrade to no-memory behavior."""
+        if not arc_id:
+            return []
+        try:
+            res = (
+                self.client.table("ideal_decision_ledger")
+                .select("*")
+                .eq("arc_id", str(arc_id))
+                .execute()
+            )
+            return res.data or []
+        except Exception as e:
+            _e = str(e).lower()
+            if "ideal_decision_ledger" in _e and (
+                "does not exist" in _e or "pgrst" in _e
+            ):
+                return []
+            logger.warning("list_ideal_decisions failed arc=%s: %s",
+                           arc_id, e)
+            return []
 
     def set_session_priming(
         self, session_id: str,

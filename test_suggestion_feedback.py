@@ -142,5 +142,103 @@ class SuggestionFeedbackTests(unittest.TestCase):
         self.assertEqual(m_ins.call_args.kwargs["action"], "apply_all")
 
 
+@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
+class LedgerHookTests(unittest.TestCase):
+    """Founder 2026-07-20 (gradual refinement PR-2): a star tap on
+    moment_replace/moment_emphasize is ALSO a durable phrase decision —
+    applied → approved (bakes next assembly), dismissed → dismissed + the
+    star row is deleted (never offered again, current version included),
+    reverted → the ledger row is wiped (clean slate)."""
+
+    ARC = "arc-9"
+
+    def setUp(self):
+        self.app = Flask(__name__)
+
+    def _call(self, action, target="moment_replace", trigger="polish"):
+        body = {"session_id": SESS, "target": target, "action": action}
+        with self.app.test_request_context(json=body):
+            request.user_id = "u1"
+            with patch.object(v2.db, "v2_get_session_by_id",
+                              return_value={"id": SESS, "user_id": "u1",
+                                            "arc_id": self.ARC}), \
+                 patch.object(v2.db, "get_snippet_by_id",
+                              return_value={"id": SNIP, "session_id": SESS,
+                                            "transcript": "The Rough Span"}), \
+                 patch.object(v2.db, "insert_user_suggestion_feedback",
+                              return_value=True), \
+                 patch.object(v2.db, "get_moment_suggestions_by_arc",
+                              return_value={SNIP: {
+                                  "snippet_id": SNIP, "kind": "replace",
+                                  "trigger": trigger,
+                                  "replacement_text": "smoother"}}), \
+                 patch.object(v2.db, "get_coach_arc_ideal_text",
+                              return_value={"version": 3}), \
+                 patch.object(v2.db, "upsert_ideal_decision",
+                              return_value=True) as m_up, \
+                 patch.object(v2.db, "delete_ideal_decision",
+                              return_value=True) as m_del, \
+                 patch.object(v2.db, "delete_moment_suggestion",
+                              return_value=True) as m_row:
+                out = v2.v2_user_suggestion_feedback.__wrapped__(SNIP)
+                resp, status = out if isinstance(out, tuple) else (out, 200)
+                return resp.get_json(), status, m_up, m_del, m_row
+
+    def test_applied_writes_approved_polish(self):
+        body, status, m_up, m_del, m_row = self._call("applied")
+        self.assertEqual(status, 200)
+        kw = m_up.call_args.kwargs
+        self.assertEqual(kw["kind"], "polish")     # trigger=polish maps
+        self.assertEqual(kw["decision"], "approved")
+        self.assertEqual(kw["target_phrase"], "the rough span")
+        self.assertEqual(kw["replacement_text"], "smoother")
+        self.assertEqual(kw["version"], 3)
+        m_del.assert_not_called()
+        m_row.assert_not_called()   # an applied star folds; row stays
+
+    def test_dismissed_writes_dismissed_and_kills_the_row(self):
+        body, status, m_up, m_del, m_row = self._call(
+            "dismissed", trigger="threat")
+        self.assertEqual(status, 200)
+        kw = m_up.call_args.kwargs
+        self.assertEqual(kw["kind"], "replace")
+        self.assertEqual(kw["decision"], "dismissed")
+        m_row.assert_called_once_with(SNIP)
+
+    def test_reverted_wipes_the_ledger_row(self):
+        body, status, m_up, m_del, m_row = self._call("reverted")
+        self.assertEqual(status, 200)
+        m_del.assert_called_once_with(self.ARC, "polish", "the rough span")
+        m_up.assert_not_called()
+        m_row.assert_not_called()
+
+    def test_structure_target_never_touches_the_ledger(self):
+        body, status, m_up, m_del, m_row = self._call(
+            "applied", target="moment_structure")
+        self.assertEqual(status, 200)
+        m_up.assert_not_called()
+        m_del.assert_not_called()
+
+    def test_ledger_failure_never_breaks_the_post(self):
+        body = {"session_id": SESS, "target": "moment_replace",
+                "action": "applied"}
+        with self.app.test_request_context(json=body):
+            request.user_id = "u1"
+            with patch.object(v2.db, "v2_get_session_by_id",
+                              return_value={"id": SESS, "user_id": "u1",
+                                            "arc_id": self.ARC}), \
+                 patch.object(v2.db, "get_snippet_by_id",
+                              return_value={"id": SNIP, "session_id": SESS,
+                                            "transcript": "x"}), \
+                 patch.object(v2.db, "insert_user_suggestion_feedback",
+                              return_value=True), \
+                 patch.object(v2.db, "get_moment_suggestions_by_arc",
+                              side_effect=RuntimeError("boom")):
+                out = v2.v2_user_suggestion_feedback.__wrapped__(SNIP)
+                resp, status = out if isinstance(out, tuple) else (out, 200)
+        self.assertEqual(status, 200)
+        self.assertTrue(resp.get_json()["saved"])
+
+
 if __name__ == "__main__":
     unittest.main()
