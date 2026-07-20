@@ -12307,6 +12307,13 @@ def v2_explore_get_ideal_text(arc_id):
     gates the unlock CTA (true only when a coach explanation exists);
     text-suggestion stars carry `quote` (the narrow underline span, or
     null = icon only).
+
+    ?version=N (SD mode, founder 2026-07-20): the HISTORICAL read-only
+    view of an old version — 200 { arc_id, version, historical:true,
+    status:"superseded", current_version, created_at, text, key_moments }
+    from the per-version snapshot; N == current serves the live notebook;
+    no snapshot → 200 { historical_unavailable:true, requested_version,
+    current_version } (the FE falls back to the live view).
     """
     try:
         owned, _sessions = _arc_owned_by_caller(arc_id)
@@ -12325,6 +12332,69 @@ def v2_explore_get_ideal_text(arc_id):
                         or ((_r.get("text") or "").strip()
                             if not _coach_owned else ""))
             _version = _r.get("version") or (1 if _machine else None)
+
+            # ── HISTORICAL view, ?version=N (founder 2026-07-20): an old
+            # version bubble opens ITS OWN step — the frozen text + that
+            # step's reasoning, read-only. N == current falls through to
+            # the live notebook. No snapshot (pre-migration / assembled
+            # before history existed) → historical_unavailable and the FE
+            # falls back to the live view. Free, owner-only (same gate as
+            # the live read). ──
+            _hv_raw = request.args.get("version")
+            if _hv_raw not in (None, ""):
+                try:
+                    _hv = int(_hv_raw)
+                except (TypeError, ValueError):
+                    return jsonify({
+                        "code": "INVALID_INPUT",
+                        "error": "version must be an integer",
+                    }), 400
+                if _version is None or _hv != _version:
+                    _snap = db.get_ideal_text_version(arc_id, _hv)
+                    if not _snap or not (_snap.get("text") or "").strip():
+                        return jsonify({
+                            "arc_id": arc_id,
+                            "historical_unavailable": True,
+                            "requested_version": _hv,
+                            "current_version": _version,
+                        }), 200
+                    from services.ideal_text_block import (
+                        extract_key_moments, strip_moment_markers,
+                    )
+                    _s_text = _snap["text"]
+                    _s_moments = extract_key_moments(_s_text)
+                    _s_sugs = {
+                        str(m.get("snippet_id")): m
+                        for m in (_snap.get("moments") or [])
+                        if isinstance(m, dict) and m.get("snippet_id")
+                    }
+                    _s_out = []
+                    for m in _s_moments:
+                        _e = {
+                            "id": m.get("snippet_id"),
+                            "snippet_id": m.get("snippet_id"),
+                            "anchor": m.get("anchor") or "",
+                            "take_session_id": m.get("take_session_id"),
+                        }
+                        _sm = _s_sugs.get(str(m.get("snippet_id")))
+                        if _sm:
+                            _e["suggestion"] = {
+                                k: _sm.get(k)
+                                for k in ("kind", "device", "quote",
+                                          "replacement", "why", "trigger")
+                                if k in _sm
+                            }
+                        _s_out.append(_e)
+                    return jsonify({
+                        "arc_id": arc_id,
+                        "version": _hv,
+                        "historical": True,
+                        "status": "superseded",
+                        "current_version": _version,
+                        "created_at": _snap.get("created_at"),
+                        "text": strip_moment_markers(_s_text),
+                        "key_moments": _s_out,
+                    }), 200
             _vv = _r.get("verified_version")
             _vtext = (_r.get("verified_text") or "").strip()
             _verified = bool(_version is not None

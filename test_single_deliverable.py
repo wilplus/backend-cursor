@@ -398,6 +398,104 @@ class RecordingFlowTagTests(unittest.TestCase):
 
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
+class HistoricalVersionTests(unittest.TestCase):
+    """?version=N (founder 2026-07-20): an old bubble opens ITS OWN step —
+    frozen text + that step's reasoning, read-only; current falls through
+    to the live notebook; missing snapshot → historical_unavailable."""
+
+    SNAP_TEXT = (f"Start. [[moment:{UID}|{UID}]]the old span[[/moment]] "
+                 "end.")
+
+    def setUp(self):
+        self.app = Flask(__name__)
+
+    def _get(self, *, version_param, snap, row=None):
+        with self.app.test_request_context(
+                query_string={"version": version_param}):
+            request.user_id = "u1"
+            with patch.object(v2, "_arc_owned_by_caller",
+                              return_value=(True, [])), \
+                 patch.object(v2, "_single_deliverable_enabled",
+                              return_value=True), \
+                 patch.object(v2, "_moments_entitled", return_value=False), \
+                 patch.object(v2, "_moment_explanations_map",
+                              return_value={}), \
+                 patch.object(v2.db, "get_coach_arc_ideal_text",
+                              return_value=(row or _row(version=3))), \
+                 patch.object(v2.db, "get_user_arc_ideal_notes",
+                              return_value=None), \
+                 patch.object(v2.db, "get_ideal_text_version",
+                              return_value=snap):
+                out = v2.v2_explore_get_ideal_text.__wrapped__(ARC)
+                resp, status = out if isinstance(out, tuple) else (out, 200)
+                return resp.get_json(), status
+
+    def test_old_version_serves_the_frozen_step(self):
+        snap = {"arc_id": ARC, "version": 1, "text": self.SNAP_TEXT,
+                "created_at": "2026-07-19T10:00:00Z",
+                "moments": [{"snippet_id": UID, "kind": "replace",
+                             "replacement": "the new span",
+                             "why": "It reads calmer.", "trigger": None}]}
+        body, status = self._get(version_param="1", snap=snap)
+        self.assertEqual(status, 200)
+        self.assertTrue(body["historical"])
+        self.assertEqual(body["status"], "superseded")
+        self.assertEqual(body["version"], 1)
+        self.assertEqual(body["current_version"], 3)
+        self.assertNotIn("[[moment:", body["text"])   # anchors stripped
+        m = body["key_moments"][0]
+        self.assertEqual(m["anchor"], "the old span")
+        self.assertIn(m["anchor"], body["text"])
+        self.assertEqual(m["suggestion"]["replacement"], "the new span")
+        raw = json.dumps(body)
+        for banned in ("threat", "charisma", "potentiometer"):
+            self.assertNotIn(banned, raw)   # sanitized at write, held here
+
+    def test_missing_snapshot_reports_unavailable(self):
+        body, status = self._get(version_param="1", snap=None)
+        self.assertEqual(status, 200)
+        self.assertTrue(body["historical_unavailable"])
+        self.assertEqual(body["requested_version"], 1)
+        self.assertEqual(body["current_version"], 3)
+
+    def test_current_version_param_serves_the_live_notebook(self):
+        body, status = self._get(version_param="3", snap=None)
+        self.assertEqual(status, 200)
+        self.assertNotIn("historical", body)
+        self.assertEqual(body["version"], 3)
+        self.assertIn("status", body)   # the live payload shape
+
+    def test_garbage_version_400s(self):
+        body, status = self._get(version_param="one", snap=None)
+        self.assertEqual(status, 400)
+
+
+@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
+class SnapshotSanitizeTests(unittest.TestCase):
+    def test_write_time_projection_mirrors_serve(self):
+        from services.ideal_text_block import sanitize_suggestions_snapshot
+        out = sanitize_suggestions_snapshot({
+            "s1": {"kind": "replace", "replacement_text": "calmer words",
+                   "why": "Lands better.", "trigger": "threat"},
+            "s2": {"kind": "structure", "trigger": "contrast",
+                   "why": "not about X. about Y."},
+            "s3": {"kind": "delivery", "trigger": "pace_fast",
+                   "why": None},
+            "s4": "not-a-dict",
+        })
+        by = {o["snippet_id"]: o for o in out}
+        self.assertIsNone(by["s1"]["trigger"])          # clamped
+        self.assertEqual(by["s1"]["replacement"], "calmer words")
+        self.assertEqual(by["s2"]["device"], "contrast")
+        self.assertEqual(by["s2"]["quote"], "not about X. about Y.")
+        self.assertEqual(by["s3"]["device"], "pace_fast")
+        self.assertIsNone(by["s3"]["quote"])
+        self.assertNotIn("s4", by)
+        import json as _json
+        self.assertNotIn("threat", _json.dumps(out))
+
+
+@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
 class MomentsUnlockTests(unittest.TestCase):
     """BE-5 — the 5-credit unlock, atomic, no grandfathering."""
 

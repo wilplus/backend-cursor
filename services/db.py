@@ -10184,6 +10184,62 @@ class DatabaseService:
                            arc_id, e)
             return []
 
+    def upsert_ideal_text_version(self, arc_id: str, version: int,
+                                  text: str, moments: Any) -> bool:
+        """Append-only per-VERSION snapshot (founder 2026-07-20) — the text
+        as this version assembled it + that step's sanitized reasoning.
+        Idempotent per (arc, version). Best-effort."""
+        if not arc_id or not isinstance(version, int) or version < 1 \
+                or not (text or "").strip():
+            return False
+        try:
+            self.client.table("ideal_text_versions").upsert({
+                "arc_id": str(arc_id),
+                "version": version,
+                "text": text,
+                "moments": moments,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }, on_conflict="arc_id,version").execute()
+            return True
+        except Exception as e:
+            _e = str(e).lower()
+            if "ideal_text_versions" in _e and (
+                "does not exist" in _e or "pgrst" in _e
+            ):
+                logger.warning(
+                    "upsert_ideal_text_version: table missing (run "
+                    "migrations/add_ideal_text_versions.sql)")
+                return False
+            logger.warning("upsert_ideal_text_version failed arc=%s: %s",
+                           arc_id, e)
+            return False
+
+    def get_ideal_text_version(self, arc_id: Optional[str],
+                               version: Any) -> Optional[dict]:
+        """One historical snapshot, or None (pre-migration / never
+        snapshotted / hiccup — callers fall back to the live view)."""
+        if not arc_id or not isinstance(version, int):
+            return None
+        try:
+            res = (
+                self.client.table("ideal_text_versions")
+                .select("*")
+                .eq("arc_id", str(arc_id))
+                .eq("version", version)
+                .limit(1)
+                .execute()
+            )
+            return (res.data or [None])[0]
+        except Exception as e:
+            _e = str(e).lower()
+            if "ideal_text_versions" in _e and (
+                "does not exist" in _e or "pgrst" in _e
+            ):
+                return None
+            logger.warning("get_ideal_text_version failed arc=%s: %s",
+                           arc_id, e)
+            return None
+
     def set_session_priming(
         self, session_id: str,
         condition: Optional[str], phrase: Optional[str],
