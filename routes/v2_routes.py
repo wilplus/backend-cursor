@@ -12737,6 +12737,27 @@ def v2_explore_put_ideal_user_edit(arc_id):
         if not ok:
             return jsonify({"code": "V2_ERROR",
                             "error": "Could not save"}), 500
+        # ── EDIT INHERITANCE (founder 2026-07-20, rule 4b): decompose the
+        # edit into phrase decisions on the ledger (source='user_edit',
+        # approved) so the NEXT version bakes the student's wording
+        # forward — their edit is never reversed by a new take. The base
+        # is the version's served base (verified snapshot when current,
+        # else the machine copy); a wholesale rewrite decomposes to
+        # nothing and simply stays the wholesale edit. Best-effort. ──
+        try:
+            _vv = _row.get("verified_version")
+            _vtext = (_row.get("verified_text") or "").strip()
+            _base = _vtext if (_vv == current and _vtext) else _machine
+            if _base:
+                from services.protected_phrases import (
+                    record_user_edit_decisions,
+                )
+                record_user_edit_decisions(
+                    db, arc_id, base_text=_base, user_text=text,
+                    version=current)
+        except Exception as _led_err:
+            logger.warning("ideal user-edit: ledger failed arc=%s: %s",
+                           arc_id, _led_err)
         return jsonify({"saved": True, "arc_id": arc_id,
                         "version": current}), 200
     except Exception as e:

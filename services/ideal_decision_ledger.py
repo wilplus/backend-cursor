@@ -92,7 +92,16 @@ def bake_piece(text: str, approved_rows: Any) -> str:
         found = text[lo:hi]
         if r.get("kind") in ("polish", "replace"):
             repl = (r.get("replacement_text") or "").strip()
-            if not repl or repl == found:
+            if repl == found:
+                continue
+            if not repl:
+                # An empty replacement is a DELETION — honored only for
+                # the student's own edit (source='user_edit', PR-3);
+                # a generated suggestion may never wipe text.
+                if r.get("source") != "user_edit":
+                    continue
+                text = re.sub(
+                    r"[ \t]{2,}", " ", text[:lo] + text[hi:]).strip()
                 continue
             text = text[:lo] + repl + text[hi:]
         elif r.get("kind") == "emphasize":

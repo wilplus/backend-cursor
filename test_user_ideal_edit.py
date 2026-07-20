@@ -105,6 +105,83 @@ class UserEditPutTests(unittest.TestCase):
 
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
+class LedgerInheritanceTests(unittest.TestCase):
+    """Rule 4b (founder 2026-07-20): the saved edit decomposes into
+    phrase-level APPROVED ledger rows (source='user_edit') so the next
+    assembly bakes the student's wording forward. Wholesale rewrites and
+    ledger failures write nothing and never break the save."""
+
+    def setUp(self):
+        self.app = Flask(__name__)
+
+    def _put(self, text, *, row):
+        with self.app.test_request_context(
+                json={"text": text, "version": row.get("version")}):
+            request.user_id = "u1"
+            with patch.object(v2, "_arc_owned_by_caller",
+                              return_value=(True, [])), \
+                 patch.object(v2.db, "get_coach_arc_ideal_text",
+                              return_value=row), \
+                 patch.object(v2.db, "upsert_user_ideal_edit",
+                              return_value=True), \
+                 patch.object(v2.db, "upsert_ideal_decision",
+                              return_value=True) as m_led:
+                out = v2.v2_explore_put_ideal_user_edit.__wrapped__(ARC)
+                resp, status = out if isinstance(out, tuple) else (out, 200)
+                return resp.get_json(), status, m_led
+
+    def test_edit_lands_as_phrase_rows(self):
+        row = _row(version=2,
+                   auto_text="we kept showing up every single day")
+        body, status, m_led = self._put(
+            "we stayed relentless every single day", row=row)
+        self.assertEqual(status, 200)
+        kw = m_led.call_args.kwargs
+        self.assertEqual(kw["kind"], "replace")
+        self.assertEqual(kw["decision"], "approved")
+        self.assertEqual(kw["source"], "user_edit")
+        self.assertEqual(kw["target_phrase"], "kept showing up")
+        self.assertEqual(kw["replacement_text"], "stayed relentless")
+        self.assertEqual(kw["version"], 2)
+
+    def test_verified_current_version_diffs_against_snapshot(self):
+        row = _row(version=2, verified_version=2,
+                   verified_text="we kept showing up every single day",
+                   auto_text="a stale machine copy")
+        body, status, m_led = self._put(
+            "we stayed relentless every single day", row=row)
+        self.assertEqual(status, 200)
+        self.assertEqual(m_led.call_args.kwargs["target_phrase"],
+                         "kept showing up")
+
+    def test_wholesale_rewrite_writes_no_rows(self):
+        row = _row(version=2, auto_text="alpha beta gamma delta epsilon")
+        body, status, m_led = self._put(
+            "completely different sentence with new words here", row=row)
+        self.assertEqual(status, 200)
+        self.assertTrue(body["saved"])
+        m_led.assert_not_called()
+
+    def test_ledger_failure_never_breaks_the_save(self):
+        row = _row(version=2, auto_text="we kept going strong")
+        with self.app.test_request_context(
+                json={"text": "we kept moving strong", "version": 2}):
+            request.user_id = "u1"
+            with patch.object(v2, "_arc_owned_by_caller",
+                              return_value=(True, [])), \
+                 patch.object(v2.db, "get_coach_arc_ideal_text",
+                              return_value=row), \
+                 patch.object(v2.db, "upsert_user_ideal_edit",
+                              return_value=True), \
+                 patch.object(v2.db, "upsert_ideal_decision",
+                              side_effect=RuntimeError("boom")):
+                out = v2.v2_explore_put_ideal_user_edit.__wrapped__(ARC)
+                resp, status = out if isinstance(out, tuple) else (out, 200)
+        self.assertEqual(status, 200)
+        self.assertTrue(resp.get_json()["saved"])
+
+
+@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
 class StudentGetDisplayPriorityTests(unittest.TestCase):
     """BE-2 — the edit wins ONLY at the current version."""
 
