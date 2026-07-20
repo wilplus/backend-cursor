@@ -12643,6 +12643,15 @@ def v2_explore_get_ideal_text(arc_id):
                 # paywall → no paywall shown). Automatic moments are free
                 # regardless.
                 "explanations_available": bool(_has_expl),
+                # ── DISCERNMENT (founder 2026-07-20, flag-gated): the
+                # per-piece provenance layer — version badge = the take
+                # each piece came from; a pending challenger = the glowing
+                # badge + accept/reject. `why` is a template KEY (energy |
+                # steadiness | coverage | overall) — copy lives FE-side;
+                # nothing numeric rides here (AC-9), take_index is
+                # provenance, never a score. Absent when the flag is off
+                # or pre-migration (FE renders no badges). ──
+                **_discernment_pieces(arc_id),
                 # The moments-unlock price, top level (the FE reads it here
                 # for the locked-moment prompt — the only paid item).
                 "price_credits": int(getattr(
@@ -12750,6 +12759,165 @@ def v2_explore_put_ideal_notes(arc_id):
                      exc_info=True)
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR", "error": "Failed to save"}), 500
+
+
+def _discernment_pieces(arc_id) -> dict:
+    """The `pieces` block of the SD student GET (founder 2026-07-20) —
+    {} when the flag is off / pre-migration / no rows, so the key is
+    simply ABSENT and the FE renders no badge layer. Serve shape per
+    piece: {piece_key, text, take_index (the badge), snippet_id,
+    take_session_id, status, challenger{take_index, text, why,
+    snippet_id}|null}. `why` is the template key — the whole vocabulary
+    on this surface (AC-9/CONSTRUCT)."""
+    try:
+        from services.piece_provenance import WHY_KEYS, discernment_enabled
+        if not discernment_enabled():
+            return {}
+        rows = db.list_ideal_piece_provenance(str(arc_id)) or []
+        if not rows:
+            return {}
+        pieces = []
+        for r in rows:
+            ch = None
+            if r.get("status") == "pending_swap" \
+                    and r.get("challenger_snippet_id"):
+                _why = r.get("challenger_why")
+                ch = {
+                    "snippet_id": r.get("challenger_snippet_id"),
+                    "take_index": r.get("challenger_take_index"),
+                    "text": r.get("challenger_text"),
+                    "why": (_why if _why in WHY_KEYS else "overall"),
+                }
+            pieces.append({
+                "piece_key": r.get("piece_key"),
+                "text": r.get("display_text") or r.get("incumbent_text"),
+                "take_index": r.get("incumbent_take_index"),
+                "snippet_id": r.get("incumbent_snippet_id"),
+                "take_session_id": r.get("incumbent_session_id"),
+                "status": r.get("status") or "settled",
+                "challenger": ch,
+            })
+        return {"pieces": pieces}
+    except Exception as e:
+        logger.warning("discernment pieces failed arc=%s: %s", arc_id, e)
+        return {}
+
+
+@v2_bp.route("/explore/arc/<arc_id>/pieces/<int:piece_key>/swap",
+             methods=["POST"])
+@require_auth
+def v2_explore_piece_swap(arc_id, piece_key):
+    """The discernment DECISION (founder 2026-07-20): accept lands the
+    pending swap (incumbent ← challenger, badge flips, the text
+    reassembles → version bump + ready bubble), reject pins the incumbent
+    (the challenger joins rejected_snippet_ids and is never re-offered).
+
+    Body: { action: "accept"|"reject",
+            challenger_snippet_id: <echo of the offered challenger> }
+    The echo is the race guard: a newer take may have replaced the
+    challenger between render and tap — a mismatch answers 409 STALE_SWAP
+    and the FE refetches.
+
+    200 { saved, piece } · 400 · 404 · 409 STALE_SWAP / NOT_PENDING · 500
+    """
+    try:
+        from services.piece_provenance import discernment_enabled
+        if not discernment_enabled() or not _single_deliverable_enabled():
+            return jsonify({"code": "NOT_FOUND", "error": "not found"}), 404
+        owned, _ = _arc_owned_by_caller(arc_id)
+        if not owned:
+            return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
+        body = request.get_json(silent=True) or {}
+        action = body.get("action")
+        if action not in ("accept", "reject"):
+            return jsonify({"code": "INVALID_INPUT",
+                            "error": "action must be accept or reject"}), 400
+        echo = (body.get("challenger_snippet_id") or "").strip()
+        if not echo:
+            return jsonify({"code": "INVALID_INPUT",
+                            "error": "challenger_snippet_id is required"}), 400
+
+        row = db.get_ideal_piece_provenance(str(arc_id), int(piece_key))
+        if not row:
+            return jsonify({"code": "NOT_FOUND",
+                            "error": "piece not found"}), 404
+        if row.get("status") != "pending_swap" \
+                or not row.get("challenger_snippet_id"):
+            return jsonify({"code": "NOT_PENDING",
+                            "error": "No swap is pending here."}), 409
+        if str(row.get("challenger_snippet_id")) != echo:
+            return jsonify({
+                "code": "STALE_SWAP",
+                "error": "A newer take changed this suggestion.",
+            }), 409
+
+        if action == "accept":
+            fields = {
+                "incumbent_snippet_id": row.get("challenger_snippet_id"),
+                "incumbent_session_id": row.get("challenger_session_id"),
+                "incumbent_take_index": row.get("challenger_take_index"),
+                "incumbent_text": row.get("challenger_text"),
+                "display_text": row.get("challenger_text"),
+                "status": "settled",
+                "challenger_snippet_id": None,
+                "challenger_session_id": None,
+                "challenger_take_index": None,
+                "challenger_text": None,
+                "challenger_why": None,
+            }
+        else:
+            _rej = [str(x) for x in (row.get("rejected_snippet_ids") or [])
+                    if x]
+            _rej.append(str(row.get("challenger_snippet_id")))
+            fields = {
+                "status": "settled",
+                "rejected_snippet_ids": sorted(set(_rej)),
+                "challenger_snippet_id": None,
+                "challenger_session_id": None,
+                "challenger_take_index": None,
+                "challenger_text": None,
+                "challenger_why": None,
+            }
+        ok = db.upsert_ideal_piece_provenance(
+            str(arc_id), int(piece_key), fields)
+        if not ok:
+            return jsonify({"code": "V2_ERROR",
+                            "error": "Could not save"}), 500
+
+        # An ACCEPTED swap changes the master text → reassemble + persist
+        # (version bump, per-version snapshot, the idempotent ready
+        # bubble). A reject changes nothing — no reassembly. Best-effort:
+        # the decision is saved either way.
+        if action == "accept":
+            try:
+                from services.ideal_text_block import (
+                    maybe_assemble_ideal_text,
+                )
+                maybe_assemble_ideal_text(
+                    str(arc_id), require_target=False,
+                    include_suggestion_anchors=_moment_suggestions_enabled())
+                from services.arc_notifications import (
+                    fire_ideal_version_ready,
+                )
+                _r2 = db.get_coach_arc_ideal_text(arc_id) or {}
+                if _r2.get("version"):
+                    fire_ideal_version_ready(
+                        db, str(request.user_id), str(arc_id),
+                        _r2["version"])
+            except Exception as _sw_err:
+                logger.warning("piece swap: reassembly failed arc=%s: %s",
+                               arc_id, _sw_err)
+
+        piece = (_discernment_pieces(arc_id).get("pieces") or [])
+        piece = next((p for p in piece
+                      if p.get("piece_key") == int(piece_key)), None)
+        return jsonify({"saved": True, "piece": piece}), 200
+    except Exception as e:
+        logger.error("piece swap failed arc=%s key=%s: %s",
+                     arc_id, piece_key, e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR",
+                        "error": "Failed to save the decision"}), 500
 
 
 @v2_bp.route("/explore/arc/<arc_id>/ideal-text/user-edit", methods=["PUT"])

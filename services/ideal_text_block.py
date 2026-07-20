@@ -114,10 +114,30 @@ def assemble_ideal_text_block(arc_id: str, *, database=None,
                  if r.get("decision") == "approved"]
     _decided = ledger_keys(_ledger_rows)
 
+    # ── DISCERNMENT (founder 2026-07-20, flag-gated): per-piece
+    # provenance + approve-gated swaps. The ranking's winners pass through
+    # resolve_discernment, which substitutes the INCUMBENT wherever a
+    # better-ranked challenger is pending or was rejected — the text never
+    # swaps silently. Flag OFF → byte-for-byte today's behavior. ──
+    from services.piece_provenance import (
+        discernment_enabled, persist_piece_meta, resolve_discernment,
+    )
+    _slides_in = bp.get("slides") or []
+    _piece_meta: list = []
+    _discern_on = discernment_enabled()
+    if _discern_on:
+        try:
+            _prov_rows = database.list_ideal_piece_provenance(str(arc_id))
+        except Exception:
+            _prov_rows = []
+        _slides_in, _piece_meta = resolve_discernment(
+            _slides_in, _prov_rows, database, arc_id)
+    _meta_by_key = {m["piece_key"]: m for m in _piece_meta}
+
     paragraphs: list = []
     key_moments: list = []
     polish: list = []
-    for s in (bp.get("slides") or []):
+    for s in (_slides_in or []):
         _edited = (s.get("text") or "").strip()
         _verbatim = (s.get("verbatim") or "").strip()
         text = (_verbatim if _polish_on else _edited) or _edited
@@ -160,7 +180,19 @@ def assemble_ideal_text_block(arc_id: str, *, database=None,
                     "edited": _edited,          # the fold target on Approve
                     "verbatim": _verbatim,      # recurrence check (rule 4a)
                 })
+        # Discernment: the piece's FINAL text (post-bake, anchor markers
+        # stripped) is what the badge layer serves per slot.
+        if _discern_on and isinstance(s.get("index"), int) \
+                and s.get("index") in _meta_by_key:
+            _meta_by_key[s["index"]]["text"] = strip_moment_markers(text)
         paragraphs.append(text)
+
+    if _discern_on and _piece_meta:
+        try:
+            persist_piece_meta(database, arc_id, _piece_meta)
+        except Exception as _pp_err:
+            logger.warning("ideal_text: piece provenance persist failed "
+                           "arc=%s: %s", arc_id, _pp_err)
 
     return {
         "text": "\n\n".join(paragraphs)[:_MAX_BLOCK_CHARS],

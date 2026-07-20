@@ -10240,6 +10240,82 @@ class DatabaseService:
                            arc_id, e)
             return None
 
+    # ── per-piece provenance / discernment (founder 2026-07-20) ──────
+    # See services/piece_provenance.py + add_ideal_piece_provenance.sql.
+    # All best-effort with table-missing degradation (LIVE LOOP).
+
+    def upsert_ideal_piece_provenance(self, arc_id: str, piece_key: int,
+                                      fields: dict) -> bool:
+        """Partial upsert of one (arc, piece) provenance row. `fields`
+        holds only the columns to set; the key pair is enforced here."""
+        if not arc_id or not isinstance(piece_key, int) \
+                or not isinstance(fields, dict):
+            return False
+        try:
+            payload = dict(fields)
+            payload["arc_id"] = str(arc_id)
+            payload["piece_key"] = piece_key
+            payload["updated_at"] = datetime.now(timezone.utc).isoformat()
+            self.client.table("ideal_piece_provenance").upsert(
+                payload, on_conflict="arc_id,piece_key").execute()
+            return True
+        except Exception as e:
+            _e = str(e).lower()
+            if "ideal_piece_provenance" in _e and (
+                "does not exist" in _e or "pgrst" in _e
+            ):
+                logger.warning(
+                    "upsert_ideal_piece_provenance: table missing (run "
+                    "migrations/add_ideal_piece_provenance.sql)")
+                return False
+            logger.warning("upsert_ideal_piece_provenance failed arc=%s: %s",
+                           arc_id, e)
+            return False
+
+    def list_ideal_piece_provenance(self, arc_id: Optional[str]) -> list:
+        """All provenance rows of an arc, slot order. [] pre-migration /
+        on hiccup — assembly degrades to today's behavior."""
+        if not arc_id:
+            return []
+        try:
+            res = (
+                self.client.table("ideal_piece_provenance")
+                .select("*")
+                .eq("arc_id", str(arc_id))
+                .order("piece_key", desc=False)
+                .execute()
+            )
+            return res.data or []
+        except Exception as e:
+            _e = str(e).lower()
+            if "ideal_piece_provenance" in _e and (
+                "does not exist" in _e or "pgrst" in _e
+            ):
+                return []
+            logger.warning("list_ideal_piece_provenance failed arc=%s: %s",
+                           arc_id, e)
+            return []
+
+    def get_ideal_piece_provenance(self, arc_id: Optional[str],
+                                   piece_key: Any) -> Optional[dict]:
+        """One provenance row, or None."""
+        if not arc_id or not isinstance(piece_key, int):
+            return None
+        try:
+            res = (
+                self.client.table("ideal_piece_provenance")
+                .select("*")
+                .eq("arc_id", str(arc_id))
+                .eq("piece_key", piece_key)
+                .limit(1)
+                .execute()
+            )
+            return (res.data or [None])[0]
+        except Exception as e:
+            logger.warning("get_ideal_piece_provenance failed arc=%s: %s",
+                           arc_id, e)
+            return None
+
     def set_session_priming(
         self, session_id: str,
         condition: Optional[str], phrase: Optional[str],
