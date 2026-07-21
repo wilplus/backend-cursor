@@ -12758,6 +12758,89 @@ def v2_explore_put_ideal_notes(arc_id):
         return jsonify({"code": "V2_ERROR", "error": "Failed to save"}), 500
 
 
+@v2_bp.route("/explore/arc/<arc_id>/prior-take/decide", methods=["POST"])
+@require_auth
+def v2_explore_decide_prior_take(arc_id):
+    """The decision on a cross-take change (founder 2026-07-20 #4):
+
+      accept → the PREVIOUS take's wording replaces the current one and
+               BAKES FORWARD — an approved ledger row keyed on the
+               current phrase, so every future document carries it and
+               it is never re-litigated;
+      keep   → the current wording stands; the offer is remembered as
+               dismissed and never shown again.
+
+    Body: { action: "accept"|"keep", snippet_id (the previous fragment —
+            the change's `snippet_id`), quote (the current words),
+            proposed_text (the previous words; required to accept) }
+    200 { saved } · 400 · 404 · 500
+    """
+    try:
+        from services.ideal_text_block import _living_transcript_enabled
+        if not _living_transcript_enabled() \
+                or not _single_deliverable_enabled():
+            return jsonify({"code": "NOT_FOUND", "error": "not found"}), 404
+        owned, _ = _arc_owned_by_caller(arc_id)
+        if not owned:
+            return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
+        body = request.get_json(silent=True) or {}
+        action = body.get("action")
+        if action not in ("accept", "keep"):
+            return jsonify({"code": "INVALID_INPUT",
+                            "error": "action must be accept or keep"}), 400
+        quote = (body.get("quote") or "").strip()
+        snippet_id = (body.get("snippet_id") or "").strip()
+        proposed = (body.get("proposed_text") or "").strip()
+        if not quote or not snippet_id:
+            return jsonify({
+                "code": "INVALID_INPUT",
+                "error": "quote and snippet_id are required",
+            }), 400
+        if action == "accept" and not proposed:
+            return jsonify({"code": "INVALID_INPUT",
+                            "error": "proposed_text is required"}), 400
+
+        from services.ideal_decision_ledger import normalize_phrase
+        _v = None
+        try:
+            _v = (db.get_coach_arc_ideal_text(arc_id) or {}).get("version")
+        except Exception:
+            _v = None
+        ok = db.upsert_ideal_decision(
+            arc_id=str(arc_id), kind="replace",
+            target_phrase=normalize_phrase(quote),
+            display_phrase=quote,
+            replacement_text=(proposed if action == "accept" else None),
+            decision=("approved" if action == "accept" else "dismissed"),
+            source="prior_take", snippet_id=snippet_id,
+            version=(_v if isinstance(_v, int) else None))
+        return jsonify({"saved": bool(ok)}), 200
+    except Exception as e:
+        logger.error("prior-take decide failed arc=%s: %s", arc_id, e,
+                     exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR",
+                        "error": "Failed to save the decision"}), 500
+
+
+def _previous_spoken_session(arc_id, current_session_id):
+    """The spoken take immediately BEFORE the document's take — the
+    comparison base for cross-take discernment. None when this is the
+    first take. Best-effort."""
+    try:
+        from services.best_presentation import spoken_arc_sessions
+        spoken = spoken_arc_sessions(db.get_arc_sessions(arc_id) or [])
+        spoken.sort(key=lambda s: (s.get("take_index") or 0,
+                                   s.get("created_at") or ""))
+        ids = [str(s.get("id")) for s in spoken if s.get("id")]
+        if not current_session_id or str(current_session_id) not in ids:
+            return None
+        i = ids.index(str(current_session_id))
+        return ids[i - 1] if i > 0 else None
+    except Exception:
+        return None
+
+
 def _tracked_changes_block(arc_id, served_text) -> dict:
     """The `changes` block of the SD student GET (founder 2026-07-20) —
     {} when the Living Transcript flag is off, so the key is simply
@@ -12788,6 +12871,39 @@ def _tracked_changes_block(arc_id, served_text) -> dict:
             _applied = []
         changes = build_tracked_changes(
             served_text, doc.get("pieces") or [], _sugs, applied=_applied)
+
+        # ── CROSS-TAKE DISCERNMENT (founder decision 2026-07-20 #4):
+        # where the PREVIOUS take said the same thing better, its wording
+        # comes back as an approvable change on this document ("your
+        # previous version landed better here"). The ranking blend does
+        # the judging (L2 untouched); a fragment the student already
+        # decided on is never re-offered. Best-effort. ──
+        try:
+            _prev = _previous_spoken_session(arc_id,
+                                             doc.get("take_session_id"))
+            if _prev:
+                from services.prior_take_changes import (
+                    build_prior_take_changes,
+                )
+                from services.ideal_decision_ledger import load_ledger
+                _prev_doc = build_transcript_document(
+                    arc_id, database=db, session_id=_prev)
+                if _prev_doc:
+                    _decided = {
+                        str(r.get("snippet_id"))
+                        for r in (load_ledger(db, arc_id) or [])
+                        if r.get("snippet_id")
+                    }
+                    changes.extend(build_prior_take_changes(
+                        {"text": served_text,
+                         "pieces": doc.get("pieces") or []},
+                        _prev_doc, database=db, decided_ids=_decided))
+                    changes.sort(key=lambda c: (c["span"]["start"],
+                                                c["span"]["end"]))
+        except Exception as _pt_err:
+            logger.warning("prior-take changes failed arc=%s: %s",
+                           arc_id, _pt_err)
+
         if not verify_changes(served_text, changes):
             logger.warning("tracked changes: span check failed arc=%s "
                            "(serving none)", arc_id)
