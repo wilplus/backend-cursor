@@ -8834,6 +8834,10 @@ def v2_user_suggestion_feedback(snippet_id):
                     # next assembly).
                     if action == "dismissed":
                         db.delete_moment_suggestion(str(snippet_id))
+                    if action == "applied":
+                        # Living Transcript: an approved change must
+                        # disappear from the document NOW, not next take.
+                        _reassemble_after_decision(_arc)
             except Exception as _led_err:
                 logger.warning(
                     "suggestion-feedback: ledger write failed snip=%s: %s",
@@ -12643,6 +12647,12 @@ def v2_explore_get_ideal_text(arc_id):
                 # paywall → no paywall shown). Automatic moments are free
                 # regardless.
                 "explanations_available": bool(_has_expl),
+                # ── LIVING TRANSCRIPT (founder 2026-07-20, flag-gated):
+                # span-anchored tracked changes on the full-transcript
+                # document — strike/propose/bold/advice, each pointing at
+                # exactly the words it is about. Absent when the flag is
+                # off (the FE keeps rendering today's star layer). ──
+                **_tracked_changes_block(arc_id, _text),
                 # The moments-unlock price, top level (the FE reads it here
                 # for the locked-moment prompt — the only paid item).
                 "price_credits": int(getattr(
@@ -12750,6 +12760,196 @@ def v2_explore_put_ideal_notes(arc_id):
                      exc_info=True)
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR", "error": "Failed to save"}), 500
+
+
+@v2_bp.route("/explore/arc/<arc_id>/prior-take/decide", methods=["POST"])
+@require_auth
+def v2_explore_decide_prior_take(arc_id):
+    """The decision on a cross-take change (founder 2026-07-20 #4):
+
+      accept → the PREVIOUS take's wording replaces the current one and
+               BAKES FORWARD — an approved ledger row keyed on the
+               current phrase, so every future document carries it and
+               it is never re-litigated;
+      keep   → the current wording stands; the offer is remembered as
+               dismissed and never shown again.
+
+    Body: { action: "accept"|"keep", snippet_id (the previous fragment —
+            the change's `snippet_id`), quote (the current words),
+            proposed_text (the previous words; required to accept) }
+    200 { saved } · 400 · 404 · 500
+    """
+    try:
+        from services.ideal_text_block import _living_transcript_enabled
+        if not _living_transcript_enabled() \
+                or not _single_deliverable_enabled():
+            return jsonify({"code": "NOT_FOUND", "error": "not found"}), 404
+        owned, _ = _arc_owned_by_caller(arc_id)
+        if not owned:
+            return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
+        body = request.get_json(silent=True) or {}
+        action = body.get("action")
+        if action not in ("accept", "keep"):
+            return jsonify({"code": "INVALID_INPUT",
+                            "error": "action must be accept or keep"}), 400
+        quote = (body.get("quote") or "").strip()
+        snippet_id = (body.get("snippet_id") or "").strip()
+        proposed = (body.get("proposed_text") or "").strip()
+        if not quote or not snippet_id:
+            return jsonify({
+                "code": "INVALID_INPUT",
+                "error": "quote and snippet_id are required",
+            }), 400
+        if action == "accept" and not proposed:
+            return jsonify({"code": "INVALID_INPUT",
+                            "error": "proposed_text is required"}), 400
+
+        from services.ideal_decision_ledger import normalize_phrase
+        _v = None
+        try:
+            _v = (db.get_coach_arc_ideal_text(arc_id) or {}).get("version")
+        except Exception:
+            _v = None
+        ok = db.upsert_ideal_decision(
+            arc_id=str(arc_id), kind="replace",
+            target_phrase=normalize_phrase(quote),
+            display_phrase=quote,
+            replacement_text=(proposed if action == "accept" else None),
+            decision=("approved" if action == "accept" else "dismissed"),
+            source="prior_take", snippet_id=snippet_id,
+            version=(_v if isinstance(_v, int) else None))
+        if ok and action == "accept":
+            _reassemble_after_decision(arc_id)
+        return jsonify({"saved": bool(ok)}), 200
+    except Exception as e:
+        logger.error("prior-take decide failed arc=%s: %s", arc_id, e,
+                     exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR",
+                        "error": "Failed to save the decision"}), 500
+
+
+def _reassemble_after_decision(arc_id) -> None:
+    """A decision that CHANGES the document must take effect at once
+    (founder: "when I approve it the crossed text disappears and only
+    the new one stays").
+
+    The bake runs at ASSEMBLY, and the student GET serves the PERSISTED
+    document — so without this an approval would only show up after the
+    next take (the review's most-confirmed defect). Reassembling here
+    re-bakes, re-anchors, bumps the version and snapshots it, exactly as
+    a new take would. Best-effort: the decision is already saved."""
+    try:
+        from services.ideal_text_block import (
+            _living_transcript_enabled, maybe_assemble_ideal_text,
+        )
+        if not _living_transcript_enabled():
+            return
+        maybe_assemble_ideal_text(str(arc_id), require_target=False)
+    except Exception as e:
+        logger.warning("living_transcript: post-decision reassembly "
+                       "failed arc=%s: %s", arc_id, e)
+
+
+def _previous_spoken_session(arc_id, current_session_id):
+    """The spoken take immediately BEFORE the document's take — the
+    comparison base for cross-take discernment. None when this is the
+    first take. Best-effort."""
+    try:
+        from services.best_presentation import spoken_arc_sessions
+        spoken = spoken_arc_sessions(db.get_arc_sessions(arc_id) or [])
+        spoken.sort(key=lambda s: (s.get("take_index") or 0,
+                                   s.get("created_at") or ""))
+        ids = [str(s.get("id")) for s in spoken if s.get("id")]
+        if not current_session_id or str(current_session_id) not in ids:
+            return None
+        i = ids.index(str(current_session_id))
+        return ids[i - 1] if i > 0 else None
+    except Exception:
+        return None
+
+
+def _tracked_changes_block(arc_id, served_text) -> dict:
+    """The `changes` block of the SD student GET (founder 2026-07-20) —
+    {} when the Living Transcript flag is off, so the key is simply
+    ABSENT and the FE keeps rendering today's star layer.
+
+    Anchors are resolved against the SERVED text: each piece of the take
+    the document came from is located as an exact substring, then the
+    change is narrowed inside that window. A piece whose words are no
+    longer there (baked, coach-corrected, student-edited) yields NO
+    change rather than a mis-pointed one (#219). Best-effort."""
+    try:
+        from services.ideal_text_block import _living_transcript_enabled
+        if not _living_transcript_enabled():
+            return {}
+        from services.tracked_changes import (
+            build_tracked_changes, drop_overlaps, verify_changes,
+        )
+        from services.transcript_document import (
+            build_transcript_document, relocate_pieces,
+        )
+        doc = build_transcript_document(arc_id, database=db)
+        if not doc:
+            return {}
+        # The served text may already carry approved bakes / coach text —
+        # re-anchor the pieces onto it MONOTONICALLY (never a bare
+        # first-occurrence search, the review's mis-anchor defect).
+        _pieces = relocate_pieces(served_text, doc.get("pieces") or [])
+        _sugs = db.get_moment_suggestions_by_arc(arc_id) or {}
+        _applied = []
+        try:
+            _applied = [k for k, v in _moment_applied_map(
+                [doc.get("take_session_id")]).items() if v]
+        except Exception:
+            _applied = []
+        changes = build_tracked_changes(
+            served_text, _pieces, _sugs, applied=_applied)
+
+        # ── CROSS-TAKE DISCERNMENT (founder decision 2026-07-20 #4):
+        # where the PREVIOUS take said the same thing better, its wording
+        # comes back as an approvable change on this document. The
+        # ranking blend does the judging (L2 untouched); a fragment the
+        # student already decided on is never re-offered. Best-effort. ──
+        try:
+            _prev = _previous_spoken_session(arc_id,
+                                             doc.get("take_session_id"))
+            if _prev:
+                from services.prior_take_changes import (
+                    build_prior_take_changes,
+                )
+                from services.ideal_decision_ledger import load_ledger
+                _prev_doc = build_transcript_document(
+                    arc_id, database=db, session_id=_prev)
+                if _prev_doc:
+                    # ONLY cross-take decisions suppress a cross-take
+                    # offer — a star-lane decision on the same snippet
+                    # must not silence it (review finding).
+                    _decided = {
+                        str(r.get("snippet_id"))
+                        for r in (load_ledger(db, arc_id) or [])
+                        if r.get("snippet_id")
+                        and r.get("source") == "prior_take"
+                    }
+                    changes.extend(build_prior_take_changes(
+                        {"text": served_text, "pieces": _pieces},
+                        _prev_doc, database=db, decided_ids=_decided))
+        except Exception as _pt_err:
+            logger.warning("prior-take changes failed arc=%s: %s",
+                           arc_id, _pt_err)
+
+        # One span may carry only ONE change — a polish star and a
+        # cross-take offer on the same words would render as overlapping
+        # strikes (review finding). Earliest-then-narrowest wins.
+        changes = drop_overlaps(changes)
+        if not verify_changes(served_text, changes):
+            logger.warning("tracked changes: span check failed arc=%s "
+                           "(serving none)", arc_id)
+            return {"changes": []}
+        return {"changes": changes}
+    except Exception as e:
+        logger.warning("tracked changes failed arc=%s: %s", arc_id, e)
+        return {}
 
 
 @v2_bp.route("/explore/arc/<arc_id>/ideal-text/user-edit", methods=["PUT"])
