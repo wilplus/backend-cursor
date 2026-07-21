@@ -65,6 +65,77 @@ MOMENT_SPAN_RE = re.compile(
 _MAX_BLOCK_CHARS = 20000
 
 
+def _living_transcript_enabled() -> bool:
+    """THE DOCUMENT MODEL (founder decision 2026-07-20 #1): the ideal text
+    is the speaker's FULL transcript of the take, not a stitched selection
+    of best-ranked moments ("it is very much shorter than what I really
+    said"). DEFAULT OFF — flag ON swaps the document source; every other
+    lane (ledger bake, protected phrases, versions, snapshots, coach
+    verify) is untouched and keeps working on the new base."""
+    return (os.getenv("LIVING_TRANSCRIPT_ENABLED") or "0").strip().lower() \
+        in ("1", "true", "yes")
+
+
+def assemble_transcript_document(arc_id: str, *, database=None) -> dict:
+    """The full-transcript document, ledger-baked — the flag-ON assembly
+    path. Same return shape as assemble_ideal_text_block so every caller
+    (persist, version bump, snapshot, serve) works unchanged.
+
+    key_moments/polish are EMPTY here on purpose: on the transcript
+    document, changes are span-anchored tracked changes (BE-C), not
+    moment-wrapped picks. The anchor markers stay out of the text."""
+    if database is None:
+        from services.db import db as database
+    from services.ideal_decision_ledger import bake_piece, load_ledger
+    from services.transcript_document import (
+        build_transcript_document, relocate_pieces,
+    )
+
+    doc = build_transcript_document(arc_id, database=database)
+    if not doc or not (doc.get("text") or "").strip():
+        return {"text": "", "key_moments": [], "polish": [], "ready": False}
+
+    text = doc["text"]
+    pieces = doc.get("pieces") or []
+    # The student's APPROVED changes bake into every future document
+    # (gradual-refinement rule 1). Applied to the whole document, then the
+    # pieces are RE-ANCHORED monotonically onto the baked text — so an
+    # approval takes effect immediately AND the surviving anchors stay
+    # exact (both were confirmed review findings).
+    try:
+        _approved = [r for r in load_ledger(database, arc_id)
+                     if r.get("decision") == "approved"]
+        if _approved:
+            baked = bake_piece(text, _approved)
+            if baked != text:
+                text = baked
+                pieces = relocate_pieces(text, pieces)
+    except Exception as _le:
+        logger.warning("living_transcript: bake failed arc=%s: %s",
+                       arc_id, _le)
+
+    # Coach-surfaced pieces stay KEY MOMENTS on the document: the
+    # explanations lane (and the only paid surface) must not go dark in
+    # transcript mode (review finding).
+    key_moments = [{
+        "snippet_id": p["snippet_id"],
+        "take_session_id": p.get("take_session_id"),
+        "anchor": p.get("text") or "",
+    } for p in pieces if p.get("breakthrough")]
+
+    return {
+        "text": text[:_MAX_BLOCK_CHARS],
+        "key_moments": key_moments,
+        "polish": [],
+        "ready": True,
+        "document": {
+            "pieces": pieces,
+            "take_session_id": doc.get("take_session_id"),
+            "take_index": doc.get("take_index"),
+        },
+    }
+
+
 def assemble_ideal_text_block(arc_id: str, *, database=None,
                               require_ready: bool = True,
                               extra_anchor_ids=None) -> dict:
@@ -209,9 +280,16 @@ def maybe_assemble_ideal_text(arc_id: Optional[str], *, database=None,
                     database.get_moment_suggestions_by_arc(arc_id) or {})
             except Exception:
                 _extra = None
-        auto = assemble_ideal_text_block(
-            arc_id, database=database, require_ready=require_target,
-            extra_anchor_ids=_extra)
+        # THE DOCUMENT SOURCE (founder decision 2026-07-20 #1): the full
+        # transcript of the latest spoken take, or — flag OFF — the legacy
+        # best-moments selection. Everything downstream (persist, version
+        # bump, snapshot, verify, ledger) is identical either way.
+        if _living_transcript_enabled():
+            auto = assemble_transcript_document(arc_id, database=database)
+        else:
+            auto = assemble_ideal_text_block(
+                arc_id, database=database, require_ready=require_target,
+                extra_anchor_ids=_extra)
         text = (auto.get("text") or "").strip()
         if not text:
             return False
