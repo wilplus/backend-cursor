@@ -141,6 +141,14 @@ def build_tracked_changes(text: Any, pieces: Any, suggestions: Any,
         entry = {
             "id": sid,
             "snippet_id": sid,
+            # The take this piece came from — the FE fills the
+            # suggestion-feedback POST's required `session_id` from it
+            # (FE contract ask 2026-07-21: a replace/bold with no
+            # snippet+session pair is not actionable and the FE drops it,
+            # so without this every text change renders as a dead
+            # button). Carried from the piece; always present on a
+            # transcript-document piece.
+            "take_session_id": p.get("take_session_id"),
             "kind": kind,
             "source": source,
             "span": {"start": start, "end": end},

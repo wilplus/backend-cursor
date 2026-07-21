@@ -244,9 +244,9 @@ class TrackedChangeTests(unittest.TestCase):
     # Pieces carry their CHARACTER SPAN — build_tracked_changes anchors on
     # it, never on a text search (the mis-anchor defect the review found).
     PIECES = [{"snippet_id": S1, "text": "We started small.",
-               "start": 0, "end": 17},
+               "take_session_id": T1, "start": 0, "end": 17},
               {"snippet_id": S2, "text": "And then we shipped it fast.",
-               "start": 18, "end": 46}]
+               "take_session_id": T1, "start": 18, "end": 46}]
 
     def _changes(self, sugs, **kw):
         return build_tracked_changes(self.DOC, self.PIECES, sugs, **kw)
@@ -258,6 +258,10 @@ class TrackedChangeTests(unittest.TestCase):
         c = self._changes(sugs)[0]
         self.assertEqual(c["kind"], "replace")
         self.assertEqual(c["source"], "polish")
+        # FE contract ask #2 (2026-07-21): a replace/bold carries its
+        # take's session so the FE can call suggestion-feedback (which
+        # requires session_id) — without it the change is a dead button.
+        self.assertEqual(c["take_session_id"], T1)
         self.assertEqual(c["quote"], "shipped")       # NOT the whole piece
         self.assertEqual(c["proposed_text"],
                          "And then we launched it fast.")

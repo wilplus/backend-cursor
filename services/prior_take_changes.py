@@ -226,6 +226,13 @@ def build_prior_take_changes(doc: Any, prev_doc: Any, *, database,
                 "id": f"prior:{new_id}",
                 "snippet_id": old_id,          # what Accept/Keep decides on
                 "replaces_snippet_id": new_id,
+                # The CURRENT take's session (the one on screen) — the FE
+                # renders a replace only with a snippet+session pair (FE
+                # contract 2026-07-21). The /prior-take/decide endpoint
+                # itself keys on snippet_id+quote, not session, so this is
+                # for the render gate; the displayed take is the honest
+                # value.
+                "take_session_id": new_p.get("take_session_id"),
                 "kind": "replace",
                 "source": "prior_take",
                 "span": {"start": start, "end": end},

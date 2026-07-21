@@ -41,12 +41,14 @@ def _p(sid, text, take=1, start=None, end=None):
     return out
 
 
-def _doc(text, specs):
+def _doc(text, specs, take_session_id="sess-new"):
     """Build a document whose pieces carry spans located in `text`."""
     pieces, cursor = [], 0
     for sid, frag, take in specs:
         i = text.index(frag, cursor)
-        pieces.append(_p(sid, frag, take, start=i, end=i + len(frag)))
+        pc = _p(sid, frag, take, start=i, end=i + len(frag))
+        pc["take_session_id"] = take_session_id
+        pieces.append(pc)
         cursor = i + len(frag)
     return {"text": text, "pieces": pieces}
 
@@ -159,6 +161,12 @@ class BuildChangesTests(unittest.TestCase):
                          "We started small in a cramped room.")
         self.assertEqual(c["take_index"], 1)           # the version badge
         self.assertIn(c["why_key"], WHY_KEYS)
+        # The reason rides `why_key` (`why` is null on a prior_take
+        # change) — the FE reads why_key first (contract 2026-07-21).
+        self.assertIsNone(c["why"])
+        # Carries the CURRENT take's session so the FE render-gate
+        # (snippet+session) does not drop it.
+        self.assertEqual(c["take_session_id"], "sess-new")
 
     def test_span_slices_back_to_the_quote(self):
         doc, prev = self._docs()
