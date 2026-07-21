@@ -13493,6 +13493,21 @@ def v2_lab_create_recording():
             IntakeContextError, validate_intake_context_body,
         )
         form = request.form or {}
+
+        # ── LANE GUARD (founder bugs 2026-07-20). A read is a PAIRED
+        # variant of a spoken take, never a take of its own. An unpaired
+        # read used to fall through as SPOKEN — it took a take number,
+        # triggered assembly and minted a version ("the re-read counted
+        # as a take"). Fail fast, before any storage or processing. ──
+        _kind_raw = (form.get("recording_kind") or "spoken").strip().lower()
+        if _kind_raw == "read":
+            _pair_raw = (form.get("paired_session_id") or "").strip()
+            if not _pair_raw or not _is_valid_uuid(_pair_raw):
+                return jsonify({
+                    "code": "INVALID_INPUT",
+                    "error": ("A re-read needs the spoken take it belongs "
+                              "to (paired_session_id)."),
+                }), 422
         target_raw = form.get("target_length_seconds")
         try:
             target_len = int(target_raw) if target_raw not in (None, "") else None
@@ -13576,10 +13591,43 @@ def v2_lab_create_recording():
             put_coach_object_bytes, coach_media_public_url,
         )
         bucket = "coach_feedback_videos"
-        guest_session_id = (
-            (form.get("guest_session_id") or "").strip()
-            or str(uuid.uuid4())
-        )
+        # ── SESSION-REUSE GUARD (founder bug 2026-07-20: "after the
+        # re-read, recording the spoken version analyses the re-read").
+        # A session that ALREADY carries a recording is spent: reusing it
+        # made the new take inherit the previous one's lane (its
+        # recording_kind='read' + paired_session_id), so the fresh spoken
+        # audio was stored, analysed and folded as that re-read. A spent
+        # id is dropped and a fresh session minted — the response's
+        # `session_id` is authoritative and the FE adopts it. ──
+        _sid_in = (form.get("guest_session_id") or "").strip()
+        if _sid_in:
+            _spent = False
+            try:
+                _prior = db.v2_get_session_by_id(_sid_in)
+                if _prior:
+                    # Any of these means the row already OWNS a recording
+                    # and its lane: reusing it would fold this audio into
+                    # that one.
+                    _spent = bool(
+                        _prior.get("recording_1_id")
+                        or _prior.get("recording_kind")
+                        or _prior.get("paired_session_id")
+                        or _prior.get("analysis_state")
+                        or _prior.get("results_published_at")
+                    )
+            except Exception as _reuse_err:
+                # Fail CLOSED: an unknown state must not risk folding a
+                # fresh take into a spent session.
+                logger.warning(
+                    "lab: session-reuse check failed sid=%s: %s (minting "
+                    "fresh)", _sid_in, _reuse_err)
+                _spent = True
+            if _spent:
+                logger.info(
+                    "lab: spent session %s not reused — minting fresh "
+                    "(lane guard)", _sid_in)
+                _sid_in = ""
+        guest_session_id = _sid_in or str(uuid.uuid4())
         recording_id = str(uuid.uuid4())
         ext = os.path.splitext(audio_file.filename or "")[1] or ".webm"
         parent_key = f"willab_lab/{guest_session_id}/recording_{uuid.uuid4().hex}{ext}"
@@ -13893,9 +13941,16 @@ def v2_lab_create_recording():
             # arc's 3rd SPOKEN take finishes analysis, assemble + persist the
             # machine draft so the coach's panel opens instantly ("no loading
             # or anything" fixed at the source). Idempotent; never clobbers a
-            # coach edit; a read never triggers it. Best-effort.
-            if arc_id and (_rec_kind == "spoken"
-                           or _single_deliverable_enabled()):
+            # coach edit. Best-effort.
+            #
+            # SPOKEN ONLY (founder bug 2026-07-20). The old condition
+            # `_rec_kind == "spoken" or _single_deliverable_enabled()`
+            # meant that in SD mode — which is LIVE — a RE-READ ran the
+            # whole assembly: it regenerated suggestions, reassembled the
+            # text, bumped the version and fired a ready bubble, so a
+            # re-read read as a take. "Only a spoken take is a real take"
+            # is now enforced here, not just in the counters.
+            if arc_id and _rec_kind == "spoken":
                 try:
                     from services.ideal_text_block import (
                         maybe_assemble_ideal_text,
