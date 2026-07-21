@@ -12643,6 +12643,12 @@ def v2_explore_get_ideal_text(arc_id):
                 # paywall → no paywall shown). Automatic moments are free
                 # regardless.
                 "explanations_available": bool(_has_expl),
+                # ── LIVING TRANSCRIPT (founder 2026-07-20, flag-gated):
+                # span-anchored tracked changes on the full-transcript
+                # document — strike/propose/bold/advice, each pointing at
+                # exactly the words it is about. Absent when the flag is
+                # off (the FE keeps rendering today's star layer). ──
+                **_tracked_changes_block(arc_id, _text),
                 # The moments-unlock price, top level (the FE reads it here
                 # for the locked-moment prompt — the only paid item).
                 "price_credits": int(getattr(
@@ -12750,6 +12756,46 @@ def v2_explore_put_ideal_notes(arc_id):
                      exc_info=True)
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR", "error": "Failed to save"}), 500
+
+
+def _tracked_changes_block(arc_id, served_text) -> dict:
+    """The `changes` block of the SD student GET (founder 2026-07-20) —
+    {} when the Living Transcript flag is off, so the key is simply
+    ABSENT and the FE keeps rendering today's star layer.
+
+    Anchors are resolved against the SERVED text: each piece of the take
+    the document came from is located as an exact substring, then the
+    change is narrowed inside that window. A piece whose words are no
+    longer there (baked, coach-corrected, student-edited) yields NO
+    change rather than a mis-pointed one (#219). Best-effort."""
+    try:
+        from services.ideal_text_block import _living_transcript_enabled
+        if not _living_transcript_enabled():
+            return {}
+        from services.tracked_changes import (
+            build_tracked_changes, verify_changes,
+        )
+        from services.transcript_document import build_transcript_document
+        doc = build_transcript_document(arc_id, database=db)
+        if not doc:
+            return {}
+        _sugs = db.get_moment_suggestions_by_arc(arc_id) or {}
+        _applied = []
+        try:
+            _applied = [k for k, v in _moment_applied_map(
+                [doc.get("take_session_id")]).items() if v]
+        except Exception:
+            _applied = []
+        changes = build_tracked_changes(
+            served_text, doc.get("pieces") or [], _sugs, applied=_applied)
+        if not verify_changes(served_text, changes):
+            logger.warning("tracked changes: span check failed arc=%s "
+                           "(serving none)", arc_id)
+            return {"changes": []}
+        return {"changes": changes}
+    except Exception as e:
+        logger.warning("tracked changes failed arc=%s: %s", arc_id, e)
+        return {}
 
 
 @v2_bp.route("/explore/arc/<arc_id>/ideal-text/user-edit", methods=["PUT"])
