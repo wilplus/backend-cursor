@@ -103,10 +103,14 @@ def _candidate(snip: Any) -> dict:
     if isinstance(stick, dict):
         stick = stick.get("composite")
     return {
+        # `direction` is deliberately absent: the coach label lives in
+        # training_labels, never on a snippet row — reading a field that
+        # does not exist would silently rank delivery-only while looking
+        # blended (review finding). Cross-take comparison is therefore
+        # explicitly delivery+coverage, and says so.
         "activation": metrics.get("overall_score"),
         "slide_stickiness": stick,
         "tag": None,
-        "direction": s.get("coach_direction"),
         "breakthrough": False,
         "metrics": metrics,
     }
@@ -196,23 +200,35 @@ def build_prior_take_changes(doc: Any, prev_doc: Any, *, database,
             if not callable(_get):
                 continue
             new_c, old_c = _candidate(_get(new_id)), _candidate(_get(old_id))
+            # BOTH sides need a real measurement. Past the LLM budget a
+            # piece has no overall_score, and treating that as 0 handed
+            # out blanket "your previous take was better" offers on
+            # unmeasured material (review finding).
+            if new_c.get("activation") is None \
+                    or old_c.get("activation") is None:
+                continue
             s_new, s_old = _score(new_c), _score(old_c)
             if s_new is None or s_old is None:
                 continue
             if s_old - s_new <= _MIN_MARGIN:
                 continue   # the new take held its ground — nothing to say
 
-            # Anchor on the NEW fragment's own words in the served text.
-            start = text.find(new_text)
-            if start < 0:
-                continue   # baked/edited away — never re-point (#219)
+            # Anchor on the piece's CARRIED span (relocated onto the
+            # served text by the caller) — a bare search would point a
+            # repeated phrase at the wrong occurrence.
+            try:
+                start, end = int(new_p["start"]), int(new_p["end"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            if text[start:end] != new_text:
+                continue   # moved/baked away — never re-point (#219)
             out.append({
                 "id": f"prior:{new_id}",
                 "snippet_id": old_id,          # what Accept/Keep decides on
                 "replaces_snippet_id": new_id,
                 "kind": "replace",
                 "source": "prior_take",
-                "span": {"start": start, "end": start + len(new_text)},
+                "span": {"start": start, "end": end},
                 "quote": new_text,
                 "proposed_text": old_text,
                 "take_index": old_p.get("take_index"),

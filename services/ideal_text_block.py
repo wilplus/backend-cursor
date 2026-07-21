@@ -88,42 +88,48 @@ def assemble_transcript_document(arc_id: str, *, database=None) -> dict:
         from services.db import db as database
     from services.ideal_decision_ledger import bake_piece, load_ledger
     from services.transcript_document import (
-        build_transcript_document, verify_spans,
+        build_transcript_document, relocate_pieces,
     )
 
     doc = build_transcript_document(arc_id, database=database)
     if not doc or not (doc.get("text") or "").strip():
         return {"text": "", "key_moments": [], "polish": [], "ready": False}
-    if not verify_spans(doc):
-        logger.warning("living_transcript: span check failed arc=%s "
-                       "(serving text without piece spans)", arc_id)
-        doc["pieces"] = []
 
     text = doc["text"]
+    pieces = doc.get("pieces") or []
     # The student's APPROVED changes bake into every future document
-    # (gradual-refinement rule 1) — applied to the whole document so a
-    # phrase is caught wherever it now sits.
+    # (gradual-refinement rule 1). Applied to the whole document, then the
+    # pieces are RE-ANCHORED monotonically onto the baked text — so an
+    # approval takes effect immediately AND the surviving anchors stay
+    # exact (both were confirmed review findings).
     try:
         _approved = [r for r in load_ledger(database, arc_id)
                      if r.get("decision") == "approved"]
         if _approved:
             baked = bake_piece(text, _approved)
             if baked != text:
-                # Spans describe the UN-baked text; drop them rather than
-                # serve anchors that no longer match (the #219 lesson).
-                doc["pieces"] = []
                 text = baked
+                pieces = relocate_pieces(text, pieces)
     except Exception as _le:
         logger.warning("living_transcript: bake failed arc=%s: %s",
                        arc_id, _le)
 
+    # Coach-surfaced pieces stay KEY MOMENTS on the document: the
+    # explanations lane (and the only paid surface) must not go dark in
+    # transcript mode (review finding).
+    key_moments = [{
+        "snippet_id": p["snippet_id"],
+        "take_session_id": p.get("take_session_id"),
+        "anchor": p.get("text") or "",
+    } for p in pieces if p.get("breakthrough")]
+
     return {
         "text": text[:_MAX_BLOCK_CHARS],
-        "key_moments": [],
+        "key_moments": key_moments,
         "polish": [],
         "ready": True,
         "document": {
-            "pieces": doc.get("pieces") or [],
+            "pieces": pieces,
             "take_session_id": doc.get("take_session_id"),
             "take_index": doc.get("take_index"),
         },

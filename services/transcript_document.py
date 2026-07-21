@@ -65,6 +65,20 @@ def _load_overlays(database, session_id: str) -> tuple:
     return corrections, edits
 
 
+def _breakthrough_ids(database, session_id: str) -> set:
+    """Coach-SURFACED pieces of this take — they stay key moments on the
+    document so the explanations lane (and the only paid surface) keeps
+    working in transcript mode (review finding). Best-effort."""
+    out = set()
+    try:
+        for d in (database.get_coach_snippet_drafts(session_id) or []):
+            if d.get("surfaced") and d.get("snippet_id") is not None:
+                out.add(str(d["snippet_id"]))
+    except Exception:
+        pass
+    return out
+
+
 def build_transcript_document(arc_id: Any, *, database=None,
                               session_id: Any = None) -> Optional[dict]:
     """The full-transcript document for an arc's LATEST spoken take (or an
@@ -80,7 +94,9 @@ def build_transcript_document(arc_id: Any, *, database=None,
         if database is None:
             from services.db import db as database
         from services.best_presentation import spoken_arc_sessions
-        from services.transcript_smoothing import smooth_verbatim
+        from services.transcript_smoothing import (
+            finalize_document, smooth_piece,
+        )
 
         take_index = None
         if session_id:
@@ -108,15 +124,20 @@ def build_transcript_document(arc_id: Any, *, database=None,
         if not snips:
             return None
         corrections, edits = _load_overlays(database, sid)
+        breakthroughs = _breakthrough_ids(database, sid)
 
         pieces: list = []
         parts: list = []
         cursor = 0
-        for s in sorted(snips, key=lambda x: (x.get("start_offset_ms") or 0)):
+        for s in sorted(snips, key=lambda x: ((x.get("start_offset_ms") or 0),
+                                              str(x.get("id") or ""))):
             raw = _piece_text(s, corrections, edits)
             if not raw:
                 continue
-            text = smooth_verbatim(raw)
+            # PER-PIECE: hesitations + repeats + tidy only. Casing and the
+            # terminal mark belong to the finished document (a piece is
+            # very often mid-sentence — review finding).
+            text = smooth_piece(raw, s.get("language"))
             if not text:
                 continue
             if parts:
@@ -131,15 +152,24 @@ def build_transcript_document(arc_id: Any, *, database=None,
                 "start": start,
                 "end": cursor,
                 "text": text,
+                "breakthrough": str(s.get("id")) in breakthroughs,
                 "start_offset_ms": s.get("start_offset_ms"),
                 "duration_ms": s.get("duration_ms"),
             })
         if not pieces:
             return None
-        doc = _JOIN.join(parts)
+
+        # DOCUMENT-level finish: length-preserving casing + ONE terminal
+        # mark at the very end, so every span above stays valid. The
+        # pieces then re-slice from the finished text so piece text and
+        # document text can never disagree.
+        doc = finalize_document(_JOIN.join(parts))
+        for p in pieces:
+            p["text"] = doc[p["start"]:p["end"]]
         if len(doc) > _MAX_DOC_CHARS:
-            # Truncation must never leave a piece pointing past the end.
-            doc = doc[:_MAX_DOC_CHARS]
+            cut = doc.rfind(" ", 0, _MAX_DOC_CHARS)
+            doc = doc[:cut if cut > 0 else _MAX_DOC_CHARS].rstrip()
+            doc = finalize_document(doc)
             pieces = [p for p in pieces if p["end"] <= len(doc)]
             if not pieces:
                 return None
@@ -153,6 +183,32 @@ def build_transcript_document(arc_id: Any, *, database=None,
         logger.warning("transcript_document: build failed arc=%s: %s",
                        arc_id, e)
         return None
+
+
+def relocate_pieces(text: Any, pieces: Any) -> list:
+    """Re-anchor pieces onto a text that has CHANGED since the build (an
+    approved change baked in, a coach correction landed).
+
+    The search is MONOTONIC — each piece is looked for after the previous
+    one's end — so repeated wording can never steal another piece's
+    anchor (the first-occurrence defect the review found). A piece whose
+    words are gone (it was the one that got replaced) is DROPPED: it has
+    nothing left to point at. Pure."""
+    doc = text if isinstance(text, str) else ""
+    out: list = []
+    cursor = 0
+    for p in (pieces or []):
+        if not isinstance(p, dict):
+            continue
+        needle = (p.get("text") or "").strip()
+        if not needle:
+            continue
+        i = doc.find(needle, cursor)
+        if i < 0:
+            continue
+        out.append({**p, "start": i, "end": i + len(needle)})
+        cursor = i + len(needle)
+    return out
 
 
 def verify_spans(doc: Any) -> bool:

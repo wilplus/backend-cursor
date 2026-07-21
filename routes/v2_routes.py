@@ -8834,6 +8834,10 @@ def v2_user_suggestion_feedback(snippet_id):
                     # next assembly).
                     if action == "dismissed":
                         db.delete_moment_suggestion(str(snippet_id))
+                    if action == "applied":
+                        # Living Transcript: an approved change must
+                        # disappear from the document NOW, not next take.
+                        _reassemble_after_decision(_arc)
             except Exception as _led_err:
                 logger.warning(
                     "suggestion-feedback: ledger write failed snip=%s: %s",
@@ -12814,6 +12818,8 @@ def v2_explore_decide_prior_take(arc_id):
             decision=("approved" if action == "accept" else "dismissed"),
             source="prior_take", snippet_id=snippet_id,
             version=(_v if isinstance(_v, int) else None))
+        if ok and action == "accept":
+            _reassemble_after_decision(arc_id)
         return jsonify({"saved": bool(ok)}), 200
     except Exception as e:
         logger.error("prior-take decide failed arc=%s: %s", arc_id, e,
@@ -12821,6 +12827,28 @@ def v2_explore_decide_prior_take(arc_id):
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR",
                         "error": "Failed to save the decision"}), 500
+
+
+def _reassemble_after_decision(arc_id) -> None:
+    """A decision that CHANGES the document must take effect at once
+    (founder: "when I approve it the crossed text disappears and only
+    the new one stays").
+
+    The bake runs at ASSEMBLY, and the student GET serves the PERSISTED
+    document — so without this an approval would only show up after the
+    next take (the review's most-confirmed defect). Reassembling here
+    re-bakes, re-anchors, bumps the version and snapshots it, exactly as
+    a new take would. Best-effort: the decision is already saved."""
+    try:
+        from services.ideal_text_block import (
+            _living_transcript_enabled, maybe_assemble_ideal_text,
+        )
+        if not _living_transcript_enabled():
+            return
+        maybe_assemble_ideal_text(str(arc_id), require_target=False)
+    except Exception as e:
+        logger.warning("living_transcript: post-decision reassembly "
+                       "failed arc=%s: %s", arc_id, e)
 
 
 def _previous_spoken_session(arc_id, current_session_id):
@@ -12856,12 +12884,18 @@ def _tracked_changes_block(arc_id, served_text) -> dict:
         if not _living_transcript_enabled():
             return {}
         from services.tracked_changes import (
-            build_tracked_changes, verify_changes,
+            build_tracked_changes, drop_overlaps, verify_changes,
         )
-        from services.transcript_document import build_transcript_document
+        from services.transcript_document import (
+            build_transcript_document, relocate_pieces,
+        )
         doc = build_transcript_document(arc_id, database=db)
         if not doc:
             return {}
+        # The served text may already carry approved bakes / coach text —
+        # re-anchor the pieces onto it MONOTONICALLY (never a bare
+        # first-occurrence search, the review's mis-anchor defect).
+        _pieces = relocate_pieces(served_text, doc.get("pieces") or [])
         _sugs = db.get_moment_suggestions_by_arc(arc_id) or {}
         _applied = []
         try:
@@ -12870,14 +12904,13 @@ def _tracked_changes_block(arc_id, served_text) -> dict:
         except Exception:
             _applied = []
         changes = build_tracked_changes(
-            served_text, doc.get("pieces") or [], _sugs, applied=_applied)
+            served_text, _pieces, _sugs, applied=_applied)
 
         # ── CROSS-TAKE DISCERNMENT (founder decision 2026-07-20 #4):
         # where the PREVIOUS take said the same thing better, its wording
-        # comes back as an approvable change on this document ("your
-        # previous version landed better here"). The ranking blend does
-        # the judging (L2 untouched); a fragment the student already
-        # decided on is never re-offered. Best-effort. ──
+        # comes back as an approvable change on this document. The
+        # ranking blend does the judging (L2 untouched); a fragment the
+        # student already decided on is never re-offered. Best-effort. ──
         try:
             _prev = _previous_spoken_session(arc_id,
                                              doc.get("take_session_id"))
@@ -12889,21 +12922,26 @@ def _tracked_changes_block(arc_id, served_text) -> dict:
                 _prev_doc = build_transcript_document(
                     arc_id, database=db, session_id=_prev)
                 if _prev_doc:
+                    # ONLY cross-take decisions suppress a cross-take
+                    # offer — a star-lane decision on the same snippet
+                    # must not silence it (review finding).
                     _decided = {
                         str(r.get("snippet_id"))
                         for r in (load_ledger(db, arc_id) or [])
                         if r.get("snippet_id")
+                        and r.get("source") == "prior_take"
                     }
                     changes.extend(build_prior_take_changes(
-                        {"text": served_text,
-                         "pieces": doc.get("pieces") or []},
+                        {"text": served_text, "pieces": _pieces},
                         _prev_doc, database=db, decided_ids=_decided))
-                    changes.sort(key=lambda c: (c["span"]["start"],
-                                                c["span"]["end"]))
         except Exception as _pt_err:
             logger.warning("prior-take changes failed arc=%s: %s",
                            arc_id, _pt_err)
 
+        # One span may carry only ONE change — a polish star and a
+        # cross-take offer on the same words would render as overlapping
+        # strikes (review finding). Earliest-then-narrowest wins.
+        changes = drop_overlaps(changes)
         if not verify_changes(served_text, changes):
             logger.warning("tracked changes: span check failed arc=%s "
                            "(serving none)", arc_id)

@@ -30,8 +30,25 @@ from services.prior_take_changes import (
 )
 
 
-def _p(sid, text, take=1):
-    return {"snippet_id": sid, "text": text, "take_index": take}
+def _p(sid, text, take=1, start=None, end=None):
+    """A document piece. Pieces carry their CHARACTER SPAN — the anchor
+    contract; build_prior_take_changes anchors on it, never on a text
+    search (the mis-anchor defect the review found)."""
+    out = {"snippet_id": sid, "text": text, "take_index": take}
+    if start is not None:
+        out["start"] = start
+        out["end"] = end if end is not None else start + len(text)
+    return out
+
+
+def _doc(text, specs):
+    """Build a document whose pieces carry spans located in `text`."""
+    pieces, cursor = [], 0
+    for sid, frag, take in specs:
+        i = text.index(frag, cursor)
+        pieces.append(_p(sid, frag, take, start=i, end=i + len(frag)))
+        cursor = i + len(frag)
+    return {"text": text, "pieces": pieces}
 
 
 class AlignmentTests(unittest.TestCase):
@@ -120,9 +137,9 @@ class BuildChangesTests(unittest.TestCase):
             return self.ROWS.get(str(sid))
 
     def _docs(self):
-        doc = {"text": self.DOC, "pieces": [
-            _p("n1", "We started small in a tiny room.", 2),
-            _p("n2", "Then we shipped the first version fast.", 2)]}
+        doc = _doc(self.DOC, [
+            ("n1", "We started small in a tiny room.", 2),
+            ("n2", "Then we shipped the first version fast.", 2)])
         prev = {"text": "", "pieces": [
             _p("o1", "We started small in a cramped room.", 1),
             _p("o2", "Then we shipped the first version quickly.", 1)]}
@@ -156,18 +173,33 @@ class BuildChangesTests(unittest.TestCase):
         self.assertEqual(out, [])
 
     def test_identical_wording_offers_nothing(self):
-        doc = {"text": "Same words exactly here.",
-               "pieces": [_p("n1", "Same words exactly here.", 2)]}
+        doc = _doc("Same words exactly here.",
+                   [("n1", "Same words exactly here.", 2)])
         prev = {"pieces": [_p("o1", "Same words exactly here.", 1)]}
         self.assertEqual(
             build_prior_take_changes(doc, prev, database=self._Db()), [])
 
     def test_missing_quote_in_document_drops_the_change(self):
+        # The piece's carried span no longer slices back to its text (the
+        # words were baked/edited away) — never re-point.
         doc = {"text": "A document that lost the fragment.",
-               "pieces": [_p("n1", "We started small in a tiny room.", 2)]}
+               "pieces": [_p("n1", "We started small in a tiny room.", 2,
+                             start=0, end=32)]}
         prev = {"pieces": [_p("o1", "We started small in a cramped room.", 1)]}
         self.assertEqual(
             build_prior_take_changes(doc, prev, database=self._Db()), [])
+
+    def test_unmeasured_pieces_never_produce_offers(self):
+        # Past the per-take LLM budget a piece has no overall_score.
+        # Treating that as 0 handed out blanket "your previous take said
+        # it better" offers (review finding) — both sides must be
+        # measured or there is no comparison to make.
+        class _Unscored(self._Db):
+            ROWS = {k: {"metrics": {"f0_sd": 10.0}}
+                    for k in ("n1", "n2", "o1", "o2")}
+        doc, prev = self._docs()
+        self.assertEqual(
+            build_prior_take_changes(doc, prev, database=_Unscored()), [])
 
     def test_ac9_no_scores_or_internal_vocabulary(self):
         import json

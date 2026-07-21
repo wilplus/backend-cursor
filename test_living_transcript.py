@@ -26,8 +26,16 @@ from services.transcript_document import (
     build_transcript_document, verify_spans,
 )
 from services.transcript_smoothing import (
-    smooth_verbatim, strip_fillers, tidy_punctuation,
+    finalize_document, hesitations_for, smooth_piece, strip_fillers,
+    tidy_piece,
 )
+
+
+def smooth_verbatim(text, language="en"):
+    """Test helper: the piece pass followed by the DOCUMENT finish — the
+    two are deliberately separate in production (a piece is often
+    mid-sentence, so it must not gain a full stop of its own)."""
+    return finalize_document(smooth_piece(text, language))
 
 ARC = "a1"
 T1 = "11111111-1111-4111-8111-111111111111"
@@ -89,8 +97,51 @@ class SmoothingFenceTests(unittest.TestCase):
         self.assertLess(len(smooth_verbatim(src).split()), len(src.split()))
 
     def test_helpers_are_independent(self):
-        self.assertEqual(strip_fillers("um hello").strip(), "hello")
-        self.assertEqual(tidy_punctuation("hello  world"), "Hello world.")
+        self.assertEqual(strip_fillers("um hello", "en").strip(), "hello")
+        self.assertEqual(tidy_piece("hello  world"), "hello world")
+
+    def test_a_piece_never_gains_its_own_sentence(self):
+        # THE architectural fence (review finding): pieces are cut on
+        # slide advances and hard caps, so most are mid-sentence. A piece
+        # must never gain a terminal mark or an initial capital of its
+        # own — a document made of three cut pieces reads as ONE
+        # sentence, exactly as it was spoken.
+        pieces = ["the thing about the U.S. market is",
+                  "that it never really", "stops moving"]
+        doc = finalize_document(
+            " ".join(smooth_piece(p, "en") for p in pieces))
+        self.assertEqual(
+            doc, "The thing about the U.S. market is that it never "
+                 "really stops moving.")
+
+    def test_language_aware_hesitations_never_delete_real_words(self):
+        # "um" is a real word in German and Portuguese — deleting it
+        # there removes the speaker's words (L1 breach, review finding).
+        self.assertEqual(smooth_verbatim("Es geht um Geld und um Zeit",
+                                         "de"),
+                         "Es geht um Geld und um Zeit.")
+        self.assertEqual(smooth_verbatim("um problema muito grande", "pt"),
+                         "Um problema muito grande.")
+        # …and an UNKNOWN language uses the intersection-safe set.
+        self.assertIn("um", smooth_verbatim("es geht um Geld uh ja", None))
+        # English still loses its fillers.
+        self.assertEqual(smooth_verbatim("um so I uh built it", "en"),
+                         "So I built it.")
+        self.assertNotIn("um", hesitations_for(None))
+
+    def test_abbreviations_do_not_trigger_capitals(self):
+        for src, want in (
+                ("the U.S. market is huge. we won",
+                 "The U.S. market is huge. We won."),
+                ("I asked Dr. smith about it",
+                 "I asked Dr. smith about it.")):
+            self.assertEqual(finalize_document(src), want)
+
+    def test_dangling_punctuation_is_not_double_terminated(self):
+        self.assertEqual(finalize_document("we tried it, tested it,"),
+                         "We tried it, tested it.")
+        self.assertEqual(finalize_document('he said "we win"'),
+                         'He said "we win".')
 
 
 class DocumentBuildTests(unittest.TestCase):
@@ -120,16 +171,18 @@ class DocumentBuildTests(unittest.TestCase):
 
     def _snips(self):
         return [
-            {"id": S2, "start_offset_ms": 4000,
+            {"id": S2, "start_offset_ms": 4000, "language": "en",
              "transcript": "and then we uh shipped it"},
-            {"id": S1, "start_offset_ms": 0,
+            {"id": S1, "start_offset_ms": 0, "language": "en",
              "transcript": "um we started small"},
         ]
 
     def test_full_text_in_speech_order_with_valid_spans(self):
         doc = build_transcript_document(ARC, database=self._Db(self._snips()))
+        # ONE flowing sentence: the pieces are mid-sentence cuts, so no
+        # fabricated full stop at the seam (review finding).
         self.assertEqual(doc["text"],
-                         "We started small. And then we shipped it.")
+                         "We started small and then we shipped it.")
         self.assertEqual([p["snippet_id"] for p in doc["pieces"]], [S1, S2])
         self.assertTrue(verify_spans(doc))
         self.assertEqual(doc["take_index"], 1)
@@ -153,7 +206,7 @@ class DocumentBuildTests(unittest.TestCase):
             edits=[{"snippet_id": S2, "text": "and then we launched"}])
         doc = build_transcript_document(ARC, database=db)
         self.assertIn("We started tiny", doc["text"])
-        self.assertIn("And then we launched", doc["text"])
+        self.assertIn("and then we launched", doc["text"])
 
     def test_latest_spoken_take_is_the_document(self):
         sessions = [
@@ -188,8 +241,12 @@ class TrackedChangeTests(unittest.TestCase):
     """Decision #3 — span-anchored strike/propose/bold/advice."""
 
     DOC = "We started small. And then we shipped it fast."
-    PIECES = [{"snippet_id": S1, "text": "We started small."},
-              {"snippet_id": S2, "text": "And then we shipped it fast."}]
+    # Pieces carry their CHARACTER SPAN — build_tracked_changes anchors on
+    # it, never on a text search (the mis-anchor defect the review found).
+    PIECES = [{"snippet_id": S1, "text": "We started small.",
+               "start": 0, "end": 17},
+              {"snippet_id": S2, "text": "And then we shipped it fast.",
+               "start": 18, "end": 46}]
 
     def _changes(self, sugs, **kw):
         return build_tracked_changes(self.DOC, self.PIECES, sugs, **kw)
@@ -228,7 +285,8 @@ class TrackedChangeTests(unittest.TestCase):
 
     def test_missing_piece_text_drops_the_change(self):
         # The piece was edited/baked away — never point at wrong words.
-        pieces = [{"snippet_id": S1, "text": "words that are not there"}]
+        pieces = [{"snippet_id": S1, "text": "words that are not there",
+                   "start": 0, "end": 24}]
         self.assertEqual(
             build_tracked_changes(self.DOC, pieces,
                                   {S1: {"kind": "emphasize"}}), [])
@@ -284,9 +342,9 @@ class AssemblyFlagTests(unittest.TestCase):
 
     def _assemble(self, flag):
         import services.ideal_text_block as mod
-        snips = [{"id": S1, "start_offset_ms": 0,
+        snips = [{"id": S1, "start_offset_ms": 0, "language": "en",
                   "transcript": "um we started small"},
-                 {"id": S2, "start_offset_ms": 10,
+                 {"id": S2, "start_offset_ms": 10, "language": "en",
                   "transcript": "and we kept going"}]
         db = self._Db(snips)
         bp = {"ready": True, "slides": [{
@@ -312,6 +370,111 @@ class AssemblyFlagTests(unittest.TestCase):
         out = self._assemble(False)[0]
         self.assertIn("just the best line", out)
         self.assertNotIn("We started small", out)
+
+
+class SpanRelocationTests(unittest.TestCase):
+    """After a bake/edit the document text changes — pieces re-anchor
+    MONOTONICALLY so repeated wording can never steal another piece's
+    span (the review's first-occurrence defect)."""
+
+    def test_repeated_wording_keeps_its_own_anchor(self):
+        from services.transcript_document import relocate_pieces
+        doc = "We win. We build. We win. We ship."
+        pieces = [{"snippet_id": "a", "text": "We win."},
+                  {"snippet_id": "b", "text": "We build."},
+                  {"snippet_id": "c", "text": "We win."},
+                  {"snippet_id": "d", "text": "We ship."}]
+        out = relocate_pieces(doc, pieces)
+        self.assertEqual([(p["start"], p["end"]) for p in out],
+                         [(0, 7), (8, 17), (18, 25), (26, 34)])
+        for p in out:
+            self.assertEqual(doc[p["start"]:p["end"]], p["text"])
+
+    def test_baked_away_piece_is_dropped_not_mispointed(self):
+        from services.transcript_document import relocate_pieces
+        doc = "We started big. Then we shipped."
+        pieces = [{"snippet_id": "a", "text": "We started small."},
+                  {"snippet_id": "b", "text": "Then we shipped."}]
+        out = relocate_pieces(doc, pieces)
+        self.assertEqual([p["snippet_id"] for p in out], ["b"])
+
+
+class OverlapTests(unittest.TestCase):
+    """Two lanes may fire on the same words — the FE must never get
+    overlapping strikes (review finding)."""
+
+    def test_overlapping_changes_are_dropped_narrowest_first(self):
+        from services.tracked_changes import drop_overlaps
+        wide = {"id": "w", "span": {"start": 0, "end": 20}, "quote": "x"}
+        narrow = {"id": "n", "span": {"start": 0, "end": 5}, "quote": "y"}
+        later = {"id": "l", "span": {"start": 25, "end": 30}, "quote": "z"}
+        out = drop_overlaps([wide, narrow, later])
+        self.assertEqual([c["id"] for c in out], ["n", "l"])
+
+    def test_non_overlapping_all_survive_in_order(self):
+        from services.tracked_changes import drop_overlaps
+        a = {"id": "a", "span": {"start": 10, "end": 15}}
+        b = {"id": "b", "span": {"start": 0, "end": 5}}
+        self.assertEqual([c["id"] for c in drop_overlaps([a, b])],
+                         ["b", "a"])
+
+
+class KeyMomentPreservationTests(unittest.TestCase):
+    """Transcript mode must NOT dark the explanations lane — a
+    coach-surfaced piece stays a key moment (review finding: the only
+    paid surface became unreachable)."""
+
+    class _Db(DocumentBuildTests._Db):
+        def list_ideal_decisions(self, arc_id):
+            return []
+
+        def get_coach_snippet_drafts(self, sid):
+            return [{"snippet_id": S2, "surfaced": True}]
+
+    def test_surfaced_piece_survives_as_a_key_moment(self):
+        from services.ideal_text_block import assemble_transcript_document
+        snips = [{"id": S1, "start_offset_ms": 0, "language": "en",
+                  "transcript": "we started small"},
+                 {"id": S2, "start_offset_ms": 10, "language": "en",
+                  "transcript": "and this is the line that lands"}]
+        out = assemble_transcript_document(ARC, database=self._Db(snips))
+        self.assertEqual([m["snippet_id"] for m in out["key_moments"]],
+                         [S2])
+        self.assertIn(out["key_moments"][0]["anchor"], out["text"])
+
+
+class ApprovedChangeBakesTests(unittest.TestCase):
+    """The founder's core promise: "when I approve it the crossed text
+    disappears and only the new one stays". The ledger bake must reach
+    the ASSEMBLED document, and the surviving pieces must re-anchor."""
+
+    class _Db(DocumentBuildTests._Db):
+        def __init__(self, snips, rows):
+            super().__init__(snips)
+            self._rows = rows
+
+        def list_ideal_decisions(self, arc_id):
+            return self._rows
+
+    def test_approved_change_is_applied_and_anchors_survive(self):
+        from services.ideal_decision_ledger import normalize_phrase
+        from services.ideal_text_block import assemble_transcript_document
+        from services.transcript_document import verify_spans
+        snips = [{"id": S1, "start_offset_ms": 0, "language": "en",
+                  "transcript": "we started small"},
+                 {"id": S2, "start_offset_ms": 10, "language": "en",
+                  "transcript": "and we kept going"}]
+        rows = [{"kind": "replace",
+                 "target_phrase": normalize_phrase("we started small"),
+                 "display_phrase": "We started small",
+                 "replacement_text": "We started tiny",
+                 "decision": "approved", "source": "user_star"}]
+        out = assemble_transcript_document(ARC, database=self._Db(snips, rows))
+        self.assertIn("We started tiny", out["text"])
+        self.assertNotIn("We started small", out["text"])
+        # the untouched piece keeps an exact anchor on the NEW text
+        self.assertTrue(verify_spans({"text": out["text"],
+                                      "pieces": out["document"]["pieces"]}))
 
 
 try:

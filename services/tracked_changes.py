@@ -117,11 +117,16 @@ def build_tracked_changes(text: Any, pieces: Any, suggestions: Any,
         kind, source = _kind_and_source(sug)
         if not kind:
             continue
-        window = _find_window(doc, (p.get("text") or "").strip())
-        if window is None:
-            continue   # the piece's words are gone — never guess (#219)
-        w_start, w_end = window
+        # The piece carries its span (relocated monotonically onto the
+        # served text by the caller) — never a bare text search, which
+        # would anchor a repeated phrase on the wrong occurrence.
+        try:
+            w_start, w_end = int(p["start"]), int(p["end"])
+        except (KeyError, TypeError, ValueError):
+            continue
         window_text = doc[w_start:w_end]
+        if window_text != (p.get("text") or "").strip():
+            continue   # the piece's words moved/vanished — never guess
 
         quote = _narrow(window_text, sug)
         if quote:
@@ -154,6 +159,25 @@ def build_tracked_changes(text: Any, pieces: Any, suggestions: Any,
             entry["why"] = None
         out.append(entry)
     out.sort(key=lambda c: (c["span"]["start"], c["span"]["end"]))
+    return out
+
+
+def drop_overlaps(changes: Any) -> list:
+    """One span may carry only ONE change. Two lanes can legitimately
+    fire on the same words (a polish star and a cross-take offer) — the
+    FE would render overlapping strikes. Earliest start wins; on a tie
+    the NARROWER span wins (the more specific advice). Pure."""
+    ordered = sorted(
+        [c for c in (changes or []) if isinstance(c, dict) and c.get("span")],
+        key=lambda c: (c["span"]["start"],
+                       c["span"]["end"] - c["span"]["start"]))
+    out: list = []
+    last_end = -1
+    for c in ordered:
+        if c["span"]["start"] < last_end:
+            continue
+        out.append(c)
+        last_end = c["span"]["end"]
     return out
 
 
