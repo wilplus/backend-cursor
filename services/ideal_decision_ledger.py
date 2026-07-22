@@ -120,11 +120,14 @@ def record_star_decision(database, arc_id: Any, *, suggestion: Any,
       applied   → approved (bakes from the next assembly on)
       dismissed → dismissed (never offered again)
       reverted  → row deleted (clean slate — suggestible again)
-    kind: moment_emphasize → 'emphasize'; moment_replace → 'polish' when
-    the suggestion row's trigger is polish, else 'replace'. Best-effort —
-    a ledger miss must never break the feedback POST."""
+    kind: moment_emphasize/document_bold → 'emphasize';
+    moment_replace/document_replace → 'polish' when the suggestion row's
+    trigger is polish, else 'replace'. Best-effort — a ledger miss must
+    never break the feedback POST."""
     try:
-        if not arc_id or target not in ("moment_replace", "moment_emphasize"):
+        _replace_targets = ("moment_replace", "document_replace")
+        _bold_targets = ("moment_emphasize", "document_bold")
+        if not arc_id or target not in _replace_targets + _bold_targets:
             return False
         if action not in ("applied", "dismissed", "reverted"):
             return False
@@ -133,7 +136,7 @@ def record_star_decision(database, arc_id: Any, *, suggestion: Any,
         if not norm:
             return False
         sug = suggestion or {}
-        if target == "moment_emphasize":
+        if target in _bold_targets:
             kind = "emphasize"
         else:
             kind = "polish" if sug.get("trigger") == "polish" else "replace"
