@@ -79,6 +79,15 @@ class _Db:
         row = self.blocks.get((str(arc_id), block_key))
         return dict(row) if row else None
 
+    def get_snippets_by_ids(self, ids):
+        return [dict(self.snippet_rows[str(i)], id=str(i))
+                for i in ids if str(i) in self.snippet_rows]
+
+    def delete_ideal_text_block(self, arc_id, block_key):
+        self.blocks.pop((str(arc_id), block_key), None)
+        self.writes.append((block_key, {"__deleted__": True}))
+        return True
+
     def upsert_ideal_text_block(self, arc_id, block_key, fields):
         key = (str(arc_id), block_key)
         row = self.blocks.get(key) or {
@@ -265,6 +274,9 @@ class ProcessNewTakeTests(unittest.TestCase):
 
     def test_unmeasured_sides_never_compare(self):
         db = self._db()
+        # The new side loses its measurement AT THE SOURCE (the session
+        # snippet feeds the resolver first).
+        db.snips_by_session[T2][0]["metrics"].pop("overall_score", None)
         db.snippet_rows["n1"] = {"metrics": {"f0_sd": 14.0}}  # no score
         self.assertEqual(process_new_take(ARC, T2, db), 0)
 
@@ -272,14 +284,44 @@ class ProcessNewTakeTests(unittest.TestCase):
         db = self._db(rejected=[T2])
         self.assertEqual(process_new_take(ARC, T2, db), 0)
 
-    def test_new_material_becomes_a_candidate(self):
+    def test_deckless_different_material_is_judged_not_orphaned(self):
+        # REDESIGN (review #1/#3/#26): deckless maps by ordinal position,
+        # so different wording in the same slot is an UPGRADE comparison —
+        # never an end-of-document orphan candidate.
         db = self._db(new_text="a completely different closing topic")
         n = process_new_take(ARC, T2, db)
         self.assertEqual(n, 1)
+        row = db.get_ideal_text_block(ARC, 0)
+        self.assertEqual(row["status"], "pending_upgrade")
+        self.assertEqual(row["challenger_pieces"][0]["text"].lower(),
+                         "a completely different closing topic")
+
+    def test_decked_new_slide_becomes_a_candidate(self):
+        sessions = [
+            {"id": T1, "take_index": 1, "recording_kind": "spoken"},
+            {"id": T2, "take_index": 2, "recording_kind": "spoken"},
+        ]
+        block = _block(0, text="slide one words")
+        block["slide_index"] = 0
+        db = _Db(
+            sessions=sessions,
+            snips_by_session={T2: [
+                _snip("n1", 0, "slide one words", slide=0, score=0.5),
+                _snip("n2", 1000, "a brand new slide two", slide=1,
+                      score=0.5)]},
+            snippet_rows={"s1": {"metrics": {"overall_score": 0.5}},
+                          "n1": {"metrics": {"overall_score": 0.5}},
+                          "n2": {"metrics": {"overall_score": 0.5}}},
+            blocks=[block])
+        n = process_new_take(ARC, T2, db)
         cand = db.get_ideal_text_block(ARC, 10)
+        self.assertIsNotNone(cand)
         self.assertEqual(cand["status"], "candidate")
+        self.assertEqual(cand["slide_index"], 1)
         self.assertFalse(cand["active"])
-        self.assertEqual(cand["incumbent_take_session_id"], T2)
+        # idempotent: a worker retry does not duplicate the candidate
+        process_new_take(ARC, T2, db)
+        self.assertIsNone(db.get_ideal_text_block(ARC, 20))
 
     def test_skeleton_take_is_never_judged_against_itself(self):
         db = self._db()
@@ -290,6 +332,120 @@ class ProcessNewTakeTests(unittest.TestCase):
         db.blocks_fail = True
         self.assertEqual(process_new_take(ARC, T2, db), 0)
         self.assertEqual(db.writes, [])
+
+
+class ReviewRegressionTests(unittest.TestCase):
+    """The four executed-repro scenarios from the adversarial review —
+    each was a confirmed critical/major on the similarity mapper; the
+    block-to-block redesign must hold them forever."""
+
+    def test_slide_eight_retake_lands_on_slide_eight(self):
+        # Review #1 (critical): an 8-slide deck, take 2 re-records ONLY
+        # slide 8 — the old window-4 similarity mapped it onto slide 1
+        # and offered to REPLACE the opening with the closing.
+        sessions = [
+            {"id": T1, "take_index": 1, "recording_kind": "spoken"},
+            {"id": T2, "take_index": 2, "recording_kind": "spoken"},
+        ]
+        blocks = []
+        for si in range(8):
+            b = _block(si * 10, text=f"slide {si + 1} spoken words",
+                       sid=f"s{si}")
+            b["slide_index"] = si
+            blocks.append(b)
+        rows = {f"s{si}": {"metrics": {"overall_score": 0.5}}
+                for si in range(8)}
+        rows["n1"] = {"metrics": {"overall_score": 0.95}}
+        db = _Db(sessions=sessions,
+                 snips_by_session={T2: [_snip(
+                     "n1", 0, "on slide number eight we cover the "
+                     "closing part", slide=7, score=0.95)]},
+                 snippet_rows=rows, blocks=blocks)
+        n = process_new_take(ARC, T2, db)
+        self.assertEqual(n, 1)
+        self.assertEqual(db.get_ideal_text_block(ARC, 0)["status"],
+                         "settled")           # slide 1 untouched
+        self.assertEqual(db.get_ideal_text_block(ARC, 70)["status"],
+                         "pending_upgrade")   # slide 8 got the offer
+
+    def test_long_block_retake_is_a_replace_offer_not_a_duplicate(self):
+        # Review #3 (major): a 6-piece block was mathematically
+        # unmatchable by piece-vs-block ratio; a full retake became a
+        # whole-block duplicate insert. Block-to-block mapping makes it
+        # a straight upgrade offer carrying the WHOLE segment.
+        sessions = [
+            {"id": T1, "take_index": 1, "recording_kind": "spoken"},
+            {"id": T2, "take_index": 2, "recording_kind": "spoken"},
+        ]
+        inc = [{"snippet_id": f"s{i}",
+                "text": f"original sentence number {i} of the long block"}
+               for i in range(6)]
+        block = _block(0)
+        block["incumbent_pieces"] = inc
+        new_snips = [_snip(f"n{i}", i * 1000,
+                           f"reworded sentence number {i} of the block",
+                           score=0.9) for i in range(6)]
+        rows = {f"s{i}": {"metrics": {"overall_score": 0.4}}
+                for i in range(6)}
+        rows.update({f"n{i}": {"metrics": {"overall_score": 0.9}}
+                     for i in range(6)})
+        db = _Db(sessions=sessions, snips_by_session={T2: new_snips},
+                 snippet_rows=rows, blocks=[block])
+        n = process_new_take(ARC, T2, db)
+        self.assertEqual(n, 1)
+        row = db.get_ideal_text_block(ARC, 0)
+        self.assertEqual(row["status"], "pending_upgrade")
+        # the WHOLE segment challenges — nothing dropped (review #4/#27)
+        self.assertEqual(len(row["challenger_pieces"]), 6)
+        # and no orphan duplicate candidate was minted
+        self.assertIsNone(db.get_ideal_text_block(ARC, 10))
+
+    def test_skeleton_seeds_from_the_latest_take(self):
+        # Review #20/#24 (critical): seeding from take 1 regressed a
+        # flipped-on live arc to its oldest text.
+        sessions = [
+            {"id": "t1", "take_index": 1, "recording_kind": "spoken"},
+            {"id": "t3", "take_index": 3, "recording_kind": "spoken"},
+        ]
+
+        class _D(_Db):
+            def get_snippets_by_session(self, sid):
+                return [_snip(f"{sid}-p", 0, f"words from {sid}")]
+
+        db = _D(sessions=sessions)
+        rows = build_skeleton(ARC, db)
+        self.assertEqual(rows[0]["incumbent_take_session_id"], "t3")
+        self.assertEqual(rows[0]["incumbent_take_index"], 3)
+
+    def test_self_skip_is_per_block_after_accepts(self):
+        # After an accept, a take can OWN one block and still challenge
+        # another — the whole-take skip starved later comparisons.
+        sessions = [
+            {"id": T1, "take_index": 1, "recording_kind": "spoken"},
+            {"id": T2, "take_index": 2, "recording_kind": "spoken"},
+        ]
+        owned = _block(0, text="already owned by take two", sid="a1",
+                       sess=T2, take=2)
+        owned["slide_index"] = 0
+        other = _block(10, text="still from take one", sid="b1")
+        other["slide_index"] = 1
+        rows = {"a1": {"metrics": {"overall_score": 0.5}},
+                "b1": {"metrics": {"overall_score": 0.3}},
+                "n1": {"metrics": {"overall_score": 0.5}},
+                "n2": {"metrics": {"overall_score": 0.9}}}
+        db = _Db(sessions=sessions,
+                 snips_by_session={T2: [
+                     _snip("n1", 0, "already owned by take two",
+                           slide=0, score=0.5),
+                     _snip("n2", 1000, "a stronger second block",
+                           slide=1, score=0.9)]},
+                 snippet_rows=rows, blocks=[owned, other])
+        n = process_new_take(ARC, T2, db)
+        self.assertEqual(n, 1)
+        self.assertEqual(db.get_ideal_text_block(ARC, 0)["status"],
+                         "settled")            # no self-duel
+        self.assertEqual(db.get_ideal_text_block(ARC, 10)["status"],
+                         "pending_upgrade")    # but B is challenged
 
 
 class UpgradeChangesTests(unittest.TestCase):
@@ -391,9 +547,9 @@ class DecideBlockTests(unittest.TestCase):
                          ("settled", True))
         db2 = _Db(blocks=[_block(0), dict(cand)])
         decide_block(ARC, 10, "keep", T2, db2)
-        row2 = db2.get_ideal_text_block(ARC, 10)
-        self.assertEqual((row2["status"], row2["active"]),
-                         ("settled", False))
+        # keep DELETES the candidate — a parked settled-inactive row was
+        # an invisible ghost that swallowed later takes (review #2).
+        self.assertIsNone(db2.get_ideal_text_block(ARC, 10))
 
 
 class MasterBakeTests(unittest.TestCase):

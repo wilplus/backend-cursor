@@ -17,7 +17,8 @@ The four founder decisions this module implements:
      or skipped block is SILENCE.
   3. SAVE = ACCEPT-AND-FREEZE — a save stamps a version row; the FE
      hides badges and gates the re-read on it (endpoint in routes).
-  4. SKELETON LOCKS ON TAKE 1 — decked: block per slide (deterministic);
+  4. SKELETON LOCKS ON FIRST BUILD — seeded from the LATEST spoken take
+     (the text the user currently sees), decked: block per slide;
      deckless: ONE LLM pass returns BOUNDARIES ONLY (piece indices;
      short talk → Hook/Context/Core Message/Closer, longer → topic
      shifts). Deterministic quarter-split fallback. The LLM NEVER
@@ -130,12 +131,13 @@ def _llm_boundaries(piece_texts: list) -> Optional[list]:
 
 
 def build_skeleton(arc_id: Any, database) -> list:
-    """Create + persist the block skeleton from the arc's FIRST spoken
-    take. Decked: one block per slide (deterministic). Deckless: LLM
-    boundaries, quarter-split fallback. Returns the block rows written
-    ([] when there is nothing to build). Called from the analysis worker
-    ONLY (process_new_take) — never from a serving path (the LLM pass
-    must not ride a student GET). Best-effort."""
+    """Create + persist the block skeleton from the arc's LATEST spoken
+    take that has pieces (flip-ON continuity — review #20/#24). Decked:
+    one block per slide (deterministic). Deckless: LLM boundaries,
+    quarter-split fallback. Returns the block rows written ([] when there
+    is nothing to build). Called from the analysis worker ONLY
+    (process_new_take) — never from a serving path (the LLM pass must
+    not ride a student GET). Best-effort."""
     try:
         from services.best_presentation import spoken_arc_sessions
         from services.transcript_document import build_transcript_document
@@ -144,14 +146,28 @@ def build_skeleton(arc_id: Any, database) -> list:
             return []
         spoken.sort(key=lambda s: (s.get("take_index") or 0,
                                    s.get("created_at") or ""))
-        first = spoken[0]
-        sid = str(first.get("id") or "")
-        take_index = first.get("take_index") or 1
-        doc = build_transcript_document(arc_id, database=database,
-                                        session_id=sid)
-        if not doc or not doc.get("pieces"):
+        # SEED FROM THE LATEST spoken take (review findings #5/#20/#24):
+        # seeding from take 1 regressed a flipped-on live arc to its
+        # oldest text and locked an empty first take in forever. The
+        # latest take IS what the user currently sees under the living-
+        # transcript flag — the master starts exactly there, walking
+        # back through earlier takes only if the latest has no pieces.
+        seed = None
+        seed_doc = None
+        for cand in reversed(spoken):
+            _sid = str(cand.get("id") or "")
+            if not _sid:
+                continue
+            _doc = build_transcript_document(arc_id, database=database,
+                                             session_id=_sid)
+            if _doc and _doc.get("pieces"):
+                seed, seed_doc = cand, _doc
+                break
+        if seed is None:
             return []
-        pieces = doc["pieces"]
+        sid = str(seed.get("id"))
+        take_index = seed.get("take_index") or 1
+        pieces = seed_doc["pieces"]
 
         # Decked → group by the cutter's exact slide_index.
         snips = {str(s.get("id")): s
@@ -173,17 +189,20 @@ def build_skeleton(arc_id: Any, database) -> list:
             slide_groups.append((current_slide, current))
 
         if any_slide:
-            groups = [(f"Slide {si + 1}" if isinstance(si, int) else None,
-                       grp) for si, grp in slide_groups]
+            groups = [((f"Slide {si + 1}" if isinstance(si, int) else None),
+                       grp, si) for si, grp in slide_groups]
         else:
             texts = [p.get("text") or "" for p in pieces]
             bounds = _llm_boundaries(texts) or _quarter_split(len(texts))
-            groups = [(label, pieces[s:e + 1]) for (s, e, label) in bounds]
+            groups = [(label, pieces[s:e + 1], None)
+                      for (s, e, label) in bounds]
 
         rows = []
-        for i, (label, grp) in enumerate(g for g in groups if g[1]):
+        for i, (label, grp, slide_idx) in enumerate(
+                g for g in groups if g[1]):
             fields = {
                 "label": label,
+                "slide_index": slide_idx,
                 "active": True,
                 "incumbent_take_session_id": sid,
                 "incumbent_take_index": take_index,
@@ -292,51 +311,87 @@ def assemble_master_document(arc_id: str, *, database=None) -> dict:
 
 # ── take N+1 processing ────────────────────────────────────────────────
 
-def _map_pieces_to_blocks(new_pieces: list, blocks: list) -> dict:
-    """{block_key: [new pieces]} — decked by slide when both sides carry
-    labels, else deterministic similarity under a monotonic constraint
-    (an LLM ID-mapping can replace this later; identical contract)."""
-    import difflib
-
-    def _block_text(row):
-        return " ".join((p.get("text") or "")
-                        for p in (row.get("incumbent_pieces") or [])).lower()
-
-    ordered = sorted((r for r in blocks if r.get("status") != "candidate"),
-                     key=lambda r: r.get("block_key") or 0)
-    if not ordered or not new_pieces:
-        return {}
-    texts = [_block_text(r) for r in ordered]
-    out: dict = {}
-    lo = 0
-    for p in new_pieces:
-        needle = (p.get("text") or "").lower()
-        if not needle:
-            continue
-        best_j, best = -1, 0.0
-        for j in range(lo, min(len(ordered), lo + 4)):
-            score = difflib.SequenceMatcher(
-                None, needle, texts[j], autojunk=False).ratio()
-            # containment beats global ratio for a piece vs a whole block
-            if needle and needle in texts[j]:
-                score = max(score, 0.9)
-            if score > best:
-                best_j, best = j, score
-        if best_j >= 0 and best >= 0.3:
-            key = ordered[best_j].get("block_key")
-            out.setdefault(key, []).append(p)
-            lo = best_j
+def _proportional_split(pieces: list, n: int) -> list:
+    """The new take split into n contiguous ordered segments by piece
+    count — the deckless take-to-skeleton segmentation. Blocks are whole-
+    take macro-structure in speech order, so ordinal alignment is the
+    honest deterministic mapping (piece-vs-block similarity was
+    mathematically incapable of matching multi-piece blocks — ratio
+    bounded by 2L/(L+B); review findings #1/#3/#26). Pure."""
+    if n <= 0 or not pieces:
+        return []
+    total = len(pieces)
+    if total <= n:
+        return [[p] for p in pieces] + [[] for _ in range(n - total)]
+    base, rem = divmod(total, n)
+    out, start = [], 0
+    for k in range(n):
+        size = base + (1 if k < rem else 0)
+        out.append(pieces[start:start + size])
+        start += size
     return out
 
 
-def _block_score(piece_ids: list, database) -> Optional[float]:
-    """Mean blended score over MEASURED pieces; None when nothing is
-    measured (no comparison without real data — review rule)."""
+def segment_take_for_blocks(new_pieces: list, blocks: list,
+                            snips_by_id: dict) -> tuple:
+    """(mapping, extras): mapping = {block_key: [new pieces]} — the WHOLE
+    contiguous segment of the new take that corresponds to each mappable
+    block; extras = [(slide_index, [pieces])] for decked slides absent
+    from the skeleton (candidate material).
+
+    Decked (both sides carry slide identity): EXACT slide_index match —
+    no similarity anywhere (review finding #1: character similarity
+    mis-mapped a slide-8 retake onto slide 1). Deckless: proportional
+    ordinal split across the active blocks in key order.
+
+    Only ACTIVE, non-candidate blocks are mapping targets (a kept
+    candidate is deleted outright — review finding #2's ghost). Pure."""
+    targets = sorted(
+        (r for r in (blocks or [])
+         if r.get("active", True) and r.get("status") != "candidate"),
+        key=lambda r: r.get("block_key") or 0)
+    if not targets or not new_pieces:
+        return {}, []
+
+    by_slide = {}
+    for r in targets:
+        si = r.get("slide_index")
+        if isinstance(si, int) and not isinstance(si, bool):
+            by_slide[si] = r.get("block_key")
+
+    new_by_slide: dict = {}
+    any_slide = False
+    for p in new_pieces:
+        si = _slide_of(snips_by_id.get(str(p.get("snippet_id"))))
+        if si is not None:
+            any_slide = True
+        new_by_slide.setdefault(si, []).append(p)
+
+    if any_slide and by_slide:
+        mapping: dict = {}
+        extras: list = []
+        for si, grp in new_by_slide.items():
+            if si is not None and si in by_slide:
+                mapping[by_slide[si]] = grp
+            elif si is not None:
+                extras.append((si, grp))
+            # si None on a decked take: cutter gap — not mappable, skip.
+        return mapping, extras
+
+    segments = _proportional_split(list(new_pieces), len(targets))
+    return ({t.get("block_key"): seg
+             for t, seg in zip(targets, segments) if seg}, [])
+
+
+def _block_score(piece_ids: list, resolver: dict) -> Optional[float]:
+    """Mean blended score over MEASURED pieces (rows from the bulk
+    resolver); None when nothing is measured (no comparison without real
+    data — review rule). Pure."""
     try:
         from services.power_phrase_ranking import power_score
         scores = []
         for sid in piece_ids:
-            snip = database.get_snippet_by_id(str(sid)) or {}
+            snip = resolver.get(str(sid)) or {}
             m = snip.get("metrics") if isinstance(snip.get("metrics"),
                                                   dict) else {}
             act = m.get("overall_score")
@@ -354,7 +409,7 @@ def _block_score(piece_ids: list, database) -> Optional[float]:
         return None
 
 
-def _block_why(inc_ids: list, ch_ids: list, database) -> str:
+def _block_why(inc_ids: list, ch_ids: list, resolver: dict) -> str:
     """The four-key reason, from mean normalized features per side."""
     try:
         from services.delivery_stars import normalize_features
@@ -365,7 +420,7 @@ def _block_why(inc_ids: list, ch_ids: list, database) -> str:
             counts: dict = {}
             stick_vals = []
             for sid in ids:
-                snip = database.get_snippet_by_id(str(sid)) or {}
+                snip = resolver.get(str(sid)) or {}
                 m = snip.get("metrics") if isinstance(
                     snip.get("metrics"), dict) else {}
                 st = m.get("slide_stickiness")
@@ -386,15 +441,24 @@ def _block_why(inc_ids: list, ch_ids: list, database) -> str:
 
 
 def process_new_take(arc_id: Any, session_id: Any, database) -> int:
-    """Called after a SPOKEN take's analysis (flag ON). Take 1 builds the
-    skeleton; later takes are judged per block:
+    """Called after a SPOKEN take's analysis (flag ON). The first build
+    seeds the skeleton (from the latest take with pieces); later takes
+    are judged BLOCK against SEGMENT:
 
-      * new block OUTRANKS the incumbent (margin rule, both sides
-        measured) → status='pending_upgrade' with the challenger —
-        APPROVE-GATED, the master text does not move;
-      * incumbent wins / block skipped → nothing;
-      * unmatched new material → a 'candidate' row (approve-gated
-        addition, active=false);
+      * the take is segmented onto the skeleton (slide-exact when decked,
+        proportional ordinal split when deckless) — the challenger is
+        always the WHOLE segment, so an accept can never silently drop
+        unmapped sentences (review finding #4/#27);
+      * segment OUTRANKS the incumbent (margin rule, both sides measured)
+        → status='pending_upgrade' — APPROVE-GATED, the master does not
+        move; a newer winning offer replaces an older pending one;
+      * incumbent wins / no segment → silence;
+      * a block whose incumbent came from THIS take is never judged
+        against itself (per block — after accepts a take can own some
+        blocks and still challenge others);
+      * decked slides absent from the skeleton → candidate blocks
+        (approve-gated additions), keyed after the last block, one per
+        slide, deduped per take;
       * a take the student already rejected for a block never re-offers.
 
     Returns the number of offers written. Best-effort, never raises."""
@@ -407,34 +471,52 @@ def process_new_take(arc_id: Any, session_id: Any, database) -> int:
             build_skeleton(arc_id, database)
             return 0
         sid = str(session_id)
-        if any(str(r.get("incumbent_take_session_id")) == sid
-               for r in rows):
-            return 0            # this take already IS the skeleton
         doc = build_transcript_document(arc_id, database=database,
                                         session_id=sid)
         if not doc or not doc.get("pieces"):
             return 0
         take_index = doc.get("take_index")
-        mapped = _map_pieces_to_blocks(doc["pieces"], rows)
+        snips_by_id = {str(x.get("id")): x
+                       for x in (database.get_snippets_by_session(sid)
+                                 or [])}
+        mapping, extras = segment_take_for_blocks(
+            doc["pieces"], rows, snips_by_id)
+
+        # ONE bulk metrics read for every judged snippet (review finding
+        # #21: per-snippet round trips inside the recording POST).
+        wanted: set = set()
+        for row in rows:
+            for p in (row.get("incumbent_pieces") or []):
+                wanted.add(str(p.get("snippet_id")))
+        for seg in mapping.values():
+            for p in seg:
+                wanted.add(str(p.get("snippet_id")))
+        resolver = dict(snips_by_id)
+        missing = [x for x in wanted if x not in resolver]
+        if missing:
+            try:
+                for r in (database.get_snippets_by_ids(missing) or []):
+                    resolver[str(r.get("id"))] = r
+            except Exception:
+                pass
 
         offers = 0
-        matched_ids = set()
         for row in rows:
             key = row.get("block_key")
-            new_pieces = mapped.get(key) or []
-            if not new_pieces:
-                continue        # skipped block → master retained, silence
-            matched_ids.update(str(p.get("snippet_id"))
-                               for p in new_pieces)
+            seg = mapping.get(key) or []
+            if not seg:
+                continue        # no segment → master retained, silence
+            if str(row.get("incumbent_take_session_id")) == sid:
+                continue        # this take owns the block — no self-duel
             rejected = {str(x) for x
                         in (row.get("rejected_take_session_ids") or [])}
             if sid in rejected:
                 continue
             inc_ids = [p.get("snippet_id")
                        for p in (row.get("incumbent_pieces") or [])]
-            new_ids = [p.get("snippet_id") for p in new_pieces]
-            s_inc = _block_score(inc_ids, database)
-            s_new = _block_score(new_ids, database)
+            seg_ids = [p.get("snippet_id") for p in seg]
+            s_inc = _block_score(inc_ids, resolver)
+            s_new = _block_score(seg_ids, resolver)
             if s_inc is None or s_new is None:
                 continue        # unmeasured → no comparison (review rule)
             if s_new - s_inc <= _MIN_MARGIN:
@@ -445,35 +527,45 @@ def process_new_take(arc_id: Any, session_id: Any, database) -> int:
                 "challenger_take_index": take_index,
                 "challenger_pieces": [
                     {"snippet_id": p["snippet_id"], "text": p["text"]}
-                    for p in new_pieces],
-                "challenger_why": _block_why(inc_ids, new_ids, database),
+                    for p in seg],
+                "challenger_why": _block_why(inc_ids, seg_ids, resolver),
             }
             if database.upsert_ideal_text_block(str(arc_id), int(key),
                                                 fields):
                 offers += 1
 
-        # Genuinely new material → ONE candidate block (approve-gated).
-        leftovers = [p for p in doc["pieces"]
-                     if str(p.get("snippet_id")) not in matched_ids]
-        if leftovers:
-            max_key = max((r.get("block_key") or 0) for r in rows)
-            fields = {
-                "label": None,
-                "active": False,
-                "status": "candidate",
-                "incumbent_take_session_id": sid,
-                "incumbent_take_index": take_index,
-                "incumbent_pieces": [
-                    {"snippet_id": p["snippet_id"], "text": p["text"]}
-                    for p in leftovers],
-                "challenger_take_session_id": None,
-                "challenger_take_index": None,
-                "challenger_pieces": None,
-                "challenger_why": None,
-            }
-            if database.upsert_ideal_text_block(
-                    str(arc_id), int(max_key) + _KEY_STEP, fields):
-                offers += 1
+        # Decked slides the skeleton has never seen → candidate blocks
+        # (one per new slide, idempotent per take: an existing candidate
+        # for the same slide+take is refreshed, never duplicated).
+        if extras:
+            existing_cands = {
+                (r.get("slide_index"),
+                 str(r.get("incumbent_take_session_id")))
+                for r in rows if r.get("status") == "candidate"}
+            next_key = max((r.get("block_key") or 0)
+                           for r in rows) + _KEY_STEP
+            for si, grp in sorted(extras, key=lambda t: t[0]):
+                if (si, sid) in existing_cands:
+                    continue
+                fields = {
+                    "label": f"Slide {si + 1}",
+                    "slide_index": si,
+                    "active": False,
+                    "status": "candidate",
+                    "incumbent_take_session_id": sid,
+                    "incumbent_take_index": take_index,
+                    "incumbent_pieces": [
+                        {"snippet_id": p["snippet_id"], "text": p["text"]}
+                        for p in grp],
+                    "challenger_take_session_id": None,
+                    "challenger_take_index": None,
+                    "challenger_pieces": None,
+                    "challenger_why": None,
+                }
+                if database.upsert_ideal_text_block(str(arc_id), next_key,
+                                                    fields):
+                    offers += 1
+                    next_key += _KEY_STEP
         return offers
     except Exception as e:
         logger.warning("master_document: take processing failed arc=%s: %s",
@@ -504,18 +596,22 @@ def upgrade_changes(arc_id: Any, served_text: str, database) -> list:
             if not inc_text or not ch_text:
                 continue
             # Case-tolerant, monotonic: the document is finalize-cased
-            # (sentence capitals), the stored block text is not — the
-            # exact-find-only version of this missed every block that
-            # opens a sentence (the #230 raw-vs-document class). The
-            # QUOTE is always the document's own slice, so the span
-            # slices back exactly.
-            i = doc.find(inc_text, cursor)
-            if i < 0:
-                i = doc.lower().find(inc_text.lower(), cursor)
-            if i < 0:
+            # (sentence capitals), the stored block text is not (the
+            # #230 raw-vs-document class). The regex search yields REAL
+            # spans on the document itself (a lower() index could shift
+            # on length-changing case mappings — review finding #14),
+            # and the monotonic cursor advances PER BLOCK so an earlier
+            # block sharing wording can never steal a later block's
+            # anchor (review finding #10). The QUOTE is the document's
+            # own slice.
+            import re as _re
+            m = _re.compile(_re.escape(inc_text), _re.IGNORECASE).search(
+                doc, cursor)
+            if not m:
                 continue        # baked/edited away — never mis-point
-            inc_text = doc[i:i + len(inc_text)]
-            cursor = i + len(inc_text)
+            i = m.start()
+            inc_text = doc[i:m.end()]
+            cursor = m.end()
             why = row.get("challenger_why")
             out.append({
                 "id": f"block:{row.get('block_key')}",
@@ -539,6 +635,8 @@ def upgrade_changes(arc_id: Any, served_text: str, database) -> list:
                 for p in (row.get("incumbent_pieces") or [])).strip()
             if not add_text:
                 continue
+            if add_text.lower() in doc.lower():
+                continue    # already verbatim in the master — no offer
             out.append({
                 "id": f"block:{row.get('block_key')}",
                 "block_key": row.get("block_key"),
@@ -603,10 +701,14 @@ def decide_block(arc_id: Any, block_key: Any, action: str,
         if str(challenger_session_echo or "") != offered:
             return (False, "STALE_OFFER")
         if action == "accept":
-            fields = {"status": "settled", "active": True}
-        else:
-            fields = {"status": "settled", "active": False}
-        ok = database.upsert_ideal_text_block(str(arc_id), int(block_key),
-                                              fields)
+            ok = database.upsert_ideal_text_block(
+                str(arc_id), int(block_key),
+                {"status": "settled", "active": True})
+            return (bool(ok), None if ok else "WRITE_FAILED")
+        # keep → the row is DELETED, not parked: a settled-inactive
+        # candidate became an invisible ghost that swallowed later takes'
+        # material forever (review finding #2). The same material said
+        # again in a future take may honestly be offered again.
+        ok = database.delete_ideal_text_block(str(arc_id), int(block_key))
         return (bool(ok), None if ok else "WRITE_FAILED")
     return (False, "NOT_PENDING")

@@ -10314,6 +10314,45 @@ class DatabaseService:
                            arc_id, e)
             return False
 
+    def delete_ideal_text_block(self, arc_id: str,
+                                block_key: int) -> bool:
+        """Remove one block row — a kept candidate is deleted outright
+        (a parked settled-inactive row became an invisible ghost that
+        swallowed later takes' material; review 2026-07-22)."""
+        if not arc_id or not isinstance(block_key, int):
+            return False
+        try:
+            (self.client.table("ideal_text_blocks")
+             .delete()
+             .eq("arc_id", str(arc_id))
+             .eq("block_key", block_key)
+             .execute())
+            return True
+        except Exception as e:
+            logger.warning("delete_ideal_text_block failed arc=%s: %s",
+                           arc_id, e)
+            return False
+
+    def get_snippets_by_ids(self, snippet_ids: Any) -> list:
+        """Bulk snippet read — ONE query for a judging pass instead of a
+        round trip per piece (review 2026-07-22 perf finding). Best-
+        effort: [] on failure (callers degrade to unmeasured)."""
+        ids = [str(x) for x in (snippet_ids or []) if x]
+        if not ids:
+            return []
+        try:
+            res = (
+                self.client.table("charisma_snippets")
+                .select("id, metrics")
+                .in_("id", ids)
+                .execute()
+            )
+            return res.data or []
+        except Exception as e:
+            logger.warning("get_snippets_by_ids failed (%d ids): %s",
+                           len(ids), e)
+            return []
+
     def insert_ideal_text_save(self, arc_id: str, version: int) -> bool:
         """One save row per (arc, version) — idempotent (a double-tap on
         Save re-stamps the same version harmlessly)."""

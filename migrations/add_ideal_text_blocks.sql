@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS public.ideal_text_blocks (
     arc_id                     TEXT NOT NULL,
     block_key                  INT  NOT NULL,
     label                      TEXT NULL,
+    slide_index                INT  NULL,
     active                     BOOLEAN NOT NULL DEFAULT TRUE,
     incumbent_take_session_id  TEXT NULL,
     incumbent_take_index       INT  NULL,

@@ -12916,6 +12916,21 @@ def _document_phrase_for(arc_id, snippet_id, *, fallback=None):
         from services.ideal_text_block import _living_transcript_enabled
         if not _living_transcript_enabled():
             return fallback
+        # THE SERVED document is the key space. Under the master flag
+        # that is the master (whose pieces span takes) — keying on the
+        # latest-take document resurrected the #230 "approval saves but
+        # never applies" class (review findings #9/#15/#25).
+        from services.master_document import (
+            assemble_master_document, master_document_enabled,
+        )
+        if master_document_enabled():
+            _m = assemble_master_document(arc_id, database=db)
+            if _m.get("ready"):
+                for p in ((_m.get("document") or {}).get("pieces") or []):
+                    if str(p.get("snippet_id")) == str(snippet_id):
+                        return p.get("text") or fallback
+                # fall through: skeleton not covering the snippet →
+                # transcript-document lookup below
         from services.transcript_document import build_transcript_document
         doc = build_transcript_document(arc_id, database=db)
         for p in ((doc or {}).get("pieces") or []):
@@ -13025,16 +13040,32 @@ def v2_explore_save_ideal_text(arc_id):
         if not owned:
             return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
 
-        # Resolve every unactioned offer as kept-mine.
-        rows = db.list_ideal_text_blocks(str(arc_id)) or []
+        # Resolve every unactioned offer as kept-mine. A failed block
+        # READ must not freeze over unknown state, and a failed resolve
+        # must not stamp a save that still has hidden pending offers
+        # (review findings #8/#11/#18).
+        rows = db.list_ideal_text_blocks(str(arc_id))
+        if rows is None:
+            return jsonify({"code": "V2_ERROR",
+                            "error": "Could not read the document — "
+                                     "try again."}), 500
         from services.master_document import decide_block
+        _resolve_failed = False
         for r in rows:
             if r.get("status") == "pending_upgrade":
-                decide_block(arc_id, int(r.get("block_key")), "keep",
-                             r.get("challenger_take_session_id"), db)
+                ok, _e = decide_block(
+                    arc_id, int(r.get("block_key")), "keep",
+                    r.get("challenger_take_session_id"), db)
+                _resolve_failed = _resolve_failed or not ok
             elif r.get("status") == "candidate":
-                decide_block(arc_id, int(r.get("block_key")), "keep",
-                             r.get("incumbent_take_session_id"), db)
+                ok, _e = decide_block(
+                    arc_id, int(r.get("block_key")), "keep",
+                    r.get("incumbent_take_session_id"), db)
+                _resolve_failed = _resolve_failed or not ok
+        if _resolve_failed:
+            return jsonify({"code": "V2_ERROR",
+                            "error": "Could not resolve every open "
+                                     "suggestion — try again."}), 500
 
         _row = db.get_coach_arc_ideal_text(arc_id) or {}
         _v = _row.get("version")
@@ -13065,11 +13096,22 @@ def _ideal_save_state(arc_id, current_version) -> dict:
         row = db.get_latest_ideal_text_save(str(arc_id))
         if not row:
             return {}
+        _pending = False
+        try:
+            _pending = any(
+                r.get("status") in ("pending_upgrade", "candidate")
+                for r in (db.list_ideal_text_blocks(str(arc_id)) or []))
+        except Exception:
+            _pending = False
         return {
             "saved_version": row.get("version"),
             "saved_at": row.get("saved_at"),
+            # A saved document UN-saves when new offers arrive — an
+            # offers-only take bumps no version, so the version match
+            # alone left is_saved stuck true (review finding #28).
             "is_saved": bool(current_version is not None
-                             and row.get("version") == current_version),
+                             and row.get("version") == current_version
+                             and not _pending),
         }
     except Exception:
         return {}
@@ -13144,8 +13186,17 @@ def _tracked_changes_block(arc_id, served_text) -> dict:
         _sugs = db.get_moment_suggestions_by_arc(arc_id) or {}
         _applied = []
         try:
+            # The master document spans takes: feed EVERY distinct origin
+            # session, not the doc-level take_session_id (which is None
+            # under the master flag and starved the applied map — review
+            # findings #12/#16).
+            _sess_ids = {p.get("take_session_id")
+                         for p in (doc.get("pieces") or [])
+                         if p.get("take_session_id")}
+            if doc.get("take_session_id"):
+                _sess_ids.add(doc.get("take_session_id"))
             _applied = [k for k, v in _moment_applied_map(
-                [doc.get("take_session_id")]).items() if v]
+                sorted(_sess_ids)).items() if v]
         except Exception:
             _applied = []
         changes = build_tracked_changes(

@@ -301,7 +301,7 @@ SPEC_MASTER_CHUNKING = LLMSpec(
     # Segmentation is deterministic work — no creativity wanted.
     temperature=0.0,
     # Index boundaries + short labels for up to ~40 blocks.
-    max_tokens=800,
+    max_tokens=1600,
     response_format={"type": "json_object"},
 )
 """Master-document skeleton chunking (founder 2026-07-22): ONE pass per
