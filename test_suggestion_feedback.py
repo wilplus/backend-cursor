@@ -292,5 +292,75 @@ class DocumentPhraseKeyTests(unittest.TestCase):
         self.assertEqual(out, self.RAW)
 
 
+@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
+class DocumentTargetTests(unittest.TestCase):
+    """Founder bug 2026-07-22 ("Couldn't save that just now"): the FE's
+    Living-Transcript targets document_replace / document_bold were
+    rejected 400 by the allowlist — every Accept/Keep on the document
+    failed at the door. The #221 bug class, pinned here."""
+
+    ARC = "arc-9"
+
+    def _call(self, target, action="applied"):
+        body = {"session_id": SESS, "target": target, "action": action}
+        with Flask(__name__).test_request_context(json=body):
+            request.user_id = "u1"
+            with patch.object(v2.db, "v2_get_session_by_id",
+                              return_value={"id": SESS, "user_id": "u1",
+                                            "arc_id": self.ARC}), \
+                 patch.object(v2.db, "get_snippet_by_id",
+                              return_value={"id": SNIP, "session_id": SESS,
+                                            "transcript": "the span"}), \
+                 patch.object(v2.db, "insert_user_suggestion_feedback",
+                              return_value=True), \
+                 patch.object(v2.db, "get_moment_suggestions_by_arc",
+                              return_value={SNIP: {
+                                  "snippet_id": SNIP, "kind": "replace",
+                                  "trigger": "polish",
+                                  "replacement_text": "smoother"}}), \
+                 patch.object(v2.db, "get_coach_arc_ideal_text",
+                              return_value={"version": 2}), \
+                 patch.object(v2, "_document_phrase_for",
+                              side_effect=lambda a, sn, fallback=None:
+                              fallback), \
+                 patch.object(v2.db, "upsert_ideal_decision",
+                              return_value=True) as m_led, \
+                 patch.object(v2.db, "delete_moment_suggestion",
+                              return_value=True), \
+                 patch.object(v2, "_reassemble_after_decision",
+                              return_value=None):
+                out = v2.v2_user_suggestion_feedback.__wrapped__(SNIP)
+                resp, status = out if isinstance(out, tuple) else (out, 200)
+                return resp.get_json(), status, m_led
+
+    def test_document_replace_is_accepted_and_ledgered(self):
+        body, status, m_led = self._call("document_replace")
+        self.assertEqual(status, 200)          # was 400 before the fix
+        self.assertTrue(body["saved"])
+        kw = m_led.call_args.kwargs
+        self.assertEqual(kw["decision"], "approved")
+        self.assertEqual(kw["kind"], "polish")   # trigger=polish maps
+
+    def test_document_bold_maps_to_emphasize(self):
+        _, status, m_led = self._call("document_bold")
+        self.assertEqual(status, 200)
+        self.assertEqual(m_led.call_args.kwargs["kind"], "emphasize")
+
+    def test_document_dismiss_is_remembered(self):
+        _, status, m_led = self._call("document_replace",
+                                      action="dismissed")
+        self.assertEqual(status, 200)
+        self.assertEqual(m_led.call_args.kwargs["decision"], "dismissed")
+
+    def test_applied_map_counts_document_targets(self):
+        with Flask(__name__).test_request_context():
+            with patch.object(v2.db, "get_suggestion_feedback_by_session",
+                              return_value=[{"snippet_id": SNIP,
+                                             "target": "document_replace",
+                                             "action": "applied"}]):
+                out = v2._moment_applied_map([SESS])
+        self.assertTrue(out.get(SNIP))   # consumed → no re-offer
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -8703,6 +8703,15 @@ _SUGGESTION_TARGETS = ("upgrade", "rewrite_your_voice", "rewrite_polished",
                        # Star suggestions (2026-07-18): per-star Approve /
                        # Revert on the SD ideal text (no apply_all surfaced).
                        "moment_emphasize", "moment_replace",
+                       # LIVING TRANSCRIPT (FE contract 2026-07-21): a
+                       # span-anchored tracked change on the document.
+                       # Founder bug 2026-07-22: the FE shipped these and
+                       # this allowlist rejected them with 400 — every
+                       # Accept/Keep on the document failed ("Couldn't
+                       # save that just now"). The #221 bug class: new
+                       # vocabulary on one side, an unwidened guard on
+                       # the other.
+                       "document_replace", "document_bold",
                        # Structural stars are delivery prompts (no Approve);
                        # this target is accepted forward-compatibly for
                        # engagement feedback but changes NO serve behavior
@@ -8805,7 +8814,8 @@ def v2_user_suggestion_feedback(snippet_id):
         # into every future version, dismissed is never re-offered,
         # reverted wipes the slate. Phrase = the snippet's piece text (the
         # anchor's verbatim span). Best-effort: never breaks the POST. ──
-        if target in ("moment_replace", "moment_emphasize") \
+        if target in ("moment_replace", "moment_emphasize",
+                      "document_replace", "document_bold") \
                 and action in ("applied", "dismissed", "reverted"):
             try:
                 _arc = session.get("arc_id")
@@ -11946,7 +11956,8 @@ def _moment_applied_map(session_ids) -> dict:
         except Exception:
             continue
         for r in rows:   # rows assumed chronological; last write wins
-            if r.get("target") not in ("moment_emphasize", "moment_replace"):
+            if r.get("target") not in ("moment_emphasize", "moment_replace",
+                                       "document_replace", "document_bold"):
                 continue
             _snip = r.get("snippet_id")
             if _snip is None:
