@@ -10240,6 +10240,161 @@ class DatabaseService:
                            arc_id, e)
             return None
 
+    # ── master-document blocks + saves (founder 2026-07-22) ──────────
+    # See services/master_document.py + add_ideal_text_blocks.sql.
+    # All best-effort; list returns None on FAILURE ([] only on a real
+    # empty read) — the read-fail ≠ empty lesson.
+
+    def list_ideal_text_blocks(self,
+                               arc_id: Optional[str]) -> Optional[list]:
+        if not arc_id:
+            return None
+        try:
+            res = (
+                self.client.table("ideal_text_blocks")
+                .select("*")
+                .eq("arc_id", str(arc_id))
+                .order("block_key", desc=False)
+                .execute()
+            )
+            return res.data or []
+        except Exception as e:
+            _e = str(e).lower()
+            if not ("ideal_text_blocks" in _e and (
+                    "does not exist" in _e or "pgrst" in _e)):
+                logger.warning("list_ideal_text_blocks failed arc=%s: %s",
+                               arc_id, e)
+            return None
+
+    def get_ideal_text_block(self, arc_id: Optional[str],
+                             block_key: Any) -> Optional[dict]:
+        if not arc_id or not isinstance(block_key, int):
+            return None
+        try:
+            res = (
+                self.client.table("ideal_text_blocks")
+                .select("*")
+                .eq("arc_id", str(arc_id))
+                .eq("block_key", block_key)
+                .limit(1)
+                .execute()
+            )
+            return (res.data or [None])[0]
+        except Exception as e:
+            logger.warning("get_ideal_text_block failed arc=%s: %s",
+                           arc_id, e)
+            return None
+
+    def upsert_ideal_text_block(self, arc_id: str, block_key: int,
+                                fields: dict) -> bool:
+        """Partial upsert of one block row. Every column in the table has
+        a default or is nullable except the key pair (enforced here), so
+        partial writes are INSERT-safe — no #221-class NOT NULL trap."""
+        if not arc_id or not isinstance(block_key, int) \
+                or not isinstance(fields, dict):
+            return False
+        try:
+            payload = dict(fields)
+            payload["arc_id"] = str(arc_id)
+            payload["block_key"] = block_key
+            payload["updated_at"] = datetime.now(timezone.utc).isoformat()
+            self.client.table("ideal_text_blocks").upsert(
+                payload, on_conflict="arc_id,block_key").execute()
+            return True
+        except Exception as e:
+            _e = str(e).lower()
+            if "ideal_text_blocks" in _e and (
+                "does not exist" in _e or "pgrst" in _e
+            ):
+                logger.warning(
+                    "upsert_ideal_text_block: table missing (run "
+                    "migrations/add_ideal_text_blocks.sql)")
+                return False
+            logger.warning("upsert_ideal_text_block failed arc=%s: %s",
+                           arc_id, e)
+            return False
+
+    def delete_ideal_text_block(self, arc_id: str,
+                                block_key: int) -> bool:
+        """Remove one block row — a kept candidate is deleted outright
+        (a parked settled-inactive row became an invisible ghost that
+        swallowed later takes' material; review 2026-07-22)."""
+        if not arc_id or not isinstance(block_key, int):
+            return False
+        try:
+            (self.client.table("ideal_text_blocks")
+             .delete()
+             .eq("arc_id", str(arc_id))
+             .eq("block_key", block_key)
+             .execute())
+            return True
+        except Exception as e:
+            logger.warning("delete_ideal_text_block failed arc=%s: %s",
+                           arc_id, e)
+            return False
+
+    def get_snippets_by_ids(self, snippet_ids: Any) -> list:
+        """Bulk snippet read — ONE query for a judging pass instead of a
+        round trip per piece (review 2026-07-22 perf finding). Best-
+        effort: [] on failure (callers degrade to unmeasured)."""
+        ids = [str(x) for x in (snippet_ids or []) if x]
+        if not ids:
+            return []
+        try:
+            res = (
+                self.client.table("charisma_snippets")
+                .select("id, metrics")
+                .in_("id", ids)
+                .execute()
+            )
+            return res.data or []
+        except Exception as e:
+            logger.warning("get_snippets_by_ids failed (%d ids): %s",
+                           len(ids), e)
+            return []
+
+    def insert_ideal_text_save(self, arc_id: str, version: int) -> bool:
+        """One save row per (arc, version) — idempotent (a double-tap on
+        Save re-stamps the same version harmlessly)."""
+        if not arc_id or not isinstance(version, int) or version < 1:
+            return False
+        try:
+            self.client.table("ideal_text_saves").upsert({
+                "arc_id": str(arc_id),
+                "version": version,
+                "saved_at": datetime.now(timezone.utc).isoformat(),
+            }, on_conflict="arc_id,version").execute()
+            return True
+        except Exception as e:
+            _e = str(e).lower()
+            if "ideal_text_saves" in _e and (
+                "does not exist" in _e or "pgrst" in _e
+            ):
+                logger.warning(
+                    "insert_ideal_text_save: table missing (run "
+                    "migrations/add_ideal_text_blocks.sql)")
+                return False
+            logger.warning("insert_ideal_text_save failed arc=%s: %s",
+                           arc_id, e)
+            return False
+
+    def get_latest_ideal_text_save(self,
+                                   arc_id: Optional[str]) -> Optional[dict]:
+        if not arc_id:
+            return None
+        try:
+            res = (
+                self.client.table("ideal_text_saves")
+                .select("*")
+                .eq("arc_id", str(arc_id))
+                .order("version", desc=True)
+                .limit(1)
+                .execute()
+            )
+            return (res.data or [None])[0]
+        except Exception:
+            return None
+
     def set_session_priming(
         self, session_id: str,
         condition: Optional[str], phrase: Optional[str],

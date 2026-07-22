@@ -284,7 +284,20 @@ def maybe_assemble_ideal_text(arc_id: Optional[str], *, database=None,
         # transcript of the latest spoken take, or — flag OFF — the legacy
         # best-moments selection. Everything downstream (persist, version
         # bump, snapshot, verify, ledger) is identical either way.
-        if _living_transcript_enabled():
+        from services.master_document import (
+            assemble_master_document, master_document_enabled,
+        )
+        if _living_transcript_enabled() and master_document_enabled():
+            # THE MASTER MODEL (founder 2026-07-22): one persistent
+            # document per project; new takes only offer block upgrades.
+            # No skeleton yet (flip-ON window / pre-migration) → the
+            # living-transcript document keeps serving; assembly must
+            # never silently stop (review findings #19/#29).
+            auto = assemble_master_document(arc_id, database=database)
+            if not auto.get("ready"):
+                auto = assemble_transcript_document(arc_id,
+                                                    database=database)
+        elif _living_transcript_enabled():
             auto = assemble_transcript_document(arc_id, database=database)
         else:
             auto = assemble_ideal_text_block(

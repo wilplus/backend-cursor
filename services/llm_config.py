@@ -296,6 +296,19 @@ only as key-phrase DISPLAY HINTS (bolding spans already verbatim-present;
 off entirely under POLISH_AS_SUGGESTIONS)."""
 
 
+SPEC_MASTER_CHUNKING = LLMSpec(
+    model=CHEAP_MODEL,
+    # Segmentation is deterministic work — no creativity wanted.
+    temperature=0.0,
+    # Index boundaries + short labels for up to ~40 blocks.
+    max_tokens=1600,
+    response_format={"type": "json_object"},
+)
+"""Master-document skeleton chunking (founder 2026-07-22): ONE pass per
+project splitting the take-1 transcript into logical blocks. Returns
+piece INDEX boundaries + short labels ONLY — never transcript text
+(L1: block text is always the verbatim recorded pieces)."""
+
 SPEC_MOMENT_SUGGESTION = LLMSpec(
     model=CHEAP_MODEL,
     # Same balance as Say-It-Stronger: consistent, but real alternatives.
