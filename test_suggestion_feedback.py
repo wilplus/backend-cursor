@@ -240,5 +240,57 @@ class LedgerHookTests(unittest.TestCase):
         self.assertTrue(resp.get_json()["saved"])
 
 
+@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
+class DocumentPhraseKeyTests(unittest.TestCase):
+    """The ledger key must be the DOCUMENT phrase (founder bug
+    2026-07-22) — keyed on the raw transcript the approval saved and
+    then silently did nothing."""
+
+    ARC = "arc-9"
+    RAW = "um we started small in a tiny room"
+
+    def setUp(self):
+        self.app = Flask(__name__)
+
+    def test_key_is_the_smoothed_document_phrase_not_the_raw_words(self):
+        with self.app.test_request_context():
+            with patch.dict("os.environ",
+                            {"LIVING_TRANSCRIPT_ENABLED": "1"}), \
+                 patch.object(v2.db, "get_arc_sessions",
+                              return_value=[{"id": SESS, "take_index": 1,
+                                             "recording_kind": "spoken"}]), \
+                 patch.object(v2.db, "get_snippets_by_session",
+                              return_value=[{"id": SNIP,
+                                             "start_offset_ms": 0,
+                                             "language": "en",
+                                             "transcript": self.RAW}]), \
+                 patch.object(v2.db, "get_coach_snippet_drafts",
+                              return_value=[]), \
+                 patch.object(v2.db, "get_user_transcript_edits",
+                              return_value=[]):
+                out = v2._document_phrase_for(self.ARC, SNIP,
+                                              fallback=self.RAW)
+        self.assertEqual(out, "We started small in a tiny room")
+        self.assertNotIn("um ", out)
+
+    def test_flag_off_keeps_the_raw_fallback(self):
+        with self.app.test_request_context():
+            with patch.dict("os.environ",
+                            {"LIVING_TRANSCRIPT_ENABLED": "0"}):
+                out = v2._document_phrase_for(self.ARC, SNIP,
+                                              fallback=self.RAW)
+        self.assertEqual(out, self.RAW)
+
+    def test_build_failure_falls_back_never_raises(self):
+        with self.app.test_request_context():
+            with patch.dict("os.environ",
+                            {"LIVING_TRANSCRIPT_ENABLED": "1"}), \
+                 patch.object(v2.db, "get_arc_sessions",
+                              side_effect=RuntimeError("boom")):
+                out = v2._document_phrase_for(self.ARC, SNIP,
+                                              fallback=self.RAW)
+        self.assertEqual(out, self.RAW)
+
+
 if __name__ == "__main__":
     unittest.main()

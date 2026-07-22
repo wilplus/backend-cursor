@@ -481,6 +481,66 @@ class ApprovedChangeBakesTests(unittest.TestCase):
                                       "pieces": out["document"]["pieces"]}))
 
 
+class ApprovalKeyRegressionTests(unittest.TestCase):
+    """Founder bug 2026-07-22: "the system does not accept my approval".
+
+    The approval SAVED but did nothing: the ledger was keyed on the RAW
+    snippet transcript while the document holds the SMOOTHED text, so the
+    bake could never locate the phrase. The key must be the phrase AS IT
+    APPEARS IN THE DOCUMENT."""
+
+    RAW = "um we started small in a tiny room"
+
+    def _doc_and_piece(self):
+        from services.transcript_smoothing import (
+            finalize_document, smooth_piece,
+        )
+        piece = smooth_piece(self.RAW, "en")
+        return finalize_document(piece), piece
+
+    def _row(self, key):
+        from services.ideal_decision_ledger import normalize_phrase
+        return {"kind": "replace", "target_phrase": normalize_phrase(key),
+                "display_phrase": key,
+                "replacement_text": "We started in a garage",
+                "decision": "approved", "source": "user_star"}
+
+    def test_document_phrase_key_applies_the_approval(self):
+        from services.ideal_decision_ledger import bake_piece
+        doc, piece = self._doc_and_piece()
+        self.assertIn("We started in a garage",
+                      bake_piece(doc, [self._row(piece)]))
+
+    def test_raw_transcript_key_is_the_regression(self):
+        # Pins WHY the fix is needed: the raw words are not in the
+        # document, so a raw-keyed row is inert.
+        from services.ideal_decision_ledger import bake_piece
+        doc, _ = self._doc_and_piece()
+        self.assertEqual(bake_piece(doc, [self._row(self.RAW)]), doc)
+
+    def test_full_loop_approval_changes_the_assembled_document(self):
+        # End to end: approve -> ledger row -> next assembly shows it.
+        from services.ideal_text_block import assemble_transcript_document
+        from services.transcript_document import build_transcript_document
+
+        class _Db(DocumentBuildTests._Db):
+            rows = []
+
+            def list_ideal_decisions(self, arc_id):
+                return self.rows
+
+        snips = [{"id": S1, "start_offset_ms": 0, "language": "en",
+                  "transcript": self.RAW}]
+        db = _Db(snips)
+        # what the serve layer showed the user
+        piece = build_transcript_document(ARC, database=db)["pieces"][0]
+        # what the feedback endpoint now records (document phrase, NOT raw)
+        db.rows = [self._row(piece["text"])]
+        out = assemble_transcript_document(ARC, database=db)
+        self.assertIn("We started in a garage", out["text"])
+        self.assertNotIn("tiny room", out["text"])
+
+
 try:
     from flask import Flask, request
     from routes import v2_routes as v2
