@@ -13015,6 +13015,65 @@ def v2_explore_decide_block(arc_id, block_key):
                         "error": "Failed to save the decision"}), 500
 
 
+@v2_bp.route("/explore/arc/<arc_id>/setup", methods=["GET"])
+@require_auth
+def v2_explore_arc_setup(arc_id):
+    """The saved SETUP of a project, so continuing it never re-asks the
+    student (founder 2026-07-22, context-aware recording).
+
+    Deliberately MINIMAL — only what the setup screen would otherwise
+    ask for, read from the arc's latest SPOKEN take's intake_context:
+
+      200 { arc_id, topic, audience, target_length_seconds, slides,
+            presentation_ref }
+
+    `topic` is load-bearing (the record POST rejects a take without
+    one); `slides`/`presentation_ref` are load-bearing for a DECKED
+    project — the master-document skeleton is keyed on slide index, so
+    continuing a decked talk without its deck would produce unmappable
+    takes. No scores, no take data, no counts (AC-9).
+
+    404 when the arc isn't the caller's or has no spoken take.
+    """
+    try:
+        owned, sessions = _arc_owned_by_caller(arc_id)
+        if not owned:
+            return jsonify({"code": "NOT_FOUND",
+                            "error": "project not found"}), 404
+        from services.best_presentation import spoken_arc_sessions
+        spoken = spoken_arc_sessions(sessions or [])
+        if not spoken:
+            return jsonify({"code": "NOT_FOUND",
+                            "error": "project not found"}), 404
+        spoken.sort(key=lambda s: (s.get("take_index") or 0,
+                                   s.get("created_at") or ""))
+        # The LATEST take's context is the live setup (a later take may
+        # have added the deck or changed the audience).
+        ctx = {}
+        for s in reversed(spoken):
+            _c = s.get("intake_context")
+            if isinstance(_c, dict) and _c.get("topic"):
+                ctx = _c
+                break
+        if not ctx:
+            _last = spoken[-1].get("intake_context")
+            ctx = _last if isinstance(_last, dict) else {}
+        return jsonify({
+            "arc_id": arc_id,
+            "topic": ctx.get("topic"),
+            "audience": ctx.get("audience"),
+            "target_length_seconds": ctx.get("target_length_seconds"),
+            "slides": ctx.get("slides") or [],
+            "presentation_ref": ctx.get("presentation_ref"),
+        }), 200
+    except Exception as e:
+        logger.error("arc setup failed arc=%s: %s", arc_id, e,
+                     exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR",
+                        "error": "Failed to load the setup"}), 500
+
+
 @v2_bp.route("/explore/arc/<arc_id>/ideal-text/save", methods=["POST"])
 @require_auth
 def v2_explore_save_ideal_text(arc_id):
@@ -13939,6 +13998,10 @@ def v2_lab_create_recording():
       ideal_version         (optional, int) the ideal-text version read
       paired_snippet_id     (optional, UUID) a delivery-star snippet
                             re-record's target snippet
+      continue_arc_id       (optional, UUID) the project the user PICKED —
+                            the take appends strictly to it, the
+                            continue-arc heuristics are skipped, and the
+                            server numbers the take. Owner-only (404)
 
     Flow (invariant order):
       1. read audio
@@ -14012,6 +14075,41 @@ def v2_lab_create_recording():
                     "error": ("A re-read needs the spoken take it belongs "
                               "to (paired_session_id)."),
                 }), 422
+
+        # ── EXPLICIT PROJECT SELECTION (founder 2026-07-22): the user
+        # PICKED this project from the list, so the server does not guess
+        # anything — the take appends strictly to that arc and BOTH
+        # continue-arc heuristics are skipped (see step 5). Distinct from
+        # the carried `arc_id` (takes 2/3 of one sitting), which keeps
+        # today's behavior so the continue-one-arc-per-deck lock
+        # (2026-06-20) is untouched.
+        #
+        # Validated HERE, before any storage: a take must never be stored
+        # against a project the caller does not own (same fail-fast rule
+        # as the read guard above). ──
+        _explicit_arc = (form.get("continue_arc_id") or "").strip()
+        if _explicit_arc:
+            if not _is_valid_uuid(_explicit_arc):
+                return jsonify({
+                    "code": "INVALID_INPUT",
+                    "error": "continue_arc_id must be a UUID",
+                }), 400
+            _uid = getattr(request, "user_id", None)
+            _owned = False
+            if _uid:
+                try:
+                    _owned = any(
+                        str(x.get("user_id")) == str(_uid)
+                        for x in (db.get_arc_sessions(_explicit_arc) or []))
+                except Exception as _own_err:
+                    logger.warning(
+                        "lab: continue_arc ownership check failed arc=%s: "
+                        "%s", _explicit_arc, _own_err)
+                    _owned = False
+            if not _owned:
+                # No existence leak: unknown and foreign look identical.
+                return jsonify({"code": "NOT_FOUND",
+                                "error": "project not found"}), 404
         target_raw = form.get("target_length_seconds")
         try:
             target_len = int(target_raw) if target_raw not in (None, "") else None
@@ -14203,6 +14301,19 @@ def v2_lab_create_recording():
             form.get("take_index"),
         )
 
+        # EXPLICIT PROJECT SELECTION (validated at step 2, above): the
+        # user PICKED this project, so the take appends strictly to it
+        # and BOTH continue-arc heuristics are skipped below.
+        if _explicit_arc:
+            arc_id = _explicit_arc
+            # The SERVER numbers the take (never the FE-sent index).
+            try:
+                from services.best_presentation import spoken_arc_sessions
+                take_index = len(spoken_arc_sessions(
+                    db.get_arc_sessions(arc_id) or [])) + 1
+            except Exception:
+                take_index = max(1, take_index or 1)
+
         # A READ inherits its spoken take's arc + number and short-circuits all
         # the continue-arc / take-counter logic below (it isn't a new take).
         _read_paired = None
@@ -14222,7 +14333,10 @@ def v2_lab_create_recording():
         # flow is deckless, and fresh-arc-per-take split the training across
         # arcs (counter said "1 of 3" while the bubble said "Take 3 of 3", and
         # the coach saw one take per arc). Guests keep the fresh arc.
-        if getattr(request, "user_id", None) and arc_id and _rec_kind != "read":
+        # `_explicit_arc` → the user chose the project: NO guessing (the
+        # deck-hash / topic-normalisation matching is skipped entirely).
+        if getattr(request, "user_id", None) and arc_id \
+                and _rec_kind != "read" and not _explicit_arc:
             _slides_for_arc = (session_context or {}).get("slides") or []
             if _slides_for_arc:
                 arc_id, take_index = _continue_deck_arc(
