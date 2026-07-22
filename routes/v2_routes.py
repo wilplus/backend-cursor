@@ -12691,6 +12691,10 @@ def v2_explore_get_ideal_text(arc_id):
                 # paywall → no paywall shown). Automatic moments are free
                 # regardless.
                 "explanations_available": bool(_has_expl),
+                # MASTER DOCUMENT (founder 2026-07-22): the latest save —
+                # the FE hides take badges and gates the re-read button on
+                # saved_version == version. Absent pre-migration/flag-off.
+                **_ideal_save_state(arc_id, _version),
                 # ── LIVING TRANSCRIPT (founder 2026-07-20, flag-gated):
                 # span-anchored tracked changes on the full-transcript
                 # document — strike/propose/bold/advice, each pointing at
@@ -12923,6 +12927,154 @@ def _document_phrase_for(arc_id, snippet_id, *, fallback=None):
     return fallback
 
 
+@v2_bp.route("/explore/arc/<arc_id>/blocks/<int:block_key>/decide",
+             methods=["POST"])
+@require_auth
+def v2_explore_decide_block(arc_id, block_key):
+    """The MASTER-DOCUMENT block decision (founder 2026-07-22):
+
+      accept → the offered block becomes the master's (badge flips to
+               the new take; a candidate block activates); the document
+               reassembles at once — version bump + snapshot + the
+               idempotent ready bubble;
+      keep   → the offer is remembered on the block's rejected list and
+               never re-offered for that take.
+
+    Body: { action: "accept"|"keep",
+            take_session_id: <echo of the offered take — the race guard> }
+    200 { saved } · 400 · 404 · 409 NOT_PENDING / STALE_OFFER · 500
+    """
+    try:
+        from services.ideal_text_block import _living_transcript_enabled
+        from services.master_document import (
+            decide_block, master_document_enabled,
+        )
+        if not (master_document_enabled() and _living_transcript_enabled()
+                and _single_deliverable_enabled()):
+            return jsonify({"code": "NOT_FOUND", "error": "not found"}), 404
+        owned, _ = _arc_owned_by_caller(arc_id)
+        if not owned:
+            return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
+        body = request.get_json(silent=True) or {}
+        action = body.get("action")
+        if action not in ("accept", "keep"):
+            return jsonify({"code": "INVALID_INPUT",
+                            "error": "action must be accept or keep"}), 400
+        echo = (body.get("take_session_id") or "").strip()
+        if not echo:
+            return jsonify({"code": "INVALID_INPUT",
+                            "error": "take_session_id is required"}), 400
+        ok, err = decide_block(arc_id, int(block_key), action, echo, db)
+        if not ok:
+            if err == "NOT_FOUND":
+                return jsonify({"code": "NOT_FOUND",
+                                "error": "block not found"}), 404
+            if err in ("NOT_PENDING", "STALE_OFFER"):
+                return jsonify({
+                    "code": err,
+                    "error": ("No offer is pending here."
+                              if err == "NOT_PENDING"
+                              else "A newer take changed this offer."),
+                }), 409
+            return jsonify({"code": "V2_ERROR",
+                            "error": "Could not save"}), 500
+        if action == "accept":
+            _reassemble_after_decision(arc_id)
+            try:
+                from services.arc_notifications import (
+                    fire_ideal_version_ready,
+                )
+                _r2 = db.get_coach_arc_ideal_text(arc_id) or {}
+                if _r2.get("version"):
+                    fire_ideal_version_ready(
+                        db, str(request.user_id), str(arc_id),
+                        _r2["version"])
+            except Exception:
+                pass
+        return jsonify({"saved": True}), 200
+    except Exception as e:
+        logger.error("block decide failed arc=%s key=%s: %s",
+                     arc_id, block_key, e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR",
+                        "error": "Failed to save the decision"}), 500
+
+
+@v2_bp.route("/explore/arc/<arc_id>/ideal-text/save", methods=["POST"])
+@require_auth
+def v2_explore_save_ideal_text(arc_id):
+    """SAVE = ACCEPT-AND-FREEZE (founder decision #3, 2026-07-22): the
+    student accepts the master's current state as their script.
+
+      * every UNACTIONED offer resolves as kept-mine (dismissed-
+        remembered — Save must leave a clean document, not hidden
+        pending state);
+      * the current version is stamped as a save row (the FE hides the
+        take badges and gates the re-read button on it);
+      * the frozen snapshot rides the existing per-version history lane.
+
+    200 { saved: true, saved_version } · 404 · 409 NOTHING_TO_SAVE · 500
+    """
+    try:
+        from services.ideal_text_block import _living_transcript_enabled
+        from services.master_document import master_document_enabled
+        if not (master_document_enabled() and _living_transcript_enabled()
+                and _single_deliverable_enabled()):
+            return jsonify({"code": "NOT_FOUND", "error": "not found"}), 404
+        owned, _ = _arc_owned_by_caller(arc_id)
+        if not owned:
+            return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
+
+        # Resolve every unactioned offer as kept-mine.
+        rows = db.list_ideal_text_blocks(str(arc_id)) or []
+        from services.master_document import decide_block
+        for r in rows:
+            if r.get("status") == "pending_upgrade":
+                decide_block(arc_id, int(r.get("block_key")), "keep",
+                             r.get("challenger_take_session_id"), db)
+            elif r.get("status") == "candidate":
+                decide_block(arc_id, int(r.get("block_key")), "keep",
+                             r.get("incumbent_take_session_id"), db)
+
+        _row = db.get_coach_arc_ideal_text(arc_id) or {}
+        _v = _row.get("version")
+        if not isinstance(_v, int):
+            return jsonify({"code": "NOTHING_TO_SAVE",
+                            "error": "No ideal text to save yet."}), 409
+        ok = db.insert_ideal_text_save(str(arc_id), _v)
+        if not ok:
+            return jsonify({"code": "V2_ERROR",
+                            "error": "Could not save"}), 500
+        return jsonify({"saved": True, "arc_id": arc_id,
+                        "saved_version": _v}), 200
+    except Exception as e:
+        logger.error("ideal-text save failed arc=%s: %s", arc_id, e,
+                     exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR",
+                        "error": "Failed to save"}), 500
+
+
+def _ideal_save_state(arc_id, current_version) -> dict:
+    """{saved_version, saved_at, is_saved} from the latest save row —
+    {} when the master flag is off or nothing was ever saved."""
+    try:
+        from services.master_document import master_document_enabled
+        if not master_document_enabled():
+            return {}
+        row = db.get_latest_ideal_text_save(str(arc_id))
+        if not row:
+            return {}
+        return {
+            "saved_version": row.get("version"),
+            "saved_at": row.get("saved_at"),
+            "is_saved": bool(current_version is not None
+                             and row.get("version") == current_version),
+        }
+    except Exception:
+        return {}
+
+
 def _previous_spoken_session(arc_id, current_session_id):
     """The spoken take immediately BEFORE the document's take — the
     comparison base for cross-take discernment. None when this is the
@@ -12961,7 +13113,23 @@ def _tracked_changes_block(arc_id, served_text) -> dict:
         from services.transcript_document import (
             build_transcript_document, relocate_pieces,
         )
-        doc = build_transcript_document(arc_id, database=db)
+        from services.master_document import (
+            assemble_master_document, master_document_enabled,
+            upgrade_changes,
+        )
+        _master_on = master_document_enabled()
+        if _master_on:
+            # MASTER MODEL (founder 2026-07-22): the document is the
+            # persistent master; its pieces carry per-piece spans + the
+            # origin take badge, so the star lane anchors unchanged. The
+            # prior-take lane is superseded by block upgrade offers.
+            _master = assemble_master_document(arc_id, database=db)
+            if not _master.get("ready"):
+                return {}
+            doc = _master.get("document") or {}
+            doc["text"] = _master.get("text")
+        else:
+            doc = build_transcript_document(arc_id, database=db)
         if not doc:
             return {}
         # The served text may already carry approved bakes / coach text —
@@ -12983,9 +13151,17 @@ def _tracked_changes_block(arc_id, served_text) -> dict:
         # comes back as an approvable change on this document. The
         # ranking blend does the judging (L2 untouched); a fragment the
         # student already decided on is never re-offered. Best-effort. ──
+        if _master_on:
+            # Block-level upgrade offers + candidate additions — the
+            # master model's cross-take lane.
+            try:
+                changes.extend(upgrade_changes(arc_id, served_text, db))
+            except Exception as _up_err:
+                logger.warning("upgrade changes failed arc=%s: %s",
+                               arc_id, _up_err)
         try:
-            _prev = _previous_spoken_session(arc_id,
-                                             doc.get("take_session_id"))
+            _prev = None if _master_on else _previous_spoken_session(
+                arc_id, doc.get("take_session_id"))
             if _prev:
                 from services.prior_take_changes import (
                     build_prior_take_changes,
@@ -14249,6 +14425,24 @@ def v2_lab_create_recording():
                         # verification. The per-VERSION ready bubble fires
                         # idempotently (a no-op reassembly re-fires the
                         # same version key → deduped).
+                        # MASTER DOCUMENT (founder 2026-07-22, flag-gated):
+                        # judge this take against the persistent master
+                        # BEFORE assembly — take 1 builds the skeleton,
+                        # later takes write approve-gated block upgrade
+                        # offers. Best-effort; the master never moves
+                        # without an accept.
+                        try:
+                            from services.master_document import (
+                                master_document_enabled, process_new_take,
+                            )
+                            if master_document_enabled():
+                                process_new_take(arc_id, guest_session_id,
+                                                 db)
+                        except Exception as _md_err:
+                            logger.warning(
+                                "lab: master-document take processing "
+                                "failed sid=%s: %s (non-fatal)",
+                                guest_session_id, _md_err)
                         _eager_ok = maybe_assemble_ideal_text(
                             arc_id, require_target=False,
                             include_suggestion_anchors=(
