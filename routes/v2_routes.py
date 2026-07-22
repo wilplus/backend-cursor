@@ -8821,11 +8821,20 @@ def v2_user_suggestion_feedback(snippet_id):
                                 or {}).get("version")
                     except Exception:
                         _ver = None
+                    # The ledger is keyed on the phrase AS IT APPEARS IN
+                    # THE DOCUMENT — not the raw snippet transcript.
+                    # Founder bug 2026-07-22: the document is smoothed
+                    # (fillers out, casing/punctuation applied), so a row
+                    # keyed on the raw transcript could never be found by
+                    # the bake and the approval silently did nothing
+                    # ("the system does not accept my approval").
                     record_star_decision(
                         db, _arc, suggestion=_sug_row, target=target,
                         action=action,
-                        target_text=(snip.get("transcript")
-                                     or snip.get("transcription_text")),
+                        target_text=_document_phrase_for(
+                            _arc, snippet_id,
+                            fallback=(snip.get("transcript")
+                                      or snip.get("transcription_text"))),
                         snippet_id=snippet_id, version=_ver)
                     # A dismissed star also stops being OFFERED right now:
                     # the ledger remembers the decision; the row removal
@@ -12873,6 +12882,34 @@ def _reassemble_after_decision(arc_id) -> None:
     except Exception as e:
         logger.warning("living_transcript: post-decision reassembly "
                        "failed arc=%s: %s", arc_id, e)
+
+
+def _document_phrase_for(arc_id, snippet_id, *, fallback=None):
+    """The phrase a decision must be keyed on: the piece's text AS IT
+    APPEARS IN THE DOCUMENT.
+
+    Founder bug 2026-07-22 ("the system does not accept my approval").
+    The document is smoothed — fillers removed, casing and punctuation
+    applied — and it may carry a coach correction or the student's own
+    transcript edit instead of the raw words. A ledger row keyed on the
+    RAW snippet transcript therefore could never be located by the bake,
+    so the approval saved and then did nothing.
+
+    Falls back to the supplied raw text when the flag is off or the
+    document cannot be built (legacy lanes are unaffected)."""
+    try:
+        from services.ideal_text_block import _living_transcript_enabled
+        if not _living_transcript_enabled():
+            return fallback
+        from services.transcript_document import build_transcript_document
+        doc = build_transcript_document(arc_id, database=db)
+        for p in ((doc or {}).get("pieces") or []):
+            if str(p.get("snippet_id")) == str(snippet_id):
+                return p.get("text") or fallback
+    except Exception as e:
+        logger.warning("document phrase lookup failed arc=%s snip=%s: %s",
+                       arc_id, snippet_id, e)
+    return fallback
 
 
 def _previous_spoken_session(arc_id, current_session_id):
