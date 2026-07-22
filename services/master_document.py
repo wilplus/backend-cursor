@@ -133,8 +133,9 @@ def build_skeleton(arc_id: Any, database) -> list:
     """Create + persist the block skeleton from the arc's FIRST spoken
     take. Decked: one block per slide (deterministic). Deckless: LLM
     boundaries, quarter-split fallback. Returns the block rows written
-    ([] when there is nothing to build). Idempotent via the caller
-    (ensure_blocks). Best-effort."""
+    ([] when there is nothing to build). Called from the analysis worker
+    ONLY (process_new_take) — never from a serving path (the LLM pass
+    must not ride a student GET). Best-effort."""
     try:
         from services.best_presentation import spoken_arc_sessions
         from services.transcript_document import build_transcript_document
@@ -207,18 +208,6 @@ def build_skeleton(arc_id: Any, database) -> list:
         return []
 
 
-def ensure_blocks(arc_id: Any, database) -> Optional[list]:
-    """The arc's block rows — building the skeleton on first sight.
-    None = read failed (callers must NOT rebuild over unknown state —
-    the read-fail ≠ empty lesson)."""
-    rows = database.list_ideal_text_blocks(str(arc_id))
-    if rows is None:
-        return None
-    if rows:
-        return rows
-    return build_skeleton(arc_id, database)
-
-
 # ── the master document ────────────────────────────────────────────────
 
 def assemble_master_document(arc_id: str, *, database=None) -> dict:
@@ -233,7 +222,12 @@ def assemble_master_document(arc_id: str, *, database=None) -> dict:
     from services.transcript_smoothing import finalize_document
 
     empty = {"text": "", "key_moments": [], "polish": [], "ready": False}
-    rows = ensure_blocks(arc_id, database)
+    # READ-ONLY: the serving path never builds the skeleton (that would
+    # put the take-1 LLM chunking pass on the student GET). The skeleton
+    # is built exclusively in the analysis worker (process_new_take);
+    # until it exists the caller falls back to the living-transcript
+    # document — the user never sees an empty text.
+    rows = database.list_ideal_text_blocks(str(arc_id))
     if not rows:
         return empty
 
@@ -265,6 +259,24 @@ def assemble_master_document(arc_id: str, *, database=None) -> dict:
     doc = finalize_document(" ".join(parts))
     for p in pieces:
         p["text"] = doc[p["start"]:p["end"]]
+
+    # The student's APPROVED star/tracked changes bake into the master
+    # exactly as they did into the transcript document — without this,
+    # every approval would silently stop applying under the master flag.
+    try:
+        from services.ideal_decision_ledger import bake_piece, load_ledger
+        from services.transcript_document import relocate_pieces
+        _approved = [r for r in load_ledger(database, arc_id)
+                     if r.get("decision") == "approved"]
+        if _approved:
+            baked = bake_piece(doc, _approved)
+            if baked != doc:
+                doc = baked
+                pieces = relocate_pieces(doc, pieces)
+    except Exception as _le:
+        logger.warning("master_document: bake failed arc=%s: %s",
+                       arc_id, _le)
+
     return {
         "text": doc,
         "key_moments": [],

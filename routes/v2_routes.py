@@ -13124,10 +13124,15 @@ def _tracked_changes_block(arc_id, served_text) -> dict:
             # origin take badge, so the star lane anchors unchanged. The
             # prior-take lane is superseded by block upgrade offers.
             _master = assemble_master_document(arc_id, database=db)
-            if not _master.get("ready"):
-                return {}
-            doc = _master.get("document") or {}
-            doc["text"] = _master.get("text")
+            if _master.get("ready"):
+                doc = _master.get("document") or {}
+                doc["text"] = _master.get("text")
+            else:
+                # No skeleton yet (flip-ON before the next take / pre-
+                # migration): the star lane keeps anchoring on the
+                # living-transcript document rather than going dark.
+                _master_on = False
+                doc = build_transcript_document(arc_id, database=db)
         else:
             doc = build_transcript_document(arc_id, database=db)
         if not doc:

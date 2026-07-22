@@ -21,7 +21,6 @@ from services.master_document import (
     assemble_master_document,
     build_skeleton,
     decide_block,
-    ensure_blocks,
     process_new_take,
     upgrade_changes,
 )
@@ -65,6 +64,9 @@ class _Db:
 
     def get_snippet_by_id(self, sid):
         return self.snippet_rows.get(str(sid))
+
+    def list_ideal_decisions(self, arc_id):
+        return []
 
     def list_ideal_text_blocks(self, arc_id):
         if self.blocks_fail:
@@ -156,22 +158,24 @@ class SkeletonTests(unittest.TestCase):
         self.assertEqual(build_skeleton(ARC, _Db(sessions=[])), [])
 
 
-class EnsureBlocksTests(unittest.TestCase):
-    def test_read_failure_is_none_never_rebuilds(self):
-        db = _Db(blocks_fail=True)
-        self.assertIsNone(ensure_blocks(ARC, db))
-        self.assertEqual(db.writes, [])
+class ReadOnlyAssemblyTests(unittest.TestCase):
+    """The serving path NEVER builds the skeleton — the take-1 LLM pass
+    belongs to the worker alone; a missing skeleton assembles empty (the
+    serve layer falls back to the living-transcript document)."""
 
-    def test_existing_rows_returned_without_rebuild(self):
-        blocks = [{"arc_id": ARC, "block_key": 0, "active": True,
-                   "status": "settled", "incumbent_take_session_id": T1,
-                   "incumbent_take_index": 1,
-                   "incumbent_pieces": [{"snippet_id": "s1",
-                                         "text": "words"}],
-                   "rejected_take_session_ids": []}]
-        db = _Db(blocks=blocks)
-        rows = ensure_blocks(ARC, db)
-        self.assertEqual(len(rows), 1)
+    def test_assemble_never_writes_or_chunks(self):
+        db = _Db(snips_by_session={T1: [
+            _snip("s1", 0, "some take one words")]})
+        with patch("services.master_document._llm_boundaries") as m_llm:
+            out = assemble_master_document(ARC, database=db)
+        self.assertFalse(out["ready"])
+        self.assertEqual(db.writes, [])
+        m_llm.assert_not_called()
+
+    def test_read_failure_assembles_empty_never_rebuilds(self):
+        db = _Db(blocks_fail=True)
+        out = assemble_master_document(ARC, database=db)
+        self.assertFalse(out["ready"])
         self.assertEqual(db.writes, [])
 
 
@@ -390,6 +394,29 @@ class DecideBlockTests(unittest.TestCase):
         row2 = db2.get_ideal_text_block(ARC, 10)
         self.assertEqual((row2["status"], row2["active"]),
                          ("settled", False))
+
+
+class MasterBakeTests(unittest.TestCase):
+    """Approved star/tracked decisions keep applying under the master
+    flag — without the bake in assemble_master_document every approval
+    would silently stop working (pre-review fix, pinned)."""
+
+    def test_approved_ledger_row_bakes_into_the_master(self):
+        from services.ideal_decision_ledger import normalize_phrase
+
+        class _LedgerDb(_Db):
+            def list_ideal_decisions(self, arc_id):
+                return [{"kind": "replace",
+                         "target_phrase": normalize_phrase(
+                             "The master words"),
+                         "display_phrase": "The master words",
+                         "replacement_text": "The stronger words",
+                         "decision": "approved", "source": "user_star"}]
+
+        db = _LedgerDb(blocks=[_block(0, text="the master words")])
+        out = assemble_master_document(ARC, database=db)
+        self.assertIn("The stronger words", out["text"])
+        self.assertNotIn("master", out["text"])
 
 
 class AcceptedUpgradeRoundTripTests(unittest.TestCase):
