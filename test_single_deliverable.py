@@ -433,6 +433,20 @@ class CrucialBubbleFieldTests(unittest.TestCase):
         self.assertIsNone(body["title"])
         self.assertIsNone(body["latest_take_session_id"])
         self.assertFalse(body["reread_done"])
+        self.assertEqual(body["take_count"], 0)
+
+    def test_take_count_is_per_project_official_takes_only(self):
+        # Founder 2026-07-23: the badge is "<take_count>.0" — the count
+        # of OFFICIAL (spoken) takes of THIS arc; reads never count, and
+        # it is per-project (this arc's sessions only), never global.
+        body, _ = self._get(_row(), [
+            self._spoken("t1", 1),
+            self._spoken("t2", 2),
+            self._spoken("t3", 3),
+            self._read("r1", "t3", {"read_target": "ideal_text",
+                                    "ideal_version": 1}),
+        ])
+        self.assertEqual(body["take_count"], 3)   # the 3 spoken, not the read
 
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
