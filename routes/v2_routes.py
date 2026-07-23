@@ -12321,12 +12321,16 @@ def v2_explore_get_ideal_text(arc_id):
 
     SINGLE_DELIVERABLE mode (flag ON) instead returns
     200 { arc_id, version, status:"verified"|"unverified", title,
-          updated_at, latest_take_session_id, reread_done,
+          updated_at, latest_take_session_id, take_count, reread_done,
           reread_processing, text, user_edited, key_moments,
           moments_unlocked, explanations_available, price_credits,
           notes_text } — free in both states, never 402s. The
     crucial-bubble fields (founder 2026-07-20): `title` = latest take's
-    topic, `latest_take_session_id` = the re-read pairing target. The
+    topic, `latest_take_session_id` = the re-read pairing target.
+    `take_count` (founder 2026-07-23) = the project's official-take count
+    (per-arc, reads excluded); the FE renders the document badge as
+    "<take_count>.0" — it climbs on every recorded take, distinct from
+    `version` (which bumps only on a text change). The
     two-state mic reads THREE states: `reread_done` (a FINISHED re-read
     of the current version exists → next-take button), `reread_processing`
     (a re-read exists but is still transcribing → the FE holds a loading
@@ -12712,6 +12716,14 @@ def v2_explore_get_ideal_text(arc_id):
                 "title": _title,
                 "updated_at": _r.get("updated_at"),
                 "latest_take_session_id": _latest_take_sid,
+                # The project's OFFICIAL-TAKE count (founder 2026-07-23):
+                # the FE renders the document badge as "<take_count>.0".
+                # PER-PROJECT by construction (spoken takes of THIS arc;
+                # reads excluded) — never a global tally, and it grows on
+                # every recorded take (unlike `version`, which bumps only
+                # when the text actually changes). continue_arc_id is what
+                # keeps a new take appending here so this count climbs.
+                "take_count": len(_spoken_rows),
                 "reread_done": _reread_done,
                 # True while a re-read of THIS version is still
                 # transcribing — the FE holds a loading state in the
