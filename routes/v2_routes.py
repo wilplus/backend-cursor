@@ -9652,6 +9652,132 @@ def v2_coach_student_audit_send(user_id):
         return jsonify({"code": "V2_ERROR", "error": "Failed to send audit"}), 500
 
 
+@v2_bp.route("/coach/annotation-uploads", methods=["POST"])
+@require_admin_or_coach
+def v2_coach_annotation_upload():
+    """ANNOTATION MODE (Stage 4 / T4, founder 2026-07-23): the coach
+    uploads an audio file and gets it chopped straight into labelable
+    snippets — WITHOUT any ideal-text assembly — to bank key-moment
+    annotations toward the 1,000-annotation goal.
+
+    Reuses the shipped machinery (guardrail: no new chunker, no new UI):
+      * the same ≤200-char punctuation-aware cutter (process_lab_recording);
+      * the same coach review queue + snippet-review UI
+        (source='audit_upload' → send_lab_recording_to_coach flips it to
+        pending_admin_review; the queue row carries annotation_mode=true
+        so the FE labels it).
+    NO arc, NO version, NO master document — the assembly block the
+    student POST runs is simply never called here.
+
+    Multipart: audio_file (required) · label (optional, the coach's
+    reference title). Audio only — video is refused (AUDIO_ONLY).
+
+    201 { session_id, n_snippets, annotation_mode:true } · 400 · 413 ·
+    415 · 422 (no speech) · 500
+    """
+    try:
+        if "audio_file" not in request.files:
+            return jsonify({"code": "AUDIO_FILE_REQUIRED",
+                            "error": "audio_file is required"}), 400
+        audio_file = request.files.get("audio_file")
+        max_bytes = _LAB_MAX_AUDIO_MB * 1024 * 1024
+        if (request.content_length or 0) > max_bytes:
+            return jsonify({"code": "FILE_TOO_LARGE",
+                            "error": f"exceeds {_LAB_MAX_AUDIO_MB}MB"}), 413
+        file_bytes = audio_file.read()
+        if not file_bytes:
+            return jsonify({"code": "INVALID_INPUT",
+                            "error": "audio_file is empty"}), 400
+        if len(file_bytes) > max_bytes:
+            return jsonify({"code": "FILE_TOO_LARGE",
+                            "error": f"exceeds {_LAB_MAX_AUDIO_MB}MB"}), 413
+        # Audio only (guardrail: keep video blocked) — same gate as the
+        # student POST.
+        _up_ct = (audio_file.mimetype or "").strip().lower()
+        _up_ext = os.path.splitext(
+            audio_file.filename or "")[1].lower().lstrip(".")
+        if _up_ct.startswith("video/") or _up_ext in _VIDEO_UPLOAD_EXTS:
+            return jsonify({
+                "code": "AUDIO_ONLY",
+                "error": "Upload an audio file — video isn't supported.",
+            }), 415
+
+        # Min-content gate — a silent file has nothing to annotate.
+        from services.min_content_gate import evaluate_min_content_bytes
+        gate = evaluate_min_content_bytes(file_bytes)
+        if not gate["ok"]:
+            return jsonify({
+                "code": "RECORDING_REJECTED",
+                "error": "No speech detected — try another file.",
+                "gate": gate,
+            }), 422
+
+        coach_id = getattr(request, "user_id", None)
+        session_id = str(uuid.uuid4())
+        recording_id = str(uuid.uuid4())
+        ext = os.path.splitext(audio_file.filename or "")[1] or ".webm"
+        bucket = "coach_feedback_videos"
+        key = f"willab_annotation/{session_id}/audio_{uuid.uuid4().hex}{ext}"
+        content_type = (audio_file.mimetype
+                        or "audio/webm").strip() or "audio/webm"
+        from services.coach_video_storage import (
+            coach_media_public_url, put_coach_object_bytes,
+        )
+        try:
+            put_coach_object_bytes(bucket, key, file_bytes, content_type)
+        except Exception as _up_err:
+            logger.error("annotation upload: store failed: %s", _up_err,
+                         exc_info=True)
+            return jsonify({"code": "V2_ERROR",
+                            "error": "Failed to store audio"}), 500
+        parent_url = coach_media_public_url(key) or f"s3://{bucket}/{key}"
+
+        # The session: source='audit_upload' (queue entry) + the
+        # annotation_mode marker; owned by the coach; NO arc_id.
+        _label = (request.form.get("label") or "").strip()[:200] or None
+        if not db.v2_get_session_by_id(session_id):
+            db.v2_create_guest_session(session_id)
+        if coach_id:
+            db.set_session_user_id(session_id, coach_id)
+        db.set_session_source(session_id, "audit_upload")
+        db.set_session_intake_context(session_id, {
+            "topic": _label or "Annotation",
+            "annotation_mode": True,
+        })
+
+        # Snippets ONLY — the same cutter, no assembly (the student
+        # POST's arc/ideal-text block is never invoked here).
+        from services.lab_recording import process_lab_recording
+        readout = process_lab_recording(
+            session_id=session_id,
+            user_id=coach_id,
+            recording_id=recording_id,
+            audio_bytes=file_bytes,
+            filename=audio_file.filename or "annotation.webm",
+            session_context={"topic": _label or "Annotation",
+                             "annotation_mode": True},
+            parent_audio_url=parent_url,
+            recording_kind="spoken",
+        )
+        _n = len(readout.get("snippets") or [])
+
+        # Into the coach queue (same path students' takes use).
+        try:
+            from services.lab_send import send_lab_recording_to_coach
+            send_lab_recording_to_coach(session_id, str(coach_id or ""))
+        except Exception as _send_err:
+            logger.warning("annotation upload: send failed sid=%s: %s",
+                           session_id, _send_err)
+
+        return jsonify({"session_id": session_id, "n_snippets": _n,
+                        "annotation_mode": True}), 201
+    except Exception as e:
+        logger.error("annotation upload failed: %s", e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR",
+                        "error": "Failed to process the upload"}), 500
+
+
 @v2_bp.route("/coach/queue", methods=["GET"])
 @require_admin_or_coach
 def v2_coach_queue():
@@ -9679,6 +9805,9 @@ def v2_coach_queue():
                 "pseudonym": _coach_pseudonym(r.get("user_id")),
                 "domain": (ctx or {}).get("domain") or "",
                 "topic": (ctx or {}).get("topic") or "",
+                # Annotation-mode uploads (T4) ride the SAME queue + UI,
+                # labeled so the coach can tell them from student takes.
+                "annotation_mode": bool((ctx or {}).get("annotation_mode")),
                 "n_snippets": len(db.get_snippets_by_session(sid) or []),
                 "state": _coach_session_state(r, cstate),
                 "sent_at": r.get("guest_claimed_at") or r.get("created_at") or "",
