@@ -9732,25 +9732,59 @@ def v2_coach_annotation_upload():
                             "error": "Failed to store audio"}), 500
         parent_url = coach_media_public_url(key) or f"s3://{bucket}/{key}"
 
+        # The RECORDINGS row — REQUIRED before any snippet insert:
+        # charisma_snippets.recording_id is a NOT NULL FK, and
+        # process_lab_recording inserts one snippet per piece against it.
+        # Without this row every insert fails the FK SILENTLY (bulk +
+        # per-row both swallow) → zero snippets → the feature banks
+        # nothing while returning 201 (review 2026-07-23; the student
+        # path creates this row too). user_id stays NULL — an annotation
+        # upload is training data, not a student's speaker baseline; the
+        # coach is recorded in intake_context, NOT as the session owner,
+        # so they never appear as a phantom student in the roster.
+        _rec_payload = {
+            "id": recording_id, "user_id": None,
+            "session_v2_id": session_id,
+            "storage_path": key, "audio_url": parent_url,
+            "duration": gate.get("duration_sec"),
+            "recording_origin": "willab_lab",
+        }
+        try:
+            db.create_recording(_rec_payload)
+        except Exception as _ce:
+            _e = str(_ce).lower()
+            if "recording_origin" in _e or "pgrst204" in _e:
+                db.create_recording({k: v for k, v in _rec_payload.items()
+                                     if k != "recording_origin"})
+            else:
+                logger.error("annotation upload: create_recording failed: "
+                             "%s", _ce, exc_info=True)
+                return jsonify({"code": "V2_ERROR",
+                                "error": "Failed to store audio"}), 500
+
         # The session: source='audit_upload' (queue entry) + the
-        # annotation_mode marker; owned by the coach; NO arc_id.
+        # annotation_mode marker; user_id stays NULL (see above); NO arc.
         _label = (request.form.get("label") or "").strip()[:200] or None
         if not db.v2_get_session_by_id(session_id):
             db.v2_create_guest_session(session_id)
-        if coach_id:
-            db.set_session_user_id(session_id, coach_id)
         db.set_session_source(session_id, "audit_upload")
         db.set_session_intake_context(session_id, {
             "topic": _label or "Annotation",
             "annotation_mode": True,
+            "uploaded_by_coach": str(coach_id) if coach_id else None,
         })
+        try:
+            db.v2_set_guest_session_recording(session_id, recording_id)
+        except Exception as _le:
+            logger.warning("annotation upload: link recording failed "
+                           "sid=%s: %s (non-fatal)", session_id, _le)
 
         # Snippets ONLY — the same cutter, no assembly (the student
         # POST's arc/ideal-text block is never invoked here).
         from services.lab_recording import process_lab_recording
         readout = process_lab_recording(
             session_id=session_id,
-            user_id=coach_id,
+            user_id=None,
             recording_id=recording_id,
             audio_bytes=file_bytes,
             filename=audio_file.filename or "annotation.webm",
@@ -9761,13 +9795,16 @@ def v2_coach_annotation_upload():
         )
         _n = len(readout.get("snippets") or [])
 
-        # Into the coach queue (same path students' takes use).
+        # Into the coach queue — flip the status DIRECTLY (the same flip
+        # send_lab_recording_to_coach performs) rather than via that
+        # helper, which would also fire the student "session ready"
+        # admin email on a coach self-upload (review 2026-07-23).
         try:
-            from services.lab_send import send_lab_recording_to_coach
-            send_lab_recording_to_coach(session_id, str(coach_id or ""))
-        except Exception as _send_err:
-            logger.warning("annotation upload: send failed sid=%s: %s",
-                           session_id, _send_err)
+            db.v2_update_session_status_unscoped(
+                session_id, "pending_admin_review")
+        except Exception as _qe:
+            logger.warning("annotation upload: queue flip failed sid=%s: "
+                           "%s", session_id, _qe)
 
         return jsonify({"session_id": session_id, "n_snippets": _n,
                         "annotation_mode": True}), 201
