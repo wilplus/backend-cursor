@@ -10334,13 +10334,27 @@ class DatabaseService:
             return False
 
     def get_snippets_by_ids(self, snippet_ids: Any) -> list:
-        """Bulk snippet read — ONE query for a judging pass instead of a
-        round trip per piece (review 2026-07-22 perf finding). Best-
-        effort: [] on failure (callers degrade to unmeasured)."""
+        """Bulk snippet read — ONE query instead of a round trip per
+        piece (review 2026-07-22 perf finding). Carries `metrics` (the
+        block-ranking judge) and `say_it_stronger` (the T3 emphasis
+        key-phrase signal, 2026-07-23). Best-effort: on the
+        column-missing case (say_it_stronger not migrated) it retries
+        without it; [] on any other failure."""
         ids = [str(x) for x in (snippet_ids or []) if x]
         if not ids:
             return []
         try:
+            try:
+                res = (
+                    self.client.table("charisma_snippets")
+                    .select("id, metrics, say_it_stronger")
+                    .in_("id", ids)
+                    .execute()
+                )
+                return res.data or []
+            except Exception as _e_full:
+                if "say_it_stronger" not in str(_e_full).lower():
+                    raise
             res = (
                 self.client.table("charisma_snippets")
                 .select("id, metrics")

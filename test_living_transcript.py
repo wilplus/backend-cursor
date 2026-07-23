@@ -21,7 +21,9 @@ from __future__ import annotations
 import unittest
 from unittest.mock import patch
 
-from services.tracked_changes import build_tracked_changes, verify_changes
+from services.tracked_changes import (
+    build_tracked_changes, key_phrases_from_say_it_stronger, verify_changes,
+)
 from services.transcript_document import (
     build_transcript_document, verify_spans,
 )
@@ -277,6 +279,46 @@ class TrackedChangeTests(unittest.TestCase):
         self.assertEqual(c["kind"], "bold")
         self.assertIn(c["quote"], self.DOC)
         self.assertTrue(verify_changes(self.DOC, [c]))
+
+    def test_emphasis_narrows_to_the_key_phrase_span(self):
+        # T3 (founder 2026-07-23): emphasis bolds only the say-it-stronger
+        # key phrase, not the whole fragment.
+        sugs = {S2: {"kind": "emphasize", "why": "It lands."}}
+        kp = {S2: ["shipped it fast"]}
+        c = build_tracked_changes(self.DOC, self.PIECES, sugs,
+                                  key_phrases_by_snippet=kp)[0]
+        self.assertEqual(c["kind"], "bold")
+        self.assertEqual(c["quote"], "shipped it fast")   # not the piece
+        self.assertLess(len(c["quote"]),
+                        len("And then we shipped it fast."))
+        self.assertEqual(self.DOC[c["span"]["start"]:c["span"]["end"]],
+                         c["quote"])
+        self.assertTrue(verify_changes(self.DOC, [c]))
+
+    def test_emphasis_without_key_phrase_falls_back_to_fragment(self):
+        # No say-it-stronger signal → the whole fragment (today's
+        # behavior), never a guessed span.
+        sugs = {S2: {"kind": "emphasize", "why": "It lands."}}
+        c = build_tracked_changes(self.DOC, self.PIECES, sugs,
+                                  key_phrases_by_snippet={})[0]
+        self.assertEqual(c["quote"], "And then we shipped it fast.")
+
+    def test_emphasis_key_phrase_must_be_in_the_window(self):
+        # A key phrase from ANOTHER fragment never bleeds in.
+        sugs = {S2: {"kind": "emphasize", "why": "It lands."}}
+        kp = {S2: ["started small"]}   # belongs to S1's window, not S2's
+        c = build_tracked_changes(self.DOC, self.PIECES, sugs,
+                                  key_phrases_by_snippet=kp)[0]
+        self.assertEqual(c["quote"], "And then we shipped it fast.")
+
+    def test_key_phrases_from_say_it_stronger_extraction(self):
+        out = key_phrases_from_say_it_stronger(
+            {"upgrades": [{"upgrade": "we crushed it"},
+                          {"upgrade": "We Crushed It"},   # dupe, case-ins
+                          {"upgrade": "x" * 80},          # too long
+                          {"not_a_dict": True} if False else {}]})
+        self.assertEqual(out, ["we crushed it"])
+        self.assertEqual(key_phrases_from_say_it_stronger(None), [])
 
     def test_delivery_and_structural_are_advice_with_device(self):
         for kind, dev, src in (("delivery", "pace_fast", "delivery"),

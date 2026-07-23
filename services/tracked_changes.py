@@ -56,11 +56,37 @@ def _find_window(text: str, needle: str) -> Optional[tuple]:
     return None
 
 
-def _narrow(window_text: str, sug: dict) -> Optional[str]:
+# An emphasis sub-span longer than this isn't a "phrase" — bolding it is
+# the whole-fragment problem T3 exists to kill.
+_MAX_EMPHASIS_SPAN = 60
+
+
+def key_phrases_from_say_it_stronger(sis: Any) -> list:
+    """The say-it-stronger UPGRADE wordings for a snippet — the founder's
+    chosen emphasis-narrowing signal (T3, 2026-07-23). Verbatim strings,
+    capped; the same source _key_phrases reads. Pure."""
+    if not isinstance(sis, dict):
+        return []
+    out, seen = [], set()
+    for u in (sis.get("upgrades") or []):
+        if not isinstance(u, dict):
+            continue
+        phrase = (u.get("upgrade") or "").strip()
+        if not phrase or len(phrase) > _MAX_EMPHASIS_SPAN:
+            continue
+        k = phrase.lower()
+        if k not in seen:
+            seen.add(k)
+            out.append(phrase)
+    return out
+
+
+def _narrow(window_text: str, sug: dict,
+            key_phrases: Any = None) -> Optional[str]:
     """The narrow quote inside a piece — the phrase the change is really
     about (~20–50 chars), or None to mean 'the whole piece'. Reuses the
     shipped narrowing so polish/profanity behave identically to the star
-    lane."""
+    lane; EMPHASIS narrows to a key-phrase sub-span (T3)."""
     try:
         from services.suggestion_quotes import diff_quote, profanity_sentence
         from services.text_flags import has_profanity
@@ -68,6 +94,19 @@ def _narrow(window_text: str, sug: dict) -> Optional[str]:
             return diff_quote(window_text, sug.get("replacement_text"))
         if sug.get("kind") == "replace" and has_profanity(window_text):
             return profanity_sentence(window_text)
+        if sug.get("kind") == "emphasize":
+            # Bold only the strongest phrase, not the whole fragment
+            # (founder T3): the first say-it-stronger upgrade wording that
+            # occurs in this window AND is genuinely narrower than it.
+            # Return the window's OWN slice (case-exact), so the caller's
+            # substring anchor lands.
+            low = window_text.lower()
+            for phrase in (key_phrases or []):
+                if not phrase or len(phrase) >= len(window_text):
+                    continue
+                i = low.find(phrase.lower())
+                if i >= 0:
+                    return window_text[i:i + len(phrase)]
     except Exception:
         return None
     return None
@@ -92,7 +131,8 @@ def _kind_and_source(sug: dict) -> tuple:
 
 
 def build_tracked_changes(text: Any, pieces: Any, suggestions: Any,
-                          *, applied: Any = None) -> list:
+                          *, applied: Any = None,
+                          key_phrases_by_snippet: Any = None) -> list:
     """The change list for one served document.
 
     `pieces`   — [{snippet_id, text}] of the take the document came from
@@ -128,7 +168,9 @@ def build_tracked_changes(text: Any, pieces: Any, suggestions: Any,
         if window_text != (p.get("text") or "").strip():
             continue   # the piece's words moved/vanished — never guess
 
-        quote = _narrow(window_text, sug)
+        _kp = (key_phrases_by_snippet or {}).get(sid) if kind == "bold" \
+            else None
+        quote = _narrow(window_text, sug, key_phrases=_kp)
         if quote:
             rel = window_text.find(quote)
             if rel < 0:
