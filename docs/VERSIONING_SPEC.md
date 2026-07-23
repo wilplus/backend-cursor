@@ -100,13 +100,19 @@ take badge and a deterministic why-key
 
 ## 7. Known v1 limitations (C-3 gate)
 
-* **A — emphasis spans the whole fragment.** No sub-sentence signal yet.
-  Closed by T3.
-* **B — cross-take ranking is delivery + coverage only.** The coach's
-  label lives in a different table (`training_labels`), not on the snippet
-  row, so the block comparison does not read it; the field that pretended
-  to was removed rather than left as a silent no-op. Adding it is a later
-  enhancement, not a correctness bug.
+**C-3 DECISION — SHIP (founder 2026-07-23).** Both were shipped rather
+than held; T2 was never blocked (it was already in place).
+
+* **A — emphasis spans the whole fragment.** ✅ **CLOSED** — T3 (#238,
+  merged) narrows emphasis to its key-phrase sub-span; the whole-fragment
+  behavior only remains as the honest fallback when a snippet has no
+  say-it-stronger signal.
+* **B — cross-take ranking is delivery + coverage only.** **ACCEPTED as
+  shipped.** The coach's label lives in a different table
+  (`training_labels`), not on the snippet row, so the block comparison
+  does not read it; the field that pretended to was removed rather than
+  left as a silent no-op. Adding it is a later enhancement, not a
+  correctness bug.
 
 ## 8. Fences (non-negotiable, enforced in code + tests)
 
