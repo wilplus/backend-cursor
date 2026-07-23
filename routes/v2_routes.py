@@ -13308,8 +13308,32 @@ def _tracked_changes_block(arc_id, served_text) -> dict:
                 sorted(_sess_ids)).items() if v]
         except Exception:
             _applied = []
+        # T3 (founder 2026-07-23): an emphasis star bolds only its
+        # KEY-PHRASE sub-span, not the whole fragment. The signal is the
+        # snippet's say-it-stronger upgrade wordings — bulk-read once for
+        # the emphasize snippets only (bounded; get_snippets_by_ids added
+        # #232), never a per-snippet storm. Best-effort → no narrowing
+        # falls back to the whole fragment (today's behavior).
+        _kp_by_snip = {}
+        try:
+            from services.tracked_changes import (
+                key_phrases_from_say_it_stronger,
+            )
+            _emph_ids = [k for k, v in (_sugs or {}).items()
+                         if isinstance(v, dict)
+                         and v.get("kind") == "emphasize"]
+            if _emph_ids:
+                for _srow in (db.get_snippets_by_ids(_emph_ids) or []):
+                    _phr = key_phrases_from_say_it_stronger(
+                        _srow.get("say_it_stronger"))
+                    if _phr:
+                        _kp_by_snip[str(_srow.get("id"))] = _phr
+        except Exception as _kp_err:
+            logger.warning("emphasis key-phrases failed arc=%s: %s",
+                           arc_id, _kp_err)
         changes = build_tracked_changes(
-            served_text, _pieces, _sugs, applied=_applied)
+            served_text, _pieces, _sugs, applied=_applied,
+            key_phrases_by_snippet=_kp_by_snip)
 
         # ── CROSS-TAKE DISCERNMENT (founder decision 2026-07-20 #4):
         # where the PREVIOUS take said the same thing better, its wording
