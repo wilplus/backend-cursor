@@ -12321,13 +12321,17 @@ def v2_explore_get_ideal_text(arc_id):
 
     SINGLE_DELIVERABLE mode (flag ON) instead returns
     200 { arc_id, version, status:"verified"|"unverified", title,
-          updated_at, latest_take_session_id, reread_done, text,
-          user_edited, key_moments, moments_unlocked,
-          explanations_available, price_credits, notes_text } — free in
-    both states, never 402s. The crucial-bubble fields (founder
-    2026-07-20): `title` = latest take's topic, `latest_take_session_id` =
-    the re-read pairing target, `reread_done` = a re-read of the CURRENT
-    version exists (the FE's two-state mic). `explanations_available`
+          updated_at, latest_take_session_id, reread_done,
+          reread_processing, text, user_edited, key_moments,
+          moments_unlocked, explanations_available, price_credits,
+          notes_text } — free in both states, never 402s. The
+    crucial-bubble fields (founder 2026-07-20): `title` = latest take's
+    topic, `latest_take_session_id` = the re-read pairing target. The
+    two-state mic reads THREE states: `reread_done` (a FINISHED re-read
+    of the current version exists → next-take button), `reread_processing`
+    (a re-read exists but is still transcribing → the FE holds a loading
+    state in the button's place), else neither (→ the re-read mic).
+    `explanations_available`
     gates the unlock CTA (true only when a coach explanation exists);
     text-suggestion stars carry `quote` (the narrow underline span, or
     null = icon only).
@@ -12668,22 +12672,38 @@ def v2_explore_get_ideal_text(arc_id):
             # A re-read counts only when its analysis_state is 'ready'
             # (or absent/null — sync mode + legacy rows are already done
             # by the time the POST returns).
+            # THREE states the FE's mic renders (founder 2026-07-22):
+            #   * no re-read of this version           → the re-read MIC
+            #   * a re-read exists but is transcribing → LOADING, held in
+            #     the button's place ("Finishing up your recording…")
+            #   * a re-read has finished               → the NEXT-TAKE btn
+            # `reread_done: false` alone can't distinguish the first two,
+            # so the FE could not hold the loading state — that gap is why
+            # the premature button appeared. `reread_processing` closes it:
+            # a matching re-read whose analysis_state is 'processing'. A
+            # FINISHED re-read wins (done → processing false); a failed one
+            # is neither (the FE falls back to the mic so they can retry).
             _reread_done = False
+            _reread_processing = False
             if _version is not None:
                 for _s in _read_rows:
                     _ctx = _s.get("intake_context") if isinstance(
                         _s.get("intake_context"), dict) else {}
                     _iv = _ctx.get("ideal_version")
-                    _astate = _s.get("analysis_state")
-                    _finished = _astate in (None, "ready")
                     # Tolerant match: the FE's form-encoded session_context
                     # may carry the version as int or string.
-                    if _ctx.get("read_target") == "ideal_text" \
-                            and _iv is not None \
-                            and str(_iv) == str(_version) \
-                            and _finished:
+                    if _ctx.get("read_target") != "ideal_text" \
+                            or _iv is None or str(_iv) != str(_version):
+                        continue
+                    _astate = _s.get("analysis_state")
+                    if _astate in (None, "ready"):
                         _reread_done = True
-                        break
+                    elif _astate == "processing":
+                        _reread_processing = True
+                # A completed re-read is definitive — the loading state
+                # only shows when NO re-read of this version is done yet.
+                if _reread_done:
+                    _reread_processing = False
 
             return jsonify({
                 "arc_id": arc_id,
@@ -12693,6 +12713,10 @@ def v2_explore_get_ideal_text(arc_id):
                 "updated_at": _r.get("updated_at"),
                 "latest_take_session_id": _latest_take_sid,
                 "reread_done": _reread_done,
+                # True while a re-read of THIS version is still
+                # transcribing — the FE holds a loading state in the
+                # button's place until it clears (founder 2026-07-22).
+                "reread_processing": _reread_processing,
                 "text": _text,
                 # True when the served text is the student's own edit of the
                 # current version (the FE labels it).

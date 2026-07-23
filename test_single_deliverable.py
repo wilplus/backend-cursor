@@ -378,6 +378,48 @@ class CrucialBubbleFieldTests(unittest.TestCase):
             self._read("r1", "t1", _ctx, analysis_state="failed")])
         self.assertFalse(body["reread_done"])
 
+    def test_reread_processing_distinguishes_loading_from_not_started(self):
+        # Founder 2026-07-22: `reread_done: false` alone can't tell "no
+        # re-read yet" (show the mic) from "re-read still transcribing"
+        # (hold a loading state in the button's place). reread_processing
+        # closes that gap — the three mic states.
+        _ctx = {"read_target": "ideal_text", "ideal_version": 3}
+
+        def _states(sessions):
+            b, _ = self._get(_row(version=3), sessions)
+            return b["reread_done"], b["reread_processing"]
+
+        # no re-read → the MIC (neither)
+        self.assertEqual(_states([self._spoken("t1", 1)]), (False, False))
+        # transcribing → LOADING (processing, not done)
+        self.assertEqual(_states([
+            self._spoken("t1", 1),
+            self._read("r1", "t1", _ctx, analysis_state="processing")]),
+            (False, True))
+        # finished → NEXT-TAKE (done, not processing)
+        self.assertEqual(_states([
+            self._spoken("t1", 1),
+            self._read("r1", "t1", _ctx, analysis_state="ready")]),
+            (True, False))
+        # a completed re-read WINS over a second one still in flight
+        self.assertEqual(_states([
+            self._spoken("t1", 1),
+            self._read("r1", "t1", _ctx, analysis_state="ready"),
+            self._read("r2", "t1", _ctx, analysis_state="processing")]),
+            (True, False))
+        # a failed re-read is neither → the FE falls back to the mic
+        self.assertEqual(_states([
+            self._spoken("t1", 1),
+            self._read("r1", "t1", _ctx, analysis_state="failed")]),
+            (False, False))
+        # a PROCESSING re-read of a STALE version doesn't hold loading
+        self.assertEqual(_states([
+            self._spoken("t1", 1),
+            self._read("r1", "t1", {"read_target": "ideal_text",
+                                    "ideal_version": 2},
+                       analysis_state="processing")]),
+            (False, False))
+
     def test_untagged_read_never_flips_reread_done(self):
         # A per-take re-read (no read_target) is not an ideal-text re-read.
         body, _ = self._get(_row(version=3), [
