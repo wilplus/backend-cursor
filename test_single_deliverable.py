@@ -297,9 +297,10 @@ class CrucialBubbleFieldTests(unittest.TestCase):
                 "intake_context": {"topic": topic} if topic else {}}
 
     @staticmethod
-    def _read(sid, paired, ctx=None):
+    def _read(sid, paired, ctx=None, analysis_state=None):
         return {"id": sid, "take_index": None, "recording_kind": "read",
-                "paired_session_id": paired, "intake_context": ctx or {}}
+                "paired_session_id": paired, "intake_context": ctx or {},
+                "analysis_state": analysis_state}
 
     def _get(self, row, sessions):
         with self.app.test_request_context():
@@ -348,6 +349,34 @@ class CrucialBubbleFieldTests(unittest.TestCase):
             self._read("r1", "t1", {"read_target": "ideal_text",
                                     "ideal_version": "3"})])
         self.assertTrue(body["reread_done"])
+
+    def test_reread_done_gates_on_completion_not_existence(self):
+        # Founder bug 2026-07-22 "the orphaned recording": in async mode
+        # the re-read row exists before its transcription finishes. The
+        # two-state mic must NOT un-gate the "record another take" button
+        # until the re-read is actually done — so reread_done requires
+        # analysis_state ready (or absent/null = sync/legacy = done).
+        _ctx = {"read_target": "ideal_text", "ideal_version": 3}
+        # still transcribing → NOT done, button stays on re-read
+        body, _ = self._get(_row(version=3), [
+            self._spoken("t1", 1),
+            self._read("r1", "t1", _ctx, analysis_state="processing")])
+        self.assertFalse(body["reread_done"])
+        # finished → done
+        body, _ = self._get(_row(version=3), [
+            self._spoken("t1", 1),
+            self._read("r1", "t1", _ctx, analysis_state="ready")])
+        self.assertTrue(body["reread_done"])
+        # null (sync mode / legacy row) → treated as done
+        body, _ = self._get(_row(version=3), [
+            self._spoken("t1", 1),
+            self._read("r1", "t1", _ctx, analysis_state=None)])
+        self.assertTrue(body["reread_done"])
+        # a failed re-read is also not a completed one → button waits
+        body, _ = self._get(_row(version=3), [
+            self._spoken("t1", 1),
+            self._read("r1", "t1", _ctx, analysis_state="failed")])
+        self.assertFalse(body["reread_done"])
 
     def test_untagged_read_never_flips_reread_done(self):
         # A per-take re-read (no read_target) is not an ideal-text re-read.

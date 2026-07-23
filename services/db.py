@@ -10954,7 +10954,7 @@ class DatabaseService:
         _full_cols = ("id, user_id, arc_id, take_index, status, "
                       "created_at, intake_context, results_published_at, "
                       "recording_kind, paired_session_id, "
-                      "coach_feedback_saved_at")
+                      "coach_feedback_saved_at, analysis_state")
         try:
             try:
                 res = (
@@ -10968,9 +10968,11 @@ class DatabaseService:
             except Exception as _e_full:
                 _low = str(_e_full).lower()
                 # Delivery-layer columns not migrated yet → the legacy list.
+                # analysis_state joined the select 2026-07-22 (the re-read
+                # completion gate); it degrades the same way.
                 if not any(c in _low for c in (
                         "recording_kind", "paired_session_id",
-                        "coach_feedback_saved_at")):
+                        "coach_feedback_saved_at", "analysis_state")):
                     raise
             res = (
                 self.client.table("v2_sessions")

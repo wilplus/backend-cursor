@@ -12657,17 +12657,31 @@ def v2_explore_get_ideal_text(arc_id):
                     _title = _t.strip()
             _latest_take_sid = (str(_spoken_rows[-1].get("id"))
                                 if _spoken_rows else None)
+            # `reread_done` = a FINISHED re-read of the current version
+            # exists — NOT merely a row (founder bug 2026-07-22: "the
+            # orphaned recording"). In async mode the re-read POST
+            # returns before transcription completes, so keying the
+            # two-state mic on row-existence un-gated the "record another
+            # take" button while the re-read was still processing — the
+            # user started a take, then the re-read's late completion
+            # tore them back to the ideal text with the mic still live.
+            # A re-read counts only when its analysis_state is 'ready'
+            # (or absent/null — sync mode + legacy rows are already done
+            # by the time the POST returns).
             _reread_done = False
             if _version is not None:
                 for _s in _read_rows:
                     _ctx = _s.get("intake_context") if isinstance(
                         _s.get("intake_context"), dict) else {}
                     _iv = _ctx.get("ideal_version")
+                    _astate = _s.get("analysis_state")
+                    _finished = _astate in (None, "ready")
                     # Tolerant match: the FE's form-encoded session_context
                     # may carry the version as int or string.
                     if _ctx.get("read_target") == "ideal_text" \
                             and _iv is not None \
-                            and str(_iv) == str(_version):
+                            and str(_iv) == str(_version) \
+                            and _finished:
                         _reread_done = True
                         break
 
