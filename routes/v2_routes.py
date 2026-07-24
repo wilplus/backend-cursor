@@ -12299,8 +12299,9 @@ def v2_explore_get_ideal_text(arc_id):
     states — never a 402. Returns
     200 { arc_id, version, status:"verified"|"unverified", title,
           updated_at, latest_take_session_id, take_count, reread_done,
-          reread_processing, text, user_edited, key_moments,
-          moments_unlocked, explanations_available, price_credits,
+          reread_processing, can_record_take, text, user_edited,
+          key_moments, moments_unlocked, explanations_available,
+          price_credits,
           notes_text } — free in both states, never 402s. The
     crucial-bubble fields (founder 2026-07-20): `title` = latest take's
     topic, `latest_take_session_id` = the re-read pairing target.
@@ -12312,6 +12313,13 @@ def v2_explore_get_ideal_text(arc_id):
     of the current version exists → next-take button), `reread_processing`
     (a re-read exists but is still transcribing → the FE holds a loading
     state in the button's place), else neither (→ the re-read mic).
+    `can_record_take` (founder 2026-07-24, T1 · 1.2) is the SEPARATE,
+    re-read-independent signal for the "record another take" button: true
+    the moment the project has a spoken take, so a finished recording
+    returns the student straight to this screen ready to record again —
+    no loading gate, no forced re-read first. The re-read three-state mic
+    above is unchanged (its 2026-07-22 loading gate stays intact);
+    `can_record_take` only stops the NEXT take from waiting on it.
     `explanations_available`
     gates the unlock CTA (true only when a coach explanation exists);
     text-suggestion stars carry `quote` (the narrow underline span, or
@@ -12685,6 +12693,20 @@ def v2_explore_get_ideal_text(arc_id):
             if _reread_done:
                 _reread_processing = False
 
+        # ── IMMEDIATE NEXT-TAKE (founder 2026-07-24, T1 · 1.2): recording
+        # another take must NOT wait on the re-read practice loop. The
+        # re-read three-state mic above (reread_done/reread_processing)
+        # is UNTOUCHED — its 2026-07-22 "orphaned recording" loading gate
+        # still guards the re-read affordance. But the "record another
+        # take" button is DECOUPLED from it: it is available the moment
+        # this project has a spoken take, so a finished recording drops
+        # the student straight back here ready to record again — no
+        # loading state, no forced re-read first. Same continuable-project
+        # rule as GET /explore/arc/<id>/setup (≥1 spoken take, reads
+        # excluded), so the two can never disagree about whether a take
+        # can be started.
+        _can_record_take = bool(_spoken_rows)
+
         return jsonify({
             "arc_id": arc_id,
             "version": _version,
@@ -12705,6 +12727,14 @@ def v2_explore_get_ideal_text(arc_id):
             # transcribing — the FE holds a loading state in the
             # button's place until it clears (founder 2026-07-22).
             "reread_processing": _reread_processing,
+            # IMMEDIATE next-take affordance (founder 2026-07-24, T1 ·
+            # 1.2): the FE can offer "record another take" as soon as
+            # this is true — DECOUPLED from reread_done/reread_processing
+            # so a completed recording returns here ready to record again
+            # with no loading gate and no forced re-read. True once the
+            # project has a spoken take (same continuable-project rule as
+            # /setup); reads never flip it.
+            "can_record_take": _can_record_take,
             "text": _text,
             # True when the served text is the student's own edit of the
             # current version (the FE labels it).
