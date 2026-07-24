@@ -79,14 +79,22 @@ class DevBugsRouteTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(body, canned)
 
-    def test_post_creates(self):
+    def test_post_creates_with_images(self):
         with patch.object(rb.config, "DEV_BUGS_KEY", "secret"), \
              patch.object(rb.svc, "create_bug", return_value=42) as m:
             body, status = self._call_collection(
-                method="POST", body={"text": "boom", "image": None})
+                method="POST", body={"text": "boom", "images": ["data:image/png;base64,AAA"]})
         self.assertEqual(status, 201)
         self.assertEqual(body["id"], 42)
-        m.assert_called_once_with("boom", None)
+        m.assert_called_once_with("boom", ["data:image/png;base64,AAA"])
+
+    def test_post_legacy_single_image_wrapped(self):
+        with patch.object(rb.config, "DEV_BUGS_KEY", "secret"), \
+             patch.object(rb.svc, "create_bug", return_value=1) as m:
+            _, status = self._call_collection(
+                method="POST", body={"text": "x", "image": "data:img"})
+        self.assertEqual(status, 201)
+        m.assert_called_once_with("x", ["data:img"])
 
     def test_post_empty_400(self):
         with patch.object(rb.config, "DEV_BUGS_KEY", "secret"), \
@@ -146,12 +154,14 @@ class DevBugsRouteTests(unittest.TestCase):
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
 class DevBugsServiceTests(unittest.TestCase):
 
-    def test_attachment_from_data_url(self):
-        att = svc._attachment_for({"id": 5, "image_url": _DATA_URL})
-        self.assertEqual(att["filename"], "bug-5.png")
-        self.assertEqual(att["content_type"], "image/png")
+    def test_attachments_from_images_list(self):
+        atts = svc._attachments_for({"id": 5, "images": [_DATA_URL, _DATA_URL]})
+        self.assertEqual(len(atts), 2)
+        self.assertEqual(atts[0]["filename"], "bug-5-0.png")
+        self.assertEqual(atts[1]["filename"], "bug-5-1.png")
+        self.assertEqual(atts[0]["content_type"], "image/png")
         # content is a list of byte ints matching the decoded payload
-        self.assertEqual(bytes(att["content"]), base64.b64decode(_PNG_B64))
+        self.assertEqual(bytes(atts[0]["content"]), base64.b64decode(_PNG_B64))
 
     def test_update_bug_open_only_and_trims(self):
         client = MagicMock()
@@ -168,13 +178,28 @@ class DevBugsServiceTests(unittest.TestCase):
             self.assertIsNone(svc.update_bug(9, text=None))
         client.table.return_value.update.assert_not_called()
 
-    def test_attachment_from_http_url(self):
-        att = svc._attachment_for({"id": 6, "image_url": "https://x.test/a.jpg"})
-        self.assertEqual(att, {"filename": "bug-6.jpg", "path": "https://x.test/a.jpg"})
+    def test_attachments_legacy_image_url(self):
+        atts = svc._attachments_for({"id": 6, "image_url": "https://x.test/a.jpg"})
+        self.assertEqual(atts, [{"filename": "bug-6-0.jpg", "path": "https://x.test/a.jpg"}])
 
-    def test_attachment_none_and_garbage(self):
-        self.assertIsNone(svc._attachment_for({"id": 7, "image_url": None}))
-        self.assertIsNone(svc._attachment_for({"id": 8, "image_url": "notaurl"}))
+    def test_attachments_none_and_garbage(self):
+        self.assertEqual(svc._attachments_for({"id": 7, "images": []}), [])
+        self.assertEqual(svc._attachments_for({"id": 8, "image_url": None}), [])
+        self.assertEqual(svc._attachments_for({"id": 9, "image_url": "notaurl"}), [])
+
+    def test_create_bug_stores_images_list(self):
+        client = MagicMock()
+        client.table.return_value.insert.return_value.execute.return_value = MagicMock(data=[{"id": 3}])
+        with patch.object(svc.db, "client", client):
+            out = svc.create_bug("boom", ["a", "b"])
+        self.assertEqual(out, 3)
+        client.table.return_value.insert.assert_called_once_with(
+            {"text": "boom", "images": ["a", "b"], "image_url": "a"})
+
+    def test_create_bug_empty_raises(self):
+        with patch.object(svc.db, "client", MagicMock()):
+            with self.assertRaises(ValueError):
+                svc.create_bug("  ", [])
 
     def test_build_body_has_context_and_lines(self):
         bugs = [
