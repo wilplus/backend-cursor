@@ -186,3 +186,41 @@ def emphasis_z(piece_metrics: Any, baseline: Optional[dict]) -> Optional[float]:
             continue
         zs.append((v - base[0]) / base[1])
     return min(zs) if zs else None
+
+
+# The DELIVERY_FEATURES signed toward AROUSAL/activation, following the
+# cross-study vocal patterns in Juslin & Laukka (2003, Psychological Bulletin):
+# high-arousal delivery is FASTER (wpm↑), LOUDER (dynamic_db↑), more
+# pitch-mobile (f0_sd↑), and LESS paused (pause_ratio↓). Those cues are
+# collinear across the high-arousal emotions (anger/fear/happiness), so this
+# reads the AROUSAL AXIS only — never a discrete emotion.
+_AROUSAL_SIGN = {"wpm": 1.0, "dynamic_db": 1.0, "f0_sd": 1.0, "pause_ratio": -1.0}
+
+
+def arousal_z(piece_metrics: Any, baseline: Optional[dict]) -> Optional[float]:
+    """A baseline-relative AROUSAL read for ONE piece: the mean of the
+    speaker-normalized delivery cues (z vs their OWN reference), each signed
+    toward activation — fast / loud / pitch-mobile / un-paused → high; slow /
+    soft / flat / paused → low. Continuous and graded (NOT a threshold), so the
+    nearest reading wins rather than whatever just clears a cutoff.
+
+    This is ACTIVATION only (calm↔activated), NOT a discrete emotion: the
+    phone-recordable cues are collinear across anger/fear/happiness (Juslin &
+    Laukka, 2003), so the honest read is the arousal axis. Captured for the
+    coach-labeled learning loop; the module never surfaces it to a user and it
+    is never fed into ranking (activation is not quality). None when nothing is
+    measurable. Pure, deterministic, no LLM — same contract as the other stars.
+    """
+    if not baseline:
+        return None
+    feats = normalize_features(piece_metrics)
+    zs = []
+    for f, sign in _AROUSAL_SIGN.items():
+        v = feats.get(f)
+        base = baseline.get(f)
+        if v is None or not base or not base[1]:
+            continue
+        zs.append(sign * (v - base[0]) / base[1])
+    if not zs:
+        return None
+    return sum(zs) / len(zs)

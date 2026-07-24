@@ -8611,6 +8611,25 @@ class DatabaseService:
             logger.error(f"update_snippet_metrics failed: {e}")
             return None
 
+    def set_snippet_arousal(self, snippet_id: str, arousal_z: float) -> bool:
+        """Capture the baseline-relative AROUSAL read on a snippet (founder
+        2026-07-24, capture-first). A learning-loop signal only — it is never
+        surfaced to a user and never fed into ranking. Best-effort: a missing
+        ``arousal_z`` column (migration pending) or any other error just
+        returns False and never raises into the analysis path."""
+        try:
+            result = (
+                self.client.table("charisma_snippets")
+                .update({"arousal_z": arousal_z})
+                .eq("id", snippet_id)
+                .execute()
+            )
+            return bool(getattr(result, "data", None))
+        except Exception as e:
+            logger.warning("set_snippet_arousal failed sid=%s: %s",
+                           snippet_id, e)
+            return False
+
     def skip_snippet(self, snippet_id: str, is_skipped: bool = True) -> Optional[dict]:
         """Mark a snippet as skipped (hidden from user results)."""
         try:
