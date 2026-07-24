@@ -19,7 +19,8 @@
   .navmenu.open{display:block}
   .navmenu button{display:block;width:100%;text-align:left;background:transparent;border:none;font:inherit;padding:10px 12px;border-radius:8px;cursor:pointer;font-weight:600}
   .navmenu button:hover{background:#f0f1f4}.navmenu button.on{color:var(--accent)}
-  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:12px;box-shadow:0 1px 2px rgba(15,15,15,.04),0 8px 24px -18px rgba(15,15,15,.18)}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:12px;box-shadow:0 1px 2px rgba(15,15,15,.04),0 8px 24px -18px rgba(15,15,15,.18);transition:outline .12s}
+  .card.drag{outline:2px dashed var(--accent);outline-offset:3px;background:#f7f7ff}
   textarea{width:100%;border:none;resize:none;font:inherit;color:var(--ink);background:transparent;outline:none;min-height:60px;line-height:1.5;padding:4px 2px}
   .thumbchip{display:inline-flex;align-items:center;gap:6px;margin-top:8px;background:#f0f1f4;border-radius:10px;padding:4px 6px}
   .thumbchip img{width:40px;height:40px;object-fit:cover;border-radius:7px;display:block}
@@ -242,14 +243,18 @@
     catch(e){ toast("Save failed"); }
   }
   $("save").onclick=addBug;
-  input.addEventListener("keydown",e=>{if((e.metaKey||e.ctrlKey)&&e.key==="Enter")addBug();});
+  input.addEventListener("keydown",e=>{
+    if((e.metaKey||e.ctrlKey)&&e.key==="Enter"){addBug();}
+    else if(e.key==="Tab"&&!e.shiftKey){e.preventDefault();$("save").focus();}  // Tab → Save bug
+  });
   $("mailBtn").onclick=async()=>{
     try{ const r=await api("/send",{method:"POST"}); toast("Sent "+(r.sent||0)); load(); }
     catch(e){ toast("Send failed"); }
   };
   $("attach").onclick=()=>$("file").click();
-  $("file").onchange=e=>{
-    const files=[...(e.target.files||[])]; if(!files.length) return;
+  function addFiles(files){
+    files=[...(files||[])].filter(f=>f&&f.type&&f.type.indexOf("image/")===0);
+    if(!files.length) return;
     files.forEach(f=>{
       const r=new FileReader();
       r.onload=()=>{const im=new Image();im.onload=()=>{
@@ -261,8 +266,13 @@
       r.readAsDataURL(f);
     });
     toast(files.length>1?(files.length+" images attached"):"Image attached");
-    $("file").value="";
-  };
+  }
+  $("file").onchange=e=>{addFiles(e.target.files);$("file").value="";};
+  // drag & drop image(s) anywhere onto the composer card
+  const composer=document.querySelector("#bugsView .card");
+  composer.addEventListener("dragover",e=>{e.preventDefault();composer.classList.add("drag");});
+  composer.addEventListener("dragleave",e=>{if(!composer.contains(e.relatedTarget))composer.classList.remove("drag");});
+  composer.addEventListener("drop",e=>{e.preventDefault();composer.classList.remove("drag");addFiles(e.dataTransfer&&e.dataTransfer.files);});
 
   // ══════════════════════ user stories · tasks ══════════════════════
   document.querySelectorAll("[data-tview]").forEach(b=>b.onclick=()=>{
