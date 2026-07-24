@@ -194,7 +194,7 @@ def classify_bug(bug_text: str) -> dict | None:
 
 # ─────────────────────────── DB wrappers ───────────────────────────
 
-_COLS = "id,bug_id,body,user_story,theme,epic,phase,epic_rank,story_rank,priority,order_key,pinned,bump_reason,bumped_at,status,created_at,archived_at"
+_COLS = "id,bug_id,body,user_story,theme,epic,phase,epic_rank,story_rank,priority,order_key,pinned,bump_reason,bumped_at,images,status,created_at,archived_at"
 
 
 def _active_rows() -> list[dict]:
@@ -223,6 +223,7 @@ def generate_task_for_bug(bug: dict) -> dict | None:
         "epic_rank": plan["epic_rank"],
         "story_rank": plan["story_rank"],
         "order_key": plan["order_key"],
+        "images": bug.get("images") or [],   # carry the bug's screenshots onto the task
     }
     res = db.client.table(_TABLE).insert(row).execute()
     inserted = res.data[0] if res.data else None

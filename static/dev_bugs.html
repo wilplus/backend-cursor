@@ -55,6 +55,7 @@
   .grip{flex:none;width:22px;display:flex;align-items:center;justify-content:center;color:#c3c7cf;cursor:grab;font-size:15px;touch-action:none;user-select:none;letter-spacing:-2px}
   li.task.dragging{opacity:.6;box-shadow:0 12px 26px -12px rgba(15,15,15,.35)}
   .task-main{flex:1;min-width:0}
+  .task-imgs{display:flex;gap:6px;margin-bottom:6px;flex-wrap:wrap}
   .task-story{font-size:14.5px;font-weight:600;word-break:break-word}
   .task-body{font-size:13px;color:#374151;white-space:pre-wrap;word-break:break-word;margin-top:3px}
   .task-body.clamp{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
@@ -79,6 +80,9 @@
   .gate input{height:46px;border:1px solid var(--line);border-radius:12px;padding:0 14px;font:inherit;width:100%;max-width:320px}
   .gate button{height:46px;background:var(--accent);color:#fff;border-radius:12px;padding:0 20px;width:100%;max-width:320px}
   .toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%) translateY(20px);background:var(--ink);color:#fff;padding:10px 16px;border-radius:999px;font-size:13px;opacity:0;pointer-events:none;transition:.25s;z-index:40;max-width:90%;text-align:center}
+  .lightbox{position:fixed;inset:0;background:rgba(10,10,12,.92);z-index:50;display:flex;align-items:center;justify-content:center;padding:20px;cursor:zoom-out}
+  .lightbox img{max-width:100%;max-height:100%;border-radius:8px}
+  .lb-close{position:fixed;top:14px;right:16px;width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,.16);color:#fff;font-size:26px;line-height:1;display:flex;align-items:center;justify-content:center;border:none;cursor:pointer}
   .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 </style>
 </head>
@@ -133,6 +137,7 @@
     <ul id="taskList"></ul>
   </div>
 
+  <div class="lightbox" id="lightbox" hidden><button class="lb-close" id="lbClose" title="Close">×</button><img id="lbImg" alt=""></div>
   <div class="toast" id="toast"></div>
 
 <script>
@@ -147,6 +152,11 @@
   const dShort=ts=>new Date(ts).toLocaleDateString(undefined,{month:"short",day:"numeric"});
   const dTime=ts=>dShort(ts)+" "+new Date(ts).toLocaleTimeString(undefined,{hour:"2-digit",minute:"2-digit"});
   function toast(m){const t=$("toast");t.textContent=m;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),1900);}
+  function openImage(src){$("lbImg").src=src;$("lightbox").hidden=false;}
+  function closeImage(){$("lightbox").hidden=true;$("lbImg").src="";}
+  $("lightbox").addEventListener("click",closeImage);   // tap anywhere (backdrop or image) to close
+  $("lbClose").addEventListener("click",closeImage);
+  document.addEventListener("keydown",e=>{if(e.key==="Escape"&&!$("lightbox").hidden)closeImage();});
   function autogrow(){input.style.height="auto";input.style.height=Math.max(60,input.scrollHeight)+"px";}
   input.addEventListener("input",autogrow);autogrow();
   async function copy(text){try{await navigator.clipboard.writeText(text);toast("Copied");}catch(e){toast("Copy failed");}}
@@ -200,7 +210,7 @@
     const li=document.createElement("li"); if(shipped) li.className="shipped";
     (b.images&&b.images.length?b.images:(b.image?[b.image]:[])).forEach(src=>{
       const im=document.createElement("img");im.className="shot";im.src=src;
-      im.onclick=()=>window.open().document.write('<img src="'+src+'" style="max-width:100%">');li.appendChild(im);});
+      im.onclick=()=>openImage(src);li.appendChild(im);});
     const w=document.createElement("div");w.className="txt";w.textContent=b.text;
     const m=document.createElement("div");m.className="meta";
     m.textContent=shipped?("sent "+dShort(b.sent_at)):dTime(b.created_at);w.appendChild(m);li.appendChild(w);
@@ -318,6 +328,10 @@
       grip.addEventListener("pointerdown",e=>startDrag(e,li));li.appendChild(grip);
     }
     const main=el("div","task-main");
+    if(t.images&&t.images.length){const ir=el("div","task-imgs");
+      t.images.forEach(src=>{const im=el("img","shot");im.src=src;
+        im.onclick=()=>openImage(src);ir.appendChild(im);});
+      main.appendChild(ir);}
     main.appendChild(el("div","task-story",t.user_story||"(task)"));
     const body=el("div","task-body clamp",(t.body||"").trim());
     body.onclick=()=>body.classList.toggle("clamp");
