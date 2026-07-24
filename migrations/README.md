@@ -55,3 +55,8 @@
 
 - **`grant_sniper_tables_service_role.sql`** — grants `service_role` full access to `user_sniper_profile` and `session_sniper_metrics`. Run in Supabase SQL Editor if GET /user/sniper-profile or POST .../self-rating returns 500 with "permission denied for table ...".
 - **`grant_v2_student_coaching_memory_service_role.sql`** — grants `service_role` full access to `v2_student_coaching_memory`. Run if the admin student profile page or `GET /v2/admin/students/<id>` fails with **42501** / `permission denied for table v2_student_coaching_memory` (often after `enable_rls_public_tables.sql` if the table was created without default grants).
+---
+
+## dev-bugs internal collector
+
+- **`add_dev_bugs.sql`** — creates `public.dev_bugs` (`id`, `text`, `image_url`, `status` open|shipped, `created_at`, `sent_at`) for the founder-only bug collector at `dev.willpowerlab.com`. Idempotent (`CREATE TABLE / INDEX IF NOT EXISTS`, guarded status CHECK), RLS enabled (service-role only; API gated by `DEV_BUGS_KEY`). Run in the Supabase SQL Editor **before** deploying, then set `DEV_BUGS_KEY` + `SEND_EMAILS=true`. See **`docs/DEV-BUGS-SETUP.md`**.

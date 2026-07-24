@@ -356,6 +356,19 @@ class Config:
     # CREDITS_JSON) must map a Price id to >=25 credits before this ships live.
     ARC_UNLOCK_CREDITS = int(os.getenv("ARC_UNLOCK_CREDITS") or "25")
 
+    # ── dev-bugs internal collector (dev.willpowerlab.com) ───────────────
+    # Small founder-only bug jotter (text/voice/image) -> dev_bugs table,
+    # emailed to DEV_BUGS_TO every 3 days by a Railway cron. See
+    # routes/dev_bugs.py, services/dev_bugs.py, bin/railway-devbugs-cron.sh.
+    # Shared secret the frontend sends as `x-dev-key` on every /api/dev-bugs
+    # call (and the cron sends when POSTing /api/dev-bugs/send). Empty = the
+    # API is disabled (503); set a long random string to switch it on.
+    DEV_BUGS_KEY = (os.getenv("DEV_BUGS_KEY") or "").strip()
+    # Digest recipient (defaults to the founder / ADMIN_EMAIL).
+    DEV_BUGS_TO = (os.getenv("DEV_BUGS_TO") or os.getenv("ADMIN_EMAIL") or "artur@willonski.com").strip()
+    # Host that serves the collector page at "/" (so dev.willpowerlab.com/ works).
+    DEV_BUGS_HOST = (os.getenv("DEV_BUGS_HOST") or "dev.willpowerlab.com").strip().lower()
+
     # Optional: annotation event export (cron / internal). See POST /v2/internal/annotation-export
     ANNOTATION_EXPORT_CRON_SECRET = (os.getenv("ANNOTATION_EXPORT_CRON_SECRET") or "").strip()
     ANNOTATION_EXPORT_BUCKET = (os.getenv("ANNOTATION_EXPORT_BUCKET") or "").strip() or None

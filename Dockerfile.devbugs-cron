@@ -1,0 +1,17 @@
+# Minimal image for a Railway *cron-only* service (not the web app).
+#
+# Railway: New service → connect repo → Settings:
+#   Builder: Dockerfile
+#   Dockerfile path: Dockerfile.devbugs-cron
+#   Cron Schedule: 0 9 */3 * *   (09:00 UTC every 3rd day)
+# Variables for this service:
+#   DEV_BUGS_BACKEND_URL  https://dev.willpowerlab.com   (or the web service URL)
+#   DEV_BUGS_KEY          same as on the Flask web service
+#
+# (Alternatively, skip the Dockerfile and set the service Start Command to
+#  `sh bin/railway-devbugs-cron.sh` on the standard build.)
+
+FROM curlimages/curl:8.20.0
+WORKDIR /app
+COPY bin/railway-devbugs-cron.sh /app/run.sh
+ENTRYPOINT ["/bin/sh", "/app/run.sh"]

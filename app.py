@@ -34,7 +34,7 @@ CORS(
     origins=config.CORS_ORIGINS,
     supports_credentials=True,
     allow_headers=["Authorization", "Content-Type", "X-Internal-Secret",
-                   "Accept", "X-Requested-With"],
+                   "Accept", "X-Requested-With", "X-Dev-Key"],
     methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
 )
 
@@ -46,6 +46,7 @@ from routes.admin import admin_bp
 from routes.v2_routes import v2_bp
 from routes.internal_webhooks import internal_webhooks_bp
 from routes.snippet_labels_routes import snippet_labels_bp
+from routes.dev_bugs import dev_bugs_bp
 
 app.register_blueprint(auth_bp, url_prefix="/auth")
 app.register_blueprint(recordings_v2_bp, url_prefix="/v2/recordings")
@@ -54,6 +55,9 @@ app.register_blueprint(admin_bp, url_prefix="/admin")
 app.register_blueprint(v2_bp)
 app.register_blueprint(internal_webhooks_bp)
 app.register_blueprint(snippet_labels_bp, url_prefix="/admin/snippet-labels")
+# dev-bugs collector: full paths baked into the blueprint (no prefix), like
+# internal_webhooks_bp. Serves /api/dev-bugs* + the /dev-bugs page.
+app.register_blueprint(dev_bugs_bp)
 
 
 @app.errorhandler(RequestEntityTooLarge)
@@ -87,7 +91,15 @@ def _health_response():
 
 @app.route("/", methods=["GET"])
 def root():
-    """Public root health check; frontend may use base URL with no path."""
+    """Public root health check; frontend may use base URL with no path.
+
+    Exception: the dev-bugs collector subdomain (dev.willpowerlab.com) serves its
+    single-page UI here, same-origin with its /api/dev-bugs API. Every other host
+    (Railway health probes, the app domain) still gets the JSON health payload.
+    """
+    from routes.dev_bugs import is_dev_bugs_host, serve_dev_bugs_page
+    if is_dev_bugs_host(request.host):
+        return serve_dev_bugs_page()
     return _health_response()
 
 

@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<title>dev-bugs</title>
+<style>
+  :root{--bg:#f5f5f7;--card:#fff;--ink:#111214;--muted:#6b7280;--line:#e6e7ea;--accent:#4f46e5;--accent-press:#4338ca;--danger:#c0342b;--rec:#e11d48;--ship:#12805c}
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}html,body{margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--ink);line-height:1.5;padding:16px;max-width:640px;margin:0 auto;padding-bottom:40px}
+  header{display:flex;align-items:baseline;justify-content:space-between;margin:6px 2px 14px}
+  h1{font-size:22px;margin:0;letter-spacing:-.02em;font-weight:700}
+  .note{font-size:12px;color:var(--muted)}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:12px;box-shadow:0 1px 2px rgba(15,15,15,.04),0 8px 24px -18px rgba(15,15,15,.18)}
+  textarea{width:100%;border:none;resize:none;font:inherit;color:var(--ink);background:transparent;outline:none;min-height:60px;line-height:1.5;padding:4px 2px}
+  .thumbchip{display:inline-flex;align-items:center;gap:6px;margin-top:8px;background:#f0f1f4;border-radius:10px;padding:4px 6px}
+  .thumbchip img{width:40px;height:40px;object-fit:cover;border-radius:7px;display:block}
+  .thumbchip button{background:transparent;border:none;color:#9aa0aa;font-size:17px;cursor:pointer;padding:0 4px}
+  .composer-actions{display:flex;gap:8px;align-items:center;margin-top:10px}
+  button{font:inherit;border:none;border-radius:12px;cursor:pointer;font-weight:600}
+  .save{flex:1;height:46px;background:var(--accent);color:#fff;font-size:15px}.save:active{background:var(--accent-press)}
+  .iconbtn{width:46px;height:46px;min-width:46px;border-radius:12px;background:#eef0f4;color:#374151;display:flex;align-items:center;justify-content:center;font-size:19px}
+  .iconbtn:active{background:#e2e5ea}
+  .mic.rec{background:var(--rec);color:#fff;animation:pulse 1.1s infinite}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(225,29,72,.45)}70%{box-shadow:0 0 0 10px rgba(225,29,72,0)}100%{box-shadow:0 0 0 0 rgba(225,29,72,0)}}
+  .bar{display:flex;align-items:center;justify-content:space-between;margin:20px 2px 10px;gap:10px}
+  .count{font-size:13px;color:var(--muted);font-weight:600}
+  .email{background:#eef0f4;color:#374151;height:38px;padding:0 16px;font-size:13px}.email:active{background:#e2e5ea}.email:disabled{opacity:.4}
+  ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+  li{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:10px 12px;display:flex;gap:10px;align-items:flex-start}
+  li img.shot{width:46px;height:46px;object-fit:cover;border-radius:9px;flex:none}
+  li .txt{flex:1;font-size:14.5px;white-space:pre-wrap;word-break:break-word}
+  li .meta{font-size:11px;color:var(--muted);margin-top:3px}
+  li .del{background:transparent;color:#b3b7bf;font-size:19px;line-height:1;padding:2px 4px;margin:-2px -4px 0 0}li .del:active{color:var(--danger)}
+  .empty{color:var(--muted);font-size:14px;text-align:center;padding:22px 10px}
+  .ship-head{display:flex;align-items:center;gap:8px;margin:26px 2px 10px;font-size:13px;font-weight:700;color:var(--ship)}
+  .ship-head::before{content:"✓";display:inline-flex;width:18px;height:18px;align-items:center;justify-content:center;background:#e3f3ec;color:var(--ship);border-radius:6px;font-size:12px}
+  li.shipped{background:#fbfdfc;border-color:#e3ede9}
+  .gate{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px;z-index:30;padding:24px}
+  .gate input{height:46px;border:1px solid var(--line);border-radius:12px;padding:0 14px;font:inherit;width:100%;max-width:320px}
+  .gate button{height:46px;background:var(--accent);color:#fff;border-radius:12px;padding:0 20px;width:100%;max-width:320px}
+  .toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%) translateY(20px);background:var(--ink);color:#fff;padding:10px 16px;border-radius:999px;font-size:13px;opacity:0;pointer-events:none;transition:.25s;z-index:40;max-width:90%;text-align:center}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+</style>
+</head>
+<body>
+  <div class="gate" id="gate">
+    <div class="note">Enter the dev-bugs key</div>
+    <input type="password" id="key" autocomplete="off">
+    <button id="unlock">Unlock</button>
+  </div>
+
+  <header><h1>dev-bugs</h1><span class="note">auto-emails every 3 days</span></header>
+
+  <div class="card">
+    <textarea id="input"></textarea>
+    <div id="draftPreview"></div>
+    <div class="composer-actions">
+      <button class="save" id="save">Save bug</button>
+      <button class="iconbtn" id="attach" title="Attach image">🖼</button>
+      <button class="iconbtn mic" id="mic" title="Dictate">🎙</button>
+    </div>
+    <input type="file" id="file" accept="image/*" style="display:none">
+  </div>
+
+  <div class="bar">
+    <span class="count" id="count">0 bugs</span>
+    <button class="email" id="mailBtn">Send now</button>
+  </div>
+  <ul id="list"></ul>
+  <div id="shipWrap"></div>
+  <div class="toast" id="toast"></div>
+
+<script>
+(function(){
+  "use strict";
+  const API_BASE="";                       // same origin as dev.willpowerlab.com
+  const $=id=>document.getElementById(id);
+  const input=$("input"),list=$("list"),count=$("count"),shipWrap=$("shipWrap"),draftPreview=$("draftPreview");
+  let draftImg=null, KEY=localStorage.getItem("devkey")||"";
+
+  const dShort=ts=>new Date(ts).toLocaleDateString(undefined,{month:"short",day:"numeric"});
+  const dTime=ts=>dShort(ts)+" "+new Date(ts).toLocaleTimeString(undefined,{hour:"2-digit",minute:"2-digit"});
+  function toast(m){const t=$("toast");t.textContent=m;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),1900);}
+  function autogrow(){input.style.height="auto";input.style.height=Math.max(60,input.scrollHeight)+"px";}
+  input.addEventListener("input",autogrow);autogrow();
+
+  async function api(path,opts){
+    opts=opts||{};opts.headers=Object.assign({"Content-Type":"application/json","x-dev-key":KEY},opts.headers||{});
+    const r=await fetch(API_BASE+"/api/dev-bugs"+path,opts);
+    if(r.status===401){ localStorage.removeItem("devkey"); showGate(); throw new Error("unauthorized"); }
+    if(!r.ok) throw new Error("http "+r.status);
+    return r.status===204?null:r.json();
+  }
+
+  function showGate(){ $("gate").style.display="flex"; }
+  function hideGate(){ $("gate").style.display="none"; }
+  $("unlock").onclick=async()=>{
+    KEY=$("key").value.trim(); if(!KEY) return;
+    localStorage.setItem("devkey",KEY);
+    try{ await load(); hideGate(); }catch(e){ toast("Wrong key"); }
+  };
+
+  function renderDraft(){
+    draftPreview.innerHTML="";
+    if(draftImg){const c=document.createElement("div");c.className="thumbchip";
+      const im=document.createElement("img");im.src=draftImg;
+      const x=document.createElement("button");x.innerHTML="×";x.onclick=()=>{draftImg=null;renderDraft();};
+      c.appendChild(im);c.appendChild(x);draftPreview.appendChild(c);}
+  }
+
+  function row(b,shipped){
+    const li=document.createElement("li"); if(shipped) li.className="shipped";
+    if(b.image){const im=document.createElement("img");im.className="shot";im.src=b.image;
+      im.onclick=()=>window.open().document.write('<img src="'+b.image+'" style="max-width:100%">');li.appendChild(im);}
+    const w=document.createElement("div");w.className="txt";w.textContent=b.text;
+    const m=document.createElement("div");m.className="meta";
+    m.textContent=shipped?("sent "+dShort(b.sent_at)):dTime(b.created_at);w.appendChild(m);li.appendChild(w);
+    if(!shipped){const del=document.createElement("button");del.className="del";del.innerHTML="×";
+      del.onclick=async()=>{try{await api("/"+b.id,{method:"DELETE"});load();}catch(e){}};li.appendChild(del);}
+    return li;
+  }
+
+  async function load(){
+    const data=await api("",{method:"GET"});
+    const open=data.open||[], ship=data.shipped||[];
+    count.textContent=open.length+(open.length===1?" bug":" bugs");
+    $("mailBtn").disabled=!open.length;
+    list.innerHTML=""; if(!open.length) list.innerHTML='<div class="empty">No open bugs.</div>';
+    open.forEach(b=>list.appendChild(row(b,false)));
+    shipWrap.innerHTML="";
+    if(ship.length){const h=document.createElement("div");h.className="ship-head";h.textContent="Shipped bugs";shipWrap.appendChild(h);
+      const ul=document.createElement("ul");ship.forEach(b=>ul.appendChild(row(b,true)));shipWrap.appendChild(ul);}
+  }
+
+  async function addBug(){
+    const t=input.value.trim(); if(!t&&!draftImg) return;
+    try{ await api("",{method:"POST",body:JSON.stringify({text:t,image:draftImg})});
+      input.value="";draftImg=null;autogrow();renderDraft();load();toast("Saved"); }
+    catch(e){ toast("Save failed"); }
+  }
+  $("save").onclick=addBug;
+  input.addEventListener("keydown",e=>{if((e.metaKey||e.ctrlKey)&&e.key==="Enter")addBug();});
+
+  $("mailBtn").onclick=async()=>{
+    try{ const r=await api("/send",{method:"POST"}); toast("Sent "+(r.sent||0)); load(); }
+    catch(e){ toast("Send failed"); }
+  };
+
+  // image attach (compressed client-side)
+  $("attach").onclick=()=>$("file").click();
+  $("file").onchange=e=>{
+    const f=e.target.files&&e.target.files[0]; if(!f) return;
+    const r=new FileReader();
+    r.onload=()=>{const im=new Image();im.onload=()=>{
+      const max=1024,sc=Math.min(1,max/Math.max(im.width,im.height));
+      const cv=document.createElement("canvas");cv.width=Math.round(im.width*sc);cv.height=Math.round(im.height*sc);
+      cv.getContext("2d").drawImage(im,0,0,cv.width,cv.height);
+      draftImg=cv.toDataURL("image/jpeg",0.7);renderDraft();toast("Image attached");
+    };im.src=r.result;};
+    r.readAsDataURL(f);$("file").value="";
+  };
+
+  // mic
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition,mic=$("mic");
+  if(!SR){mic.style.display="none";}
+  else{let rec=null,on=false;mic.onclick=()=>{
+    if(on){rec&&rec.stop();return;}
+    rec=new SR();rec.lang=navigator.language||"en-US";rec.interimResults=true;rec.continuous=false;
+    const base=input.value?input.value+" ":"";
+    rec.onresult=ev=>{let s="";for(let i=ev.resultIndex;i<ev.results.length;i++)s+=ev.results[i][0].transcript;input.value=base+s;autogrow();};
+    rec.onerror=ev=>{toast(ev.error==="not-allowed"?"Mic blocked":"Mic error");done();};
+    rec.onend=done;function done(){on=false;mic.classList.remove("rec");}
+    rec.start();on=true;mic.classList.add("rec");toast("Listening…");
+  };}
+
+  // boot
+  if(KEY){ load().then(hideGate).catch(showGate); } else { showGate(); }
+})();
+</script>
+</body>
+</html>
