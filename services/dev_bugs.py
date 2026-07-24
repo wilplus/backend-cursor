@@ -122,6 +122,22 @@ def delete_bug(bug_id: int) -> None:
     db.client.table(_TABLE).delete().eq("id", bug_id).eq("status", "open").execute()
 
 
+def update_bug(bug_id: int, text: str | None = None) -> dict | None:
+    """Edit an OPEN bug's text. Shipped bugs are read-only. Returns the updated row
+    (API shape) or None if no open bug matched / nothing to change. Does NOT
+    regenerate the bug's task — edit the task in the tasks view for that."""
+    if text is None:
+        return None
+    res = (
+        db.client.table(_TABLE)
+        .update({"text": text.strip()})
+        .eq("id", bug_id)
+        .eq("status", "open")
+        .execute()
+    )
+    return _row_out(res.data[0]) if res.data else None
+
+
 # ─────────────────────────── send digest ───────────────────────────
 
 def _fmt_day(ts: Any) -> str:

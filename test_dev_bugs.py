@@ -124,6 +124,24 @@ class DevBugsRouteTests(unittest.TestCase):
         self.assertEqual(status, 503)
         self.assertEqual(body["code"], "EMAIL_NOT_SENT")
 
+    def test_edit_open_bug(self):
+        with patch.object(rb.config, "DEV_BUGS_KEY", "secret"), \
+             patch.object(rb.svc, "update_bug", return_value={"id": 9, "text": "fixed"}) as m:
+            with self.app.test_request_context(
+                    method="PATCH", json={"text": "fixed"}, headers={"x-dev-key": "secret"}):
+                body, status = _unpack(rb.dev_bugs_edit(9))
+        self.assertEqual(status, 200)
+        self.assertEqual(body["bug"]["text"], "fixed")
+        m.assert_called_once_with(9, text="fixed")
+
+    def test_edit_missing_404(self):
+        with patch.object(rb.config, "DEV_BUGS_KEY", "secret"), \
+             patch.object(rb.svc, "update_bug", return_value=None):
+            with self.app.test_request_context(
+                    method="PATCH", json={"text": "x"}, headers={"x-dev-key": "secret"}):
+                body, status = _unpack(rb.dev_bugs_edit(9))
+        self.assertEqual(status, 404)
+
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
 class DevBugsServiceTests(unittest.TestCase):
@@ -134,6 +152,21 @@ class DevBugsServiceTests(unittest.TestCase):
         self.assertEqual(att["content_type"], "image/png")
         # content is a list of byte ints matching the decoded payload
         self.assertEqual(bytes(att["content"]), base64.b64decode(_PNG_B64))
+
+    def test_update_bug_open_only_and_trims(self):
+        client = MagicMock()
+        client.table.return_value.update.return_value.eq.return_value.eq.return_value.execute.return_value = \
+            MagicMock(data=[{"id": 9, "text": "fixed", "image_url": None, "status": "open", "created_at": "t"}])
+        with patch.object(svc.db, "client", client):
+            out = svc.update_bug(9, text="  fixed  ")
+        self.assertEqual(out["text"], "fixed")
+        client.table.return_value.update.assert_called_once_with({"text": "fixed"})
+
+    def test_update_bug_none_text_is_noop(self):
+        client = MagicMock()
+        with patch.object(svc.db, "client", client):
+            self.assertIsNone(svc.update_bug(9, text=None))
+        client.table.return_value.update.assert_not_called()
 
     def test_attachment_from_http_url(self):
         att = svc._attachment_for({"id": 6, "image_url": "https://x.test/a.jpg"})
