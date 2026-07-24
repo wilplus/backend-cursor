@@ -9850,6 +9850,15 @@ def v2_coach_get_session(session_id):
     email. Per-snippet coach_state folds BOTH lanes so the coach's note / tag /
     surfaced / direction ALL resume on reopen (the round-trip the old
     label-only readout dropped).
+
+    Moment order (founder 2026-07-24, T1 · 1.2): the take's moments are
+    returned MOST-SIGNIFICANT-FIRST (key → close-to-key → least distinctive)
+    via the deterministic, coach-only ``acoustic_read`` triage signal, so the
+    coach assesses the significant moments before the flat ones and neither a
+    hyper-positive (charisma) nor a hyper-negative (stress) extreme is buried.
+    See ``services.coach_moment_order``. Coach-only, never the shadow guess
+    (BLIND COACH), never the user readout (AC-9). Folded re-reads keep their
+    own order, appended after the take.
     """
     if not _is_valid_uuid(session_id):
         return jsonify({"code": "INVALID_INPUT", "error": "session_id must be a UUID"}), 400
@@ -9934,6 +9943,17 @@ def v2_coach_get_session(session_id):
             _shape_snip(s, cstate, str(session_id))
             for s in (readout.get("snippets") or [])
         ]
+        # KEY MOMENTS FIRST (founder 2026-07-24, T1 · 1.2): order THIS take's
+        # moments most-significant-first (key → close-to-key → least
+        # distinctive) so the coach lands on the significant parts before the
+        # flat ones. Deterministic acoustic_read only (never the shadow guess —
+        # BLIND COACH); reorders the coach packet only (never the user readout
+        # — AC-9). The re-reads fold in AFTER, keeping their own order (their
+        # clock restarts at 0, so they are never cross-sorted with the take).
+        from services.coach_moment_order import (
+            order_coach_moments_by_significance,
+        )
+        snippets = order_coach_moments_by_significance(snippets)
 
         # Fold the paired mid-take RE-READS into this take's packet (founder
         # 2026-07-16: "re-reads are part of the take, revealed by clicking
