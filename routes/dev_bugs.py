@@ -110,9 +110,12 @@ def dev_bugs_collection():
 
         body = request.get_json(silent=True) or {}
         text = body.get("text", "")
-        image = body.get("image")
+        images = body.get("images")
+        if images is None:
+            single = body.get("image")  # legacy single-image clients
+            images = [single] if single else []
         try:
-            bug_id = svc.create_bug(text, image)
+            bug_id = svc.create_bug(text, images)
         except ValueError:
             return jsonify({"code": "BAD_REQUEST", "error": "empty"}), 400
         _maybe_generate_task(bug_id, text)

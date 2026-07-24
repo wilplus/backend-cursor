@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 config = Config()
 
 _TABLE = "dev_bugs"
-_COLS = "id,text,image_url,status,created_at,sent_at"
+_COLS = "id,text,image_url,images,status,created_at,sent_at"
 
 # Backlog context prepended to every digest so each ticket stays aligned to the
 # themes/epics. Verbatim from the founder brief (2026-07 dev-bugs collector).
@@ -74,12 +74,24 @@ EPICS
 
 # ─────────────────────────── read / write ───────────────────────────
 
+def _bug_images(row: dict[str, Any]) -> list[str]:
+    """The bug's images as a list — the new `images` array, else the legacy single
+    `image_url`/`image` (rows created before multi-image). Drops falsy entries."""
+    imgs = row.get("images")
+    if isinstance(imgs, list) and imgs:
+        return [x for x in imgs if x]
+    single = row.get("image_url") or row.get("image")
+    return [single] if single else []
+
+
 def _row_out(row: dict[str, Any]) -> dict[str, Any]:
-    """Shape a DB row for the API: expose image_url as `image`."""
+    """Shape a DB row for the API: `images` list + `image` (first, legacy)."""
+    imgs = _bug_images(row)
     return {
         "id": row.get("id"),
         "text": row.get("text") or "",
-        "image": row.get("image_url"),
+        "image": imgs[0] if imgs else None,
+        "images": imgs,
         "status": row.get("status"),
         "created_at": row.get("created_at"),
         "sent_at": row.get("sent_at"),
@@ -100,15 +112,17 @@ def list_bugs() -> dict[str, list[dict[str, Any]]]:
     return {"open": open_bugs, "shipped": shipped}
 
 
-def create_bug(text: str, image: str | None) -> int:
-    """Insert one bug. Raises ValueError if both text and image are empty."""
+def create_bug(text: str, images: list[str] | None) -> int:
+    """Insert one bug (text + zero or more images). Raises ValueError if both the
+    text and the image list are empty. `image_url` is set to the first image for
+    backward-compat with old single-image consumers."""
     text = (text or "").strip()
-    image = image or None
-    if not text and not image:
+    imgs = [x for x in (images or []) if x]
+    if not text and not imgs:
         raise ValueError("empty")
     res = (
         db.client.table(_TABLE)
-        .insert({"text": text, "image_url": image})
+        .insert({"text": text, "images": imgs, "image_url": imgs[0] if imgs else None})
         .execute()
     )
     row = res.data[0] if res.data else None
@@ -157,16 +171,14 @@ _MIME_EXT = {"image/jpeg": "jpg", "image/jpg": "jpg", "image/png": "png",
              "image/gif": "gif", "image/webp": "webp"}
 
 
-def _attachment_for(bug: dict[str, Any]) -> dict[str, Any] | None:
-    """Build a Resend attachment dict for a bug's image, or None.
+def _one_attachment(bug_id: Any, idx: int, url: str) -> dict[str, Any] | None:
+    """One Resend attachment for a single image URL, or None.
 
     data: URL  -> decode base64 to bytes, pass as list[int] (Resend Python form).
     http(s) URL -> pass as `path`; Resend fetches it.
     """
-    url = bug.get("image_url")
     if not url:
         return None
-    bug_id = bug.get("id")
     if url.startswith("data:"):
         m = _DATA_URL_RE.match(url)
         if not m:
@@ -179,20 +191,29 @@ def _attachment_for(bug: dict[str, Any]) -> dict[str, Any] | None:
             return None
         ext = _MIME_EXT.get(mime, "jpg")
         return {
-            "filename": f"bug-{bug_id}.{ext}",
+            "filename": f"bug-{bug_id}-{idx}.{ext}",
             "content": list(raw),
             "content_type": mime,
         }
     if url.startswith("http://") or url.startswith("https://"):
-        return {"filename": f"bug-{bug_id}.jpg", "path": url}
+        return {"filename": f"bug-{bug_id}-{idx}.jpg", "path": url}
     return None
+
+
+def _attachments_for(bug: dict[str, Any]) -> list[dict[str, Any]]:
+    """All Resend attachments for a bug's images (0..N)."""
+    bug_id = bug.get("id")
+    return [
+        a for a in (_one_attachment(bug_id, i, u) for i, u in enumerate(_bug_images(bug))) if a
+    ]
 
 
 def _build_body(bugs: list[dict[str, Any]]) -> str:
     rng = f"{_fmt_day(bugs[0]['created_at'])} → {_fmt_day(bugs[-1]['created_at'])}" if bugs else "—"
     lines = []
     for i, b in enumerate(bugs, start=1):
-        shot = "  (screenshot attached)" if b.get("image_url") else ""
+        n = len(_bug_images(b))
+        shot = "" if n == 0 else ("  (screenshot attached)" if n == 1 else f"  ({n} screenshots attached)")
         text = (b.get("text") or "").strip()
         lines.append(f"{i}. [{_fmt_day(b['created_at'])}] {text}{shot}")
     return f"{_CTX}\n\n=== BUGS (reported {rng}) ===\n" + "\n".join(lines)
@@ -223,7 +244,7 @@ def send_open_bugs() -> int:
         "font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;"
         "font-size:13px;line-height:1.5;\">" + _html_escape(body) + "</pre>"
     )
-    attachments = [a for a in (_attachment_for(b) for b in bugs) if a]
+    attachments = [a for b in bugs for a in _attachments_for(b)]
 
     result = send_email_resend(
         to=config.DEV_BUGS_TO,
