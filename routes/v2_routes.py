@@ -12988,8 +12988,8 @@ def v2_explore_arc_setup(arc_id):
     Deliberately MINIMAL — only what the setup screen would otherwise
     ask for, read from the arc's latest SPOKEN take's intake_context:
 
-      200 { arc_id, topic, audience, target_length_seconds, slides,
-            presentation_ref }
+      200 { arc_id, topic, audience, strategic_context,
+            target_length_seconds, slides, presentation_ref }
 
     `topic` is load-bearing (the record POST rejects a take without
     one); `slides`/`presentation_ref` are load-bearing for a DECKED
@@ -13026,6 +13026,7 @@ def v2_explore_arc_setup(arc_id):
             "arc_id": arc_id,
             "topic": ctx.get("topic"),
             "audience": ctx.get("audience"),
+            "strategic_context": ctx.get("strategic_context"),
             "target_length_seconds": ctx.get("target_length_seconds"),
             "slides": ctx.get("slides") or [],
             "presentation_ref": ctx.get("presentation_ref"),
@@ -13814,6 +13815,10 @@ def v2_lab_create_recording():
       audio_file            (required) the recording
       topic                 (required) session_context topic
       audience              (optional)
+      strategic_context     (optional) short free-text note on the stakes /
+                            setting / what the speaker wants to nail (④ step
+                            5) — BACKGROUND for the qualitative feedback, never
+                            the verbatim ideal text
       target_length_seconds (optional, int)
       domain_vocabulary     (optional, JSON array or comma-separated)
       feeling               (optional) pre-take felt state (U10)
@@ -13962,6 +13967,10 @@ def v2_lab_create_recording():
             session_context = validate_intake_context_body({
                 "topic": form.get("topic"),
                 "audience": form.get("audience"),
+                # ④ step 5 (2026-07-24): a short free-text note on the stakes /
+                # setting / what the speaker wants to nail. BACKGROUND context
+                # for the qualitative feedback — never the verbatim ideal text.
+                "strategic_context": form.get("strategic_context"),
                 "target_length_seconds": target_len,
                 "domain_vocabulary": _parse_lab_vocabulary(
                     form.get("domain_vocabulary"),

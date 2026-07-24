@@ -67,6 +67,7 @@ class ValidatorTests(unittest.TestCase):
             "slides": None,
             "presentation_ref": None,
             "slide_advances": None,
+            "strategic_context": None,
         })
 
     def test_empty_body_returns_all_nulls(self):
@@ -79,6 +80,7 @@ class ValidatorTests(unittest.TestCase):
             "slides": None,
             "presentation_ref": None,
             "slide_advances": None,
+            "strategic_context": None,
         })
 
     def test_partial_body_fills_missing_with_null(self):
@@ -100,8 +102,43 @@ class ValidatorTests(unittest.TestCase):
         self.assertEqual(
             set(out.keys()),
             {"topic", "audience", "target_length_seconds", "domain_vocabulary",
-             "slides", "presentation_ref", "slide_advances"},
+             "slides", "presentation_ref", "slide_advances",
+             "strategic_context"},
         )
+
+    # ── strategic_context (④ step 5, 2026-07-24) ───────────────────
+
+    def test_strategic_context_passes_and_trims(self):
+        out = self._validate({"topic": "t",
+                              "strategic_context": "  board wants the raise  "})
+        self.assertEqual(out["strategic_context"], "board wants the raise")
+
+    def test_strategic_context_absent_is_none(self):
+        self.assertIsNone(self._validate({"topic": "t"})["strategic_context"])
+
+    def test_strategic_context_whitespace_only_collapses_to_none(self):
+        out = self._validate({"strategic_context": "   "})
+        self.assertIsNone(out["strategic_context"])
+
+    def test_strategic_context_allows_a_sentence_past_the_tag_cap(self):
+        # Longer than the 200-char tag cap — it's a note, not a label.
+        note = "x" * 500
+        self.assertEqual(self._validate(
+            {"strategic_context": note})["strategic_context"], note)
+
+    def test_strategic_context_over_2000_chars_rejected(self):
+        from services.intake_context import (
+            validate_intake_context_body, IntakeContextError,
+        )
+        with self.assertRaises(IntakeContextError):
+            validate_intake_context_body({"strategic_context": "x" * 2001})
+
+    def test_strategic_context_non_string_rejected(self):
+        from services.intake_context import (
+            validate_intake_context_body, IntakeContextError,
+        )
+        with self.assertRaises(IntakeContextError):
+            validate_intake_context_body({"strategic_context": 42})
 
     # ── domain_vocabulary (willab beta §4) ─────────────────────────
 
@@ -285,6 +322,7 @@ class SnapshotHelperTests(unittest.TestCase):
         self.assertEqual(set(out.keys()), {
             "topic", "audience", "target_length_seconds", "domain_vocabulary",
             "slides", "presentation_ref", "slide_advances",
+            "strategic_context",
         })
         self.assertEqual(out["topic"], "real topic")
         self.assertIsNone(out["audience"])
@@ -308,6 +346,7 @@ class SnapshotHelperTests(unittest.TestCase):
             "slides": None,
             "presentation_ref": None,
             "slide_advances": None,
+            "strategic_context": None,
         })
 
 

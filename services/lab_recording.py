@@ -1014,6 +1014,7 @@ def process_lab_recording(
         dispatch_say_it_stronger(session_id, _sis_snips, context={
             "topic": _ctx.get("topic"),
             "audience": _ctx.get("audience"),
+            "strategic_context": _ctx.get("strategic_context"),
             "target_length_seconds": _ctx.get("target_length_seconds"),
             "duration_sec": (len(sig) / float(SAMPLE_RATE)) if sig is not None else None,
             "full_transcript": _full_tx,

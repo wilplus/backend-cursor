@@ -151,6 +151,39 @@ class GenerationTests(unittest.TestCase):
         self.assertEqual(out["why"], "It lands because it is plain.")
         self.assertIsNone(out["replacement"])
 
+    def test_strategic_context_rides_the_payload_as_speaker_intent(self):
+        # ④ step 5 (2026-07-24): the speaker's setup note reaches the model
+        # as `speaker_intent` background — present only when non-blank.
+        from services import moment_suggestions as ms
+        cap = {}
+
+        def _capture(**kwargs):
+            cap.update(kwargs)
+            return type("R", (), {"parsed": {"why": "good", "replacement": None},
+                                  "text": ""})()
+
+        with patch("services.llm.chat_complete", side_effect=_capture):
+            ms.generate_moment_suggestion(
+                "emphasize", "the moment", audience="investors",
+                strategic_context="the board decides the raise")
+        self.assertIn("the board decides the raise", cap.get("user") or "")
+        self.assertIn("speaker_intent", cap.get("user") or "")
+
+    def test_blank_strategic_context_is_omitted_from_payload(self):
+        from services import moment_suggestions as ms
+        cap = {}
+
+        def _capture(**kwargs):
+            cap.update(kwargs)
+            return type("R", (), {"parsed": {"why": "good", "replacement": None},
+                                  "text": ""})()
+
+        with patch("services.llm.chat_complete", side_effect=_capture):
+            ms.generate_moment_suggestion(
+                "emphasize", "the moment", audience="investors",
+                strategic_context="   ")
+        self.assertNotIn("speaker_intent", cap.get("user") or "")
+
     def test_replace_without_replacement_is_dead(self):
         out = self._gen("replace", {"why": "Swap it.", "replacement": ""})
         self.assertIsNone(out)

@@ -40,12 +40,16 @@ _SYSTEM = (
     "register (plain words they would actually say; never add facts or "
     "claims they didn't make). `why` = one sentence on why the swap helps. "
     "If the moment contains profanity, the replacement must be clean.\n"
+    "- When a `speaker_intent` note is given (the stakes/setting the speaker "
+    "most wants to land), let it steer tone and emphasis — never quote it "
+    "back or add facts from it.\n"
 )
 
 
 def generate_moment_suggestion(
     kind: str, transcript: str, *,
     audience: Optional[str] = None,
+    strategic_context: Optional[str] = None,
     trigger: Optional[str] = None,
     user_id: Optional[str] = None,
 ) -> Optional[dict]:
@@ -65,6 +69,10 @@ def generate_moment_suggestion(
             "audience": (audience or "a general professional audience"),
             "reason_flag": trigger or "",
         }
+        # ④ step 5 (2026-07-24): the speaker's own setup note, as background
+        # only. Omitted when blank so the model isn't handed an empty field.
+        if isinstance(strategic_context, str) and strategic_context.strip():
+            payload["speaker_intent"] = strategic_context.strip()[:600]
         result = chat_complete(
             spec=SPEC_MOMENT_SUGGESTION,
             system=_SYSTEM,
@@ -280,6 +288,7 @@ def generate_for_session(session_id: str, arc_id: Optional[str], *,
         ctx = session.get("intake_context") \
             if isinstance(session.get("intake_context"), dict) else {}
         audience = (ctx or {}).get("audience") or None
+        strategic_context = (ctx or {}).get("strategic_context") or None
 
         # Decision ledger (founder 2026-07-20): phrases the student already
         # decided on (approved → baked / dismissed → remembered) never
@@ -360,7 +369,8 @@ def generate_for_session(session_id: str, arc_id: Optional[str], *,
                            else "stickiness" if kind == "replace"
                            else "charisma")
                 gen = generate_moment_suggestion(
-                    kind, transcript, audience=audience, trigger=trigger,
+                    kind, transcript, audience=audience,
+                    strategic_context=strategic_context, trigger=trigger,
                     user_id=session.get("user_id"))
                 if not gen:
                     continue
