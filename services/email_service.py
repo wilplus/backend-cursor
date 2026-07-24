@@ -128,6 +128,7 @@ def send_email_resend(
     text: str | None = None,
     from_addr: str | None = None,
     headers: dict[str, str] | None = None,
+    attachments: list[dict] | None = None,
 ) -> dict:
     """Thin module-level wrapper around resend.Emails.send().
 
@@ -186,6 +187,13 @@ def send_email_resend(
         }
         if clean_headers:
             params["headers"] = clean_headers
+    # Optional file attachments in Resend SDK form:
+    #   {"filename": str, "content": list[int] | base64-str, "content_type"?: str}
+    # or {"filename": str, "path": <url>}. Threaded through here so callers reuse
+    # the SEND_EMAILS guard + From defaulting instead of calling
+    # resend.Emails.send() directly. Existing callers omit it -> no behaviour change.
+    if attachments:
+        params["attachments"] = attachments
     try:
         response = resend.Emails.send(params)
         logger.info("send_email_resend: accepted to=%s subject=%r", to, subject)
