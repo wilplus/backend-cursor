@@ -47,6 +47,7 @@ from routes.v2_routes import v2_bp
 from routes.internal_webhooks import internal_webhooks_bp
 from routes.snippet_labels_routes import snippet_labels_bp
 from routes.dev_bugs import dev_bugs_bp
+from routes.dev_tasks import dev_tasks_bp
 
 app.register_blueprint(auth_bp, url_prefix="/auth")
 app.register_blueprint(recordings_v2_bp, url_prefix="/v2/recordings")
@@ -58,6 +59,8 @@ app.register_blueprint(snippet_labels_bp, url_prefix="/admin/snippet-labels")
 # dev-bugs collector: full paths baked into the blueprint (no prefix), like
 # internal_webhooks_bp. Serves /api/dev-bugs* + the /dev-bugs page.
 app.register_blueprint(dev_bugs_bp)
+# dev-tasks backlog API (same x-dev-key gate). Serves /api/dev-tasks*.
+app.register_blueprint(dev_tasks_bp)
 
 
 @app.errorhandler(RequestEntityTooLarge)

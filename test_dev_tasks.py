@@ -19,6 +19,15 @@ except Exception as e:  # pragma: no cover
     svc = None
     _IMPORT_ERROR = e
 
+try:
+    from flask import Flask
+    from routes import dev_tasks as rt
+    from routes import dev_bugs as rb
+    _ROUTE_IMPORT_ERROR = None
+except Exception as e:  # pragma: no cover
+    Flask = rt = rb = None
+    _ROUTE_IMPORT_ERROR = e
+
 
 def _cls(theme, epic, story, priority=2, epic_rank=10, story_rank=10, body="do it"):
     return {"theme": theme, "epic": epic, "user_story": story, "priority": priority,
@@ -167,6 +176,77 @@ class TransformTests(unittest.TestCase):
         with patch.object(svc, "classify_bug", return_value=None):
             self.assertIsNone(svc.generate_task_for_bug({"id": 1, "text": "x"}))
         self.assertIsNone(svc.generate_task_for_bug({"id": 1, "text": "  "}))
+
+
+@unittest.skipIf(_ROUTE_IMPORT_ERROR is not None, f"needs flask: {_ROUTE_IMPORT_ERROR}")
+class RouteTests(unittest.TestCase):
+
+    def setUp(self):
+        self.app = Flask(__name__)
+        self.app.register_blueprint(rt.dev_tasks_bp)
+        self.client = self.app.test_client()
+        self._p = patch.object(rb.config, "DEV_BUGS_KEY", "secret")
+        self._p.start()
+
+    def tearDown(self):
+        self._p.stop()
+
+    def _h(self, key="secret"):
+        return {"x-dev-key": key} if key else {}
+
+    def test_gate_401_without_key(self):
+        self.assertEqual(self.client.get("/api/dev-tasks").status_code, 401)
+
+    def test_list_active(self):
+        with patch.object(rt.svc, "list_tasks", return_value=[{"id": 1}]) as m:
+            r = self.client.get("/api/dev-tasks?view=active", headers=self._h())
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.get_json()["tasks"], [{"id": 1}])
+        m.assert_called_once_with("active")
+
+    def test_export_markdown_download(self):
+        with patch.object(rt.svc, "export_markdown", return_value="# backlog\n"):
+            r = self.client.get("/api/dev-tasks/export", headers=self._h())
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("text/markdown", r.headers["Content-Type"])
+        self.assertIn("attachment", r.headers["Content-Disposition"])
+
+    def test_patch_edit(self):
+        with patch.object(rt.svc, "update_task", return_value={"id": 5, "body": "new"}) as m:
+            r = self.client.patch("/api/dev-tasks/5", json={"body": "new"}, headers=self._h())
+        self.assertEqual(r.status_code, 200)
+        m.assert_called_once()
+
+    def test_delete(self):
+        with patch.object(rt.svc, "delete_task") as m:
+            r = self.client.delete("/api/dev-tasks/5", headers=self._h())
+        self.assertEqual(r.status_code, 204)
+        m.assert_called_once_with(5)
+
+    def test_reorder_after_and_top(self):
+        with patch.object(rt.svc, "reorder_task") as m:
+            r1 = self.client.post("/api/dev-tasks/5/reorder", json={"after_id": 2}, headers=self._h())
+            r2 = self.client.post("/api/dev-tasks/5/reorder", json={"after_id": None}, headers=self._h())
+        self.assertEqual((r1.status_code, r2.status_code), (200, 200))
+        self.assertEqual(m.call_args_list[0].args, (5, 2))
+        self.assertEqual(m.call_args_list[1].args, (5, None))
+
+    def test_reorder_bad_after_400(self):
+        r = self.client.post("/api/dev-tasks/5/reorder", json={"after_id": "nope"}, headers=self._h())
+        self.assertEqual(r.status_code, 400)
+
+    def test_done_and_restore(self):
+        with patch.object(rt.svc, "set_done") as md, patch.object(rt.svc, "restore_task") as mr:
+            rd = self.client.post("/api/dev-tasks/5/done", headers=self._h())
+            rr = self.client.post("/api/dev-tasks/5/restore", headers=self._h())
+        self.assertEqual((rd.status_code, rr.status_code), (200, 200))
+        md.assert_called_once_with(5)
+        mr.assert_called_once_with(5)
+
+    def test_route_disambiguation_export_vs_int_id(self):
+        rules = [str(r) for r in self.app.url_map.iter_rules()]
+        self.assertIn("/api/dev-tasks/export", rules)
+        self.assertIn("/api/dev-tasks/<int:task_id>", rules)
 
 
 if __name__ == "__main__":

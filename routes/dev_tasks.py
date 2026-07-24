@@ -1,0 +1,125 @@
+"""dev-tasks — API for the "user stories · tasks" backlog view.
+
+All routes are gated by the SAME `x-dev-key` as dev-bugs (one dev tool, one key) —
+the gate helper is reused from routes.dev_bugs. Full paths baked in (no prefix),
+like the dev-bugs blueprint. See services/dev_tasks.py.
+
+  GET    /api/dev-tasks?view=active|archive   -> {"tasks": [...], "view": ...}
+  GET    /api/dev-tasks/export                -> markdown download of the active backlog
+  PATCH  /api/dev-tasks/<id>   {body,user_story,priority}  -> {"task": row}
+  DELETE /api/dev-tasks/<id>                  -> 204
+  POST   /api/dev-tasks/<id>/reorder  {after_id}  -> {"ok": true}  (after_id null = top)
+  POST   /api/dev-tasks/<id>/done             -> archive
+  POST   /api/dev-tasks/<id>/restore          -> un-archive
+"""
+from __future__ import annotations
+
+import logging
+
+import sentry_sdk
+from flask import Blueprint, Response, jsonify, request
+
+from routes.dev_bugs import _key_error
+from services import dev_tasks as svc
+
+logger = logging.getLogger(__name__)
+dev_tasks_bp = Blueprint("dev_tasks", __name__)
+
+
+def _err(e):
+    sentry_sdk.capture_exception(e)
+    logger.exception("dev_tasks route failed")
+    return jsonify({"code": "DEV_TASKS_ERROR", "error": str(e)}), 500
+
+
+@dev_tasks_bp.route("/api/dev-tasks", methods=["GET"])
+def list_tasks():
+    err = _key_error()
+    if err:
+        return err
+    try:
+        view = (request.args.get("view") or "active").strip()
+        view = view if view in ("active", "archive") else "active"
+        return jsonify({"tasks": svc.list_tasks(view), "view": view}), 200
+    except Exception as e:  # noqa: BLE001
+        return _err(e)
+
+
+@dev_tasks_bp.route("/api/dev-tasks/export", methods=["GET"])
+def export_tasks():
+    err = _key_error()
+    if err:
+        return err
+    try:
+        md = svc.export_markdown()
+        return Response(
+            md, mimetype="text/markdown",
+            headers={"Content-Disposition": "attachment; filename=willpowerlab-backlog.md"},
+        )
+    except Exception as e:  # noqa: BLE001
+        return _err(e)
+
+
+@dev_tasks_bp.route("/api/dev-tasks/<int:task_id>", methods=["PATCH"])
+def edit_task(task_id: int):
+    err = _key_error()
+    if err:
+        return err
+    try:
+        body = request.get_json(silent=True) or {}
+        return jsonify({"task": svc.update_task(task_id, body)}), 200
+    except Exception as e:  # noqa: BLE001
+        return _err(e)
+
+
+@dev_tasks_bp.route("/api/dev-tasks/<int:task_id>", methods=["DELETE"])
+def delete_task(task_id: int):
+    err = _key_error()
+    if err:
+        return err
+    try:
+        svc.delete_task(task_id)
+        return "", 204
+    except Exception as e:  # noqa: BLE001
+        return _err(e)
+
+
+@dev_tasks_bp.route("/api/dev-tasks/<int:task_id>/reorder", methods=["POST"])
+def reorder_task(task_id: int):
+    err = _key_error()
+    if err:
+        return err
+    try:
+        body = request.get_json(silent=True) or {}
+        after = body.get("after_id")
+        after_id = int(after) if after is not None else None
+        svc.reorder_task(task_id, after_id)
+        return jsonify({"ok": True}), 200
+    except (TypeError, ValueError):
+        return jsonify({"code": "BAD_REQUEST", "error": "after_id must be an int or null"}), 400
+    except Exception as e:  # noqa: BLE001
+        return _err(e)
+
+
+@dev_tasks_bp.route("/api/dev-tasks/<int:task_id>/done", methods=["POST"])
+def done_task(task_id: int):
+    err = _key_error()
+    if err:
+        return err
+    try:
+        svc.set_done(task_id)
+        return jsonify({"ok": True}), 200
+    except Exception as e:  # noqa: BLE001
+        return _err(e)
+
+
+@dev_tasks_bp.route("/api/dev-tasks/<int:task_id>/restore", methods=["POST"])
+def restore_task(task_id: int):
+    err = _key_error()
+    if err:
+        return err
+    try:
+        svc.restore_task(task_id)
+        return jsonify({"ok": True}), 200
+    except Exception as e:  # noqa: BLE001
+        return _err(e)
