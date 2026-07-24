@@ -1,9 +1,9 @@
-"""GET /v2/talks/<talk_id>/ideal-text — ROUTE-level composition test (review
-gap: the 402 payment gate and the coach_finalized content gate are separate
-mechanisms that must compose correctly; only the service function was
-covered before this file — see test_ideal_text_report.py for the pure
-build_ideal_text_report mapping tests, and test_best_presentation.py's
-CoachFinalizedGateTests for the gate itself).
+"""GET /v2/talks/<talk_id>/ideal-text — ROUTE-level test of the
+coach_finalized content gate. (The 402 paywall that used to compose with this
+gate was retired with the single-deliverable flag — the ideal text is free
+now.) Only the service function was covered before this file — see
+test_ideal_text_report.py for the pure build_ideal_text_report mapping tests,
+and test_best_presentation.py's CoachFinalizedGateTests for the gate itself.
 
 Run: python3 -m unittest test_ideal_text_route
 """
@@ -42,9 +42,10 @@ def _snip(sid):
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
 class IdealTextRouteCompositionTests(unittest.TestCase):
-    """Composes the 402 gate (paid_deliverables_visible) with the SEPARATE
-    coach_finalized content gate (services.best_presentation) — verifies the
-    route never conflates "paid" with "the coach actually finished"."""
+    """The coach_finalized content gate (services.best_presentation): the
+    route returns 200 with an empty idealText until the coach has corrected
+    EVERY slide, then serves the real corrected text. (The 402 paywall that
+    used to gate this route was retired with the single-deliverable flag.)"""
 
     def setUp(self):
         self.app = Flask(__name__)
@@ -86,13 +87,6 @@ class IdealTextRouteCompositionTests(unittest.TestCase):
             request.user_id = "u1"
             resp, status = v2.v2_talk_ideal_text.__wrapped__(talk_id)
             return resp.get_json(), status
-
-    def test_unpaid_arc_402s_before_any_content(self):
-        self._purchase = None
-        self._coach_edits = {0: "coach's corrected line"}  # even if finalized!
-        body, status = self._call()
-        self.assertEqual(status, 402)
-        self.assertEqual(body["code"], "PAYMENT_REQUIRED")
 
     def test_paid_but_not_finalized_returns_200_with_empty_ideal_text(self):
         self._purchase = {"arc_id": "a1", "user_id": "u1"}

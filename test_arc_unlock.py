@@ -10,7 +10,6 @@ Run: python3 -m unittest test_arc_unlock
 from __future__ import annotations
 
 import unittest
-from unittest.mock import patch
 
 try:
     from flask import Flask, request
@@ -131,21 +130,14 @@ class DeductCreditsStrictTests(unittest.TestCase):
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
 class ArcUnlockRouteTests(unittest.TestCase):
-    """POST /v2/arc/<arc_id>/unlock. Patches db.* directly on the v2 module —
-    no live DB, no real Supabase client."""
+    """POST /v2/arc/<arc_id>/unlock is RETIRED (single-deliverable, founder
+    2026-07-17): the $25 arc unlock is gone and the route is now an
+    UNCONDITIONAL 410 GONE tombstone. The ideal text + its deliverables are
+    free; the only paid item is the 5-credit key-moment explanations. No
+    deduct, no purchase insert, no ownership branch — just the tombstone."""
 
     def setUp(self):
         self.app = Flask(__name__)
-        self._p = [
-            patch.object(v2, "_arc_owned_by_caller",
-                        lambda arc_id: (True, [{"user_id": "u1"}])),
-        ]
-        for p in self._p:
-            p.start()
-
-    def tearDown(self):
-        for p in self._p:
-            p.stop()
 
     def _call(self, arc_id="a1"):
         with self.app.test_request_context():
@@ -153,65 +145,10 @@ class ArcUnlockRouteTests(unittest.TestCase):
             resp, status = v2.v2_arc_unlock.__wrapped__(arc_id)
             return resp.get_json(), status
 
-    def test_already_entitled_short_circuits_no_charge(self):
-        with patch.object(v2.db, "get_arc_purchase",
-                          return_value={"arc_id": "a1", "user_id": "u1"}), \
-             patch.object(v2.db, "create_arc_purchase_exclusive") as m_create:
-            body, status = self._call()
-        self.assertEqual(status, 200)
-        self.assertTrue(body["already_entitled"])
-        m_create.assert_not_called()  # never even attempted a charge
-
-    def test_success_deducts_then_creates_purchase(self):
-        # Review must-fix: DEDUCT FIRST, insert SECOND — a purchase row can
-        # never exist before payment is confirmed.
-        with patch.object(v2.db, "get_arc_purchase", return_value=None), \
-             patch.object(v2.db, "deduct_credits_strict",
-                          return_value=5) as m_deduct, \
-             patch.object(v2.db, "create_arc_purchase_exclusive",
-                          return_value={"id": "p1"}) as m_create:
-            body, status = self._call()
-        self.assertEqual(status, 200)
-        self.assertTrue(body["unlocked"])
-        self.assertEqual(body["credits_remaining"], 5)
-        m_deduct.assert_called_once_with("u1", 25)
-        m_create.assert_called_once()
-
-    def test_insufficient_credits_never_touches_purchases(self):
-        # No arc_purchases row is ever attempted — the deduct fails FIRST, so
-        # there is no window where a purchase could be visible unpaid.
-        with patch.object(v2.db, "get_arc_purchase", return_value=None), \
-             patch.object(v2.db, "deduct_credits_strict", return_value=None), \
-             patch.object(v2.db, "create_arc_purchase_exclusive") as m_create, \
-             patch.object(v2.db, "v2_get_student_details",
-                          return_value={"credits": 3}):
-            body, status = self._call()
-        self.assertEqual(status, 402)
-        self.assertEqual(body["code"], "INSUFFICIENT_CREDITS")
-        self.assertEqual(body["required"], 25)
-        self.assertEqual(body["current"], 3)
-        m_create.assert_not_called()  # never even attempted — deduct failed first
-
-    def test_race_conflict_after_deduct_refunds_and_returns_409(self):
-        # deduct succeeds (this request paid), but someone else's concurrent
-        # unlock already landed the purchase — REFUND so this request never
-        # nets a double-charge, then report the pre-existing entitlement.
-        with patch.object(v2.db, "get_arc_purchase",
-                          side_effect=[None, {"arc_id": "a1", "user_id": "u1"}]), \
-             patch.object(v2.db, "deduct_credits_strict", return_value=5), \
-             patch.object(v2.db, "create_arc_purchase_exclusive",
-                          return_value=None), \
-             patch.object(v2.db, "v2_increment_student_credits") as m_refund:
-            body, status = self._call()
-        self.assertEqual(status, 409)
-        self.assertEqual(body["code"], "ARC_ALREADY_PAID")
-        m_refund.assert_called_once_with("u1", 25)  # the refund actually fired
-
-    def test_not_owner_404s(self):
-        with patch.object(v2, "_arc_owned_by_caller",
-                          lambda arc_id: (False, [])):
-            body, status = self._call()
-        self.assertEqual(status, 404)
+    def test_unlock_is_gone_tombstone(self):
+        body, status = self._call()
+        self.assertEqual(status, 410)
+        self.assertEqual(body["code"], "GONE")
 
 
 if __name__ == "__main__":

@@ -31,7 +31,6 @@ score/verdict ever.
 from __future__ import annotations
 
 import logging
-import os
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Optional
@@ -39,16 +38,6 @@ from typing import Any, Optional
 logger = logging.getLogger(__name__)
 
 TAKES_TARGET = 3
-
-
-def _single_deliverable() -> bool:
-    """Mirror of routes.v2_routes._single_deliverable_enabled, read straight
-    from the env to avoid a services→routes import cycle. Single-deliverable
-    (founder 2026-07-17): every arc surface is free except the 5-credit
-    key-moment explanations, so the retired $25 arc-unlock pay-note must not
-    fire (it would point a user at the dead /unlock route)."""
-    return (os.getenv("SINGLE_DELIVERABLE_ENABLED") or "0").strip().lower() \
-        in ("1", "true", "yes")
 
 
 def _insert(db, user_id: str, *, client_key: str, kind: str, body: str,
@@ -315,45 +304,3 @@ def backfill_ideal_bubbles(db, user_id: Any, arc_id: Any) -> int:
         logger.warning("arc_notifications: ideal back-fill failed arc=%s: %s",
                        arc_id, e)
         return 0
-
-
-def fire_pay_note(db, user_id: Any, arc_id: Any) -> bool:
-    """After take 2 is sent on an UNPAID arc: the 25-credit ($25) unlock note.
-    Skipped when the arc is already entitled. Idempotent per arc. Per-take
-    coach commentary + corrected transcript are FREE unconditionally now — the
-    note must correctly sell only what's actually paid: the coach-CORRECTED
-    ideal text + the breakthroughs list + game + library. metadata.
-    suggested_action lets the FE tap straight into POST /v2/arc/<id>/unlock
-    (clean paywall — never an error). Copy = founder sign-off."""
-    if not user_id or not arc_id:
-        return False
-    # Single-deliverable (founder 2026-07-17): the $25 arc unlock is retired
-    # (/unlock → 410) — there is nothing to sell, so this note is obsolete and
-    # must never point a user at the dead route.
-    if _single_deliverable():
-        return False
-    try:
-        from services.arc_entitlement import is_arc_entitled
-        if is_arc_entitled(db, arc_id, user_id):
-            return False  # already paid — no note
-    except Exception:
-        # Fail SILENT (review): on an entitlement-check hiccup, skip the note —
-        # never show a paying user a stale ask. The note re-fires on a later
-        # trigger if the arc really is unpaid.
-        return False
-    return _insert(
-        db, str(user_id),
-        client_key=f"willab-paynote:{arc_id}",
-        kind="text",
-        body=(
-            "You keep getting your coach's feedback and corrected transcript "
-            "free on every take. To also unlock your best presentation, "
-            "corrected by your coach, plus your breakthrough moments, "
-            "unlock this training for 25 credits ($25)."
-        ),
-        metadata={
-            "arc_id": str(arc_id),
-            "note": "payment",
-            "suggested_action": "arc_unlock",
-        },
-    )

@@ -244,10 +244,8 @@ class GameRouteTests(unittest.TestCase):
 
     def setUp(self):
         self.app = Flask(__name__)
-        self._gate = None  # None = paid/entitled
         self._p = [
             patch.object(_v2, "_arc_owned_by_caller", lambda a: (True, [])),
-            patch.object(_v2, "_arc_payment_gate", lambda a: self._gate),
         ]
         for p_ in self._p:
             p_.start()
@@ -274,14 +272,6 @@ class GameRouteTests(unittest.TestCase):
                 resp, status = _v2.v2_arc_game.__wrapped__("a1")
         self.assertEqual(status, 200)
         self.assertEqual(resp.get_json()["reason"], "NO_KEY_MOMENTS_YET")
-
-    def test_game_still_402_gated(self):
-        from flask import jsonify
-        with self.app.test_request_context():
-            _rq.user_id = "u1"
-            self._gate = (jsonify({"code": "PAYMENT_REQUIRED"}), 402)
-            resp, status = _v2.v2_arc_game.__wrapped__("a1")
-        self.assertEqual(status, 402)
 
     def test_answer_validates_body(self):
         # FE field names: round_id + answer.

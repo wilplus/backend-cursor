@@ -408,22 +408,20 @@ class ContinueDeckArcTests(unittest.TestCase):
         self.assertEqual(
             v2._continue_deck_arc("u1", [], "fresh", 2), ("fresh", 2))
 
-    # ── 3-take batch cycle (founder re-lock 2026-07-11, backlog 4.1) ──────
+    # ── takes append forever (the 3-take batch cap is retired, 2026-07-17) ──
 
-    def test_full_batch_starts_a_new_arc(self):
-        # arc-A already holds a FULL batch (3 takes) → the next take does NOT
-        # join it; the fresh arc starts batch 2, counter back to take 1.
+    def test_takes_append_past_three(self):
+        # arc-A already holds 3 takes → the next take JOINS it as take 4
+        # (the old "full batch → new arc" cap is gone).
         self._patch_sessions([
             {"id": f"p{i}", "arc_id": "arc-A",
              "intake_context": {"slides": self.DECK}}
             for i in range(3)
         ])
         arc, ti = v2._continue_deck_arc("u1", self.DECK, "fresh-arc", 1)
-        self.assertEqual(arc, "fresh-arc")
-        self.assertEqual(ti, 1)
+        self.assertEqual((arc, ti), ("arc-A", 4))
 
-    def test_two_takes_still_joins_as_third(self):
-        # 2/3 → joining as take 3 completes the batch (the boundary case).
+    def test_two_takes_joins_as_third(self):
         self._patch_sessions([
             {"id": "p1", "arc_id": "arc-A", "intake_context": {"slides": self.DECK}},
             {"id": "p2", "arc_id": "arc-A", "intake_context": {"slides": self.DECK}},
@@ -431,22 +429,10 @@ class ContinueDeckArcTests(unittest.TestCase):
         self.assertEqual(
             v2._continue_deck_arc("u1", self.DECK, "fresh", 1), ("arc-A", 3))
 
-    def test_second_batch_grows_until_full(self):
-        # Batch 1 full (arc-A ×3), batch 2 open (arc-B ×1). arc-A is the
-        # most-developed but FULL — take 5 must fill batch 2 (arc-B take 2),
-        # NOT mint a third arc (the open-batch rule).
-        self._patch_sessions([
-            *[{"id": f"a{i}", "arc_id": "arc-A",
-               "intake_context": {"slides": self.DECK}} for i in range(3)],
-            {"id": "b1", "arc_id": "arc-B", "intake_context": {"slides": self.DECK}},
-        ])
-        arc, ti = v2._continue_deck_arc("u1", self.DECK, "fresh-arc", 1)
-        self.assertEqual((arc, ti), ("arc-B", 2))
-
 
 @unittest.skipIf(_RT_ERR is not None, f"needs app deps: {_RT_ERR}")
 class ContinueTopicArcBatchTests(unittest.TestCase):
-    """Deckless continue-one-arc honors the same 3-take batch cap."""
+    """Deckless continue-one-arc — takes append forever (no batch cap)."""
 
     def setUp(self):
         self._orig = getattr(v2.db, "v2_list_user_lab_sessions", None)
@@ -465,11 +451,11 @@ class ContinueTopicArcBatchTests(unittest.TestCase):
         self.assertEqual(
             v2._continue_topic_arc("u1", "my talk", "fresh", 1), ("arc-A", 2))
 
-    def test_full_batch_starts_new_arc(self):
+    def test_takes_append_past_three(self):
         self._patch_sessions(
             [self._deckless(f"p{i}", "arc-A") for i in range(3)])
         self.assertEqual(
-            v2._continue_topic_arc("u1", "My Talk", "fresh", 1), ("fresh", 1))
+            v2._continue_topic_arc("u1", "My Talk", "fresh", 1), ("arc-A", 4))
 
 
 if __name__ == "__main__":

@@ -8,7 +8,7 @@ from __future__ import annotations
 import unittest
 
 from services.arc_notifications import (
-    fire_human_check_note, fire_pay_note, maybe_fire_best_presentation_ready,
+    fire_human_check_note, maybe_fire_best_presentation_ready,
 )
 from services.lab_recording import dedupe_window_transcripts
 
@@ -140,22 +140,6 @@ class NotesTests(unittest.TestCase):
         _, msg = db.inserted[0]
         self.assertEqual(msg["kind"], "text")
         self.assertEqual(msg["metadata"]["note"], "human_check")
-
-    def test_pay_note_skipped_when_arc_paid(self):
-        db = _FakeDB(purchase={"arc_id": "a1", "user_id": "u1"})
-        self.assertFalse(fire_pay_note(db, "u1", "a1"))
-        self.assertEqual(db.inserted, [])
-
-    def test_pay_note_fires_on_unpaid_arc_with_unlock_action(self):
-        db = _FakeDB(purchase=None)
-        self.assertTrue(fire_pay_note(db, "u1", "a1"))
-        _, msg = db.inserted[0]
-        self.assertEqual(msg["metadata"]["suggested_action"], "arc_unlock")
-        self.assertIn("25 credits", msg["body"])
-        self.assertIn("$25", msg["body"])
-        # Must NOT claim per-take feedback is part of the paid ask — it's
-        # free unconditionally now.
-        self.assertNotIn("$50", msg["body"])
 
 
 class DedupeWindowTranscriptsTests(unittest.TestCase):
