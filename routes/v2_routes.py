@@ -13242,6 +13242,14 @@ def _previous_spoken_session(arc_id, current_session_id):
         return None
 
 
+def _key_points_enabled() -> bool:
+    """E-1 presentation-mode cue sheet (founder 2026-07-24). DEFAULT OFF until
+    the FE ships the full↔key-words toggle (E-2); flip KEY_POINTS_ENABLED=1 in
+    Railway after. Absent key ⇒ the FE is unaffected."""
+    return (os.getenv("KEY_POINTS_ENABLED") or "0").strip().lower() \
+        in ("1", "true", "yes")
+
+
 def _tracked_changes_block(arc_id, served_text) -> dict:
     """The `changes` block of the SD student GET (founder 2026-07-20) —
     {} when the Living Transcript flag is off, so the key is simply
@@ -13290,6 +13298,18 @@ def _tracked_changes_block(arc_id, served_text) -> dict:
         # re-anchor the pieces onto it MONOTONICALLY (never a bare
         # first-occurrence search, the review's mis-anchor defect).
         _pieces = relocate_pieces(served_text, doc.get("pieces") or [])
+        # E-1 presentation-mode cue sheet (founder 2026-07-24): one verbatim
+        # starting-point milestone per block, for the FE's full↔key-words
+        # toggle. Flag-gated (default OFF) so the key is simply ABSENT until
+        # the FE ships it. L1-safe (a verbatim prefix of the served text).
+        _key_points = None
+        try:
+            if _key_points_enabled():
+                from services.key_points import build_key_points
+                _key_points = build_key_points(_pieces, served_text)
+        except Exception as _kpe:
+            logger.warning("key_points failed arc=%s: %s", arc_id, _kpe)
+            _key_points = None
         _sugs = db.get_moment_suggestions_by_arc(arc_id) or {}
         _applied = []
         try:
@@ -13377,11 +13397,12 @@ def _tracked_changes_block(arc_id, served_text) -> dict:
         # cross-take offer on the same words would render as overlapping
         # strikes (review finding). Earliest-then-narrowest wins.
         changes = drop_overlaps(changes)
+        _kp = {"key_points": _key_points} if _key_points is not None else {}
         if not verify_changes(served_text, changes):
             logger.warning("tracked changes: span check failed arc=%s "
                            "(serving none)", arc_id)
-            return {"changes": []}
-        return {"changes": changes}
+            return {"changes": [], **_kp}
+        return {"changes": changes, **_kp}
     except Exception as e:
         logger.warning("tracked changes failed arc=%s: %s", arc_id, e)
         return {}
