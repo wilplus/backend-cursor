@@ -379,13 +379,31 @@ def generate_for_session(session_id: str, arc_id: Optional[str], *,
         # first, else within-take means at >= 6 pieces (decision BE-1a(b)),
         # else silent. No LLM. Only no-acoustic-star snippets.
         from services.delivery_stars import (
-            emphasis_z, resolve_delivery_baseline,
+            arousal_z, emphasis_z, resolve_delivery_baseline,
         )
         _baseline = resolve_delivery_baseline(
             session.get("user_id"),
             [s.get("features") or {}
              for s in (readout.get("snippets") or [])],
             database=database)
+
+        # ── Arousal capture (founder 2026-07-24, capture-first / surface-
+        # later): a baseline-relative ACTIVATION read per snippet, stored for
+        # the coach-labeled learning loop to weight later. NEVER surfaced to a
+        # user and NEVER fed into ranking (activation is not quality). Reads
+        # the arousal axis only (calm↔activated), never a discrete emotion.
+        # Best-effort per snippet — a pending migration or any error is
+        # swallowed and never disturbs the suggestion path.
+        if _baseline:
+            for _snip in (readout.get("snippets") or []):
+                try:
+                    _sid = str(_snip.get("id") or "")
+                    _av = arousal_z(_snip.get("features") or {}, _baseline)
+                    if _sid and _av is not None:
+                        database.set_snippet_arousal(_sid, _av)
+                except Exception:
+                    continue
+
         _delivery_starred = set(_generate_delivery(
             database, arc_id,
             [(sid, feats) for (sid, _t, feats) in _unstarred],
