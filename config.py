@@ -373,6 +373,13 @@ class Config:
     # services/dev_tasks.py). Default OFF — flip on once the tasks UI ships. It is
     # best-effort and threaded, so it never blocks or breaks the bug save.
     DEV_TASKS_ENABLED = (os.getenv("DEV_TASKS_ENABLED") or "false").strip().lower() in ("1", "true", "yes", "on")
+    # Level-1 re-evaluation: when a NEW P1/P2 task is generated, bump UP a few
+    # RELATED existing tasks (the new one makes them more urgent). Pins are never
+    # touched, bumps only (never demotes), capped, and each is stamped with a
+    # reason. Default OFF — flip on once you trust the auto-generation. See
+    # services/dev_tasks.reevaluate.
+    DEV_TASKS_REEVAL_ENABLED = (os.getenv("DEV_TASKS_REEVAL_ENABLED") or "false").strip().lower() in ("1", "true", "yes", "on")
+    DEV_TASKS_REEVAL_MAX_CHANGES = _env_int("DEV_TASKS_REEVAL_MAX_CHANGES", 3)
 
     # Optional: annotation event export (cron / internal). See POST /v2/internal/annotation-export
     ANNOTATION_EXPORT_CRON_SECRET = (os.getenv("ANNOTATION_EXPORT_CRON_SECRET") or "").strip()

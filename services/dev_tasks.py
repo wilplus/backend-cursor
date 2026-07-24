@@ -159,13 +159,17 @@ def to_markdown(tasks: list[dict]) -> str:
 
 # ─────────────────────────── GPT-4o transform ───────────────────────────
 
-def classify_bug(bug_text: str) -> dict | None:
-    """GPT-4o → task classification dict, or None if OpenAI is unavailable/failed."""
+def _openai_client():
     try:
         from services.openai_service import openai_service
-        client = openai_service.client
+        return openai_service.client
     except Exception:
-        client = None
+        return None
+
+
+def classify_bug(bug_text: str) -> dict | None:
+    """GPT-4o → task classification dict, or None if OpenAI is unavailable/failed."""
+    client = _openai_client()
     if not client:
         logger.info("dev_tasks: OpenAI client unavailable — skipping task generation")
         return None
@@ -190,7 +194,7 @@ def classify_bug(bug_text: str) -> dict | None:
 
 # ─────────────────────────── DB wrappers ───────────────────────────
 
-_COLS = "id,bug_id,body,user_story,theme,epic,phase,epic_rank,story_rank,priority,order_key,pinned,status,created_at,archived_at"
+_COLS = "id,bug_id,body,user_story,theme,epic,phase,epic_rank,story_rank,priority,order_key,pinned,bump_reason,bumped_at,status,created_at,archived_at"
 
 
 def _active_rows() -> list[dict]:
@@ -221,7 +225,113 @@ def generate_task_for_bug(bug: dict) -> dict | None:
         "order_key": plan["order_key"],
     }
     res = db.client.table(_TABLE).insert(row).execute()
-    return res.data[0] if res.data else None
+    inserted = res.data[0] if res.data else None
+    if inserted:
+        try:
+            reevaluate(inserted)
+        except Exception:  # noqa: BLE001
+            logger.exception("dev_tasks: reeval failed")
+    return inserted
+
+
+# ─────────────────── Level-1 re-evaluation (flag-gated) ───────────────────
+# When a NEW P1/P2 task arrives, bump UP the priority of a few RELATED existing
+# tasks (the new task makes them more urgent). Bounded + safe: pins are never
+# touched, only bumps (never demotes), capped per event, each stamped with a
+# reason, and gated by DEV_TASKS_REEVAL_ENABLED (default off). Only `priority`
+# changes — the frozen epic/story ranks stay put, so a moved task stays inside
+# its own epic and the list can't churn wildly.
+
+_REEVAL_SYSTEM = (
+    "You maintain a solo founder's dev backlog. A NEW task just arrived. Given the "
+    "existing tasks, return ONLY the ones the new task makes MORE urgent (a lower "
+    "priority number = more urgent) because they're connected / blocking / a "
+    "prerequisite. Be conservative — usually 0-2 items. NEVER lower urgency (never "
+    'a higher number). JSON: {"changes":[{"id":<int>,"new_priority":1|2|3,"reason":"<one line>"}]}'
+)
+
+
+def _reeval_digest(tasks: list[dict], limit: int = 200) -> str:
+    out = []
+    for t in tasks[:limit]:
+        label = (t.get("user_story") or t.get("body") or "").strip().replace("\n", " ")[:120]
+        out.append(f'- id={t.get("id")} P{t.get("priority", 2)} [{t.get("theme")}/{t.get("epic")}] {label}')
+    return "\n".join(out)
+
+
+def _reeval_llm(new_task: dict, existing: list[dict]) -> list[dict]:
+    client = _openai_client()
+    if not client:
+        return []
+    new_label = (new_task.get("user_story") or new_task.get("body") or "").strip()[:400]
+    user = (
+        f'NEW TASK (P{new_task.get("priority")}) [{new_task.get("theme")}/{new_task.get("epic")}]: {new_label}'
+        f"\n\nEXISTING TASKS:\n{_reeval_digest(existing)}"
+    )
+    try:
+        resp = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "system", "content": _REEVAL_SYSTEM}, {"role": "user", "content": user}],
+            response_format={"type": "json_object"},
+            temperature=0.2,
+            timeout=40,
+        )
+        data = json.loads((resp.choices[0].message.content or "").strip())
+        ch = data.get("changes")
+        return ch if isinstance(ch, list) else []
+    except Exception as e:  # noqa: BLE001
+        logger.warning("dev_tasks: reeval LLM failed: %s", e)
+        return []
+
+
+def plan_bump(existing: list[dict], task: dict, new_priority: int) -> float:
+    """order_key for `task` at `new_priority` — appends to the end of its new
+    (theme,epic,story,priority) bucket, so it lands in the right priority slot
+    within its own epic (epic/story ranks stay frozen)."""
+    trank = _THEME_RANK.get(task.get("theme"), _DEFAULT_THEME_RANK)
+    base = (trank * 1e12 + _clamp(task.get("epic_rank"), 1, 900, 50) * 1e9
+            + _clamp(task.get("story_rank"), 1, 900, 50) * 1e6 + new_priority * _BUCKET)
+    in_bucket = [
+        float(t["order_key"]) for t in existing
+        if t.get("id") != task.get("id") and t.get("order_key") is not None
+        and base <= float(t["order_key"]) < base + _BUCKET
+    ]
+    return (max(in_bucket) + 1) if in_bucket else base
+
+
+def reevaluate(new_task: dict) -> list[dict]:
+    """Level-1 re-eval after a new task lands. Returns the applied bumps ([] if
+    disabled / new task is low-priority / nothing related)."""
+    if not getattr(config, "DEV_TASKS_REEVAL_ENABLED", False):
+        return []
+    if _clamp(new_task.get("priority"), 1, 3, 3) > 2:   # only a P1/P2 new task triggers a re-eval
+        return []
+    existing = [t for t in _active_rows() if t.get("id") != new_task.get("id")]
+    if not existing:
+        return []
+    cap = _clamp(getattr(config, "DEV_TASKS_REEVAL_MAX_CHANGES", 3), 1, 20, 3)
+    by_id = {t.get("id"): t for t in existing}
+    applied = []
+    for d in _reeval_llm(new_task, existing):
+        if len(applied) >= cap:
+            break
+        t = by_id.get(d.get("id"))
+        if not t or t.get("pinned"):            # never touch a manually-pinned task
+            continue
+        newp = _clamp(d.get("new_priority"), 1, 3, 0)
+        cur = _clamp(t.get("priority"), 1, 3, 2)
+        if newp < 1 or newp >= cur:             # bump UP only (lower = more urgent); ignore no-ops / demotions
+            continue
+        db.client.table(_TABLE).update({
+            "priority": newp,
+            "order_key": plan_bump(existing, t, newp),
+            "bump_reason": (d.get("reason") or "")[:300],
+            "bumped_at": "now()",
+        }).eq("id", t.get("id")).eq("pinned", False).execute()
+        applied.append({"id": t.get("id"), "from": cur, "to": newp})
+    if applied:
+        logger.info("dev_tasks reeval: bumped %d task(s) after new task %s", len(applied), new_task.get("id"))
+    return applied
 
 
 def list_tasks(view: str = "active") -> list[dict]:
