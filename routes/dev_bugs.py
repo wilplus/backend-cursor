@@ -137,6 +137,23 @@ def dev_bugs_delete(bug_id: int):
         return jsonify({"code": "DEV_BUGS_ERROR", "error": str(e)}), 500
 
 
+@dev_bugs_bp.route("/api/dev-bugs/<int:bug_id>", methods=["PATCH"])
+def dev_bugs_edit(bug_id: int):
+    err = _key_error()
+    if err:
+        return err
+    try:
+        body = request.get_json(silent=True) or {}
+        row = svc.update_bug(bug_id, text=body.get("text"))
+        if row is None:
+            return jsonify({"code": "NOT_FOUND", "error": "open bug not found or nothing to update"}), 404
+        return jsonify({"bug": row}), 200
+    except Exception as e:  # noqa: BLE001
+        sentry_sdk.capture_exception(e)
+        logger.exception("dev_bugs edit failed")
+        return jsonify({"code": "DEV_BUGS_ERROR", "error": str(e)}), 500
+
+
 @dev_bugs_bp.route("/api/dev-bugs/send", methods=["POST"])
 def dev_bugs_send():
     err = _key_error()
