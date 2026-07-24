@@ -7,12 +7,18 @@
 <meta name="mobile-web-app-capable" content="yes">
 <title>dev-bugs</title>
 <style>
-  :root{--bg:#f5f5f7;--card:#fff;--ink:#111214;--muted:#6b7280;--line:#e6e7ea;--accent:#4f46e5;--accent-press:#4338ca;--danger:#c0342b;--rec:#e11d48;--ship:#12805c}
+  :root{--bg:#f5f5f7;--card:#fff;--ink:#111214;--muted:#6b7280;--line:#e6e7ea;--accent:#4f46e5;--accent-press:#4338ca;--danger:#c0342b;--rec:#e11d48;--ship:#12805c;--p1:#dc2626;--p2:#d97706;--p3:#6b7280}
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}html,body{margin:0;padding:0}
   body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--ink);line-height:1.5;padding:16px;max-width:640px;margin:0 auto;padding-bottom:40px}
-  header{display:flex;align-items:baseline;justify-content:space-between;margin:6px 2px 14px}
-  h1{font-size:22px;margin:0;letter-spacing:-.02em;font-weight:700}
+  header{display:flex;align-items:center;gap:10px;margin:6px 2px 14px;position:relative}
+  h1{font-size:22px;margin:0;letter-spacing:-.02em;font-weight:700;flex:1}
   .note{font-size:12px;color:var(--muted)}
+  .burger{width:40px;height:40px;border:1px solid var(--line);border-radius:11px;background:var(--card);font-size:18px;cursor:pointer;flex:none}
+  .burger:active{background:#eef0f4}
+  .navmenu{position:absolute;top:48px;left:0;background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:0 10px 30px -12px rgba(15,15,15,.25);padding:6px;z-index:25;min-width:220px;display:none}
+  .navmenu.open{display:block}
+  .navmenu button{display:block;width:100%;text-align:left;background:transparent;border:none;font:inherit;padding:10px 12px;border-radius:8px;cursor:pointer;font-weight:600}
+  .navmenu button:hover{background:#f0f1f4}.navmenu button.on{color:var(--accent)}
   .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:12px;box-shadow:0 1px 2px rgba(15,15,15,.04),0 8px 24px -18px rgba(15,15,15,.18)}
   textarea{width:100%;border:none;resize:none;font:inherit;color:var(--ink);background:transparent;outline:none;min-height:60px;line-height:1.5;padding:4px 2px}
   .thumbchip{display:inline-flex;align-items:center;gap:6px;margin-top:8px;background:#f0f1f4;border-radius:10px;padding:4px 6px}
@@ -38,6 +44,36 @@
   .ship-head{display:flex;align-items:center;gap:8px;margin:26px 2px 10px;font-size:13px;font-weight:700;color:var(--ship)}
   .ship-head::before{content:"✓";display:inline-flex;width:18px;height:18px;align-items:center;justify-content:center;background:#e3f3ec;color:var(--ship);border-radius:6px;font-size:12px}
   li.shipped{background:#fbfdfc;border-color:#e3ede9}
+  /* ── tasks view ── */
+  .tbar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:4px 2px 12px;flex-wrap:wrap}
+  .seg{display:inline-flex;background:#eceef2;border-radius:10px;padding:3px}
+  .seg button{background:transparent;height:32px;padding:0 14px;font-size:13px;color:var(--muted);border-radius:8px}
+  .seg button.on{background:var(--card);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.06)}
+  .tact{display:flex;gap:8px}
+  .tact button{height:32px;padding:0 12px;font-size:13px;background:#eef0f4;color:#374151}.tact button:active{background:#e2e5ea}
+  li.task{align-items:stretch;gap:8px;padding:10px 10px 10px 6px}
+  .grip{flex:none;width:22px;display:flex;align-items:center;justify-content:center;color:#c3c7cf;cursor:grab;font-size:15px;touch-action:none;user-select:none;letter-spacing:-2px}
+  li.task.dragging{opacity:.6;box-shadow:0 12px 26px -12px rgba(15,15,15,.35)}
+  .task-main{flex:1;min-width:0}
+  .task-story{font-size:14.5px;font-weight:600;word-break:break-word}
+  .task-body{font-size:13px;color:#374151;white-space:pre-wrap;word-break:break-word;margin-top:3px}
+  .task-body.clamp{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+  .task-metarow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:6px}
+  .chip{font-size:10.5px;font-weight:700;color:#fff;border-radius:6px;padding:2px 6px;letter-spacing:.02em}
+  .chip.p1{background:var(--p1)}.chip.p2{background:var(--p2)}.chip.p3{background:var(--p3)}
+  .lbl{font-size:11px;color:var(--muted)}.date{font-size:11px;color:#9aa0aa;margin-left:auto}
+  .task-side{flex:none;display:flex;flex-direction:column;gap:4px;align-items:center}
+  .tbtn{width:30px;height:30px;border-radius:9px;background:#f0f1f4;color:#4b5563;font-size:15px;display:flex;align-items:center;justify-content:center}.tbtn:active{background:#e2e5ea}
+  .tbtn.done:active{background:#e3f3ec;color:var(--ship)}
+  .kmenu{position:relative}
+  .kmenu .pop{position:absolute;right:0;top:34px;background:var(--card);border:1px solid var(--line);border-radius:10px;box-shadow:0 10px 24px -12px rgba(0,0,0,.25);padding:5px;z-index:20;display:none;min-width:120px}
+  .kmenu.open .pop{display:block}
+  .kmenu .pop button{display:block;width:100%;text-align:left;background:transparent;padding:8px 10px;border-radius:7px;font-size:13px;font-weight:600}
+  .kmenu .pop button:hover{background:#f0f1f4}.kmenu .pop button.dngr{color:var(--danger)}
+  .editbox{flex:1;margin-top:4px}.editbox textarea{border:1px solid var(--line);border-radius:10px;padding:8px;min-height:80px;font-size:13px}
+  .editbox .erow{display:flex;gap:8px;margin-top:6px}
+  .editbox .erow button{height:34px;padding:0 14px;font-size:13px}
+  .editbox .savebtn{background:var(--accent);color:#fff}.editbox .cancelbtn{background:#eef0f4;color:#374151}
   .gate{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px;z-index:30;padding:24px}
   .gate input{height:46px;border:1px solid var(--line);border-radius:12px;padding:0 14px;font:inherit;width:100%;max-width:320px}
   .gate button{height:46px;background:var(--accent);color:#fff;border-radius:12px;padding:0 20px;width:100%;max-width:320px}
@@ -52,25 +88,51 @@
     <button id="unlock">Unlock</button>
   </div>
 
-  <header><h1>dev-bugs</h1><span class="note">auto-emails every 3 days</span></header>
-
-  <div class="card">
-    <textarea id="input"></textarea>
-    <div id="draftPreview"></div>
-    <div class="composer-actions">
-      <button class="save" id="save">Save bug</button>
-      <button class="iconbtn" id="attach" title="Attach image">🖼</button>
-      <button class="iconbtn mic" id="mic" title="Dictate">🎙</button>
+  <header>
+    <button class="burger" id="burger" title="Menu">☰</button>
+    <h1 id="viewTitle">dev-bugs</h1>
+    <span class="note" id="viewNote">auto-emails every 3 days</span>
+    <div class="navmenu" id="navMenu">
+      <button data-nav="bugs" class="on">🐞 dev-bugs</button>
+      <button data-nav="tasks">📋 user stories · tasks</button>
     </div>
-    <input type="file" id="file" accept="image/*" style="display:none">
+  </header>
+
+  <!-- ── dev-bugs view ── -->
+  <div id="bugsView">
+    <div class="card">
+      <textarea id="input"></textarea>
+      <div id="draftPreview"></div>
+      <div class="composer-actions">
+        <button class="save" id="save">Save bug</button>
+        <button class="iconbtn" id="attach" title="Attach image">🖼</button>
+        <button class="iconbtn mic" id="mic" title="Dictate">🎙</button>
+      </div>
+      <input type="file" id="file" accept="image/*" style="display:none">
+    </div>
+    <div class="bar">
+      <span class="count" id="count">0 bugs</span>
+      <button class="email" id="mailBtn">Send now</button>
+    </div>
+    <ul id="list"></ul>
+    <div id="shipWrap"></div>
   </div>
 
-  <div class="bar">
-    <span class="count" id="count">0 bugs</span>
-    <button class="email" id="mailBtn">Send now</button>
+  <!-- ── user stories · tasks view ── -->
+  <div id="tasksView" hidden>
+    <div class="tbar">
+      <div class="seg">
+        <button data-tview="active" class="on">Active</button>
+        <button data-tview="archive">Archive</button>
+      </div>
+      <div class="tact">
+        <button id="copyAll">Copy all</button>
+        <button id="exportBtn">Export</button>
+      </div>
+    </div>
+    <ul id="taskList"></ul>
   </div>
-  <ul id="list"></ul>
-  <div id="shipWrap"></div>
+
   <div class="toast" id="toast"></div>
 
 <script>
@@ -79,30 +141,52 @@
   const API_BASE="";                       // same origin as dev.willpowerlab.com
   const $=id=>document.getElementById(id);
   const input=$("input"),list=$("list"),count=$("count"),shipWrap=$("shipWrap"),draftPreview=$("draftPreview");
-  let draftImg=null, KEY=localStorage.getItem("devkey")||"";
+  const taskList=$("taskList");
+  let draftImg=null, KEY=localStorage.getItem("devkey")||"", view="bugs", taskView="active";
 
   const dShort=ts=>new Date(ts).toLocaleDateString(undefined,{month:"short",day:"numeric"});
   const dTime=ts=>dShort(ts)+" "+new Date(ts).toLocaleTimeString(undefined,{hour:"2-digit",minute:"2-digit"});
   function toast(m){const t=$("toast");t.textContent=m;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),1900);}
   function autogrow(){input.style.height="auto";input.style.height=Math.max(60,input.scrollHeight)+"px";}
   input.addEventListener("input",autogrow);autogrow();
+  async function copy(text){try{await navigator.clipboard.writeText(text);toast("Copied");}catch(e){toast("Copy failed");}}
 
-  async function api(path,opts){
+  function req(base,path,opts){
     opts=opts||{};opts.headers=Object.assign({"Content-Type":"application/json","x-dev-key":KEY},opts.headers||{});
-    const r=await fetch(API_BASE+"/api/dev-bugs"+path,opts);
-    if(r.status===401){ localStorage.removeItem("devkey"); showGate(); throw new Error("unauthorized"); }
-    if(!r.ok) throw new Error("http "+r.status);
-    return r.status===204?null:r.json();
+    return fetch(API_BASE+base+path,opts).then(r=>{
+      if(r.status===401){ localStorage.removeItem("devkey"); showGate(); throw new Error("unauthorized"); }
+      if(!r.ok) throw new Error("http "+r.status);
+      return r.status===204?null:r.json();
+    });
   }
+  const api =(path,opts)=>req("/api/dev-bugs",path,opts);
+  const apiT=(path,opts)=>req("/api/dev-tasks",path,opts);
 
   function showGate(){ $("gate").style.display="flex"; }
   function hideGate(){ $("gate").style.display="none"; }
   $("unlock").onclick=async()=>{
     KEY=$("key").value.trim(); if(!KEY) return;
     localStorage.setItem("devkey",KEY);
-    try{ await load(); hideGate(); }catch(e){ toast("Wrong key"); }
+    try{ await loadCurrent(); hideGate(); }catch(e){ toast("Wrong key"); }
   };
 
+  // ── nav ──
+  $("burger").onclick=e=>{e.stopPropagation();$("navMenu").classList.toggle("open");};
+  document.addEventListener("click",()=>$("navMenu").classList.remove("open"));
+  document.querySelectorAll("#navMenu [data-nav]").forEach(b=>b.onclick=()=>switchView(b.dataset.nav));
+  function switchView(name){
+    view=name;
+    $("bugsView").hidden = name!=="bugs";
+    $("tasksView").hidden = name!=="tasks";
+    $("viewTitle").textContent = name==="bugs" ? "dev-bugs" : "user stories · tasks";
+    $("viewNote").textContent = name==="bugs" ? "auto-emails every 3 days" : "prioritized backlog";
+    document.querySelectorAll("#navMenu [data-nav]").forEach(b=>b.classList.toggle("on",b.dataset.nav===name));
+    $("navMenu").classList.remove("open");
+    loadCurrent();
+  }
+  function loadCurrent(){ return view==="bugs" ? load() : loadTasks(); }
+
+  // ══════════════════════ dev-bugs ══════════════════════
   function renderDraft(){
     draftPreview.innerHTML="";
     if(draftImg){const c=document.createElement("div");c.className="thumbchip";
@@ -110,7 +194,6 @@
       const x=document.createElement("button");x.innerHTML="×";x.onclick=()=>{draftImg=null;renderDraft();};
       c.appendChild(im);c.appendChild(x);draftPreview.appendChild(c);}
   }
-
   function row(b,shipped){
     const li=document.createElement("li"); if(shipped) li.className="shipped";
     if(b.image){const im=document.createElement("img");im.className="shot";im.src=b.image;
@@ -122,7 +205,6 @@
       del.onclick=async()=>{try{await api("/"+b.id,{method:"DELETE"});load();}catch(e){}};li.appendChild(del);}
     return li;
   }
-
   async function load(){
     const data=await api("",{method:"GET"});
     const open=data.open||[], ship=data.shipped||[];
@@ -134,7 +216,6 @@
     if(ship.length){const h=document.createElement("div");h.className="ship-head";h.textContent="Shipped bugs";shipWrap.appendChild(h);
       const ul=document.createElement("ul");ship.forEach(b=>ul.appendChild(row(b,true)));shipWrap.appendChild(ul);}
   }
-
   async function addBug(){
     const t=input.value.trim(); if(!t&&!draftImg) return;
     try{ await api("",{method:"POST",body:JSON.stringify({text:t,image:draftImg})});
@@ -143,13 +224,10 @@
   }
   $("save").onclick=addBug;
   input.addEventListener("keydown",e=>{if((e.metaKey||e.ctrlKey)&&e.key==="Enter")addBug();});
-
   $("mailBtn").onclick=async()=>{
     try{ const r=await api("/send",{method:"POST"}); toast("Sent "+(r.sent||0)); load(); }
     catch(e){ toast("Send failed"); }
   };
-
-  // image attach (compressed client-side)
   $("attach").onclick=()=>$("file").click();
   $("file").onchange=e=>{
     const f=e.target.files&&e.target.files[0]; if(!f) return;
@@ -162,8 +240,6 @@
     };im.src=r.result;};
     r.readAsDataURL(f);$("file").value="";
   };
-
-  // mic
   const SR=window.SpeechRecognition||window.webkitSpeechRecognition,mic=$("mic");
   if(!SR){mic.style.display="none";}
   else{let rec=null,on=false;mic.onclick=()=>{
@@ -176,8 +252,123 @@
     rec.start();on=true;mic.classList.add("rec");toast("Listening…");
   };}
 
+  // ══════════════════════ user stories · tasks ══════════════════════
+  document.querySelectorAll("[data-tview]").forEach(b=>b.onclick=()=>{
+    taskView=b.dataset.tview;
+    document.querySelectorAll("[data-tview]").forEach(x=>x.classList.toggle("on",x===b));
+    loadTasks();
+  });
+  $("copyAll").onclick=async()=>{
+    try{ const d=await apiT("?view=active",{method:"GET"}); const ts=d.tasks||[];
+      if(!ts.length){toast("Nothing to copy");return;}
+      copy("# WillpowerLab — backlog\n\n"+ts.map(taskMarkdown).join("\n"));
+    }catch(e){toast("Copy failed");}
+  };
+  $("exportBtn").onclick=async()=>{
+    try{ const r=await fetch(API_BASE+"/api/dev-tasks/export",{headers:{"x-dev-key":KEY}});
+      if(!r.ok) throw 0; const blob=await r.blob(); const url=URL.createObjectURL(blob);
+      const a=document.createElement("a");a.href=url;a.download="willpowerlab-backlog.md";a.click();
+      URL.revokeObjectURL(url);toast("Exported");
+    }catch(e){toast("Export failed");}
+  };
+  function taskMarkdown(t){
+    const tag=[t.theme,t.epic].filter(Boolean).join(" · ");
+    return "## [P"+(t.priority||2)+"] "+(t.user_story||"(task)")+"\n"+(tag?("_"+tag+"_\n"):"")+"\n"+((t.body||"").trim())+"\n";
+  }
+  async function loadTasks(){
+    try{
+      const d=await apiT("?view="+taskView,{method:"GET"});
+      renderTasks(d.tasks||[]);
+    }catch(e){ if(e.message!=="unauthorized") taskList.innerHTML='<div class="empty">Couldn\'t load tasks.</div>'; }
+  }
+  function renderTasks(tasks){
+    taskList.innerHTML="";
+    if(!tasks.length){ taskList.innerHTML='<div class="empty">'+(taskView==="archive"?"No archived tasks.":"No tasks yet — save a bug and one shows up here.")+'</div>'; return; }
+    tasks.forEach(t=>taskList.appendChild(taskRow(t)));
+  }
+  function el(tag,cls,txt){const e=document.createElement(tag);if(cls)e.className=cls;if(txt!=null)e.textContent=txt;return e;}
+  function taskRow(t){
+    const archived = taskView==="archive";
+    const li=el("li","task");li.dataset.id=t.id;
+    if(!archived){
+      const grip=el("div","grip","⋮⋮");grip.title="Drag to reorder";
+      grip.addEventListener("pointerdown",e=>startDrag(e,li));li.appendChild(grip);
+    }
+    const main=el("div","task-main");
+    main.appendChild(el("div","task-story",t.user_story||"(task)"));
+    const body=el("div","task-body clamp",(t.body||"").trim());
+    body.onclick=()=>body.classList.toggle("clamp");
+    main.appendChild(body);
+    const meta=el("div","task-metarow");
+    meta.appendChild(el("span","chip p"+(t.priority||2),"P"+(t.priority||2)));
+    const lbl=[t.theme,t.epic].filter(Boolean).join(" · ");
+    if(lbl) meta.appendChild(el("span","lbl",lbl));
+    meta.appendChild(el("span","date",archived?("done "+dShort(t.archived_at)):dShort(t.created_at)));
+    main.appendChild(meta);
+    li.appendChild(main);
+
+    const side=el("div","task-side");
+    const cp=el("button","tbtn","⧉");cp.title="Copy";cp.onclick=()=>copy(taskMarkdown(t));side.appendChild(cp);
+    if(archived){
+      const rs=el("button","tbtn","↩");rs.title="Restore";
+      rs.onclick=async()=>{try{await apiT("/"+t.id+"/restore",{method:"POST"});toast("Restored");loadTasks();}catch(e){}};side.appendChild(rs);
+    }else{
+      const dn=el("button","tbtn done","✓");dn.title="Done → archive";
+      dn.onclick=async()=>{try{await apiT("/"+t.id+"/done",{method:"POST"});toast("Archived");loadTasks();}catch(e){}};side.appendChild(dn);
+      const km=el("div","kmenu");const kb=el("button","tbtn","⋮");
+      const pop=el("div","pop");
+      const ed=el("button",null,"Edit");ed.onclick=e=>{e.stopPropagation();km.classList.remove("open");editTask(li,t);};
+      const dl=el("button","dngr","Delete");dl.onclick=async e=>{e.stopPropagation();km.classList.remove("open");
+        try{await apiT("/"+t.id,{method:"DELETE"});loadTasks();}catch(err){}};
+      pop.appendChild(ed);pop.appendChild(dl);
+      kb.onclick=e=>{e.stopPropagation();document.querySelectorAll(".kmenu.open").forEach(x=>x!==km&&x.classList.remove("open"));km.classList.toggle("open");};
+      km.appendChild(kb);km.appendChild(pop);side.appendChild(km);
+    }
+    li.appendChild(side);
+    return li;
+  }
+  document.addEventListener("click",()=>document.querySelectorAll(".kmenu.open").forEach(x=>x.classList.remove("open")));
+
+  function editTask(li,t){
+    const main=li.querySelector(".task-main");
+    const box=el("div","editbox");
+    const ta=el("textarea");ta.value=t.body||"";
+    const erow=el("div","erow");
+    const sv=el("button","savebtn","Save");const cn=el("button","cancelbtn","Cancel");
+    erow.appendChild(sv);erow.appendChild(cn);box.appendChild(ta);box.appendChild(erow);
+    main.style.display="none";li.insertBefore(box,li.querySelector(".task-side"));ta.focus();
+    cn.onclick=()=>{box.remove();main.style.display="";};
+    sv.onclick=async()=>{try{await apiT("/"+t.id,{method:"PATCH",body:JSON.stringify({body:ta.value})});toast("Saved");loadTasks();}catch(e){toast("Save failed");}};
+  }
+
+  // pointer-based drag reorder (works on touch: grip has touch-action:none)
+  let dragEl=null,dragId=null;
+  function startDrag(e,li){
+    dragEl=li;dragId=li.dataset.id;li.classList.add("dragging");
+    document.addEventListener("pointermove",onDragMove);
+    document.addEventListener("pointerup",endDrag,{once:true});
+    e.preventDefault();
+  }
+  function onDragMove(e){
+    if(!dragEl) return;
+    const rows=[...taskList.querySelectorAll("li.task:not(.dragging)")];
+    const below=rows.find(r=>{const rc=r.getBoundingClientRect();return e.clientY < rc.top+rc.height/2;});
+    if(below) taskList.insertBefore(dragEl,below); else taskList.appendChild(dragEl);
+  }
+  async function endDrag(){
+    document.removeEventListener("pointermove",onDragMove);
+    if(!dragEl) return;
+    dragEl.classList.remove("dragging");
+    const prev=dragEl.previousElementSibling;
+    const afterId=prev&&prev.dataset.id?Number(prev.dataset.id):null;
+    const id=dragId;dragEl=null;dragId=null;
+    try{ await apiT("/"+id+"/reorder",{method:"POST",body:JSON.stringify({after_id:afterId})}); }
+    catch(e){ toast("Reorder failed"); }
+    loadTasks();
+  }
+
   // boot
-  if(KEY){ load().then(hideGate).catch(showGate); } else { showGate(); }
+  if(KEY){ loadCurrent().then(hideGate).catch(showGate); } else { showGate(); }
 })();
 </script>
 </body>

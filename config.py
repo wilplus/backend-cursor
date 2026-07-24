@@ -368,6 +368,11 @@ class Config:
     DEV_BUGS_TO = (os.getenv("DEV_BUGS_TO") or os.getenv("ADMIN_EMAIL") or "artur@willonski.com").strip()
     # Host that serves the collector page at "/" (so dev.willpowerlab.com/ works).
     DEV_BUGS_HOST = (os.getenv("DEV_BUGS_HOST") or "dev.willpowerlab.com").strip().lower()
+    # When true, saving a dev-bug also fires a BACKGROUND GPT-4o call that turns it
+    # into a user-story-centered task in the "user stories · tasks" view (see
+    # services/dev_tasks.py). Default OFF — flip on once the tasks UI ships. It is
+    # best-effort and threaded, so it never blocks or breaks the bug save.
+    DEV_TASKS_ENABLED = (os.getenv("DEV_TASKS_ENABLED") or "false").strip().lower() in ("1", "true", "yes", "on")
 
     # Optional: annotation event export (cron / internal). See POST /v2/internal/annotation-export
     ANNOTATION_EXPORT_CRON_SECRET = (os.getenv("ANNOTATION_EXPORT_CRON_SECRET") or "").strip()
