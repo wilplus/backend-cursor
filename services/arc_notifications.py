@@ -31,6 +31,7 @@ score/verdict ever.
 from __future__ import annotations
 
 import logging
+import os
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Optional
@@ -38,6 +39,16 @@ from typing import Any, Optional
 logger = logging.getLogger(__name__)
 
 TAKES_TARGET = 3
+
+
+def _single_deliverable() -> bool:
+    """Mirror of routes.v2_routes._single_deliverable_enabled, read straight
+    from the env to avoid a services→routes import cycle. Single-deliverable
+    (founder 2026-07-17): every arc surface is free except the 5-credit
+    key-moment explanations, so the retired $25 arc-unlock pay-note must not
+    fire (it would point a user at the dead /unlock route)."""
+    return (os.getenv("SINGLE_DELIVERABLE_ENABLED") or "0").strip().lower() \
+        in ("1", "true", "yes")
 
 
 def _insert(db, user_id: str, *, client_key: str, kind: str, body: str,
@@ -315,6 +326,11 @@ def fire_pay_note(db, user_id: Any, arc_id: Any) -> bool:
     suggested_action lets the FE tap straight into POST /v2/arc/<id>/unlock
     (clean paywall — never an error). Copy = founder sign-off."""
     if not user_id or not arc_id:
+        return False
+    # Single-deliverable (founder 2026-07-17): the $25 arc unlock is retired
+    # (/unlock → 410) — there is nothing to sell, so this note is obsolete and
+    # must never point a user at the dead route.
+    if _single_deliverable():
         return False
     try:
         from services.arc_entitlement import is_arc_entitled
