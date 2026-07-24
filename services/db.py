@@ -8630,6 +8630,45 @@ class DatabaseService:
                            snippet_id, e)
             return False
 
+    def upsert_arc_context_document(self, arc_id, text, pages, chars, *,
+                                    filename=None, truncated=False) -> bool:
+        """Store the extracted context document for an arc (X-1, founder
+        2026-07-24; one row per arc). Best-effort — a missing table (migration
+        pending) or any error returns False, never raises into the upload."""
+        try:
+            self.client.table("arc_context_documents").upsert({
+                "arc_id": str(arc_id),
+                "text": text or "",
+                "pages": int(pages or 0),
+                "chars": int(chars or 0),
+                "filename": filename,
+                "truncated": bool(truncated),
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }, on_conflict="arc_id").execute()
+            return True
+        except Exception as e:
+            logger.error("upsert_arc_context_document failed arc=%s: %s",
+                         arc_id, e)
+            return False
+
+    def get_arc_context_document(self, arc_id) -> Optional[dict]:
+        """The stored context document for an arc — {text, pages, chars,
+        filename, truncated} or None. Best-effort (missing table → None)."""
+        try:
+            res = (
+                self.client.table("arc_context_documents")
+                .select("text, pages, chars, filename, truncated")
+                .eq("arc_id", str(arc_id))
+                .limit(1)
+                .execute()
+            )
+            rows = getattr(res, "data", None) or []
+            return rows[0] if rows else None
+        except Exception as e:
+            logger.warning("get_arc_context_document failed arc=%s: %s",
+                           arc_id, e)
+            return None
+
     def skip_snippet(self, snippet_id: str, is_skipped: bool = True) -> Optional[dict]:
         """Mark a snippet as skipped (hidden from user results)."""
         try:
