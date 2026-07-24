@@ -162,15 +162,17 @@ class TransformTests(unittest.TestCase):
         client.table.return_value.insert.return_value.execute.return_value = MagicMock(data=[inserted])
         with patch.object(svc, "classify_bug", return_value=cls), \
              patch.object(svc.db, "client", client):
-            out = svc.generate_task_for_bug({"id": 99, "text": "make versioning show history"})
+            out = svc.generate_task_for_bug(
+                {"id": 99, "text": "make versioning show history", "images": ["data:img1", "data:img2"]})
         self.assertEqual(out, inserted)
-        # the row we tried to insert carried a computed order_key + frozen ranks
+        # the row we tried to insert carried a computed order_key + frozen ranks + the bug's images
         insert_arg = client.table.return_value.insert.call_args.args[0]
         self.assertEqual(insert_arg["bug_id"], 99)
         self.assertEqual(insert_arg["theme"], "T1")
         self.assertEqual(insert_arg["priority"], 1)
         self.assertIn("order_key", insert_arg)
         self.assertGreater(insert_arg["order_key"], 0)
+        self.assertEqual(insert_arg["images"], ["data:img1", "data:img2"])
 
     def test_generate_task_noop_on_empty_or_no_openai(self):
         with patch.object(svc, "classify_bug", return_value=None):
