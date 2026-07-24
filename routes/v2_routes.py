@@ -11163,6 +11163,14 @@ def _arc_payment_gate(arc_id):
     )
     if not arc_id:
         return None
+    # Single-deliverable (founder re-shape 2026-07-17): every arc surface is
+    # FREE except the 5-credit key-moment EXPLANATIONS (a SEPARATE moment_unlocks
+    # gate — see _moments_entitled). The $25 arc unlock is retired (/unlock →
+    # 410), so no arc entitlement can ever be minted again; leaving this gate
+    # live would 402 best-presentation / breakthroughs / game FOREVER for every
+    # real user. Under the flag it's a no-op. Flag OFF → byte-for-byte legacy.
+    if _single_deliverable_enabled():
+        return None
     if is_admin(request.user_id) or is_coach(request.user_id):
         return None
     if paid_deliverables_visible(db, arc_id, request.user_id):
@@ -12217,7 +12225,11 @@ def v2_explore_arc_feedback(arc_id):
         if not owned:
             return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
         from services.arc_entitlement import is_arc_entitled
-        entitled = is_arc_entitled(db, arc_id, request.user_id) \
+        # Single-deliverable (founder 2026-07-17): the per-take feedback is FREE
+        # — no arc entitlement can be minted anymore (/unlock → 410), so gating
+        # here would lock takes 2/3 forever. Flag OFF → legacy take-1-free.
+        entitled = _single_deliverable_enabled() \
+            or is_arc_entitled(db, arc_id, request.user_id) \
             or is_admin(request.user_id) or is_coach(request.user_id)
 
         spoken, reads = _spoken_takes_and_reads(sessions)

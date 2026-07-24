@@ -841,5 +841,144 @@ class SeamSmoothingContractPinTests(unittest.TestCase):
         self.assertIn("continuity", src)
 
 
+@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
+class PaywallRetirementTests(unittest.TestCase):
+    """Founder 2026-07-17 single-deliverable: the arc-level surfaces that used
+    to sit behind the $25 unlock — best-presentation, breakthroughs, game, and
+    the per-take feedback for takes 2/3 — are FREE under the flag. The /unlock
+    route is 410, so no arc entitlement can be minted; leaving the gate live
+    would 402 / lock every real user forever. Flag OFF → byte-for-byte legacy."""
+
+    def setUp(self):
+        self.app = Flask(__name__)
+
+    # ── the gate itself: the single source of truth for best-presentation,
+    #    breakthroughs, and game (they all call _arc_payment_gate) ──
+    def _gate(self, *, flag, paid):
+        with self.app.test_request_context():
+            request.user_id = UID
+            with patch.object(v2, "_single_deliverable_enabled",
+                              return_value=flag), \
+                 patch.object(v2, "is_admin", return_value=False), \
+                 patch.object(v2, "is_coach", return_value=False), \
+                 patch.object(v2.db, "get_arc_purchase",
+                              return_value=({"user_id": UID} if paid else None)):
+                return v2._arc_payment_gate(ARC)
+
+    def test_gate_is_a_no_op_under_flag_even_unpaid(self):
+        self.assertIsNone(self._gate(flag=True, paid=False))
+
+    def test_gate_402s_unpaid_when_flag_off(self):
+        out = self._gate(flag=False, paid=False)
+        self.assertIsInstance(out, tuple)
+        _resp, status = out
+        self.assertEqual(status, 402)
+
+    def test_gate_opens_when_paid_flag_off(self):
+        self.assertIsNone(self._gate(flag=False, paid=True))
+
+    # ── best-presentation route honors the gate end-to-end ──
+    def _best_presentation(self, *, flag):
+        with self.app.test_request_context():
+            request.user_id = UID
+            with patch.object(v2, "_single_deliverable_enabled",
+                              return_value=flag), \
+                 patch.object(v2, "is_admin", return_value=False), \
+                 patch.object(v2, "is_coach", return_value=False), \
+                 patch.object(v2, "_arc_owned_by_caller",
+                              return_value=(True, [])), \
+                 patch.object(v2.db, "get_arc_purchase", return_value=None), \
+                 patch("services.best_presentation.build_best_presentation",
+                       return_value={"ready": True, "slides": []}):
+                out = v2.v2_explore_arc_best_presentation.__wrapped__(ARC)
+        resp, status = out if isinstance(out, tuple) else (out, 200)
+        return resp.get_json(), status
+
+    def test_best_presentation_free_under_flag(self):
+        body, status = self._best_presentation(flag=True)
+        self.assertEqual(status, 200)
+        self.assertTrue(body.get("audit_paid"))
+
+    def test_best_presentation_402_unpaid_flag_off(self):
+        _body, status = self._best_presentation(flag=False)
+        self.assertEqual(status, 402)
+
+    # ── feedback: full content for every take under the flag; legacy lock off ──
+    def _feedback(self, *, flag):
+        spoken = [{"id": "s1", "take_index": 1},
+                  {"id": "s2", "take_index": 2}]
+        with self.app.test_request_context():
+            request.user_id = UID
+            with patch.object(v2, "_single_deliverable_enabled",
+                              return_value=flag), \
+                 patch.object(v2, "is_admin", return_value=False), \
+                 patch.object(v2, "is_coach", return_value=False), \
+                 patch.object(v2, "_arc_owned_by_caller",
+                              return_value=(True, spoken)), \
+                 patch.object(v2, "_spoken_takes_and_reads",
+                              return_value=(spoken, {})), \
+                 patch.object(v2, "_take_full_text",
+                              side_effect=lambda sid: f"text-{sid}"), \
+                 patch.object(v2, "_take_key_moments",
+                              side_effect=lambda sid, rids: []), \
+                 patch.object(v2, "_paywall_block",
+                              side_effect=lambda a: {"code": "PAYMENT_REQUIRED"}), \
+                 patch.object(v2.db, "get_arc_purchase", return_value=None), \
+                 patch.object(v2.db, "get_coach_arc_ideal_text",
+                              return_value={}):
+                out = v2.v2_explore_arc_feedback.__wrapped__(ARC)
+        resp, status = out if isinstance(out, tuple) else (out, 200)
+        return resp.get_json(), status
+
+    def test_feedback_serves_every_take_under_flag(self):
+        body, status = self._feedback(flag=True)
+        self.assertEqual(status, 200)
+        takes = {t["take_index"]: t for t in body["takes"]}
+        self.assertFalse(takes[2].get("locked"))
+        self.assertIn("full_text", takes[2])      # content served, not withheld
+        self.assertNotIn("paywall", body)
+
+    def test_feedback_locks_take_2_when_flag_off(self):
+        body, status = self._feedback(flag=False)
+        self.assertEqual(status, 200)
+        takes = {t["take_index"]: t for t in body["takes"]}
+        self.assertTrue(takes[2].get("locked"))
+        self.assertNotIn("full_text", takes[2])
+        self.assertIn("paywall", body)
+
+
+@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
+class PaywallNotificationTests(unittest.TestCase):
+    """The arc-lifecycle notifications must not sell the retired $25 unlock,
+    and the >=3-takes terminal card is the (now-free) best-presentation one."""
+
+    def test_pay_note_suppressed_under_flag(self):
+        from services import arc_notifications as an
+
+        class _Db:
+            def insert_lounge_messages(self, *a, **k):
+                raise AssertionError("must not insert a pay note under the flag")
+
+        with patch.object(an, "_single_deliverable", return_value=True):
+            self.assertFalse(an.fire_pay_note(_Db(), "u1", ARC))
+
+    def test_pay_note_fires_when_flag_off_and_unpaid(self):
+        from services import arc_notifications as an
+        captured = {}
+
+        def _cap(db, user_id, *, client_key, kind, body, metadata):
+            captured["metadata"] = metadata
+            return True
+
+        with patch.object(an, "_single_deliverable", return_value=False), \
+             patch("services.arc_entitlement.is_arc_entitled",
+                   return_value=False), \
+             patch.object(an, "_insert", side_effect=_cap):
+            ok = an.fire_pay_note(object(), "u1", ARC)
+        self.assertTrue(ok)
+        self.assertEqual(
+            captured["metadata"]["suggested_action"], "arc_unlock")
+
+
 if __name__ == "__main__":
     unittest.main()
