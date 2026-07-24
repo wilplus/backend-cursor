@@ -1,15 +1,10 @@
 """willab — the INSTANT ideal-text lane (founder re-lock 2026-07-17).
 
-The June rule "the raw auto-assembled draft must NEVER reach the student" is
-explicitly reversed for this labeled lane: the frozen MACHINE copy
-(auto_text) serves FREE the moment take 3 lands; the coach-perfected text +
-takes 2/3 feedback stay behind approval + the $25 unlock. Everything is
-gated on INSTANT_IDEAL_TEXT_ENABLED (default OFF).
+The frozen MACHINE copy (auto_text) serves FREE the moment take 3 lands.
+(The student GET's legacy per-payment variants were retired with the $25
+model — see test_single_deliverable for the single-deliverable payload.)
 
 Pinned here:
-  * the student GET's three variants (perfected / instant / legacy locked)
-    per flag x payment x approval combination;
-  * L1: the coach's WORKING text NEVER leaks through the free lane;
   * persist_auto_ideal_text dual-write (auto always refreshed, coach text
     never clobbered; migration-pending fallback = legacy guard);
   * the idempotent instant bubble with an HONEST insert count.
@@ -51,121 +46,6 @@ def _coach_row(**over):
            "approved_at": None}
     row.update(over)
     return row
-
-
-@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
-class StudentIdealTextVariantsTests(unittest.TestCase):
-
-    def setUp(self):
-        self.app = Flask(__name__)
-
-    def _get(self, *, flag, paid, row, owned=True):
-        with self.app.test_request_context():
-            request.user_id = "u1"
-
-            def _gate(arc_id):
-                if paid:
-                    return None
-                return jsonify({"code": "ARC_NOT_UNLOCKED",
-                                "error": "unlock required"}), 402
-
-            with patch.object(v2, "_arc_owned_by_caller",
-                              return_value=(owned, [])), \
-                 patch.object(v2, "_instant_ideal_enabled",
-                              return_value=flag), \
-                 patch.object(v2, "_arc_payment_gate", side_effect=_gate), \
-                 patch.object(v2, "_paywall_block",
-                              return_value={"price": {"credits": 25},
-                                            "credits_current": 3,
-                                            "arc_id": ARC}), \
-                 patch.object(v2.db, "get_coach_arc_ideal_text",
-                              return_value=row), \
-                 patch.object(v2.db, "get_user_arc_ideal_notes",
-                              return_value="my notes"):
-                out = v2.v2_explore_get_ideal_text.__wrapped__(ARC)
-                resp, status = out if isinstance(out, tuple) else (out, 200)
-                return resp.get_json(), status
-
-    def test_flag_on_unpaid_serves_instant_with_paywall(self):
-        body, status = self._get(flag=True, paid=False, row=_machine_row())
-        self.assertEqual(status, 200)
-        self.assertEqual(body["variant"], "instant")
-        self.assertEqual(body["text"], "machine auto")
-        self.assertFalse(body["approved"])
-        self.assertFalse(body["entitled"])      # Buy CTA may render
-        self.assertIn("paywall", body)          # the upsell info
-        self.assertNotIn("notes_text", body)    # notes stay perfected-lane
-        self.assertNotIn("notes", body)
-
-    def test_flag_on_paid_unapproved_serves_instant_without_paywall(self):
-        # FE ask 2026-07-17: entitled=true on a fresh open suppresses the
-        # Buy CTA for a paid-but-unapproved arc.
-        body, status = self._get(flag=True, paid=True, row=_machine_row())
-        self.assertEqual(status, 200)
-        self.assertEqual(body["variant"], "instant")
-        self.assertTrue(body["entitled"])
-        self.assertNotIn("paywall", body)       # already entitled
-
-    def test_coach_working_text_never_leaks_through_the_free_lane(self):
-        # L1: coach-owned row WITHOUT a machine copy (pre-migration) must NOT
-        # serve the coach's text free — legacy 402 instead.
-        import json
-        body, status = self._get(
-            flag=True, paid=False, row=_coach_row(auto_text=None))
-        self.assertEqual(status, 402)
-        self.assertNotIn("coach secret text", json.dumps(body))
-
-    def test_coach_owned_row_still_serves_its_machine_copy(self):
-        # The frozen auto copy is machine content — free even mid-coach-edit.
-        body, status = self._get(flag=True, paid=False, row=_coach_row())
-        self.assertEqual(status, 200)
-        self.assertEqual(body["variant"], "instant")
-        self.assertEqual(body["text"], "machine auto")
-        self.assertNotIn("coach secret", body["text"])
-
-    def test_prebackfill_machine_row_falls_back_to_text(self):
-        body, status = self._get(
-            flag=True, paid=False, row=_machine_row(auto_text=None))
-        self.assertEqual(status, 200)
-        self.assertEqual(body["variant"], "instant")
-        self.assertEqual(body["text"], "machine text")
-
-    def test_paid_approved_serves_perfected_regardless_of_flag(self):
-        for flag in (True, False):
-            body, status = self._get(
-                flag=flag, paid=True,
-                row=_coach_row(approved_at="2026-07-17T10:00:00Z"))
-            self.assertEqual(status, 200)
-            self.assertEqual(body["variant"], "perfected")
-            self.assertEqual(body["text"], "coach secret text")
-            self.assertTrue(body["approved"])
-            self.assertEqual(body["notes_text"], "my notes")
-
-    def test_flag_off_is_the_legacy_flow(self):
-        body, status = self._get(flag=False, paid=False, row=_machine_row())
-        self.assertEqual(status, 402)           # payment gate, no instant
-        body, status = self._get(flag=False, paid=True, row=_machine_row())
-        self.assertEqual(status, 200)
-        self.assertTrue(body["locked"])          # unapproved → locked
-        self.assertEqual(body["reason"], "NOT_APPROVED")
-
-    def test_no_machine_copy_yet_keeps_legacy_shape(self):
-        body, status = self._get(flag=True, paid=True, row=None)
-        self.assertEqual(status, 200)
-        self.assertTrue(body["locked"])
-
-    def test_unowned_arc_404s(self):
-        body, status = self._get(flag=True, paid=False, row=_machine_row(),
-                                 owned=False)
-        self.assertEqual(status, 404)
-
-    def test_instant_payload_is_score_free(self):
-        import json
-        body, _ = self._get(flag=True, paid=False, row=_machine_row())
-        raw = json.dumps(body)
-        for banned in ("potentiometer", "acoustic_read", "overall_score",
-                       "slide_stickiness", "rank"):
-            self.assertNotIn(banned, raw)
 
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")

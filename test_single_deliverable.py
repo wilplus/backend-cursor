@@ -3,8 +3,8 @@
 The product delivers ONE thing: the ideal text. Record a take → instant
 ideal text vN (unverified) → the coach verifies in the background, always →
 the verified text displays FREE. The ONLY paid item: opening the key-moment
-explanations (5 credits, one-time per presentation). Everything behind
-SINGLE_DELIVERABLE_ENABLED (default OFF → byte-for-byte legacy).
+explanations (5 credits, one-time per presentation). This is now the ONLY
+behavior — the SINGLE_DELIVERABLE_ENABLED flag was retired.
 
 Pinned here, token by token:
   BE-1  version bump on a CHANGED machine copy only; migration fallbacks;
@@ -15,7 +15,7 @@ Pinned here, token by token:
         text NEVER leaks unverified.
   BE-5  the 5-credit moments unlock (atomic; no grandfathering) + the gated
         explanations GET.
-  BE-6  the $25 unlock and publish-analysis answer 410 under the flag.
+  BE-6  the $25 unlock and publish-analysis routes answer 410 (retired).
 
 Run: python3 -m unittest test_single_deliverable
 """
@@ -212,8 +212,6 @@ class StudentGetSingleDeliverableTests(unittest.TestCase):
             request.user_id = "u1"
             with patch.object(v2, "_arc_owned_by_caller",
                               return_value=(True, [])), \
-                 patch.object(v2, "_single_deliverable_enabled",
-                              return_value=True), \
                  patch.object(v2, "_moments_entitled",
                               return_value=entitled_moments), \
                  patch.object(v2, "_moment_explanations_map",
@@ -221,13 +219,9 @@ class StudentGetSingleDeliverableTests(unittest.TestCase):
                  patch.object(v2.db, "get_coach_arc_ideal_text",
                               return_value=row), \
                  patch.object(v2.db, "get_user_arc_ideal_notes",
-                              return_value="notes"), \
-                 patch.object(v2, "_arc_payment_gate") as m_gate:
+                              return_value="notes"):
                 out = v2.v2_explore_get_ideal_text.__wrapped__(ARC)
                 resp, status = out if isinstance(out, tuple) else (out, 200)
-                # The payment gate must never even be CONSULTED — the text
-                # is free by construction, not by a gate returning None.
-                m_gate.assert_not_called()
                 return resp.get_json(), status
 
     def test_unverified_serves_machine_copy_free(self):
@@ -307,8 +301,6 @@ class CrucialBubbleFieldTests(unittest.TestCase):
             request.user_id = "u1"
             with patch.object(v2, "_arc_owned_by_caller",
                               return_value=(True, sessions)), \
-                 patch.object(v2, "_single_deliverable_enabled",
-                              return_value=True), \
                  patch.object(v2, "_moments_entitled", return_value=False), \
                  patch.object(v2, "_moment_explanations_map",
                               return_value={}), \
@@ -500,8 +492,6 @@ class HistoricalVersionTests(unittest.TestCase):
             request.user_id = "u1"
             with patch.object(v2, "_arc_owned_by_caller",
                               return_value=(True, [])), \
-                 patch.object(v2, "_single_deliverable_enabled",
-                              return_value=True), \
                  patch.object(v2, "_moments_entitled", return_value=False), \
                  patch.object(v2, "_moment_explanations_map",
                               return_value={}), \
@@ -739,7 +729,7 @@ class MomentExplanationGetTests(unittest.TestCase):
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
 class LegacyRetirementTests(unittest.TestCase):
-    """BE-6 — the $25 unlock + publish answer 410 under the flag."""
+    """The $25 unlock + the coach publish route are retired — always 410."""
 
     def setUp(self):
         self.app = Flask(__name__)
@@ -747,50 +737,40 @@ class LegacyRetirementTests(unittest.TestCase):
     def test_arc_unlock_410(self):
         with self.app.test_request_context(json={}):
             request.user_id = UID
-            with patch.object(v2, "_single_deliverable_enabled",
-                              return_value=True):
-                out = v2.v2_arc_unlock.__wrapped__(ARC)
-                resp, status = out if isinstance(out, tuple) else (out, 200)
+            out = v2.v2_arc_unlock.__wrapped__(ARC)
+            resp, status = out if isinstance(out, tuple) else (out, 200)
         self.assertEqual(status, 410)
 
     def test_publish_analysis_410(self):
         with self.app.test_request_context(json={}):
             request.user_id = "coach1"
-            with patch.object(v2, "_single_deliverable_enabled",
-                              return_value=True):
-                out = v2.v2_coach_publish_analysis.__wrapped__(ARC)
-                resp, status = out if isinstance(out, tuple) else (out, 200)
+            out = v2.v2_coach_publish_analysis.__wrapped__(ARC)
+            resp, status = out if isinstance(out, tuple) else (out, 200)
         self.assertEqual(status, 410)
         self.assertIn("verify", resp.get_json()["error"].lower())
 
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
 class BatchCapLiftTests(unittest.TestCase):
-    """BE-2 — takes append forever under the flag."""
+    """Takes append to the arc forever — the old 3-take batch cap is retired."""
 
-    def _continue(self, *, flag):
+    def _continue(self):
         sessions = [
             {"arc_id": "arc-full", "intake_context": {
                 "slides": [{"title": "One", "body": "b"}]}}
-            for _ in range(3)                     # a FULL legacy batch
+            for _ in range(3)                     # what used to be a full batch
         ]
-        with patch.object(v2, "_single_deliverable_enabled",
-                          return_value=flag), \
-             patch.object(v2, "_presentation_id_from_slides",
+        with patch.object(v2, "_presentation_id_from_slides",
                           return_value="deck-hash"), \
              patch.object(v2.db, "v2_list_user_lab_sessions",
                           return_value=sessions):
             return v2._continue_deck_arc(
                 "u1", [{"title": "One", "body": "b"}], "fresh-arc", 1)
 
-    def test_flag_on_joins_the_full_arc_forever(self):
-        arc, take = self._continue(flag=True)
+    def test_takes_join_the_full_arc_forever(self):
+        arc, take = self._continue()
         self.assertEqual(arc, "arc-full")
         self.assertEqual(take, 4)                 # take 4 of the SAME arc
-
-    def test_flag_off_keeps_the_batch_cap(self):
-        arc, take = self._continue(flag=False)
-        self.assertEqual(arc, "fresh-arc")        # full batch → new arc
 
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
@@ -843,77 +823,35 @@ class SeamSmoothingContractPinTests(unittest.TestCase):
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
 class PaywallRetirementTests(unittest.TestCase):
-    """Founder 2026-07-17 single-deliverable: the arc-level surfaces that used
-    to sit behind the $25 unlock — best-presentation, breakthroughs, game, and
-    the per-take feedback for takes 2/3 — are FREE under the flag. The /unlock
-    route is 410, so no arc entitlement can be minted; leaving the gate live
-    would 402 / lock every real user forever. Flag OFF → byte-for-byte legacy."""
+    """The $25 arc model is retired: best-presentation, breakthroughs, game,
+    and every take's feedback are unconditionally free — no 402, no paywall,
+    no locked takes. (/unlock is a 410 tombstone.)"""
 
     def setUp(self):
         self.app = Flask(__name__)
 
-    # ── the gate itself: the single source of truth for best-presentation,
-    #    breakthroughs, and game (they all call _arc_payment_gate) ──
-    def _gate(self, *, flag, paid):
+    def _best_presentation(self):
         with self.app.test_request_context():
             request.user_id = UID
-            with patch.object(v2, "_single_deliverable_enabled",
-                              return_value=flag), \
-                 patch.object(v2, "is_admin", return_value=False), \
-                 patch.object(v2, "is_coach", return_value=False), \
-                 patch.object(v2.db, "get_arc_purchase",
-                              return_value=({"user_id": UID} if paid else None)):
-                return v2._arc_payment_gate(ARC)
-
-    def test_gate_is_a_no_op_under_flag_even_unpaid(self):
-        self.assertIsNone(self._gate(flag=True, paid=False))
-
-    def test_gate_402s_unpaid_when_flag_off(self):
-        out = self._gate(flag=False, paid=False)
-        self.assertIsInstance(out, tuple)
-        _resp, status = out
-        self.assertEqual(status, 402)
-
-    def test_gate_opens_when_paid_flag_off(self):
-        self.assertIsNone(self._gate(flag=False, paid=True))
-
-    # ── best-presentation route honors the gate end-to-end ──
-    def _best_presentation(self, *, flag):
-        with self.app.test_request_context():
-            request.user_id = UID
-            with patch.object(v2, "_single_deliverable_enabled",
-                              return_value=flag), \
-                 patch.object(v2, "is_admin", return_value=False), \
-                 patch.object(v2, "is_coach", return_value=False), \
-                 patch.object(v2, "_arc_owned_by_caller",
+            with patch.object(v2, "_arc_owned_by_caller",
                               return_value=(True, [])), \
-                 patch.object(v2.db, "get_arc_purchase", return_value=None), \
                  patch("services.best_presentation.build_best_presentation",
                        return_value={"ready": True, "slides": []}):
                 out = v2.v2_explore_arc_best_presentation.__wrapped__(ARC)
         resp, status = out if isinstance(out, tuple) else (out, 200)
         return resp.get_json(), status
 
-    def test_best_presentation_free_under_flag(self):
-        body, status = self._best_presentation(flag=True)
+    def test_best_presentation_free(self):
+        body, status = self._best_presentation()
         self.assertEqual(status, 200)
         self.assertTrue(body.get("audit_paid"))
 
-    def test_best_presentation_402_unpaid_flag_off(self):
-        _body, status = self._best_presentation(flag=False)
-        self.assertEqual(status, 402)
-
-    # ── feedback: full content for every take under the flag; legacy lock off ──
-    def _feedback(self, *, flag):
+    def _feedback(self):
         spoken = [{"id": "s1", "take_index": 1},
                   {"id": "s2", "take_index": 2}]
         with self.app.test_request_context():
             request.user_id = UID
-            with patch.object(v2, "_single_deliverable_enabled",
-                              return_value=flag), \
-                 patch.object(v2, "is_admin", return_value=False), \
-                 patch.object(v2, "is_coach", return_value=False), \
-                 patch.object(v2, "_arc_owned_by_caller",
+            with patch.object(v2, "_arc_owned_by_caller",
                               return_value=(True, spoken)), \
                  patch.object(v2, "_spoken_takes_and_reads",
                               return_value=(spoken, {})), \
@@ -921,63 +859,19 @@ class PaywallRetirementTests(unittest.TestCase):
                               side_effect=lambda sid: f"text-{sid}"), \
                  patch.object(v2, "_take_key_moments",
                               side_effect=lambda sid, rids: []), \
-                 patch.object(v2, "_paywall_block",
-                              side_effect=lambda a: {"code": "PAYMENT_REQUIRED"}), \
-                 patch.object(v2.db, "get_arc_purchase", return_value=None), \
                  patch.object(v2.db, "get_coach_arc_ideal_text",
                               return_value={}):
                 out = v2.v2_explore_arc_feedback.__wrapped__(ARC)
         resp, status = out if isinstance(out, tuple) else (out, 200)
         return resp.get_json(), status
 
-    def test_feedback_serves_every_take_under_flag(self):
-        body, status = self._feedback(flag=True)
+    def test_feedback_serves_every_take_free(self):
+        body, status = self._feedback()
         self.assertEqual(status, 200)
         takes = {t["take_index"]: t for t in body["takes"]}
         self.assertFalse(takes[2].get("locked"))
         self.assertIn("full_text", takes[2])      # content served, not withheld
         self.assertNotIn("paywall", body)
-
-    def test_feedback_locks_take_2_when_flag_off(self):
-        body, status = self._feedback(flag=False)
-        self.assertEqual(status, 200)
-        takes = {t["take_index"]: t for t in body["takes"]}
-        self.assertTrue(takes[2].get("locked"))
-        self.assertNotIn("full_text", takes[2])
-        self.assertIn("paywall", body)
-
-
-@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
-class PaywallNotificationTests(unittest.TestCase):
-    """The arc-lifecycle notifications must not sell the retired $25 unlock,
-    and the >=3-takes terminal card is the (now-free) best-presentation one."""
-
-    def test_pay_note_suppressed_under_flag(self):
-        from services import arc_notifications as an
-
-        class _Db:
-            def insert_lounge_messages(self, *a, **k):
-                raise AssertionError("must not insert a pay note under the flag")
-
-        with patch.object(an, "_single_deliverable", return_value=True):
-            self.assertFalse(an.fire_pay_note(_Db(), "u1", ARC))
-
-    def test_pay_note_fires_when_flag_off_and_unpaid(self):
-        from services import arc_notifications as an
-        captured = {}
-
-        def _cap(db, user_id, *, client_key, kind, body, metadata):
-            captured["metadata"] = metadata
-            return True
-
-        with patch.object(an, "_single_deliverable", return_value=False), \
-             patch("services.arc_entitlement.is_arc_entitled",
-                   return_value=False), \
-             patch.object(an, "_insert", side_effect=_cap):
-            ok = an.fire_pay_note(object(), "u1", ARC)
-        self.assertTrue(ok)
-        self.assertEqual(
-            captured["metadata"]["suggested_action"], "arc_unlock")
 
 
 if __name__ == "__main__":

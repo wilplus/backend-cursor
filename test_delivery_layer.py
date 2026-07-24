@@ -125,22 +125,6 @@ class _FeedbackHarness(unittest.TestCase):
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
 class FeedbackRouteTests(_FeedbackHarness):
 
-    def test_take1_free_takes23_locked_with_paywall(self):
-        body, status = self._call(entitled=False)
-        self.assertEqual(status, 200)
-        takes = {t["take_index"]: t for t in body["takes"]}
-        self.assertEqual(len(body["takes"]), 3)   # the read never a take
-        self.assertTrue(takes[1]["free"])
-        self.assertIn("full_text", takes[1])
-        for ti in (2, 3):
-            self.assertTrue(takes[ti]["locked"])
-            self.assertNotIn("full_text", takes[ti])     # no content leak
-            self.assertNotIn("key_moments", takes[ti])
-        # price = the audit_price dict {amount_minor, currency, credits};
-        # credits_current = the caller's live balance for the overlay copy.
-        self.assertIn("credits", body["paywall"]["price"])
-        self.assertEqual(body["paywall"]["credits_current"], 7)
-
     def test_entitled_unlocks_all_and_folds_read_moments(self):
         body, status = self._call(entitled=True)
         takes = {t["take_index"]: t for t in body["takes"]}
@@ -307,45 +291,11 @@ class IdealTextRoutesTests(unittest.TestCase):
         self.assertEqual(status, 409)
         self.assertEqual(resp.get_json()["code"], "IDEAL_TEXT_EMPTY")
 
-    def _student_get(self, ideal_row, gated=None):
-        with self.app.test_request_context():
-            request.user_id = "u1"
-            with patch.object(v2, "_arc_owned_by_caller",
-                              lambda a: (True, _sessions())), \
-                 patch.object(v2, "_arc_payment_gate",
-                              lambda a: gated), \
-                 patch.object(v2.db, "get_coach_arc_ideal_text",
-                              return_value=ideal_row), \
-                 patch.object(v2.db, "get_user_arc_ideal_notes",
-                              return_value="my notes"):
-                resp, status = v2.v2_explore_get_ideal_text.__wrapped__(ARC)
-                return resp.get_json(), status
-
-    def test_student_locked_until_approved(self):
-        body, status = self._student_get(
-            {"text": "block", "approved_at": None})
-        self.assertEqual(status, 200)
-        self.assertTrue(body["locked"])
-        self.assertEqual(body["reason"], "NOT_APPROVED")
-        self.assertNotIn("text", body)   # the draft never reaches the student
-
-    def test_student_gets_approved_text_and_notes(self):
-        body, status = self._student_get(
-            {"text": "final block", "approved_at": "2026-07-15T10:00:00Z"})
-        self.assertEqual(status, 200)
-        self.assertEqual(body["text"], "final block")
-        # the notebook copy rides under all three keys the FE mapper reads
-        self.assertEqual(body["notes_text"], "my notes")
-        self.assertEqual(body["notes"], "my notes")
-        self.assertEqual(body["user_notes"], "my notes")
-        self.assertTrue(body["approved"])
-
     def test_notes_put_never_touches_canonical(self):
         with self.app.test_request_context(json={"text": "my edited copy"}):
             request.user_id = "u1"
             with patch.object(v2, "_arc_owned_by_caller",
                               lambda a: (True, _sessions())), \
-                 patch.object(v2, "_arc_payment_gate", lambda a: None), \
                  patch.object(v2.db, "upsert_user_arc_ideal_notes",
                               return_value=True) as m_notes, \
                  patch.object(v2.db, "upsert_coach_arc_ideal_text") as m_canon:
@@ -419,89 +369,6 @@ class SavePublishTests(unittest.TestCase):
         self.assertEqual(status, 200)
         m_lanes.assert_not_called()
         m_save.assert_called_once_with(sid)
-
-    def _publish(self, sessions, ideal_row, drafts=lambda sid: [],
-                 insert_returns=None):
-        captured = {}
-
-        def _insert(uid, msgs):
-            captured.update({"uid": uid, "msgs": msgs})
-            return msgs if insert_returns is None else insert_returns
-
-        with self.app.test_request_context(json={}):
-            request.user_id = "coach1"
-            with patch.object(v2.db, "get_arc_sessions",
-                              return_value=sessions), \
-                 patch.object(v2.db, "get_coach_arc_ideal_text",
-                              return_value=ideal_row), \
-                 patch.object(v2.db, "get_coach_snippet_drafts",
-                              side_effect=drafts), \
-                 patch.object(v2, "_apply_willab_publish_contract",
-                              return_value=None), \
-                 patch.object(v2.db, "v2_update_session_status_unscoped"), \
-                 patch.object(v2.db, "v2_publish_session_results"), \
-                 patch.object(v2.db, "insert_lounge_messages",
-                              side_effect=_insert), \
-                 patch.object(v2.db, "mark_arc_batch_delivered",
-                              return_value=True):
-                resp, status = v2.v2_coach_publish_analysis.__wrapped__(ARC)
-                return resp.get_json(), status, captured
-
-    def test_409_when_a_take_is_unsaved(self):
-        sess = _sessions()
-        sess[1]["coach_feedback_saved_at"] = None   # take 2 unsaved
-        body, status, _ = self._publish(
-            sess, {"text": "x", "approved_at": "2026-07-15T10:00:00Z"})
-        self.assertEqual(status, 409)
-        self.assertEqual(body["code"], "TAKES_NOT_SAVED")
-        self.assertEqual(body["pending_session_ids"], [T2])
-
-    def test_409_when_ideal_not_approved(self):
-        body, status, _ = self._publish(
-            _sessions(), {"text": "x", "approved_at": None})
-        self.assertEqual(status, 409)
-        self.assertEqual(body["code"], "IDEAL_TEXT_NOT_APPROVED")
-
-    def test_happy_path_emits_4_ordered_bubbles(self):
-        body, status, cap = self._publish(
-            _sessions(), {"text": "x", "approved_at": "2026-07-15T10:00:00Z"})
-        self.assertEqual(status, 200)
-        self.assertTrue(body["published"])
-        self.assertEqual(body["bubbles"], 4)
-        msgs = cap["msgs"]
-        self.assertEqual([m["kind"] for m in msgs],
-                         ["feedback", "feedback", "feedback", "ideal_text"])
-        self.assertEqual(
-            [m["metadata"].get("take_index") for m in msgs[:3]], [1, 2, 3])
-        self.assertTrue(msgs[0]["metadata"]["free"])
-        self.assertFalse(msgs[1]["metadata"]["free"])
-        # ordered by client_created_at (1 → 2 → 3 → ideal)
-        stamps = [m["client_created_at"] for m in msgs]
-        self.assertEqual(stamps, sorted(stamps))
-        self.assertEqual(cap["uid"], "u1")
-
-    def test_bubbles_reports_the_true_inserted_count(self):
-        # BE-1 (fix-pack 2026-07-16): insert_lounge_messages swallows DB
-        # errors and returns [] — publish must report what actually landed
-        # (and log loudly), never a fabricated 4.
-        with self.assertLogs("routes.v2_routes", level="ERROR") as logs:
-            body, status, cap = self._publish(
-                _sessions(),
-                {"text": "x", "approved_at": "2026-07-15T10:00:00Z"},
-                insert_returns=[])
-        self.assertEqual(status, 200)          # takes still published
-        self.assertTrue(body["published"])
-        self.assertEqual(body["bubbles"], 0)   # the honest count
-        self.assertEqual(len(cap["msgs"]), 4)  # 4 were intended
-        self.assertTrue(any("bubbles dropped" in line for line in logs.output))
-
-    def test_partial_insert_reports_partial_count(self):
-        body, status, cap = self._publish(
-            _sessions(),
-            {"text": "x", "approved_at": "2026-07-15T10:00:00Z"},
-            insert_returns=[{"id": "row1"}, {"id": "row2"}])
-        self.assertEqual(status, 200)
-        self.assertEqual(body["bubbles"], 2)
 
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")

@@ -4238,7 +4238,6 @@ def _obscure_email(email: str) -> str | None:
 # + reflex). After baseline (turn 5+), tone alternates per SSoT §4.
 
 
-
 # Post-signup confirmation copy. Task 7 — confirmed wording from
 # the FE handoff reply. BE-flag (not FE-hardcoded) so the SLA
 # string can be tuned without a FE deploy when coaching-ops
@@ -4336,25 +4335,24 @@ def _merge_anonymous_session_into_user(session_id: str, user_id: str):
         # left the chat empty — and the chat IS the version history. Runs on
         # every claim path (this helper is the shared willab exit) and is
         # idempotent per (arc, version). Best-effort: never unwind a claim.
-        if _single_deliverable_enabled():
-            try:
-                from services.arc_notifications import backfill_ideal_bubbles
-                _arc = (session_row or {}).get("arc_id")
-                if not _arc:
-                    # Defensive: never let a narrow row silently skip the
-                    # back-fill (the whole point is the empty-chat bug).
-                    _arc = (db.v2_get_session_by_id(sid) or {}).get("arc_id")
-                if _arc:
-                    backfill_ideal_bubbles(db, str(user_id), _arc)
-                else:
-                    logger.warning(
-                        "willab_lab: no arc_id for claimed sid=%s — ideal "
-                        "bubbles not back-filled", sid)
-            except Exception as _bf:
+        try:
+            from services.arc_notifications import backfill_ideal_bubbles
+            _arc = (session_row or {}).get("arc_id")
+            if not _arc:
+                # Defensive: never let a narrow row silently skip the
+                # back-fill (the whole point is the empty-chat bug).
+                _arc = (db.v2_get_session_by_id(sid) or {}).get("arc_id")
+            if _arc:
+                backfill_ideal_bubbles(db, str(user_id), _arc)
+            else:
                 logger.warning(
-                    "willab_lab: ideal back-fill failed sid=%s err=%s "
-                    "(non-fatal)", sid, _bf,
-                )
+                    "willab_lab: no arc_id for claimed sid=%s — ideal "
+                    "bubbles not back-filled", sid)
+        except Exception as _bf:
+            logger.warning(
+                "willab_lab: ideal back-fill failed sid=%s err=%s "
+                "(non-fatal)", sid, _bf,
+            )
         return ({
             "status": "ok",
             "session_id": sid,
@@ -8105,20 +8103,10 @@ def _user_presentation_groups(user_id: str) -> dict:
     }
 
 
-# One analysis batch = exactly this many takes (founder RE-LOCK 2026-07-11,
-# backlog 4.1 — supersedes the 2026-06-20/2026-07-06 "arc keeps growing, no
-# take cap" rule). An arc that already holds a full batch is never joined:
-# the next take of the same deck/topic automatically starts a NEW arc, the
-# take counter resets to 1, and the $25 unlock stays per-arc ("1 analysis =
-# 3 takes = $25" with zero pricing-code changes).
-_ARC_BATCH_TAKES = 3
-
-
 def _continue_deck_arc(user_id, slides, fresh_arc_id, fresh_take_index):
-    """Continue-one-arc, batch-capped (founder re-lock 2026-07-11): every take
-    of the SAME deck (same user) joins that deck's most-developed arc UNTIL the
-    arc holds a full batch (_ARC_BATCH_TAKES); a full batch → the fresh arc
-    (the next analysis batch starts automatically, counter back to 1/3).
+    """Continue-one-arc (single-deliverable, founder 2026-07-17): every take of
+    the SAME deck (same user) joins that deck's most-developed arc — takes
+    append forever (the old 3-take batch cap is retired).
 
     Matches by the stable deck-hash across the user's lab sessions and continues
     the deck's MOST-developed arc (consistent with the /strengths group arc,
@@ -8150,11 +8138,7 @@ def _continue_deck_arc(user_id, slides, fresh_arc_id, fresh_take_index):
         # SINGLE DELIVERABLE (founder re-shape 2026-07-17, cap lock
         # overturned): takes append to the presentation FOREVER — one deck =
         # one presentation; only a new deck/topic mints a new one.
-        if _single_deliverable_enabled():
-            open_arcs = dict(counts)
-        else:
-            open_arcs = {a: c for a, c in counts.items()
-                         if c < _ARC_BATCH_TAKES}
+        open_arcs = dict(counts)
         if not open_arcs:
             return fresh_arc_id, fresh_take_index
         best_arc = max(open_arcs.items(), key=lambda kv: kv[1])[0]
@@ -8172,8 +8156,7 @@ def _continue_topic_arc(user_id, topic, fresh_arc_id, fresh_take_index):
 
     Same doctrine as _continue_deck_arc, keyed on the NORMALIZED TOPIC (the
     "same talk"): re-recording the same-titled talk joins its most-developed
-    existing arc UNTIL that arc holds a full batch (_ARC_BATCH_TAKES) — then
-    the fresh arc starts the next analysis batch (founder re-lock 2026-07-11).
+    existing arc — takes append forever (the old 3-take batch cap is retired).
     New topic / guest / no topic / any error → the fresh arc.
     Never raises into the record path."""
     if not user_id or not isinstance(topic, str) or not topic.strip():
@@ -8197,11 +8180,7 @@ def _continue_topic_arc(user_id, topic, fresh_arc_id, fresh_take_index):
                 counts[aid] = counts.get(aid, 0) + 1
         # Batch cap — same open-batch rule as _continue_deck_arc; lifted
         # entirely under the single deliverable (takes append forever).
-        if _single_deliverable_enabled():
-            open_arcs = dict(counts)
-        else:
-            open_arcs = {a: c for a, c in counts.items()
-                         if c < _ARC_BATCH_TAKES}
+        open_arcs = dict(counts)
         if not open_arcs:
             return fresh_arc_id, fresh_take_index
         best_arc = max(open_arcs.items(), key=lambda kv: kv[1])[0]
@@ -11150,34 +11129,6 @@ def _arc_owned_by_caller(arc_id):
     return owned, sessions
 
 
-def _arc_payment_gate(arc_id):
-    """The 402 entitlement gate — founder re-price 2026-07-06: this now guards
-    ONLY the four paid deliverables (coach-corrected ideal text, breakthroughs
-    LIST, game, snippet library). Recording/analysis/the readout's automatic +
-    coach layers are NEVER gated (no take-level branching here anymore).
-
-    Returns a ``(response, 402)`` tuple when the arc is unpaid and the caller
-    isn't entitled, else None (proceed). Admin/coach bypass."""
-    from services.arc_entitlement import (
-        paid_deliverables_visible, payment_required_payload,
-    )
-    if not arc_id:
-        return None
-    # Single-deliverable (founder re-shape 2026-07-17): every arc surface is
-    # FREE except the 5-credit key-moment EXPLANATIONS (a SEPARATE moment_unlocks
-    # gate — see _moments_entitled). The $25 arc unlock is retired (/unlock →
-    # 410), so no arc entitlement can ever be minted again; leaving this gate
-    # live would 402 best-presentation / breakthroughs / game FOREVER for every
-    # real user. Under the flag it's a no-op. Flag OFF → byte-for-byte legacy.
-    if _single_deliverable_enabled():
-        return None
-    if is_admin(request.user_id) or is_coach(request.user_id):
-        return None
-    if paid_deliverables_visible(db, arc_id, request.user_id):
-        return None
-    return jsonify(payment_required_payload(arc_id, config)), 402
-
-
 def _arc_audit_paid(arc_id, user_id):
     """Phase-1 per-arc paid flag (the FE's ``audit_paid``). True when the scope
     should be FULL: a non-arc / standalone session (no paywall concept), an
@@ -11226,12 +11177,8 @@ def v2_explore_arc_best_presentation(arc_id):
         owned, _ = _arc_owned_by_caller(arc_id)
         if not owned:
             return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
-        # Paid Audits (A2): the ideal-text deliverable is behind the paywall.
-        gated = _arc_payment_gate(arc_id)
-        if gated is not None:
-            return gated
-        # Past the gate → entitled (or admin/coach). Phase-1: echo audit_paid so
-        # the FE confirms the deliverable is unlocked (unpaid arcs 402 instead).
+        # Single-deliverable (founder 2026-07-17): the best presentation is
+        # free — no paywall. (audit_paid stays true for FE back-compat.)
         return jsonify({
             "arc_id": arc_id, "audit_paid": True,
             **build_best_presentation(arc_id),
@@ -11271,12 +11218,8 @@ def v2_explore_arc_breakthroughs(arc_id):
         owned, _ = _arc_owned_by_caller(arc_id)
         if not owned:
             return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
-        # Paid deliverable (founder model 2026-07-06): the breakthrough-moments
-        # list is part of the paid layer (the readout teaser keeps badges + one
-        # video; the full cross-take list needs the purchase). Clean 402 paywall.
-        gated = _arc_payment_gate(arc_id)
-        if gated is not None:
-            return gated
+        # Single-deliverable (founder 2026-07-17): the breakthroughs list is
+        # free — no paywall.
         return jsonify({"arc_id": arc_id, **build_arc_breakthroughs(arc_id)}), 200
     except Exception as e:
         logger.error("explore/arc breakthroughs failed arc=%s: %s", arc_id,
@@ -11533,9 +11476,6 @@ def v2_talk_ideal_text(talk_id):
         owned, _ = _arc_owned_by_caller(talk_id)
         if not owned:
             return jsonify({"code": "NOT_FOUND", "error": "talk not found"}), 404
-        gated = _arc_payment_gate(talk_id)
-        if gated is not None:
-            return gated
         # Past the gate → entitled (or admin/coach); echo audit_paid (Phase-1).
         return jsonify({
             "audit_paid": True, **build_ideal_text_report(talk_id),
@@ -11554,89 +11494,18 @@ def v2_talk_ideal_text(talk_id):
 @v2_bp.route("/arc/<arc_id>/unlock", methods=["POST"])
 @require_auth
 def v2_arc_unlock(arc_id):
-    """Unlock the four paid deliverables (coach-corrected ideal text,
-    breakthroughs list, game, snippet library) for one arc — CREDITS-based,
-    replacing the legacy $50 Stripe-direct checkout as the advertised path
-    (that route/webhook stay alive, dormant, honoring any in-flight session).
-
-    Ordering is DELIBERATE (review must-fix — closes a transient double-free
-    window): DEDUCT CREDITS FIRST, insert arc_purchases SECOND. This means an
-    arc_purchases row can only ever exist once payment has actually,
-    atomically succeeded — a concurrent reader of is_arc_entitled can NEVER
-    observe a phantom "already_entitled" during an in-flight charge (the
-    earlier insert-first ordering had exactly that window: a purchase row
-    could be briefly visible before its paired deduct was confirmed, and a
-    concurrent /unlock or entitlement check could act on it before a failed
-    deduct rolled it back).
-
-      1. Conditional atomic credit deduct (CAS) — 0 rows matched means
-         insufficient funds; NOTHING is written to arc_purchases yet.
-      2. INSERT arc_purchases — unique(arc_id) is the atomic double-charge
-         guard. If this conflicts (someone else's concurrent unlock already
-         landed), REFUND the credits we just deducted (this request never
-         gets to double-spend) and report the pre-existing entitlement.
-
-    Response 200 { unlocked: true, arc_id, credits_remaining }
-             200 { already_entitled: true, arc_id }   (pre-check: already paid)
-             409 { code: ARC_ALREADY_PAID, arc_id }   (raced after deduct —
-                                                        refunded, no net charge)
-             402 { code: INSUFFICIENT_CREDITS, required, current }
-             404 NOT_FOUND (not the caller's arc) · 500 V2_ERROR
-    """
-    try:
-        # Single deliverable (founder re-shape 2026-07-17): the $25 arc
-        # unlock is RETIRED — the only paid item is the 5-credit moments
-        # unlock (POST /presentation/<id>/unlock-moments). No grandfathering.
-        if _single_deliverable_enabled():
-            return jsonify({
-                "code": "GONE",
-                "error": "This product was retired. The ideal text is free; "
-                         "key-moment explanations unlock for 5 credits.",
-            }), 410
-        from services.arc_entitlement import is_arc_entitled
-        owned, _ = _arc_owned_by_caller(arc_id)
-        if not owned:
-            return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
-        if is_arc_entitled(db, arc_id, request.user_id):
-            return jsonify({"already_entitled": True, "arc_id": arc_id}), 200
-
-        amount = int(getattr(config, "ARC_UNLOCK_CREDITS", 25) or 25)
-
-        # 1) Deduct FIRST. Nothing entitles anyone yet — a concurrent reader
-        # sees no arc_purchases row at all during this step.
-        new_balance = db.deduct_credits_strict(str(request.user_id), amount)
-        if new_balance is None:
-            details = db.v2_get_student_details(str(request.user_id)) or {}
-            current = int(details.get("credits") or 0)
-            return jsonify({
-                "code": "INSUFFICIENT_CREDITS",
-                "required": amount, "current": current,
-            }), 402
-
-        # 2) Exclusive insert: unique(arc_id) makes this the atomic claim.
-        # Returns None on ANY conflict — someone else's concurrent unlock
-        # landed the purchase between our pre-check and this insert.
-        purchase = db.create_arc_purchase_exclusive(
-            str(arc_id), str(request.user_id),
-            kind="paid", source="credits", credits_charged=amount,
-        )
-        if not purchase:
-            # Refund — this request must never end up double-charging for an
-            # arc someone else already secured.
-            db.v2_increment_student_credits(str(request.user_id), amount)
-            if is_arc_entitled(db, arc_id, request.user_id):
-                return jsonify({"code": "ARC_ALREADY_PAID", "arc_id": arc_id}), 409
-            return jsonify({
-                "code": "V2_ERROR", "error": "Could not start the unlock",
-            }), 500
-
-        return jsonify({
-            "unlocked": True, "arc_id": arc_id, "credits_remaining": new_balance,
-        }), 200
-    except Exception as e:
-        logger.error("arc unlock failed arc=%s: %s", arc_id, e, exc_info=True)
-        sentry_sdk.capture_exception(e)
-        return jsonify({"code": "V2_ERROR", "error": "Failed to unlock"}), 500
+    """RETIRED (single-deliverable, founder 2026-07-17). The $25 arc unlock is
+    gone; this route is a 410 tombstone (the ideal text + deliverables are free,
+    the only paid item is the 5-credit key-moment explanations). 410 GONE."""
+    # RETIRED (single-deliverable, founder 2026-07-17): the $25 arc unlock is
+    # gone — the ideal text + its deliverables are free; the only paid item is
+    # the 5-credit key-moment explanations (POST /arc/<id>/unlock-moments). Kept
+    # as a 410 tombstone so any lingering client gets a clear signal.
+    return jsonify({
+        "code": "GONE",
+        "error": "This product was retired. The ideal text is free; "
+                 "key-moment explanations unlock for 5 credits.",
+    }), 410
 
 
 @v2_bp.route("/arc/<arc_id>/unlock-moments", methods=["POST"])
@@ -11796,7 +11665,6 @@ def v2_coach_arc_best_presentation(arc_id):
 #  /explore/arc/<id>/feedback and the one-block ideal-text routes. History: PR #186/#193.)
 
 
-
 @v2_bp.route("/user/trainings", methods=["GET"])
 @require_auth
 def v2_user_list_trainings():
@@ -11918,26 +11786,11 @@ def _async_analysis_enabled() -> bool:
         in ("1", "true", "yes")
 
 
-def _single_deliverable_enabled() -> bool:
-    """The single-deliverable re-shape (founder 2026-07-17): the product
-    delivers ONE thing — the ideal text. Record a take → instant ideal text
-    vN (unverified) → the coach verifies in the background (always, paid or
-    not) → the verified text displays FREE. The ONLY paid item: opening the
-    key-moment explanations (5 credits, one-time per presentation). Locks
-    consciously overturned by the founder (listed in the re-shape PR): the
-    3-take batch, the 4-bubble publish delivery, the $25 arc unlock (no
-    grandfathering), approve+publish (→ verify). DEFAULT OFF; deploy order
-    BE → FE → flip SINGLE_DELIVERABLE_ENABLED=1 in Railway."""
-    return (os.getenv("SINGLE_DELIVERABLE_ENABLED") or "0").strip().lower() \
-        in ("1", "true", "yes")
-
-
 def _moment_suggestions_enabled() -> bool:
     """Star suggestions on the SD ideal text (founder 2026-07-18): grey
     suggestion stars (emphasize / replace) resolved coach-label-first, else
     the deterministic potentiometer (NEVER the shadow model — blind coach);
-    orange verified stars carry the paid coach message. DEFAULT OFF; rides
-    on top of SINGLE_DELIVERABLE_ENABLED."""
+    orange verified stars carry the coach message. DEFAULT OFF."""
     return (os.getenv("MOMENT_SUGGESTIONS_ENABLED") or "0").strip().lower() \
         in ("1", "true", "yes")
 
@@ -12184,26 +12037,6 @@ def _fold_applied_moments(text, moments) -> str:
     return text
 
 
-def _paywall_block(arc_id):
-    """The paywall info the FE renders the overlay from: price + the caller's
-    current credit balance. Pricing copy, not a surfaced score (AC-9-safe)."""
-    from services.arc_entitlement import audit_price
-    credits_current = None
-    try:
-        _uid = getattr(request, "user_id", None)
-        if _uid:
-            det = db.v2_get_student_details(str(_uid)) or {}
-            _c = det.get("credits")
-            credits_current = int(_c) if _c is not None else None
-    except Exception:
-        credits_current = None
-    return {
-        "price": audit_price(config),
-        "credits_current": credits_current,
-        "arc_id": arc_id,
-    }
-
-
 @v2_bp.route("/explore/arc/<arc_id>/feedback", methods=["GET"])
 @require_auth
 def v2_explore_arc_feedback(arc_id):
@@ -12212,9 +12045,9 @@ def v2_explore_arc_feedback(arc_id):
     MOMENTS (grouped by slide on the FE), each with its snippet playback and
     the coach's comment (text or video). No suggestions, no scores.
 
-    Paywall: take 1 is FREE; takes 2/3 lock until the $25 arc unlock — a
-    locked take returns {take_index, session_id, free:false, locked:true}
-    with NO content (no leak). Reads fold into their paired take.
+    Single-deliverable (founder 2026-07-17): every take's feedback is FREE —
+    the $25 arc unlock is retired, so no take is locked. Reads fold into
+    their paired take.
 
     Response 200 { arc_id, takes:[{take_index, session_id, free,
         locked?, full_text?, key_moments?:[…]}], ideal_ready, paywall? }
@@ -12224,45 +12057,27 @@ def v2_explore_arc_feedback(arc_id):
         owned, sessions = _arc_owned_by_caller(arc_id)
         if not owned:
             return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
-        from services.arc_entitlement import is_arc_entitled
-        # Single-deliverable (founder 2026-07-17): the per-take feedback is FREE
-        # — no arc entitlement can be minted anymore (/unlock → 410), so gating
-        # here would lock takes 2/3 forever. Flag OFF → legacy take-1-free.
-        entitled = _single_deliverable_enabled() \
-            or is_arc_entitled(db, arc_id, request.user_id) \
-            or is_admin(request.user_id) or is_coach(request.user_id)
-
+        # Single-deliverable (founder 2026-07-17): every take's feedback is
+        # FREE — the $25 arc unlock is retired, so nothing here is gated.
         spoken, reads = _spoken_takes_and_reads(sessions)
         takes = []
-        any_locked = False
         for s in spoken:
             sid = str(s.get("id"))
             ti = s.get("take_index") or (len(takes) + 1)
-            free = (ti == 1)
-            if not free and not entitled:
-                any_locked = True
-                takes.append({
-                    "take_index": ti, "session_id": sid,
-                    "free": False, "locked": True,
-                })
-                continue
             read_rows = reads.get(sid) or []
             takes.append({
                 "take_index": ti, "session_id": sid,
-                "free": free, "locked": False,
+                "free": (ti == 1), "locked": False,
                 "full_text": _take_full_text(sid),
                 "key_moments": _take_key_moments(
                     sid, [str(r.get("id")) for r in read_rows if r.get("id")]),
             })
         ideal = db.get_coach_arc_ideal_text(arc_id)
-        body = {
+        return jsonify({
             "arc_id": arc_id,
             "takes": takes,
             "ideal_ready": bool(ideal and ideal.get("approved_at")),
-        }
-        if any_locked or not entitled:
-            body["paywall"] = _paywall_block(arc_id)
-        return jsonify(body), 200
+        }), 200
     except Exception as e:
         logger.error("explore/arc feedback failed arc=%s: %s", arc_id, e,
                      exc_info=True)
@@ -12480,24 +12295,8 @@ def v2_coach_approve_ideal_text(arc_id):
 def v2_explore_get_ideal_text(arc_id):
     """The user's ideal-text notebook (the purple bubble).
 
-    TWO variants since the instant lane (founder re-lock 2026-07-17,
-    INSTANT_IDEAL_TEXT_ENABLED):
-      * "perfected" — the coach-APPROVED block, $25-gated, + the personal
-        notes copy (today's behavior, unchanged gates);
-      * "instant"  — the frozen MACHINE copy (auto_text), served FREE the
-        moment it exists, no approval/payment; labeled so the FE renders the
-        draft banner + upsell. NEVER the coach's working text (L1: coach
-        content stays behind approval + payment).
-    Flag OFF → byte-for-byte the legacy behavior.
-
-    200 { arc_id, variant:"perfected", text, notes_text, key_moments,
-          approved:true }
-    200 { arc_id, variant:"instant", text, key_moments, approved:false,
-          paywall? }                     — flag ON, machine copy available
-    200 { arc_id, locked:true, reason:"NOT_APPROVED" }  — approved gate
-    402 (paywall body incl. price + credits_current) · 404 · 500
-
-    SINGLE_DELIVERABLE mode (flag ON) instead returns
+    Single-deliverable (founder 2026-07-17): the ideal text is FREE in both
+    states — never a 402. Returns
     200 { arc_id, version, status:"verified"|"unverified", title,
           updated_at, latest_take_session_id, take_count, reread_done,
           reread_processing, text, user_edited, key_moments,
@@ -12535,462 +12334,405 @@ def v2_explore_get_ideal_text(arc_id):
         # text is FREE in both states — no 402 on this endpoint, ever. The
         # only paid thing in the app is the key-moment EXPLANATIONS
         # (GET /presentation/<id>/moments, 5 credits). ──
-        if _single_deliverable_enabled():
-            _r = row or {}
-            _coach_owned = bool(_r.get("updated_by") or _r.get("approved_at"))
-            _machine = ((_r.get("auto_text") or "").strip()
-                        or ((_r.get("text") or "").strip()
-                            if not _coach_owned else ""))
-            _version = _r.get("version") or (1 if _machine else None)
+        _r = row or {}
+        _coach_owned = bool(_r.get("updated_by") or _r.get("approved_at"))
+        _machine = ((_r.get("auto_text") or "").strip()
+                    or ((_r.get("text") or "").strip()
+                        if not _coach_owned else ""))
+        _version = _r.get("version") or (1 if _machine else None)
 
-            # ── HISTORICAL view, ?version=N (founder 2026-07-20): an old
-            # version bubble opens ITS OWN step — the frozen text + that
-            # step's reasoning, read-only. N == current falls through to
-            # the live notebook. No snapshot (pre-migration / assembled
-            # before history existed) → historical_unavailable and the FE
-            # falls back to the live view. Free, owner-only (same gate as
-            # the live read). ──
-            _hv_raw = request.args.get("version")
-            if _hv_raw not in (None, ""):
-                try:
-                    _hv = int(_hv_raw)
-                except (TypeError, ValueError):
-                    return jsonify({
-                        "code": "INVALID_INPUT",
-                        "error": "version must be an integer",
-                    }), 400
-                if _version is None or _hv != _version:
-                    _snap = db.get_ideal_text_version(arc_id, _hv)
-                    if not _snap or not (_snap.get("text") or "").strip():
-                        return jsonify({
-                            "arc_id": arc_id,
-                            "historical_unavailable": True,
-                            "requested_version": _hv,
-                            "current_version": _version,
-                        }), 200
-                    from services.ideal_text_block import (
-                        extract_key_moments, strip_moment_markers,
-                    )
-                    _s_text = _snap["text"]
-                    _s_moments = extract_key_moments(_s_text)
-                    _s_sugs = {
-                        str(m.get("snippet_id")): m
-                        for m in (_snap.get("moments") or [])
-                        if isinstance(m, dict) and m.get("snippet_id")
-                    }
-                    # The star is EXPLICIT on historical payloads too (FE
-                    # relay 2026-07-20): the device guard is BE-owned
-                    # contract logic (#218/#219 pin — the FE renders copy
-                    # purely from device and must never infer star
-                    # semantics). Same rule as live: an unknown kind or
-                    # device yields NO star and NO suggestion.
-                    from services.delivery_stars import (
-                        DELIVERY_DEVICES as _H_DELIVERY,
-                    )
-                    from services.moment_suggestions import (
-                        _STRUCT_DEVICES as _H_STRUCT,
-                    )
-                    _s_out = []
-                    for m in _s_moments:
-                        _e = {
-                            "id": m.get("snippet_id"),
-                            "snippet_id": m.get("snippet_id"),
-                            "anchor": m.get("anchor") or "",
-                            "take_session_id": m.get("take_session_id"),
-                        }
-                        _sm = _s_sugs.get(str(m.get("snippet_id")))
-                        if _sm:
-                            _kind = _sm.get("kind")
-                            _dev = _sm.get("device")
-                            _star_ok = (
-                                _kind in ("emphasize", "replace")
-                                or (_kind == "structure"
-                                    and _dev in _H_STRUCT)
-                                or (_kind == "delivery"
-                                    and _dev in _H_DELIVERY)
-                            )
-                            if _star_ok:
-                                _e["star"] = "suggestion"
-                                _e["suggestion"] = {
-                                    k: _sm.get(k)
-                                    for k in ("kind", "device", "quote",
-                                              "replacement", "why",
-                                              "trigger")
-                                    if k in _sm
-                                }
-                        _s_out.append(_e)
+        # ── HISTORICAL view, ?version=N (founder 2026-07-20): an old
+        # version bubble opens ITS OWN step — the frozen text + that
+        # step's reasoning, read-only. N == current falls through to
+        # the live notebook. No snapshot (pre-migration / assembled
+        # before history existed) → historical_unavailable and the FE
+        # falls back to the live view. Free, owner-only (same gate as
+        # the live read). ──
+        _hv_raw = request.args.get("version")
+        if _hv_raw not in (None, ""):
+            try:
+                _hv = int(_hv_raw)
+            except (TypeError, ValueError):
+                return jsonify({
+                    "code": "INVALID_INPUT",
+                    "error": "version must be an integer",
+                }), 400
+            if _version is None or _hv != _version:
+                _snap = db.get_ideal_text_version(arc_id, _hv)
+                if not _snap or not (_snap.get("text") or "").strip():
                     return jsonify({
                         "arc_id": arc_id,
-                        "version": _hv,
-                        "historical": True,
-                        "status": "superseded",
+                        "historical_unavailable": True,
+                        "requested_version": _hv,
                         "current_version": _version,
-                        "created_at": _snap.get("created_at"),
-                        "text": strip_moment_markers(_s_text),
-                        "key_moments": _s_out,
                     }), 200
-            _vv = _r.get("verified_version")
-            _vtext = (_r.get("verified_text") or "").strip()
-            _verified = bool(_version is not None
-                             and _vv == _version and _vtext)
-            _base_text = _vtext if _verified else _machine
-            # The student's in-place edit WINS display while it was made
-            # against the CURRENT version (BE-2). A new take supersedes it —
-            # the edit is retained (coach signal) but the fresh machine text
-            # shows. `status` still reflects the coach's verification of the
-            # version, independent of the student's own tweaks on top.
-            _edit = db.get_user_ideal_edit(arc_id, request.user_id)
-            _user_edited = bool(
-                _edit and _version is not None
-                and _edit.get("version") == _version
-                and (_edit.get("text") or "").strip())
-            _text = _edit["text"] if _user_edited else _base_text
-            from services.ideal_text_block import extract_key_moments
-
-            # ── Star suggestions (2026-07-18, flag-gated). Fold APPLIED
-            # suggestions into the DISPLAYED text FIRST (unless the user's
-            # free-form edit won — that wins wholesale), then extract the
-            # anchors from the folded text so they always match what's
-            # served. The canonical row is never touched (L1). ──
-            _stars_on = _moment_suggestions_enabled()
-            _sugs = db.get_moment_suggestions_by_arc(arc_id) \
-                if _stars_on else {}
-            # The ONLY two structural devices the FE has copy for — an
-            # unknown spelling must yield no star (FE contract pin).
-            from services.moment_suggestions import _STRUCT_DEVICES
-            from services.delivery_stars import (
-                DELIVERY_DEVICES as _DELIVERY_DEVICES,
-            )
-            _applied = {}
-            if _stars_on and _sugs:
-                _pre = extract_key_moments(_text)
-                _applied = _moment_applied_map(
-                    [m.get("take_session_id") for m in _pre])
-                if not _user_edited and _applied:
-                    _fold_info = []
-                    for m in _pre:
-                        _mid = str(m.get("snippet_id"))
-                        if _mid in _sugs and _applied.get(_mid):
-                            _s = _sugs[_mid]
-                            _fold_info.append({
-                                "id": m.get("snippet_id"),
-                                "take_session_id": m.get("take_session_id"),
-                                "applied": True,
-                                "suggestion": {
-                                    "kind": _s.get("kind"),
-                                    "replacement": _s.get("replacement_text"),
-                                },
-                            })
-                    _text = _fold_applied_moments(_text, _fold_info)
-
-            _moments = extract_key_moments(_text)
-            # Serve the ANCHOR path, never both (audit 2026-07-18): the FE
-            # drops any anchor sitting inside a marker token, which is
-            # exactly where the [[moment:…]] wrapper puts it — with the
-            # wrappers present every star is lost AND a free suggestion
-            # falls through to the paid affordance. Extract first, then
-            # strip, so each anchor is plain text in the served string.
-            from services.ideal_text_block import strip_moment_markers
-            _text = strip_moment_markers(_text)
-            _has_expl = _moment_explanations_map(
-                [m.get("take_session_id") for m in _moments])
-            _playback = _moment_playback_map(
-                [m.get("take_session_id") for m in _moments])
-
-            def _decorate(m):
-                _mid = str(m.get("snippet_id"))
-                entry = {
-                    "id": m.get("snippet_id"),
-                    # Both keys on purpose: `id` is the moment-explanation
-                    # identity, `snippet_id` is what the Approve/Revert
-                    # feedback POST keys on (audit 2026-07-18 — its absence
-                    # sent an EMPTY snippet id and Approve never persisted).
-                    "snippet_id": m.get("snippet_id"),
-                    # The literal text fragment the FE underlines + taps
-                    # (SD contract pin — a moment with no anchor is dropped).
-                    "anchor": m.get("anchor") or "",
-                    "take_session_id": m.get("take_session_id"),
-                    "has_explanation": bool(_has_expl.get(_mid)),
-                    # FREE playback of the student's own recording (parent+
-                    # offset → the FE clamps to [start, start+duration]).
-                    **(_playback.get(_mid) or {}),
+                from services.ideal_text_block import (
+                    extract_key_moments, strip_moment_markers,
+                )
+                _s_text = _snap["text"]
+                _s_moments = extract_key_moments(_s_text)
+                _s_sugs = {
+                    str(m.get("snippet_id")): m
+                    for m in (_snap.get("moments") or [])
+                    if isinstance(m, dict) and m.get("snippet_id")
                 }
-                if not _stars_on:
-                    return entry
-                if _has_expl.get(_mid):
-                    # Coach override wins: the ORANGE verified star —
-                    # permanent, re-openable; message content stays behind
-                    # the paid moments GET.
-                    entry["star"] = "verified"
-                    entry["coach"] = {
-                        "has_message": True,
-                        "has_video": bool(
-                            _has_expl[_mid].get("has_video")),
+                # The star is EXPLICIT on historical payloads too (FE
+                # relay 2026-07-20): the device guard is BE-owned
+                # contract logic (#218/#219 pin — the FE renders copy
+                # purely from device and must never infer star
+                # semantics). Same rule as live: an unknown kind or
+                # device yields NO star and NO suggestion.
+                from services.delivery_stars import (
+                    DELIVERY_DEVICES as _H_DELIVERY,
+                )
+                from services.moment_suggestions import (
+                    _STRUCT_DEVICES as _H_STRUCT,
+                )
+                _s_out = []
+                for m in _s_moments:
+                    _e = {
+                        "id": m.get("snippet_id"),
+                        "snippet_id": m.get("snippet_id"),
+                        "anchor": m.get("anchor") or "",
+                        "take_session_id": m.get("take_session_id"),
                     }
-                elif _mid in _sugs and _sugs[_mid].get("kind") == "delivery" \
-                        and _sugs[_mid].get("trigger") in _DELIVERY_DEVICES:
-                    # MEASURED delivery star (founder decisions 2026-07-18):
-                    # a behavioural prompt, not an edit — no approve/fold;
-                    # the modal's action is the FE's snippet re-record mic.
-                    # The FE renders the approved copy PURELY from `device`
-                    # (same pinned dependency as structural: unknown device
-                    # → no star), and nothing numeric rides this payload
-                    # (AC-9: the z-scores stay server-side).
-                    entry["star"] = "suggestion"
-                    entry["suggestion"] = {
-                        "kind": "delivery",
-                        "device": _sugs[_mid].get("trigger"),
-                        "quote": None,
-                        "why": None,
-                    }
-                elif _mid in _sugs and _sugs[_mid].get("kind") == "structure" \
-                        and _sugs[_mid].get("trigger") in _STRUCT_DEVICES:
-                    # STRUCTURAL star (founder 2026-07-18): a delivery
-                    # prompt, not an edit — never applied, never folded,
-                    # always shown. The FE renders fixed signed-off copy
-                    # from `device`; NO generated prose is served. `quote`
-                    # is the user's own verbatim words.
-                    # The device guard is the FE's pinned dependency: it
-                    # renders the sheet copy PURELY from `device`, so an
-                    # unknown spelling must yield NO star rather than a
-                    # star with no copy behind it.
-                    _s = _sugs[_mid]
-                    entry["star"] = "suggestion"
-                    entry["suggestion"] = {
-                        "kind": "structure",
-                        "device": _s.get("trigger"),
-                        "quote": _s.get("why"),
-                        "why": None,
-                    }
-                elif _mid in _sugs \
-                        and _sugs[_mid].get("kind") not in (
-                            "structure", "delivery") \
-                        and not _applied.get(_mid):
-                    # TEXT suggestions only — a structure/delivery row with
-                    # an unknown device must yield NO star (the FE renders
-                    # copy purely from device), never fall through here.
-                    # An APPLIED suggestion is CONSUMED: its result is
-                    # already folded into the served text, so no star is
-                    # emitted (audit 2026-07-18 — the FE documents exactly
-                    # this expectation; keeping the star re-offered work
-                    # the student had already accepted).
-                    _s = _sugs[_mid]
-                    # Quote narrowing (founder 2026-07-20): underline the
-                    # PHRASE, not the piece. Deterministic per trigger —
-                    # polish → the trimmed verbatim-vs-polished diff span;
-                    # a profanity replace → the carrying sentence; anything
-                    # else → None = star icon only, NO underline (the FE
-                    # contract). Guarded: a quote must be an exact
-                    # substring of the anchor (and so of the served text)
-                    # or it is dropped (the #219 lesson).
-                    _anchor_txt = m.get("anchor") or ""
-                    _quote = None
-                    try:
-                        from services.suggestion_quotes import (
-                            diff_quote, profanity_sentence,
+                    _sm = _s_sugs.get(str(m.get("snippet_id")))
+                    if _sm:
+                        _kind = _sm.get("kind")
+                        _dev = _sm.get("device")
+                        _star_ok = (
+                            _kind in ("emphasize", "replace")
+                            or (_kind == "structure"
+                                and _dev in _H_STRUCT)
+                            or (_kind == "delivery"
+                                and _dev in _H_DELIVERY)
                         )
-                        from services.text_flags import has_profanity
-                        if _s.get("trigger") == "polish":
-                            _quote = diff_quote(
-                                _anchor_txt, _s.get("replacement_text"))
-                        elif _s.get("kind") == "replace" \
-                                and has_profanity(_anchor_txt):
-                            _quote = profanity_sentence(_anchor_txt)
-                    except Exception:
-                        _quote = None
-                    if _quote and _quote not in _anchor_txt:
-                        _quote = None
-                    entry["star"] = "suggestion"
-                    entry["suggestion"] = {
-                        "kind": _s.get("kind"),
-                        "quote": _quote,
-                        "replacement": _s.get("replacement_text"),
-                        "why": _s.get("why"),
-                        # CLAMPED to 'polish'|None (adversarial review
-                        # 2026-07-18): the FE only needs to distinguish a
-                        # flow-polish replace from the rest; the raw trigger
-                        # vocabulary (threat/charisma/…) is INTERNAL —
-                        # surfacing it would breach the CONSTRUCT/AC-9
-                        # fences (a classifier verdict on a user payload).
-                        "trigger": ("polish" if _s.get("trigger") == "polish"
-                                    else None),
-                    }
-                    entry["applied"] = False
+                        if _star_ok:
+                            _e["star"] = "suggestion"
+                            _e["suggestion"] = {
+                                k: _sm.get(k)
+                                for k in ("kind", "device", "quote",
+                                          "replacement", "why",
+                                          "trigger")
+                                if k in _sm
+                            }
+                    _s_out.append(_e)
+                return jsonify({
+                    "arc_id": arc_id,
+                    "version": _hv,
+                    "historical": True,
+                    "status": "superseded",
+                    "current_version": _version,
+                    "created_at": _snap.get("created_at"),
+                    "text": strip_moment_markers(_s_text),
+                    "key_moments": _s_out,
+                }), 200
+        _vv = _r.get("verified_version")
+        _vtext = (_r.get("verified_text") or "").strip()
+        _verified = bool(_version is not None
+                         and _vv == _version and _vtext)
+        _base_text = _vtext if _verified else _machine
+        # The student's in-place edit WINS display while it was made
+        # against the CURRENT version (BE-2). A new take supersedes it —
+        # the edit is retained (coach signal) but the fresh machine text
+        # shows. `status` still reflects the coach's verification of the
+        # version, independent of the student's own tweaks on top.
+        _edit = db.get_user_ideal_edit(arc_id, request.user_id)
+        _user_edited = bool(
+            _edit and _version is not None
+            and _edit.get("version") == _version
+            and (_edit.get("text") or "").strip())
+        _text = _edit["text"] if _user_edited else _base_text
+        from services.ideal_text_block import extract_key_moments
+
+        # ── Star suggestions (2026-07-18, flag-gated). Fold APPLIED
+        # suggestions into the DISPLAYED text FIRST (unless the user's
+        # free-form edit won — that wins wholesale), then extract the
+        # anchors from the folded text so they always match what's
+        # served. The canonical row is never touched (L1). ──
+        _stars_on = _moment_suggestions_enabled()
+        _sugs = db.get_moment_suggestions_by_arc(arc_id) \
+            if _stars_on else {}
+        # The ONLY two structural devices the FE has copy for — an
+        # unknown spelling must yield no star (FE contract pin).
+        from services.moment_suggestions import _STRUCT_DEVICES
+        from services.delivery_stars import (
+            DELIVERY_DEVICES as _DELIVERY_DEVICES,
+        )
+        _applied = {}
+        if _stars_on and _sugs:
+            _pre = extract_key_moments(_text)
+            _applied = _moment_applied_map(
+                [m.get("take_session_id") for m in _pre])
+            if not _user_edited and _applied:
+                _fold_info = []
+                for m in _pre:
+                    _mid = str(m.get("snippet_id"))
+                    if _mid in _sugs and _applied.get(_mid):
+                        _s = _sugs[_mid]
+                        _fold_info.append({
+                            "id": m.get("snippet_id"),
+                            "take_session_id": m.get("take_session_id"),
+                            "applied": True,
+                            "suggestion": {
+                                "kind": _s.get("kind"),
+                                "replacement": _s.get("replacement_text"),
+                            },
+                        })
+                _text = _fold_applied_moments(_text, _fold_info)
+
+        _moments = extract_key_moments(_text)
+        # Serve the ANCHOR path, never both (audit 2026-07-18): the FE
+        # drops any anchor sitting inside a marker token, which is
+        # exactly where the [[moment:…]] wrapper puts it — with the
+        # wrappers present every star is lost AND a free suggestion
+        # falls through to the paid affordance. Extract first, then
+        # strip, so each anchor is plain text in the served string.
+        from services.ideal_text_block import strip_moment_markers
+        _text = strip_moment_markers(_text)
+        _has_expl = _moment_explanations_map(
+            [m.get("take_session_id") for m in _moments])
+        _playback = _moment_playback_map(
+            [m.get("take_session_id") for m in _moments])
+
+        def _decorate(m):
+            _mid = str(m.get("snippet_id"))
+            entry = {
+                "id": m.get("snippet_id"),
+                # Both keys on purpose: `id` is the moment-explanation
+                # identity, `snippet_id` is what the Approve/Revert
+                # feedback POST keys on (audit 2026-07-18 — its absence
+                # sent an EMPTY snippet id and Approve never persisted).
+                "snippet_id": m.get("snippet_id"),
+                # The literal text fragment the FE underlines + taps
+                # (SD contract pin — a moment with no anchor is dropped).
+                "anchor": m.get("anchor") or "",
+                "take_session_id": m.get("take_session_id"),
+                "has_explanation": bool(_has_expl.get(_mid)),
+                # FREE playback of the student's own recording (parent+
+                # offset → the FE clamps to [start, start+duration]).
+                **(_playback.get(_mid) or {}),
+            }
+            if not _stars_on:
                 return entry
+            if _has_expl.get(_mid):
+                # Coach override wins: the ORANGE verified star —
+                # permanent, re-openable; message content stays behind
+                # the paid moments GET.
+                entry["star"] = "verified"
+                entry["coach"] = {
+                    "has_message": True,
+                    "has_video": bool(
+                        _has_expl[_mid].get("has_video")),
+                }
+            elif _mid in _sugs and _sugs[_mid].get("kind") == "delivery" \
+                    and _sugs[_mid].get("trigger") in _DELIVERY_DEVICES:
+                # MEASURED delivery star (founder decisions 2026-07-18):
+                # a behavioural prompt, not an edit — no approve/fold;
+                # the modal's action is the FE's snippet re-record mic.
+                # The FE renders the approved copy PURELY from `device`
+                # (same pinned dependency as structural: unknown device
+                # → no star), and nothing numeric rides this payload
+                # (AC-9: the z-scores stay server-side).
+                entry["star"] = "suggestion"
+                entry["suggestion"] = {
+                    "kind": "delivery",
+                    "device": _sugs[_mid].get("trigger"),
+                    "quote": None,
+                    "why": None,
+                }
+            elif _mid in _sugs and _sugs[_mid].get("kind") == "structure" \
+                    and _sugs[_mid].get("trigger") in _STRUCT_DEVICES:
+                # STRUCTURAL star (founder 2026-07-18): a delivery
+                # prompt, not an edit — never applied, never folded,
+                # always shown. The FE renders fixed signed-off copy
+                # from `device`; NO generated prose is served. `quote`
+                # is the user's own verbatim words.
+                # The device guard is the FE's pinned dependency: it
+                # renders the sheet copy PURELY from `device`, so an
+                # unknown spelling must yield NO star rather than a
+                # star with no copy behind it.
+                _s = _sugs[_mid]
+                entry["star"] = "suggestion"
+                entry["suggestion"] = {
+                    "kind": "structure",
+                    "device": _s.get("trigger"),
+                    "quote": _s.get("why"),
+                    "why": None,
+                }
+            elif _mid in _sugs \
+                    and _sugs[_mid].get("kind") not in (
+                        "structure", "delivery") \
+                    and not _applied.get(_mid):
+                # TEXT suggestions only — a structure/delivery row with
+                # an unknown device must yield NO star (the FE renders
+                # copy purely from device), never fall through here.
+                # An APPLIED suggestion is CONSUMED: its result is
+                # already folded into the served text, so no star is
+                # emitted (audit 2026-07-18 — the FE documents exactly
+                # this expectation; keeping the star re-offered work
+                # the student had already accepted).
+                _s = _sugs[_mid]
+                # Quote narrowing (founder 2026-07-20): underline the
+                # PHRASE, not the piece. Deterministic per trigger —
+                # polish → the trimmed verbatim-vs-polished diff span;
+                # a profanity replace → the carrying sentence; anything
+                # else → None = star icon only, NO underline (the FE
+                # contract). Guarded: a quote must be an exact
+                # substring of the anchor (and so of the served text)
+                # or it is dropped (the #219 lesson).
+                _anchor_txt = m.get("anchor") or ""
+                _quote = None
+                try:
+                    from services.suggestion_quotes import (
+                        diff_quote, profanity_sentence,
+                    )
+                    from services.text_flags import has_profanity
+                    if _s.get("trigger") == "polish":
+                        _quote = diff_quote(
+                            _anchor_txt, _s.get("replacement_text"))
+                    elif _s.get("kind") == "replace" \
+                            and has_profanity(_anchor_txt):
+                        _quote = profanity_sentence(_anchor_txt)
+                except Exception:
+                    _quote = None
+                if _quote and _quote not in _anchor_txt:
+                    _quote = None
+                entry["star"] = "suggestion"
+                entry["suggestion"] = {
+                    "kind": _s.get("kind"),
+                    "quote": _quote,
+                    "replacement": _s.get("replacement_text"),
+                    "why": _s.get("why"),
+                    # CLAMPED to 'polish'|None (adversarial review
+                    # 2026-07-18): the FE only needs to distinguish a
+                    # flow-polish replace from the rest; the raw trigger
+                    # vocabulary (threat/charisma/…) is INTERNAL —
+                    # surfacing it would breach the CONSTRUCT/AC-9
+                    # fences (a classifier verdict on a user payload).
+                    "trigger": ("polish" if _s.get("trigger") == "polish"
+                                else None),
+                }
+                entry["applied"] = False
+            return entry
 
-            _notes = db.get_user_arc_ideal_notes(arc_id, request.user_id)
+        _notes = db.get_user_arc_ideal_notes(arc_id, request.user_id)
 
-            # ── Crucial-bubble fields (founder 2026-07-20): title, last
-            # update, the re-read pairing target and the two-state mic's
-            # `reread_done` — all derived from the ownership read
-            # (_sessions), zero extra queries. Reads are paired variants,
-            # never takes: they're excluded from title/latest-take and are
-            # exactly what reread_done counts. ──
-            _spoken_rows, _read_rows = [], []
-            for _s in (_sessions or []):
-                if (_s.get("recording_kind") == "read") \
-                        or _s.get("paired_session_id"):
-                    _read_rows.append(_s)
-                else:
-                    _spoken_rows.append(_s)
-            _spoken_rows.sort(key=lambda s: (s.get("take_index") or 0))
-            _title = None
-            for _s in _spoken_rows:   # latest take wins (trainings parity)
+        # ── Crucial-bubble fields (founder 2026-07-20): title, last
+        # update, the re-read pairing target and the two-state mic's
+        # `reread_done` — all derived from the ownership read
+        # (_sessions), zero extra queries. Reads are paired variants,
+        # never takes: they're excluded from title/latest-take and are
+        # exactly what reread_done counts. ──
+        _spoken_rows, _read_rows = [], []
+        for _s in (_sessions or []):
+            if (_s.get("recording_kind") == "read") \
+                    or _s.get("paired_session_id"):
+                _read_rows.append(_s)
+            else:
+                _spoken_rows.append(_s)
+        _spoken_rows.sort(key=lambda s: (s.get("take_index") or 0))
+        _title = None
+        for _s in _spoken_rows:   # latest take wins (trainings parity)
+            _ctx = _s.get("intake_context") if isinstance(
+                _s.get("intake_context"), dict) else {}
+            _t = _ctx.get("topic")
+            if isinstance(_t, str) and _t.strip():
+                _title = _t.strip()
+        _latest_take_sid = (str(_spoken_rows[-1].get("id"))
+                            if _spoken_rows else None)
+        # `reread_done` = a FINISHED re-read of the current version
+        # exists — NOT merely a row (founder bug 2026-07-22: "the
+        # orphaned recording"). In async mode the re-read POST
+        # returns before transcription completes, so keying the
+        # two-state mic on row-existence un-gated the "record another
+        # take" button while the re-read was still processing — the
+        # user started a take, then the re-read's late completion
+        # tore them back to the ideal text with the mic still live.
+        # A re-read counts only when its analysis_state is 'ready'
+        # (or absent/null — sync mode + legacy rows are already done
+        # by the time the POST returns).
+        # THREE states the FE's mic renders (founder 2026-07-22):
+        #   * no re-read of this version           → the re-read MIC
+        #   * a re-read exists but is transcribing → LOADING, held in
+        #     the button's place ("Finishing up your recording…")
+        #   * a re-read has finished               → the NEXT-TAKE btn
+        # `reread_done: false` alone can't distinguish the first two,
+        # so the FE could not hold the loading state — that gap is why
+        # the premature button appeared. `reread_processing` closes it:
+        # a matching re-read whose analysis_state is 'processing'. A
+        # FINISHED re-read wins (done → processing false); a failed one
+        # is neither (the FE falls back to the mic so they can retry).
+        _reread_done = False
+        _reread_processing = False
+        if _version is not None:
+            for _s in _read_rows:
                 _ctx = _s.get("intake_context") if isinstance(
                     _s.get("intake_context"), dict) else {}
-                _t = _ctx.get("topic")
-                if isinstance(_t, str) and _t.strip():
-                    _title = _t.strip()
-            _latest_take_sid = (str(_spoken_rows[-1].get("id"))
-                                if _spoken_rows else None)
-            # `reread_done` = a FINISHED re-read of the current version
-            # exists — NOT merely a row (founder bug 2026-07-22: "the
-            # orphaned recording"). In async mode the re-read POST
-            # returns before transcription completes, so keying the
-            # two-state mic on row-existence un-gated the "record another
-            # take" button while the re-read was still processing — the
-            # user started a take, then the re-read's late completion
-            # tore them back to the ideal text with the mic still live.
-            # A re-read counts only when its analysis_state is 'ready'
-            # (or absent/null — sync mode + legacy rows are already done
-            # by the time the POST returns).
-            # THREE states the FE's mic renders (founder 2026-07-22):
-            #   * no re-read of this version           → the re-read MIC
-            #   * a re-read exists but is transcribing → LOADING, held in
-            #     the button's place ("Finishing up your recording…")
-            #   * a re-read has finished               → the NEXT-TAKE btn
-            # `reread_done: false` alone can't distinguish the first two,
-            # so the FE could not hold the loading state — that gap is why
-            # the premature button appeared. `reread_processing` closes it:
-            # a matching re-read whose analysis_state is 'processing'. A
-            # FINISHED re-read wins (done → processing false); a failed one
-            # is neither (the FE falls back to the mic so they can retry).
-            _reread_done = False
-            _reread_processing = False
-            if _version is not None:
-                for _s in _read_rows:
-                    _ctx = _s.get("intake_context") if isinstance(
-                        _s.get("intake_context"), dict) else {}
-                    _iv = _ctx.get("ideal_version")
-                    # Tolerant match: the FE's form-encoded session_context
-                    # may carry the version as int or string.
-                    if _ctx.get("read_target") != "ideal_text" \
-                            or _iv is None or str(_iv) != str(_version):
-                        continue
-                    _astate = _s.get("analysis_state")
-                    if _astate in (None, "ready"):
-                        _reread_done = True
-                    elif _astate == "processing":
-                        _reread_processing = True
-                # A completed re-read is definitive — the loading state
-                # only shows when NO re-read of this version is done yet.
-                if _reread_done:
-                    _reread_processing = False
+                _iv = _ctx.get("ideal_version")
+                # Tolerant match: the FE's form-encoded session_context
+                # may carry the version as int or string.
+                if _ctx.get("read_target") != "ideal_text" \
+                        or _iv is None or str(_iv) != str(_version):
+                    continue
+                _astate = _s.get("analysis_state")
+                if _astate in (None, "ready"):
+                    _reread_done = True
+                elif _astate == "processing":
+                    _reread_processing = True
+            # A completed re-read is definitive — the loading state
+            # only shows when NO re-read of this version is done yet.
+            if _reread_done:
+                _reread_processing = False
 
-            return jsonify({
-                "arc_id": arc_id,
-                "version": _version,
-                "status": "verified" if _verified else "unverified",
-                "title": _title,
-                "updated_at": _r.get("updated_at"),
-                "latest_take_session_id": _latest_take_sid,
-                # The project's OFFICIAL-TAKE count (founder 2026-07-23):
-                # the FE renders the document badge as "<take_count>.0".
-                # PER-PROJECT by construction (spoken takes of THIS arc;
-                # reads excluded) — never a global tally, and it grows on
-                # every recorded take (unlike `version`, which bumps only
-                # when the text actually changes). continue_arc_id is what
-                # keeps a new take appending here so this count climbs.
-                "take_count": len(_spoken_rows),
-                "reread_done": _reread_done,
-                # True while a re-read of THIS version is still
-                # transcribing — the FE holds a loading state in the
-                # button's place until it clears (founder 2026-07-22).
-                "reread_processing": _reread_processing,
-                "text": _text,
-                # True when the served text is the student's own edit of the
-                # current version (the FE labels it).
-                "user_edited": _user_edited,
-                "key_moments": [_decorate(m) for m in _moments],
-                "moments_unlocked": _moments_entitled(arc_id),
-                # Founder 2026-07-20: the 5-credit unlock buys COACH
-                # explanations — the FE must show the unlock CTA ONLY when
-                # at least one exists (unverified text → nothing behind the
-                # paywall → no paywall shown). Automatic moments are free
-                # regardless.
-                "explanations_available": bool(_has_expl),
-                # MASTER DOCUMENT (founder 2026-07-22): the latest save —
-                # the FE hides take badges and gates the re-read button on
-                # saved_version == version. Absent pre-migration/flag-off.
-                **_ideal_save_state(arc_id, _version),
-                # ── LIVING TRANSCRIPT (founder 2026-07-20, flag-gated):
-                # span-anchored tracked changes on the full-transcript
-                # document — strike/propose/bold/advice, each pointing at
-                # exactly the words it is about. Absent when the flag is
-                # off (the FE keeps rendering today's star layer). ──
-                **_tracked_changes_block(arc_id, _text),
-                # The moments-unlock price, top level (the FE reads it here
-                # for the locked-moment prompt — the only paid item).
-                "price_credits": int(getattr(
-                    config, "MOMENTS_UNLOCK_CREDITS", 5) or 5),
-                # The personal notebook copy — free with the text now.
-                "notes_text": _notes, "notes": _notes, "user_notes": _notes,
-            }), 200
-
-        gated = _arc_payment_gate(arc_id)
-        _approved_text = (row or {}).get("text") or ""
-        _is_perfected_ready = bool(
-            row and row.get("approved_at") and _approved_text.strip())
-
-        if gated is None and _is_perfected_ready:
-            from services.ideal_text_block import extract_key_moments
-            _notes = db.get_user_arc_ideal_notes(arc_id, request.user_id)
-            return jsonify({
-                "arc_id": arc_id,
-                "variant": "perfected",
-                "text": row["text"],
-                # The personal notebook copy — served under three keys (the
-                # FE mapper historically read notes/user_notes; keep aligned).
-                "notes_text": _notes,
-                "notes": _notes,
-                "user_notes": _notes,
-                "key_moments": extract_key_moments(row["text"]),
-                "approved": True,
-            }), 200
-
-        # ── The FREE instant lane (2026-07-17, flag-gated). ──
-        if _instant_ideal_enabled():
-            _auto = ((row or {}).get("auto_text") or "").strip()
-            if not _auto and row and not row.get("updated_by") \
-                    and not row.get("approved_at"):
-                # Pre-backfill machine-owned row: text IS the machine copy.
-                _auto = ((row or {}).get("text") or "").strip()
-            if _auto:
-                from services.ideal_text_block import extract_key_moments
-                _body = {
-                    "arc_id": arc_id,
-                    "variant": "instant",
-                    "text": _auto,
-                    "key_moments": extract_key_moments(_auto),
-                    "approved": False,
-                    # Paid-but-unapproved (FE ask 2026-07-17): a fresh open
-                    # must suppress the Buy CTA too, not just an in-session
-                    # unlock — the FE reads this safe-ahead.
-                    "entitled": gated is None,
-                }
-                if gated is not None:
-                    # Not entitled → carry the upsell info for the banner.
-                    _body["paywall"] = _paywall_block(arc_id)
-                return jsonify(_body), 200
-
-        # ── Legacy fallthrough (also the whole flow when the flag is OFF). ──
-        if gated is not None:
-            resp, status = gated
-            payload = resp.get_json() or {}
-            payload.update(_paywall_block(arc_id))
-            return jsonify(payload), status
         return jsonify({
-            "arc_id": arc_id, "locked": True, "reason": "NOT_APPROVED",
+            "arc_id": arc_id,
+            "version": _version,
+            "status": "verified" if _verified else "unverified",
+            "title": _title,
+            "updated_at": _r.get("updated_at"),
+            "latest_take_session_id": _latest_take_sid,
+            # The project's OFFICIAL-TAKE count (founder 2026-07-23):
+            # the FE renders the document badge as "<take_count>.0".
+            # PER-PROJECT by construction (spoken takes of THIS arc;
+            # reads excluded) — never a global tally, and it grows on
+            # every recorded take (unlike `version`, which bumps only
+            # when the text actually changes). continue_arc_id is what
+            # keeps a new take appending here so this count climbs.
+            "take_count": len(_spoken_rows),
+            "reread_done": _reread_done,
+            # True while a re-read of THIS version is still
+            # transcribing — the FE holds a loading state in the
+            # button's place until it clears (founder 2026-07-22).
+            "reread_processing": _reread_processing,
+            "text": _text,
+            # True when the served text is the student's own edit of the
+            # current version (the FE labels it).
+            "user_edited": _user_edited,
+            "key_moments": [_decorate(m) for m in _moments],
+            "moments_unlocked": _moments_entitled(arc_id),
+            # Founder 2026-07-20: the 5-credit unlock buys COACH
+            # explanations — the FE must show the unlock CTA ONLY when
+            # at least one exists (unverified text → nothing behind the
+            # paywall → no paywall shown). Automatic moments are free
+            # regardless.
+            "explanations_available": bool(_has_expl),
+            # MASTER DOCUMENT (founder 2026-07-22): the latest save —
+            # the FE hides take badges and gates the re-read button on
+            # saved_version == version. Absent pre-migration/flag-off.
+            **_ideal_save_state(arc_id, _version),
+            # ── LIVING TRANSCRIPT (founder 2026-07-20, flag-gated):
+            # span-anchored tracked changes on the full-transcript
+            # document — strike/propose/bold/advice, each pointing at
+            # exactly the words it is about. Absent when the flag is
+            # off (the FE keeps rendering today's star layer). ──
+            **_tracked_changes_block(arc_id, _text),
+            # The moments-unlock price, top level (the FE reads it here
+            # for the locked-moment prompt — the only paid item).
+            "price_credits": int(getattr(
+                config, "MOMENTS_UNLOCK_CREDITS", 5) or 5),
+            # The personal notebook copy — free with the text now.
+            "notes_text": _notes, "notes": _notes, "user_notes": _notes,
         }), 200
     except Exception as e:
         logger.error("explore ideal-text GET failed arc=%s: %s", arc_id, e,
@@ -13011,12 +12753,8 @@ def v2_explore_put_ideal_notes(arc_id):
         owned, _sessions = _arc_owned_by_caller(arc_id)
         if not owned:
             return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
-        # Single deliverable (2026-07-17): the text is free → so is the
-        # personal notebook copy. Only the legacy lanes keep the gate.
-        if not _single_deliverable_enabled():
-            gated = _arc_payment_gate(arc_id)
-            if gated is not None:
-                return gated
+        # Single deliverable (2026-07-17): the ideal text is free → so is the
+        # personal notebook copy (no gate).
         body = request.get_json(silent=True) or {}
         text = body.get("text")
         if not isinstance(text, str):
@@ -13057,8 +12795,7 @@ def v2_explore_decide_prior_take(arc_id):
     """
     try:
         from services.ideal_text_block import _living_transcript_enabled
-        if not _living_transcript_enabled() \
-                or not _single_deliverable_enabled():
+        if not _living_transcript_enabled():
             return jsonify({"code": "NOT_FOUND", "error": "not found"}), 404
         owned, _ = _arc_owned_by_caller(arc_id)
         if not owned:
@@ -13192,8 +12929,7 @@ def v2_explore_decide_block(arc_id, block_key):
         from services.master_document import (
             decide_block, master_document_enabled,
         )
-        if not (master_document_enabled() and _living_transcript_enabled()
-                and _single_deliverable_enabled()):
+        if not (master_document_enabled() and _living_transcript_enabled()):
             return jsonify({"code": "NOT_FOUND", "error": "not found"}), 404
         owned, _ = _arc_owned_by_caller(arc_id)
         if not owned:
@@ -13320,8 +13056,7 @@ def v2_explore_save_ideal_text(arc_id):
     try:
         from services.ideal_text_block import _living_transcript_enabled
         from services.master_document import master_document_enabled
-        if not (master_document_enabled() and _living_transcript_enabled()
-                and _single_deliverable_enabled()):
+        if not (master_document_enabled() and _living_transcript_enabled()):
             return jsonify({"code": "NOT_FOUND", "error": "not found"}), 404
         owned, _ = _arc_owned_by_caller(arc_id)
         if not owned:
@@ -13842,18 +13577,17 @@ def v2_coach_arc_review_state(arc_id):
         }
         # Single deliverable (2026-07-17): the wrap-up's action is VERIFY —
         # available whenever a current version exists and isn't verified yet.
-        if _single_deliverable_enabled():
-            _v = row.get("version") or (1 if _ideal_text else None)
-            _vv = row.get("verified_version")
-            _verified = bool(_v is not None and _vv == _v
-                             and (row.get("verified_text") or "").strip())
-            _body.update({
-                "version": _v,
-                "verification_status": (
-                    "verified" if _verified
-                    else ("unverified" if _ideal_text else None)),
-                "verify_available": bool(_ideal_text and not _verified),
-            })
+        _v = row.get("version") or (1 if _ideal_text else None)
+        _vv = row.get("verified_version")
+        _verified = bool(_v is not None and _vv == _v
+                         and (row.get("verified_text") or "").strip())
+        _body.update({
+            "version": _v,
+            "verification_status": (
+                "verified" if _verified
+                else ("unverified" if _ideal_text else None)),
+            "verify_available": bool(_ideal_text and not _verified),
+        })
         return jsonify(_body), 200
     except Exception as e:
         logger.error("coach/arc review-state failed arc=%s: %s", arc_id, e,
@@ -13872,153 +13606,14 @@ def v2_coach_arc_review_state(arc_id):
 @v2_bp.route("/coach/arc/<arc_id>/publish-analysis", methods=["POST"])
 @require_admin_or_coach
 def v2_coach_publish_analysis(arc_id):
-    """'Save and Publish full analysis' (founder 2026-07-15) — THE delivery.
-
-    Preconditions (409 with the pending list otherwise):
-      * every spoken take carries coach_feedback_saved_at (the per-take Save);
-      * the ideal text is APPROVED (coach_arc_ideal_text.approved_at).
-
-    Then, idempotently:
-      1. per take: run the same publish contract as always (assemble insights
-         from the saved drafts; per-take Lounge cards suppressed) + flip
-         results_published_at — takes with no surfaced work just flip;
-      2. insert the FOUR bubbles, in order: 3× kind='feedback' (grey; take 1
-         free, 2/3 paywalled on open) + 1× kind='ideal_text' (purple);
-      3. stamp arc_batch_deliveries (the delivered marker).
-
-    200 { published, takes_published, bubbles: 4 }
-    404 · 409 TAKES_NOT_SAVED / IDEAL_TEXT_NOT_APPROVED · 4xx/5xx per-take
-    410 under SINGLE_DELIVERABLE_ENABLED — VERIFY replaced publish.
-    """
+    """RETIRED (single-deliverable, founder 2026-07-17): publish was replaced
+    by VERIFY (POST /v2/coach/arc/<arc_id>/verify). Always 410 GONE."""
     try:
-        if _single_deliverable_enabled():
-            return jsonify({
-                "code": "GONE",
-                "error": "Publish was replaced by Verify "
-                         "(POST /v2/coach/arc/<arc_id>/verify).",
-            }), 410
-        sessions = db.get_arc_sessions(arc_id)
-        if not sessions:
-            return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
-        spoken, _reads = _spoken_takes_and_reads(sessions)
-
-        pending = [str(s.get("id")) for s in spoken
-                   if not s.get("coach_feedback_saved_at")]
-        if pending:
-            return jsonify({
-                "code": "TAKES_NOT_SAVED",
-                "error": "Save each recording's feedback first.",
-                "pending_session_ids": pending,
-            }), 409
-        ideal = db.get_coach_arc_ideal_text(arc_id)
-        if not ideal or not ideal.get("approved_at"):
-            return jsonify({
-                "code": "IDEAL_TEXT_NOT_APPROVED",
-                "error": "Approve the ideal text before publishing.",
-            }), 409
-
-        published = []
-        for s in spoken:
-            sid = str(s.get("id"))
-            if s.get("results_published_at"):
-                published.append(sid)
-                continue
-            drafts = db.get_coach_snippet_drafts(sid) or []
-            if any(d.get("surfaced") and (d.get("note") or "").strip()
-                   for d in drafts):
-                _err = _apply_willab_publish_contract(
-                    sid,
-                    {"notify_client": False, "suppress_lounge_card": True},
-                    request.user_id,
-                )
-                if _err is not None:
-                    _resp, _status = _err
-                    return jsonify({
-                        "code": "TAKE_PUBLISH_FAILED", "session_id": sid,
-                        "detail": (_resp.get_json()
-                                   if hasattr(_resp, "get_json") else None),
-                    }), _status
-            try:
-                db.v2_update_session_status_unscoped(sid, "completed")
-            except Exception:
-                pass
-            db.v2_publish_session_results(sid)
-            published.append(sid)
-
-        # ── Close the READ lifecycle too (founder 2026-07-16): a mid-take
-        # re-read is folded into its take and never independently reviewed —
-        # flip it here so hidden reads can't accumulate as queue zombies.
-        # Best-effort per row; reads never run the publish contract.
-        for s in sessions:
-            if not (s.get("recording_kind") == "read"
-                    or s.get("paired_session_id")):
-                continue
-            if s.get("results_published_at"):
-                continue
-            _rid = str(s.get("id"))
-            try:
-                db.v2_update_session_status_unscoped(_rid, "completed")
-                db.v2_publish_session_results(_rid)
-            except Exception as _rd_err:
-                logger.warning(
-                    "publish-analysis: read flip failed arc=%s read=%s: %s",
-                    arc_id, _rid, _rd_err)
-
-        # ── The 4 bubbles, in order (idempotent client_ids). ──
-        owner = next(
-            (s.get("user_id") for s in sessions if s.get("user_id")), None,
-        )
-        bubbles = 0
-        if owner:
-            from datetime import datetime as _dt, timedelta as _td, \
-                timezone as _tz
-            _msgs = []
-            _base = _dt.now(_tz.utc)
-            for i, s in enumerate(spoken):
-                sid = str(s.get("id"))
-                ti = s.get("take_index") or (i + 1)
-                _msgs.append({
-                    "client_id": str(uuid.uuid5(
-                        uuid.NAMESPACE_URL, f"willab-feedback:{sid}")),
-                    "role": "bot", "kind": "feedback",
-                    "body": f"Your feedback for take {ti} is ready.",
-                    "metadata": {
-                        "arc_id": str(arc_id), "take_session_id": sid,
-                        "take_index": ti, "free": bool(ti == 1),
-                    },
-                    # +i ms so the thread orders 1 → 2 → 3 → ideal.
-                    "client_created_at": (
-                        _base + _td(milliseconds=i)).isoformat(),
-                })
-            _msgs.append({
-                "client_id": str(uuid.uuid5(
-                    uuid.NAMESPACE_URL, f"willab-idealtext:{arc_id}")),
-                "role": "bot", "kind": "ideal_text",
-                "body": "Your ideal presentation text is ready.",
-                "metadata": {"arc_id": str(arc_id)},
-                "client_created_at": (
-                    _base + _td(milliseconds=len(spoken))).isoformat(),
-            })
-            try:
-                _persisted = db.insert_lounge_messages(str(owner), _msgs)
-                bubbles = len(_persisted or [])
-                if bubbles < len(_msgs):
-                    # insert_lounge_messages swallows DB errors and returns
-                    # [] — without this check a CHECK-constraint rejection
-                    # reads as `bubbles: 4` while the Lounge gets nothing.
-                    logger.error(
-                        "publish-analysis: lounge bubbles dropped arc=%s "
-                        "intended=%d inserted=%d — check the kind CHECK "
-                        "(migrations/add_feedback_ideal_lounge_kinds.sql)",
-                        arc_id, len(_msgs), bubbles)
-            except Exception as _lb_err:
-                logger.warning("publish-analysis: bubbles failed arc=%s: %s",
-                               arc_id, _lb_err)
-        db.mark_arc_batch_delivered(arc_id, owner, str(request.user_id))
         return jsonify({
-            "published": True, "arc_id": arc_id,
-            "takes_published": len(published), "bubbles": bubbles,
-        }), 200
+            "code": "GONE",
+            "error": "Publish was replaced by Verify "
+                     "(POST /v2/coach/arc/<arc_id>/verify).",
+        }), 410
     except Exception as e:
         logger.error("publish-analysis failed arc=%s: %s", arc_id, e,
                      exc_info=True)
@@ -14038,7 +13633,7 @@ def v2_coach_publish_analysis(arc_id):
 @require_auth
 def v2_arc_game(arc_id):
     """Engine 5 (founder 2026-07-11) — the key-moments game, replacing the
-    501 stub. Same $25 gate as before (one of the four paid surfaces).
+    501 stub. Free (the $25 gate is retired, single-deliverable 2026-07-17).
 
     Rounds mix the arc's coach-confirmed key moments with the user's OWN
     coach-unmarked moments as decoys; truth is NEVER in this payload (the
@@ -14054,9 +13649,6 @@ def v2_arc_game(arc_id):
         owned, _ = _arc_owned_by_caller(arc_id)
         if not owned:
             return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
-        gated = _arc_payment_gate(arc_id)
-        if gated is not None:
-            return gated
         from services.game_engine import build_game_rounds
         rounds = build_game_rounds(
             db, arc_id, request.user_id,
@@ -14095,9 +13687,6 @@ def v2_arc_game_answer(arc_id):
         owned, _ = _arc_owned_by_caller(arc_id)
         if not owned:
             return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
-        gated = _arc_payment_gate(arc_id)
-        if gated is not None:
-            return gated
         body = request.get_json(silent=True) or {}
         snippet_id = body.get("round_id") or body.get("snippet_id")
         if not isinstance(snippet_id, str) or not _is_valid_uuid(snippet_id):
@@ -14139,9 +13728,6 @@ def v2_arc_game_save(arc_id):
         owned, _ = _arc_owned_by_caller(arc_id)
         if not owned:
             return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
-        gated = _arc_payment_gate(arc_id)
-        if gated is not None:
-            return gated
         if not db.insert_game_save(str(request.user_id), str(arc_id)):
             return jsonify({
                 "code": "V2_ERROR", "error": "Could not save the practice",
@@ -14173,15 +13759,12 @@ def v2_user_game_sessions():
 @v2_bp.route("/arc/<arc_id>/snippet-library", methods=["GET"])
 @require_auth
 def v2_arc_snippet_library(arc_id):
-    """Stub — the per-user snippet library (not yet built). 402 unpaid, 501
-    paid-but-unavailable."""
+    """Stub — the per-user snippet library (not yet built). 501 until it
+    ships."""
     try:
         owned, _ = _arc_owned_by_caller(arc_id)
         if not owned:
             return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
-        gated = _arc_payment_gate(arc_id)
-        if gated is not None:
-            return gated
         return jsonify({
             "code": "NOT_YET_AVAILABLE",
             "message": "Your snippet library is coming soon.",
@@ -14788,19 +14371,10 @@ def v2_lab_create_recording():
             if _cad_user and arc_id:
                 try:
                     from services.arc_notifications import (
-                        fire_human_check_note, fire_pay_note,
-                        maybe_fire_best_presentation_ready,
+                        fire_human_check_note,
                     )
                     if take_index == 1:
                         fire_human_check_note(db, _cad_user, arc_id)
-                    elif take_index == 2 and not _single_deliverable_enabled():
-                        # Single deliverable: the $25 pitch is RETIRED —
-                        # the pay note must never sell it.
-                        fire_pay_note(db, _cad_user, arc_id)
-                    if (arc_take_count or 0) >= 3 \
-                            and not _single_deliverable_enabled():
-                        # Superseded by the per-version ideal-text bubbles.
-                        maybe_fire_best_presentation_ready(db, arc_id)
                 except Exception as _bpe:
                     logger.warning(
                         "lab: arc cards failed sid=%s: %s (non-fatal)",
@@ -14813,110 +14387,96 @@ def v2_lab_create_recording():
             # or anything" fixed at the source). Idempotent; never clobbers a
             # coach edit. Best-effort.
             #
-            # SPOKEN ONLY (founder bug 2026-07-20). The old condition
-            # `_rec_kind == "spoken" or _single_deliverable_enabled()`
-            # meant that in SD mode — which is LIVE — a RE-READ ran the
-            # whole assembly: it regenerated suggestions, reassembled the
-            # text, bumped the version and fired a ready bubble, so a
-            # re-read read as a take. "Only a spoken take is a real take"
-            # is now enforced here, not just in the counters.
+            # SPOKEN ONLY (founder bug 2026-07-20). An older condition let a
+            # RE-READ run the whole assembly (regenerate suggestions, reassemble
+            # the text, bump the version, fire a ready bubble), so a re-read read
+            # as a take. "Only a spoken take is a real take" is now enforced
+            # here, not just in the counters.
             if arc_id and _rec_kind == "spoken":
                 try:
                     from services.ideal_text_block import (
                         maybe_assemble_ideal_text,
                     )
-                    if _single_deliverable_enabled():
-                        # Star suggestions (2026-07-18): generate BEFORE the
-                        # assembly so the fresh text's anchors include the
-                        # suggestion-flagged picks. Best-effort.
-                        if _moment_suggestions_enabled():
-                            try:
-                                from services.moment_suggestions import (
-                                    generate_for_session,
-                                )
-                                generate_for_session(
-                                    guest_session_id, arc_id)
-                            except Exception as _ms_err:
-                                logger.warning(
-                                    "lab: moment suggestions failed "
-                                    "sid=%s: %s (non-fatal)",
-                                    guest_session_id, _ms_err)
-                        # Single deliverable (2026-07-17): assemble after
-                        # EVERY take (take 1 included) AND every re-read;
-                        # a changed compose bumps the version, resetting
-                        # verification. The per-VERSION ready bubble fires
-                        # idempotently (a no-op reassembly re-fires the
-                        # same version key → deduped).
-                        # MASTER DOCUMENT (founder 2026-07-22, flag-gated):
-                        # judge this take against the persistent master
-                        # BEFORE assembly — take 1 builds the skeleton,
-                        # later takes write approve-gated block upgrade
-                        # offers. Best-effort; the master never moves
-                        # without an accept.
+                    # Star suggestions (2026-07-18): generate BEFORE the
+                    # assembly so the fresh text's anchors include the
+                    # suggestion-flagged picks. Best-effort.
+                    if _moment_suggestions_enabled():
                         try:
-                            from services.master_document import (
-                                master_document_enabled, process_new_take,
+                            from services.moment_suggestions import (
+                                generate_for_session,
                             )
-                            if master_document_enabled():
-                                process_new_take(arc_id, guest_session_id,
-                                                 db)
-                        except Exception as _md_err:
+                            generate_for_session(
+                                guest_session_id, arc_id)
+                        except Exception as _ms_err:
                             logger.warning(
-                                "lab: master-document take processing "
-                                "failed sid=%s: %s (non-fatal)",
-                                guest_session_id, _md_err)
-                        _eager_ok = maybe_assemble_ideal_text(
-                            arc_id, require_target=False,
-                            include_suggestion_anchors=(
-                                _moment_suggestions_enabled()))
-                        if _eager_ok and _cad_user:
-                            from services.arc_notifications import (
-                                fire_ideal_version_ready,
+                                "lab: moment suggestions failed "
+                                "sid=%s: %s (non-fatal)",
+                                guest_session_id, _ms_err)
+                    # Single deliverable (2026-07-17): assemble after
+                    # EVERY take (take 1 included) AND every re-read;
+                    # a changed compose bumps the version, resetting
+                    # verification. The per-VERSION ready bubble fires
+                    # idempotently (a no-op reassembly re-fires the
+                    # same version key → deduped).
+                    # MASTER DOCUMENT (founder 2026-07-22, flag-gated):
+                    # judge this take against the persistent master
+                    # BEFORE assembly — take 1 builds the skeleton,
+                    # later takes write approve-gated block upgrade
+                    # offers. Best-effort; the master never moves
+                    # without an accept.
+                    try:
+                        from services.master_document import (
+                            master_document_enabled, process_new_take,
+                        )
+                        if master_document_enabled():
+                            process_new_take(arc_id, guest_session_id,
+                                             db)
+                    except Exception as _md_err:
+                        logger.warning(
+                            "lab: master-document take processing "
+                            "failed sid=%s: %s (non-fatal)",
+                            guest_session_id, _md_err)
+                    _eager_ok = maybe_assemble_ideal_text(
+                        arc_id, require_target=False,
+                        include_suggestion_anchors=(
+                            _moment_suggestions_enabled()))
+                    if _eager_ok and _cad_user:
+                        from services.arc_notifications import (
+                            fire_ideal_version_ready,
+                        )
+                        _row = db.get_coach_arc_ideal_text(arc_id) or {}
+                        _new_v = _row.get("version") or 1
+                        # Spoken take count → the takes-1-and-2 nudge
+                        # line (bug token 3c; soft nudge, never a gate).
+                        try:
+                            from services.best_presentation import (
+                                spoken_arc_sessions,
                             )
-                            _row = db.get_coach_arc_ideal_text(arc_id) or {}
-                            _new_v = _row.get("version") or 1
-                            # Spoken take count → the takes-1-and-2 nudge
-                            # line (bug token 3c; soft nudge, never a gate).
-                            try:
-                                from services.best_presentation import (
-                                    spoken_arc_sessions,
-                                )
-                                _n_spoken = len(spoken_arc_sessions(
-                                    db.get_arc_sessions(arc_id)))
-                            except Exception:
-                                _n_spoken = None
-                            fire_ideal_version_ready(
-                                db, _cad_user, arc_id, _new_v,
-                                spoken_take_count=_n_spoken)
-                            # BE-4: a student edit of a PRIOR version is the
-                            # strongest phrasing-preference signal the corpus
-                            # gets. The assembler has no per-user selection
-                            # channel yet, so capture it as structured
-                            # metadata (selection-influence = named follow-up).
-                            try:
-                                _pe = db.get_user_ideal_edit(arc_id, _cad_user)
-                                if _pe and isinstance(_pe.get("version"), int) \
-                                        and _pe["version"] < _new_v:
-                                    logger.info(
-                                        "ideal_text: user-edit superseded "
-                                        "arc=%s edited_v=%s new_v=%s chars=%d "
-                                        "(preference signal; assembler "
-                                        "selection-influence is a follow-up)",
-                                        arc_id, _pe["version"], _new_v,
-                                        len(_pe.get("text") or ""))
-                            except Exception:
-                                pass
-                    else:
-                        _eager_ok = maybe_assemble_ideal_text(arc_id)
-                        # Instant lane (2026-07-17, flag-gated): the machine
-                        # draft just persisted → the FREE instant bubble.
-                        # Idempotent per arc.
-                        if _eager_ok and _cad_user \
-                                and _instant_ideal_enabled():
-                            from services.arc_notifications import (
-                                fire_instant_ideal_ready,
-                            )
-                            fire_instant_ideal_ready(db, _cad_user, arc_id)
+                            _n_spoken = len(spoken_arc_sessions(
+                                db.get_arc_sessions(arc_id)))
+                        except Exception:
+                            _n_spoken = None
+                        fire_ideal_version_ready(
+                            db, _cad_user, arc_id, _new_v,
+                            spoken_take_count=_n_spoken)
+                        # BE-4: a student edit of a PRIOR version is the
+                        # strongest phrasing-preference signal the corpus
+                        # gets. The assembler has no per-user selection
+                        # channel yet, so capture it as structured
+                        # metadata (selection-influence = named follow-up).
+                        try:
+                            _pe = db.get_user_ideal_edit(arc_id, _cad_user)
+                            if _pe and isinstance(_pe.get("version"), int) \
+                                    and _pe["version"] < _new_v:
+                                logger.info(
+                                    "ideal_text: user-edit superseded "
+                                    "arc=%s edited_v=%s new_v=%s chars=%d "
+                                    "(preference signal; assembler "
+                                    "selection-influence is a follow-up)",
+                                    arc_id, _pe["version"], _new_v,
+                                    len(_pe.get("text") or ""))
+                        except Exception:
+                            pass
                 except Exception as _ea_err:
                     logger.warning(
                         "lab: eager ideal-text failed sid=%s: %s (non-fatal)",

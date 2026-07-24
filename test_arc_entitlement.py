@@ -6,10 +6,7 @@ from __future__ import annotations
 
 import unittest
 
-from services.arc_entitlement import (
-    audit_price, is_arc_entitled, paid_deliverables_visible,
-    payment_required_payload,
-)
+from services.arc_entitlement import audit_price, is_arc_entitled
 
 
 class _FakeDB:
@@ -66,39 +63,12 @@ class IsEntitledTests(unittest.TestCase):
         self.assertTrue(is_arc_entitled(db, "a1", "u1"))
 
 
-class PaidDeliverablesVisibleTests(unittest.TestCase):
-    """Founder re-price 2026-07-06: the ONLY gate for the four paid surfaces
-    (coach-corrected ideal text, breakthroughs list, game, library). Single
-    condition — no take-level branching, no free-intro exception (retired)."""
-
-    def test_alias_of_is_arc_entitled(self):
-        entitled_db = _FakeDB({"arc_id": "a1", "user_id": "u1"})
-        unentitled_db = _FakeDB(None)
-        self.assertTrue(paid_deliverables_visible(entitled_db, "a1", "u1"))
-        self.assertFalse(paid_deliverables_visible(unentitled_db, "a1", "u1"))
-
-    def test_db_hiccup_stays_hidden(self):
-        # get_arc_purchase never raises in prod; a failure keeps this False.
-        self.assertFalse(
-            paid_deliverables_visible(_FakeDB(None), "a1", "u1"))
-
-
 class PayloadTests(unittest.TestCase):
     def test_price_minor_units_and_lowercase_currency_and_credits(self):
         p = audit_price(_Cfg())
         self.assertEqual(p["amount_minor"], 2500)
         self.assertEqual(p["currency"], "usd")
         self.assertEqual(p["credits"], 25)
-
-    def test_402_payload_shape(self):
-        body = payment_required_payload("a1", _Cfg())
-        self.assertEqual(body["code"], "PAYMENT_REQUIRED")
-        self.assertEqual(body["arc_id"], "a1")
-        self.assertEqual(body["price"]["amount_minor"], 2500)
-        self.assertEqual(body["price"]["credits"], 25)
-        self.assertEqual(body["sla_hours"], 48)
-        # A 402 only fires on an unpaid arc, so the body says so.
-        self.assertFalse(body["audit_paid"])
 
 
 if __name__ == "__main__":

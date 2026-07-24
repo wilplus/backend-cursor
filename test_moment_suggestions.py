@@ -309,8 +309,6 @@ class StudentGetStarTests(unittest.TestCase):
             request.user_id = "u1"
             with patch.object(v2, "_arc_owned_by_caller",
                               return_value=(True, [])), \
-                 patch.object(v2, "_single_deliverable_enabled",
-                              return_value=True), \
                  patch.object(v2, "_moment_suggestions_enabled",
                               return_value=stars), \
                  patch.object(v2.db, "get_coach_arc_ideal_text",

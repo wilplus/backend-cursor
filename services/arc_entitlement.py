@@ -28,9 +28,6 @@ from __future__ import annotations
 
 from typing import Any
 
-# Default delivery SLA if config is missing.
-_DEFAULT_SLA_HOURS = 48
-
 
 def is_arc_entitled(db: Any, arc_id: Any, user_id: Any) -> bool:
     """True iff ``user_id`` owns a purchase (paid or founding_pass) for the arc.
@@ -49,16 +46,6 @@ def is_arc_entitled(db: Any, arc_id: Any, user_id: Any) -> bool:
     return str(purchase.get("user_id")) == str(user_id)
 
 
-def paid_deliverables_visible(db: Any, arc_id: Any, user_id: Any) -> bool:
-    """The ONLY gate for the four paid surfaces: coach-corrected ideal text,
-    the breakthroughs LIST, the game, the snippet library. Single condition,
-    no take-level branching, no free-intro exception (retired 2026-07-06) —
-    alias of ``is_arc_entitled`` kept as a distinctly-named seam so call sites
-    read as intent ("is the paid layer visible"), not as a raw purchase check.
-    """
-    return is_arc_entitled(db, arc_id, user_id)
-
-
 def audit_price(config: Any) -> dict:
     """The audit's price, AC-9-safe (a price is not a score). Both the display
     price (minor units) AND its credits equivalent (the live charge)."""
@@ -66,18 +53,4 @@ def audit_price(config: Any) -> dict:
         "amount_minor": int(getattr(config, "AUDIT_PRICE_AMOUNT_MINOR", 0) or 0),
         "currency": (getattr(config, "AUDIT_PRICE_CURRENCY", "") or "").lower() or None,
         "credits": int(getattr(config, "ARC_UNLOCK_CREDITS", 0) or 0),
-    }
-
-
-def payment_required_payload(arc_id: Any, config: Any) -> dict:
-    """The 402 PAYMENT_REQUIRED body the FE renders the paywall from."""
-    return {
-        "code": "PAYMENT_REQUIRED",
-        # Phase-1: the single per-arc paid flag the FE gates locked affordances
-        # on. False here by construction — a 402 only fires on an unpaid arc.
-        "audit_paid": False,
-        "arc_id": arc_id,
-        "price": audit_price(config),
-        "sla_hours": int(getattr(config, "AUDIT_SLA_HOURS", _DEFAULT_SLA_HOURS)
-                          or _DEFAULT_SLA_HOURS),
     }

@@ -368,42 +368,6 @@ class DrilldownFoldTests(unittest.TestCase):
         self.assertTrue(sessions[0]["has_reread"])
 
 
-@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
-class PublishFlipsReadsTests(unittest.TestCase):
-    def test_publish_flips_each_paired_read(self):
-        sessions = [
-            _session_row(sid="s1", take_index=1, recording_kind="spoken",
-                         paired_session_id=None,
-                         coach_feedback_saved_at="2026-07-16T11:00:00Z"),
-            _session_row(sid="r1", take_index=1, recording_kind="read",
-                         paired_session_id="s1"),
-        ]
-        app = Flask(__name__)
-        with app.test_request_context(json={}):
-            request.user_id = "coach1"
-            with patch.object(v2.db, "get_arc_sessions",
-                              return_value=sessions), \
-                 patch.object(v2.db, "get_coach_arc_ideal_text",
-                              return_value={
-                                  "text": "x",
-                                  "approved_at": "2026-07-16T12:00:00Z"}), \
-                 patch.object(v2.db, "get_coach_snippet_drafts",
-                              return_value=[]), \
-                 patch.object(v2.db, "v2_update_session_status_unscoped") \
-                    as m_status, \
-                 patch.object(v2.db, "v2_publish_session_results") as m_pub, \
-                 patch.object(v2.db, "insert_lounge_messages",
-                              side_effect=lambda uid, msgs: msgs), \
-                 patch.object(v2.db, "mark_arc_batch_delivered",
-                              return_value=True):
-                resp, status = v2.v2_coach_publish_analysis.__wrapped__("a1")
-        self.assertEqual(status, 200)
-        published = {c.args[0] for c in m_pub.call_args_list}
-        self.assertEqual(published, {"s1", "r1"})
-        flipped = {c.args[0] for c in m_status.call_args_list}
-        self.assertIn("r1", flipped)
-
-
 class CrossTakeSpokenOnlyTests(unittest.TestCase):
     """A read never competes as a take in /explore/arc/<id>/moments."""
 

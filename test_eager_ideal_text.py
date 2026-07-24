@@ -341,58 +341,5 @@ class ArcReviewStateTests(unittest.TestCase):
                          {"delivered"})
 
 
-@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
-class FourBubbleEndToEndTests(unittest.TestCase):
-    """BE-C — the crystal-clean guarantee: the whole chain to 4 bubbles."""
-
-    def test_full_chain_emits_exactly_four_ordered_bubbles(self):
-        app = Flask(__name__)
-        sessions = [_spoken(1), _spoken(2), _spoken(3), _read("s1")]
-        captured = {}
-        with app.test_request_context(json={}):
-            request.user_id = "coach1"
-            with patch.object(v2.db, "get_arc_sessions",
-                              return_value=sessions), \
-                 patch.object(v2.db, "get_coach_arc_ideal_text",
-                              return_value={"text": "approved block",
-                                            "updated_by": "coach1",
-                                            "approved_at":
-                                                "2026-07-15T13:00:00Z"}), \
-                 patch.object(v2.db, "get_coach_snippet_drafts",
-                              side_effect=lambda sid: [{
-                                  "snippet_id": f"{sid}-p0",
-                                  "surfaced": True, "note": "key moment",
-                                  "tag": "strong"}]), \
-                 patch.object(v2, "_apply_willab_publish_contract",
-                              return_value=None) as m_contract, \
-                 patch.object(v2.db, "v2_update_session_status_unscoped"), \
-                 patch.object(v2.db, "v2_publish_session_results") as m_pub, \
-                 patch.object(v2.db, "insert_lounge_messages",
-                              side_effect=lambda uid, msgs: captured.update(
-                                  {"uid": uid, "msgs": msgs}) or msgs), \
-                 patch.object(v2.db, "mark_arc_batch_delivered",
-                              return_value=True):
-                resp, status = v2.v2_coach_publish_analysis.__wrapped__(ARC)
-                body = resp.get_json()
-        self.assertEqual(status, 200)
-        self.assertTrue(body["published"])
-        self.assertEqual(body["bubbles"], 4)
-        # 3 spoken takes + the paired read's lifecycle flip (2026-07-16 —
-        # folded reads close at publish so the queue never keeps zombies).
-        self.assertEqual(m_pub.call_count, 4)
-        self.assertEqual(m_contract.call_count, 3)     # contract = spoken only
-        _flipped = {c.args[0] for c in m_pub.call_args_list}
-        self.assertIn("r-s1", _flipped)
-        msgs = captured["msgs"]
-        self.assertEqual([m["kind"] for m in msgs],
-                         ["feedback", "feedback", "feedback", "ideal_text"])
-        self.assertEqual([m["metadata"].get("take_index") for m in msgs[:3]],
-                         [1, 2, 3])
-        self.assertTrue(msgs[0]["metadata"]["free"])
-        self.assertFalse(msgs[2]["metadata"]["free"])
-        stamps = [m["client_created_at"] for m in msgs]
-        self.assertEqual(stamps, sorted(stamps))       # 1 → 2 → 3 → purple
-
-
 if __name__ == "__main__":
     unittest.main()
