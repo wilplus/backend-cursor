@@ -13039,6 +13039,90 @@ def v2_explore_arc_setup(arc_id):
                         "error": "Failed to load the setup"}), 500
 
 
+@v2_bp.route("/explore/arc/<arc_id>/context-document", methods=["POST"])
+@require_auth
+def v2_explore_upload_context_document(arc_id):
+    """Upload a supplementary CONTEXT document (X-1, founder 2026-07-24) — a
+    report / case metrics / Q&A (up to ~20 pages) ALONGSIDE the deck. We
+    extract its plain text and store it against the arc so the assembly and
+    feedback can draw on the background.
+
+    L1: BACKGROUND only — its facts inform feedback/continuity, never the
+    verbatim ideal text. multipart `file` (PDF, or UTF-8 text/markdown).
+
+    200 { ok, pages, chars, truncated } · 400 INVALID_INPUT / NO_TEXT ·
+    404 · 413 FILE_TOO_LARGE · 500
+    """
+    try:
+        owned, _ = _arc_owned_by_caller(arc_id)
+        if not owned:
+            return jsonify({"code": "NOT_FOUND",
+                            "error": "project not found"}), 404
+        _max_bytes = max(1, int(
+            getattr(config, "CONTEXT_DOC_MAX_MB", 25) or 25)) * 1024 * 1024
+        if (request.content_length or 0) > _max_bytes:
+            return jsonify({"code": "FILE_TOO_LARGE",
+                            "error": "the document is too large"}), 413
+        f = request.files.get("file")
+        if f is None:
+            return jsonify({"code": "INVALID_INPUT",
+                            "error": "file is required"}), 400
+        data = f.read() or b""
+        if not data:
+            return jsonify({"code": "INVALID_INPUT",
+                            "error": "the file is empty"}), 400
+        if len(data) > _max_bytes:
+            return jsonify({"code": "FILE_TOO_LARGE",
+                            "error": "the document is too large"}), 413
+        from services.context_document import extract_context_text
+        parsed = extract_context_text(
+            data, content_type=getattr(f, "content_type", None),
+            filename=getattr(f, "filename", None))
+        if not parsed.get("text"):
+            return jsonify({
+                "code": "NO_TEXT",
+                "error": "no readable text found in the document"}), 400
+        db.upsert_arc_context_document(
+            arc_id, parsed["text"], parsed["pages"], parsed["chars"],
+            filename=getattr(f, "filename", None),
+            truncated=parsed["truncated"])
+        return jsonify({"ok": True, "pages": parsed["pages"],
+                        "chars": parsed["chars"],
+                        "truncated": parsed["truncated"]}), 200
+    except Exception as e:
+        logger.error("context-document upload failed arc=%s: %s", arc_id, e,
+                     exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to upload"}), 500
+
+
+@v2_bp.route("/explore/arc/<arc_id>/context-document", methods=["GET"])
+@require_auth
+def v2_explore_get_context_document(arc_id):
+    """Whether a context document is attached (X-1) — the FE renders the chip
+    + a 'replace' affordance. The text itself is NOT returned (background
+    only). 200 { has_document, pages?, chars?, truncated?, filename? } · 404
+    """
+    try:
+        owned, _ = _arc_owned_by_caller(arc_id)
+        if not owned:
+            return jsonify({"code": "NOT_FOUND",
+                            "error": "project not found"}), 404
+        row = db.get_arc_context_document(arc_id)
+        if not row or not (row.get("text") or "").strip():
+            return jsonify({"has_document": False}), 200
+        return jsonify({
+            "has_document": True,
+            "pages": row.get("pages"),
+            "chars": row.get("chars"),
+            "truncated": bool(row.get("truncated")),
+            "filename": row.get("filename"),
+        }), 200
+    except Exception as e:
+        logger.error("context-document GET failed arc=%s: %s", arc_id, e)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to load"}), 500
+
+
 @v2_bp.route("/explore/arc/<arc_id>/ideal-text/save", methods=["POST"])
 @require_auth
 def v2_explore_save_ideal_text(arc_id):
