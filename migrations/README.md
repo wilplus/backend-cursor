@@ -60,3 +60,9 @@
 ## dev-bugs internal collector
 
 - **`add_dev_bugs.sql`** — creates `public.dev_bugs` (`id`, `text`, `image_url`, `status` open|shipped, `created_at`, `sent_at`) for the founder-only bug collector at `dev.willpowerlab.com`. Idempotent (`CREATE TABLE / INDEX IF NOT EXISTS`, guarded status CHECK), RLS enabled (service-role only; API gated by `DEV_BUGS_KEY`). Run in the Supabase SQL Editor **before** deploying, then set `DEV_BUGS_KEY` + `SEND_EMAILS=true`. See **`docs/DEV-BUGS-SETUP.md`**.
+
+---
+
+## dev-tasks (user stories · tasks backlog)
+
+- **`add_dev_tasks.sql`** — creates `public.dev_tasks` (GPT-4o-authored, user-story-centered tasks derived from `dev_bugs`) for the "user stories · tasks" view. Prioritized by `order_key` (Theme>Epic>Story>Priority; T1>T2>T3>T4 fixed, epic/story ranks frozen on first sight so the order never churns as tasks amass; manual drag → `pinned` + midpoint order_key). Idempotent, RLS on. Run in Supabase, then Phase 2 (endpoints) + Phase 3 (UI) before flipping `DEV_TASKS_ENABLED=true`. See **`docs/DEV-TASKS-PIPELINE-SETUP.md`**.

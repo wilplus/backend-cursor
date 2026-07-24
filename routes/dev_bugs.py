@@ -66,6 +66,29 @@ def _key_error():
     return None
 
 
+def _maybe_generate_task(bug_id, text):
+    """Best-effort: turn a just-saved bug into a user-story task via GPT-4o, in a
+    background thread so it NEVER blocks or breaks the bug save. Gated by
+    DEV_TASKS_ENABLED (default off). See services/dev_tasks.py."""
+    if not getattr(config, "DEV_TASKS_ENABLED", False):
+        return
+    if not (text or "").strip():
+        return
+
+    def _run():
+        try:
+            from services import dev_tasks
+            dev_tasks.generate_task_for_bug({"id": bug_id, "text": text})
+        except Exception:  # noqa: BLE001
+            logger.exception("dev_tasks: background task generation failed")
+
+    try:
+        import threading
+        threading.Thread(target=_run, daemon=True).start()
+    except Exception:  # noqa: BLE001
+        logger.exception("dev_tasks: could not start generation thread")
+
+
 # ─────────────────────────── page ───────────────────────────
 
 @dev_bugs_bp.route("/dev-bugs", methods=["GET"])
@@ -92,6 +115,7 @@ def dev_bugs_collection():
             bug_id = svc.create_bug(text, image)
         except ValueError:
             return jsonify({"code": "BAD_REQUEST", "error": "empty"}), 400
+        _maybe_generate_task(bug_id, text)
         return jsonify({"id": bug_id}), 201
     except Exception as e:  # noqa: BLE001
         sentry_sdk.capture_exception(e)
