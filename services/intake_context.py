@@ -65,11 +65,18 @@ _MAX_SLIDE_BODY_LEN = 2000
 _MAX_PRESENTATION_REF_LEN = 2000
 _MAX_SLIDE_ADVANCES = 1000
 
+# strategic_context (④ step 5, 2026-07-24): a short free-text note the speaker
+# adds at setup — the stakes, the setting, what they want to nail. Longer than
+# the tag fields (a sentence or two, not a label) but still bounded. Feeds the
+# qualitative feedback as BACKGROUND context only (parallel to `audience`) —
+# never the verbatim ideal text (L1).
+_MAX_STRATEGIC_LEN = 2000
+
 # Canonical key order — every caller iterates this list when
 # building the response so the JSON shape stays stable.
 _FIELDS = (
     "topic", "audience", "target_length_seconds", "domain_vocabulary",
-    "slides", "presentation_ref", "slide_advances",
+    "slides", "presentation_ref", "slide_advances", "strategic_context",
 )
 
 
@@ -247,6 +254,24 @@ def _norm_slide_advances(value: Any) -> Optional[list[dict]]:
     return out or None
 
 
+def _norm_strategic_context(value: Any) -> Optional[str]:
+    """Trim the strategic-context note; empty-after-trim → None (the
+    None-means-omitted convention); bounded at 2000 chars. A longer cap than
+    the tag fields because it's a free-text sentence or two."""
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise IntakeContextError("strategic_context: must be a string")
+    cleaned = value.strip()
+    if not cleaned:
+        return None
+    if len(cleaned) > _MAX_STRATEGIC_LEN:
+        raise IntakeContextError(
+            f"strategic_context: must be {_MAX_STRATEGIC_LEN} characters or fewer"
+        )
+    return cleaned
+
+
 def validate_intake_context_body(
     body: Any,
     *,
@@ -295,6 +320,9 @@ def validate_intake_context_body(
         "slides": _norm_slides(body.get("slides")),
         "presentation_ref": _norm_presentation_ref(body.get("presentation_ref")),
         "slide_advances": _norm_slide_advances(body.get("slide_advances")),
+        "strategic_context": _norm_strategic_context(
+            body.get("strategic_context"),
+        ),
     }
 
     if require_topic and not cleaned["topic"]:

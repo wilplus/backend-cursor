@@ -277,12 +277,14 @@ class GenerateTests(unittest.TestCase):
             mod.generate_say_it_stronger(
                 "we ship it", {}, {},
                 context={"topic": "Q3 pitch", "audience": "investors",
+                         "strategic_context": "the board decides the raise",
                          "target_length_seconds": 300, "duration_sec": 420,
                          "full_transcript": "we ship it like basically like"},
             )
         user_msg = captured.get("user") or ""
         self.assertIn("investors", user_msg)
         self.assertIn("Q3 pitch", user_msg)
+        self.assertIn("the board decides the raise", user_msg)  # ④ step 5
         self.assertIn("about 5 min", user_msg)      # target
         self.assertIn("about 7 min", user_msg)      # actual
         self.assertIn("we ship it like basically like", user_msg)

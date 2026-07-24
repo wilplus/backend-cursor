@@ -248,6 +248,13 @@ def _user_prompt(transcript: str, observations: dict,
         lines.append(f"The talk is about: \"{ctx['topic'].strip()}\".")
     if (ctx.get("audience") or "").strip():
         lines.append(f"The audience: {ctx['audience'].strip()}.")
+    if (ctx.get("strategic_context") or "").strip():
+        # The speaker's own note on the stakes/setting — steer tone and
+        # emphasis toward what they want to land; never quote it back.
+        lines.append(
+            "What the speaker most wants to land (their own note on the "
+            f"stakes/setting): {ctx['strategic_context'].strip()}."
+        )
     tgt = ctx.get("target_length_seconds")
     dur = ctx.get("duration_sec")
     if isinstance(tgt, (int, float)) and tgt and isinstance(dur, (int, float)) and dur:

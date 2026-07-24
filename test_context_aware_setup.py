@@ -194,6 +194,7 @@ class SetupEndpointTests(unittest.TestCase):
                                 "target_length_seconds": 120}},
             {"id": T2, "take_index": 2, "recording_kind": "spoken",
              "intake_context": {"topic": "the talk", "audience": "investors",
+                                "strategic_context": "board wants the raise",
                                 "target_length_seconds": 300,
                                 "slides": [{"title": "one"}],
                                 "presentation_ref": "deck.pdf"}},
@@ -202,6 +203,7 @@ class SetupEndpointTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(body["topic"], "the talk")
         self.assertEqual(body["audience"], "investors")
+        self.assertEqual(body["strategic_context"], "board wants the raise")
         self.assertEqual(body["target_length_seconds"], 300)
         self.assertEqual(body["slides"], [{"title": "one"}])
         self.assertEqual(body["presentation_ref"], "deck.pdf")
@@ -212,8 +214,8 @@ class SetupEndpointTests(unittest.TestCase):
         body, _ = self._get(sessions)
         self.assertEqual(
             set(body),
-            {"arc_id", "topic", "audience", "target_length_seconds",
-             "slides", "presentation_ref"})
+            {"arc_id", "topic", "audience", "strategic_context",
+             "target_length_seconds", "slides", "presentation_ref"})
 
     def test_reads_are_not_a_setup_source(self):
         sessions = [
