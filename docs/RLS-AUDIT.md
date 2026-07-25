@@ -41,7 +41,7 @@ So `ENABLE ROW LEVEL SECURITY` with **zero policies** is the right shape:
 |---|---|
 | `journal_post` | ✅ RLS enabled (`add_journal_posts.sql`) |
 | `arc_context_documents` | ✅ RLS enabled (`add_rls_arc_context_documents.sql`) — holds users' uploaded document text |
-| the 57 below | ❌ their migration does not enable RLS |
+| the 57 below | 🟡 covered by the sweep (`add_rls_all_public_tables.sql`) — **not yet run in prod** |
 
 **⚠️ The list below is derived from the migration FILES, not the live database.**
 RLS may have been enabled manually in the Supabase dashboard for some of these.
@@ -77,14 +77,62 @@ disabled in public"**. Confirm there before acting.
 `v2_student_post_recording_questions`, `v2_tasks`, `v2_universal_questions`,
 `v2_warm_up_task_pool`, `v2_warm_up_tasks`, `session_command_options`
 
-## Recommended fix
+## The fix — `migrations/add_rls_all_public_tables.sql`
 
-One idempotent sweep migration enabling RLS (no policies) on every table the
-Security Advisor still flags. Not written yet — it needs a founder go-ahead,
-because although every consumer I can see is service-role, a reader I *cannot*
-see (a Supabase Edge Function, a Retool/Metabase dashboard, a Zapier or n8n
-integration, an external script using the anon key) would start failing
-silently. Confirm the Advisor list, confirm no such consumer, then sweep.
+Founder go-ahead 2026-07-25 ("security is non-negotiable, especially with EU
+voice and transcript data"). One idempotent sweep enabling RLS, **no policies**,
+on every public table that does not already have it.
+
+**Dynamic, not a fixed list.** It sweeps what the LIVE database reports
+(`pg_class.relrowsecurity`) rather than the file-derived list above, which can be
+stale, can miss a table created in the dashboard, and can name tables that never
+shipped. So it is also self-healing: re-run it after any future migration and it
+catches whatever slipped through.
+
+Guards: skips tables that already have RLS (re-runs are true no-ops); skips
+**extension-owned** tables via `pg_depend` (enabling RLS on e.g. PostGIS's
+`spatial_ref_sys` would break the extension — only `pgcrypto` and `uuid-ossp` are
+installed today and neither creates tables, but the guard survives that
+changing); covers partitioned tables (`relkind IN ('r','p')`); `RAISE NOTICE` per
+table plus a summary, so the run is auditable.
+
+**Dry-run it first.** DDL is transactional in Postgres:
+
+```
+BEGIN;
+\i migrations/add_rls_all_public_tables.sql
+-- read the NOTICE lines
+ROLLBACK;      -- nothing changed; re-run with COMMIT when satisfied
+```
+
+⚠️ The SQL has **not been executed against any database** — there is no local
+Postgres or Docker in the dev environment to validate it against. Structure was
+verified statically (block/quote/placeholder balance) only. Do the dry run.
+
+### Residual risk, stated plainly
+
+Every consumer I can see is service-role. A reader I **cannot** see — a Supabase
+Edge Function, a Retool/Metabase dashboard, a Zapier/n8n integration, an
+external script using the anon key — would start returning empty rather than
+erroring loudly. If any of those exist, grant them the service-role key or add
+an explicit policy; do not turn RLS back off.
+
+### Was this ever actually exploited?
+
+Worth establishing, not assuming. The exposure is a *default-grants* question, so
+confirm empirically **before** running the sweep — this is also how you prove the
+sweep worked:
+
+```
+curl -s "https://<project>.supabase.co/rest/v1/charisma_snippets?select=id&limit=1" \
+     -H "apikey: <ANON key>" -H "Authorization: Bearer <ANON key>"
+```
+
+Rows back ⇒ the data was world-readable to anyone who opened the site's JS.
+Given this is EU voice and transcript data, that is a GDPR-relevant finding and
+may warrant a breach assessment — worth a look at Supabase's PostgREST request
+logs for anon-key reads of these tables from unexpected origins. I am not a
+lawyer; flagging it so the call is yours and informed.
 
 ## Standing rule going forward
 
