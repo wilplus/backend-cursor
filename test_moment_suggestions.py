@@ -169,6 +169,65 @@ class GenerationTests(unittest.TestCase):
         self.assertIn("the board decides the raise", cap.get("user") or "")
         self.assertIn("speaker_intent", cap.get("user") or "")
 
+    def test_context_document_rides_the_payload_as_project_background(self):
+        # X-1 v2 (2026-07-25): the attached document reaches the model as
+        # BACKGROUND for terminology only — never as a source of new claims.
+        from services import moment_suggestions as ms
+        cap = {}
+
+        def _capture(**kwargs):
+            cap.update(kwargs)
+            return type("R", (), {"parsed": {"why": "good", "replacement": None},
+                                  "text": ""})()
+
+        with patch("services.llm.chat_complete", side_effect=_capture):
+            ms.generate_moment_suggestion(
+                "emphasize", "the moment", audience="investors",
+                context_document="Our retention held through the pilot.")
+        user = cap.get("user") or ""
+        self.assertIn("project_background", user)
+        self.assertIn("retention held through the pilot", user)
+
+    def test_context_document_excerpt_is_capped(self):
+        # It rides EVERY snippet's prompt, so an uncapped 40k-char doc would
+        # multiply token cost by the snippet count.
+        from services import moment_suggestions as ms
+        cap = {}
+
+        def _capture(**kwargs):
+            cap.update(kwargs)
+            return type("R", (), {"parsed": {"why": "ok", "replacement": None},
+                                  "text": ""})()
+
+        with patch("services.llm.chat_complete", side_effect=_capture):
+            ms.generate_moment_suggestion(
+                "emphasize", "the moment",
+                context_document="x" * 40000)
+        payload = json.loads(cap.get("user") or "{}")
+        self.assertLessEqual(len(payload["project_background"]),
+                             ms._MAX_DOC_EXCERPT)
+
+    def test_blank_context_document_is_omitted(self):
+        from services import moment_suggestions as ms
+        cap = {}
+
+        def _capture(**kwargs):
+            cap.update(kwargs)
+            return type("R", (), {"parsed": {"why": "ok", "replacement": None},
+                                  "text": ""})()
+
+        with patch("services.llm.chat_complete", side_effect=_capture):
+            ms.generate_moment_suggestion("emphasize", "the moment",
+                                          context_document="   ")
+        self.assertNotIn("project_background", cap.get("user") or "")
+
+    def test_system_prompt_forbids_importing_facts_from_the_document(self):
+        # The anti-hallucination pin: background for terminology, never a
+        # source of numbers/names the speaker did not say.
+        from services import moment_suggestions as ms
+        self.assertIn("project_background", ms._SYSTEM)
+        self.assertIn("Never introduce a fact", ms._SYSTEM)
+
     def test_blank_strategic_context_is_omitted_from_payload(self):
         from services import moment_suggestions as ms
         cap = {}
@@ -750,6 +809,97 @@ class LedgerGenerationFilterTests(unittest.TestCase):
         kinds = [(snip, kind) for (snip, kind, _t) in db.upserts]
         self.assertNotIn(("s1", "emphasize"), kinds)   # decided → skipped
         self.assertIn(("s2", "emphasize"), kinds)      # the delta
+
+
+@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
+class ContextDocumentReachesGenerationTests(unittest.TestCase):
+    """X-1 v2 (2026-07-25) — THE integration point. X-1 shipped the upload +
+    storage, but nothing ever read the stored text into a prompt, so an
+    attached document sharpened nothing. This pins that it now does."""
+
+    class _Db:
+        def __init__(self, doc=None, explode=False):
+            self.doc = doc
+            self.explode = explode
+            self.upserts = []
+            self.doc_calls = []
+
+        def v2_get_session_by_id(self, sid):
+            return {"id": sid, "user_id": None,
+                    "intake_context": {"audience": "investors"}}
+
+        def list_ideal_decisions(self, arc_id):
+            return []
+
+        def get_arc_context_document(self, arc_id):
+            self.doc_calls.append(arc_id)
+            if self.explode:
+                raise RuntimeError("table missing (migration pending)")
+            return self.doc
+
+        def upsert_moment_suggestion(self, snip, arc, kind, repl, why, trig):
+            self.upserts.append(snip)
+            return True
+
+    def _run(self, db):
+        from services import moment_suggestions as ms
+        captured = []
+        readout = {"snippets": [
+            {"id": "s1", "transcript": "our retention stayed strong",
+             "acoustic_read": {"potentiometer": 0.9}},
+        ]}
+
+        def _capture(**kwargs):
+            captured.append(kwargs.get("user") or "")
+            return type("R", (), {"parsed": {"why": "Plain and strong.",
+                                             "replacement": None},
+                                  "text": ""})()
+
+        with patch("services.lab_recording.build_readout_from_session",
+                   return_value=readout), \
+             patch("services.llm.chat_complete", side_effect=_capture):
+            ms.generate_for_session("sess-1", ARC, database=db)
+        return captured
+
+    def test_the_stored_document_text_reaches_the_prompt(self):
+        db = self._Db(doc={"text": "Retention held at pilot scale.",
+                           "pages": 3})
+        prompts = self._run(db)
+        self.assertEqual(db.doc_calls, [ARC])          # fetched, arc-scoped
+        self.assertTrue(prompts)
+        self.assertIn("project_background", prompts[0])
+        self.assertIn("Retention held at pilot scale", prompts[0])
+
+    def test_no_document_means_no_background_key(self):
+        prompts = self._run(self._Db(doc=None))
+        self.assertTrue(prompts)
+        self.assertNotIn("project_background", prompts[0])
+
+    def test_a_missing_table_degrades_instead_of_killing_generation(self):
+        # LIVE LOOP: pre-migration the table does not exist. Suggestions must
+        # still generate, just without the background.
+        db = self._Db(explode=True)
+        prompts = self._run(db)
+        self.assertTrue(prompts)                       # generation survived
+        self.assertNotIn("project_background", prompts[0])
+        self.assertEqual(db.upserts, ["s1"])           # star still stored
+
+    def test_document_is_fetched_once_per_take_not_per_snippet(self):
+        # Cost guard: one arc-scoped read, reused across snippets.
+        from services import moment_suggestions as ms
+        db = self._Db(doc={"text": "background text"})
+        readout = {"snippets": [
+            {"id": f"s{i}", "transcript": f"moment number {i} lands",
+             "acoustic_read": {"potentiometer": 0.9}} for i in range(4)
+        ]}
+        result = type("R", (), {"parsed": {"why": "Strong.",
+                                           "replacement": None},
+                                "text": ""})()
+        with patch("services.lab_recording.build_readout_from_session",
+                   return_value=readout), \
+             patch("services.llm.chat_complete", return_value=result):
+            ms.generate_for_session("sess-1", ARC, database=db)
+        self.assertEqual(len(db.doc_calls), 1)
 
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
