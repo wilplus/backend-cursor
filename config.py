@@ -326,6 +326,22 @@ class Config:
     # header — the browser page sends it). Blank ⇒ the endpoints 503 (disabled).
     CREDIT_ADMIN_PASSWORD = (os.getenv("CREDIT_ADMIN_PASSWORD") or "").strip()
 
+    # Journal CMS (founder 2026-07-25) — same body-password pattern as the
+    # credits admin above, so the /admin/journal browser page can send it from
+    # a form field. Blank ⇒ every /v2/internal/journal/* endpoint 503s
+    # (disabled); the PUBLIC /v2/journal/* read endpoints are unaffected.
+    JOURNAL_ADMIN_PASSWORD = (os.getenv("JOURNAL_ADMIN_PASSWORD") or "").strip()
+
+    # Journal cover media in R2 (presigned direct-to-storage upload). Reuses
+    # the shared R2_ACCOUNT_ID / R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY above.
+    # Both unset ⇒ services.journal_media falls back to the user-media bucket
+    # so dev environments work; presign refuses when no public base URL
+    # resolves, rather than stranding an unreferenceable upload.
+    R2_JOURNAL_BUCKET = (os.getenv("R2_JOURNAL_BUCKET") or "").strip()
+    R2_JOURNAL_PUBLIC_BASE_URL = (
+        os.getenv("R2_JOURNAL_PUBLIC_BASE_URL") or ""
+    ).strip()
+
     # Stripe Checkout → credits (POST /v2/internal/stripe/webhook). Webhook signing secret from Stripe Dashboard.
     STRIPE_WEBHOOK_SECRET = (os.getenv("STRIPE_WEBHOOK_SECRET") or "").strip()
     # Secret key used to expand/verify Checkout Session line items in the webhook handler.
