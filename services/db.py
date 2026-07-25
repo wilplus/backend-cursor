@@ -8727,14 +8727,24 @@ class DatabaseService:
                            search: Optional[str] = None,
                            order_column: str = "published_at",
                            descending: bool = True,
+                           tiebreak_column: str = "published_at",
                            limit: int = 50,
                            offset: int = 0) -> list:
         """Journal posts for the public index (published_only) or the CMS
         list (published_only=False). Best-effort → [] on any failure.
 
         `search` is a case-insensitive substring over title OR excerpt.
-        The `curated` ordering passes order_column='sort_order'; the
-        published_at tiebreak is applied as a secondary order.
+        The `curated` ordering passes order_column='sort_order'; a secondary
+        order breaks ties within one sort_order.
+
+        ``tiebreak_column`` picks that secondary order (FE amendment
+        2026-07-25). The PUBLIC index keeps 'published_at' — every public row
+        is published, so the date is non-NULL and is the meaningful order. The
+        CMS list passes 'created_at' instead, because it INCLUDES DRAFTS: a
+        draft's published_at is NULL, Postgres orders DESC as NULLS FIRST, and
+        every new post starts at sort_order=0 — so a published_at tiebreak
+        would float undated drafts above dated posts and shuffle the CMS list
+        as dates get set. created_at is never NULL, so the CMS order is stable.
         """
         try:
             q = self.client.table("journal_post").select(self._JOURNAL_COLUMNS)
@@ -8754,8 +8764,8 @@ class DatabaseService:
             # stamps a date whenever status becomes published, and the
             # migration backfills any row written directly via SQL.
             q = q.order(order_column, desc=bool(descending))
-            if order_column != "published_at":
-                q = q.order("published_at", desc=True)
+            if order_column != tiebreak_column:
+                q = q.order(tiebreak_column, desc=True)
             res = q.range(int(offset), int(offset) + int(limit) - 1).execute()
             return getattr(res, "data", None) or []
         except Exception as e:
