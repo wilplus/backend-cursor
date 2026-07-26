@@ -1450,6 +1450,17 @@ class PrivacyTests(unittest.TestCase):
         src = inspect.getsource(lengine._log_derivation)
         self.assertIn("never the note body", src)
 
+    def test_derivation_calls_are_stateless_and_unstored(self):
+        """`store=False` is passed explicitly, and the calls stay stateless.
+
+        Two reasons, and neither is the default's job to hold: a default is a
+        decision someone else can change, and zero-data-retention only covers
+        the STATELESS endpoints — moving these to a conversations/agents API
+        would silently leave that protection behind."""
+        import inspect
+        src = inspect.getsource(lengine._complete)
+        self.assertIn("store=False", src)
+
     def test_a_dedicated_zero_retention_key_is_supported(self):
         # BE-10: "use an API path with no training retention". The retention
         # posture is a project setting, so the code side is the ability to

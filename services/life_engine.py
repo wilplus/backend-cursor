@@ -165,6 +165,16 @@ def _complete(spec: LLMSpec, *, system: str, user: str, surface: str,
             temperature=spec.temperature,
             max_tokens=spec.max_tokens,
             response_format=spec.response_format,
+            # Explicit, not inherited. `store=False` is already the default,
+            # but a default is a decision someone else can change — and this
+            # is the one surface where a silent flip to stored completions
+            # would put addiction, confession-shaped material and named third
+            # parties into a dashboard. Stating it also keeps these calls in
+            # the STATELESS shape that zero-data-retention actually covers;
+            # ZDR excludes the stateful products (conversations, files,
+            # agents, batch), so a future "just use the Conversations API"
+            # refactor here would quietly leave that protection behind.
+            store=False,
         )
         raw = (response.choices[0].message.content or "").strip()
     except Exception as e:
