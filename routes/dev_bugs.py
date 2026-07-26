@@ -40,20 +40,19 @@ STATIC_DIR = os.path.join(
 )
 _PAGE_FILE = "dev_bugs.html"
 
-# Home-screen / tab icons for the collector page: the Willab wordmark (Pacifico,
-# #2d3748, orange dot — same mark as services/assignment_email._logo_html) with a
-# small orange "dev" pill, so the installed dev icon is distinguishable from the
-# real app's. iOS ignores data: URIs for apple-touch-icon, so these have to be
-# real files served over HTTP — hence the routes below.
+# Home-screen / tab icons for the collector page: the Willab three-dot mark with a
+# small "dev" label, so the installed dev icon is distinguishable from the real
+# app's. Icon-only — the page itself carries no logo. iOS ignores data: URIs for
+# apple-touch-icon, so these have to be real files served over HTTP — hence the
+# routes below. Regenerate with scripts/gen_dev_bugs_icons.mjs.
 _ICON_DIR = os.path.join(STATIC_DIR, "dev_bugs_icons")
 _ICON_FILES = frozenset({
     "icon-180.png",             # apple-touch-icon (iOS Add to Home Screen)
     "icon-192.png",             # manifest / Android
     "icon-512.png",             # manifest / Android, splash
     "icon-maskable-512.png",    # manifest, purpose=maskable (Android safe zone)
-    "favicon-32.png",           # browser tab
+    "favicon-32.png",           # browser tab (bare mark — "dev" is mush at 32px)
     "favicon-180.png",          # hi-dpi tab / bookmark
-    "wordmark.png",             # in-page brand row (transparent)
 })
 
 
