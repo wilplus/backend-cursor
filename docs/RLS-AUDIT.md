@@ -41,12 +41,25 @@ So `ENABLE ROW LEVEL SECURITY` with **zero policies** is the right shape:
 |---|---|
 | `journal_post` | ✅ RLS enabled (`add_journal_posts.sql`) |
 | `arc_context_documents` | ✅ RLS enabled (`add_rls_arc_context_documents.sql`) — holds users' uploaded document text |
-| the 57 below | 🟡 covered by the sweep (`add_rls_all_public_tables.sql`) — **not yet run in prod** |
+| the 57 below | ✅ **RLS enabled — sweep RUN IN PROD 2026-07-25** (`add_rls_all_public_tables.sql`) |
 
-**⚠️ The list below is derived from the migration FILES, not the live database.**
-RLS may have been enabled manually in the Supabase dashboard for some of these.
-The authoritative check is Supabase → **Advisors → Security Advisor → "RLS
-disabled in public"**. Confirm there before acting.
+**This gap is closed.** The founder ran the sweep in production on 2026-07-25 via
+the Supabase SQL Editor, after a read-only preview of exactly which tables it
+would touch. The list below is kept as the historical record of what was exposed
+and for how the classes of data break down — it is *not* an outstanding to-do.
+
+The list itself was derived from the migration FILES, so treat it as indicative
+rather than exact. The authoritative live check is one query (and it should now
+return **zero rows**):
+
+```sql
+SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+ WHERE n.nspname = 'public' AND c.relkind IN ('r','p')
+   AND c.relrowsecurity = false ORDER BY 1;
+```
+
+Or Supabase → **Advisors → Security Advisor → "RLS disabled in public"**, which
+should be empty.
 
 ### Highest sensitivity (user content / PII)
 
@@ -77,11 +90,17 @@ disabled in public"**. Confirm there before acting.
 `v2_student_post_recording_questions`, `v2_tasks`, `v2_universal_questions`,
 `v2_warm_up_task_pool`, `v2_warm_up_tasks`, `session_command_options`
 
-## The fix — `migrations/add_rls_all_public_tables.sql`
+## The fix — `migrations/add_rls_all_public_tables.sql` ✅ APPLIED
 
 Founder go-ahead 2026-07-25 ("security is non-negotiable, especially with EU
-voice and transcript data"). One idempotent sweep enabling RLS, **no policies**,
-on every public table that does not already have it.
+voice and transcript data"), and **run in production the same day**. One
+idempotent sweep enabling RLS, **no policies**, on every public table that does
+not already have it.
+
+Keep the file: it is **self-healing**. Re-running it after any future migration
+costs nothing (already-enabled tables are skipped) and catches anything that
+slipped through — which is the cheap backstop for the standing rule at the
+bottom of this document.
 
 **Dynamic, not a fixed list.** It sweeps what the LIVE database reports
 (`pg_class.relrowsecurity`) rather than the file-derived list above, which can be
@@ -96,43 +115,54 @@ installed today and neither creates tables, but the guard survives that
 changing); covers partitioned tables (`relkind IN ('r','p')`); `RAISE NOTICE` per
 table plus a summary, so the run is auditable.
 
-**Dry-run it first.** DDL is transactional in Postgres:
+**If you re-run it, preview first.** The read-only query in the Status section
+above lists exactly what a run would change, without changing anything. That is
+the preview that was used before the production run.
 
-```
-BEGIN;
-\i migrations/add_rls_all_public_tables.sql
--- read the NOTICE lines
-ROLLBACK;      -- nothing changed; re-run with COMMIT when satisfied
-```
-
-⚠️ The SQL has **not been executed against any database** — there is no local
-Postgres or Docker in the dev environment to validate it against. Structure was
-verified statically (block/quote/placeholder balance) only. Do the dry run.
+Note for anyone re-running from a dev machine: there is no local Postgres or
+Docker here and the founder has no `psql` or `DATABASE_URL`, so the working
+channel is **Supabase → SQL Editor → paste → Run**, which executes the file as a
+single transaction (a failure applies nothing).
 
 ### Residual risk, stated plainly
 
-Every consumer I can see is service-role. A reader I **cannot** see — a Supabase
-Edge Function, a Retool/Metabase dashboard, a Zapier/n8n integration, an
-external script using the anon key — would start returning empty rather than
-erroring loudly. If any of those exist, grant them the service-role key or add
-an explicit policy; do not turn RLS back off.
+Every consumer visible in the two repos is service-role. A reader **not** visible
+from here — a Supabase Edge Function, a Retool/Metabase dashboard, a Zapier/n8n
+integration, an external script using the anon key — now returns **empty rather
+than erroring loudly**. Nothing of the kind has been reported since the run, but
+that is absence of evidence, not evidence of absence: if some integration
+quietly stopped returning rows on 2026-07-25, this sweep is the first thing to
+suspect. The fix is to give it the service-role key or an explicit policy —
+**not** to turn RLS back off.
 
-### Was this ever actually exploited?
+### Was the data ever actually readable? — still open, and now harder to answer
 
-Worth establishing, not assuming. The exposure is a *default-grants* question, so
-confirm empirically **before** running the sweep — this is also how you prove the
-sweep worked:
+**Read this before assuming the matter is settled.** Closing the hole and
+establishing whether it was ever exploited are two different questions, and only
+the first one is done.
+
+The empirical test — an anon-key `curl` against a sensitive table — had to be run
+**before** the sweep to be informative. It was not, so that window has closed.
+Running it today:
 
 ```
 curl -s "https://<project>.supabase.co/rest/v1/charisma_snippets?select=id&limit=1" \
      -H "apikey: <ANON key>" -H "Authorization: Bearer <ANON key>"
 ```
 
-Rows back ⇒ the data was world-readable to anyone who opened the site's JS.
-Given this is EU voice and transcript data, that is a GDPR-relevant finding and
-may warrant a breach assessment — worth a look at Supabase's PostgREST request
-logs for anon-key reads of these tables from unexpected origins. I am not a
-lawyer; flagging it so the call is yours and informed.
+should return `[]`, which confirms **the fix**, and says nothing about the
+**history**. Do not read an empty result as "it was never exposed."
+
+What can still answer it: **Supabase's PostgREST request logs**, checked for
+anon-key reads of these tables before 2026-07-25, particularly from origins that
+are not the app. Retention limits apply, so the sooner this is looked at the more
+there is to look at.
+
+Why it matters beyond tidiness: `charisma_snippets` holds per-snippet
+**transcripts** and `v2_sessions` the recording metadata — EU voice data. If it
+was in fact readable by anyone who opened the site's JS, that is a
+GDPR-relevant finding and may warrant a breach assessment. I am not a lawyer;
+this is flagged so the decision is made deliberately rather than by default.
 
 ## Standing rule going forward
 
