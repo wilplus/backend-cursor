@@ -258,3 +258,14 @@ class BatchResolutionTests(unittest.TestCase):
     def test_empty_input(self):
         self.assertEqual(v2._moment_reference_map([]), {})
         self.assertEqual(v2._moment_reference_map(None), {})
+
+    def test_a_non_dict_explanation_value_does_not_break_the_response(self):
+        # REGRESSION: the explanations map holds dicts in production, but
+        # callers hand back a truthy marker too. A bare .get() on that is an
+        # AttributeError that took the ENTIRE ideal-text response down (the
+        # student saw no key_moments at all). Guarded now.
+        with patch.object(v2.db, "get_journal_post_by_slug") as m:
+            self.assertEqual(
+                v2._moment_reference_map([True, None, 1, "ok"]), {})
+            # only the real string is even attempted
+            self.assertEqual([c.args[0] for c in m.call_args_list], ["ok"])

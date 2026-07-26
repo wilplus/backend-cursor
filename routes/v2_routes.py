@@ -12713,8 +12713,14 @@ def v2_explore_get_ideal_text(arc_id):
             [m.get("take_session_id") for m in _moments])
         # Ticket 6: resolve every attached post ONCE per request, not once per
         # moment (see _moment_reference_map — the per-moment form is an N+1).
-        _refs = _moment_reference_map(
-            [v.get("reference_post_slug") for v in _has_expl.values()])
+        # isinstance-guarded: this map's values are dicts in production, but
+        # callers (and tests) legitimately hand back a truthy marker instead,
+        # and a bare .get() there is an AttributeError that takes the whole
+        # ideal-text response down with it.
+        _refs = _moment_reference_map([
+            v.get("reference_post_slug") if isinstance(v, dict) else None
+            for v in _has_expl.values()
+        ])
 
         def _decorate(m):
             _mid = str(m.get("snippet_id"))
@@ -12751,7 +12757,8 @@ def v2_explore_get_ideal_text(arc_id):
                 # no longer published — the FE renders the link only when the
                 # key is present. Not gated behind the paid moments GET: a
                 # public blog link is not the coach's message.
-                _slug = (_has_expl[_mid].get("reference_post_slug") or "")
+                _expl = _has_expl[_mid]
+                _slug = _expl.get("reference_post_slug") if isinstance(_expl, dict) else None
                 _ref = _refs.get(_slug.strip()) if isinstance(_slug, str) else None
                 if _ref:
                     entry["coach"]["reference"] = _ref
