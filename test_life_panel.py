@@ -1072,6 +1072,74 @@ class RouteGateTests(unittest.TestCase):
         update.assert_not_called()
         self.assertEqual(insert.call_args[0][1]["status"], "dismissed")
 
+    def test_patch_items_saves_only_the_supplied_keys(self):
+        # The FE's inline edit contract. A partial PATCH must never blank an
+        # untouched field, which is why validate_item_input returns only the
+        # keys that were present.
+        with patch.object(lroutes.chat, "is_enabled", return_value=True), \
+                patch.object(lroutes.chat, "has_consented", return_value=True), \
+                patch.object(lroutes.store, "get_item",
+                             return_value={"id": "i1", "kind": "goal"}), \
+                patch.object(lroutes.store, "update_item",
+                             return_value={"id": "i1", "kind": "goal",
+                                           "title": "new"}) as update:
+            resp = self.client.patch("/v2/life/items/i1",
+                                     headers={"Authorization": "Bearer t"},
+                                     json={"title": "new"})
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(update.call_args[0][2], {"title": "new"})
+
+    def test_patch_items_refuses_to_change_the_kind(self):
+        # The kind is the discriminator: changing it would move a row between
+        # views and past a different validator.
+        with patch.object(lroutes.chat, "is_enabled", return_value=True), \
+                patch.object(lroutes.chat, "has_consented", return_value=True), \
+                patch.object(lroutes.store, "get_item",
+                             return_value={"id": "i1", "kind": "goal"}):
+            resp = self.client.patch("/v2/life/items/i1",
+                                     headers={"Authorization": "Bearer t"},
+                                     json={"kind": "win"})
+        self.assertEqual(resp.status_code, 400)
+
+    def test_patch_items_404s_on_someone_elses_row(self):
+        with patch.object(lroutes.chat, "is_enabled", return_value=True), \
+                patch.object(lroutes.chat, "has_consented", return_value=True), \
+                patch.object(lroutes.store, "get_item", return_value=None), \
+                patch.object(lroutes.store, "update_item") as update:
+            resp = self.client.patch("/v2/life/items/i1",
+                                     headers={"Authorization": "Bearer t"},
+                                     json={"title": "new"})
+        self.assertEqual(resp.status_code, 404)
+        update.assert_not_called()
+
+    def test_patch_day_is_scoped_to_the_card_on_screen(self):
+        # Addressed by id, not by "today". A panel left open across midnight
+        # must write to the card being looked at, not to whatever date the
+        # server thinks it is now.
+        with patch.object(lroutes.chat, "is_enabled", return_value=True), \
+                patch.object(lroutes.chat, "has_consented", return_value=True), \
+                patch.object(lroutes.store, "update_day",
+                             return_value={"id": "d1"}) as update:
+            resp = self.client.patch("/v2/life/day/d1",
+                                     headers={"Authorization": "Bearer t"},
+                                     json={"evening_one_thing": True})
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(update.call_args[0][1], "d1")
+
+    def test_patch_day_404s_when_the_row_is_not_yours(self):
+        with patch.object(lroutes.chat, "is_enabled", return_value=True), \
+                patch.object(lroutes.chat, "has_consented", return_value=True), \
+                patch.object(lroutes.store, "update_day", return_value=None):
+            resp = self.client.patch("/v2/life/day/d1",
+                                     headers={"Authorization": "Bearer t"},
+                                     json={"evening_one_thing": True})
+        self.assertEqual(resp.status_code, 404)
+
+    def test_the_day_payload_carries_the_id_the_patch_needs(self):
+        # GET /v2/life/day must hand back the id, or the id-scoped PATCH is
+        # unusable and the FE has to guess.
+        self.assertIn("id", lp.serialize_day({"id": "d1"}))
+
     def test_the_one_thing_can_be_changed_but_not_removed(self):
         with patch.object(lroutes.chat, "is_enabled", return_value=True), \
                 patch.object(lroutes.chat, "has_consented", return_value=True):
