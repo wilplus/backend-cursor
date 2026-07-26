@@ -16,10 +16,12 @@ Run: python3 -m unittest test_delivery_stars
 from __future__ import annotations
 
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from services.delivery_stars import (
     DELIVERY_DEVICES,
+    arousal_z,
     detect_delivery_issue,
     emphasis_z,
     feature_stats,
@@ -222,6 +224,86 @@ class NudgeCopyTests(unittest.TestCase):
     def test_take_three_plus_and_unknown_do_not(self):
         for n in (3, 7, None):
             self.assertNotIn("three is where it really lands", self._fire(n))
+
+
+class ArousalZTests(unittest.TestCase):
+    """The baseline-relative ACTIVATION composite (Juslin & Laukka, 2003):
+    fast + loud + pitch-mobile + un-paused → high; slow + soft + flat +
+    paused → low. Graded (not a threshold); arousal axis only, never emotion."""
+
+    def test_neutral_piece_is_zero(self):
+        self.assertEqual(arousal_z(_m(), BASE), 0.0)
+
+    def test_high_arousal_is_clearly_positive(self):
+        # every cue pushed toward activation (pause_ratio DOWN)
+        av = arousal_z(_m(wpm=14, dynamic_db=14, f0_sd=14, pause_ratio=6), BASE)
+        self.assertEqual(av, 2.0)          # mean of +2 on all four
+
+    def test_low_arousal_is_clearly_negative(self):
+        av = arousal_z(_m(wpm=6, dynamic_db=6, f0_sd=6, pause_ratio=14), BASE)
+        self.assertEqual(av, -2.0)
+
+    def test_more_pauses_lower_arousal(self):
+        # pause_ratio is the ONE inverted cue: more silence = calmer
+        self.assertEqual(arousal_z({"pause_ratio": 14.0}, BASE), -2.0)
+        self.assertEqual(arousal_z({"pause_ratio": 6.0}, BASE), 2.0)
+
+    def test_partial_features_average_what_is_present(self):
+        self.assertEqual(arousal_z({"wpm": 14.0}, BASE), 2.0)   # mean of one
+
+    def test_graded_not_thresholded(self):
+        strong = arousal_z(_m(wpm=14, dynamic_db=14, f0_sd=14, pause_ratio=6),
+                           BASE)
+        mild = arousal_z(_m(wpm=12, dynamic_db=12, f0_sd=12, pause_ratio=8),
+                         BASE)
+        self.assertGreater(strong, mild)   # closeness wins, not just "over"
+
+    def test_unmeasurable_is_none(self):
+        self.assertIsNone(arousal_z(_m(), None))     # no baseline
+        self.assertIsNone(arousal_z({}, BASE))       # no features
+        self.assertIsNone(arousal_z(None, BASE))
+
+
+class SetSnippetArousalCaptureTests(unittest.TestCase):
+    """db.set_snippet_arousal — best-effort capture; a pending column (or any
+    error) must return False, never raise into the analysis path."""
+
+    class _Chain:
+        def __init__(self, *, raises=False, data=None):
+            self._raises = raises
+            self._data = data
+            self.payload = None
+
+        def table(self, name):
+            return self
+
+        def update(self, payload):
+            self.payload = payload
+            return self
+
+        def eq(self, col, val):
+            return self
+
+        def execute(self):
+            if self._raises:
+                raise RuntimeError('column "arousal_z" does not exist')
+            return SimpleNamespace(data=self._data)
+
+    def _set(self, chain):
+        from services.db import DatabaseService
+        fake = SimpleNamespace(client=chain)
+        return DatabaseService.set_snippet_arousal(fake, "snip-1", 1.5)
+
+    def test_success_writes_the_column_and_reports_true(self):
+        chain = self._Chain(data=[{"id": "snip-1"}])
+        self.assertTrue(self._set(chain))
+        self.assertEqual(chain.payload, {"arousal_z": 1.5})
+
+    def test_missing_column_is_swallowed(self):
+        self.assertFalse(self._set(self._Chain(raises=True)))
+
+    def test_no_rows_reports_false(self):
+        self.assertFalse(self._set(self._Chain(data=[])))
 
 
 if __name__ == "__main__":

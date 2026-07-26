@@ -13038,8 +13038,8 @@ def v2_explore_arc_setup(arc_id):
     Deliberately MINIMAL — only what the setup screen would otherwise
     ask for, read from the arc's latest SPOKEN take's intake_context:
 
-      200 { arc_id, topic, audience, target_length_seconds, slides,
-            presentation_ref }
+      200 { arc_id, topic, audience, strategic_context,
+            target_length_seconds, slides, presentation_ref }
 
     `topic` is load-bearing (the record POST rejects a take without
     one); `slides`/`presentation_ref` are load-bearing for a DECKED
@@ -13076,6 +13076,7 @@ def v2_explore_arc_setup(arc_id):
             "arc_id": arc_id,
             "topic": ctx.get("topic"),
             "audience": ctx.get("audience"),
+            "strategic_context": ctx.get("strategic_context"),
             "target_length_seconds": ctx.get("target_length_seconds"),
             "slides": ctx.get("slides") or [],
             "presentation_ref": ctx.get("presentation_ref"),
@@ -13086,6 +13087,90 @@ def v2_explore_arc_setup(arc_id):
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR",
                         "error": "Failed to load the setup"}), 500
+
+
+@v2_bp.route("/explore/arc/<arc_id>/context-document", methods=["POST"])
+@require_auth
+def v2_explore_upload_context_document(arc_id):
+    """Upload a supplementary CONTEXT document (X-1, founder 2026-07-24) — a
+    report / case metrics / Q&A (up to ~20 pages) ALONGSIDE the deck. We
+    extract its plain text and store it against the arc so the assembly and
+    feedback can draw on the background.
+
+    L1: BACKGROUND only — its facts inform feedback/continuity, never the
+    verbatim ideal text. multipart `file` (PDF, or UTF-8 text/markdown).
+
+    200 { ok, pages, chars, truncated } · 400 INVALID_INPUT / NO_TEXT ·
+    404 · 413 FILE_TOO_LARGE · 500
+    """
+    try:
+        owned, _ = _arc_owned_by_caller(arc_id)
+        if not owned:
+            return jsonify({"code": "NOT_FOUND",
+                            "error": "project not found"}), 404
+        _max_bytes = max(1, int(
+            getattr(config, "CONTEXT_DOC_MAX_MB", 25) or 25)) * 1024 * 1024
+        if (request.content_length or 0) > _max_bytes:
+            return jsonify({"code": "FILE_TOO_LARGE",
+                            "error": "the document is too large"}), 413
+        f = request.files.get("file")
+        if f is None:
+            return jsonify({"code": "INVALID_INPUT",
+                            "error": "file is required"}), 400
+        data = f.read() or b""
+        if not data:
+            return jsonify({"code": "INVALID_INPUT",
+                            "error": "the file is empty"}), 400
+        if len(data) > _max_bytes:
+            return jsonify({"code": "FILE_TOO_LARGE",
+                            "error": "the document is too large"}), 413
+        from services.context_document import extract_context_text
+        parsed = extract_context_text(
+            data, content_type=getattr(f, "content_type", None),
+            filename=getattr(f, "filename", None))
+        if not parsed.get("text"):
+            return jsonify({
+                "code": "NO_TEXT",
+                "error": "no readable text found in the document"}), 400
+        db.upsert_arc_context_document(
+            arc_id, parsed["text"], parsed["pages"], parsed["chars"],
+            filename=getattr(f, "filename", None),
+            truncated=parsed["truncated"])
+        return jsonify({"ok": True, "pages": parsed["pages"],
+                        "chars": parsed["chars"],
+                        "truncated": parsed["truncated"]}), 200
+    except Exception as e:
+        logger.error("context-document upload failed arc=%s: %s", arc_id, e,
+                     exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to upload"}), 500
+
+
+@v2_bp.route("/explore/arc/<arc_id>/context-document", methods=["GET"])
+@require_auth
+def v2_explore_get_context_document(arc_id):
+    """Whether a context document is attached (X-1) — the FE renders the chip
+    + a 'replace' affordance. The text itself is NOT returned (background
+    only). 200 { has_document, pages?, chars?, truncated?, filename? } · 404
+    """
+    try:
+        owned, _ = _arc_owned_by_caller(arc_id)
+        if not owned:
+            return jsonify({"code": "NOT_FOUND",
+                            "error": "project not found"}), 404
+        row = db.get_arc_context_document(arc_id)
+        if not row or not (row.get("text") or "").strip():
+            return jsonify({"has_document": False}), 200
+        return jsonify({
+            "has_document": True,
+            "pages": row.get("pages"),
+            "chars": row.get("chars"),
+            "truncated": bool(row.get("truncated")),
+            "filename": row.get("filename"),
+        }), 200
+    except Exception as e:
+        logger.error("context-document GET failed arc=%s: %s", arc_id, e)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to load"}), 500
 
 
 @v2_bp.route("/explore/arc/<arc_id>/ideal-text/save", methods=["POST"])
@@ -13207,6 +13292,14 @@ def _previous_spoken_session(arc_id, current_session_id):
         return None
 
 
+def _key_points_enabled() -> bool:
+    """E-1 presentation-mode cue sheet (founder 2026-07-24). DEFAULT OFF until
+    the FE ships the full↔key-words toggle (E-2); flip KEY_POINTS_ENABLED=1 in
+    Railway after. Absent key ⇒ the FE is unaffected."""
+    return (os.getenv("KEY_POINTS_ENABLED") or "0").strip().lower() \
+        in ("1", "true", "yes")
+
+
 def _tracked_changes_block(arc_id, served_text) -> dict:
     """The `changes` block of the SD student GET (founder 2026-07-20) —
     {} when the Living Transcript flag is off, so the key is simply
@@ -13255,6 +13348,18 @@ def _tracked_changes_block(arc_id, served_text) -> dict:
         # re-anchor the pieces onto it MONOTONICALLY (never a bare
         # first-occurrence search, the review's mis-anchor defect).
         _pieces = relocate_pieces(served_text, doc.get("pieces") or [])
+        # E-1 presentation-mode cue sheet (founder 2026-07-24): one verbatim
+        # starting-point milestone per block, for the FE's full↔key-words
+        # toggle. Flag-gated (default OFF) so the key is simply ABSENT until
+        # the FE ships it. L1-safe (a verbatim prefix of the served text).
+        _key_points = None
+        try:
+            if _key_points_enabled():
+                from services.key_points import build_key_points
+                _key_points = build_key_points(_pieces, served_text)
+        except Exception as _kpe:
+            logger.warning("key_points failed arc=%s: %s", arc_id, _kpe)
+            _key_points = None
         _sugs = db.get_moment_suggestions_by_arc(arc_id) or {}
         _applied = []
         try:
@@ -13342,11 +13447,12 @@ def _tracked_changes_block(arc_id, served_text) -> dict:
         # cross-take offer on the same words would render as overlapping
         # strikes (review finding). Earliest-then-narrowest wins.
         changes = drop_overlaps(changes)
+        _kp = {"key_points": _key_points} if _key_points is not None else {}
         if not verify_changes(served_text, changes):
             logger.warning("tracked changes: span check failed arc=%s "
                            "(serving none)", arc_id)
-            return {"changes": []}
-        return {"changes": changes}
+            return {"changes": [], **_kp}
+        return {"changes": changes, **_kp}
     except Exception as e:
         logger.warning("tracked changes failed arc=%s: %s", arc_id, e)
         return {}
@@ -13864,6 +13970,10 @@ def v2_lab_create_recording():
       audio_file            (required) the recording
       topic                 (required) session_context topic
       audience              (optional)
+      strategic_context     (optional) short free-text note on the stakes /
+                            setting / what the speaker wants to nail (④ step
+                            5) — BACKGROUND for the qualitative feedback, never
+                            the verbatim ideal text
       target_length_seconds (optional, int)
       domain_vocabulary     (optional, JSON array or comma-separated)
       feeling               (optional) pre-take felt state (U10)
@@ -14012,6 +14122,10 @@ def v2_lab_create_recording():
             session_context = validate_intake_context_body({
                 "topic": form.get("topic"),
                 "audience": form.get("audience"),
+                # ④ step 5 (2026-07-24): a short free-text note on the stakes /
+                # setting / what the speaker wants to nail. BACKGROUND context
+                # for the qualitative feedback — never the verbatim ideal text.
+                "strategic_context": form.get("strategic_context"),
                 "target_length_seconds": target_len,
                 "domain_vocabulary": _parse_lab_vocabulary(
                     form.get("domain_vocabulary"),

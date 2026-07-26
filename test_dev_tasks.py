@@ -162,20 +162,77 @@ class TransformTests(unittest.TestCase):
         client.table.return_value.insert.return_value.execute.return_value = MagicMock(data=[inserted])
         with patch.object(svc, "classify_bug", return_value=cls), \
              patch.object(svc.db, "client", client):
-            out = svc.generate_task_for_bug({"id": 99, "text": "make versioning show history"})
+            out = svc.generate_task_for_bug(
+                {"id": 99, "text": "make versioning show history", "images": ["data:img1", "data:img2"]})
         self.assertEqual(out, inserted)
-        # the row we tried to insert carried a computed order_key + frozen ranks
+        # the row we tried to insert carried a computed order_key + frozen ranks + the bug's images
         insert_arg = client.table.return_value.insert.call_args.args[0]
         self.assertEqual(insert_arg["bug_id"], 99)
         self.assertEqual(insert_arg["theme"], "T1")
         self.assertEqual(insert_arg["priority"], 1)
         self.assertIn("order_key", insert_arg)
         self.assertGreater(insert_arg["order_key"], 0)
+        self.assertEqual(insert_arg["images"], ["data:img1", "data:img2"])
 
     def test_generate_task_noop_on_empty_or_no_openai(self):
         with patch.object(svc, "classify_bug", return_value=None):
             self.assertIsNone(svc.generate_task_for_bug({"id": 1, "text": "x"}))
         self.assertIsNone(svc.generate_task_for_bug({"id": 1, "text": "  "}))
+
+
+@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
+class ReevalTests(unittest.TestCase):
+
+    def test_flag_off_is_noop(self):
+        with patch.object(svc.config, "DEV_TASKS_REEVAL_ENABLED", False):
+            self.assertEqual(svc.reevaluate({"id": 1, "priority": 1}), [])
+
+    def test_low_priority_new_task_skips_llm(self):
+        with patch.object(svc.config, "DEV_TASKS_REEVAL_ENABLED", True), \
+             patch.object(svc, "_reeval_llm") as m:
+            self.assertEqual(svc.reevaluate({"id": 1, "priority": 3}), [])
+            m.assert_not_called()
+
+    def test_plan_bump_lands_in_new_priority_bucket(self):
+        base = 1e12 + 1e9 + 1e6 + 1 * svc._BUCKET  # T1 / epic1 / story1 / P1
+        existing = [{"id": 9, "theme": "T1", "epic_rank": 1, "story_rank": 1, "priority": 1, "order_key": base}]
+        self.assertEqual(svc.plan_bump(existing, {"id": 2, "theme": "T1", "epic_rank": 1, "story_rank": 1}, 1), base + 1)
+
+    def test_bumps_only_unpinned_upward_and_stamps_reason(self):
+        existing = [
+            {"id": 2, "priority": 3, "pinned": False, "theme": "T1", "epic": "1.1", "epic_rank": 1, "story_rank": 1, "order_key": 5.0},
+            {"id": 3, "priority": 2, "pinned": True,  "theme": "T1", "epic": "1.1", "epic_rank": 1, "story_rank": 1, "order_key": 6.0},
+            {"id": 4, "priority": 1, "pinned": False, "theme": "T1", "epic": "1.1", "epic_rank": 1, "story_rank": 1, "order_key": 7.0},
+        ]
+        deltas = [
+            {"id": 2, "new_priority": 1, "reason": "blocks the new task"},  # apply P3->P1
+            {"id": 3, "new_priority": 1, "reason": "x"},                    # pinned -> skip
+            {"id": 4, "new_priority": 3, "reason": "x"},                    # demotion -> skip
+        ]
+        client = MagicMock()
+        with patch.object(svc.config, "DEV_TASKS_REEVAL_ENABLED", True), \
+             patch.object(svc.config, "DEV_TASKS_REEVAL_MAX_CHANGES", 5), \
+             patch.object(svc, "_active_rows", return_value=existing), \
+             patch.object(svc, "_reeval_llm", return_value=deltas), \
+             patch.object(svc.db, "client", client):
+            applied = svc.reevaluate({"id": 1, "priority": 1})
+        self.assertEqual([a["id"] for a in applied], [2])
+        upd = client.table.return_value.update.call_args.args[0]
+        self.assertEqual(upd["priority"], 1)
+        self.assertEqual(upd["bump_reason"], "blocks the new task")
+        self.assertIn("order_key", upd)
+
+    def test_cap_limits_changes(self):
+        existing = [{"id": i, "priority": 3, "pinned": False, "theme": "T1", "epic": "1.1",
+                     "epic_rank": 1, "story_rank": 1, "order_key": float(i)} for i in range(2, 8)]
+        deltas = [{"id": i, "new_priority": 1, "reason": "r"} for i in range(2, 8)]
+        with patch.object(svc.config, "DEV_TASKS_REEVAL_ENABLED", True), \
+             patch.object(svc.config, "DEV_TASKS_REEVAL_MAX_CHANGES", 2), \
+             patch.object(svc, "_active_rows", return_value=existing), \
+             patch.object(svc, "_reeval_llm", return_value=deltas), \
+             patch.object(svc.db, "client", MagicMock()):
+            applied = svc.reevaluate({"id": 1, "priority": 1})
+        self.assertEqual(len(applied), 2)   # capped
 
 
 @unittest.skipIf(_ROUTE_IMPORT_ERROR is not None, f"needs flask: {_ROUTE_IMPORT_ERROR}")

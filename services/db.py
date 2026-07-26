@@ -8611,6 +8611,326 @@ class DatabaseService:
             logger.error(f"update_snippet_metrics failed: {e}")
             return None
 
+    def set_snippet_arousal(self, snippet_id: str, arousal_z: float) -> bool:
+        """Capture the baseline-relative AROUSAL read on a snippet (founder
+        2026-07-24, capture-first). A learning-loop signal only — it is never
+        surfaced to a user and never fed into ranking. Best-effort: a missing
+        ``arousal_z`` column (migration pending) or any other error just
+        returns False and never raises into the analysis path."""
+        try:
+            result = (
+                self.client.table("charisma_snippets")
+                .update({"arousal_z": arousal_z})
+                .eq("id", snippet_id)
+                .execute()
+            )
+            return bool(getattr(result, "data", None))
+        except Exception as e:
+            logger.warning("set_snippet_arousal failed sid=%s: %s",
+                           snippet_id, e)
+            return False
+
+    def upsert_arc_context_document(self, arc_id, text, pages, chars, *,
+                                    filename=None, truncated=False) -> bool:
+        """Store the extracted context document for an arc (X-1, founder
+        2026-07-24; one row per arc). Best-effort — a missing table (migration
+        pending) or any error returns False, never raises into the upload."""
+        try:
+            self.client.table("arc_context_documents").upsert({
+                "arc_id": str(arc_id),
+                "text": text or "",
+                "pages": int(pages or 0),
+                "chars": int(chars or 0),
+                "filename": filename,
+                "truncated": bool(truncated),
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }, on_conflict="arc_id").execute()
+            return True
+        except Exception as e:
+            logger.error("upsert_arc_context_document failed arc=%s: %s",
+                         arc_id, e)
+            return False
+
+    def get_arc_context_document(self, arc_id) -> Optional[dict]:
+        """The stored context document for an arc — {text, pages, chars,
+        filename, truncated} or None. Best-effort (missing table → None)."""
+        try:
+            res = (
+                self.client.table("arc_context_documents")
+                .select("text, pages, chars, filename, truncated")
+                .eq("arc_id", str(arc_id))
+                .limit(1)
+                .execute()
+            )
+            rows = getattr(res, "data", None) or []
+            return rows[0] if rows else None
+        except Exception as e:
+            logger.warning("get_arc_context_document failed arc=%s: %s",
+                           arc_id, e)
+            return None
+
+    # ── Journal (blog) content + CMS (founder 2026-07-25) ─────────────────
+    # A self-contained marketing surface: nothing in the record → transcribe
+    # → coach → read loop reads or writes journal_post. Every helper is
+    # best-effort so a missing table (migration pending) degrades to "no
+    # posts" instead of 500ing a public page.
+    #
+    # UNIQUE-slug note: the table has a UNIQUE constraint on `slug`, so the
+    # create/update helpers surface a collision as the sentinel string
+    # "DUPLICATE_SLUG" and the route maps it to 409 (never a 500).
+
+    _JOURNAL_COLUMNS = (
+        "id, slug, title, excerpt, category, read_time_min, cover_kind, "
+        "cover_image_url, cover_alt, media_url, media_duration_sec, body, "
+        "author_name, author_avatar_url, status, published_at, sort_order, "
+        "meta_title, meta_description, og_image_url, created_at, updated_at"
+    )
+
+    @staticmethod
+    def journal_search_filter(search: Optional[str]) -> Optional[str]:
+        """The PostgREST `or=(...)` filter for a title/excerpt search, or None.
+
+        SINGLE source of truth for the needle sanitization (used by both the
+        list and the count query, which must agree or paging goes wrong).
+
+        `,` `(` `)` are the condition/group separators in PostgREST's filter
+        grammar, so they are stripped — without them an injected value stays
+        inside the single ilike pattern and cannot add a condition. Note the
+        real guarantee against draft exposure is structural, not this: the
+        public queries also apply `status=eq.published` as a SEPARATE filter,
+        and PostgREST ANDs separate params, so no or-injection can widen the
+        result set past published rows.
+        """
+        if not search:
+            return None
+        safe = str(search)
+        for ch in (",", "(", ")"):
+            safe = safe.replace(ch, " ")
+        safe = safe.strip()
+        if not safe:
+            return None
+        return f"title.ilike.%{safe}%,excerpt.ilike.%{safe}%"
+
+    @staticmethod
+    def _is_duplicate_slug(err: Exception) -> bool:
+        """True when the error is the UNIQUE(slug) violation (Postgres 23505
+        / PostgREST duplicate-key text), so the route can answer 409."""
+        msg = str(err).lower()
+        return (
+            "23505" in msg
+            or "duplicate key" in msg
+            or ("unique" in msg and "slug" in msg)
+        )
+
+    def list_journal_posts(self, *, published_only: bool = True,
+                           category: Optional[str] = None,
+                           search: Optional[str] = None,
+                           order_column: str = "published_at",
+                           descending: bool = True,
+                           limit: int = 50,
+                           offset: int = 0) -> list:
+        """Journal posts for the public index (published_only) or the CMS
+        list (published_only=False). Best-effort → [] on any failure.
+
+        `search` is a case-insensitive substring over title OR excerpt.
+        The `curated` ordering passes order_column='sort_order'; the
+        published_at tiebreak is applied as a secondary order.
+        """
+        try:
+            q = self.client.table("journal_post").select(self._JOURNAL_COLUMNS)
+            if published_only:
+                q = q.eq("status", "published")
+            if category:
+                q = q.eq("category", str(category))
+            or_filter = self.journal_search_filter(search)
+            if or_filter:
+                q = q.or_(or_filter)
+            # NOTE on NULL display dates: Postgres orders DESC as NULLS FIRST,
+            # and this client cannot emit `nullslast` (order(nullsfirst=False)
+            # emits no modifier at all, so the Postgres default stands). A
+            # published row with published_at = NULL would therefore pin itself
+            # to the top of the public index. That is prevented at the two
+            # points where it can be enforced instead: validate_post_body
+            # stamps a date whenever status becomes published, and the
+            # migration backfills any row written directly via SQL.
+            q = q.order(order_column, desc=bool(descending))
+            if order_column != "published_at":
+                q = q.order("published_at", desc=True)
+            res = q.range(int(offset), int(offset) + int(limit) - 1).execute()
+            return getattr(res, "data", None) or []
+        except Exception as e:
+            logger.warning("list_journal_posts failed: %s", e)
+            return []
+
+    def count_journal_posts(self, *, published_only: bool = True,
+                            category: Optional[str] = None,
+                            search: Optional[str] = None) -> int:
+        """Total matching posts, for the index's `total`. Best-effort → 0."""
+        try:
+            q = self.client.table("journal_post").select(
+                "id", count="exact")
+            if published_only:
+                q = q.eq("status", "published")
+            if category:
+                q = q.eq("category", str(category))
+            or_filter = self.journal_search_filter(search)
+            if or_filter:
+                q = q.or_(or_filter)
+            res = q.execute()
+            cnt = getattr(res, "count", None)
+            if cnt is not None:
+                return int(cnt)
+            return len(getattr(res, "data", None) or [])
+        except Exception as e:
+            logger.warning("count_journal_posts failed: %s", e)
+            return 0
+
+    def get_journal_post_by_slug(self, slug: str, *,
+                                 published_only: bool = True,
+                                 strict: bool = False) -> Optional[dict]:
+        """One post by slug, or None. `published_only` keeps a draft
+        invisible on the public route (404, no existence leak).
+
+        `strict=True` RE-RAISES an infrastructure error instead of returning
+        None. The public by-slug route uses it: swallowing a Supabase blip
+        into a None would render a live post as 404 "post not found", and the
+        FE's ISR would then cache that 404 — a transient DB hiccup would take
+        a real post off the site until the window expired. Missing row → None
+        either way; only the error path differs.
+        """
+        if not slug:
+            return None
+        try:
+            q = (
+                self.client.table("journal_post")
+                .select(self._JOURNAL_COLUMNS)
+                .eq("slug", str(slug))
+            )
+            if published_only:
+                q = q.eq("status", "published")
+            res = q.limit(1).execute()
+            rows = getattr(res, "data", None) or []
+            return rows[0] if rows else None
+        except Exception as e:
+            logger.warning("get_journal_post_by_slug failed slug=%s: %s",
+                           slug, e)
+            if strict:
+                raise
+            return None
+
+    def get_journal_post_by_id(self, post_id: str) -> Optional[dict]:
+        """One post by id for the CMS editor (any status), or None."""
+        if not post_id:
+            return None
+        try:
+            res = (
+                self.client.table("journal_post")
+                .select(self._JOURNAL_COLUMNS)
+                .eq("id", str(post_id))
+                .limit(1)
+                .execute()
+            )
+            rows = getattr(res, "data", None) or []
+            return rows[0] if rows else None
+        except Exception as e:
+            logger.warning("get_journal_post_by_id failed id=%s: %s",
+                           post_id, e)
+            return None
+
+    def create_journal_post(self, fields: dict):
+        """Insert a post. Returns the created row, "DUPLICATE_SLUG" on a slug
+        collision, or None on any other failure."""
+        try:
+            res = (
+                self.client.table("journal_post")
+                .insert(dict(fields or {}))
+                .execute()
+            )
+            rows = getattr(res, "data", None) or []
+            return rows[0] if rows else None
+        except Exception as e:
+            if self._is_duplicate_slug(e):
+                return "DUPLICATE_SLUG"
+            logger.error("create_journal_post failed: %s", e)
+            return None
+
+    def update_journal_post(self, post_id: str, fields: dict):
+        """Patch a post. Returns the updated row, "DUPLICATE_SLUG" on a slug
+        collision, or None when the row is missing / on any other failure."""
+        if not post_id:
+            return None
+        payload = dict(fields or {})
+        payload["updated_at"] = datetime.now(timezone.utc).isoformat()
+        try:
+            res = (
+                self.client.table("journal_post")
+                .update(payload)
+                .eq("id", str(post_id))
+                .execute()
+            )
+            rows = getattr(res, "data", None) or []
+            return rows[0] if rows else None
+        except Exception as e:
+            if self._is_duplicate_slug(e):
+                return "DUPLICATE_SLUG"
+            logger.error("update_journal_post failed id=%s: %s", post_id, e)
+            return None
+
+    def delete_journal_post(self, post_id: str) -> bool:
+        """Delete a post. True on success. Best-effort."""
+        if not post_id:
+            return False
+        try:
+            self.client.table("journal_post").delete() \
+                .eq("id", str(post_id)).execute()
+            return True
+        except Exception as e:
+            logger.error("delete_journal_post failed id=%s: %s", post_id, e)
+            return False
+
+    def reorder_journal_posts(self, ids: list) -> int:
+        """Assign sort_order by position in `ids` (the CMS's manual order).
+
+        Returns how many updates were ACCEPTED without error — not how many
+        rows matched, since PostgREST does not error on an update that hits
+        zero rows. Best-effort per row, so one bad id cannot abort the rest.
+        """
+        written = 0
+        for index, post_id in enumerate(ids or []):
+            if not post_id:
+                continue
+            try:
+                self.client.table("journal_post").update({
+                    "sort_order": index,
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                }).eq("id", str(post_id)).execute()
+                written += 1
+            except Exception as e:
+                logger.warning("reorder_journal_posts failed id=%s: %s",
+                               post_id, e)
+        return written
+
+    def journal_category_counts(self) -> dict:
+        """{category: published_count} for the optional categories endpoint.
+        Counted in Python over the published slugs — the table is small and
+        this avoids depending on a PostgREST group-by. Best-effort → {}."""
+        try:
+            res = (
+                self.client.table("journal_post")
+                .select("category")
+                .eq("status", "published")
+                .execute()
+            )
+            out: dict = {}
+            for row in (getattr(res, "data", None) or []):
+                key = (row or {}).get("category")
+                if key:
+                    out[key] = out.get(key, 0) + 1
+            return out
+        except Exception as e:
+            logger.warning("journal_category_counts failed: %s", e)
+            return {}
+
     def skip_snippet(self, snippet_id: str, is_skipped: bool = True) -> Optional[dict]:
         """Mark a snippet as skipped (hidden from user results)."""
         try:

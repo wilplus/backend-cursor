@@ -326,6 +326,22 @@ class Config:
     # header — the browser page sends it). Blank ⇒ the endpoints 503 (disabled).
     CREDIT_ADMIN_PASSWORD = (os.getenv("CREDIT_ADMIN_PASSWORD") or "").strip()
 
+    # Journal CMS (founder 2026-07-25) — same body-password pattern as the
+    # credits admin above, so the /admin/journal browser page can send it from
+    # a form field. Blank ⇒ every /v2/internal/journal/* endpoint 503s
+    # (disabled); the PUBLIC /v2/journal/* read endpoints are unaffected.
+    JOURNAL_ADMIN_PASSWORD = (os.getenv("JOURNAL_ADMIN_PASSWORD") or "").strip()
+
+    # Journal cover media in R2 (presigned direct-to-storage upload). Reuses
+    # the shared R2_ACCOUNT_ID / R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY above.
+    # Both unset ⇒ services.journal_media falls back to the user-media bucket
+    # so dev environments work; presign refuses when no public base URL
+    # resolves, rather than stranding an unreferenceable upload.
+    R2_JOURNAL_BUCKET = (os.getenv("R2_JOURNAL_BUCKET") or "").strip()
+    R2_JOURNAL_PUBLIC_BASE_URL = (
+        os.getenv("R2_JOURNAL_PUBLIC_BASE_URL") or ""
+    ).strip()
+
     # Stripe Checkout → credits (POST /v2/internal/stripe/webhook). Webhook signing secret from Stripe Dashboard.
     STRIPE_WEBHOOK_SECRET = (os.getenv("STRIPE_WEBHOOK_SECRET") or "").strip()
     # Secret key used to expand/verify Checkout Session line items in the webhook handler.
@@ -373,6 +389,13 @@ class Config:
     # services/dev_tasks.py). Default OFF — flip on once the tasks UI ships. It is
     # best-effort and threaded, so it never blocks or breaks the bug save.
     DEV_TASKS_ENABLED = (os.getenv("DEV_TASKS_ENABLED") or "false").strip().lower() in ("1", "true", "yes", "on")
+    # Level-1 re-evaluation: when a NEW P1/P2 task is generated, bump UP a few
+    # RELATED existing tasks (the new one makes them more urgent). Pins are never
+    # touched, bumps only (never demotes), capped, and each is stamped with a
+    # reason. Default OFF — flip on once you trust the auto-generation. See
+    # services/dev_tasks.reevaluate.
+    DEV_TASKS_REEVAL_ENABLED = (os.getenv("DEV_TASKS_REEVAL_ENABLED") or "false").strip().lower() in ("1", "true", "yes", "on")
+    DEV_TASKS_REEVAL_MAX_CHANGES = _env_int("DEV_TASKS_REEVAL_MAX_CHANGES", 3)
 
     # Optional: annotation event export (cron / internal). See POST /v2/internal/annotation-export
     ANNOTATION_EXPORT_CRON_SECRET = (os.getenv("ANNOTATION_EXPORT_CRON_SECRET") or "").strip()

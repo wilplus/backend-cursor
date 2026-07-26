@@ -40,12 +40,25 @@ _SYSTEM = (
     "register (plain words they would actually say; never add facts or "
     "claims they didn't make). `why` = one sentence on why the swap helps. "
     "If the moment contains profanity, the replacement must be clean.\n"
+    "- When a `speaker_intent` note is given (the stakes/setting the speaker "
+    "most wants to land), let it steer tone and emphasis — never quote it "
+    "back or add facts from it.\n"
+    "- When `project_background` is given (an excerpt of a document the "
+    "speaker attached about this talk), use it ONLY to get their terminology "
+    "and subject matter right. Never introduce a fact, number, name or claim "
+    "from it that the speaker did not say in the moment itself.\n"
 )
+
+# Cap on the context-document excerpt per prompt. The stored text can reach
+# 40k chars and this rides every snippet's call, so the excerpt is bounded.
+_MAX_DOC_EXCERPT = 1200
 
 
 def generate_moment_suggestion(
     kind: str, transcript: str, *,
     audience: Optional[str] = None,
+    strategic_context: Optional[str] = None,
+    context_document: Optional[str] = None,
     trigger: Optional[str] = None,
     user_id: Optional[str] = None,
 ) -> Optional[dict]:
@@ -65,6 +78,17 @@ def generate_moment_suggestion(
             "audience": (audience or "a general professional audience"),
             "reason_flag": trigger or "",
         }
+        # ④ step 5 (2026-07-24): the speaker's own setup note, as background
+        # only. Omitted when blank so the model isn't handed an empty field.
+        if isinstance(strategic_context, str) and strategic_context.strip():
+            payload["speaker_intent"] = strategic_context.strip()[:600]
+        # X-1 v2 (2026-07-25): an excerpt of the project's context document.
+        # Hard-capped: this rides EVERY snippet's prompt, and the stored text
+        # can run to 40k chars, so an uncapped paste would multiply token cost
+        # by the snippet count.
+        if isinstance(context_document, str) and context_document.strip():
+            payload["project_background"] = \
+                context_document.strip()[:_MAX_DOC_EXCERPT]
         result = chat_complete(
             spec=SPEC_MOMENT_SUGGESTION,
             system=_SYSTEM,
@@ -280,6 +304,24 @@ def generate_for_session(session_id: str, arc_id: Optional[str], *,
         ctx = session.get("intake_context") \
             if isinstance(session.get("intake_context"), dict) else {}
         audience = (ctx or {}).get("audience") or None
+        strategic_context = (ctx or {}).get("strategic_context") or None
+
+        # X-1 v2 (2026-07-25): the context DOCUMENT the user attached to this
+        # project (a brief / case metrics / Q&A). Arc-scoped, fetched once per
+        # take and passed to each snippet's generation exactly like `audience`.
+        # BACKGROUND only — it informs the qualitative suggestion so a
+        # replacement phrase can use the project's real terminology instead of
+        # inventing one. It never becomes the verbatim ideal text (L1), and the
+        # excerpt is hard-capped because this rides every snippet's prompt.
+        context_document = None
+        if arc_id:
+            try:
+                _doc = database.get_arc_context_document(arc_id) or {}
+                context_document = (_doc.get("text") or "").strip() or None
+            except Exception as _doc_err:
+                logger.warning(
+                    "moment_suggestions: context doc read failed arc=%s: %s",
+                    arc_id, _doc_err)
 
         # Decision ledger (founder 2026-07-20): phrases the student already
         # decided on (approved → baked / dismissed → remembered) never
@@ -360,7 +402,9 @@ def generate_for_session(session_id: str, arc_id: Optional[str], *,
                            else "stickiness" if kind == "replace"
                            else "charisma")
                 gen = generate_moment_suggestion(
-                    kind, transcript, audience=audience, trigger=trigger,
+                    kind, transcript, audience=audience,
+                    strategic_context=strategic_context,
+                    context_document=context_document, trigger=trigger,
                     user_id=session.get("user_id"))
                 if not gen:
                     continue
@@ -379,13 +423,31 @@ def generate_for_session(session_id: str, arc_id: Optional[str], *,
         # first, else within-take means at >= 6 pieces (decision BE-1a(b)),
         # else silent. No LLM. Only no-acoustic-star snippets.
         from services.delivery_stars import (
-            emphasis_z, resolve_delivery_baseline,
+            arousal_z, emphasis_z, resolve_delivery_baseline,
         )
         _baseline = resolve_delivery_baseline(
             session.get("user_id"),
             [s.get("features") or {}
              for s in (readout.get("snippets") or [])],
             database=database)
+
+        # ── Arousal capture (founder 2026-07-24, capture-first / surface-
+        # later): a baseline-relative ACTIVATION read per snippet, stored for
+        # the coach-labeled learning loop to weight later. NEVER surfaced to a
+        # user and NEVER fed into ranking (activation is not quality). Reads
+        # the arousal axis only (calm↔activated), never a discrete emotion.
+        # Best-effort per snippet — a pending migration or any error is
+        # swallowed and never disturbs the suggestion path.
+        if _baseline:
+            for _snip in (readout.get("snippets") or []):
+                try:
+                    _sid = str(_snip.get("id") or "")
+                    _av = arousal_z(_snip.get("features") or {}, _baseline)
+                    if _sid and _av is not None:
+                        database.set_snippet_arousal(_sid, _av)
+                except Exception:
+                    continue
+
         _delivery_starred = set(_generate_delivery(
             database, arc_id,
             [(sid, feats) for (sid, _t, feats) in _unstarred],
