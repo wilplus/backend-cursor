@@ -1,0 +1,33 @@
+-- F1 — word→slide boundary measurement per take (2026-07-26).
+--
+-- Whisper word times are measured from the AUDIO; slide tap times from the
+-- phone's UI. The recorder warm-up makes those two clocks drift, so the first
+-- words after a tap can be bucketed to the PREVIOUS slide. Pause-snap
+-- (SLIDE_PAUSE_SNAP_ENABLED, live in prod) compensates by moving each boundary
+-- into the nearest real speech pause — but nothing ever measured what it does.
+--
+-- This column stores that measurement per take:
+--   { words_total, slides_total, boundaries_total,
+--     words_at_risk, risk_ms,            -- EXPOSURE: words near a boundary
+--     words_reassigned,                  -- IMPACT: words that changed slide
+--     boundaries_moved, boundaries_unmoved,
+--     shift_ms_max, shift_ms_median,
+--     snap_enabled, window_ms, min_gap_ms }
+--
+-- Deliberately NOT an accuracy rate: nothing in the transcript, the acoustics
+-- or the deck records which slide was ACTUALLY on screen when a word was
+-- spoken, so there is no ground truth to score against. Coach transcript
+-- corrections are the one real label source and are the follow-up.
+--
+-- INTERNAL / coach-side only (AC-9) — never surfaced to a user.
+--
+-- Idempotent + degrades gracefully: the column is nullable and the write is
+-- best-effort (services/db.set_session_boundary_metrics swallows a missing
+-- column), so shipping the code before running this is safe.
+--
+-- No RLS statement here: v2_sessions already has row level security enabled
+-- (the 2026-07-25 sweep, docs/RLS-AUDIT.md). Adding a column does not change
+-- that. A migration that CREATES a table must enable RLS itself.
+
+ALTER TABLE v2_sessions
+    ADD COLUMN IF NOT EXISTS boundary_metrics jsonb;

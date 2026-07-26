@@ -902,6 +902,24 @@ def process_lab_recording(
             )
             if any((t.get("transcript") or "").strip() for t in _slide_tx):
                 db.set_session_slide_transcripts(session_id, _slide_tx)
+            # F1 (2026-07-26): measure the word→slide boundary on this take.
+            # Pause-snap has been live for a while and nothing ever recorded
+            # what it does. EXPOSURE + IMPACT only — there is no ground truth
+            # here, so this is deliberately not an accuracy rate (see the
+            # module docstring). Internal/coach-side, never user-facing (AC-9).
+            # Best-effort: a measurement must never break a recording.
+            try:
+                from services.slide_boundary_metrics import boundary_metrics
+                _bm = boundary_metrics(
+                    words_all,
+                    (session_context or {}).get("slide_advances"),
+                    _slides_for_tx,
+                )
+                if _bm:
+                    db.set_session_boundary_metrics(session_id, _bm)
+            except Exception as _bm_err:
+                logger.warning(
+                    "boundary metrics failed sid=%s: %s", session_id, _bm_err)
         elif not _slides_for_tx and (words_all or segments):
             # DECKLESS (the deck guard matters: a DECK session whose Whisper
             # fell back to segments-only must NOT land here, or the whole talk
