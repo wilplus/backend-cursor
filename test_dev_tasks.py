@@ -127,6 +127,18 @@ class PlanningTests(unittest.TestCase):
         k2 = next(svc.sort_key(r)[0] for r in rows if r["id"] == 2)
         self.assertTrue(k1 < k < k2)
 
+    def test_markdown_export_embeds_images(self):
+        rows = [{"id": 1, "theme": "T1", "epic": "1.1", "user_story": "s", "priority": 1,
+                 "order_key": 1.0, "body": "fix it", "images": ["data:image/png;base64,AAA", "data:image/png;base64,BBB"]}]
+        md = svc.to_markdown(rows)
+        self.assertIn("![screenshot 1](data:image/png;base64,AAA)", md)
+        self.assertIn("![screenshot 2](data:image/png;base64,BBB)", md)
+
+    def test_markdown_export_no_images_key_is_fine(self):
+        rows = [{"id": 1, "theme": "T1", "epic": "1.1", "user_story": "s", "priority": 1,
+                 "order_key": 1.0, "body": "fix it"}]
+        self.assertNotIn("![screenshot", svc.to_markdown(rows))
+
     def test_markdown_export_in_order(self):
         rows = _simulate([_cls("T2", "2.1", "s", body="second"),
                           _cls("T1", "1.1", "s", body="first")])
