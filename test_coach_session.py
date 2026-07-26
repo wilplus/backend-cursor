@@ -140,6 +140,25 @@ class CoachSessionReadTests(unittest.TestCase):
         for k in ("direction_label", "note", "tag", "surfaced"):
             self.assertIn(k, s["coach_state"])
 
+    def test_moments_ordered_by_significance(self):
+        # Founder 2026-07-24 (T1 · 1.2): the panel returns the take's moments
+        # most-significant-first. Here the LATER moment is the atypical key one
+        # (outside_normal_range) and the earlier one is flat — so significance
+        # ordering must flip them (chronological would keep flat first) and
+        # re-index 0..n-1 in the new order.
+        lab.build_readout_from_session = lambda sid, **kw: {"snippets": [
+            {"id": "flat", "index": 0, "transcript": "t", "audio_ref": "p/f.wav",
+             "start_offset_ms": 0, "duration_ms": 3000,
+             "acoustic_read": {"potentiometer": 0.05, "outside_normal_range": False}},
+            {"id": "key", "index": 1, "transcript": "t", "audio_ref": "p/k.wav",
+             "start_offset_ms": 9000, "duration_ms": 3000,
+             "acoustic_read": {"potentiometer": -0.9, "outside_normal_range": True}},
+        ]}
+        status, data = self._get()
+        self.assertEqual(status, 200)
+        self.assertEqual([s["id"] for s in data["snippets"]], ["key", "flat"])
+        self.assertEqual([s["index"] for s in data["snippets"]], [0, 1])
+
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
 class PseudonymTests(unittest.TestCase):

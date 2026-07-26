@@ -448,11 +448,35 @@ def generate_for_session(session_id: str, arc_id: Optional[str], *,
                 except Exception:
                     continue
 
-        _delivery_starred = set(_generate_delivery(
+        # ── Congruence delivery star, BEFORE the deterministic ones (founder
+        # 2026-07-24 sign-off): the content-aware member of the delivery family
+        # — upbeat words over a flat/low-arousal delivery (arousal_z low + a
+        # positive-content model gate). Runs first so it claims its moment
+        # (one-star-per-piece) rather than being masked by a plain `emphasis`.
+        # Flag-gated; surfaces only {kind:'delivery', device:'congruence'}
+        # (AC-9); best-effort — never disturbs the rest of the path.
+        _congruence_starred: set = set()
+        try:
+            from services.delivery_alignment import (
+                delivery_alignment_enabled, generate_congruence_stars,
+            )
+            if delivery_alignment_enabled():
+                _congruence_starred = set(generate_congruence_stars(
+                    database, arc_id, _unstarred, _baseline,
+                    user_id=session.get("user_id")))
+                stored += len(_congruence_starred)
+        except Exception as _cong_err:
+            logger.warning("moment_suggestion: congruence failed sid=%s: %s",
+                           session_id, _cong_err)
+
+        _deliv = set(_generate_delivery(
             database, arc_id,
-            [(sid, feats) for (sid, _t, feats) in _unstarred],
+            [(sid, feats) for (sid, _t, feats) in _unstarred
+             if sid not in _congruence_starred],
             _baseline))
-        stored += len(_delivery_starred)
+        stored += len(_deliv)
+        # congruence IS a delivery star → fold it in so structural skips it too.
+        _delivery_starred = _congruence_starred | _deliv
 
         # ── Structural stars, THIRD (flag-gated; verbatim-quote pinned).
         # Structural INTENSITY (founder #5): scan the flattest-delivered

@@ -546,6 +546,13 @@ def process_lab_recording(
                 "(non-fatal)", session_id, _tw_err,
             )
 
+        # NOTE: the delivery–content "congruence" signal is NOT computed here.
+        # It is a delivery STAR generated in services.moment_suggestions
+        # (arousal_z low + a positive-content gate) and surfaced on the SD
+        # ideal-text key_moments — see services.delivery_alignment. The earlier
+        # per-piece readout note (metrics["delivery_alignment_note"]) was
+        # retired in favour of that star so it inherits the re-record mic.
+
         # Capture corpus semantics: offered = every piece, notable = budget set.
         candidates = prelim
         notable = [prelim[i] for i in sorted(_llm_budget_idx)]

@@ -440,6 +440,48 @@ class CrucialBubbleFieldTests(unittest.TestCase):
         ])
         self.assertEqual(body["take_count"], 3)   # the 3 spoken, not the read
 
+    def test_can_record_take_decoupled_from_reread(self):
+        # Founder 2026-07-24 (T1 · 1.2): "record another take" must be
+        # available the instant a recording completes — NOT gated on the
+        # re-read practice loop. can_record_take is true whenever the
+        # project has a spoken take, INDEPENDENT of reread_done /
+        # reread_processing (the 2026-07-22 loading gate is kept, but only
+        # for the re-read affordance).
+        _ctx = {"read_target": "ideal_text", "ideal_version": 3}
+
+        # a project with a spoken take but no re-read yet (the re-read-mic
+        # state) → the next take is still offered immediately.
+        body, _ = self._get(_row(version=3), [self._spoken("t1", 1)])
+        self.assertTrue(body["can_record_take"])
+        self.assertFalse(body["reread_done"])
+        self.assertFalse(body["reread_processing"])
+
+        # the re-read is STILL transcribing (the loading state) — the next
+        # take is offered anyway, i.e. it never waits on the loading gate,
+        # and the gate itself is unchanged.
+        body, _ = self._get(_row(version=3), [
+            self._spoken("t1", 1),
+            self._read("r1", "t1", _ctx, analysis_state="processing")])
+        self.assertTrue(body["can_record_take"])
+        self.assertTrue(body["reread_processing"])   # gate untouched
+
+        # a finished re-read (the next-take-btn state) → still true.
+        body, _ = self._get(_row(version=3), [
+            self._spoken("t1", 1),
+            self._read("r1", "t1", _ctx, analysis_state="ready")])
+        self.assertTrue(body["can_record_take"])
+        self.assertTrue(body["reread_done"])
+
+    def test_can_record_take_needs_a_spoken_take(self):
+        # No spoken take yet → nothing to continue (mirrors /setup's rule).
+        # A read never flips it — the guard is spoken-only.
+        body, _ = self._get(_row(), [])
+        self.assertFalse(body["can_record_take"])
+        body, _ = self._get(_row(version=3), [
+            self._read("r1", "t1", {"read_target": "ideal_text",
+                                    "ideal_version": 3})])
+        self.assertFalse(body["can_record_take"])
+
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
 class RecordingFlowTagTests(unittest.TestCase):

@@ -128,6 +128,19 @@ SPEC_SNIPPET_FOLLOWUP = LLMSpec(
 """One-shot follow-up question after a user labels a snippet (BE-0)."""
 
 
+SPEC_DELIVERY_ALIGNMENT = LLMSpec(
+    model=CHEAP_MODEL,
+    # A single classification — deterministic-leaning, no prose.
+    temperature=0.2,
+    # Just the tiny {"words_positive": bool} envelope.
+    max_tokens=20,
+    response_format={"type": "json_object"},
+)
+"""Congruence delivery star: judges 'are the words clearly positive?' over a
+flat/low-arousal moment (founder 2026-07-24 sign-off). Returns only
+{"words_positive": bool} — the star copy lives FE-side, keyed by device."""
+
+
 SPEC_EVAL_GRADER = LLMSpec(
     model=STRONG_MODEL,
     # Deterministic grading — we want repeatability between runs of
