@@ -300,9 +300,11 @@ class DevBugsPageTests(unittest.TestCase):
         for ref in re.findall(r'(?:href|src)="([^"]*dev-bugs/icons/[^"]+)"', self.page):
             self.assertTrue(ref.startswith("/dev-bugs/icons/"), ref)
 
-    def test_brand_row_shows_the_wordmark_and_dev_tag(self):
-        self.assertIn('src="/dev-bugs/icons/wordmark.png"', self.page)
-        self.assertRegex(self.page, r'<span class="tag">dev</span>')
+    def test_page_carries_no_logo(self):
+        """Icon-only by founder call: the brand row was removed from the page, so
+        nothing may render the mark inside the app itself."""
+        self.assertNotIn('class="brand"', self.page)
+        self.assertNotIn("wordmark.png", self.page)
 
 
 class DevBugsIconAssetTests(unittest.TestCase):
@@ -320,6 +322,8 @@ class DevBugsIconAssetTests(unittest.TestCase):
         "favicon-32.png": (32, 32),            # browser tab
         "favicon-180.png": (180, 180),         # hi-dpi tab / bookmark
     }
+    # every PNG the routes serve, so a stale file can't linger unnoticed
+    EXACT_SET = set(EXPECTED)
 
     @classmethod
     def setUpClass(cls):
@@ -341,12 +345,9 @@ class DevBugsIconAssetTests(unittest.TestCase):
             self.assertTrue(os.path.isfile(path), f"missing {name}")
             self.assertEqual(self._png_size(path), size, name)
 
-    def test_wordmark_is_transparent_rgba(self):
-        path = os.path.join(self.dir, "wordmark.png")
-        self.assertTrue(os.path.isfile(path))
-        with open(path, "rb") as fh:
-            colour_type = fh.read(26)[25]
-        self.assertEqual(colour_type, 6, "wordmark must be RGBA (transparent ground)")
+    def test_no_stale_icons_left_on_disk(self):
+        on_disk = {f for f in os.listdir(self.dir) if f.endswith(".png")}
+        self.assertEqual(on_disk, self.EXACT_SET)
 
     @unittest.skipIf(_IMPORT_ERROR is not None, "needs app deps")
     def test_route_allowlist_matches_the_files_on_disk(self):

@@ -40,14 +40,16 @@ mailer, the annotation-cron curl pattern. No new frameworks or providers.
 
 ## Home-screen icon
 
-Add-to-Home-Screen installs as **“Willab dev”**: the Willab wordmark (Pacifico,
-ink `#2d3748`, orange `#f97316` period — the same mark
-`services/assignment_email._logo_html` renders) plus a small orange **dev** pill,
-so it sits next to the real app icon without being mistaken for it. The page
-itself shows the same wordmark + `dev` tag in a brand row above the header.
+Add-to-Home-Screen installs as **“Willab dev”**: the Willab three-dot mark
+(small · large · small, black on white) plus a small **dev** label, so it sits
+next to the real app icon without being mistaken for it.
 
-Assets live in `static/dev_bugs_icons/` and are committed. Regenerate only when
-the mark changes:
+**Icon-only, by founder call (2026-07-26)** — the page itself carries no logo.
+`DevBugsPageTests.test_page_carries_no_logo` holds that line.
+
+Assets live in `static/dev_bugs_icons/` and are committed. The mark is drawn as
+vector circles (no webfont, no traced raster), so it stays crisp at every size.
+Regenerate only when the mark changes:
 
 ```bash
 node scripts/gen_dev_bugs_icons.mjs     # needs node + playwright (chromium)
@@ -58,8 +60,7 @@ node scripts/gen_dev_bugs_icons.mjs     # needs node + playwright (chromium)
 | `icon-180.png` | `apple-touch-icon` — iOS Add to Home Screen |
 | `icon-192.png`, `icon-512.png` | manifest / Android install |
 | `icon-maskable-512.png` | manifest `purpose=maskable` (Android safe zone) |
-| `favicon-32.png`, `favicon-180.png` | browser tab / bookmark (uses the `W.` reduction — the wordmark is illegible at 32 px) |
-| `wordmark.png` | the page's in-page brand row (transparent) |
+| `favicon-32.png`, `favicon-180.png` | browser tab / bookmark — bare mark, no `dev` label (it rasterizes to mush at 32 px; the tab title already reads `dev-bugs`) |
 
 iOS ignores `data:` URIs for `apple-touch-icon`, which is why these are real
 files behind a route rather than inlined in the page. If the icon doesn't change
