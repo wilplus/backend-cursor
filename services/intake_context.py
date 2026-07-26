@@ -74,9 +74,18 @@ _MAX_STRATEGIC_LEN = 2000
 
 # Canonical key order — every caller iterates this list when
 # building the response so the JSON shape stays stable.
+# slide_clock_offset_ms (F1, 2026-07-26): the FE-MEASURED delta between the UI
+# clock that timestamps slide taps and the first audio sample the recorder
+# produced. Subtracting it puts taps on the audio clock exactly, instead of
+# pause-snap guessing the same number from nearby silences. Bounds are generous
+# but catch a unit mix-up (seconds sent as milliseconds).
+_MAX_CLOCK_OFFSET_MS = 30000
+_MIN_CLOCK_OFFSET_MS = -5000
+
 _FIELDS = (
     "topic", "audience", "target_length_seconds", "domain_vocabulary",
     "slides", "presentation_ref", "slide_advances", "strategic_context",
+    "slide_clock_offset_ms",
 )
 
 
@@ -272,6 +281,28 @@ def _norm_strategic_context(value: Any) -> Optional[str]:
     return cleaned
 
 
+def _norm_clock_offset(value: Any) -> Optional[int]:
+    """Integer ms in [-5000, 30000], or None. Bool rejected (bool-is-int).
+
+    An OUT-OF-RANGE value is rejected loudly rather than clamped: a number that
+    far off is a bug in the sender (seconds-for-milliseconds is the classic),
+    and silently clamping it would bake a wrong timeline into the transcript
+    while looking like it worked.
+    """
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        raise IntakeContextError("slide_clock_offset_ms: must be an integer")
+    if not isinstance(value, int):
+        raise IntakeContextError("slide_clock_offset_ms: must be an integer")
+    if not (_MIN_CLOCK_OFFSET_MS <= value <= _MAX_CLOCK_OFFSET_MS):
+        raise IntakeContextError(
+            "slide_clock_offset_ms: must be between "
+            f"{_MIN_CLOCK_OFFSET_MS} and {_MAX_CLOCK_OFFSET_MS} ms"
+        )
+    return value
+
+
 def validate_intake_context_body(
     body: Any,
     *,
@@ -322,6 +353,9 @@ def validate_intake_context_body(
         "slide_advances": _norm_slide_advances(body.get("slide_advances")),
         "strategic_context": _norm_strategic_context(
             body.get("strategic_context"),
+        ),
+        "slide_clock_offset_ms": _norm_clock_offset(
+            body.get("slide_clock_offset_ms"),
         ),
     }
 

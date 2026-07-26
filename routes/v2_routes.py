@@ -14185,6 +14185,18 @@ def v2_lab_create_recording():
                 return json.loads(raw)
             except (ValueError, TypeError):
                 return None
+
+        def _form_int(name):
+            """Optional integer multipart field. Unparseable → None (absent),
+            so a malformed value degrades to today's behaviour rather than
+            422-ing a recording that is otherwise fine."""
+            raw = form.get(name)
+            if raw in (None, ""):
+                return None
+            try:
+                return int(float(raw))
+            except (TypeError, ValueError):
+                return None
         try:
             session_context = validate_intake_context_body({
                 "topic": form.get("topic"),
@@ -14202,6 +14214,11 @@ def v2_lab_create_recording():
                 "slides": _form_json("slides"),
                 "presentation_ref": form.get("presentation_ref") or None,
                 "slide_advances": _form_json("slide_advances"),
+                # F1 (2026-07-26): the FE-MEASURED offset between the UI clock
+                # that stamps slide taps and the recorder's first audio sample.
+                # Turns the two-clocks drift from a guess (pause-snap) into a
+                # known quantity. Optional — absent keeps today's behaviour.
+                "slide_clock_offset_ms": _form_int("slide_clock_offset_ms"),
             }, require_topic=True)
         except IntakeContextError as ve:
             return jsonify({"code": "INVALID_INPUT", "error": str(ve)}), 422

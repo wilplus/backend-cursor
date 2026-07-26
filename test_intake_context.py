@@ -68,6 +68,7 @@ class ValidatorTests(unittest.TestCase):
             "presentation_ref": None,
             "slide_advances": None,
             "strategic_context": None,
+            "slide_clock_offset_ms": None,
         })
 
     def test_empty_body_returns_all_nulls(self):
@@ -81,6 +82,7 @@ class ValidatorTests(unittest.TestCase):
             "presentation_ref": None,
             "slide_advances": None,
             "strategic_context": None,
+            "slide_clock_offset_ms": None,
         })
 
     def test_partial_body_fills_missing_with_null(self):
@@ -103,7 +105,7 @@ class ValidatorTests(unittest.TestCase):
             set(out.keys()),
             {"topic", "audience", "target_length_seconds", "domain_vocabulary",
              "slides", "presentation_ref", "slide_advances",
-             "strategic_context"},
+             "strategic_context", "slide_clock_offset_ms"},
         )
 
     # ── strategic_context (④ step 5, 2026-07-24) ───────────────────
@@ -322,7 +324,7 @@ class SnapshotHelperTests(unittest.TestCase):
         self.assertEqual(set(out.keys()), {
             "topic", "audience", "target_length_seconds", "domain_vocabulary",
             "slides", "presentation_ref", "slide_advances",
-            "strategic_context",
+            "strategic_context", "slide_clock_offset_ms",
         })
         self.assertEqual(out["topic"], "real topic")
         self.assertIsNone(out["audience"])
@@ -347,6 +349,7 @@ class SnapshotHelperTests(unittest.TestCase):
             "presentation_ref": None,
             "slide_advances": None,
             "strategic_context": None,
+            "slide_clock_offset_ms": None,
         })
 
 
