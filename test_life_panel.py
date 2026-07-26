@@ -307,6 +307,17 @@ class ImmutableCoreTests(unittest.TestCase):
         self.assertTrue(lp.is_immutable_target(None))
 
     @unittest.skipIf(_IMPORT_ERROR is not None, "needs app deps")
+    def test_the_report_shape_says_report_only_by_name(self):
+        # The two response shapes must agree on the field the FE reads. A
+        # reader who only knows `kind` would not realise that omitting
+        # `report_only` here is the difference between a report and an
+        # editable proposal over the Anchor.
+        import inspect
+        src = inspect.getsource(lengine.compare_to_strategy)
+        report_branch = src[src.index('"kind": "report"'):]
+        self.assertIn('"report_only": True', report_branch)
+
+    @unittest.skipIf(_IMPORT_ERROR is not None, "needs app deps")
     def test_apply_refuses_the_immutable_core_on_the_write_path_too(self):
         # "Never proposed against" has to hold on the WRITE path, not only on
         # the path that happens to be in front of it.
@@ -680,6 +691,26 @@ class SerializationTests(unittest.TestCase):
         out = lp.serialize_case({"category": ["wishful_thinking", "hubris"]})
         self.assertEqual(out["category_labels"],
                          ["Wishful thinking", "Hubris"])
+
+    def test_every_proposal_states_report_only_explicitly(self):
+        """The FE fail-safes on this field's ABSENCE: no `report_only` means
+        no approve button, so an unrecognised payload cannot grow one over
+        Section I. That default is correct and must not change — which is
+        exactly why the backend has to SAY the value. A serializer that
+        omitted it would render every proposal un-approvable and silently
+        kill the L-2 approve flow, and the symptom would be a missing button
+        rather than an error."""
+        out = lp.serialize_proposal({"target": "weekly.goals"})
+        self.assertIn("report_only", out)
+        self.assertFalse(out["report_only"])
+
+    def test_a_row_in_the_table_is_never_report_only(self):
+        # Immutable-core proposals are refused at creation and again on the
+        # write path, so anything that reached life_proposals is approvable.
+        for target in ("weekly.section_i", "bets.rank", "anchor"):
+            self.assertTrue(lp.is_immutable_target(target))
+        self.assertFalse(
+            lp.serialize_proposal({"target": "weekly.section_ii"})["report_only"])
 
     def test_a_proposal_carries_its_warrant(self):
         # A change the archive cannot justify is a change the system invented.

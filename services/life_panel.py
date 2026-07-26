@@ -1010,6 +1010,20 @@ def serialize_proposal(row: dict, *, warrant: Optional[dict] = None) -> dict:
         "target": row.get("target") or "",
         "current": row.get("current") or "",
         "proposed": row.get("proposed") or "",
+        # ALWAYS present, and always False here. A row in life_proposals is by
+        # construction not against the immutable core — that is refused at
+        # creation AND again on the write path (L-2a), so anything that
+        # reached this table carries an approve button.
+        #
+        # It is emitted explicitly because the FE fail-safes on its ABSENCE:
+        # a payload with no `report_only` is treated as report-only and grows
+        # no approve button. That default is correct and must not change — it
+        # is what stops an unrecognised payload sprouting a button over
+        # Section I. But it means silence reads as "report", so a serializer
+        # that simply omits the field would render every proposal
+        # un-approvable and quietly kill the L-2 approve flow. Saying it out
+        # loud is what keeps the FE's guard a guard rather than the mechanism.
+        "report_only": False,
         "status": row.get("status") or "queued",
         "surfaced_on": _iso(row.get("surfaced_on")),
         "expires_at": _iso(row.get("expires_at")),

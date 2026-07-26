@@ -484,6 +484,13 @@ def compare_to_strategy(user_id: str, note_text: str, *,
         return {
             "kind": "report",
             "target": target,
+            # Redundant with kind="report", and stated anyway: the FE reads
+            # this one field to decide whether an approve button exists, and
+            # the two shapes must agree on the name. A reader who has only
+            # ever seen `kind` would not know that omitting `report_only`
+            # here is the difference between a report and an editable
+            # proposal over the Anchor.
+            "report_only": True,
             "report": (parsed.get("report") or "").strip() or (
                 "This bears on the Anchor or the rank of the bets. Those are "
                 "hand-edited only — nothing is proposed here."
