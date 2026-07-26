@@ -8941,6 +8941,133 @@ class DatabaseService:
             logger.warning("journal_category_counts failed: %s", e)
             return {}
 
+    # ── Community Content Studio (founder 2026-07-26) ─────────────────────
+    # The three derived community posts hanging off a journal post. Same
+    # best-effort discipline as the journal helpers above: a missing table
+    # (migration pending) degrades to "no items" instead of 500ing the CMS.
+    #
+    # These rows are NEVER served by a public route — they carry no slug and
+    # no status because they can never be published to the site.
+
+    _COMMUNITY_COLUMNS = (
+        "id, journal_post_id, kind, title, body, flags, pillar_id, "
+        "pillar_name, theme, soft_cta_line, app_proof_line, model, "
+        "generated_at, created_at, updated_at"
+    )
+
+    @staticmethod
+    def _is_missing_community_table(error: Exception) -> bool:
+        text = str(error).lower()
+        return "journal_community_post" in text and (
+            "does not exist" in text or "pgrst" in text
+            or "could not find the table" in text
+        )
+
+    def upsert_journal_community_posts(self, journal_post_id: str,
+                                       rows: list) -> list:
+        """Write 1..3 derived posts, keyed on (journal_post_id, kind).
+
+        Upsert rather than insert: regenerating a format REPLACES it instead
+        of stacking duplicates, and a single-format reroll leaves its siblings
+        alone. Returns the written rows, [] on failure.
+        """
+        if not journal_post_id or not rows:
+            return []
+        try:
+            res = (
+                self.client.table("journal_community_post")
+                .upsert([dict(r) for r in rows],
+                        on_conflict="journal_post_id,kind")
+                .execute()
+            )
+            return getattr(res, "data", None) or []
+        except Exception as e:
+            if self._is_missing_community_table(e):
+                logger.warning(
+                    "upsert_journal_community_posts: table missing (run "
+                    "migrations/add_journal_community_posts.sql) post=%s",
+                    journal_post_id)
+                return []
+            logger.error("upsert_journal_community_posts failed post=%s: %s",
+                         journal_post_id, e)
+            return []
+
+    def list_journal_community_posts(self,
+                                     journal_post_id: Optional[str] = None
+                                     ) -> list:
+        """Derived posts for one parent, or ALL of them when the id is None —
+        the CMS loads every item once and groups them client-side. []."""
+        try:
+            q = (
+                self.client.table("journal_community_post")
+                .select(self._COMMUNITY_COLUMNS)
+            )
+            if journal_post_id:
+                q = q.eq("journal_post_id", str(journal_post_id))
+            res = q.order("journal_post_id").order("kind").execute()
+            return getattr(res, "data", None) or []
+        except Exception as e:
+            if self._is_missing_community_table(e):
+                logger.warning(
+                    "list_journal_community_posts: table missing (run "
+                    "migrations/add_journal_community_posts.sql)")
+                return []
+            logger.warning("list_journal_community_posts failed: %s", e)
+            return []
+
+    def get_journal_community_post(self, item_id: str) -> Optional[dict]:
+        """One derived post by id, or None."""
+        if not item_id:
+            return None
+        try:
+            res = (
+                self.client.table("journal_community_post")
+                .select(self._COMMUNITY_COLUMNS)
+                .eq("id", str(item_id))
+                .limit(1)
+                .execute()
+            )
+            rows = getattr(res, "data", None) or []
+            return rows[0] if rows else None
+        except Exception as e:
+            logger.warning("get_journal_community_post failed id=%s: %s",
+                           item_id, e)
+            return None
+
+    def update_journal_community_post(self, item_id: str,
+                                      changes: dict) -> Optional[dict]:
+        """Patch the founder's manual edit (title/body). None on failure."""
+        if not item_id or not changes:
+            return None
+        payload = dict(changes)
+        payload["updated_at"] = datetime.now(timezone.utc).isoformat()
+        try:
+            res = (
+                self.client.table("journal_community_post")
+                .update(payload)
+                .eq("id", str(item_id))
+                .execute()
+            )
+            rows = getattr(res, "data", None) or []
+            return rows[0] if rows else None
+        except Exception as e:
+            logger.error("update_journal_community_post failed id=%s: %s",
+                         item_id, e)
+            return None
+
+    def delete_journal_community_post(self, item_id: str) -> bool:
+        """Delete one derived post. True on success. Best-effort."""
+        if not item_id:
+            return False
+        try:
+            self.client.table("journal_community_post").delete() \
+                .eq("id", str(item_id)).execute()
+            return True
+        except Exception as e:
+            logger.error("delete_journal_community_post failed id=%s: %s",
+                         item_id, e)
+            return False
+
     def skip_snippet(self, snippet_id: str, is_skipped: bool = True) -> Optional[dict]:
         """Mark a snippet as skipped (hidden from user results)."""
         try:

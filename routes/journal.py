@@ -388,3 +388,173 @@ def journal_admin_presign():
         return jsonify({"code": "V2_ERROR",
                         "error": "Could not create the upload URL"}), 500
     return jsonify(out), 200
+
+
+# ── COMMUNITY CONTENT STUDIO (founder 2026-07-26) ──────────────────────────
+#
+# One button in the CMS, under a post's body: derive the three OTHER community
+# formats from this post. The journal post itself is format ① Technique; these
+# routes own ② Myth-bust, ③ Fear, ④ Win.
+#
+# Same auth as every other CMS route — password in the body, POST only. These
+# drafts are COMMUNITY-ONLY: nothing above in the PUBLIC section reads
+# journal_community_post, and the rows carry no slug/status so they cannot be
+# published to the site. The founder copies them into Skool by hand.
+
+def _item_id(body: dict) -> str:
+    """The `id` field as a trimmed string — same type-guard as _post_id."""
+    raw = (body or {}).get("id")
+    return raw.strip() if isinstance(raw, str) else ""
+
+
+@journal_bp.route("/v2/internal/journal/community/generate", methods=["POST"])
+def journal_community_generate():
+    """Derive the community formats from one journal post.
+
+    Body { password, post_id, formats?: [myth_bust|fear|win], notes? }.
+    `formats` narrows the run to a single card's "Regenerate" — the siblings
+    are left alone AND their batch-level fields (pillar, theme, the two app
+    lines) are inherited, so a one-post reroll never re-themes the week.
+
+    200 { items: [...] } — the FULL current set for the post, not just what
+    was regenerated, so the CMS can render from one response.
+    400 · 401 · 404 · 503 (flag off / no model output) · 500
+    """
+    ok, err = _journal_admin_ok()
+    if not ok:
+        return err
+    if not getattr(config, "COMMUNITY_CONTENT_ENABLED", True):
+        return jsonify({"code": "DISABLED",
+                        "error": "The content studio is switched off"}), 503
+
+    body = _body()
+    post_id = (body.get("post_id") or "").strip() \
+        if isinstance(body.get("post_id"), str) else ""
+    if not post_id:
+        return _invalid("post_id: required")
+
+    from services import community_content as cc
+
+    formats = body.get("formats")
+    if formats is None:
+        wanted = cc.FORMATS
+    elif (isinstance(formats, list) and formats
+            and all(f in cc.FORMATS for f in formats)):
+        wanted = tuple(dict.fromkeys(formats))
+    else:
+        return _invalid(
+            f"formats: must be a non-empty subset of {', '.join(cc.FORMATS)}")
+
+    notes = body.get("notes")
+    if notes is not None and not isinstance(notes, str):
+        return _invalid("notes: must be a string")
+
+    post = db.get_journal_post_by_id(post_id)
+    if not post:
+        return jsonify({"code": "NOT_FOUND", "error": "post not found"}), 404
+    if not (post.get("body") or "").strip():
+        return _invalid("This post has no body yet — there is nothing to "
+                        "derive from.")
+
+    try:
+        payload = cc.generate_community_posts(post, formats=wanted,
+                                              notes=notes)
+    except Exception as e:  # pragma: no cover - the service swallows its own
+        logger.error("journal_community_generate failed post=%s: %s",
+                     post_id, e, exc_info=True)
+        payload = None
+    if not payload:
+        return jsonify({
+            "code": "V2_ERROR",
+            "error": "Could not write the posts right now. Try again.",
+        }), 503
+
+    # Single-format reroll: inherit the week's framing from a surviving
+    # sibling rather than letting one call re-theme the other two.
+    inherit = None
+    existing = db.list_journal_community_posts(post_id)
+    if len(wanted) < len(cc.FORMATS):
+        inherit = next((r for r in existing if r.get("kind") not in wanted),
+                       None)
+
+    rows = cc.rows_for_upsert(post_id, payload, inherit=inherit)
+    written = db.upsert_journal_community_posts(post_id, rows)
+    if not written:
+        return jsonify({
+            "code": "V2_ERROR",
+            "error": "Generated the posts but could not save them.",
+        }), 500
+
+    items = db.list_journal_community_posts(post_id) or written
+    return jsonify({
+        "items": [cc.serialize_community_item(r) for r in items],
+    }), 200
+
+
+@journal_bp.route("/v2/internal/journal/community/list", methods=["POST"])
+def journal_community_list():
+    """Derived posts. Body { password, post_id? } — omit post_id for ALL of
+    them (the CMS loads once and groups client-side). 200 { items } · 401 · 503"""
+    ok, err = _journal_admin_ok()
+    if not ok:
+        return err
+    from services import community_content as cc
+    raw = _body().get("post_id")
+    post_id = raw.strip() if isinstance(raw, str) else None
+    rows = db.list_journal_community_posts(post_id or None)
+    return jsonify({
+        "items": [cc.serialize_community_item(r) for r in rows],
+    }), 200
+
+
+@journal_bp.route("/v2/internal/journal/community/update", methods=["POST"])
+def journal_community_update():
+    """The founder's manual edit. Body { password, id, title?, body? }.
+
+    Editing CLEARS the flags: they exist to make him look at the draft, and
+    he just has. Only title/body are writable — nothing here can turn a
+    community draft into a journal post.
+    200 { item } · 400 · 401 · 404 · 500 · 503"""
+    ok, err = _journal_admin_ok()
+    if not ok:
+        return err
+    from services import community_content as cc
+    payload = _body()
+    item_id = _item_id(payload)
+    if not item_id:
+        return _invalid("id: required")
+
+    changes = {}
+    if "title" in payload:
+        if not isinstance(payload["title"], str):
+            return _invalid("title: must be a string")
+        changes["title"] = payload["title"].strip()[:120]
+    if "body" in payload:
+        if not isinstance(payload["body"], str):
+            return _invalid("body: must be a string")
+        changes["body"] = payload["body"].strip()[:2200]
+    if not changes:
+        return _invalid("no fields to update")
+
+    if not db.get_journal_community_post(item_id):
+        return jsonify({"code": "NOT_FOUND", "error": "post not found"}), 404
+    changes["flags"] = []
+    row = db.update_journal_community_post(item_id, changes)
+    if not row:
+        return jsonify({"code": "V2_ERROR",
+                        "error": "Could not save the post"}), 500
+    return jsonify({"item": cc.serialize_community_item(row)}), 200
+
+
+@journal_bp.route("/v2/internal/journal/community/delete", methods=["POST"])
+def journal_community_delete():
+    """Delete one derived post. Body { password, id }.
+    200 { deleted } · 400 · 401 · 503"""
+    ok, err = _journal_admin_ok()
+    if not ok:
+        return err
+    item_id = _item_id(_body())
+    if not item_id:
+        return _invalid("id: required")
+    return jsonify(
+        {"deleted": bool(db.delete_journal_community_post(item_id))}), 200

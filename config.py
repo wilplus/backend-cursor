@@ -332,6 +332,18 @@ class Config:
     # (disabled); the PUBLIC /v2/journal/* read endpoints are unaffected.
     JOURNAL_ADMIN_PASSWORD = (os.getenv("JOURNAL_ADMIN_PASSWORD") or "").strip()
 
+    # Community Content Studio (founder 2026-07-26) — the one button in the
+    # CMS that derives the three community post formats from a Journal post.
+    # DEFAULT ON; this is a kill switch for the LLM cost, not a rollout gate.
+    # Off ⇒ /v2/internal/journal/community/generate 503s, while list/update/
+    # delete keep working so drafts already generated stay readable and
+    # copyable. Auth is JOURNAL_ADMIN_PASSWORD above — there is no separate
+    # password for this surface.
+    COMMUNITY_CONTENT_ENABLED = (
+        (os.getenv("COMMUNITY_CONTENT_ENABLED") or "1").strip().lower()
+        in ("1", "true", "yes", "on")
+    )
+
     # ── The Life Panel (founder-directed, 2026-07-26) ────────────────────
     # A personal life-governance surface (/v2/life/*). Two-tier gate:
     #
