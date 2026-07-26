@@ -332,6 +332,45 @@ class Config:
     # (disabled); the PUBLIC /v2/journal/* read endpoints are unaffected.
     JOURNAL_ADMIN_PASSWORD = (os.getenv("JOURNAL_ADMIN_PASSWORD") or "").strip()
 
+    # ── The Life Panel (founder-directed, 2026-07-26) ────────────────────
+    # A personal life-governance surface (/v2/life/*). Two-tier gate:
+    #
+    #   LIFE_PANEL_ENABLED    global kill switch, DEFAULT OFF. Off ⇒ every
+    #                         /v2/life/* route 404s and the chat router hook
+    #                         is never reached, so chat is byte-identical to
+    #                         today. Flip it only after the FE deploys.
+    #   LIFE_PANEL_ALLOWLIST  comma-separated user ids for the FOUNDER-ONLY
+    #                         surfaces (prayer link and anything coach-only).
+    #                         NOT the principles engine — that one is public
+    #                         behind the consent screen (L-6).
+    #
+    # Allowlisted entries are ABSENT from the payload and their endpoints 404
+    # rather than 403: a 403 confirms the surface exists.
+    LIFE_PANEL_ENABLED = (
+        (os.getenv("LIFE_PANEL_ENABLED") or "0").strip().lower()
+        in ("1", "true", "yes", "on")
+    )
+    LIFE_PANEL_ALLOWLIST = tuple(
+        uid.strip() for uid in (os.getenv("LIFE_PANEL_ALLOWLIST") or "").split(",")
+        if uid.strip()
+    )
+    # BE-10: "use an API path with no training retention". OpenAI's retention
+    # posture is a PROJECT/ORG setting, not a request parameter — so the code
+    # side of that requirement is the ability to point life derivations at a
+    # separate zero-data-retention project key. Unset ⇒ falls back to the
+    # shared OPENAI_API_KEY (dev), which is why the operator step is called
+    # out in the migration notes rather than assumed.
+    LIFE_PANEL_OPENAI_API_KEY = (
+        os.getenv("LIFE_PANEL_OPENAI_API_KEY") or ""
+    ).strip().strip('"').strip("'")
+
+    # Bumped whenever the consent copy changes materially. A user who accepted
+    # an older version is re-asked before any further life row is written
+    # (L-6) — which is the point of versioning it rather than storing a bool.
+    LIFE_PANEL_CONSENT_VERSION = (
+        os.getenv("LIFE_PANEL_CONSENT_VERSION") or "1.0"
+    ).strip() or "1.0"
+
     # Journal cover media in R2 (presigned direct-to-storage upload). Reuses
     # the shared R2_ACCOUNT_ID / R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY above.
     # Both unset ⇒ services.journal_media falls back to the user-media bucket

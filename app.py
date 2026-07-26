@@ -49,6 +49,7 @@ from routes.snippet_labels_routes import snippet_labels_bp
 from routes.dev_bugs import dev_bugs_bp
 from routes.dev_tasks import dev_tasks_bp
 from routes.journal import journal_bp
+from routes.life_routes import life_bp
 
 app.register_blueprint(auth_bp, url_prefix="/auth")
 app.register_blueprint(recordings_v2_bp, url_prefix="/v2/recordings")
@@ -65,6 +66,11 @@ app.register_blueprint(dev_tasks_bp)
 # Journal (blog): PUBLIC /v2/journal/* reads (no auth — the FE server-renders
 # them) + password-gated /v2/internal/journal/* CMS. Full paths baked in.
 app.register_blueprint(journal_bp)
+# The Life Panel: /v2/life/* behind LIFE_PANEL_ENABLED (default 0). With the
+# flag off every route 404s, so registering the blueprint changes nothing
+# observable until the flag is flipped. Full paths baked in — v2_routes.py is
+# untouched by this feature apart from the guarded chat-router hook.
+app.register_blueprint(life_bp)
 
 
 @app.errorhandler(RequestEntityTooLarge)

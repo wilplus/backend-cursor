@@ -3610,6 +3610,52 @@ def v2_chat_query():
                     resp["persisted_client_id"] = bot_cid
             return jsonify(resp), 200
 
+        # ── Life Panel hashtag router (founder 2026-07-26) — the FIRST
+        # intercept, and the feature's ONLY contact point with this file.
+        #
+        # It fires on a leading `#tag` from a signed-in user who has consented
+        # to the Life Panel, and on nothing else. Three guards, cheapest
+        # first, so a normal chat turn pays ~nothing:
+        #   1. LIFE_PANEL_ENABLED (default 0) — off, and this block is a
+        #      boolean check that falls straight through.
+        #   2. signed in — anonymous Lounge chat never reaches it.
+        #   3. handle_note returns None for an untagged message BEFORE any DB
+        #      read, and None for a non-consented user. None ⇒ we do not
+        #      touch this turn at all.
+        #
+        # N3 is the contract: for a non-participating user every response on
+        # this endpoint is byte-identical to main. That is why the fall-
+        # through is `return None → keep going` rather than any modified
+        # answer, and why the whole block is inside its own try/except — a
+        # broken Life Panel must cost the panel, never the chat.
+        if request.user_id and getattr(config, "LIFE_PANEL_ENABLED", False):
+            try:
+                from services.life_chat import handle_note
+                from services.master_doc_rag import split_answer_into_bubbles
+                _ln = handle_note(request.user_id, question.strip())
+                if _ln:
+                    _ans = _ln.get("answer") or ""
+                    # The founder's own words, returned at the moment they
+                    # apply — appended only when the wall actually had
+                    # something above the relevance floor.
+                    _ph = _ln.get("phrase") or {}
+                    if _ph.get("body"):
+                        _ans = f"{_ans}\n\n“{_ph['body']}”"
+                    return _finalize({
+                        "answer": _ans,
+                        "bubbles": split_answer_into_bubbles(_ans),
+                        "show_record_ui": False,
+                        "suggested_action": None,
+                        "debug": {"intent": "life_panel",
+                                  "route": _ln.get("route"),
+                                  "link": _ln.get("link")},
+                    }, intent="life_panel")
+            except Exception as _le:
+                logger.warning(
+                    "chat/query: life-panel intercept failed user=%s: %s",
+                    request.user_id, _le,
+                )
+
         # ── Goal-update intercept (Prompt A §6 C4) — BEFORE the librarian.
         # §0: never add rules to master_doc_rag (attention ceiling). A
         # signed-in user saying "change my goal to X" (any language) updates
@@ -3741,6 +3787,26 @@ def v2_chat_query():
                     )
                     library_entries = None
 
+        # BE-9 — the Life Panel's per-user block, for participating users only.
+        # Retrieved at request time from the requesting user's OWN rows, capped
+        # to the top few by relevance; the renderer in master_doc_rag trims and
+        # caps again. Everyone else — flag off, not signed in, not consented —
+        # passes None, so their prompt is byte-for-byte what it is today.
+        # Best-effort: a failed load costs the grounding, never the answer.
+        life_context = None
+        if request.user_id and getattr(config, "LIFE_PANEL_ENABLED", False):
+            try:
+                from services.life_chat import has_consented
+                if has_consented(request.user_id):
+                    from services.life_engine import life_chat_context
+                    life_context = life_chat_context(
+                        request.user_id, question.strip())
+            except Exception as _lce:
+                logger.warning(
+                    "chat/query: life context load failed user=%s: %s",
+                    request.user_id, _lce,
+                )
+
         from services.master_doc_rag import (
             answer_question, split_answer_into_bubbles,
         )
@@ -3751,6 +3817,7 @@ def v2_chat_query():
             library_entries=library_entries,
             # B3 — None (after retry) means the load FAILED, not empty.
             library_load_failed=bool(request.user_id and library_entries is None),
+            life_context=life_context,
         )
 
         # ── Path B — fire-and-forget DSP extraction. Spawned BEFORE
