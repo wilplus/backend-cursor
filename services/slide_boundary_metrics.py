@@ -23,11 +23,19 @@ never an accuracy rate:
   * words_reassigned     — words whose slide actually CHANGES when pause-snap is
                            applied. This is the honest impact number: it is what
                            the feature did, not what it should have done.
-  * boundaries_snapped / boundaries_no_pause
-                         — coverage. A boundary with no qualifying pause nearby
-                           (the speaker talked straight through the tap) is one
-                           pause-snap CANNOT help, so it bounds how much of the
-                           problem this approach can ever reach.
+  * boundaries_moved     — the snap found a pause and used it.
+  * boundaries_no_pause  — NO qualifying pause within the window: the speaker
+                           talked straight through the tap. Pause-snap cannot
+                           help here however well it is tuned, so this is the
+                           number that argues FOR measuring the clock offset
+                           exactly (the FE change) instead of guessing it.
+  * boundaries_already_aligned
+                         — a pause was there and the boundary was already in
+                           it. Nothing to fix; argues AGAINST further work.
+
+The last two matter because "the boundary didn't move" has two OPPOSITE
+meanings, and a single `unmoved` count cannot tell them apart — which would
+leave the measurement unable to answer the one question it exists for.
 
 Calling `words_reassigned` an improvement would be assuming the answer. The only
 real labels available are COACH CORRECTIONS — when a coach moves text between
@@ -93,6 +101,29 @@ def _assign(words_ms: list, advances: Any, n_slides: int) -> list:
     return out
 
 
+def _pause_midpoints(words_ms_pairs: Any, words: Any, min_gap_ms: int) -> list:
+    """Midpoints (ms) of every real speech pause — the snap-points pause-snap
+    can aim at. Mirrors the gap detection in
+    ``slide_word_split._snap_boundaries_to_pauses`` so "was a pause available
+    here?" is answered by the same rule that decides whether to move.
+    """
+    ws = sorted(
+        (w for w in (words or []) if isinstance(w, dict)
+         and isinstance(w.get("start"), (int, float))
+         and not isinstance(w.get("start"), bool)),
+        key=lambda w: w.get("start") or 0.0,
+    )
+    out = []
+    for i in range(len(ws) - 1):
+        pe = ws[i].get("end")
+        pe = float(pe) if isinstance(pe, (int, float)) and not isinstance(pe, bool) \
+            else float(ws[i].get("start") or 0.0)
+        ns = float(ws[i + 1].get("start") or 0.0)
+        if (ns - pe) * 1000.0 >= min_gap_ms:
+            out.append((pe + ns) / 2.0 * 1000.0)
+    return out
+
+
 def boundary_metrics(words: Any, slide_advances: Any, slides: Any, *,
                      window_ms: int = 1200, min_gap_ms: int = 200,
                      risk_ms: int = DEFAULT_RISK_MS) -> Optional[dict]:
@@ -138,9 +169,32 @@ def boundary_metrics(words: Any, slide_advances: Any, slides: Any, *,
         shifts = [abs(s - r) for r, s in zip(raw_bounds, snapped_bounds)] \
             if len(snapped_bounds) == len(raw_bounds) else []
         snapped_n = sum(1 for d in shifts if d > 0)
-        # A boundary that did not move either had no qualifying pause nearby OR
-        # was already sitting in one. These are NOT distinguishable from the
-        # shift alone, so the field is named for what it measures: unmoved.
+
+        # THE decisive split. "Didn't move" has two OPPOSITE meanings and
+        # lumping them together makes the whole measurement unable to answer
+        # the question it exists for:
+        #
+        #   no_pause        — no qualifying pause within the window. Pause-snap
+        #                     CANNOT help here however well it is tuned. These
+        #                     are precisely the boundaries a measured clock
+        #                     offset would fix, so this number argues FOR
+        #                     changing the recording contract.
+        #   already_aligned — a pause was available and the boundary was
+        #                     already in it. Nothing to fix; argues AGAINST.
+        #
+        # Computed from pause availability, using the same gap rule the snap
+        # itself uses, rather than inferred from the shift.
+        pauses = _pause_midpoints(words_ms, words, min_gap_ms)
+        no_pause = 0
+        for b in raw_bounds:
+            if not any(abs(g - b) <= window_ms for g in pauses):
+                no_pause += 1
+        unmoved = len(raw_bounds) - snapped_n
+        # A boundary with no pause can never have moved, so the aligned count
+        # is whatever is left of the unmoved ones. max(0,…) guards the edge
+        # where the snap's inter-boundary clamping refused an available pause.
+        already_aligned = max(0, unmoved - no_pause)
+
         return {
             "words_total": len(words_ms),
             "slides_total": n_slides,
@@ -149,7 +203,9 @@ def boundary_metrics(words: Any, slide_advances: Any, slides: Any, *,
             "risk_ms": int(risk_ms),
             "words_reassigned": reassigned,
             "boundaries_moved": snapped_n,
-            "boundaries_unmoved": len(raw_bounds) - snapped_n,
+            "boundaries_unmoved": unmoved,
+            "boundaries_no_pause": no_pause,
+            "boundaries_already_aligned": already_aligned,
             "shift_ms_max": max(shifts) if shifts else 0,
             "shift_ms_median": sorted(shifts)[len(shifts) // 2] if shifts else 0,
             "snap_enabled": bool(_pause_snap_enabled()),

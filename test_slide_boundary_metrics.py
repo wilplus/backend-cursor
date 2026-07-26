@@ -171,3 +171,47 @@ class NoUserSurfaceTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CoverageSplitTests(unittest.TestCase):
+    """THE decisive split: "didn't move" has two opposite meanings, and the
+    FE-clock-offset decision hinges on telling them apart."""
+
+    def test_no_pause_near_the_tap_is_counted_as_unreachable(self):
+        # Continuous speech through the tap: no gap >= min_gap_ms anywhere, so
+        # pause-snap can never fix this boundary. This is the number that
+        # argues FOR measuring the offset exactly.
+        words = _w(*[(i * 0.3, f"w{i}") for i in range(30)])   # 300ms cadence
+        out = boundary_metrics(words, _adv(0, 4500), SLIDES,
+                               window_ms=1500, min_gap_ms=600)
+        self.assertEqual(out["boundaries_no_pause"], 1)
+        self.assertEqual(out["boundaries_already_aligned"], 0)
+
+    def test_a_boundary_already_sitting_in_a_pause_is_not_unreachable(self):
+        # Big silence 2.0s -> 5.0s, tap at 3500 sits inside it. Nothing to fix.
+        words = _w((1.0, "before"), (1.5, "words"), (5.0, "after"), (5.4, "it"))
+        out = boundary_metrics(words, _adv(0, 3500), SLIDES,
+                               window_ms=1500, min_gap_ms=200)
+        self.assertEqual(out["boundaries_no_pause"], 0)
+        self.assertEqual(out["boundaries_no_pause"]
+                         + out["boundaries_already_aligned"]
+                         + out["boundaries_moved"],
+                         out["boundaries_total"])
+
+    def test_the_three_buckets_always_account_for_every_boundary(self):
+        for advs in (_adv(0, 3900), _adv(0, 2000, 6000), _adv(0, 500)):
+            out = boundary_metrics(
+                _w((0.5, "a"), (1.0, "b"), (4.0, "c"), (7.0, "d")),
+                advs, SLIDES, window_ms=1500, min_gap_ms=200)
+            if not out:
+                continue
+            self.assertEqual(
+                out["boundaries_moved"] + out["boundaries_no_pause"]
+                + out["boundaries_already_aligned"],
+                out["boundaries_total"], str(advs))
+
+    def test_unmoved_is_still_reported_and_stays_consistent(self):
+        out = boundary_metrics(_w((0.5, "a"), (4.0, "b")), _adv(0, 3900),
+                               SLIDES, window_ms=1500, min_gap_ms=200)
+        self.assertEqual(out["boundaries_unmoved"],
+                         out["boundaries_total"] - out["boundaries_moved"])
