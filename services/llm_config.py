@@ -352,3 +352,23 @@ SPEC_CONTEXTUAL_FOLLOWUP = LLMSpec(
 """FIX.1 — Contextual follow-up question for the interview funnel.
 Replaces the legacy alternation prompt that produced bicycle →
 boardroom non-sequiturs (tester feedback)."""
+
+
+SPEC_COMMUNITY_CONTENT = LLMSpec(
+    model=STRONG_MODEL,
+    # Founder-specified gpt-4o, not mini: this is public-facing marketing
+    # copy the founder pastes under his own name, and the cheap model
+    # flattens the voice into LinkedIn boilerplate.
+    # 0.7 — warmth over determinism. The three formats are meant to read
+    # like a person, and there is a human reviewing every one before it
+    # goes anywhere.
+    temperature=0.7,
+    # Three posts in one response; the longest (Fear) runs to ~1300 chars.
+    max_tokens=2400,
+    response_format=None,  # strict json_schema via override, next to the service
+)
+"""Community Content Studio — derives the Myth-bust / Fear / Win community
+posts from a Journal post (the week's Technique anchor), per the content
+model in services/prompts/community_content_strategy.md. Founder-only
+marketing surface: it never feeds any F1 assembly path (L1) and its output
+is never publishable to the public Journal."""
