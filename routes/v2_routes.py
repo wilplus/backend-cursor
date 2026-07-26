@@ -10183,6 +10183,75 @@ def v2_coach_slide_alignment(session_id):
         return jsonify({"code": "V2_ERROR", "error": "Failed to compute slide alignment"}), 500
 
 
+@v2_bp.route("/coach/snippets/<snippet_id>/reference", methods=["PUT"])
+@require_admin_or_coach
+def v2_coach_put_moment_reference(snippet_id):
+    """Attach (or clear) a blog post as further reading on ONE moment.
+
+    Ticket 6, founder 2026-07-26: the COACH picks the post by hand, and only on
+    a coach-verified ("golden star") moment. No automatic or LLM matching — the
+    ask was "material that matches exactly this problem", and a wrongly-attached
+    post reads as sloppy.
+
+    Body { slug: str }   → attach that post
+    Body { slug: null }  → clear the reference
+
+    The slug is validated against the Journal, so a typo fails HERE rather than
+    silently producing a moment whose reference never renders. A DRAFT post is
+    accepted (the coach may line one up before publishing) but the student
+    payload omits it until the post is actually published — same
+    draft-invisibility rule the public Journal uses.
+
+    200 { saved, snippet_id, reference_post_slug } · 400 · 404 · 500
+    """
+    if not _is_valid_uuid(snippet_id):
+        return jsonify({
+            "code": "INVALID_INPUT", "error": "snippet_id must be a valid UUID",
+        }), 400
+    body = request.get_json(silent=True) or {}
+    if "slug" not in body:
+        return jsonify({"code": "INVALID_INPUT",
+                        "error": "slug: required (null to clear)"}), 400
+    raw = body.get("slug")
+    slug = raw.strip() if isinstance(raw, str) else None
+    if raw is not None and not isinstance(raw, str):
+        return jsonify({"code": "INVALID_INPUT",
+                        "error": "slug: must be a string or null"}), 400
+    try:
+        snip = db.get_snippet_by_id(snippet_id)
+        if not snip or not snip.get("session_id"):
+            return jsonify({"code": "NOT_FOUND",
+                            "error": "snippet not found"}), 404
+        if slug:
+            # Accept a draft (published_only=False) — the coach may attach
+            # before publishing — but a slug that does not exist at all is a
+            # typo and must fail loudly.
+            if not db.get_journal_post_by_slug(slug, published_only=False):
+                return jsonify({"code": "NOT_FOUND",
+                                "error": f"no blog post with slug '{slug}'"}), 404
+        saved = db.upsert_coach_snippet_draft(
+            str(snip.get("session_id")), snippet_id,
+            {"reference_post_slug": slug or None},
+            updated_by=getattr(request, "user_id", None),
+        )
+        if saved is None:
+            return jsonify({
+                "code": "V2_ERROR",
+                "error": "Could not save the reference",
+            }), 500
+        return jsonify({
+            "saved": True,
+            "snippet_id": snippet_id,
+            "reference_post_slug": slug or None,
+        }), 200
+    except Exception as e:
+        logger.error("coach reference save failed snip=%s: %s", snippet_id, e,
+                     exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR",
+                        "error": "Failed to save the reference"}), 500
+
+
 @v2_bp.route("/coach/snippets/<snippet_id>/say-it-stronger", methods=["PUT"])
 @require_admin_or_coach
 def v2_coach_put_say_it_stronger(snippet_id):
@@ -12021,10 +12090,63 @@ def _moment_explanations_map(session_ids) -> dict:
                         or d.get("breakthrough_video_ref"):
                     out[str(_snip)] = {
                         "has_video": bool(d.get("breakthrough_video_ref")),
+                        # Ticket 6: a blog post the coach attached by hand.
+                        # Carried as the raw slug here; resolved to
+                        # {slug,title,url} by _moment_reference (which drops it
+                        # when the post is a draft or gone).
+                        "reference_post_slug": (
+                            d.get("reference_post_slug") or None),
                     }
         except Exception:
             continue
     return out
+
+
+def _moment_reference_map(slugs):
+    """{slug: {slug,title,url}} for the DISTINCT slugs on this arc's moments.
+
+    Batched deliberately. The obvious implementation resolves inside the
+    per-moment decorator, which is an N+1: a talk with ten verified moments
+    would issue ten post lookups on every ideal-text GET — the exact shape the
+    load-time ticket is about. Distinct slugs on one arc are typically 0–2, so
+    one lookup each is effectively constant.
+    """
+    out: dict = {}
+    for slug in {s for s in (slugs or []) if isinstance(s, str) and s.strip()}:
+        ref = _moment_reference(slug)
+        if ref:
+            out[slug.strip()] = ref
+    return out
+
+
+def _moment_reference(slug):
+    """{slug, title, url} for a coach-attached blog post, or None.
+
+    Resolved at READ time, never stored as a URL: the public path is moving
+    (/journal -> /blog) and the title can be edited, so resolving late keeps
+    both correct. Returns None — i.e. the FE renders nothing — when the slug is
+    empty, the post was unpublished, or it was deleted. Serving a dead link to a
+    student is worse than serving no link.
+
+    `published_only=True` is the load-bearing argument: it reuses the Journal's
+    own draft-invisibility rule, so an in-progress post the coach attached early
+    cannot leak.
+    """
+    slug = (slug or "").strip() if isinstance(slug, str) else ""
+    if not slug:
+        return None
+    try:
+        row = db.get_journal_post_by_slug(slug, published_only=True)
+    except Exception as e:
+        logger.warning("moment reference lookup failed slug=%s: %s", slug, e)
+        return None
+    if not isinstance(row, dict) or not row.get("slug"):
+        return None
+    return {
+        "slug": row.get("slug"),
+        "title": row.get("title") or "",
+        "url": f"/blog/{row.get('slug')}",
+    }
 
 
 def _moment_playback_map(session_ids) -> dict:
@@ -12589,6 +12711,16 @@ def v2_explore_get_ideal_text(arc_id):
             [m.get("take_session_id") for m in _moments])
         _playback = _moment_playback_map(
             [m.get("take_session_id") for m in _moments])
+        # Ticket 6: resolve every attached post ONCE per request, not once per
+        # moment (see _moment_reference_map — the per-moment form is an N+1).
+        # isinstance-guarded: this map's values are dicts in production, but
+        # callers (and tests) legitimately hand back a truthy marker instead,
+        # and a bare .get() there is an AttributeError that takes the whole
+        # ideal-text response down with it.
+        _refs = _moment_reference_map([
+            v.get("reference_post_slug") if isinstance(v, dict) else None
+            for v in _has_expl.values()
+        ])
 
         def _decorate(m):
             _mid = str(m.get("snippet_id"))
@@ -12620,6 +12752,16 @@ def v2_explore_get_ideal_text(arc_id):
                     "has_video": bool(
                         _has_expl[_mid].get("has_video")),
                 }
+                # Ticket 6: further reading the coach attached to THIS moment.
+                # Key omitted entirely when there is none, or when the post is
+                # no longer published — the FE renders the link only when the
+                # key is present. Not gated behind the paid moments GET: a
+                # public blog link is not the coach's message.
+                _expl = _has_expl[_mid]
+                _slug = _expl.get("reference_post_slug") if isinstance(_expl, dict) else None
+                _ref = _refs.get(_slug.strip()) if isinstance(_slug, str) else None
+                if _ref:
+                    entry["coach"]["reference"] = _ref
             elif _mid in _sugs and _sugs[_mid].get("kind") == "delivery" \
                     and _sugs[_mid].get("trigger") in _DELIVERY_DEVICES:
                 # MEASURED delivery star (founder decisions 2026-07-18):
