@@ -9,6 +9,8 @@ routes/internal_webhooks.py):
   POST   /api/dev-bugs/send   -> {"sent": <n>}   (same routine as the 3-day cron)
   GET    /dev-bugs[/]         -> the single-page UI (also served at the dev
                                   subdomain root via app.py root()).
+  GET    /dev-bugs/icons/<f>  -> home-screen / favicon PNGs (allowlisted)
+  GET    /dev-bugs/manifest.webmanifest -> PWA manifest for the install
 
 The four /api/* routes require header `x-dev-key: <DEV_BUGS_KEY>` (mirrors the
 `X-Internal-Secret` gate on /v2/internal/*). The page itself is un-gated (it just
@@ -17,6 +19,7 @@ prompts for the key client-side and enforcement happens on the API).
 from __future__ import annotations
 
 import hmac
+import json
 import logging
 import os
 
@@ -36,6 +39,22 @@ STATIC_DIR = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "static"
 )
 _PAGE_FILE = "dev_bugs.html"
+
+# Home-screen / tab icons for the collector page: the Willab wordmark (Pacifico,
+# #2d3748, orange dot — same mark as services/assignment_email._logo_html) with a
+# small orange "dev" pill, so the installed dev icon is distinguishable from the
+# real app's. iOS ignores data: URIs for apple-touch-icon, so these have to be
+# real files served over HTTP — hence the routes below.
+_ICON_DIR = os.path.join(STATIC_DIR, "dev_bugs_icons")
+_ICON_FILES = frozenset({
+    "icon-180.png",             # apple-touch-icon (iOS Add to Home Screen)
+    "icon-192.png",             # manifest / Android
+    "icon-512.png",             # manifest / Android, splash
+    "icon-maskable-512.png",    # manifest, purpose=maskable (Android safe zone)
+    "favicon-32.png",           # browser tab
+    "favicon-180.png",          # hi-dpi tab / bookmark
+    "wordmark.png",             # in-page brand row (transparent)
+})
 
 
 def is_dev_bugs_host(host: str | None) -> bool:
@@ -95,6 +114,46 @@ def _maybe_generate_task(bug_id, text, images=None):
 @dev_bugs_bp.route("/dev-bugs/", methods=["GET"])
 def dev_bugs_page():
     return serve_dev_bugs_page()
+
+
+@dev_bugs_bp.route("/dev-bugs/icons/<name>", methods=["GET"])
+def dev_bugs_icon(name: str):
+    """Serve one of the allowlisted icon files (no user input reaches the path)."""
+    if name not in _ICON_FILES:
+        return jsonify({"code": "NOT_FOUND", "error": "unknown icon"}), 404
+    return send_from_directory(_ICON_DIR, name, max_age=604800)
+
+
+@dev_bugs_bp.route("/dev-bugs/manifest.webmanifest", methods=["GET"])
+def dev_bugs_manifest():
+    """Web app manifest so Android/Chrome installs get the dev icon + name.
+
+    start_url follows the host: the page lives at "/" on the dev-bugs subdomain
+    and at "/dev-bugs" everywhere else, so an install from either one lands back
+    on the page rather than on the API health payload.
+    """
+    base = "/" if is_dev_bugs_host(request.host) else "/dev-bugs"
+    body = {
+        "name": "Willab dev",
+        "short_name": "dev",
+        "description": "Willab internal dev-bugs collector",
+        "start_url": base,
+        "scope": "/",
+        "display": "standalone",
+        "background_color": "#f5f5f7",
+        "theme_color": "#f5f5f7",
+        "icons": [
+            {"src": "/dev-bugs/icons/icon-192.png", "sizes": "192x192", "type": "image/png"},
+            {"src": "/dev-bugs/icons/icon-512.png", "sizes": "512x512", "type": "image/png"},
+            {"src": "/dev-bugs/icons/icon-maskable-512.png", "sizes": "512x512",
+             "type": "image/png", "purpose": "maskable"},
+        ],
+    }
+    return (
+        json.dumps(body),
+        200,
+        {"Content-Type": "application/manifest+json", "Cache-Control": "public, max-age=3600"},
+    )
 
 
 # ─────────────────────────── API ───────────────────────────

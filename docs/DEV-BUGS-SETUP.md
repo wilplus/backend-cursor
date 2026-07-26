@@ -18,6 +18,7 @@ mailer, the annotation-cron curl pattern. No new frameworks or providers.
 | DB + digest/send logic | `services/dev_bugs.py` |
 | Mailer attachments | `services/email_service.py` (`send_email_resend(..., attachments=)`) |
 | Frontend (single file) | `static/dev_bugs.html` |
+| Home-screen / tab icons | `static/dev_bugs_icons/` (regen: `scripts/gen_dev_bugs_icons.mjs`) |
 | Cron (curl endpoint) | `bin/railway-devbugs-cron.sh` + `Dockerfile.devbugs-cron` |
 | Cron (standalone alt) | `scripts/send_dev_bugs.py` |
 | Config | `config.py` → `DEV_BUGS_KEY`, `DEV_BUGS_TO`, `DEV_BUGS_HOST` |
@@ -31,6 +32,39 @@ mailer, the annotation-cron curl pattern. No new frameworks or providers.
 - `POST /api/dev-bugs/send` → `{ "sent": <count> }` (same routine as the cron)
 - `GET  /dev-bugs` and `/` on the dev host → serves the page (un-gated; the page
   prompts for the key, the API enforces it). `image` is a URL or a `data:` URL.
+- `GET  /dev-bugs/icons/<file>` → the home-screen / favicon PNGs (un-gated,
+  allowlisted filenames only, cached 7 days).
+- `GET  /dev-bugs/manifest.webmanifest` → PWA manifest. `start_url` follows the
+  Host: `/` on the dev subdomain, `/dev-bugs` anywhere else, so an install from
+  either mount lands back on the page instead of the API health payload.
+
+## Home-screen icon
+
+Add-to-Home-Screen installs as **“Willab dev”**: the Willab wordmark (Pacifico,
+ink `#2d3748`, orange `#f97316` period — the same mark
+`services/assignment_email._logo_html` renders) plus a small orange **dev** pill,
+so it sits next to the real app icon without being mistaken for it. The page
+itself shows the same wordmark + `dev` tag in a brand row above the header.
+
+Assets live in `static/dev_bugs_icons/` and are committed. Regenerate only when
+the mark changes:
+
+```bash
+node scripts/gen_dev_bugs_icons.mjs     # needs node + playwright (chromium)
+```
+
+| File | Consumer |
+|---|---|
+| `icon-180.png` | `apple-touch-icon` — iOS Add to Home Screen |
+| `icon-192.png`, `icon-512.png` | manifest / Android install |
+| `icon-maskable-512.png` | manifest `purpose=maskable` (Android safe zone) |
+| `favicon-32.png`, `favicon-180.png` | browser tab / bookmark (uses the `W.` reduction — the wordmark is illegible at 32 px) |
+| `wordmark.png` | the page's in-page brand row (transparent) |
+
+iOS ignores `data:` URIs for `apple-touch-icon`, which is why these are real
+files behind a route rather than inlined in the page. If the icon doesn't change
+on your phone, delete the old home-screen shortcut and re-add it — iOS caches the
+icon per shortcut, not per page load.
 
 ## Deploy checklist
 
@@ -53,4 +87,5 @@ mailer, the annotation-cron curl pattern. No new frameworks or providers.
   store it directly in `image_url` (no object storage needed). The global request
   cap is already 500 MB, so no per-route body-limit bump was necessary.
 - `0` open bugs → `/send` is a no-op (no empty email).
-- Test: `venv/bin/python -m unittest test_dev_bugs` (16 tests).
+- Test: `venv/bin/python -m unittest test_dev_bugs` (36 tests — routes, digest
+  service, the served page's guards, and the icon assets/routes).
