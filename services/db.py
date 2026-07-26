@@ -12934,6 +12934,39 @@ class DatabaseService:
             )
             return False
 
+    def set_session_boundary_metrics(
+        self,
+        session_id: str,
+        metrics: Optional[dict],
+    ) -> bool:
+        """Persist the F1 word→slide boundary measurement for a take
+        (services.slide_boundary_metrics). INTERNAL/coach-side — exposure and
+        impact of the pause-snap compensation, never surfaced to a user (AC-9).
+
+        Best-effort: missing column (migration pending) → False, and the
+        recording is unaffected. A measurement never blocks the live loop."""
+        if not session_id:
+            return False
+        try:
+            (
+                self.client.table("v2_sessions")
+                .update({"boundary_metrics": metrics})
+                .eq("id", session_id)
+                .execute()
+            )
+            return True
+        except Exception as e:
+            err_low = str(e).lower()
+            if "boundary_metrics" in err_low or "pgrst204" in err_low:
+                logger.warning(
+                    "set_session_boundary_metrics: column missing "
+                    "(run migrations/add_boundary_metrics.sql)")
+            else:
+                logger.warning(
+                    "set_session_boundary_metrics failed sid=%s: %s",
+                    session_id, e)
+            return False
+
     def set_session_slide_transcripts(
         self,
         session_id: str,
