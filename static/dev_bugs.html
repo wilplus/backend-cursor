@@ -176,6 +176,23 @@
   function autogrow(){input.style.height="auto";input.style.height=Math.max(60,input.scrollHeight)+"px";}
   input.addEventListener("input",autogrow);autogrow();
   async function copy(text){try{await navigator.clipboard.writeText(text);toast("Copied");}catch(e){toast("Copy failed");}}
+  const esc=s=>String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+  // Copy BOTH flavors: text/html (screenshots ride along as real <img>, so rich
+  // targets — docs, mail, most LLM inputs — get the images) + text/plain (the
+  // markdown, for plain-text targets). Falls back to plain text if the browser
+  // has no ClipboardItem.
+  async function copyRich(plain,html){
+    try{
+      if(window.ClipboardItem && navigator.clipboard && navigator.clipboard.write){
+        await navigator.clipboard.write([new ClipboardItem({
+          "text/plain":new Blob([plain],{type:"text/plain"}),
+          "text/html": new Blob([html], {type:"text/html"}),
+        })]);
+        toast("Copied");return;
+      }
+    }catch(e){/* fall through to plain */}
+    copy(plain);
+  }
 
   function req(base,path,opts){
     opts=opts||{};opts.headers=Object.assign({"Content-Type":"application/json","x-dev-key":KEY},opts.headers||{});
@@ -310,7 +327,10 @@
   $("copyAll").onclick=async()=>{
     try{ const d=await apiT("?view=active",{method:"GET"}); const ts=d.tasks||[];
       if(!ts.length){toast("Nothing to copy");return;}
-      copy("# WillpowerLab — backlog\n\n"+ts.map(taskMarkdown).join("\n"));
+      copyRich(
+        "# WillpowerLab — backlog\n\n"+ts.map(taskMarkdown).join("\n"),
+        "<h1>WillpowerLab — backlog</h1>"+ts.map(taskHtml).join("<hr>")
+      );
     }catch(e){toast("Copy failed");}
   };
   $("exportBtn").onclick=async()=>{
@@ -320,9 +340,19 @@
       URL.revokeObjectURL(url);toast("Exported");
     }catch(e){toast("Export failed");}
   };
+  function taskImgs(t){return (t.images&&t.images.length)?t.images:[];}
   function taskMarkdown(t){
     const tag=[t.theme,t.epic].filter(Boolean).join(" · ");
-    return "## [P"+(t.priority||2)+"] "+(t.user_story||"(task)")+"\n"+(tag?("_"+tag+"_\n"):"")+"\n"+((t.body||"").trim())+"\n";
+    const n=taskImgs(t).length;
+    const shots=n?("\n("+n+(n===1?" screenshot":" screenshots")+" attached)\n"):"";
+    return "## [P"+(t.priority||2)+"] "+(t.user_story||"(task)")+"\n"+(tag?("_"+tag+"_\n"):"")+"\n"+((t.body||"").trim())+"\n"+shots;
+  }
+  function taskHtml(t){
+    const tag=[t.theme,t.epic].filter(Boolean).join(" · ");
+    const imgs=taskImgs(t).map(src=>'<img src="'+src+'" style="max-width:520px;display:block;margin:6px 0">').join("");
+    return '<h2>[P'+(t.priority||2)+'] '+esc(t.user_story||"(task)")+"</h2>"
+      +(tag?("<p><em>"+esc(tag)+"</em></p>"):"")
+      +"<p>"+esc((t.body||"").trim()).replace(/\n/g,"<br>")+"</p>"+imgs;
   }
   async function loadTasks(){
     try{
@@ -362,7 +392,8 @@
     li.appendChild(main);
 
     const side=el("div","task-side");
-    const cp=el("button","tbtn","⧉");cp.title="Copy";cp.onclick=()=>copy(taskMarkdown(t));side.appendChild(cp);
+    const cp=el("button","tbtn","⧉");cp.title="Copy";
+    cp.onclick=()=>copyRich(taskMarkdown(t),taskHtml(t));side.appendChild(cp);
     if(archived){
       const rs=el("button","tbtn","↩");rs.title="Restore";
       rs.onclick=async()=>{try{await apiT("/"+t.id+"/restore",{method:"POST"});toast("Restored");loadTasks();}catch(e){}};side.appendChild(rs);

@@ -153,6 +153,12 @@ def to_markdown(tasks: list[dict]) -> str:
             lines.append(f"_{tag}_")
         lines.append("")
         lines.append((t.get("body") or "").strip())
+        # Embed the source bug's screenshots so the exported file is self-contained
+        # (data: URIs render as images in markdown viewers).
+        for j, src in enumerate(t.get("images") or [], 1):
+            if src:
+                lines.append("")
+                lines.append(f"![screenshot {j}]({src})")
         lines.append("")
     return "\n".join(lines).strip() + "\n"
 
