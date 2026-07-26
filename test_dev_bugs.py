@@ -11,7 +11,9 @@ Run: python3 -m unittest test_dev_bugs
 from __future__ import annotations
 
 import base64
+import json
 import os
+import re
 import unittest
 from unittest.mock import MagicMock, patch
 
@@ -282,6 +284,115 @@ class DevBugsPageTests(unittest.TestCase):
         self.assertIn('$("lightbox").addEventListener("click",closeImage)', self.page)
         self.assertIn('$("lbClose").addEventListener("click",closeImage)', self.page)
         self.assertIn('e.key==="Escape"', self.page)
+
+    # ---- home-screen / tab identity ----
+
+    def test_head_declares_the_install_icons(self):
+        for tag in ('rel="apple-touch-icon" href="/dev-bugs/icons/icon-180.png"',
+                    'href="/dev-bugs/icons/favicon-32.png"',
+                    'rel="manifest" href="/dev-bugs/manifest.webmanifest"',
+                    'name="apple-mobile-web-app-title" content="Willab dev"'):
+            self.assertIn(tag, self.page)
+
+    def test_icon_urls_are_absolute(self):
+        """The page is mounted at BOTH "/" (dev subdomain) and "/dev-bugs", so a
+        relative icon href would 404 from one of them."""
+        for ref in re.findall(r'(?:href|src)="([^"]*dev-bugs/icons/[^"]+)"', self.page):
+            self.assertTrue(ref.startswith("/dev-bugs/icons/"), ref)
+
+    def test_brand_row_shows_the_wordmark_and_dev_tag(self):
+        self.assertIn('src="/dev-bugs/icons/wordmark.png"', self.page)
+        self.assertRegex(self.page, r'<span class="tag">dev</span>')
+
+
+class DevBugsIconAssetTests(unittest.TestCase):
+    """The icon PNGs themselves — served to iOS/Android at install time.
+
+    iOS ignores data: URIs for apple-touch-icon, so these must exist as real
+    files at the sizes declared in the page head + manifest.
+    """
+
+    EXPECTED = {
+        "icon-180.png": (180, 180),            # apple-touch-icon
+        "icon-192.png": (192, 192),            # manifest / Android
+        "icon-512.png": (512, 512),            # manifest / Android
+        "icon-maskable-512.png": (512, 512),   # manifest, purpose=maskable
+        "favicon-32.png": (32, 32),            # browser tab
+        "favicon-180.png": (180, 180),         # hi-dpi tab / bookmark
+    }
+
+    @classmethod
+    def setUpClass(cls):
+        cls.dir = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                               "static", "dev_bugs_icons")
+
+    @staticmethod
+    def _png_size(path):
+        """(width, height) from the PNG IHDR — avoids a Pillow dependency."""
+        with open(path, "rb") as fh:
+            head = fh.read(24)
+        if head[:8] != b"\x89PNG\r\n\x1a\n":
+            raise AssertionError(f"{path} is not a PNG")
+        return (int.from_bytes(head[16:20], "big"), int.from_bytes(head[20:24], "big"))
+
+    def test_every_declared_icon_exists_at_its_size(self):
+        for name, size in self.EXPECTED.items():
+            path = os.path.join(self.dir, name)
+            self.assertTrue(os.path.isfile(path), f"missing {name}")
+            self.assertEqual(self._png_size(path), size, name)
+
+    def test_wordmark_is_transparent_rgba(self):
+        path = os.path.join(self.dir, "wordmark.png")
+        self.assertTrue(os.path.isfile(path))
+        with open(path, "rb") as fh:
+            colour_type = fh.read(26)[25]
+        self.assertEqual(colour_type, 6, "wordmark must be RGBA (transparent ground)")
+
+    @unittest.skipIf(_IMPORT_ERROR is not None, "needs app deps")
+    def test_route_allowlist_matches_the_files_on_disk(self):
+        on_disk = {f for f in os.listdir(self.dir) if f.endswith(".png")}
+        self.assertEqual(set(rb._ICON_FILES), on_disk)
+
+
+@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
+class DevBugsIconRouteTests(unittest.TestCase):
+    """Icon + manifest routes (the page is un-gated, so these need no dev key)."""
+
+    def setUp(self):
+        self.app = Flask(__name__)
+        self.app.register_blueprint(rb.dev_bugs_bp)
+        self.client = self.app.test_client()
+
+    def test_every_allowlisted_icon_serves_as_png(self):
+        for name in rb._ICON_FILES:
+            r = self.client.get(f"/dev-bugs/icons/{name}")
+            self.assertEqual(r.status_code, 200, name)
+            self.assertTrue(r.headers["Content-Type"].startswith("image/png"), name)
+
+    def test_unknown_icon_name_404(self):
+        for bad in ("nope.png", "dev_bugs.html", "../app.py"):
+            self.assertIn(self.client.get(f"/dev-bugs/icons/{bad}").status_code,
+                          (301, 308, 404), bad)
+
+    def test_manifest_is_valid_and_icons_resolve(self):
+        r = self.client.get("/dev-bugs/manifest.webmanifest")
+        self.assertEqual(r.status_code, 200)
+        self.assertTrue(r.headers["Content-Type"].startswith("application/manifest+json"))
+        body = json.loads(r.data)
+        self.assertEqual(body["short_name"], "dev")
+        self.assertTrue(any(i.get("purpose") == "maskable" for i in body["icons"]))
+        for icon in body["icons"]:
+            self.assertEqual(self.client.get(icon["src"]).status_code, 200, icon["src"])
+
+    def test_manifest_start_url_follows_the_host(self):
+        """The page lives at "/" on the dev subdomain and "/dev-bugs" elsewhere —
+        an install must land back on the page, not the API health payload."""
+        off_host = json.loads(self.client.get("/dev-bugs/manifest.webmanifest").data)
+        self.assertEqual(off_host["start_url"], "/dev-bugs")
+        on_host = json.loads(self.client.get(
+            "/dev-bugs/manifest.webmanifest",
+            headers={"Host": "dev.willpowerlab.com"}).data)
+        self.assertEqual(on_host["start_url"], "/")
 
 
 def _fake_client(open_rows):
