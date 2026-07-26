@@ -1010,6 +1010,20 @@ def serialize_proposal(row: dict, *, warrant: Optional[dict] = None) -> dict:
         "target": row.get("target") or "",
         "current": row.get("current") or "",
         "proposed": row.get("proposed") or "",
+        # ALWAYS present, and always False here. A row in life_proposals is by
+        # construction not against the immutable core — that is refused at
+        # creation AND again on the write path (L-2a), so anything that
+        # reached this table carries an approve button.
+        #
+        # It is emitted explicitly because the FE fail-safes on its ABSENCE:
+        # a payload with no `report_only` is treated as report-only and grows
+        # no approve button. That default is correct and must not change — it
+        # is what stops an unrecognised payload sprouting a button over
+        # Section I. But it means silence reads as "report", so a serializer
+        # that simply omits the field would render every proposal
+        # un-approvable and quietly kill the L-2 approve flow. Saying it out
+        # loud is what keeps the FE's guard a guard rather than the mechanism.
+        "report_only": False,
         "status": row.get("status") or "queued",
         "surfaced_on": _iso(row.get("surfaced_on")),
         "expires_at": _iso(row.get("expires_at")),
@@ -1042,6 +1056,15 @@ def serialize_day(row: dict) -> dict:
         "evening_line": row.get("evening_line"),
         "edit_why": row.get("edit_why"),
         "generated_at": _iso(row.get("generated_at")),
+        # The evening pass, nested so the FE branches on ONE field. Null
+        # generated_at ⇒ the pass has not run and the evening section stays
+        # closed. Never branch on the summary being non-empty: a recap can be
+        # legitimately sparse on a quiet day, and that is not the same as
+        # "it is not evening yet".
+        "evening": {
+            "generated_at": _iso(row.get("evening_generated_at")),
+            "summary": row.get("evening_summary") or {},
+        },
     }
 
 

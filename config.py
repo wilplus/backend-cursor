@@ -354,6 +354,18 @@ class Config:
         uid.strip() for uid in (os.getenv("LIFE_PANEL_ALLOWLIST") or "").split(",")
         if uid.strip()
     )
+    # The hour (0-23, UTC) at or after which the evening pass may generate.
+    # Read on the API path so a card opened at 09:00 does not stamp
+    # evening_generated_at and open the evening section twelve hours early —
+    # the FE branches on that stamp. The cron is the primary trigger; this is
+    # what keeps a read from pre-empting it.
+    #
+    # UTC, not local: there is no per-user timezone in the schema, and
+    # inventing one for a single-user feature would be the wrong thing to
+    # guess. Set it to the UTC hour that corresponds to 23:00 where the user
+    # actually is — 21 for Poland in summer, 22 in winter.
+    LIFE_PANEL_EVENING_HOUR_UTC = _env_int("LIFE_PANEL_EVENING_HOUR_UTC", 21)
+
     # BE-10: "use an API path with no training retention". OpenAI's retention
     # posture is a PROJECT/ORG setting, not a request parameter — so the code
     # side of that requirement is the ability to point life derivations at a

@@ -72,6 +72,31 @@ except Exception as e:                          # pragma: no cover
 
 USER = "11111111-1111-4111-8111-111111111111"
 OTHER = "22222222-2222-4222-8222-222222222222"
+
+
+def code_only(source: str) -> str:
+    """``source`` with every comment and string literal removed.
+
+    The grep-shaped fences (L-4's "no outbound anything", the no-tracking
+    rule) must read CODE. Run against raw source they match the prose that
+    explains the rule — a comment saying "no streaks, no scores" fails the
+    streak check — so the fence ends up forbidding its own documentation and
+    the fix is to delete the explanation. That is backwards: the comment is
+    the most valuable line in the file.
+
+    Tokenising is the honest version of the `.split('\"\"\"')` hack this
+    replaces, which only ever stripped the first docstring."""
+    import io
+    import tokenize
+    out: list[str] = []
+    try:
+        for tok in tokenize.generate_tokens(io.StringIO(source).readline):
+            if tok.type in (tokenize.COMMENT, tokenize.STRING):
+                continue
+            out.append(tok.string)
+    except (tokenize.TokenError, IndentationError):   # pragma: no cover
+        return source
+    return " ".join(out)
 MIGRATION = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                          "migrations", "add_life_panel.sql")
 
@@ -305,6 +330,17 @@ class ImmutableCoreTests(unittest.TestCase):
         # Refusing it keeps "every change is gated" true by construction.
         self.assertTrue(lp.is_immutable_target(""))
         self.assertTrue(lp.is_immutable_target(None))
+
+    @unittest.skipIf(_IMPORT_ERROR is not None, "needs app deps")
+    def test_the_report_shape_says_report_only_by_name(self):
+        # The two response shapes must agree on the field the FE reads. A
+        # reader who only knows `kind` would not realise that omitting
+        # `report_only` here is the difference between a report and an
+        # editable proposal over the Anchor.
+        import inspect
+        src = inspect.getsource(lengine.compare_to_strategy)
+        report_branch = src[src.index('"kind": "report"'):]
+        self.assertIn('"report_only": True', report_branch)
 
     @unittest.skipIf(_IMPORT_ERROR is not None, "needs app deps")
     def test_apply_refuses_the_immutable_core_on_the_write_path_too(self):
@@ -681,6 +717,26 @@ class SerializationTests(unittest.TestCase):
         self.assertEqual(out["category_labels"],
                          ["Wishful thinking", "Hubris"])
 
+    def test_every_proposal_states_report_only_explicitly(self):
+        """The FE fail-safes on this field's ABSENCE: no `report_only` means
+        no approve button, so an unrecognised payload cannot grow one over
+        Section I. That default is correct and must not change — which is
+        exactly why the backend has to SAY the value. A serializer that
+        omitted it would render every proposal un-approvable and silently
+        kill the L-2 approve flow, and the symptom would be a missing button
+        rather than an error."""
+        out = lp.serialize_proposal({"target": "weekly.goals"})
+        self.assertIn("report_only", out)
+        self.assertFalse(out["report_only"])
+
+    def test_a_row_in_the_table_is_never_report_only(self):
+        # Immutable-core proposals are refused at creation and again on the
+        # write path, so anything that reached life_proposals is approvable.
+        for target in ("weekly.section_i", "bets.rank", "anchor"):
+            self.assertTrue(lp.is_immutable_target(target))
+        self.assertFalse(
+            lp.serialize_proposal({"target": "weekly.section_ii"})["report_only"])
+
     def test_a_proposal_carries_its_warrant(self):
         # A change the archive cannot justify is a change the system invented.
         out = lp.serialize_proposal({"target": "weekly.goals"},
@@ -806,17 +862,35 @@ class ChatIsolationTests(unittest.TestCase):
         self.assertEqual(out["note_id"], "n1")
         self.assertIsNone(out["card"])
 
-    def test_a_pre_setup_note_is_kept_for_replay_not_dropped(self):
-        # Someone who reaches for `#mistake` is holding a thought they wanted
-        # recorded; losing it to a redirect teaches them the tag costs
-        # something.
+    def test_the_hash_router_is_off_until_onboarding_is_done(self):
+        """Founder 2026-07-26: "no try outs".
+
+        Before onboarding the tag does NOTHING — no derivation, no stored
+        note, no message. The turn goes back to the existing chat path
+        untouched, exactly like a non-consented user's.
+
+        This supersedes §6.2's keep-the-note rule. That rule existed so the
+        tag would not teach someone it costs something — but a half-working
+        tag teaches it louder: it answers, appears to have understood, and
+        produces nothing. The Principles button is the only way in."""
         with patch.object(lchat, "has_consented", return_value=True), \
-                patch.object(lchat.store, "setup_completed", return_value=False), \
-                patch.object(lchat.store, "insert_note",
-                             return_value={"id": "n1"}) as insert:
-            out = lchat.handle_note(USER, "#mistake I did x")
-        self.assertTrue(insert.call_args.kwargs["pending_replay"])
-        self.assertEqual(out["blocked"], "setup")
+                patch.object(lchat.store, "setup_completed",
+                             return_value=False), \
+                patch.object(lchat.store, "insert_note") as insert, \
+                patch.object(lchat.engine, "derive_case") as derive:
+            for text in ("#mistake I did x", "#win shipped it",
+                         "#add a phrase", "#edit new one thing"):
+                self.assertIsNone(lchat.handle_note(USER, text), text)
+        # A user who never onboards leaves NO life rows at all.
+        insert.assert_not_called()
+        derive.assert_not_called()
+
+    def test_the_panel_note_endpoint_is_gated_the_same_way(self):
+        # A second door nobody checks is how a rule becomes advisory.
+        import inspect
+        src = inspect.getsource(lroutes.life_note_create)
+        self.assertIn("setup_completed", src)
+        self.assertIn("SETUP_REQUIRED", src)
 
     def test_an_untagged_panel_note_gets_no_phrase_attached(self):
         # Untagged is capture only, no action (§5) — and an aphorism returned
@@ -835,9 +909,23 @@ class ChatIsolationTests(unittest.TestCase):
         import inspect
         src = inspect.getsource(lchat)
         body = src[src.index("def handle_note"):]
-        # Every string a user reads in the router comes from COPY.
-        self.assertIn('COPY["needs_setup"]', body)
+        # Every string a user reads in the router comes from COPY — no
+        # literal ever reaches an `answer`.
         self.assertIn('COPY["captured"]', body)
+        self.assertNotRegex(body, r'"answer":\s*"[A-Z]')
+        # And every COPY key is actually used, so a retired string cannot sit
+        # in the review dict pretending to still ship. (`needs_setup` went
+        # when the `#` router became off-until-onboarded.)
+        # And every COPY key is actually reachable somewhere, so a retired
+        # string cannot sit in the review dict pretending to still ship. (This
+        # is how the retire prompt was found: BE-7's question existed as copy
+        # and as an engine function, and nothing ever asked it.)
+        import inspect as _i
+        reachable = src + _i.getsource(lroutes)
+        for key in lchat.COPY:
+            self.assertIn(f'COPY["{key}"]', reachable,
+                          f"COPY[{key!r}] is unused — dead copy, or a "
+                          f"surface that was never wired up")
 
 
 # ═════════════════════════════════════════════════════════════════════════
@@ -911,6 +999,74 @@ class DailyCardTests(unittest.TestCase):
         self.assertEqual(card["one_thing"], "")
         self.assertEqual(card["one_thing_bet"], "")
         self.assertEqual(card["focus_blocks"], [])
+
+    def test_the_evening_pass_recaps_the_morning_without_judging_it(self):
+        summary = lengine.build_evening_pass({
+            "one_thing": "Ship the take ranker",
+            "one_thing_bet": "🔵 The Company",
+            "focus_blocks": [{"text": "Call my father", "bet": "🟢 The Life"}],
+            "morning_checks": {"Pompeiana": True, "Cold shower": False},
+            "distraction_flagged": "phone",
+        })
+        self.assertEqual(summary["one_thing"], "Ship the take ranker")
+        self.assertEqual(summary["habits"], ["Cold shower", "Pompeiana"])
+        # It recaps; it never judges. No count, no streak, no score — the
+        # ticks are the founder's to make, and a pass that pre-filled them
+        # would be answering its own question.
+        import json
+        blob = json.dumps(summary)
+        for banned in ("score", "streak", "completed", "percent", "rate"):
+            self.assertNotIn(banned, blob.lower())
+
+    def test_the_evening_pass_will_not_stamp_before_its_hour(self):
+        # The FE branches on evening.generated_at, so an early stamp is a
+        # wrong screen at breakfast, not a cosmetic issue.
+        morning = datetime(2026, 7, 26, 9, 0, tzinfo=timezone.utc)
+        evening = datetime(2026, 7, 26, 22, 0, tzinfo=timezone.utc)
+        self.assertFalse(lengine.evening_pass_due(morning))
+        self.assertTrue(lengine.evening_pass_due(evening))
+
+        row = {"id": "d1", "day": "2026-07-26", "one_thing": "x"}
+        with patch.object(lengine.store, "get_day", return_value=row), \
+                patch.object(lengine.store, "update_day") as update:
+            lengine.ensure_evening_pass(USER, date(2026, 7, 26), now=morning)
+        update.assert_not_called()
+
+    def test_the_evening_pass_is_idempotent(self):
+        # A cron that fires twice must not overwrite an evening the founder
+        # has already started answering.
+        done = {"id": "d1", "day": "2026-07-26",
+                "evening_generated_at": "2026-07-26T21:00:00+00:00"}
+        with patch.object(lengine.store, "get_day", return_value=done), \
+                patch.object(lengine.store, "update_day") as update:
+            out = lengine.ensure_evening_pass(USER, date(2026, 7, 26),
+                                              force=True)
+        update.assert_not_called()
+        self.assertIs(out, done)
+
+    def test_no_morning_card_means_no_evening_recap(self):
+        # A day the founder never opened is living, not failing (L-4).
+        with patch.object(lengine.store, "get_day", return_value=None), \
+                patch.object(lengine.store, "update_day") as update:
+            self.assertIsNone(
+                lengine.ensure_evening_pass(USER, date(2026, 7, 26),
+                                            force=True))
+        update.assert_not_called()
+
+    def test_the_day_payload_nests_the_evening_branch(self):
+        out = lp.serialize_day({"id": "d1", "evening_generated_at": None,
+                                "evening_summary": {}})
+        self.assertIsNone(out["evening"]["generated_at"])
+        # Never branch on the summary being non-empty: a recap can be
+        # legitimately sparse on a quiet day, and that is not "not evening
+        # yet".
+        self.assertEqual(out["evening"]["summary"], {})
+
+    def test_the_evening_pass_sends_nothing(self):
+        import inspect
+        code = inspect.getsource(lengine.ensure_evening_pass).split('"""')[-1]
+        for banned in ("email", "notif", "push", "send"):
+            self.assertNotIn(banned, code.lower())
 
     def test_the_card_columns_all_exist_in_the_migration(self):
         # build_daily_card's dict is handed straight to the table. A key with
@@ -998,7 +1154,7 @@ class NoNudgesTests(unittest.TestCase):
     def test_no_module_can_send_anything(self):
         import inspect
         for module in (lp, lstore, lengine, lchat, lroutes, importer):
-            src = inspect.getsource(module).lower()
+            src = code_only(inspect.getsource(module)).lower()
             for banned in self.BANNED:
                 self.assertNotIn(
                     banned, src,
@@ -1008,20 +1164,18 @@ class NoNudgesTests(unittest.TestCase):
     def test_nothing_tracks_silence_or_streaks(self):
         import inspect
         for module in (lp, lstore, lengine, lchat, lroutes):
-            src = inspect.getsource(module).lower()
+            src = code_only(inspect.getsource(module)).lower()
             for banned in ("streak", "days_since_last", "inactivity",
                            "silence_detect"):
                 self.assertNotIn(banned, src, module.__name__)
 
     def test_generation_is_scheduled_but_delivery_is_not(self):
-        # ensure_daily_card writes a row and returns. Nothing downstream.
-        # The docstring is stripped first — it SAYS "sends no email", and
-        # matching on prose rather than code would make the comment the test.
+        # Both passes write a row and return. Nothing downstream.
         import inspect
-        src = inspect.getsource(lengine.ensure_daily_card)
-        code = src.split('"""')[-1].lower()
-        for banned in ("email", "notif", "push", "send"):
-            self.assertNotIn(banned, code)
+        for fn in (lengine.ensure_daily_card, lengine.ensure_evening_pass):
+            code = code_only(inspect.getsource(fn)).lower()
+            for banned in ("email", "notif", "push", "send"):
+                self.assertNotIn(banned, code, fn.__name__)
 
 
 # ═════════════════════════════════════════════════════════════════════════
@@ -1187,6 +1341,37 @@ class RouteGateTests(unittest.TestCase):
             self.assertIn(entry, state["menu"])
         self.assertTrue(state["tags"])
 
+    def test_the_state_payload_carries_the_onboarding_state_machine(self):
+        # The FE drives WHICH SCREEN off these two objects.
+        fresh = self._state(consented=False, setup=None)
+        self.assertEqual(fresh["consent"]["accepted_version"], None)
+        self.assertEqual(fresh["setup"], {"complete": False, "started": False,
+                                          "resume_step": None})
+
+        mid = self._state(consented=True,
+                          setup={"answers": {"_step": "quarterly"}})
+        self.assertEqual(mid["consent"]["accepted_version"],
+                         mid["consent"]["required_version"])
+        self.assertEqual(mid["setup"]["resume_step"], "quarterly")
+        self.assertTrue(mid["setup"]["started"])
+
+    def test_the_nested_and_flat_shapes_cannot_disagree(self):
+        # Two representations of one fact is a drift risk; they are read from
+        # the same locals so a change to one moves both.
+        for consented, setup in ((False, None), (True, None),
+                                 (True, {"completed_at": "2026-07-26"})):
+            s = self._state(consented=consented, setup=setup)
+            self.assertEqual(s["consent"]["accepted_version"] is not None,
+                             s["consented"])
+            self.assertEqual(s["setup"]["complete"], s["setup_complete"])
+            self.assertEqual(s["setup"]["started"], s["setup_started"])
+
+    def test_the_consent_version_is_an_opaque_token(self):
+        # Compared for equality, never parsed. A copy change shipping as
+        # "2026-08-02" instead of "1.1" must not break the comparison.
+        s = self._state(consented=True, setup=None)
+        self.assertIsInstance(s["consent"]["required_version"], str)
+
     def test_setup_alone_never_activates_without_consent(self):
         # The order is explainer → CONSENT → form, and it cannot be
         # rearranged: the form itself collects the anchor and eight horizons of
@@ -1218,6 +1403,41 @@ class RouteGateTests(unittest.TestCase):
         self.assertIn("weekly", resp.get_json()["diffs"])
         write.assert_not_called()
 
+    def test_every_proposal_read_carries_its_warrant(self):
+        """L-2's delivery, on BOTH paths.
+
+        The FE drops a proposal that arrives without a warrant — correctly,
+        since there is no compliant way to render a bare one. So a serializer
+        that forgets it does not look like a bug: the proposal simply never
+        appears. The weekly review is the entire delivery mechanism for the
+        L-2b queue, so forgetting it there loses the queue silently."""
+        row = {"id": "p1", "kind": "strategy", "target": "weekly.goals",
+               "status": "queued", "rank": 1.0,
+               "warrant_principle_id": "w1", "created_at": "2026-07-26"}
+        warrant = {"id": "w1", "kind": "principle", "title": "Mine"}
+
+        for path, extract in (
+            ("/v2/life/proposals", lambda b: b["weekly_batch"]),
+            ("/v2/life/week", lambda b: b["proposals"]),
+        ):
+            with patch.object(lroutes.chat, "is_enabled", return_value=True), \
+                    patch.object(lroutes.chat, "has_consented",
+                                 return_value=True), \
+                    patch.object(lroutes.store, "expire_stale_proposals",
+                                 return_value=0), \
+                    patch.object(lroutes.store, "list_proposals",
+                                 side_effect=lambda u, **k:
+                                 [row] if k.get("status") == "queued" else []), \
+                    patch.object(lroutes.store, "get_item",
+                                 return_value=warrant), \
+                    patch.object(lroutes.store, "get_week", return_value=None), \
+                    patch.object(lroutes.store, "list_notes", return_value=[]):
+                body = self._get(path).get_json()
+            found = extract(body)
+            self.assertEqual(len(found), 1, path)
+            self.assertEqual(found[0]["warrant"]["title"], "Mine", path)
+            self.assertFalse(found[0]["report_only"], path)
+
     def test_approving_the_immutable_core_is_refused(self):
         with patch.object(lroutes.chat, "is_enabled", return_value=True), \
                 patch.object(lroutes.chat, "has_consented", return_value=True), \
@@ -1230,6 +1450,52 @@ class RouteGateTests(unittest.TestCase):
                                     json={})
         self.assertEqual(resp.status_code, 409)
         self.assertEqual(resp.get_json()["code"], "IMMUTABLE_CORE")
+
+    def test_approving_a_case_asks_the_retire_question(self):
+        """BE-7's prompt, at the only moment it is answerable: a principle has
+        just entered the archive.
+
+        It ASKS; it never announces. Nothing is retired by this response —
+        the veto is absolute and POST /principles/<id>/retire is the only
+        thing that moves a status."""
+        proposed = {"id": "new", "kind": "principle", "status": "proposed",
+                    "title": "Say no early"}
+        old = {"id": "old", "kind": "principle", "title": "Say no politely",
+               "order_key": 1000.0}
+        with patch.object(lroutes.chat, "is_enabled", return_value=True), \
+                patch.object(lroutes.chat, "has_consented", return_value=True), \
+                patch.object(lroutes.store, "get_case",
+                             return_value={"id": "c1"}), \
+                patch.object(lroutes.store, "items_for_case",
+                             return_value=[proposed]), \
+                patch.object(lroutes.store, "update_item",
+                             return_value={**proposed, "status": "active"}), \
+                patch.object(lroutes.store, "update_case",
+                             return_value={"id": "c1"}), \
+                patch.object(lroutes.store, "principles", return_value=[old]), \
+                patch.object(lroutes.engine, "retire_candidate",
+                             return_value=old) as ask:
+            body = self.client.patch("/v2/life/cases/c1",
+                                     headers={"Authorization": "Bearer t"},
+                                     json={"approve": True}).get_json()
+        ask.assert_called_once()
+        self.assertEqual(body["retire_prompt"]["retires"]["id"], "old")
+        # "#12" has to mean the twelfth thing they see.
+        self.assertEqual(body["retire_prompt"]["number"], 1)
+        self.assertIn("#1", body["retire_prompt"]["question"])
+
+    def test_no_retire_candidate_means_no_prompt(self):
+        with patch.object(lroutes.chat, "is_enabled", return_value=True), \
+                patch.object(lroutes.chat, "has_consented", return_value=True), \
+                patch.object(lroutes.store, "get_case",
+                             return_value={"id": "c1"}), \
+                patch.object(lroutes.store, "items_for_case", return_value=[]), \
+                patch.object(lroutes.store, "update_case",
+                             return_value={"id": "c1"}):
+            body = self.client.patch("/v2/life/cases/c1",
+                                     headers={"Authorization": "Bearer t"},
+                                     json={"approve": True}).get_json()
+        self.assertIsNone(body["retire_prompt"])
 
     def test_a_no_on_retire_keeps_both_and_is_remembered(self):
         # Veto is absolute; the question is never re-asked.

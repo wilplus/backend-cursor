@@ -109,6 +109,34 @@ def _uid() -> str:
     return str(request.user_id)
 
 
+def _with_warrants(user_id: str, rows: list) -> list:
+    """Serialize proposals WITH the principle that warrants each one.
+
+    The single place proposals become JSON, and it exists because there were
+    two and only one of them remembered. L-2 requires every proposed change to
+    display one of the user's own principles as its justification, and the FE
+    DROPS a proposal that arrives without one — correctly, since there is no
+    compliant way to render a bare proposal. So a serializer that forgets the
+    warrant does not look like a bug: the proposal simply never appears.
+
+    That is what had happened to the weekly review, which is the entire
+    delivery mechanism for the L-2b queue — the ranked batch of three arrived
+    warrant-less and would have been discarded on sight.
+
+    Warrants are looked up once per call and shared, so a batch citing the
+    same principle three times costs one read."""
+    warrants: dict = {}
+    for row in rows:
+        wid = row.get("warrant_principle_id")
+        if wid and wid not in warrants:
+            warrants[wid] = store.get_item(user_id, str(wid))
+    return [
+        lp.serialize_proposal(
+            row, warrant=warrants.get(row.get("warrant_principle_id")))
+        for row in rows
+    ]
+
+
 def _clamp(value, default: int, hi: int) -> int:
     """A page size. At least 1 — a limit of 0 is a request for nothing, which
     is never what the caller meant."""
@@ -178,17 +206,45 @@ def life_state():
         if chat.is_allowlisted(user_id):
             menu.append("prayer")
 
+    answers = (setup or {}).get("answers") or {}
     return jsonify({
-        "consented": consented,
-        "consent_version": version,
-        "setup_started": bool(setup),
-        "setup_complete": complete,
-        # The one field to gate on. consented + setup_complete are the reason,
-        # this is the answer — so the FE never has to re-derive the rule.
+        # ── the onboarding state machine (FE contract) ───────────────────
+        # Nested because these two drive WHICH SCREEN to show, and the flat
+        # fields below drive what to render once you are through. Keeping the
+        # two jobs apart is what stops the FE deriving the menu from consent
+        # state and getting the allowlist wrong.
+        #
+        # `required_version` is an OPAQUE TOKEN, not a date. It is whatever
+        # LIFE_PANEL_CONSENT_VERSION says — "1.0" by default. Compare it for
+        # equality; never parse it. A copy change that ships as "1.1" or
+        # "2026-08-02" must not break the comparison.
+        "consent": {
+            "required_version": version,
+            "accepted_version": version if consented else None,
+        },
+        "setup": {
+            "complete": complete,
+            "started": bool(setup),
+            "resume_step": answers.get("_step"),
+        },
+        # ── what to render ───────────────────────────────────────────────
+        # `menu` stays SERVER-OWNED and is the authority. The eight standard
+        # tabs are derivable from `active`, but an allowlisted entry is not:
+        # deriving it FE-side would mean shipping allowlist membership as a
+        # boolean the client could flip, and a 404-not-403 surface must not
+        # announce itself in a payload.
         "active": active,
         "menu": menu,
         # The `#` picker is only useful once the engine will actually run.
         "tags": lp.tag_suggestions() if active else [],
+
+        # Flat aliases, kept for the callers already on them. Same values,
+        # never computed twice — read from the same locals as the objects
+        # above, so the two shapes cannot drift.
+        "consented": consented,
+        "consent_version": version,
+        "setup_started": bool(setup),
+        "setup_complete": complete,
     }), 200
 
 
@@ -226,9 +282,14 @@ def life_consent():
 def life_setup_get():
     """Partial answers, for save-and-resume."""
     row = store.get_setup(_uid()) or {}
+    answers = row.get("answers") or {}
     return jsonify({
-        "answers": row.get("answers") or {},
+        "answers": answers,
         "complete": bool(row.get("completed_at")),
+        # Which step to reopen on. Stored rather than inferred from which
+        # answers exist: the founder can skip a horizon and come back to it,
+        # so "the first unanswered one" is not the same as "where they were".
+        "resume_step": answers.get("_step"),
     }), 200
 
 
@@ -238,14 +299,26 @@ def life_setup_put():
     """Upsert partial answers. Called on every step, not only at the end —
     eight horizons is long enough that people get interrupted, and without
     resume an interruption is an abandonment."""
-    answers = _body().get("answers")
+    body = _body()
+    answers = body.get("answers")
     if not isinstance(answers, dict):
         return _invalid("answers: must be an object")
+    # `step` rides inside the answers blob rather than getting its own column:
+    # it is FE-owned form state, and the FE owns what a step IS. A column
+    # would freeze that shape into the schema and need a migration the first
+    # time a horizon is split in two.
+    if "step" in body:
+        step = body.get("step")
+        if step is not None and not isinstance(step, (str, int)):
+            return _invalid("step: must be a string, a number, or null")
+        answers = {**answers, "_step": step}
     row = store.upsert_setup(_uid(), answers)
     if not row:
         return jsonify({"code": "V2_ERROR",
                         "error": "Could not save"}), 500
-    return jsonify({"answers": row.get("answers") or {}}), 200
+    saved = row.get("answers") or {}
+    return jsonify({"answers": saved,
+                    "resume_step": saved.get("_step")}), 200
 
 
 @life_bp.route("/v2/life/setup/complete", methods=["POST"])
@@ -370,19 +443,9 @@ def life_proposals():
     queued = store.list_proposals(user_id, status="queued", kind="strategy")
     batch = lp.weekly_batch(queued)
 
-    warrants = {}
-    for row in surfaced + batch:
-        wid = row.get("warrant_principle_id")
-        if wid and wid not in warrants:
-            warrants[wid] = store.get_item(user_id, str(wid))
-
-    def _ser(row):
-        return lp.serialize_proposal(
-            row, warrant=warrants.get(row.get("warrant_principle_id")))
-
     return jsonify({
-        "surfaced": [_ser(r) for r in surfaced],
-        "weekly_batch": [_ser(r) for r in batch],
+        "surfaced": _with_warrants(user_id, surfaced),
+        "weekly_batch": _with_warrants(user_id, batch),
         "queued_total": len(queued),
         "queued_held_back": max(0, len(queued) - len(batch)),
     }), 200
@@ -625,17 +688,54 @@ def life_case_update(case_id):
     # to update" and make the approve button 400.
     editable = {k: v for k, v in body.items() if k != "approve"}
     fields = lp.validate_case_input(editable, partial=True) if editable else {}
+    retire_prompt = None
     if body.get("approve") is True:
         fields["status"] = "active"
         if "category" not in fields and existing.get("category_proposed"):
             fields["category"] = lp.normalize_categories(
                 existing["category_proposed"])
         for item in store.items_for_case(user_id, case_id):
-            if item.get("status") == "proposed":
-                store.update_item(user_id, str(item["id"]),
-                                  {"status": "active"})
+            if item.get("status") != "proposed":
+                continue
+            activated = store.update_item(user_id, str(item["id"]),
+                                          {"status": "active"}) or item
+            # BE-7's retire question, asked at the only moment it makes sense:
+            # a principle has just ENTERED the archive, so "does this replace
+            # one already in it?" is answerable. Asked once — a pair the
+            # founder already answered `no` on is never raised again, and
+            # retire_candidate skips those.
+            if retire_prompt is None:
+                retire_prompt = _retire_prompt(user_id, activated)
     row = store.update_case(user_id, case_id, fields)
-    return jsonify({"case": lp.serialize_case(row or existing)}), 200
+    return jsonify({
+        "case": lp.serialize_case(row or existing),
+        # null on almost every approval. A prompt here is the system ASKING,
+        # never announcing — the veto is absolute and nothing is retired until
+        # POST /principles/<id>/retire says so.
+        "retire_prompt": retire_prompt,
+    }), 200
+
+
+def _retire_prompt(user_id: str, new_principle: dict):
+    """``{question, retires: {...}, number}`` when a newly approved principle
+    looks like it supersedes an existing one — otherwise None.
+
+    `number` is the candidate's 1-based position in the founder's own ordered
+    list, because the copy asks "does this retire #12?" and #12 has to mean
+    the twelfth thing they see."""
+    candidate = engine.retire_candidate(user_id, new_principle)
+    if not candidate:
+        return None
+    ordered = store.principles(user_id)
+    number = next(
+        (i + 1 for i, p in enumerate(ordered)
+         if str(p.get("id")) == str(candidate.get("id"))), None)
+    return {
+        "question": chat.COPY["retire_question"].format(
+            n=number if number is not None else "?"),
+        "retires": lp.serialize_item(candidate),
+        "number": number,
+    }
 
 
 # ═════════════════════════════════════════════════════════════════════════
@@ -740,6 +840,13 @@ def life_day():
         row = engine.ensure_daily_card(user_id)
     if not row:
         return jsonify({"day": None}), 200
+    # The evening pass, if it is late enough. Same generate-on-read fallback
+    # as the morning card, so the 23:00 cron is an optimisation rather than a
+    # dependency — but gated on the hour, because stamping evening.generated_at
+    # early would open the evening section on a card the founder opened at
+    # breakfast.
+    row = engine.ensure_evening_pass(
+        user_id, date.fromisoformat(str(row.get("day"))[:10])) or row
     return jsonify({"day": lp.serialize_day(row)}), 200
 
 
@@ -786,7 +893,7 @@ def life_week_get():
         {"week_start": week_start.isoformat()},
         # The weekly review is where the queued proposals arrive as a ranked
         # batch of three (L-2b).
-        "proposals": [lp.serialize_proposal(p) for p in lp.weekly_batch(queued)],
+        "proposals": _with_warrants(user_id, lp.weekly_batch(queued)),
         "queued_held_back": max(0, len(queued) - lp.WEEKLY_BATCH_SIZE),
         "untagged_notes": [lp.serialize_note(n) for n in
                            store.list_notes(user_id, limit=20,
@@ -836,14 +943,25 @@ def life_note_create():
 
     Both entrances call services.life_chat.handle_note, so a `#mistake` typed
     in the panel and one typed in chat cannot drift apart."""
+    user_id = _uid()
     body = _body()
     text = body.get("body")
     if not isinstance(text, str) or not text.strip():
         return _invalid("body: must be a non-empty string")
-    result = chat.handle_note(_uid(), text, source="form")
+    # The same gate the chat router applies (founder: "no try outs"). The
+    # panel is unreachable before onboarding anyway, so this is the second
+    # door being locked rather than the first — but a second door nobody
+    # checks is how a rule becomes advisory.
+    if not store.setup_completed(user_id):
+        return jsonify({
+            "code": "SETUP_REQUIRED",
+            "error": "Finish the Principles setup first.",
+            "pointer": "/panel/principles",
+        }), 409
+    result = chat.handle_note(user_id, text, source="form")
     if result is None:
         # Untagged from the panel: capture only, no action (§5).
-        row = store.insert_note(_uid(), text, source="form")
+        row = store.insert_note(user_id, text, source="form")
         return jsonify({"note": lp.serialize_note(row) if row else None,
                         "route": "capture"}), 201
     return jsonify(result), 201
