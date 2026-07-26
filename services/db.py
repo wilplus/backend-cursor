@@ -12834,9 +12834,15 @@ class DatabaseService:
             # (merge loop below). A normal note/tag save never references either
             # column, and ON CONFLICT preserves whatever was already there —
             # keeps coach saves working even before their migrations run.
+            # reference_post_slug (ticket 6, 2026-07-26) joins the same
+            # write-only-when-set group: a blog post the COACH manually attaches
+            # to this verified moment. Never re-asserted from base, so a normal
+            # note/tag save leaves it alone and coach saves keep working before
+            # its migration runs.
             for k in (
                 "note", "tag", "surfaced", "when_context", "examples",
                 "breakthrough_video_ref", "transcript_corrected",
+                "reference_post_slug",
             ):
                 if k in fields:
                     row[k] = fields[k]
