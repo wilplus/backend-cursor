@@ -1,11 +1,13 @@
-"""Delivery–content alignment note (founder 2026-07-24 sign-off).
+"""Congruence delivery star (founder 2026-07-24 sign-off).
 
 Pure tests of services/delivery_alignment.py — no app / DB / model import
-(the model call is injected), so they run in CI. They lock the fences:
-  * the flat-delivery GATE (down-lean only; up/neutral/high-arousal excluded),
-  * the AC-9 guard on the surfaced line (no digits / construct words),
-  * "words must be positive" (negative/neutral content never flagged),
-  * one note per take, best-effort, flag-gated default off.
+(the DB + model call are injected), so they run in CI. They lock the fences:
+  * the low-arousal GATE (arousal_z ≤ threshold; high/neutral excluded — so the
+    valence-confusable high-arousal case is never flagged),
+  * the positive-content gate (upbeat words only),
+  * device 'congruence' persisted as a delivery star (kind='delivery'), and a
+    member of the closed DELIVERY_DEVICES set so the serve layer can render it,
+  * one per take, best-effort, flag-gated default off.
 
 Run: python3 -m unittest test_delivery_alignment
 """
@@ -16,178 +18,159 @@ import unittest
 
 from services import delivery_alignment as da
 
-
-def _piece(sid, pot=None, transcript="hi there", extra=None):
-    m = {}
-    if pot is not None:
-        m["acoustic_read"] = {"potentiometer": pot}
-    if extra:
-        m.update(extra)
-    return {"id": sid, "transcript": transcript, "metrics": m}
+# The baseline arousal_z is z-scored against: {feature: (mean, sd)}.
+BASE = {"wpm": (140.0, 20.0), "dynamic_db": (12.0, 4.0),
+        "f0_sd": (30.0, 10.0), "pause_ratio": (0.2, 0.1)}
 
 
-class GateTests(unittest.TestCase):
-    def _ids(self, pieces):
-        return [p["id"] for p in da.flat_delivery_candidates(pieces)]
+def _flat():     # below-norm arousal cues (slow/soft/flat/paused) → low arousal_z
+    return {"wpm": 100.0, "dynamic_db": 6.0, "f0_sd": 15.0, "pause_ratio": 0.4}
 
-    def test_only_down_lean_flattest_first(self):
-        # potentiometer <= -0.35 is a candidate; ordered flattest (most
-        # negative) first.
-        pieces = [
-            _piece("up", 0.6),        # charisma/up  → excluded
-            _piece("flat", -0.8),     # clearly down → candidate
-            _piece("mild", -0.5),     # down         → candidate
-            _piece("neutral", -0.1),  # neutral band → excluded
-            _piece("boundary", -0.35),  # exactly the boundary → candidate
+
+def _deep():     # even flatter → lower arousal_z (sorts first)
+    return {"wpm": 80.0, "dynamic_db": 3.0, "f0_sd": 8.0, "pause_ratio": 0.6}
+
+
+def _hot():      # above-norm (fast/loud/mobile/un-paused) → high arousal_z
+    return {"wpm": 180.0, "dynamic_db": 18.0, "f0_sd": 45.0, "pause_ratio": 0.1}
+
+
+def _neutral():  # at the norm → arousal_z ≈ 0
+    return {"wpm": 140.0, "dynamic_db": 12.0, "f0_sd": 30.0, "pause_ratio": 0.2}
+
+
+class FakeDB:
+    def __init__(self, ok=True):
+        self.ok = ok
+        self.calls = []
+
+    def upsert_moment_suggestion(self, snip_id, arc_id, kind, replacement, why, device):
+        self.calls.append((snip_id, arc_id, kind, replacement, why, device))
+        return self.ok
+
+
+class CongruenceCandidateTests(unittest.TestCase):
+    def _ids(self, unstarred, baseline=BASE):
+        return [sid for _az, sid, _t in da.congruence_candidates(unstarred, baseline)]
+
+    def test_only_low_arousal_qualifies(self):
+        unstarred = [
+            ("hot", "great news", _hot()),        # high arousal → excluded
+            ("flat", "i am thrilled", _flat()),   # low arousal  → candidate
+            ("neutral", "ok then", _neutral()),   # at norm      → excluded
         ]
-        self.assertEqual(self._ids(pieces), ["flat", "mild", "boundary"])
+        self.assertEqual(self._ids(unstarred), ["flat"])
 
-    def test_high_arousal_and_up_are_never_candidates(self):
-        # The masked-tension / genuine-excitement (high-arousal, up-lean) case
-        # is out of scope by construction — a positive potentiometer never
-        # qualifies, so we can never flag it.
-        self.assertEqual(self._ids([_piece("a", 0.9), _piece("b", 0.4)]), [])
+    def test_ordered_flattest_first(self):
+        unstarred = [("mild", "yay", _flat()), ("deep", "yay", _deep())]
+        self.assertEqual(self._ids(unstarred), ["deep", "mild"])
 
-    def test_excludes_missing_read_and_empty_transcript(self):
-        pieces = [
-            _piece("no_read", None),                       # no acoustic_read
-            _piece("no_text", -0.9, transcript="   "),     # down but no words
-            {"id": "no_metrics", "transcript": "hi"},       # no metrics at all
-            _piece("ok", -0.7),
-        ]
-        self.assertEqual(self._ids(pieces), ["ok"])
+    def test_high_arousal_never_a_candidate(self):
+        # the masked-tension / genuine-excitement case is out of scope by
+        # construction — a high arousal read can never become a congruence star.
+        self.assertEqual(self._ids([("a", "hi", _hot()), ("b", "hi", _hot())]), [])
 
-    def test_malformed_read_never_raises(self):
-        pieces = [
-            {"id": "bad1", "transcript": "hi", "metrics": {"acoustic_read": None}},
-            {"id": "bad2", "transcript": "hi",
-             "metrics": {"acoustic_read": {"potentiometer": "x"}}},
-            _piece("ok", -0.9),
-        ]
-        self.assertEqual(self._ids(pieces), ["ok"])
+    def test_excludes_empty_transcript_and_missing_baseline(self):
+        self.assertEqual(self._ids([("flat", "   ", _flat())]), [])
+        self.assertEqual(da.congruence_candidates([("flat", "hi", _flat())], None), [])
+        self.assertEqual(da.congruence_candidates([], BASE), [])
 
-    def test_empty_and_none_safe(self):
-        self.assertEqual(da.flat_delivery_candidates([]), [])
-        self.assertEqual(da.flat_delivery_candidates(None), [])
+    def test_malformed_items_never_raise(self):
+        self.assertEqual(self._ids([("bad",), None, ("flat", "hi", _flat())]), ["flat"])
 
 
-class ExtractNoteTests(unittest.TestCase):
-    def test_positive_clean_note_passes(self):
-        out = da.extract_note({
-            "words_positive": True,
-            "note": "You called this the best part, yet your voice dipped; worth a re-listen.",
-        })
-        self.assertIn("worth a re-listen", out)
+class SentimentTests(unittest.TestCase):
+    def test_words_positive_is_strict(self):
+        self.assertTrue(da.words_positive({"words_positive": True}))
+        self.assertFalse(da.words_positive({"words_positive": False}))
+        self.assertFalse(da.words_positive({}))
+        self.assertFalse(da.words_positive(None))
+        self.assertFalse(da.words_positive("nope"))
 
-    def test_words_not_positive_returns_none(self):
-        self.assertIsNone(da.extract_note({"words_positive": False, "note": "anything"}))
-        self.assertIsNone(da.extract_note({"note": "no flag key"}))
-
-    def test_ac9_digit_is_killed(self):
-        self.assertIsNone(da.extract_note(
-            {"words_positive": True, "note": "You said it 3 times, worth a re-listen."}))
-
-    def test_ac9_construct_vocab_is_killed(self):
-        self.assertIsNone(da.extract_note(
-            {"words_positive": True, "note": "Your charisma score dipped here."}))
-
-    def test_empty_or_nonstring_note_returns_none(self):
-        self.assertIsNone(da.extract_note({"words_positive": True, "note": "   "}))
-        self.assertIsNone(da.extract_note({"words_positive": True, "note": None}))
-        self.assertIsNone(da.extract_note("not a dict"))
-        self.assertIsNone(da.extract_note(None))
-
-
-class BuildMessagesTests(unittest.TestCase):
-    def test_user_carries_transcript_system_carries_fences(self):
-        system, user = da.build_messages("This is the best day ever")
-        self.assertIn("This is the best day ever", user)
-        # delivery read is words, never a number
-        self.assertIn("flat", user.lower())
-        # the fence rules are in the system prompt
+    def test_messages_carry_transcript(self):
+        system, user = da.build_sentiment_messages("best day ever")
+        self.assertIn("best day ever", user)
         self.assertIn("words_positive", system)
-        self.assertIn("NEVER a number", system)
 
 
-class AnnotateTests(unittest.TestCase):
-    """The orchestrator, with an injected chat_fn (no real model)."""
-
-    def _positive(self, note="You lit up on paper here, yet your voice stayed low; give it another pass."):
-        return lambda s, u: {"words_positive": True, "note": note}
-
-    def test_stamps_flattest_positive_moment(self):
+class GenerateCongruenceTests(unittest.TestCase):
+    def test_stars_flattest_positive_moment_once(self):
+        db = FakeDB()
         calls = []
+
         def chat(s, u):
             calls.append(u)
-            return {"words_positive": True,
-                    "note": "The words are a high point; your voice held back, worth a re-listen."}
-        pieces = [_piece("mild", -0.5, "great news"), _piece("flat", -0.9, "i am thrilled")]
-        note = da.annotate_pieces_with_alignment(pieces, chat_fn=chat)
-        self.assertIn("worth a re-listen", note)
-        # flattest ("flat") gets the first shot and, being positive, is stamped
-        flat = next(p for p in pieces if p["id"] == "flat")
-        self.assertEqual(flat["metrics"]["delivery_alignment_note"], note)
-        # one note per take → stopped after the first success (one call)
-        self.assertEqual(len(calls), 1)
-        # the milder piece is untouched
-        mild = next(p for p in pieces if p["id"] == "mild")
-        self.assertNotIn("delivery_alignment_note", mild["metrics"])
+            return {"words_positive": True}
 
-    def test_walks_past_non_positive_words_to_next_candidate(self):
-        seq = [{"words_positive": False, "note": ""},
-               {"words_positive": True,
-                "note": "This reads exciting; your delivery stayed even, take another pass."}]
-        def chat(s, u):
-            return seq.pop(0)
-        pieces = [_piece("flat", -0.9, "the numbers fell again"),  # flattest but negative words
-                  _piece("mild", -0.5, "i love this")]
-        note = da.annotate_pieces_with_alignment(pieces, chat_fn=chat)
-        self.assertIn("take another pass", note)
-        mild = next(p for p in pieces if p["id"] == "mild")
-        self.assertEqual(mild["metrics"]["delivery_alignment_note"], note)
+        unstarred = [("mild", "great", _flat()), ("deep", "i love this", _deep())]
+        out = da.generate_congruence_stars(db, "arc1", unstarred, BASE, chat_fn=chat)
+        self.assertEqual(out, ["deep"])            # flattest wins
+        self.assertEqual(len(calls), 1)            # one per take → stop at first
+        self.assertEqual(
+            db.calls[0], ("deep", "arc1", "delivery", None, None, "congruence"))
 
-    def test_caps_model_calls_at_two(self):
+    def test_walks_past_negative_words(self):
+        db = FakeDB()
+        seq = [{"words_positive": False}, {"words_positive": True}]
+        unstarred = [("deep", "the deal collapsed", _deep()),
+                     ("mild", "i love this", _flat())]
+        out = da.generate_congruence_stars(
+            db, "arc1", unstarred, BASE, chat_fn=lambda s, u: seq.pop(0))
+        self.assertEqual(out, ["mild"])
+        self.assertEqual(db.calls[-1][5], "congruence")
+
+    def test_caps_model_calls(self):
+        db = FakeDB()
         calls = []
+
         def chat(s, u):
             calls.append(u)
-            return {"words_positive": False, "note": ""}
-        pieces = [_piece(f"p{i}", -0.9 + i * 0.01, "yay") for i in range(5)]
-        note = da.annotate_pieces_with_alignment(pieces, chat_fn=chat)
-        self.assertIsNone(note)
+            return {"words_positive": False}
+
+        unstarred = [(f"p{i}", "yay",
+                      {"wpm": 80.0 - i, "dynamic_db": 3.0, "f0_sd": 8.0,
+                       "pause_ratio": 0.6}) for i in range(5)]
+        out = da.generate_congruence_stars(db, "arc1", unstarred, BASE, chat_fn=chat)
+        self.assertEqual(out, [])
         self.assertLessEqual(len(calls), da._MAX_LLM_ATTEMPTS)
+        self.assertEqual(db.calls, [])
 
-    def test_no_flat_candidate_never_calls_model(self):
+    def test_no_low_arousal_never_calls_model(self):
+        db = FakeDB()
         calls = []
+
         def chat(s, u):
             calls.append(u)
-            return self._positive()(s, u)
-        note = da.annotate_pieces_with_alignment(
-            [_piece("up", 0.7, "great"), _piece("neutral", -0.1, "great")], chat_fn=chat)
-        self.assertIsNone(note)
+            return {"words_positive": True}
+
+        out = da.generate_congruence_stars(
+            db, "arc1", [("hot", "great", _hot())], BASE, chat_fn=chat)
+        self.assertEqual(out, [])
         self.assertEqual(calls, [])
 
-    def test_model_failure_is_best_effort(self):
-        def chat_none(s, u):
-            return None
-        def chat_raises(s, u):
-            raise RuntimeError("boom")
-        pieces = [_piece("flat", -0.9, "i am so happy")]
-        self.assertIsNone(da.annotate_pieces_with_alignment(pieces, chat_fn=chat_none))
-        self.assertIsNone(da.annotate_pieces_with_alignment(pieces, chat_fn=chat_raises))
-        self.assertNotIn("delivery_alignment_note", pieces[0]["metrics"])
+    def test_best_effort_on_db_and_model_failure(self):
+        unstarred = [("flat", "wonderful", _flat())]
+        # write failed → nothing starred
+        self.assertEqual(da.generate_congruence_stars(
+            FakeDB(ok=False), "arc1", unstarred, BASE,
+            chat_fn=lambda s, u: {"words_positive": True}), [])
 
-    def test_guarded_note_is_not_stamped(self):
-        # model returns a positive verdict but a fence-violating line → nothing
-        # stamped (silence beats an unguarded line).
-        def chat(s, u):
-            return {"words_positive": True, "note": "Your stress score was high here."}
-        pieces = [_piece("flat", -0.9, "wonderful")]
-        self.assertIsNone(da.annotate_pieces_with_alignment(pieces, chat_fn=chat))
-        self.assertNotIn("delivery_alignment_note", pieces[0]["metrics"])
+        def boom(s, u):
+            raise RuntimeError("x")
+
+        # model raised → caught, nothing starred
+        self.assertEqual(da.generate_congruence_stars(
+            FakeDB(), "arc1", unstarred, BASE, chat_fn=boom), [])
+
+    def test_guards_missing_arc_unstarred_or_baseline(self):
+        f = [("f", "hi", _flat())]
+        self.assertEqual(da.generate_congruence_stars(FakeDB(), None, f, BASE), [])
+        self.assertEqual(da.generate_congruence_stars(FakeDB(), "arc1", [], BASE), [])
+        self.assertEqual(da.generate_congruence_stars(FakeDB(), "arc1", f, None), [])
 
 
-class FlagTests(unittest.TestCase):
-    def test_default_off_and_env_toggle(self):
+class FlagAndDeviceTests(unittest.TestCase):
+    def test_flag_default_off_and_toggle(self):
         old = os.environ.pop("DELIVERY_ALIGNMENT_ENABLED", None)
         try:
             self.assertFalse(da.delivery_alignment_enabled())
@@ -199,6 +182,12 @@ class FlagTests(unittest.TestCase):
             os.environ.pop("DELIVERY_ALIGNMENT_ENABLED", None)
             if old is not None:
                 os.environ["DELIVERY_ALIGNMENT_ENABLED"] = old
+
+    def test_congruence_is_a_known_delivery_device(self):
+        # the serve layer renders a delivery star ONLY when its device is in
+        # this closed set — congruence must be a member or the star never shows.
+        from services.delivery_stars import DELIVERY_DEVICES
+        self.assertIn("congruence", DELIVERY_DEVICES)
 
 
 if __name__ == "__main__":

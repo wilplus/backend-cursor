@@ -87,7 +87,8 @@ class DetectorTests(unittest.TestCase):
 
     def test_devices_are_the_closed_set(self):
         self.assertEqual(DELIVERY_DEVICES,
-                         ("emphasis", "pace_fast", "pace_slow", "pause"))
+                         ("emphasis", "pace_fast", "pace_slow", "pause",
+                          "congruence"))
 
 
 class NormalizationTests(unittest.TestCase):
