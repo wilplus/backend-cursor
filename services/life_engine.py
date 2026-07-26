@@ -727,10 +727,18 @@ def build_daily_card(user_id: str, day: date) -> dict:
     own data, so assembling the card needs no model and therefore costs
     nothing and cannot hallucinate a task.
 
-    Bet 3 (🟣 The Dream) is DISPLAY-ONLY in the daily plan while
-    ``lp.BET_3_DRIVES_DAILY_EXECUTION`` is False — the weekly document says
-    the dream "does not drive daily execution". That question is open with the
-    founder; the constant is the entire switch."""
+    All three bets are eligible from day one (founder 2026-07-26,
+    ``lp.BET_3_DRIVES_DAILY_EXECUTION``). What holds the weekly document's
+    rule is the SORT, not an exclusion: goals are ordered by bet rank first, so
+    🟣 The Dream can only take the ONE THING slot when Bets 1 and 2 have
+    nothing left — the one day you want the dream on the card instead of an
+    empty card. On every other day it fills the tail.
+
+    Every block carries the bet it serves, because §3.2 requires the card to be
+    able to SAY which bet a proposed task belongs to. Without that the rank is
+    invisible on the surface where it matters most: a 🟣 item and a 🔵 item
+    look identical, and "Bet 3 never outranks Bet 2" becomes unverifiable by
+    the person reading the card."""
     habits = store.list_items(user_id, kind="habit", status="active")
     goals = store.list_items(user_id, kind="goal", status="active")
     bets = {str(b.get("id")): b
@@ -738,7 +746,14 @@ def build_daily_card(user_id: str, day: date) -> dict:
 
     def _bet_rank(goal: dict) -> float:
         bet = bets.get(str(goal.get("bet_id") or ""))
+        # An unattached goal sorts last. It is not a Bet-3 item — it is a goal
+        # nobody has decided a bet for, and it should not outrank one that has
+        # been thought about.
         return float((bet or {}).get("order_key") or 99)
+
+    def _bet_title(goal: dict) -> str:
+        bet = bets.get(str(goal.get("bet_id") or ""))
+        return (bet or {}).get("title") or ""
 
     eligible = [
         g for g in goals
@@ -748,9 +763,11 @@ def build_daily_card(user_id: str, day: date) -> dict:
                                  0 if g.get("horizon") == "now" else 1,
                                  float(g.get("order_key") or 0)))
 
-    one_thing = (eligible[0].get("title") or eligible[0].get("body") or ""
-                 ) if eligible else ""
-    focus = [{"text": g.get("title") or g.get("body") or "", "box": False}
+    def _text(goal: dict) -> str:
+        return goal.get("title") or goal.get("body") or ""
+
+    one_thing = _text(eligible[0]) if eligible else ""
+    focus = [{"text": _text(g), "box": False, "bet": _bet_title(g)}
              for g in eligible[1:4]]
 
     return {
@@ -759,6 +776,7 @@ def build_daily_card(user_id: str, day: date) -> dict:
             for i, h in enumerate(habits)
         },
         "one_thing": one_thing,
+        "one_thing_bet": _bet_title(eligible[0]) if eligible else "",
         "focus_blocks": focus,
         "evening_line": "am I becoming the man I described?",
         "generated_at": datetime.now(timezone.utc).isoformat(),

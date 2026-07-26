@@ -506,10 +506,10 @@ class BoardAndLabelTests(unittest.TestCase):
         with self.assertRaises(lp.LifeError):
             lp.validate_item_input({"kind": "win"}, partial=True)
 
-    def test_bet_three_does_not_drive_daily_execution(self):
-        # The founder's own rule, encoded. Open question in the spec; this is
-        # the constant that answers it.
-        self.assertFalse(lp.BET_3_DRIVES_DAILY_EXECUTION)
+    def test_all_three_bets_reach_the_daily_card(self):
+        # Answered by the founder 2026-07-26: 🟣 The Dream is eligible from
+        # day one.
+        self.assertTrue(lp.BET_3_DRIVES_DAILY_EXECUTION)
         self.assertEqual([b["rank"] for b in lp.BETS], [1, 2, 3])
 
 
@@ -789,6 +789,94 @@ class ChatIsolationTests(unittest.TestCase):
 
 
 # ═════════════════════════════════════════════════════════════════════════
+# BE-8 — the daily card, and the rank rule that survives Bet 3 joining it
+# ═════════════════════════════════════════════════════════════════════════
+
+@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
+class DailyCardTests(unittest.TestCase):
+    """All three bets are eligible from day one. What holds the weekly
+    document's rule is the SORT, not an exclusion — so these tests are what
+    make flipping BET_3_DRIVES_DAILY_EXECUTION safe rather than merely
+    permitted."""
+
+    BETS = [
+        {"id": "b1", "kind": "bet", "title": "🟢 The Life", "order_key": 1.0},
+        {"id": "b2", "kind": "bet", "title": "🔵 The Company", "order_key": 2.0},
+        {"id": "b3", "kind": "bet", "title": "🟣 The Dream", "order_key": 3.0},
+    ]
+
+    def _card(self, goals, habits=()):
+        def _list(user_id, *, kind=None, **kw):
+            return {"habit": list(habits), "goal": goals,
+                    "bet": self.BETS}.get(kind, [])
+        with patch.object(lengine.store, "list_items", side_effect=_list):
+            return lengine.build_daily_card(USER, date(2026, 7, 26))
+
+    def test_bet_three_never_outranks_bet_two(self):
+        card = self._card([
+            {"id": "g3", "title": "7T research", "bet_id": "b3",
+             "horizon": "now", "order_key": 1},
+            {"id": "g2", "title": "Ship the take ranker", "bet_id": "b2",
+             "order_key": 9},
+        ])
+        # The Dream is on the card — and it is NOT the one thing, even though
+        # it is the [NOW] item and the Company goal is not.
+        self.assertEqual(card["one_thing"], "Ship the take ranker")
+        self.assertEqual(card["one_thing_bet"], "🔵 The Company")
+        self.assertIn("7T research", [b["text"] for b in card["focus_blocks"]])
+
+    def test_the_dream_can_take_the_slot_when_nothing_outranks_it(self):
+        # The one day you want the dream on the card instead of an empty card.
+        card = self._card([{"id": "g3", "title": "7T research",
+                            "bet_id": "b3", "order_key": 1}])
+        self.assertEqual(card["one_thing"], "7T research")
+        self.assertEqual(card["one_thing_bet"], "🟣 The Dream")
+
+    def test_every_block_says_which_bet_it_serves(self):
+        # §3.2 — without this the rank is invisible on the surface it governs,
+        # and "Bet 3 never outranks Bet 2" is unverifiable by the reader.
+        card = self._card([
+            {"id": "g1", "title": "Call my father", "bet_id": "b1"},
+            {"id": "g2", "title": "Ship it", "bet_id": "b2"},
+        ])
+        self.assertEqual(card["one_thing_bet"], "🟢 The Life")
+        self.assertEqual([b["bet"] for b in card["focus_blocks"]],
+                         ["🔵 The Company"])
+
+    def test_a_goal_with_no_bet_sorts_last_rather_than_as_a_dream(self):
+        # An unattached goal is not a Bet-3 item — it is one nobody has
+        # decided a bet for, and it must not outrank one that was thought
+        # about.
+        card = self._card([
+            {"id": "g0", "title": "Loose end", "order_key": 1},
+            {"id": "g3", "title": "7T research", "bet_id": "b3",
+             "order_key": 9},
+        ])
+        self.assertEqual(card["one_thing"], "7T research")
+
+    def test_an_empty_archive_yields_an_empty_card_not_an_error(self):
+        card = self._card([])
+        self.assertEqual(card["one_thing"], "")
+        self.assertEqual(card["one_thing_bet"], "")
+        self.assertEqual(card["focus_blocks"], [])
+
+    def test_the_card_columns_all_exist_in_the_migration(self):
+        # build_daily_card's dict is handed straight to the table. A key with
+        # no column is an insert that fails at 05:00 and is discovered by an
+        # empty panel.
+        with open(MIGRATION, "r", encoding="utf-8") as fh:
+            sql = fh.read()
+        block = sql[sql.index("CREATE TABLE IF NOT EXISTS life_days"):]
+        block = block[:block.index(");")]
+        added = set(re.findall(
+            r"ALTER TABLE life_days ADD COLUMN IF NOT EXISTS (\w+)", sql))
+        card = self._card([])
+        for key in card:
+            self.assertTrue(key in block or key in added,
+                            f"life_days has no column for {key}")
+
+
+# ═════════════════════════════════════════════════════════════════════════
 # N4 — the per-user master-doc injection
 # ═════════════════════════════════════════════════════════════════════════
 
@@ -1014,9 +1102,48 @@ class RouteGateTests(unittest.TestCase):
         with patch.object(lroutes.chat, "is_enabled", return_value=True), \
                 patch.object(lroutes.chat, "has_consented", return_value=True), \
                 patch.object(lroutes.chat, "is_allowlisted", return_value=False), \
-                patch.object(lroutes.store, "get_setup", return_value=None):
+                patch.object(lroutes.store, "get_setup",
+                             return_value={"completed_at": "2026-07-26"}):
             menu = self._get("/v2/life/state").get_json()["menu"]
         self.assertNotIn("prayer", menu)
+
+    def _state(self, *, consented, setup):
+        with patch.object(lroutes.chat, "is_enabled", return_value=True), \
+                patch.object(lroutes.chat, "has_consented",
+                             return_value=consented), \
+                patch.object(lroutes.chat, "is_allowlisted", return_value=False), \
+                patch.object(lroutes.store, "get_setup", return_value=setup):
+            return self._get("/v2/life/state").get_json()
+
+    def test_the_hamburger_holds_one_door_before_activation(self):
+        # Completing onboarding IS the membership test — there is no separate
+        # roster. Before that the panel is one entry, not nine empty rooms: a
+        # user let in early meets a feature that silently does nothing.
+        for consented, setup in ((False, None), (True, None),
+                                 (True, {"completed_at": None})):
+            state = self._state(consented=consented, setup=setup)
+            self.assertEqual(state["menu"], ["principles"])
+            self.assertFalse(state["active"])
+            # The `#` picker is useless until the engine will run.
+            self.assertEqual(state["tags"], [])
+
+    def test_finishing_onboarding_opens_the_rest(self):
+        state = self._state(consented=True,
+                            setup={"completed_at": "2026-07-26T05:00:00Z"})
+        self.assertTrue(state["active"])
+        for entry in ("wins", "today", "goals", "timeline", "strategy"):
+            self.assertIn(entry, state["menu"])
+        self.assertTrue(state["tags"])
+
+    def test_setup_alone_never_activates_without_consent(self):
+        # The order is explainer → CONSENT → form, and it cannot be
+        # rearranged: the form itself collects the anchor and eight horizons of
+        # personal goals. "Activate by finishing onboarding" must never become
+        # "collect first, ask after".
+        state = self._state(consented=False,
+                            setup={"completed_at": "2026-07-26T05:00:00Z"})
+        self.assertFalse(state["active"])
+        self.assertEqual(state["menu"], ["principles"])
 
     def test_no_auth_is_401_not_a_leak(self):
         with patch.object(lroutes.chat, "is_enabled", return_value=True):

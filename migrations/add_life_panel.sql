@@ -354,6 +354,12 @@ CREATE TABLE IF NOT EXISTS life_days (
     day                 date        NOT NULL,
     morning_checks      jsonb       NOT NULL DEFAULT '{}'::jsonb,
     one_thing           text        NOT NULL DEFAULT '',
+    -- Which bet the ONE THING serves. §3.2 requires the card to be able to SAY
+    -- that: all three bets are eligible for the daily plan, and the rank rule
+    -- ("Bet 3 never outranks Bet 2") is only checkable by the person reading
+    -- the card if a 🟣 item is distinguishable from a 🔵 one. The per-block
+    -- equivalent rides inside focus_blocks.
+    one_thing_bet       text        NOT NULL DEFAULT '',
     focus_blocks        jsonb       NOT NULL DEFAULT '[]'::jsonb,
     distraction_flagged text,
     evening_habits_ran  boolean     NOT NULL DEFAULT false,
@@ -368,6 +374,12 @@ CREATE TABLE IF NOT EXISTS life_days (
 
 CREATE UNIQUE INDEX IF NOT EXISTS life_days_user_day_uniq
     ON life_days (user_id, day);
+
+-- Added after a first cut of this file may already have run in dev. The
+-- CREATE TABLE above carries the column for a fresh database; this covers one
+-- where the table already exists without it. Both paths, one file — a column
+-- that only appears on fresh installs is how dev and prod drift.
+ALTER TABLE life_days ADD COLUMN IF NOT EXISTS one_thing_bet text NOT NULL DEFAULT '';
 
 ALTER TABLE life_days ENABLE ROW LEVEL SECURITY;
 

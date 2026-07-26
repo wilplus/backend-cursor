@@ -167,12 +167,18 @@ BETS: tuple[dict[str, Any], ...] = (
      "body": "research · 7T · horizon 2035"},
 )
 
-# Open with the founder (PROMPT-BE §Open): may the router propose a DAILY task
-# against 🟣 The Dream, or is it display-only? Until that is answered the
-# conservative reading of the weekly document holds — "it does not drive daily
-# execution" — so Bet 3 is display-only in the daily card. Flipping this
-# constant is the entire change if the founder decides otherwise.
-BET_3_DRIVES_DAILY_EXECUTION = False
+# ANSWERED by the founder 2026-07-26: Bet 3 is eligible for the daily card
+# from day one. (Was False while the question was open — the weekly document's
+# "it does not drive daily execution" read as an exclusion.)
+#
+# Why this does not contradict the weekly document: the rule that matters is
+# the one below it — "Bet 3 never outranks Bet 2 in a daily plan" — and that is
+# enforced by the SORT, not by exclusion. Goals are ordered by bet rank first,
+# so a 🟣 item can only reach the ONE THING slot when Bets 1 and 2 have nothing
+# left to offer, which is precisely the day you want the dream on the card
+# rather than an empty card. On every other day it fills the tail, never the
+# head. Excluding it entirely was a stronger claim than the document makes.
+BET_3_DRIVES_DAILY_EXECUTION = True
 
 
 # ═════════════════════════════════════════════════════════════════════════
@@ -1024,6 +1030,10 @@ def serialize_day(row: dict) -> dict:
         "day": _iso(row.get("day")),
         "morning_checks": row.get("morning_checks") or {},
         "one_thing": row.get("one_thing") or "",
+        # Which bet the ONE THING serves (§3.2). All three bets reach the card;
+        # the rank rule is held by the ordering, and this is what makes that
+        # ordering legible on the surface it governs.
+        "one_thing_bet": row.get("one_thing_bet") or "",
         "focus_blocks": row.get("focus_blocks") or [],
         "distraction_flagged": row.get("distraction_flagged"),
         "evening_habits_ran": bool(row.get("evening_habits_ran")),

@@ -140,24 +140,55 @@ def life_state():
     Consent is NOT required here — this is the call that tells the FE to show
     the consent screen. Founder-only entries are ABSENT from `menu` for
     everyone else rather than present-and-disabled: a disabled entry is a
-    discovery."""
+    discovery.
+
+    ── The activation model (founder 2026-07-26) ────────────────────────────
+    Completing the onboarding IS the membership test. There is no separate
+    roster: the hamburger shows ONE entry — Principles — to everyone, and
+    finishing consent + goal-setting is what opens the rest.
+
+    That is not a policy choice dressed as a gate. It is a precondition:
+    `compare_to_strategy` answers `no_strategy` without the documents setup
+    generates, retrieval has nothing to retrieve without principles, and the
+    daily card has no goals to rank. A user let in early would meet a feature
+    that silently does nothing and conclude it is broken.
+
+    The order is fixed and cannot be rearranged: explainer → CONSENT → form.
+    The form itself collects life data (the anchor, eight horizons of personal
+    goals), so consent has to precede it. "Activate by finishing onboarding"
+    must never become "collect first, ask after".
+
+    `active` is the single field the FE gates the menu on."""
     user_id = _uid()
     version = getattr(config, "LIFE_PANEL_CONSENT_VERSION", "1.0")
     consented = chat.has_consented(user_id)
     setup = store.get_setup(user_id) if consented else None
+    complete = bool((setup or {}).get("completed_at"))
+    active = bool(consented and complete)
 
-    menu = ["principles", "wins", "phrases", "today", "goals", "timeline",
-            "distractions", "strategy", "notes"]
-    if chat.is_allowlisted(user_id):
-        menu.append("prayer")
+    # Before activation the panel is one door, not nine empty rooms.
+    menu = ["principles"]
+    if active:
+        menu = ["principles", "wins", "phrases", "today", "goals", "timeline",
+                "distractions", "strategy", "notes"]
+        # Prayer stays OFF (founder 2026-07-26). The allowlist is empty by
+        # default, so this appends nothing until someone is explicitly added —
+        # and pompeiana.willpowerlab.com keeps working signed-out regardless,
+        # which is the whole point of it staying a separate app.
+        if chat.is_allowlisted(user_id):
+            menu.append("prayer")
 
     return jsonify({
         "consented": consented,
         "consent_version": version,
         "setup_started": bool(setup),
-        "setup_complete": bool((setup or {}).get("completed_at")),
+        "setup_complete": complete,
+        # The one field to gate on. consented + setup_complete are the reason,
+        # this is the answer — so the FE never has to re-derive the rule.
+        "active": active,
         "menu": menu,
-        "tags": lp.tag_suggestions(),
+        # The `#` picker is only useful once the engine will actually run.
+        "tags": lp.tag_suggestions() if active else [],
     }), 200
 
 
