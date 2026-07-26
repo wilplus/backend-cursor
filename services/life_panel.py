@@ -1056,6 +1056,15 @@ def serialize_day(row: dict) -> dict:
         "evening_line": row.get("evening_line"),
         "edit_why": row.get("edit_why"),
         "generated_at": _iso(row.get("generated_at")),
+        # The evening pass, nested so the FE branches on ONE field. Null
+        # generated_at ⇒ the pass has not run and the evening section stays
+        # closed. Never branch on the summary being non-empty: a recap can be
+        # legitimately sparse on a quiet day, and that is not the same as
+        # "it is not evening yet".
+        "evening": {
+            "generated_at": _iso(row.get("evening_generated_at")),
+            "summary": row.get("evening_summary") or {},
+        },
     }
 
 

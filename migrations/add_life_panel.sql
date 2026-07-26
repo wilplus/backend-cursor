@@ -381,6 +381,24 @@ CREATE UNIQUE INDEX IF NOT EXISTS life_days_user_day_uniq
 -- that only appears on fresh installs is how dev and prod drift.
 ALTER TABLE life_days ADD COLUMN IF NOT EXISTS one_thing_bet text NOT NULL DEFAULT '';
 
+-- The evening pass (founder 2026-07-26). A SECOND scheduled generation, at
+-- 23:00, which recaps what the morning card asked so the evening review has
+-- something concrete to answer against — "did you do the one thing" is a
+-- different question from "what was the one thing", and by 23:00 the second
+-- one has usually stopped being obvious.
+--
+-- `evening_generated_at` is the branch the view reads: NULL means the pass has
+-- not run, and the evening section stays closed. It is deliberately separate
+-- from `generated_at` (the morning stamp) — one stamp cannot say which of two
+-- passes has happened, and branching on "the summary is non-empty" would open
+-- the evening section at 06:00 on any day the recap happened to be filled.
+--
+-- Still L-4: generation is scheduled, DELIVERY IS NOT. Nothing is sent at
+-- 23:00. The card waits until it is opened, or it is never seen, and that is
+-- allowed.
+ALTER TABLE life_days ADD COLUMN IF NOT EXISTS evening_generated_at timestamptz;
+ALTER TABLE life_days ADD COLUMN IF NOT EXISTS evening_summary jsonb NOT NULL DEFAULT '{}'::jsonb;
+
 ALTER TABLE life_days ENABLE ROW LEVEL SECURITY;
 
 -- ═════════════════════════════════════════════════════════════════════════

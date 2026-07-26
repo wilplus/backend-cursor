@@ -817,6 +817,68 @@ def ensure_daily_card(user_id: str, day: Optional[date] = None) -> Optional[dict
                             build_daily_card(user_id, target))
 
 
+def build_evening_pass(day_row: dict) -> dict:
+    """The evening recap, from the morning card's own row.
+
+    Deterministic and model-free. The evening review asks "did you do it?",
+    and that only works if it can say WHAT — by 23:00 the morning's one thing
+    has usually stopped being obvious, which is the entire reason this pass
+    exists rather than the view just re-reading the card.
+
+    It recaps; it never judges. No completion count, no streak, no score —
+    the ticks are the founder's to make, and a pass that pre-filled them
+    would be answering its own question."""
+    focus = day_row.get("focus_blocks")
+    return {
+        "one_thing": day_row.get("one_thing") or "",
+        "one_thing_bet": day_row.get("one_thing_bet") or "",
+        "focus_blocks": focus if isinstance(focus, list) else [],
+        "habits": sorted((day_row.get("morning_checks") or {}).keys()),
+        "distraction_flagged": day_row.get("distraction_flagged"),
+    }
+
+
+def evening_pass_due(now: Optional[datetime] = None) -> bool:
+    """Whether the evening pass may generate yet.
+
+    The API path asks this before generating, so a card opened at 09:00 does
+    not stamp ``evening_generated_at`` and open the evening section twelve
+    hours early — the FE branches on that stamp, so an early stamp is a wrong
+    screen, not a cosmetic issue."""
+    hour = int(getattr(config, "LIFE_PANEL_EVENING_HOUR_UTC", 21) or 21)
+    return (now or datetime.now(timezone.utc)).hour >= max(0, min(23, hour))
+
+
+def ensure_evening_pass(user_id: str, day: Optional[date] = None, *,
+                        now: Optional[datetime] = None,
+                        force: bool = False) -> Optional[dict]:
+    """Generate the evening recap once, then WAIT.
+
+    Same contract as the morning card and the same L-4 line: generation is
+    scheduled, delivery is not. Nothing is sent at 23:00; the recap sits in
+    the row until the panel is opened, or it is never seen, and that is
+    allowed.
+
+    ``force=True`` is the cron's entry point — it has already decided it is
+    23:00 and should not re-derive that from a UTC clock. Idempotent: a second
+    run on the same day is a no-op, so a cron that fires twice cannot
+    overwrite an evening the founder has already started answering."""
+    target = day or datetime.now(timezone.utc).date()
+    row = store.get_day(user_id, target.isoformat())
+    if not row:
+        # No morning card means nothing to recap. Not an error — it is a day
+        # the founder never opened, which L-4 says is living, not failing.
+        return None
+    if row.get("evening_generated_at"):
+        return row
+    if not (force or evening_pass_due(now)):
+        return row
+    return store.update_day(user_id, str(row.get("id")), {
+        "evening_summary": build_evening_pass(row),
+        "evening_generated_at": (now or datetime.now(timezone.utc)).isoformat(),
+    }) or row
+
+
 def edit_daily_card(user_id: str, text: str) -> dict:
     """``#edit <text>`` — retarget today's ONE THING, and capture the why.
 

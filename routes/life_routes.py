@@ -688,17 +688,54 @@ def life_case_update(case_id):
     # to update" and make the approve button 400.
     editable = {k: v for k, v in body.items() if k != "approve"}
     fields = lp.validate_case_input(editable, partial=True) if editable else {}
+    retire_prompt = None
     if body.get("approve") is True:
         fields["status"] = "active"
         if "category" not in fields and existing.get("category_proposed"):
             fields["category"] = lp.normalize_categories(
                 existing["category_proposed"])
         for item in store.items_for_case(user_id, case_id):
-            if item.get("status") == "proposed":
-                store.update_item(user_id, str(item["id"]),
-                                  {"status": "active"})
+            if item.get("status") != "proposed":
+                continue
+            activated = store.update_item(user_id, str(item["id"]),
+                                          {"status": "active"}) or item
+            # BE-7's retire question, asked at the only moment it makes sense:
+            # a principle has just ENTERED the archive, so "does this replace
+            # one already in it?" is answerable. Asked once — a pair the
+            # founder already answered `no` on is never raised again, and
+            # retire_candidate skips those.
+            if retire_prompt is None:
+                retire_prompt = _retire_prompt(user_id, activated)
     row = store.update_case(user_id, case_id, fields)
-    return jsonify({"case": lp.serialize_case(row or existing)}), 200
+    return jsonify({
+        "case": lp.serialize_case(row or existing),
+        # null on almost every approval. A prompt here is the system ASKING,
+        # never announcing — the veto is absolute and nothing is retired until
+        # POST /principles/<id>/retire says so.
+        "retire_prompt": retire_prompt,
+    }), 200
+
+
+def _retire_prompt(user_id: str, new_principle: dict):
+    """``{question, retires: {...}, number}`` when a newly approved principle
+    looks like it supersedes an existing one — otherwise None.
+
+    `number` is the candidate's 1-based position in the founder's own ordered
+    list, because the copy asks "does this retire #12?" and #12 has to mean
+    the twelfth thing they see."""
+    candidate = engine.retire_candidate(user_id, new_principle)
+    if not candidate:
+        return None
+    ordered = store.principles(user_id)
+    number = next(
+        (i + 1 for i, p in enumerate(ordered)
+         if str(p.get("id")) == str(candidate.get("id"))), None)
+    return {
+        "question": chat.COPY["retire_question"].format(
+            n=number if number is not None else "?"),
+        "retires": lp.serialize_item(candidate),
+        "number": number,
+    }
 
 
 # ═════════════════════════════════════════════════════════════════════════
@@ -803,6 +840,13 @@ def life_day():
         row = engine.ensure_daily_card(user_id)
     if not row:
         return jsonify({"day": None}), 200
+    # The evening pass, if it is late enough. Same generate-on-read fallback
+    # as the morning card, so the 23:00 cron is an optimisation rather than a
+    # dependency — but gated on the hour, because stamping evening.generated_at
+    # early would open the evening section on a card the founder opened at
+    # breakfast.
+    row = engine.ensure_evening_pass(
+        user_id, date.fromisoformat(str(row.get("day"))[:10])) or row
     return jsonify({"day": lp.serialize_day(row)}), 200
 
 
@@ -899,14 +943,25 @@ def life_note_create():
 
     Both entrances call services.life_chat.handle_note, so a `#mistake` typed
     in the panel and one typed in chat cannot drift apart."""
+    user_id = _uid()
     body = _body()
     text = body.get("body")
     if not isinstance(text, str) or not text.strip():
         return _invalid("body: must be a non-empty string")
-    result = chat.handle_note(_uid(), text, source="form")
+    # The same gate the chat router applies (founder: "no try outs"). The
+    # panel is unreachable before onboarding anyway, so this is the second
+    # door being locked rather than the first — but a second door nobody
+    # checks is how a rule becomes advisory.
+    if not store.setup_completed(user_id):
+        return jsonify({
+            "code": "SETUP_REQUIRED",
+            "error": "Finish the Principles setup first.",
+            "pointer": "/panel/principles",
+        }), 409
+    result = chat.handle_note(user_id, text, source="form")
     if result is None:
         # Untagged from the panel: capture only, no action (§5).
-        row = store.insert_note(_uid(), text, source="form")
+        row = store.insert_note(user_id, text, source="form")
         return jsonify({"note": lp.serialize_note(row) if row else None,
                         "route": "capture"}), 201
     return jsonify(result), 201

@@ -49,11 +49,6 @@ config = Config()
 # a user until the flag is flipped — which is the gate that makes shipping the
 # code before the copy safe.
 COPY: dict[str, str] = {
-    "needs_setup": (
-        "Saved. The engine needs your setup answers before it can work on "
-        "this — finish the Principles setup and this note runs automatically, "
-        "exactly as you wrote it."
-    ),
     "captured": "Captured.",
     "card_edited": "Today's one thing is updated.",
     "win_saved": "On the wall.",
@@ -192,24 +187,25 @@ def handle_note(user_id: str, text: str, *,
     if not has_consented(user_id):
         return None
 
-    setup_done = store.setup_completed(user_id)
+    # THE `#` ROUTER IS OFF UNTIL ONBOARDING IS DONE (founder 2026-07-26:
+    # "no try outs"). Not a redirect, not a stored-for-later, not a message —
+    # the tag simply does nothing, and the turn goes back to the existing chat
+    # path untouched.
+    #
+    # This supersedes §6.2's "the typed note is kept, not dropped". The reason
+    # that rule existed was to avoid teaching someone that the tag costs
+    # something — but a half-working tag teaches the same lesson louder: it
+    # answers, appears to have understood, and produces nothing. The way in is
+    # the Principles button in the hamburger, and it is the ONLY way in.
+    #
+    # Nothing is written here either, so a user who never onboards leaves no
+    # life rows at all.
+    if not store.setup_completed(user_id):
+        return None
 
     # ── 2. STORE — always, before anything can fail ──────────────────────
-    # A note typed before setup completes is KEPT and replayed the moment
-    # setup finishes (§6.2). Someone who reaches for `#mistake` is holding a
-    # thought they wanted recorded; losing it to a redirect teaches them the
-    # tag costs something, and then they stop reaching for it.
-    pending = not setup_done and route != "capture"
-    note = store.insert_note(user_id, text or "", source=source, tag=tag,
-                             pending_replay=pending)
+    note = store.insert_note(user_id, text or "", source=source, tag=tag)
     note_id = str(note.get("id")) if note else None
-
-    if pending:
-        return {
-            "route": route, "answer": COPY["needs_setup"],
-            "link": "/panel/principles", "note_id": note_id, "card": None,
-            "phrase": None, "blocked": "setup",
-        }
 
     # ── 3. DERIVE ────────────────────────────────────────────────────────
     card: Optional[dict] = None
