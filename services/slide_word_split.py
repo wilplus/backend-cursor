@@ -17,6 +17,7 @@ reference frame as a snippet's start_offset_ms — so a word's slide is just
 """
 from __future__ import annotations
 
+import math
 import os
 import re
 from typing import Any
@@ -35,6 +36,76 @@ def _pause_snap_enabled() -> bool:
     return (os.getenv("SLIDE_PAUSE_SNAP_ENABLED") or "").strip().lower() in (
         "1", "true", "yes", "on",
     )
+
+
+# ── Measured audio-vs-UI clock offset (F1, 2026-07-26) ───────────────────
+# Pause-snap GUESSES the recorder warm-up offset by looking for a silence near
+# each tap. The FE can MEASURE it instead: the delta between the UI clock that
+# timestamps slide taps and the moment MediaRecorder actually produced its first
+# audio. Given that number, the correction is exact and needs no heuristic.
+#
+# Bounds: a warm-up is tens to low hundreds of ms; 30s is an absurd upper bound
+# that still catches a unit mix-up (seconds sent as ms). A small NEGATIVE value
+# is allowed because the UI clock can start marginally after the audio.
+_MAX_CLOCK_OFFSET_MS = 30000
+_MIN_CLOCK_OFFSET_MS = -5000
+
+
+def apply_clock_offset(slide_advances: Any, offset_ms: Any) -> Any:
+    """Shift every tap time onto the AUDIO clock by subtracting the measured
+    offset. Pure; returns ``slide_advances`` UNCHANGED (same object) when the
+    offset is missing, malformed or out of bounds — an unusable measurement
+    must degrade to today's behaviour, never to a corrupted timeline.
+
+    The first entry is clamped at 0 rather than going negative: a tap cannot
+    precede the recording. Order and the ``{index, t_ms}`` shape are preserved,
+    so every downstream consumer is unaffected apart from the times.
+    """
+    if not isinstance(slide_advances, list) or not slide_advances:
+        return slide_advances
+    if isinstance(offset_ms, bool) or not isinstance(offset_ms, (int, float)):
+        return slide_advances
+    # NaN/inf are floats and would survive the type check, then blow up in
+    # int() — and a JS client can genuinely produce NaN from a bad subtraction.
+    if isinstance(offset_ms, float) and not math.isfinite(offset_ms):
+        return slide_advances
+    off = int(offset_ms)
+    if off == 0 or not (_MIN_CLOCK_OFFSET_MS <= off <= _MAX_CLOCK_OFFSET_MS):
+        return slide_advances
+    out = []
+    for a in slide_advances:
+        if not isinstance(a, dict) or not isinstance(a.get("t_ms"), (int, float)) \
+                or isinstance(a.get("t_ms"), bool):
+            out.append(a)
+            continue
+        out.append({**a, "t_ms": max(0, int(a["t_ms"]) - off)})
+    return out
+
+
+def context_with_clock_offset(session_context: Any) -> Any:
+    """Return ``session_context`` with its slide_advances moved onto the audio
+    clock, using its own ``slide_clock_offset_ms``. Applied ONCE at the top of
+    the pipeline so every downstream reader inherits the correction without
+    threading a parameter through half a dozen signatures.
+
+    Pause-snap still runs afterwards, deliberately: the offset removes the
+    SYSTEMATIC start bias, snap cleans up whatever per-boundary residue is
+    left. They are complementary, not alternatives. (Whether snap earns its
+    keep once offsets are flowing is a question for the boundary metrics, not
+    an assumption to bake in here.)
+
+    Returns the input unchanged when there is nothing to correct.
+    """
+    if not isinstance(session_context, dict):
+        return session_context
+    off = session_context.get("slide_clock_offset_ms")
+    adv = session_context.get("slide_advances")
+    if not adv or off in (None, 0):
+        return session_context
+    shifted = apply_clock_offset(adv, off)
+    if shifted is adv:
+        return session_context
+    return {**session_context, "slide_advances": shifted}
 
 
 def _env_int(name: str, default: int) -> int:

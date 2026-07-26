@@ -317,6 +317,19 @@ def process_lab_recording(
     itself, so the parent take's pieces become the acoustic reference: the
     coach's needle reads honestly on re-reads instead of pegging neutral.
     """
+    # ── F1 (2026-07-26): put slide taps on the AUDIO clock, ONCE, before
+    # anything reads them. The FE measures the recorder warm-up offset and
+    # sends it as slide_clock_offset_ms; subtracting it here means every
+    # downstream consumer (per-slide transcripts, the piece cutter, stickiness)
+    # inherits the corrected timeline without threading a parameter through
+    # their signatures. No offset, or an out-of-bounds one → unchanged, so
+    # takes from older clients behave exactly as before.
+    try:
+        from services.slide_word_split import context_with_clock_offset
+        session_context = context_with_clock_offset(session_context)
+    except Exception as _off_err:      # LIVE LOOP: never break a recording
+        logger.warning("clock-offset correction skipped: %s", _off_err)
+
     _rec_kind = recording_kind if recording_kind in ("spoken", "read") \
         else "spoken"
     from services.audio_metrics import (
