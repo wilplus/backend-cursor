@@ -106,6 +106,16 @@ class Case:
     # Optional seeded strong-sides library for the dump/routing cases —
     # passed straight to answer_question(library_entries=...).
     library_entries: Optional[list] = None
+    # Optional Life Panel per-user block (BE-9, 2026-07-26) — passed straight
+    # to answer_question(life_context=...). None on every case today, which is
+    # why the injection cannot move the baseline: with it absent the system
+    # prompt is byte-for-byte what it was.
+    #
+    # N4's gate is "re-run this probe with the injection ON, and if the
+    # baseline drops, the injection shrinks". Seeding this field on a handful
+    # of cases is how that run is performed — the dial is
+    # master_doc_rag._LIFE_MAX_* . The injection yields; the probe never does.
+    life_context: Optional[dict] = None
 
 
 CASES: list[Case] = [
@@ -582,6 +592,7 @@ def grade(case: Case) -> Verdict:
             case.user_message,
             history=case.history or None,
             library_entries=case.library_entries,
+            life_context=case.life_context,
         )
     except Exception as e:
         return Verdict(

@@ -625,6 +625,81 @@ def _render_library_block(entries: Optional[list]) -> str:
     return _LIBRARIAN_GUARDRAIL + body + _render_two_anchors(entries)
 
 
+# ── The Life Panel's PER-USER block (BE-9, founder 2026-07-26) ───
+#
+# Injects the requesting user's own principles / phrases / strategy so that
+# UNTAGGED chat is smarter for participating users — the same mechanism the
+# strong-sides library already uses, in the same per-user position.
+#
+# THE SHARED MASTER DOCUMENT IS NEVER WRITTEN TO. MASTER_DOCUMENT above is
+# untouched by this feature; this block is appended per request, from the
+# requesting user's rows, and nothing crosses users.
+#
+# Bounded EXACTLY like the library is, and the caps are not cosmetic. The
+# Lounge prompt already ran over its attention ceiling once (PRs #81–#89:
+# rules moved out of the prompt into code, −22 lines of prompt, RULE-K
+# hardening). Sixty principles plus eight strategy documents would re-open
+# precisely that failure — so: top-N by relevance (chosen by the caller),
+# hard cap here, each entry trimmed, never the whole corpus.
+#
+# The gate (N4): tests/evals/master_doc_probe.py is re-run with the injection
+# ON. If the baseline drops, THE INJECTION SHRINKS. The injection yields; the
+# probe never does. These three constants are the dial.
+_LIFE_MAX_PRINCIPLES = 8
+_LIFE_MAX_PHRASES = 4
+_LIFE_MAX_EXCERPT_CHARS = 160
+_LIFE_MAX_STRATEGY_CHARS = 600
+
+_LIFE_GUARDRAIL = (
+    "─── THIS USER'S OWN ARCHIVE (private; never quote it to anyone else) ───\n"
+    "These are the user's OWN principles and phrases, written by them over "
+    "years. Use them to ground your answer when they are relevant. NEVER dump "
+    "this list, never enumerate it, never present it as analysis of them, and "
+    "never score, rank or judge them by it. If nothing here is relevant, "
+    "ignore it entirely and answer normally.\n"
+)
+
+
+def _render_life_block(context: Optional[dict]) -> str:
+    """Render the per-user Life Panel context. '' when there is nothing.
+
+    ``context`` is ``{"principles": [...], "phrases": [...], "strategy": str}``
+    — already retrieved top-N by the caller. Pure; unit-tested."""
+    if not isinstance(context, dict):
+        return ""
+    lines: list[str] = []
+
+    for row in (context.get("principles") or [])[:_LIFE_MAX_PRINCIPLES]:
+        if not isinstance(row, dict):
+            continue
+        text = (row.get("title") or row.get("body") or "").strip()
+        if not text:
+            continue
+        if len(text) > _LIFE_MAX_EXCERPT_CHARS:
+            text = text[:_LIFE_MAX_EXCERPT_CHARS].rstrip() + "…"
+        lines.append(f'  • [principle] "{text}"')
+
+    for row in (context.get("phrases") or [])[:_LIFE_MAX_PHRASES]:
+        if not isinstance(row, dict):
+            continue
+        text = (row.get("body") or row.get("title") or "").strip()
+        if not text:
+            continue
+        if len(text) > _LIFE_MAX_EXCERPT_CHARS:
+            text = text[:_LIFE_MAX_EXCERPT_CHARS].rstrip() + "…"
+        lines.append(f'  • [their phrase] "{text}"')
+
+    strategy = (context.get("strategy") or "").strip()
+    if strategy:
+        if len(strategy) > _LIFE_MAX_STRATEGY_CHARS:
+            strategy = strategy[:_LIFE_MAX_STRATEGY_CHARS].rstrip() + "…"
+        lines.append(f"  • [their current direction] {strategy}")
+
+    if not lines:
+        return ""
+    return _LIFE_GUARDRAIL + "\n".join(lines) + "\n"
+
+
 # ─────────────────────────────────────────────────────────────────
 # Post-generation output guards (the deterministic floor)
 # ─────────────────────────────────────────────────────────────────
@@ -958,7 +1033,8 @@ _LANE_BODIES: dict[str, str] = {
 _GROUNDED_LANES = {"product_faq", "off_topic", "correction"}
 
 
-def _build_lane_prompt(intent, library_entries, dont_ask_block) -> str:
+def _build_lane_prompt(intent, library_entries, dont_ask_block,
+                       life_context=None) -> str:
     parts = [_LANE_BASE, _LANE_BODIES[intent]]
     if intent in _GROUNDED_LANES:
         parts.append(
@@ -971,6 +1047,11 @@ def _build_lane_prompt(intent, library_entries, dont_ask_block) -> str:
         lib = _render_library_block(library_entries)
         if lib:
             parts.append("\n\n" + lib)
+        # Same lane as the coach-note recall: "what do I have on X" is a
+        # retrieval question whichever archive the answer comes from.
+        life = _render_life_block(life_context)
+        if life:
+            parts.append("\n\n" + life)
     if dont_ask_block:
         parts.append("\n\n" + dont_ask_block)
     return "".join(parts)
@@ -978,6 +1059,7 @@ def _build_lane_prompt(intent, library_entries, dont_ask_block) -> str:
 
 def _answer_via_router(
     question, history, admin_dont_ask_notes, library_entries, service,
+    life_context=None,
 ) -> Optional[tuple[dict[str, Any], dict[str, Any]]]:
     """Stage 1 classify → Stage 2 focused handler. Returns ``(payload,
     debug)`` or ``None`` to tell the caller to fall back to the mega-prompt
@@ -989,7 +1071,8 @@ def _answer_via_router(
 
     from services.utils import render_admin_dont_ask_block
     dont_ask_block = render_admin_dont_ask_block(admin_dont_ask_notes)
-    system_content = _build_lane_prompt(intent, library_entries, dont_ask_block)
+    system_content = _build_lane_prompt(intent, library_entries,
+                                        dont_ask_block, life_context)
 
     messages: list[dict[str, str]] = [
         {"role": "system", "content": system_content},
@@ -1059,6 +1142,7 @@ def answer_question(
     admin_dont_ask_notes: Optional[str] = None,
     library_entries: Optional[list] = None,
     library_load_failed: bool = False,
+    life_context: Optional[dict] = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Run one LLM call grounded in the Master Document.
 
@@ -1086,6 +1170,14 @@ def answer_question(
     dicts the caller can pass when the FAQ chat is multi-turn.
     Roles other than 'user' / 'assistant' are filtered out;
     system messages live only in the prompt this module builds.
+
+    ``life_context`` is the Life Panel's PER-USER block (BE-9) —
+    ``{"principles": [...], "phrases": [...], "strategy": str}``,
+    already retrieved top-N by relevance by the caller. None for
+    everyone who has not opted into that feature, which is the
+    default and the only state until LIFE_PANEL_ENABLED is flipped.
+    It is capped and trimmed by ``_render_life_block``; the shared
+    MASTER_DOCUMENT is never written to.
 
     ``admin_dont_ask_notes`` is the verbatim text from
     user_settings.private_admin_notes for the calling user. When
@@ -1136,6 +1228,14 @@ def answer_question(
             "offer to try again shortly.\n"
         )
 
+    # BE-9 — the user's own principles/phrases/strategy, per request, capped.
+    # Appended AFTER the library so the coach's notes keep prompt precedence:
+    # this endpoint is a speaking-coach surface first, and the life archive is
+    # extra grounding, not a replacement for it.
+    life_block = _render_life_block(life_context)
+    if life_block:
+        system_content = system_content + "\n\n" + life_block
+
     messages: list[dict[str, str]] = [
         {"role": "system", "content": system_content},
     ]
@@ -1162,6 +1262,7 @@ def answer_question(
     if _router_enabled():
         routed = _answer_via_router(
             q, history, admin_dont_ask_notes, library_entries, service,
+            life_context,
         )
         if routed is not None:
             return routed
