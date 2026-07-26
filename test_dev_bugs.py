@@ -11,6 +11,7 @@ Run: python3 -m unittest test_dev_bugs
 from __future__ import annotations
 
 import base64
+import os
 import unittest
 from unittest.mock import MagicMock, patch
 
@@ -251,6 +252,36 @@ class DevBugsServiceTests(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 svc.send_open_bugs()
         client.table.return_value.update.assert_not_called()
+
+
+class DevBugsPageTests(unittest.TestCase):
+    """Guards on the served single-page UI (static/dev_bugs.html).
+
+    The image lightbox is hidden with the `hidden` attribute, but it also
+    carries an author `display:flex` rule — and an author rule beats the UA
+    stylesheet's [hidden]{display:none}. Without an author-level [hidden] rule
+    the overlay renders on every load and, being fixed/inset-0/z-index-50,
+    swallows every tap on the page: the app is unusable and the × does nothing.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                            "static", "dev_bugs.html")
+        with open(path, encoding="utf-8") as fh:
+            cls.page = fh.read()
+
+    def test_hidden_attribute_outranks_author_display_rules(self):
+        self.assertIn("[hidden]{display:none!important}", self.page)
+
+    def test_lightbox_starts_hidden(self):
+        self.assertRegex(self.page, r'<div class="lightbox" id="lightbox" hidden>')
+
+    def test_lightbox_close_paths_exist(self):
+        # backdrop tap, × button, and Escape all route to closeImage()
+        self.assertIn('$("lightbox").addEventListener("click",closeImage)', self.page)
+        self.assertIn('$("lbClose").addEventListener("click",closeImage)', self.page)
+        self.assertIn('e.key==="Escape"', self.page)
 
 
 def _fake_client(open_rows):
