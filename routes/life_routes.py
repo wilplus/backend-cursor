@@ -109,6 +109,34 @@ def _uid() -> str:
     return str(request.user_id)
 
 
+def _with_warrants(user_id: str, rows: list) -> list:
+    """Serialize proposals WITH the principle that warrants each one.
+
+    The single place proposals become JSON, and it exists because there were
+    two and only one of them remembered. L-2 requires every proposed change to
+    display one of the user's own principles as its justification, and the FE
+    DROPS a proposal that arrives without one — correctly, since there is no
+    compliant way to render a bare proposal. So a serializer that forgets the
+    warrant does not look like a bug: the proposal simply never appears.
+
+    That is what had happened to the weekly review, which is the entire
+    delivery mechanism for the L-2b queue — the ranked batch of three arrived
+    warrant-less and would have been discarded on sight.
+
+    Warrants are looked up once per call and shared, so a batch citing the
+    same principle three times costs one read."""
+    warrants: dict = {}
+    for row in rows:
+        wid = row.get("warrant_principle_id")
+        if wid and wid not in warrants:
+            warrants[wid] = store.get_item(user_id, str(wid))
+    return [
+        lp.serialize_proposal(
+            row, warrant=warrants.get(row.get("warrant_principle_id")))
+        for row in rows
+    ]
+
+
 def _clamp(value, default: int, hi: int) -> int:
     """A page size. At least 1 — a limit of 0 is a request for nothing, which
     is never what the caller meant."""
@@ -178,17 +206,45 @@ def life_state():
         if chat.is_allowlisted(user_id):
             menu.append("prayer")
 
+    answers = (setup or {}).get("answers") or {}
     return jsonify({
-        "consented": consented,
-        "consent_version": version,
-        "setup_started": bool(setup),
-        "setup_complete": complete,
-        # The one field to gate on. consented + setup_complete are the reason,
-        # this is the answer — so the FE never has to re-derive the rule.
+        # ── the onboarding state machine (FE contract) ───────────────────
+        # Nested because these two drive WHICH SCREEN to show, and the flat
+        # fields below drive what to render once you are through. Keeping the
+        # two jobs apart is what stops the FE deriving the menu from consent
+        # state and getting the allowlist wrong.
+        #
+        # `required_version` is an OPAQUE TOKEN, not a date. It is whatever
+        # LIFE_PANEL_CONSENT_VERSION says — "1.0" by default. Compare it for
+        # equality; never parse it. A copy change that ships as "1.1" or
+        # "2026-08-02" must not break the comparison.
+        "consent": {
+            "required_version": version,
+            "accepted_version": version if consented else None,
+        },
+        "setup": {
+            "complete": complete,
+            "started": bool(setup),
+            "resume_step": answers.get("_step"),
+        },
+        # ── what to render ───────────────────────────────────────────────
+        # `menu` stays SERVER-OWNED and is the authority. The eight standard
+        # tabs are derivable from `active`, but an allowlisted entry is not:
+        # deriving it FE-side would mean shipping allowlist membership as a
+        # boolean the client could flip, and a 404-not-403 surface must not
+        # announce itself in a payload.
         "active": active,
         "menu": menu,
         # The `#` picker is only useful once the engine will actually run.
         "tags": lp.tag_suggestions() if active else [],
+
+        # Flat aliases, kept for the callers already on them. Same values,
+        # never computed twice — read from the same locals as the objects
+        # above, so the two shapes cannot drift.
+        "consented": consented,
+        "consent_version": version,
+        "setup_started": bool(setup),
+        "setup_complete": complete,
     }), 200
 
 
@@ -226,9 +282,14 @@ def life_consent():
 def life_setup_get():
     """Partial answers, for save-and-resume."""
     row = store.get_setup(_uid()) or {}
+    answers = row.get("answers") or {}
     return jsonify({
-        "answers": row.get("answers") or {},
+        "answers": answers,
         "complete": bool(row.get("completed_at")),
+        # Which step to reopen on. Stored rather than inferred from which
+        # answers exist: the founder can skip a horizon and come back to it,
+        # so "the first unanswered one" is not the same as "where they were".
+        "resume_step": answers.get("_step"),
     }), 200
 
 
@@ -238,14 +299,26 @@ def life_setup_put():
     """Upsert partial answers. Called on every step, not only at the end —
     eight horizons is long enough that people get interrupted, and without
     resume an interruption is an abandonment."""
-    answers = _body().get("answers")
+    body = _body()
+    answers = body.get("answers")
     if not isinstance(answers, dict):
         return _invalid("answers: must be an object")
+    # `step` rides inside the answers blob rather than getting its own column:
+    # it is FE-owned form state, and the FE owns what a step IS. A column
+    # would freeze that shape into the schema and need a migration the first
+    # time a horizon is split in two.
+    if "step" in body:
+        step = body.get("step")
+        if step is not None and not isinstance(step, (str, int)):
+            return _invalid("step: must be a string, a number, or null")
+        answers = {**answers, "_step": step}
     row = store.upsert_setup(_uid(), answers)
     if not row:
         return jsonify({"code": "V2_ERROR",
                         "error": "Could not save"}), 500
-    return jsonify({"answers": row.get("answers") or {}}), 200
+    saved = row.get("answers") or {}
+    return jsonify({"answers": saved,
+                    "resume_step": saved.get("_step")}), 200
 
 
 @life_bp.route("/v2/life/setup/complete", methods=["POST"])
@@ -370,19 +443,9 @@ def life_proposals():
     queued = store.list_proposals(user_id, status="queued", kind="strategy")
     batch = lp.weekly_batch(queued)
 
-    warrants = {}
-    for row in surfaced + batch:
-        wid = row.get("warrant_principle_id")
-        if wid and wid not in warrants:
-            warrants[wid] = store.get_item(user_id, str(wid))
-
-    def _ser(row):
-        return lp.serialize_proposal(
-            row, warrant=warrants.get(row.get("warrant_principle_id")))
-
     return jsonify({
-        "surfaced": [_ser(r) for r in surfaced],
-        "weekly_batch": [_ser(r) for r in batch],
+        "surfaced": _with_warrants(user_id, surfaced),
+        "weekly_batch": _with_warrants(user_id, batch),
         "queued_total": len(queued),
         "queued_held_back": max(0, len(queued) - len(batch)),
     }), 200
@@ -786,7 +849,7 @@ def life_week_get():
         {"week_start": week_start.isoformat()},
         # The weekly review is where the queued proposals arrive as a ranked
         # batch of three (L-2b).
-        "proposals": [lp.serialize_proposal(p) for p in lp.weekly_batch(queued)],
+        "proposals": _with_warrants(user_id, lp.weekly_batch(queued)),
         "queued_held_back": max(0, len(queued) - lp.WEEKLY_BATCH_SIZE),
         "untagged_notes": [lp.serialize_note(n) for n in
                            store.list_notes(user_id, limit=20,

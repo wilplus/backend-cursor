@@ -1218,6 +1218,37 @@ class RouteGateTests(unittest.TestCase):
             self.assertIn(entry, state["menu"])
         self.assertTrue(state["tags"])
 
+    def test_the_state_payload_carries_the_onboarding_state_machine(self):
+        # The FE drives WHICH SCREEN off these two objects.
+        fresh = self._state(consented=False, setup=None)
+        self.assertEqual(fresh["consent"]["accepted_version"], None)
+        self.assertEqual(fresh["setup"], {"complete": False, "started": False,
+                                          "resume_step": None})
+
+        mid = self._state(consented=True,
+                          setup={"answers": {"_step": "quarterly"}})
+        self.assertEqual(mid["consent"]["accepted_version"],
+                         mid["consent"]["required_version"])
+        self.assertEqual(mid["setup"]["resume_step"], "quarterly")
+        self.assertTrue(mid["setup"]["started"])
+
+    def test_the_nested_and_flat_shapes_cannot_disagree(self):
+        # Two representations of one fact is a drift risk; they are read from
+        # the same locals so a change to one moves both.
+        for consented, setup in ((False, None), (True, None),
+                                 (True, {"completed_at": "2026-07-26"})):
+            s = self._state(consented=consented, setup=setup)
+            self.assertEqual(s["consent"]["accepted_version"] is not None,
+                             s["consented"])
+            self.assertEqual(s["setup"]["complete"], s["setup_complete"])
+            self.assertEqual(s["setup"]["started"], s["setup_started"])
+
+    def test_the_consent_version_is_an_opaque_token(self):
+        # Compared for equality, never parsed. A copy change shipping as
+        # "2026-08-02" instead of "1.1" must not break the comparison.
+        s = self._state(consented=True, setup=None)
+        self.assertIsInstance(s["consent"]["required_version"], str)
+
     def test_setup_alone_never_activates_without_consent(self):
         # The order is explainer → CONSENT → form, and it cannot be
         # rearranged: the form itself collects the anchor and eight horizons of
@@ -1248,6 +1279,41 @@ class RouteGateTests(unittest.TestCase):
         self.assertFalse(resp.get_json()["written"])
         self.assertIn("weekly", resp.get_json()["diffs"])
         write.assert_not_called()
+
+    def test_every_proposal_read_carries_its_warrant(self):
+        """L-2's delivery, on BOTH paths.
+
+        The FE drops a proposal that arrives without a warrant — correctly,
+        since there is no compliant way to render a bare one. So a serializer
+        that forgets it does not look like a bug: the proposal simply never
+        appears. The weekly review is the entire delivery mechanism for the
+        L-2b queue, so forgetting it there loses the queue silently."""
+        row = {"id": "p1", "kind": "strategy", "target": "weekly.goals",
+               "status": "queued", "rank": 1.0,
+               "warrant_principle_id": "w1", "created_at": "2026-07-26"}
+        warrant = {"id": "w1", "kind": "principle", "title": "Mine"}
+
+        for path, extract in (
+            ("/v2/life/proposals", lambda b: b["weekly_batch"]),
+            ("/v2/life/week", lambda b: b["proposals"]),
+        ):
+            with patch.object(lroutes.chat, "is_enabled", return_value=True), \
+                    patch.object(lroutes.chat, "has_consented",
+                                 return_value=True), \
+                    patch.object(lroutes.store, "expire_stale_proposals",
+                                 return_value=0), \
+                    patch.object(lroutes.store, "list_proposals",
+                                 side_effect=lambda u, **k:
+                                 [row] if k.get("status") == "queued" else []), \
+                    patch.object(lroutes.store, "get_item",
+                                 return_value=warrant), \
+                    patch.object(lroutes.store, "get_week", return_value=None), \
+                    patch.object(lroutes.store, "list_notes", return_value=[]):
+                body = self._get(path).get_json()
+            found = extract(body)
+            self.assertEqual(len(found), 1, path)
+            self.assertEqual(found[0]["warrant"]["title"], "Mine", path)
+            self.assertFalse(found[0]["report_only"], path)
 
     def test_approving_the_immutable_core_is_refused(self):
         with patch.object(lroutes.chat, "is_enabled", return_value=True), \
