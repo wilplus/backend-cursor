@@ -740,6 +740,58 @@ class ChatIsolationTests(unittest.TestCase):
         # A broken Life Panel must cost the panel, never the chat.
         self.assertIn("except Exception", hook)
 
+    def test_the_consent_check_does_not_hit_the_db_on_every_chat_turn(self):
+        """Scaffolding must not make the live loop slower.
+
+        With the flag on, the chat route asks this on every signed-in turn so
+        the per-user block can be retrieved for participants. Uncached that is
+        a Supabase round trip added to the shipped chat path for everyone."""
+        lchat._consent_cache.clear()
+        with patch.object(lchat.store, "get_consent",
+                          return_value=None) as read:
+            for _ in range(20):
+                lchat.has_consented(USER)
+        self.assertEqual(read.call_count, 1)
+        lchat._consent_cache.clear()
+
+    def test_accepting_consent_takes_effect_immediately(self):
+        # Without invalidation the user finishes the consent screen and finds
+        # the feature still inert for five minutes.
+        lchat._consent_cache.clear()
+        with patch.object(lchat.store, "get_consent", return_value=None):
+            self.assertFalse(lchat.has_consented(USER))
+        lchat.invalidate_consent(USER)
+        with patch.object(lchat.store, "get_consent", return_value={"id": "c"}):
+            self.assertTrue(lchat.has_consented(USER))
+        lchat._consent_cache.clear()
+
+    def test_a_hard_delete_drops_the_cached_yes(self):
+        # Otherwise a just-wiped account keeps passing the gate and can write
+        # fresh rows into the account it emptied a second ago.
+        lchat._consent_cache.clear()
+        with patch.object(lchat.store, "get_consent", return_value={"id": "c"}):
+            self.assertTrue(lchat.has_consented(USER))
+        lchat.invalidate_consent(USER)
+        with patch.object(lchat.store, "get_consent", return_value=None):
+            self.assertFalse(lchat.has_consented(USER))
+        lchat._consent_cache.clear()
+
+    def test_the_cache_never_leaks_between_users(self):
+        lchat._consent_cache.clear()
+        with patch.object(lchat.store, "get_consent", return_value={"id": "c"}):
+            self.assertTrue(lchat.has_consented(USER))
+        with patch.object(lchat.store, "get_consent",
+                          return_value=None) as read:
+            self.assertFalse(lchat.has_consented(OTHER))
+        read.assert_called_once()
+        lchat._consent_cache.clear()
+
+    def test_both_invalidation_points_are_wired(self):
+        # The cache is only safe because these two call sites exist.
+        import inspect
+        src = inspect.getsource(lroutes)
+        self.assertEqual(src.count("chat.invalidate_consent"), 2)
+
     def test_a_derivation_failure_never_loses_the_note(self):
         # Store before derive is the whole reliability story.
         with patch.object(lchat, "has_consented", return_value=True), \

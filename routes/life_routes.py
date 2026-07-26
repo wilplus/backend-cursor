@@ -214,6 +214,10 @@ def life_consent():
     if not row:
         return jsonify({"code": "V2_ERROR",
                         "error": "Could not record consent"}), 500
+    # Without this the user who just accepted keeps being treated as a
+    # non-participant until the cache expires — they would finish the consent
+    # screen and find the feature still inert.
+    chat.invalidate_consent(_uid())
     return jsonify({"consented": True, "version": required}), 200
 
 
@@ -908,6 +912,10 @@ def life_delete():
         return _invalid('confirm: send {"confirm": "DELETE"} to proceed',
                         code="CONFIRMATION_REQUIRED")
     result = store.hard_delete(_uid())
+    # The consent row is gone, so the cached "yes" must go with it. Otherwise
+    # a just-wiped account keeps passing the gate and can write fresh rows
+    # into the account it emptied a second ago.
+    chat.invalidate_consent(_uid())
     if result.get("failed"):
         return jsonify({
             "code": "PARTIAL_DELETE",

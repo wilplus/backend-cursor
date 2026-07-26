@@ -24,6 +24,7 @@ the note.
 from __future__ import annotations
 
 import logging
+import time
 from typing import Any, Optional
 
 from config import Config
@@ -97,9 +98,47 @@ def is_allowlisted(user_id: Optional[str]) -> bool:
     return str(user_id) in set(getattr(config, "LIFE_PANEL_ALLOWLIST", ()) or ())
 
 
+# ── consent cache — a live-loop protection, not an optimisation ──────────
+#
+# With LIFE_PANEL_ENABLED=1 the chat route asks "has this user consented?" on
+# EVERY signed-in turn, so that the per-user block (BE-9) can be retrieved for
+# participants. Uncached, that is a Supabase round trip added to the shipped
+# chat path for every user — including everyone who will never touch this
+# feature — and a `#` message pays it twice. Scaffolding must not make the
+# live loop slower; that is the whole premise of the fence.
+#
+# Consent is append-only and changes at most twice in a user's life (grant,
+# and the hard delete that removes it), so a short TTL is safe. Both events
+# call `invalidate_consent`, which is what makes this a cache rather than a
+# staleness bug: without the invalidation on grant, a user who just accepted
+# would keep being treated as a non-participant for five minutes, and without
+# the one on delete a wiped account would keep passing the gate and could
+# write fresh rows into the account it just emptied.
+_CONSENT_TTL_SECONDS = 300
+_CONSENT_CACHE_MAX = 5000
+_consent_cache: dict[str, tuple[float, bool]] = {}
+
+
+def invalidate_consent(user_id: str) -> None:
+    """Drop the cached answer for one user. Called on grant and on hard
+    delete — the only two moments the answer can change."""
+    for key in [k for k in _consent_cache if k.startswith(f"{user_id}:")]:
+        _consent_cache.pop(key, None)
+
+
 def has_consented(user_id: str) -> bool:
     version = getattr(config, "LIFE_PANEL_CONSENT_VERSION", "1.0")
-    return bool(store.get_consent(user_id, version=version))
+    key = f"{user_id}:{version}"
+    hit = _consent_cache.get(key)
+    if hit and hit[0] > time.monotonic():
+        return hit[1]
+    answer = bool(store.get_consent(user_id, version=version))
+    if len(_consent_cache) >= _CONSENT_CACHE_MAX:
+        # Bounded rather than clever. This runs in a web worker that gets
+        # recycled; an LRU here would be more machinery than the problem.
+        _consent_cache.clear()
+    _consent_cache[key] = (time.monotonic() + _CONSENT_TTL_SECONDS, answer)
+    return answer
 
 
 def handle_note(user_id: str, text: str, *,
