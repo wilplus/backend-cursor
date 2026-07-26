@@ -546,6 +546,27 @@ def process_lab_recording(
                 "(non-fatal)", session_id, _tw_err,
             )
 
+        # DELIVERY–CONTENT ALIGNMENT NOTE (founder 2026-07-24 sign-off) — the
+        # user-facing "worth a re-listen" nudge for the ONE ecologically-
+        # detectable case (Juslin & Laukka 2003): upbeat words delivered
+        # flat/low-energy. The deterministic acoustic read GATES it (down-lean
+        # only — never the shadow model, never the high-arousal case we can't
+        # tell apart); the user sees only the guarded sentence, never a number
+        # (AC-9). Stamped on the strongest flat moment (cap one/take) and
+        # persisted with the piece metrics; served on the USER readout only.
+        # Flag-gated + best-effort — a failure never touches the live loop.
+        try:
+            from services.delivery_alignment import (
+                delivery_alignment_enabled, annotate_pieces_with_alignment,
+            )
+            if delivery_alignment_enabled():
+                annotate_pieces_with_alignment(prelim, user_id=user_id)
+        except Exception as _da_err:
+            logger.warning(
+                "process_lab_recording: delivery alignment failed sid=%s: %s "
+                "(non-fatal)", session_id, _da_err,
+            )
+
         # Capture corpus semantics: offered = every piece, notable = budget set.
         candidates = prelim
         notable = [prelim[i] for i in sorted(_llm_budget_idx)]
@@ -1313,6 +1334,24 @@ def build_readout_from_session(
         except Exception as _ac_err:
             logger.warning("readout: auto_comment fold failed sid=%s: %s",
                            session_id, _ac_err)
+
+    # DELIVERY–CONTENT ALIGNMENT NOTE (founder 2026-07-24) — the user-facing
+    # "worth a re-listen" nudge, gated + guarded + written at record time and
+    # persisted (metrics["delivery_alignment_note"]). USER readout ONLY (the
+    # coach already has the potentiometer); a qualitative sentence, never a
+    # number (AC-9). At most one per take by construction. Best-effort.
+    if not include_slide_scores:
+        try:
+            _da_by_id = {str(s.get("id")): s for s in snippets}
+            for so in out_snips:
+                _dm = (_da_by_id.get(str(so.get("id"))) or {}).get("metrics")
+                _note = _dm.get("delivery_alignment_note") \
+                    if isinstance(_dm, dict) else None
+                if isinstance(_note, str) and _note.strip():
+                    so["delivery_note"] = _note
+        except Exception as _da_err:
+            logger.warning("readout: delivery note fold failed sid=%s: %s",
+                           session_id, _da_err)
 
     # COACH-CONFIRMED breakthrough markers (F2 — the "you turned your stress
     # into charisma" badge on the user readout). A challenge snippet following a

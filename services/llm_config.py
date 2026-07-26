@@ -128,6 +128,20 @@ SPEC_SNIPPET_FOLLOWUP = LLMSpec(
 """One-shot follow-up question after a user labels a snippet (BE-0)."""
 
 
+SPEC_DELIVERY_ALIGNMENT = LLMSpec(
+    model=CHEAP_MODEL,
+    # A careful, hedged reflection grounded in the speaker's own words — not
+    # creative writing. Low-ish temp keeps it anchored and consistent.
+    temperature=0.4,
+    # One short sentence + the small JSON envelope.
+    max_tokens=120,
+    response_format={"type": "json_object"},
+)
+"""Delivery–content alignment note: judges 'words clearly positive?' and, when
+so over a flat/low-energy delivery, writes the one-line 'worth a re-listen'
+reflection (founder 2026-07-24 sign-off; user-facing, AC-9-guarded)."""
+
+
 SPEC_EVAL_GRADER = LLMSpec(
     model=STRONG_MODEL,
     # Deterministic grading — we want repeatability between runs of
