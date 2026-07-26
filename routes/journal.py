@@ -186,6 +186,13 @@ def journal_admin_list():
     body = _body()
     rows = db.list_journal_posts(
         published_only=False, order_column="sort_order", descending=False,
+        # sort_order ASC, created_at DESC (FE amendment 2026-07-25). NOT
+        # published_at: this list includes drafts, whose published_at is NULL,
+        # and Postgres orders DESC as NULLS FIRST — undated drafts would float
+        # above dated posts and the list would reshuffle as dates got set.
+        # Every new post starts at sort_order=0, so this tiebreak IS the
+        # visible order until the coach reorders.
+        tiebreak_column="created_at",
         limit=jr.clamp_limit(body.get("limit")),
         offset=jr.clamp_offset(body.get("offset")),
     )

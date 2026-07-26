@@ -558,6 +558,18 @@ class AdminBehaviourTests(_RouteCase):
         self.assertEqual(body["posts"][0]["status"], "draft")
         self.assertFalse(fake.calls[0][1]["published_only"])
 
+    def test_cms_list_order_is_pinned_sort_order_then_created_at(self):
+        # FE amendment 2026-07-25: reorder writes a whole-corpus ordering that
+        # drives the public "Curated" sort, so the CMS must show exactly the
+        # order it is writing. created_at (never NULL), not published_at.
+        fake = _FakeDb(rows=[_row()])
+        with patch.object(jroutes, "db", fake):
+            self._post(jroutes.journal_admin_list, {"password": PW})
+        kw = fake.calls[0][1]
+        self.assertEqual(kw["order_column"], "sort_order")
+        self.assertFalse(kw["descending"])            # sort_order ASC
+        self.assertEqual(kw["tiebreak_column"], "created_at")
+
     def test_cms_list_is_pageable(self):
         # REGRESSION: limit/offset were hardcoded, and since this endpoint is
         # the only way to learn a post's id, post #101 was uneditable forever.
@@ -857,6 +869,35 @@ class PublishedFilterTranslationTests(unittest.TestCase):
     def test_admin_list_does_not_filter_status(self):
         cap = self._builder_params("list_journal_posts", published_only=False)
         self.assertIsNone(cap["params"].get("status"))
+
+    # ── ordering on the wire (FE amendment 2026-07-25) ────────────────
+
+    def test_admin_order_is_sort_order_asc_then_created_at_desc(self):
+        # The CMS list includes DRAFTS (published_at NULL) and every new post
+        # starts at sort_order=0, so the tiebreak IS the visible order. A
+        # published_at tiebreak would float undated drafts to the top
+        # (Postgres DESC = NULLS FIRST) and reshuffle as dates get set.
+        cap = self._builder_params(
+            "list_journal_posts", published_only=False,
+            order_column="sort_order", descending=False,
+            tiebreak_column="created_at")
+        # A bare column emits no direction modifier — ASC is PostgREST's
+        # default — so `sort_order` here IS sort_order ASC.
+        self.assertEqual(cap["params"].get("order"),
+                         "sort_order,created_at.desc")
+
+    def test_public_curated_order_still_tiebreaks_on_published_at(self):
+        # Public rows are all published, so the date is non-NULL and IS the
+        # meaningful tiebreak. This must not change.
+        cap = self._builder_params(
+            "list_journal_posts", published_only=True,
+            order_column="sort_order", descending=False)
+        self.assertEqual(cap["params"].get("order"),
+                         "sort_order,published_at.desc")
+
+    def test_public_default_order_emits_no_duplicate_tiebreak(self):
+        cap = self._builder_params("list_journal_posts", published_only=True)
+        self.assertEqual(cap["params"].get("order"), "published_at.desc")
 
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
