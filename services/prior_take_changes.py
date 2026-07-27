@@ -112,8 +112,21 @@ def _candidate(snip: Any) -> dict:
         "slide_stickiness": stick,
         "tag": None,
         "breakthrough": False,
+        "voice_confidence": _confidence_term(metrics),
         "metrics": metrics,
     }
+
+
+def _confidence_term(metrics: Any) -> Optional[float]:
+    """The delivery term, or None. Kept in step with build_best_presentation so
+    this comparison ranks by the SAME blend the assembly does — if the two
+    diverged, "your previous take read better here" would be explaining a
+    difference the actual pick never saw."""
+    try:
+        from services.voice_confidence import rank_term
+        return rank_term(metrics)
+    except Exception:
+        return None
 
 
 def _score(cand: dict) -> Optional[float]:
@@ -125,6 +138,7 @@ def _score(cand: dict) -> Optional[float]:
             tag=cand.get("tag"),
             direction=cand.get("direction"),
             breakthrough=bool(cand.get("breakthrough")),
+            voice_confidence=cand.get("voice_confidence"),
         )
     except Exception:
         return None

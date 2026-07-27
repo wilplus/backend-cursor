@@ -103,6 +103,7 @@ def select_best_per_slide(candidates: Any) -> dict:
             tag=c.get("tag"),
             direction=c.get("direction"),
             breakthrough=bool(c.get("breakthrough")),
+            voice_confidence=c.get("voice_confidence"),
         )
         by_slide.setdefault(si, []).append({**c, "_score": score})
 
@@ -249,6 +250,7 @@ def select_best_deckless(candidates: Any, max_sections: int = _DECKLESS_MAX_SECT
             tag=c.get("tag"),
             direction=c.get("direction"),
             breakthrough=bool(c.get("breakthrough")),
+            voice_confidence=c.get("voice_confidence"),
         )
         pool.append({**c, "_score": score})
     if not pool:
@@ -490,21 +492,42 @@ def _arc_labels(db, labels_batch, sid):
 # Bump when the cached compose PAYLOAD shape changes (a new per-slide field
 # must force one recompute per arc — the content signature alone can't see
 # shape changes). v2: + key_phrases (backlog 1.7, 2026-07-11).
-_BP_PAYLOAD_VERSION = "v5"  # v5: slides carry verbatim+polished (polish-as-
-                            # suggestions) — forces one recompute per warm
-                            # arc so the new fields exist on cache hits
-                            # (v4: picks carry session_id, delivery layer)
+_BP_PAYLOAD_VERSION = "v6"  # v6: voice_confidence enters the rank blend —
+                            # forces one recompute per warm arc so a cached
+                            # payload can't outlive the ranking change
+                            # (v5: verbatim+polished; v4: picks carry
+                            # session_id, delivery layer)
+
+
+def _voice_confidence_term(metrics: Any) -> Optional[float]:
+    """The delivery term for one snippet's metrics blob, or None. Isolated so a
+    missing/failed import can never break assembly — the ranking simply falls
+    back to its pre-delivery behaviour."""
+    try:
+        from services.voice_confidence import rank_term
+        return rank_term(metrics)
+    except Exception:
+        return None
 
 
 def _bp_signature(sessions: list, corrections: Optional[dict] = None) -> str:
     """Content signature for the best-presentation cache (Part B). Changes
     EXACTLY when a recompose is needed: a take added/removed, a coach publish
-    (which re-ranks + confirms breakthroughs), or a payload-shape version bump.
-    User pencil-edits are applied on READ, so they're intentionally NOT part
-    of the signature. Cheap — computed from the session list the route
-    already loaded, no extra reads."""
+    (which re-ranks + confirms breakthroughs), a payload-shape version bump, or
+    a flip of the voice-confidence ranking flag. User pencil-edits are applied
+    on READ, so they're intentionally NOT part of the signature. Cheap —
+    computed from the session list the route already loaded, no extra reads.
+
+    The FLAG is in the signature because flipping it re-ranks every arc without
+    touching any session row; without it a warm cache would keep serving picks
+    made under the old blend and the flip would look like a no-op."""
     import hashlib
     import json as _json
+    try:
+        from services.voice_confidence import ranking_enabled
+        flag = "vc1" if ranking_enabled() else "vc0"
+    except Exception:
+        flag = "vc0"
     key = sorted(
         (
             [str(s.get("id")), s.get("take_index"),
@@ -518,7 +541,7 @@ def _bp_signature(sessions: list, corrections: Optional[dict] = None) -> str:
         for k, v in (corrections or {}).items()
     )
     return hashlib.sha1(
-        (_BP_PAYLOAD_VERSION + "|" + _json.dumps(
+        (_BP_PAYLOAD_VERSION + "|" + flag + "|" + _json.dumps(
             key, sort_keys=True, default=str)
          + "|" + _json.dumps(corr_key)).encode("utf-8")
     ).hexdigest()
@@ -660,6 +683,9 @@ def build_best_presentation(
                 "breakthrough": s.get("id") in breakthroughs,
                 "activation": metrics.get("overall_score"),
                 "slide_stickiness": stick,
+                # The DELIVERY term (L2). None when the ranking flag is off or
+                # the piece predates the composite → power_score no-op.
+                "voice_confidence": _voice_confidence_term(metrics),
                 "tag": None,  # coach 'strong'/'to_work_on' lives in drafts; not here
                 # score-free plain-language delivery qualities — the "why" the
                 # user expands on a breakthrough badge (reuses the cross-take

@@ -96,11 +96,18 @@ def _rank_inputs(snippet: dict) -> dict:
     stick = metrics.get("slide_stickiness")
     if isinstance(stick, dict):
         stick = stick.get("composite")
+    try:
+        from services.voice_confidence import rank_term
+        confidence = rank_term(metrics)
+    except Exception:
+        confidence = None
     return {
         "activation": metrics.get("overall_score"),
         "slide_stickiness": stick,
         "tag": _tag_from_coach_label(snippet.get("coach_label")),
         "rank": metrics.get("rank"),
+        # Delivery term (L2) — None when the flag is off / piece unstamped.
+        "voice_confidence": confidence,
     }
 
 

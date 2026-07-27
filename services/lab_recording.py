@@ -544,6 +544,38 @@ def process_lab_recording(
                 "(non-fatal)", session_id, _ar_err,
             )
 
+        # Voice-confidence composite per piece (founder spec 2026-07-27, Jiang &
+        # Pell 2017) — metrics["voice_confidence"], the DELIVERY term of the L2
+        # ranking blend. Stamped AFTER _cap_snapshot on purpose: it is a derived
+        # composite and the candidate corpus stays RAW.
+        #
+        # Capture-first: computed + persisted here regardless of the ranking
+        # flag, so a validation sample can be drawn and anchored against blinded
+        # human ratings BEFORE it is allowed to move a pick. The flag
+        # (VOICE_CONFIDENCE_RANKING_ENABLED, default OFF) is read only at rank
+        # time, in voice_confidence.rank_term.
+        #
+        # NOT the coach needle: acoustic_read above is untouched and remains the
+        # coach's stress↔charisma potentiometer + triage flag. This one is
+        # ranking-internal and never reaches the coach packet or a user payload.
+        try:
+            from services.voice_confidence import (
+                attach_voice_confidence, enabled as _vc_enabled,
+                resolve_confidence_baseline,
+            )
+            if _vc_enabled():
+                _vc_base, _vc_kind = resolve_confidence_baseline(
+                    user_id, [p.get("metrics") for p in prelim],
+                )
+                attach_voice_confidence(
+                    prelim, baseline=_vc_base, baseline_kind=_vc_kind,
+                )
+        except Exception as _vc_err:
+            logger.warning(
+                "process_lab_recording: voice confidence failed sid=%s: %s "
+                "(non-fatal)", session_id, _vc_err,
+            )
+
         # The USER tone word (founder carve-out) — the LEARNED read colors the
         # user's serve-time comment. Computed ONCE here (model cached), stored
         # user-only; NEVER on the coach draft (blind coach). Best-effort.
