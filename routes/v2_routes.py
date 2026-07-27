@@ -12469,6 +12469,42 @@ def v2_coach_verify_ideal_text(arc_id):
         if owner:
             from services.arc_notifications import fire_ideal_verified
             fire_ideal_verified(db, owner, arc_id, version)
+
+        # ── Learning-pipeline item 3 (founder 2026-07-27) ─────────────────
+        # Verify IS the coach-finalize act on the ideal text, so this is the
+        # sentence-level correction capture point: diff the frozen machine
+        # draft (auto_text) against the verified text, one annotation event
+        # per changed sentence run, one approved_as_is block event when the
+        # coach verified untouched. Runs ONLY on the 'verified' outcome —
+        # 'already' returned above, so exactly-once-per-version is inherited
+        # from verify_ideal_text. Best-effort; never blocks the verify.
+        try:
+            from services.ideal_text_annotations import (
+                emit_ideal_text_annotations,
+            )
+            _n = emit_ideal_text_annotations(
+                db,
+                arc_id=arc_id,
+                owner_user_id=owner,
+                coach_user_id=str(request.user_id),
+                draft_text=row.get("auto_text"),
+                final_text=row.get("verified_text"),
+                # Staleness guard (review finding, HIGH): if a new take
+                # refreshed auto_text AFTER the coach's last edit, the diff
+                # would blame machine-v(N)↔v(N+1) drift on the coach — the
+                # module skips emission in that case.
+                auto_updated_at=row.get("auto_updated_at"),
+                coach_updated_at=row.get("updated_at"),
+                coach_owned=bool(row.get("updated_by")
+                                 or row.get("approved_at")),
+            )
+            if _n:
+                logger.info("ideal-text annotations emitted arc=%s count=%d",
+                            arc_id, _n)
+        except Exception as _ann_err:
+            logger.warning("ideal-text annotation capture failed arc=%s: %s "
+                           "(non-fatal)", arc_id, _ann_err)
+
         return jsonify({"verified": True, "arc_id": arc_id,
                         "version": version}), 200
     except Exception as e:
@@ -13992,6 +14028,263 @@ def v2_coach_arc_review_state(arc_id):
         return jsonify({
             "code": "V2_ERROR", "error": "Failed to load the review state",
         }), 500
+
+
+# ── Coach STAR VERDICT (founder 2026-07-27) ───────────────────────────────
+# The decision-layer correction corpus for the voice-text analytics: the coach
+# judges whether each fired star DESERVED to fire, and as the right kind.
+#
+# BLIND COACH — these two endpoints deliberately show the coach the machine's
+# guess. That is safe here (a star is not a confidence label) and unsafe on the
+# labeling lane, so they are kept STRICTLY SEPARATE from the blind
+# confidence/direction labeling surface: different endpoints, and the payload
+# carries no acoustic_read, no direction, and no shadow prediction. A coach can
+# judge the ADVICE with full sight and must still label the VOICE blind.
+# Pinned by test_star_verdicts.py.
+@v2_bp.route("/coach/arc/<arc_id>/stars", methods=["GET"])
+@require_admin_or_coach
+def v2_coach_arc_stars(arc_id):
+    """Every star the system fired on this arc, with the coach's judgment.
+
+    The review list for the star-verdict surface: one row per starred moment,
+    carrying what the machine produced (kind, device, why, replacement) and the
+    coach's existing verdict when they've already judged it. `device_options`
+    is what they may pick when answering "wrong kind", so the FE renders the
+    choices without hard-coding a vocabulary that lives in the BE.
+
+    200 { arc_id, stars: [...], judged, total, summary }
+    404 · 500
+    """
+    try:
+        sessions = db.get_arc_sessions(arc_id)
+        if not sessions:
+            return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
+
+        from services.star_verdicts import corpus_summary, stars_with_verdicts
+
+        suggestions = db.get_moment_suggestions_by_arc(arc_id) or {}
+        verdicts = db.get_star_verdicts_by_snippet_ids(
+            list(suggestions.keys())) or {}
+
+        # Playback context per starred snippet (FE ask 2026-07-28): the coach
+        # hears the moment they're judging. Allowlisted fields only — the
+        # snippet row's metrics (acoustic_read/voice_confidence) must NOT ride
+        # an analytics review payload (BLIND COACH); the allowlist lives in
+        # stars_with_verdicts._SNIPPET_PLAYBACK_KEYS.
+        snippets_by_id: dict = {}
+        if suggestions:
+            _starred = set(suggestions.keys())
+            for _s in sessions:
+                _sid = str(_s.get("id") or "")
+                if not _sid:
+                    continue
+                for _snip in (db.get_snippets_by_session(_sid) or []):
+                    _snip_id = str(_snip.get("id") or "")
+                    if _snip_id not in _starred:
+                        continue
+                    snippets_by_id[_snip_id] = {
+                        "audio_ref": (_snip.get("audio_segment_path")
+                                      or _snip.get("audio_ref")
+                                      or _snip.get("storage_path")),
+                        "start_offset_ms": _snip.get("start_offset_ms"),
+                        "duration_ms": _snip.get("duration_ms"),
+                        "transcript": (_snip.get("transcript")
+                                       or _snip.get("transcript_excerpt")
+                                       or ""),
+                        "take_index": _s.get("take_index"),
+                    }
+
+        stars = stars_with_verdicts(list(suggestions.values()), verdicts,
+                                    snippets_by_id)
+        # Chronology isn't available on the suggestion row, so order by the
+        # thing the coach cares about: unjudged first, then by family.
+        stars.sort(key=lambda s: (s.get("judged"),
+                                  s.get("star_kind") or "",
+                                  s.get("star_device") or ""))
+        return jsonify({
+            "arc_id": arc_id,
+            "stars": stars,
+            "total": len(stars),
+            "judged": sum(1 for s in stars if s.get("judged")),
+            "summary": corpus_summary(list(verdicts.values())),
+        }), 200
+    except Exception as e:
+        logger.warning("v2_coach_arc_stars failed arc=%s: %s", arc_id, e)
+        return jsonify({"code": "SERVER_ERROR",
+                        "error": "could not load stars"}), 500
+
+
+@v2_bp.route("/coach/snippets/<snippet_id>/star-verdict", methods=["PUT"])
+@require_admin_or_coach
+def v2_coach_put_star_verdict(snippet_id):
+    """Record the coach's judgment of ONE fired star.
+
+    Body { star_kind, star_device?, verdict, corrected_device?, note?,
+           star_version? }
+
+      verdict='keep'             the star was right (the endorsement signal)
+      verdict='wrong_kind'       requires corrected_device — the confusion pair
+      verdict='should_not_fire'  this moment deserved silence
+
+    Idempotent: re-judging the same star REPLACES the previous verdict. Nothing
+    here mutates the star, the suggestion text, or the student's copy (L1) —
+    the judgment is captured for training and is never surfaced to the student
+    (AC-9).
+
+    200 { saved, snippet_id, verdict } · 400 · 404 · 500
+    """
+    if not _is_valid_uuid(snippet_id):
+        return jsonify({"code": "INVALID_INPUT",
+                        "error": "snippet_id must be a valid UUID"}), 400
+    body = request.get_json(silent=True) or {}
+
+    from services.star_verdicts import validate_verdict
+
+    row, err = validate_verdict(body)
+    if err:
+        return jsonify({"code": "INVALID_INPUT", "error": err}), 400
+
+    try:
+        snip = db.get_snippet_by_id(snippet_id)
+        if not snip:
+            return jsonify({"code": "NOT_FOUND",
+                            "error": "snippet not found"}), 404
+        session_id = snip.get("session_id")
+        arc_id = None
+        owner_user_id = None
+        if session_id:
+            _sess = db.v2_get_session_by_id(str(session_id)) or {}
+            arc_id = _sess.get("arc_id")
+            owner_user_id = _sess.get("user_id")
+
+        # The verdict this one replaces — read BEFORE the upsert so a
+        # first-time KEEP is distinguishable from a re-KEEP (below).
+        # Error-distinguishing read: a FAILED read must not look like "no
+        # prior verdict" or a re-keep during a transient error double-writes
+        # the corpus row — _prior_ok=False fails the emission closed.
+        _prior, _prior_ok = db.get_star_verdict(snippet_id)
+
+        saved = db.upsert_star_verdict(
+            snippet_id=snippet_id, row=row, session_id=session_id,
+            arc_id=arc_id, coach_user_id=getattr(request, "user_id", None),
+        )
+        if not saved:
+            return jsonify({
+                "code": "SERVER_ERROR",
+                "error": "could not save verdict (run "
+                         "migrations/add_star_verdicts.sql)",
+            }), 500
+
+        # ── Learning-pipeline item 2 (founder 2026-07-27/28) ──────────────
+        # A verdict flipping TO 'keep' is the coach signing off the star's
+        # TEXT — emit the (machine draft, coach-corrected final) pair into
+        # the writer corpus. Untouched text → approved_as_is endorsement;
+        # coach-rewritten text (the star-text PUT below) → the correction
+        # pair. Only text crosses lanes; the verdict stays in star_verdicts
+        # (the decision corpus). Guarded on the flip so a re-keep never
+        # double-writes; wrong_kind / should_not_fire emit nothing (a
+        # rejected star's text must not train the writer as preferred
+        # output). Best-effort — a miss never fails the save.
+        try:
+            from services.star_verdicts import (
+                annotation_pair_for_star, should_emit_keep_text,
+            )
+            if (_prior_ok
+                    and should_emit_keep_text(row["verdict"],
+                                              (_prior or {}).get("verdict"))
+                    and owner_user_id and arc_id):
+                _sugg = (db.get_moment_suggestions_by_arc(arc_id)
+                         or {}).get(str(snippet_id))
+                _pair = annotation_pair_for_star(_sugg)
+                if _pair:
+                    _draft_text, _final_text = _pair
+                    db.create_admin_annotation_event(
+                        user_id=str(owner_user_id),
+                        session_id=str(session_id) if session_id else None,
+                        section_type="moment_suggestion",
+                        field_name="moment_suggestion",
+                        ai_original_text=_draft_text,
+                        coach_final_text=_final_text,
+                        reason_chip=("approved_as_is"
+                                     if _draft_text == _final_text else None),
+                        custom_reason=None,
+                        created_by=str(getattr(request, "user_id", "") or ""),
+                        draft_id=str(snippet_id),
+                    )
+        except Exception as _emit_err:
+            logger.warning(
+                "star-verdict keep-emit failed snip=%s: %s (non-fatal)",
+                snippet_id, _emit_err,
+            )
+
+        return jsonify({"saved": True, "snippet_id": snippet_id,
+                        "verdict": row["verdict"]}), 200
+    except Exception as e:
+        logger.warning("v2_coach_put_star_verdict failed snip=%s: %s",
+                       snippet_id, e)
+        return jsonify({"code": "SERVER_ERROR",
+                        "error": "could not save verdict"}), 500
+
+
+@v2_bp.route("/coach/snippets/<snippet_id>/star-text", methods=["PUT"])
+@require_admin_or_coach
+def v2_coach_put_star_text(snippet_id):
+    """The coach's corrected wording for ONE fired star (founder 2026-07-28)
+    — "review how the comment was written", the say-it-stronger twin pattern
+    applied to moment suggestions.
+
+    Body (FULL correction state — the body IS the state, an omitted or null
+    field reverts that part to the machine draft):
+        { "why": "…" | null, "replacement_text": "…" | null }
+
+    The machine's draft columns are never touched (the (draft, final) pair is
+    the correction corpus). Every reader folds final-over-draft at the DB
+    reader, so the student sees the coach's wording immediately (L1: no row
+    mutation of the draft). Strings pass the SAME AC-9 qualitative guard as
+    generation; a guard violation is a loud 400, never a silent null.
+
+    The pair enters admin_annotation_events when the coach KEEPS the star
+    (the verdict route above) — edit first, then keep.
+
+    200 { saved, snippet_id, why, replacement_text }   // the correction state
+    400 · 404 · 500
+    """
+    if not _is_valid_uuid(snippet_id):
+        return jsonify({"code": "INVALID_INPUT",
+                        "error": "snippet_id must be a valid UUID"}), 400
+    body = request.get_json(silent=True) or {}
+
+    from services.star_verdicts import validate_star_text
+
+    row, err = validate_star_text(body)
+    if err:
+        return jsonify({"code": "INVALID_INPUT", "error": err}), 400
+
+    try:
+        snip = db.get_snippet_by_id(snippet_id)
+        if not snip:
+            return jsonify({"code": "NOT_FOUND",
+                            "error": "snippet not found"}), 404
+        saved = db.set_moment_suggestion_final(
+            str(snippet_id),
+            why_final=row["why"],
+            replacement_text_final=row["replacement_text"],
+            edited_by=getattr(request, "user_id", None),
+        )
+        if not saved:
+            return jsonify({
+                "code": "SERVER_ERROR",
+                "error": "could not save star text (run "
+                         "migrations/add_moment_suggestion_final.sql)",
+            }), 500
+        return jsonify({"saved": True, "snippet_id": snippet_id,
+                        "why": row["why"],
+                        "replacement_text": row["replacement_text"]}), 200
+    except Exception as e:
+        logger.warning("v2_coach_put_star_text failed snip=%s: %s",
+                       snippet_id, e)
+        return jsonify({"code": "SERVER_ERROR",
+                        "error": "could not save star text"}), 500
 
 
 # The /coach/arc/<id>/publish ALIAS is RETIRED (FE handoff 2026-07-17):
