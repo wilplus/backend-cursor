@@ -12345,6 +12345,96 @@ class DatabaseService:
             logger.warning("list_game_saves failed user=%s: %s", user_id, e)
             return []
 
+    # ── Coach star verdicts (founder 2026-07-27) ───────────────────────
+    # The DECISION-layer correction corpus for the voice-text analytics: did
+    # this star deserve to fire, and as this kind? Separate from
+    # training_labels (the blind confidence-labeling lane) by fence — see
+    # services/star_verdicts.py. Never surfaced to a student (AC-9).
+
+    def upsert_star_verdict(
+        self, *, snippet_id: str, row: dict, session_id: Optional[str] = None,
+        arc_id: Optional[str] = None, coach_user_id: Optional[str] = None,
+    ) -> bool:
+        """Store (or replace) the coach's judgment of ONE fired star.
+
+        ``row`` is the validated shape from star_verdicts.validate_verdict —
+        this method does no validation of its own so there is exactly one
+        place that decides what a legal verdict is. Upsert on snippet_id: a
+        re-judgment replaces, because the corpus wants the coach's current
+        view, not their deliberation history.
+
+        Best-effort, missing-table-safe; NEVER raises."""
+        if not snippet_id or not isinstance(row, dict) or not row.get("verdict"):
+            return False
+        payload: dict = {"snippet_id": str(snippet_id)}
+        for k in ("star_kind", "star_device", "verdict", "corrected_device",
+                  "note", "star_version"):
+            if row.get(k) is not None:
+                payload[k] = row[k]
+        if session_id:
+            payload["session_id"] = str(session_id)
+        if arc_id:
+            payload["arc_id"] = str(arc_id)
+        if coach_user_id:
+            payload["coach_user_id"] = str(coach_user_id)
+        payload["updated_at"] = datetime.now(timezone.utc).isoformat()
+        try:
+            (self.client.table("star_verdicts")
+                 .upsert(payload, on_conflict="snippet_id").execute())
+            return True
+        except Exception as e:
+            err_low = str(e).lower()
+            if "star_verdicts" in err_low and (
+                "does not exist" in err_low or "pgrst" in err_low
+                or "42p01" in err_low
+            ):
+                logger.warning(
+                    "upsert_star_verdict: table missing (run "
+                    "migrations/add_star_verdicts.sql)",
+                )
+                return False
+            logger.warning("upsert_star_verdict failed: %s", e)
+            return False
+
+    def get_star_verdicts_by_snippet_ids(self, snippet_ids: list) -> dict:
+        """{snippet_id: verdict_row} for the given snippets. {} on anything
+        missing — the coach review simply renders every star as unjudged."""
+        ids = [str(s) for s in (snippet_ids or []) if s]
+        if not ids:
+            return {}
+        try:
+            rows = (self.client.table("star_verdicts")
+                    .select("*").in_("snippet_id", ids).execute().data) or []
+            return {str(r.get("snippet_id")): r for r in rows
+                    if r.get("snippet_id")}
+        except Exception as e:
+            err_low = str(e).lower()
+            if "star_verdicts" in err_low and (
+                "does not exist" in err_low or "pgrst" in err_low
+                or "42p01" in err_low
+            ):
+                logger.warning(
+                    "get_star_verdicts_by_snippet_ids: table missing (run "
+                    "migrations/add_star_verdicts.sql)",
+                )
+                return {}
+            logger.warning("get_star_verdicts_by_snippet_ids failed: %s", e)
+            return {}
+
+    def get_star_verdicts_for_corpus(self, *, star_kind: Optional[str] = None,
+                                     limit: int = 5000) -> list:
+        """The training-side pull: judged stars, newest first, optionally one
+        family. [] on anything missing; NEVER raises."""
+        try:
+            q = self.client.table("star_verdicts").select("*")
+            if star_kind:
+                q = q.eq("star_kind", str(star_kind))
+            return (q.order("created_at", desc=True)
+                     .limit(int(limit)).execute().data) or []
+        except Exception as e:
+            logger.warning("get_star_verdicts_for_corpus failed: %s", e)
+            return []
+
     def insert_snippet_peer_label(
         self, *, snippet_id: str, rater_id: Optional[str], label: Optional[str],
         source: Optional[str] = None, is_second_order: bool = True,

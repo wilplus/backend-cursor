@@ -13994,6 +13994,120 @@ def v2_coach_arc_review_state(arc_id):
         }), 500
 
 
+# ── Coach STAR VERDICT (founder 2026-07-27) ───────────────────────────────
+# The decision-layer correction corpus for the voice-text analytics: the coach
+# judges whether each fired star DESERVED to fire, and as the right kind.
+#
+# BLIND COACH — these two endpoints deliberately show the coach the machine's
+# guess. That is safe here (a star is not a confidence label) and unsafe on the
+# labeling lane, so they are kept STRICTLY SEPARATE from the blind
+# confidence/direction labeling surface: different endpoints, and the payload
+# carries no acoustic_read, no direction, and no shadow prediction. A coach can
+# judge the ADVICE with full sight and must still label the VOICE blind.
+# Pinned by test_star_verdicts.py.
+@v2_bp.route("/coach/arc/<arc_id>/stars", methods=["GET"])
+@require_admin_or_coach
+def v2_coach_arc_stars(arc_id):
+    """Every star the system fired on this arc, with the coach's judgment.
+
+    The review list for the star-verdict surface: one row per starred moment,
+    carrying what the machine produced (kind, device, why, replacement) and the
+    coach's existing verdict when they've already judged it. `device_options`
+    is what they may pick when answering "wrong kind", so the FE renders the
+    choices without hard-coding a vocabulary that lives in the BE.
+
+    200 { arc_id, stars: [...], judged, total, summary }
+    404 · 500
+    """
+    try:
+        sessions = db.get_arc_sessions(arc_id)
+        if not sessions:
+            return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
+
+        from services.star_verdicts import corpus_summary, stars_with_verdicts
+
+        suggestions = db.get_moment_suggestions_by_arc(arc_id) or {}
+        verdicts = db.get_star_verdicts_by_snippet_ids(
+            list(suggestions.keys())) or {}
+        stars = stars_with_verdicts(list(suggestions.values()), verdicts)
+        # Chronology isn't available on the suggestion row, so order by the
+        # thing the coach cares about: unjudged first, then by family.
+        stars.sort(key=lambda s: (s.get("judged"),
+                                  s.get("star_kind") or "",
+                                  s.get("star_device") or ""))
+        return jsonify({
+            "arc_id": arc_id,
+            "stars": stars,
+            "total": len(stars),
+            "judged": sum(1 for s in stars if s.get("judged")),
+            "summary": corpus_summary(list(verdicts.values())),
+        }), 200
+    except Exception as e:
+        logger.warning("v2_coach_arc_stars failed arc=%s: %s", arc_id, e)
+        return jsonify({"code": "SERVER_ERROR",
+                        "error": "could not load stars"}), 500
+
+
+@v2_bp.route("/coach/snippets/<snippet_id>/star-verdict", methods=["PUT"])
+@require_admin_or_coach
+def v2_coach_put_star_verdict(snippet_id):
+    """Record the coach's judgment of ONE fired star.
+
+    Body { star_kind, star_device?, verdict, corrected_device?, note?,
+           star_version? }
+
+      verdict='keep'             the star was right (the endorsement signal)
+      verdict='wrong_kind'       requires corrected_device — the confusion pair
+      verdict='should_not_fire'  this moment deserved silence
+
+    Idempotent: re-judging the same star REPLACES the previous verdict. Nothing
+    here mutates the star, the suggestion text, or the student's copy (L1) —
+    the judgment is captured for training and is never surfaced to the student
+    (AC-9).
+
+    200 { saved, snippet_id, verdict } · 400 · 404 · 500
+    """
+    if not _is_valid_uuid(snippet_id):
+        return jsonify({"code": "INVALID_INPUT",
+                        "error": "snippet_id must be a valid UUID"}), 400
+    body = request.get_json(silent=True) or {}
+
+    from services.star_verdicts import validate_verdict
+
+    row, err = validate_verdict(body)
+    if err:
+        return jsonify({"code": "INVALID_INPUT", "error": err}), 400
+
+    try:
+        snip = db.get_snippet_by_id(snippet_id)
+        if not snip:
+            return jsonify({"code": "NOT_FOUND",
+                            "error": "snippet not found"}), 404
+        session_id = snip.get("session_id")
+        arc_id = None
+        if session_id:
+            _sess = db.v2_get_session_by_id(str(session_id)) or {}
+            arc_id = _sess.get("arc_id")
+
+        saved = db.upsert_star_verdict(
+            snippet_id=snippet_id, row=row, session_id=session_id,
+            arc_id=arc_id, coach_user_id=getattr(request, "user_id", None),
+        )
+        if not saved:
+            return jsonify({
+                "code": "SERVER_ERROR",
+                "error": "could not save verdict (run "
+                         "migrations/add_star_verdicts.sql)",
+            }), 500
+        return jsonify({"saved": True, "snippet_id": snippet_id,
+                        "verdict": row["verdict"]}), 200
+    except Exception as e:
+        logger.warning("v2_coach_put_star_verdict failed snip=%s: %s",
+                       snippet_id, e)
+        return jsonify({"code": "SERVER_ERROR",
+                        "error": "could not save verdict"}), 500
+
+
 # The /coach/arc/<id>/publish ALIAS is RETIRED (FE handoff 2026-07-17):
 # the FE relay now targets /publish-analysis directly (their commit
 # 63be223, FE-4). History: the alias briefly restored the OLD #186 path
