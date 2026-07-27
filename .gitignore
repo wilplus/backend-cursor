@@ -18,3 +18,10 @@ ENV/
 
 # Local Claude / IDE worktrees (nested git repos; do not commit as submodule)
 .claude/
+
+# Rendered docs (scripts/render_doc_pdf.py). Derived from the markdown in
+# docs/, so a committed copy goes stale the moment the source is edited —
+# and a stale PDF of a SPEC is worse than no PDF, because someone builds
+# from a page that no longer matches. Regenerate instead:
+#   python scripts/render_doc_pdf.py docs/<doc>.md exports/<doc>.pdf "Title"
+exports/*.pdf
