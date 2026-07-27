@@ -113,6 +113,100 @@ class BuildKeyPointsTests(unittest.TestCase):
         self.assertEqual(build_key_points([{}]), [])       # no text → skip
 
 
+class ParagraphFallbackTests(unittest.TestCase):
+    """Founder 2026-07-27: blocks are keyed on slide index, so a DECKLESS
+    project is ONE block, so the student's whole "Key words" view rendered as
+    a single card. Below two blocks we cue per PARAGRAPH — same verbatim
+    slice, same offsets."""
+
+    def _doc(self, n):
+        return "\n\n".join(
+            f"Paragraph number {i} opens the section here. And then it "
+            f"continues for a while afterwards." for i in range(n))
+
+    def test_one_block_many_paragraphs_cues_each_paragraph(self):
+        served = self._doc(5)
+        pieces = [{"block_key": 0, "block_label": "All", "start": 0,
+                   "end": len(served), "text": served}]
+        kp = build_key_points(pieces, served)
+        self.assertEqual(len(kp), 5)
+        for e in kp:
+            self.assertEqual(served[e["start"]:e["end"]], e["text"])
+            self.assertIsNone(e["block_key"])
+            self.assertIsNone(e["block_label"])
+
+    def test_cues_are_in_document_order(self):
+        served = self._doc(4)
+        kp = build_key_points([], served)
+        self.assertEqual([e["start"] for e in kp],
+                         sorted(e["start"] for e in kp))
+
+    def test_no_pieces_at_all_still_cues(self):
+        served = self._doc(3)
+        self.assertEqual(len(build_key_points([], served)), 3)
+
+    def test_short_paragraphs_are_skipped(self):
+        served = "So.\n\n" + self._doc(1) + "\n\nOk.\n\nRight."
+        kp = build_key_points([], served)
+        self.assertEqual(len(kp), 1)
+        self.assertTrue(kp[0]["text"].startswith("Paragraph number 0"))
+
+    def test_capped_at_twelve(self):
+        kp = build_key_points([], self._doc(40))
+        self.assertEqual(len(kp), 12)
+
+    def test_single_paragraph_yields_one_cue_not_a_fabrication(self):
+        served = self._doc(1)
+        kp = build_key_points([], served)
+        self.assertEqual(len(kp), 1)
+        self.assertEqual(served[kp[0]["start"]:kp[0]["end"]], kp[0]["text"])
+
+    def test_two_or_more_blocks_keep_the_block_path(self):
+        served = ("Welcome to the demo today. More words here.\n\n"
+                  "The core idea is measured delivery. More words.\n\n"
+                  "Thanks for listening everyone. Goodbye now.")
+        pieces = [
+            {"block_key": 0, "block_label": "Hook", "start": 0,
+             "end": 42, "text": served[0:42]},
+            {"block_key": 10, "block_label": "Core", "start": 44,
+             "end": 90, "text": served[44:90]},
+        ]
+        kp = build_key_points(pieces, served)
+        self.assertEqual([e["block_key"] for e in kp], [0, 10])
+        self.assertEqual([e["block_label"] for e in kp], ["Hook", "Core"])
+
+    def test_no_served_text_keeps_the_block_path(self):
+        pieces = [_piece(0, 0, "Only one block here. And more text.")]
+        kp = build_key_points(pieces)
+        self.assertEqual(len(kp), 1)
+        self.assertEqual(kp[0]["block_key"], 0)
+
+    def test_fallback_never_shrinks_the_result(self):
+        # one block + a served text with a single usable paragraph: the block
+        # path already has it, so nothing is lost by falling back
+        served = "Only one usable paragraph in this whole document."
+        pieces = [{"block_key": 0, "block_label": "Hook", "start": 0,
+                   "end": len(served), "text": served}]
+        kp = build_key_points(pieces, served)
+        self.assertEqual(len(kp), 1)
+        self.assertEqual(served[kp[0]["start"]:kp[0]["end"]], kp[0]["text"])
+
+    def test_offsets_survive_leading_whitespace_between_paragraphs(self):
+        served = ("First paragraph opens the talk here.\n   \n"
+                  "Second one lands a while later on.")
+        kp = build_key_points([], served)
+        self.assertEqual(len(kp), 2)
+        for e in kp:
+            self.assertEqual(served[e["start"]:e["end"]], e["text"])
+
+    def test_cue_carries_no_rank_or_score(self):
+        # AC-9 / construct fence: a milestone is a cue, never a graded thing
+        kp = build_key_points([], self._doc(3))
+        for e in kp:
+            self.assertEqual(set(e), {"block_key", "block_label", "text",
+                                      "start", "end"})
+
+
 @unittest.skipIf(_V2_ERR is not None, f"needs app deps: {_V2_ERR}")
 class KeyPointsServeWiringTests(unittest.TestCase):
     """The SD `_tracked_changes_block` surfaces `key_points` when the flag is

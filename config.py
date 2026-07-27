@@ -98,6 +98,14 @@ class Config:
     # Audio limits
     MAX_AUDIO_SIZE_MB = 25
     MAX_RECORDING_DURATION_SECONDS = 300
+    # Long-take SOFT CAUTION (founder 2026-07-27). At or above this target
+    # length the setup wizard shows a caution — practise the beginning and the
+    # ending in short takes instead — and the user proceeds anyway if they
+    # want. NOT a limit: nothing server-side truncates, rejects or caps on it.
+    # Served on GET /v2/config/recording and GET /v2/explore/arc/<id>/setup so
+    # the number lives in ONE place instead of an FE hardcode.
+    LONG_TAKE_CAUTION_SECONDS = int(
+        os.getenv("LONG_TAKE_CAUTION_SECONDS", "600"))
     # Admin reference video upload limit (Training Studio)
     MAX_REFERENCE_VIDEO_SIZE_MB = int(os.getenv("MAX_REFERENCE_VIDEO_SIZE_MB", "500"))
     

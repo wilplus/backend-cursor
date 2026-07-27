@@ -288,6 +288,21 @@ class ConfigRecordingRouteTests(unittest.TestCase):
             self.assertEqual(data["min_duration_sec"], 0.0)  # retired 2026-07-15
             self.assertEqual(data["min_voiced_sec"], 3.0)
 
+    def test_serves_the_long_take_caution_threshold(self):
+        # Founder 2026-07-27: the ceiling side of the same idea, and NOT a
+        # gate — the FE shows a soft caution at/above it and the student
+        # proceeds anyway. Served so the threshold in the copy has one home.
+        with self.app.test_request_context():
+            resp, status = v2.v2_config_recording.__wrapped__()
+            self.assertEqual(status, 200)
+            self.assertEqual(resp.get_json()["long_take_caution_sec"], 600)
+
+    def test_the_caution_threshold_never_becomes_a_gate(self):
+        # Nothing server-side may reject or truncate on this number. If an
+        # upload path ever reads it, this pin is the place that argues.
+        import config as _cfg
+        self.assertEqual(_cfg.Config.LONG_TAKE_CAUTION_SECONDS, 600)
+
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
 class CoachStudentsRouteTests(unittest.TestCase):

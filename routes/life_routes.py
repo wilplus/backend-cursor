@@ -35,7 +35,7 @@ import logging
 from datetime import date, datetime, timezone
 from functools import wraps
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, make_response, request
 
 from auth import require_auth
 from config import Config as config
@@ -365,7 +365,26 @@ def _assemble(latest: dict) -> str:
 @life_bp.route("/v2/life/strategy/download", methods=["GET"])
 @life_route()
 def life_strategy_download():
+    """The strategy as a document (story #11, founder 2026-07-27).
+
+    ?format=json (DEFAULT — the original payload, so existing callers are
+    untouched) · md · pdf · docx. A file format returns the bytes as an
+    attachment; a renderer whose dependency is missing degrades to markdown
+    with a 200, so the download button can never 500 (same contract as
+    services/dev_tasks.py::export_pdf). Read the response Content-Type — do
+    not assume the requested one.
+    """
     latest = store.latest_strategy(_uid())
+    fmt = (request.args.get("format") or "json").strip().lower()
+    if fmt in ("md", "pdf", "docx"):
+        from services.strategy_export import export
+        payload, mimetype, filename = export(
+            latest, lp.STRATEGY_HORIZONS, fmt)
+        resp = make_response(payload)
+        resp.headers["Content-Type"] = mimetype
+        resp.headers["Content-Disposition"] = \
+            f'attachment; filename="{filename}"'
+        return resp, 200
     return jsonify({
         "body": _assemble(latest),
         "versions": {h: int(r.get("version") or 1) for h, r in latest.items()},

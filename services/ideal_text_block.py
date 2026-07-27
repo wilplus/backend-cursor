@@ -64,6 +64,101 @@ MOMENT_SPAN_RE = re.compile(
 
 _MAX_BLOCK_CHARS = 20000
 
+_ACCENT_OPEN = "{{orange:"
+_ACCENT_CLOSE = "}}"
+
+
+def accent_span(inner: Any) -> str:
+    """``inner`` wrapped in ``{{orange:…}}`` ONE LINE AT A TIME.
+
+    The founder's 2026-07-27 screenshot showed a bare ``{{orange:`` sitting on
+    its own line in the middle of the student's ideal text. Two reasons a
+    marker may never straddle a newline: the contract above promises markers
+    are plain text that "degrade readably anywhere" (a dangling opener does
+    not), and the FE's rich-marker parser is FLAT and single-line, so it
+    cannot close a span that crosses ``\\n``.
+
+    So ``"a\\nb"`` becomes ``"{{orange:a}}\\n{{orange:b}}"``. A blank line is
+    left alone (no empty ``{{orange:}}``), and whitespace at each line's edges
+    stays OUTSIDE its wrapper so the words inside are exactly the words that
+    were emphasized. Pure."""
+    if not isinstance(inner, str) or not inner.strip():
+        return inner if isinstance(inner, str) else ""
+    out = []
+    for line in inner.split("\n"):
+        body = line.strip()
+        if not body:
+            out.append(line)
+            continue
+        lead = len(line) - len(line.lstrip())
+        out.append(line[:lead] + _ACCENT_OPEN + body + _ACCENT_CLOSE
+                   + line[lead + len(body):])
+    return "\n".join(out)
+
+
+def wrap_accent(text: Any, lo: Any, hi: Any) -> str:
+    """``text`` with ``text[lo:hi]`` accented via accent_span — the ONE way
+    the BE emits ``{{orange:…}}``.
+
+    A span that is already accented (or sits immediately after an opener)
+    returns ``text`` untouched — the fold and the ledger bake both run over
+    text the other may have already marked, and a double wrap prints its own
+    syntax. Out-of-bounds or non-int offsets are a no-op rather than a
+    corruption. Pure."""
+    if not isinstance(text, str):
+        return ""
+    if not isinstance(lo, int) or not isinstance(hi, int):
+        return text
+    if not (0 <= lo < hi <= len(text)):
+        return text
+    span = text[lo:hi]
+    if _ACCENT_OPEN in span or text[:lo].endswith(_ACCENT_OPEN):
+        return text
+    return text[:lo] + accent_span(span) + text[hi:]
+
+
+def sanitize_markers(text: Any) -> str:
+    """The last guard before the text goes on the wire: drop every marker
+    token that cannot render, keeping every WORD (founder 2026-07-27).
+
+    Three things happen, in one left-to-right pass:
+      * an accent span that crosses a newline is RE-WRAPPED per line (the
+        emphasis survives; only the unrenderable placement changes) — this is
+        what rescues rows baked before wrap_accent existed;
+      * an unmatched ``{{orange:`` (no ``}}`` before end-of-text or before the
+        next opener) and a stray ``}}`` lose the TOKEN, never their words;
+      * an odd ``**`` loses its last occurrence.
+
+    ``__``/``//`` are deliberately NOT balanced — ``//`` occurs in every URL
+    and a "fix" there would corrupt real content. ``[[moment:…]]`` is
+    untouched (MOMENT_RE is the one marker the BE parses; stripping is
+    strip_moment_markers' job). Idempotent, and never reorders or deletes
+    prose. Pure."""
+    if not isinstance(text, str) or not text:
+        return text if isinstance(text, str) else ""
+    out = []
+    i, n = 0, len(text)
+    while i < n:
+        j = text.find(_ACCENT_OPEN, i)
+        if j < 0:
+            out.append(text[i:].replace(_ACCENT_CLOSE, ""))
+            break
+        out.append(text[i:j].replace(_ACCENT_CLOSE, ""))
+        body = j + len(_ACCENT_OPEN)
+        close = text.find(_ACCENT_CLOSE, body)
+        nxt = text.find(_ACCENT_OPEN, body)
+        if close < 0 or (0 <= nxt < close):
+            # Unmatched opener — drop the token and carry on from the words.
+            i = body
+            continue
+        out.append(accent_span(text[body:close]))
+        i = close + len(_ACCENT_CLOSE)
+    result = "".join(out)
+    if result.count("**") % 2:
+        _last = result.rfind("**")
+        result = result[:_last] + result[_last + 2:]
+    return result
+
 
 def _living_transcript_enabled() -> bool:
     """THE DOCUMENT MODEL (founder decision 2026-07-20 #1): the ideal text

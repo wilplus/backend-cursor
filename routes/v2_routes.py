@@ -9430,11 +9430,18 @@ def v2_config_recording():
     for the recording floor so the FE stops hardcoding 60s. The SERVER is the
     real gate — min_content_gate rejects anything under this on upload (422,
     RECORDING_REJECTED); this just lets the FE preview the same numbers.
+
+    `long_take_caution_sec` (founder 2026-07-27) is the CEILING side of the
+    same idea, and is deliberately NOT a gate: at or above it the setup wizard
+    shows a soft caution and the student proceeds anyway if they choose. It
+    lives here so the FE never hardcodes the threshold it states in copy.
     """
     from services.min_content_gate import MIN_DURATION_SEC, MIN_VOICED_SEC
     return jsonify({
         "min_duration_sec": MIN_DURATION_SEC,
         "min_voiced_sec": MIN_VOICED_SEC,
+        "long_take_caution_sec": int(getattr(
+            config, "LONG_TAKE_CAUTION_SECONDS", 600) or 600),
     }), 200
 
 
@@ -12211,6 +12218,7 @@ def _fold_applied_moments(text, moments) -> str:
       * replace   → the inner span is swapped for the generated replacement
         (not bold, not orange — just replaced).
     The [[moment:…]] anchor survives (revert stays addressable). Pure."""
+    from services.ideal_text_block import accent_span
     if not isinstance(text, str) or not text:
         return text
     for m in moments or []:
@@ -12238,10 +12246,14 @@ def _fold_applied_moments(text, moments) -> str:
                 # alone carries "these words hold particular value". A span
                 # already carrying the marker (BAKED by the decision ledger,
                 # 2026-07-20) folds to itself — never double-wrapped.
+                # accent_span, never an f-string wrap (2026-07-27): a
+                # moment's inner span can run across a paragraph break,
+                # and a marker that straddles a newline printed a bare
+                # `{{orange:` line into the student's text.
                 lambda mt: (
                     mt.group(0) if "{{orange:" in mt.group("inner")
-                    else (f"[[moment:{_id}|{_sid}]]{{{{orange:"
-                          f"{mt.group('inner')}}}}}[[/moment]]")),
+                    else (f"[[moment:{_id}|{_sid}]]"
+                          f"{accent_span(mt.group('inner'))}[[/moment]]")),
                 text, count=1)
     return text
 
@@ -12584,7 +12596,8 @@ def v2_explore_get_ideal_text(arc_id):
                         "current_version": _version,
                     }), 200
                 from services.ideal_text_block import (
-                    extract_key_moments, strip_moment_markers,
+                    extract_key_moments, sanitize_markers,
+                    strip_moment_markers,
                 )
                 _s_text = _snap["text"]
                 _s_moments = extract_key_moments(_s_text)
@@ -12641,7 +12654,10 @@ def v2_explore_get_ideal_text(arc_id):
                     "status": "superseded",
                     "current_version": _version,
                     "created_at": _snap.get("created_at"),
-                    "text": strip_moment_markers(_s_text),
+                    # A snapshot was baked before wrap_accent existed, so
+                    # an old version can still carry a newline-straddling
+                    # accent — sanitize on the way out too.
+                    "text": sanitize_markers(strip_moment_markers(_s_text)),
                     "key_moments": _s_out,
                 }), 200
         _vv = _r.get("verified_version")
@@ -12697,6 +12713,15 @@ def v2_explore_get_ideal_text(arc_id):
                             },
                         })
                 _text = _fold_applied_moments(_text, _fold_info)
+
+        # Marker hygiene BEFORE the anchors are read (founder 2026-07-27):
+        # a newline-straddling `{{orange:` is re-wrapped per line and any
+        # unmatched token loses its braces, keeping every word. It runs
+        # here — not at the jsonify — so `key_moments[].anchor` and the
+        # tracked-change / key-point offsets below are all measured against
+        # the very string the student is served.
+        from services.ideal_text_block import sanitize_markers
+        _text = sanitize_markers(_text)
 
         _moments = extract_key_moments(_text)
         # Serve the ANCHOR path, never both (audit 2026-07-18): the FE
@@ -13255,6 +13280,12 @@ def v2_explore_arc_setup(arc_id):
     project — the master-document skeleton is keyed on slide index, so
     continuing a decked talk without its deck would produce unmappable
     takes. No scores, no take data, no counts (AC-9).
+
+    Global recording constants deliberately do NOT live here (2026-07-27):
+    `long_take_caution_sec` and the min-content floor are properties of the
+    product, not of this project, and they have one home —
+    GET /v2/config/recording. This payload stays exactly the setup fields
+    (there is a test pinning that set).
 
     404 when the arc isn't the caller's or has no spoken take.
     """
