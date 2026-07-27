@@ -58,19 +58,27 @@ def export_tasks():
         # to travel (a rich-text paste drops data: URI images in many targets).
         # ?format=zip keeps the markdown+files bundle for the paste-into-an-LLM path.
         fmt = (request.args.get("format") or "pdf").strip().lower()
-        if fmt in ("zip", "md", "markdown"):
-            payload, mime, filename = svc.export_bundle()
-        else:
+        wanted_pdf = fmt not in ("zip", "md", "markdown")
+        if wanted_pdf:
             payload, mime, filename = svc.export_pdf()
-        return Response(
-            payload, mimetype=mime,
-            headers={
-                "Content-Disposition": f"attachment; filename={filename}",
-                # the client names the saved file from this, since the extension
-                # switches between .zip (screenshots present) and .md (none)
-                "Access-Control-Expose-Headers": "Content-Disposition",
-            },
-        )
+        else:
+            payload, mime, filename = svc.export_bundle()
+        # export_pdf() degrades to the ZIP when reportlab is missing/fails. Say so
+        # out loud: without this the client can't tell "PDF not deployed yet" from
+        # "deployed but reportlab absent" — both just arrive as a .zip.
+        served = {"application/pdf": "pdf", "application/zip": "zip"}.get(mime, "markdown")
+        fell_back = wanted_pdf and served != "pdf"
+        headers = {
+            "Content-Disposition": f"attachment; filename={filename}",
+            "X-Export-Format": served,
+            # the client names the saved file from Content-Disposition (the
+            # extension varies) and reports the format from these
+            "Access-Control-Expose-Headers":
+                "Content-Disposition, X-Export-Format, X-Export-Fallback",
+        }
+        if fell_back:
+            headers["X-Export-Fallback"] = "1"
+        return Response(payload, mimetype=mime, headers=headers)
     except Exception as e:  # noqa: BLE001
         return _err(e)
 

@@ -362,7 +362,14 @@
       const a=document.createElement("a");a.href=url;a.download=name;
       document.body.appendChild(a);a.click();a.remove();
       setTimeout(()=>URL.revokeObjectURL(url),1000);   // revoking at once can abort the save
-      toast(/\.(pdf|zip)$/i.test(name)?"Exported — with images":"Exported");
+      // name the format that actually came back, so a .zip when you expected a PDF
+      // is self-explaining rather than a mystery
+      const served=(r.headers.get("X-Export-Format")||"").toLowerCase();
+      const fellBack=r.headers.get("X-Export-Fallback")==="1";
+      toast(served==="pdf" ? "Exported — PDF"
+          : fellBack       ? "Exported — ZIP (PDF unavailable)"
+          : served==="zip" ? "Exported — ZIP + images"
+          :                  "Exported — markdown");
     }catch(e){toast("Export failed");}
   };
   function taskImgs(t){return (t.images&&t.images.length)?t.images:[];}
