@@ -3,8 +3,10 @@
 A tiny founder-only tool at **`dev.willpowerlab.com`**: jot bugs (text, voice, or
 image) from phone or PC, stored in the existing Supabase DB. A Railway cron
 emails all `open` bugs to `artur@willonski.com` every 3 days as a ready-to-paste
-LLM triage prompt (images attached), then marks them `shipped`. A **Send now**
-button runs the same thing on demand. Shipped bugs stay as read-only history.
+LLM triage prompt, then marks them `shipped`. The mail is **rich HTML**: one card
+per bug with its screenshots inline *beneath that bug*, so which shot belongs to
+which bug is unambiguous (see Notes). A **Send now** button runs the same thing on
+demand. Shipped bugs stay as read-only history.
 
 Built on the existing stack — Flask blueprint, Supabase `db.client`, Resend
 mailer, the annotation-cron curl pattern. No new frameworks or providers.
@@ -87,6 +89,21 @@ icon per shortcut, not per page load.
 - Images: the frontend compresses to JPEG (~≤200 KB) and posts a `data:` URL; we
   store it directly in `image_url` (no object storage needed). The global request
   cap is already 500 MB, so no per-route body-limit bump was necessary.
+- **Digest layout.** The HTML body is one card per bug — number, date, `bug #id`,
+  the text, then that bug's screenshots inline under it. Inlining goes through
+  `cid:` references to the attachments, **not** `data:` URIs: Gmail and most
+  clients strip a `data:` URI in `<img>`, so cid is the only route that actually
+  displays. Each image is captioned `screenshot N · bug #id · <filename>`, so even
+  in a client that blocks images you can still tell which attachment is which.
+- `content_id` on an attachment is newer than the pinned `resend==2.4.0`, and only
+  works because the SDK posts the params dict verbatim (it casts and forwards; no
+  key filtering). If the provider ever rejects it, `send_open_bugs` retries once
+  with `content_id` stripped so the digest still goes out as plain attachments —
+  the captions keep the mapping readable. Covered by
+  `test_send_falls_back_to_plain_attachments_if_inline_rejected`.
+- The `text/plain` part is unchanged — it's the LLM triage prompt, and filenames
+  would be noise there.
 - `0` open bugs → `/send` is a no-op (no empty email).
-- Test: `venv/bin/python -m unittest test_dev_bugs` (36 tests — routes, digest
-  service, the served page's guards, and the icon assets/routes).
+- Test: `venv/bin/python -m unittest test_dev_bugs` (43 tests — routes, digest
+  service, the rich-HTML digest, the served page's guards, and the icon
+  assets/routes).
