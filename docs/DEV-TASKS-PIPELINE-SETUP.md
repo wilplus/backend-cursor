@@ -19,7 +19,7 @@ choice, and click **done** to archive. **No auto-dispatch to coding agents** (pa
 | When bugs → tasks | **Immediately on save** (a bug saved → GPT-4o → task appears) |
 | "Crucial" ranking | **Fixed theme order, AI ranks within** — themes fixed (T1>T2>T3>T4), GPT-4o orders epic/user-story/task inside each theme |
 | Done → archive | **Reversible** — archived tasks can be restored |
-| Export | **Whole backlog exportable** (markdown download) |
+| Export | **Whole backlog exportable** — a ZIP (markdown + screenshot files) when a task has images, else plain markdown |
 
 **Scope:** still dev-tooling (not F1). With no auto-execute, it's fence-clean — it never writes code or touches `main`; it only reads bugs and shows a list.
 
@@ -96,7 +96,7 @@ The list is **deterministically sorted by `order_key` ascending** — it never r
 | `PATCH /api/dev-tasks/<id>` `{body,…}` | Edit task text |
 | `DELETE /api/dev-tasks/<id>` | Delete (⋮ menu) |
 | `POST /api/dev-tasks/<id>/done` / `/restore` | Archive ↔ restore (reversible) |
-| `GET /api/dev-tasks/export` | Whole active backlog as a markdown file (download) |
+| `GET /api/dev-tasks/export` | Whole active backlog as a download — a **ZIP** (`backlog.md` + `images/task-<id>-<n>.<ext>`) when a task has screenshots, else a plain `.md`. The client names the saved file from `Content-Disposition`. |
 
 (Task creation is implicit — it happens inside the existing `POST /api/dev-bugs`.)
 
@@ -105,12 +105,53 @@ The list is **deterministically sorted by `order_key` ascending** — it never r
 ## 6. Frontend — the tasks view
 
 - **Flat list, priority order.** Each row: the user-story/task text, a small **date** + **priority** chip (P1/P2/P3), and tiny theme/epic labels. Minimal.
-- **Copy all** (top) and **copy one** (per row) → markdown to clipboard.
+- **Copy all** (top) and **copy one** (per row) → clipboard, **with the screenshots** (see 6b).
 - **Drag to reorder** (tap-hold-move on mobile, drag on desktop) → calls `/reorder`.
 - **⋮ menu** per row → **Edit** (inline) / **Delete**.
 - **Done** button per row → archive (moves it out of active).
 - **Archive view** (toggle) → done tasks by date, each with **Restore**.
-- **Export** button → downloads the markdown backlog.
+- **Export** button → downloads the backlog **with the screenshots as files** (see 6b).
+
+---
+
+## 6b. Screenshots in Copy all / Export
+
+A bug's screenshots ride onto its task (`dev_tasks.images`, stored as `data:` URLs).
+Both paths carry them, by the only means each channel allows.
+
+**Copy all / copy one → two clipboard flavours.** The clipboard cannot hold "text
+plus N attachments", but it can hold several *flavours* of one payload:
+
+| Flavour | Paste target | You get |
+|---|---|---|
+| `text/html` | Notion, Google Docs, Gmail, Slack | text **+ the screenshots inline** |
+| `text/plain` | code editor, most LLM chat inputs | the markdown, with an `(N screenshots attached)` note |
+
+Pasting into a **plain-text** box cannot carry images — that is a clipboard limit,
+not a bug; use Export there. The plain flavour deliberately omits the base64 so a
+plain-text paste stays sane.
+
+Two things to keep in mind when touching `copyAll`:
+
+- The handler is **not `async`** and `ClipboardItem` is handed **promises**. Safari
+  rejects a clipboard write issued after an `await`, so the write must go out inside
+  the tap with the fetch still in flight. This is a phone-first tool — an `await`
+  before the write breaks Copy all on the iPhone. (`copyRich` is fine for a single
+  row: nothing is awaited before it.)
+- No `ClipboardItem`, or a refused write, falls back to plain `writeText`; an empty
+  backlog reports "Nothing to copy", not "Copy failed".
+
+**Export → a ZIP.** `backlog.md` plus `images/task-<id>-<n>.<ext>`, the markdown
+linking each file (`![screenshot 1](images/task-11-1.png)`). Real files, so they
+open anywhere and can be dragged straight into an LLM or a ticket — a `.md` with
+megabytes of inline base64 renders in almost nothing (GitHub and most editors
+refuse `data:` URIs) and can't be opened as an image.
+
+With nothing decodable to bundle it stays a plain `.md`, still self-contained (any
+`data:` URI is embedded by `to_markdown`). `http(s)`-hosted images are left as
+links rather than fetched, so an export never depends on network egress. An
+unreadable image is skipped, not fatal. Image numbering counts what actually made
+it in, so a file name and its `screenshot N` label always agree.
 
 ---
 

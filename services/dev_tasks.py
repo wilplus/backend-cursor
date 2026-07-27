@@ -20,8 +20,12 @@ tested without a DB; thin wrappers do the Supabase I/O via the shared client.
 """
 from __future__ import annotations
 
+import base64
+import io
 import json
 import logging
+import re
+import zipfile
 from typing import Any
 
 from config import Config
@@ -142,8 +146,15 @@ def plan_reorder(active: list[dict], task_id: int, after_id: int | None) -> floa
     return a + 1.0
 
 
-def to_markdown(tasks: list[dict]) -> str:
-    """Whole active backlog → paste-ready markdown, in priority order."""
+def to_markdown(tasks: list[dict], image_names: dict | None = None) -> str:
+    """Whole active backlog → paste-ready markdown, in priority order.
+
+    `image_names` maps task id -> [relative path, ...] and is supplied by the ZIP
+    export, where the screenshots ride along as real files: linking those beats an
+    inline data: URI, which GitHub and most editors refuse to render and which
+    inflates the text by ~4/3 of the image. Without the map the data: URI is
+    embedded as before, so a plain .md still stands on its own.
+    """
     lines = ["# WillpowerLab — backlog (user stories · tasks)\n"]
     for i, t in enumerate(sorted(tasks, key=sort_key), 1):
         p = f"P{t.get('priority', 2)}"
@@ -155,12 +166,82 @@ def to_markdown(tasks: list[dict]) -> str:
         lines.append((t.get("body") or "").strip())
         # Embed the source bug's screenshots so the exported file is self-contained
         # (data: URIs render as images in markdown viewers).
-        for j, src in enumerate(t.get("images") or [], 1):
+        srcs = (image_names or {}).get(t.get("id")) if image_names else (t.get("images") or [])
+        for j, src in enumerate(srcs or [], 1):
             if src:
                 lines.append("")
                 lines.append(f"![screenshot {j}]({src})")
         lines.append("")
     return "\n".join(lines).strip() + "\n"
+
+
+# ─────────────────────── export bundle (markdown + images) ───────────────────
+
+_DATA_URL_RE = re.compile(r"^data:(?P<mime>[^;,]+)?(?:;base64)?,(?P<payload>.*)$", re.DOTALL)
+_MIME_EXT = {"image/jpeg": "jpg", "image/jpg": "jpg", "image/png": "png",
+             "image/gif": "gif", "image/webp": "webp"}
+
+
+def _decode_data_url(url: str) -> tuple[bytes, str] | None:
+    """(raw bytes, extension) for a data: URL, or None if it isn't one / won't decode."""
+    if not url or not isinstance(url, str) or not url.startswith("data:"):
+        return None
+    m = _DATA_URL_RE.match(url)
+    if not m:
+        return None
+    mime = (m.group("mime") or "image/jpeg").strip() or "image/jpeg"
+    try:
+        raw = base64.b64decode(m.group("payload"), validate=False)
+    except Exception:  # noqa: BLE001
+        return None
+    if not raw:
+        return None
+    return raw, _MIME_EXT.get(mime, "jpg")
+
+
+def export_bundle(tasks: list[dict] | None = None) -> tuple[bytes, str, str]:
+    """The active backlog as a download: (payload, mimetype, filename).
+
+    A ZIP (`backlog.md` + `images/task-<id>-<n>.<ext>`) once any task carries a
+    screenshot, so the markdown links real files that open anywhere — a .md with
+    megabytes of inline base64 renders in almost nothing and can't be opened as an
+    image. With no decodable image it stays a plain .md (self-contained, with any
+    data: URI still embedded by to_markdown).
+
+    http(s)-hosted images are left as links rather than fetched: an export must not
+    depend on network egress or a slow third party.
+    """
+    rows = _active_rows() if tasks is None else tasks
+    ordered = sorted(rows, key=sort_key)
+
+    names: dict[Any, list[str]] = {}
+    files: list[tuple[str, bytes]] = []
+    for t in ordered:
+        # numbered over what actually made it in, so the file name and the
+        # "screenshot N" label in the markdown always agree even when one of a
+        # task's images is unreadable
+        n = 0
+        for url in t.get("images") or []:
+            decoded = _decode_data_url(url)
+            if decoded:
+                raw, ext = decoded
+                n += 1
+                path = f"images/task-{t.get('id')}-{n}.{ext}"
+                files.append((path, raw))
+                names.setdefault(t.get("id"), []).append(path)
+            elif isinstance(url, str) and url.startswith(("http://", "https://")):
+                n += 1
+                names.setdefault(t.get("id"), []).append(url)
+
+    if not files:
+        return to_markdown(ordered).encode("utf-8"), "text/markdown", "willpowerlab-backlog.md"
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr("backlog.md", to_markdown(ordered, image_names=names))
+        for path, raw in files:
+            z.writestr(path, raw)          # already-compressed JPEG/PNG; ZIP just carries it
+    return buf.getvalue(), "application/zip", "willpowerlab-backlog.zip"
 
 
 # ─────────────────────────── GPT-4o transform ───────────────────────────
@@ -391,4 +472,5 @@ def restore_task(task_id: int) -> None:
 
 
 def export_markdown() -> str:
+    """Plain-markdown export (no image files). Kept for callers that want text."""
     return to_markdown(_active_rows())

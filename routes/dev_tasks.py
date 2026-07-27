@@ -5,7 +5,9 @@ the gate helper is reused from routes.dev_bugs. Full paths baked in (no prefix),
 like the dev-bugs blueprint. See services/dev_tasks.py.
 
   GET    /api/dev-tasks?view=active|archive   -> {"tasks": [...], "view": ...}
-  GET    /api/dev-tasks/export                -> markdown download of the active backlog
+  GET    /api/dev-tasks/export                -> download of the active backlog: a ZIP
+                                                 (backlog.md + images/) when a task has
+                                                 screenshots, else a plain .md
   PATCH  /api/dev-tasks/<id>   {body,user_story,priority}  -> {"task": row}
   DELETE /api/dev-tasks/<id>                  -> 204
   POST   /api/dev-tasks/<id>/reorder  {after_id}  -> {"ok": true}  (after_id null = top)
@@ -51,10 +53,15 @@ def export_tasks():
     if err:
         return err
     try:
-        md = svc.export_markdown()
+        payload, mime, filename = svc.export_bundle()
         return Response(
-            md, mimetype="text/markdown",
-            headers={"Content-Disposition": "attachment; filename=willpowerlab-backlog.md"},
+            payload, mimetype=mime,
+            headers={
+                "Content-Disposition": f"attachment; filename={filename}",
+                # the client names the saved file from this, since the extension
+                # switches between .zip (screenshots present) and .md (none)
+                "Access-Control-Expose-Headers": "Content-Disposition",
+            },
         )
     except Exception as e:  # noqa: BLE001
         return _err(e)

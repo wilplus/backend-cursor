@@ -176,7 +176,7 @@
   function autogrow(){input.style.height="auto";input.style.height=Math.max(60,input.scrollHeight)+"px";}
   input.addEventListener("input",autogrow);autogrow();
   async function copy(text){try{await navigator.clipboard.writeText(text);toast("Copied");}catch(e){toast("Copy failed");}}
-  const esc=s=>String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+  const esc=s=>String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
   // Copy BOTH flavors: text/html (screenshots ride along as real <img>, so rich
   // targets — docs, mail, most LLM inputs — get the images) + text/plain (the
   // markdown, for plain-text targets). Falls back to plain text if the browser
@@ -324,20 +324,45 @@
     document.querySelectorAll("[data-tview]").forEach(x=>x.classList.toggle("on",x===b));
     loadTasks();
   });
-  $("copyAll").onclick=async()=>{
-    try{ const d=await apiT("?view=active",{method:"GET"}); const ts=d.tasks||[];
-      if(!ts.length){toast("Nothing to copy");return;}
-      copyRich(
-        "# WillpowerLab — backlog\n\n"+ts.map(taskMarkdown).join("\n"),
-        "<h1>WillpowerLab — backlog</h1>"+ts.map(taskHtml).join("<hr>")
-      );
-    }catch(e){toast("Copy failed");}
+  const backlogPlain=ts=>"# WillpowerLab — backlog\n\n"+ts.map(taskMarkdown).join("\n");
+  const backlogHtml =ts=>"<h1>WillpowerLab — backlog</h1>"+ts.map(taskHtml).join("<hr>");
+  function fetchActiveTasks(){
+    return apiT("?view=active",{method:"GET"}).then(d=>{
+      const ts=d.tasks||[];
+      if(!ts.length) throw new Error("empty");
+      return ts;
+    });
+  }
+  function copyAllPlain(){
+    fetchActiveTasks().then(ts=>copy(backlogPlain(ts)))
+      .catch(e=>toast(e&&e.message==="empty"?"Nothing to copy":"Copy failed"));
+  }
+  // NOT async, and ClipboardItem is handed PROMISES: Safari rejects a clipboard
+  // write issued after an await, so the write has to go out inside the tap with the
+  // fetch still in flight. (copyRich is fine for a single row — no await precedes it.)
+  $("copyAll").onclick=()=>{
+    if(!(window.ClipboardItem&&navigator.clipboard&&navigator.clipboard.write)){copyAllPlain();return;}
+    const ts=fetchActiveTasks();
+    navigator.clipboard.write([new ClipboardItem({
+      "text/plain":ts.then(t=>new Blob([backlogPlain(t)],{type:"text/plain"})),
+      "text/html": ts.then(t=>new Blob([backlogHtml(t)], {type:"text/html"})),
+    })]).then(()=>ts).then(t=>{
+      const n=t.reduce((s,x)=>s+taskImgs(x).length,0);
+      toast(n?("Copied — "+n+" screenshot"+(n===1?"":"s")+" included"):"Copied");
+    }).catch(()=>copyAllPlain());   // empty backlog, or a browser that refused the write
   };
   $("exportBtn").onclick=async()=>{
     try{ const r=await fetch(API_BASE+"/api/dev-tasks/export",{headers:{"x-dev-key":KEY}});
-      if(!r.ok) throw 0; const blob=await r.blob(); const url=URL.createObjectURL(blob);
-      const a=document.createElement("a");a.href=url;a.download="willpowerlab-backlog.md";a.click();
-      URL.revokeObjectURL(url);toast("Exported");
+      if(!r.ok) throw 0;
+      // the server picks .zip (screenshots present) or .md (none) — follow its name
+      const cd=r.headers.get("Content-Disposition")||"";
+      const m=/filename=([^;]+)/i.exec(cd);
+      const name=m?m[1].trim().replace(/^"|"$/g,""):"willpowerlab-backlog.md";
+      const blob=await r.blob(); const url=URL.createObjectURL(blob);
+      const a=document.createElement("a");a.href=url;a.download=name;
+      document.body.appendChild(a);a.click();a.remove();
+      setTimeout(()=>URL.revokeObjectURL(url),1000);   // revoking at once can abort the save
+      toast(/\.zip$/i.test(name)?"Exported — with images":"Exported");
     }catch(e){toast("Export failed");}
   };
   function taskImgs(t){return (t.images&&t.images.length)?t.images:[];}
@@ -349,7 +374,7 @@
   }
   function taskHtml(t){
     const tag=[t.theme,t.epic].filter(Boolean).join(" · ");
-    const imgs=taskImgs(t).map(src=>'<img src="'+src+'" style="max-width:520px;display:block;margin:6px 0">').join("");
+    const imgs=taskImgs(t).map(src=>'<img src="'+esc(src)+'" style="max-width:520px;display:block;margin:6px 0">').join("");
     return '<h2>[P'+(t.priority||2)+'] '+esc(t.user_story||"(task)")+"</h2>"
       +(tag?("<p><em>"+esc(tag)+"</em></p>"):"")
       +"<p>"+esc((t.body||"").trim()).replace(/\n/g,"<br>")+"</p>"+imgs;
