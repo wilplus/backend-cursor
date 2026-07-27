@@ -147,6 +147,86 @@ class PlanningTests(unittest.TestCase):
         self.assertIn("# WillpowerLab", md)
 
 
+# 1x1 PNG and 1x1 GIF as the frontend stores them (data: URLs).
+_PNG_URL = ("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0"
+            "lEQVR4nGNgAAIAAAUAAen63NgAAAAASUVORK5CYII=")
+_GIF_URL = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
+
+
+@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
+class ExportBundleTests(unittest.TestCase):
+    """Export ships the screenshots as real files.
+
+    A .md with megabytes of inline base64 renders in almost nothing (GitHub and
+    most editors refuse data: URIs) and can't be opened as an image, so once a task
+    has a screenshot the export becomes a ZIP whose markdown links real files.
+    """
+
+    def _rows_with_images(self):
+        rows = _simulate([_cls("T1", "1.1", "s", body="first"),
+                          _cls("T2", "2.1", "s", body="second")])
+        rows[0]["images"] = [_PNG_URL, _GIF_URL]
+        return rows
+
+    def _zip(self, rows):
+        import io
+        import zipfile
+        payload, mime, name = svc.export_bundle(rows)
+        return zipfile.ZipFile(io.BytesIO(payload)), mime, name
+
+    def test_zip_when_a_task_has_images(self):
+        z, mime, name = self._zip(self._rows_with_images())
+        self.assertEqual(mime, "application/zip")
+        self.assertEqual(name, "willpowerlab-backlog.zip")
+        self.assertIn("backlog.md", z.namelist())
+
+    def test_image_files_land_with_the_right_extension(self):
+        z, _, _ = self._zip(self._rows_with_images())
+        self.assertIn("images/task-1-1.png", z.namelist())
+        self.assertIn("images/task-1-2.gif", z.namelist())
+
+    def test_image_bytes_survive_the_round_trip(self):
+        import base64
+        z, _, _ = self._zip(self._rows_with_images())
+        self.assertEqual(z.read("images/task-1-1.png"),
+                         base64.b64decode(_PNG_URL.split(",", 1)[1]))
+        self.assertTrue(z.read("images/task-1-1.png").startswith(b"\x89PNG"))
+
+    def test_zip_markdown_links_files_instead_of_inlining_base64(self):
+        z, _, _ = self._zip(self._rows_with_images())
+        md = z.read("backlog.md").decode("utf-8")
+        self.assertIn("![screenshot 1](images/task-1-1.png)", md)
+        self.assertIn("![screenshot 2](images/task-1-2.gif)", md)
+        self.assertNotIn("data:image", md)                 # the whole point of the ZIP
+        self.assertLess(md.index("first"), md.index("second"))   # priority order held
+
+    def test_plain_markdown_stays_self_contained_when_there_is_nothing_to_bundle(self):
+        rows = _simulate([_cls("T1", "1.1", "s", body="only")])
+        payload, mime, name = svc.export_bundle(rows)
+        self.assertEqual(mime, "text/markdown")
+        self.assertEqual(name, "willpowerlab-backlog.md")
+        self.assertIn("only", payload.decode("utf-8"))
+
+    def test_http_images_stay_as_links_and_are_not_fetched(self):
+        """An export must not depend on network egress."""
+        rows = _simulate([_cls("T1", "1.1", "s", body="x")])
+        rows[0]["images"] = ["https://example.com/shot.png"]
+        payload, mime, _ = svc.export_bundle(rows)
+        self.assertEqual(mime, "text/markdown")            # nothing decodable to bundle
+        self.assertIn("https://example.com/shot.png", payload.decode("utf-8"))
+
+    def test_undecodable_image_is_skipped_not_fatal(self):
+        rows = _simulate([_cls("T1", "1.1", "s", body="x")])
+        rows[0]["images"] = ["data:image/png;base64,%%%not-base64%%%", _PNG_URL, None, ""]
+        z, mime, _ = self._zip(rows)
+        self.assertEqual(mime, "application/zip")
+        # numbered over what made it in, so the file name matches its "screenshot N"
+        self.assertEqual([n for n in z.namelist() if n.startswith("images/")],
+                         ["images/task-1-1.png"])
+        self.assertIn("![screenshot 1](images/task-1-1.png)",
+                      z.read("backlog.md").decode("utf-8"))
+
+
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
 class TransformTests(unittest.TestCase):
 
@@ -274,11 +354,24 @@ class RouteTests(unittest.TestCase):
         m.assert_called_once_with("active")
 
     def test_export_markdown_download(self):
-        with patch.object(rt.svc, "export_markdown", return_value="# backlog\n"):
+        bundle = (b"# backlog\n", "text/markdown", "willpowerlab-backlog.md")
+        with patch.object(rt.svc, "export_bundle", return_value=bundle):
             r = self.client.get("/api/dev-tasks/export", headers=self._h())
         self.assertEqual(r.status_code, 200)
         self.assertIn("text/markdown", r.headers["Content-Type"])
         self.assertIn("attachment", r.headers["Content-Disposition"])
+        self.assertIn("willpowerlab-backlog.md", r.headers["Content-Disposition"])
+
+    def test_export_zip_download_when_images_present(self):
+        bundle = (b"PK\x03\x04stub", "application/zip", "willpowerlab-backlog.zip")
+        with patch.object(rt.svc, "export_bundle", return_value=bundle):
+            r = self.client.get("/api/dev-tasks/export", headers=self._h())
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("application/zip", r.headers["Content-Type"])
+        self.assertIn("willpowerlab-backlog.zip", r.headers["Content-Disposition"])
+        self.assertEqual(r.data, b"PK\x03\x04stub")
+        # the client reads the extension off this header, so it must be exposed
+        self.assertIn("Content-Disposition", r.headers.get("Access-Control-Expose-Headers", ""))
 
     def test_patch_edit(self):
         with patch.object(rt.svc, "update_task", return_value={"id": 5, "body": "new"}) as m:
