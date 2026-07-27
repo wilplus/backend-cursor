@@ -160,6 +160,13 @@ parses a mini-XML and raw `<b>` in a bug report would otherwise break the render
 `reportlab` is **lazy-imported** in `_render_pdf`, and any failure (missing wheel,
 bad image) falls back to the ZIP below rather than taking Export down.
 
+Because that fallback is silent, the response names the format it actually served:
+`X-Export-Format: pdf|zip|markdown`, plus `X-Export-Fallback: 1` when a PDF was
+wanted but couldn't be built. Both are in `Access-Control-Expose-Headers`, and the
+toast reads them — **"Exported — PDF"** vs **"Exported — ZIP (PDF unavailable)"**.
+Without this a surprise `.zip` is ambiguous between "the PDF build isn't deployed
+yet" and "deployed, but reportlab is absent"; the toast now tells you which.
+
 **Export → a ZIP (`?format=zip`).** `backlog.md` plus
 `images/task-<id>-<n>.<ext>`, the markdown linking each file
 (`![screenshot 1](images/task-11-1.png)`). This is the one to use for pasting into

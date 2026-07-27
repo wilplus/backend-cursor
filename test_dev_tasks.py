@@ -393,6 +393,39 @@ class RouteTests(unittest.TestCase):
             r = self.client.get("/api/dev-tasks/export?format=docx", headers=self._h())
         self.assertIn("application/pdf", r.headers["Content-Type"])
 
+    # ---- which format actually got served (so a surprise .zip explains itself) ----
+
+    def test_pdf_response_reports_its_format_and_no_fallback(self):
+        pdf = (b"%PDF-1.4stub", "application/pdf", "willpowerlab-backlog.pdf")
+        with patch.object(rt.svc, "export_pdf", return_value=pdf):
+            r = self.client.get("/api/dev-tasks/export", headers=self._h())
+        self.assertEqual(r.headers["X-Export-Format"], "pdf")
+        self.assertNotIn("X-Export-Fallback", r.headers)
+
+    def test_zip_from_a_failed_pdf_is_flagged_as_a_fallback(self):
+        """reportlab missing → export_pdf returns the ZIP. The client must be able to
+        tell that apart from "the PDF build isn't deployed yet"."""
+        zipped = (b"PK\x03\x04stub", "application/zip", "willpowerlab-backlog.zip")
+        with patch.object(rt.svc, "export_pdf", return_value=zipped):
+            r = self.client.get("/api/dev-tasks/export", headers=self._h())
+        self.assertEqual(r.headers["X-Export-Format"], "zip")
+        self.assertEqual(r.headers["X-Export-Fallback"], "1")
+
+    def test_explicitly_requested_zip_is_not_flagged_as_a_fallback(self):
+        zipped = (b"PK\x03\x04stub", "application/zip", "willpowerlab-backlog.zip")
+        with patch.object(rt.svc, "export_bundle", return_value=zipped):
+            r = self.client.get("/api/dev-tasks/export?format=zip", headers=self._h())
+        self.assertEqual(r.headers["X-Export-Format"], "zip")
+        self.assertNotIn("X-Export-Fallback", r.headers)
+
+    def test_format_headers_are_exposed_to_the_browser(self):
+        pdf = (b"%PDF-1.4stub", "application/pdf", "willpowerlab-backlog.pdf")
+        with patch.object(rt.svc, "export_pdf", return_value=pdf):
+            r = self.client.get("/api/dev-tasks/export", headers=self._h())
+        exposed = r.headers.get("Access-Control-Expose-Headers", "")
+        for h in ("Content-Disposition", "X-Export-Format", "X-Export-Fallback"):
+            self.assertIn(h, exposed)
+
     def test_patch_edit(self):
         with patch.object(rt.svc, "update_task", return_value={"id": 5, "body": "new"}) as m:
             r = self.client.patch("/api/dev-tasks/5", json={"body": "new"}, headers=self._h())
