@@ -411,5 +411,173 @@ class RouteTests(unittest.TestCase):
         self.assertIn("/api/dev-tasks/<int:task_id>", rules)
 
 
+class _FakeTable:
+    """Minimal Supabase table stub: records updates, replays canned selects."""
+
+    def __init__(self, rows, writes):
+        self._rows, self._writes, self._payload, self._id = rows, writes, None, None
+        self.not_ = self
+
+    def select(self, *_a, **_k):
+        return self
+
+    def is_(self, *_a, **_k):
+        return self
+
+    def in_(self, *_a, **_k):
+        return self
+
+    def order(self, *_a, **_k):
+        return self
+
+    def limit(self, *_a, **_k):
+        return self
+
+    def update(self, payload):
+        self._payload = payload
+        return self
+
+    def eq(self, _col, value):
+        self._id = value
+        return self
+
+    def execute(self):
+        if self._payload is not None:
+            self._writes.append((self._id, self._payload))
+            self._payload = self._id = None
+            return MagicMock(data=[])
+        return MagicMock(data=self._rows)
+
+
+class _FakeClient:
+    def __init__(self, tasks, bugs):
+        self.writes = []
+        self._by_name = {"dev_tasks": tasks, "dev_bugs": bugs}
+
+    def table(self, name):
+        return _FakeTable(self._by_name[name], self.writes)
+
+
+@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
+class HydrateImagesTests(unittest.TestCase):
+    """Read-time repair: an old task with an empty images array still Copies and
+    Exports its bug's screenshots, with no backfill run first."""
+
+    def _hydrate(self, tasks, bugs):
+        client = _FakeClient(tasks, bugs)
+        with patch.object(svc.db, "client", client):
+            return svc.hydrate_images(tasks), client
+
+    def test_empty_task_gets_its_bugs_images(self):
+        rows, _ = self._hydrate(
+            [{"id": 1, "bug_id": 3, "images": []}],
+            [{"id": 3, "images": [_PNG_URL], "image_url": None}])
+        self.assertEqual(rows[0]["images"], [_PNG_URL])
+
+    def test_no_query_when_every_task_already_has_images(self):
+        tasks = [{"id": 1, "bug_id": 3, "images": [_PNG_URL]}]
+        client = _FakeClient(tasks, [])
+        client.table = MagicMock(side_effect=AssertionError("must not query"))
+        with patch.object(svc.db, "client", client):
+            self.assertEqual(svc.hydrate_images(tasks), tasks)   # zero extra cost
+
+    def test_task_without_bug_id_is_left_alone(self):
+        rows, _ = self._hydrate([{"id": 1, "bug_id": None, "images": []}], [])
+        self.assertEqual(rows[0]["images"], [])
+
+    def test_a_failing_lookup_never_breaks_the_list(self):
+        tasks = [{"id": 1, "bug_id": 3, "images": []}]
+        broken = MagicMock()
+        broken.table.side_effect = RuntimeError("supabase down")
+        with patch.object(svc.db, "client", broken):
+            self.assertEqual(svc.hydrate_images(tasks), tasks)
+
+    def test_hydrated_task_exports_as_a_real_image_file(self):
+        tasks = [{"id": 21, "bug_id": 3, "images": [], "order_key": 1.0,
+                  "user_story": "s", "priority": 1, "body": "x"}]
+        rows, _ = self._hydrate(tasks, [{"id": 3, "images": [_PNG_URL], "image_url": None}])
+        payload, mime, _ = svc.export_bundle(rows)
+        self.assertEqual(mime, "application/zip")
+        import io
+        import zipfile
+        self.assertIn("images/task-21-1.png",
+                      zipfile.ZipFile(io.BytesIO(payload)).namelist())
+
+
+@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
+class BackfillTaskImagesTests(unittest.TestCase):
+    """scripts/backfill_dev_task_images.py — tasks generated before
+    add_dev_tasks_images.sql have an empty images array even though their bug still
+    has the screenshot. The backfill must fill exactly those and nothing else."""
+
+    def _run(self, tasks, bugs, dry_run=False):
+        import importlib
+        bf = importlib.import_module("scripts.backfill_dev_task_images")
+        client = _FakeClient(tasks, bugs)
+        with patch.object(bf.db, "client", client):
+            filled, skipped = bf.run_backfill(limit=100, dry_run=dry_run)
+        return filled, skipped, client.writes
+
+    def test_fills_an_empty_task_from_its_bug(self):
+        filled, _, writes = self._run(
+            tasks=[{"id": 7, "bug_id": 3, "images": [], "status": "active"}],
+            bugs=[{"id": 3, "images": [_PNG_URL], "image_url": None}])
+        self.assertEqual(filled, 1)
+        self.assertEqual(writes, [(7, {"images": [_PNG_URL]})])
+
+    def test_picks_up_the_legacy_single_image_url(self):
+        """Bugs predating multi-image stored one `image_url`, not an array."""
+        _, _, writes = self._run(
+            tasks=[{"id": 8, "bug_id": 4, "images": [], "status": "active"}],
+            bugs=[{"id": 4, "images": None, "image_url": _GIF_URL}])
+        self.assertEqual(writes, [(8, {"images": [_GIF_URL]})])
+
+    def test_task_that_already_has_images_is_untouched(self):
+        filled, _, writes = self._run(
+            tasks=[{"id": 9, "bug_id": 5, "images": [_PNG_URL], "status": "active"}],
+            bugs=[{"id": 5, "images": [_GIF_URL], "image_url": None}])
+        self.assertEqual((filled, writes), (0, []))     # idempotent: re-run is a no-op
+
+    def test_bug_without_screenshots_is_skipped_not_written(self):
+        filled, skipped, writes = self._run(
+            tasks=[{"id": 10, "bug_id": 6, "images": [], "status": "active"}],
+            bugs=[{"id": 6, "images": [], "image_url": None}])
+        self.assertEqual((filled, skipped, writes), (0, 1, []))
+
+    def test_deleted_bug_is_skipped_not_fatal(self):
+        filled, skipped, writes = self._run(
+            tasks=[{"id": 11, "bug_id": 999, "images": [], "status": "active"}],
+            bugs=[])
+        self.assertEqual((filled, skipped, writes), (0, 1, []))
+
+    def test_archived_tasks_are_filled_too(self):
+        """An archived task is still exportable history."""
+        _, _, writes = self._run(
+            tasks=[{"id": 12, "bug_id": 7, "images": [], "status": "archived"}],
+            bugs=[{"id": 7, "images": [_PNG_URL], "image_url": None}])
+        self.assertEqual(writes, [(12, {"images": [_PNG_URL]})])
+
+    def test_dry_run_writes_nothing(self):
+        filled, _, writes = self._run(
+            tasks=[{"id": 13, "bug_id": 8, "images": [], "status": "active"}],
+            bugs=[{"id": 8, "images": [_PNG_URL], "image_url": None}],
+            dry_run=True)
+        self.assertEqual((filled, writes), (1, []))
+
+    def test_backfilled_task_then_exports_with_a_real_image_file(self):
+        """End to end: the point of the backfill is that Export starts working."""
+        task = {"id": 14, "bug_id": 9, "images": [], "status": "active",
+                "order_key": 1.0, "user_story": "s", "priority": 1, "body": "x"}
+        _, _, writes = self._run(tasks=[task],
+                                 bugs=[{"id": 9, "images": [_PNG_URL], "image_url": None}])
+        task["images"] = writes[0][1]["images"]          # apply what the backfill wrote
+        payload, mime, _ = svc.export_bundle([task])
+        self.assertEqual(mime, "application/zip")
+        import io
+        import zipfile
+        z = zipfile.ZipFile(io.BytesIO(payload))
+        self.assertIn("images/task-14-1.png", z.namelist())
+
+
 if __name__ == "__main__":
     unittest.main()
