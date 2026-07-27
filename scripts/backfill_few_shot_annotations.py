@@ -61,12 +61,16 @@ logger = logging.getLogger("backfill_few_shot_annotations")
 
 # The publish-time writer fires for these field_names. We use them
 # both to (a) probe whether a session is already captured and (b)
-# document scope.
+# document scope. KEEP IN SYNC with DatabaseService._PUBLISH_CAPTURE_FIELDS
+# (services/db.py) — a field the writer emits but this probe doesn't know
+# lets a backfill re-run double-write it (review finding 2026-07-28).
 _PUBLISH_PATH_FIELDS = (
     "admin_comment",
     "follow_up_question",
+    "coach_note",
     "evaluator_rationale",
     "coach_label_notes",
+    "say_it_stronger",
 )
 
 

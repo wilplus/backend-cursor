@@ -14,6 +14,32 @@ config = Config()
 logger = logging.getLogger(__name__)
 
 
+# Volatile stamps stripped from Say-It-Stronger cards before they are compared
+# and serialized as annotation-event text: model/generated_at ride only the
+# auto draft, edited_by_coach rides only the final, and version can differ
+# between them — none is content, and any one of them would turn a genuinely
+# untouched card into false "corrected" signal.
+_SIS_VOLATILE_KEYS = ("model", "generated_at", "version", "edited_by_coach")
+
+
+def _sis_annotation_text(card: Any) -> Optional[str]:
+    """A Say-It-Stronger card as canonical annotation-event text.
+
+    Deterministic (sorted keys) so that draft-vs-final equality — and
+    therefore the approved_as_is chip — compares CONTENT, not dict ordering
+    or the volatile stamps. None for anything that isn't a dict with content.
+    """
+    if not isinstance(card, dict):
+        return None
+    slim = {k: v for k, v in card.items() if k not in _SIS_VOLATILE_KEYS}
+    if not slim:
+        return None
+    try:
+        return json.dumps(slim, ensure_ascii=False, sort_keys=True)
+    except (TypeError, ValueError):
+        return None
+
+
 def _free_credit_grant() -> int:
     """The upfront free credit grant (config.WILLAB_FREE_CREDIT_GRANT, 25 for
     the testing phase, env-tunable). Single source of truth for both the lazy
@@ -7248,51 +7274,96 @@ class DatabaseService:
             coach_final_text=final, no reason_chip. Signal: admin
             corrected the AI; the diff is the lesson.
 
-        Three field_names emit: 'admin_comment',
-        'follow_up_question' (both on charisma_snippets), and
+        Field_names that emit: 'admin_comment', 'follow_up_question',
+        'evaluator_rationale', 'say_it_stronger' (charisma_snippets),
+        'coach_note' (charisma draft vs coach_snippet_drafts.note), and
         'coach_label_notes' (stress_snippets).
 
-        Returns total events written. Idempotency isn't enforced in
-        SQL — re-publishing a session would double-write. Callers
-        should only invoke this once per publish action.
+        'say_it_stronger' (founder 2026-07-27, learning-pipeline item 2):
+        the draft is the auto card (charisma_snippets.say_it_stronger),
+        the final is the coach's corrected card (say_it_stronger_final) —
+        both serialized as canonical JSON with the volatile stamps
+        (model / generated_at / version / edited_by_coach) stripped, so
+        "approved as-is" means the CONTENT matched, not the metadata.
+
+        Idempotency (review finding 2026-07-28 — mattered the moment the
+        dead emitter was repaired, see _emit_publish_event_if_signal): the
+        table has no unique constraint, and re-publish IS a real flow on the
+        publish route, so this now probes for existing publish-path rows and
+        SKIPS the whole capture when the session was already captured — the
+        same never-double-write-on-uncertainty rule as
+        scripts/backfill_few_shot_annotations.py. Trade-off, accepted there
+        and here: a correction made between publish and re-publish is not
+        re-captured; a corrupted corpus (approved_as_is AND a correction for
+        the same field) is worse than a missed pair.
+
+        Returns total events written.
         """
         events_written = 0
 
-        # ── Charisma side ──────────────────────────────────────────
+        if self._publish_annotations_already_captured(session_id):
+            logger.info(
+                "record_snippet_publish_annotations: session %s already "
+                "captured — skipping (idempotency probe)", session_id,
+            )
+            return 0
+
+        # The student the session belongs to — admin_annotation_events.user_id
+        # is NOT NULL (the corpus is per-student), so without an owner nothing
+        # can be written and every emit below will skip with a warning.
+        owner_user_id: Optional[str] = None
         try:
-            charisma_rows = (
-                self.client.table("charisma_snippets")
-                .select(
-                    "id, admin_comment, ai_draft_admin_comment, "
-                    "follow_up_question, ai_draft_follow_up_question, "
-                    "follow_up_outcome, ai_draft_coach_note"
-                )
-                .eq("session_id", session_id)
-                .execute()
-                .data
-            ) or []
+            _sess = self.v2_get_session_by_id(str(session_id)) or {}
+            if _sess.get("user_id"):
+                owner_user_id = str(_sess["user_id"])
         except Exception as e:
-            # Retry without ai_draft_coach_note if that column is unrun, so the
-            # legacy admin captures still fire pre-migration.
-            if "ai_draft_coach_note" in str(e).lower():
-                try:
-                    charisma_rows = (
-                        self.client.table("charisma_snippets")
-                        .select(
-                            "id, admin_comment, ai_draft_admin_comment, "
-                            "follow_up_question, ai_draft_follow_up_question, "
-                            "follow_up_outcome"
-                        )
-                        .eq("session_id", session_id)
-                        .execute()
-                        .data
-                    ) or []
-                except Exception:
-                    charisma_rows = []
-            else:
+            logger.warning(
+                "record_snippet_publish_annotations: owner lookup failed "
+                "session=%s: %s", session_id, e,
+            )
+
+        # ── Charisma side ──────────────────────────────────────────
+        # Column tiers degrade gracefully pre-migration, ONE migration's
+        # columns per step (review finding: a coarser ladder silently dropped
+        # the whole say-it-stronger capture when only the *_final migration
+        # was unrun): full → minus say_it_stronger_final → minus both SiS
+        # columns → legacy minus ai_draft_coach_note. EVERY tier failure is
+        # logged (a transient error that falls through must be visible —
+        # publish-time capture fires once per session, so a silent drop loses
+        # those pairs permanently).
+        _CHARISMA_TIERS = (
+            "id, admin_comment, ai_draft_admin_comment, "
+            "follow_up_question, ai_draft_follow_up_question, "
+            "follow_up_outcome, ai_draft_coach_note, "
+            "say_it_stronger, say_it_stronger_final",
+            "id, admin_comment, ai_draft_admin_comment, "
+            "follow_up_question, ai_draft_follow_up_question, "
+            "follow_up_outcome, ai_draft_coach_note, say_it_stronger",
+            "id, admin_comment, ai_draft_admin_comment, "
+            "follow_up_question, ai_draft_follow_up_question, "
+            "follow_up_outcome, ai_draft_coach_note",
+            "id, admin_comment, ai_draft_admin_comment, "
+            "follow_up_question, ai_draft_follow_up_question, "
+            "follow_up_outcome",
+        )
+        charisma_rows: list = []
+        for _tier, _cols in enumerate(_CHARISMA_TIERS):
+            try:
+                charisma_rows = (
+                    self.client.table("charisma_snippets")
+                    .select(_cols)
+                    .eq("session_id", session_id)
+                    .execute()
+                    .data
+                ) or []
+                break
+            except Exception as e:
                 logger.warning(
                     "record_snippet_publish_annotations: charisma select "
-                    "failed session=%s: %s", session_id, e,
+                    "tier %d failed session=%s: %s%s",
+                    _tier, session_id, e,
+                    "" if _tier == len(_CHARISMA_TIERS) - 1
+                    else " — trying the next tier",
                 )
                 charisma_rows = []
 
@@ -7321,6 +7392,7 @@ class DatabaseService:
                 draft=row.get("ai_draft_admin_comment"),
                 final=row.get("admin_comment"),
                 draft_id=str(snippet_id),
+                owner_user_id=owner_user_id,
             )
             events_written += self._emit_publish_event_if_signal(
                 session_id=session_id,
@@ -7330,6 +7402,7 @@ class DatabaseService:
                 draft=row.get("ai_draft_follow_up_question"),
                 final=row.get("follow_up_question"),
                 draft_id=str(snippet_id),
+                owner_user_id=owner_user_id,
             )
 
             # coach-note (draft, coach-final) pair — only when an AI draft
@@ -7343,6 +7416,34 @@ class DatabaseService:
                     draft=row.get("ai_draft_coach_note"),
                     final=coach_notes_map.get(str(snippet_id)),
                     draft_id=str(snippet_id),
+                    owner_user_id=owner_user_id,
+                )
+
+            # Say-It-Stronger (draft, coach-final) pair (founder 2026-07-27,
+            # learning-pipeline item 2). The auto card and the coach's
+            # corrected card already sit side-by-side on the row ("the future
+            # correction corpus", add_say_it_stronger_final.sql) — this makes
+            # them an actual training pair. Serialized as canonical JSON with
+            # volatile stamps stripped. Three shapes (review finding: the
+            # final-only case was originally dropped):
+            #   draft only        → rode to the student unedited →
+            #                       approved_as_is (publish implies review,
+            #                       same convention as admin_comment)
+            #   draft + final     → the correction pair
+            #   final only        → coach wrote the card from scratch (the
+            #                       draft never generated) → empty-draft pair
+            _sis_draft = _sis_annotation_text(row.get("say_it_stronger"))
+            _sis_final = _sis_annotation_text(row.get("say_it_stronger_final"))
+            if _sis_draft or _sis_final:
+                events_written += self._emit_publish_event_if_signal(
+                    session_id=session_id,
+                    admin_user_id=admin_user_id,
+                    section_type="charisma_snippet",
+                    field_name="say_it_stronger",
+                    draft=_sis_draft,
+                    final=_sis_final or _sis_draft,
+                    draft_id=str(snippet_id),
+                    owner_user_id=owner_user_id,
                 )
 
             # Phase 14.x — evaluator rationale review. Gated on
@@ -7375,6 +7476,7 @@ class DatabaseService:
                     draft=ai_rationale,
                     final=admin_correction or ai_rationale,
                     draft_id=str(snippet_id),
+                    owner_user_id=owner_user_id,
                 )
 
         # ── Stress side ────────────────────────────────────────────
@@ -7430,9 +7532,45 @@ class DatabaseService:
                     draft=row.get("ai_draft_coach_notes"),
                     final=row.get("coach_label_notes"),
                     draft_id=str(snippet_id),
+                    owner_user_id=owner_user_id,
                 )
 
         return events_written
+
+    # The field_names the publish-time capture emits — the idempotency probe
+    # keys on these. KEEP IN SYNC with scripts/backfill_few_shot_annotations
+    # (_PUBLISH_PATH_FIELDS): a field emitted here but missing there lets the
+    # backfill double-write it.
+    _PUBLISH_CAPTURE_FIELDS = (
+        "admin_comment", "follow_up_question", "coach_note",
+        "evaluator_rationale", "coach_label_notes", "say_it_stronger",
+    )
+
+    def _publish_annotations_already_captured(self, session_id: str) -> bool:
+        """Has this session already emitted publish-path annotation rows?
+
+        The never-double-write-on-uncertainty rule (mirrors the backfill's
+        probe): a probe FAILURE reads as "already captured", because writing
+        blind risks the corpus (approved_as_is + a correction for the same
+        field), while skipping only loses one session's pairs."""
+        try:
+            rows = (
+                self.client.table("admin_annotation_events")
+                .select("id")
+                .eq("session_id", str(session_id))
+                .in_("field_name", list(self._PUBLISH_CAPTURE_FIELDS))
+                .limit(1)
+                .execute()
+                .data
+            ) or []
+            return bool(rows)
+        except Exception as e:
+            logger.warning(
+                "record_snippet_publish_annotations: idempotency probe "
+                "failed session=%s: %s — treating as captured (never "
+                "double-write on uncertainty)", session_id, e,
+            )
+            return True
 
     def _emit_publish_event_if_signal(
         self,
@@ -7444,15 +7582,33 @@ class DatabaseService:
         draft: str | None,
         final: str | None,
         draft_id: str | None,
+        owner_user_id: str | None = None,
     ) -> int:
         """Fire one admin_annotation_events row if there's signal to capture.
 
         Returns 1 when an event was written, 0 when both draft and
         final were empty (no signal) or the insert raised.
+
+        REPAIR 2026-07-27: this called ``self.insert_admin_annotation_event``
+        — a method that has never existed in any commit (the real helper is
+        ``create_admin_annotation_event``) — with ``user_id=None`` against the
+        table's ``user_id UUID NOT NULL``. The AttributeError was swallowed by
+        the except below, so EVERY publish-time RLHF capture silently wrote
+        zero rows since it shipped. The tests never caught it because they
+        patch ``record_snippet_publish_annotations`` wholesale. Hence
+        ``owner_user_id`` (the student the session belongs to) is now required
+        for a write: without it the insert would 23502 anyway, so we skip
+        loudly instead of pretending.
         """
         d = (draft or "").strip()
         f = (final or "").strip()
         if not d and not f:
+            return 0
+        if not owner_user_id:
+            logger.warning(
+                "record_snippet_publish_annotations: no owner user_id — "
+                "skipping emit session=%s field=%s", session_id, field_name,
+            )
             return 0
         # Detect "approved as-is" vs "edited" with case-insensitive
         # whitespace-collapsed comparison so trivial differences don't
@@ -7464,8 +7620,8 @@ class DatabaseService:
         else:
             reason_chip = None
         try:
-            self.insert_admin_annotation_event(
-                user_id=None,
+            self.create_admin_annotation_event(
+                user_id=str(owner_user_id),
                 session_id=session_id,
                 section_type=section_type,
                 field_name=field_name,
@@ -12395,6 +12551,35 @@ class DatabaseService:
                 return False
             logger.warning("upsert_star_verdict failed: %s", e)
             return False
+
+    def get_star_verdict(self, snippet_id: str) -> tuple:
+        """One star's verdict row, error-distinguishing: ``(row_or_None, ok)``.
+
+        The keep-flip emission guard needs "no verdict exists" and "the read
+        FAILED" to be different answers (review finding): the by-ids reader
+        returns {} for both, and treating an errored read as "no prior"
+        re-emits the approved_as_is row on a re-keep — the exact double-write
+        the guard exists to prevent. ok=False → the caller fails CLOSED
+        (no emission)."""
+        if not snippet_id:
+            return None, False
+        try:
+            rows = (self.client.table("star_verdicts")
+                    .select("*").eq("snippet_id", str(snippet_id))
+                    .limit(1).execute().data) or []
+            return (rows[0] if rows else None), True
+        except Exception as e:
+            err_low = str(e).lower()
+            if "star_verdicts" in err_low and (
+                "does not exist" in err_low or "pgrst" in err_low
+                or "42p01" in err_low
+            ):
+                # Missing table = genuinely no verdict can exist yet — that
+                # is a real "no prior", not an unknown.
+                return None, True
+            logger.warning("get_star_verdict failed snip=%s: %s",
+                           snippet_id, e)
+            return None, False
 
     def get_star_verdicts_by_snippet_ids(self, snippet_ids: list) -> dict:
         """{snippet_id: verdict_row} for the given snippets. {} on anything

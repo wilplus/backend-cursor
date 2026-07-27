@@ -32,6 +32,27 @@ _FIELD_SYSTEM_PROMPTS: dict[str, str] = {
     "coach_insight": _DEFAULT_SYSTEM + " Focus: coaching insight about the student's performance.",
     "coach_override_score": _DEFAULT_SYSTEM + " Focus: explaining or adjusting a performance score.",
     "coach_override_justification": _DEFAULT_SYSTEM + " Focus: justifying a coach override of model scoring.",
+    # Learning-pipeline wave (founder 2026-07-27). The two card fields carry
+    # canonical JSON as the assistant target — the system prompt must say so,
+    # or SFT teaches "write prose" against JSON completions (review finding).
+    "say_it_stronger": _DEFAULT_SYSTEM + (
+        " Focus: the Say It Stronger card for one spoken moment — up to 3"
+        " word-level upgrades, two full-sentence rewrites (the speaker's"
+        " voice / polished), and a short qualitative why. Output the card as"
+        " a single JSON object only, no prose around it."
+    ),
+    "moment_suggestion": _DEFAULT_SYSTEM + (
+        " Focus: a moment star for one spoken passage — its kind/trigger, an"
+        " optional replacement phrase in the speaker's register, and a short"
+        " why. Output a single JSON object only, no prose around it."
+    ),
+    "ideal_text_sentence": _DEFAULT_SYSTEM + (
+        " Focus: one sentence of the assembled ideal text, corrected the way"
+        " the lead coach would phrase it. Output the corrected sentence only."
+    ),
+    "ideal_text_block": _DEFAULT_SYSTEM + (
+        " Focus: the assembled ideal-text block in the speaker's own words."
+    ),
 }
 
 

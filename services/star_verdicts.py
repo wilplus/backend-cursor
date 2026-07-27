@@ -198,6 +198,45 @@ def stars_with_verdicts(suggestions: Any, verdicts: Any) -> list:
     return out
 
 
+# The star fields that ARE its text content — what a future writer model would
+# be trained to produce. kind/trigger ride along as context; the volatile/row
+# bookkeeping (snippet_id, arc_id, created_at) never does.
+_STAR_TEXT_KEYS = ("kind", "trigger", "why", "replacement_text")
+
+
+def should_emit_keep_text(new_verdict: Any, prior_verdict: Any) -> bool:
+    """True exactly when a verdict FLIPS to 'keep' — the once-per-star guard
+    for the keep→writer-corpus emission. A re-keep (keep→keep) must not
+    double-write; a flip back (wrong_kind→keep) legitimately re-endorses.
+    Pure."""
+    return new_verdict == "keep" and prior_verdict != "keep"
+
+
+def annotation_text_for_star(suggestion: Any) -> Optional[str]:
+    """A fired star's TEXT content as canonical annotation-event text, or None.
+
+    Used when a coach verdict flips to ``keep`` (learning-pipeline item 2,
+    founder 2026-07-27): the keep IS the coach endorsing the star's text, so
+    the text crosses into the writer corpus (admin_annotation_events) as an
+    approved_as_is pair. The VERDICT itself never crosses — decisions stay in
+    star_verdicts; this carries only what the machine wrote.
+
+    None when the star has no text at all (delivery stars carry no why and no
+    replacement — there is nothing to teach a writer). Deterministic
+    (sorted keys). Pure."""
+    if not isinstance(suggestion, dict):
+        return None
+    slim = {k: suggestion.get(k) for k in _STAR_TEXT_KEYS
+            if suggestion.get(k) is not None}
+    if not slim.get("why") and not slim.get("replacement_text"):
+        return None
+    import json
+    try:
+        return json.dumps(slim, ensure_ascii=False, sort_keys=True)
+    except (TypeError, ValueError):
+        return None
+
+
 def corpus_summary(verdict_rows: Any) -> dict:
     """Class balance for a corpus pull — so a training run can see whether the
     data is usable before it trains on it.

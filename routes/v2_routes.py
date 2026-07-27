@@ -12469,6 +12469,42 @@ def v2_coach_verify_ideal_text(arc_id):
         if owner:
             from services.arc_notifications import fire_ideal_verified
             fire_ideal_verified(db, owner, arc_id, version)
+
+        # ── Learning-pipeline item 3 (founder 2026-07-27) ─────────────────
+        # Verify IS the coach-finalize act on the ideal text, so this is the
+        # sentence-level correction capture point: diff the frozen machine
+        # draft (auto_text) against the verified text, one annotation event
+        # per changed sentence run, one approved_as_is block event when the
+        # coach verified untouched. Runs ONLY on the 'verified' outcome —
+        # 'already' returned above, so exactly-once-per-version is inherited
+        # from verify_ideal_text. Best-effort; never blocks the verify.
+        try:
+            from services.ideal_text_annotations import (
+                emit_ideal_text_annotations,
+            )
+            _n = emit_ideal_text_annotations(
+                db,
+                arc_id=arc_id,
+                owner_user_id=owner,
+                coach_user_id=str(request.user_id),
+                draft_text=row.get("auto_text"),
+                final_text=row.get("verified_text"),
+                # Staleness guard (review finding, HIGH): if a new take
+                # refreshed auto_text AFTER the coach's last edit, the diff
+                # would blame machine-v(N)↔v(N+1) drift on the coach — the
+                # module skips emission in that case.
+                auto_updated_at=row.get("auto_updated_at"),
+                coach_updated_at=row.get("updated_at"),
+                coach_owned=bool(row.get("updated_by")
+                                 or row.get("approved_at")),
+            )
+            if _n:
+                logger.info("ideal-text annotations emitted arc=%s count=%d",
+                            arc_id, _n)
+        except Exception as _ann_err:
+            logger.warning("ideal-text annotation capture failed arc=%s: %s "
+                           "(non-fatal)", arc_id, _ann_err)
+
         return jsonify({"verified": True, "arc_id": arc_id,
                         "version": version}), 200
     except Exception as e:
@@ -14085,9 +14121,18 @@ def v2_coach_put_star_verdict(snippet_id):
                             "error": "snippet not found"}), 404
         session_id = snip.get("session_id")
         arc_id = None
+        owner_user_id = None
         if session_id:
             _sess = db.v2_get_session_by_id(str(session_id)) or {}
             arc_id = _sess.get("arc_id")
+            owner_user_id = _sess.get("user_id")
+
+        # The verdict this one replaces — read BEFORE the upsert so a
+        # first-time KEEP is distinguishable from a re-KEEP (below).
+        # Error-distinguishing read: a FAILED read must not look like "no
+        # prior verdict" or a re-keep during a transient error double-writes
+        # the corpus row — _prior_ok=False fails the emission closed.
+        _prior, _prior_ok = db.get_star_verdict(snippet_id)
 
         saved = db.upsert_star_verdict(
             snippet_id=snippet_id, row=row, session_id=session_id,
@@ -14099,6 +14144,45 @@ def v2_coach_put_star_verdict(snippet_id):
                 "error": "could not save verdict (run "
                          "migrations/add_star_verdicts.sql)",
             }), 500
+
+        # ── Learning-pipeline item 2 (founder 2026-07-27) ─────────────────
+        # A verdict flipping TO 'keep' is the coach endorsing the star's TEXT
+        # — emit it into the writer corpus (admin_annotation_events) as an
+        # approved_as_is pair. Only the text crosses lanes; the verdict itself
+        # stays in star_verdicts (the decision corpus). Guarded on the flip so
+        # a re-keep never double-writes; wrong_kind / should_not_fire emit
+        # nothing (a rejected star's text must not train the writer as
+        # preferred output). Best-effort — a miss never fails the save.
+        try:
+            from services.star_verdicts import (
+                annotation_text_for_star, should_emit_keep_text,
+            )
+            if (_prior_ok
+                    and should_emit_keep_text(row["verdict"],
+                                              (_prior or {}).get("verdict"))
+                    and owner_user_id and arc_id):
+                _sugg = (db.get_moment_suggestions_by_arc(arc_id)
+                         or {}).get(str(snippet_id))
+                _text = annotation_text_for_star(_sugg)
+                if _text:
+                    db.create_admin_annotation_event(
+                        user_id=str(owner_user_id),
+                        session_id=str(session_id) if session_id else None,
+                        section_type="moment_suggestion",
+                        field_name="moment_suggestion",
+                        ai_original_text=_text,
+                        coach_final_text=_text,
+                        reason_chip="approved_as_is",
+                        custom_reason=None,
+                        created_by=str(getattr(request, "user_id", "") or ""),
+                        draft_id=str(snippet_id),
+                    )
+        except Exception as _emit_err:
+            logger.warning(
+                "star-verdict keep-emit failed snip=%s: %s (non-fatal)",
+                snippet_id, _emit_err,
+            )
+
         return jsonify({"saved": True, "snippet_id": snippet_id,
                         "verdict": row["verdict"]}), 200
     except Exception as e:
