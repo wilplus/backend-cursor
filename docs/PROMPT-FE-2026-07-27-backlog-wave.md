@@ -24,6 +24,10 @@ endpoint before checking the table.
 | 11 | the strategy document | `GET /v2/life/strategy/download` (+`?format=pdf` after BE-4) |
 | 2, 3, 9, 10, 13 | — | pure client work, no endpoint |
 
+Story **12** (a scraped "wall of phrases" in the life panel) is **rejected as
+drift, founder-confirmed 2026-07-27**. There is no corpus and no endpoint
+coming — do not build a surface for it.
+
 Priority order for this wave: **FE-1 → FE-7 → FE-4**, then the rest in any
 order. Those three touch the ideal-text read path (the product's actual
 deliverable); the remainder is chrome and can ship in one batched PR.

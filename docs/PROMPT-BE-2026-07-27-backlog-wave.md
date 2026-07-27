@@ -25,7 +25,7 @@ No table/column drops. Every migration `IF NOT EXISTS`.
 | 9 | Centre the Full-text / Key-words toggle | SCAFFOLDING | DEFER | FE |
 | 10 | Onboarding screen cleanup | SCAFFOLDING | DEFER | FE |
 | 11 | Download the life-panel strategy as a document | SCAFFOLDING | DEFER (cheap — **BE-4**, ship only if 1/4/7 are done) | BE |
-| 12 | Scrape 500+ phrases from two blogs | **DRIFT** | **REJECT-DRIFT** | — |
+| 12 | Scrape 500+ phrases from two blogs | **DRIFT** | **REJECT-DRIFT** — founder-confirmed 2026-07-27 | — |
 | 13 | Clickable links in chat | SCAFFOLDING | DEFER | FE |
 
 Verdict blocks for the three that are not a plain DEFER:
@@ -56,6 +56,8 @@ REDIRECT: (3) sharpen the blended best-slide ranking, or (1) tighten
           word→slide bucketing. If the founder re-locks the north star to
           include a phrase corpus, it comes back as its own scoped task
           with a licensing answer attached.
+STATUS:   founder-confirmed 2026-07-27 — closed, not parked. Do not
+          re-open it as a "small script" or fold it into another task.
 ```
 
 ```
