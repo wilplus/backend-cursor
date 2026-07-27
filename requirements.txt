@@ -23,6 +23,13 @@ soundfile>=0.12.0
 # the uploaded PDF. Lazy-imported in services/deck_parser.py. (PPTX is not
 # converted server-side — users export to PDF; LibreOffice was dropped.)
 pypdf==5.1.0
+# dev-tasks PDF export: the backlog with each screenshot embedded under its task.
+# A rich-text paste drops data: URI images in many targets and a .md with data:
+# URIs renders in almost nothing, so a PDF is the only format where the images
+# reliably travel. Lazy-imported in services/dev_tasks.py::_render_pdf, and a
+# missing/failed import degrades to the ZIP export rather than breaking Export.
+# Pulls Pillow (manylinux wheel, no system libs) for non-JPEG images.
+reportlab==5.0.0
 # Shadow direction classifier (willab Phase 4 / Prompt 1): interpretable
 # logistic regression on the 11 acoustic features, served in-process. joblib
 # serializes the fitted pipeline → object storage. SHADOW-only; influences

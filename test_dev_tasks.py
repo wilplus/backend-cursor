@@ -353,10 +353,26 @@ class RouteTests(unittest.TestCase):
         self.assertEqual(r.get_json()["tasks"], [{"id": 1}])
         m.assert_called_once_with("active")
 
+    def test_export_defaults_to_pdf(self):
+        """The Export button sends no format — it must get the PDF, the one shape
+        where the screenshots reliably travel."""
+        pdf = (b"%PDF-1.4stub", "application/pdf", "willpowerlab-backlog.pdf")
+        with patch.object(rt.svc, "export_pdf", return_value=pdf) as m_pdf, \
+             patch.object(rt.svc, "export_bundle") as m_zip:
+            r = self.client.get("/api/dev-tasks/export", headers=self._h())
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("application/pdf", r.headers["Content-Type"])
+        self.assertIn("willpowerlab-backlog.pdf", r.headers["Content-Disposition"])
+        self.assertEqual(r.data, b"%PDF-1.4stub")
+        m_pdf.assert_called_once()
+        m_zip.assert_not_called()
+        # the client reads the extension off this header, so it must be exposed
+        self.assertIn("Content-Disposition", r.headers.get("Access-Control-Expose-Headers", ""))
+
     def test_export_markdown_download(self):
         bundle = (b"# backlog\n", "text/markdown", "willpowerlab-backlog.md")
         with patch.object(rt.svc, "export_bundle", return_value=bundle):
-            r = self.client.get("/api/dev-tasks/export", headers=self._h())
+            r = self.client.get("/api/dev-tasks/export?format=md", headers=self._h())
         self.assertEqual(r.status_code, 200)
         self.assertIn("text/markdown", r.headers["Content-Type"])
         self.assertIn("attachment", r.headers["Content-Disposition"])
@@ -365,13 +381,17 @@ class RouteTests(unittest.TestCase):
     def test_export_zip_download_when_images_present(self):
         bundle = (b"PK\x03\x04stub", "application/zip", "willpowerlab-backlog.zip")
         with patch.object(rt.svc, "export_bundle", return_value=bundle):
-            r = self.client.get("/api/dev-tasks/export", headers=self._h())
+            r = self.client.get("/api/dev-tasks/export?format=zip", headers=self._h())
         self.assertEqual(r.status_code, 200)
         self.assertIn("application/zip", r.headers["Content-Type"])
         self.assertIn("willpowerlab-backlog.zip", r.headers["Content-Disposition"])
         self.assertEqual(r.data, b"PK\x03\x04stub")
-        # the client reads the extension off this header, so it must be exposed
-        self.assertIn("Content-Disposition", r.headers.get("Access-Control-Expose-Headers", ""))
+
+    def test_unknown_format_falls_back_to_pdf(self):
+        pdf = (b"%PDF-1.4stub", "application/pdf", "willpowerlab-backlog.pdf")
+        with patch.object(rt.svc, "export_pdf", return_value=pdf):
+            r = self.client.get("/api/dev-tasks/export?format=docx", headers=self._h())
+        self.assertIn("application/pdf", r.headers["Content-Type"])
 
     def test_patch_edit(self):
         with patch.object(rt.svc, "update_task", return_value={"id": 5, "body": "new"}) as m:
@@ -456,6 +476,77 @@ class _FakeClient:
 
     def table(self, name):
         return _FakeTable(self._by_name[name], self.writes)
+
+
+def _has_reportlab():
+    try:
+        import reportlab  # noqa: F401
+        return True
+    except Exception:  # pragma: no cover
+        return False
+
+
+@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
+class ExportPdfTests(unittest.TestCase):
+    """The PDF is the one format where the screenshots are guaranteed to travel —
+    a rich-text paste drops data: URI images in many targets (empty boxes)."""
+
+    def _rows(self):
+        rows = _simulate([_cls("T1", "1.1", "as a speaker I retry", body="first task"),
+                          _cls("T2", "2.1", "as a coach I label", body="second task")])
+        rows[0]["images"] = [_PNG_URL, _GIF_URL]
+        return rows
+
+    @unittest.skipUnless(_has_reportlab(), "needs reportlab")
+    def test_pdf_is_a_valid_pdf_with_the_tasks_in_it(self):
+        import io
+        from pypdf import PdfReader
+        payload, mime, name = svc.export_pdf(self._rows())
+        self.assertEqual(mime, "application/pdf")
+        self.assertEqual(name, "willpowerlab-backlog.pdf")
+        self.assertTrue(payload.startswith(b"%PDF-"))
+        reader = PdfReader(io.BytesIO(payload))
+        self.assertGreaterEqual(len(reader.pages), 1)
+        text = "\n".join(p.extract_text() for p in reader.pages)
+        self.assertIn("as a speaker I retry", text)
+        self.assertIn("as a coach I label", text)
+        self.assertLess(text.index("first task"), text.index("second task"))  # priority order
+
+    @unittest.skipUnless(_has_reportlab(), "needs reportlab")
+    def test_screenshots_are_embedded_and_captioned_to_their_task(self):
+        import io
+        from pypdf import PdfReader
+        payload, _, _ = svc.export_pdf(self._rows())
+        reader = PdfReader(io.BytesIO(payload))
+        embedded = 0
+        for page in reader.pages:
+            xobj = page.get("/Resources", {}).get("/XObject", {}) or {}
+            embedded += sum(1 for k in xobj if xobj[k].get("/Subtype") == "/Image")
+        self.assertEqual(embedded, 2)          # both of task 1's shots, really in the file
+        text = "\n".join(p.extract_text() for p in reader.pages)
+        self.assertIn("screenshot 1 · task #1", text)
+        self.assertIn("screenshot 2 · task #1", text)
+
+    @unittest.skipUnless(_has_reportlab(), "needs reportlab")
+    def test_markup_in_task_text_cannot_break_the_render(self):
+        rows = _simulate([_cls("T1", "1.1", "s", body="<b>x</b> & <script>y</script>")])
+        payload, mime, _ = svc.export_pdf(rows)      # would raise if unescaped
+        self.assertEqual(mime, "application/pdf")
+        self.assertTrue(payload.startswith(b"%PDF-"))
+
+    @unittest.skipUnless(_has_reportlab(), "needs reportlab")
+    def test_no_images_still_produces_a_pdf(self):
+        rows = _simulate([_cls("T1", "1.1", "s", body="text only")])
+        payload, mime, _ = svc.export_pdf(rows)
+        self.assertEqual(mime, "application/pdf")
+
+    def test_falls_back_to_the_zip_when_reportlab_is_unavailable(self):
+        """A missing or broken reportlab must not take Export down."""
+        with patch.object(svc, "_render_pdf", side_effect=ImportError("no reportlab")):
+            payload, mime, name = svc.export_pdf(self._rows())
+        self.assertEqual(mime, "application/zip")
+        self.assertEqual(name, "willpowerlab-backlog.zip")
+        self.assertTrue(payload.startswith(b"PK"))
 
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")

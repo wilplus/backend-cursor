@@ -5,9 +5,10 @@ the gate helper is reused from routes.dev_bugs. Full paths baked in (no prefix),
 like the dev-bugs blueprint. See services/dev_tasks.py.
 
   GET    /api/dev-tasks?view=active|archive   -> {"tasks": [...], "view": ...}
-  GET    /api/dev-tasks/export                -> download of the active backlog: a ZIP
-                                                 (backlog.md + images/) when a task has
-                                                 screenshots, else a plain .md
+  GET    /api/dev-tasks/export[?format=]      -> download of the active backlog.
+                                                 default/pdf -> PDF with each screenshot
+                                                 under its task; zip|md -> markdown, as a
+                                                 ZIP with images/ when any task has one
   PATCH  /api/dev-tasks/<id>   {body,user_story,priority}  -> {"task": row}
   DELETE /api/dev-tasks/<id>                  -> 204
   POST   /api/dev-tasks/<id>/reorder  {after_id}  -> {"ok": true}  (after_id null = top)
@@ -53,7 +54,14 @@ def export_tasks():
     if err:
         return err
     try:
-        payload, mime, filename = svc.export_bundle()
+        # PDF by default: it's the only format where the screenshots are guaranteed
+        # to travel (a rich-text paste drops data: URI images in many targets).
+        # ?format=zip keeps the markdown+files bundle for the paste-into-an-LLM path.
+        fmt = (request.args.get("format") or "pdf").strip().lower()
+        if fmt in ("zip", "md", "markdown"):
+            payload, mime, filename = svc.export_bundle()
+        else:
+            payload, mime, filename = svc.export_pdf()
         return Response(
             payload, mimetype=mime,
             headers={
