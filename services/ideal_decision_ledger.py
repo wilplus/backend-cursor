@@ -27,6 +27,8 @@ import logging
 import re
 from typing import Any, Optional
 
+from services.ideal_text_block import wrap_accent
+
 logger = logging.getLogger(__name__)
 
 _WS = re.compile(r"\s+")
@@ -108,7 +110,11 @@ def bake_piece(text: str, approved_rows: Any) -> str:
             if "{{orange:" in found or text[max(0, lo - 9):lo].endswith(
                     "{{orange:"):
                 continue   # already wrapped (baked earlier / coach copy)
-            text = text[:lo] + "{{orange:" + found + "}}" + text[hi:]
+            # wrap_accent, never a bare concatenation: an approved phrase
+            # may itself contain a newline (_find_phrase is a literal find),
+            # and a marker that straddles a paragraph break printed its own
+            # syntax to the student (founder screenshot 2026-07-27).
+            text = wrap_accent(text, lo, hi)
     return text
 
 

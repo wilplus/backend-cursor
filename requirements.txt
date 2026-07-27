@@ -30,6 +30,11 @@ pypdf==5.1.0
 # missing/failed import degrades to the ZIP export rather than breaking Export.
 # Pulls Pillow (manylinux wheel, no system libs) for non-JPEG images.
 reportlab==5.0.0
+# life-panel strategy export (#11): an EDITABLE Word file alongside the PDF,
+# so the strategy can be reviewed and marked up offline. Lazy-imported in
+# services/strategy_export.py; a missing/failed import degrades that download
+# to markdown rather than breaking the button. Pure-python, no system libs.
+python-docx==1.1.2
 # Shadow direction classifier (willab Phase 4 / Prompt 1): interpretable
 # logistic regression on the 11 acoustic features, served in-process. joblib
 # serializes the fitted pipeline → object storage. SHADOW-only; influences

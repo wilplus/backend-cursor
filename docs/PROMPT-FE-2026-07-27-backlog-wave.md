@@ -3,6 +3,18 @@
 Source: `willpowerlab backlog` (13 user stories). Companion:
 `docs/PROMPT-BE-2026-07-27-backlog-wave.md`.
 
+> **STATUS 2026-07-27 — every backend dependency in this file is IMPLEMENTED
+> and merged-ready on `claude/be-fe-prompts-0f4z8j`.** Nothing here is waiting
+> on the BE. All founder answers are folded in: FE-5 is unblocked and reshaped
+> (a **10-minute soft caution**, not a 5-minute limit), FE-6's ambiguity is
+> resolved (an ✕ **cancel** control on the **onboarding step** indicator),
+> FE-2 and FE-8 have their decisions.
+>
+> **Prod flags:** `LIVING_TRANSCRIPT_ENABLED`, `MASTER_DOCUMENT_ENABLED` and
+> `KEY_POINTS_ENABLED` are **all on**. So `changes[]`, `pieces[]` and
+> `key_points[]` are all live on the wire today — code for their presence, not
+> their absence.
+
 **Read §0 before writing anything.** Ten of these thirteen stories need no
 backend change at all — every field is already served. Do not ask for a new
 endpoint before checking the table.
@@ -17,7 +29,7 @@ endpoint before checking the table.
 | 4 | the user's projects | `GET /v2/user/trainings` → `trainings[]` (`arc_id`, `topic`) |
 | 4 | continuing a project | `POST /v2/lab/recordings` with flat `continue_arc_id` |
 | 4 | a project's saved setup | `GET /v2/explore/arc/<arc_id>/setup` |
-| 5 | the window number | `GET /v2/config/recording` → `key_moments_window_sec` **(BE-2, gated on Q1 — until then do not hardcode 300)** |
+| 5 | the caution threshold | `GET /v2/config/recording` → `long_take_caution_sec` (**live**, 600) |
 | 6 | the target length | `GET /v2/explore/arc/<arc_id>/setup` → `target_length_seconds` |
 | 7 | the key sentences | same ideal-text GET → `key_points[]` `{text, start, end}` |
 | 8 | verification state | same ideal-text GET → `status: "verified" \| "unverified"` |
@@ -190,15 +202,19 @@ Two halves, and the second one is the load-bearing one:
 
 Reference: the founder's WhatsApp screenshot (the circled control cluster).
 
-- Move the small record button to the **right** side of the composer, as an
-  icon button: record glyph + the red dot on its **left**.
+Founder 2026-07-27: **WhatsApp placement — the control INSIDE the text
+composer**, on the right. Not the full-width "Record the next take" CTA, which
+is a different control and stays as it is.
+
+- Right side of the composer, and **slightly wider than an icon button**: a
+  recording **dot** plus the small label **"Record"** next to it.
 - Remove the **`+`** control from the text-input area. The composer is the
   input field and the record button — nothing else.
-- Net effect must be *more* horizontal room for the chat input; if the
-  redesign does not measurably widen it, it has not landed.
-- The full-width **"Record the next take"** CTA above the composer (visible in
-  the chat screenshots) is a different control and is **not** in scope here.
-  Confirm before touching it — see Q5.
+- Net effect must be *more* horizontal room for the chat input; if the redesign
+  does not measurably widen it, it has not landed. The "Record" label costs
+  width, so check this at the narrowest supported breakpoint — if the label
+  cannot fit there without squeezing the input, keep the label and shrink the
+  padding, not the input.
 
 ---
 
@@ -216,43 +232,54 @@ Credits `455` · Log out.
 
 ---
 
-## FE-5 — the 5-minute key-moments modal (story #5) · **BLOCKED**
+## FE-5 — the long-take caution (story #5) · **unblocked, reshaped**
 
-**Do not build this yet.** `MAX_RECORDING_DURATION_SECONDS = 300` exists in the
-backend config but is referenced by no code path, and the length step offers
-30 min, 45 min, 60 min and "No limit". Until the founder confirms the rule is
-real (Q1), this modal would state something the product does not do.
+The 5-minute limit is **dropped** — it described nothing the product did. What
+ships is a **soft caution at 10 minutes**.
 
-When unblocked:
-- Trigger on the length step (`How long should it run?`) when the chosen value
-  exceeds `key_moments_window_sec` from `GET /v2/config/recording`. **Read the
-  number from the endpoint — never hardcode 300.**
-- Copy names what the product covers ("we surface key moments from the first N
-  minutes — focus your practice there"), never a judgement about the user's
-  speech. Founder sign-off required on the final wording.
-- Two ways out: proceed, or go back and change the length. Dismissible.
-  Shown once per setup flow, not per keystroke.
+- **Trigger:** on the length step (`How long should it run?`), when the chosen
+  value is **at or above** `long_take_caution_sec` from
+  `GET /v2/config/recording` (600 today). Note **`>=`**, not `>` — 10 min
+  itself triggers it. **Read the number from the endpoint; never hardcode
+  600.** "No limit" also triggers it.
+- **Copy — founder-authored, signed off, render verbatim:**
+
+  > *"Preparing for a long workshop? It's often better to practice just the
+  > beginning and the ending. Consider recording a few 2-3 minute takes to
+  > practice those vulnerable moments instead of focusing on a long speech.
+  > Note: Analysis of long speeches might take considerably longer."*
+
+- **Soft, always:** the primary action **proceeds with the long take**. Never a
+  block, never a forced downgrade, never a disabled Next. A secondary action
+  returns to the length step. Dismissible with Esc / backdrop / ✕.
+- Shown **once per setup flow**, not on every re-tap of a length chip.
+- Nothing server-side enforces this — a long take records, uploads and
+  processes exactly as before. The modal is advice.
 
 ---
 
-## FE-6 — a position marker on the progress bar (story #6) · **needs Q6**
+## FE-6 — the ✕ cancel control on the onboarding steps (story #6) · resolved
 
-The story asks for "a cross that moves along the progress bar to show the
-user's current position in the recording process". The attached screenshot is
-the setup wizard's **step** indicator (the dot row above *How long should it
-run?*), not a recording timeline — so the target surface is genuinely
-ambiguous. See **Q6**.
+Founder 2026-07-27, and it is **not** what the story text implies. There is no
+moving playhead and no recording timeline here:
 
-Whichever it is, these hold:
-- The marker is driven by real elapsed progress, updated in real time (rAF or a
-  ≤250 ms tick), never an animation guess.
-- Duration for the recording reading comes from
-  `GET /v2/explore/arc/<arc_id>/setup` → `target_length_seconds`; when it is
-  null ("No limit") render the bar without a target and without a marker rather
-  than inventing a denominator.
-- It must not overlap or obscure any other control at any breakpoint.
-- Never render elapsed/remaining as a **score or verdict** on pace. A clock is
-  fine; "you're behind" is not (AC-9).
+- **"Progress bar"** = the **onboarding/setup step indicator** — the dot row
+  above *How long should it run?* that shows how many steps remain. Exactly the
+  control in the attached screenshot.
+- **"Cross"** = an **✕ button that cancels** and leaves the flow. Not a
+  position marker, not a crosshair.
+
+So:
+- Put an ✕ on the step indicator row, consistently placed on every step of the
+  flow (the wizard's existing top-right ✕ is the reference position — if it is
+  already there on some steps and not others, the story is that inconsistency).
+- Tapping it exits the setup flow. **Confirm before discarding** anything the
+  user has already entered — a mis-tap must not silently destroy a half-filled
+  setup.
+- The step dots keep showing position and remaining steps as they do now. No
+  behaviour change to them beyond making the current step legible at a glance.
+- It must not overlap or obscure any other control at any breakpoint, and it
+  needs a real touch target (≥44 px) and an accessible label.
 
 ---
 
@@ -264,8 +291,12 @@ backend work.
 
 What is actually wrong is **copy drift**: the ideal-text screen says *"Pending
 verification by the coach"*, the chat card says *"Not verified by the coach"*,
-for the identical state. Pick one string and use it in both places. Because it
-is user-facing copy it needs founder sign-off — see Q7.
+for the identical state.
+
+Founder 2026-07-27: standardise on **"Pending verification"** — the short form,
+everywhere. Chat bubbles, the ideal-text screen, and **any other surface
+carrying this state**. Grep for the old strings rather than fixing the two in
+the screenshots; a third copy somewhere is exactly how this drifted.
 
 ---
 
@@ -293,13 +324,19 @@ not three deletions on screen 1.
 
 ## FE-11 — download the strategy (story #11)
 
-- Add a visible download control in the life panel's strategy view.
-- After **BE-4**: `GET /v2/life/strategy/download?format=pdf` returns a real
-  file with `Content-Disposition: attachment`. Let the browser handle it.
-- The endpoint may degrade to markdown when PDF rendering is unavailable —
-  honour the response `Content-Type`, do not assume `.pdf` from the request.
-- Until BE-4 lands the endpoint still returns JSON `{body, versions}`; if you
-  ship early, save `body` as `.md`, not as a fake `.pdf`.
+BE-4 is **done**. `GET /v2/life/strategy/download?format=` accepts `json`
+(default, the original payload), `md`, `pdf` and `docx`.
+
+- Add a visible download control in the life panel's strategy view, offering
+  **PDF** and **Word (.docx)** — the founder asked for an editable Word file
+  alongside the PDF.
+- Both return real bytes with `Content-Disposition: attachment`. Let the
+  browser handle the save; do not re-wrap the body.
+- **Honour the response `Content-Type`, never the requested one.** The endpoint
+  degrades to markdown with a 200 if a renderer is unavailable — assuming
+  `.pdf` there would save a `.pdf` containing markdown.
+- Omitting `format` still returns today's JSON, so any existing caller is
+  unaffected.
 
 ---
 
@@ -324,21 +361,36 @@ as dead text.
 
 ---
 
-## Questions
+## Closed questions (founder, 2026-07-27)
 
-**Q5 (FE-2)** — "move the small record button to the right": is that the small
-mic icon inside the composer, or the full-width **"Record the next take"** CTA
-sitting above it? The screenshot is a WhatsApp reference, so the target control
-is inferred.
+All four are answered and folded into the tasks above — kept here so the
+reasoning survives:
 
-**Q6 (FE-6)** — which progress bar? (a) the setup wizard's step indicator, (b)
-a live elapsed-time bar during recording, or (c) a read-position marker over
-the ideal text while recording? And is "cross" an **✕ glyph** or a **crosshair
-/ vertical playhead line**? The attached screenshot shows (a) but the story
-text describes (b).
+- **Q1 (FE-5)** — the 5-minute rule is **dropped**. A 10-minute **soft
+  caution** replaces it, always proceedable, copy supplied.
+- **Q5 (FE-2)** — **WhatsApp placement**, inside the composer, slightly wider,
+  with a "Record" label beside the dot. The full-width CTA is untouched.
+- **Q6 (FE-6)** — the **onboarding step indicator**, and "cross" means an **✕
+  cancel button**. No playhead.
+- **Q7 (FE-8)** — **"Pending verification"**, everywhere.
 
-**Q7 (FE-8)** — which string wins: *"Pending verification by the coach"* or
-*"Not verified by the coach"*? User-facing copy, so your call.
+## What the backend changed under you
 
-**Q1 (FE-5, shared with BE)** — is the 5-minute key-moments window a real
-product rule? Blocks FE-5 entirely.
+Shipping on `claude/be-fe-prompts-0f4z8j`, no migration, no flag to flip:
+
+1. **A marker can no longer straddle a newline** — the BE emits an accent per
+   line and sanitizes the served text (unmatched tokens lose their braces,
+   never their words; legacy multi-paragraph accents are re-wrapped, not
+   dropped). Your FE-1 parser still needs its multi-line tolerance — nothing
+   guarantees an old client or an unseen path won't produce one — but the
+   common case is fixed at source.
+2. **`key_points[]` now returns 2-12 cues** on a deckless document instead of
+   1, with `block_key`/`block_label` **null** on paragraph-derived entries.
+   Do not key rendering on those two fields.
+3. **`long_take_caution_sec: 600`** added to `GET /v2/config/recording`.
+4. **`?format=pdf|docx|md`** added to `GET /v2/life/strategy/download`.
+
+`GET /v2/explore/arc/<id>/setup` is **unchanged** — the caution threshold is
+deliberately not echoed there (it is a product constant, not a project field,
+and a pinned test keeps that payload minimal). Read it from
+`/v2/config/recording` once at boot.

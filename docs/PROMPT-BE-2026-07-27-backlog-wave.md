@@ -1,5 +1,12 @@
 # BE prompt — the 2026-07-27 backlog wave
 
+> **STATUS 2026-07-27 — all four BE tasks are IMPLEMENTED on
+> `claude/be-fe-prompts-0f4z8j`.** Founder answers are folded in below; where
+> the answer changed a task, the task text changed with it (BE-2 is now a
+> 10-minute soft caution, not a 5-minute limit; BE-4 ships PDF **and**
+> `.docx`). Three deviations from this plan are recorded in §5 — read them.
+> This file stays the spec of record; the FE prompt is the live one.
+
 Source: `willpowerlab backlog` (13 user stories, T1 · 1.2 / 1.4 / T4 · 4.3).
 Companion: `docs/PROMPT-FE-2026-07-27-backlog-wave.md` — read §0 of that file
 for the contract split; **10 of the 13 stories are FE-only** and are listed
@@ -18,13 +25,13 @@ No table/column drops. Every migration `IF NOT EXISTS`.
 | 2 | Streamlined navbar | SCAFFOLDING | DEFER | FE |
 | 3 | Unified hamburger (blog + lab) | SCAFFOLDING | DEFER | FE |
 | 4 | "Start your first project" — never prefill a project | **F1-SURFACE** | **ADVANCE-F1-SURFACE** | FE (BE contract already exists) |
-| 5 | 5-minute key-moments modal | SCAFFOLDING | **BLOCKED — see Q1** | **BE-2** + FE |
+| 5 | ~~5-minute key-moments modal~~ → **10-minute long-take caution** | SCAFFOLDING | **ADVANCE (founder 2026-07-27)** | **BE-2** + FE |
 | 6 | Progress marker on the recording progress bar | SCAFFOLDING | DEFER | FE |
 | 7 | Key sentences highlighted in the text | **F1-SURFACE** | **ADVANCE-F1-SURFACE** | **BE-3** + FE |
 | 8 | "Pending verification" badge | SCAFFOLDING | DEFER (already served) | FE |
 | 9 | Centre the Full-text / Key-words toggle | SCAFFOLDING | DEFER | FE |
 | 10 | Onboarding screen cleanup | SCAFFOLDING | DEFER | FE |
-| 11 | Download the life-panel strategy as a document | SCAFFOLDING | DEFER (cheap — **BE-4**, ship only if 1/4/7 are done) | BE |
+| 11 | Download the life-panel strategy as a document | SCAFFOLDING | ADVANCE — **BE-4**, PDF + `.docx` (founder 2026-07-27) | BE |
 | 12 | Scrape 500+ phrases from two blogs | **DRIFT** | **REJECT-DRIFT** — founder-confirmed 2026-07-27 | — |
 | 13 | Clickable links in chat | SCAFFOLDING | DEFER | FE |
 
@@ -61,17 +68,24 @@ STATUS:   founder-confirmed 2026-07-27 — closed, not parked. Do not
 ```
 
 ```
-VERDICT:  DEFER (pending Q1)
+VERDICT:  JUSTIFIED-SCAFFOLDING  (was DEFER pending Q1; founder answered
+          2026-07-27 and reshaped the story)
 CATEGORY: SCAFFOLDING
-WHY:      #5 — a modal that tells the user "key moments are limited to 5
-          minutes". `config.MAX_RECORDING_DURATION_SECONDS = 300` exists but
-          is referenced NOWHERE in the codebase (verified), and the setup
-          wizard offers 30/45/60 min and "No limit". So today the claim is
-          not true of anything the server does. Copy is founder-sign-off
-          territory regardless.
-REDIRECT: answer Q1 first. If the cap is real, BE-2 makes it a served
-          number (never an FE hardcode) and the modal is honest; if it is
-          not real, the story dies rather than shipping a false statement.
+WHY:      #5 — the 5-minute LIMIT is dropped entirely (it described nothing
+          the server did: `MAX_RECORDING_DURATION_SECONDS = 300` is
+          referenced nowhere, and the wizard offers 30/45/60 min and "No
+          limit"). What ships instead is a 10-minute SOFT CAUTION: at or
+          above 10 min the wizard advises practising the beginning and the
+          ending in short takes, and the student proceeds anyway. It passes
+          because it now states something TRUE and steers takes toward the
+          short, repeatable form the cross-take ranking actually feeds on.
+          No fence: the copy describes what the product covers and warns
+          that long analysis takes longer — no grade, no verdict on the
+          user's speech (AC-9). Founder authored the copy, so it is signed
+          off.
+REDIRECT: n/a. Note the fence for any future edit: nothing server-side may
+          start truncating or rejecting on this number — the moment it
+          gates, it stops being a caution and needs its own verdict.
 ```
 
 ---
@@ -190,37 +204,38 @@ is added, removed or rewritten by this task.
 
 ---
 
-## BE-2 — the key-moment window as a served number (story #5) — **HOLD FOR Q1**
+## BE-2 — the long-take soft caution as a served number (story #5) · **DONE**
 
-Do not start until Q1 is answered. If the answer is "yes, 5 minutes is real":
+Founder 2026-07-27: **the 5-minute rule is dropped.** In its place, a
+**10-minute soft caution** — at or above the threshold the setup wizard advises
+practising the beginning and the ending in short takes, and **the student may
+always proceed and record the long take.** Nothing is limited.
 
-- `config.py`: rename nothing; **add**
-  `KEY_MOMENTS_WINDOW_SECONDS = int(os.getenv("KEY_MOMENTS_WINDOW_SECONDS", "300"))`
-  next to `MAX_RECORDING_DURATION_SECONDS` (line ~100). Leave the dead
-  `MAX_RECORDING_DURATION_SECONDS` alone in this PR — deleting it is a
-  separate cleanup and it is referenced in no code path today.
-- `routes/v2_routes.py::v2_config_recording` (`GET /v2/config/recording`,
-  line 9426) — the existing "stop the FE hardcoding 60s" endpoint, exactly the
-  right home. Add one key:
+- `config.py` — `LONG_TAKE_CAUTION_SECONDS`, default `600`, env-overridable,
+  added next to `MAX_RECORDING_DURATION_SECONDS`. The dead
+  `MAX_RECORDING_DURATION_SECONDS` is left in place (deleting it is its own
+  cleanup; it is referenced in no code path).
+- `GET /v2/config/recording` — the existing "stop the FE hardcoding 60s"
+  endpoint, and the number's single home:
 
 ```
-200 { min_duration_sec, min_voiced_sec, key_moments_window_sec }
+200 { min_duration_sec, min_voiced_sec, long_take_caution_sec }
 ```
 
-- `routes/v2_routes.py::v2_explore_arc_setup` (`GET /v2/explore/arc/<id>/setup`)
-  — add the same `key_moments_window_sec` so the continue-a-project path does
-  not need a second call.
-- **No enforcement in this PR.** Nothing is truncated, rejected or capped. The
-  number is served so the FE can state it truthfully in one place; if the
-  founder later wants a real gate that is its own task with its own verdict.
+- **No enforcement anywhere.** Nothing is truncated, rejected or capped on this
+  number. The moment it gates something it stops being a caution and needs a
+  fresh verdict — `test_wave2_be.py::test_the_caution_threshold_never_becomes_a_gate`
+  is the pin that argues.
 
-Tests: extend `test_video_size_cap_config.py` style — assert both endpoints
-carry the key, that it reads the env override, and that the default is 300.
+Founder-authored copy (signed off, FE renders it verbatim):
 
-**Fence note for whoever writes the modal copy:** the modal says what the
-product *covers*, never a verdict on the user's speech. "We surface key moments
-from the first 5 minutes" is fine; anything that grades length is AC-9 bait.
-Copy ships only with founder sign-off.
+> *"Preparing for a long workshop? It's often better to practice just the
+> beginning and the ending. Consider recording a few 2-3 minute takes to
+> practice those vulnerable moments instead of focusing on a long speech.
+> Note: Analysis of long speeches might take considerably longer."*
+
+Tests: `test_wave2_be.py::ConfigRecordingRouteTests` — the endpoint carries the
+key, and the constant is 600.
 
 ---
 
@@ -304,33 +319,31 @@ A deckless single-block project with a normal-length ideal text returns
 
 ---
 
-## BE-4 — the strategy downloads as a real file (story #11) — ship last
+## BE-4 — the strategy downloads as a real file (story #11) · **DONE**
 
 Today `GET /v2/life/strategy/download` (`routes/life_routes.py:365`) returns
 **JSON** — `{body, versions}` — so "download" is the FE writing a `.txt` by
 hand. The story asks for PDF or DOC.
 
-- Add `?format=` to that endpoint: `json` (**default — unchanged**, existing
-  callers keep working), `md`, `pdf`.
-- `pdf` → `services/life_panel.py` gets `render_strategy_pdf(assembled: str,
-  *, title: str) -> bytes` modelled **exactly** on
-  `services/dev_tasks.py::_render_pdf` (lines 227+): lazy `reportlab` import,
-  A4, `getSampleStyleSheet`, `KeepTogether` per horizon heading + body. The
-  dep is already pinned (`reportlab==5.0.0`) and already lazy-imported
-  elsewhere.
-- A missing/failed `reportlab` import **degrades to `md`** with a 200 and the
-  markdown content type — the same degradation contract
-  `services/dev_tasks.py:206-226` uses. Never a 500 on a download.
-- Response headers: `Content-Disposition: attachment; filename="strategy.pdf"`,
-  correct `Content-Type`. The body is `_assemble(latest)` — reuse it, do not
-  re-derive.
-- **`.docx` is not in scope** unless the founder says otherwise (Q4): it needs
-  a new dependency (`python-docx`) for a non-F1 surface, and PDF already
-  travels everywhere.
+- `?format=` on that endpoint: `json` (**default — unchanged**, existing
+  callers keep working), `md`, `pdf`, `docx`.
+- New module `services/strategy_export.py` (not `life_panel.py` — see §5.3):
+  `sections()` / `to_markdown()` / `_render_pdf()` / `_render_docx()` /
+  `export(latest, horizons, fmt) -> (bytes, mimetype, filename)`.
+- PDF follows `services/dev_tasks.py::_render_pdf`: lazy `reportlab` import,
+  A4, `getSampleStyleSheet`, a heading per horizon. Dep already pinned.
+- `.docx` **is in scope** (founder 2026-07-27) — `python-docx==1.1.2` added to
+  `requirements.txt`, lazy-imported, pure-python, no system libs.
+- Either renderer failing or missing **degrades to `md`** with a 200 — the same
+  contract `services/dev_tasks.py:206-226` uses. Never a 500 on a download.
+- Response carries `Content-Disposition: attachment` and the real
+  `Content-Type`; the FE reads the returned type rather than assuming the
+  requested one.
 
-Tests: `test_life_panel.py` — default still JSON; `?format=md` is text;
-`?format=pdf` returns `%PDF` magic bytes and the attachment header; reportlab
-import patched to raise → 200 markdown, no exception.
+Tests: `test_strategy_export.py` — horizon order and empty-skip; markdown;
+`%PDF` magic bytes; `PK` zip magic for the .docx; each renderer patched to
+raise `ImportError` **and** `RuntimeError` → 200 markdown; unknown format and
+an empty strategy both land on markdown.
 
 ---
 
@@ -348,23 +361,74 @@ not a backend one.
 
 ---
 
-## Open questions (answer before the tasks they gate)
+## 5. Deviations from this plan (decided while implementing)
 
-**Q1 — gates BE-2.** Is the "key moments are limited to 5 minutes" rule real?
-`MAX_RECORDING_DURATION_SECONDS = 300` is defined in `config.py` and used
-nowhere; the setup wizard offers 30/45/60 min and "No limit". Either (a) it is
-a real product rule → BE-2 serves it and the modal is honest, or (b) it is not
-→ the story should not ship as written. Please pick.
+**5.1 — `long_take_caution_sec` is NOT on `GET /explore/arc/<id>/setup`.**
+The plan said to echo it there so continuing a project needed one call. It
+doesn't ship there. `test_context_aware_setup.py::test_payload_is_exactly_the_setup_fields`
+pins that payload to exactly the setup fields, and the route's own docstring
+calls it "deliberately MINIMAL". The threshold is a property of the *product*,
+not of a *project* — echoing it into a per-project payload would have put the
+same number in two places, which is the thing BE-2 exists to prevent.
+`GET /v2/config/recording` is its one home; the FE reads it once at boot.
 
-**Q2 — gates the BE-3 fallback threshold.** Is the target document a *deckless*
-project (one block) or is the master-document skeleton simply not built for it?
-If decked projects also show one cue, the bug is upstream in the skeleton and
-BE-3 is treating a symptom.
+**5.2 — `sanitize_markers` runs BEFORE the anchors are read, not at the
+jsonify.** The plan said "once, immediately before it goes into the jsonify".
+That would have been a bug: `key_moments[].anchor` and the tracked-change /
+key-point offsets are all computed against `_text` earlier in the route, so
+sanitizing afterwards would shift the served string out from under every anchor
+the FE locates, silently dropping the star layer. It now runs right after the
+applied-suggestion fold and before `extract_key_moments`, so every offset in
+the payload is measured against the exact string the student receives.
 
-**Q3 — gates BE-3 verification.** Which of `LIVING_TRANSCRIPT_ENABLED`,
-`MASTER_DOCUMENT_ENABLED`, `KEY_POINTS_ENABLED`, `POLISH_AS_SUGGESTIONS_ENABLED`
-are **1 in prod right now**? `key_points` ships only when the first and third
-are both on; BE-1's fold path depends on the others.
+**5.3 — the strategy renderers live in `services/strategy_export.py`, not
+`services/life_panel.py`.** Two renderers, two lazy dependencies and a shared
+degradation path is a module, not a helper. `life_panel.py` is already 1000+
+lines of domain logic.
 
-**Q4 — gates BE-4.** PDF only (zero new deps), or PDF + `.docx` (adds
-`python-docx` for a life-panel surface)?
+**5.4 — `sanitize_markers` RE-WRAPS a legacy multi-line accent instead of
+deleting it.** The plan said to drop such a pair. Re-wrapping per line keeps
+the emphasis the student (or coach) actually chose and only fixes the
+placement; dropping it would have silently discarded intent on every document
+baked before `wrap_accent` existed. `__`/`//` are deliberately left unbalanced —
+`//` occurs in every URL and "fixing" it would corrupt real content.
+
+---
+
+## 6. Closed questions (founder, 2026-07-27)
+
+**Q1 — the duration rule.** *Answered:* drop the 5-minute rule; ship a
+**10-minute soft caution** with founder-authored copy, always proceedable. BE-2
+rewritten accordingly.
+
+**Q2 — is the one-cue document deckless?** *Superseded.* The fallback triggers
+on the observable condition (fewer than two blocks) rather than on a diagnosis,
+so it is correct for a deckless project **and** for a decked project whose
+skeleton failed to build. If decked projects turn out to show one cue too, that
+is still an upstream skeleton bug worth its own ticket — BE-3 stops the student
+seeing a single card either way.
+
+**Q3 — prod flags.** *Answered:* `LIVING_TRANSCRIPT_ENABLED`,
+`MASTER_DOCUMENT_ENABLED` and `KEY_POINTS_ENABLED` are **all 1 in prod**. So
+`key_points` is live on the wire today and BE-3 changes what students see as
+soon as it deploys — no flag flip needed, and no flag hides a mistake either.
+
+**Q4 — export formats.** *Answered:* PDF **and** `.docx`; `python-docx` pulled
+in. BE-4 updated.
+
+---
+
+## 7. Verification
+
+Full CI-tier suite (the workflow's ignore list): **2328 passed**.
+Four failures were present, three of which reproduce **unchanged on `main`**
+with these changes stashed (`test_arc_unlock`, `test_coach_breakthrough_video`,
+`test_coach_video` — pre-existing, unrelated to this wave). The fourth was
+5.1 above and is fixed.
+
+New/extended coverage: `test_marker_hygiene.py` (21 cases),
+`test_key_points.py::ParagraphFallbackTests` (11 cases),
+`test_strategy_export.py` (12 cases), `test_wave2_be.py` (2 cases).
+
+**Deploy note:** `requirements.txt` gains `python-docx==1.1.2`. No migration.
+No flag to flip.

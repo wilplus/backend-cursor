@@ -26,6 +26,19 @@ from typing import Any
 _CUE_MAX_CHARS = 48
 _CLAUSE_BREAK = re.compile(r"[.;:—–]")
 
+# ── Paragraph fallback (founder 2026-07-27) ──────────────────────────────
+# One milestone per BLOCK is correct by contract and useless on screen for a
+# DECKLESS project: blocks are keyed on slide index, so a deckless talk is one
+# block, so the whole "Key words" view rendered as a single card. Below two
+# blocks we cue per PARAGRAPH instead — same verbatim slice, same offsets.
+_MIN_BLOCKS = 2
+# A stray line ("So.", a dangling clause) is not a milestone.
+_MIN_PARA_CHARS = 24
+# A 60-slide talk must not return a 60-item wall; the cue sheet is a scannable
+# set of milestones, not an outline of everything.
+_MAX_CUES = 12
+_PARA_SPLIT = re.compile(r"\n[ \t]*\n")
+
 
 def _opening_clause(body: str) -> str:
     """The verbatim opening phrase of ``body`` (already left-stripped): up to
@@ -43,6 +56,47 @@ def _opening_clause(body: str) -> str:
     return body[:cut].rstrip()
 
 
+def _paragraph_spans(served_text: str) -> list:
+    """[(start, end)] of every paragraph of ``served_text``, offsets absolute.
+    Split on a blank line; the separator itself belongs to no paragraph. Pure."""
+    spans, pos = [], 0
+    for m in _PARA_SPLIT.finditer(served_text):
+        spans.append((pos, m.start()))
+        pos = m.end()
+    spans.append((pos, len(served_text)))
+    return spans
+
+
+def _paragraph_cues(served_text: str) -> list:
+    """One milestone per PARAGRAPH — the deckless fallback. Same
+    ``_opening_clause`` cutter and the same absolute offsets as the block
+    path, so a cue is a verbatim, correctly-anchored slice either way.
+
+    A cue whose slice does not come back byte-identical is DROPPED, never
+    served: a mis-anchored milestone underlines the wrong words, which is
+    worse than one milestone fewer. Pure."""
+    out = []
+    for s, e in _paragraph_spans(served_text):
+        chunk = served_text[s:e]
+        if len(chunk.strip()) < _MIN_PARA_CHARS:
+            continue
+        lead = len(chunk) - len(chunk.lstrip())
+        start = s + lead
+        cue = _opening_clause(chunk[lead:])
+        if not cue:
+            continue
+        end = start + len(cue)
+        if served_text[start:end] != cue:
+            continue
+        out.append({
+            "block_key": None, "block_label": None,
+            "text": cue, "start": start, "end": end,
+        })
+        if len(out) >= _MAX_CUES:
+            break
+    return out
+
+
 def build_key_points(pieces: Any, served_text: Any = None) -> list:
     """The cue sheet: ONE starting-point milestone per master-document block,
     in document order. Each entry:
@@ -58,7 +112,19 @@ def build_key_points(pieces: Any, served_text: Any = None) -> list:
     renders, so the milestone can never drift from the served words even if a
     piece's own ``text`` is a stale pre-relocation copy. Otherwise the piece's
     ``text`` is used (the pure/testable path). Pieces with no block or no
-    usable text are skipped. Pure; safe on junk input."""
+    usable text are skipped. Pure; safe on junk input.
+
+    PARAGRAPH FALLBACK (founder 2026-07-27): blocks are keyed on slide index,
+    so a DECKLESS project is ONE block, so this returned exactly one cue and
+    the student's "Key words" view rendered as a single card. When the block
+    path yields fewer than two milestones and the served text is available, we
+    cue per PARAGRAPH instead — same verbatim slice, same offsets, capped at
+    _MAX_CUES. ``block_key``/``block_label`` are None on those entries, so the
+    FE must not key its rendering on them.
+
+    Order is DOCUMENT order, always. Nothing here ranks, scores or sorts a
+    milestone by importance (AC-9 / the construct fence): it chooses a
+    boundary and slices verbatim (L1). No LLM in this module."""
     if not isinstance(pieces, list):
         return []
     _st = served_text if isinstance(served_text, str) else None
@@ -97,4 +163,8 @@ def build_key_points(pieces: Any, served_text: Any = None) -> list:
             "start": start,
             "end": start + len(cue),
         })
+    if _st is not None and len(out) < _MIN_BLOCKS:
+        fallback = _paragraph_cues(_st)
+        if len(fallback) > len(out):
+            return fallback
     return out
