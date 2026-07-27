@@ -200,12 +200,82 @@ def _one_attachment(bug_id: Any, idx: int, url: str) -> dict[str, Any] | None:
     return None
 
 
+def _image_parts(bug: dict[str, Any]) -> list[dict[str, Any]]:
+    """One entry per usable image: {"src", "filename", "attachment"}.
+
+    Single source of truth so the HTML digest and the attachment list can never
+    drift — the whole point is that a screenshot renders UNDER the bug it belongs
+    to. Inlining goes via `cid:` rather than a data: URI because Gmail (and most
+    clients) strip data: URIs in <img>; a cid reference to an attachment is the
+    only route that actually displays.
+    """
+    bug_id = bug.get("id")
+    parts: list[dict[str, Any]] = []
+    for i, url in enumerate(_bug_images(bug)):
+        att = _one_attachment(bug_id, i, url)
+        if not att:
+            continue
+        filename = att["filename"]
+        if "content" in att:
+            att = {**att, "content_id": filename}
+            src = f"cid:{filename}"
+        else:
+            src = att.get("path")          # http(s)-hosted: reference it directly
+        parts.append({"src": src, "filename": filename, "attachment": att})
+    return parts
+
+
 def _attachments_for(bug: dict[str, Any]) -> list[dict[str, Any]]:
     """All Resend attachments for a bug's images (0..N)."""
-    bug_id = bug.get("id")
-    return [
-        a for a in (_one_attachment(bug_id, i, u) for i, u in enumerate(_bug_images(bug))) if a
+    return [p["attachment"] for p in _image_parts(bug)]
+
+
+def _build_html(bugs: list[dict[str, Any]]) -> str:
+    """Rich digest: one card per bug, its screenshots inline beneath it.
+
+    The triage prompt stays verbatim in a monospace block (it's an instruction for
+    the LLM, not prose). Each screenshot is captioned with its bug number and
+    attachment filename, so even in a client that blocks inline images you can still
+    tell which attachment belongs to which bug.
+    """
+    rng = f"{_fmt_day(bugs[0]['created_at'])} → {_fmt_day(bugs[-1]['created_at'])}" if bugs else "—"
+    sans = ("-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif")
+    out = [
+        f'<div style="font-family:{sans};color:#111214;line-height:1.5;'
+        'max-width:680px;margin:0 auto;padding:4px;">',
+        '<pre style="white-space:pre-wrap;word-break:break-word;'
+        'font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;'
+        'font-size:12px;line-height:1.5;color:#374151;background:#f5f5f7;'
+        'border-radius:10px;padding:12px;margin:0 0 18px;">'
+        + _html_escape(_CTX) + '</pre>',
+        f'<div style="font-size:13px;font-weight:700;letter-spacing:.02em;'
+        f'color:#6b7280;margin:0 0 10px;">BUGS (reported {_html_escape(rng)})</div>',
     ]
+    for i, b in enumerate(bugs, start=1):
+        text = _html_escape((b.get("text") or "").strip())
+        out.append(
+            '<div style="border:1px solid #e6e7ea;border-radius:12px;'
+            'padding:14px 16px;margin:0 0 14px;">'
+            f'<div style="font-size:11px;color:#9aa0aa;">{i}. '
+            f'{_html_escape(_fmt_day(b["created_at"]))} · bug #{_html_escape(str(b.get("id")))}</div>'
+            f'<div style="font-size:15px;margin-top:6px;white-space:pre-wrap;'
+            f'word-break:break-word;">{text}</div>'
+        )
+        for n, p in enumerate(_image_parts(b), start=1):
+            out.append(
+                '<div style="margin-top:12px;">'
+                f'<img src="{_html_escape(p["src"] or "")}" '
+                f'alt="screenshot {n} of bug {b.get("id")}" '
+                'style="max-width:100%;height:auto;border:1px solid #e6e7ea;'
+                'border-radius:8px;display:block;">'
+                '<div style="font-size:11px;color:#9aa0aa;margin-top:4px;">'
+                f'screenshot {n} · bug #{_html_escape(str(b.get("id")))} · '
+                f'{_html_escape(p["filename"])}</div>'
+                '</div>'
+            )
+        out.append('</div>')
+    out.append('</div>')
+    return "".join(out)
 
 
 def _build_body(bugs: list[dict[str, Any]]) -> str:
@@ -239,20 +309,28 @@ def send_open_bugs() -> int:
         return 0
 
     body = _build_body(bugs)
-    html_body = (
-        "<pre style=\"white-space:pre-wrap;word-break:break-word;"
-        "font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;"
-        "font-size:13px;line-height:1.5;\">" + _html_escape(body) + "</pre>"
-    )
+    html_body = _build_html(bugs)
     attachments = [a for b in bugs for a in _attachments_for(b)]
 
-    result = send_email_resend(
-        to=config.DEV_BUGS_TO,
-        subject="dev-bugs",
-        html=html_body,
-        text=body,
-        attachments=attachments or None,
-    )
+    def _send(atts):
+        return send_email_resend(
+            to=config.DEV_BUGS_TO,
+            subject="dev-bugs",
+            html=html_body,
+            text=body,
+            attachments=atts or None,
+        )
+
+    try:
+        result = _send(attachments)
+    except Exception:  # noqa: BLE001
+        # `content_id` (the inline cid: route) is newer than the pinned Resend SDK
+        # and only rides through because params are posted verbatim. If the provider
+        # ever rejects it, retry once as plain attachments so the digest STILL goes
+        # out — the per-bug captions name each file, so the mapping survives.
+        logger.warning("dev-bugs: inline-image send failed, retrying as plain attachments",
+                       exc_info=True)
+        result = _send([{k: v for k, v in a.items() if k != "content_id"} for a in attachments])
     if not result.get("sent"):
         # SEND_EMAILS off, or provider returned non-sent. Do NOT mark shipped.
         raise RuntimeError(

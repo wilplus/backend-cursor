@@ -217,6 +217,81 @@ class DevBugsServiceTests(unittest.TestCase):
         self.assertIn("1. [20 Jul] first bug", body)
         self.assertIn("2. [22 Jul] with shot  (screenshot attached)", body)
 
+    # ---- rich HTML digest (which screenshot belongs to which bug) ----
+
+    def _two_bugs(self):
+        return [
+            {"id": 1, "text": "first bug", "image_url": None,
+             "created_at": "2026-07-20T09:00:00+00:00"},
+            {"id": 2, "text": "with shot", "images": [_DATA_URL, _DATA_URL],
+             "created_at": "2026-07-22T10:00:00+00:00"},
+        ]
+
+    def test_html_inlines_each_shot_under_its_own_bug(self):
+        html = svc._build_html(self._two_bugs())
+        # bug 2's card must come before its images, and both cids must be bug 2's
+        card2 = html.index("bug #2")
+        self.assertIn('src="cid:bug-2-0.png"', html)
+        self.assertIn('src="cid:bug-2-1.png"', html)
+        self.assertLess(card2, html.index('src="cid:bug-2-0.png"'))
+        # ...and bug 1 (no image) must not gain one
+        self.assertLess(html.index("bug #1"), card2)
+
+    def test_html_captions_name_the_bug_and_file(self):
+        """The fallback when a client blocks inline images: the caption still says
+        which attachment belongs to which bug."""
+        html = svc._build_html(self._two_bugs())
+        self.assertIn("screenshot 1 · bug #2 · bug-2-0.png", html)
+        self.assertIn("screenshot 2 · bug #2 · bug-2-1.png", html)
+
+    def test_html_cids_match_the_attachment_content_ids(self):
+        """A cid: with no matching attachment renders as a broken image."""
+        bugs = self._two_bugs()
+        html = svc._build_html(bugs)
+        atts = [a for b in bugs for a in svc._attachments_for(b)]
+        cids = {a["content_id"] for a in atts if "content_id" in a}
+        self.assertEqual(cids, {"bug-2-0.png", "bug-2-1.png"})
+        for cid in cids:
+            self.assertIn(f'src="cid:{cid}"', html)
+
+    def test_html_escapes_bug_text(self):
+        html = svc._build_html([{"id": 3, "text": "<script>x</script> & co",
+                                 "image_url": None, "created_at": "2026-07-22T10:00:00+00:00"}])
+        self.assertNotIn("<script>", html)
+        self.assertIn("&lt;script&gt;", html)
+
+    def test_html_keeps_the_triage_prompt(self):
+        html = svc._build_html(self._two_bugs())
+        self.assertIn("product-backlog triage assistant", html)
+        self.assertIn("BUGS (reported 20 Jul → 22 Jul)", html)
+
+    def test_http_image_is_referenced_directly_not_by_cid(self):
+        parts = svc._image_parts({"id": 4, "image_url": "https://x.test/a.jpg"})
+        self.assertEqual(parts[0]["src"], "https://x.test/a.jpg")
+        self.assertNotIn("content_id", parts[0]["attachment"])
+
+    def test_send_falls_back_to_plain_attachments_if_inline_rejected(self):
+        """A provider that rejects content_id must not cost us the digest."""
+        rows = [{"id": 11, "text": "a", "images": [_DATA_URL],
+                 "created_at": "2026-07-22T10:00:00+00:00"}]
+        client = _fake_client(open_rows=rows)
+        calls = []
+
+        def flaky(**kwargs):
+            calls.append(kwargs["attachments"])
+            if any("content_id" in a for a in kwargs["attachments"]):
+                raise RuntimeError("422 unknown field content_id")
+            return {"status": "sent", "sent": True}
+
+        with patch.object(svc.db, "client", client), \
+             patch.object(svc, "send_email_resend", side_effect=flaky):
+            n = svc.send_open_bugs()
+        self.assertEqual(n, 1)
+        self.assertEqual(len(calls), 2)                       # inline try, then plain
+        self.assertTrue(any("content_id" in a for a in calls[0]))
+        self.assertFalse(any("content_id" in a for a in calls[1]))
+        self.assertEqual(calls[1][0]["filename"], "bug-11-0.png")   # file still attached
+
     def test_send_empty_is_noop(self):
         client = _fake_client(open_rows=[])
         with patch.object(svc.db, "client", client), \
