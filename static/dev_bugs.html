@@ -354,15 +354,15 @@
   $("exportBtn").onclick=async()=>{
     try{ const r=await fetch(API_BASE+"/api/dev-tasks/export",{headers:{"x-dev-key":KEY}});
       if(!r.ok) throw 0;
-      // the server picks .zip (screenshots present) or .md (none) — follow its name
+      // the server picks .pdf / .zip / .md — follow the name it sends
       const cd=r.headers.get("Content-Disposition")||"";
       const m=/filename=([^;]+)/i.exec(cd);
-      const name=m?m[1].trim().replace(/^"|"$/g,""):"willpowerlab-backlog.md";
+      const name=m?m[1].trim().replace(/^"|"$/g,""):"willpowerlab-backlog.pdf";
       const blob=await r.blob(); const url=URL.createObjectURL(blob);
       const a=document.createElement("a");a.href=url;a.download=name;
       document.body.appendChild(a);a.click();a.remove();
       setTimeout(()=>URL.revokeObjectURL(url),1000);   // revoking at once can abort the save
-      toast(/\.zip$/i.test(name)?"Exported — with images":"Exported");
+      toast(/\.(pdf|zip)$/i.test(name)?"Exported — with images":"Exported");
     }catch(e){toast("Export failed");}
   };
   function taskImgs(t){return (t.images&&t.images.length)?t.images:[];}

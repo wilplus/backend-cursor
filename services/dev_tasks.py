@@ -199,6 +199,96 @@ def _decode_data_url(url: str) -> tuple[bytes, str] | None:
     return raw, _MIME_EXT.get(mime, "jpg")
 
 
+_PDF_MAX_W_MM = 100      # a phone screenshot stays readable, a page stays scannable
+_PDF_MAX_H_MM = 95
+
+
+def export_pdf(tasks: list[dict] | None = None) -> tuple[bytes, str, str]:
+    """The active backlog as a PDF with each screenshot under its own task.
+
+    A PDF is the one format where the images are guaranteed to travel: a rich-text
+    paste drops data: URI images in many targets (they arrive as empty boxes), and
+    a .md with data: URIs renders in almost nothing. Here they're embedded.
+
+    reportlab is imported lazily and a missing/failed import degrades to the ZIP
+    rather than taking Export down.
+    """
+    rows = hydrate_images(_active_rows()) if tasks is None else tasks
+    ordered = sorted(rows, key=sort_key)
+    try:
+        payload = _render_pdf(ordered)
+    except Exception:  # noqa: BLE001
+        logger.warning("dev_tasks: PDF render failed, falling back to the ZIP export",
+                       exc_info=True)
+        return export_bundle(ordered)
+    return payload, "application/pdf", "willpowerlab-backlog.pdf"
+
+
+def _render_pdf(ordered: list[dict]) -> bytes:
+    from xml.sax.saxutils import escape
+
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+    from reportlab.lib.units import mm
+    from reportlab.lib.utils import ImageReader
+    from reportlab.platypus import (Image, KeepTogether, Paragraph,
+                                    SimpleDocTemplate, Spacer)
+
+    margin = 16 * mm
+    avail = A4[0] - 2 * margin
+    max_w, max_h = min(avail, _PDF_MAX_W_MM * mm), _PDF_MAX_H_MM * mm
+
+    ss = getSampleStyleSheet()
+    st_title = ParagraphStyle("wl_title", parent=ss["Title"], fontSize=18,
+                              spaceAfter=10, alignment=0)
+    st_story = ParagraphStyle("wl_story", parent=ss["Heading2"], fontSize=13,
+                              spaceBefore=14, spaceAfter=2, textColor="#111214")
+    st_tag = ParagraphStyle("wl_tag", parent=ss["Italic"], fontSize=9,
+                            textColor="#6b7280", spaceAfter=6)
+    st_body = ParagraphStyle("wl_body", parent=ss["BodyText"], fontSize=10.5, leading=15)
+    st_cap = ParagraphStyle("wl_cap", parent=ss["BodyText"], fontSize=8,
+                            textColor="#9aa0aa", spaceBefore=2, spaceAfter=10)
+
+    flow: list[Any] = [Paragraph("WillpowerLab — backlog (user stories · tasks)", st_title)]
+    for i, t in enumerate(ordered, 1):
+        flow.append(Paragraph(
+            f"{i}. [P{t.get('priority', 2)}] {escape(t.get('user_story') or '(task)')}",
+            st_story))
+        tag = " · ".join(x for x in [t.get("theme"), t.get("epic")] if x)
+        if tag:
+            flow.append(Paragraph(escape(tag), st_tag))
+        body = escape((t.get("body") or "").strip()).replace("\n", "<br/>")
+        if body:
+            flow.append(Paragraph(body, st_body))
+        n = 0
+        for url in t.get("images") or []:
+            decoded = _decode_data_url(url)
+            if not decoded:
+                continue                      # http(s) or unreadable: nothing to embed
+            n += 1
+            raw = decoded[0]
+            try:
+                iw, ih = ImageReader(io.BytesIO(raw)).getSize()
+            except Exception:  # noqa: BLE001
+                logger.warning("dev_tasks: unreadable image on task %s, skipped", t.get("id"))
+                continue
+            scale = min(max_w / iw, max_h / ih, 1.0)     # never scale a small shot UP
+            # the image and its caption must never split across a page
+            flow.append(KeepTogether([
+                Spacer(1, 6),
+                Image(io.BytesIO(raw), width=iw * scale, height=ih * scale, hAlign="LEFT"),
+                Paragraph(f"screenshot {n} · task #{t.get('id')}", st_cap),
+            ]))
+
+    buf = io.BytesIO()
+    SimpleDocTemplate(
+        buf, pagesize=A4, leftMargin=margin, rightMargin=margin,
+        topMargin=margin, bottomMargin=margin,
+        title="WillpowerLab — backlog", author="dev-bugs",
+    ).build(flow)
+    return buf.getvalue()
+
+
 def export_bundle(tasks: list[dict] | None = None) -> tuple[bytes, str, str]:
     """The active backlog as a download: (payload, mimetype, filename).
 

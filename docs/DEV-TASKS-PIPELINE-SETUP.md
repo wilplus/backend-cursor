@@ -19,7 +19,7 @@ choice, and click **done** to archive. **No auto-dispatch to coding agents** (pa
 | When bugs → tasks | **Immediately on save** (a bug saved → GPT-4o → task appears) |
 | "Crucial" ranking | **Fixed theme order, AI ranks within** — themes fixed (T1>T2>T3>T4), GPT-4o orders epic/user-story/task inside each theme |
 | Done → archive | **Reversible** — archived tasks can be restored |
-| Export | **Whole backlog exportable** — a ZIP (markdown + screenshot files) when a task has images, else plain markdown |
+| Export | **Whole backlog exportable** — a PDF with each screenshot under its task (`?format=zip` for markdown + image files) |
 
 **Scope:** still dev-tooling (not F1). With no auto-execute, it's fence-clean — it never writes code or touches `main`; it only reads bugs and shows a list.
 
@@ -96,7 +96,7 @@ The list is **deterministically sorted by `order_key` ascending** — it never r
 | `PATCH /api/dev-tasks/<id>` `{body,…}` | Edit task text |
 | `DELETE /api/dev-tasks/<id>` | Delete (⋮ menu) |
 | `POST /api/dev-tasks/<id>/done` / `/restore` | Archive ↔ restore (reversible) |
-| `GET /api/dev-tasks/export` | Whole active backlog as a download — a **ZIP** (`backlog.md` + `images/task-<id>-<n>.<ext>`) when a task has screenshots, else a plain `.md`. The client names the saved file from `Content-Disposition`. |
+| `GET /api/dev-tasks/export[?format=]` | Whole active backlog as a download. Default (**pdf**) → a PDF with each screenshot under its task. `?format=zip`\|`md` → markdown, as a **ZIP** (`backlog.md` + `images/task-<id>-<n>.<ext>`) when a task has screenshots, else a plain `.md`. The client names the saved file from `Content-Disposition`. |
 
 (Task creation is implicit — it happens inside the existing `POST /api/dev-bugs`.)
 
@@ -110,7 +110,7 @@ The list is **deterministically sorted by `order_key` ascending** — it never r
 - **⋮ menu** per row → **Edit** (inline) / **Delete**.
 - **Done** button per row → archive (moves it out of active).
 - **Archive view** (toggle) → done tasks by date, each with **Restore**.
-- **Export** button → downloads the backlog **with the screenshots as files** (see 6b).
+- **Export** button → downloads the backlog as a **PDF with the screenshots embedded** (see 6b).
 
 ---
 
@@ -124,7 +124,7 @@ plus N attachments", but it can hold several *flavours* of one payload:
 
 | Flavour | Paste target | You get |
 |---|---|---|
-| `text/html` | Notion, Google Docs, Gmail, Slack | text **+ the screenshots inline** |
+| `text/html` | Notion, Google Docs, Gmail, Slack | text **+ the screenshots inline** — *when the target keeps them; several, iOS included, drop `data:` URI images and paste empty grey boxes. Use the PDF export there.* |
 | `text/plain` | code editor, most LLM chat inputs | the markdown, with an `(N screenshots attached)` note |
 
 Pasting into a **plain-text** box cannot carry images — that is a clipboard limit,
@@ -141,11 +141,30 @@ Two things to keep in mind when touching `copyAll`:
 - No `ClipboardItem`, or a refused write, falls back to plain `writeText`; an empty
   backlog reports "Nothing to copy", not "Copy failed".
 
-**Export → a ZIP.** `backlog.md` plus `images/task-<id>-<n>.<ext>`, the markdown
-linking each file (`![screenshot 1](images/task-11-1.png)`). Real files, so they
-open anywhere and can be dragged straight into an LLM or a ticket — a `.md` with
-megabytes of inline base64 renders in almost nothing (GitHub and most editors
-refuse `data:` URIs) and can't be opened as an image.
+**Export → a PDF (default).** One section per task — `N. [P1] user story`, the
+theme/epic line, the body — with that task's screenshots embedded directly beneath
+it and captioned `screenshot N · task #id`.
+
+This exists because **a rich-text paste is not reliable for images**: several
+targets (including iOS) drop `data:` URI images and the paste arrives with empty
+grey boxes where the screenshots should be (founder-reported, 2026-07-27). A PDF is
+the one shape where the pixels are actually in the file.
+
+Layout notes worth keeping: images are capped at 100 mm wide / 95 mm tall and never
+scaled *up*, so a portrait phone screenshot stays readable without eating a page;
+each image and its caption are wrapped in `KeepTogether` so they can never land on
+different pages (they did before the cap — a caption orphaned onto the next page);
+and task text goes through `xml.sax.saxutils.escape`, since ReportLab's `Paragraph`
+parses a mini-XML and raw `<b>` in a bug report would otherwise break the render.
+
+`reportlab` is **lazy-imported** in `_render_pdf`, and any failure (missing wheel,
+bad image) falls back to the ZIP below rather than taking Export down.
+
+**Export → a ZIP (`?format=zip`).** `backlog.md` plus
+`images/task-<id>-<n>.<ext>`, the markdown linking each file
+(`![screenshot 1](images/task-11-1.png)`). This is the one to use for pasting into
+an LLM, since it's still text — a `.md` with megabytes of inline base64 renders in
+almost nothing (GitHub and most editors refuse `data:` URIs).
 
 With nothing decodable to bundle it stays a plain `.md`, still self-contained (any
 `data:` URI is embedded by `to_markdown`). `http(s)`-hosted images are left as
