@@ -211,7 +211,7 @@ def export_bundle(tasks: list[dict] | None = None) -> tuple[bytes, str, str]:
     http(s)-hosted images are left as links rather than fetched: an export must not
     depend on network egress or a slow third party.
     """
-    rows = _active_rows() if tasks is None else tasks
+    rows = hydrate_images(_active_rows()) if tasks is None else tasks
     ordered = sorted(rows, key=sort_key)
 
     names: dict[Any, list[str]] = {}
@@ -422,12 +422,47 @@ def reevaluate(new_task: dict) -> list[dict]:
     return applied
 
 
+def hydrate_images(rows: list[dict]) -> list[dict]:
+    """Fill an empty `images` array from the task's source bug, in memory.
+
+    `dev_tasks.images` is only written at generation time, and the column landed
+    after the tasks did (migrations/add_dev_tasks_images.sql, default '[]'), so
+    older tasks are empty even though their bug still holds the screenshot. Rather
+    than make the founder run a backfill before Copy/Export work, read repairs
+    itself: one extra query, and only when some task is actually missing images.
+
+    scripts/backfill_dev_task_images.py makes it permanent (after which this is a
+    no-op). Failures here are swallowed — a missing screenshot must never take the
+    task list down.
+    """
+    missing = [r for r in rows if not (r.get("images") or []) and r.get("bug_id")]
+    if not missing:
+        return rows
+    try:
+        res = (
+            db.client.table("dev_bugs")
+            .select("id,image_url,images")
+            .in_("id", sorted({int(r["bug_id"]) for r in missing}))
+            .execute()
+        )
+        from services.dev_bugs import _bug_images
+        by_bug = {row["id"]: _bug_images(row) for row in (res.data or [])}
+    except Exception:  # noqa: BLE001
+        logger.warning("dev_tasks: could not hydrate task images from dev_bugs", exc_info=True)
+        return rows
+    for r in missing:
+        imgs = by_bug.get(int(r["bug_id"])) or []
+        if imgs:
+            r["images"] = imgs
+    return rows
+
+
 def list_tasks(view: str = "active") -> list[dict]:
     if view == "archive":
         res = db.client.table(_TABLE).select(_COLS).eq("status", "archived") \
             .order("archived_at", desc=True).execute()
-        return res.data or []
-    rows = _active_rows()
+        return hydrate_images(res.data or [])
+    rows = hydrate_images(_active_rows())
     return sorted(rows, key=sort_key)
 
 
