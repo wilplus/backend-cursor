@@ -331,6 +331,50 @@ class TestBlindCoachFence(unittest.TestCase):
                        "voice_confidence", "potentiometer"):
             self.assertNotIn(banned, rows[0])
 
+    def test_playback_merge_is_an_allowlist(self):
+        """The playback fields (FE ask 2026-07-28) come from the SNIPPET row,
+        which also carries metrics with the machine's voice reads — only the
+        five playback keys may cross, even when a careless caller hands over
+        the whole row."""
+        from services.star_verdicts import stars_with_verdicts
+        rows = stars_with_verdicts(
+            [{"snippet_id": "s1", "kind": "emphasize", "why": "landed"}],
+            {},
+            snippets_by_id={"s1": {
+                "audio_ref": "r2://take.webm", "start_offset_ms": 1200,
+                "duration_ms": 4000, "transcript": "the line", "take_index": 2,
+                # must NOT cross:
+                "metrics": {"acoustic_read": {"potentiometer": 0.9},
+                            "voice_confidence": {"score": 0.7}},
+                "coach_label": "challenge",
+            }})
+        row = rows[0]
+        self.assertEqual(row["audio_ref"], "r2://take.webm")
+        self.assertEqual(row["take_index"], 2)
+        self.assertEqual(row["transcript"], "the line")
+        for banned in ("metrics", "coach_label", "acoustic_read",
+                       "voice_confidence"):
+            self.assertNotIn(banned, row)
+
+    def test_coach_correction_rides_as_draft_and_final(self):
+        """The review list shows both wordings + whether the coach rewrote."""
+        from services.star_verdicts import stars_with_verdicts
+        rows = stars_with_verdicts([{
+            "snippet_id": "s1", "kind": "replace",
+            "why": "coach why", "why_draft": "machine why",
+            "replacement_text": "coach line",
+            "replacement_text_draft": "machine line",
+        }], {})
+        row = rows[0]
+        self.assertEqual(row["why"], "coach why")
+        self.assertEqual(row["why_draft"], "machine why")
+        self.assertTrue(row["text_edited"])
+        untouched = stars_with_verdicts([{
+            "snippet_id": "s2", "kind": "emphasize",
+            "why": "same", "why_draft": "same",
+        }], {})[0]
+        self.assertFalse(untouched["text_edited"])
+
     def test_verdict_row_carries_no_confidence_signal(self):
         from services.star_verdicts import validate_verdict
         row, err = validate_verdict({

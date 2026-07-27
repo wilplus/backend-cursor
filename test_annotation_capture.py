@@ -425,30 +425,126 @@ class KeepFlipGuardTests(unittest.TestCase):
         self.assertFalse(should_emit_keep_text("wrong_kind", None))
         self.assertFalse(should_emit_keep_text("should_not_fire", "keep"))
 
-    def test_star_text_carries_content_only(self):
-        from services.star_verdicts import annotation_text_for_star
-        text = annotation_text_for_star({
+    def test_untouched_star_pair_is_equal_sides(self):
+        from services.star_verdicts import annotation_pair_for_star
+        pair = annotation_pair_for_star({
             "snippet_id": "s1", "arc_id": "a1", "kind": "replace",
             "trigger": "profanity", "why": "swap the swear",
-            "replacement_text": "a cleaner line", "created_at": "2026-01-01",
+            "why_draft": "swap the swear",
+            "replacement_text": "a cleaner line",
+            "replacement_text_draft": "a cleaner line",
+            "created_at": "2026-01-01",
         })
-        parsed = json.loads(text)
+        self.assertIsNotNone(pair)
+        draft, final = pair
+        self.assertEqual(draft, final)   # → the caller stamps approved_as_is
+        parsed = json.loads(final)
         self.assertEqual(
             set(parsed), {"kind", "trigger", "why", "replacement_text"})
 
+    def test_coach_corrected_star_pair_differs(self):
+        from services.star_verdicts import annotation_pair_for_star
+        draft, final = annotation_pair_for_star({
+            "kind": "replace", "trigger": "profanity",
+            "why": "the coach's better why", "why_draft": "machine why",
+            "replacement_text": "the coach's line",
+            "replacement_text_draft": "machine line",
+        })
+        self.assertNotEqual(draft, final)
+        self.assertIn("machine line", draft)
+        self.assertIn("the coach's line", final)
+
     def test_textless_delivery_star_yields_none(self):
-        from services.star_verdicts import annotation_text_for_star
-        self.assertIsNone(annotation_text_for_star(
+        from services.star_verdicts import annotation_pair_for_star
+        self.assertIsNone(annotation_pair_for_star(
             {"kind": "delivery", "trigger": "pace_fast",
              "why": None, "replacement_text": None}))
-        self.assertIsNone(annotation_text_for_star(None))
+        self.assertIsNone(annotation_pair_for_star(None))
 
     def test_structure_star_quote_survives(self):
-        from services.star_verdicts import annotation_text_for_star
-        text = annotation_text_for_star(
+        from services.star_verdicts import annotation_pair_for_star
+        _draft, final = annotation_pair_for_star(
             {"kind": "structure", "trigger": "contrast",
              "why": "it's not speed, it's control", "replacement_text": None})
-        self.assertIn("it's not speed", text)
+        self.assertIn("it's not speed", final)
+
+
+class StarTextValidationTests(unittest.TestCase):
+    """The coach star-text PUT body — full-state, guard-rejecting."""
+
+    def test_valid_correction(self):
+        from services.star_verdicts import validate_star_text
+        row, err = validate_star_text(
+            {"why": "this lands because it names the fear",
+             "replacement_text": "say the fear out loud"})
+        self.assertIsNone(err)
+        self.assertEqual(row["why"], "this lands because it names the fear")
+
+    def test_single_field_clears_the_other(self):
+        from services.star_verdicts import validate_star_text
+        row, err = validate_star_text({"why": "just the why"})
+        self.assertIsNone(err)
+        self.assertIsNone(row["replacement_text"])   # full-state semantics
+
+    def test_explicit_null_clears(self):
+        from services.star_verdicts import validate_star_text
+        row, err = validate_star_text({"why": None,
+                                       "replacement_text": "keep this"})
+        self.assertIsNone(err)
+        self.assertIsNone(row["why"])
+
+    def test_digits_are_rejected_loudly_not_nulled(self):
+        """Unlike generation (which silently nulls), a coach edit tripping
+        the AC-9 guard must 400 — a 'successful' PUT that dropped the text
+        would gaslight the coach."""
+        from services.star_verdicts import validate_star_text
+        row, err = validate_star_text({"why": "pause for 2 beats"})
+        self.assertIsNone(row)
+        self.assertIn("qualitative guard", err)
+
+    def test_construct_vocabulary_is_rejected(self):
+        from services.star_verdicts import validate_star_text
+        row, err = validate_star_text(
+            {"why": "your charisma score improved"})
+        self.assertIsNone(row)
+
+    def test_empty_body_and_junk(self):
+        from services.star_verdicts import validate_star_text
+        self.assertIsNotNone(validate_star_text({})[1])
+        self.assertIsNotNone(validate_star_text(None)[1])
+        self.assertIsNotNone(validate_star_text({"why": "   "})[1])
+        self.assertIsNotNone(validate_star_text({"why": 42})[1])
+
+
+@unittest.skipIf(DatabaseService is None, f"services.db import failed: {_IMPORT_ERR}")
+class SuggestionFoldTests(unittest.TestCase):
+    """get_moment_suggestions_by_arc folds coach final over machine draft at
+    the ONE reader, with *_draft passthroughs for the corpus/coach review."""
+
+    def _svc(self, rows):
+        svc = DatabaseService.__new__(DatabaseService)
+        svc.client = _FakeClient({"moment_suggestions": rows})
+        return svc
+
+    def test_final_folds_over_draft(self):
+        out = self._svc([{
+            "snippet_id": "s1", "kind": "replace",
+            "why": "machine why", "replacement_text": "machine line",
+            "why_final": "coach why", "replacement_text_final": "coach line",
+        }]).get_moment_suggestions_by_arc("arc-1")
+        row = out["s1"]
+        self.assertEqual(row["why"], "coach why")
+        self.assertEqual(row["replacement_text"], "coach line")
+        self.assertEqual(row["why_draft"], "machine why")
+        self.assertEqual(row["replacement_text_draft"], "machine line")
+
+    def test_no_final_is_a_no_op_fold(self):
+        out = self._svc([{
+            "snippet_id": "s1", "kind": "emphasize", "why": "machine why",
+        }]).get_moment_suggestions_by_arc("arc-1")
+        row = out["s1"]
+        self.assertEqual(row["why"], "machine why")
+        self.assertEqual(row["why_draft"], "machine why")
 
 
 if __name__ == "__main__":

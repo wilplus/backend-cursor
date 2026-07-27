@@ -14065,7 +14065,37 @@ def v2_coach_arc_stars(arc_id):
         suggestions = db.get_moment_suggestions_by_arc(arc_id) or {}
         verdicts = db.get_star_verdicts_by_snippet_ids(
             list(suggestions.keys())) or {}
-        stars = stars_with_verdicts(list(suggestions.values()), verdicts)
+
+        # Playback context per starred snippet (FE ask 2026-07-28): the coach
+        # hears the moment they're judging. Allowlisted fields only — the
+        # snippet row's metrics (acoustic_read/voice_confidence) must NOT ride
+        # an analytics review payload (BLIND COACH); the allowlist lives in
+        # stars_with_verdicts._SNIPPET_PLAYBACK_KEYS.
+        snippets_by_id: dict = {}
+        if suggestions:
+            _starred = set(suggestions.keys())
+            for _s in sessions:
+                _sid = str(_s.get("id") or "")
+                if not _sid:
+                    continue
+                for _snip in (db.get_snippets_by_session(_sid) or []):
+                    _snip_id = str(_snip.get("id") or "")
+                    if _snip_id not in _starred:
+                        continue
+                    snippets_by_id[_snip_id] = {
+                        "audio_ref": (_snip.get("audio_segment_path")
+                                      or _snip.get("audio_ref")
+                                      or _snip.get("storage_path")),
+                        "start_offset_ms": _snip.get("start_offset_ms"),
+                        "duration_ms": _snip.get("duration_ms"),
+                        "transcript": (_snip.get("transcript")
+                                       or _snip.get("transcript_excerpt")
+                                       or ""),
+                        "take_index": _s.get("take_index"),
+                    }
+
+        stars = stars_with_verdicts(list(suggestions.values()), verdicts,
+                                    snippets_by_id)
         # Chronology isn't available on the suggestion row, so order by the
         # thing the coach cares about: unjudged first, then by family.
         stars.sort(key=lambda s: (s.get("judged"),
@@ -14145,17 +14175,19 @@ def v2_coach_put_star_verdict(snippet_id):
                          "migrations/add_star_verdicts.sql)",
             }), 500
 
-        # ── Learning-pipeline item 2 (founder 2026-07-27) ─────────────────
-        # A verdict flipping TO 'keep' is the coach endorsing the star's TEXT
-        # — emit it into the writer corpus (admin_annotation_events) as an
-        # approved_as_is pair. Only the text crosses lanes; the verdict itself
-        # stays in star_verdicts (the decision corpus). Guarded on the flip so
-        # a re-keep never double-writes; wrong_kind / should_not_fire emit
-        # nothing (a rejected star's text must not train the writer as
-        # preferred output). Best-effort — a miss never fails the save.
+        # ── Learning-pipeline item 2 (founder 2026-07-27/28) ──────────────
+        # A verdict flipping TO 'keep' is the coach signing off the star's
+        # TEXT — emit the (machine draft, coach-corrected final) pair into
+        # the writer corpus. Untouched text → approved_as_is endorsement;
+        # coach-rewritten text (the star-text PUT below) → the correction
+        # pair. Only text crosses lanes; the verdict stays in star_verdicts
+        # (the decision corpus). Guarded on the flip so a re-keep never
+        # double-writes; wrong_kind / should_not_fire emit nothing (a
+        # rejected star's text must not train the writer as preferred
+        # output). Best-effort — a miss never fails the save.
         try:
             from services.star_verdicts import (
-                annotation_text_for_star, should_emit_keep_text,
+                annotation_pair_for_star, should_emit_keep_text,
             )
             if (_prior_ok
                     and should_emit_keep_text(row["verdict"],
@@ -14163,16 +14195,18 @@ def v2_coach_put_star_verdict(snippet_id):
                     and owner_user_id and arc_id):
                 _sugg = (db.get_moment_suggestions_by_arc(arc_id)
                          or {}).get(str(snippet_id))
-                _text = annotation_text_for_star(_sugg)
-                if _text:
+                _pair = annotation_pair_for_star(_sugg)
+                if _pair:
+                    _draft_text, _final_text = _pair
                     db.create_admin_annotation_event(
                         user_id=str(owner_user_id),
                         session_id=str(session_id) if session_id else None,
                         section_type="moment_suggestion",
                         field_name="moment_suggestion",
-                        ai_original_text=_text,
-                        coach_final_text=_text,
-                        reason_chip="approved_as_is",
+                        ai_original_text=_draft_text,
+                        coach_final_text=_final_text,
+                        reason_chip=("approved_as_is"
+                                     if _draft_text == _final_text else None),
                         custom_reason=None,
                         created_by=str(getattr(request, "user_id", "") or ""),
                         draft_id=str(snippet_id),
@@ -14190,6 +14224,67 @@ def v2_coach_put_star_verdict(snippet_id):
                        snippet_id, e)
         return jsonify({"code": "SERVER_ERROR",
                         "error": "could not save verdict"}), 500
+
+
+@v2_bp.route("/coach/snippets/<snippet_id>/star-text", methods=["PUT"])
+@require_admin_or_coach
+def v2_coach_put_star_text(snippet_id):
+    """The coach's corrected wording for ONE fired star (founder 2026-07-28)
+    — "review how the comment was written", the say-it-stronger twin pattern
+    applied to moment suggestions.
+
+    Body (FULL correction state — the body IS the state, an omitted or null
+    field reverts that part to the machine draft):
+        { "why": "…" | null, "replacement_text": "…" | null }
+
+    The machine's draft columns are never touched (the (draft, final) pair is
+    the correction corpus). Every reader folds final-over-draft at the DB
+    reader, so the student sees the coach's wording immediately (L1: no row
+    mutation of the draft). Strings pass the SAME AC-9 qualitative guard as
+    generation; a guard violation is a loud 400, never a silent null.
+
+    The pair enters admin_annotation_events when the coach KEEPS the star
+    (the verdict route above) — edit first, then keep.
+
+    200 { saved, snippet_id, why, replacement_text }   // the correction state
+    400 · 404 · 500
+    """
+    if not _is_valid_uuid(snippet_id):
+        return jsonify({"code": "INVALID_INPUT",
+                        "error": "snippet_id must be a valid UUID"}), 400
+    body = request.get_json(silent=True) or {}
+
+    from services.star_verdicts import validate_star_text
+
+    row, err = validate_star_text(body)
+    if err:
+        return jsonify({"code": "INVALID_INPUT", "error": err}), 400
+
+    try:
+        snip = db.get_snippet_by_id(snippet_id)
+        if not snip:
+            return jsonify({"code": "NOT_FOUND",
+                            "error": "snippet not found"}), 404
+        saved = db.set_moment_suggestion_final(
+            str(snippet_id),
+            why_final=row["why"],
+            replacement_text_final=row["replacement_text"],
+            edited_by=getattr(request, "user_id", None),
+        )
+        if not saved:
+            return jsonify({
+                "code": "SERVER_ERROR",
+                "error": "could not save star text (run "
+                         "migrations/add_moment_suggestion_final.sql)",
+            }), 500
+        return jsonify({"saved": True, "snippet_id": snippet_id,
+                        "why": row["why"],
+                        "replacement_text": row["replacement_text"]}), 200
+    except Exception as e:
+        logger.warning("v2_coach_put_star_text failed snip=%s: %s",
+                       snippet_id, e)
+        return jsonify({"code": "SERVER_ERROR",
+                        "error": "could not save star text"}), 500
 
 
 # The /coach/arc/<id>/publish ALIAS is RETIRED (FE handoff 2026-07-17):

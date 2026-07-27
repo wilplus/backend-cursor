@@ -1,8 +1,11 @@
 # FE prompt — Coach Star Verdict
 
-**Repo:** `frontend-cursor` · **BE branch:** `feat/coach-star-verdict` (commit `ed57690`)
-**Date:** 2026-07-27 · **Status:** BE complete, migration pending (`migrations/add_star_verdicts.sql`)
-**Surface:** the coach panel only. Nothing in this document is ever visible to a student.
+**Repo:** `frontend-cursor` · **BE branch:** `feat/coach-star-verdict`
+**Date:** 2026-07-28 (rev 2: + playback fields per FE ask, + the star-TEXT edit endpoint)
+**Status:** BE complete · migrations pending: `add_star_verdicts.sql` + `add_moment_suggestion_final.sql`
+**Surface:** the coach panel only. Nothing in this document is ever visible to a student —
+except the corrected star wording (FE-4), which is exactly the student-facing copy the
+coach is fixing.
 
 ---
 
@@ -49,15 +52,24 @@ GET /v2/coach/arc/<arc_id>/stars          (auth: coach or admin JWT, same as all
       "star_kind": "delivery",          // emphasize | replace | structure | delivery
       "star_device": "pace_fast",       // delivery only; null for other kinds
       "trigger": "pace_fast",           // raw trigger (delivery: the device; replace: threat|profanity|stickiness)
-      "why": "…",                       // the machine's stated reason, when it has one
-      "replacement_text": "…",          // replace stars only, else null
+      "why": "…",                       // FOLDED: the coach's corrected wording when one exists, else the machine's
+      "replacement_text": "…",          // replace stars only, else null — also folded
+      "why_draft": "…",                 // the machine's ORIGINAL wording (render side-by-side in the editor)
+      "replacement_text_draft": "…",
+      "text_edited": false,             // true when the coach has rewritten either field
       "verdict": null,                  // null = unjudged · keep | wrong_kind | should_not_fire
       "corrected_device": null,         // set when verdict = wrong_kind
       "note": null,                     // the coach's own note, if they left one
       "judged": false,
-      "device_options": ["emphasis","pace_fast","pace_slow","pause","congruence"]
+      "device_options": ["emphasis","pace_fast","pace_slow","pause","congruence"],
                                         // what "wrong kind" may be corrected TO (N4).
                                         // [] for single-device kinds (emphasize/replace)
+      // ── playback context (rev 2, your ask) ──
+      "audio_ref": "…",                 // the take audio; null when the snippet has none
+      "start_offset_ms": 12345,         // clamp playback to this window
+      "duration_ms": 4200,
+      "transcript": "…",                // the moment's words (may be "")
+      "take_index": 2                   // which take the moment came from
     }
   ],
   "summary": { "total": 3, "by_verdict": {…}, "by_kind": {…},
@@ -105,6 +117,36 @@ Echo `star_kind`/`star_device` from the GET row verbatim — don't reconstruct t
 
 ---
 
+### FE-2b — Correct the star's wording (rev 2)
+
+```
+PUT /v2/coach/snippets/<snippet_id>/star-text
+```
+
+```jsonc
+// body is the FULL correction state — an omitted or null field reverts that
+// part to the machine draft
+{ "why": "this lands because it names the fear",
+  "replacement_text": "say the fear out loud" }
+
+200 { "saved": true, "snippet_id": "…", "why": "…", "replacement_text": "…" }
+400 { "code": "INVALID_INPUT", "error": "…" }   // incl. the qualitative-guard
+                                                 // rejection: digits or retired
+                                                 // construct vocabulary → 400,
+                                                 // NEVER silently dropped.
+                                                 // Surface the error verbatim.
+404 · 500 (500 names add_moment_suggestion_final.sql when unrun)
+```
+
+- The student sees the corrected wording immediately (every serve folds
+  final-over-draft server-side) — no publish step for the text itself.
+- The (draft, final) pair enters the training corpus when the coach **Keeps**
+  the star — so the natural flow in the UI is *edit → keep*, and a star the
+  coach edited but never judged should visually nudge toward a verdict.
+- Editing is only meaningful for stars that carry text (`why` /
+  `replacement_text` present): emphasize, replace, structure. Delivery stars
+  are textless — no edit affordance.
+
 ## FE-3 — Suggested interaction (not locked; copy needs founder sign-off)
 
 One list per arc, reachable from the coach's arc review screen (near review-state /
@@ -128,8 +170,12 @@ not an error.
 
 ## Gotchas
 
-- **Migration gate:** until `add_star_verdicts.sql` runs in prod, PUT returns 500 with a
-  message naming the migration, and GET returns every star as unjudged. Degrade gracefully.
+- **Migration gate:** until `add_star_verdicts.sql` runs in prod, the verdict PUT returns
+  500 naming the migration and GET returns every star as unjudged; until
+  `add_moment_suggestion_final.sql` runs, the star-text PUT 500s naming it and the GET
+  simply shows `text_edited: false` everywhere. Degrade gracefully on both.
+- `audio_ref` can be null (no audio stored for that snippet) — render the row without a
+  player, don't hide it.
 - A star may exist on a snippet whose session the coach opened from either the per-take view
   or the arc view — the GET is arc-scoped; there is no per-session variant.
 - `star_kind: "replace"` rows carry `replacement_text`; `"structure"` rows carry the verbatim

@@ -10669,7 +10669,17 @@ class DatabaseService:
 
     def get_moment_suggestions_by_arc(self, arc_id: Optional[str]) -> dict:
         """{snippet_id: suggestion row} for one presentation. Best-effort:
-        {} on missing table / error (no stars, never a break)."""
+        {} on missing table / error (no stars, never a break).
+
+        FOLD (founder 2026-07-28, coach star-text corrections): the returned
+        ``why`` / ``replacement_text`` are the coach's final WHEN one exists,
+        else the machine draft — done HERE, at the one reader, so every
+        consumer (the ideal-text serve, the decision ledger's phrase keying,
+        the snapshot, tracked changes) shows the corrected wording without
+        any of them knowing the twin columns exist. The raw drafts ride along
+        as ``why_draft`` / ``replacement_text_draft`` for the two consumers
+        that need the pair (the coach stars review + the corpus emission).
+        Pre-migration rows simply have no *_final keys → the fold no-ops."""
         if not arc_id:
             return {}
         try:
@@ -10679,10 +10689,19 @@ class DatabaseService:
                 .eq("arc_id", str(arc_id))
                 .execute()
             )
-            return {
-                str(r.get("snippet_id")): r
-                for r in (res.data or []) if r.get("snippet_id")
-            }
+            out: dict = {}
+            for r in (res.data or []):
+                if not r.get("snippet_id"):
+                    continue
+                r = dict(r)
+                r["why_draft"] = r.get("why")
+                r["replacement_text_draft"] = r.get("replacement_text")
+                if r.get("why_final"):
+                    r["why"] = r["why_final"]
+                if r.get("replacement_text_final"):
+                    r["replacement_text"] = r["replacement_text_final"]
+                out[str(r["snippet_id"])] = r
+            return out
         except Exception as e:
             _e = str(e).lower()
             if "moment_suggestions" in _e and (
@@ -10692,6 +10711,44 @@ class DatabaseService:
             logger.warning("get_moment_suggestions_by_arc failed arc=%s: %s",
                            arc_id, e)
             return {}
+
+    def set_moment_suggestion_final(
+        self, snippet_id: str, *, why_final: Optional[str],
+        replacement_text_final: Optional[str], edited_by: Optional[str],
+    ) -> bool:
+        """The coach's corrected star wording (founder 2026-07-28) — plain
+        update, re-editable until they're done (mirrors
+        set_charisma_snippet_say_it_stronger_final). The machine's draft
+        columns are NEVER touched: the (draft, final) pair is the correction
+        corpus. Passing None for a field CLEARS that correction (revert to
+        the draft). Best-effort, missing-column-safe; never raises."""
+        if not snippet_id:
+            return False
+        payload: dict = {
+            "why_final": why_final,
+            "replacement_text_final": replacement_text_final,
+            "text_final_updated_at":
+                datetime.now(timezone.utc).isoformat(),
+        }
+        if edited_by:
+            payload["text_final_by"] = str(edited_by)
+        try:
+            (self.client.table("moment_suggestions")
+                 .update(payload)
+                 .eq("snippet_id", str(snippet_id)).execute())
+            return True
+        except Exception as e:
+            _e = str(e).lower()
+            if ("why_final" in _e or "replacement_text_final" in _e
+                    or "text_final" in _e):
+                logger.warning(
+                    "set_moment_suggestion_final: columns missing (run "
+                    "migrations/add_moment_suggestion_final.sql)",
+                )
+                return False
+            logger.warning("set_moment_suggestion_final failed snip=%s: %s",
+                           snippet_id, e)
+            return False
 
     # ── ideal-text decision ledger (founder 2026-07-20) ──────────────
     # Phrase-keyed memory of approved/dismissed suggestions; see

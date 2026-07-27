@@ -158,17 +158,34 @@ def _all_devices() -> tuple:
     return tuple(out)
 
 
-def stars_with_verdicts(suggestions: Any, verdicts: Any) -> list:
-    """The coach review list: every fired star for a session, each carrying the
-    coach's existing judgment (or None).
+# The ONLY snippet fields that may ride the coach review list — playback +
+# context, requested by the FE (2026-07-28). An allowlist on purpose: the
+# snippet row also carries metrics (acoustic_read, voice_confidence,
+# user_tone_word…), and passing it through wholesale would put the machine's
+# voice-read on the same screen as an analytics review (BLIND COACH).
+_SNIPPET_PLAYBACK_KEYS = (
+    "audio_ref", "start_offset_ms", "duration_ms", "transcript", "take_index",
+)
 
-    ``suggestions`` = moment_suggestions rows; ``verdicts`` = {snippet_id: row}.
+
+def stars_with_verdicts(suggestions: Any, verdicts: Any,
+                        snippets_by_id: Any = None) -> list:
+    """The coach review list: every fired star for an arc, each carrying the
+    coach's existing judgment (or None) and — when ``snippets_by_id`` is
+    given — the playback fields for hearing the moment being judged.
+
+    ``suggestions`` = moment_suggestions rows (the DB reader folds coach
+    final-over-draft and provides ``*_draft`` passthroughs); ``verdicts`` =
+    {snippet_id: row}; ``snippets_by_id`` = {snippet_id: {playback fields +
+    take_index}} — ONLY the _SNIPPET_PLAYBACK_KEYS are taken from it.
+
     Pure. AC-9 note: this is a COACH payload, so it may carry the machine's
     guess (that is the point) — but it deliberately does NOT carry
     acoustic_read, direction, or any shadow prediction, because those belong to
     the confidence-labeling lane and must not travel with an analytics review
     (BLIND COACH). Anything added here must be checked against that."""
     by_snippet = verdicts if isinstance(verdicts, dict) else {}
+    snips = snippets_by_id if isinstance(snippets_by_id, dict) else {}
     out: list = []
     for s in (suggestions or []):
         if not isinstance(s, dict):
@@ -181,12 +198,21 @@ def stars_with_verdicts(suggestions: Any, verdicts: Any) -> list:
         # are single-device, so the kind is the whole story.
         device = s.get("trigger") if kind == "delivery" else None
         existing = by_snippet.get(sid)
-        out.append({
+        why_draft = s.get("why_draft", s.get("why"))
+        repl_draft = s.get("replacement_text_draft",
+                           s.get("replacement_text"))
+        row = {
             "snippet_id": sid,
             "star_kind": kind,
             "star_device": device,
+            # Folded (coach-final-over-draft) — what the student sees.
             "why": s.get("why"),
             "replacement_text": s.get("replacement_text"),
+            # The machine's original wording + whether the coach rewrote it.
+            "why_draft": why_draft,
+            "replacement_text_draft": repl_draft,
+            "text_edited": bool(s.get("why") != why_draft
+                                or s.get("replacement_text") != repl_draft),
             "trigger": s.get("trigger"),
             "verdict": (existing or {}).get("verdict"),
             "corrected_device": (existing or {}).get("corrected_device"),
@@ -194,7 +220,12 @@ def stars_with_verdicts(suggestions: Any, verdicts: Any) -> list:
             "judged": bool(existing),
             # What the coach may pick when they answer "wrong kind".
             "device_options": list(valid_devices(kind)),
-        })
+        }
+        snip = snips.get(sid)
+        if isinstance(snip, dict):
+            for k in _SNIPPET_PLAYBACK_KEYS:
+                row[k] = snip.get(k)
+        out.append(row)
     return out
 
 
@@ -212,22 +243,13 @@ def should_emit_keep_text(new_verdict: Any, prior_verdict: Any) -> bool:
     return new_verdict == "keep" and prior_verdict != "keep"
 
 
-def annotation_text_for_star(suggestion: Any) -> Optional[str]:
-    """A fired star's TEXT content as canonical annotation-event text, or None.
-
-    Used when a coach verdict flips to ``keep`` (learning-pipeline item 2,
-    founder 2026-07-27): the keep IS the coach endorsing the star's text, so
-    the text crosses into the writer corpus (admin_annotation_events) as an
-    approved_as_is pair. The VERDICT itself never crosses — decisions stay in
-    star_verdicts; this carries only what the machine wrote.
-
-    None when the star has no text at all (delivery stars carry no why and no
-    replacement — there is nothing to teach a writer). Deterministic
-    (sorted keys). Pure."""
-    if not isinstance(suggestion, dict):
-        return None
-    slim = {k: suggestion.get(k) for k in _STAR_TEXT_KEYS
-            if suggestion.get(k) is not None}
+def _star_text(kind: Any, trigger: Any, why: Any,
+               replacement_text: Any) -> Optional[str]:
+    """One side of the pair as canonical JSON, or None when textless."""
+    slim = {k: v for k, v in (
+        ("kind", kind), ("trigger", trigger), ("why", why),
+        ("replacement_text", replacement_text),
+    ) if v is not None}
     if not slim.get("why") and not slim.get("replacement_text"):
         return None
     import json
@@ -235,6 +257,79 @@ def annotation_text_for_star(suggestion: Any) -> Optional[str]:
         return json.dumps(slim, ensure_ascii=False, sort_keys=True)
     except (TypeError, ValueError):
         return None
+
+
+def annotation_pair_for_star(suggestion: Any) -> Optional[tuple]:
+    """A fired star's (draft_text, final_text) for the writer corpus, or None.
+
+    Used when a coach verdict flips to ``keep`` (learning-pipeline item 2,
+    founder 2026-07-27/28): the keep IS the coach signing off the star's
+    text. draft = what the machine wrote (the ``*_draft`` passthrough keys
+    the DB reader provides); final = the folded coach wording. Equal sides →
+    the caller stamps approved_as_is; different → the correction pair. The
+    VERDICT itself never crosses — decisions stay in star_verdicts.
+
+    None when the FINAL side is textless (delivery stars carry no why and no
+    replacement — there is nothing to teach a writer). A textless DRAFT with
+    a coach-written final is a valid empty-draft pair (draft side None).
+    Deterministic (sorted keys). Pure."""
+    if not isinstance(suggestion, dict):
+        return None
+    kind = suggestion.get("kind")
+    trigger = suggestion.get("trigger")
+    # The reader guarantees *_draft keys; fall back to the folded values for
+    # callers handing over raw rows (then draft == final → approved_as_is,
+    # which is the honest degradation).
+    draft = _star_text(
+        kind, trigger,
+        suggestion.get("why_draft", suggestion.get("why")),
+        suggestion.get("replacement_text_draft",
+                       suggestion.get("replacement_text")),
+    )
+    final = _star_text(kind, trigger, suggestion.get("why"),
+                       suggestion.get("replacement_text"))
+    if final is None:
+        return None
+    return draft, final
+
+
+def validate_star_text(payload: Any) -> tuple[Optional[dict], Optional[str]]:
+    """Validate the coach's star-text correction → ``(row, None)`` or
+    ``(None, error)``.
+
+    Body: ``{why?, replacement_text?}`` — at least one present. ``null``
+    clears that correction (revert to the machine draft). Every non-null
+    string must pass the SAME AC-9 qualitative guard as generation
+    (say_it_stronger._guard_copy: any digit or retired-construct vocabulary
+    kills it) — but unlike generation, a coach edit that trips the guard is
+    REJECTED loudly instead of silently nulled: a PUT that "succeeds" while
+    dropping the text would gaslight the coach. Pure."""
+    if not isinstance(payload, dict):
+        return None, "body: must be an object"
+    if "why" not in payload and "replacement_text" not in payload:
+        return None, "body: at least one of why / replacement_text required"
+
+    from services.say_it_stronger import _guard_copy
+
+    row: dict = {}
+    for field in ("why", "replacement_text"):
+        if field not in payload:
+            row[field] = None      # untouched → clears (full-state PUT)
+            continue
+        v = payload.get(field)
+        if v is None:
+            row[field] = None      # explicit clear
+            continue
+        if not isinstance(v, str) or not v.strip():
+            return None, f"{field}: must be a non-empty string or null"
+        guarded = _guard_copy(v)
+        if guarded is None:
+            return None, (
+                f"{field}: rejected by the qualitative guard — user-facing "
+                "coaching copy carries no digits and none of the retired "
+                "construct vocabulary; rephrase and retry")
+        row[field] = guarded
+    return row, None
 
 
 def corpus_summary(verdict_rows: Any) -> dict:
