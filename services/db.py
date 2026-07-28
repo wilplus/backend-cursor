@@ -9254,6 +9254,123 @@ class DatabaseService:
                          item_id, e)
             return False
 
+    # ── Generated journal covers (founder 2026-07-28) ─────────────────────
+    # Candidate cover images for a journal post. Same best-effort discipline
+    # as the helpers above: a missing table (migration pending) degrades to
+    # "no history" — the draw still works and still sets cover_image_url, the
+    # founder just loses the strip of previous attempts.
+    #
+    # CMS-only rows. No public route reads this table; the site sees only the
+    # promoted cover_image_url on journal_post.
+
+    _POST_IMAGE_COLUMNS = (
+        "id, journal_post_id, image_url, storage_key, alt_text, prompt, "
+        "revised_prompt, notes, parent_image_id, flags, model, size, "
+        "quality, created_at"
+    )
+
+    @staticmethod
+    def _is_missing_post_image_table(error: Exception) -> bool:
+        text = str(error).lower()
+        return "journal_post_image" in text and (
+            "does not exist" in text or "pgrst" in text
+            or "could not find the table" in text
+        )
+
+    def insert_journal_post_image(self, row: dict) -> Optional[dict]:
+        """Record one generated cover attempt. None on failure.
+
+        Insert, never upsert: every attempt is kept so "Regenerate" is
+        non-destructive and the founder can walk back to an earlier one.
+        """
+        if not row:
+            return None
+        try:
+            res = (
+                self.client.table("journal_post_image")
+                .insert(dict(row))
+                .execute()
+            )
+            rows = getattr(res, "data", None) or []
+            return rows[0] if rows else None
+        except Exception as e:
+            if self._is_missing_post_image_table(e):
+                logger.warning(
+                    "insert_journal_post_image: table missing (run "
+                    "migrations/add_journal_post_image.sql) post=%s",
+                    row.get("journal_post_id"))
+                return None
+            logger.error("insert_journal_post_image failed post=%s: %s",
+                         row.get("journal_post_id"), e)
+            return None
+
+    def list_journal_post_images(self, journal_post_id: str,
+                                 limit: int = 24) -> list:
+        """This post's cover attempts, newest first. []."""
+        if not journal_post_id:
+            return []
+        try:
+            res = (
+                self.client.table("journal_post_image")
+                .select(self._POST_IMAGE_COLUMNS)
+                .eq("journal_post_id", str(journal_post_id))
+                .order("created_at", desc=True)
+                .limit(max(1, int(limit or 24)))
+                .execute()
+            )
+            return getattr(res, "data", None) or []
+        except Exception as e:
+            if self._is_missing_post_image_table(e):
+                logger.warning(
+                    "list_journal_post_images: table missing (run "
+                    "migrations/add_journal_post_image.sql)")
+                return []
+            logger.warning("list_journal_post_images failed post=%s: %s",
+                           journal_post_id, e)
+            return []
+
+    def get_journal_post_image(self, image_id: str) -> Optional[dict]:
+        """One cover attempt by id, or None."""
+        if not image_id:
+            return None
+        try:
+            res = (
+                self.client.table("journal_post_image")
+                .select(self._POST_IMAGE_COLUMNS)
+                .eq("id", str(image_id))
+                .limit(1)
+                .execute()
+            )
+            rows = getattr(res, "data", None) or []
+            return rows[0] if rows else None
+        except Exception as e:
+            if self._is_missing_post_image_table(e):
+                logger.warning(
+                    "get_journal_post_image: table missing (run "
+                    "migrations/add_journal_post_image.sql)")
+                return None
+            logger.warning("get_journal_post_image failed id=%s: %s",
+                           image_id, e)
+            return None
+
+    def delete_journal_post_image(self, image_id: str) -> bool:
+        """Delete one cover attempt. True on success. Best-effort.
+
+        The R2 object is intentionally left in place: the post may still point
+        at this url (or a CDN may still be serving it), and an orphaned image
+        is cheaper than a broken cover.
+        """
+        if not image_id:
+            return False
+        try:
+            self.client.table("journal_post_image").delete() \
+                .eq("id", str(image_id)).execute()
+            return True
+        except Exception as e:
+            logger.error("delete_journal_post_image failed id=%s: %s",
+                         image_id, e)
+            return False
+
     def skip_snippet(self, snippet_id: str, is_skipped: bool = True) -> Optional[dict]:
         """Mark a snippet as skipped (hidden from user results)."""
         try:

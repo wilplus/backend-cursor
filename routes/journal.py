@@ -558,3 +558,244 @@ def journal_community_delete():
         return _invalid("id: required")
     return jsonify(
         {"deleted": bool(db.delete_journal_community_post(item_id))}), 200
+
+
+# ── GENERATED COVERS (founder 2026-07-28) ──────────────────────────────────
+#
+# "Draw a cover" next to a post, a notes box to steer it, and Regenerate. The
+# model writes a brief from the post, draws it, and the file lands in the same
+# R2 bucket an uploaded cover would (services/journal_image.py).
+#
+# Every attempt is KEPT (journal_post_image) so Regenerate is non-destructive
+# and /image/select can promote an earlier one. cover_image_url on the post
+# stays the single source of truth for what the site shows — a row here is a
+# candidate until something attaches it.
+#
+# Same auth as every other CMS route. Nothing public reads these.
+
+def _attach_to_post(post: dict, image_url: str, alt_text: str):
+    """Promote one candidate onto its post. (updated_post, error_message).
+
+    Runs through the ordinary CMS validator, so a generated cover is held to
+    the same https-only, length-capped contract as a pasted one — the R2
+    public base is configuration, and configuration can be wrong.
+
+    ``cover_alt`` is OVERWRITTEN, not preserved: alt text describes the image,
+    and the image just changed. Keeping the old sentence would leave the
+    public page describing a cover that is no longer there.
+
+    ``cover_kind`` is left alone on purpose — on a video post the image is the
+    poster frame, and flipping the kind would drop the video.
+
+    Returns the error as a message rather than raising: the image is already
+    drawn, paid for and stored, so a failed attach must not discard it.
+    """
+    changes = {"cover_image_url": image_url}
+    if (alt_text or "").strip():
+        changes["cover_alt"] = alt_text
+    try:
+        validated = jr.validate_post_body(changes, partial=True,
+                                          existing=post)
+    except jr.JournalError as ve:
+        return None, str(ve)
+    if not validated:
+        return None, "nothing to attach"
+    row = db.update_journal_post(post.get("id"), validated)
+    if not row or row == "DUPLICATE_SLUG":
+        return None, "Could not save the cover on the post."
+    return row, None
+
+
+@journal_bp.route("/v2/internal/journal/image/generate", methods=["POST"])
+def journal_image_generate():
+    """Draw a cover image for one post.
+
+    Body { password, post_id, notes?, parent_id?, fresh?, attach? }.
+
+      notes      the steer for THIS attempt ("darker, no hands"). Applied to
+                 the previous brief, so a note refines the cover on screen
+                 rather than starting an unrelated one.
+      parent_id  refine a specific earlier attempt. Defaults to the most
+                 recent one for this post — which is what Regenerate wants.
+      fresh      true ⇒ ignore the history and brief from the essay alone.
+      attach     default TRUE — write the result onto the post's cover so the
+                 button does the obvious thing. false ⇒ candidate only.
+
+    200 { image, items, post, attached, attach_error? }
+    400 (bad input, or the model refused the brief) · 401 · 404
+    · 503 (switched off / storage unconfigured / draw failed — retryable)
+    """
+    ok, err = _journal_admin_ok()
+    if not ok:
+        return err
+
+    from services import journal_image as ji
+
+    if not ji.image_enabled():
+        return jsonify({"code": "DISABLED",
+                        "error": "Cover generation is switched off"}), 503
+
+    body = _body()
+    raw_post_id = body.get("post_id")
+    post_id = raw_post_id.strip() if isinstance(raw_post_id, str) else ""
+    if not post_id:
+        return _invalid("post_id: required")
+
+    notes = body.get("notes")
+    if notes is not None and not isinstance(notes, str):
+        return _invalid("notes: must be a string")
+    parent_id = _item_id({"id": body.get("parent_id")})
+
+    post = db.get_journal_post_by_id(post_id)
+    if not post:
+        return jsonify({"code": "NOT_FOUND", "error": "post not found"}), 404
+    if not (post.get("title") or "").strip() \
+            and not (post.get("body") or "").strip():
+        return _invalid("This post has no title or body yet — there is "
+                        "nothing to draw from.")
+
+    # What this attempt refines. An explicit parent must belong to THIS post:
+    # briefing from another post's cover would silently cross the two.
+    previous = None
+    if parent_id:
+        previous = db.get_journal_post_image(parent_id)
+        if not previous:
+            return jsonify({"code": "NOT_FOUND",
+                            "error": "that image was not found"}), 404
+        if str(previous.get("journal_post_id")) != str(post_id):
+            return _invalid("parent_id: belongs to a different post")
+    elif not body.get("fresh"):
+        history = db.list_journal_post_images(post_id, limit=1)
+        previous = history[0] if history else None
+
+    try:
+        result = ji.generate_cover_image(post, notes=notes, previous=previous)
+    except ji.ImageRejected as re_:
+        # The safety system refused the brief — the author can act on this,
+        # so it is a 400 with the reason, not an opaque retry.
+        return jsonify({"code": "IMAGE_REJECTED", "error": str(re_)}), 400
+    except ji.JournalImageError as ge:
+        return jsonify({"code": "V2_ERROR", "error": str(ge)}), 503
+    except Exception as e:  # pragma: no cover - defensive
+        logger.error("journal_image_generate failed post=%s: %s", post_id, e,
+                     exc_info=True)
+        return jsonify({"code": "V2_ERROR",
+                        "error": "Could not draw the image right now."}), 503
+
+    try:
+        from services.journal_media import put_bytes, JournalMediaError
+        stored = put_bytes(data=result["image_bytes"],
+                           content_type=result["content_type"])
+    except JournalMediaError as me:
+        # The image exists but we have nowhere to keep it. 503, and say which
+        # half failed — "try again" is wrong advice for a missing bucket.
+        logger.error("journal_image_generate: storage failed post=%s: %s",
+                     post_id, me)
+        return jsonify({"code": "DISABLED", "error": str(me)}), 503
+    except Exception as e:
+        logger.error("journal_image_generate: storage failed post=%s: %s",
+                     post_id, e, exc_info=True)
+        return jsonify({"code": "V2_ERROR",
+                        "error": "Could not store the image."}), 500
+
+    row = db.insert_journal_post_image(ji.row_for_insert(
+        post_id, result, image_url=stored["public_url"],
+        storage_key=stored.get("key"), notes=notes,
+        parent_id=(previous or {}).get("id"),
+    ))
+    # A missing history table (migration pending) must not lose the cover the
+    # founder just paid for: serve the in-memory shape and carry on.
+    image = ji.serialize_image(row) if row else ji.serialize_image({
+        "journal_post_id": post_id,
+        "image_url": stored["public_url"],
+        "alt_text": result.get("alt_text"),
+        "prompt": result.get("prompt"),
+        "revised_prompt": result.get("revised_prompt"),
+        "notes": notes if isinstance(notes, str) else "",
+        "flags": result.get("flags"),
+        "model": result.get("model"), "size": result.get("size"),
+        "quality": result.get("quality"),
+    })
+
+    # null == absent == default TRUE. A FE that serializes untouched optional
+    # inputs as null would otherwise draw a cover and never attach it — the
+    # same null-vs-absent trap validate_post_body already guards against.
+    attach = body.get("attach")
+    attached, attach_error, updated = False, None, None
+    if attach is None or attach:
+        updated, attach_error = _attach_to_post(
+            post, image["image_url"], image["alt_text"])
+        attached = updated is not None
+
+    payload = {
+        "image": image,
+        "items": [ji.serialize_image(r)
+                  for r in db.list_journal_post_images(post_id,
+                                                       limit=ji.MAX_HISTORY)],
+        "post": jr.serialize_admin(updated) if updated else None,
+        "attached": attached,
+        "brief_source": result.get("brief_source"),
+    }
+    if attach_error:
+        payload["attach_error"] = attach_error
+    return jsonify(payload), 200
+
+
+@journal_bp.route("/v2/internal/journal/image/list", methods=["POST"])
+def journal_image_list():
+    """Cover attempts for one post, newest first.
+    Body { password, post_id }. 200 { items } · 400 · 401 · 503"""
+    ok, err = _journal_admin_ok()
+    if not ok:
+        return err
+    from services import journal_image as ji
+    raw = _body().get("post_id")
+    post_id = raw.strip() if isinstance(raw, str) else ""
+    if not post_id:
+        return _invalid("post_id: required")
+    rows = db.list_journal_post_images(post_id, limit=ji.MAX_HISTORY)
+    return jsonify({"items": [ji.serialize_image(r) for r in rows]}), 200
+
+
+@journal_bp.route("/v2/internal/journal/image/select", methods=["POST"])
+def journal_image_select():
+    """Promote one attempt to the post's cover — the undo for Regenerate.
+    Body { password, id }.
+    200 { post, image } · 400 · 401 · 404 · 500 · 503"""
+    ok, err = _journal_admin_ok()
+    if not ok:
+        return err
+    from services import journal_image as ji
+    image_id = _item_id(_body())
+    if not image_id:
+        return _invalid("id: required")
+    row = db.get_journal_post_image(image_id)
+    if not row:
+        return jsonify({"code": "NOT_FOUND",
+                        "error": "that image was not found"}), 404
+    post = db.get_journal_post_by_id(row.get("journal_post_id"))
+    if not post:
+        return jsonify({"code": "NOT_FOUND", "error": "post not found"}), 404
+
+    updated, attach_error = _attach_to_post(
+        post, row.get("image_url") or "", row.get("alt_text") or "")
+    if attach_error:
+        return jsonify({"code": "V2_ERROR", "error": attach_error}), 500
+    return jsonify({"post": jr.serialize_admin(updated),
+                    "image": ji.serialize_image(row)}), 200
+
+
+@journal_bp.route("/v2/internal/journal/image/delete", methods=["POST"])
+def journal_image_delete():
+    """Drop one attempt from the strip. Body { password, id }.
+
+    The stored file is left in R2 — the post may still point at it. This only
+    clears the candidate from the CMS.
+    200 { deleted } · 400 · 401 · 503"""
+    ok, err = _journal_admin_ok()
+    if not ok:
+        return err
+    image_id = _item_id(_body())
+    if not image_id:
+        return _invalid("id: required")
+    return jsonify({"deleted": bool(db.delete_journal_post_image(image_id))}), 200
