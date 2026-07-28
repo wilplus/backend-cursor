@@ -109,9 +109,17 @@ starting a second novena at day 1 looks like regression and day 54 of the
 finished run wins forever. Retrofitting them onto blobs already in users'
 browsers is strictly harder than writing them today.
 
-- Migrate an existing `pompeiana.v1` blob on read: absent `runId` → mint one,
-  set `startedAt` from whatever start date is recoverable, else now.
 - Resolve on **pull**, then push the winner back so both devices converge.
+- **No blob migration needed** (founder 2026-07-27: fresh app, zero existing
+  users). Mint `runId` + `startedAt` when a novena starts and never read a
+  legacy shape — there is none.
+
+**The urgency has a shelf life, though.** "No existing users" is true *today*.
+The moment the app is reachable by anyone, the first person to start a novena
+becomes a user with a blob in their browser. So `runId`/`startedAt` must ship
+**in the same release as, or before, public availability** — not necessarily
+before sync, but before users exist. Miss that window and the retrofit problem
+comes back.
 
 ## FE-4 — bump the service worker cache — **or none of this ships**
 
@@ -215,14 +223,15 @@ Verified against a real Postgres, not assumed:
 
 ## Open questions
 
-**Q3** — the Pompeiana domain (CORS entry in the Supabase project).
-
-**Q4** — do existing users have `pompeiana.v1` progress that must survive first
-login? If yes, first-login merge (local blob vs empty server row) is its own
-task, and it must use the FE-3 rule rather than blindly preferring the server —
-the server row is empty on first login, and overwriting local progress with it
-would delete a novena in flight. **This is the one unanswered question that can
-lose user data.**
+**Q3 — the only one left.** The Pompeiana domain, for the CORS entry in the
+Supabase project. Everything else is decided.
 
 **Answered 2026-07-27:** ~~Q1~~ scripture syncs → FE-6. ~~Q2~~ hard login gate,
-with the offline caveat in FE-2. ~~Q5~~ Option A first.
+with the offline caveat in FE-2. ~~Q4~~ fresh app, no existing users → no
+first-login merge, no blob migration (but read the shelf-life note in FE-3).
+~~Q5~~ Option A first.
+
+**What the hard gate + fresh app buys you:** every user is authenticated from
+their very first bead, so purely-local un-synced state only ever arises from
+going offline — which FE-3 already covers. There is no anonymous-then-claim
+path to design, and no orphaned local novena to rescue.

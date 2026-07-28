@@ -259,13 +259,10 @@ correct one until a second real user tries it.
 
 ## Open questions
 
-**Q3.** What is the Pompeiana domain? Needed for CORS. (Not needed for the
-migration — it is already applied and domain-independent.)
-
-**Q4 — gates an FE task.** Do existing Pompeiana users already have
-`pompeiana.v1` state in localStorage that must survive first login? If yes,
-first-login merge is real work and belongs in the FE prompt.
+**Q3 — the only one left.** What is the Pompeiana domain? Needed for the CORS
+entry. Not needed for the migration, which is domain-independent.
 
 **Answered 2026-07-27:** ~~Q1~~ scripture syncs → BE-2 shipped. ~~Q2~~ hard
-login gate → `anon` revoked at the database. ~~Q5~~ Option A first → no
-handoff allowlist needed yet (BE-4 stays unbuilt).
+login gate → `anon` revoked at the database. ~~Q4~~ fresh app, no existing
+users → no first-login merge to design. ~~Q5~~ Option A first → no handoff
+allowlist needed yet (BE-4 stays unbuilt).
