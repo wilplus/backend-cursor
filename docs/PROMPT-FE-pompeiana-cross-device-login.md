@@ -6,11 +6,18 @@ schema + RLS — read §BE-1 for the row shape you are writing to).
 **Goal (founder, 2026-07-27):** log in to Pompeiana through WillpowerLab, on a
 separate domain, and have novena progress follow the user across devices.
 
-> **Two caveats.** (1) Nobody has read the Pompeiana repo while writing this —
-> repo access was declined, so every claim about `app.js`, `store.js`, `sw.js`
-> and the `pompeiana.v1` blob comes from the founder's description. **Verify
-> each one against the files before acting on it.** (2) **Nothing here is built
-> yet.**
+> **STATUS 2026-07-27.** The **backend is done and verified** —
+> `migrations/add_pompeiana_sync.sql` in the willab repo creates
+> `pompeiana_state` and `pompeiana_scripture` with row-level security, tested
+> against a real Postgres with two users. **Nothing on the Pompeiana side is
+> built** — repo access was declined, so this remains a spec.
+>
+> Founder answers folded in: **hard login gate** (FE-2), **scripture syncs
+> too** (new FE-6), **Option A first** (so FE-5 is deferred, not deleted).
+>
+> **Caveat that still stands:** nobody has read the Pompeiana repo, so every
+> claim about `app.js`, `store.js`, `sw.js` and the `pompeiana.v1` blob comes
+> from the founder's description. **Verify each against the files.**
 
 Two frontends are in scope: **Pompeiana** (all tasks except FE-5) and the
 **WillpowerLab web app** (FE-5 only, and only under Option B).
@@ -64,17 +71,22 @@ Every request carries `apikey: <ANON_KEY>` and `Authorization: Bearer
 - Session (access + refresh token) persists in `localStorage`, alongside but
   **not inside** `pompeiana.v1`.
 - Refresh on boot and on `401`. Never on a timer.
-- **The offline rule, which matters more than the auth flow:** once a user has
-  logged in, a cached session is sufficient **forever** while offline. Only
-  re-prompt when a network call actually returns `401` *and* the device is
-  online.
+**The gate is HARD (founder 2026-07-27): no login, no app.** It is enforced at
+the database too — `anon` has zero privileges on both tables, so an
+unauthenticated client cannot read a row even if the UI let it try.
 
-  Why this is called out: `sw.js` is cache-first, so the app loads with no
-  network — but a hard login gate would then show a login wall to someone in a
-  basement with no signal, on an app whose entire point is offline use. Being
-  logged out must cost **sync**, never **access**. (See Q2 in the BE prompt —
-  the founder said "behind the login", and this is the caveat to confirm
-  against.)
+**But "hard gate" applies to the FIRST login only.** Once a user has
+authenticated on a device, a cached session is sufficient **forever while
+offline**. Re-prompt only when a network call actually returns `401` *and* the
+device is online.
+
+This is not a softening of the founder's decision — it is what makes it
+survivable. `sw.js` is cache-first, so the app itself loads with no network. A
+gate that re-checked auth on every launch would show a login wall to someone
+in a church basement with no signal, on an app whose entire purpose is offline
+use, and an expired refresh token would lock them out of a novena mid-run.
+**Being logged out must cost sync, never access to prayers already on the
+device.**
 
 ## FE-3 — conflict resolution — **the real design work, not the auth**
 
@@ -115,17 +127,40 @@ to `app.js` never land.
   reload hides exactly this bug — the failure only appears for existing users,
   who are all of them.
 
-## FE-5 — the WillpowerLab handoff page — **Option B only**
+## FE-6 — sync the pasted scripture (founder: yes, it syncs)
 
-Two ways to satisfy "log in through WillpowerLab". They differ only in whether
-the user types their password twice.
+`pompeiana_scripture` is live: `(user_id, mystery_id, language)` primary key,
+plus `text` and `updated_at`. Same three ops as FE-1, same anon key, same RLS
+scoping — no `where user_id` clause.
 
-**Option A (recommended first):** Pompeiana shows its own login form against
-the same Supabase project. Same credentials, same accounts, cross-device sync
-works fully. Costs one extra login per domain. **No WillpowerLab change at
-all.**
+- **Read once at boot**, not per mystery. One `GET
+  /rest/v1/pompeiana_scripture?select=mystery_id,language,text` returns
+  everything the user has, and RLS guarantees it is only theirs.
+- **Write on blur/save of a paste**, not on keystroke. Upsert with
+  `Prefer: resolution=merge-duplicates`; the composite PK is the conflict
+  target.
+- `mystery_id` and `language` are the keys from the app's own data package
+  (`mysteries.json` / `languages.json`) — the column is `TEXT` precisely so a
+  new language there never needs a database migration.
+- **Conflict rule is different from progress, deliberately.** Scripture is
+  free text a user typed, not monotonic progress: last-write-wins per
+  `(mystery, language)` is correct here. Do **not** apply the FE-3
+  furthest-progress rule to it.
+- Keep it **out of the `state` blob**. It is written rarely and read at boot;
+  progress is rewritten on every bead tap. Folding them together would
+  re-send every pasted passage on each tap.
 
-**Option B:** the loading redirect the founder described.
+## FE-5 — the WillpowerLab handoff page — **DEFERRED (founder chose Option A)**
+
+**Founder chose Option A — build that, not this.** Pompeiana shows its own
+login form against the same Supabase project: same credentials, same accounts,
+full cross-device sync, **no WillpowerLab change at all**. Cost is one extra
+login per domain.
+
+Option B below is the loading redirect originally described. It is written up
+so it is ready when the second login starts to annoy — **do not build it now.**
+It is an auth flow with a security-critical allowlist, where Option A is a
+form.
 
 ```
 pompeiana → willpowerlab.com/handoff?next=<pompeiana-url>
@@ -146,9 +181,6 @@ Rules, all load-bearing:
 - The handoff page is **pure client-side** — the WillpowerLab frontend already
   holds the session. It needs no backend endpoint (see BE-3).
 
-**Recommendation: ship A, add B when the second login actually annoys.** A is
-a form; B is an auth flow with a security-critical allowlist.
-
 ---
 
 ## Acceptance
@@ -165,21 +197,32 @@ a form; B is an auth flow with a security-critical allowlist.
 6. Language switch mid-prayer still preserves step and bead — the existing
    behaviour must not regress.
 
+## The wire contract you are coding against
+
+Verified against a real Postgres, not assumed:
+
+- `user_id` has `DEFAULT auth.uid()` — **omit it on insert**, the database
+  fills it from the JWT. Sending it works too, but sending someone *else's* is
+  rejected by the policy, as it should be.
+- Upsert conflict targets: `pompeiana_state` → `(user_id)`;
+  `pompeiana_scripture` → `(user_id, mystery_id, language)`.
+- **There is no DELETE**, on either table, by design. "Start over" is an UPDATE
+  to a fresh `run_id`. A delete attempt returns `permission denied` — that is
+  not a bug to route around.
+- An unauthenticated request gets `permission denied for table`, not an empty
+  list. Treat it as "log in", never as "the user has no data" — writing an
+  empty state on top of that would wipe real progress.
+
 ## Open questions
 
-Answer these before starting; two of them change the shape of the work.
-
-**Q1** — does the user's pasted **scripture text** sync across devices, or stay
-local? If it syncs it needs its own table (BE-2), not the state blob — it is
-written rarely and read at boot, the opposite pattern from progress.
-
-**Q2** — **hard login gate**, or optional login that only adds sync? Read the
-offline rule in FE-2 before answering.
-
-**Q3** — the Pompeiana domain, for the allowlist and CORS.
+**Q3** — the Pompeiana domain (CORS entry in the Supabase project).
 
 **Q4** — do existing users have `pompeiana.v1` progress that must survive first
 login? If yes, first-login merge (local blob vs empty server row) is its own
-task and needs the FE-3 rule applied to it.
+task, and it must use the FE-3 rule rather than blindly preferring the server —
+the server row is empty on first login, and overwriting local progress with it
+would delete a novena in flight. **This is the one unanswered question that can
+lose user data.**
 
-**Q5** — Option A or Option B first?
+**Answered 2026-07-27:** ~~Q1~~ scripture syncs → FE-6. ~~Q2~~ hard login gate,
+with the offline caveat in FE-2. ~~Q5~~ Option A first.

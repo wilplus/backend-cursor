@@ -7,11 +7,16 @@ PWA) sits behind the WillpowerLab login, on its own domain for now. Any
 WillpowerLab user can use it. Novena progress is saved server-side and follows
 the user across devices.
 
-> **Two caveats on this document.** (1) Nobody has read the Pompeiana repo
-> while writing it — repo access was declined, so every statement about that
-> codebase comes from the founder's own description and must be checked against
-> the files before you trust it. (2) **Nothing here is built yet.** This is the
-> plan, not a changelog.
+> **STATUS 2026-07-27 — BE-1 and BE-2 are IMPLEMENTED and verified** in
+> `migrations/add_pompeiana_sync.sql`. Founder answers folded in: **hard login
+> gate**, **scripture syncs too** (so BE-2 is in, not blocked), **Option A
+> first** (so BE-4 is not needed yet). One thing this plan got wrong is
+> recorded in §5 — read it, because it is the failure mode that ships silently.
+>
+> **Caveat that still stands:** nobody has read the Pompeiana repo — access was
+> declined — so every statement about *that* codebase comes from the founder's
+> description and must be checked against the files. The migration below does
+> not depend on any of it.
 
 **This document lives in the willab backend repo for one reason:** the Supabase
 project is willab infrastructure. The schema and RLS below run against the
@@ -107,7 +112,7 @@ Cross-check against `docs/RLS-AUDIT.md` and apply whatever standard the
 existing willab tables use; this table must not be the weakest one in the
 project.
 
-## BE-2 — the scripture table — **BLOCKED on Q1**
+## BE-2 — the scripture table — **DONE** (founder: yes, it syncs)
 
 Pompeiana ships scripture *references* only; the user pastes their own
 translation, stored locally per mystery per language. If that must follow the
@@ -178,19 +183,73 @@ this document.
 4. `curl` the willab health/config surface and confirm nothing changed — this
    work should be invisible to the F1 backend.
 
+---
+
+## 5. What this plan got wrong (found by testing, not by reading)
+
+**GRANTs are separate from RLS, and the plan had only RLS.** The original
+draft created both tables with policies and no grants. That is not a subtle
+degradation — **every single PostgREST request fails with `permission denied
+for table`**, because a policy filters which *rows* a role may touch and grants
+nothing about the *table*. Verified against a real Postgres 16: with policies
+alone, all ten behaviour tests failed identically.
+
+The migration now carries:
+
+```sql
+GRANT SELECT, INSERT, UPDATE ON <table> TO authenticated;
+REVOKE ALL ON <table> FROM anon;
+```
+
+Supabase's default privileges often paper over this, which is worse than it
+sounds — it means the bug appears only when the defaults have been changed or
+the migration is run by a different role, i.e. in exactly the environment
+nobody tested. Stating the privileges explicitly removes the dependency.
+
+`anon` getting **nothing** is the founder's hard login gate enforced at the
+database, not just in the UI. No `DELETE` grant to anyone, matching the
+no-delete-policy decision.
+
+---
+
+## 6. Verification — actually run, not asserted
+
+A throwaway Postgres 16 with a minimal Supabase shim (`auth` schema,
+`auth.users`, `auth.uid()` reading the JWT sub, and the `anon`/`authenticated`
+roles). **The role must really switch** — `SET LOCAL` outside a transaction is
+a silent no-op, and the first run of these tests passed everything while
+actually executing as the table owner, which bypasses RLS entirely. Every test
+below runs inside `BEGIN … COMMIT` with `current_user` asserted first.
+
+| # | Check | Result |
+|---|---|---|
+| 0 | role really switches to `authenticated`, `auth.uid()` resolves | ✅ |
+| 1 | A inserts with `user_id` **omitted** → `DEFAULT auth.uid()` fills it | ✅ |
+| 3 | **A selects → exactly one row, A's own** | ✅ |
+| 4 | A updates B's row → `UPDATE 0` | ✅ |
+| 5 | A inserts a row owned by B → RLS violation | ✅ rejected |
+| 6 | anonymous, no JWT → `permission denied` | ✅ (hard gate) |
+| 7 | upsert `on conflict (user_id)` → state advances 3 → 4 | ✅ |
+| 8 | scripture: A sees its 2 rows, never B's | ✅ |
+| 9 | A cannot DELETE its own progress | ✅ denied |
+| 10 | deleting the `auth.users` row cascades both tables to 0 | ✅ |
+
+Re-running the migration is clean (`IF NOT EXISTS` + the DO-block policy
+guards) and **existing rows survive** — confirmed by counting before and after.
+
+**Still to do in the real project:** run it there and repeat tests 3 and 6 with
+two genuine accounts. A policy that is present but wrong looks identical to a
+correct one until a second real user tries it.
+
 ## Open questions
 
-**Q1 — gates BE-2.** Should the user's pasted scripture text sync across
-devices, or stay local to each device? Changes whether BE-2 exists at all.
+**Q3.** What is the Pompeiana domain? Needed for CORS. (Not needed for the
+migration — it is already applied and domain-independent.)
 
-**Q2 — gates the FE's session model.** Is login a **hard gate** (no login, no
-app) or **optional** (app works anonymously as today; login adds cross-device
-sync)? The founder said "behind the login", which reads as a hard gate — but
-see the offline-lockout warning in the FE prompt before confirming, because a
-hard gate has a real failure mode in a church basement.
+**Q4 — gates an FE task.** Do existing Pompeiana users already have
+`pompeiana.v1` state in localStorage that must survive first login? If yes,
+first-login merge is real work and belongs in the FE prompt.
 
-**Q3.** What is the Pompeiana domain? Needed for the CORS/allowlist entries.
-
-**Q4.** Do existing Pompeiana users already have `pompeiana.v1` state in
-localStorage that must survive first login? If yes, first-login merge is a
-real task and belongs in the FE prompt, not an afterthought.
+**Answered 2026-07-27:** ~~Q1~~ scripture syncs → BE-2 shipped. ~~Q2~~ hard
+login gate → `anon` revoked at the database. ~~Q5~~ Option A first → no
+handoff allowlist needed yet (BE-4 stays unbuilt).
