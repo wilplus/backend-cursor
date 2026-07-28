@@ -411,6 +411,12 @@ def process_lab_recording(
                 BytesIO(whisper_bytes), whisper_name,
                 vocabulary=vocab,
                 language=(str(_lang).strip() or None) if _lang else None,
+                # Cost attribution (token-pricing Phase 0). recording_kind
+                # splits the ledger by spoken take vs re-read — they have very
+                # different durations and only spoken takes count as takes.
+                usage_surface=f"whisper_{recording_kind or 'spoken'}",
+                usage_user_id=user_id,
+                usage_session_id=session_id,
             )
             segments = (wres or {}).get("segments") or []
             words_all = (wres or {}).get("words") or []

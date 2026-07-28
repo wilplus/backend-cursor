@@ -177,6 +177,21 @@ def _complete(spec: LLMSpec, *, system: str, user: str, surface: str,
             # refactor here would quietly leave that protection behind.
             store=False,
         )
+        # Cost ledger (token-pricing Phase 0). Recorded HERE, immediately
+        # after the call returns and BEFORE any parsing — we have already
+        # paid for this response, so a downstream parse failure must not
+        # lose the cost row. This service bypasses services/llm.py, so
+        # without this hook it is invisible to the ledger.
+        # user_id is DELIBERATELY not recorded for the Life Panel: this
+        # module handles addiction / confession-shaped material and keeps
+        # no per-user trail outside its own tables. A per-surface cost
+        # total is all Phase 0 needs.
+        try:
+            from services.llm_usage import record_response_usage
+            record_response_usage(response, surface=f"life_{surface}",
+                                  model=spec.model,)
+        except Exception:
+            pass
         raw = (response.choices[0].message.content or "").strip()
     except Exception as e:
         _log_derivation(surface, user_id=user_id, outcome="call_failed",

@@ -218,6 +218,17 @@ def _extract_topics_via_llm(items: list[dict]) -> list[str] | None:
             temperature=0.2,
             response_format=response_format(SESSION_TOPIC_EXTRACTION_SCHEMA),
         )
+        # Cost ledger (token-pricing Phase 0). Recorded HERE, immediately
+        # after the call returns and BEFORE any parsing — we have already
+        # paid for this response, so a downstream parse failure must not
+        # lose the cost row. This service bypasses services/llm.py, so
+        # without this hook it is invisible to the ledger.
+        try:
+            from services.llm_usage import record_response_usage
+            record_response_usage(response, surface="stickiness_topics",
+                                  model=_MODEL,)
+        except Exception:
+            pass
         raw = (response.choices[0].message.content or "").strip()
     except Exception as e:
         logger.warning("stickiness: openai call failed: %s", e)

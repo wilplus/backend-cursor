@@ -180,7 +180,9 @@ class OpenAIService:
         self._model_cache[purpose] = (now, model)
         return model
     
-    def transcribe_audio(self, audio_file, filename: str = "audio.webm", content_type: str | None = None, vocabulary: list | None = None, language: str | None = None):
+    def transcribe_audio(self, audio_file, filename: str = "audio.webm", content_type: str | None = None, vocabulary: list | None = None, language: str | None = None,
+                         usage_surface: str = "whisper_take", usage_user_id: str | None = None,
+                         usage_session_id: str | None = None, usage_arc_id: str | None = None):
         """
         Transcribe audio using Whisper-1.
         Returns {text, duration, segments} — segments is the verbose_json
@@ -208,6 +210,13 @@ class OpenAIService:
         (keeping only the domain vocabulary, which is language-neutral).
         Losing filler-word priming on a non-English take is a far smaller
         cost than losing the transcript.
+
+        usage_*:    cost-ledger attribution for the llm_usage table
+                    (token-pricing Phase 0). All optional with safe defaults —
+                    existing callers are unaffected. Whisper is ~52% of a
+                    take's cost and the only line that scales without limit
+                    with duration, so this is the most important row in the
+                    ledger; pass usage_session_id wherever it is known.
         """
         # Dev mode mock response (COMMENTED OUT - using real OpenAI)
         # if not config.is_production:
@@ -336,6 +345,21 @@ class OpenAIService:
             # callers can persist transcription_language on the recording row for
             # downstream multilingual filler detection (utils/filler_words.py).
             detected_language = getattr(transcript_response, "language", None)
+
+            # Cost ledger (token-pricing Phase 0). Whisper bills on AUDIO TIME,
+            # so `duration` is the billable quantity. Best-effort: llm_usage
+            # swallows its own failures and never touches the transcript.
+            try:
+                from services.llm_usage import record_audio_usage
+                record_audio_usage(
+                    surface=usage_surface,
+                    seconds=duration,
+                    user_id=usage_user_id,
+                    session_id=usage_session_id,
+                    arc_id=usage_arc_id,
+                )
+            except Exception:
+                pass
 
             return {
                 "text": transcript_response.text,
