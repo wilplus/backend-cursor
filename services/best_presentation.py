@@ -895,13 +895,22 @@ def build_arc_breakthroughs(arc_id: Optional[str], *, database=None) -> dict:
                 # span inside the take audio so the FE clamps playback (#1).
                 "start_offset_ms": s.get("start_offset_ms"),
                 "duration_ms": s.get("duration_ms"),
-                # score-free plain-language "why" (AC-9 — never a number).
-                "note": _moment_note(s),
-                # The coach's human-authored feedback on THIS moment — the
-                # note they wrote and the breakthrough video they recorded.
-                # `video_ref` matches the game's field name so the FE reuses
-                # its player. Null when the coach left neither.
-                "coach_comment": (_draft.get("note") or None),
+                # ── The FE's shipped mapper contract (HANDOFF-BE-2026-07-28,
+                # §1) — names matter more than history here:
+                #   note     the COACH's human-authored key-moment note (the
+                #            drafts lane). The FE renders it as THE comment.
+                #   comment  the SYSTEM's score-free delivery explanation
+                #            (AC-9 — never a number), shown ONLY when the
+                #            coach left no note (FE enforces the override).
+                #   video_ref the coach's breakthrough video (game naming, so
+                #            the FE reuses its player).
+                # HISTORY NOTE: before 2026-07-28 `note` carried the MACHINE
+                # text — the shipped FE reads `note` as the coach's words, so
+                # serving machine prose there would misattribute machine
+                # voice as the human coach. The rename is the fix, not a
+                # cosmetic choice.
+                "note": (_draft.get("note") or None),
+                "comment": _moment_note(s),
                 "video_ref": (_draft.get("breakthrough_video_ref") or None),
             })
 

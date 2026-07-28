@@ -12539,6 +12539,53 @@ def v2_coach_approve_ideal_text(arc_id):
         if not ok:
             return jsonify({"code": "V2_ERROR",
                             "error": "Could not approve"}), 500
+
+        # ── Learning-pipeline item 3 at APPROVE (FE close-out 2026-07-28) ──
+        # The shipped FE's Verify button posts THIS route — nothing in the FE
+        # calls /verify — so without a hook here the sentence-level capture
+        # never fires in production. Approve has no re-approve guard, so
+        # exactly-once comes from the annotation PROBE instead: first approve
+        # captures, re-approves skip (the /verify route keeps its richer
+        # per-version guard and needs no probe). Same staleness fence as
+        # verify, read from the PRE-approve row — the approve upsert above
+        # stamps updated_by/updated_at, which must not vouch for freshness.
+        # Best-effort; never blocks the approve.
+        try:
+            import re as _re
+            from services.ideal_text_annotations import (
+                emit_ideal_text_annotations,
+            )
+            _arc_uuid = str(arc_id) if _re.match(
+                r"^[0-9a-fA-F-]{36}$", str(arc_id)) else None
+            if not db.has_ideal_text_annotations(_arc_uuid):
+                _sessions = db.get_arc_sessions(arc_id) or []
+                _owner = next((s.get("user_id") for s in _sessions
+                               if s.get("user_id")), None)
+                _pre = row or {}
+                # Review-without-edit: the text being approved IS the fresh
+                # machine assembly (no stored block existed) — draft==final
+                # by construction, an endorsement, not an absent draft.
+                _machine_approved = not ((_pre.get("text") or "").strip())
+                _n = emit_ideal_text_annotations(
+                    db,
+                    arc_id=arc_id,
+                    owner_user_id=_owner,
+                    coach_user_id=str(request.user_id),
+                    draft_text=(text if _machine_approved
+                                else _pre.get("auto_text")),
+                    final_text=text,
+                    auto_updated_at=_pre.get("auto_updated_at"),
+                    coach_updated_at=_pre.get("updated_at"),
+                    coach_owned=bool(_pre.get("updated_by")
+                                     or _pre.get("approved_at")),
+                )
+                if _n:
+                    logger.info("ideal-text annotations emitted at approve "
+                                "arc=%s count=%d", arc_id, _n)
+        except Exception as _ann_err:
+            logger.warning("ideal-text annotation capture at approve failed "
+                           "arc=%s: %s (non-fatal)", arc_id, _ann_err)
+
         return jsonify({"ok": True, "arc_id": arc_id, "approved": True}), 200
     except Exception as e:
         logger.error("coach ideal-text approve failed arc=%s: %s", arc_id, e,
@@ -14117,19 +14164,31 @@ def v2_coach_arc_stars(arc_id):
 @v2_bp.route("/coach/snippets/<snippet_id>/star-verdict", methods=["PUT"])
 @require_admin_or_coach
 def v2_coach_put_star_verdict(snippet_id):
-    """Record the coach's judgment of ONE fired star.
+    """Record the coach's judgment of ONE fired star — and, since §4b of the
+    FE handoff (2026-07-28), optionally their corrected wording riding the
+    same PUT.
 
     Body { star_kind, star_device?, verdict, corrected_device?, note?,
-           star_version? }
+           star_version?, why_final?, replacement_text_final? }
 
       verdict='keep'             the star was right (the endorsement signal)
       verdict='wrong_kind'       requires corrected_device — the confusion pair
       verdict='should_not_fire'  this moment deserved silence
 
-    Idempotent: re-judging the same star REPLACES the previous verdict. Nothing
-    here mutates the star, the suggestion text, or the student's copy (L1) —
-    the judgment is captured for training and is never surfaced to the student
-    (AC-9).
+    The *_final keys are the coach's rewrite of what the star SAYS. The FE
+    sends them ONLY when the coach actually changed the text, and sending
+    them on the verdict write makes the half-state (an edit with no verdict)
+    unrepresentable at the wire — the edit→keep PAIR is what trains. Partial
+    semantics: an absent key preserves the stored correction; there is no
+    null-clear on this route (the full-state star-text PUT keeps that). Text
+    writes happen BEFORE the verdict, so a keep's corpus emission always
+    carries the fresh wording; a guard-tripping string 400s before ANYTHING
+    is written (the gesture stays atomic).
+
+    Idempotent: re-judging the same star REPLACES the previous verdict.
+    Nothing here mutates the machine's draft text or the student's flow (L1
+    — the student sees the coach's folded wording, which is the point).
+    Verdicts are never surfaced to the student (AC-9).
 
     200 { saved, snippet_id, verdict } · 400 · 404 · 500
     """
@@ -14138,11 +14197,16 @@ def v2_coach_put_star_verdict(snippet_id):
                         "error": "snippet_id must be a valid UUID"}), 400
     body = request.get_json(silent=True) or {}
 
-    from services.star_verdicts import validate_verdict
+    from services.star_verdicts import (
+        validate_star_text_updates, validate_verdict,
+    )
 
     row, err = validate_verdict(body)
     if err:
         return jsonify({"code": "INVALID_INPUT", "error": err}), 400
+    text_updates, text_err = validate_star_text_updates(body)
+    if text_err:
+        return jsonify({"code": "INVALID_INPUT", "error": text_err}), 400
 
     try:
         snip = db.get_snippet_by_id(snippet_id)
@@ -14164,6 +14228,23 @@ def v2_coach_put_star_verdict(snippet_id):
         # the corpus row — _prior_ok=False fails the emission closed.
         _prior, _prior_ok = db.get_star_verdict(snippet_id)
 
+        # §4b text first (so the keep-emission below reads the fresh final).
+        # A failed write fails the WHOLE gesture before the verdict lands —
+        # per the FE contract only edited rows can reach this branch, so the
+        # plain verdict path can never regress behind it.
+        if text_updates:
+            _text_saved = db.set_moment_suggestion_final(
+                str(snippet_id),
+                edited_by=getattr(request, "user_id", None),
+                **text_updates,
+            )
+            if not _text_saved:
+                return jsonify({
+                    "code": "SERVER_ERROR",
+                    "error": "could not save the corrected wording (run "
+                             "migrations/add_moment_suggestion_final.sql)",
+                }), 500
+
         saved = db.upsert_star_verdict(
             snippet_id=snippet_id, row=row, session_id=session_id,
             arc_id=arc_id, coach_user_id=getattr(request, "user_id", None),
@@ -14179,19 +14260,22 @@ def v2_coach_put_star_verdict(snippet_id):
         # A verdict flipping TO 'keep' is the coach signing off the star's
         # TEXT — emit the (machine draft, coach-corrected final) pair into
         # the writer corpus. Untouched text → approved_as_is endorsement;
-        # coach-rewritten text (the star-text PUT below) → the correction
-        # pair. Only text crosses lanes; the verdict stays in star_verdicts
-        # (the decision corpus). Guarded on the flip so a re-keep never
-        # double-writes; wrong_kind / should_not_fire emit nothing (a
-        # rejected star's text must not train the writer as preferred
-        # output). Best-effort — a miss never fails the save.
+        # coach-rewritten text (§4b riding this PUT, or the star-text PUT) →
+        # the correction pair. Only text crosses lanes; the verdict stays in
+        # star_verdicts (the decision corpus). Guarded on the flip — plus the
+        # re-keep-with-a-fresh-correction case (text_updated), which is a
+        # genuinely new pair the flip guard alone would drop. wrong_kind /
+        # should_not_fire emit nothing (a rejected star's text must not train
+        # the writer as preferred output). Best-effort — a miss never fails
+        # the save.
         try:
             from services.star_verdicts import (
                 annotation_pair_for_star, should_emit_keep_text,
             )
             if (_prior_ok
-                    and should_emit_keep_text(row["verdict"],
-                                              (_prior or {}).get("verdict"))
+                    and should_emit_keep_text(
+                        row["verdict"], (_prior or {}).get("verdict"),
+                        text_updated=bool(text_updates))
                     and owner_user_id and arc_id):
                 _sugg = (db.get_moment_suggestions_by_arc(arc_id)
                          or {}).get(str(snippet_id))
