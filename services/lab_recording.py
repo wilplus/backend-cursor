@@ -288,6 +288,12 @@ def _merge_slide_vocab(session_context):
     return merged or None
 
 
+class _SkipAnalytics(Exception):
+    """Internal: skip an optional LLM block when its stage is unticked. Rides
+    the block's existing best-effort try/except, so no new control flow is
+    introduced on the live path (where stages is None and this never fires)."""
+
+
 def process_lab_recording(
     *,
     session_id: str,
@@ -299,6 +305,7 @@ def process_lab_recording(
     parent_audio_url: str,
     recording_kind: str = "spoken",
     paired_session_id: Optional[str] = None,
+    stages: Optional[set] = None,
 ) -> dict:
     """Run the full pipeline → §3.3 Readout payload.
 
@@ -316,7 +323,19 @@ def process_lab_recording(
     SPOKEN take. A re-read is 1–2 pieces, far too few to z-score against
     itself, so the parent take's pieces become the acoustic reference: the
     coach's needle reads honestly on re-reads instead of pegging neutral.
+
+    ``stages`` (founder 2026-07-28, training-import ticks) — which OPTIONAL
+    layers to run. None (the default, and every live caller) = ALL of them,
+    byte-identical to before. A set omitting 'analytics' skips the per-piece
+    LLM layers (topic stickiness, say-it-stronger); the transcript, pieces,
+    acoustics, acoustic read and confidence composite always run because they
+    ARE the recording. The coach-only import lane uses this to build a
+    confidence corpus for the price of Whisper alone — on a 50-file batch the
+    LLM layers are the difference between minutes and hours. See
+    services/training_import.py.
     """
+    # None = every stage (the live path). A provided set opts in explicitly.
+    _run_analytics = stages is None or "analytics" in stages
     # ── F1 (2026-07-26): put slide taps on the AUDIO clock, ONCE, before
     # anything reads them. The FE measures the recorder warm-up offset and
     # sends it as slide_clock_offset_ms; subtracting it here means every
@@ -465,7 +484,10 @@ def process_lab_recording(
         # The LLM budget FIRST (needs only text length) — the most
         # acoustically-activated pieces get the model layers; but we don't have
         # metrics yet, so budget after a cheap first metrics pass below.
-        _budget_n = _piece_llm_budget()
+        # Budget 0 when analytics are off: the salience ranking still runs
+        # (it is free and picks which pieces get the richer feature vector),
+        # but no piece reaches an LLM layer.
+        _budget_n = _piece_llm_budget() if _run_analytics else 0
         # Pass 1: FULL metrics (incl. librosa) only for pieces we MIGHT budget;
         # a piece under the 1s floor gets {}. We don't yet know the budget set,
         # so pass 1 computes the cheap acoustic core for ALL pieces (librosa
@@ -667,7 +689,11 @@ def process_lab_recording(
     #    transcript/position, so no snippet ids are needed yet. Pieces mode:
     #    only the LLM-budget pieces are scored (cost cap) — the rest carry
     #    stickiness {composite: None} honestly.
-    if _pieces_mode:
+    if not _run_analytics:
+        # Analytics off (import lane): no LLM topic read. Honest absence —
+        # every piece carries stickiness {} exactly like an unbudgeted piece.
+        sticky = [{} for _ in prelim]
+    elif _pieces_mode:
         _b_order = sorted(_llm_budget_idx)
         _sticky_b = score_snippets_stickiness([
             {"id": None, "transcript": prelim[i]["transcript"]}
@@ -1055,6 +1081,8 @@ def process_lab_recording(
     # appear on the readout RE-READ once generated (the 201 below carries
     # null). Best-effort: never blocks or breaks the recording.
     try:
+        if not _run_analytics:
+            raise _SkipAnalytics()   # import lane: no advice layers
         from services.say_it_stronger import dispatch_say_it_stronger
         from services.audio_metrics import SAMPLE_RATE
         _ctx = session_context or {}

@@ -1,0 +1,315 @@
+"""willab — training-audio import (founder 2026-07-28).
+
+services/training_import.py: bulk audio in, coach-reviewable pieces out,
+without minting a project the speaker owns.
+
+WHAT THIS PINS DOWN — the isolation, which is the whole feature:
+  * source='training_import', NOT 'audit_upload'. Every user-facing list and
+    every per-speaker BASELINE reader filters audit_upload, so this one value
+    is what keeps a fifty-voice corpus out of one speaker's acoustic norm. A
+    regression here corrupts every read that speaker gets afterwards, silently;
+  * imports still get their own arc (every coach surface is arc-scoped — an
+    arc-less import would be analysed and then invisible);
+  * provenance is written (recording_origin='admin_import' + source_metadata)
+    and degrades on a pre-migration DB instead of losing the import;
+  * the min-content gate still guards the corpus;
+  * a failure returns a reason, never raises — one bad file must not abort a
+    batch.
+
+Run: python3 -m unittest test_training_import
+"""
+from __future__ import annotations
+
+import sys
+import types
+import unittest
+from unittest.mock import MagicMock
+
+_ORIG = {}
+
+
+def setUpModule():
+    # Stub the storage + heavy deps so the module imports and runs without a
+    # live bucket, Whisper, or ffmpeg.
+    for name in ("services.db", "services.coach_video_storage",
+                 "services.min_content_gate", "services.lab_recording"):
+        _ORIG[name] = sys.modules.get(name)
+
+    db_stub = types.ModuleType("services.db")
+    db_stub.db = MagicMock()
+    sys.modules["services.db"] = db_stub
+
+    store = types.ModuleType("services.coach_video_storage")
+    store.put_coach_object_bytes = lambda *a, **k: None
+    store.coach_media_public_url = lambda key: f"https://cdn/{key}"
+    sys.modules["services.coach_video_storage"] = store
+
+    gate = types.ModuleType("services.min_content_gate")
+    gate.evaluate_min_content_bytes = lambda b: (
+        {"ok": True, "duration_sec": 42.0} if b != b"BAD"
+        else {"ok": False, "reason": "too_short"})
+    sys.modules["services.min_content_gate"] = gate
+
+    lab = types.ModuleType("services.lab_recording")
+    lab.process_lab_recording = lambda **kw: {
+        "snippets": [{"id": "p1"}, {"id": "p2"}, {"id": "p3"}]}
+    sys.modules["services.lab_recording"] = lab
+
+
+def tearDownModule():
+    for name, mod in _ORIG.items():
+        if mod is not None:
+            sys.modules[name] = mod
+        else:
+            sys.modules.pop(name, None)
+
+
+def _db() -> MagicMock:
+    d = MagicMock()
+    d.create_recording.return_value = None
+    return d
+
+
+def _import(**over):
+    from services.training_import import import_training_audio
+    kwargs = dict(audio_bytes=b"AUDIO", filename="talk.mp3",
+                  user_id="user-1", topic="My conference talk",
+                  database=over.pop("database", _db()))
+    kwargs.update(over)
+    return kwargs["database"], import_training_audio(**kwargs)
+
+
+class IsolationTests(unittest.TestCase):
+    """The markers that make an import invisible to the speaker."""
+
+    def test_session_source_is_training_import_not_audit_upload(self):
+        """THE load-bearing assertion. audit_upload is what
+        v2_list_user_lab_sessions (the per-speaker baseline reader) and every
+        user-facing history query filter on — an import wearing that value
+        would blend other people's voices into this speaker's own norm."""
+        from services.training_import import IMPORT_SOURCE
+        db, result = _import()
+        self.assertTrue(result["ok"])
+        db.set_session_source.assert_called_once()
+        args = db.set_session_source.call_args.args
+        self.assertEqual(args[1], IMPORT_SOURCE)
+        self.assertNotEqual(args[1], "audit_upload")
+
+    def test_import_gets_its_own_single_take_arc(self):
+        """Every coach surface is arc-scoped; an arc-less import would be
+        analysed and then unreachable."""
+        db, result = _import()
+        db.set_session_arc.assert_called_once()
+        sid, arc_id, take_index = db.set_session_arc.call_args.args
+        self.assertEqual(sid, result["session_id"])
+        self.assertEqual(arc_id, result["arc_id"])
+        self.assertEqual(take_index, 1)
+        self.assertNotEqual(result["arc_id"], result["session_id"])
+
+    def test_provenance_is_written_on_the_recording(self):
+        from services.training_import import IMPORT_ORIGIN
+        db, _ = _import(speaker_label="Jane Doe", source_note="from YouTube")
+        payload = db.create_recording.call_args.args[0]
+        self.assertEqual(payload["recording_origin"], IMPORT_ORIGIN)
+        meta = payload["source_metadata"]
+        self.assertEqual(meta["source_kind"], "training_import")
+        self.assertEqual(meta["speaker_label"], "Jane Doe")
+        self.assertEqual(meta["import_notes"], "from YouTube")
+        self.assertEqual(meta["source_title"], "talk.mp3")
+
+    def test_speaker_label_rides_the_session_context(self):
+        """The grouping key a per-speaker model will need."""
+        db, _ = _import(speaker_label="Jane Doe")
+        ctx = db.set_session_intake_context.call_args.args[1]
+        self.assertEqual(ctx["speaker_label"], "Jane Doe")
+        self.assertEqual(ctx["topic"], "My conference talk")
+
+
+class PipelineParityTests(unittest.TestCase):
+
+    def test_runs_the_same_analysis_a_live_take_runs(self):
+        _db_, result = _import()
+        self.assertEqual(result["snippet_count"], 3)
+        self.assertTrue(result["ok"])
+
+    def test_analysis_receives_the_stored_parent_url(self):
+        # Patch through sys.modules, NOT `import services.lab_recording as x`:
+        # the latter binds the `services` package ATTRIBUTE (the real module,
+        # already imported by another suite), while training_import's
+        # function-level `from services.lab_recording import ...` reads
+        # sys.modules — so an attribute patch lands on the wrong object and
+        # the test passes alone but fails in the full run.
+        lab = sys.modules["services.lab_recording"]
+        seen = {}
+        orig = lab.process_lab_recording
+
+        def _spy(**kw):
+            seen.update(kw)
+            return {"snippets": []}
+        lab.process_lab_recording = _spy
+        try:
+            _db_, result = _import()
+        finally:
+            lab.process_lab_recording = orig
+        self.assertEqual(seen["session_id"], result["session_id"])
+        self.assertTrue(seen["parent_audio_url"].startswith("https://cdn/"))
+        self.assertEqual(seen["user_id"], "user-1")
+
+
+class GateAndFailureTests(unittest.TestCase):
+
+    def test_gate_rejection_is_a_reason_not_an_exception(self):
+        _db_, result = _import(audio_bytes=b"BAD")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "too_short")
+
+    def test_missing_topic_is_rejected(self):
+        _db_, result = _import(topic="   ")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "no_topic")
+
+    def test_empty_audio_is_rejected(self):
+        _db_, result = _import(audio_bytes=b"")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "no_audio")
+
+    def test_pre_migration_db_still_imports_without_provenance(self):
+        """recording_origin / source_metadata are an old, possibly-unrun
+        migration — losing the import over them would be the wrong trade."""
+        db = _db()
+        calls = []
+
+        def _create(payload):
+            calls.append(payload)
+            if len(calls) == 1:
+                raise RuntimeError(
+                    "column \"source_metadata\" does not exist (PGRST204)")
+        db.create_recording.side_effect = _create
+        _db_, result = _import(database=db)
+        self.assertTrue(result["ok"])
+        self.assertEqual(len(calls), 2)
+        self.assertNotIn("source_metadata", calls[1])
+        self.assertNotIn("recording_origin", calls[1])
+
+    def test_analysis_failure_reports_without_raising(self):
+        lab = sys.modules["services.lab_recording"]   # see the note above
+        orig = lab.process_lab_recording
+
+        def _boom(**kw):
+            raise RuntimeError("whisper down")
+        lab.process_lab_recording = _boom
+        try:
+            _db_, result = _import()
+        finally:
+            lab.process_lab_recording = orig
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "analysis_failed")
+        # the session id still comes back so a partial import is traceable
+        self.assertIn("session_id", result)
+
+
+class StageTickTests(unittest.TestCase):
+    """The coach-only ticks. A normal user's upload never reaches this lane."""
+
+    def test_default_is_confidence_only(self):
+        from services.training_import import DEFAULT_STAGES, normalize_stages
+        self.assertEqual(normalize_stages(None), set(DEFAULT_STAGES))
+        self.assertEqual(normalize_stages(None), {"confidence"})
+
+    def test_confidence_cannot_be_unticked(self):
+        """Without transcript + acoustics there is no take at all — that is
+        what a bucket is for, not this endpoint."""
+        from services.training_import import normalize_stages
+        self.assertIn("confidence", normalize_stages("analytics"))
+        self.assertIn("confidence", normalize_stages([]))
+        self.assertIn("confidence", normalize_stages("ideal_text"))
+
+    def test_comma_string_and_list_both_parse(self):
+        from services.training_import import normalize_stages
+        self.assertEqual(normalize_stages("analytics,ideal_text"),
+                         {"confidence", "analytics", "ideal_text"})
+        self.assertEqual(normalize_stages(["analytics"]),
+                         {"confidence", "analytics"})
+
+    def test_unknown_stage_degrades_instead_of_failing(self):
+        """A newer FE sending a stage this build lacks must degrade to what
+        it has, not 400 an upload that already cost a file read."""
+        from services.training_import import normalize_stages
+        self.assertEqual(normalize_stages("analytics,telepathy"),
+                         {"confidence", "analytics"})
+        self.assertEqual(normalize_stages(42), {"confidence"})
+
+    def test_stages_reach_the_pipeline(self):
+        lab = sys.modules["services.lab_recording"]
+        seen = {}
+        orig = lab.process_lab_recording
+
+        def _spy(**kw):
+            seen.update(kw)
+            return {"snippets": []}
+        lab.process_lab_recording = _spy
+        try:
+            _import(stages="analytics")
+        finally:
+            lab.process_lab_recording = orig
+        self.assertEqual(seen["stages"], {"confidence", "analytics"})
+
+    def test_default_import_reports_its_stages(self):
+        _db_, result = _import()
+        self.assertEqual(result["stages"], ["confidence"])
+
+
+class HelperTests(unittest.TestCase):
+
+    def test_audio_extension_detection(self):
+        from services.training_import import is_audio_filename
+        for good in ("a.mp3", "b.WAV", "c.m4a", "d.webm", "e.flac"):
+            self.assertTrue(is_audio_filename(good), good)
+        for bad in ("notes.txt", "deck.pdf", "", None, "noext"):
+            self.assertFalse(is_audio_filename(bad), str(bad))
+
+    def test_content_type_guess(self):
+        from services.training_import import content_type_for
+        self.assertEqual(content_type_for("x.mp3"), "audio/mpeg")
+        self.assertEqual(content_type_for("x.wav"), "audio/wav")
+        self.assertEqual(content_type_for("x.unknown"), "audio/webm")
+
+    def test_source_metadata_drops_empties(self):
+        from services.training_import import build_source_metadata
+        meta = build_source_metadata(filename="a.mp3", speaker_label="  ",
+                                     source_note=None)
+        self.assertEqual(set(meta), {"source_kind", "source_title"})
+
+
+class FenceTests(unittest.TestCase):
+
+    def test_the_baseline_reader_is_untouched_by_imports(self):
+        """v2_list_user_lab_sessions is THE per-speaker baseline reader and
+        must keep its audit_upload filter — the import lane has its own
+        reader instead (list_training_import_sessions)."""
+        with open("services/db.py", encoding="utf-8") as fh:
+            source = fh.read()
+        block = source.split("def v2_list_user_lab_sessions")[1][:1600]
+        self.assertIn('"audit_upload"', block)
+        self.assertNotIn("training_import", block)
+
+    def test_import_lane_never_writes_audit_upload(self):
+        with open("services/training_import.py", encoding="utf-8") as fh:
+            source = fh.read()
+        code = "\n".join(
+            ln for ln in source.splitlines()
+            if not ln.strip().startswith(("#", "*"))
+        ).split('"""')[-1]
+        self.assertNotIn('"audit_upload"', code)
+
+    def test_import_is_not_synthetic(self):
+        """Real human speech — it must NOT be marked synthetic, or the
+        Subsystem-S wall in learning_export would exclude the whole corpus
+        from coach-truth training."""
+        with open("services/training_import.py", encoding="utf-8") as fh:
+            source = fh.read()
+        self.assertNotIn('data_origin', source.split('"""')[-1])
+
+
+if __name__ == "__main__":
+    unittest.main()

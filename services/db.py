@@ -12250,6 +12250,109 @@ class DatabaseService:
             logger.warning("get_user_audit failed id=%s: %s", audit_id, e)
             return None
 
+    # ── Confidence labels (founder 2026-07-28) ─────────────────────────
+    # The corpus for the app's core function. SEPARATE from training_labels
+    # (challenge/threat is a different construct feeding a different model)
+    # and keyed per RATER so the future agreement aggregator has something to
+    # aggregate. See services/confidence_labels.py + add_confidence_labels.sql.
+
+    def upsert_confidence_label(
+        self, *, snippet_id: str, row: dict, rater_id: Optional[str] = None,
+        session_id: Optional[str] = None,
+    ) -> bool:
+        """Store (or replace) one rater's confidence call on one snippet.
+        ``row`` is the validated shape from validate_confidence_label — this
+        method does no validation of its own. Best-effort, missing-table-safe;
+        NEVER raises."""
+        if not snippet_id or not isinstance(row, dict):
+            return False
+        payload: dict = {
+            "snippet_id": str(snippet_id),
+            "confident": bool(row.get("confident")),
+            "source": row.get("source") or "coach",
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+        for key in ("intensity", "note"):
+            if row.get(key) is not None:
+                payload[key] = row[key]
+        if rater_id:
+            payload["rater_id"] = str(rater_id)
+        if session_id:
+            payload["session_id"] = str(session_id)
+        try:
+            (self.client.table("confidence_labels")
+                 .upsert(payload,
+                         on_conflict="snippet_id,rater_id").execute())
+            return True
+        except Exception as e:
+            err_low = str(e).lower()
+            if "confidence_labels" in err_low and (
+                "does not exist" in err_low or "pgrst" in err_low
+                or "42p01" in err_low
+            ):
+                logger.warning(
+                    "upsert_confidence_label: table missing (run "
+                    "migrations/add_confidence_labels.sql)",
+                )
+                return False
+            logger.warning("upsert_confidence_label failed snip=%s: %s",
+                           snippet_id, e)
+            return False
+
+    def get_confidence_labels_by_snippet_ids(self, snippet_ids: list) -> dict:
+        """{snippet_id: [label rows]} for the given snippets. {} on anything
+        missing — the queue then renders every piece as unlabelled."""
+        ids = [str(s) for s in (snippet_ids or []) if s]
+        if not ids:
+            return {}
+        try:
+            rows = (self.client.table("confidence_labels")
+                    .select("*").in_("snippet_id", ids).execute().data) or []
+            out: dict = {}
+            for r in rows:
+                out.setdefault(str(r.get("snippet_id")), []).append(r)
+            return out
+        except Exception as e:
+            logger.warning("get_confidence_labels_by_snippet_ids failed: %s", e)
+            return {}
+
+    def get_confidence_label_corpus(self, *, source: Optional[str] = None,
+                                    limit: int = 5000) -> list:
+        """The training-side pull, newest first. [] on anything missing."""
+        try:
+            q = self.client.table("confidence_labels").select("*")
+            if source:
+                q = q.eq("source", str(source))
+            return (q.order("created_at", desc=True)
+                     .limit(int(limit)).execute().data) or []
+        except Exception as e:
+            logger.warning("get_confidence_label_corpus failed: %s", e)
+            return []
+
+    def list_training_import_sessions(self, *, user_id: Optional[str] = None,
+                                      limit: int = 200) -> list[dict]:
+        """The imported training takes, newest first (founder 2026-07-28).
+
+        Deliberately NOT v2_list_user_lab_sessions with a different filter:
+        that method is the per-speaker BASELINE reader, and imports must stay
+        out of it (a corpus of many voices would corrupt one speaker's norm —
+        see services/training_import.py). This is the coach's separate
+        window onto the corpus. Best-effort: [] on anything missing."""
+        try:
+            q = (
+                self.client.table("v2_sessions")
+                .select("id, arc_id, take_index, intake_context, created_at, "
+                        "status, user_id, recording_1_id")
+                .eq("source", "training_import")
+            )
+            if user_id:
+                q = q.eq("user_id", str(user_id))
+            return (q.order("created_at", desc=True)
+                     .limit(int(limit)).execute().data) or []
+        except Exception as e:
+            logger.warning("list_training_import_sessions failed: %s", e)
+            return []
+
     def set_session_source(self, session_id: str, source: str) -> bool:
         """Stamp v2_sessions.source (foundation discriminator). The Lab
         handler marks its sessions 'audit_upload' so the history list +
