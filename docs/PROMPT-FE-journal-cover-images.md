@@ -27,7 +27,7 @@ Four passthroughs, byte-identical in shape to the presign route (`runtime = "nod
 | `src/app/api/v2/internal/journal/image/select/route.ts` | `POST /v2/internal/journal/image/select` |
 | `src/app/api/v2/internal/journal/image/delete/route.ts` | `POST /v2/internal/journal/image/delete` |
 
-⚠️ **Give `generate` a long timeout.** An image takes 10-30 seconds and the brief adds a second or two on top. If your Vercel function config caps at the default, raise `maxDuration` on this route (60s+) or the CMS will see a platform 504 while the backend is still drawing — and the image will exist, paid for, with nobody holding the URL.
+⚠️ **Give `generate` a long timeout — longer than you think.** Measured against the live API: **23s for a first draw, 98s for a steered regenerate.** Set `maxDuration` on this route to **180**, and make sure your client-side fetch has no shorter timeout of its own. If the platform cuts the request off, the CMS sees a 504 while the backend is still drawing — and the image completes, gets paid for, and lands in the history strip with nobody watching. (That is recoverable: it shows up in `items` on the next `list`. It still looks like a failure to the founder.)
 
 ---
 
@@ -104,7 +104,7 @@ Two things make this feel right, and both are already handled backend-side — j
 
 **e) Alt text.** The draw writes `cover_alt` too, and **overwrites it on every attempt on purpose** — alt text describes the image, and the image just changed. Nothing to build; just don't cache the old alt in local state across a draw. Re-render the alt input from the returned `post`.
 
-**f) Immediate feedback (the story asks for this explicitly).** A 10-30s wait with a bare spinner reads as broken. Use the existing CMS button-busy pattern plus a status line that changes at least once — `Writing the brief…` → `Drawing…` after ~3s. It is a timed label, not real progress; that is fine and it is what makes the wait legible. Keep the previous image visible underneath the whole time — never blank the preview while drawing.
+**f) Immediate feedback (the story asks for this explicitly).** The wait is **23-100 seconds** — a bare spinner over that reads as broken, and it is the single biggest UX risk in this feature. Use the existing CMS button-busy pattern plus a status line that changes at least twice: `Writing the brief…` → `Drawing…` (~3s) → `Still drawing — this one is taking a while…` (~35s). It is a timed label, not real progress; that is fine, and it is what keeps a 90-second draw from looking like a hang. Keep the previous image visible underneath the whole time — never blank the preview while drawing.
 
 ---
 

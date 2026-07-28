@@ -53,15 +53,26 @@ works and still sets the cover, only the history strip is empty.
 | `R2_JOURNAL_PUBLIC_BASE_URL` | for uploads | CDN / `pub-<hash>.r2.dev` base. Falls back to the user-media then generic R2 base. **No base URL ⇒ presign refuses** rather than stranding a file it cannot reference. |
 | `JOURNAL_MAX_IMAGE_MB` / `_AUDIO_MB` / `_VIDEO_MB` | no | Per-kind caps. Defaults 10 / 50 / 500. |
 | `JOURNAL_IMAGE_ENABLED` | no | Generated covers. Default **on** — a kill switch for the image bill, not a rollout gate. Off ⇒ `/image/generate` 503s while list/select/delete keep working, so covers already drawn stay usable. |
-| `JOURNAL_IMAGE_MODEL` | no | Default `dall-e-3` — what the pinned SDK (`openai==1.59.2`) supports end to end. `gpt-image-1` works through the same call once the SDK is bumped. |
-| `JOURNAL_IMAGE_SIZE` / `JOURNAL_IMAGE_QUALITY` | no | Defaults `1792x1024` / `standard`. The vocabularies are per model — a value this model does not accept falls back to the family default with a log warning rather than 400ing every draw. Switching to `gpt-image-1` means `1536x1024` / `medium`. |
+| `JOURNAL_IMAGE_MODEL` | no | Default `gpt-image-1` — what the live endpoint is built around, and it always returns bytes. The pinned SDK (`openai==1.59.2`) predates the model and types only DALL·E's vocabulary, but it forwards these three as plain strings and does not enforce its `Literal` hints at runtime, so the call goes through (verified live 2026-07-28). |
+| `JOURNAL_IMAGE_SIZE` / `JOURNAL_IMAGE_QUALITY` | no | Defaults `1536x1024` / `medium`. The vocabularies are per model — a value this model does not accept falls back to the family default with a log warning rather than 400ing every draw. Falling back to `dall-e-3` means `1792x1024` / `standard`. |
 | `JOURNAL_IMAGE_STYLE` | no | Overrides the house look prepended to every image brief, so the visual direction can change without a deploy. |
 
-**Cost**, since it is the one thing here that is not free: DALL·E 3 at
-1792×1024 standard is about $0.08 per draw and `hd` is about $0.12. The brief
-runs on `gpt-4o-mini` and is a rounding error next to it. Regenerate is a full
-draw — the history strip is what stops the founder paying twice to get back to
-an image he already had.
+⚠️ **Never send `response_format`.** The live `/images/generations` endpoint
+answers `Unknown parameter: 'response_format'` for **every** model — it belongs
+to an older shape of the endpoint that the pinned SDK still types. Sending it
+400s every draw. `gpt-image-1` returns base64; a legacy DALL·E model returns a
+temporary URL, which `_bytes_from_url` resolves immediately (storing the link
+would blank the cover about an hour after publishing).
+
+**Cost**, since it is the one thing here that is not free: `gpt-image-1` at
+medium is roughly half of DALL·E 3's ~$0.08 per draw, and `high` is several
+times either. The brief runs on `gpt-4o-mini` and is a rounding error next to
+it. Regenerate is a full draw — the history strip is what stops the founder
+paying twice to get back to an image he already had.
+
+**Latency**, measured live: **23s for a first draw, 98s for a steered
+regenerate.** The client timeout is 180s, and any proxy in front of this
+endpoint needs to allow at least that.
 
 R2 credentials are the shared existing ones (`R2_ACCOUNT_ID`,
 `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`) — no new credentials.

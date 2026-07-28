@@ -304,26 +304,54 @@ class FallbackTests(unittest.TestCase):
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
 class DrawTests(unittest.TestCase):
 
-    def test_dalle_is_asked_for_bytes_not_a_url(self):
-        # DALL·E's url expires in ~1h. Storing it would blank every cover on
-        # the site shortly after publishing.
-        client, images = _client(result=_response())
-        with _fake_openai(client), \
-                patch.object(ji, "image_model", lambda: "dall-e-3"):
-            out = ji._draw("a scene")
-        self.assertEqual(images.kwargs["response_format"], "b64_json")
-        self.assertEqual(images.kwargs["n"], 1)
-        self.assertTrue(images.kwargs["timeout"])
-        self.assertEqual(out["image_bytes"], b"\x00\x00\x00")
+    def test_response_format_is_never_sent_for_any_model(self):
+        # REGRESSION (live API, 2026-07-28): /images/generations answers
+        # "Unknown parameter: 'response_format'" — for every model, not just
+        # gpt-image-1. Sending it 400s every single draw.
+        for model in ("gpt-image-1", "dall-e-3", "dall-e-2"):
+            client, images = _client(result=_response())
+            with _fake_openai(client), \
+                    patch.object(ji, "image_model", lambda: model):
+                out = ji._draw("a scene")
+            self.assertNotIn("response_format", images.kwargs, model)
+            self.assertEqual(images.kwargs["model"], model)
+            self.assertEqual(images.kwargs["n"], 1)
+            self.assertTrue(images.kwargs["timeout"])
+            self.assertEqual(out["image_bytes"], b"\x00\x00\x00")
 
-    def test_gpt_image_is_not_sent_response_format(self):
-        # That model 400s on the parameter — it always returns base64.
-        client, images = _client(result=_response())
+    def test_a_url_only_response_is_fetched_before_it_expires(self):
+        # A legacy DALL·E model returns a link, not bytes, and it dies in
+        # about an hour — storing it would blank the cover on its own
+        # schedule. Fetch now, store our own copy.
+        client, _ = _client(result=SimpleNamespace(data=[SimpleNamespace(
+            b64_json=None, url="https://oai.example/tmp.png",
+            revised_prompt=None)]))
+        seen = {}
+
+        def _get(url, **kw):
+            seen["url"] = url
+            return SimpleNamespace(content=PNG, raise_for_status=lambda: None)
+
         with _fake_openai(client), \
-                patch.object(ji, "image_model", lambda: "gpt-image-1"):
-            ji._draw("a scene")
-        self.assertNotIn("response_format", images.kwargs)
-        self.assertEqual(images.kwargs["model"], "gpt-image-1")
+                patch.dict(sys.modules,
+                           {"httpx": SimpleNamespace(get=_get)}):
+            out = ji._draw("a scene")
+        self.assertEqual(seen["url"], "https://oai.example/tmp.png")
+        self.assertEqual(out["image_bytes"], PNG)
+
+    def test_a_failed_url_fetch_is_retryable_not_a_silent_link(self):
+        client, _ = _client(result=SimpleNamespace(data=[SimpleNamespace(
+            b64_json=None, url="https://oai.example/tmp.png",
+            revised_prompt=None)]))
+
+        def _boom(url, **kw):
+            raise RuntimeError("connection reset")
+
+        with _fake_openai(client), \
+                patch.dict(sys.modules,
+                           {"httpx": SimpleNamespace(get=_boom)}):
+            with self.assertRaises(ji.JournalImageError):
+                ji._draw("a scene")
 
     def test_a_content_policy_refusal_is_the_authors_400(self):
         err = RuntimeError(

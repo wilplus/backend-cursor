@@ -67,14 +67,18 @@ MAX_HISTORY = 24
 
 # ── model defaults (env-overridable, no deploy needed) ─────────────────────
 #
-# dall-e-3 is the default because it is the image model the PINNED SDK
-# (openai==1.59.2) types and supports end to end. gpt-image-1 works through
-# the same call once the SDK is bumped — set JOURNAL_IMAGE_MODEL=gpt-image-1
-# with a size and quality from its own vocabulary; _draw() already branches on
-# the family (that model rejects response_format and uses low/medium/high).
-_DEFAULT_MODEL = "dall-e-3"
-_DEFAULT_SIZE = "1792x1024"       # landscape — the journal card is a wide crop
-_DEFAULT_QUALITY = "standard"     # "hd" is ~1.5x the cost for a blog cover
+# gpt-image-1: what the live /images/generations endpoint is built around
+# today. It always returns base64 — which is what we need, since the bytes go
+# straight to R2 — and at medium it is about half the price of DALL·E 3 for a
+# better cover.
+#
+# The pinned SDK (openai==1.59.2) predates this model and types only DALL·E's
+# vocabulary, but it forwards `model`, `size` and `quality` as plain strings
+# and does not enforce its Literal hints at runtime, so the call goes through.
+# Verified live 2026-07-28.
+_DEFAULT_MODEL = "gpt-image-1"
+_DEFAULT_SIZE = "1536x1024"       # landscape — the journal card is a wide crop
+_DEFAULT_QUALITY = "medium"       # "high" is ~3x the cost for a blog cover
 
 _SIZES = {
     "dall-e-3": ("1024x1024", "1792x1024", "1024x1792"),
@@ -389,6 +393,28 @@ def _looks_rejected(error: Exception) -> bool:
     return any(token in text for token in _REJECT_TOKENS)
 
 
+def _bytes_from_url(url: str) -> bytes:
+    """Fetch a model-hosted image URL into bytes.
+
+    Only reached on a legacy DALL·E model, which returns a link rather than
+    base64. The link expires in about an hour, so it is resolved here and the
+    bytes go to our own storage — a stored link would blank the cover on its
+    own schedule.
+
+    httpx, not requests: it is already a dependency (the Supabase client
+    pulls it) and requests is not.
+    """
+    try:
+        import httpx
+        response = httpx.get(url, timeout=60.0, follow_redirects=True)
+        response.raise_for_status()
+        return response.content
+    except Exception as e:
+        logger.warning("journal_image: could not fetch the drawn image: %s", e)
+        raise JournalImageError(
+            "Could not download the image the model drew. Try again.") from e
+
+
 def _draw(prompt: str) -> dict:
     """One image call → {image_bytes, revised_prompt, model, size, quality}.
 
@@ -409,16 +435,20 @@ def _draw(prompt: str) -> dict:
     size = image_size(model)
     quality = image_quality(model)
 
+    # NO response_format. The live endpoint rejects it outright — "Unknown
+    # parameter: 'response_format'" — for every model, not just gpt-image-1
+    # (verified against the API 2026-07-28; the parameter belongs to an older
+    # shape of this endpoint that the SDK still types). gpt-image-1 therefore
+    # always returns base64, and a legacy DALL·E model returns a temporary
+    # URL, which _bytes_from_url below resolves before it can expire.
     kwargs: dict = {"model": model, "prompt": prompt, "n": 1, "size": size,
                     "quality": quality,
-                    # An image takes 10-30s; without a ceiling a hung call
-                    # holds the worker until the platform's own timeout.
-                    "timeout": 120.0}
-    if not model.lower().startswith("gpt-image"):
-        # DALL·E returns a temporary URL unless asked for bytes, and that URL
-        # expires in about an hour — we need the bytes to put them in R2.
-        # gpt-image-1 always returns base64 and REJECTS this parameter.
-        kwargs["response_format"] = "b64_json"
+                    # Measured live: 23s for a first draw, 98s for a steered
+                    # one. 120 was close enough to that to cut off a slow but
+                    # perfectly good image, so the ceiling is generous — it
+                    # exists to stop a HUNG call holding the worker, not to
+                    # bound a normal one.
+                    "timeout": 180.0}
 
     try:
         response = client.images.generate(**kwargs)
@@ -435,20 +465,24 @@ def _draw(prompt: str) -> dict:
     data = list(getattr(response, "data", None) or [])
     first = data[0] if data else None
     b64 = getattr(first, "b64_json", None) if first is not None else None
-    if not b64:
-        # Unreachable with either family above (both return base64 with these
-        # kwargs). If a future model returns only a temporary url, fail loudly
-        # rather than persisting a link that dies within the hour.
-        logger.warning("journal_image: no image bytes in the response "
-                       "model=%s", model)
+    url = getattr(first, "url", None) if first is not None else None
+
+    if b64:
+        try:
+            image_bytes = base64.b64decode(b64)
+        except Exception as e:
+            raise JournalImageError(
+                "The image model returned something unreadable.") from e
+    elif url:
+        # A legacy DALL·E model hands back a temporary URL instead of bytes,
+        # and that URL expires in about an hour. Fetch it NOW: storing the
+        # link would blank every cover on the site shortly after publishing.
+        image_bytes = _bytes_from_url(url)
+    else:
+        logger.warning("journal_image: no image in the response model=%s",
+                       model)
         raise JournalImageError(
             "The image model returned no image. Try again.")
-
-    try:
-        image_bytes = base64.b64decode(b64)
-    except Exception as e:
-        raise JournalImageError(
-            "The image model returned something unreadable.") from e
 
     return {
         "image_bytes": image_bytes,
