@@ -71,13 +71,22 @@ EXISTS`), never drops anything — standing constraint.
 
 ```sql
 create table if not exists pompeiana_state (
-  user_id    uuid primary key references auth.users(id) on delete cascade,
+  user_id    uuid primary key references auth.users(id) on delete cascade
+             default auth.uid(),
   state      jsonb       not null default '{}'::jsonb,
   updated_at timestamptz not null default now()
 );
 
 alter table pompeiana_state enable row level security;
+
+-- REQUIRED, and separate from the policies below — see §5. Without this,
+-- every request fails "permission denied for table".
+grant select, insert, update on pompeiana_state to authenticated;
+revoke all on pompeiana_state from anon;   -- the hard login gate
 ```
+
+**The shipped version is `migrations/add_pompeiana_sync.sql`** — read that, not
+this excerpt, before changing anything.
 
 `user_id` as the **primary key** is deliberate: one row per user makes the
 client's upsert (`Prefer: resolution=merge-duplicates`) a one-liner and makes
@@ -103,10 +112,10 @@ No delete policy on purpose — a novena's progress should not be deletable by
 the client. If "start over" needs to wipe it, that is an UPDATE to a fresh
 `runId`, not a DELETE.
 
-**Default `user_id`.** Either give the column
-`default auth.uid()` so the client never sends it, or have the client send it
-explicitly from the JWT. Pick one and make the FE prompt match — a mismatch
-here shows up as a confusing RLS rejection, not a clear error.
+**Default `user_id` — decided:** the column carries `default auth.uid()`, so
+the client **omits** it on insert and the database fills it from the JWT. The
+FE prompt says the same. (Sending it explicitly also works; sending someone
+else's is rejected by the insert policy, as verified in §6 test 5.)
 
 Cross-check against `docs/RLS-AUDIT.md` and apply whatever standard the
 existing willab tables use; this table must not be the weakest one in the
@@ -115,28 +124,35 @@ project.
 ## BE-2 — the scripture table — **DONE** (founder: yes, it syncs)
 
 Pompeiana ships scripture *references* only; the user pastes their own
-translation, stored locally per mystery per language. If that must follow the
-user across devices too, it does **not** belong in the `state` blob: 20
-mysteries × 10 languages of pasted prose in a single jsonb row that gets
-rewritten on every bead tap is a bad shape — write amplification on the hot
-path, and one oversized row.
+translation, stored locally per mystery per language. The founder confirmed
+(2026-07-27) that this syncs across devices too.
 
-If Q1 comes back "yes", it is its own table:
+It gets its **own table**, not a key in the `state` blob: 20 mysteries × 10
+languages of pasted prose inside a jsonb row that is rewritten on every bead
+tap means write amplification on the hot path and one row growing without
+bound. Written rarely, read once at boot — the opposite access pattern from
+progress, which is the whole reason it is separate.
 
 ```sql
 create table if not exists pompeiana_scripture (
-  user_id     uuid not null references auth.users(id) on delete cascade,
+  user_id     uuid not null references auth.users(id) on delete cascade
+              default auth.uid(),
   mystery_id  text not null,
   language    text not null,
   text        text not null,
   updated_at  timestamptz not null default now(),
   primary key (user_id, mystery_id, language)
 );
--- same three own-row policies as BE-1
+
+alter table pompeiana_scripture enable row level security;
+grant select, insert, update on pompeiana_scripture to authenticated;
+revoke all on pompeiana_scripture from anon;
+-- plus the same three own-row policies as BE-1
 ```
 
-Written rarely, read once at boot — the opposite access pattern from `state`,
-which is exactly why it is a separate table.
+Conflict rule differs from progress, deliberately: this is free text a user
+typed, not monotonic progress, so **last-write-wins per (mystery, language)**
+is correct. The FE-3 furthest-progress rule must not be applied to it.
 
 ## BE-3 — what must NOT change in this backend (fence, not a task)
 
