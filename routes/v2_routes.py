@@ -14310,6 +14310,249 @@ def v2_coach_put_star_verdict(snippet_id):
                         "error": "could not save verdict"}), 500
 
 
+def _int_or(raw, default: int) -> int:
+    """Form int with a fallback — a typo in an optional knob must not 400 an
+    upload that already cost the coach a file read."""
+    try:
+        return int(str(raw).strip())
+    except (TypeError, ValueError):
+        return default
+
+
+@v2_bp.route("/coach/training-imports", methods=["POST"])
+@require_admin_or_coach
+def v2_coach_training_import():
+    """Upload ONE audio file as coach-reviewable TRAINING data — analysed
+    like a real take, but never a project the speaker owns (founder
+    2026-07-28).
+
+    Multipart form:
+      audio_file    (required) any container ffmpeg reads (webm/mp3/m4a/wav…)
+      topic         (required) what the talk is about — labels it for review
+      speaker_label (optional) whose voice this is. Worth filling for a
+                    multi-speaker corpus: it is the only grouping key a
+                    per-speaker model will have.
+      user_id       (optional) who the corpus row belongs to; defaults to the
+                    uploading coach
+      note          (optional) free-text provenance (where it came from)
+      stages        (optional) comma-separated ticks — the COACH-ONLY choice
+                    of how much analysis to run. Default 'confidence':
+                      confidence  always on — transcript, pieces, acoustics,
+                                  the confidence read, the label queue. This
+                                  is the corpus; Whisper is the only spend.
+                      analytics   the per-piece LLM layers (stickiness,
+                                  say-it-stronger, suggestion stars) — the
+                                  ADVICE model's corpus, ~16 calls/file.
+                      ideal_text  assembly + polish. A user deliverable;
+                                  irrelevant to training.
+                    A normal user's upload is never offered this and always
+                    runs everything (POST /v2/lab/recordings, untouched).
+      queue_per_band (optional, int) how many pieces per confidence band to
+                    queue for labelling (default 5 → up to ~15-20 queued)
+
+    ONE FILE PER REQUEST, on purpose: a batch endpoint would either block for
+    minutes or need a job queue, and per-file requests give the FE real
+    progress and per-file failures instead of one opaque 500.
+
+    The import is marked source='training_import', which keeps it out of the
+    speaker's project list AND out of their acoustic baseline (imports are
+    z-scored against themselves) — see services/training_import.py.
+
+    200 { ok, session_id, arc_id, snippet_count, ... }  → review at
+         GET /v2/coach/arc/<arc_id>/stars
+    422 { code: "AUDIO_REJECTED", reason }   the min-content gate (silence /
+         corrupt / too short) — the same gate live takes pass
+    400 · 500
+    """
+    audio_file = request.files.get("audio_file")
+    if not audio_file:
+        return jsonify({"code": "INVALID_INPUT",
+                        "error": "audio_file is required"}), 400
+    topic = (request.form.get("topic") or "").strip()
+    if not topic:
+        return jsonify({"code": "INVALID_INPUT",
+                        "error": "topic is required"}), 400
+    try:
+        audio_bytes = audio_file.read()
+        from services.training_import import import_training_audio
+        result = import_training_audio(
+            audio_bytes=audio_bytes,
+            filename=audio_file.filename or "import.webm",
+            content_type=audio_file.mimetype,
+            user_id=(request.form.get("user_id")
+                     or getattr(request, "user_id", None)),
+            topic=topic,
+            speaker_label=(request.form.get("speaker_label") or "").strip()
+                          or None,
+            source_note=(request.form.get("note") or "").strip() or None,
+            stages=(request.form.get("stages") or None),
+            queue_per_band=_int_or(request.form.get("queue_per_band"), 5),
+        )
+        if not result.get("ok"):
+            _reason = result.get("reason") or "failed"
+            if _reason in ("no_audio", "too_short", "silence", "gate",
+                           "gate_error"):
+                return jsonify({
+                    "code": "AUDIO_REJECTED", "reason": _reason,
+                    "error": result.get("detail")
+                             or "the audio did not pass the content gate",
+                }), 422
+            return jsonify({"code": "SERVER_ERROR", "reason": _reason,
+                            "error": result.get("detail")
+                                     or "import failed"}), 500
+        return jsonify(result), 200
+    except Exception as e:
+        logger.error("training import failed: %s", e, exc_info=True)
+        return jsonify({"code": "SERVER_ERROR",
+                        "error": "could not import the audio"}), 500
+
+
+@v2_bp.route("/coach/training-imports", methods=["GET"])
+@require_admin_or_coach
+def v2_coach_list_training_imports():
+    """The imported training takes, newest first — the coach's index into the
+    corpus. Each row's `arc_id` opens the normal review surfaces
+    (GET /v2/coach/arc/<arc_id>/stars, .../ideal-text).
+
+    200 { imports: [{session_id, arc_id, topic, speaker_label, created_at}],
+          count }
+    """
+    try:
+        rows = db.list_training_import_sessions(
+            user_id=(request.args.get("user_id") or None)) or []
+        out = []
+        for r in rows:
+            ctx = r.get("intake_context") if isinstance(
+                r.get("intake_context"), dict) else {}
+            out.append({
+                "session_id": r.get("id"),
+                "arc_id": r.get("arc_id"),
+                "topic": ctx.get("topic") or "",
+                "speaker_label": ctx.get("speaker_label") or None,
+                "created_at": r.get("created_at"),
+            })
+        return jsonify({"imports": out, "count": len(out)}), 200
+    except Exception as e:
+        logger.warning("list training imports failed: %s", e)
+        return jsonify({"code": "SERVER_ERROR",
+                        "error": "could not list imports"}), 500
+
+
+@v2_bp.route("/coach/sessions/<session_id>/confidence-queue", methods=["GET"])
+@require_admin_or_coach
+def v2_coach_confidence_queue(session_id):
+    """The pieces queued for confidence labelling on one take, blind.
+
+    The queue was chosen at import time by sampling ACROSS the confidence
+    spectrum — some the composite reads as confident, some middling, some
+    doubtful — so the corpus has the negative examples a binary recogniser
+    needs. The bands are used to select and then discarded: this payload
+    carries the moment (words + audio) and NOTHING that could hint at an
+    answer (BLIND COACH — no voice_confidence, no acoustic_read, no tone
+    word). Falls back to a fresh stratified pick when the session carries no
+    stored queue (any take, not just an import).
+
+    200 { session_id, queue: [{snippet_id, transcript, audio_ref,
+          start_offset_ms, duration_ms, label}], count, labelled }
+    404 · 500
+    """
+    try:
+        sess = db.v2_get_session_by_id(str(session_id))
+        if not sess:
+            return jsonify({"code": "NOT_FOUND",
+                            "error": "session not found"}), 404
+        from services.confidence_labels import (
+            queue_payload, stratified_label_queue,
+        )
+        snippets = db.get_snippets_by_session(str(session_id)) or []
+        ctx = sess.get("intake_context") if isinstance(
+            sess.get("intake_context"), dict) else {}
+        stored = ctx.get("label_queue")
+        if isinstance(stored, list) and stored:
+            wanted = {str(s) for s in stored}
+            picked = [s for s in snippets if str(s.get("id")) in wanted]
+        else:
+            picked = stratified_label_queue(snippets, seed=str(session_id))
+
+        rows = queue_payload(picked)
+        labels = db.get_confidence_labels_by_snippet_ids(
+            [r["snippet_id"] for r in rows]) or {}
+        labelled = 0
+        for r in rows:
+            mine = [lbl for lbl in labels.get(str(r["snippet_id"]), [])
+                    if str(lbl.get("rater_id") or "")
+                    == str(getattr(request, "user_id", "") or "")]
+            if mine:
+                labelled += 1
+                r["label"] = {"confident": mine[0].get("confident"),
+                              "intensity": mine[0].get("intensity")}
+            else:
+                r["label"] = None
+        return jsonify({"session_id": session_id, "queue": rows,
+                        "count": len(rows), "labelled": labelled}), 200
+    except Exception as e:
+        logger.warning("confidence queue failed sid=%s: %s", session_id, e)
+        return jsonify({"code": "SERVER_ERROR",
+                        "error": "could not load the queue"}), 500
+
+
+@v2_bp.route("/coach/snippets/<snippet_id>/confidence-label", methods=["PUT"])
+@require_admin_or_coach
+def v2_coach_put_confidence_label(snippet_id):
+    """The coach's confidence call on ONE snippet — THE core training signal.
+
+    Body { confident: true|false, intensity?: 1..5, note?: str }
+
+      confident  the call. Binary, because the model's job is a binary
+                 recognition and a rater who must commit gives a cleaner
+                 boundary than one who can hedge.
+      intensity  how strongly, on the same 1-5 scale Jiang & Pell's listeners
+                 used — which makes these directly comparable to the
+                 published anchor AND the human side of the voice-confidence
+                 validation gate.
+
+    Re-labelling REPLACES this rater's call (the corpus wants their current
+    view); other raters' rows are untouched, so multi-rater agreement stays
+    possible. Separate from the challenge/threat lane by construct and by
+    table. AC-9: intensity is coach->machine only and never reaches a student.
+
+    200 { saved, snippet_id, confident, intensity } · 400 · 404 · 500
+    """
+    if not _is_valid_uuid(snippet_id):
+        return jsonify({"code": "INVALID_INPUT",
+                        "error": "snippet_id must be a valid UUID"}), 400
+    body = request.get_json(silent=True) or {}
+
+    from services.confidence_labels import validate_confidence_label
+
+    row, err = validate_confidence_label(body)
+    if err:
+        return jsonify({"code": "INVALID_INPUT", "error": err}), 400
+    try:
+        snip = db.get_snippet_by_id(snippet_id)
+        if not snip:
+            return jsonify({"code": "NOT_FOUND",
+                            "error": "snippet not found"}), 404
+        saved = db.upsert_confidence_label(
+            snippet_id=snippet_id, row=row,
+            rater_id=getattr(request, "user_id", None),
+            session_id=snip.get("session_id"),
+        )
+        if not saved:
+            return jsonify({
+                "code": "SERVER_ERROR",
+                "error": "could not save the label (run "
+                         "migrations/add_confidence_labels.sql)",
+            }), 500
+        return jsonify({"saved": True, "snippet_id": snippet_id,
+                        "confident": row["confident"],
+                        "intensity": row["intensity"]}), 200
+    except Exception as e:
+        logger.warning("confidence label failed snip=%s: %s", snippet_id, e)
+        return jsonify({"code": "SERVER_ERROR",
+                        "error": "could not save the label"}), 500
+
+
 @v2_bp.route("/coach/snippets/<snippet_id>/star-text", methods=["PUT"])
 @require_admin_or_coach
 def v2_coach_put_star_text(snippet_id):
