@@ -33,6 +33,17 @@ through `/v2/journal/*`, where the published filter applies.
 The migration also backfills `published_at` for any published row missing one
 (see §4 for why a NULL display date would pin a post to the top of the index).
 
+Two later migrations belong to the same surface and are run the same way:
+
+```bash
+psql "$DATABASE_URL" -f migrations/add_journal_community_posts.sql   # the content studio
+psql "$DATABASE_URL" -f migrations/add_journal_post_image.sql        # generated covers
+```
+
+Both enable RLS with zero policies, for the same reason as above. Both degrade
+to "no items" when absent — for generated covers that means the draw still
+works and still sets the cover, only the history strip is empty.
+
 ## 2. Set the env vars (Railway)
 
 | Var | Required | What it does |
@@ -41,6 +52,16 @@ The migration also backfills `published_at` for any published row missing one
 | `R2_JOURNAL_BUCKET` | for uploads | Falls back to `R2_USER_MEDIA_BUCKET`, then `R2_BUCKET_NAME`. |
 | `R2_JOURNAL_PUBLIC_BASE_URL` | for uploads | CDN / `pub-<hash>.r2.dev` base. Falls back to the user-media then generic R2 base. **No base URL ⇒ presign refuses** rather than stranding a file it cannot reference. |
 | `JOURNAL_MAX_IMAGE_MB` / `_AUDIO_MB` / `_VIDEO_MB` | no | Per-kind caps. Defaults 10 / 50 / 500. |
+| `JOURNAL_IMAGE_ENABLED` | no | Generated covers. Default **on** — a kill switch for the image bill, not a rollout gate. Off ⇒ `/image/generate` 503s while list/select/delete keep working, so covers already drawn stay usable. |
+| `JOURNAL_IMAGE_MODEL` | no | Default `dall-e-3` — what the pinned SDK (`openai==1.59.2`) supports end to end. `gpt-image-1` works through the same call once the SDK is bumped. |
+| `JOURNAL_IMAGE_SIZE` / `JOURNAL_IMAGE_QUALITY` | no | Defaults `1792x1024` / `standard`. The vocabularies are per model — a value this model does not accept falls back to the family default with a log warning rather than 400ing every draw. Switching to `gpt-image-1` means `1536x1024` / `medium`. |
+| `JOURNAL_IMAGE_STYLE` | no | Overrides the house look prepended to every image brief, so the visual direction can change without a deploy. |
+
+**Cost**, since it is the one thing here that is not free: DALL·E 3 at
+1792×1024 standard is about $0.08 per draw and `hd` is about $0.12. The brief
+runs on `gpt-4o-mini` and is a rounding error next to it. Regenerate is a full
+draw — the history strip is what stops the founder paying twice to get back to
+an image he already had.
 
 R2 credentials are the shared existing ones (`R2_ACCOUNT_ID`,
 `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`) — no new credentials.
@@ -88,6 +109,18 @@ POST /v2/internal/journal/posts/publish    { password, id }
 POST /v2/internal/journal/posts/unpublish  { password, id }
 POST /v2/internal/journal/reorder          { password, ids: [...] }
 POST /v2/internal/journal/media/presign    { password, filename, content_type, kind }
+```
+
+Generated covers (§7) — same gate, same body-password:
+
+```
+POST /v2/internal/journal/image/generate  { password, post_id, notes?, parent_id?,
+                                            fresh?, attach? }
+                                          → { image, items, post, attached,
+                                              brief_source, attach_error? }
+POST /v2/internal/journal/image/list      { password, post_id }   → { items }
+POST /v2/internal/journal/image/select    { password, id }        → { post, image }
+POST /v2/internal/journal/image/delete    { password, id }        → { deleted }
 ```
 
 A slug collision returns **409 `DUPLICATE_SLUG`**, never a 500.
@@ -162,7 +195,61 @@ VALUES ('why-your-voice-shakes', 'Why your voice shakes',
         E'First paragraph.\n\nSecond paragraph.', 'published', now());
 ```
 
-## 7. Not built (deliberate)
+## 7. Generated covers
+
+`services/journal_image.py`. Two model calls per draw:
+
+1. **The brief** (`gpt-4o-mini`) — a journal body runs to 200k characters and
+   an image model takes a few thousand, so something has to distil the post
+   into one scene. Doing that in a text model is also what makes the notes box
+   work: *"less literal"* is an instruction about a brief, not a pixel
+   operation. The brief comes back to the CMS so the author can see what was
+   asked for, and it carries the alt text, so a generated cover arrives
+   accessible.
+2. **The draw** — bytes come back base64, are PUT to R2 server-side (the
+   opposite case from §5: the file is already inside our process), and the
+   **public R2 URL** is what gets stored. The image model's own URL is never
+   persisted — DALL·E's expires in about an hour, which would blank every
+   cover on the site shortly after publishing.
+
+**Refinement, not reroll.** A note is applied to the *previous brief*, so
+"darker, no hands" means the cover on screen, changed. `parent_id` picks which
+attempt to refine (default: the newest); `fresh: true` ignores the history.
+Regenerating with **no** note deliberately asks for a *different* scene —
+otherwise the model reproduces the previous brief and the button looks broken.
+
+**Regenerate is never destructive.** Every attempt is a `journal_post_image`
+row; `cover_image_url` on the post stays the single source of truth for what
+the site shows. `/image/select` promotes an earlier attempt — that is the undo,
+and it is why the table exists.
+
+Degradation is deliberate at every step: no text model ⇒ a deterministic
+fallback brief (worse image, working button, flagged as `brief_source:
+"fallback"`); no history table ⇒ the cover is still drawn, stored and attached;
+a failed attach ⇒ the image is still returned, because it is already drawn and
+paid for.
+
+Guards: the alt text is **public copy**, so it goes through the same construct
+regex as the community drafts — a hit comes back `flags: ["construct"]`, never
+silently rewritten. The brief bans text-in-image (models render lettering as
+garbage, and the cover sits under a real headline), recognizable people, and
+brand marks. `cover_kind` is never changed by a draw: on a video post the image
+is the poster frame.
+
+Content-policy refusals are **400 `IMAGE_REJECTED`** (the author can reword),
+distinct from transient failures at **503 `V2_ERROR`** (retryable) and
+unconfigured storage at **503 `DISABLED`** (not).
+
+## 8. Not built (deliberate)
+
+- **No cleanup of superseded images.** A regenerated cover leaves the previous
+  R2 object in place; `/image/delete` clears the CMS candidate but not the
+  file. Deliberate — a post (or a CDN, or someone's open tab) may still point
+  at it, and an orphaned image is cheaper than a broken cover. Revisit with a
+  lifecycle rule on `journal/generated/` if the bucket ever matters.
+- **No image-to-image editing.** Every attempt is a fresh draw from a revised
+  brief. Real inpainting needs a mask UI and a different endpoint; the notes
+  box covers the actual need.
 
 - **Sitemap / RSS** — listed as optional in the spec; say the word.
 - **Server-side video poster extraction and audio duration probing** — the CMS
