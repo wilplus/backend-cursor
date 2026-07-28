@@ -554,10 +554,11 @@ class ArcBreakthroughsTests(unittest.TestCase):
         out = bp.build_arc_breakthroughs("arc1", database=_FakeDB([], {}, {}))
         self.assertEqual(out, {"breakthroughs": [], "count": 0})
 
-    def test_coach_comment_and_video_ride_through(self):
-        """Founder 2026-07-28 (FE §1 close-out): the coach's key-moment note +
-        breakthrough video per breakthrough, from the drafts lane — `video_ref`
-        named to match the game's field so the FE reuses its player."""
+    def test_coach_note_and_video_ride_through(self):
+        """The FE mapper contract (HANDOFF-BE-2026-07-28 §1): `note` IS the
+        coach's key-moment note, `comment` is the system's explanation, and
+        the FE renders exactly one (coach overrides system). `video_ref` is
+        named to match the game so the FE reuses its player."""
         labels = {"s1": [{"snippet_id": "t1", "value": "threat"},
                          {"snippet_id": "c1", "value": "challenge"}]}
         db = self._db(labels)
@@ -568,19 +569,27 @@ class ArcBreakthroughsTests(unittest.TestCase):
         ] if sid == "s1" else [])
         out = bp.build_arc_breakthroughs("arc1", database=db)
         b = out["breakthroughs"][0]
-        self.assertEqual(b["coach_comment"], "This is where you took the room.")
+        self.assertEqual(b["note"], "This is where you took the room.")
         self.assertEqual(b["video_ref"], "r2://coach/bt-c1.mp4")
+        # The system explanation rides SEPARATELY — never in the coach slot.
+        self.assertIn("comment", b)
+        self.assertNotEqual(b["comment"], b["note"])
 
-    def test_no_drafts_lane_yields_null_fields_not_a_break(self):
-        """A db without the drafts reader (or with none written) still serves
-        the list — both fields present and null."""
+    def test_machine_text_never_wears_the_coach_slot(self):
+        """No coach note → `note` is NULL, and the system's explanation sits
+        in `comment`. Before 2026-07-28 `note` carried the machine text; the
+        shipped FE renders `note` as the coach's words, so machine prose
+        there would misattribute machine voice as the human coach."""
         labels = {"s1": [{"snippet_id": "t1", "value": "threat"},
                          {"snippet_id": "c1", "value": "challenge"}]}
         out = bp.build_arc_breakthroughs("arc1", database=self._db(labels))
         b = out["breakthroughs"][0]
-        self.assertIn("coach_comment", b)
-        self.assertIsNone(b["coach_comment"])
+        self.assertIsNone(b["note"])
         self.assertIsNone(b["video_ref"])
+        # the system explanation exists for the fallback slot (metrics on the
+        # fake rows carry no observation buckets, so "" is legal — the key
+        # must exist either way)
+        self.assertIn("comment", b)
 
     def test_drafts_read_failure_is_non_fatal(self):
         labels = {"s1": [{"snippet_id": "t1", "value": "threat"},
@@ -592,7 +601,7 @@ class ArcBreakthroughsTests(unittest.TestCase):
         db.get_coach_snippet_drafts = _boom
         out = bp.build_arc_breakthroughs("arc1", database=db)
         self.assertEqual(out["count"], 1)
-        self.assertIsNone(out["breakthroughs"][0]["coach_comment"])
+        self.assertIsNone(out["breakthroughs"][0]["note"])
 
 
 class _CachingFakeDB(_FakeDB):

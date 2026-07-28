@@ -83,7 +83,14 @@ def build_game_rounds(db, arc_id: Any, user_id: Any,
             "round_id": snip_id,     # identity and sends it BACK on answer;
             "snippet_id": snip_id,   # kept as an explicit alias.
             "transcript": s.get("transcript") or "",
-            "audio_ref": s.get("audio_segment_path") or s.get("audio_ref"),
+            # Ear-first rounds (founder design pass 2026-07-28): the FE no
+            # longer shows the transcript, so audio_ref is LOAD-BEARING — a
+            # null here is an unplayable round. storage_path joins the chain
+            # because pieces-canonical rows carry the parent take there (the
+            # same fallback the breakthroughs list and cross-take moments
+            # already use); start/duration clamp the slice.
+            "audio_ref": (s.get("audio_segment_path") or s.get("audio_ref")
+                          or s.get("storage_path")),
             "start_offset_ms": s.get("start_offset_ms"),
             "duration_ms": s.get("duration_ms"),
         })

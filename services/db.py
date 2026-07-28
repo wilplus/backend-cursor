@@ -7572,6 +7572,36 @@ class DatabaseService:
             )
             return True
 
+    def has_ideal_text_annotations(self, arc_uuid: Optional[str]) -> bool:
+        """Any ideal-text annotation rows for this arc yet?
+
+        The idempotency probe for the APPROVE-route capture hook: the shipped
+        FE's Verify button posts /ideal-text/approve (never /verify), and
+        approve has no re-approve guard — so its capture fires only when this
+        probe finds nothing. First approve captures; re-approves skip. The
+        /verify route keeps its own per-VERSION exactly-once and does not use
+        this probe. Probe failure → True (never double-write on
+        uncertainty)."""
+        if not arc_uuid:
+            return True
+        try:
+            rows = (
+                self.client.table("admin_annotation_events")
+                .select("id")
+                .eq("draft_id", str(arc_uuid))
+                .in_("field_name", ["ideal_text_sentence", "ideal_text_block"])
+                .limit(1)
+                .execute()
+                .data
+            ) or []
+            return bool(rows)
+        except Exception as e:
+            logger.warning(
+                "has_ideal_text_annotations: probe failed arc=%s: %s — "
+                "treating as captured", arc_uuid, e,
+            )
+            return True
+
     def _emit_publish_event_if_signal(
         self,
         *,
@@ -10712,24 +10742,38 @@ class DatabaseService:
                            arc_id, e)
             return {}
 
+    # Sentinel for set_moment_suggestion_final: "this field was not sent —
+    # leave the stored value alone". Distinct from None, which CLEARS.
+    _FINAL_UNSET = object()
+
     def set_moment_suggestion_final(
-        self, snippet_id: str, *, why_final: Optional[str],
-        replacement_text_final: Optional[str], edited_by: Optional[str],
+        self, snippet_id: str, *, why_final: Any = _FINAL_UNSET,
+        replacement_text_final: Any = _FINAL_UNSET,
+        edited_by: Optional[str] = None,
     ) -> bool:
         """The coach's corrected star wording (founder 2026-07-28) — plain
         update, re-editable until they're done (mirrors
         set_charisma_snippet_say_it_stronger_final). The machine's draft
         columns are NEVER touched: the (draft, final) pair is the correction
-        corpus. Passing None for a field CLEARS that correction (revert to
-        the draft). Best-effort, missing-column-safe; never raises."""
+        corpus.
+
+        Three values per field: a string SETS the correction, an explicit
+        None CLEARS it (revert to the draft — the full-state star-text PUT),
+        and omitting the argument PRESERVES whatever is stored (the §4b
+        verdict piggyback, whose wire only carries fields the coach actually
+        changed). Both omitted → no-op, True. Best-effort,
+        missing-column-safe; never raises."""
         if not snippet_id:
             return False
-        payload: dict = {
-            "why_final": why_final,
-            "replacement_text_final": replacement_text_final,
-            "text_final_updated_at":
-                datetime.now(timezone.utc).isoformat(),
-        }
+        payload: dict = {}
+        if why_final is not self._FINAL_UNSET:
+            payload["why_final"] = why_final
+        if replacement_text_final is not self._FINAL_UNSET:
+            payload["replacement_text_final"] = replacement_text_final
+        if not payload:
+            return True
+        payload["text_final_updated_at"] = \
+            datetime.now(timezone.utc).isoformat()
         if edited_by:
             payload["text_final_by"] = str(edited_by)
         try:

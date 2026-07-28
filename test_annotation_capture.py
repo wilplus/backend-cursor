@@ -425,6 +425,113 @@ class KeepFlipGuardTests(unittest.TestCase):
         self.assertFalse(should_emit_keep_text("wrong_kind", None))
         self.assertFalse(should_emit_keep_text("should_not_fire", "keep"))
 
+    def test_re_keep_with_a_fresh_correction_emits(self):
+        """§4b: the coach edits an already-kept star's wording — a genuinely
+        new pair the flip guard alone would drop. Bounded by the FE wire
+        property that *_final keys only arrive when the text actually
+        changed."""
+        from services.star_verdicts import should_emit_keep_text
+        self.assertTrue(should_emit_keep_text("keep", "keep",
+                                              text_updated=True))
+        # ...but a text edit on a REJECTING verdict still never emits.
+        self.assertFalse(should_emit_keep_text("should_not_fire", "keep",
+                                               text_updated=True))
+        self.assertFalse(should_emit_keep_text("wrong_kind", None,
+                                               text_updated=True))
+
+
+class StarTextPiggybackValidationTests(unittest.TestCase):
+    """§4b — the *_final keys riding the VERDICT PUT (partial semantics)."""
+
+    def test_absent_keys_yield_empty_updates(self):
+        from services.star_verdicts import validate_star_text_updates
+        updates, err = validate_star_text_updates(
+            {"star_kind": "delivery", "verdict": "keep"})
+        self.assertIsNone(err)
+        self.assertEqual(updates, {})
+
+    def test_present_keys_are_guarded_and_collected(self):
+        from services.star_verdicts import validate_star_text_updates
+        updates, err = validate_star_text_updates({
+            "verdict": "keep",
+            "why_final": "she always talks this fast — this is her normal",
+        })
+        self.assertIsNone(err)
+        self.assertEqual(list(updates), ["why_final"])
+
+    def test_null_means_absent_never_clear(self):
+        """The FE has no null-clear gesture — a null must preserve, not
+        clear (partial semantics, the opposite of the full-state PUT)."""
+        from services.star_verdicts import validate_star_text_updates
+        updates, err = validate_star_text_updates(
+            {"verdict": "keep", "why_final": None})
+        self.assertIsNone(err)
+        self.assertEqual(updates, {})
+
+    def test_guard_trips_loudly(self):
+        from services.star_verdicts import validate_star_text_updates
+        updates, err = validate_star_text_updates(
+            {"verdict": "keep", "why_final": "pause for 2 beats"})
+        self.assertEqual(updates, {})
+        self.assertIn("qualitative guard", err)
+
+    def test_non_string_rejected(self):
+        from services.star_verdicts import validate_star_text_updates
+        _updates, err = validate_star_text_updates(
+            {"verdict": "keep", "replacement_text_final": 42})
+        self.assertIsNotNone(err)
+
+
+@unittest.skipIf(DatabaseService is None, f"services.db import failed: {_IMPORT_ERR}")
+class SetFinalSentinelTests(unittest.TestCase):
+    """set_moment_suggestion_final: omitted = preserve, None = clear."""
+
+    class _CapTable:
+        def __init__(self, cap):
+            self.cap = cap
+
+        def update(self, payload):
+            self.cap["update"] = dict(payload)
+            return self
+
+        def eq(self, col, val):
+            self.cap["eq"] = (col, val)
+            return self
+
+        def execute(self):
+            return types.SimpleNamespace(data=[])
+
+    def _svc(self, cap):
+        svc = DatabaseService.__new__(DatabaseService)
+        svc.client = types.SimpleNamespace(
+            table=lambda name: self._CapTable(cap))
+        return svc
+
+    def test_partial_write_preserves_the_missing_column(self):
+        cap: dict = {}
+        ok = self._svc(cap).set_moment_suggestion_final(
+            "snip-1", why_final="the coach's why", edited_by="coach-1")
+        self.assertTrue(ok)
+        self.assertIn("why_final", cap["update"])
+        self.assertNotIn("replacement_text_final", cap["update"],
+                         "an omitted field must not be written (and "
+                         "certainly not nulled)")
+
+    def test_explicit_none_still_clears(self):
+        cap: dict = {}
+        self._svc(cap).set_moment_suggestion_final(
+            "snip-1", why_final=None, replacement_text_final="keep",
+            edited_by="coach-1")
+        self.assertIsNone(cap["update"]["why_final"])
+        self.assertEqual(cap["update"]["replacement_text_final"], "keep")
+
+    def test_nothing_provided_is_a_noop(self):
+        cap: dict = {}
+        ok = self._svc(cap).set_moment_suggestion_final(
+            "snip-1", edited_by="coach-1")
+        self.assertTrue(ok)
+        self.assertNotIn("update", cap)
+
     def test_untouched_star_pair_is_equal_sides(self):
         from services.star_verdicts import annotation_pair_for_star
         pair = annotation_pair_for_star({
