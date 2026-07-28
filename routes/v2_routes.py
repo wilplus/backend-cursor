@@ -14344,6 +14344,40 @@ def v2_coach_put_star_verdict(snippet_id):
                         "error": "could not save verdict"}), 500
 
 
+def _resolve_audio_refs(rows: list, *, expires_in: int = 6 * 3600) -> None:
+    """Turn every row's ``audio_ref`` into something an <audio src> can play.
+
+    Already-absolute http(s) URLs pass through untouched (imports store a
+    public URL). A bare storage key is signed for the session's length —
+    long enough that a coach can work through a queue without links dying
+    mid-batch. Best-effort per row: a key that cannot be signed is left as
+    it is rather than nulled, so the failure is visible and debuggable
+    instead of a silently missing player."""
+    try:
+        from config import Config
+        from services.coach_video_storage import presigned_get_coach_object
+        bucket = getattr(Config, "COACH_FEEDBACK_VIDEO_BUCKET",
+                         "coach_feedback_videos")
+    except Exception:
+        return
+    for r in rows or []:
+        ref = r.get("audio_ref")
+        if not isinstance(ref, str) or not ref:
+            continue
+        if ref.startswith("http://") or ref.startswith("https://"):
+            continue
+        key = ref.split("://", 1)[-1] if "://" in ref else ref
+        if key.startswith(f"{bucket}/"):
+            key = key[len(bucket) + 1:]
+        try:
+            signed = presigned_get_coach_object(bucket, key,
+                                                expires_in=expires_in)
+            if signed:
+                r["audio_ref"] = signed
+        except Exception as e:
+            logger.warning("could not sign audio_ref %s: %s", ref, e)
+
+
 def _int_or(raw, default: int) -> int:
     """Form int with a fallback — a typo in an optional knob must not 400 an
     upload that already cost the coach a file read."""
@@ -14408,10 +14442,14 @@ def v2_coach_training_import():
                         "error": "topic is required"}), 400
     try:
         audio_bytes = audio_file.read()
-        from services.training_import import import_training_audio
-        result = import_training_audio(
+        from services.training_import import (
+            prepare_training_import, run_training_import_analysis,
+        )
+        _filename = audio_file.filename or "import.webm"
+        _queue_per_band = _int_or(request.form.get("queue_per_band"), 5)
+        prepared = prepare_training_import(
             audio_bytes=audio_bytes,
-            filename=audio_file.filename or "import.webm",
+            filename=_filename,
             content_type=audio_file.mimetype,
             user_id=(request.form.get("user_id")
                      or getattr(request, "user_id", None)),
@@ -14420,25 +14458,100 @@ def v2_coach_training_import():
                           or None,
             source_note=(request.form.get("note") or "").strip() or None,
             stages=(request.form.get("stages") or None),
-            queue_per_band=_int_or(request.form.get("queue_per_band"), 5),
+            idempotency_key=(request.form.get("upload_idempotency_key")
+                             or "").strip() or None,
         )
-        if not result.get("ok"):
-            _reason = result.get("reason") or "failed"
+        if not prepared.get("ok"):
+            _reason = prepared.get("reason") or "failed"
             if _reason in ("no_audio", "too_short", "silence", "gate",
-                           "gate_error"):
+                           "gate_error", "no_topic"):
                 return jsonify({
                     "code": "AUDIO_REJECTED", "reason": _reason,
-                    "error": result.get("detail")
+                    "error": prepared.get("detail")
                              or "the audio did not pass the content gate",
                 }), 422
             return jsonify({"code": "SERVER_ERROR", "reason": _reason,
-                            "error": result.get("detail")
+                            "error": prepared.get("detail")
                                      or "import failed"}), 500
-        return jsonify(result), 200
+
+        # The idempotency key already produced this import — return the
+        # original rather than minting a second (a talk imported twice is
+        # labelled twice and trains twice, invisibly).
+        if prepared.get("duplicate"):
+            return jsonify({**prepared, "status": "duplicate"}), 200
+
+        # ── 202, then analyse in the background ───────────────────────────
+        # Whisper + the cutting pass is MINUTES on a long talk, and the FE's
+        # proxy caps far below that. Returning the request before the work
+        # removes the dangerous shape entirely: a gateway timeout on a
+        # request whose BE work then succeeded, which the coach reads as
+        # "failed" and retries into a duplicate. The FE polls
+        # GET /v2/coach/training-imports/<session_id> for the outcome; the
+        # session's analysis_state carries it (the same processing → ready |
+        # failed lane the live async path already uses).
+        import threading
+        _t = threading.Thread(
+            target=run_training_import_analysis,
+            kwargs={"prepared": prepared, "audio_bytes": audio_bytes,
+                    "filename": _filename,
+                    "queue_per_band": _queue_per_band},
+            daemon=True,
+        )
+        _t.start()
+        return jsonify({
+            "ok": True, "status": "processing",
+            "session_id": prepared["session_id"],
+            "arc_id": prepared["arc_id"],
+            "stages": prepared["stages"],
+            "duration_sec": prepared.get("duration_sec"),
+            "speaker_label": prepared.get("speaker_label"),
+            "filename": _filename,
+        }), 202
     except Exception as e:
         logger.error("training import failed: %s", e, exc_info=True)
         return jsonify({"code": "SERVER_ERROR",
                         "error": "could not import the audio"}), 500
+
+
+@v2_bp.route("/coach/training-imports/<session_id>", methods=["GET"])
+@require_admin_or_coach
+def v2_coach_training_import_status(session_id):
+    """Poll one import's analysis. The 202 from the POST is not the outcome —
+    this is.
+
+    200 { session_id, arc_id, status: "processing"|"ready"|"failed",
+          snippet_count, queue_count, error }
+    404 · 500
+
+    ``status`` mirrors v2_sessions.analysis_state; a NULL state reads as
+    'ready' (pre-async rows were only ever persisted after a completed
+    synchronous analysis, so NULL means finished, not unknown).
+    """
+    try:
+        sess = db.v2_get_session_by_id(str(session_id))
+        if not sess:
+            return jsonify({"code": "NOT_FOUND",
+                            "error": "import not found"}), 404
+        state = sess.get("analysis_state") or "ready"
+        ctx = sess.get("intake_context") if isinstance(
+            sess.get("intake_context"), dict) else {}
+        snippets = (db.get_snippets_by_session(str(session_id)) or []
+                    if state == "ready" else [])
+        return jsonify({
+            "session_id": session_id,
+            "arc_id": sess.get("arc_id"),
+            "status": state,
+            "topic": ctx.get("topic") or "",
+            "speaker_label": ctx.get("speaker_label"),
+            "snippet_count": len(snippets),
+            "queue_count": len(ctx.get("label_queue") or []),
+            "error": sess.get("analysis_error"),
+        }), 200
+    except Exception as e:
+        logger.warning("training import status failed sid=%s: %s",
+                       session_id, e)
+        return jsonify({"code": "SERVER_ERROR",
+                        "error": "could not read the import"}), 500
 
 
 @v2_bp.route("/coach/training-imports", methods=["GET"])
@@ -14509,6 +14622,12 @@ def v2_coach_confidence_queue(session_id):
             picked = stratified_label_queue(snippets, seed=str(session_id))
 
         rows = queue_payload(picked)
+        # PLAYABLE urls, not storage keys (FE §2): this is a LISTENING screen
+        # — the coach hears the piece and judges. A bare key renders a dead
+        # player and the surface silently degrades to labelling TEXT, which
+        # is a different task and a corpus of a different thing. A row whose
+        # audio_ref is already an http(s) URL is left alone; a key is signed.
+        _resolve_audio_refs(rows)
         labels = db.get_confidence_labels_by_snippet_ids(
             [r["snippet_id"] for r in rows]) or {}
         labelled = 0

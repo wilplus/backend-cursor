@@ -166,6 +166,7 @@ def import_training_audio(
     run_gate: bool = True,
     stages: Any = None,
     queue_per_band: int = 5,
+    idempotency_key: Optional[str] = None,
 ) -> dict:
     """Import ONE audio file as a coach-reviewable training take.
 
@@ -184,6 +185,57 @@ def import_training_audio(
         coach_media_public_url, put_coach_object_bytes,
     )
 
+    prepared = prepare_training_import(
+        audio_bytes=audio_bytes, filename=filename, user_id=user_id,
+        topic=topic, speaker_label=speaker_label, source_note=source_note,
+        content_type=content_type, database=database, run_gate=run_gate,
+        stages=stages, idempotency_key=idempotency_key,
+    )
+    if not prepared.get("ok") or prepared.get("duplicate"):
+        return prepared
+    return run_training_import_analysis(
+        prepared=prepared, audio_bytes=audio_bytes, filename=filename,
+        database=database, queue_per_band=queue_per_band,
+    )
+
+
+def prepare_training_import(
+    *,
+    audio_bytes: bytes,
+    filename: str,
+    user_id: Optional[str],
+    topic: str,
+    speaker_label: Optional[str] = None,
+    source_note: Optional[str] = None,
+    content_type: Optional[str] = None,
+    database=None,
+    run_gate: bool = True,
+    stages: Any = None,
+    idempotency_key: Optional[str] = None,
+) -> dict:
+    """Everything BEFORE the expensive analysis: gate, store the audio, write
+    the session + recording rows, mark the session 'processing'.
+
+    Split out so the HTTP route can return 202 in a second or two and run the
+    analysis in a background thread (founder/FE 2026-07-28): the import is
+    minutes of Whisper on a long talk, and the FE's proxy caps well below
+    that. A gateway timeout on a request whose BE work then SUCCEEDS is the
+    dangerous shape — the coach sees "failed", re-imports, and the corpus
+    silently holds the same talk twice, labelled twice, trained on twice.
+
+    ``idempotency_key`` closes the same hole from the other side: a retry
+    carrying the key it already used returns the ORIGINAL import instead of
+    creating a second one (``{"ok": True, "duplicate": True, ...}``).
+
+    Returns the prepared context for run_training_import_analysis, or an
+    ``{"ok": False, "reason": ...}`` the caller can surface. Never raises."""
+    if database is None:
+        from services.db import db as database
+
+    from services.coach_video_storage import (
+        coach_media_public_url, put_coach_object_bytes,
+    )
+
     picked_stages = normalize_stages(stages)
     topic = (topic or "").strip()
     if not topic:
@@ -191,6 +243,28 @@ def import_training_audio(
                 "detail": "topic is required (it labels the take for review)"}
     if not audio_bytes:
         return {"ok": False, "reason": "no_audio", "detail": "empty file"}
+
+    # Idempotency FIRST — before the gate, the upload, and any row. A retry
+    # after a proxy timeout must cost nothing and create nothing.
+    idem = (str(idempotency_key).strip() if idempotency_key else "")
+    if idem:
+        try:
+            existing = database.find_training_import_by_key(idem)
+            if existing:
+                ctx = existing.get("intake_context") or {}
+                return {
+                    "ok": True, "duplicate": True,
+                    "session_id": existing.get("id"),
+                    "arc_id": existing.get("arc_id"),
+                    "stages": sorted(picked_stages),
+                    "queue_count": len(ctx.get("label_queue") or []),
+                    "filename": filename,
+                }
+        except Exception as e:
+            # A failed lookup must not block the import; the worst case is
+            # the duplicate this key existed to prevent, which is strictly
+            # better than refusing a legitimate first import.
+            logger.warning("training_import: idempotency lookup failed: %s", e)
 
     # 1. The same gate the live path runs — silence and corrupt containers are
     #    rejected identically, so the corpus can't fill with unusable rows.
@@ -237,6 +311,8 @@ def import_training_audio(
     session_context = {"topic": topic}
     if speaker_label:
         session_context["speaker_label"] = str(speaker_label).strip()
+    if idem:
+        session_context["import_key"] = idem
     try:
         database.v2_create_guest_session(session_id)
         database.set_session_intake_context(session_id, session_context)
@@ -244,6 +320,12 @@ def import_training_audio(
         if user_id:
             database.set_session_user_id(session_id, str(user_id))
         database.set_session_arc(session_id, arc_id, 1)
+        # The job state the FE polls (reuses the async-analysis lane the live
+        # path already has: processing → ready | failed).
+        try:
+            database.set_session_analysis_state(session_id, "processing")
+        except Exception:
+            pass
         try:
             database.set_session_presentation_duration(session_id, duration_sec)
         except Exception:
@@ -298,23 +380,59 @@ def import_training_audio(
     except Exception as le:
         logger.warning("training_import: link recording failed: %s", le)
 
+    return {
+        "ok": True,
+        "session_id": session_id,
+        "arc_id": arc_id,
+        "recording_id": recording_id,
+        "parent_audio_url": parent_url,
+        "session_context": session_context,
+        "stages": sorted(picked_stages),
+        "user_id": str(user_id) if user_id else None,
+        "duration_sec": round(duration_sec, 1),
+        "speaker_label": speaker_label or None,
+        "filename": filename,
+    }
+
+
+def run_training_import_analysis(
+    *, prepared: dict, audio_bytes: bytes, filename: str,
+    database=None, queue_per_band: int = 5,
+) -> dict:
+    """The expensive half: analysis + the label queue. Safe to run in a
+    background thread (it touches no request state) and stamps the session's
+    analysis_state so the FE's poll has an answer either way."""
+    if database is None:
+        from services.db import db as database
+
+    session_id = prepared["session_id"]
+    arc_id = prepared["arc_id"]
+    picked_stages = set(prepared.get("stages") or DEFAULT_STAGES)
+    session_context = prepared.get("session_context") or {}
+    user_id = prepared.get("user_id")
+
     # 5. The analysis — the SAME call a live take makes, with the unticked
     #    stages skipped (stages=None on the live path = everything, unchanged).
     try:
         from services.lab_recording import process_lab_recording
         readout = process_lab_recording(
             session_id=session_id,
-            user_id=str(user_id) if user_id else None,
-            recording_id=recording_id,
+            user_id=user_id,
+            recording_id=prepared.get("recording_id"),
             audio_bytes=audio_bytes,
             filename=filename or "import.webm",
             session_context=session_context,
-            parent_audio_url=parent_url,
+            parent_audio_url=prepared.get("parent_audio_url"),
             stages=picked_stages,
         ) or {}
     except Exception as e:
         logger.error("training_import: analysis failed for %s: %s",
                      filename, e, exc_info=True)
+        try:
+            database.set_session_analysis_state(
+                session_id, "failed", error=str(e)[:400])
+        except Exception:
+            pass
         return {"ok": False, "reason": "analysis_failed", "detail": str(e),
                 "session_id": session_id, "arc_id": arc_id}
 
@@ -346,15 +464,20 @@ def import_training_audio(
             logger.warning("training_import: ideal text failed for %s: %s",
                            filename, e)
 
+    try:
+        database.set_session_analysis_state(session_id, "ready")
+    except Exception:
+        pass
+
     return {
         "ok": True,
         "session_id": session_id,
         "arc_id": arc_id,
-        "recording_id": recording_id,
+        "recording_id": prepared.get("recording_id"),
         "snippet_count": len(readout.get("snippets") or []),
         "queue_count": len(queue_ids),
         "stages": sorted(picked_stages),
-        "duration_sec": round(duration_sec, 1),
-        "speaker_label": speaker_label or None,
+        "duration_sec": prepared.get("duration_sec"),
+        "speaker_label": prepared.get("speaker_label"),
         "filename": filename,
     }

@@ -67,6 +67,7 @@ def tearDownModule():
 def _db() -> MagicMock:
     d = MagicMock()
     d.create_recording.return_value = None
+    d.find_training_import_by_key.return_value = None
     return d
 
 
@@ -257,6 +258,130 @@ class StageTickTests(unittest.TestCase):
     def test_default_import_reports_its_stages(self):
         _db_, result = _import()
         self.assertEqual(result["stages"], ["confidence"])
+
+
+class AsyncSplitTests(unittest.TestCase):
+    """prepare/run split — the route returns 202 after prepare and analyses
+    in a thread, so a proxy timeout can't masquerade as a failed import."""
+
+    def test_prepare_does_no_analysis(self):
+        from services.training_import import prepare_training_import
+        lab = sys.modules["services.lab_recording"]
+        called = []
+        orig = lab.process_lab_recording
+        lab.process_lab_recording = lambda **kw: called.append(1) or {}
+        try:
+            out = prepare_training_import(
+                audio_bytes=b"AUDIO", filename="t.mp3", user_id="u1",
+                topic="T", database=_db())
+        finally:
+            lab.process_lab_recording = orig
+        self.assertTrue(out["ok"])
+        self.assertEqual(called, [], "prepare must not run the analysis")
+        self.assertIn("session_id", out)
+        self.assertIn("parent_audio_url", out)
+
+    def test_prepare_marks_the_session_processing(self):
+        from services.training_import import prepare_training_import
+        db = _db()
+        prepare_training_import(audio_bytes=b"A", filename="t.mp3",
+                                user_id="u1", topic="T", database=db)
+        db.set_session_analysis_state.assert_called_once()
+        self.assertEqual(
+            db.set_session_analysis_state.call_args.args[1], "processing")
+
+    def test_run_marks_ready_and_returns_counts(self):
+        from services.training_import import (
+            prepare_training_import, run_training_import_analysis,
+        )
+        db = _db()
+        db.get_snippets_by_session.return_value = []
+        prepared = prepare_training_import(
+            audio_bytes=b"A", filename="t.mp3", user_id="u1", topic="T",
+            database=db)
+        out = run_training_import_analysis(
+            prepared=prepared, audio_bytes=b"A", filename="t.mp3",
+            database=db)
+        self.assertTrue(out["ok"])
+        self.assertEqual(out["snippet_count"], 3)
+        self.assertEqual(db.set_session_analysis_state.call_args.args[1],
+                         "ready")
+
+    def test_analysis_failure_marks_failed_for_the_poll(self):
+        """The FE polls analysis_state — a crashed thread must leave a
+        'failed', not a session stuck on 'processing' forever."""
+        from services.training_import import (
+            prepare_training_import, run_training_import_analysis,
+        )
+        db = _db()
+        prepared = prepare_training_import(
+            audio_bytes=b"A", filename="t.mp3", user_id="u1", topic="T",
+            database=db)
+        lab = sys.modules["services.lab_recording"]
+        orig = lab.process_lab_recording
+
+        def _boom(**kw):
+            raise RuntimeError("whisper down")
+        lab.process_lab_recording = _boom
+        try:
+            out = run_training_import_analysis(
+                prepared=prepared, audio_bytes=b"A", filename="t.mp3",
+                database=db)
+        finally:
+            lab.process_lab_recording = orig
+        self.assertFalse(out["ok"])
+        self.assertEqual(db.set_session_analysis_state.call_args.args[1],
+                         "failed")
+
+
+class IdempotencyTests(unittest.TestCase):
+    """A retry after a proxy timeout must return the ORIGINAL import — a talk
+    imported twice is labelled twice and trains twice, invisibly."""
+
+    def test_known_key_returns_the_original_and_creates_nothing(self):
+        from services.training_import import prepare_training_import
+        db = _db()
+        db.find_training_import_by_key.return_value = {
+            "id": "sess-orig", "arc_id": "arc-orig",
+            "intake_context": {"topic": "T", "label_queue": ["a", "b"]},
+        }
+        out = prepare_training_import(
+            audio_bytes=b"A", filename="t.mp3", user_id="u1", topic="T",
+            database=db, idempotency_key="abc-123")
+        self.assertTrue(out["ok"])
+        self.assertTrue(out["duplicate"])
+        self.assertEqual(out["session_id"], "sess-orig")
+        self.assertEqual(out["queue_count"], 2)
+        db.v2_create_guest_session.assert_not_called()
+        db.create_recording.assert_not_called()
+
+    def test_key_is_stored_so_the_retry_can_find_it(self):
+        from services.training_import import prepare_training_import
+        db = _db()
+        prepare_training_import(audio_bytes=b"A", filename="t.mp3",
+                                user_id="u1", topic="T", database=db,
+                                idempotency_key="abc-123")
+        ctx = db.set_session_intake_context.call_args.args[1]
+        self.assertEqual(ctx["import_key"], "abc-123")
+
+    def test_lookup_failure_still_imports(self):
+        """Refusing a legitimate first import is worse than risking the
+        duplicate the key existed to prevent."""
+        from services.training_import import prepare_training_import
+        db = _db()
+        db.find_training_import_by_key.side_effect = RuntimeError("db down")
+        out = prepare_training_import(
+            audio_bytes=b"A", filename="t.mp3", user_id="u1", topic="T",
+            database=db, idempotency_key="abc-123")
+        self.assertTrue(out["ok"])
+        self.assertFalse(out.get("duplicate"))
+
+    def test_no_key_means_no_lookup(self):
+        from services.training_import import prepare_training_import
+        db = _db()
+        prepare_training_import(audio_bytes=b"A", filename="t.mp3",
+                                user_id="u1", topic="T", database=db)
+        db.find_training_import_by_key.assert_not_called()
 
 
 class HelperTests(unittest.TestCase):
