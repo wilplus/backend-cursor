@@ -12383,15 +12383,20 @@ class DatabaseService:
         NEVER raises."""
         if not snippet_id or not isinstance(row, dict):
             return False
+        # FULL-STATE upsert: an omitted intensity CLEARS the stored one.
+        # The FE saves yes/no first and the grade second, so a coach who
+        # flips their answer sends {confident} alone — carrying the previous
+        # answer's intensity forward would leave a 5 attached to a "no"
+        # nobody graded. Stale training data is worse than absent training
+        # data, so absence wins.
         payload: dict = {
             "snippet_id": str(snippet_id),
             "confident": bool(row.get("confident")),
             "source": row.get("source") or "coach",
+            "intensity": row.get("intensity"),
+            "note": row.get("note"),
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }
-        for key in ("intensity", "note"):
-            if row.get(key) is not None:
-                payload[key] = row[key]
         if rater_id:
             payload["rater_id"] = str(rater_id)
         if session_id:
@@ -12445,6 +12450,33 @@ class DatabaseService:
         except Exception as e:
             logger.warning("get_confidence_label_corpus failed: %s", e)
             return []
+
+    def find_training_import_by_key(self, key: str) -> Optional[dict]:
+        """The import already created under this idempotency key, or None.
+
+        The retry-safety half of the timeout problem (FE 2026-07-28): the
+        proxy can time out on a request whose BE work then SUCCEEDS, so a
+        re-send must return the ORIGINAL import rather than mint a second —
+        a talk imported twice is labelled twice and trained on twice, and
+        nothing on screen would say so. Best-effort; None on any error (the
+        caller then proceeds, which risks the duplicate but never blocks a
+        legitimate first import)."""
+        if not key:
+            return None
+        try:
+            rows = (
+                self.client.table("v2_sessions")
+                .select("id, arc_id, intake_context, analysis_state")
+                .eq("source", "training_import")
+                .eq("intake_context->>import_key", str(key))
+                .limit(1)
+                .execute()
+                .data
+            ) or []
+            return rows[0] if rows else None
+        except Exception as e:
+            logger.warning("find_training_import_by_key failed: %s", e)
+            return None
 
     def list_training_import_sessions(self, *, user_id: Optional[str] = None,
                                       limit: int = 200) -> list[dict]:

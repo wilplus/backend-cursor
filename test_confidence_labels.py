@@ -201,6 +201,55 @@ class CorpusSummaryTests(unittest.TestCase):
         self.assertIsNone(s["balance"])
 
 
+class FullStateUpsertTests(unittest.TestCase):
+    """An omitted intensity CLEARS the stored one. The FE saves yes/no first
+    and the grade second, so a coach who FLIPS their answer sends
+    {confident} alone — carrying the old grade forward would leave a 5
+    attached to a 'no' nobody graded."""
+
+    def _svc_payload(self, row):
+        import sys as _sys
+        import types as _types
+        from unittest.mock import MagicMock as _MM
+        _orig = _sys.modules.get("supabase")
+        if _orig is None:
+            m = _types.ModuleType("supabase")
+            m.create_client = lambda *a, **k: None
+            m.Client = object
+            _sys.modules["supabase"] = m
+        try:
+            from services.db import DatabaseService
+        finally:
+            if _orig is None:
+                _sys.modules.pop("supabase", None)
+        cap: dict = {}
+
+        class _T:
+            def upsert(self, payload, **kw):
+                cap["payload"] = dict(payload)
+                return self
+
+            def execute(self):
+                return _types.SimpleNamespace(data=[])
+
+        svc = DatabaseService.__new__(DatabaseService)
+        svc.client = _types.SimpleNamespace(table=lambda name: _T())
+        svc.upsert_confidence_label(snippet_id="s1", row=row,
+                                    rater_id="c1", session_id="sess-1")
+        return cap.get("payload", {})
+
+    def test_omitted_intensity_is_written_as_null(self):
+        payload = self._svc_payload({"confident": False})
+        self.assertIn("intensity", payload)
+        self.assertIsNone(payload["intensity"],
+                          "a flipped answer must not keep the old grade")
+
+    def test_given_intensity_is_written(self):
+        payload = self._svc_payload({"confident": True, "intensity": 4})
+        self.assertEqual(payload["intensity"], 4)
+        self.assertIs(payload["confident"], True)
+
+
 class FenceTests(unittest.TestCase):
 
     def test_confidence_lane_is_separate_from_training_labels(self):
