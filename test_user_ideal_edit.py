@@ -103,6 +103,26 @@ class UserEditPutTests(unittest.TestCase):
         self.assertEqual(status, 404)
         m_up.assert_not_called()
 
+    def test_reapplied_true_logs_once(self):
+        # Founder 2026-07-28: the re-apply decision metric — LOG-ONLY.
+        with self.assertLogs("routes.v2_routes", level="INFO") as cm:
+            body, status, _ = self._put(
+                {"text": "my edit", "version": 3, "reapplied": True})
+        self.assertEqual(status, 200)
+        self.assertTrue(body["saved"])
+        _hits = [m for m in cm.output if "ideal_edit.reapplied" in m]
+        self.assertEqual(len(_hits), 1)
+
+    def test_reapplied_absent_or_nonbool_never_logs_never_errors(self):
+        # Lenient: anything but boolean true is ignored — same 200, no log.
+        for extra in ({}, {"reapplied": "yes"}, {"reapplied": 1},
+                      {"reapplied": False}, {"reapplied": None}):
+            with self.assertNoLogs("routes.v2_routes", level="INFO"):
+                body, status, _ = self._put(
+                    {"text": "my edit", "version": 3, **extra})
+            self.assertEqual(status, 200)
+            self.assertTrue(body["saved"])
+
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
 class LedgerInheritanceTests(unittest.TestCase):
@@ -235,6 +255,77 @@ class StudentGetDisplayPriorityTests(unittest.TestCase):
         body, _ = self._get(row=_row(version=3), edit=None)
         self.assertEqual(body["text"], "machine text")
         self.assertFalse(body["user_edited"])
+
+
+@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
+class PriorEditReofferTests(unittest.TestCase):
+    """Founder 2026-07-28 — the superseded-edit re-offer: `prior_edit`
+    {text, version} on the student GET, ONLY when a stale non-empty edit
+    exists. The lane semantics are unchanged (the versioning change is
+    parked); this exposes the already-retained row to its owner."""
+
+    def setUp(self):
+        self.app = Flask(__name__)
+
+    def _get(self, *, row, edit):
+        with self.app.test_request_context():
+            request.user_id = "u1"
+            _edit_patch = edit if callable(edit) else (lambda a, u: edit)
+            with patch.object(v2, "_arc_owned_by_caller",
+                              return_value=(True, [])), \
+                 patch.object(v2, "_moments_entitled", return_value=False), \
+                 patch.object(v2, "_moment_explanations_map",
+                              return_value={}), \
+                 patch.object(v2.db, "get_coach_arc_ideal_text",
+                              return_value=row), \
+                 patch.object(v2.db, "get_user_ideal_edit",
+                              side_effect=_edit_patch), \
+                 patch.object(v2.db, "get_user_arc_ideal_notes",
+                              return_value=None):
+                out = v2.v2_explore_get_ideal_text.__wrapped__(ARC)
+                resp, status = out if isinstance(out, tuple) else (out, 200)
+                return resp.get_json(), status
+
+    def test_present_for_stale_nonempty_edit(self):
+        body, status = self._get(
+            row=_row(version=3),
+            edit={"text": "OLD EDIT", "version": 2, "updated_at": "t"})
+        self.assertEqual(status, 200)
+        self.assertEqual(body["prior_edit"],
+                         {"text": "OLD EDIT", "version": 2})
+        # the stale edit still does not win display
+        self.assertEqual(body["text"], "machine text")
+        self.assertFalse(body["user_edited"])
+
+    def test_absent_when_no_edit(self):
+        body, _ = self._get(row=_row(version=3), edit=None)
+        self.assertNotIn("prior_edit", body)
+
+    def test_absent_at_current_version(self):
+        # the live edit is already served as `text` (user_edited: true)
+        body, _ = self._get(
+            row=_row(version=3),
+            edit={"text": "MY EDIT", "version": 3, "updated_at": "t"})
+        self.assertTrue(body["user_edited"])
+        self.assertNotIn("prior_edit", body)
+
+    def test_absent_for_empty_stale_edit(self):
+        body, _ = self._get(
+            row=_row(version=3),
+            edit={"text": "   ", "version": 2, "updated_at": "t"})
+        self.assertNotIn("prior_edit", body)
+
+    def test_owner_keyed_read(self):
+        # the edit read is keyed on the CALLER — never another user's row.
+        calls = []
+
+        def _read(arc_id, user_id):
+            calls.append((arc_id, user_id))
+            return {"text": "OLD EDIT", "version": 2, "updated_at": "t"}
+
+        body, _ = self._get(row=_row(version=3), edit=_read)
+        self.assertEqual(calls, [(ARC, "u1")])
+        self.assertEqual(body["prior_edit"]["version"], 2)
 
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")

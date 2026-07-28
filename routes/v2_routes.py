@@ -12604,8 +12604,8 @@ def v2_explore_get_ideal_text(arc_id):
     200 { arc_id, version, status:"verified"|"unverified", title,
           updated_at, latest_take_session_id, take_count, reread_done,
           reread_processing, can_record_take, text, user_edited,
-          key_moments, moments_unlocked, explanations_available,
-          price_credits,
+          prior_edit?, key_moments, moments_unlocked,
+          explanations_available, price_credits,
           notes_text } — free in both states, never 402s. The
     crucial-bubble fields (founder 2026-07-20): `title` = latest take's
     topic, `latest_take_session_id` = the re-read pairing target.
@@ -12759,6 +12759,25 @@ def v2_explore_get_ideal_text(arc_id):
             and _edit.get("version") == _version
             and (_edit.get("text") or "").strip())
         _text = _edit["text"] if _user_edited else _base_text
+        # ── SUPERSEDED-EDIT RE-OFFER (founder 2026-07-28): when a newer
+        # version has superseded the student's edit, serve the retained
+        # copy as `prior_edit` so the FE can offer one-click "re-apply
+        # your additions" across reload / device switch. The lane
+        # semantics are UNCHANGED (the versioning change stays parked:
+        # additions/moves never bake forward) — this only exposes the
+        # already-retained row to its owner. Best-effort: absent on any
+        # hiccup, never breaks the GET. Owner-keyed by the read above.
+        _prior_edit = None
+        try:
+            if not _user_edited and _edit and _version is not None:
+                _pe_text = (_edit.get("text") or "").strip()
+                _pe_ver = _edit.get("version")
+                if _pe_text and isinstance(_pe_ver, int) \
+                        and not isinstance(_pe_ver, bool) \
+                        and _pe_ver != _version:
+                    _prior_edit = {"text": _pe_text, "version": _pe_ver}
+        except Exception:
+            _prior_edit = None
         from services.ideal_text_block import extract_key_moments
 
         # ── Star suggestions (2026-07-18, flag-gated). Fold APPLIED
@@ -13076,6 +13095,10 @@ def v2_explore_get_ideal_text(arc_id):
             # True when the served text is the student's own edit of the
             # current version (the FE labels it).
             "user_edited": _user_edited,
+            # The retained edit a NEWER version superseded (founder
+            # 2026-07-28) — the FE's one-click "re-apply your additions".
+            # Absent when there is nothing to re-offer.
+            **({"prior_edit": _prior_edit} if _prior_edit else {}),
             "key_moments": [_decorate(m) for m in _moments],
             "moments_unlocked": _moments_entitled(arc_id),
             # Founder 2026-07-20: the 5-credit unlock buys COACH
@@ -13792,7 +13815,10 @@ def v2_explore_put_ideal_user_edit(arc_id):
     it — retained, not shown; BE-2 pinned default). NEVER overwrites the coach
     canonical or the legacy notebook copy (L1 — separate lanes).
 
-    Body: {text ≤20000, version:int}.
+    Body: {text ≤20000, version:int, reapplied?:true}. `reapplied` (founder
+    2026-07-28) marks a one-click re-apply of a superseded edit — LOG-ONLY
+    telemetry (the decision metric for the parked versioning change): never
+    persisted, never surfaced; anything but boolean true is ignored.
     200 {saved: true, version}
     400 INVALID_INPUT · 404 · 409 VERSION_SUPERSEDED {current_version} · 500
     """
@@ -13836,6 +13862,14 @@ def v2_explore_put_ideal_user_edit(arc_id):
         if not ok:
             return jsonify({"code": "V2_ERROR",
                             "error": "Could not save"}), 500
+        # RE-APPLY TELEMETRY (founder 2026-07-28): one log line per
+        # successful one-click re-apply of a superseded edit — the
+        # decision metric for the PARKED versioning change (how often do
+        # users re-apply an addition a new take dropped?). Log-only:
+        # never persisted, never surfaced; only boolean true counts.
+        if body.get("reapplied") is True:
+            logger.info("ideal_edit.reapplied arc=%s version=%s chars=%d",
+                        arc_id, current, len(text))
         # ── EDIT INHERITANCE (founder 2026-07-20, rule 4b): decompose the
         # edit into phrase decisions on the ledger (source='user_edit',
         # approved) so the NEXT version bakes the student's wording
