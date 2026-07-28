@@ -860,9 +860,28 @@ def build_arc_breakthroughs(arc_id: Optional[str], *, database=None) -> dict:
              "direction": s.get("coach_direction")}
             for s in directed
         ])
+        if not bt:
+            continue
+        # The coach's own words + video per breakthrough (founder 2026-07-28,
+        # FE §1 close-out): the key-moment note and the breakthrough video
+        # both live on the drafts lane, keyed by snippet — same source the
+        # game's reveal uses. One read per session WITH breakthroughs (the
+        # continue above skips it entirely for takes that have none).
+        # Best-effort: no drafts → both fields null, the list still serves.
+        _drafts_by_snip: dict = {}
+        try:
+            _get_drafts = getattr(db, "get_coach_snippet_drafts", None)
+            if callable(_get_drafts):
+                _drafts_by_snip = {
+                    str(d.get("snippet_id")): d
+                    for d in (_get_drafts(sid) or []) if d.get("snippet_id")
+                }
+        except Exception:
+            _drafts_by_snip = {}
         for s in directed:
             if s.get("id") not in bt:
                 continue
+            _draft = _drafts_by_snip.get(str(s.get("id"))) or {}
             out.append({
                 "snippet_id": s.get("id"),
                 "session_id": sid,
@@ -878,6 +897,12 @@ def build_arc_breakthroughs(arc_id: Optional[str], *, database=None) -> dict:
                 "duration_ms": s.get("duration_ms"),
                 # score-free plain-language "why" (AC-9 — never a number).
                 "note": _moment_note(s),
+                # The coach's human-authored feedback on THIS moment — the
+                # note they wrote and the breakthrough video they recorded.
+                # `video_ref` matches the game's field name so the FE reuses
+                # its player. Null when the coach left neither.
+                "coach_comment": (_draft.get("note") or None),
+                "video_ref": (_draft.get("breakthrough_video_ref") or None),
             })
 
     # Newest → oldest: latest take first, latest moment within a take first.

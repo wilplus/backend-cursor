@@ -554,6 +554,46 @@ class ArcBreakthroughsTests(unittest.TestCase):
         out = bp.build_arc_breakthroughs("arc1", database=_FakeDB([], {}, {}))
         self.assertEqual(out, {"breakthroughs": [], "count": 0})
 
+    def test_coach_comment_and_video_ride_through(self):
+        """Founder 2026-07-28 (FE §1 close-out): the coach's key-moment note +
+        breakthrough video per breakthrough, from the drafts lane — `video_ref`
+        named to match the game's field so the FE reuses its player."""
+        labels = {"s1": [{"snippet_id": "t1", "value": "threat"},
+                         {"snippet_id": "c1", "value": "challenge"}]}
+        db = self._db(labels)
+        db.get_coach_snippet_drafts = lambda sid: ([
+            {"snippet_id": "c1", "note": "This is where you took the room.",
+             "breakthrough_video_ref": "r2://coach/bt-c1.mp4"},
+            {"snippet_id": "t1", "note": "never surfaced (not a breakthrough)"},
+        ] if sid == "s1" else [])
+        out = bp.build_arc_breakthroughs("arc1", database=db)
+        b = out["breakthroughs"][0]
+        self.assertEqual(b["coach_comment"], "This is where you took the room.")
+        self.assertEqual(b["video_ref"], "r2://coach/bt-c1.mp4")
+
+    def test_no_drafts_lane_yields_null_fields_not_a_break(self):
+        """A db without the drafts reader (or with none written) still serves
+        the list — both fields present and null."""
+        labels = {"s1": [{"snippet_id": "t1", "value": "threat"},
+                         {"snippet_id": "c1", "value": "challenge"}]}
+        out = bp.build_arc_breakthroughs("arc1", database=self._db(labels))
+        b = out["breakthroughs"][0]
+        self.assertIn("coach_comment", b)
+        self.assertIsNone(b["coach_comment"])
+        self.assertIsNone(b["video_ref"])
+
+    def test_drafts_read_failure_is_non_fatal(self):
+        labels = {"s1": [{"snippet_id": "t1", "value": "threat"},
+                         {"snippet_id": "c1", "value": "challenge"}]}
+        db = self._db(labels)
+
+        def _boom(_sid):
+            raise RuntimeError("drafts table down")
+        db.get_coach_snippet_drafts = _boom
+        out = bp.build_arc_breakthroughs("arc1", database=db)
+        self.assertEqual(out["count"], 1)
+        self.assertIsNone(out["breakthroughs"][0]["coach_comment"])
+
 
 class _CachingFakeDB(_FakeDB):
     """_FakeDB + the Part B cache methods + a snippet-read counter."""
