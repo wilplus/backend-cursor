@@ -15,9 +15,17 @@ WHAT IT WRITES (two files, deliberately separate):
                            rating column. Give this to the rater. It carries NO
                            machine score, band, or acoustic number, so the rating
                            cannot be anchored by ours.
-  <out>/key.csv          — snippet_id, score, band, cues, baseline. Keep this
-                           closed until the sheet comes back, then join on
-                           snippet_id.
+  <out>/key.csv          — snippet_id, score, band, cues, baseline, version,
+                           sex, sex_source. Keep this closed until the sheet
+                           comes back, then join on snippet_id.
+
+PER-SEX RE-FIT. Since v2 the composite routes its cue weights on speaker sex
+(one cue, pitch variability, REVERSES direction), so the key carries which
+table produced each score and on what authority. Two rules when using this to
+re-fit rather than merely to validate: filter to a single `version`, and filter
+to `sex_source=declared` — an inferred row's weights were chosen by a guess off
+the pitch baseline, which is circular input to a fit over pitch features. The
+script prints both distributions and warns when they are mixed.
 
 SAMPLING. Random over the user's pieces, NOT ordered by score or salience. This
 matters: services/snippet_salience.py documents a hard methodological fence that
@@ -75,6 +83,11 @@ def _rows_for_user(database, user_id: str, max_sessions: int) -> list:
                 "band": read.get("band"),
                 "cues": read.get("cues"),
                 "baseline": read.get("baseline"),
+                # Which weight table produced the score, and on what authority.
+                # v1 rows predate sex conditioning and carry neither.
+                "version": read.get("version") or "voice-confidence-v1",
+                "sex": read.get("sex") or "unknown",
+                "sex_source": read.get("sex_source") or "unknown",
                 # Which regime produced this row — see the SAMPLING note above.
                 "regime": "piece" if isinstance(metrics.get("piece"), dict)
                           else "salient_window",
@@ -153,10 +166,11 @@ def main() -> int:
     with open(key_path, "w", newline="", encoding="utf-8") as fh:
         w = csv.writer(fh)
         w.writerow(["snippet_id", "score", "band", "cues", "baseline",
-                    "session_id", "regime"])
+                    "version", "sex", "sex_source", "session_id", "regime"])
         for r in sample:
             w.writerow([r["snippet_id"], r["score"], r["band"], r["cues"],
-                        r["baseline"], r["session_id"], r["regime"]])
+                        r["baseline"], r["version"], r["sex"], r["sex_source"],
+                        r["session_id"], r["regime"]])
 
     counts: dict = {}
     for r in sample:
@@ -164,6 +178,26 @@ def main() -> int:
 
     print(f"pool={len(rows)} sampled={len(sample)}")
     print("bands: " + ", ".join(f"{k}={v}" for k, v in sorted(counts.items())))
+
+    # Weighting provenance. A sample that straddles v1 and v2, or one whose
+    # sex was guessed from the pitch baseline, is still ratable — but it is not
+    # a clean basis for RE-FITTING the per-sex weights, and the operator has to
+    # be told that rather than discovering it in the numbers.
+    versions = {r["version"] for r in sample}
+    sources: dict = {}
+    for r in sample:
+        sources[r["sex_source"]] = sources.get(r["sex_source"], 0) + 1
+    print("sex_source: " + ", ".join(
+        f"{k}={v}" for k, v in sorted(sources.items())))
+    if len(versions) > 1:
+        print(f"WARNING: sample mixes composite versions {sorted(versions)} — "
+              "scores from different weightings are not directly comparable. "
+              "Filter key.csv by `version` before pooling.", file=sys.stderr)
+    if sources.get("inferred"):
+        print(f"NOTE: {sources['inferred']} row(s) had sex INFERRED from the "
+              "pitch baseline, not declared. Fine for validating the composite "
+              "as it actually runs; exclude them (sex_source=declared) before "
+              "re-fitting per-sex weights.", file=sys.stderr)
     print(f"\nblind sheet (give to the rater): {blind_path}")
     print(f"key (keep closed until it returns): {key_path}")
     print("\nRate each clip 1-5 for how CONFIDENT the speaker sounds, audio "

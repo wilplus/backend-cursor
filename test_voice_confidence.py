@@ -249,8 +249,11 @@ class TestAttach(unittest.TestCase):
                                 baseline_kind="user")
         for p in pieces:
             read = p["metrics"]["voice_confidence"]
-            self.assertEqual(read["version"], "voice-confidence-v1")
+            self.assertEqual(read["version"], "voice-confidence-v2")
             self.assertEqual(read["baseline"], "user")
+            # Un-resolved sex is stamped honestly, not left absent.
+            self.assertEqual(read["sex"], "unknown")
+            self.assertEqual(read["sex_source"], "unknown")
             self.assertIn(read["band"], (
                 "confident", "close_to_confident", "neutral",
                 "unconfident", "doubtful"))
@@ -318,7 +321,8 @@ class TestRankTermFlag(unittest.TestCase):
 
     _STAMPED = {"voice_confidence": {"score": 0.7, "band": "confident",
                                      "baseline": "user", "cues": 7,
-                                     "version": "voice-confidence-v1"}}
+                                     "sex": "male", "sex_source": "declared",
+                                     "version": "voice-confidence-v2"}}
 
     def test_flag_off_is_none(self):
         from services.voice_confidence import rank_term
@@ -435,7 +439,302 @@ class TestSelectionUsesTheTerm(unittest.TestCase):
         self.assertEqual(picks[0]["snippet_id"], "old")
 
 
+class TestSexConditionedWeights(unittest.TestCase):
+    """v2 — the cue weights route on speaker sex, and cue 1 REVERSES.
+
+    This is the failure mode the whole feature exists for: within-speaker
+    z-scoring cannot absorb a direction flip, so a sex-blind weight on f0_sd
+    mis-scores one sex however well it is calibrated."""
+
+    def _z(self, metrics, sex=None):
+        from services.voice_confidence import confidence_z
+        result = confidence_z(metrics, _UNIT_BASELINE, sex)
+        self.assertIsNotNone(result, "expected a measurable read")
+        return result[0]
+
+    def test_wide_pitch_range_flips_sign_between_the_sexes(self):
+        """THE reversal. Same clip, same baseline — opposite verdicts.
+        Female: wide f0 range is the top confidence cue. Male: it trends
+        UNCONFIDENT (paper: f0 variance highest in the unconfident level for
+        male talkers)."""
+        wide = _with(f0_sd=2.0)
+        self.assertGreater(self._z(wide, "female"), 0.0)
+        self.assertLess(self._z(wide, "male"), 0.0)
+
+        narrow = _with(f0_sd=-2.0)
+        self.assertLess(self._z(narrow, "female"), 0.0)
+        self.assertGreater(self._z(narrow, "male"), 0.0)
+
+    def test_every_other_cue_keeps_its_direction_in_both_tables(self):
+        """Only cue 1 flips. If a re-weighting ever inverts another cue, that
+        is a bug, not a tuning choice."""
+        same_direction = [
+            (_with(dynamic_db=2.0), +1),
+            (_with(f0_mean=2.0), -1),
+            (_with(wpm=2.0), +1),
+            (_with(pause_ratio=2.0, pause_ms=2.0), -1),
+            (_with(f0_mid_end_delta=2.0), +1),
+            (_with(intensity_envelope=-2.0), +1),
+        ]
+        for metrics, expected in same_direction:
+            for sex in (None, "female", "male"):
+                z = self._z(metrics, sex)
+                self.assertEqual(
+                    1 if z > 0 else -1, expected,
+                    f"direction changed for sex={sex} on {metrics}")
+
+    def test_unknown_sex_reproduces_v1_scores_exactly(self):
+        """The regression that protects every existing speaker. Nobody has a
+        declared sex on the day this ships; their composite must not move."""
+        from services.voice_confidence import _CUES, cues_for
+        self.assertIs(cues_for(None), _CUES)
+        self.assertIs(cues_for("prefer_not_to_say"), _CUES)
+        self.assertIs(cues_for("nonsense"), _CUES)
+        self.assertIs(cues_for(""), _CUES)
+        # And the arithmetic agrees: the sex-blind read is the no-arg read.
+        from services.voice_confidence import confidence_z
+        m = _with(f0_sd=1.5, dynamic_db=-0.5, wpm=2.0, pause_ratio=0.7)
+        self.assertEqual(confidence_z(m, _UNIT_BASELINE),
+                         confidence_z(m, _UNIT_BASELINE, None))
+
+    def test_both_tables_are_normalized_and_complete(self):
+        """Weights must sum to 1.0 and cover the same seven cues, or the
+        renormalization in confidence_z silently changes scale between sexes
+        and male/female scores stop being comparable to each other."""
+        from services.voice_confidence import _CUES, _CUES_FEMALE, _CUES_MALE
+        blind_names = [c[0] for c in _CUES]
+        for table, label in ((_CUES_FEMALE, "female"), (_CUES_MALE, "male")):
+            self.assertAlmostEqual(sum(c[2] for c in table), 1.0, places=9,
+                                   msg=f"{label} weights must sum to 1.0")
+            self.assertEqual([c[0] for c in table], blind_names,
+                             f"{label} table must cover the same cues")
+            for _name, members, _w in table:
+                for _feature, sign in members:
+                    self.assertIn(sign, (+1.0, -1.0))
+
+    def test_the_flipped_cue_carries_a_small_weight_for_men(self):
+        """Blast-radius guard. Sex can be resolved wrongly (an inferred route,
+        a mistaken answer); the one cue whose SIGN depends on that resolution
+        must not be able to swing the composite on its own."""
+        from services.voice_confidence import _CUES_MALE
+        flipped = next(w for name, _m, w in _CUES_MALE if name == "pitch_range")
+        others = [w for name, _m, w in _CUES_MALE if name != "pitch_range"]
+        self.assertLessEqual(flipped, 0.10)
+        self.assertLess(flipped, max(others))
+
+    def test_male_weights_favour_loudness_and_pausing(self):
+        """The paper's male pattern: confidence signalled chiefly by loudness,
+        with pausing the most differentiated cue. We have no absolute mean
+        loudness, so dynamic_db + front-loaded energy stand in for it."""
+        from services.voice_confidence import _CUES_MALE, _CUES_FEMALE
+        w_male = {n: w for n, _m, w in _CUES_MALE}
+        w_female = {n: w for n, _m, w in _CUES_FEMALE}
+        self.assertGreater(w_male["pausing"], w_female["pausing"])
+        self.assertGreater(w_male["energy_frontload"],
+                           w_female["energy_frontload"])
+        # ...and the female pattern: pitch range + loudness range lead.
+        self.assertGreater(w_female["pitch_range"], w_male["pitch_range"])
+        self.assertGreater(w_female["loudness_range"],
+                           w_female["speech_rate"])
+
+
+class TestSexNormalizationAndInference(unittest.TestCase):
+
+    def test_normalize_sex_accepts_only_the_three_values(self):
+        from services.voice_confidence import normalize_sex
+        self.assertEqual(normalize_sex("female"), "female")
+        self.assertEqual(normalize_sex("  MALE "), "male")
+        self.assertEqual(normalize_sex("prefer-not-to-say"), "prefer_not_to_say")
+        self.assertEqual(normalize_sex("prefer not to say"), "prefer_not_to_say")
+        for junk in (None, "", "m", "f", "other", "true", 1, True, [], {}):
+            self.assertIsNone(normalize_sex(junk), junk)
+
+    def test_inference_routes_only_outside_the_dead_band(self):
+        from services.voice_confidence import infer_sex_from_baseline
+        self.assertEqual(infer_sex_from_baseline({"f0_mean": (110.0, 12.0)}),
+                         "male")
+        self.assertEqual(infer_sex_from_baseline({"f0_mean": (215.0, 20.0)}),
+                         "female")
+        # The overlap band stays UNROUTED — sex-blind beats a coin flip,
+        # because a wrong route inverts cue 1.
+        for ambiguous in (145.0, 160.0, 175.0, 185.0):
+            self.assertIsNone(
+                infer_sex_from_baseline({"f0_mean": (ambiguous, 10.0)}),
+                ambiguous)
+
+    def test_inference_is_silent_on_junk(self):
+        from services.voice_confidence import infer_sex_from_baseline
+        for junk in (None, {}, {"f0_mean": None}, {"f0_mean": ()},
+                     {"f0_mean": ("x", 1.0)}, {"f0_mean": (0.0, 1.0)},
+                     {"f0_mean": (-40.0, 1.0)}, {"dynamic_db": (5.0, 1.0)},
+                     "nope", 7):
+            self.assertIsNone(infer_sex_from_baseline(junk), junk)
+
+    def test_inference_kill_switch(self):
+        from services.voice_confidence import infer_sex_from_baseline
+        with patch.dict("os.environ",
+                        {"VOICE_CONFIDENCE_SEX_INFERENCE_ENABLED": "0"}):
+            self.assertIsNone(infer_sex_from_baseline({"f0_mean": (110.0, 12.0)}))
+        with patch.dict("os.environ",
+                        {"VOICE_CONFIDENCE_SEX_INFERENCE_ENABLED": "1"}):
+            self.assertEqual(
+                infer_sex_from_baseline({"f0_mean": (110.0, 12.0)}), "male")
+
+
+class TestSexResolution(unittest.TestCase):
+
+    _MALE_BASELINE = {"f0_mean": (110.0, 12.0)}
+
+    def _db(self, stored):
+        d = MagicMock()
+        d.get_user_speaker_sex.return_value = stored
+        return d
+
+    def test_declared_wins_over_the_acoustics(self):
+        """A woman with an unusually low voice must not be re-routed by our
+        pitch heuristic once she has told us."""
+        from services.voice_confidence import resolve_speaker_sex
+        sex, source = resolve_speaker_sex(
+            "u1", self._MALE_BASELINE, database=self._db("female"))
+        self.assertEqual((sex, source), ("female", "declared"))
+
+    def test_declining_to_answer_suppresses_inference(self):
+        """THE opt-out guard. An opt-out we route around by reading the user's
+        voice instead is not an opt-out — it must land on sex-blind weights."""
+        from services.voice_confidence import resolve_speaker_sex
+        sex, source = resolve_speaker_sex(
+            "u1", self._MALE_BASELINE,
+            database=self._db("prefer_not_to_say"))
+        self.assertIsNone(sex)
+        self.assertEqual(source, "not_stated")
+
+    def test_no_answer_falls_back_to_the_acoustic_route(self):
+        from services.voice_confidence import resolve_speaker_sex
+        sex, source = resolve_speaker_sex(
+            "u1", self._MALE_BASELINE, database=self._db(None))
+        self.assertEqual((sex, source), ("male", "inferred"))
+
+    def test_ambiguous_acoustics_stay_unknown(self):
+        from services.voice_confidence import resolve_speaker_sex
+        sex, source = resolve_speaker_sex(
+            "u1", {"f0_mean": (165.0, 10.0)}, database=self._db(None))
+        self.assertIsNone(sex)
+        self.assertEqual(source, "unknown")
+
+    def test_no_baseline_and_no_user_is_unknown(self):
+        from services.voice_confidence import resolve_speaker_sex
+        self.assertEqual(resolve_speaker_sex(None, None), (None, "unknown"))
+
+    def test_db_failure_degrades_to_inference_not_to_nothing(self):
+        """A broken lookup is not a decline. It must not be treated as one —
+        otherwise a transient DB blip silently downgrades a speaker's read."""
+        from services.voice_confidence import resolve_speaker_sex
+        d = MagicMock()
+        d.get_user_speaker_sex.side_effect = RuntimeError("boom")
+        sex, source = resolve_speaker_sex("u1", self._MALE_BASELINE, database=d)
+        self.assertEqual((sex, source), ("male", "inferred"))
+
+    def test_stored_junk_is_ignored(self):
+        from services.voice_confidence import resolve_speaker_sex
+        sex, source = resolve_speaker_sex(
+            "u1", self._MALE_BASELINE, database=self._db("banana"))
+        self.assertEqual((sex, source), ("male", "inferred"))
+
+    def test_missing_db_method_never_raises(self):
+        """A pre-migration / stubbed database has no such method."""
+        from services.voice_confidence import resolve_speaker_sex
+        bare = object()
+        self.assertEqual(
+            resolve_speaker_sex("u1", None, database=bare), (None, "unknown"))
+
+
+class TestSexReachesTheStampedBlob(unittest.TestCase):
+
+    def test_read_for_piece_records_the_route_and_its_authority(self):
+        from services.voice_confidence import read_for_piece
+        read = read_for_piece(_with(f0_sd=2.0, dynamic_db=1.0, wpm=1.0),
+                              _UNIT_BASELINE, "user", "male", "declared")
+        self.assertEqual(read["sex"], "male")
+        self.assertEqual(read["sex_source"], "declared")
+        self.assertEqual(read["version"], "voice-confidence-v2")
+
+    def test_unrecognized_sex_or_source_is_stamped_unknown(self):
+        from services.voice_confidence import read_for_piece
+        read = read_for_piece(_with(f0_sd=2.0, dynamic_db=1.0, wpm=1.0),
+                              _UNIT_BASELINE, "user", "banana", "vibes")
+        self.assertEqual(read["sex"], "unknown")
+        self.assertEqual(read["sex_source"], "unknown")
+
+    def test_attach_applies_one_resolved_sex_to_every_piece(self):
+        """Sex is a property of the speaker, resolved once per take — not
+        re-derived per moment."""
+        from services.voice_confidence import attach_voice_confidence
+        pieces = [{"metrics": _with(f0_sd=float(i), dynamic_db=1.0)}
+                  for i in range(6)]
+        attach_voice_confidence(pieces, baseline=_UNIT_BASELINE,
+                                baseline_kind="user", sex="female",
+                                sex_source="declared")
+        for p in pieces:
+            self.assertEqual(p["metrics"]["voice_confidence"]["sex"], "female")
+            self.assertEqual(
+                p["metrics"]["voice_confidence"]["sex_source"], "declared")
+
+    def _stamp(self, metrics, sex):
+        from services.voice_confidence import attach_voice_confidence
+        pieces = [{"metrics": dict(metrics)} for _ in range(3)]
+        attach_voice_confidence(pieces, baseline=_UNIT_BASELINE,
+                                baseline_kind="user", sex=sex,
+                                sex_source="declared")
+        return pieces[0]["metrics"]["voice_confidence"]["score"]
+
+    def test_the_flip_survives_the_whole_stamping_path(self):
+        """End-to-end on the record-time entry point. A wide pitch range reads
+        CONFIDENT for a woman; for a man the same clip does not.
+
+        Note the asymmetry, which is the design and not a shortfall: cue 1 is
+        the top female cue but a modestly weighted male one, so on its own it
+        carries a woman clear of the neutral dead zone and leaves a man inside
+        it. What must never happen is the male read going POSITIVE."""
+        wide = _with(f0_sd=3.0)
+        female = self._stamp(wide, "female")
+        male = self._stamp(wide, "male")
+        self.assertGreater(female, 0.0)
+        self.assertLessEqual(male, 0.0)
+        self.assertLess(male, female)
+
+    def test_a_man_with_corroborating_cues_reads_doubtful(self):
+        """Once the flipped cue has company, the male read does leave neutral —
+        and lands on the opposite side from the woman's."""
+        # Wide pitch range + the pattern the paper calls unconfident in men:
+        # quieter dynamics, more pausing, higher pitch, slower.
+        unsure_male = _with(f0_sd=2.0, dynamic_db=-1.5, pause_ratio=1.5,
+                            pause_ms=1.5, f0_mean=1.0, wpm=-1.0)
+        self.assertLess(self._stamp(unsure_male, "male"), -0.3)
+        # The identical acoustics under the female table are NOT as damning,
+        # because there the wide range is pulling the other way.
+        self.assertGreater(self._stamp(unsure_male, "female"),
+                           self._stamp(unsure_male, "male"))
+
+
 class TestFences(unittest.TestCase):
+
+    def test_an_inferred_sex_is_never_written_back(self):
+        """The acoustic route is a WEIGHT ROUTER, not a finding about a person.
+        Persisting it would turn a heuristic into a stored claim on their
+        profile and would make 'prefer not to say' unrecoverable."""
+        with open("services/voice_confidence.py", encoding="utf-8") as fh:
+            source = fh.read()
+        for banned in ("set_user_speaker_sex", "set_user_profile", "upsert"):
+            self.assertNotIn(banned, source)
+
+    def test_sex_is_not_a_surfaced_construct(self):
+        """AC-9 / CONSTRUCT. The sex term selects weights; it must never become
+        a user-facing label, badge, or copy string in this module."""
+        with open("services/voice_confidence.py", encoding="utf-8") as fh:
+            source = fh.read()
+        for banned in ("jsonify", "bubble", "suggested_action", "headline"):
+            self.assertNotIn(banned, source)
+
 
     def test_score_never_reaches_a_user_or_coach_payload(self):
         """AC-9 + BLIND COACH. The readout serializer is an allowlist, so the

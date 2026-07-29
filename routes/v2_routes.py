@@ -7499,12 +7499,20 @@ def v2_user_get_profile():
 
     Response 200:
       { "domain": "<enum>" | null, "goal": "<str>" | null,
+        "sex": "female"|"male"|"prefer_not_to_say" | null,
         "domain_vocabulary_default": [ ...seed for domain... ],
         "is_coach": bool }
 
     `domain_vocabulary_default` is the editable seed the Lab pre-fills
     `session_context.domain_vocabulary` from (empty list when no
     domain is set yet). Both domain + goal null pre-intake.
+
+    `sex` is the self-declared speaker sex. It exists for ONE reason: it
+    routes the cue weights of the voice-confidence composite, where pitch
+    variability reverses direction between male and female speakers
+    (services/voice_confidence.py). null = never asked, which is how the
+    FE knows to show the question; "prefer_not_to_say" = asked and
+    declined, so do NOT re-ask. It is not part of any score the user sees.
 
     `is_coach` (F.9b) is RENDER-ONLY — it lets the FE show/hide the coach
     surface. It is NEVER the authorization gate: every coach route is
@@ -7519,6 +7527,7 @@ def v2_user_get_profile():
         return jsonify({
             "domain": profile.get("domain"),
             "goal": profile.get("goal"),
+            "sex": db.get_user_speaker_sex(request.user_id),
             "domain_vocabulary_default": default_domain_vocabulary(
                 profile.get("domain"),
             ),
@@ -7543,16 +7552,30 @@ def v2_user_set_profile():
     Body:
       { "domain": "public_speaking|sales|executive_presence|
                    customer_service|interview_prep" | null,
-        "goal":   "free text" | null }
+        "goal":   "free text" | null,
+        "sex":    "female|male|prefer_not_to_say" | null }
 
-    Both optional so a partial intake (domain picked, goal skipped, or
+    All optional so a partial intake (domain picked, goal skipped, or
     vice-versa) is accepted — the intake is two bounded turns, but the
     store doesn't force both. `domain` (when present) must be one of
     the five enum keys; `goal` is trimmed, ≤500 chars, empty→null.
 
+    KEY PRESENCE MATTERS for `sex` vs `{domain, goal}`. The pair is
+    written as a FULL SET (posting only `domain` still clears `goal` —
+    long-standing behaviour, unchanged), whereas `sex` is written on its
+    own partial upsert. So a sex-only body — which is what the signup
+    screen sends — leaves an existing intake alone, and an intake post
+    from the Lab leaves a previously-declared sex alone. A body carrying
+    neither `domain` nor `goal` no longer touches them at all; it echoes
+    what is stored.
+
+    `sex` routes the voice-confidence cue weights and nothing else — see
+    the GET docstring and services/voice_confidence.py. Explicit null
+    clears the answer back to "never asked".
+
     Responses:
       200 — same shape as GET (echoes persisted state + vocab default)
-      422 INVALID_INPUT — bad domain enum or over-long goal
+      422 INVALID_INPUT — bad domain/sex enum or over-long goal
       500 V2_ERROR — persist failed
     """
     try:
@@ -7598,19 +7621,51 @@ def v2_user_set_profile():
                     }), 422
                 goal = cleaned
 
-        ok = db.set_user_profile(request.user_id, domain=domain, goal=goal)
-        if not ok:
-            return jsonify({
-                "code": "V2_ERROR", "error": "Failed to persist profile",
-            }), 500
+        from services.voice_confidence import normalize_sex
+        sex_present = "sex" in body
+        raw_sex = body.get("sex")
+        sex: str | None = None
+        if raw_sex is not None:
+            sex = normalize_sex(raw_sex)
+            if sex is None:
+                return jsonify({
+                    "code": "INVALID_INPUT",
+                    "error": (
+                        "sex: must be one of female, male, prefer_not_to_say"
+                    ),
+                }), 422
 
+        # {domain, goal} is a full set; only write it when the body actually
+        # carries one of them, otherwise a sex-only post would null the intake.
+        if "domain" in body or "goal" in body:
+            if not db.set_user_profile(
+                request.user_id, domain=domain, goal=goal,
+            ):
+                return jsonify({
+                    "code": "V2_ERROR", "error": "Failed to persist profile",
+                }), 500
+        else:
+            stored = db.get_user_profile(request.user_id) or {}
+            domain, goal = stored.get("domain"), stored.get("goal")
+
+        if sex_present:
+            if not db.set_user_speaker_sex(request.user_id, sex):
+                return jsonify({
+                    "code": "V2_ERROR", "error": "Failed to persist profile",
+                }), 500
+        else:
+            sex = db.get_user_speaker_sex(request.user_id)
+
+        # The VALUE of sex is deliberately not logged — it buys nothing
+        # operationally and it is the one field here nobody needs in a log.
         logger.info(
-            "user/profile.set user=%s domain=%s goal_len=%d",
-            request.user_id, domain or "-", len(goal or ""),
+            "user/profile.set user=%s domain=%s goal_len=%d sex_set=%s",
+            request.user_id, domain or "-", len(goal or ""), sex_present,
         )
         return jsonify({
             "domain": domain,
             "goal": goal,
+            "sex": sex,
             "domain_vocabulary_default": default_domain_vocabulary(domain),
         }), 200
 

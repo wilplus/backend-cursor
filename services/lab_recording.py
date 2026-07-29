@@ -583,14 +583,20 @@ def process_lab_recording(
         try:
             from services.voice_confidence import (
                 attach_voice_confidence, enabled as _vc_enabled,
-                resolve_confidence_baseline,
+                resolve_confidence_baseline, resolve_speaker_sex,
             )
             if _vc_enabled():
                 _vc_base, _vc_kind = resolve_confidence_baseline(
                     user_id, [p.get("metrics") for p in prelim],
                 )
+                # Sex routes the cue WEIGHTS (one cue reverses direction) —
+                # resolved once per take, after the baseline because the
+                # acoustic fallback reads the speaker's baseline mean f0.
+                # Never surfaced; see services/voice_confidence.py.
+                _vc_sex, _vc_sex_src = resolve_speaker_sex(user_id, _vc_base)
                 attach_voice_confidence(
                     prelim, baseline=_vc_base, baseline_kind=_vc_kind,
+                    sex=_vc_sex, sex_source=_vc_sex_src,
                 )
         except Exception as _vc_err:
             logger.warning(
