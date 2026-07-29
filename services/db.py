@@ -12479,6 +12479,32 @@ class DatabaseService:
             logger.warning("get_confidence_labels_by_snippet_ids failed: %s", e)
             return {}
 
+    def count_labelled_snippets_by_session_ids(self, session_ids: list) -> dict:
+        """{session_id: how many DISTINCT snippets carry a confidence label}.
+
+        The corpus index's "how much is labelled" badge (FE 2026-07-30) —
+        one batched query for the whole list, where the FE's fallback costs
+        one queue request per row. DISTINCT snippets, not label rows: two
+        raters on one piece is still one labelled piece. {} on anything
+        missing — the badge then falls back to the FE's queue read."""
+        ids = [str(s) for s in (session_ids or []) if s]
+        if not ids:
+            return {}
+        try:
+            rows = (self.client.table("confidence_labels")
+                    .select("session_id, snippet_id")
+                    .in_("session_id", ids).execute().data) or []
+            seen: dict = {}
+            for r in rows:
+                sid, snip = r.get("session_id"), r.get("snippet_id")
+                if sid and snip:
+                    seen.setdefault(str(sid), set()).add(str(snip))
+            return {sid: len(snips) for sid, snips in seen.items()}
+        except Exception as e:
+            logger.warning(
+                "count_labelled_snippets_by_session_ids failed: %s", e)
+            return {}
+
     def get_confidence_label_corpus(self, *, source: Optional[str] = None,
                                     limit: int = 5000) -> list:
         """The training-side pull, newest first. [] on anything missing."""

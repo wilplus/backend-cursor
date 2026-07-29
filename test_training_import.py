@@ -817,3 +817,102 @@ class IndexRowCarriesTheRunContext(unittest.TestCase):
                                 user_id="u1", topic="T", database=db)
         ctx = db.set_session_intake_context.call_args.args[1]
         self.assertNotIn("language", ctx)
+
+
+class LabelledCountBatchTests(unittest.TestCase):
+    """The index badge: one batched confidence_labels query for the whole
+    list, counting DISTINCT labelled snippets per session. Borrows the
+    stub-safe _database_service helper (not a subclass — that would re-run
+    the parent's tests against this class's _svc)."""
+
+    _database_service = ImportListDegradationTests._database_service
+
+    def _svc(self, rows):
+        import types as _t
+        DatabaseService = self._database_service()
+        calls = {"n": 0}
+
+        class _Q:
+            def select(self, cols):
+                return self
+
+            def in_(self, col, ids):
+                calls["n"] += 1
+                calls["col"] = col
+                calls["ids"] = ids
+                return self
+
+            def execute(self):
+                return _t.SimpleNamespace(data=rows)
+
+        svc = DatabaseService.__new__(DatabaseService)
+        svc.client = _t.SimpleNamespace(table=lambda name: _Q())
+        return svc, calls
+
+    def test_distinct_snippets_not_label_rows(self):
+        """Two raters on one piece is still ONE labelled piece."""
+        svc, _ = self._svc([
+            {"session_id": "s1", "snippet_id": "a"},
+            {"session_id": "s1", "snippet_id": "a"},   # second rater
+            {"session_id": "s1", "snippet_id": "b"},
+            {"session_id": "s2", "snippet_id": "c"},
+        ])
+        out = svc.count_labelled_snippets_by_session_ids(["s1", "s2", "s3"])
+        self.assertEqual(out, {"s1": 2, "s2": 1})
+
+    def test_one_query_for_the_whole_list(self):
+        svc, calls = self._svc([])
+        svc.count_labelled_snippets_by_session_ids(["s1", "s2", "s3"])
+        self.assertEqual(calls["n"], 1)
+        self.assertEqual(calls["col"], "session_id")
+
+    def test_empty_and_missing_table_are_empty_dicts(self):
+        DatabaseService = self._database_service()
+        svc = DatabaseService.__new__(DatabaseService)
+        svc.client = None  # any attribute access raises
+        self.assertEqual(svc.count_labelled_snippets_by_session_ids([]), {})
+        self.assertEqual(
+            svc.count_labelled_snippets_by_session_ids(["s1"]), {})
+
+
+class ArchiveIsNotDeleteTests(unittest.TestCase):
+    """DELETE /v2/coach/training-imports/<id> archives. Labelled data is
+    training data — a coach tidying a list must not be able to destroy
+    corpus."""
+
+    def _blocks(self):
+        with open("routes/v2_routes.py", encoding="utf-8") as fh:
+            source = fh.read()
+        archive = source.split(
+            "def v2_coach_archive_training_import")[1].split("@v2_bp.route")[0]
+        restore = source.split(
+            "def v2_coach_restore_training_import")[1].split("@v2_bp.route")[0]
+        index = source.split(
+            "def v2_coach_list_training_imports")[1].split("@v2_bp.route")[0]
+        return archive, restore, index
+
+    def test_archive_never_touches_the_corpus_tables(self):
+        archive, restore, _ = self._blocks()
+        for block in (archive, restore):
+            # Strip the docstring — the fence is about CODE, and the
+            # docstring names the tables precisely to say they are safe.
+            code = block.split(chr(34) * 3, 2)[2]
+            self.assertNotIn(".delete(", code)
+            self.assertNotIn("confidence_labels", code)
+            self.assertNotIn("charisma_snippets", code)
+            self.assertIn('"archived_at"', code)
+
+    def test_archive_refuses_a_non_import_session(self):
+        """A coach-scope endpoint must not be able to hide a real user's
+        session."""
+        archive, restore, _ = self._blocks()
+        for block in (archive, restore):
+            self.assertIn('!= "training_import"', block)
+
+    def test_the_index_filters_archived_and_serves_the_batched_badge(self):
+        _, _, index = self._blocks()
+        self.assertIn('ctx.get("archived_at") and not include_archived',
+                      index)
+        self.assertIn("count_labelled_snippets_by_session_ids", index)
+        self.assertIn('"labelled_count"', index)
+        self.assertIn('"archived_at": ctx.get("archived_at")', index)
