@@ -12408,6 +12408,18 @@ class DatabaseService:
             return True
         except Exception as e:
             err_low = str(e).lower()
+            # 42P10: ON CONFLICT (snippet_id, rater_id) found no matching
+            # unique constraint. The arbiter cannot match an expression
+            # index, so a database still carrying the original
+            # COALESCE-index shape of the migration fails every save here.
+            if "42p10" in err_low or "on conflict" in err_low:
+                logger.warning(
+                    "upsert_confidence_label: unique constraint shape does "
+                    "not match ON CONFLICT — re-run the current "
+                    "migrations/add_confidence_labels.sql (it swaps the "
+                    "expression index for a plain composite constraint)",
+                )
+                return False
             if "confidence_labels" in err_low and (
                 "does not exist" in err_low or "pgrst" in err_low
                 or "42p01" in err_low
