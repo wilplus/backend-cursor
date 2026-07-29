@@ -384,6 +384,109 @@ class IdempotencyTests(unittest.TestCase):
         db.find_training_import_by_key.assert_not_called()
 
 
+class ZeroPieceHonestyTests(unittest.TestCase):
+    """A zero-piece import must NOT read as success (FE 2026-07-29: the first
+    real import, a Polish talk, returned ok:true with nothing to show, so
+    'worked perfectly' and 'silently did nothing' were identical on the
+    wire)."""
+
+    def _run(self, snippets, extra=None):
+        from services.training_import import (
+            prepare_training_import, run_training_import_analysis,
+        )
+        db = _db()
+        db.get_snippets_by_session.return_value = []
+        prepared = prepare_training_import(
+            audio_bytes=b"A", filename="talk.mp3", user_id="u1",
+            topic="T", database=db, **(extra or {}))
+        lab = sys.modules["services.lab_recording"]
+        orig = lab.process_lab_recording
+        lab.process_lab_recording = lambda **kw: {"snippets": snippets}
+        try:
+            return db, run_training_import_analysis(
+                prepared=prepared, audio_bytes=b"A", filename="talk.mp3",
+                database=db)
+        finally:
+            lab.process_lab_recording = orig
+
+    def test_zero_pieces_is_not_ok(self):
+        _db_, out = self._run([])
+        self.assertFalse(out["ok"])
+        self.assertEqual(out["snippet_count"], 0)
+        self.assertIn(out["reason"], ("NO_SPEECH_DETECTED", "NO_CANDIDATES"))
+        self.assertTrue(out["detail"])
+
+    def test_empty_transcript_blames_language_not_the_cutter(self):
+        """The distinction the coach needs: nothing transcribed (usually a
+        language problem) vs transcribed-but-nothing-kept (tuning)."""
+        _db_, out = self._run([])
+        self.assertEqual(out["reason"], "NO_SPEECH_DETECTED")
+        self.assertIn("language", out["detail"])
+
+    def test_zero_pieces_marks_the_session_failed_for_the_poll(self):
+        db, _out = self._run([])
+        self.assertEqual(db.set_session_analysis_state.call_args.args[1],
+                         "failed")
+
+    def test_duration_rides_the_failure_so_it_can_be_diagnosed(self):
+        """Duration separates 'never decoded' from 'decoded but no speech' —
+        the FE surfaces it and it is the whole diagnosis."""
+        _db_, out = self._run([])
+        self.assertIn("duration_sec", out)
+        self.assertEqual(out["duration_sec"], 42.0)
+
+    def test_pieces_present_is_still_ok(self):
+        _db_, out = self._run([{"id": "p1"}])
+        self.assertTrue(out["ok"])
+        self.assertEqual(out["snippet_count"], 1)
+
+
+class LanguageTests(unittest.TestCase):
+
+    def test_language_rides_the_session_context(self):
+        from services.training_import import prepare_training_import
+        db = _db()
+        prepare_training_import(audio_bytes=b"A", filename="t.mp3",
+                                user_id="u1", topic="T", database=db,
+                                language="PL")
+        ctx = db.set_session_intake_context.call_args.args[1]
+        self.assertEqual(ctx["language"], "pl")
+
+    def test_absent_language_stays_absent(self):
+        """No hint = Whisper auto-detects, exactly as the live path always
+        has — the import must not invent 'en'."""
+        from services.training_import import prepare_training_import
+        db = _db()
+        prepare_training_import(audio_bytes=b"A", filename="t.mp3",
+                                user_id="u1", topic="T", database=db)
+        ctx = db.set_session_intake_context.call_args.args[1]
+        self.assertNotIn("language", ctx)
+
+    def test_language_reaches_the_pipeline(self):
+        from services.training_import import (
+            prepare_training_import, run_training_import_analysis,
+        )
+        db = _db()
+        db.get_snippets_by_session.return_value = []
+        prepared = prepare_training_import(
+            audio_bytes=b"A", filename="t.mp3", user_id="u1", topic="T",
+            database=db, language="pl")
+        lab = sys.modules["services.lab_recording"]
+        seen = {}
+        orig = lab.process_lab_recording
+
+        def _spy(**kw):
+            seen.update(kw)
+            return {"snippets": [{"id": "p1"}]}
+        lab.process_lab_recording = _spy
+        try:
+            run_training_import_analysis(prepared=prepared, audio_bytes=b"A",
+                                         filename="t.mp3", database=db)
+        finally:
+            lab.process_lab_recording = orig
+        self.assertEqual(seen["session_context"]["language"], "pl")
+
+
 class ImportListDegradationTests(unittest.TestCase):
     """The corpus index must never come back empty just because an older
     column is unmigrated — an empty list reads exactly like 'nothing

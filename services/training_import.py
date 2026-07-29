@@ -212,9 +212,15 @@ def prepare_training_import(
     run_gate: bool = True,
     stages: Any = None,
     idempotency_key: Optional[str] = None,
+    language: Optional[str] = None,
 ) -> dict:
     """Everything BEFORE the expensive analysis: gate, store the audio, write
     the session + recording rows, mark the session 'processing'.
+
+    ``language`` — ISO-639-1 ('pl', 'de', …). None = auto-detect. It rides
+    session_context to the transcriber; see the LANGUAGE note in
+    services/openai_service.transcribe_audio for why a non-English import
+    needs it (our Whisper prompt is English and biases detection).
 
     Split out so the HTTP route can return 202 in a second or two and run the
     analysis in a background thread (founder/FE 2026-07-28): the import is
@@ -313,6 +319,8 @@ def prepare_training_import(
         session_context["speaker_label"] = str(speaker_label).strip()
     if idem:
         session_context["import_key"] = idem
+    if language and str(language).strip():
+        session_context["language"] = str(language).strip().lower()
     try:
         database.v2_create_guest_session(session_id)
         database.set_session_intake_context(session_id, session_context)
@@ -464,6 +472,46 @@ def run_training_import_analysis(
             logger.warning("training_import: ideal text failed for %s: %s",
                            filename, e)
 
+    # A zero-piece import is a FAILURE of the thing the coach asked for, and
+    # must not read as success (FE 2026-07-29: "worked perfectly" and
+    # "silently did nothing" were identical on the wire). The audio decoded —
+    # the gate measured its duration — so the loss is downstream, and the
+    # reason narrows it to one line of code:
+    #   NO_SPEECH_DETECTED  a transcript came back empty. On a talk that
+    #                       plainly contains speech this is almost always
+    #                       LANGUAGE: our Whisper prompt is English and biases
+    #                       detection, so a non-English file needs `language`.
+    #   NO_CANDIDATES       there WAS a transcript but the cutter kept
+    #                       nothing — real, and a tuning question, not a bug.
+    snippet_count = len(readout.get("snippets") or [])
+    if snippet_count == 0:
+        _had_text = bool((readout.get("transcript") or "").strip()) or bool(
+            readout.get("segments"))
+        _reason = "NO_CANDIDATES" if _had_text else "NO_SPEECH_DETECTED"
+        _detail = (
+            "the transcript was empty — if this audio is not in English, "
+            "re-import it with a `language` code (e.g. pl)"
+            if _reason == "NO_SPEECH_DETECTED" else
+            "the audio transcribed but no piece cleared the cutter"
+        )
+        logger.warning(
+            "training_import: ZERO pieces for %s reason=%s duration=%ss",
+            filename, _reason, prepared.get("duration_sec"),
+        )
+        try:
+            database.set_session_analysis_state(
+                session_id, "failed", error=f"{_reason}: {_detail}")
+        except Exception:
+            pass
+        return {
+            "ok": False, "reason": _reason, "detail": _detail,
+            "session_id": session_id, "arc_id": arc_id,
+            "snippet_count": 0, "queue_count": 0,
+            "duration_sec": prepared.get("duration_sec"),
+            "language": (session_context or {}).get("language"),
+            "filename": filename,
+        }
+
     try:
         database.set_session_analysis_state(session_id, "ready")
     except Exception:
@@ -474,7 +522,7 @@ def run_training_import_analysis(
         "session_id": session_id,
         "arc_id": arc_id,
         "recording_id": prepared.get("recording_id"),
-        "snippet_count": len(readout.get("snippets") or []),
+        "snippet_count": snippet_count,
         "queue_count": len(queue_ids),
         "stages": sorted(picked_stages),
         "duration_sec": prepared.get("duration_sec"),

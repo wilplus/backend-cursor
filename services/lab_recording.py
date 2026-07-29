@@ -400,9 +400,17 @@ def process_lab_recording(
                         "sid=%s %d→%d bytes", session_id,
                         len(audio_bytes), len(compressed),
                     )
+            # Language hint (fix 2026-07-29): the first non-English import —
+            # a Polish talk — produced zero pieces. Whisper follows its
+            # prompt's language, and ours is an English disfluency primer, so
+            # non-English audio needs the code passed explicitly. Absent =
+            # auto-detect, exactly as the live path has always behaved.
+            _lang = (session_context or {}).get("language") \
+                if isinstance(session_context, dict) else None
             wres = ois.transcribe_audio(
                 BytesIO(whisper_bytes), whisper_name,
                 vocabulary=vocab,
+                language=(str(_lang).strip() or None) if _lang else None,
             )
             segments = (wres or {}).get("segments") or []
             words_all = (wres or {}).get("words") or []

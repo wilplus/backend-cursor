@@ -14458,8 +14458,15 @@ def v2_coach_training_import():
                           or None,
             source_note=(request.form.get("note") or "").strip() or None,
             stages=(request.form.get("stages") or None),
-            idempotency_key=(request.form.get("upload_idempotency_key")
-                             or "").strip() or None,
+            # BOTH spellings (fix 2026-07-29): I documented
+            # `upload_idempotency_key` (the coach-video lane's name) but the
+            # FE shipped `idempotency_key`, so the key was being silently
+            # ignored and the dedupe it exists for never ran. Accepting both
+            # costs nothing and neither side has to redeploy to be correct.
+            idempotency_key=((request.form.get("idempotency_key")
+                              or request.form.get("upload_idempotency_key")
+                              or "").strip() or None),
+            language=(request.form.get("language") or "").strip() or None,
         )
         if not prepared.get("ok"):
             _reason = prepared.get("reason") or "failed"
