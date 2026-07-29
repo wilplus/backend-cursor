@@ -341,7 +341,32 @@ def prepare_training_import(
     try:
         database.v2_create_guest_session(session_id)
         database.set_session_intake_context(session_id, session_context)
-        database.set_session_source(session_id, IMPORT_SOURCE)
+        # THE MARKER IS NOT OPTIONAL — fail loudly if it doesn't land.
+        #
+        # This silently returned False for every import until 2026-07-29:
+        # v2_sessions.source carries an enum CHECK that didn't list
+        # 'training_import', so the UPDATE 23514'd, the best-effort setter
+        # swallowed it, and nobody checked. The import then "succeeded" —
+        # pieces cut, queue built — while the session kept source='interview'
+        # and was invisible to the corpus index forever. The coach could not
+        # reach their own import after a reload.
+        #
+        # An unmarked import is not a lesser import, it is a LOST one: the
+        # marker is simultaneously the index key and the isolation that keeps
+        # a many-voice corpus out of one speaker's baseline. Better to refuse
+        # the import and name the migration than to write an orphan.
+        if not database.set_session_source(session_id, IMPORT_SOURCE):
+            logger.error(
+                "training_import: could not mark session %s as %s — "
+                "refusing the import rather than orphaning it",
+                session_id, IMPORT_SOURCE,
+            )
+            return {
+                "ok": False, "reason": "source_marker_failed",
+                "detail": "could not mark the session as a training import "
+                          "(run migrations/add_training_import_source.sql)",
+                "session_id": session_id,
+            }
         if user_id:
             database.set_session_user_id(session_id, str(user_id))
         database.set_session_arc(session_id, arc_id, 1)
