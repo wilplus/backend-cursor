@@ -780,3 +780,40 @@ class FenceTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class IndexRowCarriesTheRunContext(unittest.TestCase):
+    """The index outlives the browser session, so it is where "what did this
+    run actually use?" gets asked (FE 2026-07-29). language=null is a real
+    answer — auto-detect — not a gap: a Polish talk left on auto-detect comes
+    back TRANSLATED into English, and nothing else on the row says so."""
+
+    def test_the_route_maps_the_run_context_onto_each_row(self):
+        with open("routes/v2_routes.py", encoding="utf-8") as fh:
+            source = fh.read()
+        block = source.split("def v2_coach_list_training_imports")[1][:4000]
+        for field in ('"language": ctx.get("language")',
+                      '"speaker_sex": ctx.get("speaker_sex")',
+                      '"duration_sec": ctx.get("duration_sec")'):
+            self.assertIn(field, block)
+
+    def test_the_import_parks_them_where_the_row_reads_them(self):
+        """The row reads intake_context, so prepare must put them there —
+        this is the seam that would silently serve nulls forever."""
+        from services.training_import import prepare_training_import
+        db = _db()
+        prepare_training_import(
+            audio_bytes=b"A", filename="t.mp3", user_id="u1", topic="T",
+            database=db, language="pl", speaker_sex="male")
+        ctx = db.set_session_intake_context.call_args.args[1]
+        self.assertEqual(ctx["language"], "pl")
+        self.assertEqual(ctx["speaker_sex"], "male")
+        self.assertEqual(ctx["duration_sec"], 42.0)
+
+    def test_auto_detect_leaves_language_absent_not_guessed(self):
+        from services.training_import import prepare_training_import
+        db = _db()
+        prepare_training_import(audio_bytes=b"A", filename="t.mp3",
+                                user_id="u1", topic="T", database=db)
+        ctx = db.set_session_intake_context.call_args.args[1]
+        self.assertNotIn("language", ctx)
