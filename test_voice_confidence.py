@@ -342,6 +342,33 @@ class TestRankTermFlag(unittest.TestCase):
         with patch.dict("os.environ", {"VOICE_CONFIDENCE_RANKING_ENABLED": "1"}):
             self.assertEqual(rank_term(self._STAMPED), 0.7)
 
+    def test_a_superseded_weighting_does_not_rank(self):
+        """THE mixed-basis guard. A v1 stamp scored a wide pitch range as
+        +0.18*z for everyone; v2 SUBTRACTS 0.08*z for a man. Ranking the two
+        against each other is comparing different scales that both look
+        plausible — so the older weighting sits out until it is backfilled."""
+        from services.voice_confidence import rank_term
+        stale = {"voice_confidence": {"score": 0.7, "band": "confident",
+                                      "baseline": "user", "cues": 7,
+                                      "version": "voice-confidence-v1"}}
+        with patch.dict("os.environ", {"VOICE_CONFIDENCE_RANKING_ENABLED": "1"}):
+            self.assertIsNone(rank_term(stale))
+            self.assertEqual(rank_term(self._STAMPED), 0.7)   # current: ranks
+
+    def test_a_missing_version_does_not_rank(self):
+        """Pre-versioning blobs are pre-v2 by definition."""
+        from services.voice_confidence import rank_term
+        with patch.dict("os.environ", {"VOICE_CONFIDENCE_RANKING_ENABLED": "1"}):
+            self.assertIsNone(rank_term({"voice_confidence": {"score": 0.7}}))
+
+    def test_the_rankable_set_tracks_the_current_version(self):
+        """A _VERSION bump must not silently leave the old one rankable — the
+        whole point is that a weighting change takes its stamps out of the
+        ranking until they are backfilled."""
+        from services.voice_confidence import _RANKABLE_VERSIONS, _VERSION
+        self.assertIn(_VERSION, _RANKABLE_VERSIONS)
+        self.assertEqual(len(_RANKABLE_VERSIONS), 1)
+
     def test_unstamped_piece_is_none_even_with_the_flag_on(self):
         from services.voice_confidence import rank_term
         with patch.dict("os.environ", {"VOICE_CONFIDENCE_RANKING_ENABLED": "1"}):
@@ -646,6 +673,75 @@ class TestSexResolution(unittest.TestCase):
         bare = object()
         self.assertEqual(
             resolve_speaker_sex("u1", None, database=bare), (None, "unknown"))
+
+
+class TestTakeSexPrecedence(unittest.TestCase):
+    """resolve_take_sex — the single authority on whose sex applies to a take.
+
+    Extracted from process_lab_recording so the backfill cannot drift from the
+    record path. A drift here silently re-corrupts the training corpus, which
+    is the failure #290 was opened for."""
+
+    _MALE_BASELINE = {"f0_mean": (110.0, 12.0)}
+    _FEMALE_BASELINE = {"f0_mean": (215.0, 20.0)}
+
+    def _db(self, stored):
+        d = MagicMock()
+        d.get_user_speaker_sex.return_value = stored
+        return d
+
+    def _resolve(self, user_id, ctx, baseline, stored=None):
+        from services.voice_confidence import resolve_take_sex
+        return resolve_take_sex(user_id, ctx, baseline,
+                                database=self._db(stored))
+
+    def test_a_normal_take_uses_the_account(self):
+        """No context keys → unchanged behaviour, account lookup wins."""
+        self.assertEqual(
+            self._resolve("u1", None, self._MALE_BASELINE, stored="female"),
+            ("female", "declared"))
+        self.assertEqual(
+            self._resolve("u1", {}, self._MALE_BASELINE, stored="female"),
+            ("female", "declared"))
+
+    def test_an_imported_voice_never_inherits_the_coach(self):
+        """THE #290 bug. A woman's talk imported by a male coach must not be
+        scored with his weights — cue 1 would be inverted and the result would
+        still look plausible."""
+        sex, source = self._resolve(
+            "coach-1", {"speaker_is_account_holder": False},
+            self._FEMALE_BASELINE, stored="male")
+        self.assertEqual((sex, source), ("female", "inferred"))
+
+    def test_a_declared_speaker_sex_beats_both(self):
+        sex, source = self._resolve(
+            "coach-1", {"speaker_sex": "female",
+                        "speaker_is_account_holder": False},
+            self._MALE_BASELINE, stored="male")
+        self.assertEqual((sex, source), ("female", "declared"))
+
+    def test_a_declined_speaker_is_an_opt_out_not_a_guess(self):
+        sex, source = self._resolve(
+            "coach-1", {"speaker_sex": "prefer_not_to_say"},
+            self._MALE_BASELINE, stored="male")
+        self.assertIsNone(sex)
+        self.assertEqual(source, "not_stated")
+
+    def test_junk_speaker_sex_falls_to_acoustics_not_the_account(self):
+        """A context that names a speaker at all means the account holder is
+        not a safe fallback, even when the value is unusable."""
+        sex, source = self._resolve(
+            "coach-1", {"speaker_sex": "banana"},
+            self._FEMALE_BASELINE, stored="male")
+        self.assertEqual((sex, source), ("female", "inferred"))
+
+    def test_the_record_path_delegates_rather_than_reimplements(self):
+        """Source-level: process_lab_recording must not carry its own copy of
+        the precedence. Two copies is how the corpus gets corrupted twice."""
+        with open("services/lab_recording.py", encoding="utf-8") as fh:
+            source = fh.read()
+        self.assertIn("resolve_take_sex", source)
+        self.assertNotIn("speaker_is_account_holder", source)
 
 
 class TestSexReachesTheStampedBlob(unittest.TestCase):

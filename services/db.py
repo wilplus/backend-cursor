@@ -8797,6 +8797,35 @@ class DatabaseService:
             logger.error(f"update_snippet_metrics failed: {e}")
             return None
 
+    def update_snippet_metrics_blob(
+        self, snippet_id: str, metrics_json: dict,
+    ) -> bool:
+        """Replace ONLY the ``metrics`` JSONB on a snippet.
+
+        Deliberately narrow, and deliberately not update_snippet_metrics: that
+        one also writes the six denormalized acoustic columns, so a caller who
+        merely wants to re-stamp a derived field inside the blob would have to
+        echo wpm/fillers/pause_ms/dynamic_db/pitch_center/energy back and would
+        silently null any it got wrong. This is for re-stamping derived reads
+        (scripts/backfill_voice_confidence.py); the measured columns are the
+        recorder's to write, not a backfill's.
+
+        Best-effort: returns False on any failure rather than raising."""
+        if not snippet_id or not isinstance(metrics_json, dict):
+            return False
+        try:
+            result = (
+                self.client.table("charisma_snippets")
+                .update({"metrics": metrics_json})
+                .eq("id", snippet_id)
+                .execute()
+            )
+            return bool(getattr(result, "data", None))
+        except Exception as e:
+            logger.warning("update_snippet_metrics_blob failed sid=%s: %s",
+                           snippet_id, e)
+            return False
+
     def set_snippet_arousal(self, snippet_id: str, arousal_z: float) -> bool:
         """Capture the baseline-relative AROUSAL read on a snippet (founder
         2026-07-24, capture-first). A learning-loop signal only — it is never

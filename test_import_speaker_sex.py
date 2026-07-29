@@ -86,27 +86,26 @@ class PipelineHonoursTheDisclaimer(unittest.TestCase):
     resolve_speaker_sex, and what a declared speaker_sex overrides."""
 
     def _resolve(self, ctx: dict):
-        """Replay the pipeline's resolution block against a stub resolver,
-        capturing the user_id it was asked about."""
+        """Drive the REAL resolver, capturing the user_id it was asked about.
+
+        This used to replay a copy of the pipeline's resolution block, so it
+        passed no matter what the pipeline actually did. The precedence now
+        lives in one function — services.voice_confidence.resolve_take_sex,
+        which the recorder and the backfill both call — so the test calls that
+        instead and is load-bearing. Assertions are unchanged."""
+        import services.voice_confidence as vc
         seen = {}
 
-        def _resolver(user_id, baseline):
+        def _resolver(user_id, baseline, database=None):
             seen["user_id"] = user_id
             return ("male", "declared") if user_id else ("female", "inferred")
 
-        from services.voice_confidence import normalize_sex
-        declared = ctx.get("speaker_sex")
-        is_owner = ctx.get("speaker_is_account_holder", True)
-        if declared:
-            norm = normalize_sex(declared)
-            if norm == "prefer_not_to_say":
-                out = (None, "not_stated")
-            elif norm:
-                out = (norm, "declared")
-            else:
-                out = _resolver(None, None)
-        else:
-            out = _resolver("coach-1" if is_owner else None, None)
+        orig = vc.resolve_speaker_sex
+        vc.resolve_speaker_sex = _resolver
+        try:
+            out = vc.resolve_take_sex("coach-1", ctx, None)
+        finally:
+            vc.resolve_speaker_sex = orig
         return out, seen
 
     def test_a_normal_take_still_asks_about_the_account(self):
@@ -144,16 +143,41 @@ class PipelineHonoursTheDisclaimer(unittest.TestCase):
 
 class SourcePin(unittest.TestCase):
 
-    def test_the_pipeline_reads_the_disclaimer(self):
-        """Source-level pin: if the resolution block stops consulting
+    def test_the_resolver_reads_the_disclaimer(self):
+        """Source-level pin: if the resolution stops consulting
         speaker_is_account_holder, every imported voice silently inherits the
-        coach's weights again."""
+        coach's weights again.
+
+        The precedence moved out of lab_recording into
+        voice_confidence.resolve_take_sex when the backfill needed to share it
+        — one authority, because a second copy drifting is how this bug comes
+        back. So the pin follows it there, and separately requires the
+        pipeline to delegate rather than grow its own copy."""
+        with open("services/voice_confidence.py", encoding="utf-8") as fh:
+            resolver = fh.read()
+        self.assertIn("def resolve_take_sex", resolver)
+        self.assertIn("speaker_is_account_holder", resolver)
+        self.assertIn("speaker_sex", resolver)
+
         with open("services/lab_recording.py", encoding="utf-8") as fh:
-            source = fh.read()
-        block = source.split("resolve_speaker_sex")[2][:900] \
-            if source.count("resolve_speaker_sex") > 2 else source
-        self.assertIn("speaker_is_account_holder", source)
-        self.assertIn("speaker_sex", source)
+            pipeline = fh.read()
+        self.assertIn("resolve_take_sex", pipeline)
+        self.assertNotIn("speaker_is_account_holder", pipeline)
+
+    def test_only_one_place_decides_whose_sex_applies(self):
+        """The recorder and the backfill must agree by CONSTRUCTION."""
+        import os
+        copies = []
+        for path in ("services/lab_recording.py",
+                     "scripts/backfill_voice_confidence.py"):
+            if not os.path.exists(path):
+                continue
+            with open(path, encoding="utf-8") as fh:
+                body = fh.read()
+            self.assertIn("resolve_take_sex", body, path)
+            if "speaker_is_account_holder" in body:
+                copies.append(path)
+        self.assertEqual(copies, [], f"precedence re-implemented in {copies}")
 
 
 if __name__ == "__main__":
