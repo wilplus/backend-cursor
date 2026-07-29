@@ -14561,8 +14561,19 @@ def v2_coach_list_training_imports():
     corpus. Each row's `arc_id` opens the normal review surfaces
     (GET /v2/coach/arc/<arc_id>/stars, .../ideal-text).
 
-    200 { imports: [{session_id, arc_id, topic, speaker_label, created_at}],
-          count }
+    Carries `status` and `queue_count` per row (added 2026-07-28 with the
+    async import): since the POST now returns 202 before the analysis runs,
+    this list — not the upload response — is where an import's outcome
+    actually shows up. Without them a finished import and a still-running one
+    look identical, which is exactly how a working import reads as "0 pieces".
+
+    `snippet_count` is deliberately NOT here: it needs one query per row, and
+    a corpus list is long. Poll GET /v2/coach/training-imports/<session_id>
+    for one import's piece count; `queue_count` (what the coach will actually
+    label) is free and rides here.
+
+    200 { imports: [{session_id, arc_id, topic, speaker_label, created_at,
+          status, queue_count}], count }
     """
     try:
         rows = db.list_training_import_sessions(
@@ -14577,6 +14588,10 @@ def v2_coach_list_training_imports():
                 "topic": ctx.get("topic") or "",
                 "speaker_label": ctx.get("speaker_label") or None,
                 "created_at": r.get("created_at"),
+                # NULL analysis_state reads as 'ready': pre-async rows were
+                # only ever persisted after a completed synchronous analysis.
+                "status": r.get("analysis_state") or "ready",
+                "queue_count": len(ctx.get("label_queue") or []),
             })
         return jsonify({"imports": out, "count": len(out)}), 200
     except Exception as e:

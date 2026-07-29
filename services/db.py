@@ -12486,21 +12486,37 @@ class DatabaseService:
         that method is the per-speaker BASELINE reader, and imports must stay
         out of it (a corpus of many voices would corrupt one speaker's norm —
         see services/training_import.py). This is the coach's separate
-        window onto the corpus. Best-effort: [] on anything missing."""
-        try:
-            q = (
-                self.client.table("v2_sessions")
-                .select("id, arc_id, take_index, intake_context, created_at, "
-                        "status, user_id, recording_1_id")
-                .eq("source", "training_import")
-            )
-            if user_id:
-                q = q.eq("user_id", str(user_id))
-            return (q.order("created_at", desc=True)
-                     .limit(int(limit)).execute().data) or []
-        except Exception as e:
-            logger.warning("list_training_import_sessions failed: %s", e)
-            return []
+        window onto the corpus. Best-effort: [] on anything missing.
+
+        analysis_state comes from an older migration, so the select degrades
+        rather than betting the whole list on it: a DB without that column
+        would otherwise return an EMPTY corpus index, which reads exactly
+        like "nothing imported" — the failure this list exists to rule out."""
+        _cols_full = ("id, arc_id, take_index, intake_context, created_at, "
+                      "status, user_id, recording_1_id, analysis_state")
+        _cols_base = ("id, arc_id, take_index, intake_context, created_at, "
+                      "status, user_id, recording_1_id")
+        for _cols in (_cols_full, _cols_base):
+            try:
+                q = (
+                    self.client.table("v2_sessions")
+                    .select(_cols)
+                    .eq("source", "training_import")
+                )
+                if user_id:
+                    q = q.eq("user_id", str(user_id))
+                return (q.order("created_at", desc=True)
+                         .limit(int(limit)).execute().data) or []
+            except Exception as e:
+                if _cols is _cols_base:
+                    logger.warning(
+                        "list_training_import_sessions failed: %s", e)
+                    return []
+                logger.warning(
+                    "list_training_import_sessions: analysis_state missing "
+                    "(run migrations/add_analysis_state.sql) — retrying "
+                    "without it: %s", e)
+        return []
 
     def set_session_source(self, session_id: str, source: str) -> bool:
         """Stamp v2_sessions.source (foundation discriminator). The Lab

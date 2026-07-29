@@ -384,6 +384,88 @@ class IdempotencyTests(unittest.TestCase):
         db.find_training_import_by_key.assert_not_called()
 
 
+class ImportListDegradationTests(unittest.TestCase):
+    """The corpus index must never come back empty just because an older
+    column is unmigrated — an empty list reads exactly like 'nothing
+    imported', which is the failure this list exists to rule out."""
+
+    def _database_service(self):
+        """The REAL DatabaseService class.
+
+        setUpModule replaces sys.modules['services.db'] with a stub carrying
+        only `db`, so a plain import here finds no class. Restore the real
+        module (or import it fresh) just long enough to grab the class, then
+        put the stub back — leaving the real module in place would let the
+        other tests in this file reach a live client."""
+        import importlib
+        import types as _t
+        stub = sys.modules.get("services.db")
+        real = _ORIG.get("services.db")
+        for name in ("supabase", "sentry_sdk"):
+            if name not in sys.modules:
+                m = _t.ModuleType(name)
+                m.create_client = lambda *a, **k: None
+                m.Client = object
+                sys.modules[name] = m
+        try:
+            if real is not None:
+                sys.modules["services.db"] = real
+            else:
+                sys.modules.pop("services.db", None)
+                real = importlib.import_module("services.db")
+                sys.modules["services.db"] = real
+            return real.DatabaseService
+        finally:
+            if stub is not None:
+                sys.modules["services.db"] = stub
+
+    def _svc(self, *, fail_on_analysis_state: bool):
+        import types as _t
+        DatabaseService = self._database_service()
+        seen = {"cols": []}
+
+        class _Q:
+            def __init__(self, cols):
+                self.cols = cols
+
+            def eq(self, *a):
+                return self
+
+            def order(self, *a, **k):
+                return self
+
+            def limit(self, *a):
+                return self
+
+            def execute(self):
+                if fail_on_analysis_state and "analysis_state" in self.cols:
+                    raise RuntimeError(
+                        'column "analysis_state" does not exist')
+                return _t.SimpleNamespace(data=[{"id": "s1"}])
+
+        class _T:
+            def select(self, cols):
+                seen["cols"].append(cols)
+                return _Q(cols)
+
+        svc = DatabaseService.__new__(DatabaseService)
+        svc.client = _t.SimpleNamespace(table=lambda name: _T())
+        return svc, seen
+
+    def test_falls_back_when_analysis_state_is_unmigrated(self):
+        svc, seen = self._svc(fail_on_analysis_state=True)
+        rows = svc.list_training_import_sessions()
+        self.assertEqual(rows, [{"id": "s1"}], "the list must still serve")
+        self.assertEqual(len(seen["cols"]), 2, "should have retried")
+        self.assertNotIn("analysis_state", seen["cols"][1])
+
+    def test_uses_analysis_state_when_available(self):
+        svc, seen = self._svc(fail_on_analysis_state=False)
+        svc.list_training_import_sessions()
+        self.assertEqual(len(seen["cols"]), 1)
+        self.assertIn("analysis_state", seen["cols"][0])
+
+
 class HelperTests(unittest.TestCase):
 
     def test_audio_extension_detection(self):
