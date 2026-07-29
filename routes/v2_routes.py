@@ -14672,18 +14672,30 @@ def v2_coach_list_training_imports():
     `snippet_count` is deliberately NOT here: it needs one query per row, and
     a corpus list is long. Poll GET /v2/coach/training-imports/<session_id>
     for one import's piece count; `queue_count` (what the coach will actually
-    label) is free and rides here.
+    label) is free and rides here. `labelled_count` IS here (FE 2026-07-30)
+    because it batches: one confidence_labels query covers the whole list,
+    where the FE's fallback was one queue request per row.
+
+    Archived imports (DELETE below) are filtered out unless
+    ?include_archived=1 — archive is a tidier list, never lost corpus.
 
     200 { imports: [{session_id, arc_id, topic, speaker_label, created_at,
-          status, queue_count, language, speaker_sex, duration_sec}], count }
+          status, queue_count, labelled_count, language, speaker_sex,
+          duration_sec, archived_at}], count }
     """
     try:
         rows = db.list_training_import_sessions(
             user_id=(request.args.get("user_id") or None)) or []
+        include_archived = (request.args.get("include_archived") or "") in (
+            "1", "true", "yes")
+        labelled = db.count_labelled_snippets_by_session_ids(
+            [r.get("id") for r in rows])
         out = []
         for r in rows:
             ctx = r.get("intake_context") if isinstance(
                 r.get("intake_context"), dict) else {}
+            if ctx.get("archived_at") and not include_archived:
+                continue
             out.append({
                 "session_id": r.get("id"),
                 "arc_id": r.get("arc_id"),
@@ -14694,6 +14706,9 @@ def v2_coach_list_training_imports():
                 # only ever persisted after a completed synchronous analysis.
                 "status": r.get("analysis_state") or "ready",
                 "queue_count": len(ctx.get("label_queue") or []),
+                # DISTINCT labelled pieces, fresh from the database — the
+                # honest half of the FE's badge, batched above.
+                "labelled_count": labelled.get(str(r.get("id")), 0),
                 # WHICH LANGUAGE THIS RUN ACTUALLY USED (FE 2026-07-29).
                 # null = auto-detected, which is a real answer, not a gap:
                 # a Polish talk left on auto-detect comes back TRANSLATED
@@ -14708,12 +14723,91 @@ def v2_coach_list_training_imports():
                 # absent means the acoustic route decided.
                 "speaker_sex": ctx.get("speaker_sex"),
                 "duration_sec": ctx.get("duration_sec"),
+                # null on live rows; set = when it was archived. Present on
+                # every row so the shape doesn't shift with the query param.
+                "archived_at": ctx.get("archived_at"),
             })
         return jsonify({"imports": out, "count": len(out)}), 200
     except Exception as e:
         logger.warning("list training imports failed: %s", e)
         return jsonify({"code": "SERVER_ERROR",
                         "error": "could not list imports"}), 500
+
+
+@v2_bp.route("/coach/training-imports/<session_id>", methods=["DELETE"])
+@require_admin_or_coach
+def v2_coach_archive_training_import(session_id):
+    """ARCHIVE a training import — DELETE the verb, archive the semantics.
+
+    Deliberate (FE asked which, 2026-07-30): labelled data is training data,
+    and a coach tidying a list must not be able to destroy corpus. The row
+    leaves the index (unless ?include_archived=1); the pieces, the labels
+    and the audio all stay. POST .../restore undoes it. Nothing here ever
+    touches confidence_labels or charisma_snippets.
+
+    The stamp rides intake_context (no migration): the index already reads
+    that JSONB for every other row field.
+
+    Guarded to source='training_import' ONLY — a coach-scope endpoint must
+    not be able to hide a real user's session.
+
+    200 {archived: true, session_id, archived_at} · 404 · 409 · 500
+    """
+    try:
+        sess = db.v2_get_session_by_id(str(session_id))
+        if not sess:
+            return jsonify({"code": "NOT_FOUND",
+                            "error": "import not found"}), 404
+        if sess.get("source") != "training_import":
+            return jsonify({"code": "NOT_AN_IMPORT",
+                            "error": "not a training import"}), 409
+        ctx = sess.get("intake_context") if isinstance(
+            sess.get("intake_context"), dict) else {}
+        stamp = datetime.now(timezone.utc).isoformat()
+        ctx["archived_at"] = stamp
+        if not db.set_session_intake_context(str(session_id), ctx):
+            return jsonify({"code": "SERVER_ERROR",
+                            "error": "could not archive the import"}), 500
+        return jsonify({"archived": True, "session_id": str(session_id),
+                        "archived_at": stamp}), 200
+    except Exception as e:
+        logger.warning("archive training import failed sid=%s: %s",
+                       session_id, e)
+        return jsonify({"code": "SERVER_ERROR",
+                        "error": "could not archive the import"}), 500
+
+
+@v2_bp.route("/coach/training-imports/<session_id>/restore",
+             methods=["POST"])
+@require_admin_or_coach
+def v2_coach_restore_training_import(session_id):
+    """Undo the archive above; the row returns to the index. Idempotent —
+    restoring a live import is a 200 no-op.
+
+    200 {archived: false, session_id} · 404 · 409 · 500
+    """
+    try:
+        sess = db.v2_get_session_by_id(str(session_id))
+        if not sess:
+            return jsonify({"code": "NOT_FOUND",
+                            "error": "import not found"}), 404
+        if sess.get("source") != "training_import":
+            return jsonify({"code": "NOT_AN_IMPORT",
+                            "error": "not a training import"}), 409
+        ctx = sess.get("intake_context") if isinstance(
+            sess.get("intake_context"), dict) else {}
+        if ctx.pop("archived_at", None) is not None:
+            if not db.set_session_intake_context(str(session_id), ctx):
+                return jsonify({
+                    "code": "SERVER_ERROR",
+                    "error": "could not restore the import"}), 500
+        return jsonify({"archived": False,
+                        "session_id": str(session_id)}), 200
+    except Exception as e:
+        logger.warning("restore training import failed sid=%s: %s",
+                       session_id, e)
+        return jsonify({"code": "SERVER_ERROR",
+                        "error": "could not restore the import"}), 500
 
 
 @v2_bp.route("/coach/sessions/<session_id>/confidence-queue", methods=["GET"])
