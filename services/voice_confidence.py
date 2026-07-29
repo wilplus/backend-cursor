@@ -133,6 +133,27 @@ SEX_MALE = "male"
 SEX_NOT_STATED = "prefer_not_to_say"   # asked and declined → hard opt-out
 _SEX_VALUES = (SEX_FEMALE, SEX_MALE, SEX_NOT_STATED)
 
+# Which stamped weightings may enter the RANKING. Only the current one.
+#
+# This is the guard that makes a weighting change safe to ship while
+# VOICE_CONFIDENCE_RANKING_ENABLED is ON. Scores from two weightings are NOT
+# comparable: under v1 a wide pitch range added +0.18*z for everyone; under v2
+# it SUBTRACTS 0.08*z for a man. Both land in [-1, 1], both look entirely
+# plausible, and power_score's delivery term swings 2.0 — twice the content
+# term's range. So a mixed arc ranks last week's take against today's on an
+# inconsistent basis and nothing about the winner looks wrong.
+#
+# Nothing re-stamps history — attach_voice_confidence runs at record time only
+# — so after a _VERSION bump the older stamps must be BACKFILLED
+# (scripts/backfill_voice_confidence.py) or sit out until they are. Sitting out
+# is the safe half of the trade: power_score reads a missing term as 0.0 and an
+# unstamped piece is never penalised against a stamped one (tested), whereas a
+# wrong-signed term actively moves picks.
+#
+# Adding an old version back is an assertion that it is COMPARABLE to the
+# current one. Never do it to recover coverage — run the backfill instead.
+_RANKABLE_VERSIONS = frozenset({_VERSION})
+
 # Raw metric keys the composite reads. The readout's `features` block renames
 # three of them (build_readout_features) — normalize_features folds both
 # spellings onto these, because best_presentation reads `metrics` while the
@@ -440,6 +461,49 @@ def resolve_confidence_baseline(
         return None, "none"
 
 
+def resolve_take_sex(
+    user_id: Any, session_context: Any, baseline: Optional[dict], *,
+    database=None,
+) -> tuple[Optional[str], str]:
+    """Which weight table applies to ONE TAKE, given who owns the account and
+    what the session says about who is actually speaking.
+
+    ⚠️ THE SPEAKER IS NOT ALWAYS THE ACCOUNT HOLDER. An imported take is
+    someone else's voice filed under the importing coach's user_id, so reading
+    that account's declared sex would apply the COACH's weights to a stranger
+    — and because cue 1 reverses by sex, a woman's talk imported by a male
+    coach has its strongest cue inverted, silently, with a score that still
+    looks plausible. That is the bug fixed 2026-07-29 where the training-import
+    wave met the speaker-sex wave.
+
+    Precedence:
+      1. ``session_context["speaker_sex"]`` — the importer said who this is.
+         A 'prefer_not_to_say' here is honoured as an opt-out, same as on an
+         account. An unrecognized value falls through to the acoustics rather
+         than to the account, because the context claiming a speaker at all
+         means the account holder is not a safe answer.
+      2. ``session_context["speaker_is_account_holder"]`` (default True) —
+         when False, resolution runs with user_id=None, i.e. the ACOUSTIC
+         route, the right resolver for an unknown speaker.
+      3. Otherwise the normal account path, unchanged.
+
+    THIS IS THE ONLY PLACE THIS PRECEDENCE LIVES. The record path and the
+    backfill both call it; a second copy that drifts would re-corrupt exactly
+    the signal the corpus exists to train. Best-effort; never raises."""
+    ctx = session_context if isinstance(session_context, dict) else {}
+    declared = ctx.get("speaker_sex")
+    if declared:
+        norm = normalize_sex(declared)
+        if norm == SEX_NOT_STATED:
+            return None, "not_stated"
+        if norm:
+            return norm, "declared"
+        return resolve_speaker_sex(None, baseline, database=database)
+    is_owner = ctx.get("speaker_is_account_holder", True)
+    return resolve_speaker_sex(
+        user_id if is_owner else None, baseline, database=database)
+
+
 def confidence_z(piece_metrics: Any, baseline: Optional[dict],
                  sex: Optional[str] = None) -> Optional[tuple]:
     """The raw weighted-z composite for ONE piece, BEFORE the dead zone.
@@ -588,14 +652,18 @@ def rank_term(metrics: Any) -> Optional[float]:
     score, or None.
 
     None whenever the ranking flag is OFF, the piece was never stamped (older
-    takes), or the blob is malformed. None is power_score's documented no-op,
-    so the ranking is byte-for-byte unchanged until the flag is flipped."""
+    takes), the stamp came from a SUPERSEDED WEIGHTING (see
+    _RANKABLE_VERSIONS), or the blob is malformed. None is power_score's
+    documented no-op, so the ranking is byte-for-byte unchanged until the flag
+    is flipped."""
     if not ranking_enabled():
         return None
     if not isinstance(metrics, dict):
         return None
     read = metrics.get("voice_confidence")
     if not isinstance(read, dict):
+        return None
+    if read.get("version") not in _RANKABLE_VERSIONS:
         return None
     v = read.get("score")
     if isinstance(v, (int, float)) and not isinstance(v, bool):
