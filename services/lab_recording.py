@@ -601,7 +601,40 @@ def process_lab_recording(
                 # resolved once per take, after the baseline because the
                 # acoustic fallback reads the speaker's baseline mean f0.
                 # Never surfaced; see services/voice_confidence.py.
-                _vc_sex, _vc_sex_src = resolve_speaker_sex(user_id, _vc_base)
+                #
+                # ⚠️ THE SPEAKER IS NOT ALWAYS THE ACCOUNT HOLDER (fix
+                # 2026-07-29, where the training-import wave met the
+                # speaker-sex wave). An imported take is SOMEONE ELSE'S
+                # voice filed under the importing coach's user_id, so
+                # reading that account's declared sex would apply the
+                # COACH's weights to a stranger's voice — and because cue 1
+                # (f0_sd) REVERSES by sex, a woman's talk imported by a male
+                # coach would have its strongest cue inverted. Silently: the
+                # score still looks plausible. That would corrupt the exact
+                # signal the corpus exists to train.
+                #
+                # So: `speaker_sex` in session_context wins when the importer
+                # declared it; otherwise an import passes user_id=None, which
+                # drops resolution to the ACOUSTIC route (baseline mean f0) —
+                # the right resolver for an unknown speaker. A normal take is
+                # unaffected: speaker_is_account_holder is absent, so the
+                # account lookup runs exactly as before.
+                _ctx = session_context if isinstance(session_context, dict) else {}
+                _declared_sex = _ctx.get("speaker_sex")
+                _is_owner = _ctx.get("speaker_is_account_holder", True)
+                if _declared_sex:
+                    from services.voice_confidence import normalize_sex
+                    _norm = normalize_sex(_declared_sex)
+                    if _norm == "prefer_not_to_say":
+                        _vc_sex, _vc_sex_src = None, "not_stated"
+                    elif _norm:
+                        _vc_sex, _vc_sex_src = _norm, "declared"
+                    else:
+                        _vc_sex, _vc_sex_src = resolve_speaker_sex(
+                            None, _vc_base)
+                else:
+                    _vc_sex, _vc_sex_src = resolve_speaker_sex(
+                        user_id if _is_owner else None, _vc_base)
                 attach_voice_confidence(
                     prelim, baseline=_vc_base, baseline_kind=_vc_kind,
                     sex=_vc_sex, sex_source=_vc_sex_src,

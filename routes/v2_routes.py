@@ -14458,6 +14458,16 @@ def v2_coach_training_import():
       user_id       (optional) who the corpus row belongs to; defaults to the
                     uploading coach
       note          (optional) free-text provenance (where it came from)
+      language      (optional) ISO-639-1 ('pl', 'de', …). Absent =
+                    auto-detect. Non-English NEEDS this: our Whisper prompt
+                    is an English disfluency primer and Whisper follows its
+                    prompt's language.
+      speaker_sex   (optional) female | male | prefer_not_to_say — WHOSE
+                    VOICE this is, not the coach's. The confidence composite
+                    routes one cue's DIRECTION on it, and an imported take is
+                    someone else's voice filed under the coach's account, so
+                    absent it the pipeline uses the acoustic route rather
+                    than inheriting the coach's own declared sex.
       stages        (optional) comma-separated ticks — the COACH-ONLY choice
                     of how much analysis to run. Default 'confidence':
                       confidence  always on — transcript, pieces, acoustics,
@@ -14522,6 +14532,7 @@ def v2_coach_training_import():
                               or request.form.get("upload_idempotency_key")
                               or "").strip() or None),
             language=(request.form.get("language") or "").strip() or None,
+            speaker_sex=(request.form.get("speaker_sex") or "").strip() or None,
         )
         if not prepared.get("ok"):
             _reason = prepared.get("reason") or "failed"
