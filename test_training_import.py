@@ -68,6 +68,7 @@ def _db() -> MagicMock:
     d = MagicMock()
     d.create_recording.return_value = None
     d.find_training_import_by_key.return_value = None
+    d.set_session_source.return_value = True
     return d
 
 
@@ -124,6 +125,63 @@ class IsolationTests(unittest.TestCase):
         ctx = db.set_session_intake_context.call_args.args[1]
         self.assertEqual(ctx["speaker_label"], "Jane Doe")
         self.assertEqual(ctx["topic"], "My conference talk")
+
+
+class MarkerIsNotOptionalTests(unittest.TestCase):
+    """The 2026-07-29 blocker, pinned so it cannot recur.
+
+    v2_sessions.source carries an enum CHECK that did not list
+    'training_import', so every import's marker UPDATE 23514'd, the
+    best-effort setter returned False, and nobody checked. The import then
+    'succeeded' — pieces cut, queue built — while the session kept
+    source='interview' and was invisible to the corpus index forever.
+
+    An unmarked import is not a lesser import, it is a LOST one: the marker
+    is simultaneously the index key AND the isolation keeping a many-voice
+    corpus out of one speaker's baseline."""
+
+    def test_a_failed_marker_refuses_the_import(self):
+        from services.training_import import prepare_training_import
+        db = _db()
+        db.set_session_source.return_value = False
+        out = prepare_training_import(
+            audio_bytes=b"A", filename="t.mp3", user_id="u1", topic="T",
+            database=db)
+        self.assertFalse(out["ok"])
+        self.assertEqual(out["reason"], "source_marker_failed")
+
+    def test_the_refusal_names_the_migration(self):
+        """A deployment error must say which migration fixes it, or the next
+        person reverse-engineers it from a missing row."""
+        from services.training_import import prepare_training_import
+        db = _db()
+        db.set_session_source.return_value = False
+        out = prepare_training_import(
+            audio_bytes=b"A", filename="t.mp3", user_id="u1", topic="T",
+            database=db)
+        self.assertIn("add_training_import_source.sql", out["detail"])
+
+    def test_no_recording_row_is_written_for_an_unmarked_session(self):
+        """Refuse BEFORE the recording row, so a failed marker leaves no
+        half-import to find later."""
+        from services.training_import import prepare_training_import
+        db = _db()
+        db.set_session_source.return_value = False
+        prepare_training_import(audio_bytes=b"A", filename="t.mp3",
+                                user_id="u1", topic="T", database=db)
+        db.create_recording.assert_not_called()
+
+    def test_the_migration_admits_the_value(self):
+        """Source-level pin: the CHECK must list training_import, or every
+        import is refused at runtime."""
+        with open("migrations/add_training_import_source.sql",
+                  encoding="utf-8") as fh:
+            sql = fh.read()
+        self.assertIn("'training_import'", sql)
+        self.assertIn("v2_sessions_source_check", sql)
+        # ...and it must repair the rows written while it was broken.
+        self.assertIn("admin_import", sql)
+        self.assertIn("UPDATE", sql.upper())
 
 
 class PipelineParityTests(unittest.TestCase):

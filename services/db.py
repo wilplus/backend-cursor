@@ -12550,6 +12550,20 @@ class DatabaseService:
             return True
         except Exception as e:
             err_low = str(e).lower()
+            # An enum CHECK rejection is a DEPLOYMENT error, not a data one,
+            # and it cost a day of silent orphaned imports: 'training_import'
+            # was not in v2_sessions_source_check, every UPDATE 23514'd, and
+            # this method's quiet False was mistaken for "nothing to do".
+            # Name the fix in the log rather than making the next person
+            # reverse-engineer a missing row.
+            if "23514" in err_low or "check constraint" in err_low:
+                logger.error(
+                    "set_session_source: '%s' is not an allowed source value "
+                    "— the v2_sessions_source_check CHECK rejected it (run "
+                    "migrations/add_training_import_source.sql if this is a "
+                    "training import) sid=%s", source, session_id,
+                )
+                return False
             if "source" in err_low and "pgrst" in err_low:
                 return False
             logger.warning(
