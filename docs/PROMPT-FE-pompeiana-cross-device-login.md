@@ -135,6 +135,45 @@ to `app.js` never land.
   reload hides exactly this bug — the failure only appears for existing users,
   who are all of them.
 
+## FE-2b — signup: go through the willab route, NOT `supabase.auth.signUp()`
+
+Founder 2026-07-27: signing up **through Pompeiana is intended** — one front
+door, two apps, one account.
+
+That makes the signup path load-bearing, because `POST /auth/signup`
+(`routes/auth.py:17`) does three things a client-side `supabase.auth.signUp()`
+does **not**:
+
+1. **A hard consent gate.** `terms_accepted is not True` → `400
+   TERMS_NOT_ACCEPTED`. No account is created without ToS + Privacy acceptance.
+2. **A GDPR audit row** in `user_consents` — `user_id`, `terms_version`, IP,
+   user-agent. The route's own comment calls this "the authoritative record".
+3. **`email_confirm: True`** via the admin API, so accounts are auto-confirmed
+   and **no confirmation email is sent at all**.
+
+A raw client-side signUp would therefore mint a **real WillpowerLab account
+with no consent record** — the same `auth.users` table, the same person, no
+audit trail. That is a compliance gap, not a papercut.
+
+So:
+
+- **Signup** → `POST <willab-api>/auth/signup` with `{email, password,
+  terms_accepted: true, name?}`. Pompeiana needs a **ToS + Privacy checkbox**
+  showing WillpowerLab's terms, because it is a WillpowerLab account.
+  Response carries `access_token` + `refresh_token` — store them exactly as
+  after a login.
+- Handle `409 EMAIL_IN_USE` as "you already have an account, sign in instead".
+- **Login** → either `POST <willab-api>/auth/login` or Supabase directly. Login
+  has no side effects, so both are correct; prefer the willab route so signup
+  and login share one code path and one error shape.
+- **Refresh and all data reads/writes** → Supabase directly. No willab
+  involvement.
+
+**This is the one place the "zero backend changes" claim needs correcting:** the
+Pompeiana origin must be added to the willab backend's `CORS_ORIGINS` env var
+(`config.py::_merge_cors_origins`). That is a **config entry, not a code
+change** — no route, no service, no model, so the BE-3 fence still holds.
+
 ## FE-6 — sync the pasted scripture (founder: yes, it syncs)
 
 `pompeiana_scripture` is live: `(user_id, mystery_id, language)` primary key,

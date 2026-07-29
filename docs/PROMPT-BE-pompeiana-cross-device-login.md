@@ -167,6 +167,34 @@ is correct. The FE-3 furthest-progress rule must not be applied to it.
   bypasses RLS entirely. Pompeiana is a static PWA with no server — it gets the
   **anon** key only, and every guarantee above rests on that.
 
+## BE-3b — one CORS entry, and it is the only willab-side change
+
+Founder 2026-07-27: **signup through Pompeiana is intended.** That routes
+Pompeiana's signup at `POST /auth/signup` rather than client-side
+`supabase.auth.signUp()`, because only the willab route enforces the consent
+gate and writes the `user_consents` GDPR row (see the FE prompt §FE-2b — a raw
+signUp would create a real WillpowerLab account with no consent record).
+
+Consequence here: add the Pompeiana origin to **`CORS_ORIGINS`**
+(`config.py::_merge_cors_origins` reads it as a comma-separated env var).
+
+- **This is a config entry, not a code change.** No route, no blueprint, no
+  service, no model — the BE-3 fence above is intact.
+- Set it in Railway alongside the existing origins; `_merge_cors_origins`
+  already appends the hard-coded production app origin, so only the new one is
+  needed.
+- Nothing else on the willab side moves. Refresh and every data read/write go
+  straight to Supabase.
+
+**Auth email branding — no action needed.** Founder chose WillpowerLab's, which
+is already what happens: the shared project owns the templates and sender.
+Note two details that follow from it — signup sends **no** email at all
+(`email_confirm: True` auto-confirms), so the only auth email in play is
+password reset; and `reset_password_for_email` is called with no `redirectTo`
+(`routes/auth.py:232`), so a Pompeiana user resetting a password lands on the
+project's Site URL — WillpowerLab — to set it. Consistent with one account and
+willab branding, but worth knowing before someone reports it as a bug.
+
 ## BE-4 — the handoff allowlist — only with Option B (see the FE prompt)
 
 If the founder takes the redirect flow rather than a second login screen, the
