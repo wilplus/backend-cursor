@@ -321,6 +321,11 @@ def prepare_training_import(
         session_context["import_key"] = idem
     if language and str(language).strip():
         session_context["language"] = str(language).strip().lower()
+    # Parked so the STATUS poll can report it without re-reading the audio —
+    # duration is what separates "never decoded" from "decoded but nothing
+    # transcribed" on a zero-piece import (FE §6).
+    if duration_sec:
+        session_context["duration_sec"] = round(duration_sec, 1)
     try:
         database.v2_create_guest_session(session_id)
         database.set_session_intake_context(session_id, session_context)
@@ -399,6 +404,7 @@ def prepare_training_import(
         "user_id": str(user_id) if user_id else None,
         "duration_sec": round(duration_sec, 1),
         "speaker_label": speaker_label or None,
+        "language": session_context.get("language"),
         "filename": filename,
     }
 

@@ -14505,6 +14505,13 @@ def v2_coach_training_import():
             daemon=True,
         )
         _t.start()
+        # THE 202 IS A RECEIPT, NOT A RESULT — and it must be impossible to
+        # read as one (FE §6.4). It carries NO count field: a consumer whose
+        # rule is "ok:true with a count present = finished" would otherwise
+        # see a bare ok:true, default the missing counts to 0, and announce a
+        # zero-piece failure that never happened. `status: "processing"` says
+        # the same thing positively. Both properties are pinned by test —
+        # adding snippet_count/queue_count here would break a real consumer.
         return jsonify({
             "ok": True, "status": "processing",
             "session_id": prepared["session_id"],
@@ -14512,6 +14519,7 @@ def v2_coach_training_import():
             "stages": prepared["stages"],
             "duration_sec": prepared.get("duration_sec"),
             "speaker_label": prepared.get("speaker_label"),
+            "language": prepared.get("language"),
             "filename": _filename,
         }), 202
     except Exception as e:
@@ -14544,15 +14552,36 @@ def v2_coach_training_import_status(session_id):
             sess.get("intake_context"), dict) else {}
         snippets = (db.get_snippets_by_session(str(session_id)) or []
                     if state == "ready" else [])
+        # A failed poll returns the SAME shape as the POST's failure (FE §6):
+        # reason + detail + duration_sec, so one renderer handles both. The
+        # reason is recovered from analysis_error, which the import writes as
+        # "REASON: detail" — split on the first colon, and degrade to the
+        # whole string as the detail if it was written by something else.
+        _reason = None
+        _detail = None
+        _err = sess.get("analysis_error")
+        if state == "failed" and isinstance(_err, str) and _err.strip():
+            head, sep, tail = _err.partition(":")
+            if sep and head.strip().isupper() and " " not in head.strip():
+                _reason, _detail = head.strip(), tail.strip()
+            else:
+                _detail = _err.strip()
         return jsonify({
             "session_id": session_id,
             "arc_id": sess.get("arc_id"),
             "status": state,
             "topic": ctx.get("topic") or "",
             "speaker_label": ctx.get("speaker_label"),
+            "language": ctx.get("language"),
             "snippet_count": len(snippets),
             "queue_count": len(ctx.get("label_queue") or []),
-            "error": sess.get("analysis_error"),
+            # Present on every poll, not just the terminal one: it is what
+            # separates "never decoded" from "decoded but nothing
+            # transcribed", and the FE renders it on the empty-import state.
+            "duration_sec": ctx.get("duration_sec"),
+            "reason": _reason,
+            "detail": _detail,
+            "error": _err,
         }), 200
     except Exception as e:
         logger.warning("training import status failed sid=%s: %s",
@@ -14659,8 +14688,12 @@ def v2_coach_confidence_queue(session_id):
                     == str(getattr(request, "user_id", "") or "")]
             if mine:
                 labelled += 1
+                # `note` rides the label (FE §5): without it, a saved note
+                # vanishes the moment the coach steps back to the piece,
+                # which reads as data loss rather than as a display gap.
                 r["label"] = {"confident": mine[0].get("confident"),
-                              "intensity": mine[0].get("intensity")}
+                              "intensity": mine[0].get("intensity"),
+                              "note": mine[0].get("note")}
             else:
                 r["label"] = None
         return jsonify({"session_id": session_id, "queue": rows,

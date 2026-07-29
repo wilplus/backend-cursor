@@ -12452,15 +12452,26 @@ class DatabaseService:
             return []
 
     def find_training_import_by_key(self, key: str) -> Optional[dict]:
-        """The import already created under this idempotency key, or None.
+        """The SUCCESSFUL import already created under this idempotency key,
+        or None.
 
         The retry-safety half of the timeout problem (FE 2026-07-28): the
         proxy can time out on a request whose BE work then SUCCEEDS, so a
         re-send must return the ORIGINAL import rather than mint a second —
         a talk imported twice is labelled twice and trained on twice, and
-        nothing on screen would say so. Best-effort; None on any error (the
-        caller then proceeds, which risks the duplicate but never blocks a
-        legitimate first import)."""
+        nothing on screen would say so.
+
+        A FAILED import releases its key (FE §7, 2026-07-29). Deduping a
+        retry-after-failure would make the key a permanent lock: a
+        NO_CANDIDATES import is a tuning problem on MY side, the coach
+        changes nothing about the file, and once I retune they could never
+        get a fresh run — the key would keep handing back the failure. The
+        duplicate worth preventing is the retry after a SUCCESS the coach
+        could not see; a retry after a visible failure is exactly the retry
+        that should be allowed through.
+
+        Best-effort; None on any error (the caller then proceeds, which risks
+        the duplicate but never blocks a legitimate first import)."""
         if not key:
             return None
         try:
@@ -12469,11 +12480,15 @@ class DatabaseService:
                 .select("id, arc_id, intake_context, analysis_state")
                 .eq("source", "training_import")
                 .eq("intake_context->>import_key", str(key))
-                .limit(1)
+                .order("created_at", desc=True)
+                .limit(5)
                 .execute()
                 .data
             ) or []
-            return rows[0] if rows else None
+            for r in rows:
+                if (r.get("analysis_state") or "ready") != "failed":
+                    return r
+            return None
         except Exception as e:
             logger.warning("find_training_import_by_key failed: %s", e)
             return None
