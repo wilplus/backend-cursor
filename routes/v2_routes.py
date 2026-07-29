@@ -14675,7 +14675,7 @@ def v2_coach_list_training_imports():
     label) is free and rides here.
 
     200 { imports: [{session_id, arc_id, topic, speaker_label, created_at,
-          status, queue_count}], count }
+          status, queue_count, language, speaker_sex, duration_sec}], count }
     """
     try:
         rows = db.list_training_import_sessions(
@@ -14694,6 +14694,20 @@ def v2_coach_list_training_imports():
                 # only ever persisted after a completed synchronous analysis.
                 "status": r.get("analysis_state") or "ready",
                 "queue_count": len(ctx.get("label_queue") or []),
+                # WHICH LANGUAGE THIS RUN ACTUALLY USED (FE 2026-07-29).
+                # null = auto-detected, which is a real answer, not a gap:
+                # a Polish talk left on auto-detect comes back TRANSLATED
+                # into English — the audio is right, the words are not, and
+                # nothing else on the row says so. Now that the index works
+                # it outlives the browser session, so this is the surface
+                # where that question gets asked.
+                "language": ctx.get("language"),
+                # Same class of question for the confidence composite: one
+                # cue's DIRECTION routes on it, so "which route did this run
+                # use" is worth being able to see. Declared value only —
+                # absent means the acoustic route decided.
+                "speaker_sex": ctx.get("speaker_sex"),
+                "duration_sec": ctx.get("duration_sec"),
             })
         return jsonify({"imports": out, "count": len(out)}), 200
     except Exception as e:
