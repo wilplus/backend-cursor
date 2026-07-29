@@ -14513,8 +14513,15 @@ def v2_coach_training_import():
                           or None,
             source_note=(request.form.get("note") or "").strip() or None,
             stages=(request.form.get("stages") or None),
-            idempotency_key=(request.form.get("upload_idempotency_key")
-                             or "").strip() or None,
+            # BOTH spellings (fix 2026-07-29): I documented
+            # `upload_idempotency_key` (the coach-video lane's name) but the
+            # FE shipped `idempotency_key`, so the key was being silently
+            # ignored and the dedupe it exists for never ran. Accepting both
+            # costs nothing and neither side has to redeploy to be correct.
+            idempotency_key=((request.form.get("idempotency_key")
+                              or request.form.get("upload_idempotency_key")
+                              or "").strip() or None),
+            language=(request.form.get("language") or "").strip() or None,
         )
         if not prepared.get("ok"):
             _reason = prepared.get("reason") or "failed"
@@ -14553,6 +14560,13 @@ def v2_coach_training_import():
             daemon=True,
         )
         _t.start()
+        # THE 202 IS A RECEIPT, NOT A RESULT — and it must be impossible to
+        # read as one (FE §6.4). It carries NO count field: a consumer whose
+        # rule is "ok:true with a count present = finished" would otherwise
+        # see a bare ok:true, default the missing counts to 0, and announce a
+        # zero-piece failure that never happened. `status: "processing"` says
+        # the same thing positively. Both properties are pinned by test —
+        # adding snippet_count/queue_count here would break a real consumer.
         return jsonify({
             "ok": True, "status": "processing",
             "session_id": prepared["session_id"],
@@ -14560,6 +14574,7 @@ def v2_coach_training_import():
             "stages": prepared["stages"],
             "duration_sec": prepared.get("duration_sec"),
             "speaker_label": prepared.get("speaker_label"),
+            "language": prepared.get("language"),
             "filename": _filename,
         }), 202
     except Exception as e:
@@ -14592,15 +14607,36 @@ def v2_coach_training_import_status(session_id):
             sess.get("intake_context"), dict) else {}
         snippets = (db.get_snippets_by_session(str(session_id)) or []
                     if state == "ready" else [])
+        # A failed poll returns the SAME shape as the POST's failure (FE §6):
+        # reason + detail + duration_sec, so one renderer handles both. The
+        # reason is recovered from analysis_error, which the import writes as
+        # "REASON: detail" — split on the first colon, and degrade to the
+        # whole string as the detail if it was written by something else.
+        _reason = None
+        _detail = None
+        _err = sess.get("analysis_error")
+        if state == "failed" and isinstance(_err, str) and _err.strip():
+            head, sep, tail = _err.partition(":")
+            if sep and head.strip().isupper() and " " not in head.strip():
+                _reason, _detail = head.strip(), tail.strip()
+            else:
+                _detail = _err.strip()
         return jsonify({
             "session_id": session_id,
             "arc_id": sess.get("arc_id"),
             "status": state,
             "topic": ctx.get("topic") or "",
             "speaker_label": ctx.get("speaker_label"),
+            "language": ctx.get("language"),
             "snippet_count": len(snippets),
             "queue_count": len(ctx.get("label_queue") or []),
-            "error": sess.get("analysis_error"),
+            # Present on every poll, not just the terminal one: it is what
+            # separates "never decoded" from "decoded but nothing
+            # transcribed", and the FE renders it on the empty-import state.
+            "duration_sec": ctx.get("duration_sec"),
+            "reason": _reason,
+            "detail": _detail,
+            "error": _err,
         }), 200
     except Exception as e:
         logger.warning("training import status failed sid=%s: %s",
@@ -14616,8 +14652,19 @@ def v2_coach_list_training_imports():
     corpus. Each row's `arc_id` opens the normal review surfaces
     (GET /v2/coach/arc/<arc_id>/stars, .../ideal-text).
 
-    200 { imports: [{session_id, arc_id, topic, speaker_label, created_at}],
-          count }
+    Carries `status` and `queue_count` per row (added 2026-07-28 with the
+    async import): since the POST now returns 202 before the analysis runs,
+    this list — not the upload response — is where an import's outcome
+    actually shows up. Without them a finished import and a still-running one
+    look identical, which is exactly how a working import reads as "0 pieces".
+
+    `snippet_count` is deliberately NOT here: it needs one query per row, and
+    a corpus list is long. Poll GET /v2/coach/training-imports/<session_id>
+    for one import's piece count; `queue_count` (what the coach will actually
+    label) is free and rides here.
+
+    200 { imports: [{session_id, arc_id, topic, speaker_label, created_at,
+          status, queue_count}], count }
     """
     try:
         rows = db.list_training_import_sessions(
@@ -14632,6 +14679,10 @@ def v2_coach_list_training_imports():
                 "topic": ctx.get("topic") or "",
                 "speaker_label": ctx.get("speaker_label") or None,
                 "created_at": r.get("created_at"),
+                # NULL analysis_state reads as 'ready': pre-async rows were
+                # only ever persisted after a completed synchronous analysis.
+                "status": r.get("analysis_state") or "ready",
+                "queue_count": len(ctx.get("label_queue") or []),
             })
         return jsonify({"imports": out, "count": len(out)}), 200
     except Exception as e:
@@ -14692,8 +14743,12 @@ def v2_coach_confidence_queue(session_id):
                     == str(getattr(request, "user_id", "") or "")]
             if mine:
                 labelled += 1
+                # `note` rides the label (FE §5): without it, a saved note
+                # vanishes the moment the coach steps back to the piece,
+                # which reads as data loss rather than as a display gap.
                 r["label"] = {"confident": mine[0].get("confident"),
-                              "intensity": mine[0].get("intensity")}
+                              "intensity": mine[0].get("intensity"),
+                              "note": mine[0].get("note")}
             else:
                 r["label"] = None
         return jsonify({"session_id": session_id, "queue": rows,

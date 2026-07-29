@@ -384,6 +384,290 @@ class IdempotencyTests(unittest.TestCase):
         db.find_training_import_by_key.assert_not_called()
 
 
+class ZeroPieceHonestyTests(unittest.TestCase):
+    """A zero-piece import must NOT read as success (FE 2026-07-29: the first
+    real import, a Polish talk, returned ok:true with nothing to show, so
+    'worked perfectly' and 'silently did nothing' were identical on the
+    wire)."""
+
+    def _run(self, snippets, extra=None):
+        from services.training_import import (
+            prepare_training_import, run_training_import_analysis,
+        )
+        db = _db()
+        db.get_snippets_by_session.return_value = []
+        prepared = prepare_training_import(
+            audio_bytes=b"A", filename="talk.mp3", user_id="u1",
+            topic="T", database=db, **(extra or {}))
+        lab = sys.modules["services.lab_recording"]
+        orig = lab.process_lab_recording
+        lab.process_lab_recording = lambda **kw: {"snippets": snippets}
+        try:
+            return db, run_training_import_analysis(
+                prepared=prepared, audio_bytes=b"A", filename="talk.mp3",
+                database=db)
+        finally:
+            lab.process_lab_recording = orig
+
+    def test_zero_pieces_is_not_ok(self):
+        _db_, out = self._run([])
+        self.assertFalse(out["ok"])
+        self.assertEqual(out["snippet_count"], 0)
+        self.assertIn(out["reason"], ("NO_SPEECH_DETECTED", "NO_CANDIDATES"))
+        self.assertTrue(out["detail"])
+
+    def test_empty_transcript_blames_language_not_the_cutter(self):
+        """The distinction the coach needs: nothing transcribed (usually a
+        language problem) vs transcribed-but-nothing-kept (tuning)."""
+        _db_, out = self._run([])
+        self.assertEqual(out["reason"], "NO_SPEECH_DETECTED")
+        self.assertIn("language", out["detail"])
+
+    def test_zero_pieces_marks_the_session_failed_for_the_poll(self):
+        db, _out = self._run([])
+        self.assertEqual(db.set_session_analysis_state.call_args.args[1],
+                         "failed")
+
+    def test_duration_rides_the_failure_so_it_can_be_diagnosed(self):
+        """Duration separates 'never decoded' from 'decoded but no speech' —
+        the FE surfaces it and it is the whole diagnosis."""
+        _db_, out = self._run([])
+        self.assertIn("duration_sec", out)
+        self.assertEqual(out["duration_sec"], 42.0)
+
+    def test_pieces_present_is_still_ok(self):
+        _db_, out = self._run([{"id": "p1"}])
+        self.assertTrue(out["ok"])
+        self.assertEqual(out["snippet_count"], 1)
+
+
+class LanguageTests(unittest.TestCase):
+
+    def test_language_rides_the_session_context(self):
+        from services.training_import import prepare_training_import
+        db = _db()
+        prepare_training_import(audio_bytes=b"A", filename="t.mp3",
+                                user_id="u1", topic="T", database=db,
+                                language="PL")
+        ctx = db.set_session_intake_context.call_args.args[1]
+        self.assertEqual(ctx["language"], "pl")
+
+    def test_absent_language_stays_absent(self):
+        """No hint = Whisper auto-detects, exactly as the live path always
+        has — the import must not invent 'en'."""
+        from services.training_import import prepare_training_import
+        db = _db()
+        prepare_training_import(audio_bytes=b"A", filename="t.mp3",
+                                user_id="u1", topic="T", database=db)
+        ctx = db.set_session_intake_context.call_args.args[1]
+        self.assertNotIn("language", ctx)
+
+    def test_language_reaches_the_pipeline(self):
+        from services.training_import import (
+            prepare_training_import, run_training_import_analysis,
+        )
+        db = _db()
+        db.get_snippets_by_session.return_value = []
+        prepared = prepare_training_import(
+            audio_bytes=b"A", filename="t.mp3", user_id="u1", topic="T",
+            database=db, language="pl")
+        lab = sys.modules["services.lab_recording"]
+        seen = {}
+        orig = lab.process_lab_recording
+
+        def _spy(**kw):
+            seen.update(kw)
+            return {"snippets": [{"id": "p1"}]}
+        lab.process_lab_recording = _spy
+        try:
+            run_training_import_analysis(prepared=prepared, audio_bytes=b"A",
+                                         filename="t.mp3", database=db)
+        finally:
+            lab.process_lab_recording = orig
+        self.assertEqual(seen["session_context"]["language"], "pl")
+
+
+class FailedKeyIsReleasedTests(unittest.TestCase):
+    """FE §7: deduping a retry-after-FAILURE would make the key a permanent
+    lock. A NO_CANDIDATES import is a tuning problem on the BE side — the
+    coach changes nothing about the file, so once the cutter is retuned they
+    could never get a fresh run. The duplicate worth preventing is the retry
+    after a SUCCESS the coach could not see."""
+
+    def _svc(self, rows):
+        import types as _t
+        stub = sys.modules.get("services.db")
+        real = _ORIG.get("services.db")
+        for name in ("supabase", "sentry_sdk"):
+            if name not in sys.modules:
+                m = _t.ModuleType(name)
+                m.create_client = lambda *a, **k: None
+                m.Client = object
+                sys.modules[name] = m
+        try:
+            if real is None:
+                import importlib
+                sys.modules.pop("services.db", None)
+                real = importlib.import_module("services.db")
+            sys.modules["services.db"] = real
+            DatabaseService = real.DatabaseService
+        finally:
+            if stub is not None:
+                sys.modules["services.db"] = stub
+
+        class _Q:
+            def select(self, *a):
+                return self
+
+            def eq(self, *a):
+                return self
+
+            def order(self, *a, **k):
+                return self
+
+            def limit(self, *a):
+                return self
+
+            def execute(self):
+                return _t.SimpleNamespace(data=rows)
+
+        svc = DatabaseService.__new__(DatabaseService)
+        svc.client = _t.SimpleNamespace(table=lambda n: _Q())
+        return svc
+
+    def test_failed_import_does_not_block_a_retry(self):
+        svc = self._svc([{"id": "s1", "analysis_state": "failed"}])
+        self.assertIsNone(svc.find_training_import_by_key("k1"))
+
+    def test_successful_import_still_dedupes(self):
+        svc = self._svc([{"id": "s1", "analysis_state": "ready"}])
+        self.assertEqual(svc.find_training_import_by_key("k1")["id"], "s1")
+
+    def test_still_processing_dedupes(self):
+        """The timeout case the key exists for: the first request is mid-
+        analysis, so the retry must NOT start a second Whisper run."""
+        svc = self._svc([{"id": "s1", "analysis_state": "processing"}])
+        self.assertEqual(svc.find_training_import_by_key("k1")["id"], "s1")
+
+    def test_null_state_reads_as_successful(self):
+        svc = self._svc([{"id": "s1", "analysis_state": None}])
+        self.assertIsNotNone(svc.find_training_import_by_key("k1"))
+
+    def test_a_later_success_wins_over_an_earlier_failure(self):
+        svc = self._svc([{"id": "s2", "analysis_state": "failed"},
+                         {"id": "s1", "analysis_state": "ready"}])
+        self.assertEqual(svc.find_training_import_by_key("k1")["id"], "s1")
+
+
+class ReceiptNotResultTests(unittest.TestCase):
+    """The 202 must be unreadable as a finished, zero-piece import: a
+    consumer whose rule is 'ok:true with a count present = finished' would
+    otherwise default the missing counts to 0 and announce a failure that
+    never happened."""
+
+    def test_prepare_result_carries_no_counts(self):
+        from services.training_import import prepare_training_import
+        out = prepare_training_import(
+            audio_bytes=b"A", filename="t.mp3", user_id="u1", topic="T",
+            database=_db())
+        for banned in ("snippet_count", "queue_count"):
+            self.assertNotIn(
+                banned, out,
+                "the 202 receipt must carry no count field — a consumer "
+                "would read it as a finished zero-piece import")
+
+    def test_the_route_202_carries_no_counts(self):
+        """Source-level pin on the route body itself, since that dict is
+        what actually goes on the wire."""
+        with open("routes/v2_routes.py", encoding="utf-8") as fh:
+            source = fh.read()
+        block = source.split('"ok": True, "status": "processing"')[1][:600]
+        for banned in ("snippet_count", "queue_count"):
+            self.assertNotIn(banned, block)
+
+
+class ImportListDegradationTests(unittest.TestCase):
+    """The corpus index must never come back empty just because an older
+    column is unmigrated — an empty list reads exactly like 'nothing
+    imported', which is the failure this list exists to rule out."""
+
+    def _database_service(self):
+        """The REAL DatabaseService class.
+
+        setUpModule replaces sys.modules['services.db'] with a stub carrying
+        only `db`, so a plain import here finds no class. Restore the real
+        module (or import it fresh) just long enough to grab the class, then
+        put the stub back — leaving the real module in place would let the
+        other tests in this file reach a live client."""
+        import importlib
+        import types as _t
+        stub = sys.modules.get("services.db")
+        real = _ORIG.get("services.db")
+        for name in ("supabase", "sentry_sdk"):
+            if name not in sys.modules:
+                m = _t.ModuleType(name)
+                m.create_client = lambda *a, **k: None
+                m.Client = object
+                sys.modules[name] = m
+        try:
+            if real is not None:
+                sys.modules["services.db"] = real
+            else:
+                sys.modules.pop("services.db", None)
+                real = importlib.import_module("services.db")
+                sys.modules["services.db"] = real
+            return real.DatabaseService
+        finally:
+            if stub is not None:
+                sys.modules["services.db"] = stub
+
+    def _svc(self, *, fail_on_analysis_state: bool):
+        import types as _t
+        DatabaseService = self._database_service()
+        seen = {"cols": []}
+
+        class _Q:
+            def __init__(self, cols):
+                self.cols = cols
+
+            def eq(self, *a):
+                return self
+
+            def order(self, *a, **k):
+                return self
+
+            def limit(self, *a):
+                return self
+
+            def execute(self):
+                if fail_on_analysis_state and "analysis_state" in self.cols:
+                    raise RuntimeError(
+                        'column "analysis_state" does not exist')
+                return _t.SimpleNamespace(data=[{"id": "s1"}])
+
+        class _T:
+            def select(self, cols):
+                seen["cols"].append(cols)
+                return _Q(cols)
+
+        svc = DatabaseService.__new__(DatabaseService)
+        svc.client = _t.SimpleNamespace(table=lambda name: _T())
+        return svc, seen
+
+    def test_falls_back_when_analysis_state_is_unmigrated(self):
+        svc, seen = self._svc(fail_on_analysis_state=True)
+        rows = svc.list_training_import_sessions()
+        self.assertEqual(rows, [{"id": "s1"}], "the list must still serve")
+        self.assertEqual(len(seen["cols"]), 2, "should have retried")
+        self.assertNotIn("analysis_state", seen["cols"][1])
+
+    def test_uses_analysis_state_when_available(self):
+        svc, seen = self._svc(fail_on_analysis_state=False)
+        svc.list_training_import_sessions()
+        self.assertEqual(len(seen["cols"]), 1)
+        self.assertIn("analysis_state", seen["cols"][0])
+
+
 class HelperTests(unittest.TestCase):
 
     def test_audio_extension_detection(self):

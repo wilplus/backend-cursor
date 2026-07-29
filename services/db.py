@@ -12452,15 +12452,26 @@ class DatabaseService:
             return []
 
     def find_training_import_by_key(self, key: str) -> Optional[dict]:
-        """The import already created under this idempotency key, or None.
+        """The SUCCESSFUL import already created under this idempotency key,
+        or None.
 
         The retry-safety half of the timeout problem (FE 2026-07-28): the
         proxy can time out on a request whose BE work then SUCCEEDS, so a
         re-send must return the ORIGINAL import rather than mint a second —
         a talk imported twice is labelled twice and trained on twice, and
-        nothing on screen would say so. Best-effort; None on any error (the
-        caller then proceeds, which risks the duplicate but never blocks a
-        legitimate first import)."""
+        nothing on screen would say so.
+
+        A FAILED import releases its key (FE §7, 2026-07-29). Deduping a
+        retry-after-failure would make the key a permanent lock: a
+        NO_CANDIDATES import is a tuning problem on MY side, the coach
+        changes nothing about the file, and once I retune they could never
+        get a fresh run — the key would keep handing back the failure. The
+        duplicate worth preventing is the retry after a SUCCESS the coach
+        could not see; a retry after a visible failure is exactly the retry
+        that should be allowed through.
+
+        Best-effort; None on any error (the caller then proceeds, which risks
+        the duplicate but never blocks a legitimate first import)."""
         if not key:
             return None
         try:
@@ -12469,11 +12480,15 @@ class DatabaseService:
                 .select("id, arc_id, intake_context, analysis_state")
                 .eq("source", "training_import")
                 .eq("intake_context->>import_key", str(key))
-                .limit(1)
+                .order("created_at", desc=True)
+                .limit(5)
                 .execute()
                 .data
             ) or []
-            return rows[0] if rows else None
+            for r in rows:
+                if (r.get("analysis_state") or "ready") != "failed":
+                    return r
+            return None
         except Exception as e:
             logger.warning("find_training_import_by_key failed: %s", e)
             return None
@@ -12486,21 +12501,37 @@ class DatabaseService:
         that method is the per-speaker BASELINE reader, and imports must stay
         out of it (a corpus of many voices would corrupt one speaker's norm —
         see services/training_import.py). This is the coach's separate
-        window onto the corpus. Best-effort: [] on anything missing."""
-        try:
-            q = (
-                self.client.table("v2_sessions")
-                .select("id, arc_id, take_index, intake_context, created_at, "
-                        "status, user_id, recording_1_id")
-                .eq("source", "training_import")
-            )
-            if user_id:
-                q = q.eq("user_id", str(user_id))
-            return (q.order("created_at", desc=True)
-                     .limit(int(limit)).execute().data) or []
-        except Exception as e:
-            logger.warning("list_training_import_sessions failed: %s", e)
-            return []
+        window onto the corpus. Best-effort: [] on anything missing.
+
+        analysis_state comes from an older migration, so the select degrades
+        rather than betting the whole list on it: a DB without that column
+        would otherwise return an EMPTY corpus index, which reads exactly
+        like "nothing imported" — the failure this list exists to rule out."""
+        _cols_full = ("id, arc_id, take_index, intake_context, created_at, "
+                      "status, user_id, recording_1_id, analysis_state")
+        _cols_base = ("id, arc_id, take_index, intake_context, created_at, "
+                      "status, user_id, recording_1_id")
+        for _cols in (_cols_full, _cols_base):
+            try:
+                q = (
+                    self.client.table("v2_sessions")
+                    .select(_cols)
+                    .eq("source", "training_import")
+                )
+                if user_id:
+                    q = q.eq("user_id", str(user_id))
+                return (q.order("created_at", desc=True)
+                         .limit(int(limit)).execute().data) or []
+            except Exception as e:
+                if _cols is _cols_base:
+                    logger.warning(
+                        "list_training_import_sessions failed: %s", e)
+                    return []
+                logger.warning(
+                    "list_training_import_sessions: analysis_state missing "
+                    "(run migrations/add_analysis_state.sql) — retrying "
+                    "without it: %s", e)
+        return []
 
     def set_session_source(self, session_id: str, source: str) -> bool:
         """Stamp v2_sessions.source (foundation discriminator). The Lab
