@@ -48,11 +48,38 @@ CREATE TABLE IF NOT EXISTS public.confidence_labels (
 );
 
 -- One label per rater per snippet; re-rating UPDATES (the corpus wants their
--- current view). COALESCE so anonymous raters don't all collide on NULL.
-CREATE UNIQUE INDEX IF NOT EXISTS uq_confidence_labels_snippet_rater
-    ON public.confidence_labels (
-        snippet_id, COALESCE(rater_id, '00000000-0000-0000-0000-000000000000'::uuid)
-    );
+-- current view). NULLS NOT DISTINCT so anonymous raters (NULL rater_id)
+-- collide into one row instead of stacking duplicates.
+--
+-- MUST be a plain composite CONSTRAINT, not an expression index: the writer
+-- upserts with ON CONFLICT (snippet_id, rater_id), and Postgres's arbiter
+-- inference cannot match an expression index — the original
+-- COALESCE(rater_id, zero-uuid) form made every save fail 42P10, which the
+-- surface then misread as "migration not run".
+DO $$
+BEGIN
+    -- Retire the original expression index if this database ran the old
+    -- version of this file. Writes never succeeded against it, so there are
+    -- no duplicate rows to block the constraint.
+    IF EXISTS (
+        SELECT 1 FROM pg_indexes
+         WHERE schemaname = 'public'
+           AND indexname  = 'uq_confidence_labels_snippet_rater'
+    ) AND NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+         WHERE conname = 'uq_confidence_labels_snippet_rater'
+    ) THEN
+        DROP INDEX public.uq_confidence_labels_snippet_rater;
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+         WHERE conname = 'uq_confidence_labels_snippet_rater'
+    ) THEN
+        ALTER TABLE public.confidence_labels
+            ADD CONSTRAINT uq_confidence_labels_snippet_rater
+            UNIQUE NULLS NOT DISTINCT (snippet_id, rater_id);
+    END IF;
+END$$;
 
 -- Named constraint, drop-then-re-add so the range converges on re-run. If it
 -- ever changes, edit THIS file rather than adding a second alter_ migration
