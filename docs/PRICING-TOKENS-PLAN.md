@@ -14,8 +14,8 @@ Date: 2026-07-27 · Status: **ECONOMICS LOCKED, not built.** No code written.
 modelled) and lifetime Whisper spend across the whole corpus is **$2.46**. Machine cost is not a
 constraint — §5 (the founder's calendar) is the only real one.
 
-- **No expiry on the $5/$25 packs; the $100/mo resets monthly** — and the coach-review allowance must
-  NOT roll over on Max, or the §5.1 calendar protection collapses (§9.6)
+- **EVERY tier renews monthly — free, $5, $25, $100 — and nothing rolls over** (founder 2026-07-28,
+  supersedes "packs never expire"). Forces starter/pro to be Stripe SUBSCRIPTIONS, not packs (§9.6)
 
 **Cost reality (§9):** analysis is the only line with a genuine ×7 (**$0.014** median take). Coach
 comment writing costs **$0.00 machine** — `COACH_PREFILL_ENABLED` is OFF, the coach types it. Every
@@ -200,13 +200,14 @@ the strong-sides library, the readout itself, sending a take to the coach.
 
 ## 3. The tiers
 
-✅ **LOCKED — founder-approved 2026-07-27** (grant, ratios, and coach caps).
+✅ **LOCKED — founder-approved 2026-07-27/28** (grant, ratios, coach caps).
+**Every tier renews monthly, free included; nothing rolls over** (§9.6).
 
 | Tier | Price | Tokens | $ / 1k | vs $5 | **Coach reviews** |
 |---|---|---|---|---|---|
-| **Free** (upfront grant) | $0 | **12,000** | — | 0.24× | **0** |
-| **Starter** (pack) | **$5** | **50,000** | $0.100 | 1× | **1** |
-| **Pro** (pack) | **$25** | **300,000** | $0.083 | **6×** | **6** |
+| **Free** (monthly grant) | $0 | **12,000/mo** | — | 0.24× | **0** |
+| **Starter** (monthly) | **$5/mo** | **50,000** | $0.100 | 1× | **1** |
+| **Pro** (monthly) | **$25/mo** | **300,000** | $0.083 | **6×** | **6** |
 | **Max** (monthly) | **$100/mo** | **1,500,000** | $0.067 | **30×** | **10** |
 
 Token ratios are exactly the founder's 1× / 6× / 30×; the per-token discount ladder (0 → 17% → 33%)
@@ -247,12 +248,20 @@ prep tier, and it is where §5's cap matters.
 
 - Current state: `WILLAB_FREE_CREDIT_GRANT=25`, `ARC_UNLOCK_CREDITS=25` (**retired**, `/unlock` → 410),
   `MOMENTS_UNLOCK_CREDITS=5` (the only live charge). Balances are effectively unspent.
-- **Convert 1 credit → 400 tokens.** A 25-credit balance becomes 10,000 tokens ≈ the new free grant.
-  Clean, nobody loses, nobody gets an accidental $25 windfall.
-- Keep the column, rename the concept. `v2_student_details.credits` → `token_balance` via an additive
-  migration (new column + backfill, old column left in place for one release — never drop).
-- `STRIPE_CHECKOUT_PRICE_CREDITS_JSON` already maps `price_id → integer amount`. It works unchanged
-  for the three new prices; only the amounts change.
+- Keep the column, rename the concept. `token_balance` is a NEW additive column beside `credits`;
+  the old one stays for at least a release — never drop (standing constraint). `credits` is still
+  read by the moments-unlock path until that is cut over.
+- `STRIPE_CHECKOUT_PRICE_CREDITS_JSON` already maps `price_id → integer amount` and works unchanged;
+  §7 Phase 3 adds `STRIPE_PRICE_TIER_JSON` beside it so the webhook can set the tier.
+
+**The 1-credit → 400-tokens conversion is now MOOT, and `add_token_pricing.sql` deliberately leaves
+it commented out.** Once every tier renews monthly (§9.6), the migration seeds every existing user a
+full free period — 12,000 tokens — immediately. Also converting their 25 legacy credits would grant
+10,000 more on top, i.e. a double grant for the entire user base, for balances that were never spent
+in the first place. The seed alone is more generous than the conversion was.
+
+Uncomment the conversion block only if you decide legacy balances should be honoured **in addition
+to** the first free period.
 
 ---
 
@@ -367,8 +376,11 @@ price_version, created_at`). Price table versioned in `config.py` so a repricing
 **Phase 2 — meter.** Wire the §2 table to the actions, fail-open per §6.1. Read-only "shadow mode"
 first: log what *would* have been charged for a week, compare against real spend, then enforce.
 
-**Phase 3 — Stripe.** Three prices into the existing `STRIPE_CHECKOUT_PRICE_CREDITS_JSON` map. $5/$25
-as one-off packs (no expiry), $100 as a subscription with monthly reset + one-month rollover grace.
+**Phase 3 — Stripe.** Three **recurring monthly** prices — starter $5, pro $25, max $100 — since
+every tier now renews (§9.6). `STRIPE_CHECKOUT_PRICE_CREDITS_JSON` still maps price → amount; add a
+parallel `STRIPE_PRICE_TIER_JSON` mapping price → tier so the webhook sets the tier, not just a
+balance. Anchor `period_start` to the Stripe billing date. Details in
+[PROMPT-BE-token-pricing.md](PROMPT-BE-token-pricing.md) §1.
 
 **Phase 4 — FE handoff.** Balance chip, price shown *before* each action, top-up sheet, low-balance
 nudge. All copy held for sign-off.
@@ -583,26 +595,58 @@ Median take, one complete coached arc (3 takes + everything):
 **Machine gross margin on a $5 arc: 98.3%.** The founder's 15 minutes is the entire cost structure.
 Everything in §5 follows from that one line, and nothing in §1, §8 or this section changes it.
 
-### 9.6 Pack expiry — decided, plus the one thing it forces
+### 9.6 Renewal — EVERYTHING resets monthly (founder 2026-07-28)
 
-**No expiry on the $5 / $25 packs. Monthly reset on the $100 subscription.** (Founder 2026-07-27.)
+**Supersedes the 2026-07-27 "no expiry on packs" decision.** One cycle for every tier,
+free included. Nothing rolls over.
 
-Two counters now behave differently, and the difference has to be deliberate:
+| Tier | Tokens / month | Coach reviews / month | Rollover |
+|---|---|---|---|
+| Free | 12,000 | 0 | none |
+| Starter $5 | 50,000 | 1 | none |
+| Pro $25 | 300,000 | 6 | none |
+| Max $100 | 1,500,000 | 10 | none |
 
-| | Tokens | Coach reviews |
-|---|---|---|
-| $5 / $25 packs | **never expire** — accumulate across purchases | **never expire** — 1 and 6 stay banked |
-| $100/mo | **reset monthly**, unused tokens lost | **reset monthly** — 10/month, never banked |
+A single reset cycle is much simpler than the two-model version it replaces — one
+`period_start` per user, one grant rule, no distinction between "pack" and
+"subscription" balances. `migrations/add_token_pricing.sql` is built on that.
 
-The coach-review allowance on Max **must not roll over**, or the calendar protection in §5.1 collapses:
-three quiet months would bank 30 reviews = 7.5 hours callable in a single week. Non-rolling is the
-whole point of the cap. Pack reviews *can* bank safely because they were bought one at a time and cap
-out at whatever was purchased.
+**⚠️ The one thing this forces: starter and pro are now SUBSCRIPTIONS, not packs.**
+An allowance whose remainder is deleted after 30 days is not a pack. Sold as "buy
+50,000 tokens" and then zeroed it is the shape of a chargeback; sold as "$5/month,
+50,000 tokens a month" it is an ordinary plan that reads honestly. The Stripe Prices
+for starter and pro must be **recurring**, and every surface must say *per month*. If
+the founder wants them to stay one-off purchases, then they must NOT reset — the two
+cannot both be true.
 
-Recommended softener, since expiring tokens reads badly: on the $100 tier, carry **unused tokens** one
-month (cap 2× = 3M) but **never** carry coach reviews. Tokens are machine capacity, which costs
-~nothing to honor late; reviews are the founder's Tuesday.
+**The free tier resetting is a real product change, not a detail.** 12,000 tokens
+every month forever is a permanently-free user running roughly one take a month, at
+~$0.10/month to us — trivially affordable. But it removes the exhaustion cliff the
+earlier design leaned on. Conversion pressure now comes from *impatience* and *coach
+access*, not from running out permanently: a free user who is happy at one take a
+month simply never converts.
 
+That is a defensible trade at this stage and probably the right one — a returning free
+user is corpus, and corpus is what F2's clone needs. It should be a chosen trade
+rather than a discovered one. If conversion later looks too weak, the lever is the
+free grant size (8,000 makes one take feel tight; 12,000 makes it comfortable), not
+re-introducing expiry.
+
+**Coach reviews still must not roll over** — the §5.1 reason is unchanged and now
+applies uniformly. Three quiet months banking 30 reviews would be 7.5 hours of the
+founder's time callable in a single week, which is exactly what the cap exists to
+prevent.
+
+**Unused tokens vanish at the roll.** Standard for a subscription, and worth saying
+out loud because the earlier draft recommended a one-month carry on Max. That carry is
+now dropped: with every tier on the same cycle, a single "nothing rolls over" rule is
+easier to explain than a per-tier exception, and the machine capacity it forgoes costs
+us ~nothing either way.
+
+**No cron.** The reset is computed lazily on read (`ensure_period_current`), never by
+a scheduled job — see the reasoning in `migrations/add_token_pricing.sql`. A monthly
+grant cron fails silently and this repo has a standing habit of infrastructure that
+was specified and never wired.
 ---
 
 ## 10. Open questions for the founder
@@ -621,8 +665,17 @@ month (cap 2× = 3M) but **never** carry coach reviews. Tokens are machine capac
 
 **Genuinely still open:**
 
-8. ~~Do $5/$25 packs expire?~~ — **decided 2026-07-27: no expiry on the $5/$25 packs; the $100/mo
-   subscription resets monthly.** See §9 for what "reset" has to mean for the coach-review counter.
-9. **Phase 0 go/no-go** (§7) — persist the per-surface token counts `services/llm.py` already logs, so
-   the ×7 multiplier is measured rather than derived. The §8.1 pull was a one-off over `duration`;
-   it says nothing about per-surface LLM spend, which is still entirely un-instrumented.
+8. ~~Do $5/$25 packs expire?~~ — **superseded 2026-07-28: EVERY tier renews monthly, free included,
+   nothing rolls over** (§9.6). Forces starter/pro to be sold as subscriptions rather than packs.
+9. ~~Phase 0 go/no-go~~ — **approved and BUILT 2026-07-28**, commit `55e075e`
+   (`feat/llm-usage-instrumentation`, unpushed). ⚠️ run `migrations/add_llm_usage.sql`.
+
+**Genuinely still open:**
+
+10. **Confirm starter/pro become recurring Stripe Prices.** The alternative is that they stay one-off
+    and do NOT reset — those two cannot both be true (§9.6).
+11. **Proration on a mid-period upgrade.** Proposed: full new-tier grant immediately, re-anchor
+    `period_start` to now. Slightly generous, trivially explainable.
+12. **Phase 1 go/no-go** — the balance itself. Migration written
+    (`migrations/add_token_pricing.sql`), handoffs written
+    ([BE](PROMPT-BE-token-pricing.md) · [FE](PROMPT-FE-token-pricing.md)), nothing built.
