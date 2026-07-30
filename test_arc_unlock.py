@@ -50,6 +50,12 @@ class _FakeCreditsClient:
         self._pending_update = payload
         return self
 
+    def upsert(self, payload, on_conflict=None):
+        # UPSERT creates the row — the distinction that matters here, since
+        # deduct_credits_strict seeds via this path before CASing with update().
+        self._pending_upsert = payload
+        return self
+
     def eq(self, col, val):
         self._filters = getattr(self, "_filters", {})
         self._filters[col] = val
@@ -59,6 +65,13 @@ class _FakeCreditsClient:
         return self
 
     def execute(self):
+        # UPSERT path (the lazy seed) — creates or replaces the row outright.
+        if hasattr(self, "_pending_upsert"):
+            payload = self._pending_upsert
+            del self._pending_upsert
+            self._filters = {}
+            self._balances[payload["user_id"]] = payload["credits"]
+            return _Resp([payload])
         # SELECT path (v2_get_student_details) — no pending update.
         if not hasattr(self, "_pending_update"):
             uid = self._filters.get("user_id")
@@ -120,6 +133,26 @@ class DeductCreditsStrictTests(unittest.TestCase):
         self.assertEqual(svc1.deduct_credits_strict("u1", 25), seed - 25)
         svc2, _ = self._svc({})
         self.assertEqual(svc2.deduct_credits_strict("u1", 10), seed - 10)
+
+    def test_unseeded_user_row_is_written_not_just_assumed(self):
+        """The 2026-07-30 repair. The old code took the grant as the balance
+        but left the row absent, then CASed with UPDATE ... eq(credits, 25) —
+        which matches nothing, because an UPDATE never creates a row. A
+        brand-new user was told INSUFFICIENT_CREDITS while holding the grant.
+        Assert the row actually LANDS, not merely that the call returns a
+        number: returning the right value off a phantom row is the bug."""
+        from config import Config
+        seed = int(Config.WILLAB_FREE_CREDIT_GRANT)
+        svc, fake = self._svc({})
+        self.assertEqual(svc.deduct_credits_strict("u1", 5), seed - 5)
+        self.assertEqual(fake._balances.get("u1"), seed - 5)
+
+    def test_spent_down_user_is_never_re_granted(self):
+        """The seed must not become a refill. A balance of 0 is a real value,
+        not an unseeded row, so it fails rather than re-granting."""
+        svc, fake = self._svc({"u1": 0})
+        self.assertIsNone(svc.deduct_credits_strict("u1", 5))
+        self.assertEqual(fake._balances.get("u1"), 0)
 
     def test_bad_args_return_none(self):
         svc, _ = self._svc({"u1": 30})
