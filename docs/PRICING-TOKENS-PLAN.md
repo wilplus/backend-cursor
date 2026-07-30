@@ -1,6 +1,7 @@
 # willab token pricing — plan (no code)
 
-Date: 2026-07-27 · Status: **ECONOMICS LOCKED, not built.** No code written.
+Date: 2026-07-27 · Status: **Phase 0 + Phase 1 BE BUILT** (flag-gated, `TOKEN_PRICING_ENABLED=0`).
+FE pending — see [PROMPT-FE-token-pricing.md](PROMPT-FE-token-pricing.md).
 
 **✅ Founder-approved 2026-07-27** — the whole shape is now decided:
 - Peg **10,000 tokens = $1.00**; tiers **Free 12,000 · $5 = 50,000 · $25 = 300,000 (6×) · $100/mo = 1,500,000 (30×)**
