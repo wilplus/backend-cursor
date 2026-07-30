@@ -47,6 +47,7 @@ from datetime import date, datetime, timezone
 from typing import Any, Optional
 
 from config import Config
+from services import life_import as life_importer
 from services import life_panel as lp
 from services import life_store as store
 from services.llm_config import CHEAP_MODEL, STRONG_MODEL, LLMSpec
@@ -614,11 +615,23 @@ def generate_documents(user_id: str, answers: dict) -> dict[str, str]:
     L-2 as amended: the system drafts the documents; every later CHANGE is
     gated by an approve with a warrant. The initial draft is not a change — it
     is the user's setup answers rendered as documents, which is why it lands
-    directly at v1 rather than through the proposal queue."""
+    directly at v1 rather than through the proposal queue.
+
+    Item 9 (founder 2026-07-30): when the user uploaded a current strategy
+    document during setup, its EXTRACTED TEXT rides along as clearly
+    delimited read-only context, so the crafted documents align with what
+    they already wrote. Still their material — the system prompt's "never add
+    an ambition they did not state" covers the upload exactly as it covers
+    the form answers."""
+    payload = json.dumps(answers or {}, ensure_ascii=False)[:20000]
+    uploaded = life_importer.latest_setup_document_text(user_id)
+    if uploaded:
+        payload += ("\n\nThe user's uploaded current strategy document:\n"
+                    + uploaded[:12000])
     parsed = _complete(
         SPEC_LIFE_DOCS,
         system=_DOCS_SYSTEM,
-        user=json.dumps(answers or {}, ensure_ascii=False)[:20000],
+        user=payload,
         surface="docs",
         user_id=user_id,
     ) or {}
@@ -633,6 +646,67 @@ def generate_documents(user_id: str, answers: dict) -> dict[str, str]:
             out[key] = body.strip()
     _log_derivation("docs", user_id=user_id, outcome="ok", horizons=len(out))
     return out
+
+
+_DOC_DRAFT_SYSTEM = """You read ONE strategy document a user uploaded and \
+EXTRACT what THEY EXPLICITLY WROTE. You are a transcriber, not a coach: you \
+never invent, never complete, and never add an ambition they did not state. \
+If the document states nothing for a list, return it empty.
+
+Extract three lists:
+ 1. goals — each with the user's own wording. Copy any due notation VERBATIM \
+(e.g. "[NOW]", "[Aug]", "[Jul '27]", "2035") into due_label. horizon is one \
+of: now, month, quarter, year, five_year, ten_year, twenty_year — or "" when \
+the document does not say. bet is one of: life, company, dream — or "" when \
+the document does not tie the goal to a bet.
+ 2. habits — recurring practices the document names.
+ 3. distractions — each with the ENVIRONMENTAL response the document pairs \
+it with, if one is written; "" otherwise.
+
+Keep the user's language. Do not translate.
+
+Return STRICT JSON:
+{"goals": [{"title": "", "horizon": "", "due_label": "", "bet": ""}],
+ "habits": [{"title": ""}],
+ "distractions": [{"title": "", "response": ""}]}"""
+
+SPEC_LIFE_DOC_DRAFT = LLMSpec(
+    model=STRONG_MODEL,
+    # Extraction, not invention — the same temperature reasoning as the
+    # strategy diff: creativity here would be goals the user never wrote.
+    temperature=0.1,
+    max_tokens=2000,
+    response_format={"type": "json_object"},
+)
+
+
+def draft_items_from_document(user_id: str, text: str) -> list[dict]:
+    """Item 9 — DRAFT bets/goals/habits/distractions from an uploaded
+    strategy document. Returns planned rows only; WRITES NOTHING.
+
+    Extraction (model, closed shape) feeds ``life_import.plan_strategy`` so
+    the drafted rows take exactly the shape the importer would give them —
+    including the three bets seeded at their LOCKED rank (L-2a), never taken
+    from the document. The route returns these as checkable rows; only what
+    the user ticks is ever created (N5), and that happens in a separate,
+    explicit call."""
+    parsed = _complete(
+        SPEC_LIFE_DOC_DRAFT,
+        system=_DOC_DRAFT_SYSTEM,
+        user=(text or "")[:20000],
+        surface="doc_draft",
+        user_id=user_id,
+    ) or {}
+    plan = life_importer.plan_strategy(user_id, {
+        "goals": parsed.get("goals") or [],
+        "habits": parsed.get("habits") or [],
+        "distractions": parsed.get("distractions") or [],
+    })
+    items = plan.get("items") or []
+    _log_derivation("doc_draft", user_id=user_id,
+                    outcome="ok" if parsed else "no_derivation",
+                    drafted=len(items))
+    return items
 
 
 def complete_setup_and_generate(user_id: str) -> dict:
@@ -731,6 +805,101 @@ def lookup(user_id: str, query: str) -> dict:
             user_id, [p.get("id") for p in found], context="lookup"))
     return {"principles": found, "phrases": top_phrases,
             "conflicts": lp.pair_conflicts(found)}
+
+
+# ═════════════════════════════════════════════════════════════════════════
+# User copy overrides (founder decision 2026-07-30)
+# ═════════════════════════════════════════════════════════════════════════
+# The daily check-in's mantra header and distraction question ship with the
+# founder's strings as DEFAULTS (they live in the FE's copy.ts) and are
+# per-user editable. NULL means "use the default", so clearing a field is how
+# the original line comes back. Table I/O sits here — next to the daily-card
+# engine whose surface renders these lines — because life_store is out of
+# scope for this change; same db-client-owned-table precedent as the setup
+# documents in life_import.
+
+_USER_COPY_TABLE = "life_user_copy"
+_USER_COPY_FIELDS = ("mantra_title", "mantra_question",
+                     "distraction_question")
+_USER_COPY_MAX_LEN = 300
+
+
+def _copy_table():
+    from services.db import db
+    return db.client.table(_USER_COPY_TABLE)
+
+
+def _copy_rows(result: Any) -> list[dict]:
+    data = getattr(result, "data", None)
+    return list(data) if isinstance(data, list) else []
+
+
+def get_user_copy(user_id: str) -> dict:
+    """This user's overrides. Every field present, NULL when unset — the FE
+    falls back to the founder defaults on NULL. Never raises."""
+    try:
+        rows = _copy_rows(_copy_table().select("*")
+                          .eq("user_id", user_id).limit(1).execute())
+        row = rows[0] if rows else {}
+    except Exception as e:
+        logger.warning("life: get_user_copy failed user=%s: %s", user_id, e)
+        row = {}
+    return {field: row.get(field) or None for field in _USER_COPY_FIELDS}
+
+
+def sanitize_user_copy(body: Any) -> dict:
+    """The PUT contract: only the three known fields; trimmed and capped;
+    blank or non-string ⇒ NULL, which MEANS "back to the founder's line"."""
+    if not isinstance(body, dict):
+        return {}
+    out: dict[str, Any] = {}
+    for field in _USER_COPY_FIELDS:
+        if field not in body:
+            continue
+        value = body.get(field)
+        text = value.strip()[:_USER_COPY_MAX_LEN] \
+            if isinstance(value, str) else ""
+        out[field] = text or None
+    return out
+
+
+def upsert_user_copy(user_id: str, fields: dict) -> Optional[dict]:
+    """Write the user's own wording. Returns the effective overrides."""
+    clean = sanitize_user_copy(fields)
+    if not clean:
+        return get_user_copy(user_id)
+    try:
+        _copy_table().upsert({
+            "user_id": user_id,
+            **clean,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }, on_conflict="user_id").execute()
+    except Exception as e:
+        logger.error("life: upsert_user_copy failed user=%s: %s", user_id, e)
+        return None
+    return get_user_copy(user_id)
+
+
+def delete_user_copy(user_id: str) -> Optional[int]:
+    """Hard-delete path (BE-10). Count, or None so the route can report."""
+    try:
+        res = _copy_table().delete().eq("user_id", user_id).execute()
+        return len(_copy_rows(res))
+    except Exception as e:
+        logger.error("life: delete_user_copy failed user=%s: %s", user_id, e)
+        return None
+
+
+def export_user_copy(user_id: str) -> Optional[list[dict]]:
+    """The raw rows for the panel export. None on failure so the export can
+    report itself incomplete."""
+    try:
+        return _copy_rows(_copy_table().select("*")
+                          .eq("user_id", user_id).limit(10).execute())
+    except Exception as e:
+        logger.warning("life: export_user_copy failed user=%s: %s",
+                       user_id, e)
+        return None
 
 
 # ═════════════════════════════════════════════════════════════════════════

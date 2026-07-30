@@ -97,6 +97,16 @@ def generate_charisma_snippets_for_recording(
         transcript = (rec.get("transcription_text") or "").strip()
         candidates = _build_candidates(transcript, duration_sec, dbs, clip_sec)
 
+        # ⚠️ KNOWN GAP (flagged, intentionally NOT changed — product/ML decision
+        # pending): _load_baseline_model() hardcodes the runtime_config key
+        # `stress_baseline_model_path`, i.e. charisma snippet selection is
+        # ranked by the STRESS classifier. There is no charisma-specific model
+        # key or artifact. The predicted probability below is therefore
+        # "probability of stress", used here only to steer clip SELECTION
+        # (uncertainty term) for coach labeling — never surfaced (AC-9 /
+        # CONSTRUCT). Surfaced as known_gaps["charisma_uses_stress_model"] in
+        # GET /v2/admin/learning/trace (services/learning_trace.py). Do not
+        # "fix" silently: a charisma model key + trainer is a founder decision.
         baseline_model = _load_baseline_model()
         scored_items: list[ScoredClip] = []
         for c in candidates:

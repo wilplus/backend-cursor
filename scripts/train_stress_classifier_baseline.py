@@ -38,6 +38,34 @@ from services.db import db  # noqa: E402
 
 SR = 16000
 
+# Single source of truth for the feature vector: 12 scalars + 5 scenario
+# one-hots = 17, in EXACTLY the serving order of
+# services/stress_snippet_service.py::_feature_vector_for_model. The
+# empty-frame path below, the populated path, and the artifact's
+# feature_names field ALL derive from this list — a 16-vs-17 skew between
+# training and serving (the zeros path used to return 16) silently zeroes
+# predictions at serve time because _predict_with_baseline_model rejects
+# mismatched shapes.
+FEATURE_NAMES = [
+    "energy_mean",
+    "energy_std",
+    "dynamic_range",
+    "silence_ratio",
+    "zcr_mean",
+    "zcr_std",
+    "centroid_mean_norm",
+    "centroid_std_norm",
+    "pause_strength_hint",
+    "filler_density_hint",
+    "energy_std_hint",
+    "clip_duration_norm",
+    "scenario_after_pause",
+    "scenario_before_pause",
+    "scenario_high_filler_density",
+    "scenario_low_filler_density",
+    "scenario_uncertain",
+]
+
 
 @dataclass
 class Example:
@@ -114,7 +142,9 @@ def _frame_view(x: np.ndarray, frame: int = 320) -> np.ndarray:
 def _extract_features(signal: np.ndarray, scenario: str, snippet_features: dict, clip_duration_ms: int) -> np.ndarray:
     frames = _frame_view(signal, frame=320)
     if frames.shape[0] == 0:
-        return np.zeros((16,), dtype=np.float32)
+        # Must match the populated path AND the serving twin
+        # (stress_snippet_service._feature_vector_for_model): 17 dims.
+        return np.zeros((len(FEATURE_NAMES),), dtype=np.float32)
 
     eps = 1e-9
     rms = np.sqrt(np.mean(frames * frames, axis=1) + eps)
@@ -423,25 +453,8 @@ def main() -> None:
     }
     quality_gate["ok"] = bool(all(quality_gate["passes"].values()))
 
-    feature_names = [
-        "energy_mean",
-        "energy_std",
-        "dynamic_range",
-        "silence_ratio",
-        "zcr_mean",
-        "zcr_std",
-        "centroid_mean_norm",
-        "centroid_std_norm",
-        "pause_strength_hint",
-        "filler_density_hint",
-        "energy_std_hint",
-        "clip_duration_norm",
-        "scenario_after_pause",
-        "scenario_before_pause",
-        "scenario_high_filler_density",
-        "scenario_low_filler_density",
-        "scenario_uncertain",
-    ]
+    # Derived from the module-level single source of truth (see FEATURE_NAMES).
+    feature_names = list(FEATURE_NAMES)
 
     artifact = {
         "model_type": "logreg_baseline_v1",

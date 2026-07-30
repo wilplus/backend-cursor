@@ -137,6 +137,13 @@ class ValidationTests(unittest.TestCase):
         ok = jr.validate_post_body({"title": "t", "category": "voice"})
         self.assertEqual(ok["category"], "voice")
 
+    def test_science_category_accepted(self):
+        # 'science' joined the tuple with the /science → blog consolidation
+        # (migrations/add_journal_science_category.sql widens the CHECK).
+        self.assertIn("science", jr.CATEGORIES)
+        ok = jr.validate_post_body({"title": "t", "category": "science"})
+        self.assertEqual(ok["category"], "science")
+
     def test_media_urls_must_be_https(self):
         for bad in ("http://x/y.jpg", "javascript:alert(1)",
                     "data:image/png;base64,AAA"):

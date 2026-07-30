@@ -50,6 +50,7 @@ from routes.dev_bugs import dev_bugs_bp
 from routes.dev_tasks import dev_tasks_bp
 from routes.journal import journal_bp
 from routes.life_routes import life_bp
+from routes.life_reminders_webhook import life_reminders_webhook_bp
 
 app.register_blueprint(auth_bp, url_prefix="/auth")
 app.register_blueprint(recordings_v2_bp, url_prefix="/v2/recordings")
@@ -71,6 +72,8 @@ app.register_blueprint(journal_bp)
 # observable until the flag is flipped. Full paths baked in — v2_routes.py is
 # untouched by this feature apart from the guarded chat-router hook.
 app.register_blueprint(life_bp)
+# Opt-in life reminders cron webhook (X-Internal-Secret: LIFE_REMINDER_SECRET).
+app.register_blueprint(life_reminders_webhook_bp)
 
 
 @app.errorhandler(RequestEntityTooLarge)

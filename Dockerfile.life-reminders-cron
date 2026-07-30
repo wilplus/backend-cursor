@@ -1,0 +1,39 @@
+# Minimal image for the Railway *cron-only* life-reminders services (not the
+# web app). Cloned from Dockerfile.devbugs-cron: a curl one-shot that pokes
+# the Flask webhook and exits.
+#
+# ONE SERVICE PER SLOT. Railway: New service → connect repo → Settings:
+#   Builder: Dockerfile
+#   Dockerfile path: Dockerfile.life-reminders-cron
+#   Cron Schedule (UTC — adjust to the founder's local offset):
+#     morning    0 5 * * *          (05:00 UTC daily)
+#     evening    0 19 * * *         (19:00 UTC daily)
+#     weekly     0 17 * * 0         (17:00 UTC Sundays)
+#     monthly    0 17 1 * *         (1st of each month)
+#     quarterly  0 17 1 1,4,7,10 *  (1st of Jan/Apr/Jul/Oct)
+#     yearly     0 17 1 1 *         (Jan 1st)
+#     fiveyear   0 17 1 1 *         (Jan 1st — see anchor note)
+#     tenyear    0 17 1 1 *         (Jan 1st — see anchor note)
+#   Cron cannot express "every 5th/10th year", so the five/ten-year services
+#   fire yearly and the backend no-ops the off years: set
+#   LIFE_REMINDER_ANCHOR_YEAR on the WEB service to a year on the cadence
+#   (e.g. 2025) and the slot only sends when (year - anchor) is a whole
+#   number of periods. Leave it unset and the operator chooses years by
+#   enabling/disabling the cron service instead — also correct, just manual.
+# Variables for each service:
+#   LIFE_BACKEND_URL      https://dev.willpowerlab.com  (or the web service URL)
+#   LIFE_REMINDER_SECRET  same as on the Flask web service
+#   LIFE_REMINDER_SLOT    morning | evening | weekly | monthly | quarterly
+#                         | yearly | fiveyear | tenyear
+#
+# Delivery stays OPT-IN per user (founder 2026-07-30): the webhook reads only
+# rows whose per-slot switch is ON, and is idempotent per local day — a
+# double-fired schedule sends nothing twice.
+#
+# (Alternatively, skip the Dockerfile and set the service Start Command to
+#  `sh bin/railway-life-reminders-cron.sh` on the standard build.)
+
+FROM curlimages/curl:8.20.0
+WORKDIR /app
+COPY bin/railway-life-reminders-cron.sh /app/run.sh
+ENTRYPOINT ["/bin/sh", "/app/run.sh"]

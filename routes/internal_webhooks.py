@@ -294,8 +294,17 @@ def internal_stress_model_train():
         "target_precision_stress": 0.75,
         "target_fpr_no_stress": 0.30,
         "auto_promote": true,
+        "force_promote": false,
         "export_with_audio_url": false
       }
+
+    Promotion is GATE-GUARDED (PHASE-A0-FINDINGS.md A3.4: "Promote stays
+    human-gated"): auto_promote=true only promotes when the trainer's
+    quality_gate passed. A failing/missing gate → promoted:false with
+    promotion_skipped_reason. force_promote:true is the explicit human
+    override for the gate (logged loudly, recorded in runtime_config
+    metadata) — it does NOT override a failed storage upload: a local
+    ephemeral path is never promoted (other dynos can't read it).
     """
     secret = (getattr(config, "STRESS_MODEL_TRAIN_SECRET", None) or "").strip()
     if not secret:
@@ -324,6 +333,7 @@ def internal_stress_model_train():
         return jsonify({"code": "INVALID_INPUT", "error": "Invalid numeric training parameters"}), 400
 
     auto_promote = _parse_bool(data.get("auto_promote"), True)
+    force_promote = _parse_bool(data.get("force_promote"), False)
     export_with_audio_url = _parse_bool(data.get("export_with_audio_url"), False)
     split_group = (data.get("split_group") or "user_id").strip().lower()
     if split_group not in ("user_id", "session_id", "recording_id"):
@@ -419,20 +429,50 @@ def internal_stress_model_train():
                 }
             ), 500
 
+        import json as _json
+
         metrics_payload = None
         try:
             with open(metrics_path, "r", encoding="utf-8") as fh:
-                import json as _json
-
                 metrics_payload = _json.load(fh)
         except Exception:
             metrics_payload = None
 
+        # The trainer's quality gate (scripts/train_stress_classifier_baseline.py
+        # serializes it into both the metrics file and the model artifact).
+        # Prefer the metrics file; fall back to the artifact.
+        quality_gate = None
+        if isinstance(metrics_payload, dict):
+            qg = metrics_payload.get("quality_gate")
+            if isinstance(qg, dict):
+                quality_gate = qg
+        if quality_gate is None:
+            try:
+                with open(model_path, "r", encoding="utf-8") as fh:
+                    artifact_payload = _json.load(fh)
+                qg = ((artifact_payload or {}).get("metrics") or {}).get("quality_gate")
+                if isinstance(qg, dict):
+                    quality_gate = qg
+            except Exception:
+                quality_gate = None
+
+        # ── Gate-guarded promotion (A3.4 "Promote stays human-gated") ──
+        # auto_promote (default True) only promotes a model whose quality
+        # gate PASSED. Failing/missing gate → no promote, unless the caller
+        # explicitly sends force_promote:true (human override, logged +
+        # recorded in the runtime_config metadata). A model whose artifact
+        # could not be uploaded to storage is NEVER promoted — the local
+        # exports/ path is dyno-ephemeral and unreadable elsewhere — and
+        # force_promote does NOT override that.
         promoted = None
-        if auto_promote:
-            promote_value = model_path
+        promoted_flag = False
+        promotion_skipped_reason = None
+        gate_ok = bool(quality_gate.get("ok")) if isinstance(quality_gate, dict) else None
+
+        if auto_promote or force_promote:
             bucket = (getattr(config, "STRESS_MODEL_BUCKET", None) or "stress_models").strip() or "stress_models"
             storage_key = f"baseline/{source_type}/{run_id}.json"
+            promote_value = None
             try:
                 with open(model_path, "rb") as mf:
                     model_bytes = mf.read()
@@ -445,25 +485,47 @@ def internal_stress_model_train():
                 )
             except Exception as upload_exc:
                 logger.warning(
-                    "internal_stress_model_train: storage upload failed, using local path (set up bucket %s): %s",
+                    "internal_stress_model_train: storage upload failed — model NOT promoted "
+                    "(promotion requires the storage:// ref; set up bucket %s): %s",
                     bucket,
                     upload_exc,
                 )
 
-            promoted = db.upsert_runtime_config(
-                key="stress_baseline_model_path",
-                value=promote_value,
-                updated_by="internal:stress-model-train",
-                metadata={
-                    "source_type": source_type,
-                    "run_id": run_id,
-                    "dataset_path": dataset_path,
-                    "metrics_path": metrics_path,
-                    "local_model_path": model_path,
-                    "storage_bucket": bucket,
-                    "storage_key": storage_key if promote_value.startswith("storage://") else None,
-                },
-            )
+            if promote_value is None:
+                promotion_skipped_reason = "artifact_not_in_storage"
+            elif quality_gate is None and not force_promote:
+                promotion_skipped_reason = "quality_gate_missing"
+            elif quality_gate is not None and not gate_ok and not force_promote:
+                promotion_skipped_reason = "quality_gate_failed"
+            else:
+                if force_promote and not gate_ok:
+                    logger.warning(
+                        "internal_stress_model_train: FORCE-PROMOTING run_id=%s despite "
+                        "quality_gate ok=%s (explicit force_promote:true override)",
+                        run_id,
+                        gate_ok,
+                    )
+                promoted = db.upsert_runtime_config(
+                    key="stress_baseline_model_path",
+                    value=promote_value,
+                    updated_by="internal:stress-model-train",
+                    metadata={
+                        "source_type": source_type,
+                        "run_id": run_id,
+                        "dataset_path": dataset_path,
+                        "metrics_path": metrics_path,
+                        "local_model_path": model_path,
+                        "storage_bucket": bucket,
+                        "storage_key": storage_key,
+                        # Gate outcome + override provenance — the learning
+                        # trace page reads these back.
+                        "quality_gate": quality_gate,
+                        "quality_gate_ok": gate_ok,
+                        "force_promote": force_promote,
+                        "promoted_via": "force_promote" if (force_promote and not gate_ok) else "quality_gate_pass",
+                    },
+                )
+                promoted_flag = promoted is not None
 
         return jsonify(
             {
@@ -474,6 +536,10 @@ def internal_stress_model_train():
                 "model_path": model_path,
                 "metrics_path": metrics_path,
                 "auto_promote": auto_promote,
+                "force_promote": force_promote,
+                "promoted": promoted_flag,
+                "promotion_skipped_reason": promotion_skipped_reason,
+                "quality_gate": quality_gate,
                 "runtime_config": promoted,
                 "metrics": metrics_payload,
                 "export_stdout": export_proc.stdout[-2000:],

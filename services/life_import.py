@@ -612,3 +612,189 @@ def apply_plan(user_id: str, plan: dict, *, dry_run: bool = True) -> dict:
             result["written"]["strategy"] += 1
 
     return result
+
+
+# ═════════════════════════════════════════════════════════════════════════
+# Setup strategy-document uploads (founder-approved item 9, 2026-07-30)
+# ═════════════════════════════════════════════════════════════════════════
+# The setup wizard's optional "Current strategy" upload. This is an IMPORT
+# concern — external material entering the panel — which is why the table I/O
+# lives here rather than growing services/life_store (out of scope for this
+# change; the direction life → db stays one-way either way, following the
+# services/dev_tasks.py precedent of a module owning its own table through
+# ``db.client``).
+#
+# ONLY THE EXTRACTED TEXT IS STORED, never the binary (see
+# migrations/add_life_setup_documents.sql for the full rationale). The
+# extracted_text column is confession-adjacent material and is NEVER returned
+# by the listing helpers — only the route that feeds it to the engine reads it.
+
+_SETUP_DOCUMENTS_TABLE = "life_setup_documents"
+
+
+def _doc_table():
+    from services.db import db
+    return db.client.table(_SETUP_DOCUMENTS_TABLE)
+
+
+def _doc_rows(result: Any) -> list[dict]:
+    data = getattr(result, "data", None)
+    return list(data) if isinstance(data, list) else []
+
+
+def insert_setup_document(user_id: str, *, file_name: str, mime_type: str,
+                          extracted_text: str, char_count: int,
+                          status: str) -> Optional[dict]:
+    """One uploaded document → one row of extracted text. Returns the row
+    WITHOUT extracted_text (the caller serialises metadata only)."""
+    try:
+        res = _doc_table().insert({
+            "user_id": user_id,
+            "file_name": (file_name or "")[:300] or None,
+            "mime_type": (mime_type or "")[:150] or None,
+            "extracted_text": extracted_text or "",
+            "char_count": int(char_count or 0),
+            "status": status if status in ("processed", "extraction_failed")
+            else "extraction_failed",
+        }).execute()
+        rows = _doc_rows(res)
+        if not rows:
+            return None
+        row = dict(rows[0])
+        row.pop("extracted_text", None)
+        return row
+    except Exception as e:
+        logger.error("life: insert_setup_document failed user=%s: %s",
+                     user_id, e)
+        return None
+
+
+def list_setup_documents(user_id: str, *, limit: int = 20) -> list[dict]:
+    """Metadata only, latest first. extracted_text never rides a listing."""
+    try:
+        res = (_doc_table()
+               .select("id, file_name, mime_type, char_count, status, "
+                       "created_at")
+               .eq("user_id", user_id)
+               .order("created_at", desc=True)
+               .limit(max(1, min(100, limit))).execute())
+        return _doc_rows(res)
+    except Exception as e:
+        logger.warning("life: list_setup_documents failed user=%s: %s",
+                       user_id, e)
+        return []
+
+
+def get_setup_document(user_id: str,
+                       document_id: Optional[str] = None) -> Optional[dict]:
+    """One document WITH its text — the newest processed one when no id is
+    given. Owner-scoped like every life read."""
+    try:
+        query = _doc_table().select("*").eq("user_id", user_id)
+        if document_id:
+            query = query.eq("id", document_id)
+        else:
+            query = query.eq("status", "processed")
+        rows = _doc_rows(query.order("created_at", desc=True)
+                         .limit(1).execute())
+        return rows[0] if rows else None
+    except Exception as e:
+        logger.warning("life: get_setup_document failed user=%s: %s",
+                       user_id, e)
+        return None
+
+
+def latest_setup_document_text(user_id: str) -> str:
+    """The newest processed upload's text, or "". What generate_documents
+    injects so the crafted strategy aligns with the user's own document."""
+    row = get_setup_document(user_id)
+    return (row or {}).get("extracted_text") or ""
+
+
+def delete_setup_documents(user_id: str) -> Optional[int]:
+    """Hard-delete path (BE-10). Returns the removed count, or None on
+    failure — the route reports a partial delete rather than claiming
+    success."""
+    try:
+        res = _doc_table().delete().eq("user_id", user_id).execute()
+        return len(_doc_rows(res))
+    except Exception as e:
+        logger.error("life: delete_setup_documents failed user=%s: %s",
+                     user_id, e)
+        return None
+
+
+def export_setup_documents(user_id: str) -> Optional[list[dict]]:
+    """Everything, INCLUDING extracted_text — an export exists so the user
+    can leave with all of it. None on failure so the export can say so."""
+    try:
+        res = (_doc_table().select("*").eq("user_id", user_id)
+               .limit(1000).execute())
+        return _doc_rows(res)
+    except Exception as e:
+        logger.warning("life: export_setup_documents failed user=%s: %s",
+                       user_id, e)
+        return None
+
+
+# ═════════════════════════════════════════════════════════════════════════
+# Confirmed draft items (item 9's review step)
+# ═════════════════════════════════════════════════════════════════════════
+
+_CONFIRMABLE_KINDS = ("bet", "goal", "habit", "distraction")
+
+
+def sanitize_confirmed_item(raw: Any) -> Optional[dict]:
+    """One TICKED row from the setup review UI → life_items fields, or None.
+
+    N5, as the founder restated it for this flow: whatever the user ticked in
+    the review step gets created ACTIVE (the tick IS the explicit approve,
+    made on a row that was fully displayed), unticked rows are never sent and
+    never created, and nothing lands as a silent 'proposed'. Status is
+    therefore FORCED to 'active' here regardless of what the client sent.
+
+    A 'bet' row keeps the LOCKED rank from lp.BETS (L-2a): the uploaded
+    document can word a bet, it can never reorder them."""
+    if not isinstance(raw, dict):
+        return None
+    kind = str(raw.get("kind") or "").strip()
+    if kind not in _CONFIRMABLE_KINDS:
+        return None
+    title = _text(raw.get("title"))[:500]
+    if not title:
+        return None
+    label = _text(raw.get("due_label") or raw.get("dueLabel"))[:120] or None
+    horizon = str(raw.get("horizon") or "").strip().lower()
+    fields: dict[str, Any] = {
+        "kind": kind,
+        "title": title,
+        "body": _text(raw.get("body"))[:8000],
+        "status": "active",
+        "horizon": horizon if horizon in lp.HORIZONS else None,
+        "due_label": label,
+        "due_at": lp.parse_due_label(label),
+        "collection": (_text(raw.get("bet") or raw.get("collection"))[:120]
+                       or None),
+    }
+    external_id = _text(raw.get("external_id") or raw.get("externalId"))[:200]
+    if external_id:
+        # Round-tripped from plan_strategy so the unique partial index makes a
+        # double-submit an update, not a duplicate.
+        fields["external_id"] = external_id
+    if kind == "bet":
+        locked = next((b for b in lp.BETS
+                       if f"{b['emoji']} {b['title']}" == title
+                       or b["title"] == title), None)
+        if not locked:
+            # An invented bet is refused outright: three bets, locked rank.
+            return None
+        fields["title"] = f"{locked['emoji']} {locked['title']}"
+        fields["external_id"] = f"bet:{locked['key']}"
+        fields["order_key"] = float(locked["rank"])
+        fields["horizon"] = None
+    else:
+        try:
+            fields["order_key"] = float(raw.get("order_key"))
+        except (TypeError, ValueError):
+            fields["order_key"] = 0.0
+    return fields

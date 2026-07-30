@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import difflib
 import logging
+import os
 from datetime import date, datetime, timezone
 from functools import wraps
 
@@ -41,8 +42,16 @@ from auth import require_auth
 from config import Config as config
 from services import life_chat as chat
 from services import life_engine as engine
+from services import life_import as importer
 from services import life_panel as lp
+# Delivery is fenced into services/life_reminders (the ONE sanctioned sender,
+# founder 2026-07-30). This module exposes the user-initiated SETTINGS only —
+# it never imports the push library and never sends; test_life_panel.py
+# asserts both.
+from services import life_reminders as reminders
 from services import life_store as store
+from services.context_document import (SUPPORTED_UPLOAD_EXTENSIONS,
+                                       extract_document_text)
 
 logger = logging.getLogger(__name__)
 
@@ -335,6 +344,140 @@ def life_setup_complete():
         "replayed": len(result.get("replayed") or []),
         "replayed_notes": result.get("replayed") or [],
     }), 200
+
+
+# ═════════════════════════════════════════════════════════════════════════
+# Setup strategy-document upload (founder-approved item 9, 2026-07-30)
+# ═════════════════════════════════════════════════════════════════════════
+
+_SETUP_DOCUMENT_MAX_MB = 15
+_SETUP_DOCUMENT_MAX_BYTES = _SETUP_DOCUMENT_MAX_MB * 1024 * 1024
+
+
+def _serialize_setup_document(row: dict) -> dict:
+    """Metadata only. extracted_text NEVER rides a response — it re-enters
+    the product only as generation context and as the user's own export."""
+    return {
+        "id": str(row.get("id") or ""),
+        "file_name": row.get("file_name"),
+        "status": row.get("status"),
+        "char_count": int(row.get("char_count") or 0),
+        "created_at": row.get("created_at"),
+    }
+
+
+@life_bp.route("/v2/life/setup/document", methods=["POST"])
+@life_route()
+def life_setup_document_upload():
+    """Multipart ``file`` → extracted text stored, binary discarded.
+
+    OPTIONAL by design (founder 2026-07-30): setup completes identically with
+    zero uploads, and an upload alone changes nothing the user sees until
+    they ask to draft from it. Extraction is best-effort and never raises
+    (services/context_document.py); a document nothing could be read from is
+    kept as ``extraction_failed`` so the FE can SAY so instead of silently
+    behaving as if nothing was uploaded."""
+    file = request.files.get("file")
+    if file is None:
+        return _invalid("file: multipart field required")
+    filename = (file.filename or "").strip()
+    ext = os.path.splitext(filename.lower())[1]
+    if ext not in SUPPORTED_UPLOAD_EXTENSIONS:
+        return _invalid(
+            "file: must be one of " + ", ".join(SUPPORTED_UPLOAD_EXTENSIONS))
+    # Same two-step size check as the lab audio upload: refuse on the declared
+    # length, then refuse again on the actual bytes — a Content-Length is a
+    # claim, not a fact.
+    if (request.content_length or 0) > _SETUP_DOCUMENT_MAX_BYTES:
+        return jsonify({"code": "PAYLOAD_TOO_LARGE",
+                        "error": f"exceeds {_SETUP_DOCUMENT_MAX_MB}MB"}), 413
+    data = file.read(_SETUP_DOCUMENT_MAX_BYTES + 1)
+    if len(data) > _SETUP_DOCUMENT_MAX_BYTES:
+        return jsonify({"code": "PAYLOAD_TOO_LARGE",
+                        "error": f"exceeds {_SETUP_DOCUMENT_MAX_MB}MB"}), 413
+    if not data:
+        return _invalid("file: is empty")
+
+    extracted = extract_document_text(data, content_type=file.mimetype,
+                                      filename=filename)
+    text = extracted.get("text") or ""
+    row = importer.insert_setup_document(
+        _uid(),
+        file_name=filename,
+        mime_type=file.mimetype or "",
+        extracted_text=text,
+        char_count=len(text),
+        status="processed" if text else "extraction_failed",
+    )
+    if not row:
+        return jsonify({"code": "V2_ERROR",
+                        "error": "Could not save the document"}), 500
+    return jsonify({"document": _serialize_setup_document(row)}), 201
+
+
+@life_bp.route("/v2/life/setup/documents", methods=["GET"])
+@life_route()
+def life_setup_documents_list():
+    rows = importer.list_setup_documents(_uid())
+    return jsonify({"documents":
+                    [_serialize_setup_document(r) for r in rows]}), 200
+
+
+@life_bp.route("/v2/life/setup/propose-from-document", methods=["POST"])
+@life_route()
+def life_setup_propose_from_document():
+    """DRAFT bets/goals/habits from the uploaded document. WRITES NOTHING.
+
+    The founder's line: goals-drafting from the document is offered, never
+    forced-automatic. This endpoint returns rows for the review UI and stops;
+    creation happens only in /setup/apply-proposed with exactly the rows the
+    user ticked (N5)."""
+    body = _body()
+    document_id = body.get("document_id")
+    if document_id is not None and not isinstance(document_id, str):
+        return _invalid("document_id: must be an id string or null")
+    doc = importer.get_setup_document(_uid(), (document_id or "").strip()
+                                      or None)
+    if not doc or doc.get("status") != "processed" \
+            or not (doc.get("extracted_text") or "").strip():
+        return _invalid("document: nothing readable to draft from",
+                        code="NO_DOCUMENT")
+    items = engine.draft_items_from_document(_uid(),
+                                             doc["extracted_text"])
+    return jsonify({
+        "document": _serialize_setup_document(doc),
+        "items": items,
+        # Stated on the wire so no reader can mistake a draft for a write.
+        "written": False,
+    }), 200
+
+
+@life_bp.route("/v2/life/setup/apply-proposed", methods=["POST"])
+@life_route()
+def life_setup_apply_proposed():
+    """Create ONLY the rows the user ticked in the review UI.
+
+    N5 as restated by the founder for this flow: the tick is the explicit
+    approve, made on a fully displayed row — so a ticked row is created
+    ACTIVE, an unticked row is never sent and never created, and nothing
+    lands as a silent 'proposed'. ``sanitize_confirmed_item`` forces the
+    status and keeps a bet's rank LOCKED (L-2a) regardless of what the
+    client sent."""
+    body = _body()
+    raw_items = body.get("items")
+    if not isinstance(raw_items, list) or not raw_items:
+        return _invalid("items: must be a non-empty list")
+    if len(raw_items) > 200:
+        return _invalid("items: at most 200 per request")
+    created = []
+    for raw in raw_items:
+        fields = importer.sanitize_confirmed_item(raw)
+        if not fields:
+            continue
+        row = store.insert_item(_uid(), fields)
+        if row:
+            created.append(lp.serialize_item(row))
+    return jsonify({"created": created, "count": len(created)}), 201
 
 
 # ═════════════════════════════════════════════════════════════════════════
@@ -1015,6 +1158,115 @@ def life_lookup():
 
 
 # ═════════════════════════════════════════════════════════════════════════
+# Item 12 — OPT-IN reminder settings (founder decision 2026-07-30)
+# ═════════════════════════════════════════════════════════════════════════
+# User-initiated settings, allowed under the amended L-4: the user flips the
+# switches; nothing here sends. Delivery is fenced into
+# services/life_reminders and fires only from the internal cron webhook
+# (routes/life_reminders_webhook.py). Every default is OFF.
+
+
+@life_bp.route("/v2/life/reminders", methods=["GET"])
+@life_route()
+def life_reminders_get():
+    """The switches (all False until the user says otherwise), the VAPID
+    public key (null ⇒ the FE hides the section behind a hint), and whether
+    this account holds any push subscription."""
+    user_id = _uid()
+    return jsonify({
+        "settings": reminders.get_settings(user_id),
+        "public_key": reminders.public_key(),
+        "subscribed": bool(reminders.list_subscriptions(user_id)),
+    }), 200
+
+
+@life_bp.route("/v2/life/reminders", methods=["PUT"])
+@life_route()
+def life_reminders_put():
+    """Flip the user's own switches. Unknown fields are dropped, tz is
+    clamped; the write is the user's explicit choice and nothing else."""
+    fields = reminders.sanitize_settings(_body())
+    if not fields:
+        return _invalid("no reminder fields to update")
+    settings = reminders.upsert_settings(_uid(), fields)
+    if settings is None:
+        return jsonify({"code": "V2_ERROR", "error": "Could not save"}), 500
+    return jsonify({"settings": settings}), 200
+
+
+@life_bp.route("/v2/life/reminders/subscription", methods=["POST"])
+@life_route()
+def life_reminders_subscribe():
+    """Store this browser's push subscription. Body is the serialized
+    PushSubscription: ``{endpoint, keys: {p256dh, auth}}``."""
+    body = _body()
+    endpoint = body.get("endpoint")
+    keys = body.get("keys") if isinstance(body.get("keys"), dict) else {}
+    p256dh = keys.get("p256dh")
+    auth_key = keys.get("auth")
+    for name, value in (("endpoint", endpoint), ("keys.p256dh", p256dh),
+                        ("keys.auth", auth_key)):
+        if not isinstance(value, str) or not value.strip():
+            return _invalid(f"{name}: must be a non-empty string")
+    row = reminders.save_subscription(
+        _uid(), endpoint=endpoint.strip(), p256dh=p256dh.strip(),
+        auth=auth_key.strip(),
+        user_agent=request.headers.get("User-Agent"))
+    if not row:
+        return jsonify({"code": "V2_ERROR", "error": "Could not save"}), 500
+    return jsonify({"subscribed": True}), 201
+
+
+@life_bp.route("/v2/life/reminders/subscription", methods=["DELETE"])
+@life_route()
+def life_reminders_unsubscribe():
+    """Drop one endpoint (body ``{endpoint}``) or, with no body, every
+    subscription this account holds."""
+    endpoint = (_body().get("endpoint") or "").strip() or None
+    removed = reminders.delete_subscription(_uid(), endpoint)
+    if removed is None:
+        return jsonify({"code": "V2_ERROR", "error": "Could not delete"}), 500
+    return jsonify({"deleted": removed}), 200
+
+
+@life_bp.route("/v2/life/reminders/public-key", methods=["GET"])
+@life_route()
+def life_reminders_public_key():
+    return jsonify({"public_key": reminders.public_key()}), 200
+
+
+# ═════════════════════════════════════════════════════════════════════════
+# User copy — the founder's check-in lines, per-user editable
+# (founder decision 2026-07-30: "my copy as default, editable")
+# ═════════════════════════════════════════════════════════════════════════
+
+@life_bp.route("/v2/life/copy", methods=["GET"])
+@life_route()
+def life_copy_get():
+    """The user's overrides for the mantra header and the distraction
+    question. Every field present; NULL means the FE renders the founder's
+    default line."""
+    return jsonify({"copy": engine.get_user_copy(_uid())}), 200
+
+
+@life_bp.route("/v2/life/copy", methods=["PUT"])
+@life_route()
+def life_copy_put():
+    """Reword a line, or clear a field to get the founder's line back.
+
+    The user's OWN words on their OWN card — no model touches this, and the
+    write happens only because they typed it (the same reasoning as the
+    evening review's fields)."""
+    fields = engine.sanitize_user_copy(_body())
+    if not fields:
+        return _invalid("no copy fields to update")
+    saved = engine.upsert_user_copy(_uid(), fields)
+    if saved is None:
+        return jsonify({"code": "V2_ERROR", "error": "Could not save"}), 500
+    return jsonify({"copy": saved}), 200
+
+
+# ═════════════════════════════════════════════════════════════════════════
 # BE-10 — export + hard delete (launch blockers)
 # ═════════════════════════════════════════════════════════════════════════
 
@@ -1024,7 +1276,26 @@ def life_export():
     """Everything the user owns, one JSON. Raw rows on purpose — an export
     exists so they can LEAVE, and a shape tuned for this FE is a shape only
     this FE can read."""
-    payload = store.export_all(_uid())
+    user_id = _uid()
+    payload = store.export_all(user_id)
+    # The two 2026-07-30 additions live outside life_store (setup documents in
+    # the importer, reminders in the sanctioned delivery module), so they are
+    # merged here rather than silently missing from "everything".
+    documents = importer.export_setup_documents(user_id)
+    if documents is None:
+        payload.setdefault("errors", []).append("life_setup_documents")
+    else:
+        payload["tables"]["life_setup_documents"] = documents
+    reminder_rows = reminders.export_user(user_id)
+    if reminder_rows is None:
+        payload.setdefault("errors", []).append("life_reminder_settings")
+    else:
+        payload["tables"].update(reminder_rows)
+    user_copy = engine.export_user_copy(user_id)
+    if user_copy is None:
+        payload.setdefault("errors", []).append("life_user_copy")
+    else:
+        payload["tables"]["life_user_copy"] = user_copy
     if payload.get("errors"):
         # An export missing a table looks exactly like an empty table. Saying
         # so is the difference between "you have it all" and "you think you
@@ -1049,6 +1320,23 @@ def life_delete():
         return _invalid('confirm: send {"confirm": "DELETE"} to proceed',
                         code="CONFIRMATION_REQUIRED")
     result = store.hard_delete(_uid())
+    # The 2026-07-30 tables die with everything else. Same promise, same
+    # honesty: a failure is reported, never papered over.
+    removed_docs = importer.delete_setup_documents(_uid())
+    if removed_docs is None:
+        result.setdefault("failed", []).append("life_setup_documents")
+    else:
+        result.setdefault("deleted", {})["life_setup_documents"] = removed_docs
+    reminder_result = reminders.hard_delete_user(_uid())
+    result.setdefault("deleted", {}).update(reminder_result.get("deleted")
+                                            or {})
+    result.setdefault("failed", []).extend(reminder_result.get("failed")
+                                           or [])
+    removed_copy = engine.delete_user_copy(_uid())
+    if removed_copy is None:
+        result.setdefault("failed", []).append("life_user_copy")
+    else:
+        result.setdefault("deleted", {})["life_user_copy"] = removed_copy
     # The consent row is gone, so the cached "yes" must go with it. Otherwise
     # a just-wiped account keeps passing the gate and can write fresh rows
     # into the account it emptied a second ago.
