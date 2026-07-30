@@ -44,7 +44,8 @@ from typing import Any, Iterable, Optional
 __all__ = [
     "LifeError",
     "CATEGORIES", "CATEGORY_LABELS", "ITEM_KINDS", "HORIZONS",
-    "STRATEGY_HORIZONS", "BETS", "ADVISORS", "TAG_ROUTES", "PUBLIC_TAGS",
+    "STRATEGY_HORIZONS", "ITEM_TO_STRATEGY_HORIZON", "strategy_horizon_for",
+    "BETS", "ADVISORS", "TAG_ROUTES", "PUBLIC_TAGS",
     "parse_tag", "tag_suggestions",
     "map_import_category", "normalize_categories",
     "validate_case_input", "validate_item_input",
@@ -141,6 +142,40 @@ STRATEGY_HORIZONS: tuple[str, ...] = (
     "daily", "weekly", "monthly", "quarterly", "yearly", "five_year",
     "ten_year", "twenty_year",
 )
+
+# HORIZONS and STRATEGY_HORIZONS are deliberately different vocabularies for
+# different tables: an ITEM's horizon (life_items.horizon) is when that goal is
+# due; a STRATEGY horizon (life_strategy_versions.horizon) is which of the eight
+# documents you are looking at. They coincide only on the long end.
+#
+# The setup flow folds drafted ITEMS onto STRATEGY screens, so it needs the
+# translation. Kept as one table rather than inline so both sides of the seam
+# read the same mapping.
+#
+# NOTE the asymmetry: "weekly" has NO item-horizon source. Nothing in HORIZONS
+# means "this week", so a weekly screen can never be pre-filled from a document
+# — that is a gap in the item vocabulary, not a mapping bug.
+ITEM_TO_STRATEGY_HORIZON: dict[str, str] = {
+    "now": "daily",
+    "month": "monthly",
+    "quarter": "quarterly",
+    "year": "yearly",
+    "five_year": "five_year",
+    "ten_year": "ten_year",
+    "twenty_year": "twenty_year",
+}
+
+
+def strategy_horizon_for(item_horizon: Any) -> Optional[str]:
+    """The strategy screen an item with this horizon folds onto, or None.
+
+    None (unknown or absent horizon) is a valid answer, not a failure: the
+    setup flow routes those rows to its remainder review rather than dropping
+    them, so an unmapped horizon degrades to "shown, not auto-filled".
+    """
+    if not isinstance(item_horizon, str):
+        return None
+    return ITEM_TO_STRATEGY_HORIZON.get(item_horizon.strip().lower())
 
 NOTE_SOURCES: tuple[str, ...] = ("chat", "form", "import")
 

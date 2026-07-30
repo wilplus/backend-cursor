@@ -703,6 +703,20 @@ def draft_items_from_document(user_id: str, text: str) -> list[dict]:
         "distractions": parsed.get("distractions") or [],
     })
     items = plan.get("items") or []
+    # The setup flow folds these rows onto the eight STRATEGY screens, whose
+    # vocabulary is not the item one: an item's `horizon` says when a goal is
+    # due (now/month/quarter/…), a strategy horizon says which document you are
+    # looking at (daily/weekly/monthly/…). They coincide only on the long end,
+    # so the FE cannot fold on `horizon` alone.
+    #
+    # `horizon` is left EXACTLY as-is — /setup/apply-proposed validates it
+    # against HORIZONS when it writes the item, so renaming it would make every
+    # applied row fail validation. The translation rides alongside instead, and
+    # is null when there is no mapping (the FE routes those to its remainder
+    # review rather than dropping them).
+    for _it in items:
+        if isinstance(_it, dict):
+            _it["strategy_horizon"] = lp.strategy_horizon_for(_it.get("horizon"))
     _log_derivation("doc_draft", user_id=user_id,
                     outcome="ok" if parsed else "no_derivation",
                     drafted=len(items))
