@@ -9095,6 +9095,29 @@ def v2_admin_learning_models():
         return jsonify({"code": "V2_ERROR", "error": "Failed to fetch models"}), 500
 
 
+@v2_bp.route("/admin/learning/trace", methods=["GET"])
+@require_admin
+def v2_admin_learning_trace():
+    """Backlog item 11 — the developer learning-trace: one payload describing
+    the three learning lanes (shadow direction / annotation writer / acoustic
+    baseline): corpora, model history, coefficients, agreement, decision
+    points, known gaps. Aggregation lives in services/learning_trace.py.
+
+    ADMIN-ONLY on purpose (not @require_admin_or_coach like the other
+    /admin/learning/* endpoints): the payload exposes machine guesses vs
+    coach labels — BLIND COACH forbids a coach seeing that. Developer
+    observability only; never any user/coach-visible score surface (AC-9).
+    Sections degrade to null + errors[] individually — this never 500s for
+    one broken corpus."""
+    try:
+        from services.learning_trace import build_learning_trace
+        return jsonify(build_learning_trace()), 200
+    except Exception as e:
+        logger.error("admin/learning/trace failed: %s", e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to build learning trace"}), 500
+
+
 @v2_bp.route("/admin/sessions/<session_id>/readout", methods=["GET"])
 @require_admin
 def v2_admin_get_session_readout(session_id):

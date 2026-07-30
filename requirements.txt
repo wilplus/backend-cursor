@@ -35,6 +35,12 @@ reportlab==5.0.0
 # services/strategy_export.py; a missing/failed import degrades that download
 # to markdown rather than breaking the button. Pure-python, no system libs.
 python-docx==1.1.2
+# life-panel OPT-IN web-push reminders (founder decision 2026-07-30): VAPID-
+# signed pushes to browsers whose user explicitly enabled a reminder slot.
+# Lazy-imported ONLY in services/life_reminders.py (the one sanctioned
+# delivery module — test_life_panel.py::NoNudgesTests fences everything else);
+# missing package or missing VAPID keys degrade to "nothing sent".
+pywebpush==2.0.3
 # Shadow direction classifier (willab Phase 4 / Prompt 1): interpretable
 # logistic regression on the 11 acoustic features, served in-process. joblib
 # serializes the fitted pipeline → object storage. SHADOW-only; influences

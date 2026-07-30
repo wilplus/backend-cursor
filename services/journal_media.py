@@ -46,7 +46,11 @@ _s3_client = None
 # Per-kind MIME allowlists. Deliberately narrow: these files are served to
 # the public from our domain, so "whatever the browser sent" is not a policy.
 _ALLOWED: dict[str, tuple] = {
-    "image": ("image/jpeg", "image/png", "image/webp", "image/avif"),
+    # gif added 2026-07-30 for inline body images: the CMS re-encodes every
+    # other dropped image to webp/jpeg, but a GIF passes through untouched
+    # (canvas re-encoding would keep one frame and kill the animation).
+    "image": ("image/jpeg", "image/png", "image/webp", "image/avif",
+              "image/gif"),
     "audio": ("audio/mpeg", "audio/mp4", "audio/webm", "audio/ogg",
               "audio/wav"),
     "video": ("video/mp4", "video/webm", "video/quicktime"),
@@ -60,7 +64,7 @@ _DEFAULT_MAX_MB = {"image": 10, "audio": 50, "video": 500}
 # players that sniff on it.
 _EXT_FOR_MIME = {
     "image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp",
-    "image/avif": ".avif",
+    "image/avif": ".avif", "image/gif": ".gif",
     "audio/mpeg": ".mp3", "audio/mp4": ".m4a", "audio/webm": ".weba",
     "audio/ogg": ".ogg", "audio/wav": ".wav",
     "video/mp4": ".mp4", "video/webm": ".webm", "video/quicktime": ".mov",

@@ -60,14 +60,17 @@ try:
     from flask import Flask
     import auth
     from routes import life_routes as lroutes
+    from routes import life_reminders_webhook as lremhook
     from services import life_chat as lchat
     from services import life_engine as lengine
+    from services import life_reminders as lreminders
     from services import life_store as lstore
     from services import master_doc_rag as mdr
     _IMPORT_ERROR = None
 except Exception as e:                          # pragma: no cover
     Flask = None
-    auth = lroutes = lchat = lengine = lstore = mdr = None
+    auth = lroutes = lremhook = lchat = lengine = lreminders = lstore = None
+    mdr = None
     _IMPORT_ERROR = e
 
 USER = "11111111-1111-4111-8111-111111111111"
@@ -1125,7 +1128,7 @@ class MasterDocInjectionTests(unittest.TestCase):
         # The fence: the injection is per-request and per-user. Nothing in the
         # feature mutates the shared body.
         import inspect
-        for module in (lengine, lchat, lstore, lroutes):
+        for module in (lengine, lchat, lstore, lroutes, lreminders):
             src = inspect.getsource(module)
             self.assertNotIn("MASTER_DOCUMENT", src)
 
@@ -1143,15 +1146,32 @@ class MasterDocInjectionTests(unittest.TestCase):
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
 class NoNudgesTests(unittest.TestCase):
     """Not typing means LIVING, not failing. The system is dormant until
-    opened. The cost — it catches only the drift you bring to it — is the
-    accepted trade, and this test is what keeps someone from 'fixing' the gap
-    with a reminder email."""
+    opened.
+
+    AMENDED BY EXPLICIT FOUNDER DECISION, 2026-07-30: web-push reminders
+    exist, ONLY behind explicit per-user opt-in. The user flips a switch in
+    the panel settings; every default is OFF; the slot ladder only (daily
+    morning, daily evening, then the checkout cadence weekly, monthly,
+    quarterly, yearly, fiveyear, tenyear — extended by the founder the same
+    day, every rung strictly opt-in, longer cadences deep-linking to
+    EXISTING surfaces with no new views or tables).
+    ``services/life_reminders.py`` is the
+    ONE sanctioned delivery module — routes expose the settings but never
+    import pywebpush and never send, and everything else L-4 bans stays
+    banned exactly as before: no emails, no silence detection, no streaks,
+    and generation (ensure_daily_card / ensure_evening_pass) still contains
+    no delivery code. This class is what keeps the amendment exactly as wide
+    as the decision and no wider."""
 
     BANNED = ("send_email", "email_service", "resend", "push_notification",
               "send_push", "notify_user", "unsubscribe_tokens",
               "arc_notifications", "assignment_email", "audit_email")
 
     def test_no_module_can_send_anything(self):
+        # life_reminders is DELIBERATELY absent from this list: it is the one
+        # sanctioned sender (founder 2026-07-30). Everything else stays fully
+        # banned, life_routes included — it may reference the settings module
+        # but holds none of these primitives itself.
         import inspect
         for module in (lp, lstore, lengine, lchat, lroutes, importer):
             src = code_only(inspect.getsource(module)).lower()
@@ -1162,20 +1182,85 @@ class NoNudgesTests(unittest.TestCase):
                     f"nudges")
 
     def test_nothing_tracks_silence_or_streaks(self):
+        # The opt-in amendment covers DELIVERY only. Tracking stays banned
+        # everywhere, the sanctioned sender included: a reminder fires on the
+        # clock, never on "you have not typed lately".
         import inspect
-        for module in (lp, lstore, lengine, lchat, lroutes):
+        for module in (lp, lstore, lengine, lchat, lroutes, lreminders,
+                       lremhook):
             src = code_only(inspect.getsource(module)).lower()
             for banned in ("streak", "days_since_last", "inactivity",
                            "silence_detect"):
                 self.assertNotIn(banned, src, module.__name__)
 
     def test_generation_is_scheduled_but_delivery_is_not(self):
-        # Both passes write a row and return. Nothing downstream.
+        # Both passes write a row and return. Nothing downstream — the
+        # reminder path is a separate cron hitting a separate module, and the
+        # founder's amendment did NOT open these two functions.
         import inspect
         for fn in (lengine.ensure_daily_card, lengine.ensure_evening_pass):
             code = code_only(inspect.getsource(fn)).lower()
             for banned in ("email", "notif", "push", "send"):
                 self.assertNotIn(banned, code, fn.__name__)
+
+    def test_reminder_defaults_are_all_off(self):
+        # OPT-IN is the whole deal, for EVERY rung of the ladder: a user who
+        # never touches the settings receives exactly nothing, same as
+        # before the feature existed.
+        self.assertEqual(
+            set(lreminders.SLOTS),
+            {"morning", "evening", "weekly", "monthly", "quarterly",
+             "yearly", "fiveyear", "tenyear"})
+        for slot in lreminders.SLOTS:
+            self.assertIs(lreminders.DEFAULT_SETTINGS[f"{slot}_enabled"],
+                          False, slot)
+        # And a missing row reads as the defaults, not as an error.
+        with patch.object(lreminders, "_t", side_effect=RuntimeError("down")):
+            settings = lreminders.get_settings(USER)
+        for slot in lreminders.SLOTS:
+            self.assertFalse(settings[f"{slot}_enabled"], slot)
+
+    def test_the_migration_defaults_every_slot_to_false(self):
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                            "migrations", "add_life_push_reminders.sql")
+        with open(path, "r", encoding="utf-8") as fh:
+            sql = fh.read()
+        for slot in lreminders.SLOTS:
+            column = f"{slot}_enabled"
+            self.assertRegex(
+                sql, rf"{column}\s+boolean\s+NOT NULL\s+DEFAULT false",
+                f"{column} must default to false — opt-in, never opt-out")
+            # And the log's slot CHECK must accept it, or the idempotency
+            # claim raises on the first firing.
+            self.assertIn(f"'{slot}'", sql)
+
+    def test_routes_delegate_and_never_touch_pywebpush(self):
+        # life_routes may expose the user-initiated settings endpoints, but
+        # the sending machinery must be unreachable from it: no pywebpush, no
+        # send function, no slot runner. services/life_reminders.py is the
+        # ONLY module allowed to hold those.
+        import inspect
+        src = code_only(inspect.getsource(lroutes)).lower()
+        for banned in ("pywebpush", "webpush", "send_web_push",
+                       "run_reminder_slot"):
+            self.assertNotIn(banned, src,
+                             f"life_routes must not reference {banned}")
+
+    def test_pywebpush_appears_only_in_the_sanctioned_module(self):
+        root = os.path.dirname(os.path.abspath(__file__))
+        offenders = []
+        for folder in ("services", "routes"):
+            for name in sorted(os.listdir(os.path.join(root, folder))):
+                if not name.endswith(".py"):
+                    continue
+                rel = f"{folder}/{name}"
+                if rel == "services/life_reminders.py":
+                    continue
+                with open(os.path.join(root, rel), "r",
+                          encoding="utf-8") as fh:
+                    if "pywebpush" in fh.read():
+                        offenders.append(rel)
+        self.assertEqual(offenders, [])
 
 
 # ═════════════════════════════════════════════════════════════════════════
@@ -1190,7 +1275,9 @@ class IsolationTests(unittest.TestCase):
 
     LIFE_MODULES = ("services/life_panel.py", "services/life_store.py",
                     "services/life_engine.py", "services/life_chat.py",
-                    "services/life_import.py", "routes/life_routes.py")
+                    "services/life_import.py", "services/life_reminders.py",
+                    "routes/life_routes.py",
+                    "routes/life_reminders_webhook.py")
 
     def test_life_modules_import_nothing_from_the_loop(self):
         import inspect
@@ -1198,7 +1285,8 @@ class IsolationTests(unittest.TestCase):
                   "lab_recording", "moment_suggestions", "say_it_stronger",
                   "delivery_stars", "power_score", "slide_word_split",
                   "cross_take_selection", "coaching_state_machine")
-        for module in (lp, lstore, lengine, lchat, lroutes, importer):
+        for module in (lp, lstore, lengine, lchat, lroutes, importer,
+                       lreminders, lremhook):
             src = inspect.getsource(module)
             for name in banned:
                 self.assertNotIn(
@@ -1609,7 +1697,13 @@ class RouteGateTests(unittest.TestCase):
                 patch.object(lroutes.chat, "has_consented", return_value=False), \
                 patch.object(lroutes.store, "hard_delete",
                              return_value={"deleted": {"life_notes": 3},
-                                           "failed": []}):
+                                           "failed": []}), \
+                patch.object(lroutes.importer, "delete_setup_documents",
+                             return_value=1), \
+                patch.object(lroutes.reminders, "hard_delete_user",
+                             return_value={"deleted": {}, "failed": []}), \
+                patch.object(lroutes.engine, "delete_user_copy",
+                             return_value=0):
             resp = self.client.delete("/v2/life/data",
                                       headers={"Authorization": "Bearer t"},
                                       json={"confirm": "DELETE"})
@@ -1622,23 +1716,85 @@ class RouteGateTests(unittest.TestCase):
         with patch.object(lroutes.chat, "is_enabled", return_value=True), \
                 patch.object(lroutes.chat, "has_consented", return_value=True), \
                 patch.object(lroutes.store, "hard_delete",
-                             return_value={"deleted": {}, "failed": ["life_cases"]}):
+                             return_value={"deleted": {}, "failed": ["life_cases"]}), \
+                patch.object(lroutes.importer, "delete_setup_documents",
+                             return_value=0), \
+                patch.object(lroutes.reminders, "hard_delete_user",
+                             return_value={"deleted": {}, "failed": []}), \
+                patch.object(lroutes.engine, "delete_user_copy",
+                             return_value=0):
             resp = self.client.delete("/v2/life/data",
                                       headers={"Authorization": "Bearer t"},
                                       json={"confirm": "DELETE"})
         self.assertEqual(resp.status_code, 500)
         self.assertEqual(resp.get_json()["code"], "PARTIAL_DELETE")
 
+    def test_a_failing_reminder_or_document_wipe_is_a_partial_delete(self):
+        # The 2026-07-30 tables are part of the same promise: if their wipe
+        # fails, "your data is gone" must not be claimed.
+        with patch.object(lroutes.chat, "is_enabled", return_value=True), \
+                patch.object(lroutes.chat, "has_consented", return_value=True), \
+                patch.object(lroutes.store, "hard_delete",
+                             return_value={"deleted": {}, "failed": []}), \
+                patch.object(lroutes.importer, "delete_setup_documents",
+                             return_value=None), \
+                patch.object(lroutes.reminders, "hard_delete_user",
+                             return_value={"deleted": {},
+                                           "failed": ["life_reminder_log"]}), \
+                patch.object(lroutes.engine, "delete_user_copy",
+                             return_value=None):
+            resp = self.client.delete("/v2/life/data",
+                                      headers={"Authorization": "Bearer t"},
+                                      json={"confirm": "DELETE"})
+        self.assertEqual(resp.status_code, 500)
+        body = resp.get_json()
+        self.assertEqual(body["code"], "PARTIAL_DELETE")
+        self.assertIn("life_setup_documents", body["failed"])
+        self.assertIn("life_reminder_log", body["failed"])
+        self.assertIn("life_user_copy", body["failed"])
+
     def test_an_incomplete_export_says_so(self):
         # An export missing a table looks exactly like an empty table.
         with patch.object(lroutes.chat, "is_enabled", return_value=True), \
                 patch.object(lroutes.chat, "has_consented", return_value=True), \
                 patch.object(lroutes.store, "export_all",
-                             return_value={"tables": {}, "errors": ["life_cases"]}):
+                             return_value={"tables": {}, "errors": ["life_cases"]}), \
+                patch.object(lroutes.importer, "export_setup_documents",
+                             return_value=[]), \
+                patch.object(lroutes.reminders, "export_user",
+                             return_value={}), \
+                patch.object(lroutes.engine, "export_user_copy",
+                             return_value=[]):
             resp = self.client.post("/v2/life/export",
                                     headers={"Authorization": "Bearer t"},
                                     json={})
         self.assertFalse(resp.get_json()["complete"])
+
+    def test_export_carries_the_new_tables_too(self):
+        # Setup documents and reminder settings live outside life_store, and
+        # an export that quietly missed them would look exactly like a user
+        # who never used them.
+        with patch.object(lroutes.chat, "is_enabled", return_value=True), \
+                patch.object(lroutes.chat, "has_consented", return_value=True), \
+                patch.object(lroutes.store, "export_all",
+                             return_value={"tables": {}}), \
+                patch.object(lroutes.importer, "export_setup_documents",
+                             return_value=[{"id": "d1"}]), \
+                patch.object(lroutes.reminders, "export_user",
+                             return_value={"life_reminder_settings": [],
+                                           "life_push_subscriptions": []}), \
+                patch.object(lroutes.engine, "export_user_copy",
+                             return_value=[]):
+            resp = self.client.post("/v2/life/export",
+                                    headers={"Authorization": "Bearer t"},
+                                    json={})
+        body = resp.get_json()
+        self.assertTrue(body["complete"])
+        self.assertEqual(body["tables"]["life_setup_documents"],
+                         [{"id": "d1"}])
+        self.assertIn("life_reminder_settings", body["tables"])
+        self.assertIn("life_push_subscriptions", body["tables"])
+        self.assertIn("life_user_copy", body["tables"])
 
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
@@ -1755,6 +1911,688 @@ class PrivacyTests(unittest.TestCase):
             self.assertIn("user_id", block,
                           f"a store function touches a table without scoping "
                           f"it to a user: {block.splitlines()[0]}")
+
+
+# ═════════════════════════════════════════════════════════════════════════
+# Item 9 (founder 2026-07-30) — setup strategy-document upload + drafting
+# ═════════════════════════════════════════════════════════════════════════
+
+class NewMigrationTests(unittest.TestCase):
+    """The two 2026-07-30 migrations hold the same lines add_life_panel.sql
+    holds: RLS in the creating file, zero policies, idempotent, no drops,
+    raise on a partial run, life_* tables only."""
+
+    FILES = ("add_life_setup_documents.sql", "add_life_push_reminders.sql")
+
+    def _sql(self, name: str) -> str:
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                            "migrations", name)
+        with open(path, "r", encoding="utf-8") as fh:
+            return fh.read()
+
+    def test_every_created_table_enables_rls_in_its_file(self):
+        for name in self.FILES:
+            sql = self._sql(name)
+            created = set(re.findall(
+                r"CREATE TABLE IF NOT EXISTS\s+(life_\w+)", sql))
+            protected = set(re.findall(
+                r"ALTER TABLE\s+(life_\w+)\s+ENABLE ROW LEVEL SECURITY", sql))
+            self.assertTrue(created, f"{name} creates no life_* tables")
+            self.assertEqual(created - protected, set(), name)
+
+    def test_no_policies_no_drops_and_a_raising_postcondition(self):
+        for name in self.FILES:
+            sql = self._sql(name)
+            self.assertNotIn("CREATE POLICY", sql.upper(), name)
+            self.assertNotRegex(sql.upper(), r"\bDROP\s+(TABLE|COLUMN)\b",
+                                name)
+            self.assertIn("RAISE EXCEPTION", sql, name)
+
+    def test_idempotent_and_life_tables_only(self):
+        for name in self.FILES:
+            sql = self._sql(name)
+            for statement in re.findall(r"CREATE TABLE[^(]*", sql):
+                self.assertIn("IF NOT EXISTS", statement, name)
+            for statement in re.findall(r"CREATE (?:UNIQUE )?INDEX[^(]*", sql):
+                self.assertIn("IF NOT EXISTS", statement, name)
+            for table in re.findall(
+                    r"(?:CREATE TABLE IF NOT EXISTS|ALTER TABLE)\s+"
+                    r"(?:public\.)?(\w+)", sql):
+                self.assertTrue(table.startswith("life_"), f"{name}: {table}")
+
+    def test_reminder_log_is_unique_per_user_slot_and_day(self):
+        sql = self._sql("add_life_push_reminders.sql")
+        self.assertRegex(sql, r"CREATE UNIQUE INDEX IF NOT EXISTS\s+\w+\s*\n?"
+                              r"\s*ON life_reminder_log \(user_id, slot, "
+                              r"sent_on\)")
+
+
+class ConfirmedItemTests(unittest.TestCase):
+    """N5 for the setup review UI: the tick is the approve. Pure functions,
+    no DB."""
+
+    def test_a_ticked_row_is_created_active_no_matter_what_was_sent(self):
+        fields = importer.sanitize_confirmed_item({
+            "kind": "goal", "title": "Ship the panel", "status": "proposed",
+            "horizon": "year", "due_label": "[Dec]",
+        })
+        self.assertEqual(fields["status"], "active")
+        self.assertEqual(fields["horizon"], "year")
+        self.assertEqual(fields["due_label"], "[Dec]")
+
+    def test_junk_kinds_and_blank_titles_are_refused(self):
+        self.assertIsNone(importer.sanitize_confirmed_item(
+            {"kind": "principle", "title": "smuggled"}))
+        self.assertIsNone(importer.sanitize_confirmed_item(
+            {"kind": "goal", "title": "   "}))
+        self.assertIsNone(importer.sanitize_confirmed_item("nope"))
+
+    def test_a_bet_keeps_its_locked_rank_and_an_invented_bet_is_refused(self):
+        # L-2a: the uploaded document can word a bet, never reorder them.
+        company = next(b for b in lp.BETS if b["key"] == "company")
+        fields = importer.sanitize_confirmed_item({
+            "kind": "bet",
+            "title": f"{company['emoji']} {company['title']}",
+            "order_key": 1,           # the client claims rank 1 — ignored
+        })
+        self.assertEqual(fields["order_key"], float(company["rank"]))
+        self.assertIsNone(importer.sanitize_confirmed_item(
+            {"kind": "bet", "title": "The Fourth Bet"}))
+
+
+class DocxExtractionTests(unittest.TestCase):
+    """The setup upload accepts .docx; extraction is best-effort and never
+    raises (services/context_document.py)."""
+
+    def test_docx_paragraphs_come_back_as_text(self):
+        try:
+            import docx
+        except Exception as e:                      # pragma: no cover
+            self.skipTest(f"python-docx unavailable: {e}")
+        from io import BytesIO
+        from services.context_document import extract_document_text
+        document = docx.Document()
+        document.add_paragraph("Section II — The Company")
+        document.add_paragraph("Ship the panel [Dec]")
+        buf = BytesIO()
+        document.save(buf)
+        out = extract_document_text(buf.getvalue(), filename="strategy.docx")
+        self.assertIn("Ship the panel [Dec]", out["text"])
+        self.assertEqual(out["chars"], len(out["text"]))
+
+    def test_a_corrupt_docx_degrades_to_empty_never_raises(self):
+        from services.context_document import extract_document_text
+        out = extract_document_text(b"PK\x03\x04word/not-a-zip",
+                                    filename="broken.docx")
+        self.assertEqual(out["text"], "")
+
+
+@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
+class SetupDocumentRouteTests(unittest.TestCase):
+    """Upload → extract → store text; draft → review → apply ONLY the ticked
+    rows. Never forced-automatic (founder 2026-07-30)."""
+
+    def setUp(self):
+        self.app = Flask(__name__)
+        self.app.register_blueprint(lroutes.life_bp)
+        self.client = self.app.test_client()
+        self._orig_verify = auth.verify_supabase_token
+        auth.verify_supabase_token = lambda token: {"sub": USER}
+        self._gates = [
+            patch.object(lroutes.chat, "is_enabled", return_value=True),
+            patch.object(lroutes.chat, "has_consented", return_value=True),
+        ]
+        for g in self._gates:
+            g.start()
+
+    def tearDown(self):
+        auth.verify_supabase_token = self._orig_verify
+        for g in self._gates:
+            g.stop()
+
+    def _upload(self, filename: str, data: bytes = b"my strategy"):
+        from io import BytesIO
+        return self.client.post(
+            "/v2/life/setup/document",
+            headers={"Authorization": "Bearer t"},
+            data={"file": (BytesIO(data), filename)},
+            content_type="multipart/form-data")
+
+    def test_extension_allowlist(self):
+        for bad in ("deck.pptx", "notes.exe", "strategy"):
+            resp = self._upload(bad)
+            self.assertEqual(resp.status_code, 400, bad)
+
+    def test_upload_stores_extracted_text_and_returns_metadata_only(self):
+        captured = {}
+
+        def _insert(user_id, **kw):
+            captured.update(kw)
+            return {"id": "d1", "file_name": kw["file_name"],
+                    "status": kw["status"], "char_count": kw["char_count"],
+                    "created_at": "now"}
+
+        with patch.object(lroutes.importer, "insert_setup_document",
+                          side_effect=_insert):
+            resp = self._upload("strategy.md", b"# daily\nPray first.")
+        self.assertEqual(resp.status_code, 201)
+        body = resp.get_json()["document"]
+        self.assertEqual(body["status"], "processed")
+        self.assertNotIn("extracted_text", body)
+        self.assertIn("Pray first.", captured["extracted_text"])
+
+    def test_an_unreadable_file_is_kept_as_extraction_failed(self):
+        with patch.object(lroutes.importer, "insert_setup_document",
+                          side_effect=lambda user_id, **kw: {
+                              "id": "d1", "status": kw["status"],
+                              "char_count": kw["char_count"]}), \
+                patch.object(lroutes, "extract_document_text",
+                             return_value={"text": "", "pages": 0,
+                                           "chars": 0, "truncated": False}):
+            resp = self._upload("strategy.pdf", b"%PDF-broken")
+        self.assertEqual(resp.status_code, 201)
+        self.assertEqual(resp.get_json()["document"]["status"],
+                         "extraction_failed")
+
+    def test_propose_writes_nothing(self):
+        doc = {"id": "d1", "status": "processed",
+               "extracted_text": "Ship the panel [Dec]", "char_count": 20}
+        with patch.object(lroutes.importer, "get_setup_document",
+                          return_value=doc), \
+                patch.object(lroutes.engine, "draft_items_from_document",
+                             return_value=[{"kind": "goal",
+                                            "title": "Ship the panel"}]), \
+                patch.object(lroutes.store, "insert_item") as insert:
+            resp = self.client.post(
+                "/v2/life/setup/propose-from-document",
+                headers={"Authorization": "Bearer t"}, json={})
+        self.assertEqual(resp.status_code, 200)
+        body = resp.get_json()
+        self.assertFalse(body["written"])
+        self.assertEqual(len(body["items"]), 1)
+        insert.assert_not_called()
+
+    def test_propose_refuses_when_there_is_nothing_readable(self):
+        with patch.object(lroutes.importer, "get_setup_document",
+                          return_value=None):
+            resp = self.client.post(
+                "/v2/life/setup/propose-from-document",
+                headers={"Authorization": "Bearer t"}, json={})
+        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.get_json()["code"], "NO_DOCUMENT")
+
+    def test_apply_creates_only_sanitizable_rows_as_active(self):
+        written = []
+
+        def _insert(user_id, fields):
+            written.append(fields)
+            return {"id": f"i{len(written)}", **fields}
+
+        with patch.object(lroutes.store, "insert_item", side_effect=_insert):
+            resp = self.client.post(
+                "/v2/life/setup/apply-proposed",
+                headers={"Authorization": "Bearer t"},
+                json={"items": [
+                    {"kind": "goal", "title": "Ship", "status": "proposed"},
+                    {"kind": "principle", "title": "smuggled"},
+                    {"kind": "habit", "title": ""},
+                ]})
+        self.assertEqual(resp.status_code, 201)
+        self.assertEqual(resp.get_json()["count"], 1)
+        self.assertEqual(len(written), 1)
+        self.assertEqual(written[0]["status"], "active")
+
+    def test_apply_requires_a_non_empty_list(self):
+        for body in ({}, {"items": []}, {"items": "x"}):
+            resp = self.client.post(
+                "/v2/life/setup/apply-proposed",
+                headers={"Authorization": "Bearer t"}, json=body)
+            self.assertEqual(resp.status_code, 400, body)
+
+
+@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
+class DocumentAwareGenerationTests(unittest.TestCase):
+
+    def test_generate_documents_includes_the_upload_clearly_delimited(self):
+        seen = {}
+
+        def _complete(spec, *, system, user, surface, user_id):
+            seen["user"] = user
+            return {"documents": {"daily": "ok"}}
+
+        with patch.object(lengine, "_complete", side_effect=_complete), \
+                patch.object(lengine.life_importer,
+                             "latest_setup_document_text",
+                             return_value="Ship the panel [Dec]"):
+            out = lengine.generate_documents(USER, {"bets": []})
+        self.assertEqual(out, {"daily": "ok"})
+        self.assertIn("The user's uploaded current strategy document:",
+                      seen["user"])
+        self.assertIn("Ship the panel [Dec]", seen["user"])
+
+    def test_no_upload_means_the_prompt_is_unchanged(self):
+        seen = {}
+
+        def _complete(spec, *, system, user, surface, user_id):
+            seen["user"] = user
+            return {"documents": {}}
+
+        with patch.object(lengine, "_complete", side_effect=_complete), \
+                patch.object(lengine.life_importer,
+                             "latest_setup_document_text", return_value=""):
+            lengine.generate_documents(USER, {"bets": []})
+        self.assertNotIn("uploaded current strategy document", seen["user"])
+
+    def test_drafting_writes_nothing_and_keeps_the_locked_bets(self):
+        with patch.object(lengine, "_complete", return_value={
+                "goals": [{"title": "Ship the panel", "horizon": "year",
+                           "due_label": "[Dec]", "bet": "company"}],
+                "habits": [{"title": "Pray"}],
+                "distractions": []}), \
+                patch.object(lengine.store, "insert_item") as insert:
+            items = lengine.draft_items_from_document(USER, "the doc text")
+        insert.assert_not_called()
+        kinds = [i["kind"] for i in items]
+        self.assertEqual(kinds.count("bet"), 3)
+        bets = [i for i in items if i["kind"] == "bet"]
+        # Locked rank rides order_key, seeded from lp.BETS, never the doc.
+        self.assertEqual(sorted(b["order_key"] for b in bets), [1.0, 2.0, 3.0])
+        self.assertIn("goal", kinds)
+        self.assertIn("habit", kinds)
+
+
+# ═════════════════════════════════════════════════════════════════════════
+# Item 12 (founder 2026-07-30) — the opt-in reminder machinery itself
+# ═════════════════════════════════════════════════════════════════════════
+
+@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
+class ReminderServiceTests(unittest.TestCase):
+
+    def test_sanitize_settings_types_and_clamps(self):
+        out = lreminders.sanitize_settings({
+            "morning_enabled": 1, "weekly_enabled": False,
+            "tz_offset_minutes": "not-a-number", "streak_mode": True,
+        })
+        self.assertIs(out["morning_enabled"], True)
+        self.assertIs(out["weekly_enabled"], False)
+        self.assertEqual(out["tz_offset_minutes"], 0)     # unparseable → 0
+        self.assertNotIn("streak_mode", out)
+        clamped = lreminders.sanitize_settings({"tz_offset_minutes": 100000})
+        self.assertEqual(clamped["tz_offset_minutes"], 14 * 60)
+
+    def test_an_unknown_slot_sends_nothing(self):
+        out = lreminders.run_reminder_slot("hourly")
+        self.assertEqual(out["sent"], 0)
+        self.assertIn("error", out)
+
+    def _settings_rows(self, rows):
+        class _Q:
+            def select(self, *a, **k): return self
+            def eq(self, *a, **k): return self
+            def limit(self, *a, **k): return self
+            def execute(self): return type("R", (), {"data": rows})()
+        return _Q()
+
+    def test_no_subscription_means_skip_and_no_claim(self):
+        with patch.object(lreminders, "_t",
+                          return_value=self._settings_rows(
+                              [{"user_id": USER, "tz_offset_minutes": 0}])), \
+                patch.object(lreminders, "list_subscriptions",
+                             return_value=[]), \
+                patch.object(lreminders, "_claim") as claim, \
+                patch.object(lreminders, "send_web_push") as send:
+            out = lreminders.run_reminder_slot("morning")
+        self.assertEqual(out["sent"], 0)
+        self.assertEqual(out["skipped"], 1)
+        claim.assert_not_called()
+        send.assert_not_called()
+
+    def test_idempotent_per_local_day(self):
+        # The claim failing means another run already owns this local day —
+        # nothing is sent, which is what makes a double-fired cron a no-op.
+        with patch.object(lreminders, "_t",
+                          return_value=self._settings_rows(
+                              [{"user_id": USER, "tz_offset_minutes": 120}])), \
+                patch.object(lreminders, "list_subscriptions",
+                             return_value=[{"endpoint": "e"}]), \
+                patch.object(lreminders, "_claim", return_value=False), \
+                patch.object(lreminders, "send_web_push") as send:
+            out = lreminders.run_reminder_slot("evening")
+        self.assertEqual(out["skipped"], 1)
+        send.assert_not_called()
+
+    def test_an_enabled_user_with_a_subscription_gets_one_push(self):
+        with patch.object(lreminders, "_t",
+                          return_value=self._settings_rows(
+                              [{"user_id": USER, "tz_offset_minutes": 0}])), \
+                patch.object(lreminders, "list_subscriptions",
+                             return_value=[{"endpoint": "e", "p256dh": "p",
+                                            "auth": "a"}]), \
+                patch.object(lreminders, "_claim", return_value=True), \
+                patch.object(lreminders, "send_web_push",
+                             return_value=True) as send:
+            out = lreminders.run_reminder_slot("weekly")
+        self.assertEqual(out["sent"], 1)
+        send.assert_called_once()
+        payload = send.call_args[0][1]
+        self.assertEqual(payload["url"], "/panel/week")
+
+    def test_sending_without_a_private_key_is_a_graceful_no(self):
+        with patch.dict(os.environ, {"VAPID_PRIVATE_KEY": ""}):
+            self.assertFalse(lreminders.send_web_push(
+                {"endpoint": "e", "p256dh": "p", "auth": "a"},
+                {"title": "t"}))
+
+    def test_the_payload_copy_never_nags(self):
+        # The founder's copy says a thing is READY and asks the day's own
+        # question. Nothing counts absence.
+        for payload in lreminders.PAYLOADS.values():
+            text = f"{payload['title']} {payload['body']}".lower()
+            for banned in ("missed", "behind", "forget", "streak",
+                           "come back", "haven't"):
+                self.assertNotIn(banned, text)
+
+    def test_local_date_respects_the_offset(self):
+        from datetime import datetime, timezone
+        late_utc = datetime(2026, 7, 30, 23, 30, tzinfo=timezone.utc)
+        self.assertEqual(lreminders._local_date(120, late_utc), "2026-07-31")
+        self.assertEqual(lreminders._local_date(-120, late_utc), "2026-07-30")
+
+    def test_checkout_slots_land_on_existing_surfaces(self):
+        # Founder 2026-07-30: NO new checkout views. Weekly deep-links to the
+        # Sunday review; monthly and longer land on the panel home, where the
+        # horizon strategy documents live.
+        self.assertEqual(lreminders.PAYLOADS["weekly"]["url"], "/panel/week")
+        for slot in ("monthly", "quarterly", "yearly", "fiveyear",
+                     "tenyear"):
+            self.assertEqual(lreminders.PAYLOADS[slot]["url"], "/panel", slot)
+        for slot in lreminders.SLOTS:
+            self.assertIn(slot, lreminders.PAYLOADS)
+
+    def test_five_and_ten_year_slots_respect_the_anchor_year(self):
+        # Cron cannot say "every 5th year", so the yearly-fired cron is
+        # gated here: (year - anchor) must be a whole number of periods.
+        from datetime import datetime, timezone
+        y2030 = datetime(2030, 1, 1, tzinfo=timezone.utc)
+        y2031 = datetime(2031, 1, 1, tzinfo=timezone.utc)
+        with patch.dict(os.environ, {"LIFE_REMINDER_ANCHOR_YEAR": "2025"}):
+            self.assertTrue(lreminders.slot_due_this_year("fiveyear",
+                                                          now=y2030))
+            self.assertFalse(lreminders.slot_due_this_year("fiveyear",
+                                                           now=y2031))
+            self.assertFalse(lreminders.slot_due_this_year("tenyear",
+                                                           now=y2030))
+            self.assertTrue(lreminders.slot_due_this_year(
+                "tenyear", now=datetime(2035, 1, 1, tzinfo=timezone.utc)))
+            # Every other slot is always due; its cron IS its cadence.
+            self.assertTrue(lreminders.slot_due_this_year("monthly",
+                                                          now=y2031))
+        # Unset or malformed anchor ⇒ the operator picks years by hand.
+        with patch.dict(os.environ, {"LIFE_REMINDER_ANCHOR_YEAR": ""}):
+            self.assertTrue(lreminders.slot_due_this_year("tenyear",
+                                                          now=y2031))
+        with patch.dict(os.environ,
+                        {"LIFE_REMINDER_ANCHOR_YEAR": "soonish"}):
+            self.assertTrue(lreminders.slot_due_this_year("fiveyear",
+                                                          now=y2031))
+
+    def test_an_off_year_run_is_a_clean_noop(self):
+        from datetime import datetime, timezone
+        with patch.dict(os.environ, {"LIFE_REMINDER_ANCHOR_YEAR": "2025"}), \
+                patch.object(lreminders, "_t") as table:
+            out = lreminders.run_reminder_slot(
+                "fiveyear", now=datetime(2031, 1, 1, tzinfo=timezone.utc))
+        self.assertTrue(out.get("off_year"))
+        self.assertEqual(out["sent"], 0)
+        table.assert_not_called()          # not even the settings read
+
+    def test_a_checkout_slot_runs_like_any_other(self):
+        with patch.object(lreminders, "_t",
+                          return_value=self._settings_rows(
+                              [{"user_id": USER, "tz_offset_minutes": 0}])), \
+                patch.object(lreminders, "list_subscriptions",
+                             return_value=[{"endpoint": "e", "p256dh": "p",
+                                            "auth": "a"}]), \
+                patch.object(lreminders, "_claim", return_value=True), \
+                patch.object(lreminders, "send_web_push",
+                             return_value=True) as send:
+            out = lreminders.run_reminder_slot("monthly")
+        self.assertEqual(out["sent"], 1)
+        self.assertEqual(send.call_args[0][1],
+                         lreminders.PAYLOADS["monthly"])
+
+
+@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
+class ReminderRouteTests(unittest.TestCase):
+
+    def setUp(self):
+        self.app = Flask(__name__)
+        self.app.register_blueprint(lroutes.life_bp)
+        self.client = self.app.test_client()
+        self._orig_verify = auth.verify_supabase_token
+        auth.verify_supabase_token = lambda token: {"sub": USER}
+        self._gates = [
+            patch.object(lroutes.chat, "is_enabled", return_value=True),
+            patch.object(lroutes.chat, "has_consented", return_value=True),
+        ]
+        for g in self._gates:
+            g.start()
+
+    def tearDown(self):
+        auth.verify_supabase_token = self._orig_verify
+        for g in self._gates:
+            g.stop()
+
+    def test_get_returns_defaults_key_and_subscription_state(self):
+        with patch.object(lroutes.reminders, "get_settings",
+                          return_value=dict(lreminders.DEFAULT_SETTINGS)), \
+                patch.object(lroutes.reminders, "public_key",
+                             return_value=None), \
+                patch.object(lroutes.reminders, "list_subscriptions",
+                             return_value=[]):
+            resp = self.client.get("/v2/life/reminders",
+                                   headers={"Authorization": "Bearer t"})
+        body = resp.get_json()
+        self.assertEqual(resp.status_code, 200)
+        self.assertFalse(body["settings"]["morning_enabled"])
+        self.assertIsNone(body["public_key"])
+        self.assertFalse(body["subscribed"])
+
+    def test_put_writes_only_known_fields(self):
+        with patch.object(lroutes.reminders, "upsert_settings",
+                          return_value={**lreminders.DEFAULT_SETTINGS,
+                                        "morning_enabled": True}) as up:
+            resp = self.client.put("/v2/life/reminders",
+                                   headers={"Authorization": "Bearer t"},
+                                   json={"morning_enabled": True,
+                                         "nagging_mode": True})
+        self.assertEqual(resp.status_code, 200)
+        self.assertNotIn("nagging_mode", up.call_args[0][1])
+
+    def test_put_with_nothing_recognisable_is_a_400(self):
+        resp = self.client.put("/v2/life/reminders",
+                               headers={"Authorization": "Bearer t"},
+                               json={"nagging_mode": True})
+        self.assertEqual(resp.status_code, 400)
+
+    def test_subscription_requires_the_full_key_set(self):
+        for body in ({}, {"endpoint": "e"},
+                     {"endpoint": "e", "keys": {"p256dh": "p"}}):
+            resp = self.client.post("/v2/life/reminders/subscription",
+                                    headers={"Authorization": "Bearer t"},
+                                    json=body)
+            self.assertEqual(resp.status_code, 400, body)
+
+    def test_subscription_round_trip(self):
+        with patch.object(lroutes.reminders, "save_subscription",
+                          return_value={"id": "s1"}) as save:
+            resp = self.client.post(
+                "/v2/life/reminders/subscription",
+                headers={"Authorization": "Bearer t"},
+                json={"endpoint": "https://push/e",
+                      "keys": {"p256dh": "p", "auth": "a"}})
+        self.assertEqual(resp.status_code, 201)
+        self.assertEqual(save.call_args.kwargs["endpoint"], "https://push/e")
+        with patch.object(lroutes.reminders, "delete_subscription",
+                          return_value=1):
+            resp = self.client.delete(
+                "/v2/life/reminders/subscription",
+                headers={"Authorization": "Bearer t"},
+                json={"endpoint": "https://push/e"})
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.get_json()["deleted"], 1)
+
+    def test_reminder_routes_sit_behind_the_flag_and_consent(self):
+        for g in self._gates:
+            g.stop()
+        self._gates = []
+        with patch.object(lroutes.chat, "is_enabled", return_value=False):
+            resp = self.client.get("/v2/life/reminders",
+                                   headers={"Authorization": "Bearer t"})
+            self.assertEqual(resp.status_code, 404)
+        with patch.object(lroutes.chat, "is_enabled", return_value=True), \
+                patch.object(lroutes.chat, "has_consented",
+                             return_value=False):
+            resp = self.client.get("/v2/life/reminders",
+                                   headers={"Authorization": "Bearer t"})
+            self.assertEqual(resp.status_code, 409)
+
+
+@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
+class ReminderWebhookTests(unittest.TestCase):
+
+    def setUp(self):
+        self.app = Flask(__name__)
+        self.app.register_blueprint(lremhook.life_reminders_webhook_bp)
+        self.client = self.app.test_client()
+
+    def _post(self, slot="morning", secret="s3cret"):
+        headers = {}
+        if secret is not None:
+            headers["X-Internal-Secret"] = secret
+        return self.client.post(f"/v2/internal/life/reminders?slot={slot}",
+                                headers=headers, json={})
+
+    def test_unset_secret_means_the_surface_is_dead(self):
+        with patch.dict(os.environ, {"LIFE_REMINDER_SECRET": ""}):
+            self.assertEqual(self._post().status_code, 503)
+
+    def test_wrong_or_missing_secret_is_401(self):
+        with patch.dict(os.environ, {"LIFE_REMINDER_SECRET": "right"}):
+            self.assertEqual(self._post(secret="wrong").status_code, 401)
+            self.assertEqual(self._post(secret=None).status_code, 401)
+
+    def test_flag_off_skips_the_run_entirely(self):
+        with patch.dict(os.environ, {"LIFE_REMINDER_SECRET": "s3cret"}), \
+                patch.object(lremhook.chat, "is_enabled",
+                             return_value=False), \
+                patch.object(lremhook.reminders, "run_reminder_slot") as run:
+            resp = self._post()
+        self.assertEqual(resp.status_code, 200)
+        run.assert_not_called()
+
+    def test_bad_slot_is_400(self):
+        with patch.dict(os.environ, {"LIFE_REMINDER_SECRET": "s3cret"}), \
+                patch.object(lremhook.chat, "is_enabled", return_value=True):
+            self.assertEqual(self._post(slot="hourly").status_code, 400)
+
+    def test_a_valid_call_runs_the_slot_and_returns_counts(self):
+        counts = {"slot": "morning", "eligible": 1, "sent": 1,
+                  "skipped": 0, "failed": 0}
+        with patch.dict(os.environ, {"LIFE_REMINDER_SECRET": "s3cret"}), \
+                patch.object(lremhook.chat, "is_enabled", return_value=True), \
+                patch.object(lremhook.reminders, "run_reminder_slot",
+                             return_value=counts) as run:
+            resp = self._post()
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.get_json(), counts)
+        run.assert_called_once_with("morning")
+
+
+# ═════════════════════════════════════════════════════════════════════════
+# Editable check-in copy (founder decision 2026-07-30: "my copy as default,
+# editable")
+# ═════════════════════════════════════════════════════════════════════════
+
+@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
+class UserCopyTests(unittest.TestCase):
+
+    def test_sanitize_keeps_only_the_three_fields_and_caps_them(self):
+        out = lengine.sanitize_user_copy({
+            "mantra_title": "  MY OWN LINE  ",
+            "distraction_question": "x" * 900,
+            "one_thing": "smuggled",
+            "evening_line": "smuggled",
+        })
+        self.assertEqual(out["mantra_title"], "MY OWN LINE")
+        self.assertEqual(len(out["distraction_question"]), 300)
+        self.assertNotIn("one_thing", out)
+        self.assertNotIn("evening_line", out)
+
+    def test_blank_means_back_to_the_default(self):
+        # NULL is the contract: the FE renders the founder's line on NULL,
+        # so clearing a field is how the original comes back.
+        out = lengine.sanitize_user_copy({"mantra_question": "   ",
+                                          "mantra_title": None})
+        self.assertIsNone(out["mantra_question"])
+        self.assertIsNone(out["mantra_title"])
+
+    def test_get_returns_every_field_with_null_for_unset(self):
+        with patch.object(lengine, "_copy_table",
+                          side_effect=RuntimeError("down")):
+            out = lengine.get_user_copy(USER)
+        self.assertEqual(out, {"mantra_title": None, "mantra_question": None,
+                               "distraction_question": None})
+
+
+@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
+class UserCopyRouteTests(unittest.TestCase):
+
+    def setUp(self):
+        self.app = Flask(__name__)
+        self.app.register_blueprint(lroutes.life_bp)
+        self.client = self.app.test_client()
+        self._orig_verify = auth.verify_supabase_token
+        auth.verify_supabase_token = lambda token: {"sub": USER}
+        self._gates = [
+            patch.object(lroutes.chat, "is_enabled", return_value=True),
+            patch.object(lroutes.chat, "has_consented", return_value=True),
+        ]
+        for g in self._gates:
+            g.start()
+
+    def tearDown(self):
+        auth.verify_supabase_token = self._orig_verify
+        for g in self._gates:
+            g.stop()
+
+    def test_get_serves_the_overrides_nulls_when_unset(self):
+        with patch.object(lroutes.engine, "get_user_copy",
+                          return_value={"mantra_title": None,
+                                        "mantra_question": None,
+                                        "distraction_question": None}):
+            resp = self.client.get("/v2/life/copy",
+                                   headers={"Authorization": "Bearer t"})
+        self.assertEqual(resp.status_code, 200)
+        self.assertIsNone(resp.get_json()["copy"]["mantra_title"])
+
+    def test_put_saves_the_users_own_wording(self):
+        with patch.object(lroutes.engine, "upsert_user_copy",
+                          return_value={"mantra_title": "MY LINE",
+                                        "mantra_question": None,
+                                        "distraction_question": None}) as up:
+            resp = self.client.put("/v2/life/copy",
+                                   headers={"Authorization": "Bearer t"},
+                                   json={"mantra_title": "MY LINE"})
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.get_json()["copy"]["mantra_title"], "MY LINE")
+        self.assertEqual(up.call_args[0][1], {"mantra_title": "MY LINE"})
+
+    def test_put_with_nothing_recognisable_is_a_400(self):
+        resp = self.client.put("/v2/life/copy",
+                               headers={"Authorization": "Bearer t"},
+                               json={"one_thing": "smuggled"})
+        self.assertEqual(resp.status_code, 400)
 
 
 if __name__ == "__main__":

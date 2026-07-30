@@ -9,11 +9,16 @@ Two structural decisions from the founder, enforced here:
 
   * `body` is PLAIN TEXT with blank-line-separated paragraphs. It is NOT
     HTML and NOT Markdown; the FE splits on /\\n\\s*\\n/ and renders <p>
-    elements, never dangerouslySetInnerHTML. Because no HTML is stored there
-    is no XSS surface to sanitize — but ``normalize_body`` still strips the
-    control characters that would corrupt the paragraph split, and if the
-    body format ever changes to allow markup THIS is the function that has
-    to start sanitizing.
+    elements, never dangerouslySetInnerHTML. One founder-approved extension
+    (2026-07-30): the FE additionally recognises two line-level media tokens,
+    ``[image: url | alt]`` and ``[file: url | label]`` — see the BODY TOKEN
+    SPEC in the FE's services/api/journal.ts. The backend deliberately keeps
+    treating the body as opaque plain text (tokens are just lines); the FE
+    parser allowlists token URLs to http(s)/site-relative before rendering.
+    Because no HTML is stored there is no XSS surface to sanitize — but
+    ``normalize_body`` still strips the control characters that would corrupt
+    the paragraph split, and if the body format ever changes to allow markup
+    THIS is the function that has to start sanitizing.
   * `published_at` is the author-supplied DISPLAY DATE; `status` is
     visibility. They are independent (a published post may be backdated) and
     neither is ever derived. `read_time_min` is likewise author-supplied —
@@ -42,11 +47,12 @@ logger = logging.getLogger(__name__)
 
 
 # Allowed values — kept in lockstep with the CHECK constraints in
-# migrations/add_journal_posts.sql. The FE renders the category chips from
-# this same list (All + these six).
+# migrations/add_journal_posts.sql (category widened by
+# migrations/add_journal_science_category.sql). The FE renders the category
+# chips from this same list (All + these seven).
 CATEGORIES = (
     "physiology", "physical_exercise", "philosophy",
-    "voice", "language", "others",
+    "voice", "language", "science", "others",
 )
 COVER_KINDS = ("image", "video", "audio")
 STATUSES = ("draft", "published")
