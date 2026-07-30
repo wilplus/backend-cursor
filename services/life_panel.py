@@ -54,6 +54,8 @@ __all__ = [
     "PHRASE_REPEAT_WINDOW_DAYS",
     "pair_conflicts", "route_advisor", "ADVISOR_PRAYER_LINE",
     "parse_due_label", "next_order_key",
+    "SETUP_SECTIONS", "PREFILL_SOURCE", "normalize_setup_section",
+    "section_for_goal", "bucket_goals_by_section", "merge_prefill_answers",
     "serialize_note", "serialize_case", "serialize_item",
     "serialize_proposal", "serialize_day", "serialize_week",
     "serialize_strategy", "application_rows_for",
@@ -865,6 +867,243 @@ def parse_due_label(label: Optional[str], *,
         return date.fromisoformat(text[:10]).isoformat()
     except ValueError:
         return None
+
+
+# ═════════════════════════════════════════════════════════════════════════
+# The setup prefill (founder 2026-07-30) — "upload it once, the steps fill"
+# ═════════════════════════════════════════════════════════════════════════
+# Item 9 shipped the upload and a flat review list. This is the rest of the
+# founder's sentence: the wizard walks a goal step per horizon, and a strategy
+# document the user already wrote answers most of them — so the answers are
+# BUCKETED INTO THE STEPS instead of arriving as one undifferentiated list the
+# user has to re-sort by hand.
+#
+# What lands in a step is the user's OWN sentence. The extraction is a
+# transcriber (engine-side prompt: "never invent, never complete"), and every
+# drafted row is stamped ``source: document`` so the FE can keep the model's
+# output visibly the model's until the user keeps it (N5). Nothing here writes
+# a life_items row — bucketing is a read.
+#
+# SETUP_SECTIONS is deliberately the SAME tuple as STRATEGY_HORIZONS rather
+# than a parallel list: the step you answer and the document it produces are
+# the same horizon, and two lists drift the first time one of them gains an
+# entry.
+SETUP_SECTIONS: tuple[str, ...] = STRATEGY_HORIZONS
+
+# Stamped on every prefilled row. The FE branches on it to badge the row as
+# drafted-from-your-document; N5 is why it is not optional.
+PREFILL_SOURCE = "document"
+
+# Free text → section, matched on the folded form so "5-year", "5 years" and
+# "5_lat" all land. Code-switched for the same reason the stoplist is: the
+# corpus (and the documents that come out of it) switch Polish/English
+# mid-page.
+_SECTION_ALIASES: dict[str, str] = {
+    "day": "daily", "everyday": "daily", "every_day": "daily",
+    "today": "daily", "dzienny": "daily", "dziennie": "daily",
+    "codziennie": "daily", "codzienny": "daily",
+    "week": "weekly", "every_week": "weekly", "tydzien": "weekly",
+    "tygodniowy": "weekly", "tygodniowo": "weekly", "co_tydzien": "weekly",
+    "month": "monthly", "miesiac": "monthly", "miesieczny": "monthly",
+    "miesiecznie": "monthly",
+    "quarter": "quarterly", "kwartal": "quarterly", "kwartalny": "quarterly",
+    "kwartalnie": "quarterly",
+    "year": "yearly", "annual": "yearly", "annually": "yearly",
+    "rok": "yearly", "roczny": "yearly", "rocznie": "yearly",
+    "5_year": "five_year", "5_years": "five_year", "5y": "five_year",
+    "five_years": "five_year", "5_lat": "five_year", "piec_lat": "five_year",
+    "10_year": "ten_year", "10_years": "ten_year", "10y": "ten_year",
+    "ten_years": "ten_year", "10_lat": "ten_year",
+    "dziesiec_lat": "ten_year",
+    "20_year": "twenty_year", "20_years": "twenty_year", "20y": "twenty_year",
+    "twenty_years": "twenty_year", "20_lat": "twenty_year",
+    "dwadziescia_lat": "twenty_year",
+}
+
+# The item horizon a goal was given → the step it belongs to. The FALLBACK,
+# used only when the document did not name a section itself.
+#
+# `now` IS DELIBERATELY ABSENT, and that is the whole judgement call in this
+# table: a "[NOW]" goal is a standing intention, and whether it belongs to the
+# daily step or the weekly one is exactly the thing the document did not say.
+# An unplaced goal is shown in its own list and placed in one tap; a
+# mis-bucketed one is a 20-year ambition sitting in the weekly step, which
+# reads as a system that did not understand the document — and the user
+# re-types the whole form by hand rather than trust the rest of it.
+_HORIZON_SECTIONS: dict[str, str] = {
+    "month": "monthly",
+    "quarter": "quarterly",
+    "year": "yearly",
+    "five_year": "five_year",
+    "ten_year": "ten_year",
+    "twenty_year": "twenty_year",
+}
+
+# The key a section's goals hang off when the wizard's slot has to be created
+# from nothing. Only used for a section that has no saved answer at all.
+_SECTION_GOALS_KEY = "goals"
+
+# Buckets that are not horizons: the wizard collects these as flat lists.
+_FLAT_PREFILL_KEYS: tuple[str, ...] = ("habits", "distractions")
+
+
+def normalize_setup_section(value: Any) -> Optional[str]:
+    """One free-form section string → a SETUP_SECTIONS key, or None.
+
+    None means "the document did not say which step", not "drop it" — see
+    ``section_for_goal``."""
+    key = _fold(value if isinstance(value, str) else "")
+    if not key:
+        return None
+    if key in SETUP_SECTIONS:
+        return key
+    return _SECTION_ALIASES.get(key)
+
+
+def section_for_goal(goal: Any) -> Optional[str]:
+    """Which wizard step a drafted goal belongs to, or None.
+
+    Two signals, in order: what the DOCUMENT said (``section`` / ``_section``,
+    normalized), then the item horizon the goal was given. Never the due label
+    — "[NOW]" and "2035" are the user's own notation for a date, not for a
+    step, and reading a step out of a year is the guess this function exists
+    to refuse."""
+    if not isinstance(goal, dict):
+        return None
+    stated = goal.get("section")
+    if stated is None:
+        stated = goal.get("_section")
+    section = normalize_setup_section(stated)
+    if section:
+        return section
+    horizon = str(goal.get("horizon") or "").strip().lower()
+    return _HORIZON_SECTIONS.get(horizon)
+
+
+def bucket_goals_by_section(goals: Iterable[dict]) -> dict[str, Any]:
+    """``{"sections": {<every section>: [...]}, "unplaced": [...]}``.
+
+    EVERY section key is present even when empty, so the FE renders a stable
+    eight-step shape and never has to distinguish "no goals for this step"
+    from "the backend forgot this step".
+
+    ``unplaced`` is the honest overflow: goals the document did not place and
+    the horizon could not either. It is returned, never dropped and never
+    dumped into a step — a goal the user wrote and cannot find afterwards is
+    the one failure this feature cannot afford."""
+    sections: dict[str, list[dict]] = {s: [] for s in SETUP_SECTIONS}
+    unplaced: list[dict] = []
+    for goal in (goals or []):
+        if not isinstance(goal, dict):
+            continue
+        section = section_for_goal(goal)
+        if section:
+            sections[section].append(goal)
+        else:
+            unplaced.append(goal)
+    return {"sections": sections, "unplaced": unplaced}
+
+
+def _entry_title(entry: Any) -> str:
+    """The title of one answer entry, whichever shape the wizard saved it in.
+
+    The saved answers are FE-owned form state, so a step's goal may be a bare
+    string or an object under any of the usual keys. Reading all of them is
+    what makes the de-duplication below actually de-duplicate."""
+    if isinstance(entry, str):
+        return entry.strip()
+    if isinstance(entry, dict):
+        for key in ("title", "text", "goal", "name", "body"):
+            value = entry.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+    return ""
+
+
+def merge_prefill_answers(existing: Optional[dict],
+                          prefill: dict) -> tuple[dict, dict]:
+    """``(answers, report)`` — the drafted rows folded into saved setup
+    answers, NON-DESTRUCTIVELY.
+
+    Three rules, all of them about not stepping on the user:
+
+      * nothing already answered is replaced. A drafted goal is APPENDED to a
+        step, and a step whose saved value is a shape this cannot append to
+        (a string, a number) is left exactly as it is and named in
+        ``report["skipped"]`` — a prefill that silently overwrites the two
+        goals someone typed by hand is worse than no prefill at all.
+      * a goal whose title is already in the step is not added twice, so
+        re-running the prefill (or uploading a second copy of the same
+        document) converges instead of accumulating.
+      * keys this does not know about — ``_step`` above all — are carried
+        through untouched. Losing ``_step`` would drop the user back at the
+        first screen, which is precisely the interruption save-and-resume
+        exists to prevent.
+    """
+    answers = dict(existing or {})
+    report: dict[str, Any] = {"added": {}, "skipped": []}
+
+    buckets: list[tuple[str, list, Optional[str]]] = [
+        (section, rows, _SECTION_GOALS_KEY)
+        for section, rows in ((prefill or {}).get("sections") or {}).items()
+        if section in SETUP_SECTIONS
+    ]
+    for key in _FLAT_PREFILL_KEYS:
+        # Its own name, so a dict-shaped slot reads `{"habits": [...]}` rather
+        # than a list of habits filed under "goals".
+        buckets.append((key, (prefill or {}).get(key) or [], key))
+
+    for key, rows, inner_key in buckets:
+        drafted = [r for r in (rows or []) if _entry_title(r)]
+        if not drafted:
+            continue
+
+        slot = answers.get(key)
+        current: list
+        container: Optional[dict]
+        if slot is None:
+            current, container = [], None
+        elif isinstance(slot, list):
+            current, container = list(slot), None
+            inner_key = None            # the wizard stores this step as a list
+        elif isinstance(slot, dict):
+            container = slot
+            # Append to the list the wizard is ALREADY using, whatever it
+            # called it; only invent the key when the slot holds no list at
+            # all. Otherwise a step saved as {"items": [...]} would sprout a
+            # second, parallel list and the user would see their own two goals
+            # vanish under the drafted ones.
+            existing_key = next(
+                (k for k in (inner_key, _SECTION_GOALS_KEY, "items", "list")
+                 if k and isinstance(slot.get(k), list)), None)
+            inner_key = existing_key or inner_key or _SECTION_GOALS_KEY
+            current = list(slot.get(inner_key) or []) if existing_key else []
+            if not existing_key and slot.get(inner_key) is not None:
+                report["skipped"].append(key)
+                continue
+        else:
+            report["skipped"].append(key)
+            continue
+
+        seen = {_fold(_entry_title(e)) for e in current if _entry_title(e)}
+        added = 0
+        for row in drafted:
+            folded = _fold(_entry_title(row))
+            if not folded or folded in seen:
+                continue
+            seen.add(folded)
+            current.append(row)
+            added += 1
+        if not added:
+            continue
+
+        if inner_key:
+            answers[key] = {**(container or {}), inner_key: current}
+        else:
+            answers[key] = current
+        report["added"][key] = added
+
+    return answers, report
 
 
 # ═════════════════════════════════════════════════════════════════════════

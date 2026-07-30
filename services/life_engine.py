@@ -648,7 +648,7 @@ def generate_documents(user_id: str, answers: dict) -> dict[str, str]:
     return out
 
 
-_DOC_DRAFT_SYSTEM = """You read ONE strategy document a user uploaded and \
+_DOC_DRAFT_SYSTEM = f"""You read ONE strategy document a user uploaded and \
 EXTRACT what THEY EXPLICITLY WROTE. You are a transcriber, not a coach: you \
 never invent, never complete, and never add an ambition they did not state. \
 If the document states nothing for a list, return it empty.
@@ -658,7 +658,11 @@ Extract three lists:
 (e.g. "[NOW]", "[Aug]", "[Jul '27]", "2035") into due_label. horizon is one \
 of: now, month, quarter, year, five_year, ten_year, twenty_year — or "" when \
 the document does not say. bet is one of: life, company, dream — or "" when \
-the document does not tie the goal to a bet.
+the document does not tie the goal to a bet. section is the PLANNING HORIZON \
+THE DOCUMENT FILES THE GOAL UNDER — one of: \
+{', '.join(lp.SETUP_SECTIONS)} — taken from the heading, list or timeframe it \
+sits under. Leave section "" when the document does not file it under one; \
+NEVER infer a section from how ambitious the goal sounds.
  2. habits — recurring practices the document names.
  3. distractions — each with the ENVIRONMENTAL response the document pairs \
 it with, if one is written; "" otherwise.
@@ -666,9 +670,10 @@ it with, if one is written; "" otherwise.
 Keep the user's language. Do not translate.
 
 Return STRICT JSON:
-{"goals": [{"title": "", "horizon": "", "due_label": "", "bet": ""}],
- "habits": [{"title": ""}],
- "distractions": [{"title": "", "response": ""}]}"""
+{{"goals": [{{"title": "", "section": "", "horizon": "", "due_label": "", \
+"bet": ""}}],
+ "habits": [{{"title": ""}}],
+ "distractions": [{{"title": "", "response": ""}}]}}"""
 
 SPEC_LIFE_DOC_DRAFT = LLMSpec(
     model=STRONG_MODEL,
@@ -680,16 +685,13 @@ SPEC_LIFE_DOC_DRAFT = LLMSpec(
 )
 
 
-def draft_items_from_document(user_id: str, text: str) -> list[dict]:
-    """Item 9 — DRAFT bets/goals/habits/distractions from an uploaded
-    strategy document. Returns planned rows only; WRITES NOTHING.
+def _plan_document_items(user_id: str, text: str) -> tuple[list[dict], bool]:
+    """``(planned rows, the model answered)`` for one uploaded document.
 
-    Extraction (model, closed shape) feeds ``life_import.plan_strategy`` so
-    the drafted rows take exactly the shape the importer would give them —
-    including the three bets seeded at their LOCKED rank (L-2a), never taken
-    from the document. The route returns these as checkable rows; only what
-    the user ticks is ever created (N5), and that happens in a separate,
-    explicit call."""
+    ONE extraction, shared by the flat review list and the wizard prefill —
+    they are two renderings of the same reading, and a second prompt would be
+    a second place for the fidelity to drift (and a second call to pay for
+    when a client wants both)."""
     parsed = _complete(
         SPEC_LIFE_DOC_DRAFT,
         system=_DOC_DRAFT_SYSTEM,
@@ -702,11 +704,97 @@ def draft_items_from_document(user_id: str, text: str) -> list[dict]:
         "habits": parsed.get("habits") or [],
         "distractions": parsed.get("distractions") or [],
     })
-    items = plan.get("items") or []
+    return (plan.get("items") or []), bool(parsed)
+
+
+def draft_items_from_document(user_id: str, text: str) -> list[dict]:
+    """Item 9 — DRAFT bets/goals/habits/distractions from an uploaded
+    strategy document. Returns planned rows only; WRITES NOTHING.
+
+    Extraction (model, closed shape) feeds ``life_import.plan_strategy`` so
+    the drafted rows take exactly the shape the importer would give them —
+    including the three bets seeded at their LOCKED rank (L-2a), never taken
+    from the document. The route returns these as checkable rows; only what
+    the user ticks is ever created (N5), and that happens in a separate,
+    explicit call."""
+    items, answered = _plan_document_items(user_id, text)
     _log_derivation("doc_draft", user_id=user_id,
-                    outcome="ok" if parsed else "no_derivation",
+                    outcome="ok" if answered else "no_derivation",
                     drafted=len(items))
     return items
+
+
+def _prefill_row(item: dict, *, section: Optional[str] = None) -> dict:
+    """One planned row → one row a wizard step can render AND tick.
+
+    Same field names ``/setup/apply-proposed`` already accepts
+    (``sanitize_confirmed_item``), so a step's rows can be sent straight back
+    without the FE re-shaping them — and ``external_id`` rides along so a
+    double-submit updates rather than duplicates.
+
+    ``source`` and ``confirmed`` are the N5 pair: a prefilled row is the
+    MODEL'S until the user keeps it, and a payload that did not say so would
+    render as though the user had already written it."""
+    return {
+        "kind": item.get("kind") or "goal",
+        "title": item.get("title") or "",
+        "body": item.get("body") or "",
+        "horizon": item.get("horizon"),
+        "due_label": item.get("due_label"),
+        "due_at": item.get("due_at"),
+        "bet": item.get("collection"),
+        "section": section,
+        "external_id": item.get("external_id"),
+        "order_key": float(item.get("order_key") or 0.0),
+        "source": lp.PREFILL_SOURCE,
+        "confirmed": False,
+    }
+
+
+def prefill_setup_from_document(user_id: str, text: str) -> dict:
+    """The uploaded document, BUCKETED INTO THE WIZARD'S STEPS. WRITES
+    NOTHING — saving is the route's decision, and creating life_items rows is
+    still only ever ``/setup/apply-proposed``.
+
+    The founder's ask, 2026-07-30: "like a CV you upload and all the forms are
+    filled". Item 9 already reads the document; this is the part that puts
+    each goal in the step it belongs to instead of handing back one list to
+    re-sort by hand.
+
+    Bucketing is pure and lives in ``life_panel`` (``section_for_goal``):
+    what the document SAID first, the item horizon as fallback, and anything
+    it could not place goes to ``unplaced`` rather than into a step it might
+    not belong to."""
+    items, answered = _plan_document_items(user_id, text)
+    goals = [i for i in items if i.get("kind") == "goal"]
+    bucketed = lp.bucket_goals_by_section(goals)
+    sections = {
+        section: [_prefill_row(g, section=section) for g in rows]
+        for section, rows in (bucketed["sections"] or {}).items()
+    }
+    unplaced = [_prefill_row(g) for g in bucketed["unplaced"]]
+    out = {
+        "sections": sections,
+        "unplaced": unplaced,
+        "habits": [_prefill_row(i) for i in items
+                   if i.get("kind") == "habit"],
+        "distractions": [_prefill_row(i) for i in items
+                         if i.get("kind") == "distraction"],
+        # Seeded from lp.BETS at their locked rank (L-2a) by plan_strategy —
+        # the document can word a bet, it can never reorder them.
+        "bets": [_prefill_row(i) for i in items if i.get("kind") == "bet"],
+    }
+    out["counts"] = {
+        "goals": len(goals),
+        "placed": len(goals) - len(unplaced),
+        "unplaced": len(unplaced),
+        "habits": len(out["habits"]),
+        "distractions": len(out["distractions"]),
+    }
+    _log_derivation("doc_prefill", user_id=user_id,
+                    outcome="ok" if answered else "no_derivation",
+                    **out["counts"])
+    return out
 
 
 def complete_setup_and_generate(user_id: str) -> dict:

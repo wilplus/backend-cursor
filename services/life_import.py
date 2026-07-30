@@ -505,6 +505,12 @@ def plan_strategy(user_id: str, payload: dict) -> dict:
             "due_at": lp.parse_due_label(label),
             "collection": _text(raw.get("bet")) or None,
             "order_key": float(index + 1) * 1000.0,
+            # Which SETUP STEP the goal fills, when the source said so —
+            # transport only. The leading underscore is the convention
+            # apply_plan already strips before insert, and it is the right
+            # shape here: life_items has no section column and does not want
+            # one. A section is a fact about the wizard, not about the goal.
+            "_section": lp.normalize_setup_section(raw.get("section")),
         })
 
     for kind, key in (("habit", "habits"), ("distraction", "distractions")):

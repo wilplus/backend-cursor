@@ -679,6 +679,20 @@ class ImporterTests(unittest.TestCase):
         bets = [i for i in items if i["kind"] == "bet"]
         self.assertEqual([b["order_key"] for b in bets], [1.0, 2.0, 3.0])
 
+    def test_a_goals_section_rides_as_transport_and_never_reaches_a_column(self):
+        # `_section` is which WIZARD STEP the goal fills. life_items has no
+        # such column, and the underscore is what keeps apply_plan from
+        # sending it to one.
+        items = importer.plan_strategy(USER, {"goals": [
+            {"title": "Three deep-work blocks", "section": "Weekly"},
+            {"title": "Ship the panel", "horizon": "quarter"},
+        ]})["items"]
+        goals = [i for i in items if i["kind"] == "goal"]
+        self.assertEqual([g["_section"] for g in goals], ["weekly", None])
+        payload = {k: v for k, v in goals[0].items() if not k.startswith("_")}
+        self.assertNotIn("_section", payload)
+        self.assertNotIn("section", payload)
+
     def test_dry_run_is_the_default(self):
         # The destructive direction should require a word, not the absence of
         # one.
@@ -2000,6 +2014,118 @@ class ConfirmedItemTests(unittest.TestCase):
             {"kind": "bet", "title": "The Fourth Bet"}))
 
 
+class SetupPrefillBucketingTests(unittest.TestCase):
+    """"Upload it once and the steps fill" (founder 2026-07-30) — the pure
+    half: which wizard step a drafted goal belongs to, and what happens to the
+    ones the document did not place."""
+
+    def test_the_section_the_document_stated_wins(self):
+        self.assertEqual(
+            lp.section_for_goal({"section": "weekly", "horizon": "year"}),
+            "weekly")
+
+    def test_free_form_and_code_switched_section_names_normalize(self):
+        for raw, expected in (("Weekly", "weekly"), ("week", "weekly"),
+                              ("tygodniowy", "weekly"), ("5 years", "five_year"),
+                              ("5-year", "five_year"), ("10y", "ten_year"),
+                              ("20 lat", "twenty_year"), ("Rok", "yearly"),
+                              ("codziennie", "daily")):
+            self.assertEqual(lp.normalize_setup_section(raw), expected, raw)
+        for junk in ("", None, "someday", "Section IV", 7):
+            self.assertIsNone(lp.normalize_setup_section(junk), junk)
+
+    def test_the_item_horizon_is_the_fallback(self):
+        self.assertEqual(lp.section_for_goal({"horizon": "quarter"}),
+                         "quarterly")
+        self.assertEqual(lp.section_for_goal({"_section": "monthly"}),
+                         "monthly")
+
+    def test_a_now_goal_is_unplaced_not_guessed_into_a_step(self):
+        # "[NOW]" is a standing intention; whether that is the daily step or
+        # the weekly one is exactly what the document did not say.
+        self.assertIsNone(lp.section_for_goal({"horizon": "now"}))
+        self.assertIsNone(lp.section_for_goal({"due_label": "2035"}))
+
+    def test_every_section_is_present_and_the_unplaced_survive(self):
+        out = lp.bucket_goals_by_section([
+            {"title": "Ship the panel", "section": "quarterly"},
+            {"title": "Pray first", "horizon": "now"},
+            "not a dict",
+        ])
+        self.assertEqual(set(out["sections"]), set(lp.SETUP_SECTIONS))
+        self.assertEqual([g["title"] for g in out["sections"]["quarterly"]],
+                         ["Ship the panel"])
+        self.assertEqual(out["sections"]["weekly"], [])
+        self.assertEqual([g["title"] for g in out["unplaced"]], ["Pray first"])
+
+    def test_setup_sections_are_the_strategy_horizons(self):
+        # One list, not two — the step you answer and the document it produces
+        # are the same horizon.
+        self.assertEqual(lp.SETUP_SECTIONS, lp.STRATEGY_HORIZONS)
+
+
+class SetupPrefillMergeTests(unittest.TestCase):
+    """The merge into saved answers. Nothing the user typed is ever
+    replaced — that is the whole contract."""
+
+    def _prefill(self, **sections):
+        base = {s: [] for s in lp.SETUP_SECTIONS}
+        for key, rows in sections.items():
+            base[key] = rows
+        return {"sections": base}
+
+    def test_an_empty_step_is_filled_and_step_state_survives(self):
+        answers, report = lp.merge_prefill_answers(
+            {"_step": 4, "anchor": "who I am becoming"},
+            self._prefill(weekly=[{"title": "Three deep-work blocks"}]))
+        self.assertEqual(answers["_step"], 4)
+        self.assertEqual(answers["anchor"], "who I am becoming")
+        self.assertEqual(
+            [g["title"] for g in answers["weekly"]["goals"]],
+            ["Three deep-work blocks"])
+        self.assertEqual(report["added"], {"weekly": 1})
+
+    def test_what_the_user_already_typed_is_kept_and_appended_to(self):
+        answers, report = lp.merge_prefill_answers(
+            {"weekly": {"goals": [{"title": "Call my father"}]}},
+            self._prefill(weekly=[{"title": "Three deep-work blocks"}]))
+        self.assertEqual([g["title"] for g in answers["weekly"]["goals"]],
+                         ["Call my father", "Three deep-work blocks"])
+        self.assertEqual(report["added"]["weekly"], 1)
+
+    def test_a_step_saved_as_a_bare_list_stays_a_bare_list(self):
+        answers, _ = lp.merge_prefill_answers(
+            {"daily": ["Pray first"]},
+            self._prefill(daily=[{"title": "Read 20 pages"}]))
+        self.assertIsInstance(answers["daily"], list)
+        self.assertEqual(len(answers["daily"]), 2)
+
+    def test_a_step_shaped_so_it_cannot_be_appended_to_is_left_alone(self):
+        answers, report = lp.merge_prefill_answers(
+            {"yearly": "one paragraph I wrote by hand"},
+            self._prefill(yearly=[{"title": "Ship v1"}]))
+        self.assertEqual(answers["yearly"],
+                         "one paragraph I wrote by hand")
+        self.assertIn("yearly", report["skipped"])
+
+    def test_the_same_goal_is_not_added_twice(self):
+        prefill = self._prefill(monthly=[{"title": "Ship the panel"}])
+        once, _ = lp.merge_prefill_answers({}, prefill)
+        twice, report = lp.merge_prefill_answers(once, prefill)
+        self.assertEqual(len(twice["monthly"]["goals"]), 1)
+        self.assertEqual(report["added"], {})
+
+    def test_habits_and_distractions_merge_as_flat_lists(self):
+        prefill = self._prefill()
+        prefill["habits"] = [{"title": "Pray first"}]
+        prefill["distractions"] = [{"title": "Phone in bed",
+                                    "body": "charger in the kitchen"}]
+        answers, report = lp.merge_prefill_answers({}, prefill)
+        self.assertEqual(len(answers["habits"]), 1)
+        self.assertEqual(len(answers["distractions"]), 1)
+        self.assertEqual(report["added"]["habits"], 1)
+
+
 class DocxExtractionTests(unittest.TestCase):
     """The setup upload accepts .docx; extraction is best-effort and never
     raises (services/context_document.py)."""
@@ -2149,6 +2275,90 @@ class SetupDocumentRouteTests(unittest.TestCase):
                 headers={"Authorization": "Bearer t"}, json=body)
             self.assertEqual(resp.status_code, 400, body)
 
+    # ── the wizard prefill (founder 2026-07-30) ──────────────────────────
+
+    _PREFILL = {
+        "sections": {s: ([{"title": "Three deep-work blocks",
+                           "source": lp.PREFILL_SOURCE, "confirmed": False}]
+                         if s == "weekly" else [])
+                     for s in lp.SETUP_SECTIONS},
+        "unplaced": [], "habits": [], "distractions": [], "bets": [],
+        "counts": {"goals": 1, "placed": 1, "unplaced": 0,
+                   "habits": 0, "distractions": 0},
+    }
+
+    def _prefill_patches(self):
+        doc = {"id": "d1", "status": "processed",
+               "extracted_text": "Weekly: three deep-work blocks",
+               "char_count": 30}
+        return (patch.object(lroutes.importer, "get_setup_document",
+                             return_value=doc),
+                patch.object(lroutes.engine, "prefill_setup_from_document",
+                             return_value=self._PREFILL))
+
+    def test_prefill_returns_the_steps_and_writes_nothing_by_default(self):
+        doc_p, engine_p = self._prefill_patches()
+        with doc_p, engine_p, \
+                patch.object(lroutes.store, "insert_item") as insert, \
+                patch.object(lroutes.store, "upsert_setup") as upsert:
+            resp = self.client.post(
+                "/v2/life/setup/prefill-from-document",
+                headers={"Authorization": "Bearer t"}, json={})
+        self.assertEqual(resp.status_code, 200)
+        body = resp.get_json()
+        self.assertFalse(body["written"])
+        self.assertFalse(body["saved"])
+        self.assertEqual(set(body["sections"]), set(lp.SETUP_SECTIONS))
+        self.assertEqual(len(body["sections"]["weekly"]), 1)
+        self.assertEqual(body["setup_sections"], list(lp.SETUP_SECTIONS))
+        insert.assert_not_called()
+        upsert.assert_not_called()
+
+    def test_prefill_with_save_merges_and_never_clobbers(self):
+        saved = {}
+        doc_p, engine_p = self._prefill_patches()
+        with doc_p, engine_p, \
+                patch.object(lroutes.store, "get_setup", return_value={
+                    "answers": {"_step": 4,
+                                "weekly": {"goals": [{"title": "Call my "
+                                                              "father"}]}}}), \
+                patch.object(lroutes.store, "upsert_setup",
+                             side_effect=lambda uid, answers: saved.update(
+                                 answers) or {"answers": answers}):
+            resp = self.client.post(
+                "/v2/life/setup/prefill-from-document",
+                headers={"Authorization": "Bearer t"},
+                json={"save": True})
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(resp.get_json()["saved"])
+        self.assertEqual(resp.get_json()["merged"]["added"], {"weekly": 1})
+        self.assertEqual(saved["_step"], 4)
+        self.assertEqual([g["title"] for g in saved["weekly"]["goals"]],
+                         ["Call my father", "Three deep-work blocks"])
+
+    def test_prefill_reports_a_failed_save_rather_than_claiming_it_saved(self):
+        doc_p, engine_p = self._prefill_patches()
+        with doc_p, engine_p, \
+                patch.object(lroutes.store, "get_setup", return_value={}), \
+                patch.object(lroutes.store, "upsert_setup",
+                             return_value=None):
+            resp = self.client.post(
+                "/v2/life/setup/prefill-from-document",
+                headers={"Authorization": "Bearer t"},
+                json={"save": True})
+        self.assertEqual(resp.status_code, 500)
+
+    def test_prefill_refuses_when_there_is_nothing_readable(self):
+        with patch.object(lroutes.importer, "get_setup_document",
+                          return_value={"id": "d1",
+                                        "status": "extraction_failed",
+                                        "extracted_text": ""}):
+            resp = self.client.post(
+                "/v2/life/setup/prefill-from-document",
+                headers={"Authorization": "Bearer t"}, json={})
+        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.get_json()["code"], "NO_DOCUMENT")
+
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
 class DocumentAwareGenerationTests(unittest.TestCase):
@@ -2199,6 +2409,60 @@ class DocumentAwareGenerationTests(unittest.TestCase):
         self.assertEqual(sorted(b["order_key"] for b in bets), [1.0, 2.0, 3.0])
         self.assertIn("goal", kinds)
         self.assertIn("habit", kinds)
+
+    def test_prefill_buckets_the_document_into_the_wizard_steps(self):
+        surfaces = []
+
+        def _complete(spec, *, system, user, surface, user_id):
+            surfaces.append(surface)
+            return {
+                "goals": [
+                    {"title": "Three deep-work blocks", "section": "Weekly"},
+                    {"title": "Ship the panel", "horizon": "quarter",
+                     "due_label": "[Dec]", "bet": "company"},
+                    {"title": "Pray first", "horizon": "now"},
+                ],
+                "habits": [{"title": "Read 20 pages"}],
+                "distractions": [],
+            }
+
+        with patch.object(lengine, "_complete", side_effect=_complete), \
+                patch.object(lengine.store, "insert_item") as insert:
+            out = lengine.prefill_setup_from_document(USER, "the doc text")
+
+        insert.assert_not_called()
+        # ONE extraction feeds both renderings — the flat review list and the
+        # bucketed steps are the same reading, not two prompts.
+        self.assertEqual(len(surfaces), 1)
+        self.assertEqual([g["title"] for g in out["sections"]["weekly"]],
+                         ["Three deep-work blocks"])
+        self.assertEqual([g["title"] for g in out["sections"]["quarterly"]],
+                         ["Ship the panel"])
+        self.assertEqual([g["title"] for g in out["unplaced"]], ["Pray first"])
+        self.assertEqual(out["counts"], {"goals": 3, "placed": 2,
+                                         "unplaced": 1, "habits": 1,
+                                         "distractions": 0})
+        self.assertEqual(len(out["bets"]), 3)
+
+    def test_a_prefilled_row_is_the_models_until_it_is_ticked(self):
+        with patch.object(lengine, "_complete", return_value={
+                "goals": [{"title": "Ship the panel", "section": "quarterly",
+                           "due_label": "[Dec]", "bet": "company"}],
+                "habits": [], "distractions": []}):
+            out = lengine.prefill_setup_from_document(USER, "the doc text")
+        row = out["sections"]["quarterly"][0]
+        # N5 — nothing arrives looking as though the user already accepted it.
+        self.assertEqual(row["source"], lp.PREFILL_SOURCE)
+        self.assertFalse(row["confirmed"])
+        # …and the row a step renders is the row apply-proposed takes back,
+        # so ticking one needs no re-shaping on the way out.
+        fields = importer.sanitize_confirmed_item(row)
+        self.assertEqual(fields["kind"], "goal")
+        self.assertEqual(fields["status"], "active")
+        self.assertEqual(fields["due_label"], "[Dec]")
+        self.assertEqual(fields["collection"], "company")
+        # `section` is wizard state, not a life_items column.
+        self.assertNotIn("section", fields)
 
 
 # ═════════════════════════════════════════════════════════════════════════

@@ -299,6 +299,11 @@ def life_setup_get():
         # answers exist: the founder can skip a horizon and come back to it,
         # so "the first unanswered one" is not the same as "where they were".
         "resume_step": answers.get("_step"),
+        # The horizon step vocabulary the document prefill buckets into, in
+        # order. Keys only — the step LABELS are product copy and stay the
+        # FE's. Served here so a client aligns with the server's list instead
+        # of keeping a second one that drifts.
+        "setup_sections": list(lp.SETUP_SECTIONS),
     }), 200
 
 
@@ -448,6 +453,71 @@ def life_setup_propose_from_document():
         "document": _serialize_setup_document(doc),
         "items": items,
         # Stated on the wire so no reader can mistake a draft for a write.
+        "written": False,
+    }), 200
+
+
+@life_bp.route("/v2/life/setup/prefill-from-document", methods=["POST"])
+@life_route()
+def life_setup_prefill_from_document():
+    """The same reading as /propose-from-document, BUCKETED INTO THE WIZARD'S
+    STEPS — "upload it once and the forms fill" (founder 2026-07-30).
+
+    ``{"document_id": null, "save": false}``. With ``save`` false (the
+    DEFAULT) this writes nothing at all: the FE fills its form state and the
+    user's own Next saves each step exactly as it does today. With ``save``
+    true the drafted rows are merged into the saved setup answers so the
+    prefill survives closing the wizard — merged NON-DESTRUCTIVELY
+    (``lp.merge_prefill_answers``), so a step the user already answered keeps
+    what they typed and the response NAMES any step that was left alone.
+
+    Still nothing in ``life_items``: creating rows remains
+    /setup/apply-proposed with exactly what the user ticked (N5). Every row
+    here carries ``source: "document"`` and ``confirmed: false`` so the FE can
+    keep the model's output visibly the model's.
+    """
+    body = _body()
+    document_id = body.get("document_id")
+    if document_id is not None and not isinstance(document_id, str):
+        return _invalid("document_id: must be an id string or null")
+    save = bool(body.get("save"))
+
+    doc = importer.get_setup_document(_uid(), (document_id or "").strip()
+                                      or None)
+    if not doc or doc.get("status") != "processed" \
+            or not (doc.get("extracted_text") or "").strip():
+        return _invalid("document: nothing readable to draft from",
+                        code="NO_DOCUMENT")
+
+    prefill = engine.prefill_setup_from_document(_uid(),
+                                                doc["extracted_text"])
+    merged: dict = {"added": {}, "skipped": []}
+    if save:
+        current = (store.get_setup(_uid()) or {}).get("answers") or {}
+        answers, merged = lp.merge_prefill_answers(current, prefill)
+        if not store.upsert_setup(_uid(), answers):
+            # The user asked for it to be saved. Returning the payload with a
+            # quiet saved:false would read as saved on a surface whose own
+            # copy says "You can close this and come back to it".
+            return jsonify({"code": "V2_ERROR",
+                            "error": "Could not save the prefilled answers"}), 500
+    return jsonify({
+        "document": _serialize_setup_document(doc),
+        "sections": prefill["sections"],
+        "unplaced": prefill["unplaced"],
+        "habits": prefill["habits"],
+        "distractions": prefill["distractions"],
+        "bets": prefill["bets"],
+        "counts": prefill["counts"],
+        # The step vocabulary, server-owned, in wizard order — so the FE maps
+        # its steps to these keys rather than hard-coding a second list that
+        # can drift. Keys only: the step LABELS are product copy and stay the
+        # FE's (founder sign-off).
+        "setup_sections": list(lp.SETUP_SECTIONS),
+        "saved": save,
+        "merged": merged,
+        # Stated on the wire, exactly like /propose-from-document: a prefill
+        # is never a life_items write.
         "written": False,
     }), 200
 
