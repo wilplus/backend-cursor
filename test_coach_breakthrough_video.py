@@ -76,8 +76,12 @@ class CoachBreakthroughVideoTests(unittest.TestCase):
     def test_happy_path_stores_and_persists_ref(self):
         resp, status = self._post("clip.mp4")
         self.assertEqual(status, 200)
-        key = f"coach-snippet-breakthrough/{SID}/{SNIP}.mp4"
-        self.assertEqual(self.stored["key"], key)
+        key = self.stored["key"]
+        # Subsystem V: …/<sid>/<snip>/<uuid>.mp4 — the uuid segment is what
+        # keeps a re-record from overwriting the prior take.
+        self.assertTrue(
+            key.startswith(f"coach-snippet-breakthrough/{SID}/{SNIP}/"), key)
+        self.assertTrue(key.endswith(".mp4"), key)
         self.assertEqual(self.stored["ref"], f"https://cdn/{key}")
         self.assertEqual(self.stored["by"], COACH)
         body = resp.get_json()
