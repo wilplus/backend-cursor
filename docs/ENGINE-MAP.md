@@ -31,7 +31,7 @@ transcription).
 | E7 | **Advice engines** | `delivery_stars`, `delivery_alignment` (congruence), `moment_suggestions` (emphasize/replace/structure), `say_it_stronger`, `prior_take_changes`, `auto_comment` (user branch), `user_patterns` | metrics + transcript (+ LLM) | stars, cards, rewrites, qualitative notes | user (qualitative only, AC-9) |
 | E8 | **Ideal text assembly** | `ideal_text_block` | E5's picks + coach corrections + approved suggestions | the one marker-carrying block, auto draft frozen in `auto_text` | coach edits it; user reads the verified version |
 | E9 | **The game** | `game_engine` | coach `challenge` labels (keys) + the user's other moments (decoys) | ≤10 blind rounds; every answer → a peer label | user (owner only) |
-| E10 | **Voice-confidence composite** | `voice_confidence` (branch `feat/voice-confidence-ranking`) | 7 Jiang & Pell cues vs own baseline | a −1…+1 spectrum score per piece, stamped, **ranking-inert until validated** (flag off) | nobody |
+| E10 | **Voice-confidence composite** | `voice_confidence` | 7 Jiang & Pell cues vs own baseline, **cue weights routed by speaker sex** (`user_settings.profile_sex`; cue 1 REVERSES direction, so the sex term is explicit and normalisation cannot stand in for it) | a −1…+1 spectrum score per piece, stamped with `sex`/`sex_source`, **ranking-inert until validated** (flag off) | nobody |
 
 ## 2. The learning corpora — what the system remembers, as of this wave
 
@@ -80,7 +80,10 @@ transcription).
 
 ## 5. Operational notes
 
-- ⚠️ Run `migrations/add_star_verdicts.sql` (the only migration this wave owes).
+- ⚠️ Run `migrations/add_star_verdicts.sql` (from the coach-learning wave).
+- ⚠️ Run `migrations/add_speaker_sex.sql` (E10's sex term). Until it is run,
+  `profile_sex` reads as "never asked" everywhere and E10 falls back to the
+  sex-blind v1 weights — un-improved, never broken.
 - The keep-flip guard has an accepted read-then-write race under truly
   concurrent coach PUTs (single-coach product; a DB constraint would close it).
 - `log_rlhf_auto_accept_events` (assignment lane) is imported but never

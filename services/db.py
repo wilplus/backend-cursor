@@ -7572,6 +7572,36 @@ class DatabaseService:
             )
             return True
 
+    def has_ideal_text_annotations(self, arc_uuid: Optional[str]) -> bool:
+        """Any ideal-text annotation rows for this arc yet?
+
+        The idempotency probe for the APPROVE-route capture hook: the shipped
+        FE's Verify button posts /ideal-text/approve (never /verify), and
+        approve has no re-approve guard — so its capture fires only when this
+        probe finds nothing. First approve captures; re-approves skip. The
+        /verify route keeps its own per-VERSION exactly-once and does not use
+        this probe. Probe failure → True (never double-write on
+        uncertainty)."""
+        if not arc_uuid:
+            return True
+        try:
+            rows = (
+                self.client.table("admin_annotation_events")
+                .select("id")
+                .eq("draft_id", str(arc_uuid))
+                .in_("field_name", ["ideal_text_sentence", "ideal_text_block"])
+                .limit(1)
+                .execute()
+                .data
+            ) or []
+            return bool(rows)
+        except Exception as e:
+            logger.warning(
+                "has_ideal_text_annotations: probe failed arc=%s: %s — "
+                "treating as captured", arc_uuid, e,
+            )
+            return True
+
     def _emit_publish_event_if_signal(
         self,
         *,
@@ -8767,6 +8797,35 @@ class DatabaseService:
             logger.error(f"update_snippet_metrics failed: {e}")
             return None
 
+    def update_snippet_metrics_blob(
+        self, snippet_id: str, metrics_json: dict,
+    ) -> bool:
+        """Replace ONLY the ``metrics`` JSONB on a snippet.
+
+        Deliberately narrow, and deliberately not update_snippet_metrics: that
+        one also writes the six denormalized acoustic columns, so a caller who
+        merely wants to re-stamp a derived field inside the blob would have to
+        echo wpm/fillers/pause_ms/dynamic_db/pitch_center/energy back and would
+        silently null any it got wrong. This is for re-stamping derived reads
+        (scripts/backfill_voice_confidence.py); the measured columns are the
+        recorder's to write, not a backfill's.
+
+        Best-effort: returns False on any failure rather than raising."""
+        if not snippet_id or not isinstance(metrics_json, dict):
+            return False
+        try:
+            result = (
+                self.client.table("charisma_snippets")
+                .update({"metrics": metrics_json})
+                .eq("id", snippet_id)
+                .execute()
+            )
+            return bool(getattr(result, "data", None))
+        except Exception as e:
+            logger.warning("update_snippet_metrics_blob failed sid=%s: %s",
+                           snippet_id, e)
+            return False
+
     def set_snippet_arousal(self, snippet_id: str, arousal_z: float) -> bool:
         """Capture the baseline-relative AROUSAL read on a snippet (founder
         2026-07-24, capture-first). A learning-loop signal only — it is never
@@ -9222,6 +9281,123 @@ class DatabaseService:
         except Exception as e:
             logger.error("delete_journal_community_post failed id=%s: %s",
                          item_id, e)
+            return False
+
+    # ── Generated journal covers (founder 2026-07-28) ─────────────────────
+    # Candidate cover images for a journal post. Same best-effort discipline
+    # as the helpers above: a missing table (migration pending) degrades to
+    # "no history" — the draw still works and still sets cover_image_url, the
+    # founder just loses the strip of previous attempts.
+    #
+    # CMS-only rows. No public route reads this table; the site sees only the
+    # promoted cover_image_url on journal_post.
+
+    _POST_IMAGE_COLUMNS = (
+        "id, journal_post_id, image_url, storage_key, alt_text, prompt, "
+        "revised_prompt, notes, parent_image_id, flags, model, size, "
+        "quality, created_at"
+    )
+
+    @staticmethod
+    def _is_missing_post_image_table(error: Exception) -> bool:
+        text = str(error).lower()
+        return "journal_post_image" in text and (
+            "does not exist" in text or "pgrst" in text
+            or "could not find the table" in text
+        )
+
+    def insert_journal_post_image(self, row: dict) -> Optional[dict]:
+        """Record one generated cover attempt. None on failure.
+
+        Insert, never upsert: every attempt is kept so "Regenerate" is
+        non-destructive and the founder can walk back to an earlier one.
+        """
+        if not row:
+            return None
+        try:
+            res = (
+                self.client.table("journal_post_image")
+                .insert(dict(row))
+                .execute()
+            )
+            rows = getattr(res, "data", None) or []
+            return rows[0] if rows else None
+        except Exception as e:
+            if self._is_missing_post_image_table(e):
+                logger.warning(
+                    "insert_journal_post_image: table missing (run "
+                    "migrations/add_journal_post_image.sql) post=%s",
+                    row.get("journal_post_id"))
+                return None
+            logger.error("insert_journal_post_image failed post=%s: %s",
+                         row.get("journal_post_id"), e)
+            return None
+
+    def list_journal_post_images(self, journal_post_id: str,
+                                 limit: int = 24) -> list:
+        """This post's cover attempts, newest first. []."""
+        if not journal_post_id:
+            return []
+        try:
+            res = (
+                self.client.table("journal_post_image")
+                .select(self._POST_IMAGE_COLUMNS)
+                .eq("journal_post_id", str(journal_post_id))
+                .order("created_at", desc=True)
+                .limit(max(1, int(limit or 24)))
+                .execute()
+            )
+            return getattr(res, "data", None) or []
+        except Exception as e:
+            if self._is_missing_post_image_table(e):
+                logger.warning(
+                    "list_journal_post_images: table missing (run "
+                    "migrations/add_journal_post_image.sql)")
+                return []
+            logger.warning("list_journal_post_images failed post=%s: %s",
+                           journal_post_id, e)
+            return []
+
+    def get_journal_post_image(self, image_id: str) -> Optional[dict]:
+        """One cover attempt by id, or None."""
+        if not image_id:
+            return None
+        try:
+            res = (
+                self.client.table("journal_post_image")
+                .select(self._POST_IMAGE_COLUMNS)
+                .eq("id", str(image_id))
+                .limit(1)
+                .execute()
+            )
+            rows = getattr(res, "data", None) or []
+            return rows[0] if rows else None
+        except Exception as e:
+            if self._is_missing_post_image_table(e):
+                logger.warning(
+                    "get_journal_post_image: table missing (run "
+                    "migrations/add_journal_post_image.sql)")
+                return None
+            logger.warning("get_journal_post_image failed id=%s: %s",
+                           image_id, e)
+            return None
+
+    def delete_journal_post_image(self, image_id: str) -> bool:
+        """Delete one cover attempt. True on success. Best-effort.
+
+        The R2 object is intentionally left in place: the post may still point
+        at this url (or a CDN may still be serving it), and an orphaned image
+        is cheaper than a broken cover.
+        """
+        if not image_id:
+            return False
+        try:
+            self.client.table("journal_post_image").delete() \
+                .eq("id", str(image_id)).execute()
+            return True
+        except Exception as e:
+            logger.error("delete_journal_post_image failed id=%s: %s",
+                         image_id, e)
             return False
 
     def skip_snippet(self, snippet_id: str, is_skipped: bool = True) -> Optional[dict]:
@@ -10712,24 +10888,38 @@ class DatabaseService:
                            arc_id, e)
             return {}
 
+    # Sentinel for set_moment_suggestion_final: "this field was not sent —
+    # leave the stored value alone". Distinct from None, which CLEARS.
+    _FINAL_UNSET = object()
+
     def set_moment_suggestion_final(
-        self, snippet_id: str, *, why_final: Optional[str],
-        replacement_text_final: Optional[str], edited_by: Optional[str],
+        self, snippet_id: str, *, why_final: Any = _FINAL_UNSET,
+        replacement_text_final: Any = _FINAL_UNSET,
+        edited_by: Optional[str] = None,
     ) -> bool:
         """The coach's corrected star wording (founder 2026-07-28) — plain
         update, re-editable until they're done (mirrors
         set_charisma_snippet_say_it_stronger_final). The machine's draft
         columns are NEVER touched: the (draft, final) pair is the correction
-        corpus. Passing None for a field CLEARS that correction (revert to
-        the draft). Best-effort, missing-column-safe; never raises."""
+        corpus.
+
+        Three values per field: a string SETS the correction, an explicit
+        None CLEARS it (revert to the draft — the full-state star-text PUT),
+        and omitting the argument PRESERVES whatever is stored (the §4b
+        verdict piggyback, whose wire only carries fields the coach actually
+        changed). Both omitted → no-op, True. Best-effort,
+        missing-column-safe; never raises."""
         if not snippet_id:
             return False
-        payload: dict = {
-            "why_final": why_final,
-            "replacement_text_final": replacement_text_final,
-            "text_final_updated_at":
-                datetime.now(timezone.utc).isoformat(),
-        }
+        payload: dict = {}
+        if why_final is not self._FINAL_UNSET:
+            payload["why_final"] = why_final
+        if replacement_text_final is not self._FINAL_UNSET:
+            payload["replacement_text_final"] = replacement_text_final
+        if not payload:
+            return True
+        payload["text_final_updated_at"] = \
+            datetime.now(timezone.utc).isoformat()
         if edited_by:
             payload["text_final_by"] = str(edited_by)
         try:
@@ -12206,6 +12396,210 @@ class DatabaseService:
             logger.warning("get_user_audit failed id=%s: %s", audit_id, e)
             return None
 
+    # ── Confidence labels (founder 2026-07-28) ─────────────────────────
+    # The corpus for the app's core function. SEPARATE from training_labels
+    # (challenge/threat is a different construct feeding a different model)
+    # and keyed per RATER so the future agreement aggregator has something to
+    # aggregate. See services/confidence_labels.py + add_confidence_labels.sql.
+
+    def upsert_confidence_label(
+        self, *, snippet_id: str, row: dict, rater_id: Optional[str] = None,
+        session_id: Optional[str] = None,
+    ) -> bool:
+        """Store (or replace) one rater's confidence call on one snippet.
+        ``row`` is the validated shape from validate_confidence_label — this
+        method does no validation of its own. Best-effort, missing-table-safe;
+        NEVER raises."""
+        if not snippet_id or not isinstance(row, dict):
+            return False
+        # FULL-STATE upsert: an omitted intensity CLEARS the stored one.
+        # The FE saves yes/no first and the grade second, so a coach who
+        # flips their answer sends {confident} alone — carrying the previous
+        # answer's intensity forward would leave a 5 attached to a "no"
+        # nobody graded. Stale training data is worse than absent training
+        # data, so absence wins.
+        payload: dict = {
+            "snippet_id": str(snippet_id),
+            "confident": bool(row.get("confident")),
+            "source": row.get("source") or "coach",
+            "intensity": row.get("intensity"),
+            "note": row.get("note"),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+        if rater_id:
+            payload["rater_id"] = str(rater_id)
+        if session_id:
+            payload["session_id"] = str(session_id)
+        try:
+            (self.client.table("confidence_labels")
+                 .upsert(payload,
+                         on_conflict="snippet_id,rater_id").execute())
+            return True
+        except Exception as e:
+            err_low = str(e).lower()
+            # 42P10: ON CONFLICT (snippet_id, rater_id) found no matching
+            # unique constraint. The arbiter cannot match an expression
+            # index, so a database still carrying the original
+            # COALESCE-index shape of the migration fails every save here.
+            if "42p10" in err_low or "on conflict" in err_low:
+                logger.warning(
+                    "upsert_confidence_label: unique constraint shape does "
+                    "not match ON CONFLICT — re-run the current "
+                    "migrations/add_confidence_labels.sql (it swaps the "
+                    "expression index for a plain composite constraint)",
+                )
+                return False
+            if "confidence_labels" in err_low and (
+                "does not exist" in err_low or "pgrst" in err_low
+                or "42p01" in err_low
+            ):
+                logger.warning(
+                    "upsert_confidence_label: table missing (run "
+                    "migrations/add_confidence_labels.sql)",
+                )
+                return False
+            logger.warning("upsert_confidence_label failed snip=%s: %s",
+                           snippet_id, e)
+            return False
+
+    def get_confidence_labels_by_snippet_ids(self, snippet_ids: list) -> dict:
+        """{snippet_id: [label rows]} for the given snippets. {} on anything
+        missing — the queue then renders every piece as unlabelled."""
+        ids = [str(s) for s in (snippet_ids or []) if s]
+        if not ids:
+            return {}
+        try:
+            rows = (self.client.table("confidence_labels")
+                    .select("*").in_("snippet_id", ids).execute().data) or []
+            out: dict = {}
+            for r in rows:
+                out.setdefault(str(r.get("snippet_id")), []).append(r)
+            return out
+        except Exception as e:
+            logger.warning("get_confidence_labels_by_snippet_ids failed: %s", e)
+            return {}
+
+    def count_labelled_snippets_by_session_ids(self, session_ids: list) -> dict:
+        """{session_id: how many DISTINCT snippets carry a confidence label}.
+
+        The corpus index's "how much is labelled" badge (FE 2026-07-30) —
+        one batched query for the whole list, where the FE's fallback costs
+        one queue request per row. DISTINCT snippets, not label rows: two
+        raters on one piece is still one labelled piece. {} on anything
+        missing — the badge then falls back to the FE's queue read."""
+        ids = [str(s) for s in (session_ids or []) if s]
+        if not ids:
+            return {}
+        try:
+            rows = (self.client.table("confidence_labels")
+                    .select("session_id, snippet_id")
+                    .in_("session_id", ids).execute().data) or []
+            seen: dict = {}
+            for r in rows:
+                sid, snip = r.get("session_id"), r.get("snippet_id")
+                if sid and snip:
+                    seen.setdefault(str(sid), set()).add(str(snip))
+            return {sid: len(snips) for sid, snips in seen.items()}
+        except Exception as e:
+            logger.warning(
+                "count_labelled_snippets_by_session_ids failed: %s", e)
+            return {}
+
+    def get_confidence_label_corpus(self, *, source: Optional[str] = None,
+                                    limit: int = 5000) -> list:
+        """The training-side pull, newest first. [] on anything missing."""
+        try:
+            q = self.client.table("confidence_labels").select("*")
+            if source:
+                q = q.eq("source", str(source))
+            return (q.order("created_at", desc=True)
+                     .limit(int(limit)).execute().data) or []
+        except Exception as e:
+            logger.warning("get_confidence_label_corpus failed: %s", e)
+            return []
+
+    def find_training_import_by_key(self, key: str) -> Optional[dict]:
+        """The SUCCESSFUL import already created under this idempotency key,
+        or None.
+
+        The retry-safety half of the timeout problem (FE 2026-07-28): the
+        proxy can time out on a request whose BE work then SUCCEEDS, so a
+        re-send must return the ORIGINAL import rather than mint a second —
+        a talk imported twice is labelled twice and trained on twice, and
+        nothing on screen would say so.
+
+        A FAILED import releases its key (FE §7, 2026-07-29). Deduping a
+        retry-after-failure would make the key a permanent lock: a
+        NO_CANDIDATES import is a tuning problem on MY side, the coach
+        changes nothing about the file, and once I retune they could never
+        get a fresh run — the key would keep handing back the failure. The
+        duplicate worth preventing is the retry after a SUCCESS the coach
+        could not see; a retry after a visible failure is exactly the retry
+        that should be allowed through.
+
+        Best-effort; None on any error (the caller then proceeds, which risks
+        the duplicate but never blocks a legitimate first import)."""
+        if not key:
+            return None
+        try:
+            rows = (
+                self.client.table("v2_sessions")
+                .select("id, arc_id, intake_context, analysis_state")
+                .eq("source", "training_import")
+                .eq("intake_context->>import_key", str(key))
+                .order("created_at", desc=True)
+                .limit(5)
+                .execute()
+                .data
+            ) or []
+            for r in rows:
+                if (r.get("analysis_state") or "ready") != "failed":
+                    return r
+            return None
+        except Exception as e:
+            logger.warning("find_training_import_by_key failed: %s", e)
+            return None
+
+    def list_training_import_sessions(self, *, user_id: Optional[str] = None,
+                                      limit: int = 200) -> list[dict]:
+        """The imported training takes, newest first (founder 2026-07-28).
+
+        Deliberately NOT v2_list_user_lab_sessions with a different filter:
+        that method is the per-speaker BASELINE reader, and imports must stay
+        out of it (a corpus of many voices would corrupt one speaker's norm —
+        see services/training_import.py). This is the coach's separate
+        window onto the corpus. Best-effort: [] on anything missing.
+
+        analysis_state comes from an older migration, so the select degrades
+        rather than betting the whole list on it: a DB without that column
+        would otherwise return an EMPTY corpus index, which reads exactly
+        like "nothing imported" — the failure this list exists to rule out."""
+        _cols_full = ("id, arc_id, take_index, intake_context, created_at, "
+                      "status, user_id, recording_1_id, analysis_state")
+        _cols_base = ("id, arc_id, take_index, intake_context, created_at, "
+                      "status, user_id, recording_1_id")
+        for _cols in (_cols_full, _cols_base):
+            try:
+                q = (
+                    self.client.table("v2_sessions")
+                    .select(_cols)
+                    .eq("source", "training_import")
+                )
+                if user_id:
+                    q = q.eq("user_id", str(user_id))
+                return (q.order("created_at", desc=True)
+                         .limit(int(limit)).execute().data) or []
+            except Exception as e:
+                if _cols is _cols_base:
+                    logger.warning(
+                        "list_training_import_sessions failed: %s", e)
+                    return []
+                logger.warning(
+                    "list_training_import_sessions: analysis_state missing "
+                    "(run migrations/add_analysis_state.sql) — retrying "
+                    "without it: %s", e)
+        return []
+
     def set_session_source(self, session_id: str, source: str) -> bool:
         """Stamp v2_sessions.source (foundation discriminator). The Lab
         handler marks its sessions 'audit_upload' so the history list +
@@ -12223,6 +12617,20 @@ class DatabaseService:
             return True
         except Exception as e:
             err_low = str(e).lower()
+            # An enum CHECK rejection is a DEPLOYMENT error, not a data one,
+            # and it cost a day of silent orphaned imports: 'training_import'
+            # was not in v2_sessions_source_check, every UPDATE 23514'd, and
+            # this method's quiet False was mistaken for "nothing to do".
+            # Name the fix in the log rather than making the next person
+            # reverse-engineer a missing row.
+            if "23514" in err_low or "check constraint" in err_low:
+                logger.error(
+                    "set_session_source: '%s' is not an allowed source value "
+                    "— the v2_sessions_source_check CHECK rejected it (run "
+                    "migrations/add_training_import_source.sql if this is a "
+                    "training import) sid=%s", source, session_id,
+                )
+                return False
             if "source" in err_low and "pgrst" in err_low:
                 return False
             logger.warning(
@@ -13652,6 +14060,80 @@ class DatabaseService:
                 return False
             logger.error(
                 "set_user_profile failed user=%s err=%s", user_id, e,
+            )
+            return False
+
+    # ── speaker sex — the voice-confidence weight router ────────────
+    #
+    # user_settings.profile_sex (migrations/add_speaker_sex.sql). Read and
+    # written on their OWN narrow queries rather than folded into
+    # get/set_user_profile, for two reasons: the record path wants this one
+    # value and nothing else on a hot code path, and a sex-only write must
+    # never clobber profile_domain / profile_goal.
+    #
+    # Both degrade to "no answer on file" (None / False) when the migration
+    # hasn't run — the composite then uses sex-blind weights, which is its
+    # shipped v1 behaviour, so a pre-migration env is merely un-improved,
+    # never broken.
+
+    def get_user_speaker_sex(self, user_id: str) -> Optional[str]:
+        """The user's self-declared sex: 'female' | 'male' |
+        'prefer_not_to_say' | None (never asked). None on any failure —
+        callers must not distinguish "no answer" from "lookup broke" by
+        guessing; services/voice_confidence.py handles that explicitly."""
+        if not user_id:
+            return None
+        try:
+            res = (
+                self.client.table("user_settings")
+                .select("profile_sex")
+                .eq("user_id", user_id)
+                .limit(1)
+                .execute()
+            )
+            if not res.data:
+                return None
+            return res.data[0].get("profile_sex")
+        except Exception as e:
+            err_low = str(e).lower()
+            if "profile_sex" in err_low or "pgrst204" in err_low:
+                logger.warning(
+                    "get_user_speaker_sex: column missing (run migrations/"
+                    "add_speaker_sex.sql) user=%s", user_id,
+                )
+                return None
+            logger.warning(
+                "get_user_speaker_sex failed user=%s err=%s", user_id, e,
+            )
+            return None
+
+    def set_user_speaker_sex(self, user_id: str, sex: Optional[str]) -> bool:
+        """PARTIAL upsert of user_settings.profile_sex — deliberately does not
+        carry profile_domain / profile_goal, so answering this question at
+        signup cannot wipe an intake that was filled in later (or earlier).
+        The route layer validates the enum; the DB CHECK is the final gate.
+        Returns False on any DB failure."""
+        if not user_id:
+            return False
+        from datetime import datetime, timezone
+        payload = {
+            "user_id": user_id,
+            "profile_sex": sex,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+        try:
+            self.client.table("user_settings").upsert(payload).execute()
+            return True
+        except Exception as e:
+            err_low = str(e).lower()
+            if "profile_sex" in err_low or "pgrst204" in err_low:
+                logger.warning(
+                    "set_user_speaker_sex: column missing (run migrations/"
+                    "add_speaker_sex.sql) user=%s", user_id,
+                )
+                return False
+            logger.error(
+                "set_user_speaker_sex failed user=%s err=%s", user_id, e,
             )
             return False
 

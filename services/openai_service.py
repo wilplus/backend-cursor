@@ -180,7 +180,7 @@ class OpenAIService:
         self._model_cache[purpose] = (now, model)
         return model
     
-    def transcribe_audio(self, audio_file, filename: str = "audio.webm", content_type: str | None = None, vocabulary: list | None = None):
+    def transcribe_audio(self, audio_file, filename: str = "audio.webm", content_type: str | None = None, vocabulary: list | None = None, language: str | None = None):
         """
         Transcribe audio using Whisper-1.
         Returns {text, duration, segments} — segments is the verbose_json
@@ -194,6 +194,20 @@ class OpenAIService:
                     domain-specific words (willab contract §3.3 — "Whisper
                     primed with domain_vocabulary"). None → the default
                     disfluent-only prompt.
+        language:   optional ISO-639-1 code ('pl', 'de', …). None → Whisper
+                    auto-detects, which is the live path's behaviour and is
+                    unchanged.
+
+        LANGUAGE + THE PROMPT (fix 2026-07-29, first non-English import):
+        the disfluency prompt below is ENGLISH, and Whisper follows its
+        prompt's language — an English prompt on Polish audio biases
+        auto-detection toward English and can yield an empty or garbage
+        transcript. So the prompt is only applied when the audio is English
+        or the language is unknown-but-assumed-English; for any other
+        declared language we pass the code and DROP the English prompt
+        (keeping only the domain vocabulary, which is language-neutral).
+        Losing filler-word priming on a non-English take is a far smaller
+        cost than losing the transcript.
         """
         # Dev mode mock response (COMMENTED OUT - using real OpenAI)
         # if not config.is_production:
@@ -241,12 +255,29 @@ class OpenAIService:
                 terms = [str(t).strip() for t in vocabulary if str(t).strip()][:40]
                 if terms:
                     prompt = prompt + " " + ", ".join(terms) + "."
+            _lang = (language or "").strip().lower() or None
             _create_kwargs = dict(
                 model="whisper-1",
                 file=(filename or "audio.bin", audio_data, ct),
                 response_format="verbose_json",
-                prompt=prompt,
             )
+            # See the LANGUAGE + THE PROMPT note in the docstring: an English
+            # prompt on non-English audio is worse than no prompt at all.
+            if _lang and not _lang.startswith("en"):
+                _create_kwargs["language"] = _lang
+                _vocab_only = ", ".join(
+                    [str(t).strip() for t in (vocabulary or [])
+                     if str(t).strip()][:40])
+                if _vocab_only:
+                    _create_kwargs["prompt"] = _vocab_only + "."
+                logger.info(
+                    "transcribe_audio: language=%s — English disfluency "
+                    "prompt dropped", _lang,
+                )
+            else:
+                if _lang:
+                    _create_kwargs["language"] = _lang
+                _create_kwargs["prompt"] = prompt
             try:
                 # Ask for BOTH granularities: segments (existing per-snippet
                 # transcript slicing) AND words (willab #6 — precise per-slide

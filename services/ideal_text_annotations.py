@@ -16,8 +16,14 @@ services/best_presentation.py) that never fires anywhere. The actual
 finalize act on the ideal text is VERIFY: db.verify_ideal_text snapshots
 verified_text/verified_version and — load-bearing here — returns 'already'
 when the version is unchanged, so emission inherits exactly-once-per-version
-without any bookkeeping of its own. (The legacy /ideal-text/approve route has
-no re-approve guard, which is exactly why it is NOT an emit point.)
+without any bookkeeping of its own.
+
+AMENDMENT (FE close-out 2026-07-28): the shipped FE's Verify button posts
+/ideal-text/approve and nothing in the FE calls /verify — so the approve
+route ALSO emits, guarded by db.has_ideal_text_annotations (first approve
+captures, re-approves skip; approve has no version bookkeeping to key on).
+The /verify hook stays, with its richer per-version exactly-once, for
+whenever the FE moves to it.
 
 WHAT A PAIR IS. Sentences are aligned with difflib over marker-stripped,
 whitespace/case-normalized forms. Contiguous changed runs emit as ONE pair

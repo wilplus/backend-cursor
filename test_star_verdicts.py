@@ -362,18 +362,41 @@ class TestBlindCoachFence(unittest.TestCase):
         rows = stars_with_verdicts([{
             "snippet_id": "s1", "kind": "replace",
             "why": "coach why", "why_draft": "machine why",
+            "why_final": "coach why",
             "replacement_text": "coach line",
             "replacement_text_draft": "machine line",
+            "replacement_text_final": "coach line",
         }], {})
         row = rows[0]
         self.assertEqual(row["why"], "coach why")
         self.assertEqual(row["why_draft"], "machine why")
         self.assertTrue(row["text_edited"])
+        # The FE's shipped names (§4/§4b): the chip boolean + the raw finals
+        # that seed the editor.
+        self.assertTrue(row["edited"])
+        self.assertEqual(row["why_final"], "coach why")
+        self.assertEqual(row["replacement_text_final"], "coach line")
         untouched = stars_with_verdicts([{
             "snippet_id": "s2", "kind": "emphasize",
             "why": "same", "why_draft": "same",
         }], {})[0]
         self.assertFalse(untouched["text_edited"])
+        self.assertFalse(untouched["edited"])
+        self.assertIsNone(untouched["why_final"])
+
+    def test_confirming_the_machine_wording_still_reads_edited(self):
+        """The FE's revert gesture stores the machine's wording AS the final
+        ("the coach confirms the machine's wording") — final == draft, but a
+        final EXISTS, so the chip must still show. This is why `edited` is
+        finals-exist, not content-differs."""
+        from services.star_verdicts import stars_with_verdicts
+        row = stars_with_verdicts([{
+            "snippet_id": "s1", "kind": "emphasize",
+            "why": "same words", "why_draft": "same words",
+            "why_final": "same words",
+        }], {})[0]
+        self.assertTrue(row["edited"])
+        self.assertFalse(row["text_edited"])   # content genuinely unchanged
 
     def test_verdict_row_carries_no_confidence_signal(self):
         from services.star_verdicts import validate_verdict

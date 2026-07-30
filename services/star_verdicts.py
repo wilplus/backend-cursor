@@ -213,6 +213,19 @@ def stars_with_verdicts(suggestions: Any, verdicts: Any,
             "replacement_text_draft": repl_draft,
             "text_edited": bool(s.get("why") != why_draft
                                 or s.get("replacement_text") != repl_draft),
+            # The FE's shipped names (HANDOFF-BE-2026-07-28 §4/§4b): `edited`
+            # drives the amber "Edited — add a verdict" chip, and the raw
+            # *_final columns seed the editor with the coach's own wording.
+            # `edited` = a FINAL EXISTS (the coach touched the text), NOT
+            # final-differs-from-draft: the FE's revert gesture sends the
+            # machine's wording AS the final ("the coach confirms the
+            # machine's wording"), and that confirmation must still wear the
+            # chip. text_edited (content actually differs) stays for the
+            # rev-2 consumers.
+            "edited": bool(s.get("why_final")
+                           or s.get("replacement_text_final")),
+            "why_final": s.get("why_final"),
+            "replacement_text_final": s.get("replacement_text_final"),
             "trigger": s.get("trigger"),
             "verdict": (existing or {}).get("verdict"),
             "corrected_device": (existing or {}).get("corrected_device"),
@@ -235,12 +248,61 @@ def stars_with_verdicts(suggestions: Any, verdicts: Any,
 _STAR_TEXT_KEYS = ("kind", "trigger", "why", "replacement_text")
 
 
-def should_emit_keep_text(new_verdict: Any, prior_verdict: Any) -> bool:
-    """True exactly when a verdict FLIPS to 'keep' — the once-per-star guard
-    for the keep→writer-corpus emission. A re-keep (keep→keep) must not
-    double-write; a flip back (wrong_kind→keep) legitimately re-endorses.
-    Pure."""
-    return new_verdict == "keep" and prior_verdict != "keep"
+def should_emit_keep_text(new_verdict: Any, prior_verdict: Any,
+                          *, text_updated: bool = False) -> bool:
+    """True when the keep→writer-corpus emission should fire. Pure.
+
+    Two triggers:
+      * a verdict FLIPPING to 'keep' — the once-per-star endorsement. A bare
+        re-keep (keep→keep) must not double-write; a flip back
+        (wrong_kind→keep) legitimately re-endorses.
+      * a re-keep that CARRIES a text correction (``text_updated``) — the
+        coach edited an already-kept star's wording, which is a genuinely new
+        (draft, final) pair the flip guard alone would drop. Bounded by the
+        FE's wire property that the *_final keys are only ever sent when the
+        coach actually changed the text (HANDOFF-BE-2026-07-28 §4b), so this
+        cannot spam on plain re-saves."""
+    if new_verdict != "keep":
+        return False
+    return prior_verdict != "keep" or bool(text_updated)
+
+
+def validate_star_text_updates(payload: Any) -> tuple[dict, Optional[str]]:
+    """The §4b piggyback: pull ``why_final`` / ``replacement_text_final`` off
+    a VERDICT body → ``(updates, None)`` or ``({}, error)``.
+
+    PARTIAL semantics — the opposite of validate_star_text's full-state PUT:
+    an absent (or null) key means "leave the stored correction alone", never
+    "clear it", because the FE only sends a key when the coach actually
+    changed that text (re-saving an untouched row sends neither). ``updates``
+    holds only the keys that arrived.
+
+    Every arriving string passes the same AC-9 qualitative guard as
+    generation, and a violation is a loud error for a 400 — the FE renders
+    it verbatim next to the row, and only edited rows can ever hit it
+    (unedited bodies are byte-identical to the pre-§4b wire). Pure."""
+    if not isinstance(payload, dict):
+        return {}, None
+
+    from services.say_it_stronger import _guard_copy
+
+    updates: dict = {}
+    for body_key, column in (("why_final", "why_final"),
+                             ("replacement_text_final",
+                              "replacement_text_final")):
+        if body_key not in payload or payload.get(body_key) is None:
+            continue
+        v = payload.get(body_key)
+        if not isinstance(v, str) or not v.strip():
+            return {}, f"{body_key}: must be a non-empty string when present"
+        guarded = _guard_copy(v)
+        if guarded is None:
+            return {}, (
+                f"{body_key}: rejected by the qualitative guard — "
+                "user-facing coaching copy carries no digits and none of "
+                "the retired construct vocabulary; rephrase and retry")
+        updates[column] = guarded
+    return updates, None
 
 
 def _star_text(kind: Any, trigger: Any, why: Any,

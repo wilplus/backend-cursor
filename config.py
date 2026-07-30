@@ -352,6 +352,27 @@ class Config:
         in ("1", "true", "yes", "on")
     )
 
+    # Generated journal covers (founder 2026-07-28) — the "Draw a cover"
+    # button in the CMS. DEFAULT ON; a kill switch for the image bill, not a
+    # rollout gate. Off ⇒ /v2/internal/journal/image/generate 503s, while
+    # list/select/delete keep working so covers already drawn stay usable.
+    # Auth is JOURNAL_ADMIN_PASSWORD above.
+    JOURNAL_IMAGE_ENABLED = (
+        (os.getenv("JOURNAL_IMAGE_ENABLED") or "1").strip().lower()
+        in ("1", "true", "yes", "on")
+    )
+    # gpt-image-1 is the default: it is what the live endpoint is built around
+    # and it always returns bytes. The PINNED SDK (openai==1.59.2) predates it
+    # and types only DALL·E's vocabulary, but forwards model/size/quality as
+    # plain strings without enforcing its Literal hints, so the call goes
+    # through (verified live 2026-07-28). Falling back to dall-e-3 means
+    # setting SIZE and QUALITY to ITS vocabulary (1792x1024 / standard) — a
+    # value the chosen model does not accept falls back to the family default
+    # with a warning, rather than 400ing every draw.
+    JOURNAL_IMAGE_MODEL = (os.getenv("JOURNAL_IMAGE_MODEL") or "").strip()
+    JOURNAL_IMAGE_SIZE = (os.getenv("JOURNAL_IMAGE_SIZE") or "").strip()
+    JOURNAL_IMAGE_QUALITY = (os.getenv("JOURNAL_IMAGE_QUALITY") or "").strip()
+
     # ── The Life Panel (founder-directed, 2026-07-26) ────────────────────
     # A personal life-governance surface (/v2/life/*). Two-tier gate:
     #

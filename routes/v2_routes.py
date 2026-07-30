@@ -7499,12 +7499,20 @@ def v2_user_get_profile():
 
     Response 200:
       { "domain": "<enum>" | null, "goal": "<str>" | null,
+        "sex": "female"|"male"|"prefer_not_to_say" | null,
         "domain_vocabulary_default": [ ...seed for domain... ],
         "is_coach": bool }
 
     `domain_vocabulary_default` is the editable seed the Lab pre-fills
     `session_context.domain_vocabulary` from (empty list when no
     domain is set yet). Both domain + goal null pre-intake.
+
+    `sex` is the self-declared speaker sex. It exists for ONE reason: it
+    routes the cue weights of the voice-confidence composite, where pitch
+    variability reverses direction between male and female speakers
+    (services/voice_confidence.py). null = never asked, which is how the
+    FE knows to show the question; "prefer_not_to_say" = asked and
+    declined, so do NOT re-ask. It is not part of any score the user sees.
 
     `is_coach` (F.9b) is RENDER-ONLY — it lets the FE show/hide the coach
     surface. It is NEVER the authorization gate: every coach route is
@@ -7519,6 +7527,7 @@ def v2_user_get_profile():
         return jsonify({
             "domain": profile.get("domain"),
             "goal": profile.get("goal"),
+            "sex": db.get_user_speaker_sex(request.user_id),
             "domain_vocabulary_default": default_domain_vocabulary(
                 profile.get("domain"),
             ),
@@ -7543,16 +7552,30 @@ def v2_user_set_profile():
     Body:
       { "domain": "public_speaking|sales|executive_presence|
                    customer_service|interview_prep" | null,
-        "goal":   "free text" | null }
+        "goal":   "free text" | null,
+        "sex":    "female|male|prefer_not_to_say" | null }
 
-    Both optional so a partial intake (domain picked, goal skipped, or
+    All optional so a partial intake (domain picked, goal skipped, or
     vice-versa) is accepted — the intake is two bounded turns, but the
     store doesn't force both. `domain` (when present) must be one of
     the five enum keys; `goal` is trimmed, ≤500 chars, empty→null.
 
+    KEY PRESENCE MATTERS for `sex` vs `{domain, goal}`. The pair is
+    written as a FULL SET (posting only `domain` still clears `goal` —
+    long-standing behaviour, unchanged), whereas `sex` is written on its
+    own partial upsert. So a sex-only body — which is what the signup
+    screen sends — leaves an existing intake alone, and an intake post
+    from the Lab leaves a previously-declared sex alone. A body carrying
+    neither `domain` nor `goal` no longer touches them at all; it echoes
+    what is stored.
+
+    `sex` routes the voice-confidence cue weights and nothing else — see
+    the GET docstring and services/voice_confidence.py. Explicit null
+    clears the answer back to "never asked".
+
     Responses:
       200 — same shape as GET (echoes persisted state + vocab default)
-      422 INVALID_INPUT — bad domain enum or over-long goal
+      422 INVALID_INPUT — bad domain/sex enum or over-long goal
       500 V2_ERROR — persist failed
     """
     try:
@@ -7598,19 +7621,51 @@ def v2_user_set_profile():
                     }), 422
                 goal = cleaned
 
-        ok = db.set_user_profile(request.user_id, domain=domain, goal=goal)
-        if not ok:
-            return jsonify({
-                "code": "V2_ERROR", "error": "Failed to persist profile",
-            }), 500
+        from services.voice_confidence import normalize_sex
+        sex_present = "sex" in body
+        raw_sex = body.get("sex")
+        sex: str | None = None
+        if raw_sex is not None:
+            sex = normalize_sex(raw_sex)
+            if sex is None:
+                return jsonify({
+                    "code": "INVALID_INPUT",
+                    "error": (
+                        "sex: must be one of female, male, prefer_not_to_say"
+                    ),
+                }), 422
 
+        # {domain, goal} is a full set; only write it when the body actually
+        # carries one of them, otherwise a sex-only post would null the intake.
+        if "domain" in body or "goal" in body:
+            if not db.set_user_profile(
+                request.user_id, domain=domain, goal=goal,
+            ):
+                return jsonify({
+                    "code": "V2_ERROR", "error": "Failed to persist profile",
+                }), 500
+        else:
+            stored = db.get_user_profile(request.user_id) or {}
+            domain, goal = stored.get("domain"), stored.get("goal")
+
+        if sex_present:
+            if not db.set_user_speaker_sex(request.user_id, sex):
+                return jsonify({
+                    "code": "V2_ERROR", "error": "Failed to persist profile",
+                }), 500
+        else:
+            sex = db.get_user_speaker_sex(request.user_id)
+
+        # The VALUE of sex is deliberately not logged — it buys nothing
+        # operationally and it is the one field here nobody needs in a log.
         logger.info(
-            "user/profile.set user=%s domain=%s goal_len=%d",
-            request.user_id, domain or "-", len(goal or ""),
+            "user/profile.set user=%s domain=%s goal_len=%d sex_set=%s",
+            request.user_id, domain or "-", len(goal or ""), sex_present,
         )
         return jsonify({
             "domain": domain,
             "goal": goal,
+            "sex": sex,
             "domain_vocabulary_default": default_domain_vocabulary(domain),
         }), 200
 
@@ -12562,6 +12617,53 @@ def v2_coach_approve_ideal_text(arc_id):
         if not ok:
             return jsonify({"code": "V2_ERROR",
                             "error": "Could not approve"}), 500
+
+        # ── Learning-pipeline item 3 at APPROVE (FE close-out 2026-07-28) ──
+        # The shipped FE's Verify button posts THIS route — nothing in the FE
+        # calls /verify — so without a hook here the sentence-level capture
+        # never fires in production. Approve has no re-approve guard, so
+        # exactly-once comes from the annotation PROBE instead: first approve
+        # captures, re-approves skip (the /verify route keeps its richer
+        # per-version guard and needs no probe). Same staleness fence as
+        # verify, read from the PRE-approve row — the approve upsert above
+        # stamps updated_by/updated_at, which must not vouch for freshness.
+        # Best-effort; never blocks the approve.
+        try:
+            import re as _re
+            from services.ideal_text_annotations import (
+                emit_ideal_text_annotations,
+            )
+            _arc_uuid = str(arc_id) if _re.match(
+                r"^[0-9a-fA-F-]{36}$", str(arc_id)) else None
+            if not db.has_ideal_text_annotations(_arc_uuid):
+                _sessions = db.get_arc_sessions(arc_id) or []
+                _owner = next((s.get("user_id") for s in _sessions
+                               if s.get("user_id")), None)
+                _pre = row or {}
+                # Review-without-edit: the text being approved IS the fresh
+                # machine assembly (no stored block existed) — draft==final
+                # by construction, an endorsement, not an absent draft.
+                _machine_approved = not ((_pre.get("text") or "").strip())
+                _n = emit_ideal_text_annotations(
+                    db,
+                    arc_id=arc_id,
+                    owner_user_id=_owner,
+                    coach_user_id=str(request.user_id),
+                    draft_text=(text if _machine_approved
+                                else _pre.get("auto_text")),
+                    final_text=text,
+                    auto_updated_at=_pre.get("auto_updated_at"),
+                    coach_updated_at=_pre.get("updated_at"),
+                    coach_owned=bool(_pre.get("updated_by")
+                                     or _pre.get("approved_at")),
+                )
+                if _n:
+                    logger.info("ideal-text annotations emitted at approve "
+                                "arc=%s count=%d", arc_id, _n)
+        except Exception as _ann_err:
+            logger.warning("ideal-text annotation capture at approve failed "
+                           "arc=%s: %s (non-fatal)", arc_id, _ann_err)
+
         return jsonify({"ok": True, "arc_id": arc_id, "approved": True}), 200
     except Exception as e:
         logger.error("coach ideal-text approve failed arc=%s: %s", arc_id, e,
@@ -12580,8 +12682,8 @@ def v2_explore_get_ideal_text(arc_id):
     200 { arc_id, version, status:"verified"|"unverified", title,
           updated_at, latest_take_session_id, take_count, reread_done,
           reread_processing, can_record_take, text, user_edited,
-          key_moments, moments_unlocked, explanations_available,
-          price_credits,
+          prior_edit?, key_moments, moments_unlocked,
+          explanations_available, price_credits,
           notes_text } — free in both states, never 402s. The
     crucial-bubble fields (founder 2026-07-20): `title` = latest take's
     topic, `latest_take_session_id` = the re-read pairing target.
@@ -12735,6 +12837,25 @@ def v2_explore_get_ideal_text(arc_id):
             and _edit.get("version") == _version
             and (_edit.get("text") or "").strip())
         _text = _edit["text"] if _user_edited else _base_text
+        # ── SUPERSEDED-EDIT RE-OFFER (founder 2026-07-28): when a newer
+        # version has superseded the student's edit, serve the retained
+        # copy as `prior_edit` so the FE can offer one-click "re-apply
+        # your additions" across reload / device switch. The lane
+        # semantics are UNCHANGED (the versioning change stays parked:
+        # additions/moves never bake forward) — this only exposes the
+        # already-retained row to its owner. Best-effort: absent on any
+        # hiccup, never breaks the GET. Owner-keyed by the read above.
+        _prior_edit = None
+        try:
+            if not _user_edited and _edit and _version is not None:
+                _pe_text = (_edit.get("text") or "").strip()
+                _pe_ver = _edit.get("version")
+                if _pe_text and isinstance(_pe_ver, int) \
+                        and not isinstance(_pe_ver, bool) \
+                        and _pe_ver != _version:
+                    _prior_edit = {"text": _pe_text, "version": _pe_ver}
+        except Exception:
+            _prior_edit = None
         from services.ideal_text_block import extract_key_moments
 
         # ── Star suggestions (2026-07-18, flag-gated). Fold APPLIED
@@ -13052,6 +13173,10 @@ def v2_explore_get_ideal_text(arc_id):
             # True when the served text is the student's own edit of the
             # current version (the FE labels it).
             "user_edited": _user_edited,
+            # The retained edit a NEWER version superseded (founder
+            # 2026-07-28) — the FE's one-click "re-apply your additions".
+            # Absent when there is nothing to re-offer.
+            **({"prior_edit": _prior_edit} if _prior_edit else {}),
             "key_moments": [_decorate(m) for m in _moments],
             "moments_unlocked": _moments_entitled(arc_id),
             # Founder 2026-07-20: the 5-credit unlock buys COACH
@@ -13768,7 +13893,10 @@ def v2_explore_put_ideal_user_edit(arc_id):
     it — retained, not shown; BE-2 pinned default). NEVER overwrites the coach
     canonical or the legacy notebook copy (L1 — separate lanes).
 
-    Body: {text ≤20000, version:int}.
+    Body: {text ≤20000, version:int, reapplied?:true}. `reapplied` (founder
+    2026-07-28) marks a one-click re-apply of a superseded edit — LOG-ONLY
+    telemetry (the decision metric for the parked versioning change): never
+    persisted, never surfaced; anything but boolean true is ignored.
     200 {saved: true, version}
     400 INVALID_INPUT · 404 · 409 VERSION_SUPERSEDED {current_version} · 500
     """
@@ -13812,6 +13940,14 @@ def v2_explore_put_ideal_user_edit(arc_id):
         if not ok:
             return jsonify({"code": "V2_ERROR",
                             "error": "Could not save"}), 500
+        # RE-APPLY TELEMETRY (founder 2026-07-28): one log line per
+        # successful one-click re-apply of a superseded edit — the
+        # decision metric for the PARKED versioning change (how often do
+        # users re-apply an addition a new take dropped?). Log-only:
+        # never persisted, never surfaced; only boolean true counts.
+        if body.get("reapplied") is True:
+            logger.info("ideal_edit.reapplied arc=%s version=%s chars=%d",
+                        arc_id, current, len(text))
         # ── EDIT INHERITANCE (founder 2026-07-20, rule 4b): decompose the
         # edit into phrase decisions on the ledger (source='user_edit',
         # approved) so the NEXT version bakes the student's wording
@@ -14140,19 +14276,31 @@ def v2_coach_arc_stars(arc_id):
 @v2_bp.route("/coach/snippets/<snippet_id>/star-verdict", methods=["PUT"])
 @require_admin_or_coach
 def v2_coach_put_star_verdict(snippet_id):
-    """Record the coach's judgment of ONE fired star.
+    """Record the coach's judgment of ONE fired star — and, since §4b of the
+    FE handoff (2026-07-28), optionally their corrected wording riding the
+    same PUT.
 
     Body { star_kind, star_device?, verdict, corrected_device?, note?,
-           star_version? }
+           star_version?, why_final?, replacement_text_final? }
 
       verdict='keep'             the star was right (the endorsement signal)
       verdict='wrong_kind'       requires corrected_device — the confusion pair
       verdict='should_not_fire'  this moment deserved silence
 
-    Idempotent: re-judging the same star REPLACES the previous verdict. Nothing
-    here mutates the star, the suggestion text, or the student's copy (L1) —
-    the judgment is captured for training and is never surfaced to the student
-    (AC-9).
+    The *_final keys are the coach's rewrite of what the star SAYS. The FE
+    sends them ONLY when the coach actually changed the text, and sending
+    them on the verdict write makes the half-state (an edit with no verdict)
+    unrepresentable at the wire — the edit→keep PAIR is what trains. Partial
+    semantics: an absent key preserves the stored correction; there is no
+    null-clear on this route (the full-state star-text PUT keeps that). Text
+    writes happen BEFORE the verdict, so a keep's corpus emission always
+    carries the fresh wording; a guard-tripping string 400s before ANYTHING
+    is written (the gesture stays atomic).
+
+    Idempotent: re-judging the same star REPLACES the previous verdict.
+    Nothing here mutates the machine's draft text or the student's flow (L1
+    — the student sees the coach's folded wording, which is the point).
+    Verdicts are never surfaced to the student (AC-9).
 
     200 { saved, snippet_id, verdict } · 400 · 404 · 500
     """
@@ -14161,11 +14309,16 @@ def v2_coach_put_star_verdict(snippet_id):
                         "error": "snippet_id must be a valid UUID"}), 400
     body = request.get_json(silent=True) or {}
 
-    from services.star_verdicts import validate_verdict
+    from services.star_verdicts import (
+        validate_star_text_updates, validate_verdict,
+    )
 
     row, err = validate_verdict(body)
     if err:
         return jsonify({"code": "INVALID_INPUT", "error": err}), 400
+    text_updates, text_err = validate_star_text_updates(body)
+    if text_err:
+        return jsonify({"code": "INVALID_INPUT", "error": text_err}), 400
 
     try:
         snip = db.get_snippet_by_id(snippet_id)
@@ -14187,6 +14340,23 @@ def v2_coach_put_star_verdict(snippet_id):
         # the corpus row — _prior_ok=False fails the emission closed.
         _prior, _prior_ok = db.get_star_verdict(snippet_id)
 
+        # §4b text first (so the keep-emission below reads the fresh final).
+        # A failed write fails the WHOLE gesture before the verdict lands —
+        # per the FE contract only edited rows can reach this branch, so the
+        # plain verdict path can never regress behind it.
+        if text_updates:
+            _text_saved = db.set_moment_suggestion_final(
+                str(snippet_id),
+                edited_by=getattr(request, "user_id", None),
+                **text_updates,
+            )
+            if not _text_saved:
+                return jsonify({
+                    "code": "SERVER_ERROR",
+                    "error": "could not save the corrected wording (run "
+                             "migrations/add_moment_suggestion_final.sql)",
+                }), 500
+
         saved = db.upsert_star_verdict(
             snippet_id=snippet_id, row=row, session_id=session_id,
             arc_id=arc_id, coach_user_id=getattr(request, "user_id", None),
@@ -14202,19 +14372,22 @@ def v2_coach_put_star_verdict(snippet_id):
         # A verdict flipping TO 'keep' is the coach signing off the star's
         # TEXT — emit the (machine draft, coach-corrected final) pair into
         # the writer corpus. Untouched text → approved_as_is endorsement;
-        # coach-rewritten text (the star-text PUT below) → the correction
-        # pair. Only text crosses lanes; the verdict stays in star_verdicts
-        # (the decision corpus). Guarded on the flip so a re-keep never
-        # double-writes; wrong_kind / should_not_fire emit nothing (a
-        # rejected star's text must not train the writer as preferred
-        # output). Best-effort — a miss never fails the save.
+        # coach-rewritten text (§4b riding this PUT, or the star-text PUT) →
+        # the correction pair. Only text crosses lanes; the verdict stays in
+        # star_verdicts (the decision corpus). Guarded on the flip — plus the
+        # re-keep-with-a-fresh-correction case (text_updated), which is a
+        # genuinely new pair the flip guard alone would drop. wrong_kind /
+        # should_not_fire emit nothing (a rejected star's text must not train
+        # the writer as preferred output). Best-effort — a miss never fails
+        # the save.
         try:
             from services.star_verdicts import (
                 annotation_pair_for_star, should_emit_keep_text,
             )
             if (_prior_ok
-                    and should_emit_keep_text(row["verdict"],
-                                              (_prior or {}).get("verdict"))
+                    and should_emit_keep_text(
+                        row["verdict"], (_prior or {}).get("verdict"),
+                        text_updated=bool(text_updates))
                     and owner_user_id and arc_id):
                 _sugg = (db.get_moment_suggestions_by_arc(arc_id)
                          or {}).get(str(snippet_id))
@@ -14247,6 +14420,542 @@ def v2_coach_put_star_verdict(snippet_id):
                        snippet_id, e)
         return jsonify({"code": "SERVER_ERROR",
                         "error": "could not save verdict"}), 500
+
+
+def _resolve_audio_refs(rows: list, *, expires_in: int = 6 * 3600) -> None:
+    """Turn every row's ``audio_ref`` into something an <audio src> can play.
+
+    Already-absolute http(s) URLs pass through untouched (imports store a
+    public URL). A bare storage key is signed for the session's length —
+    long enough that a coach can work through a queue without links dying
+    mid-batch. Best-effort per row: a key that cannot be signed is left as
+    it is rather than nulled, so the failure is visible and debuggable
+    instead of a silently missing player."""
+    try:
+        from config import Config
+        from services.coach_video_storage import presigned_get_coach_object
+        bucket = getattr(Config, "COACH_FEEDBACK_VIDEO_BUCKET",
+                         "coach_feedback_videos")
+    except Exception:
+        return
+    for r in rows or []:
+        ref = r.get("audio_ref")
+        if not isinstance(ref, str) or not ref:
+            continue
+        if ref.startswith("http://") or ref.startswith("https://"):
+            continue
+        key = ref.split("://", 1)[-1] if "://" in ref else ref
+        if key.startswith(f"{bucket}/"):
+            key = key[len(bucket) + 1:]
+        try:
+            signed = presigned_get_coach_object(bucket, key,
+                                                expires_in=expires_in)
+            if signed:
+                r["audio_ref"] = signed
+        except Exception as e:
+            logger.warning("could not sign audio_ref %s: %s", ref, e)
+
+
+def _int_or(raw, default: int) -> int:
+    """Form int with a fallback — a typo in an optional knob must not 400 an
+    upload that already cost the coach a file read."""
+    try:
+        return int(str(raw).strip())
+    except (TypeError, ValueError):
+        return default
+
+
+@v2_bp.route("/coach/training-imports", methods=["POST"])
+@require_admin_or_coach
+def v2_coach_training_import():
+    """Upload ONE audio file as coach-reviewable TRAINING data — analysed
+    like a real take, but never a project the speaker owns (founder
+    2026-07-28).
+
+    Multipart form:
+      audio_file    (required) any container ffmpeg reads (webm/mp3/m4a/wav…)
+      topic         (required) what the talk is about — labels it for review
+      speaker_label (optional) whose voice this is. Worth filling for a
+                    multi-speaker corpus: it is the only grouping key a
+                    per-speaker model will have.
+      user_id       (optional) who the corpus row belongs to; defaults to the
+                    uploading coach
+      note          (optional) free-text provenance (where it came from)
+      language      (optional) ISO-639-1 ('pl', 'de', …). Absent =
+                    auto-detect. Non-English NEEDS this: our Whisper prompt
+                    is an English disfluency primer and Whisper follows its
+                    prompt's language.
+      speaker_sex   (optional) female | male | prefer_not_to_say — WHOSE
+                    VOICE this is, not the coach's. The confidence composite
+                    routes one cue's DIRECTION on it, and an imported take is
+                    someone else's voice filed under the coach's account, so
+                    absent it the pipeline uses the acoustic route rather
+                    than inheriting the coach's own declared sex.
+      stages        (optional) comma-separated ticks — the COACH-ONLY choice
+                    of how much analysis to run. Default 'confidence':
+                      confidence  always on — transcript, pieces, acoustics,
+                                  the confidence read, the label queue. This
+                                  is the corpus; Whisper is the only spend.
+                      analytics   the per-piece LLM layers (stickiness,
+                                  say-it-stronger, suggestion stars) — the
+                                  ADVICE model's corpus, ~16 calls/file.
+                      ideal_text  assembly + polish. A user deliverable;
+                                  irrelevant to training.
+                    A normal user's upload is never offered this and always
+                    runs everything (POST /v2/lab/recordings, untouched).
+      queue_per_band (optional, int) how many pieces per confidence band to
+                    queue for labelling (default 5 → up to ~15-20 queued)
+
+    ONE FILE PER REQUEST, on purpose: a batch endpoint would either block for
+    minutes or need a job queue, and per-file requests give the FE real
+    progress and per-file failures instead of one opaque 500.
+
+    The import is marked source='training_import', which keeps it out of the
+    speaker's project list AND out of their acoustic baseline (imports are
+    z-scored against themselves) — see services/training_import.py.
+
+    200 { ok, session_id, arc_id, snippet_count, ... }  → review at
+         GET /v2/coach/arc/<arc_id>/stars
+    422 { code: "AUDIO_REJECTED", reason }   the min-content gate (silence /
+         corrupt / too short) — the same gate live takes pass
+    400 · 500
+    """
+    audio_file = request.files.get("audio_file")
+    if not audio_file:
+        return jsonify({"code": "INVALID_INPUT",
+                        "error": "audio_file is required"}), 400
+    topic = (request.form.get("topic") or "").strip()
+    if not topic:
+        return jsonify({"code": "INVALID_INPUT",
+                        "error": "topic is required"}), 400
+    try:
+        audio_bytes = audio_file.read()
+        from services.training_import import (
+            prepare_training_import, run_training_import_analysis,
+        )
+        _filename = audio_file.filename or "import.webm"
+        _queue_per_band = _int_or(request.form.get("queue_per_band"), 5)
+        prepared = prepare_training_import(
+            audio_bytes=audio_bytes,
+            filename=_filename,
+            content_type=audio_file.mimetype,
+            user_id=(request.form.get("user_id")
+                     or getattr(request, "user_id", None)),
+            topic=topic,
+            speaker_label=(request.form.get("speaker_label") or "").strip()
+                          or None,
+            source_note=(request.form.get("note") or "").strip() or None,
+            stages=(request.form.get("stages") or None),
+            # BOTH spellings (fix 2026-07-29): I documented
+            # `upload_idempotency_key` (the coach-video lane's name) but the
+            # FE shipped `idempotency_key`, so the key was being silently
+            # ignored and the dedupe it exists for never ran. Accepting both
+            # costs nothing and neither side has to redeploy to be correct.
+            idempotency_key=((request.form.get("idempotency_key")
+                              or request.form.get("upload_idempotency_key")
+                              or "").strip() or None),
+            language=(request.form.get("language") or "").strip() or None,
+            speaker_sex=(request.form.get("speaker_sex") or "").strip() or None,
+        )
+        if not prepared.get("ok"):
+            _reason = prepared.get("reason") or "failed"
+            if _reason in ("no_audio", "too_short", "silence", "gate",
+                           "gate_error", "no_topic"):
+                return jsonify({
+                    "code": "AUDIO_REJECTED", "reason": _reason,
+                    "error": prepared.get("detail")
+                             or "the audio did not pass the content gate",
+                }), 422
+            return jsonify({"code": "SERVER_ERROR", "reason": _reason,
+                            "error": prepared.get("detail")
+                                     or "import failed"}), 500
+
+        # The idempotency key already produced this import — return the
+        # original rather than minting a second (a talk imported twice is
+        # labelled twice and trains twice, invisibly).
+        if prepared.get("duplicate"):
+            return jsonify({**prepared, "status": "duplicate"}), 200
+
+        # ── 202, then analyse in the background ───────────────────────────
+        # Whisper + the cutting pass is MINUTES on a long talk, and the FE's
+        # proxy caps far below that. Returning the request before the work
+        # removes the dangerous shape entirely: a gateway timeout on a
+        # request whose BE work then succeeded, which the coach reads as
+        # "failed" and retries into a duplicate. The FE polls
+        # GET /v2/coach/training-imports/<session_id> for the outcome; the
+        # session's analysis_state carries it (the same processing → ready |
+        # failed lane the live async path already uses).
+        import threading
+        _t = threading.Thread(
+            target=run_training_import_analysis,
+            kwargs={"prepared": prepared, "audio_bytes": audio_bytes,
+                    "filename": _filename,
+                    "queue_per_band": _queue_per_band},
+            daemon=True,
+        )
+        _t.start()
+        # THE 202 IS A RECEIPT, NOT A RESULT — and it must be impossible to
+        # read as one (FE §6.4). It carries NO count field: a consumer whose
+        # rule is "ok:true with a count present = finished" would otherwise
+        # see a bare ok:true, default the missing counts to 0, and announce a
+        # zero-piece failure that never happened. `status: "processing"` says
+        # the same thing positively. Both properties are pinned by test —
+        # adding snippet_count/queue_count here would break a real consumer.
+        return jsonify({
+            "ok": True, "status": "processing",
+            "session_id": prepared["session_id"],
+            "arc_id": prepared["arc_id"],
+            "stages": prepared["stages"],
+            "duration_sec": prepared.get("duration_sec"),
+            "speaker_label": prepared.get("speaker_label"),
+            "language": prepared.get("language"),
+            "filename": _filename,
+        }), 202
+    except Exception as e:
+        logger.error("training import failed: %s", e, exc_info=True)
+        return jsonify({"code": "SERVER_ERROR",
+                        "error": "could not import the audio"}), 500
+
+
+@v2_bp.route("/coach/training-imports/<session_id>", methods=["GET"])
+@require_admin_or_coach
+def v2_coach_training_import_status(session_id):
+    """Poll one import's analysis. The 202 from the POST is not the outcome —
+    this is.
+
+    200 { session_id, arc_id, status: "processing"|"ready"|"failed",
+          snippet_count, queue_count, error }
+    404 · 500
+
+    ``status`` mirrors v2_sessions.analysis_state; a NULL state reads as
+    'ready' (pre-async rows were only ever persisted after a completed
+    synchronous analysis, so NULL means finished, not unknown).
+    """
+    try:
+        sess = db.v2_get_session_by_id(str(session_id))
+        if not sess:
+            return jsonify({"code": "NOT_FOUND",
+                            "error": "import not found"}), 404
+        state = sess.get("analysis_state") or "ready"
+        ctx = sess.get("intake_context") if isinstance(
+            sess.get("intake_context"), dict) else {}
+        snippets = (db.get_snippets_by_session(str(session_id)) or []
+                    if state == "ready" else [])
+        # A failed poll returns the SAME shape as the POST's failure (FE §6):
+        # reason + detail + duration_sec, so one renderer handles both. The
+        # reason is recovered from analysis_error, which the import writes as
+        # "REASON: detail" — split on the first colon, and degrade to the
+        # whole string as the detail if it was written by something else.
+        _reason = None
+        _detail = None
+        _err = sess.get("analysis_error")
+        if state == "failed" and isinstance(_err, str) and _err.strip():
+            head, sep, tail = _err.partition(":")
+            if sep and head.strip().isupper() and " " not in head.strip():
+                _reason, _detail = head.strip(), tail.strip()
+            else:
+                _detail = _err.strip()
+        return jsonify({
+            "session_id": session_id,
+            "arc_id": sess.get("arc_id"),
+            "status": state,
+            "topic": ctx.get("topic") or "",
+            "speaker_label": ctx.get("speaker_label"),
+            "language": ctx.get("language"),
+            "snippet_count": len(snippets),
+            "queue_count": len(ctx.get("label_queue") or []),
+            # Present on every poll, not just the terminal one: it is what
+            # separates "never decoded" from "decoded but nothing
+            # transcribed", and the FE renders it on the empty-import state.
+            "duration_sec": ctx.get("duration_sec"),
+            "reason": _reason,
+            "detail": _detail,
+            "error": _err,
+        }), 200
+    except Exception as e:
+        logger.warning("training import status failed sid=%s: %s",
+                       session_id, e)
+        return jsonify({"code": "SERVER_ERROR",
+                        "error": "could not read the import"}), 500
+
+
+@v2_bp.route("/coach/training-imports", methods=["GET"])
+@require_admin_or_coach
+def v2_coach_list_training_imports():
+    """The imported training takes, newest first — the coach's index into the
+    corpus. Each row's `arc_id` opens the normal review surfaces
+    (GET /v2/coach/arc/<arc_id>/stars, .../ideal-text).
+
+    Carries `status` and `queue_count` per row (added 2026-07-28 with the
+    async import): since the POST now returns 202 before the analysis runs,
+    this list — not the upload response — is where an import's outcome
+    actually shows up. Without them a finished import and a still-running one
+    look identical, which is exactly how a working import reads as "0 pieces".
+
+    `snippet_count` is deliberately NOT here: it needs one query per row, and
+    a corpus list is long. Poll GET /v2/coach/training-imports/<session_id>
+    for one import's piece count; `queue_count` (what the coach will actually
+    label) is free and rides here. `labelled_count` IS here (FE 2026-07-30)
+    because it batches: one confidence_labels query covers the whole list,
+    where the FE's fallback was one queue request per row.
+
+    Archived imports (DELETE below) are filtered out unless
+    ?include_archived=1 — archive is a tidier list, never lost corpus.
+
+    200 { imports: [{session_id, arc_id, topic, speaker_label, created_at,
+          status, queue_count, labelled_count, language, speaker_sex,
+          duration_sec, archived_at}], count }
+    """
+    try:
+        rows = db.list_training_import_sessions(
+            user_id=(request.args.get("user_id") or None)) or []
+        include_archived = (request.args.get("include_archived") or "") in (
+            "1", "true", "yes")
+        labelled = db.count_labelled_snippets_by_session_ids(
+            [r.get("id") for r in rows])
+        out = []
+        for r in rows:
+            ctx = r.get("intake_context") if isinstance(
+                r.get("intake_context"), dict) else {}
+            if ctx.get("archived_at") and not include_archived:
+                continue
+            out.append({
+                "session_id": r.get("id"),
+                "arc_id": r.get("arc_id"),
+                "topic": ctx.get("topic") or "",
+                "speaker_label": ctx.get("speaker_label") or None,
+                "created_at": r.get("created_at"),
+                # NULL analysis_state reads as 'ready': pre-async rows were
+                # only ever persisted after a completed synchronous analysis.
+                "status": r.get("analysis_state") or "ready",
+                "queue_count": len(ctx.get("label_queue") or []),
+                # DISTINCT labelled pieces, fresh from the database — the
+                # honest half of the FE's badge, batched above.
+                "labelled_count": labelled.get(str(r.get("id")), 0),
+                # WHICH LANGUAGE THIS RUN ACTUALLY USED (FE 2026-07-29).
+                # null = auto-detected, which is a real answer, not a gap:
+                # a Polish talk left on auto-detect comes back TRANSLATED
+                # into English — the audio is right, the words are not, and
+                # nothing else on the row says so. Now that the index works
+                # it outlives the browser session, so this is the surface
+                # where that question gets asked.
+                "language": ctx.get("language"),
+                # Same class of question for the confidence composite: one
+                # cue's DIRECTION routes on it, so "which route did this run
+                # use" is worth being able to see. Declared value only —
+                # absent means the acoustic route decided.
+                "speaker_sex": ctx.get("speaker_sex"),
+                "duration_sec": ctx.get("duration_sec"),
+                # null on live rows; set = when it was archived. Present on
+                # every row so the shape doesn't shift with the query param.
+                "archived_at": ctx.get("archived_at"),
+            })
+        return jsonify({"imports": out, "count": len(out)}), 200
+    except Exception as e:
+        logger.warning("list training imports failed: %s", e)
+        return jsonify({"code": "SERVER_ERROR",
+                        "error": "could not list imports"}), 500
+
+
+@v2_bp.route("/coach/training-imports/<session_id>", methods=["DELETE"])
+@require_admin_or_coach
+def v2_coach_archive_training_import(session_id):
+    """ARCHIVE a training import — DELETE the verb, archive the semantics.
+
+    Deliberate (FE asked which, 2026-07-30): labelled data is training data,
+    and a coach tidying a list must not be able to destroy corpus. The row
+    leaves the index (unless ?include_archived=1); the pieces, the labels
+    and the audio all stay. POST .../restore undoes it. Nothing here ever
+    touches confidence_labels or charisma_snippets.
+
+    The stamp rides intake_context (no migration): the index already reads
+    that JSONB for every other row field.
+
+    Guarded to source='training_import' ONLY — a coach-scope endpoint must
+    not be able to hide a real user's session.
+
+    200 {archived: true, session_id, archived_at} · 404 · 409 · 500
+    """
+    try:
+        sess = db.v2_get_session_by_id(str(session_id))
+        if not sess:
+            return jsonify({"code": "NOT_FOUND",
+                            "error": "import not found"}), 404
+        if sess.get("source") != "training_import":
+            return jsonify({"code": "NOT_AN_IMPORT",
+                            "error": "not a training import"}), 409
+        ctx = sess.get("intake_context") if isinstance(
+            sess.get("intake_context"), dict) else {}
+        stamp = datetime.now(timezone.utc).isoformat()
+        ctx["archived_at"] = stamp
+        if not db.set_session_intake_context(str(session_id), ctx):
+            return jsonify({"code": "SERVER_ERROR",
+                            "error": "could not archive the import"}), 500
+        return jsonify({"archived": True, "session_id": str(session_id),
+                        "archived_at": stamp}), 200
+    except Exception as e:
+        logger.warning("archive training import failed sid=%s: %s",
+                       session_id, e)
+        return jsonify({"code": "SERVER_ERROR",
+                        "error": "could not archive the import"}), 500
+
+
+@v2_bp.route("/coach/training-imports/<session_id>/restore",
+             methods=["POST"])
+@require_admin_or_coach
+def v2_coach_restore_training_import(session_id):
+    """Undo the archive above; the row returns to the index. Idempotent —
+    restoring a live import is a 200 no-op.
+
+    200 {archived: false, session_id} · 404 · 409 · 500
+    """
+    try:
+        sess = db.v2_get_session_by_id(str(session_id))
+        if not sess:
+            return jsonify({"code": "NOT_FOUND",
+                            "error": "import not found"}), 404
+        if sess.get("source") != "training_import":
+            return jsonify({"code": "NOT_AN_IMPORT",
+                            "error": "not a training import"}), 409
+        ctx = sess.get("intake_context") if isinstance(
+            sess.get("intake_context"), dict) else {}
+        if ctx.pop("archived_at", None) is not None:
+            if not db.set_session_intake_context(str(session_id), ctx):
+                return jsonify({
+                    "code": "SERVER_ERROR",
+                    "error": "could not restore the import"}), 500
+        return jsonify({"archived": False,
+                        "session_id": str(session_id)}), 200
+    except Exception as e:
+        logger.warning("restore training import failed sid=%s: %s",
+                       session_id, e)
+        return jsonify({"code": "SERVER_ERROR",
+                        "error": "could not restore the import"}), 500
+
+
+@v2_bp.route("/coach/sessions/<session_id>/confidence-queue", methods=["GET"])
+@require_admin_or_coach
+def v2_coach_confidence_queue(session_id):
+    """The pieces queued for confidence labelling on one take, blind.
+
+    The queue was chosen at import time by sampling ACROSS the confidence
+    spectrum — some the composite reads as confident, some middling, some
+    doubtful — so the corpus has the negative examples a binary recogniser
+    needs. The bands are used to select and then discarded: this payload
+    carries the moment (words + audio) and NOTHING that could hint at an
+    answer (BLIND COACH — no voice_confidence, no acoustic_read, no tone
+    word). Falls back to a fresh stratified pick when the session carries no
+    stored queue (any take, not just an import).
+
+    200 { session_id, queue: [{snippet_id, transcript, audio_ref,
+          start_offset_ms, duration_ms, label}], count, labelled }
+    404 · 500
+    """
+    try:
+        sess = db.v2_get_session_by_id(str(session_id))
+        if not sess:
+            return jsonify({"code": "NOT_FOUND",
+                            "error": "session not found"}), 404
+        from services.confidence_labels import (
+            queue_payload, stratified_label_queue,
+        )
+        snippets = db.get_snippets_by_session(str(session_id)) or []
+        ctx = sess.get("intake_context") if isinstance(
+            sess.get("intake_context"), dict) else {}
+        stored = ctx.get("label_queue")
+        if isinstance(stored, list) and stored:
+            wanted = {str(s) for s in stored}
+            picked = [s for s in snippets if str(s.get("id")) in wanted]
+        else:
+            picked = stratified_label_queue(snippets, seed=str(session_id))
+
+        rows = queue_payload(picked)
+        # PLAYABLE urls, not storage keys (FE §2): this is a LISTENING screen
+        # — the coach hears the piece and judges. A bare key renders a dead
+        # player and the surface silently degrades to labelling TEXT, which
+        # is a different task and a corpus of a different thing. A row whose
+        # audio_ref is already an http(s) URL is left alone; a key is signed.
+        _resolve_audio_refs(rows)
+        labels = db.get_confidence_labels_by_snippet_ids(
+            [r["snippet_id"] for r in rows]) or {}
+        labelled = 0
+        for r in rows:
+            mine = [lbl for lbl in labels.get(str(r["snippet_id"]), [])
+                    if str(lbl.get("rater_id") or "")
+                    == str(getattr(request, "user_id", "") or "")]
+            if mine:
+                labelled += 1
+                # `note` rides the label (FE §5): without it, a saved note
+                # vanishes the moment the coach steps back to the piece,
+                # which reads as data loss rather than as a display gap.
+                r["label"] = {"confident": mine[0].get("confident"),
+                              "intensity": mine[0].get("intensity"),
+                              "note": mine[0].get("note")}
+            else:
+                r["label"] = None
+        return jsonify({"session_id": session_id, "queue": rows,
+                        "count": len(rows), "labelled": labelled}), 200
+    except Exception as e:
+        logger.warning("confidence queue failed sid=%s: %s", session_id, e)
+        return jsonify({"code": "SERVER_ERROR",
+                        "error": "could not load the queue"}), 500
+
+
+@v2_bp.route("/coach/snippets/<snippet_id>/confidence-label", methods=["PUT"])
+@require_admin_or_coach
+def v2_coach_put_confidence_label(snippet_id):
+    """The coach's confidence call on ONE snippet — THE core training signal.
+
+    Body { confident: true|false, intensity?: 1..5, note?: str }
+
+      confident  the call. Binary, because the model's job is a binary
+                 recognition and a rater who must commit gives a cleaner
+                 boundary than one who can hedge.
+      intensity  how strongly, on the same 1-5 scale Jiang & Pell's listeners
+                 used — which makes these directly comparable to the
+                 published anchor AND the human side of the voice-confidence
+                 validation gate.
+
+    Re-labelling REPLACES this rater's call (the corpus wants their current
+    view); other raters' rows are untouched, so multi-rater agreement stays
+    possible. Separate from the challenge/threat lane by construct and by
+    table. AC-9: intensity is coach->machine only and never reaches a student.
+
+    200 { saved, snippet_id, confident, intensity } · 400 · 404 · 500
+    """
+    if not _is_valid_uuid(snippet_id):
+        return jsonify({"code": "INVALID_INPUT",
+                        "error": "snippet_id must be a valid UUID"}), 400
+    body = request.get_json(silent=True) or {}
+
+    from services.confidence_labels import validate_confidence_label
+
+    row, err = validate_confidence_label(body)
+    if err:
+        return jsonify({"code": "INVALID_INPUT", "error": err}), 400
+    try:
+        snip = db.get_snippet_by_id(snippet_id)
+        if not snip:
+            return jsonify({"code": "NOT_FOUND",
+                            "error": "snippet not found"}), 404
+        saved = db.upsert_confidence_label(
+            snippet_id=snippet_id, row=row,
+            rater_id=getattr(request, "user_id", None),
+            session_id=snip.get("session_id"),
+        )
+        if not saved:
+            return jsonify({
+                "code": "SERVER_ERROR",
+                "error": "could not save the label (run "
+                         "migrations/add_confidence_labels.sql)",
+            }), 500
+        return jsonify({"saved": True, "snippet_id": snippet_id,
+                        "confident": row["confident"],
+                        "intensity": row["intensity"]}), 200
+    except Exception as e:
+        logger.warning("confidence label failed snip=%s: %s", snippet_id, e)
+        return jsonify({"code": "SERVER_ERROR",
+                        "error": "could not save the label"}), 500
 
 
 @v2_bp.route("/coach/snippets/<snippet_id>/star-text", methods=["PUT"])

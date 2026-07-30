@@ -372,3 +372,24 @@ posts from a Journal post (the week's Technique anchor), per the content
 model in services/prompts/community_content_strategy.md. Founder-only
 marketing surface: it never feeds any F1 assembly path (L1) and its output
 is never publishable to the public Journal."""
+
+
+SPEC_JOURNAL_IMAGE_BRIEF = LLMSpec(
+    model=CHEAP_MODEL,
+    # The expensive call on this surface is the IMAGE (cents, not fractions of
+    # one), so the brief runs on mini — and distilling one essay into one
+    # scene is well inside its range.
+    # 0.8 — the highest temperature in this file, and deliberate: the whole
+    # point of "Regenerate" with no note is a DIFFERENT scene for the same
+    # essay. A low temperature would redraw the same cover and the button
+    # would look broken.
+    temperature=0.8,
+    # One image prompt (≤3800 chars) plus a one-sentence alt text.
+    max_tokens=1200,
+    response_format=None,  # strict json_schema via override, next to the service
+)
+"""Journal cover-image BRIEF (founder 2026-07-28) — turns a journal post (plus
+the founder's steer and the previous brief) into one image-model prompt and
+its public alt text. Marketing surface: never feeds an F1 assembly path (L1).
+The alt text is public copy, so services/journal_image.py construct-guards it
+before it can be promoted onto a post."""

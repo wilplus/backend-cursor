@@ -147,12 +147,16 @@ def classify_kind(content_type: Any) -> Optional[str]:
 
 
 def build_object_key(kind: str, content_type: str,
-                     filename: Any = None) -> str:
+                     filename: Any = None, folder: Any = None) -> str:
     """A randomized object key, extension preserved.
 
     The client filename is NEVER used as the key (path traversal, collisions,
     and leaking an author's local filenames on a public URL). It only informs
     the extension when the MIME map has no entry.
+
+    ``folder`` overrides the path segment (defaults to the kind) so generated
+    covers land under journal/generated/ and stay distinguishable from
+    uploads in the bucket — the two have different lifecycles.
     """
     ext = _EXT_FOR_MIME.get((content_type or "").strip().lower())
     if not ext:
@@ -164,7 +168,8 @@ def build_object_key(kind: str, content_type: str,
             guessed = f".{tail.lower()}" if re.fullmatch(
                 r"[a-z0-9]{1,5}", tail.lower()) else ""
         ext = guessed
-    return f"journal/{kind}/{uuid.uuid4().hex}{ext}"
+    segment = (folder or kind or "misc").strip().strip("/") or "misc"
+    return f"journal/{segment}/{uuid.uuid4().hex}{ext}"
 
 
 def _client():
@@ -249,3 +254,57 @@ def presign_put(*, kind: Any, content_type: Any,
         "expires_in": _PRESIGN_TTL_SEC,
         "max_bytes": max_bytes_for(k),
     }
+
+
+def put_bytes(*, data: Any, content_type: str, folder: str = "generated",
+              kind: str = "image") -> dict:
+    """Upload bytes we already hold, server-side. Returns {public_url, key}.
+
+    The presign flow above exists because a browser upload must not transit
+    Flask. This one is the opposite case: a GENERATED cover arrives as base64
+    in our own process (services/journal_image.py), so it is already here and
+    a presign would mean handing it back to the browser to re-upload.
+
+    Same bucket, same public base, same content-type allowlist. Raises
+    JournalMediaError on unconfigured storage, a disallowed type, an empty
+    body, or a file over the per-kind cap — the route maps those to 503 / 400.
+    """
+    if not isinstance(data, (bytes, bytearray)) or not data:
+        raise JournalMediaError("No image data to store.")
+    ct = (content_type or "").strip().lower()
+    if ct not in _ALLOWED.get(kind, ()):
+        raise JournalMediaError(
+            f"content_type for {kind} must be one of "
+            f"{', '.join(_ALLOWED.get(kind, ()))}"
+        )
+    cap = max_bytes_for(kind)
+    if len(data) > cap:
+        raise JournalMediaError(
+            f"The image is larger than the {cap // (1024 * 1024)}MB limit.")
+    if not journal_media_use_r2():
+        raise JournalMediaError(
+            "Journal media storage is not configured (R2 credentials or "
+            "bucket missing)."
+        )
+    base = journal_public_base_url()
+    if not base:
+        raise JournalMediaError(
+            "Journal media storage has no public base URL configured "
+            "(set R2_JOURNAL_PUBLIC_BASE_URL)."
+        )
+
+    bucket = journal_bucket_name()
+    key = build_object_key(kind, ct, folder=folder)
+    try:
+        _client().put_object(
+            Bucket=bucket, Key=key, Body=bytes(data), ContentType=ct,
+            # Keys are random and content never changes under one, so the
+            # object is immutable by construction.
+            CacheControl="public, max-age=31536000, immutable",
+        )
+    except Exception as e:
+        logger.warning("journal_media: put_bytes failed bucket=%s key=%s: %s",
+                       bucket, key, e)
+        raise JournalMediaError("Could not store the image.") from e
+
+    return {"public_url": f"{base}/{key}", "key": key}

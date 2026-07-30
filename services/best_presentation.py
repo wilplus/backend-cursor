@@ -492,10 +492,13 @@ def _arc_labels(db, labels_batch, sid):
 # Bump when the cached compose PAYLOAD shape changes (a new per-slide field
 # must force one recompute per arc — the content signature alone can't see
 # shape changes). v2: + key_phrases (backlog 1.7, 2026-07-11).
-_BP_PAYLOAD_VERSION = "v6"  # v6: voice_confidence enters the rank blend —
-                            # forces one recompute per warm arc so a cached
-                            # payload can't outlive the ranking change
-                            # (v5: verbatim+polished; v4: picks carry
+_BP_PAYLOAD_VERSION = "v7"  # v7: the voice-confidence WEIGHTING changed (sex
+                            # routing) and history was backfilled — the stamped
+                            # scores under a warm cache are not the ones that
+                            # produced its picks, and no session row moved, so
+                            # only a payload bump forces the recompute
+                            # (v6: voice_confidence entered the rank blend;
+                            # v5: verbatim+polished; v4: picks carry
                             # session_id, delivery layer)
 
 
@@ -520,12 +523,20 @@ def _bp_signature(sessions: list, corrections: Optional[dict] = None) -> str:
 
     The FLAG is in the signature because flipping it re-ranks every arc without
     touching any session row; without it a warm cache would keep serving picks
-    made under the old blend and the flip would look like a no-op."""
+    made under the old blend and the flip would look like a no-op.
+
+    The composite's VERSION is in for the same reason, one level down: a
+    weighting change (v1 sex-blind → v2 sex-routed) alters which take wins
+    without adding a take or a publish. Deploying the bump alone would leave
+    warm arcs serving picks from the retired weighting until something
+    unrelated invalidated them, so the change would land arc-by-arc at random
+    times — the worst of both. Folding it in makes every future weighting
+    change self-invalidating."""
     import hashlib
     import json as _json
     try:
-        from services.voice_confidence import ranking_enabled
-        flag = "vc1" if ranking_enabled() else "vc0"
+        from services.voice_confidence import ranking_enabled, _VERSION as _vc_v
+        flag = ("vc1" if ranking_enabled() else "vc0") + "|" + str(_vc_v)
     except Exception:
         flag = "vc0"
     key = sorted(
@@ -895,13 +906,22 @@ def build_arc_breakthroughs(arc_id: Optional[str], *, database=None) -> dict:
                 # span inside the take audio so the FE clamps playback (#1).
                 "start_offset_ms": s.get("start_offset_ms"),
                 "duration_ms": s.get("duration_ms"),
-                # score-free plain-language "why" (AC-9 — never a number).
-                "note": _moment_note(s),
-                # The coach's human-authored feedback on THIS moment — the
-                # note they wrote and the breakthrough video they recorded.
-                # `video_ref` matches the game's field name so the FE reuses
-                # its player. Null when the coach left neither.
-                "coach_comment": (_draft.get("note") or None),
+                # ── The FE's shipped mapper contract (HANDOFF-BE-2026-07-28,
+                # §1) — names matter more than history here:
+                #   note     the COACH's human-authored key-moment note (the
+                #            drafts lane). The FE renders it as THE comment.
+                #   comment  the SYSTEM's score-free delivery explanation
+                #            (AC-9 — never a number), shown ONLY when the
+                #            coach left no note (FE enforces the override).
+                #   video_ref the coach's breakthrough video (game naming, so
+                #            the FE reuses its player).
+                # HISTORY NOTE: before 2026-07-28 `note` carried the MACHINE
+                # text — the shipped FE reads `note` as the coach's words, so
+                # serving machine prose there would misattribute machine
+                # voice as the human coach. The rename is the fix, not a
+                # cosmetic choice.
+                "note": (_draft.get("note") or None),
+                "comment": _moment_note(s),
                 "video_ref": (_draft.get("breakthrough_video_ref") or None),
             })
 

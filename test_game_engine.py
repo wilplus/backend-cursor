@@ -108,6 +108,21 @@ class BuildRoundsTests(unittest.TestCase):
         b = [r["snippet_id"] for r in self._rounds()]
         self.assertEqual(a, b)
 
+    def test_audio_falls_back_to_storage_path(self):
+        """Ear-first rounds (FE close-out 2026-07-28): audio_ref is
+        load-bearing — a snippet carrying only storage_path (the
+        pieces-canonical shape) must still yield a playable round, same
+        fallback chain as the breakthroughs list."""
+        from services.game_engine import build_game_rounds
+        db = _FakeDB(
+            [{"id": "s1"}],
+            {"s1": [_snip("k1", audio_segment_path=None, audio_ref=None,
+                          storage_path="s3://take-1.webm")]},
+            {"s1": [{"snippet_id": "k1", "value": "challenge"}]},
+        )
+        rounds = build_game_rounds(db, "arc1", "u1")
+        self.assertEqual(rounds[0]["audio_ref"], "s3://take-1.webm")
+
     def test_round_id_is_the_snippet_id(self):
         # The FE reads round_id and echoes it back on answer — it MUST be the
         # snippet id the answer route resolves against (else every answer 404s).
