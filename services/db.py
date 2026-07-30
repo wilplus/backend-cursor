@@ -11318,9 +11318,16 @@ class DatabaseService:
         for _ in range(3):
             details = self.v2_get_student_details(str(user_id)) or {}
             current = details.get("credits")
-            # Unseeded user → the lazy-seed default (config, 25) so a brand-new
-            # user isn't wrongly told "insufficient" before their row exists.
-            current = int(current) if current is not None else _free_credit_grant()
+            if current is None:
+                # Unseeded user. Taking _free_credit_grant() as the balance here
+                # is NOT enough: the CAS below is an UPDATE ... eq(credits, N),
+                # and an UPDATE never creates a row, so it would match nothing
+                # and the caller would report INSUFFICIENT_CREDITS to a user who
+                # actually holds the grant. Write the row first (idempotent,
+                # guarded by credits_initialized_at — a user who spent down to 0
+                # is never re-granted), then CAS against the seeded value.
+                current = self.v2_ensure_credits_initialized(str(user_id))
+            current = int(current)
             if current < amount:
                 return None  # genuinely insufficient — no point retrying
             new_val = current - amount
