@@ -808,6 +808,27 @@ def draft_items_from_document(user_id: str, text: str, *,
         # asked about should be the first thing they see, with everything
         # else the document holds still under it.
         items = _draft_lines_from_document(user_id, text, hinted) + items
+    # The setup flow folds these rows onto the eight STRATEGY screens, whose
+    # vocabulary is not the item one: an item's `horizon` says when a goal is
+    # due (now/month/quarter/…), a strategy horizon says which document you are
+    # looking at (daily/weekly/monthly/…). They coincide only on the long end,
+    # so the FE cannot fold on `horizon` alone.
+    #
+    # `horizon` is left EXACTLY as-is — /setup/apply-proposed validates it
+    # against HORIZONS when it writes the item, so renaming it would make every
+    # applied row fail validation. The translation rides alongside instead, and
+    # is null when there is no mapping (the FE routes those to its remainder
+    # review rather than dropping them).
+    #
+    # Stamped AFTER the hinted prepend, deliberately: the FE branches on the
+    # VALUE of `strategy_horizon`, not on whether the key is there, so every
+    # row it is handed must carry it — and the hinted rows are the ones
+    # LEADING the response. A phrase has no `horizon` at all, so it maps to
+    # None and routes to the remainder review, which is the right screen for
+    # it: a phrase does not belong on a dated strategy document.
+    for _it in items:
+        if isinstance(_it, dict):
+            _it["strategy_horizon"] = lp.strategy_horizon_for(_it.get("horizon"))
     _log_derivation("doc_draft", user_id=user_id,
                     outcome="ok" if parsed else "no_derivation",
                     kind=kind or "-", drafted=len(items))
