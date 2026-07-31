@@ -80,6 +80,27 @@ every action enabled. Showing zero would hide the record button over a failed lo
 is the whole point of Phase 0 — and `price_version` is there so you can tell when a
 cached list is stale.
 
+### Buying a tier — `POST /v2/tokens/checkout`
+
+```jsonc
+// → {"tier": "pro"}            (optional: success_url, cancel_url)
+// 200
+{ "checkout_url": "https://checkout.stripe.com/…", "checkout_session_id": "cs_live_…", "tier": "pro" }
+// 400 {"code":"INVALID_TIER"} · 500 {"code":"MISCONFIGURED"} · 502 · 503
+```
+
+Redirect the browser to `checkout_url`. **Do not use a Stripe Payment Link** —
+`client_reference_id` never reaches the Subscription, so renewals would arrive
+unattributable and grant nothing from month two. This endpoint writes the user id
+onto the subscription itself, which is the only copy renewals carry.
+
+Not gated on `TOKEN_PRICING_ENABLED` — the flag controls whether we *charge for
+actions*; it must never stop someone paying us. Someone can subscribe while the
+flag is off and their tokens simply sit unspent.
+
+Tiers are `starter` · `pro` · `max`. `free` is not purchasable — it is the default
+state, granted by the monthly roll.
+
 ### Charging responses you'll actually hit
 
 `POST /v2/arc/<arc_id>/unlock-moments` now answers in tokens when the flag is on:
