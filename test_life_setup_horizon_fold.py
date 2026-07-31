@@ -128,7 +128,9 @@ class DraftRowShapeTests(unittest.TestCase):
     def _draft(self, items, parsed=None):
         from unittest.mock import patch
         from services import life_engine as eng
-        with patch.object(eng, "_complete", return_value=(parsed or {"goals": []})), \
+        with patch.object(eng, "_complete_ex",
+                          return_value=((parsed or {"goals": []}),
+                                        eng.OUTCOME_OK)), \
              patch.object(eng.life_importer, "plan_strategy",
                           return_value={"items": items}), \
              patch.object(eng, "_log_derivation", lambda *a, **k: None):
@@ -182,7 +184,8 @@ class HintedDraftRowShapeTests(unittest.TestCase):
     def _draft(self, items, lines, kind):
         from unittest.mock import patch
         from services import life_engine as eng
-        with patch.object(eng, "_complete", return_value={"goals": []}), \
+        with patch.object(eng, "_complete_ex",
+                          return_value=({"goals": []}, eng.OUTCOME_OK)), \
              patch.object(eng.life_importer, "plan_strategy",
                           return_value={"items": items}), \
              patch.object(eng.life_importer, "plan_document_lines",
@@ -411,6 +414,155 @@ class ExtractionVocabularyTests(unittest.TestCase):
         # whenever a document looks short-term, which fills the weekly screen
         # with goals nobody scoped to a week.
         self.assertIn("this week", self.prompt.lower())
+
+
+class TruncatedExtractionTests(unittest.TestCase):
+    """A 19,787-character goals document answered "nothing that reads as a
+    goal came out of that document" (screenshot, 2026-07-31).
+
+    It was not a prompt problem and the document was not empty. The output cap
+    was 2000 tokens; a strategy document that size holds far more than that in
+    goals JSON, so the model stopped mid-object, JSON mode left a string that
+    would not parse, _complete returned None, and the panel reported the
+    document as goal-less. `finish_reason == "length"` was on the response the
+    whole time and nothing read it.
+
+      X-1  a truncated read is reported as TRUNCATED, not as "nothing found";
+      X-2  the cap fits the largest document the endpoint accepts;
+      X-3  the endpoint tells the FE whether the READ worked, which is a
+           different question from whether the document held anything.
+    """
+
+    def setUp(self):
+        try:
+            from services import life_engine
+        except Exception as e:                      # pragma: no cover
+            self.skipTest(f"needs app deps: {e}")
+        self.eng = life_engine
+
+    def _call(self, content, finish_reason):
+        from unittest.mock import MagicMock, patch
+        choice = MagicMock(message=MagicMock(content=content),
+                           finish_reason=finish_reason)
+        client = MagicMock()
+        client.chat.completions.create.return_value = MagicMock(
+            choices=[choice])
+        with patch.object(self.eng, "_client", return_value=client), \
+             patch.object(self.eng, "_log_derivation"):
+            return self.eng._complete_ex(
+                self.eng.SPEC_LIFE_DOC_DRAFT, system="s", user="u",
+                surface="doc_draft", user_id="u1")
+
+    # ── X-1 ───────────────────────────────────────────────────────────────
+
+    def test_a_cut_off_answer_is_truncated_not_unparseable(self):
+        # The exact shape the cap produces: valid JSON right up to the cut.
+        parsed, outcome = self._call(
+            '{"goals": [{"title": "Ship the panel"}, {"title": "Rai',
+            "length")
+        self.assertIsNone(parsed)
+        self.assertEqual(outcome, self.eng.OUTCOME_TRUNCATED)
+
+    def test_malformed_at_its_own_length_is_still_unparseable(self):
+        # Different cause, different fix — do not collapse them back together.
+        parsed, outcome = self._call("not json at all", "stop")
+        self.assertIsNone(parsed)
+        self.assertEqual(outcome, self.eng.OUTCOME_UNPARSEABLE)
+
+    def test_json_that_closed_as_the_cap_hit_is_still_not_a_clean_read(self):
+        # It parses, so the old code would have called this a success — but
+        # the document holds more than what came back.
+        parsed, outcome = self._call('{"goals": []}', "length")
+        self.assertEqual(parsed, {"goals": []})
+        self.assertEqual(outcome, self.eng.OUTCOME_TRUNCATED)
+
+    def test_a_complete_answer_is_ok(self):
+        parsed, outcome = self._call('{"goals": [{"title": "Ship"}]}', "stop")
+        self.assertEqual(outcome, self.eng.OUTCOME_OK)
+        self.assertEqual(parsed["goals"][0]["title"], "Ship")
+
+    def test_every_failure_mode_is_marked_as_a_failure(self):
+        # The set the endpoint branches on. A new outcome that means "we fell
+        # over" but is missing here would go out as a clean read.
+        for outcome in (self.eng.OUTCOME_NO_CLIENT,
+                        self.eng.OUTCOME_CALL_FAILED,
+                        self.eng.OUTCOME_EMPTY,
+                        self.eng.OUTCOME_TRUNCATED,
+                        self.eng.OUTCOME_UNPARSEABLE):
+            self.assertIn(outcome, self.eng.FAILED_OUTCOMES, outcome)
+        self.assertNotIn(self.eng.OUTCOME_OK, self.eng.FAILED_OUTCOMES)
+
+    # ── X-2 ───────────────────────────────────────────────────────────────
+
+    def test_the_cap_fits_the_largest_document_the_endpoint_accepts(self):
+        # The upload truncates input at 20,000 characters. The answer has to
+        # have room to describe a document that size; 2000 tokens did not, and
+        # that shortfall was silent.
+        self.assertGreaterEqual(self.eng.SPEC_LIFE_DOC_DRAFT.max_tokens, 8000)
+
+    # ── X-3 ───────────────────────────────────────────────────────────────
+
+    def test_the_draft_reports_the_outcome_alongside_the_rows(self):
+        from unittest.mock import patch
+        with patch.object(self.eng, "_complete_ex",
+                          return_value=(None, self.eng.OUTCOME_TRUNCATED)), \
+             patch.object(self.eng, "_log_derivation"):
+            items, outcome = self.eng.draft_items_from_document_ex("u1", "x")
+        self.assertEqual(outcome, self.eng.OUTCOME_TRUNCATED)
+        # The three locked bets are always seeded, so "no goals" has never
+        # meant "no rows" — which is exactly why the row count could not be
+        # used to tell a failed read from an empty document.
+        self.assertEqual({i["kind"] for i in items}, {"bet"})
+
+    def test_the_old_entry_point_still_returns_just_the_rows(self):
+        # Existing callers must not have to care about the outcome.
+        from unittest.mock import patch
+        with patch.object(self.eng, "_complete_ex",
+                          return_value=({"goals": [{"title": "Ship"}]},
+                                        self.eng.OUTCOME_OK)), \
+             patch.object(self.eng, "_log_derivation"):
+            items = self.eng.draft_items_from_document("u1", "x")
+        self.assertIsInstance(items, list)
+        self.assertIn("goal", {i["kind"] for i in items})
+
+
+class ExtractionHonestyRouteTests(unittest.TestCase):
+    """X-3 on the wire. The endpoint has to say whether the READ worked.
+
+    NOTE what this does NOT do: it does not change a word of what the user
+    sees. The message in the screenshot is product copy and stays held for
+    founder sign-off. This is the signal the FE needs in order to stop saying
+    it when it is not true."""
+
+    def setUp(self):
+        try:
+            from routes import life_routes
+        except Exception as e:                      # pragma: no cover
+            self.skipTest(f"needs app deps: {e}")
+        self.routes = life_routes
+
+    def test_the_endpoint_sends_whether_the_read_worked(self):
+        import inspect
+        source = inspect.getsource(self.routes.life_setup_propose_from_document)
+        self.assertIn("extraction_ok", source)
+        self.assertIn("FAILED_OUTCOMES", source)
+
+    def test_it_is_a_status_not_a_score(self):
+        # AC-9: no numbers, no verdicts, no "we found 4 of 11". A boolean
+        # about our own plumbing is not a judgement about the person.
+        import inspect
+        source = inspect.getsource(self.routes.life_setup_propose_from_document)
+        self.assertNotIn("confidence", source.lower())
+        self.assertNotIn("score", source.lower())
+
+    def test_the_user_facing_copy_is_not_written_here(self):
+        # The fix is the signal, not the sentence. If a message for the FE to
+        # render ever appears in this endpoint, it needs sign-off first.
+        import inspect
+        source = inspect.getsource(self.routes.life_setup_propose_from_document)
+        for phrase in ("came out of that document", "yours to fill in",
+                       "we could not read"):
+            self.assertNotIn(phrase, source, phrase)
 
 
 if __name__ == "__main__":

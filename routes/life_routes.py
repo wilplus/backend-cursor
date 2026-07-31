@@ -460,8 +460,8 @@ def life_setup_propose_from_document():
             or not (doc.get("extracted_text") or "").strip():
         return _invalid("document: nothing readable to draft from",
                         code="NO_DOCUMENT")
-    items = engine.draft_items_from_document(_uid(), doc["extracted_text"],
-                                             kind=kind)
+    items, outcome = engine.draft_items_from_document_ex(
+        _uid(), doc["extracted_text"], kind=kind)
     return jsonify({
         "document": _serialize_setup_document(doc),
         "items": items,
@@ -470,6 +470,17 @@ def life_setup_propose_from_document():
         "kind": kind,
         # Stated on the wire so no reader can mistake a draft for a write.
         "written": False,
+        # Whether the READ worked, which is not the same question as whether
+        # the document held anything. False means we fell over — ran out of
+        # room, could not reach the model, could not parse it — and the short
+        # `items` list is OUR failure, not a fact about what the person wrote.
+        #
+        # Without this the FE cannot tell the two apart and has to pick one
+        # message for both, which is how a 19,787-character goals document got
+        # answered with "nothing that reads as a goal came out of that
+        # document". That copy is NOT changed here: user-facing wording is
+        # held for founder sign-off. This is the signal it needs when it is.
+        "extraction_ok": outcome not in engine.FAILED_OUTCOMES,
     }), 200
 
 

@@ -146,6 +146,26 @@ def _log_derivation(surface: str, *, user_id: str, outcome: str,
                 extra)
 
 
+# Why a derivation produced nothing. Every value except "ok" means WE failed,
+# not that the user's document was empty — a distinction the panel used to
+# throw away, and the reason a 19,787-character goals document could come back
+# as "nothing that reads as a goal came out of that document".
+OUTCOME_OK = "ok"
+OUTCOME_NO_CLIENT = "no_client"
+OUTCOME_CALL_FAILED = "call_failed"
+OUTCOME_EMPTY = "empty"
+OUTCOME_TRUNCATED = "truncated"
+OUTCOME_UNPARSEABLE = "unparseable"
+
+# The outcomes that mean "we could not read it", as opposed to "we read it and
+# it holds none of these". Callers use this to avoid telling somebody their
+# document was empty when the truth is that we were cut off.
+FAILED_OUTCOMES = frozenset({
+    OUTCOME_NO_CLIENT, OUTCOME_CALL_FAILED, OUTCOME_EMPTY,
+    OUTCOME_TRUNCATED, OUTCOME_UNPARSEABLE,
+})
+
+
 def _complete(spec: LLMSpec, *, system: str, user: str, surface: str,
               user_id: str) -> Optional[dict]:
     """One JSON-mode call. Returns the parsed dict, or None on ANY failure.
@@ -153,9 +173,23 @@ def _complete(spec: LLMSpec, *, system: str, user: str, surface: str,
     Every caller treats None as "no derivation this turn" and still answers —
     capture never fails and never blocks, so an OpenAI outage costs the
     proposal, not the note."""
+    parsed, _ = _complete_ex(spec, system=system, user=user, surface=surface,
+                             user_id=user_id)
+    return parsed
+
+
+def _complete_ex(spec: LLMSpec, *, system: str, user: str, surface: str,
+                 user_id: str) -> tuple[Optional[dict], str]:
+    """``_complete``, plus WHY it produced what it did.
+
+    Same call and the same never-raises contract; the second element is one of
+    the OUTCOME_* constants. Callers that have to tell the user something about
+    the result need it, because "the model returned no goals" and "the model
+    was cut off mid-answer" are the same None to everyone else — and they are
+    opposite things to say to a person who just handed over a document."""
     client = _client()
     if client is None:
-        return None
+        return None, OUTCOME_NO_CLIENT
     try:
         response = client.chat.completions.create(
             model=spec.model,
@@ -192,21 +226,44 @@ def _complete(spec: LLMSpec, *, system: str, user: str, surface: str,
                                   model=spec.model,)
         except Exception:
             pass
-        raw = (response.choices[0].message.content or "").strip()
+        choice = response.choices[0]
+        raw = (choice.message.content or "").strip()
+        # The model says when it stopped because it ran out of room rather
+        # than because it was finished. In JSON mode that leaves a string that
+        # ends mid-object, so json.loads fails and the whole extraction reads
+        # as "found nothing" — which is how a 19,787-character document full
+        # of goals came back empty. Read it.
+        finish_reason = getattr(choice, "finish_reason", None)
     except Exception as e:
-        _log_derivation(surface, user_id=user_id, outcome="call_failed",
-                        err=type(e).__name__)
-        return None
+        _log_derivation(surface, user_id=user_id,
+                        outcome=OUTCOME_CALL_FAILED, err=type(e).__name__)
+        return None, OUTCOME_CALL_FAILED
     if not raw:
-        _log_derivation(surface, user_id=user_id, outcome="empty")
-        return None
+        _log_derivation(surface, user_id=user_id, outcome=OUTCOME_EMPTY)
+        return None, OUTCOME_EMPTY
     try:
         parsed = json.loads(raw)
     except json.JSONDecodeError:
-        _log_derivation(surface, user_id=user_id, outcome="unparseable",
-                        chars=len(raw))
-        return None
-    return parsed if isinstance(parsed, dict) else None
+        # Reported as TRUNCATED rather than unparseable when the model told us
+        # it was cut off: they need different fixes. Truncation means the cap
+        # is too low for documents this size; unparseable means the model
+        # returned something malformed at its own length.
+        outcome = (OUTCOME_TRUNCATED if finish_reason == "length"
+                   else OUTCOME_UNPARSEABLE)
+        _log_derivation(surface, user_id=user_id, outcome=outcome,
+                        chars=len(raw), max_tokens=spec.max_tokens)
+        return None, outcome
+    if not isinstance(parsed, dict):
+        return None, OUTCOME_UNPARSEABLE
+    if finish_reason == "length":
+        # Parsed anyway — the model happened to close its JSON right as it ran
+        # out. The content is still short of what the document holds, so this
+        # is not a clean read and must not be reported as one.
+        _log_derivation(surface, user_id=user_id, outcome=OUTCOME_TRUNCATED,
+                        chars=len(raw), max_tokens=spec.max_tokens,
+                        parsed=True)
+        return parsed, OUTCOME_TRUNCATED
+    return parsed, OUTCOME_OK
 
 
 # ═════════════════════════════════════════════════════════════════════════
@@ -693,7 +750,18 @@ SPEC_LIFE_DOC_DRAFT = LLMSpec(
     # Extraction, not invention — the same temperature reasoning as the
     # strategy diff: creativity here would be goals the user never wrote.
     temperature=0.1,
-    max_tokens=2000,
+    # 2000 was too small and produced a SILENT wrong answer, not a slow one.
+    # The upload accepts 20,000 characters of strategy document; a dense one
+    # holds far more than 2000 tokens of goals, so the model stopped
+    # mid-object, JSON mode left a string that would not parse, and the person
+    # was told their document contained no goals. Sized to fit the largest
+    # document the endpoint will accept.
+    #
+    # max_tokens is a CEILING, not a spend: a short document still generates a
+    # short answer and still costs what it always did. Only the documents that
+    # were being silently truncated pay more, and they are the ones that were
+    # returning nothing.
+    max_tokens=8000,
     response_format={"type": "json_object"},
 )
 
@@ -761,18 +829,21 @@ def _draft_lines_from_document(user_id: str, text: str,
     definition = _DOC_DRAFT_LINE_DEFINITIONS.get(kind)
     if not definition:
         return []
-    parsed = _complete(
+    # _complete_ex, not _complete: BOTH document passes go through one seam,
+    # so a truncated hinted read is as visible as a truncated base one — and
+    # so there is a single place to stub when testing this path.
+    parsed, outcome = _complete_ex(
         SPEC_LIFE_DOC_DRAFT,
         system=_DOC_DRAFT_LINES_SYSTEM.format(definition=definition),
         user=(text or "")[:20000],
         surface="doc_draft_kind",
         user_id=user_id,
-    ) or {}
+    )
+    parsed = parsed or {}
     lines = parsed.get("lines")
     rows = life_importer.plan_document_lines(
         user_id, kind, lines if isinstance(lines, list) else [])
-    _log_derivation("doc_draft_kind", user_id=user_id,
-                    outcome="ok" if parsed else "no_derivation",
+    _log_derivation("doc_draft_kind", user_id=user_id, outcome=outcome,
                     kind=kind, drafted=len(rows))
     return rows
 
@@ -792,13 +863,29 @@ def draft_items_from_document(user_id: str, text: str, *,
     ``kind`` is the panel view the user was standing on, and it is a HINT —
     see the block above for what it does and, more importantly, what it does
     not do."""
-    parsed = _complete(
+    items, _ = draft_items_from_document_ex(user_id, text, kind=kind)
+    return items
+
+
+def draft_items_from_document_ex(
+        user_id: str, text: str, *,
+        kind: Optional[str] = None) -> tuple[list[dict], str]:
+    """``draft_items_from_document``, plus whether the read actually worked.
+
+    The second element is one of the OUTCOME_* constants, and anything in
+    FAILED_OUTCOMES means the rows are short because WE fell over — not
+    because the document held nothing. The endpoint needs that distinction:
+    without it, a truncated read and a genuinely goal-less document are the
+    same empty list, and the person gets told their document had no goals in
+    it when we simply ran out of room reading it."""
+    parsed, outcome = _complete_ex(
         SPEC_LIFE_DOC_DRAFT,
         system=_DOC_DRAFT_SYSTEM,
         user=(text or "")[:20000],
         surface="doc_draft",
         user_id=user_id,
-    ) or {}
+    )
+    parsed = parsed or {}
     plan = life_importer.plan_strategy(user_id, {
         "goals": parsed.get("goals") or [],
         "habits": parsed.get("habits") or [],
@@ -832,10 +919,9 @@ def draft_items_from_document(user_id: str, text: str, *,
     for _it in items:
         if isinstance(_it, dict):
             _it["strategy_horizon"] = lp.strategy_horizon_for(_it.get("horizon"))
-    _log_derivation("doc_draft", user_id=user_id,
-                    outcome="ok" if parsed else "no_derivation",
+    _log_derivation("doc_draft", user_id=user_id, outcome=outcome,
                     kind=kind or "-", drafted=len(items))
-    return items
+    return items, outcome
 
 
 def complete_setup_and_generate(user_id: str) -> dict:

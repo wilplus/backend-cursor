@@ -1880,7 +1880,7 @@ class PrivacyTests(unittest.TestCase):
         the STATELESS endpoints — moving these to a conversations/agents API
         would silently leave that protection behind."""
         import inspect
-        src = inspect.getsource(lengine._complete)
+        src = inspect.getsource(lengine._complete_ex)
         self.assertIn("store=False", src)
 
     def test_a_dedicated_zero_retention_key_is_supported(self):
@@ -2312,9 +2312,10 @@ class SetupDocumentRouteTests(unittest.TestCase):
                "extracted_text": "Ship the panel [Dec]", "char_count": 20}
         with patch.object(lroutes.importer, "get_setup_document",
                           return_value=doc), \
-                patch.object(lroutes.engine, "draft_items_from_document",
-                             return_value=[{"kind": "goal",
-                                            "title": "Ship the panel"}]), \
+                patch.object(lroutes.engine, "draft_items_from_document_ex",
+                             return_value=([{"kind": "goal",
+                                             "title": "Ship the panel"}],
+                                           lengine.OUTCOME_OK)), \
                 patch.object(lroutes.store, "insert_item") as insert:
             resp = self.client.post(
                 "/v2/life/setup/propose-from-document",
@@ -2344,11 +2345,11 @@ class SetupDocumentRouteTests(unittest.TestCase):
 
         def _draft(user_id, text, *, kind=None):
             seen["kind"] = kind
-            return drafted if drafted is not None else []
+            return (drafted if drafted is not None else []), lengine.OUTCOME_OK
 
         with patch.object(lroutes.importer, "get_setup_document",
                           return_value=self._DOC), \
-                patch.object(lroutes.engine, "draft_items_from_document",
+                patch.object(lroutes.engine, "draft_items_from_document_ex",
                              side_effect=_draft):
             resp = self.client.post(
                 "/v2/life/setup/propose-from-document",
@@ -2533,11 +2534,11 @@ class DocumentAwareGenerationTests(unittest.TestCase):
         self.assertNotIn("uploaded current strategy document", seen["user"])
 
     def test_drafting_writes_nothing_and_keeps_the_locked_bets(self):
-        with patch.object(lengine, "_complete", return_value={
+        with patch.object(lengine, "_complete_ex", return_value=({
                 "goals": [{"title": "Ship the panel", "horizon": "year",
                            "due_label": "[Dec]", "bet": "company"}],
                 "habits": [{"title": "Pray"}],
-                "distractions": []}), \
+                "distractions": []}, lengine.OUTCOME_OK)), \
                 patch.object(lengine.store, "insert_item") as insert:
             items = lengine.draft_items_from_document(USER, "the doc text")
         insert.assert_not_called()
@@ -2569,10 +2570,10 @@ class DocumentKindHintTests(unittest.TestCase):
         def _complete(spec, *, system, user, surface, user_id):
             systems.append(system)
             if surface == "doc_draft":
-                return dict(self.BASE)
-            return {"lines": list(lines)}
+                return dict(self.BASE), lengine.OUTCOME_OK
+            return {"lines": list(lines)}, lengine.OUTCOME_OK
 
-        with patch.object(lengine, "_complete", side_effect=_complete), \
+        with patch.object(lengine, "_complete_ex", side_effect=_complete), \
                 patch.object(lengine.store, "insert_item") as insert:
             items = lengine.draft_items_from_document(USER, "the doc text",
                                                       kind=kind)
@@ -2636,9 +2637,11 @@ class DocumentKindHintTests(unittest.TestCase):
         # An outage costs the hinted rows, never the screen (the bargain
         # every derivation in this module makes).
         def _complete(spec, *, system, user, surface, user_id):
-            return dict(self.BASE) if surface == "doc_draft" else None
+            if surface == "doc_draft":
+                return dict(self.BASE), lengine.OUTCOME_OK
+            return None, lengine.OUTCOME_CALL_FAILED
 
-        with patch.object(lengine, "_complete", side_effect=_complete):
+        with patch.object(lengine, "_complete_ex", side_effect=_complete):
             items = lengine.draft_items_from_document(USER, "text",
                                                       kind="phrase")
         self.assertIn("goal", [i["kind"] for i in items])
