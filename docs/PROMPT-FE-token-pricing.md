@@ -80,6 +80,34 @@ every action enabled. Showing zero would hide the record button over a failed lo
 is the whole point of Phase 0 — and `price_version` is there so you can tell when a
 cached list is stale.
 
+### Pricing a per-arc control — `GET /v2/tokens/arc/<arc_id>`
+
+```jsonc
+{ "enabled": true, "arc_id": "…",
+  "charged": { "insights": true, "game": false,
+               "moment_explanation": false, "coach_review": false },
+  "prices":  { "insights": 1000, "game": 1500,
+               "moment_explanation": 2500, "coach_review": 35000 } }
+```
+
+**Read this before rendering any per-arc control.** Those four actions charge with
+`ref_id=arc_id`, so the first open costs the price and every re-open is free. A
+static label is therefore right exactly once and wrong forever after — and a stale
+price on a button is worse than no price, because people act on it and it
+discourages re-reading something they already paid for.
+
+Render the price when `charged[action] === false`, and nothing when it is `true`.
+Treat a missing field or `enabled: false` as unknown → show no price.
+
+**This read charges nothing** — that is the premise that makes it usable before
+render. You cannot get the answer from the action's own endpoint: `/feedback` *is*
+the `insights` charge, so by the time that response exists the money is spent and
+the answer is always "yes".
+
+Scoped to the caller: an arc they don't own returns all-false.
+
+`game` has the identical trap, so it's covered here too.
+
 ### Buying a tier — `POST /v2/tokens/checkout`
 
 ```jsonc

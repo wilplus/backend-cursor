@@ -98,6 +98,24 @@ PRICES: dict[str, int] = {
     "coach_review":      35_000,   # verify pass + key-moment comment, ONE sitting
 }
 
+PER_ARC_ACTIONS: tuple[str, ...] = (
+    "insights", "game", "moment_explanation", "coach_review",
+)
+"""Actions charged ONCE PER ARC (``ref_id=arc_id``), so every re-open is free.
+
+This tuple exists for the FE, and the reason is not cosmetic. A static
+"1,000 tokens" label on a control that has already been paid for is *wrong* —
+right the first time and wrong forever after — and a stale price on a button is
+worse than no price, because people act on it and it discourages re-reading
+something they already own. So the FE needs to know, BEFORE it renders the
+control, whether this arc has already been charged. That is what
+``GET /v2/tokens/arc/<arc_id>`` answers.
+
+Keep this in step with every ``charge(..., ref_id=arc_id)`` call site — pinned
+by test_token_arc_charged.py, which greps the routes for arc-keyed charges and
+fails if one is missing here."""
+
+
 COACH_ACTIONS = frozenset({"coach_review"})
 """Actions that also consume the per-period coach-review allowance. Kept as a
 set rather than a flag on the price so the two limits stay visibly separate."""
