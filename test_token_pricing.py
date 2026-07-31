@@ -451,11 +451,28 @@ class StripeTierTests(unittest.TestCase):
         self.assertTrue(db.store["row"]["period_start"].startswith("2026-07-03"))
 
     def test_cancellation_drops_to_free_without_clawback_of_the_paid_period(self):
+        """The balance assertion is the whole test. It was missing, and under it
+        the code was setting a cancelling Pro user's 250,000 tokens to 12,000 on
+        the spot — the exact opposite of the 'no claw-back' comment above it."""
         from services.stripe_subscription_tiers import apply_subscription_event
         db = FakeDB(account_row("pro", balance=250_000))
         out = apply_subscription_event(
             self._event("customer.subscription.deleted"), self.MAP, database=db)
         self.assertEqual(out["tier"], "free")
+        self.assertEqual(db.store["row"]["token_balance"], 250_000,
+                         "clawed back tokens the user had already paid for")
+
+    def test_cancellation_does_not_move_the_renewal_date(self):
+        """Re-anchoring on cancellation would shift their next roll to the day
+        they cancelled, so the date the FE shows them stops being the date they
+        were told."""
+        from services.stripe_subscription_tiers import apply_subscription_event
+        anchor = (datetime.now(UTC) - timedelta(days=3)).isoformat()
+        db = FakeDB(account_row("pro", balance=250_000))
+        db.store["row"]["period_start"] = anchor
+        apply_subscription_event(
+            self._event("customer.subscription.deleted"), self.MAP, database=db)
+        self.assertEqual(db.store["row"]["period_start"], anchor)
 
     def test_unpaid_subscription_grants_nothing(self):
         from services.stripe_subscription_tiers import apply_subscription_event
@@ -488,6 +505,245 @@ class StripeTierTests(unittest.TestCase):
         apply_subscription_event(ev, self.MAP, database=db)
         apply_subscription_event(ev, self.MAP, database=db)
         self.assertEqual(db.store["row"]["token_balance"], 300_000)
+
+
+class MidPeriodTierChangeTests(unittest.TestCase):
+    """What a plan change does to a balance and to the coach counter.
+
+    `customer.subscription.updated` is NOT a renewal signal — Stripe also fires
+    it for card changes, cancel-toggles and metadata edits. The old code wrote
+    `balance = grant_for(tier)` and `coach_reviews_used = 0` on every one of
+    them, which produced two separate faults:
+
+      * a mid-period DOWNGRADE truncated the balance the user had already paid
+        for (Max 1.4M → Starter = 50k, instantly);
+      * ANY subscription event re-granted a month of tokens and reset the coach
+        counter, so the founder's calendar cap could be cleared for free by
+        toggling something in the billing portal. That cap is a fence.
+
+    THE RULE PINNED HERE: the billing anchor decides, not the event.
+      anchor moved  → SET the grant, zero the counter (a real new period)
+      tier changed  → balance = max(current, new grant), counter CARRIES
+      neither       → nothing moves at all
+    """
+
+    MAP = '{"price_starter":"starter","price_pro":"pro","price_max":"max"}'
+
+    def setUp(self):
+        self.env = patch.dict("os.environ", {"TOKEN_PRICING_ENABLED": "1"})
+        self.env.start()
+        # Anchor a few days back: inside the current period, so nothing rolls
+        # underneath the assertions.
+        self.anchor = datetime.now(UTC) - timedelta(days=5)
+
+    def tearDown(self):
+        self.env.stop()
+
+    def _db(self, tier, balance, reviews=0):
+        db = FakeDB(account_row(tier, balance=balance, start=self.anchor,
+                                reviews=reviews))
+        return db
+
+    def _event(self, price, *, etype="customer.subscription.updated",
+               anchor=None):
+        """Same billing anchor as the stored row unless told otherwise — i.e. a
+        mid-period change, which is the case under test."""
+        start = anchor or self.anchor
+        return {"type": etype, "data": {"object": {
+            "id": "sub_1", "status": "active", "customer": "cus_1",
+            "metadata": {"user_id": "u1"},
+            "current_period_start": int(start.timestamp()),
+            "items": {"data": [{"price": {"id": price}}]}}}}
+
+    def _apply(self, db, price, **kw):
+        from services.stripe_subscription_tiers import apply_subscription_event
+        return apply_subscription_event(self._event(price, **kw), self.MAP,
+                                        database=db)
+
+    # ── downgrade ────────────────────────────────────────────────────
+    def test_downgrade_does_not_truncate_the_balance_they_paid_for(self):
+        """THE question the FE could not write copy for: Max with 1.4M drops to
+        Starter (50k) — what happens to the balance above the new cap?
+
+        Answer: nothing, this period. They bought this month at Max. The smaller
+        grant lands by itself at the next roll, which is the rule every tier
+        already runs on (nothing rolls over), so it needs no special sentence."""
+        db = self._db("max", 1_400_000)
+        self._apply(db, "price_starter")
+        self.assertEqual(db.store["row"]["tier"], "starter")
+        self.assertEqual(db.store["row"]["token_balance"], 1_400_000)
+
+    def test_the_smaller_grant_lands_at_the_next_roll(self):
+        """The other half of the above: the downgrade is real, just deferred."""
+        import services.token_account as ta
+        db = self._db("max", 1_400_000)
+        self._apply(db, "price_starter")
+        db.store["row"]["period_start"] = (
+            datetime.now(UTC) - timedelta(days=40)).isoformat()
+        out = ta.ensure_period_current("u1", database=db)
+        self.assertEqual(out["token_balance"], 50_000)
+
+    # ── upgrade ──────────────────────────────────────────────────────
+    def test_upgrade_lifts_to_the_new_allowance_immediately(self):
+        """Plan §10.11: full new-tier grant on upgrade, not pro-rated. Slightly
+        generous and trivially explainable, which is worth more here than exact
+        — the FE has to state it before checkout."""
+        db = self._db("starter", 5_000)
+        self._apply(db, "price_pro")
+        self.assertEqual(db.store["row"]["token_balance"], 300_000)
+
+    def test_upgrade_never_reduces_a_balance(self):
+        """Guards the max(): someone holding more than the new tier's grant
+        must not be trimmed by an UPGRADE either."""
+        db = self._db("starter", 400_000)   # e.g. left over from a Pro month
+        self._apply(db, "price_pro")
+        self.assertEqual(db.store["row"]["token_balance"], 400_000)
+
+    # ── the coach cap (fence) ────────────────────────────────────────
+    def test_a_portal_toggle_cannot_reset_the_coach_counter(self):
+        """THE fence. coach_reviews_used is the founder's calendar, and it must
+        not be clearable by anything a user can click. A card change or a
+        cancel-toggle arrives here as subscription.updated with the same tier
+        and the same anchor."""
+        db = self._db("pro", 120_000, reviews=6)
+        self._apply(db, "price_pro")
+        self.assertEqual(db.store["row"]["coach_reviews_used"], 6)
+
+    def test_a_portal_toggle_does_not_re_grant_tokens(self):
+        """Same event, the money half: a spent-down Pro user must not get a
+        fresh 300,000 for updating their card."""
+        db = self._db("pro", 12_000)
+        self._apply(db, "price_pro")
+        self.assertEqual(db.store["row"]["token_balance"], 12_000)
+
+    def test_used_reviews_carry_across_a_mid_period_upgrade(self):
+        """An upgrade may RAISE the cap; it may not refund reviews already
+        taken. 1 used on starter becomes 1-of-6 on pro, not 0-of-6 — otherwise
+        upgrade-and-downgrade is an unlimited coach-review loop."""
+        import services.token_account as ta
+        db = self._db("starter", 50_000, reviews=1)
+        self._apply(db, "price_pro")
+        self.assertEqual(db.store["row"]["coach_reviews_used"], 1)
+        acct = ta.get_account("u1", database=db)
+        self.assertEqual(acct["coach_reviews"],
+                         {"used": 1, "allowed": 6, "remaining": 5})
+
+    def test_a_genuine_renewal_still_resets_both(self):
+        """The rule is anchor-driven, so a real new billing period must behave
+        exactly like the monthly roll: SET the grant, zero the counter."""
+        db = self._db("pro", 9_000, reviews=6)
+        self._apply(db, "price_pro", anchor=datetime.now(UTC))
+        self.assertEqual(db.store["row"]["token_balance"], 300_000)
+        self.assertEqual(db.store["row"]["coach_reviews_used"], 0)
+
+    def test_a_later_upgrade_is_still_recorded_in_the_ledger(self):
+        """Keyed on the bare subscription id, the unique index would reject
+        every tier_change after the first and the audit trail would quietly stop
+        at signup."""
+        db = self._db("starter", 50_000)
+        self._apply(db, "price_pro")
+        self._apply(db, "price_max")
+        changes = [r for r in db.ledger if r["action"] == "tier_change"]
+        self.assertEqual([r["tier"] for r in changes], ["pro", "max"])
+        self.assertEqual(changes[-1]["delta"], 1_500_000 - 300_000)
+
+
+class PlanStateTests(unittest.TestCase):
+    """`plan` on the balance: is this tier a live subscription, or the default?
+
+    Without it the FE cannot tell "you are on free, upgrade" from "you are on
+    Pro, manage it" — which is what left four published, priced tiers with no
+    way to buy or leave them.
+    """
+
+    def setUp(self):
+        self.env = patch.dict("os.environ", {"TOKEN_PRICING_ENABLED": "1"})
+        self.env.start()
+
+    def tearDown(self):
+        self.env.stop()
+
+    def test_free_user_is_not_managed(self):
+        import services.token_account as ta
+        plan = ta.plan_state("u1", tier="free", database=FakeDB(account_row()))
+        self.assertFalse(plan["managed"])
+        self.assertFalse(plan["manage_available"])
+
+    def test_active_subscription_is_managed(self):
+        import services.token_account as ta
+        db = FakeDB(account_row("pro", balance=300_000))
+        db.store["row"].update({
+            "stripe_customer_id": "cus_1", "stripe_subscription_id": "sub_1",
+            "stripe_subscription_status": "active",
+            "subscription_cancel_at_period_end": False,
+        })
+        plan = ta.plan_state("u1", tier="pro", database=db)
+        self.assertTrue(plan["managed"])
+        self.assertTrue(plan["manage_available"])
+        self.assertEqual(plan["tier"], "pro")
+
+    def test_past_due_is_still_managed(self):
+        """The card failed; the subscription exists and the portal is where it
+        gets fixed. Showing 'upgrade' would sell a second subscription to solve
+        a billing problem."""
+        import services.token_account as ta
+        db = FakeDB(account_row("pro", balance=300_000))
+        db.store["row"].update({
+            "stripe_customer_id": "cus_1", "stripe_subscription_id": "sub_1",
+            "stripe_subscription_status": "past_due"})
+        self.assertTrue(ta.plan_state("u1", tier="pro", database=db)["managed"])
+
+    def test_cancelled_subscription_is_not_managed_but_stays_reachable(self):
+        import services.token_account as ta
+        db = FakeDB(account_row("free"))
+        db.store["row"].update({
+            "stripe_customer_id": "cus_1", "stripe_subscription_id": "sub_1",
+            "stripe_subscription_status": "canceled",
+            "subscription_cancel_at_period_end": True})
+        plan = ta.plan_state("u1", tier="free", database=db)
+        self.assertFalse(plan["managed"])
+        # Not "cancelling" — already gone. Showing a lapse date for a plan they
+        # no longer hold reads as though they still have it.
+        self.assertFalse(plan["cancel_at_period_end"])
+        self.assertTrue(plan["manage_available"], "cannot reach their invoices")
+
+    def test_cancel_at_period_end_carries_the_date_they_lose_it(self):
+        import services.token_account as ta
+        ends = (datetime.now(UTC) + timedelta(days=12)).isoformat()
+        db = FakeDB(account_row("pro", balance=300_000))
+        db.store["row"].update({
+            "stripe_customer_id": "cus_1", "stripe_subscription_id": "sub_1",
+            "stripe_subscription_status": "active",
+            "subscription_cancel_at_period_end": True,
+            "subscription_current_period_end": ends})
+        plan = ta.plan_state("u1", tier="pro", database=db)
+        self.assertTrue(plan["managed"])
+        self.assertTrue(plan["cancel_at_period_end"])
+        self.assertTrue(plan["current_period_end"].startswith(ends[:10]))
+
+    def test_unmigrated_database_degrades_to_upgrade_only(self):
+        """add_subscription_state.sql has to be run by hand. Until it is, the
+        balance must still read — 'on main' is not 'run in prod'."""
+        import services.token_account as ta
+        db = FakeDB(account_row("pro", balance=300_000))
+        db.client.table.side_effect = RuntimeError("column does not exist")
+        plan = ta.plan_state("u1", tier="pro", database=db)
+        self.assertFalse(plan["managed"])
+        self.assertFalse(plan["manage_available"])
+
+    def test_balance_carries_plan_and_no_usage_framing(self):
+        """AC-9 does not stop applying because the surface is billing. `plan`
+        may say what was bought and when it renews; it may never carry a
+        percentage used, a streak, or a comparison."""
+        import services.token_account as ta
+        acct = ta.get_account("u1", database=FakeDB(account_row("pro", 250_000)))
+        self.assertIn("plan", acct)
+        banned = ("percent", "pct", "used_ratio", "usage", "streak", "rank",
+                  "score", "efficiency", "compared", "average")
+        for key in acct["plan"]:
+            self.assertNotIn(key.lower().replace("_", ""),
+                             [b.replace("_", "") for b in banned],
+                             f"plan.{key} is performance framing")
 
 
 if __name__ == "__main__":
