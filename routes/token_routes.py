@@ -28,7 +28,9 @@ from flask import Blueprint, jsonify, request
 
 from auth import require_auth
 from services import token_account as ta
-from services.token_prices import band_for_balance, public_price_list
+from services.token_prices import (
+    PER_ARC_ACTIONS, band_for_balance, price_of, public_price_list,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -94,6 +96,40 @@ def tokens_recording_band():
                     "balance": acct.get("balance"),
                     "period_ends_at": acct.get("period_ends_at"),
                     **band}), 200
+
+
+@tokens_bp.route("/v2/tokens/arc/<arc_id>", methods=["GET"])
+@require_auth
+def tokens_arc_state(arc_id):
+    """What this arc's once-per-arc actions cost, and which are already paid.
+
+    200 {enabled, arc_id, charged:{action: bool}, prices:{action: int}}
+
+    THE POINT. Per-arc actions (`insights`, `game`, `moment_explanation`,
+    `coach_review`) are charged with `ref_id=arc_id`, so the first open costs
+    the price and every re-open is free. A control labelled with a static price
+    would therefore be right exactly once and wrong forever after — and a stale
+    price on a button is worse than no price at all, because people act on it
+    and it discourages re-reading something they have already paid for.
+
+    So the FE needs the answer BEFORE it renders the control, and it cannot get
+    it from the action's own endpoint: `/explore/arc/<id>/feedback` IS the
+    charge, so by the time that response exists the money is spent and the
+    answer is always "yes".
+
+    This read charges nothing, which is what makes it usable as a pre-render
+    check. Scoped to the caller, so an arc they do not own returns all-false
+    rather than revealing anything.
+    """
+    if not ta.enabled():
+        return jsonify(_disabled_payload()), 200
+    charged = ta.charged_actions_for_ref(str(request.user_id), str(arc_id))
+    return jsonify({
+        "enabled": True,
+        "arc_id": str(arc_id),
+        "charged": {a: (a in charged) for a in PER_ARC_ACTIONS},
+        "prices": {a: price_of(a) for a in PER_ARC_ACTIONS},
+    }), 200
 
 
 @tokens_bp.route("/v2/tokens/checkout", methods=["POST"])

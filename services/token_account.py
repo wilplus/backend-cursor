@@ -467,6 +467,41 @@ def set_tier(user_id: str, tier: str, *, period_start: Optional[datetime] = None
             "period_start": start.isoformat()}
 
 
+def charged_actions_for_ref(user_id: str, ref_id: str, *,
+                            database=None) -> set:
+    """Which once-per-ref actions this user has ALREADY paid for on ``ref_id``.
+
+    One indexed query, no pagination, no charge. Exists so the FE can price a
+    control correctly before rendering it: a per-arc action costs its price the
+    first time and nothing after, so a static label would be right once and
+    wrong every time thereafter.
+
+    Scoped to ``user_id``, so it can only ever report what THIS user was
+    charged — an arc they do not own simply comes back empty rather than
+    leaking that it exists.
+
+    Returns an empty set on any failure. The caller renders "no price" for
+    unknown, which is the safe direction: showing nothing beats showing a
+    number that might be wrong.
+    """
+    if not user_id or not ref_id:
+        return set()
+    db = database or _db()
+    try:
+        res = (
+            db.client.table(_LEDGER_TABLE)
+            .select("action")
+            .eq("user_id", str(user_id))
+            .eq("ref_id", str(ref_id))
+            .execute()
+        )
+        return {r.get("action") for r in (res.data or []) if r.get("action")}
+    except Exception as e:
+        logger.warning("token_account: charged_actions failed user=%s ref=%s "
+                       "err=%s", user_id, ref_id, e)
+        return set()
+
+
 def history(user_id: str, *, limit: int = 50, before_id: Optional[int] = None,
             database=None) -> list:
     """Ledger rows, newest first. Read-only."""
