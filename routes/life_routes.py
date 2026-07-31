@@ -426,27 +426,47 @@ def life_setup_documents_list():
 @life_bp.route("/v2/life/setup/propose-from-document", methods=["POST"])
 @life_route()
 def life_setup_propose_from_document():
-    """DRAFT bets/goals/habits from the uploaded document. WRITES NOTHING.
+    """DRAFT rows from the uploaded document. WRITES NOTHING.
 
-    The founder's line: goals-drafting from the document is offered, never
+    The founder's line: drafting from the document is offered, never
     forced-automatic. This endpoint returns rows for the review UI and stops;
     creation happens only in /setup/apply-proposed with exactly the rows the
-    user ticked (N5)."""
+    user ticked (N5).
+
+    ``kind`` (optional) is the panel view the user was standing on when they
+    handed the document over — one of the closed nine. It scopes a second
+    read of the same text; it does NOT filter what comes back, and omitting
+    it is the original call, not a degraded one. Absent a document id, the
+    newest PROCESSED upload is the one read: a later upload nothing could be
+    extracted from never shadows a good one."""
     body = _body()
     document_id = body.get("document_id")
     if document_id is not None and not isinstance(document_id, str):
         return _invalid("document_id: must be an id string or null")
+    kind = body.get("kind")
+    if kind is not None and not isinstance(kind, str):
+        return _invalid(f"kind: must be one of {', '.join(lp.ITEM_KINDS)}")
+    kind = (kind or "").strip() or None
+    # Validated against the SAME closed nine the panel renders. An unknown
+    # kind is refused rather than ignored: a tenth kind is an FE change, so a
+    # backend that quietly accepted one would be drafting rows nothing on the
+    # other side can display.
+    if kind and kind not in lp.ITEM_KINDS:
+        return _invalid(f"kind: must be one of {', '.join(lp.ITEM_KINDS)}")
     doc = importer.get_setup_document(_uid(), (document_id or "").strip()
                                       or None)
     if not doc or doc.get("status") != "processed" \
             or not (doc.get("extracted_text") or "").strip():
         return _invalid("document: nothing readable to draft from",
                         code="NO_DOCUMENT")
-    items = engine.draft_items_from_document(_uid(),
-                                             doc["extracted_text"])
+    items = engine.draft_items_from_document(_uid(), doc["extracted_text"],
+                                             kind=kind)
     return jsonify({
         "document": _serialize_setup_document(doc),
         "items": items,
+        # Echoed so the caller can see the hint arrived and was honoured —
+        # null when none was sent.
+        "kind": kind,
         # Stated on the wire so no reader can mistake a draft for a write.
         "written": False,
     }), 200
@@ -462,19 +482,52 @@ def life_setup_apply_proposed():
     ACTIVE, an unticked row is never sent and never created, and nothing
     lands as a silent 'proposed'. ``sanitize_confirmed_item`` forces the
     status and keeps a bet's rank LOCKED (L-2a) regardless of what the
-    client sent."""
+    client sent. It accepts exactly the kinds ``propose`` can emit
+    (``importer.DOC_DRAFT_KINDS``) — the two disagreeing would be a dead end
+    the user cannot act on.
+
+    PROVENANCE. A row created here came out of a document the person wrote
+    and then ticked on a screen: it has no ``origin_case_id`` (no `#mistake`
+    case derived it) and no ``origin_note_id`` (nobody typed it into the
+    chat). Send the ``document_id`` that was drafted from and every created
+    row carries it in ``origin_document_id``, so a principle read out of a
+    file stays tellable-apart from one the engine derived. It is OPTIONAL and
+    resolved, never guessed — an id we cannot resolve costs the stamp and
+    nothing else, because the rows are the job and the provenance is not."""
     body = _body()
     raw_items = body.get("items")
     if not isinstance(raw_items, list) or not raw_items:
         return _invalid("items: must be a non-empty list")
     if len(raw_items) > 200:
         return _invalid("items: at most 200 per request")
+    document_id = body.get("document_id")
+    if document_id is not None and not isinstance(document_id, str):
+        return _invalid("document_id: must be an id string or null")
+    document_id = (document_id or "").strip() or None
+    origin_document_id = None
+    if document_id:
+        doc = importer.get_setup_document(_uid(), document_id)
+        if doc:
+            origin_document_id = str(doc.get("id") or "") or None
+        else:
+            # Deleted between drafting and ticking, or never theirs. Losing
+            # the rows over a provenance field would be the wrong trade.
+            logger.warning("life: apply-proposed could not resolve the "
+                           "document it was told to stamp")
     created = []
     for raw in raw_items:
         fields = importer.sanitize_confirmed_item(raw)
         if not fields:
             continue
+        if origin_document_id:
+            fields["origin_document_id"] = origin_document_id
         row = store.insert_item(_uid(), fields)
+        if row is None and "origin_document_id" in fields:
+            # "On main" is not "run in prod": the column ships with
+            # migrations/add_life_items_origin_document.sql, and a row the
+            # user ticked must not be lost to a migration nobody has run yet.
+            fields.pop("origin_document_id")
+            row = store.insert_item(_uid(), fields)
         if row:
             created.append(lp.serialize_item(row))
     return jsonify({"created": created, "count": len(created)}), 201

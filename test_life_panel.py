@@ -1982,10 +1982,57 @@ class ConfirmedItemTests(unittest.TestCase):
 
     def test_junk_kinds_and_blank_titles_are_refused(self):
         self.assertIsNone(importer.sanitize_confirmed_item(
-            {"kind": "principle", "title": "smuggled"}))
+            {"kind": "reflection", "title": "smuggled"}))
         self.assertIsNone(importer.sanitize_confirmed_item(
             {"kind": "goal", "title": "   "}))
         self.assertIsNone(importer.sanitize_confirmed_item("nope"))
+
+    def test_a_real_kind_the_draft_never_emits_is_still_refused(self):
+        # `task` and `event` are two of the panel's nine, and the draft path
+        # emits neither — so neither may be created through it. The two
+        # endpoints hold ONE kind set; a row this side accepted but the draft
+        # side never produced would be a hole, not a courtesy.
+        for kind in ("task", "event"):
+            self.assertIsNone(importer.sanitize_confirmed_item(
+                {"kind": kind, "title": "not from a document"}), kind)
+
+    def test_the_three_named_kinds_are_confirmable_and_land_active(self):
+        # Phrases, Principles and Wins — the three views the dock returned
+        # nothing on. A ticked row is created ACTIVE, principles included:
+        # the tick IS the approve, made on a fully displayed row (N5).
+        for kind in ("phrase", "principle", "win"):
+            fields = importer.sanitize_confirmed_item(
+                {"kind": kind, "title": "The line itself.",
+                 "status": "proposed"})
+            self.assertIsNotNone(fields, kind)
+            self.assertEqual(fields["kind"], kind)
+            self.assertEqual(fields["status"], "active", kind)
+
+    def test_a_ticked_phrase_lands_on_the_wall_rather_than_uncollected(self):
+        fields = importer.sanitize_confirmed_item(
+            {"kind": "phrase", "title": "Pray first."})
+        self.assertEqual(fields["collection"],
+                         importer.PHRASE_DEFAULT_COLLECTION)
+        # An explicit collection still wins — the default fills a gap, it
+        # does not overrule the user.
+        fields = importer.sanitize_confirmed_item(
+            {"kind": "phrase", "title": "Pray first.", "bet": "2026"})
+        self.assertEqual(fields["collection"], "2026")
+
+    def test_propose_and_apply_hold_one_kind_set(self):
+        # The failure this prevents: propose emits a kind apply refuses, the
+        # user ticks rows, presses Add and is told nothing was created — with
+        # nothing they can do about it.
+        for kind in importer.DOC_DRAFT_KINDS:
+            self.assertIn(kind, lp.ITEM_KINDS, kind)
+            title = ("🔵 The Company" if kind == "bet"
+                     else f"a drafted {kind}")
+            self.assertIsNotNone(
+                importer.sanitize_confirmed_item({"kind": kind,
+                                                  "title": title}), kind)
+        # And the draft never reaches outside the panel's closed nine.
+        self.assertEqual(set(importer.DOC_DRAFT_LINE_KINDS)
+                         - set(importer.DOC_DRAFT_KINDS), set())
 
     def test_a_bet_keeps_its_locked_rank_and_an_invented_bet_is_refused(self):
         # L-2a: the uploaded document can word a bet, never reorder them.
@@ -1998,6 +2045,112 @@ class ConfirmedItemTests(unittest.TestCase):
         self.assertEqual(fields["order_key"], float(company["rank"]))
         self.assertIsNone(importer.sanitize_confirmed_item(
             {"kind": "bet", "title": "The Fourth Bet"}))
+
+
+class DocumentLinePlannerTests(unittest.TestCase):
+    """Lines out of a document → phrase / principle / win rows. Pure, no DB —
+    and no writes, like every other planner in the importer."""
+
+    def test_a_line_becomes_a_row_of_the_hinted_kind(self):
+        rows = importer.plan_document_lines(
+            USER, "phrase", ["Pray first.", "Do the hard thing."])
+        self.assertEqual([r["kind"] for r in rows], ["phrase", "phrase"])
+        self.assertEqual(rows[0]["title"], "Pray first.")
+        self.assertEqual(rows[0]["status"], "active")
+        self.assertEqual([r["order_key"] for r in rows], [1000.0, 2000.0])
+
+    def test_only_a_phrase_carries_the_default_collection(self):
+        phrase = importer.plan_document_lines(USER, "phrase", ["Pray."])[0]
+        self.assertEqual(phrase["collection"], "wall")
+        for kind in ("principle", "win"):
+            row = importer.plan_document_lines(USER, kind, ["Something."])[0]
+            self.assertNotIn("collection", row)
+
+    def test_the_body_carries_the_line_only_when_the_title_was_cut(self):
+        # A 600-character phrase keeps every character it was written with;
+        # a short one leaves the body empty so the review row renders once.
+        short = importer.plan_document_lines(USER, "phrase", ["Pray."])[0]
+        self.assertEqual(short["body"], "")
+        long_line = "x" * 600
+        long_row = importer.plan_document_lines(USER, "phrase",
+                                                [long_line])[0]
+        self.assertEqual(len(long_row["title"]), 500)
+        self.assertEqual(long_row["body"], long_line)
+
+    def test_the_language_is_never_normalised(self):
+        # The corpus is code-switched Polish/English and every "cleanup" is a
+        # small edit to somebody's own words (BE-3).
+        line = "Nie próbuj zrozumieć wszystkiego — „rób swoje”."
+        row = importer.plan_document_lines(USER, "principle", [line])[0]
+        self.assertEqual(row["title"], line)
+
+    def test_blank_and_two_character_lines_are_dropped(self):
+        rows = importer.plan_document_lines(
+            USER, "win", ["", "  ", "ok", None, {"title": "Shipped it."}])
+        self.assertEqual([r["title"] for r in rows], ["Shipped it."])
+
+    def test_the_same_line_twice_is_one_row(self):
+        # Dropped here, not at insert time: the unique index would refuse the
+        # second row silently and the user would be told a lower count with
+        # no way to see which row the system disagreed with.
+        rows = importer.plan_document_lines(
+            USER, "phrase", ["Pray first.", "Pray first."])
+        self.assertEqual(len(rows), 1)
+
+    def test_external_ids_make_a_second_draft_of_one_file_idempotent(self):
+        first = importer.plan_document_lines(USER, "phrase", ["Pray first."])
+        second = importer.plan_document_lines(USER, "phrase", ["Pray first."])
+        self.assertEqual(first[0]["external_id"], second[0]["external_id"])
+
+    def test_a_kind_this_planner_does_not_own_returns_nothing(self):
+        for kind in ("goal", "bet", "task", "event", "reflection"):
+            self.assertEqual(
+                importer.plan_document_lines(USER, kind, ["anything"]), [],
+                kind)
+
+
+class OriginDocumentMigrationTests(unittest.TestCase):
+    """The provenance column ships with the same lines every life_* migration
+    holds: idempotent, nothing dropped, a raising post-condition, and it
+    touches no product table."""
+
+    NAME = "add_life_items_origin_document.sql"
+
+    def setUp(self):
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                            "migrations", self.NAME)
+        with open(path, "r", encoding="utf-8") as fh:
+            self.sql = fh.read()
+
+    def test_it_is_idempotent(self):
+        self.assertRegex(self.sql,
+                         r"ADD COLUMN IF NOT EXISTS\s+origin_document_id")
+        for statement in re.findall(r"CREATE (?:UNIQUE )?INDEX[^(]*",
+                                    self.sql):
+            self.assertIn("IF NOT EXISTS", statement)
+
+    def test_nothing_is_dropped_and_a_partial_run_raises(self):
+        self.assertNotRegex(self.sql.upper(), r"\bDROP\s+(TABLE|COLUMN)\b")
+        self.assertIn("RAISE EXCEPTION", self.sql)
+
+    def test_it_touches_life_tables_only(self):
+        for table in re.findall(
+                r"(?:CREATE TABLE IF NOT EXISTS|ALTER TABLE)\s+"
+                r"(?:public\.)?(\w+)", self.sql):
+            self.assertTrue(table.startswith("life_"), table)
+
+    def test_no_foreign_key_cascades_the_documents_delete_into_the_items(self):
+        # "Delete my uploads" must not become "delete the rows I made from
+        # them". Same call origin_case_id makes.
+        self.assertNotIn("REFERENCES", self.sql.upper())
+
+    def test_the_column_rides_the_item_serializer(self):
+        self.assertIn("origin_document_id",
+                      lp.serialize_item({"kind": "principle",
+                                         "origin_document_id": "d1"}))
+        self.assertEqual(
+            lp.serialize_item({"kind": "principle"})["origin_document_id"],
+            None)
 
 
 class DocxExtractionTests(unittest.TestCase):
@@ -2121,6 +2274,142 @@ class SetupDocumentRouteTests(unittest.TestCase):
         self.assertEqual(resp.status_code, 400)
         self.assertEqual(resp.get_json()["code"], "NO_DOCUMENT")
 
+    # ── the kind hint (FE dock, 2026-07-31) ──────────────────────────────
+
+    _DOC = {"id": "d1", "status": "processed",
+            "extracted_text": "Ship the panel [Dec]", "char_count": 20}
+
+    def _propose(self, body: dict, drafted=None):
+        seen = {}
+
+        def _draft(user_id, text, *, kind=None):
+            seen["kind"] = kind
+            return drafted if drafted is not None else []
+
+        with patch.object(lroutes.importer, "get_setup_document",
+                          return_value=self._DOC), \
+                patch.object(lroutes.engine, "draft_items_from_document",
+                             side_effect=_draft):
+            resp = self.client.post(
+                "/v2/life/setup/propose-from-document",
+                headers={"Authorization": "Bearer t"}, json=body)
+        return resp, seen
+
+    def test_the_hint_reaches_the_engine_and_is_echoed_back(self):
+        resp, seen = self._propose({"kind": "phrase"})
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(seen["kind"], "phrase")
+        self.assertEqual(resp.get_json()["kind"], "phrase")
+
+    def test_an_omitted_hint_is_the_original_call_not_a_degraded_one(self):
+        # Every view made exactly this request before the dock existed.
+        for body in ({}, {"kind": None}, {"kind": "  "}):
+            resp, seen = self._propose(body)
+            self.assertEqual(resp.status_code, 200, body)
+            self.assertIsNone(seen["kind"], body)
+            self.assertIsNone(resp.get_json()["kind"], body)
+
+    def test_the_hint_is_validated_against_the_closed_nine(self):
+        for kind in lp.ITEM_KINDS:
+            resp, seen = self._propose({"kind": kind})
+            self.assertEqual(resp.status_code, 200, kind)
+            self.assertEqual(seen["kind"], kind)
+        # A tenth kind is an FE change. Refused here rather than ignored, so
+        # nobody ships one and watches the rows vanish on the other side.
+        for bad in ("reflection", "case", 7, ["phrase"]):
+            with patch.object(lroutes.importer, "get_setup_document",
+                              return_value=self._DOC):
+                resp = self.client.post(
+                    "/v2/life/setup/propose-from-document",
+                    headers={"Authorization": "Bearer t"},
+                    json={"kind": bad})
+            self.assertEqual(resp.status_code, 400, bad)
+
+    def test_a_hinted_draft_still_writes_nothing(self):
+        drafted = [{"kind": "phrase", "title": "Pray first."}]
+        with patch.object(lroutes.store, "insert_item") as insert:
+            resp, _ = self._propose({"kind": "phrase"}, drafted=drafted)
+        insert.assert_not_called()
+        body = resp.get_json()
+        self.assertFalse(body["written"])
+        self.assertEqual(body["items"], drafted)
+
+    # ── provenance (this decision was the BE's to make) ──────────────────
+
+    def _apply(self, body: dict, insert=None):
+        written = []
+
+        def _default(user_id, fields):
+            written.append(fields)
+            return {"id": f"i{len(written)}", **fields}
+
+        with patch.object(lroutes.store, "insert_item",
+                          side_effect=insert or _default):
+            resp = self.client.post(
+                "/v2/life/setup/apply-proposed",
+                headers={"Authorization": "Bearer t"}, json=body)
+        return resp, written
+
+    def test_apply_stamps_the_document_it_was_told_to_stamp(self):
+        with patch.object(lroutes.importer, "get_setup_document",
+                          return_value=self._DOC):
+            resp, written = self._apply(
+                {"document_id": "d1",
+                 "items": [{"kind": "principle", "title": "Pray first."}]})
+        self.assertEqual(resp.status_code, 201)
+        self.assertEqual(written[0]["origin_document_id"], "d1")
+        # A document-drafted principle is NOT an engine-derived one: neither
+        # of the two existing provenance columns is invented for it.
+        self.assertNotIn("origin_case_id", written[0])
+        self.assertNotIn("origin_note_id", written[0])
+
+    def test_apply_stamps_nothing_when_it_is_told_nothing(self):
+        # The FE sends no provenance field today, and that is a complete
+        # request — the rows are created, unstamped.
+        resp, written = self._apply(
+            {"items": [{"kind": "win", "title": "Shipped it."}]})
+        self.assertEqual(resp.status_code, 201)
+        self.assertNotIn("origin_document_id", written[0])
+
+    def test_an_unresolvable_document_costs_the_stamp_and_nothing_else(self):
+        # Deleted between drafting and ticking, or never theirs. The rows the
+        # user ticked must survive it.
+        with patch.object(lroutes.importer, "get_setup_document",
+                          return_value=None):
+            resp, written = self._apply(
+                {"document_id": "someone-elses",
+                 "items": [{"kind": "phrase", "title": "Pray first."}]})
+        self.assertEqual(resp.status_code, 201)
+        self.assertEqual(resp.get_json()["count"], 1)
+        self.assertNotIn("origin_document_id", written[0])
+
+    def test_apply_refuses_a_document_id_that_is_not_an_id(self):
+        resp, _ = self._apply({"document_id": 7,
+                               "items": [{"kind": "goal", "title": "Ship"}]})
+        self.assertEqual(resp.status_code, 400)
+
+    def test_the_rows_survive_a_migration_nobody_has_run_yet(self):
+        # "On main" is not "run in prod". A missing column costs the
+        # provenance, never the row the user ticked.
+        attempts = []
+
+        def _insert(user_id, fields):
+            attempts.append(dict(fields))
+            if "origin_document_id" in fields:
+                return None          # column does not exist yet
+            return {"id": "i1", **fields}
+
+        with patch.object(lroutes.importer, "get_setup_document",
+                          return_value=self._DOC):
+            resp, _ = self._apply(
+                {"document_id": "d1",
+                 "items": [{"kind": "phrase", "title": "Pray first."}]},
+                insert=_insert)
+        self.assertEqual(resp.status_code, 201)
+        self.assertEqual(resp.get_json()["count"], 1)
+        self.assertEqual(len(attempts), 2)
+        self.assertNotIn("origin_document_id", attempts[1])
+
     def test_apply_creates_only_sanitizable_rows_as_active(self):
         written = []
 
@@ -2134,7 +2423,7 @@ class SetupDocumentRouteTests(unittest.TestCase):
                 headers={"Authorization": "Bearer t"},
                 json={"items": [
                     {"kind": "goal", "title": "Ship", "status": "proposed"},
-                    {"kind": "principle", "title": "smuggled"},
+                    {"kind": "reflection", "title": "smuggled"},
                     {"kind": "habit", "title": ""},
                 ]})
         self.assertEqual(resp.status_code, 201)
@@ -2199,6 +2488,113 @@ class DocumentAwareGenerationTests(unittest.TestCase):
         self.assertEqual(sorted(b["order_key"] for b in bets), [1.0, 2.0, 3.0])
         self.assertIn("goal", kinds)
         self.assertIn("habit", kinds)
+
+
+@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
+class DocumentKindHintTests(unittest.TestCase):
+    """The hint scopes a second read of the same text. It never filters the
+    answer, and it never changes the call the endpoint made yesterday."""
+
+    BASE = {"goals": [{"title": "Ship the panel", "due_label": "[Dec]",
+                       "bet": "company"}],
+            "habits": [{"title": "Pray"}],
+            "distractions": [{"title": "Phone",
+                              "response": "Charge it elsewhere"}]}
+
+    def _draft(self, kind=None, lines=("Pray first.", "Do the hard thing.")):
+        """Both passes stubbed. Returns (items, systems) — one system prompt
+        per model call, so the count IS the number of calls made."""
+        systems = []
+
+        def _complete(spec, *, system, user, surface, user_id):
+            systems.append(system)
+            if surface == "doc_draft":
+                return dict(self.BASE)
+            return {"lines": list(lines)}
+
+        with patch.object(lengine, "_complete", side_effect=_complete), \
+                patch.object(lengine.store, "insert_item") as insert:
+            items = lengine.draft_items_from_document(USER, "the doc text",
+                                                      kind=kind)
+        insert.assert_not_called()
+        return items, systems
+
+    def test_no_hint_makes_exactly_the_call_it_made_before(self):
+        items, systems = self._draft()
+        self.assertEqual(len(systems), 1)
+        self.assertEqual({i["kind"] for i in items},
+                         {"bet", "goal", "habit", "distraction"})
+
+    def test_a_kind_the_base_pass_already_covers_changes_nothing(self):
+        # Acceptance 4: /panel/goals is byte-identical to what it was before
+        # the dock. Same rows, same bets, same due labels, same one call.
+        plain, _ = self._draft()
+        for kind in ("goal", "habit", "distraction", "bet", "task", "event"):
+            hinted, systems = self._draft(kind=kind)
+            self.assertEqual(len(systems), 1, kind)
+            self.assertEqual(hinted, plain, kind)
+
+    def test_a_phrase_hint_adds_phrase_rows_and_drops_none_of_the_rest(self):
+        items, systems = self._draft(kind="phrase")
+        self.assertEqual(len(systems), 2)
+        kinds = [i["kind"] for i in items]
+        # Hinted rows lead — the user is standing on that view.
+        self.assertEqual(kinds[0], "phrase")
+        self.assertEqual(kinds.count("phrase"), 2)
+        # A phrases document that also holds goals still offers the goals:
+        # the hint is a scoping aid, not a filter.
+        self.assertIn("goal", kinds)
+        self.assertIn("habit", kinds)
+        phrases = [i for i in items if i["kind"] == "phrase"]
+        self.assertEqual(phrases[0]["title"], "Pray first.")
+        self.assertEqual(phrases[0]["collection"], "wall")
+
+    def test_principles_and_wins_draft_their_own_kind(self):
+        for kind in ("principle", "win"):
+            items, systems = self._draft(kind=kind)
+            self.assertEqual(len(systems), 2, kind)
+            drafted = [i for i in items if i["kind"] == kind]
+            self.assertEqual([d["title"] for d in drafted],
+                             ["Pray first.", "Do the hard thing."], kind)
+            # A principle read out of a file is tied to no case — the engine
+            # derived nothing here, a person wrote it down.
+            self.assertNotIn("origin_case_id", drafted[0])
+
+    def test_the_hinted_pass_is_told_what_that_kind_is(self):
+        for kind in importer.DOC_DRAFT_LINE_KINDS:
+            _, systems = self._draft(kind=kind)
+            self.assertIn(kind.upper() + "S", systems[1], kind)
+            # Transcriber, not coach — the same fence the base pass holds.
+            self.assertIn("never invent", systems[1])
+
+    def test_nothing_found_for_the_hinted_kind_is_a_real_answer(self):
+        items, _ = self._draft(kind="phrase", lines=())
+        self.assertEqual([i for i in items if i["kind"] == "phrase"], [])
+        self.assertIn("goal", [i["kind"] for i in items])
+
+    def test_a_failed_hinted_pass_still_returns_the_base_rows(self):
+        # An outage costs the hinted rows, never the screen (the bargain
+        # every derivation in this module makes).
+        def _complete(spec, *, system, user, surface, user_id):
+            return dict(self.BASE) if surface == "doc_draft" else None
+
+        with patch.object(lengine, "_complete", side_effect=_complete):
+            items = lengine.draft_items_from_document(USER, "text",
+                                                      kind="phrase")
+        self.assertIn("goal", [i["kind"] for i in items])
+        self.assertEqual([i for i in items if i["kind"] == "phrase"], [])
+
+    def test_every_drafted_kind_is_one_the_review_step_can_create(self):
+        drafted = set()
+        for kind in (None,) + tuple(lp.ITEM_KINDS):
+            items, _ = self._draft(kind=kind)
+            drafted.update(i["kind"] for i in items)
+        self.assertEqual(drafted - set(importer.DOC_DRAFT_KINDS), set())
+        for kind in drafted:
+            self.assertIsNotNone(
+                importer.sanitize_confirmed_item(
+                    {"kind": kind, "title": "🔵 The Company"
+                     if kind == "bet" else "a drafted row"}), kind)
 
 
 # ═════════════════════════════════════════════════════════════════════════
