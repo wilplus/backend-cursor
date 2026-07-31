@@ -1,4 +1,13 @@
-"""Apply homework credits from a paid Stripe Checkout Session (webhook + student claim)."""
+"""Apply homework credits from a paid Stripe Checkout Session (webhook + student claim).
+
+LEGACY, AND ON ITS WAY OUT. Founder 2026-07-31: the app is dropping credits and
+keeping tokens (services/token_account.py). This path still serves the old
+one-off packs while they exist, but it is written so that RETIRING them is a
+config change and nothing more — unset STRIPE_CHECKOUT_PRICE_CREDITS_JSON and
+every checkout event is quietly acked instead of erroring. Nothing here is
+deleted on that day, per the standing "never auto-drop" constraint; it simply
+stops matching anything.
+"""
 from __future__ import annotations
 
 import logging
@@ -70,10 +79,39 @@ def apply_paid_checkout_session_credits(
     if not sid:
         return CheckoutCreditsApplyResult.error(400, "INVALID_INPUT", "checkout_session_id is required")
 
-    price_map = parse_price_credits_map(getattr(app_config, "STRIPE_CHECKOUT_PRICE_CREDITS_JSON", "") or "")
+    # ── No credits map configured = CREDITS ARE RETIRED, not broken ───────
+    #
+    # Founder 2026-07-31: the app is dropping credits and keeping tokens. So an
+    # unset STRIPE_CHECKOUT_PRICE_CREDITS_JSON is the intended END STATE, and
+    # with no map there is by definition no such thing as a credit sale.
+    #
+    # This used to return 500, and a 500 tells Stripe to RETRY. The moment that
+    # env var is unset, EVERY checkout.session.completed on the account —
+    # including every token-tier subscription, which fires one — would retry for
+    # three days and then mark the endpoint failing. That is precisely the storm
+    # #302 was opened to stop, and its real cost is not the noise: a genuine
+    # willab payment failing gets buried in it and nobody notices.
+    #
+    # So this always ACKS, and the log level carries the difference. Same rule
+    # the sibling subscription branch already states in routes/internal_webhooks
+    # .py: a mapping we cannot resolve is ours to fix from the logs, and telling
+    # Stripe to retry forever fixes nothing.
+    raw_map = getattr(app_config, "STRIPE_CHECKOUT_PRICE_CREDITS_JSON", "") or ""
+    price_map = parse_price_credits_map(raw_map)
     if not price_map:
-        logger.error("stripe checkout credits: STRIPE_CHECKOUT_PRICE_CREDITS_JSON missing or empty")
-        return CheckoutCreditsApplyResult.error(500, "MISCONFIGURED", "STRIPE_CHECKOUT_PRICE_CREDITS_JSON not configured")
+        if raw_map.strip():
+            # Set, but parsed to nothing: malformed JSON, not an object, or no
+            # integer-valued entry. That IS wrong, so stay loud — but still ack,
+            # because retrying cannot fix a config error.
+            logger.error(
+                "stripe checkout credits: STRIPE_CHECKOUT_PRICE_CREDITS_JSON is "
+                "set but parsed to an empty map (malformed?) — acking session=%s "
+                "to avoid a retry storm", sid,
+            )
+            return CheckoutCreditsApplyResult.success(200, skipped="credits_map_unusable")
+        logger.info("stripe checkout: no credits map configured (credits retired) "
+                    "— ignoring session=%s", sid)
+        return CheckoutCreditsApplyResult.success(200, skipped="credits_retired")
 
     stripe.api_key = api_key
     try:

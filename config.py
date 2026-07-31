@@ -475,8 +475,16 @@ class Config:
     # THE live price (2026-07-06): credits spent by POST /v2/arc/<arc_id>/unlock.
     # 1 credit = $1 (this model's founding peg — no Stripe pack pricing was
     # configured in env before this, so there is no prior peg to violate).
-    # OPERATIONAL: at least one Stripe credit pack (STRIPE_CHECKOUT_PRICE_
-    # CREDITS_JSON) must map a Price id to >=25 credits before this ships live.
+    #
+    # ⚠️ SUPERSEDED 2026-07-31 — CREDITS ARE BEING DROPPED, tokens only. The
+    # instruction that used to sit here ("at least one Stripe credit pack must
+    # map a Price id to >=25 credits before this ships live") is now the exact
+    # opposite of the direction: STRIPE_CHECKOUT_PRICE_CREDITS_JSON is expected
+    # to end up UNSET, which services/stripe_checkout_credits.py treats as
+    # "credits retired" and quietly acks. Do not re-add a pack to satisfy a
+    # comment. The legacy `credits` column and this constant stay put (standing
+    # constraint: never auto-drop); real users still hold balances, and the
+    # conversion rate is unsettled — see PRICING-TOKENS-PLAN.md §16.
     ARC_UNLOCK_CREDITS = int(os.getenv("ARC_UNLOCK_CREDITS") or "25")
 
     # ── dev-bugs internal collector (dev.willpowerlab.com) ───────────────
