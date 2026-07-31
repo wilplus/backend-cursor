@@ -134,7 +134,20 @@ ITEM_STATUSES: tuple[str, ...] = (
     "proposed", "active", "retired", "dismissed", "done", "archived",
 )
 
+# "week" was ADDED (2026-07-31) to close the weekly gap below. It is the only
+# item horizon that is not safe to write blind: the other seven have been in
+# life_items_horizon_check since the panel shipped, and this one arrives with
+# migrations/add_life_items_week_horizon.sql. Everything that WRITES a horizon
+# degrades rather than losing the row — see apply-proposed.
 HORIZONS: tuple[str, ...] = (
+    "now", "week", "month", "quarter", "year", "five_year", "ten_year",
+    "twenty_year",
+)
+
+# The horizons that predate the week migration, and so are accepted by every
+# database this code can meet. Kept as its own tuple rather than derived by
+# subtracting "week", so the fallback path states what it is relying on.
+HORIZONS_BEFORE_WEEK: tuple[str, ...] = (
     "now", "month", "quarter", "year", "five_year", "ten_year", "twenty_year",
 )
 
@@ -152,11 +165,20 @@ STRATEGY_HORIZONS: tuple[str, ...] = (
 # translation. Kept as one table rather than inline so both sides of the seam
 # read the same mapping.
 #
-# NOTE the asymmetry: "weekly" has NO item-horizon source. Nothing in HORIZONS
-# means "this week", so a weekly screen can never be pre-filled from a document
-# — that is a gap in the item vocabulary, not a mapping bug.
+# The mapping is now TOTAL in both directions: every item horizon folds onto a
+# strategy screen, and every strategy screen has an item horizon that reaches
+# it. "weekly" used to be the exception — nothing in HORIZONS meant "this
+# week", so that screen could never pre-fill from a document and its rows
+# always fell to the remainder review. "week" closes it.
+#
+# "now" still means "now" and still folds onto "daily". It was NOT widened to
+# cover the week: re-pointing it would move every existing [NOW] goal off the
+# daily screen it has been rendering on, which is a change to what people
+# already wrote, made on their behalf, to fix a screen they never complained
+# about.
 ITEM_TO_STRATEGY_HORIZON: dict[str, str] = {
     "now": "daily",
+    "week": "weekly",
     "month": "monthly",
     "quarter": "quarterly",
     "year": "yearly",

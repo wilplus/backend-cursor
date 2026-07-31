@@ -35,6 +35,7 @@ import logging
 import os
 from datetime import date, datetime, timezone
 from functools import wraps
+from typing import Optional
 
 from flask import Blueprint, jsonify, make_response, request
 
@@ -472,6 +473,69 @@ def life_setup_propose_from_document():
     }), 200
 
 
+def _insert_ticked_item(user_id: str, fields: dict) -> Optional[dict]:
+    """Create ONE ticked row, degrading rather than losing it.
+
+    THE ROW IS THE JOB. Two of the fields written here arrive with their own
+    migration, and "on main" is not "run in prod":
+
+      * ``origin_document_id`` — migrations/add_life_items_origin_document.sql
+      * ``horizon = "week"``   — migrations/add_life_items_week_horizon.sql
+
+    Against a database where either has not run, the insert is REJECTED, and
+    ``store.insert_item`` swallows the error and returns None — so a row the
+    person read on a screen and individually ticked would simply vanish, with
+    a 201 and a shorter ``created`` list as the only trace. The "week" case is
+    the sharper one: it is a CHECK constraint, so it fails the whole write
+    rather than one field.
+
+    So each rung drops the newest, least essential thing and tries again,
+    most-complete first, and the first row that lands wins:
+
+      1. everything
+      2. without the provenance stamp    (stamp column not migrated)
+      3. week downgraded to NULL horizon (week constraint not migrated)
+      4. both                            (neither migrated)
+
+    A downgraded horizon costs the weekly screen its pre-fill — the row lands
+    in the FE's remainder review, which is exactly where it landed before
+    "week" existed. Never a DIFFERENT horizon: putting a weekly goal on the
+    daily screen would be the system inventing a due date the person did not
+    write, and a wrong screen is worse than an un-filled one.
+
+    ``insert_item`` cannot tell us WHY it failed, so the ladder is best-effort
+    by construction. A genuine outage fails all four rungs and the row is
+    skipped, exactly as it is today."""
+    row = store.insert_item(user_id, fields)
+    if row is not None:
+        return row
+
+    stamped = "origin_document_id" in fields
+    weekly = fields.get("horizon") == "week"
+
+    if stamped:
+        row = store.insert_item(
+            user_id, {k: v for k, v in fields.items()
+                      if k != "origin_document_id"})
+        if row is not None:
+            logger.warning("life: apply-proposed created a row without its "
+                           "provenance stamp; run "
+                           "migrations/add_life_items_origin_document.sql")
+            return row
+
+    if weekly:
+        downgraded = {**fields, "horizon": None}
+        row = store.insert_item(user_id, downgraded)
+        if row is None and stamped:
+            downgraded.pop("origin_document_id")
+            row = store.insert_item(user_id, downgraded)
+        if row is not None:
+            logger.warning("life: apply-proposed downgraded a week horizon to "
+                           "the remainder review; run "
+                           "migrations/add_life_items_week_horizon.sql")
+    return row
+
+
 @life_bp.route("/v2/life/setup/apply-proposed", methods=["POST"])
 @life_route()
 def life_setup_apply_proposed():
@@ -521,13 +585,7 @@ def life_setup_apply_proposed():
             continue
         if origin_document_id:
             fields["origin_document_id"] = origin_document_id
-        row = store.insert_item(_uid(), fields)
-        if row is None and "origin_document_id" in fields:
-            # "On main" is not "run in prod": the column ships with
-            # migrations/add_life_items_origin_document.sql, and a row the
-            # user ticked must not be lost to a migration nobody has run yet.
-            fields.pop("origin_document_id")
-            row = store.insert_item(_uid(), fields)
+        row = _insert_ticked_item(_uid(), fields)
         if row:
             created.append(lp.serialize_item(row))
     return jsonify({"created": created, "count": len(created)}), 201
@@ -980,6 +1038,13 @@ def life_item_create():
     if "order_key" not in fields:
         fields["order_key"] = lp.next_order_key(
             store.list_items(user_id, kind=fields.get("kind")))
+    # DELIBERATELY NOT _insert_ticked_item. That helper degrades a "week"
+    # horizon to NULL when the migration has not run, which is the right trade
+    # for apply-proposed — there the horizon was inferred by a model reading a
+    # document, and the row is what the person actually ticked. Here the person
+    # CHOSE "week" on a form. Quietly saving it with no horizon would be the
+    # panel overruling an explicit choice and not saying so; failing the save
+    # tells them, and their input is still on the screen.
     row = store.insert_item(user_id, fields)
     if not row:
         return jsonify({"code": "V2_ERROR",

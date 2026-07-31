@@ -670,10 +670,13 @@ If the document states nothing for a list, return it empty.
 
 Extract three lists:
  1. goals — each with the user's own wording. Copy any due notation VERBATIM \
-(e.g. "[NOW]", "[Aug]", "[Jul '27]", "2035") into due_label. horizon is one \
-of: now, month, quarter, year, five_year, ten_year, twenty_year — or "" when \
-the document does not say. bet is one of: life, company, dream — or "" when \
-the document does not tie the goal to a bet.
+(e.g. "[NOW]", "[This week]", "[Aug]", "[Jul '27]", "2035") into due_label. \
+horizon is one of: now, week, month, quarter, year, five_year, ten_year, \
+twenty_year — or "" when the document does not say. Use "week" only when the \
+document itself scopes the goal to a week ("this week", "by Friday", a weekly \
+plan or review heading); a goal simply written down under no heading is "", \
+not "week". bet is one of: life, company, dream — or "" when the document \
+does not tie the goal to a bet.
  2. habits — recurring practices the document names.
  3. distractions — each with the ENVIRONMENTAL response the document pairs \
 it with, if one is written; "" otherwise.

@@ -2153,6 +2153,66 @@ class OriginDocumentMigrationTests(unittest.TestCase):
             None)
 
 
+class WeekHorizonMigrationTests(unittest.TestCase):
+    """The week horizon widens one CHECK constraint. Same house lines as every
+    other life_* migration, plus the one thing that is specific to it: the new
+    constraint must be a strict SUPERSET of the old, so no row that is valid
+    today becomes invalid when this runs."""
+
+    NAME = "add_life_items_week_horizon.sql"
+    PREVIOUS = ("now", "month", "quarter", "year", "five_year", "ten_year",
+                "twenty_year")
+
+    def setUp(self):
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                            "migrations", self.NAME)
+        with open(path, "r", encoding="utf-8") as fh:
+            self.sql = fh.read()
+
+    def test_it_is_idempotent(self):
+        # A CHECK constraint cannot be widened with IF NOT EXISTS, so this one
+        # earns its re-runnability by dropping the old definition only when it
+        # is there, then re-adding.
+        self.assertRegex(self.sql, r"IF EXISTS\s*\(")
+        self.assertIn("DROP CONSTRAINT life_items_horizon_check", self.sql)
+        self.assertIn("ADD CONSTRAINT life_items_horizon_check", self.sql)
+
+    def test_no_table_or_column_is_dropped_and_a_partial_run_raises(self):
+        # DROP CONSTRAINT removes a RULE, not data — which is why the house
+        # rule bans DROP TABLE / DROP COLUMN specifically.
+        self.assertNotRegex(self.sql.upper(), r"\bDROP\s+(TABLE|COLUMN)\b")
+        self.assertIn("RAISE EXCEPTION", self.sql)
+
+    def test_it_touches_life_tables_only(self):
+        for table in re.findall(
+                r"(?:CREATE TABLE IF NOT EXISTS|ALTER TABLE)\s+"
+                r"(?:public\.)?(\w+)", self.sql):
+            self.assertTrue(table.startswith("life_"), table)
+
+    def test_the_new_constraint_still_accepts_every_old_value(self):
+        # The load-bearing property. If a horizon that is valid today were
+        # left out, this migration would not widen the vocabulary — it would
+        # make existing rows illegal and fail on a table that has any.
+        for horizon in self.PREVIOUS:
+            self.assertIn(f"'{horizon}'", self.sql, horizon)
+
+    def test_the_constraint_matches_the_code_vocabulary(self):
+        # The database and lp.HORIZONS disagreeing is how you get an insert
+        # the app believes is valid and the table refuses. Read the CHECK that
+        # actually ships, not the first time the word appears in the prose.
+        clause = re.search(
+            r"ADD CONSTRAINT life_items_horizon_check\s*CHECK\s*\((.*?)\);",
+            self.sql, re.S)
+        self.assertIsNotNone(clause, "the ADD CONSTRAINT was not found")
+        listed = set(re.findall(r"'(\w+)'", clause.group(1)))
+        self.assertEqual(listed, set(lp.HORIZONS))
+
+    def test_null_is_still_allowed(self):
+        # Most items carry no horizon at all, and the fallback path writes
+        # NULL deliberately when the migration has not run.
+        self.assertIn("horizon IS NULL", self.sql)
+
+
 class DocxExtractionTests(unittest.TestCase):
     """The setup upload accepts .docx; extraction is best-effort and never
     raises (services/context_document.py)."""
