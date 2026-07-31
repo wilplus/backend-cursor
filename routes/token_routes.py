@@ -7,13 +7,25 @@ routes/journal.py and routes/dev_bugs.py) rather than more routes in the
 15k-line v2_routes.py — this is a new, separable surface and it does not need to
 share that module's blast radius.
 
-  GET /v2/tokens/balance          balance, tier, renewal date, coach allowance
-  GET /v2/tokens/prices           THE price list — the FE must not hardcode it
-  GET /v2/tokens/recording-band   longest recording the balance covers
-  GET /v2/tokens/history          paged ledger, newest first
+  GET  /v2/tokens/balance         balance, tier, renewal date, coach allowance,
+                                  and `plan` — is this a managed subscription?
+  GET  /v2/tokens/prices          THE price list — the FE must not hardcode it
+  GET  /v2/tokens/recording-band  longest recording the balance covers
+  GET  /v2/tokens/arc/<arc_id>    which per-arc actions this arc already paid for
+  POST /v2/tokens/checkout        start a subscription for a tier
+  POST /v2/tokens/portal          cancel / switch / change card, via Stripe
+  GET  /v2/tokens/history         paged ledger, newest first
 
-All authed, all read-only. Nothing here charges: charging happens at the action
-that is being paid for, so a balance read can never cost the user anything.
+The reads charge nothing: charging happens at the action that is being paid for,
+so a balance read can never cost the user anything. The two POSTs move no tokens
+either — they open a door at Stripe and return a URL; entitlements are granted
+only by the subscription webhook.
+
+THE PAIR THAT MAKES A PLAN CHANGEABLE. `plan.managed` says whether the tier is a
+live Stripe subscription or just the default everyone starts on, and those need
+different controls: `false` → upgrade (checkout), `true` → manage (portal).
+Without it the FE can render a balance but cannot tell those two states apart,
+which is what left the published tiers unsellable (FE handoff 2026-07-31).
 
 FLAG-OFF BEHAVIOUR. With TOKEN_PRICING_ENABLED unset, every endpoint answers 200
 with ``enabled: false`` and no numbers. It is deliberately not a 404: the FE
@@ -138,12 +150,19 @@ def tokens_checkout():
     """Open a Stripe Checkout Session for a recurring tier.
 
     Body: {"tier": "starter"|"pro"|"max", "success_url"?, "cancel_url"?}
-    200 {checkout_url, checkout_session_id, tier} · 400 · 500 · 502 · 503
+    200 {checkout_url, checkout_session_id, tier} · 400 · 409 · 500 · 502 · 503
 
     This exists because a Payment Link cannot sell these tiers — see the module
     docstring in services/tier_checkout.py. In short: ``client_reference_id``
     never reaches the Subscription, so renewals would arrive unattributable and
     grant nothing from month two.
+
+    409 comes in two flavours and they need different copy:
+      ``ALREADY_ON_TIER``  — they are already on it; say so calmly, do nothing.
+      ``MANAGE_EXISTING``  — they have a DIFFERENT live subscription. Send them
+                             to POST /v2/tokens/portal, which SWITCHES the
+                             existing one. Buying through here instead would
+                             leave them paying for two plans at once.
 
     Deliberately NOT gated on TOKEN_PRICING_ENABLED. The flag controls whether
     we CHARGE for actions; it must not stop someone paying us. A subscription
@@ -160,6 +179,40 @@ def tokens_checkout():
         app_config=_config,
         success_url=(body.get("success_url") or None),
         cancel_url=(body.get("cancel_url") or None),
+    )
+    return jsonify(result.payload), result.http_status
+
+
+@tokens_bp.route("/v2/tokens/portal", methods=["POST"])
+@require_auth
+def tokens_portal():
+    """Open the Stripe billing portal: cancel, switch tier, change card.
+
+    Body: {"return_url"?}
+    200 {portal_url} · 400 · 404 · 502 · 503
+
+    Render the button from ``plan.manage_available`` on /v2/tokens/balance and
+    call this on the click — the URL is minted per click because portal sessions
+    expire, and because putting a Stripe round-trip inside the balance read
+    would make a Stripe outage look like a missing balance.
+
+    A 404 ``NO_SUBSCRIPTION`` is not an error state to show: it means there is
+    nothing to manage, so render upgrade instead.
+
+    Whatever they do in there returns as a subscription webhook and is applied
+    by services/stripe_subscription_tiers.py. Nothing is decided here.
+
+    Not gated on TOKEN_PRICING_ENABLED, for the same reason as checkout: the
+    flag governs whether we CHARGE for actions, and it must never be the reason
+    someone cannot cancel.
+    """
+    body = request.get_json(silent=True) or {}
+    from config import Config as _config
+    from services.tier_checkout import create_billing_portal_session
+    result = create_billing_portal_session(
+        user_id=str(request.user_id),
+        app_config=_config,
+        return_url=(body.get("return_url") or None),
     )
     return jsonify(result.payload), result.http_status
 

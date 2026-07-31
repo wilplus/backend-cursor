@@ -673,10 +673,39 @@ was specified and never wired.
 
 **Genuinely still open:**
 
-10. **Confirm starter/pro become recurring Stripe Prices.** The alternative is that they stay one-off
-    and do NOT reset — those two cannot both be true (§9.6).
-11. **Proration on a mid-period upgrade.** Proposed: full new-tier grant immediately, re-anchor
-    `period_start` to now. Slightly generous, trivially explainable.
-12. **Phase 1 go/no-go** — the balance itself. Migration written
-    (`migrations/add_token_pricing.sql`), handoffs written
-    ([BE](PROMPT-BE-token-pricing.md) · [FE](PROMPT-FE-token-pricing.md)), nothing built.
+10. ~~Confirm starter/pro become recurring Stripe Prices.~~ — **settled: all three are recurring**,
+    live in Stripe and mapped by `STRIPE_PRICE_TIER_JSON`.
+11. ~~Proration on a mid-period upgrade.~~ — **settled 2026-07-31, built.** Full new-tier grant
+    immediately; `period_start` re-anchors to the STRIPE billing date (not "now"), so the card
+    charge and the token re-grant stay on the same day.
+12. ~~Phase 1 go/no-go~~ — **shipped**: #300 / #301 / #302 / #303, `TOKEN_PRICING_ENABLED=1`,
+    FE wallet in #198 / #201.
+
+**Settled 2026-07-31 alongside the plan-change endpoints**
+([BE→FE answer](BE-ANSWER-plan-checkout-2026-07-31.md)):
+
+13. **Mid-period DOWNGRADE, and the balance above the new cap.** The tier changes at once; the
+    BALANCE IS NEVER TRUNCATED MID-PERIOD. A Max user with 1.4M who drops to Starter keeps all
+    1.4M until the period they paid for ends, and the 50,000 grant lands at the next roll. This
+    is not a downgrade rule — it is the existing "nothing rolls over, every period SETS the
+    allowance" rule, which is exactly why it is defensible to a user.
+14. **Cancellation.** Same rule: tier → free, balance untouched, free grant at the next roll,
+    no re-anchoring of the renewal date. Always the intent (see `stripe_subscription_tiers`);
+    it was not the behaviour until 2026-07-31 — `set_tier` was clawing the balance back to
+    12,000 on the spot.
+15. **Coach reviews across a tier change.** `coach_reviews_used` CARRIES; it resets only when
+    the billing anchor moves. An upgrade raises `allowed` (1-of-1 on starter becomes 1-of-6 on
+    pro) but refunds nothing. Anything else makes upgrade-then-downgrade an unlimited review
+    loop, and the cap is the founder's calendar (§5.1).
+
+**Genuinely still open:**
+
+16. **Legacy credit balances** (§4). Real users hold credits that now buy nothing — the founder's
+    own account has 455. ⚠️ The 400 tokens/credit rate written in §4 is **~4× too harsh against
+    this product's own prices**: an arc unlock cost `ARC_UNLOCK_CREDITS` = 25 credits, and the
+    same four deliverables come to 40,000 tokens (`insights` 1,000 + `game` 1,500 +
+    `moment_explanation` 2,500 + `coach_review` 35,000) — i.e. **~1,600 tokens/credit**. At 400:1
+    the founder's 455 credits are worth 182,000 tokens; at arc-equivalence, 728,000. They were
+    sold at a $1-per-credit peg. Recommend honouring at 1,600:1, once, as `admin_adjust` ledger
+    rows rather than a bare `token_balance` bump so it shows up in the history the FE renders.
+    The conversion in `migrations/add_token_pricing.sql` §4 stays commented until this is picked.

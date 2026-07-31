@@ -212,5 +212,123 @@ class TierCheckoutTests(unittest.TestCase):
         self.assertIn("parse_price_tier_map", src)
 
 
+class SecondSubscriptionTests(unittest.TestCase):
+    """You cannot buy a plan you are already paying for.
+
+    Stripe will open a SECOND subscription for a customer who already has one
+    and then bill both, monthly, until somebody notices. A user who taps "Pro"
+    on a page that has not refreshed, or who wants to move Starter → Pro, must
+    be routed to the billing portal — which SWITCHES the existing subscription
+    rather than stacking another beside it.
+    """
+
+    def _create(self, tier, account):
+        """`account` is what GET /v2/tokens/balance would return — stubbed at
+        get_account, not at plan_state, because the guard is specified as
+        "refuse what the user was actually shown"."""
+        from services.tier_checkout import create_tier_checkout_session
+        stripe_mod = types.ModuleType("stripe")
+        stripe_mod.api_key = None
+        stripe_mod.checkout = types.SimpleNamespace(
+            Session=types.SimpleNamespace(
+                create=lambda **kw: {"id": "cs_1", "url": "https://x"}))
+        with patch.dict(sys.modules, {"stripe": stripe_mod}), \
+                patch("services.token_account.get_account", return_value=account):
+            return create_tier_checkout_session(
+                user_id="user-123", tier=tier, app_config=_Cfg)
+
+    @staticmethod
+    def _acct(**plan):
+        return {"balance": 1, "tier": plan.get("tier", "free"), "plan": plan}
+
+    def test_same_tier_is_a_calm_no_op_not_a_second_charge(self):
+        res = self._create("pro", self._acct(managed=True, tier="pro"))
+        self.assertFalse(res.ok)
+        self.assertEqual(res.http_status, 409)
+        self.assertEqual(res.payload["code"], "ALREADY_ON_TIER")
+
+    def test_a_different_tier_is_sent_to_the_portal_to_SWITCH(self):
+        """Not a refusal to change plan — a refusal to change it by buying a
+        second one. The portal is where a switch happens."""
+        res = self._create("pro", self._acct(managed=True, tier="starter"))
+        self.assertFalse(res.ok)
+        self.assertEqual(res.http_status, 409)
+        self.assertEqual(res.payload["code"], "MANAGE_EXISTING")
+
+    def test_the_guard_reads_the_tier_the_user_actually_holds(self):
+        """Regression. Asking plan_state for the plan WITHOUT the caller's tier
+        returns the 'free' default, so every managed user looks like a tier
+        mismatch: ALREADY_ON_TIER could never fire and re-tapping your own plan
+        reported MANAGE_EXISTING instead."""
+        res = self._create("starter", self._acct(managed=True, tier="starter"))
+        self.assertEqual(res.payload["code"], "ALREADY_ON_TIER")
+
+    def test_an_unmanaged_tier_still_sells(self):
+        """Everyone on free — the whole point of the endpoint."""
+        res = self._create("pro", self._acct(managed=False, tier="free"))
+        self.assertTrue(res.ok)
+        self.assertEqual(res.payload["tier"], "pro")
+
+    def test_an_unreadable_account_sells_rather_than_blocking_the_sale(self):
+        """Refuse only on POSITIVE knowledge of a live subscription. An
+        unreadable account, and every database where add_subscription_state.sql
+        has not run yet, must not become 'nobody can subscribe'."""
+        self.assertTrue(self._create("pro", None).ok)
+        self.assertTrue(self._create("pro", {}).ok)
+
+
+class BillingPortalTests(unittest.TestCase):
+    """Cancel, switch, change card — handed to Stripe rather than rebuilt.
+
+    Nothing here decides an entitlement. Whatever the user does in the portal
+    comes back as customer.subscription.updated/deleted and is applied by
+    apply_subscription_event, which is the only writer of tiers.
+    """
+
+    def _open(self, customer_id, capture=None):
+        from services.tier_checkout import create_billing_portal_session
+        stripe_mod = types.ModuleType("stripe")
+        stripe_mod.api_key = None
+
+        def _create(**kwargs):
+            if capture is not None:
+                capture.update(kwargs)
+            return {"url": "https://billing.stripe.com/p/session/x"}
+
+        stripe_mod.billing_portal = types.SimpleNamespace(
+            Session=types.SimpleNamespace(create=_create))
+        with patch.dict(sys.modules, {"stripe": stripe_mod}), \
+                patch("services.token_account.stripe_customer_id",
+                      return_value=customer_id):
+            return create_billing_portal_session(user_id="user-123",
+                                                 app_config=_Cfg)
+
+    def test_opens_against_the_stored_customer(self):
+        cap: dict = {}
+        res = self._open("cus_1", cap)
+        self.assertTrue(res.ok)
+        self.assertEqual(cap.get("customer"), "cus_1")
+        self.assertTrue(res.payload["portal_url"].startswith("https://"))
+
+    def test_no_customer_is_nothing_to_manage_not_an_error_state(self):
+        """404 NO_SUBSCRIPTION means 'render upgrade instead' — it is not a
+        failure to show anybody."""
+        res = self._open(None)
+        self.assertFalse(res.ok)
+        self.assertEqual(res.http_status, 404)
+        self.assertEqual(res.payload["code"], "NO_SUBSCRIPTION")
+
+    def test_the_portal_url_is_never_baked_into_the_balance_read(self):
+        """Portal sessions expire, and GET /v2/tokens/balance is the most-read
+        endpoint in the wallet. Minting a URL there would ship dead links and
+        make a Stripe outage read to the user as a missing balance — which
+        token_account works hard to avoid. The balance carries a BOOLEAN
+        (plan.manage_available); the URL is minted on the click."""
+        with open("services/token_account.py") as fh:
+            account_src = fh.read()
+        self.assertNotIn("billing_portal", account_src)
+        self.assertIn("manage_available", account_src)
+
+
 if __name__ == "__main__":
     unittest.main()

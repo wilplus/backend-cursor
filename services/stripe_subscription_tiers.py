@@ -17,6 +17,15 @@ tokens come back?". Same day, one answer.
 
 Never claws back on cancellation — they paid for the period they are in. A
 deleted subscription drops the tier to free, which takes effect at the next roll.
+
+⚠️ `customer.subscription.updated` IS NOT A RENEWAL SIGNAL. Stripe fires it for
+card changes, cancel-toggles and metadata edits too. Everything about what a
+tier change does to the balance and to `coach_reviews_used` therefore lives in
+`token_account.set_tier`, which branches on whether the BILLING ANCHOR actually
+moved — not on the event arriving. Treating the event as a renewal is how a
+portal toggle used to re-grant a month of tokens and zero the coach counter,
+which is a fence breach: the coach cap protects the founder's calendar and must
+not be resettable by anything the user can click.
 """
 from __future__ import annotations
 
@@ -86,12 +95,35 @@ def _tier_from_items(sub: dict, price_map: dict[str, str]) -> Optional[str]:
     return None
 
 
-def _period_start(sub: dict) -> Optional[datetime]:
-    ts = sub.get("current_period_start")
+def _ts(value: Any) -> Optional[datetime]:
     try:
-        return datetime.fromtimestamp(int(ts), tz=timezone.utc) if ts else None
+        return datetime.fromtimestamp(int(value), tz=timezone.utc) if value else None
     except (TypeError, ValueError, OSError):
         return None
+
+
+def _period_start(sub: dict) -> Optional[datetime]:
+    return _ts(sub.get("current_period_start"))
+
+
+def _subscription_state(sub: dict) -> dict:
+    """The bits worth remembering: who to open the billing portal against, and
+    whether the plan is live, lapsing, or gone.
+
+    ``customer`` arrives as a bare id string normally and as an expanded object
+    when someone retrieves the subscription with expansion — handle both, since
+    getting it wrong loses the only key the portal can be opened with."""
+    customer = sub.get("customer")
+    if isinstance(customer, dict):
+        customer = customer.get("id")
+    ends = _ts(sub.get("current_period_end"))
+    return {
+        "customer_id": str(customer) if customer else None,
+        "subscription_id": str(sub.get("id")) if sub.get("id") else None,
+        "status": (sub.get("status") or "").strip().lower() or None,
+        "cancel_at_period_end": bool(sub.get("cancel_at_period_end")),
+        "current_period_end": ends.isoformat() if ends else None,
+    }
 
 
 def apply_subscription_event(event: dict, raw_price_tier_json: str, *,
@@ -144,9 +176,16 @@ def apply_subscription_event(event: dict, raw_price_tier_json: str, *,
         return {"handled": False, "reason": "missing_user_id"}
 
     if etype == "customer.subscription.deleted":
-        # Downgrade only. No claw-back: they paid for this period.
+        # Downgrade only. No claw-back: they paid for this period, so the
+        # balance is left exactly where it is and the free grant lands at the
+        # next roll. `period_start` is deliberately NOT passed — re-anchoring on
+        # a cancellation would move their renewal date to the cancellation date.
+        # (set_tier enforces both; this used to hand a cancelling Pro user with
+        # 250k tokens left a balance of 12,000 on the spot.)
+        state = _subscription_state(sub)
+        state["status"] = state["status"] or "canceled"
         ta.set_tier(user_id, "free", ref_id=str(sub.get("id") or ""),
-                    database=database)
+                    subscription=state, database=database)
         logger.info("stripe: subscription cancelled user=%s → free", user_id)
         return {"handled": True, "user_id": user_id, "tier": "free"}
 
@@ -159,6 +198,8 @@ def apply_subscription_event(event: dict, raw_price_tier_json: str, *,
         return {"handled": False, "reason": f"status_{status}"}
 
     result = ta.set_tier(user_id, tier, period_start=_period_start(sub),
-                         ref_id=str(sub.get("id") or ""), database=database)
+                         ref_id=str(sub.get("id") or ""),
+                         subscription=_subscription_state(sub),
+                         database=database)
     return {"handled": True, "user_id": user_id, "tier": tier,
             "granted": (result or {}).get("balance")}
