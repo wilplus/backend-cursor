@@ -1029,6 +1029,13 @@ def serialize_item(row: dict) -> dict:
         "parent_id": row.get("parent_id"),
         "collection": row.get("collection"),
         "origin_case_id": row.get("origin_case_id"),
+        # Both provenance columns ride the serializer, and both are usually
+        # null: a row typed into setup was derived from nothing. What they
+        # answer together is "where did this come from" — a case the engine
+        # worked from (origin_case_id) or a document the person uploaded and
+        # ticked (origin_document_id). Absent on a row written before the
+        # column existed, hence the plain .get.
+        "origin_document_id": row.get("origin_document_id"),
         "created_at": _iso(row.get("created_at")),
     }
 

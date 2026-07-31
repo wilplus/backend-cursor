@@ -132,5 +132,65 @@ class DraftRowShapeTests(unittest.TestCase):
         self.assertEqual(self._draft([]), [])
 
 
+class HintedDraftRowShapeTests(unittest.TestCase):
+    """H-5 — where the document dock's kind hint and this fold meet.
+
+    The dock lets the FE say which panel view the user was standing on, and
+    the rows drafted for that kind LEAD the response. Those rows are phrases,
+    principles and wins — none of which carries an item `horizon` at all.
+
+    They must still carry `strategy_horizon`, because H-3 is the FE branching
+    on its VALUE rather than on the key being there, and these are the first
+    rows it is handed. Which is why the stamp runs AFTER the hinted prepend,
+    not before it — the ordering is the contract, so it is pinned here.
+    """
+
+    def _draft(self, items, lines, kind):
+        from unittest.mock import patch
+        from services import life_engine as eng
+        with patch.object(eng, "_complete", return_value={"goals": []}), \
+             patch.object(eng.life_importer, "plan_strategy",
+                          return_value={"items": items}), \
+             patch.object(eng.life_importer, "plan_document_lines",
+                          return_value=lines), \
+             patch.object(eng, "_log_derivation", lambda *a, **k: None):
+            return eng.draft_items_from_document("u1", "text", kind=kind)
+
+    def test_the_hinted_row_leads_and_still_carries_the_key(self):
+        out = self._draft([{"title": "ship it", "horizon": "quarter"}],
+                          [{"title": "hold the line", "kind": "phrase"}],
+                          "phrase")
+        # The hinted row leads — the user is standing on /panel/phrases.
+        self.assertEqual(out[0]["title"], "hold the line")
+        # And it carries the key, mapped to None: a phrase has no horizon, so
+        # it routes to the FE's remainder review instead of being folded onto
+        # a dated strategy screen. That is the right screen for it.
+        self.assertIn("strategy_horizon", out[0])
+        self.assertIsNone(out[0]["strategy_horizon"])
+        # The base row underneath is folded exactly as it was before.
+        self.assertEqual(out[1]["strategy_horizon"], "quarterly")
+
+    def test_no_drafted_row_hinted_or_not_lacks_the_field(self):
+        # The invariant stated over the WHOLE response rather than per-row:
+        # this is the one the FE actually leans on, and the one that breaks
+        # if the stamp ever moves back above the prepend.
+        out = self._draft([{"title": "a", "horizon": "now"},
+                           {"title": "b", "horizon": None}],
+                          [{"title": "p1"}, {"title": "p2"}],
+                          "principle")
+        self.assertEqual(len(out), 4)
+        for row in out:
+            self.assertIn("strategy_horizon", row)
+
+    def test_a_hint_the_base_pass_covers_folds_as_it_always_did(self):
+        # `goal` is not a lines kind, so no second pass runs and the result
+        # is the un-hinted one — including the fold.
+        out = self._draft([{"title": "ship it", "horizon": "month"}],
+                          [{"title": "never asked for"}],
+                          "goal")
+        self.assertEqual(len(out), 1)
+        self.assertEqual(out[0]["strategy_horizon"], "monthly")
+
+
 if __name__ == "__main__":
     unittest.main()

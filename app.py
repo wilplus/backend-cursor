@@ -49,6 +49,7 @@ from routes.snippet_labels_routes import snippet_labels_bp
 from routes.dev_bugs import dev_bugs_bp
 from routes.dev_tasks import dev_tasks_bp
 from routes.journal import journal_bp
+from routes.token_routes import tokens_bp
 from routes.life_routes import life_bp
 from routes.life_reminders_webhook import life_reminders_webhook_bp
 
@@ -67,6 +68,11 @@ app.register_blueprint(dev_tasks_bp)
 # Journal (blog): PUBLIC /v2/journal/* reads (no auth — the FE server-renders
 # them) + password-gated /v2/internal/journal/* CMS. Full paths baked in.
 app.register_blueprint(journal_bp)
+# Token balance API: /v2/tokens/* behind TOKEN_PRICING_ENABLED (default 0).
+# With the flag off every endpoint answers 200 {"enabled": false} rather than
+# 404, so the FE has one probe that tells "pricing is off" apart from "the
+# backend is broken". Read-only — nothing here charges. Full paths baked in.
+app.register_blueprint(tokens_bp)
 # The Life Panel: /v2/life/* behind LIFE_PANEL_ENABLED (default 0). With the
 # flag off every route 404s, so registering the blueprint changes nothing
 # observable until the flag is flipped. Full paths baked in — v2_routes.py is

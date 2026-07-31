@@ -116,6 +116,17 @@ def compute_baseline_summary(
             response_format=response_format(BASELINE_SUMMARY_SCHEMA),
             timeout=_TIMEOUT_SECONDS,
         )
+        # Cost ledger (token-pricing Phase 0). Recorded HERE, immediately
+        # after the call returns and BEFORE any parsing — we have already
+        # paid for this response, so a downstream parse failure must not
+        # lose the cost row. This service bypasses services/llm.py, so
+        # without this hook it is invisible to the ledger.
+        try:
+            from services.llm_usage import record_response_usage
+            record_response_usage(response, surface="baseline_summary",
+                                  model=_MODEL, user_id=user_id,)
+        except Exception:
+            pass
         raw = (response.choices[0].message.content or "").strip()
     except Exception as e:
         logger.warning(

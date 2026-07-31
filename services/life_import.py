@@ -335,6 +335,11 @@ _QUOTE_PAIRS: tuple[tuple[str, str], ...] = (
 # contraction, and adding the straight quote would break a nested quotation.
 _ASYMMETRIC_OPENERS = "„“«"
 
+# Where a phrase lands when nothing says otherwise. The panel groups the wall
+# by collection, and a row with none renders under "Uncollected" — which reads
+# as a filing mistake rather than as a phrase somebody wanted kept.
+PHRASE_DEFAULT_COLLECTION = "wall"
+
 # Smart phrases are short. Anything longer than this that happens to sit
 # between two quote marks is a paragraph, not a phrase.
 _MAX_PHRASE_CHARS = 600
@@ -396,7 +401,7 @@ def split_phrases(blob: str) -> tuple[list[str], str]:
 
 
 def plan_phrases(user_id: str, blob: Any,
-                 *, collection: str = "wall") -> dict:
+                 *, collection: str = PHRASE_DEFAULT_COLLECTION) -> dict:
     """``{items, notes}`` — phrase rows plus whatever could not be split."""
     phrases, leftover = split_phrases(blob if isinstance(blob, str)
                                       else json.dumps(blob, ensure_ascii=False)
@@ -738,10 +743,80 @@ def export_setup_documents(user_id: str) -> Optional[list[dict]]:
 
 
 # ═════════════════════════════════════════════════════════════════════════
-# Confirmed draft items (item 9's review step)
+# Document-drafted items (item 9's review step)
 # ═════════════════════════════════════════════════════════════════════════
 
-_CONFIRMABLE_KINDS = ("bet", "goal", "habit", "distraction")
+# THE kind set for the document dock — what /setup/propose-from-document may
+# emit AND what /setup/apply-proposed will create. One tuple on purpose: if
+# the two ever disagree the user ticks rows, presses Add, and is told nothing
+# was created with nothing to do about it. A test asserts the agreement rather
+# than trusting this comment.
+#
+# Every entry is one of lp.ITEM_KINDS — the panel's closed nine. A tenth kind
+# is an FE change (their renderer drops rows it does not know, by design), so
+# it is never something this file may grow alone.
+DOC_DRAFT_KINDS: tuple[str, ...] = ("bet", "goal", "habit", "distraction",
+                                    "phrase", "principle", "win")
+
+# The three the model reads as LINES rather than as structured goals: a
+# phrases document is a list of lines someone wants handed back at the right
+# moment, a principles document a list of rules they wrote for themselves, a
+# wins document a list of what went well. Same taxonomy, reached from a file
+# instead of from the chat.
+DOC_DRAFT_LINE_KINDS: tuple[str, ...] = ("phrase", "principle", "win")
+
+_CONFIRMABLE_KINDS = DOC_DRAFT_KINDS
+
+
+def plan_document_lines(user_id: str, kind: str,
+                        lines: Iterable[Any]) -> list[dict]:
+    """Lines read out of an uploaded document → phrase / principle / win rows.
+
+    PURE, like every other planner here: it returns rows, it writes nothing.
+    The shape matches what ``plan_phrases`` / ``plan_cases`` / ``plan_wins``
+    produce for the same kinds, so a row drafted from a file and the same row
+    imported from the old app are indistinguishable once written — including
+    the content-hash ``external_id``, which is what makes ticking the same
+    line twice an update instead of a second copy on the wall.
+
+    Duplicates inside ONE draft are dropped here rather than at insert time.
+    The unique index would refuse the second row silently, and a user who
+    ticked six rows and was told four were created has no way to find out
+    which two the system quietly disagreed with.
+    """
+    if kind not in DOC_DRAFT_LINE_KINDS:
+        return []
+    rows: list[dict] = []
+    seen: set[str] = set()
+    for index, raw in enumerate(lines or []):
+        source = raw if isinstance(raw, dict) else {"title": raw}
+        text = _text(source.get("title") or source.get("text")
+                     or source.get("body"))
+        # Same floor as _split_principles: two characters is a bullet that
+        # survived, not a line somebody wrote.
+        if len(text) <= 2:
+            continue
+        external = _external_id(kind, {}, (), text)
+        if external in seen:
+            continue
+        seen.add(external)
+        title = text[:500]
+        row: dict[str, Any] = {
+            "external_id": external,
+            "kind": kind,
+            "title": title,
+            # The body carries the full line ONLY when the title had to be
+            # cut. Empty otherwise, so the review row renders once rather
+            # than twice — while a 600-character phrase still keeps every
+            # character it was written with.
+            "body": text if text != title else "",
+            "status": "active",
+            "order_key": float(index + 1) * 1000.0,
+        }
+        if kind == "phrase":
+            row["collection"] = PHRASE_DEFAULT_COLLECTION
+        rows.append(row)
+    return rows
 
 
 def sanitize_confirmed_item(raw: Any) -> Optional[dict]:
@@ -752,6 +827,14 @@ def sanitize_confirmed_item(raw: Any) -> Optional[dict]:
     made on a row that was fully displayed), unticked rows are never sent and
     never created, and nothing lands as a silent 'proposed'. Status is
     therefore FORCED to 'active' here regardless of what the client sent.
+
+    That reading is what lets a PRINCIPLE through this path while the engine's
+    own derived principles still wait in 'proposed'. The triage state exists
+    so a bad prompt day cannot silently corrupt sixty principles earned over
+    four years — silently being the load-bearing word. A principle drafted
+    from a document was displayed verbatim on a screen and individually
+    ticked by the person who wrote it in the first place; there is nothing
+    left for triage to catch.
 
     A 'bet' row keeps the LOCKED rank from lp.BETS (L-2a): the uploaded
     document can word a bet, it can never reorder them."""
@@ -765,6 +848,16 @@ def sanitize_confirmed_item(raw: Any) -> Optional[dict]:
         return None
     label = _text(raw.get("due_label") or raw.get("dueLabel"))[:120] or None
     horizon = str(raw.get("horizon") or "").strip().lower()
+    # `bet` is what the goals surface calls it on the way in, `collection` is
+    # the column. BOTH are accepted so neither side has to translate; the FE's
+    # mapping is belt-and-braces, not a requirement.
+    collection = _text(raw.get("bet") or raw.get("collection"))[:120] or None
+    if kind == "phrase" and not collection:
+        # A phrase with no collection lands under "Uncollected". Defaulted
+        # here as well as at draft time so a client that drops the field —
+        # or a row hand-built by a caller that never saw the draft — still
+        # reaches the wall.
+        collection = PHRASE_DEFAULT_COLLECTION
     fields: dict[str, Any] = {
         "kind": kind,
         "title": title,
@@ -773,8 +866,7 @@ def sanitize_confirmed_item(raw: Any) -> Optional[dict]:
         "horizon": horizon if horizon in lp.HORIZONS else None,
         "due_label": label,
         "due_at": lp.parse_due_label(label),
-        "collection": (_text(raw.get("bet") or raw.get("collection"))[:120]
-                       or None),
+        "collection": collection,
     }
     external_id = _text(raw.get("external_id") or raw.get("externalId"))[:200]
     if external_id:

@@ -88,20 +88,20 @@ def apply_paid_checkout_session_credits(
     if _session_field(full, "mode") != "payment":
         return CheckoutCreditsApplyResult.success(200, skipped="not_payment_mode")
 
-    session_user = checkout_user_id(full)
-    if not session_user and not auth_user_id:
-        return CheckoutCreditsApplyResult.error(
-            400,
-            "INVALID_SESSION",
-            "Set client_reference_id or metadata.user_id to Supabase user id on Checkout Session",
-        )
-
-    if auth_user_id and session_user and session_user.strip().lower() != auth_user_id.strip().lower():
-        return CheckoutCreditsApplyResult.error(403, "FORBIDDEN", "Checkout session does not belong to this account")
-
-    db_user_id = auth_user_id.strip() if auth_user_id else session_user.strip()
-    used_auth_fallback = bool(auth_user_id and not session_user)
-
+    # ── Line items FIRST, so we can tell whose sale this even is ──────────
+    #
+    # This endpoint receives EVERY checkout.session.completed on the Stripe
+    # account, including sales that have nothing to do with willab (Payment
+    # Links for coaching, courses, whatever the founder sells). Those carry no
+    # user_id, because there is no willab user behind them.
+    #
+    # The old order checked user_id BEFORE looking at the prices, so an
+    # unrelated sale died on INVALID_SESSION — a 400, which tells Stripe to
+    # RETRY. Every foreign sale then retried for days and sat in the dashboard
+    # as a failed delivery. The real cost is not the noise: it is that a
+    # genuine willab payment failing gets buried among them and nobody notices.
+    #
+    # So: identify the product first. Not ours → 200, acked, no retry.
     line_data = _line_items_data(full)
     if not line_data:
         try:
@@ -115,6 +115,34 @@ def apply_paid_checkout_session_credits(
         return CheckoutCreditsApplyResult.error(400, "NO_LINE_ITEMS", "Checkout session has no line items to map")
 
     checkout_price_ids = _line_price_ids(line_data)
+
+    # INTERSECTION, not "every price must map". A cart with one of our prices
+    # plus something unmapped IS ours and is misconfigured — that must stay a
+    # loud 400 below, not be silently ignored as somebody else's sale.
+    if not (set(checkout_price_ids) & set(price_map)):
+        logger.info(
+            "stripe checkout: ignoring session=%s — no willab price among %s "
+            "(not our sale)", sid, checkout_price_ids,
+        )
+        return CheckoutCreditsApplyResult.success(200, skipped="not_our_product")
+
+    # ── Only now is a missing user_id a REAL misconfiguration ─────────────
+    # The prices say this is a willab sale, so it should have carried a user.
+    # 400 here is correct and the retry is useful: it keeps the failure visible
+    # until the checkout link is fixed.
+    session_user = checkout_user_id(full)
+    if not session_user and not auth_user_id:
+        return CheckoutCreditsApplyResult.error(
+            400,
+            "INVALID_SESSION",
+            "Set client_reference_id or metadata.user_id to Supabase user id on Checkout Session",
+        )
+
+    if auth_user_id and session_user and session_user.strip().lower() != auth_user_id.strip().lower():
+        return CheckoutCreditsApplyResult.error(403, "FORBIDDEN", "Checkout session does not belong to this account")
+
+    db_user_id = auth_user_id.strip() if auth_user_id else session_user.strip()
+    used_auth_fallback = bool(auth_user_id and not session_user)
     total, map_err = total_credits_for_checkout_session({"line_items": {"data": line_data}}, price_map)
     if map_err or total is None:
         configured_ids = list(price_map.keys())
