@@ -96,6 +96,38 @@ def tokens_recording_band():
                     **band}), 200
 
 
+@tokens_bp.route("/v2/tokens/checkout", methods=["POST"])
+@require_auth
+def tokens_checkout():
+    """Open a Stripe Checkout Session for a recurring tier.
+
+    Body: {"tier": "starter"|"pro"|"max", "success_url"?, "cancel_url"?}
+    200 {checkout_url, checkout_session_id, tier} · 400 · 500 · 502 · 503
+
+    This exists because a Payment Link cannot sell these tiers — see the module
+    docstring in services/tier_checkout.py. In short: ``client_reference_id``
+    never reaches the Subscription, so renewals would arrive unattributable and
+    grant nothing from month two.
+
+    Deliberately NOT gated on TOKEN_PRICING_ENABLED. The flag controls whether
+    we CHARGE for actions; it must not stop someone paying us. A subscription
+    bought while the flag is off still sets the tier and grants tokens — they
+    simply are not spent on anything yet, which is the correct behaviour for a
+    soft launch where billing goes live before metering does.
+    """
+    body = request.get_json(silent=True) or {}
+    from config import Config as _config
+    from services.tier_checkout import create_tier_checkout_session
+    result = create_tier_checkout_session(
+        user_id=str(request.user_id),
+        tier=(body.get("tier") or ""),
+        app_config=_config,
+        success_url=(body.get("success_url") or None),
+        cancel_url=(body.get("cancel_url") or None),
+    )
+    return jsonify(result.payload), result.http_status
+
+
 @tokens_bp.route("/v2/tokens/history", methods=["GET"])
 @require_auth
 def tokens_history():

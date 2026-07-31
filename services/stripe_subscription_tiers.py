@@ -109,21 +109,14 @@ def apply_subscription_event(event: dict, raw_price_tier_json: str, *,
         return {"handled": False, "reason": "not_a_subscription_event"}
 
     sub = (event.get("data") or {}).get("object") or {}
-    user_id = _user_id_from(sub)
-    if not user_id:
-        # Loud: a paid subscription we cannot attribute is money in with no
-        # tokens out, and the user will notice before we do.
-        logger.error("stripe subscription %s has no metadata.user_id — "
-                     "cannot grant tokens (sub=%s)", etype, sub.get("id"))
-        return {"handled": False, "reason": "missing_user_id"}
 
-    if etype == "customer.subscription.deleted":
-        # Downgrade only. No claw-back: they paid for this period.
-        ta.set_tier(user_id, "free", ref_id=str(sub.get("id") or ""),
-                    database=database)
-        logger.info("stripe: subscription cancelled user=%s → free", user_id)
-        return {"handled": True, "user_id": user_id, "tier": "free"}
-
+    # ── Whose subscription is this? Price FIRST, user second ──────────────
+    #
+    # Same reasoning as services/stripe_checkout_credits.py: this webhook sees
+    # every subscription event on the account, including ones for products
+    # that have nothing to do with willab. Those carry no willab user_id, and
+    # checking the user before the price would log an ERROR for every single
+    # one — burying the genuine failures we actually need to see.
     price_map = parse_price_tier_map(raw_price_tier_json)
     if not price_map:
         logger.error("STRIPE_PRICE_TIER_JSON not configured — subscription "
@@ -132,9 +125,30 @@ def apply_subscription_event(event: dict, raw_price_tier_json: str, *,
 
     tier = _tier_from_items(sub, price_map)
     if not tier:
-        logger.error("stripe subscription %s: no known price in items "
-                     "(sub=%s)", etype, sub.get("id"))
-        return {"handled": False, "reason": "unknown_price"}
+        # Not a willab tier. INFO, not ERROR — somebody else's product.
+        logger.info("stripe: ignoring subscription %s — no willab tier price "
+                    "(sub=%s)", etype, sub.get("id"))
+        return {"handled": False, "reason": "not_a_willab_tier"}
+
+    user_id = _user_id_from(sub)
+    if not user_id:
+        # NOW it is loud, and rightly so: the price says this IS a willab
+        # subscription, so money came in with no tokens out and the customer
+        # will notice before we do. Note this is the failure mode that a bare
+        # Payment Link produces on RENEWAL even when the first payment worked —
+        # client_reference_id lands on the Checkout Session and never reaches
+        # the Subscription. Sell the tiers via create_tier_checkout_session.
+        logger.error("stripe subscription %s is a willab tier (%s) but has no "
+                     "metadata.user_id — cannot grant tokens (sub=%s)",
+                     etype, tier, sub.get("id"))
+        return {"handled": False, "reason": "missing_user_id"}
+
+    if etype == "customer.subscription.deleted":
+        # Downgrade only. No claw-back: they paid for this period.
+        ta.set_tier(user_id, "free", ref_id=str(sub.get("id") or ""),
+                    database=database)
+        logger.info("stripe: subscription cancelled user=%s → free", user_id)
+        return {"handled": True, "user_id": user_id, "tier": "free"}
 
     status = (sub.get("status") or "").strip().lower()
     if status in ("incomplete", "incomplete_expired", "unpaid"):
