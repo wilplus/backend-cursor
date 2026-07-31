@@ -3608,6 +3608,18 @@ def v2_chat_query():
                 resp["persisted"] = bool(bot_cid)
                 if bot_cid:
                     resp["persisted_client_id"] = bot_cid
+            # Token pricing: charge the turn AFTER answering, never before.
+            # No ref_id — chat is legitimately repeatable, so it must not hit
+            # the ledger's once-per-ref index. The FE deliberately does NOT
+            # surface a per-message price (150 tokens is noise beside a 35,000
+            # coach review, and a per-keystroke meter turns a conversation into
+            # a taxi ride) — it still charges, it just isn't shown.
+            if request.user_id:
+                try:
+                    from services.token_account import charge as _charge
+                    _charge(str(request.user_id), "chat")
+                except Exception:
+                    pass
             return jsonify(resp), 200
 
         # ── Life Panel hashtag router (founder 2026-07-26) — the FIRST
@@ -11776,6 +11788,31 @@ def v2_unlock_moments(arc_id):
             return jsonify({"already_entitled": True,
                             "arc_id": arc_id}), 200
 
+        # Token pricing Phase 1: when the flag is on, key-moment explanations
+        # cost TOKENS (2,500 = $0.25), not the legacy 5 credits ($5) — a 20×
+        # cut the founder approved on 2026-07-27, because the explanations were
+        # already generated during the take and cost us nothing to unlock.
+        # Flag off ⇒ the legacy credits path below runs byte-for-byte unchanged.
+        from services.token_account import enabled as _tokens_on
+        if _tokens_on():
+            from services.token_account import charge as _charge
+            res = _charge(str(request.user_id), "moment_explanation",
+                          ref_id=str(arc_id))
+            if not res.ok:
+                return jsonify({
+                    "code": "INSUFFICIENT_TOKENS",
+                    "required": res.charged or 2500,
+                    "current": res.balance,
+                    "reason": res.reason,
+                }), 402
+            unlock = db.insert_moment_unlock(str(arc_id),
+                                             str(request.user_id), 0)
+            if not unlock and not _moments_entitled(arc_id):
+                return jsonify({"code": "V2_ERROR",
+                                "error": "Could not start the unlock"}), 500
+            return jsonify({"unlocked": True, "arc_id": arc_id,
+                            "tokens_remaining": res.balance}), 200
+
         amount = int(getattr(config, "MOMENTS_UNLOCK_CREDITS", 5) or 5)
 
         new_balance = db.deduct_credits_strict(str(request.user_id), amount)
@@ -12372,6 +12409,10 @@ def v2_explore_arc_feedback(arc_id):
                     sid, [str(r.get("id")) for r in read_rows if r.get("id")]),
             })
         ideal = db.get_coach_arc_ideal_text(arc_id)
+        if takes:
+            # Once per arc, and only when there is feedback to read. Fail-open
+            # by construction — the charge result is not consulted.
+            _charge_arc_deliverable(request.user_id, "insights", arc_id)
         return jsonify({
             "arc_id": arc_id,
             "takes": takes,
@@ -15050,9 +15091,34 @@ def v2_coach_publish_analysis(arc_id):
 # paywall now: unpaid → 402 (drives purchase intent pre-launch); PAID → an
 # honest 501 "not yet available" (never a fake unlock).
 
+
+def _charge_arc_deliverable(user_id, action, arc_id):
+    """Charge a once-per-arc deliverable. NEVER raises, NEVER blocks.
+
+    Token pricing Phase 1. Returns the ChargeResult-ish dict or None; callers
+    IGNORE the outcome by design. These deliverables are reads of content the
+    take already generated — the marginal cost to us is zero — so refusing to
+    serve one on a low balance would withhold something already produced and
+    paid for, which is exactly the failure fence §6.1 exists to prevent.
+
+    ref_id=arc_id makes it idempotent: re-opening the game or the insights for
+    the same presentation charges once, ever. The ledger's partial unique index
+    on (user_id, action, ref_id) is the real guard.
+    """
+    try:
+        from services.token_account import charge
+        return charge(str(user_id), action, ref_id=str(arc_id)).as_dict()
+    except Exception as e:
+        logger.warning("token charge failed action=%s arc=%s err=%s",
+                       action, arc_id, e)
+        return None
+
+
 @v2_bp.route("/arc/<arc_id>/game", methods=["GET"])
 @require_auth
 def v2_arc_game(arc_id):
+    # NOTE: token charge is applied below, after the arc is confirmed to
+    # belong to the caller — see _charge_arc_deliverable.
     """Engine 5 (founder 2026-07-11) — the key-moments game, replacing the
     501 stub. Free (the $25 gate is retired, single-deliverable 2026-07-17).
 
@@ -15079,6 +15145,12 @@ def v2_arc_game(arc_id):
         if not rounds:
             # honest empty state — the coach hasn't confirmed key moments yet
             body["reason"] = "NO_KEY_MOMENTS_YET"
+        else:
+            # Charge only when there is actually a game to play. An empty
+            # NO_KEY_MOMENTS_YET response is the user finding out the coach
+            # hasn't marked anything yet — billing them for that would charge
+            # for our latency.
+            _charge_arc_deliverable(request.user_id, "game", arc_id)
         return jsonify(body), 200
     except Exception as e:
         logger.error("arc game failed arc=%s: %s", arc_id, e, exc_info=True)

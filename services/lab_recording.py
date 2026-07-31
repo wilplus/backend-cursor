@@ -420,6 +420,23 @@ def process_lab_recording(
             )
             segments = (wres or {}).get("segments") or []
             words_all = (wres or {}).get("words") or []
+
+            # Token pricing: charge the take AFTER transcription, at the band
+            # the audio actually landed in. Deliberately not a pre-flight gate —
+            # the audio is already accepted and analysed by this point, so a
+            # zero balance costs the user tokens, never the take (fence §6.1).
+            # The record-start band endpoint is the ADVISORY half of this; this
+            # is the settle. Idempotent per recording: a retried pipeline run
+            # re-uses recording_id and the ledger's unique index absorbs it.
+            try:
+                from services.token_account import charge
+                from services.token_prices import band_for_seconds
+                _act = ("reread" if (recording_kind or "spoken") == "read"
+                        else band_for_seconds((wres or {}).get("duration")))
+                charge(str(user_id), _act, ref_id=str(recording_id))
+            except Exception as _tok_err:
+                logger.warning("lab: token charge failed sid=%s err=%s",
+                               session_id, _tok_err)
     except Exception as e:
         logger.warning(
             "process_lab_recording.voice_metrics_diag sid=%s "

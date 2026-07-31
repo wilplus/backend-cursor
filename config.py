@@ -441,6 +441,21 @@ class Config:
     # JSON object: Stripe Price id → integer credits to add, e.g. {"price_abc":15,"price_def":40}
     STRIPE_CHECKOUT_PRICE_CREDITS_JSON = (os.getenv("STRIPE_CHECKOUT_PRICE_CREDITS_JSON") or "").strip()
 
+    # Token pricing Phase 1 (docs/PRICING-TOKENS-PLAN.md). JSON object mapping
+    # Stripe RECURRING Price id → tier name, e.g.
+    #   {"price_starter":"starter","price_pro":"pro","price_max":"max"}
+    # Deliberately separate from STRIPE_CHECKOUT_PRICE_CREDITS_JSON above: that
+    # one maps price → a credit AMOUNT for the legacy one-off packs and still
+    # serves them. Tiers are a different concept (a recurring entitlement, not a
+    # quantity), and conflating them would make a subscription renewal look like
+    # a top-up and stack grants every month.
+    STRIPE_PRICE_TIER_JSON = (os.getenv("STRIPE_PRICE_TIER_JSON") or "").strip()
+
+    # Master switch for the whole token-pricing surface. Default OFF — unlike
+    # the Phase 0 cost ledger, this one can refuse a user's action, so it ships
+    # dark and is flipped once the FE can render a balance.
+    TOKEN_PRICING_ENABLED = (os.getenv("TOKEN_PRICING_ENABLED") or "0").strip()
+
     # ── willab — Paid Audits. An "audit" = an explore arc (3 takes + the
     # coach-corrected ideal text). Re-priced 2026-07-06: $25, spent as
     # ARC_UNLOCK_CREDITS from the existing credits balance (NOT a second

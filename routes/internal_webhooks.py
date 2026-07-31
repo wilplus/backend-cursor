@@ -183,6 +183,21 @@ def stripe_checkout_webhook():
         logger.warning("stripe webhook bad signature: %s", e)
         return jsonify({"code": "INVALID_SIGNATURE", "error": "Invalid signature"}), 400
 
+    # Token pricing Phase 1: the three paid tiers are RECURRING prices, so they
+    # arrive as subscription events rather than checkout completions. Handled
+    # BEFORE the checkout branch and returning early, so the legacy credit-pack
+    # path below is byte-for-byte unchanged.
+    from services.stripe_subscription_tiers import (
+        apply_subscription_event, is_subscription_event,
+    )
+    if is_subscription_event(event.get("type")):
+        sub_result = apply_subscription_event(
+            event, getattr(config, "STRIPE_PRICE_TIER_JSON", "") or "",
+        )
+        # Always 200: a mapping we cannot resolve is ours to fix from the logs,
+        # and telling Stripe to retry forever fixes nothing.
+        return jsonify({"received": True, **sub_result}), 200
+
     if event.get("type") != "checkout.session.completed":
         return jsonify({"received": True}), 200
 

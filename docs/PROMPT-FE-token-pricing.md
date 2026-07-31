@@ -26,18 +26,81 @@ the words as placeholders and flag them.
 
 ---
 
-## 1. Get the numbers from the BE, always
+## 1. The shipped contract
 
-`GET /v2/tokens/prices` is the source of truth. **Do not hardcode any token price in
-the frontend** — they will be repriced once Phase 0's measurements land (that is the
-entire point of Phase 0), and a hardcoded 3,000 becomes a lie silently.
+BE is live on `feat/token-pricing-be` (commit `ce729b2`). All four endpoints are
+authed, read-only, and **none of them charge** — charging happens at the action being
+paid for, so polling a balance can never cost the user anything.
 
-`GET /v2/tokens/balance` returns:
+**Flag off** (`TOKEN_PRICING_ENABLED=0`, the current state) every endpoint answers
+`200 {"enabled": false}`. Deliberately not a 404: you need one probe that separates
+"pricing is off, render no wallet UI at all" from "the backend is broken", and a 404
+can't carry that difference. Check `enabled` first, always.
 
-```json
-{ "balance": 41500, "tier": "starter", "period_ends_at": "2026-08-28T09:00:00Z",
-  "coach_reviews": { "used": 0, "allowed": 1 } }
+```jsonc
+// GET /v2/tokens/balance
+{ "enabled": true, "available": true,
+  "balance": 41500, "tier": "starter",
+  "period_start": "2026-07-28T09:00:00+00:00",
+  "period_ends_at": "2026-08-28T09:00:00+00:00",
+  "coach_reviews": { "used": 0, "allowed": 1, "remaining": 1 } }
+
+// GET /v2/tokens/prices  — THE source of truth
+{ "enabled": true, "price_version": "2026-07-28-v1",
+  "actions": { "take_short": 1000, "take_medium": 3000, "take_long": 6000,
+               "reread": 1500, "assembly": 500, "moment_explanation": 2500,
+               "game": 1500, "insights": 1000, "chat": 150,
+               "coach_review": 35000 },
+  "bands":   [ { "max_seconds": 120, "action": "take_short",  "price": 1000 },
+               { "max_seconds": 360, "action": "take_medium", "price": 3000 },
+               { "max_seconds": 900, "action": "take_long",   "price": 6000 } ],
+  "tiers":   { "free":    { "tokens_per_month": 12000,   "coach_reviews_per_month": 0,  "usd_per_month": 0 },
+               "starter": { "tokens_per_month": 50000,   "coach_reviews_per_month": 1,  "usd_per_month": 5 },
+               "pro":     { "tokens_per_month": 300000,  "coach_reviews_per_month": 6,  "usd_per_month": 25 },
+               "max":     { "tokens_per_month": 1500000, "coach_reviews_per_month": 10, "usd_per_month": 100 } } }
+
+// GET /v2/tokens/recording-band
+{ "enabled": true, "can_record": true, "balance": 41500,
+  "period_ends_at": "…", "max_seconds": 900, "action": "take_long", "price": 6000 }
+// out of tokens:
+{ "enabled": true, "can_record": false, "balance": 200, "period_ends_at": "…" }
+
+// GET /v2/tokens/history?limit=50&before_id=123
+{ "enabled": true, "next_before_id": 88,
+  "entries": [ { "id": 91, "delta": -1000, "balance_after": 41500,
+                 "action": "take_short", "ref_id": "rec_…", "tier": "starter",
+                 "created_at": "…" } ] }
 ```
+
+**`available: false`** on the balance endpoint means the account could not be read.
+Treat it as "unknown", NOT as zero — render the previous value or nothing, and keep
+every action enabled. Showing zero would hide the record button over a failed lookup.
+
+**Never hardcode a price.** They get repriced once the cost measurements land — that
+is the whole point of Phase 0 — and `price_version` is there so you can tell when a
+cached list is stale.
+
+### Charging responses you'll actually hit
+
+`POST /v2/arc/<arc_id>/unlock-moments` now answers in tokens when the flag is on:
+
+```jsonc
+// 200
+{ "unlocked": true, "arc_id": "…", "tokens_remaining": 39000 }
+// 402
+{ "code": "INSUFFICIENT_TOKENS", "required": 2500, "current": 300,
+  "reason": "insufficient" }
+```
+
+`reason` is either `insufficient` (→ offer top-up **or** the renewal date) or
+`coach_cap_reached` (→ offer **upgrade**, never top-up; see §5). Branch on it — they
+need different actions, and getting it wrong sends someone to buy tokens that cannot
+fix their problem.
+
+Everything else — takes, chat, game, insights — charges **silently and fail-open**.
+They never return a payment error, so you never need to handle one. Takes in
+particular are charged *after* transcription at the band the audio actually landed
+in, so an over-length or over-budget recording still produces a transcript.
 
 ## 2. The balance chip
 
@@ -70,6 +133,17 @@ balance or length. Losing someone's take is worse than any billing inaccuracy.
 Balance · tier · renewal date · coach reviews used/allowed · the price list
 (from the BE) · ledger history from `/v2/tokens/history` (action, when, delta) ·
 upgrade.
+
+## 4b. ⚠️ Coach review has no trigger yet — do not build a button for it
+
+The BE has the price (35,000) and the per-tier cap, but **no endpoint charges it**.
+Today every take auto-sends to the coach; there is no "request a review" action, and
+putting the existing auto-send behind a paywall is a product change awaiting founder
+sign-off rather than an implementation detail.
+
+So: show the allowance in the wallet (§5) because it is real and it resets, but do
+**not** ship a "Request coach review" button until the trigger exists. Wiring one now
+would 404.
 
 ## 5. Coach reviews are a separate counter
 
