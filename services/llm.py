@@ -69,6 +69,8 @@ def chat_complete(
     surface: str,
     response_format_override: Optional[dict] = None,
     user_id: Optional[str] = None,
+    session_id: Optional[str] = None,
+    arc_id: Optional[str] = None,
 ) -> Optional[LLMResult]:
     """Run one ``chat.completions.create`` against the spec.
 
@@ -92,6 +94,11 @@ def chat_complete(
     user_id : str | None
         Optional user attribution for the log line. Leave None for
         cron / admin / system contexts.
+    session_id, arc_id : str | None
+        Optional cost attribution for the ``llm_usage`` ledger (token-pricing
+        Phase 0). Purely additive — they affect nothing but which row the cost
+        lands on. Pass them wherever the call site knows them; "what does one
+        take actually cost?" is unanswerable without ``session_id``.
 
     Returns
     -------
@@ -141,14 +148,6 @@ def chat_complete(
         return None
 
     duration_ms = int((time.perf_counter() - t0) * 1000)
-    raw = (response.choices[0].message.content or "").strip()
-    if not raw:
-        logger.warning(
-            "llm.chat surface=%s model=%s duration_ms=%d "
-            "user=%s empty_response",
-            surface, spec.model, duration_ms, user_id or "-",
-        )
-        return None
 
     # Token usage — present on most response shapes but defensive None
     # access in case OpenAI changes the contract.
@@ -158,6 +157,36 @@ def chat_complete(
         getattr(usage, "completion_tokens", None) if usage else None
     )
     total_tokens = getattr(usage, "total_tokens", None) if usage else None
+
+    # Cost ledger (token-pricing Phase 0). THE hook that covers every surface
+    # routed through this wrapper — ~15 of them, including the whole per-take
+    # analysis pipeline. Recorded BEFORE the empty-response bail below: an
+    # empty completion is still a completion we were billed for, and dropping
+    # those rows would bias the measured cost downward exactly where the model
+    # is misbehaving. Best-effort by contract — llm_usage swallows all its own
+    # failures, so this cannot affect what we return.
+    try:
+        from services.llm_usage import record_chat_usage
+        record_chat_usage(
+            surface=surface,
+            model=spec.model,
+            tokens_in=prompt_tokens,
+            tokens_out=completion_tokens,
+            user_id=user_id,
+            session_id=session_id,
+            arc_id=arc_id,
+        )
+    except Exception:
+        pass
+
+    raw = (response.choices[0].message.content or "").strip()
+    if not raw:
+        logger.warning(
+            "llm.chat surface=%s model=%s duration_ms=%d "
+            "user=%s empty_response",
+            surface, spec.model, duration_ms, user_id or "-",
+        )
+        return None
 
     parsed: Optional[Any] = None
     if response_format and response_format.get("type") in (

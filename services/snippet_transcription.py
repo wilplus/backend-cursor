@@ -104,6 +104,15 @@ def transcribe_snippet_bytes(
     except (TypeError, ValueError):
         transcribed_duration_ms = None
 
+    # Cost ledger (token-pricing Phase 0). Re-Whispering a single piece is the
+    # cost of a COACH/ADMIN boundary edit, not of a take — kept on its own
+    # surface so it can never be mistaken for per-take transcription spend.
+    try:
+        from services.llm_usage import record_audio_usage
+        record_audio_usage(surface="whisper_snippet", seconds=duration_seconds)
+    except Exception:
+        pass
+
     return {
         "transcript": text or None,
         "language": (language or None),

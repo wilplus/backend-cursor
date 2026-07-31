@@ -933,6 +933,17 @@ def _classify_intent(question, history, service) -> tuple[Optional[str], float]:
                 "type": "json_schema", "json_schema": _CLASSIFIER_SCHEMA,
             },
         )
+        # Cost ledger (token-pricing Phase 0). Recorded HERE, immediately
+        # after the call returns and BEFORE any parsing — we have already
+        # paid for this response, so a downstream parse failure must not
+        # lose the cost row. This service bypasses services/llm.py, so
+        # without this hook it is invisible to the ledger.
+        try:
+            from services.llm_usage import record_response_usage
+            record_response_usage(resp, surface="master_doc_rag_router",
+                                  model=_ROUTER_MODEL,)
+        except Exception:
+            pass
         parsed = json.loads((resp.choices[0].message.content or "").strip())
         intent = parsed.get("intent")
         conf = float(parsed.get("confidence") or 0.0)
@@ -1095,6 +1106,17 @@ def _answer_via_router(
                 "type": "json_schema", "json_schema": _RESPONSE_SCHEMA,
             },
         )
+        # Cost ledger (token-pricing Phase 0). Recorded HERE, immediately
+        # after the call returns and BEFORE any parsing — we have already
+        # paid for this response, so a downstream parse failure must not
+        # lose the cost row. This service bypasses services/llm.py, so
+        # without this hook it is invisible to the ledger.
+        try:
+            from services.llm_usage import record_response_usage
+            record_response_usage(resp, surface="master_doc_rag_lane",
+                                  model=_ROUTER_MODEL,)
+        except Exception:
+            pass
         parsed = json.loads((resp.choices[0].message.content or "").strip())
     except Exception as e:
         logger.warning("router: lane '%s' failed: %s — falling back", intent, e)
@@ -1278,6 +1300,17 @@ def answer_question(
                 "json_schema": _RESPONSE_SCHEMA,
             },
         )
+        # Cost ledger (token-pricing Phase 0). Recorded HERE, immediately
+        # after the call returns and BEFORE any parsing — we have already
+        # paid for this response, so a downstream parse failure must not
+        # lose the cost row. This service bypasses services/llm.py, so
+        # without this hook it is invisible to the ledger.
+        try:
+            from services.llm_usage import record_response_usage
+            record_response_usage(response, surface="master_doc_rag",
+                                  model=_MODEL,)
+        except Exception:
+            pass
         raw = (response.choices[0].message.content or "").strip()
     except Exception as e:
         logger.warning("master_doc_rag: llm call failed: %s", e)
