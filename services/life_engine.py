@@ -695,16 +695,100 @@ SPEC_LIFE_DOC_DRAFT = LLMSpec(
 )
 
 
-def draft_items_from_document(user_id: str, text: str) -> list[dict]:
-    """Item 9 — DRAFT bets/goals/habits/distractions from an uploaded
-    strategy document. Returns planned rows only; WRITES NOTHING.
+# ─────────────────────────────────────────────────────────────────────────
+# The kind hint (FE dock, 2026-07-31)
+# ─────────────────────────────────────────────────────────────────────────
+# The upload used to have one door, at the foot of /panel/goals. It now sits
+# under every panel view, and the FE says which view the user was standing on
+# when they handed the document over.
+#
+# The hint SCOPES a second read of the same text; it never filters the answer.
+# A phrases document opened from /panel/phrases that also holds three goals
+# still offers the goals — hiding them would be the panel overruling what the
+# person actually wrote. Two consequences, both deliberate:
+#
+#   * an OMITTED hint runs exactly the pass this function has always run, so
+#     the un-hinted call is byte-for-byte the endpoint it was yesterday;
+#   * a hint the base pass already covers (goal / habit / distraction / bet)
+#     also changes nothing — /panel/goals keeps the rows, the bets and the due
+#     labels it had before the dock existed.
+#
+# `task` and `event` are accepted as hints and add no pass of their own. Both
+# would draft rows the base pass already drafts under a different name — a
+# dated goal is exactly what /v2/life/timeline renders as a marker — and two
+# tickable copies of one line is a worse answer than an honest empty one.
+_DOC_DRAFT_LINE_DEFINITIONS: dict[str, str] = {
+    "phrase": (
+        "PHRASES — lines the person wants handed back to them at the right "
+        "moment: aphorisms, quotations, prayers, one-liners they wrote down "
+        "to keep. Copy each one VERBATIM, without the surrounding quotation "
+        "marks. A paragraph of prose is not a phrase."),
+    "principle": (
+        "PRINCIPLES — rules the person wrote for themselves: 'always X', "
+        "'never Y', a lesson stated as a rule they intend to live by. Copy "
+        "their wording. A goal they intend to reach is not a principle, and "
+        "an account of what happened to them is not a principle."),
+    "win": (
+        "WINS — what the person records as having gone well: what they did, "
+        "what they are counting as a win. Copy their wording. Something they "
+        "still intend to do is not a win."),
+}
+
+_DOC_DRAFT_LINES_SYSTEM = """You read ONE document a user uploaded and \
+EXTRACT what THEY EXPLICITLY WROTE. You are a transcriber, not a coach: you \
+never invent, never complete, never rephrase, and never add one they did not \
+write. If the document holds none, return an empty list — that is a real \
+answer and the product says so plainly.
+
+{definition}
+
+Keep the user's language. Do not translate. One written line is one entry: \
+never merge two, never split one.
+
+Return STRICT JSON: {{"lines": ["", ""]}}"""
+
+
+def _draft_lines_from_document(user_id: str, text: str,
+                               kind: str) -> list[dict]:
+    """The hinted kind's own read of the same text. WRITES NOTHING.
+
+    A failure here costs the hinted rows and nothing else: the caller keeps
+    the base pass's rows and the user gets a screen with something on it,
+    which is the same bargain every derivation in this module makes."""
+    definition = _DOC_DRAFT_LINE_DEFINITIONS.get(kind)
+    if not definition:
+        return []
+    parsed = _complete(
+        SPEC_LIFE_DOC_DRAFT,
+        system=_DOC_DRAFT_LINES_SYSTEM.format(definition=definition),
+        user=(text or "")[:20000],
+        surface="doc_draft_kind",
+        user_id=user_id,
+    ) or {}
+    lines = parsed.get("lines")
+    rows = life_importer.plan_document_lines(
+        user_id, kind, lines if isinstance(lines, list) else [])
+    _log_derivation("doc_draft_kind", user_id=user_id,
+                    outcome="ok" if parsed else "no_derivation",
+                    kind=kind, drafted=len(rows))
+    return rows
+
+
+def draft_items_from_document(user_id: str, text: str, *,
+                              kind: Optional[str] = None) -> list[dict]:
+    """Item 9 — DRAFT rows from an uploaded strategy document. Returns planned
+    rows only; WRITES NOTHING.
 
     Extraction (model, closed shape) feeds ``life_import.plan_strategy`` so
     the drafted rows take exactly the shape the importer would give them —
     including the three bets seeded at their LOCKED rank (L-2a), never taken
     from the document. The route returns these as checkable rows; only what
     the user ticks is ever created (N5), and that happens in a separate,
-    explicit call."""
+    explicit call.
+
+    ``kind`` is the panel view the user was standing on, and it is a HINT —
+    see the block above for what it does and, more importantly, what it does
+    not do."""
     parsed = _complete(
         SPEC_LIFE_DOC_DRAFT,
         system=_DOC_DRAFT_SYSTEM,
@@ -718,9 +802,15 @@ def draft_items_from_document(user_id: str, text: str) -> list[dict]:
         "distractions": parsed.get("distractions") or [],
     })
     items = plan.get("items") or []
+    hinted = kind if kind in life_importer.DOC_DRAFT_LINE_KINDS else None
+    if hinted:
+        # Hinted rows lead. The user is standing on that view; the kind they
+        # asked about should be the first thing they see, with everything
+        # else the document holds still under it.
+        items = _draft_lines_from_document(user_id, text, hinted) + items
     _log_derivation("doc_draft", user_id=user_id,
                     outcome="ok" if parsed else "no_derivation",
-                    drafted=len(items))
+                    kind=kind or "-", drafted=len(items))
     return items
 
 
