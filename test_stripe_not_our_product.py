@@ -117,6 +117,86 @@ class ForeignCheckoutTests(unittest.TestCase):
         self.assertEqual(res.payload.get("skipped"), "not_paid")
 
 
+class CreditsRetiredTests(unittest.TestCase):
+    """Turning credits off must be a config change, not an outage.
+
+    Founder 2026-07-31: the app drops credits and keeps tokens. The day
+    STRIPE_CHECKOUT_PRICE_CREDITS_JSON is unset, this path used to return 500 —
+    and a 500 tells Stripe to RETRY. Every checkout.session.completed on the
+    account would then retry for three days and mark the endpoint failing,
+    INCLUDING the one that every token-tier subscription fires. That is the
+    storm #302 exists to prevent, and its cost is not noise: a genuine payment
+    failure gets buried in it.
+
+    So: always ack, and let the log level carry the difference.
+    """
+
+    def _apply(self, cfg, session=None):
+        from services.stripe_checkout_credits import apply_paid_checkout_session_credits
+        stripe_mod = types.ModuleType("stripe")
+        stripe_mod.api_key = None
+        retrieved = {"n": 0}
+
+        def _retrieve(*_a, **_k):
+            retrieved["n"] += 1
+            return session or _session([OURS], user_id="u1")
+
+        stripe_mod.checkout = types.SimpleNamespace(
+            Session=types.SimpleNamespace(
+                retrieve=_retrieve,
+                list_line_items=lambda *a, **k: types.SimpleNamespace(data=[]),
+            ))
+        with patch.dict(sys.modules, {"stripe": stripe_mod}):
+            res = apply_paid_checkout_session_credits(
+                "cs_test_1", auth_user_id=None, app_config=cfg)
+        return res, retrieved["n"]
+
+    def test_unset_map_acks_instead_of_asking_stripe_to_retry(self):
+        class _NoCredits(_Cfg):
+            STRIPE_CHECKOUT_PRICE_CREDITS_JSON = ""
+        res, _ = self._apply(_NoCredits)
+        self.assertTrue(res.ok)
+        self.assertEqual(res.http_status, 200, "a 500 here retries for three days")
+        self.assertEqual(res.payload.get("skipped"), "credits_retired")
+
+    def test_a_token_tier_subscription_survives_credits_being_retired(self):
+        """THE case that made this urgent. A subscription checkout fires
+        checkout.session.completed too, and it lands right here."""
+        class _NoCredits(_Cfg):
+            STRIPE_CHECKOUT_PRICE_CREDITS_JSON = ""
+        sub_session = _session(["price_pro"], user_id="u1")
+        sub_session["mode"] = "subscription"
+        res, _ = self._apply(_NoCredits, sub_session)
+        self.assertTrue(res.ok)
+        self.assertEqual(res.http_status, 200)
+
+    def test_retiring_credits_costs_no_stripe_api_call(self):
+        """With no map, nothing arriving can be a credit sale, so there is
+        nothing to look up. Retrieving anyway would spend a Stripe call on every
+        checkout event on the account, forever, to learn nothing."""
+        class _NoCredits(_Cfg):
+            STRIPE_CHECKOUT_PRICE_CREDITS_JSON = ""
+        _, retrieves = self._apply(_NoCredits)
+        self.assertEqual(retrieves, 0)
+
+    def test_a_malformed_map_is_told_apart_from_a_retired_one(self):
+        """Both parse to {}, and they are not the same thing. Set-but-broken is
+        a real misconfiguration and stays loud in the logs — but still acks,
+        because retrying cannot fix a config error."""
+        class _Broken(_Cfg):
+            STRIPE_CHECKOUT_PRICE_CREDITS_JSON = "{not json"
+        res, _ = self._apply(_Broken)
+        self.assertTrue(res.ok)
+        self.assertEqual(res.http_status, 200)
+        self.assertEqual(res.payload.get("skipped"), "credits_map_unusable")
+
+    def test_a_configured_pack_still_works_exactly_as_before(self):
+        """The retirement path must not disturb the packs while they exist."""
+        res, _ = self._apply(_Cfg, _session([FOREIGN]))
+        self.assertTrue(res.ok)
+        self.assertEqual(res.payload.get("skipped"), "not_our_product")
+
+
 class ForeignSubscriptionTests(unittest.TestCase):
     def _event(self, price, user_id=None, etype="customer.subscription.created"):
         md = {"user_id": user_id} if user_id else {}
