@@ -1880,7 +1880,7 @@ class PrivacyTests(unittest.TestCase):
         the STATELESS endpoints — moving these to a conversations/agents API
         would silently leave that protection behind."""
         import inspect
-        src = inspect.getsource(lengine._complete)
+        src = inspect.getsource(lengine._complete_ex)
         self.assertIn("store=False", src)
 
     def test_a_dedicated_zero_retention_key_is_supported(self):
@@ -2153,6 +2153,66 @@ class OriginDocumentMigrationTests(unittest.TestCase):
             None)
 
 
+class WeekHorizonMigrationTests(unittest.TestCase):
+    """The week horizon widens one CHECK constraint. Same house lines as every
+    other life_* migration, plus the one thing that is specific to it: the new
+    constraint must be a strict SUPERSET of the old, so no row that is valid
+    today becomes invalid when this runs."""
+
+    NAME = "add_life_items_week_horizon.sql"
+    PREVIOUS = ("now", "month", "quarter", "year", "five_year", "ten_year",
+                "twenty_year")
+
+    def setUp(self):
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                            "migrations", self.NAME)
+        with open(path, "r", encoding="utf-8") as fh:
+            self.sql = fh.read()
+
+    def test_it_is_idempotent(self):
+        # A CHECK constraint cannot be widened with IF NOT EXISTS, so this one
+        # earns its re-runnability by dropping the old definition only when it
+        # is there, then re-adding.
+        self.assertRegex(self.sql, r"IF EXISTS\s*\(")
+        self.assertIn("DROP CONSTRAINT life_items_horizon_check", self.sql)
+        self.assertIn("ADD CONSTRAINT life_items_horizon_check", self.sql)
+
+    def test_no_table_or_column_is_dropped_and_a_partial_run_raises(self):
+        # DROP CONSTRAINT removes a RULE, not data — which is why the house
+        # rule bans DROP TABLE / DROP COLUMN specifically.
+        self.assertNotRegex(self.sql.upper(), r"\bDROP\s+(TABLE|COLUMN)\b")
+        self.assertIn("RAISE EXCEPTION", self.sql)
+
+    def test_it_touches_life_tables_only(self):
+        for table in re.findall(
+                r"(?:CREATE TABLE IF NOT EXISTS|ALTER TABLE)\s+"
+                r"(?:public\.)?(\w+)", self.sql):
+            self.assertTrue(table.startswith("life_"), table)
+
+    def test_the_new_constraint_still_accepts_every_old_value(self):
+        # The load-bearing property. If a horizon that is valid today were
+        # left out, this migration would not widen the vocabulary — it would
+        # make existing rows illegal and fail on a table that has any.
+        for horizon in self.PREVIOUS:
+            self.assertIn(f"'{horizon}'", self.sql, horizon)
+
+    def test_the_constraint_matches_the_code_vocabulary(self):
+        # The database and lp.HORIZONS disagreeing is how you get an insert
+        # the app believes is valid and the table refuses. Read the CHECK that
+        # actually ships, not the first time the word appears in the prose.
+        clause = re.search(
+            r"ADD CONSTRAINT life_items_horizon_check\s*CHECK\s*\((.*?)\);",
+            self.sql, re.S)
+        self.assertIsNotNone(clause, "the ADD CONSTRAINT was not found")
+        listed = set(re.findall(r"'(\w+)'", clause.group(1)))
+        self.assertEqual(listed, set(lp.HORIZONS))
+
+    def test_null_is_still_allowed(self):
+        # Most items carry no horizon at all, and the fallback path writes
+        # NULL deliberately when the migration has not run.
+        self.assertIn("horizon IS NULL", self.sql)
+
+
 class DocxExtractionTests(unittest.TestCase):
     """The setup upload accepts .docx; extraction is best-effort and never
     raises (services/context_document.py)."""
@@ -2252,9 +2312,10 @@ class SetupDocumentRouteTests(unittest.TestCase):
                "extracted_text": "Ship the panel [Dec]", "char_count": 20}
         with patch.object(lroutes.importer, "get_setup_document",
                           return_value=doc), \
-                patch.object(lroutes.engine, "draft_items_from_document",
-                             return_value=[{"kind": "goal",
-                                            "title": "Ship the panel"}]), \
+                patch.object(lroutes.engine, "draft_items_from_document_ex",
+                             return_value=([{"kind": "goal",
+                                             "title": "Ship the panel"}],
+                                           lengine.OUTCOME_OK)), \
                 patch.object(lroutes.store, "insert_item") as insert:
             resp = self.client.post(
                 "/v2/life/setup/propose-from-document",
@@ -2284,11 +2345,11 @@ class SetupDocumentRouteTests(unittest.TestCase):
 
         def _draft(user_id, text, *, kind=None):
             seen["kind"] = kind
-            return drafted if drafted is not None else []
+            return (drafted if drafted is not None else []), lengine.OUTCOME_OK
 
         with patch.object(lroutes.importer, "get_setup_document",
                           return_value=self._DOC), \
-                patch.object(lroutes.engine, "draft_items_from_document",
+                patch.object(lroutes.engine, "draft_items_from_document_ex",
                              side_effect=_draft):
             resp = self.client.post(
                 "/v2/life/setup/propose-from-document",
@@ -2473,11 +2534,11 @@ class DocumentAwareGenerationTests(unittest.TestCase):
         self.assertNotIn("uploaded current strategy document", seen["user"])
 
     def test_drafting_writes_nothing_and_keeps_the_locked_bets(self):
-        with patch.object(lengine, "_complete", return_value={
+        with patch.object(lengine, "_complete_ex", return_value=({
                 "goals": [{"title": "Ship the panel", "horizon": "year",
                            "due_label": "[Dec]", "bet": "company"}],
                 "habits": [{"title": "Pray"}],
-                "distractions": []}), \
+                "distractions": []}, lengine.OUTCOME_OK)), \
                 patch.object(lengine.store, "insert_item") as insert:
             items = lengine.draft_items_from_document(USER, "the doc text")
         insert.assert_not_called()
@@ -2509,10 +2570,10 @@ class DocumentKindHintTests(unittest.TestCase):
         def _complete(spec, *, system, user, surface, user_id):
             systems.append(system)
             if surface == "doc_draft":
-                return dict(self.BASE)
-            return {"lines": list(lines)}
+                return dict(self.BASE), lengine.OUTCOME_OK
+            return {"lines": list(lines)}, lengine.OUTCOME_OK
 
-        with patch.object(lengine, "_complete", side_effect=_complete), \
+        with patch.object(lengine, "_complete_ex", side_effect=_complete), \
                 patch.object(lengine.store, "insert_item") as insert:
             items = lengine.draft_items_from_document(USER, "the doc text",
                                                       kind=kind)
@@ -2576,9 +2637,11 @@ class DocumentKindHintTests(unittest.TestCase):
         # An outage costs the hinted rows, never the screen (the bargain
         # every derivation in this module makes).
         def _complete(spec, *, system, user, surface, user_id):
-            return dict(self.BASE) if surface == "doc_draft" else None
+            if surface == "doc_draft":
+                return dict(self.BASE), lengine.OUTCOME_OK
+            return None, lengine.OUTCOME_CALL_FAILED
 
-        with patch.object(lengine, "_complete", side_effect=_complete):
+        with patch.object(lengine, "_complete_ex", side_effect=_complete):
             items = lengine.draft_items_from_document(USER, "text",
                                                       kind="phrase")
         self.assertIn("goal", [i["kind"] for i in items])
