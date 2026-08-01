@@ -698,14 +698,34 @@ was specified and never wired.
     pro) but refunds nothing. Anything else makes upgrade-then-downgrade an unlimited review
     loop, and the cap is the founder's calendar (§5.1).
 
-**Genuinely still open:**
+16. ~~Legacy credit balances~~ — **SETTLED 2026-08-01, built.** Honoured at **1,600 tokens per
+    credit** (arc-equivalence: an arc unlock cost 25 credits and its four deliverables come to
+    40,000 tokens), **on the credits ABOVE the free 25 only**, as a **non-expiring
+    `bonus_balance`**. The §4 conversion in `add_token_pricing.sql` is superseded and stays
+    commented; `migrations/add_legacy_credit_conversion.sql` replaces it.
 
-16. **Legacy credit balances** (§4). Real users hold credits that now buy nothing — the founder's
-    own account has 455. ⚠️ The 400 tokens/credit rate written in §4 is **~4× too harsh against
-    this product's own prices**: an arc unlock cost `ARC_UNLOCK_CREDITS` = 25 credits, and the
-    same four deliverables come to 40,000 tokens (`insights` 1,000 + `game` 1,500 +
-    `moment_explanation` 2,500 + `coach_review` 35,000) — i.e. **~1,600 tokens/credit**. At 400:1
-    the founder's 455 credits are worth 182,000 tokens; at arc-equivalence, 728,000. They were
-    sold at a $1-per-credit peg. Recommend honouring at 1,600:1, once, as `admin_adjust` ledger
-    rows rather than a bare `token_balance` bump so it shows up in the history the FE renders.
-    The conversion in `migrations/add_token_pricing.sql` §4 stays commented until this is picked.
+    Three things drove the shape, and each is a bug if reversed:
+
+    * **The rate.** The 400:1 originally written in §4 was ~4× too harsh against this product's
+      own price list — it would have written off three quarters of what people paid, at a
+      $1-per-credit peg they were sold on. The founder's 455 credits: 182,000 tokens at 400:1,
+      **688,000** at arc-equivalence above the floor.
+    * **The floor.** ⚠️ Nothing in the schema distinguishes a PURCHASED credit from a GRANTED
+      one — `stripe_checkout_credit_grants` stores only a `checkout_session_id`, with no user and
+      no amount. Meanwhile `WILLAB_FREE_CREDIT_GRANT` seeded 25 to everyone and
+      `bump_all_credits_to_25.sql` lifted every existing user to ≥25 (2026-07-13 testing bump).
+      So a flat `credits × 1600` would have paid **every account that ever signed up** 40,000
+      non-expiring tokens — 3.3× the entire free monthly tier — paid or not. The floor is the
+      only separator available and the honest one: the free 25 already delivered its value as
+      the free tier.
+    * **The bucket.** The monthly roll does `token_balance = grant_for(tier)` — SET, never add —
+      so tokens honoured into `token_balance` are **deleted at the next roll**, i.e. within 30
+      days, and for a dormant user before they ever log in again. `bonus_balance` is a separate
+      column the roll never touches. Spending order is **monthly allowance first, bonus second**:
+      the expiring money goes first, or the permanent balance is quietly burned while the
+      monthly one evaporates unused.
+
+    Idempotent by the ledger, not a flag: one `legacy_credit_conversion` row per user
+    (`ref_id='legacy-credits-1600-v1'`), enforced by the existing partial unique index, and the
+    whole conversion is a single atomic statement so a mid-run failure cannot double-grant.
+    `credits` is neither zeroed nor dropped — the original balances stay auditable.
