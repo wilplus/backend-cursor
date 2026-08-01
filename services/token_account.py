@@ -289,6 +289,31 @@ def _seed(user_id: str, now: datetime, *, tier: str = DEFAULT_TIER,
     return payload
 
 
+def _read_bonus_balance(user_id: str, *, database=None) -> int:
+    """Non-expiring tokens, or 0 if unreadable/unmigrated. Never raises.
+
+    Its own query, deliberately — folding `bonus_balance` into the main account
+    select would make the whole balance read fail on a database where
+    add_legacy_credit_conversion.sql has not been run yet, and that read is the
+    one thing this module works hardest to keep alive. 0 is the correct
+    degraded answer: it is exactly today's behaviour."""
+    if not user_id:
+        return 0
+    db = database or _db()
+    try:
+        res = (
+            db.client.table(_ACCOUNT_TABLE)
+            .select("bonus_balance")
+            .eq("user_id", str(user_id)).limit(1).execute()
+        )
+        row = (res.data or [{}])[0] or {}
+        return max(0, int(row.get("bonus_balance") or 0))
+    except Exception as e:
+        logger.info("token_account: bonus balance unreadable user=%s (%s)",
+                    user_id, type(e).__name__)
+        return 0
+
+
 def get_account(user_id: str, *, database=None) -> Optional[dict]:
     """Balance + tier + period + coach allowance + plan, period already rolled.
 
@@ -302,8 +327,18 @@ def get_account(user_id: str, *, database=None) -> Optional[dict]:
     start = _parse_ts(row.get("period_start")) or _now()
     used = int(row.get("coach_reviews_used") or 0)
     allowed = coach_reviews_for(tier)
+    monthly = int(row.get("token_balance") or 0)
+    bonus = _read_bonus_balance(user_id, database=database)
     return {
-        "balance": int(row.get("token_balance") or 0),
+        # TOTAL spendable. `balance` keeps meaning "what you can spend right
+        # now", so nothing that already reads it needs to change.
+        "balance": monthly + bonus,
+        # The split matters to the FE and only to the FE: `period_ends_at`
+        # applies to `monthly_balance` alone. Rendering one renewal date over a
+        # total that is partly non-expiring would tell someone their honoured
+        # credits are about to disappear.
+        "monthly_balance": monthly,
+        "bonus_balance": bonus,
         "tier": tier,
         "period_start": start.isoformat(),
         "period_ends_at": period_end(start).isoformat(),
@@ -314,6 +349,37 @@ def get_account(user_id: str, *, database=None) -> Optional[dict]:
 
 
 # ── Charging ─────────────────────────────────────────────────────────
+
+def _spend(db, user_id: str, price: int, monthly: int, bonus: int) -> bool:
+    """Deduct ``price``, MONTHLY ALLOWANCE FIRST, then the non-expiring bonus.
+
+    Returns whether the compare-and-swap won.
+
+    The order is the whole point. The monthly allowance is deleted at the next
+    roll and the bonus (honoured legacy credits) is not, so spending the bonus
+    first would quietly burn the permanent balance while the expiring one
+    evaporated unused. Expiring money goes first, always.
+
+    ``bonus_balance`` is written ONLY when some of it is actually being spent.
+    Pre-migration the bonus is always 0, so the payload and the CAS are
+    byte-identical to what they were before this bucket existed — a database
+    without add_legacy_credit_conversion.sql cannot notice this function
+    changed.
+    """
+    from_monthly = min(price, monthly)
+    from_bonus = price - from_monthly
+
+    payload = {"token_balance": monthly - from_monthly}
+    q = (db.client.table(_ACCOUNT_TABLE)
+         .update({**payload, **({"bonus_balance": bonus - from_bonus}
+                                if from_bonus else {})})
+         .eq("user_id", str(user_id))
+         .eq("token_balance", monthly))          # CAS against concurrent spend
+    if from_bonus:
+        # CAS both columns, or a concurrent bonus spend would be overwritten.
+        q = q.eq("bonus_balance", bonus)
+    return bool(q.execute().data)
+
 
 def charge(user_id: str, action: str, *, ref_id: Optional[str] = None,
            database=None) -> ChargeResult:
@@ -342,7 +408,9 @@ def charge(user_id: str, action: str, *, ref_id: Optional[str] = None,
                        "action=%s", user_id, action)
         return ChargeResult(True, 0, 0, "account_unavailable", action)
 
-    balance = int(acct.get("token_balance") or 0)
+    monthly = int(acct.get("token_balance") or 0)
+    bonus = _read_bonus_balance(user_id, database=db)
+    balance = monthly + bonus
     tier = normalize_tier(acct.get("tier"))
 
     if action in COACH_ACTIONS:
@@ -365,30 +433,19 @@ def charge(user_id: str, action: str, *, ref_id: Optional[str] = None,
 
     new_balance = max(0, balance - price)
     try:
-        upd = (
-            db.client.table(_ACCOUNT_TABLE)
-            .update({"token_balance": new_balance})
-            .eq("user_id", str(user_id))
-            .eq("token_balance", balance)          # CAS against concurrent spend
-            .execute()
-        )
-        if not upd.data:
+        upd = _spend(db, user_id, price, monthly, bonus)
+        if not upd:
             # Lost the race. Re-read and retry ONCE; a second loss means heavy
             # concurrency on one user, where letting the action through is the
             # right failure (fail open).
             acct2 = ensure_period_current(user_id, database=db)
-            bal2 = int((acct2 or {}).get("token_balance") or 0)
+            monthly2 = int((acct2 or {}).get("token_balance") or 0)
+            bonus2 = _read_bonus_balance(user_id, database=db)
+            bal2 = monthly2 + bonus2
             if price and bal2 < price:
                 return ChargeResult(False, 0, bal2, "insufficient", action)
             new_balance = max(0, bal2 - price)
-            upd2 = (
-                db.client.table(_ACCOUNT_TABLE)
-                .update({"token_balance": new_balance})
-                .eq("user_id", str(user_id))
-                .eq("token_balance", bal2)
-                .execute()
-            )
-            if not upd2.data:
+            if not _spend(db, user_id, price, monthly2, bonus2):
                 logger.warning("token_account: CAS lost twice user=%s "
                                "action=%s — allowing", user_id, action)
                 return ChargeResult(True, 0, bal2, "cas_contention", action)

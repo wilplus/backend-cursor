@@ -157,12 +157,17 @@ class FakeDB:
         return [r for r in self.ledger if r["action"] == "period_grant"]
 
 
-def account_row(tier="free", balance=12000, start=None, reviews=0):
-    return {
+def account_row(tier="free", balance=12000, start=None, reviews=0, bonus=None):
+    row = {
         "user_id": "u1", "tier": tier, "token_balance": balance,
         "period_start": (start or datetime.now(UTC)).isoformat(),
         "coach_reviews_used": reviews,
     }
+    # Omitted unless asked for, so every pre-existing test exercises the
+    # pre-migration shape (no bonus_balance column at all).
+    if bonus is not None:
+        row["bonus_balance"] = bonus
+    return row
 
 
 class PriceTableTests(unittest.TestCase):
@@ -646,6 +651,192 @@ class MidPeriodTierChangeTests(unittest.TestCase):
         changes = [r for r in db.ledger if r["action"] == "tier_change"]
         self.assertEqual([r["tier"] for r in changes], ["pro", "max"])
         self.assertEqual(changes[-1]["delta"], 1_500_000 - 300_000)
+
+
+class LegacyCreditConversionTests(unittest.TestCase):
+    """Honoured legacy credits: the rate, the floor, and the bucket.
+
+    Founder 2026-08-01: credits are retired and the balances people still hold
+    are honoured ONCE, at arc-equivalence (1,600 tokens/credit), above the free
+    25 everyone was granted.
+
+    The two things that make this correct rather than merely generous:
+
+      * THE FLOOR. Nothing in the schema tells a purchased credit from a
+        granted one — stripe_checkout_credit_grants stores a session id and
+        nothing else — and every account was seeded 25 free (plus the
+        2026-07-13 bump to >=25). A flat conversion would therefore hand every
+        account that ever signed up 40,000 non-expiring tokens, 3.3x the whole
+        free monthly tier, paid or not.
+      * THE BUCKET. The monthly roll SETS token_balance, so tokens honoured
+        into it are deleted within 30 days — for a dormant user, before they
+        ever log in again. bonus_balance is never touched by the roll.
+    """
+
+    def setUp(self):
+        self.env = patch.dict("os.environ", {"TOKEN_PRICING_ENABLED": "1"})
+        self.env.start()
+
+    def tearDown(self):
+        self.env.stop()
+
+    # ── the rate and the floor ───────────────────────────────────────
+    def test_the_rate_is_arc_equivalence_not_a_guess(self):
+        """25 credits bought an arc unlock; the same four deliverables cost
+        40,000 tokens. 40,000/25 = 1,600. If any of those prices move, this
+        assertion is the thing that says the conversion rate moved too."""
+        from services.token_prices import LEGACY_CREDIT_TOKENS, PRICES
+        arc = (PRICES["insights"] + PRICES["game"]
+               + PRICES["moment_explanation"] + PRICES["coach_review"])
+        self.assertEqual(arc, 40_000)
+        self.assertEqual(arc // 25, LEGACY_CREDIT_TOKENS)
+
+    def test_the_free_grant_is_not_converted(self):
+        """Everyone holds >=25 for free. Converting those would pay every
+        signup 40,000 non-expiring tokens for never having paid anything."""
+        from services.token_prices import legacy_credit_tokens
+        self.assertEqual(legacy_credit_tokens(25), 0)
+        self.assertEqual(legacy_credit_tokens(0), 0)
+        self.assertEqual(legacy_credit_tokens(None), 0)
+        self.assertEqual(legacy_credit_tokens(10), 0, "below the free floor")
+
+    def test_a_real_balance_is_honoured_above_the_floor(self):
+        from services.token_prices import legacy_credit_tokens
+        self.assertEqual(legacy_credit_tokens(455), (455 - 25) * 1_600)
+        self.assertEqual(legacy_credit_tokens(455), 688_000)
+        self.assertEqual(legacy_credit_tokens(26), 1_600)
+
+    def test_junk_never_raises_and_never_pays(self):
+        from services.token_prices import legacy_credit_tokens
+        self.assertEqual(legacy_credit_tokens("nonsense"), 0)
+        self.assertEqual(legacy_credit_tokens(-5), 0)
+
+    def test_the_sql_and_the_python_agree(self):
+        """They are two copies of one decision. If the migration pays a
+        different amount than the ledger row claims, the drift is invisible
+        until someone audits a balance by hand."""
+        from services.token_prices import (
+            LEGACY_CREDIT_FREE_FLOOR, LEGACY_CREDIT_TOKENS,
+        )
+        with open("migrations/add_legacy_credit_conversion.sql") as fh:
+            sql = fh.read()
+        self.assertIn(
+            f"GREATEST(COALESCE(d.credits, 0) - {LEGACY_CREDIT_FREE_FLOOR}, 0)"
+            f" * {LEGACY_CREDIT_TOKENS})", sql)
+        self.assertIn("legacy_credit_conversion", sql)
+        # One conversion per user, forever — the ref is what the partial unique
+        # index keys on.
+        self.assertIn("'legacy-credits-1600-v1'", sql)
+
+    # ── the bucket ───────────────────────────────────────────────────
+    def test_honoured_tokens_survive_the_monthly_roll(self):
+        """THE reason this is not just added to token_balance. The roll SETS
+        the tier grant, so 688,000 honoured into it would be gone inside 30
+        days — before a dormant user ever logged back in."""
+        import services.token_account as ta
+        start = datetime.now(UTC) - timedelta(days=40)
+        db = FakeDB(account_row("free", balance=9_000, start=start,
+                                bonus=688_000))
+        ta.ensure_period_current("u1", database=db)
+        self.assertEqual(db.store["row"]["token_balance"], 12_000, "rolled")
+        self.assertEqual(db.store["row"]["bonus_balance"], 688_000,
+                         "the honoured credits were deleted by the roll")
+
+    def test_four_dormant_months_still_leave_the_bonus_intact(self):
+        import services.token_account as ta
+        start = datetime.now(UTC) - timedelta(days=130)
+        db = FakeDB(account_row("free", balance=0, start=start, bonus=40_000))
+        ta.ensure_period_current("u1", database=db)
+        self.assertEqual(db.store["row"]["bonus_balance"], 40_000)
+
+    def test_balance_reports_the_total_and_the_split(self):
+        """`balance` stays "what you can spend now" so existing readers are
+        unaffected; the split exists because period_ends_at applies to the
+        monthly half ONLY. One renewal date over a partly non-expiring total
+        would tell someone their honoured credits are about to vanish."""
+        import services.token_account as ta
+        acct = ta.get_account("u1", database=FakeDB(
+            account_row("free", balance=12_000, bonus=688_000)))
+        self.assertEqual(acct["balance"], 700_000)
+        self.assertEqual(acct["monthly_balance"], 12_000)
+        self.assertEqual(acct["bonus_balance"], 688_000)
+
+    def test_unmigrated_database_reads_as_no_bonus(self):
+        """add_legacy_credit_conversion.sql is run by hand. Until it is, the
+        balance must still read — 0 is exactly today's behaviour."""
+        import services.token_account as ta
+        db = FakeDB(account_row("pro", balance=300_000))
+        db.client.table.side_effect = RuntimeError("column does not exist")
+        self.assertEqual(ta._read_bonus_balance("u1", database=db), 0)
+
+    # ── spending order ───────────────────────────────────────────────
+    def test_the_expiring_allowance_is_spent_first(self):
+        """Spending the bonus first would burn the permanent balance while the
+        monthly one evaporated unused at the roll."""
+        import services.token_account as ta
+        db = FakeDB(account_row("free", balance=12_000, bonus=688_000))
+        res = ta.charge("u1", "take_short", database=db)   # 1,000
+        self.assertTrue(res.ok)
+        self.assertEqual(db.store["row"]["token_balance"], 11_000)
+        self.assertEqual(db.store["row"]["bonus_balance"], 688_000,
+                         "spent the non-expiring bucket while monthly remained")
+
+    def test_the_bonus_covers_the_overflow_once_monthly_runs_out(self):
+        import services.token_account as ta
+        db = FakeDB(account_row("free", balance=400, bonus=688_000))
+        res = ta.charge("u1", "take_short", database=db)   # 1,000
+        self.assertTrue(res.ok)
+        self.assertEqual(res.charged, 1_000)
+        self.assertEqual(db.store["row"]["token_balance"], 0)
+        self.assertEqual(db.store["row"]["bonus_balance"], 687_400)
+
+    def test_an_empty_month_spends_the_bonus_alone(self):
+        import services.token_account as ta
+        db = FakeDB(account_row("free", balance=0, bonus=40_000))
+        res = ta.charge("u1", "take_medium", database=db)  # 3,000
+        self.assertTrue(res.ok)
+        self.assertEqual(db.store["row"]["bonus_balance"], 37_000)
+
+    def test_the_bonus_counts_toward_affordability(self):
+        """A zero monthly balance with honoured credits behind it is NOT
+        insufficient — that would be refusing to let someone spend what we just
+        told them they had."""
+        import services.token_account as ta
+        db = FakeDB(account_row("free", balance=0, bonus=40_000))
+        res = ta.charge("u1", "coach_review", database=db)  # 35,000
+        self.assertNotEqual(res.reason, "insufficient")
+
+    def test_running_out_of_both_still_reports_rather_than_raises(self):
+        import services.token_account as ta
+        db = FakeDB(account_row("free", balance=100, bonus=100))
+        res = ta.charge("u1", "coach_review", database=db)
+        self.assertFalse(res.ok)
+        self.assertEqual(res.balance, 200)
+
+    def test_a_charge_without_any_bonus_writes_the_same_row_as_before(self):
+        """Pre-migration safety: with no bonus in play the write must not
+        mention bonus_balance at all, or it would fail on a database where the
+        column does not exist yet."""
+        import services.token_account as ta
+        db = FakeDB(account_row("free", balance=12_000))
+        writes = []
+        orig = db._table
+
+        def _spy(name):
+            t = orig(name)
+            if name != "token_ledger":
+                inner = t.update
+
+                def _update(payload):
+                    writes.append(payload)
+                    return inner(payload)
+                t.update = _update
+            return t
+        db.client.table.side_effect = _spy
+        ta.charge("u1", "take_short", database=db)
+        self.assertTrue(writes, "no account write happened")
+        for w in writes:
+            self.assertNotIn("bonus_balance", w)
 
 
 class PlanStateTests(unittest.TestCase):

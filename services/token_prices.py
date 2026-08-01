@@ -116,6 +116,59 @@ by test_token_arc_charged.py, which greps the routes for arc-keyed charges and
 fails if one is missing here."""
 
 
+# ── Legacy credit conversion (founder-approved 2026-08-01) ───────────
+#
+# Credits are retired; tokens are the only currency. Real users still hold
+# balances that now buy nothing, so they are honoured ONCE as non-expiring
+# bonus tokens. Two numbers decide it, and both are historical facts rather
+# than tunables — changing either retroactively rewrites what somebody was
+# already paid.
+#
+# THE RATE comes from this product's own price list, not from a guess. An arc
+# unlock cost ARC_UNLOCK_CREDITS = 25 credits, and the same four deliverables
+# priced in tokens come to 40,000:
+#
+#     insights 1,000 + game 1,500 + moment_explanation 2,500
+#                    + coach_review 35,000  =  40,000  ÷ 25  =  1,600
+#
+# The 400/credit figure originally written into PRICING-TOKENS-PLAN §4 was ~4×
+# too harsh against that arithmetic — it would have written off three quarters
+# of what people paid, at a $1-per-credit peg they were sold on.
+
+LEGACY_CREDIT_TOKENS = 1_600
+"""Tokens honoured per legacy credit. Arc-equivalence — see above."""
+
+LEGACY_CREDIT_FREE_FLOOR = 25
+"""Credits every account already held for free, and which are NOT converted.
+
+`WILLAB_FREE_CREDIT_GRANT` seeded 25 to every new user, and the 2026-07-13
+testing bump lifted every existing user to at least 25 — so a flat conversion
+would hand every account that ever signed up 40,000 non-expiring tokens (3.3×
+the entire free monthly tier) whether or not it ever paid anything. Nothing in
+the schema can tell a purchased credit from a granted one: the
+`stripe_checkout_credit_grants` table stores only a checkout_session_id, with
+no user and no amount. So the floor is the only available separator, and it is
+the honest one — the free 25 already delivered its value as the free tier.
+
+Deliberately a literal here rather than a read of
+`config.WILLAB_FREE_CREDIT_GRANT`: that value is env-tunable and may move, and
+if it did, a re-run would silently convert a different amount than the first
+run did."""
+
+
+def legacy_credit_tokens(credits: Optional[int]) -> int:
+    """Tokens owed for a legacy credit balance. Never negative.
+
+    Mirrors the SQL in migrations/add_legacy_credit_conversion.sql exactly; a
+    test asserts the two agree, because a drift between them would pay a
+    different amount than the ledger row claims."""
+    try:
+        c = int(credits or 0)
+    except (TypeError, ValueError):
+        return 0
+    return max(0, c - LEGACY_CREDIT_FREE_FLOOR) * LEGACY_CREDIT_TOKENS
+
+
 COACH_ACTIONS = frozenset({"coach_review"})
 """Actions that also consume the per-period coach-review allowance. Kept as a
 set rather than a flag on the price so the two limits stay visibly separate."""
