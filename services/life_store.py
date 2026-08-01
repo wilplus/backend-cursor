@@ -643,6 +643,20 @@ def get_day(user_id: str, day: str) -> Optional[dict]:
         return None
 
 
+def day_by_id(user_id: str, day_id: str) -> Optional[dict]:
+    """One day row, owner-scoped. The PATCH reads it before writing, because
+    draft_meta is a MERGE (accepted text, a displacement) into what the
+    morning wrote — a blind overwrite would discard the drafts."""
+    try:
+        return _one(
+            _t("life_days").select("*")
+            .eq("id", day_id).eq("user_id", user_id).limit(1).execute()
+        )
+    except Exception as e:
+        logger.warning("life: day_by_id failed id=%s: %s", day_id, e)
+        return None
+
+
 def latest_day(user_id: str) -> Optional[dict]:
     """The most recent card — the ONLY row `#edit` may target (BE-8)."""
     try:

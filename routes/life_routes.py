@@ -1201,11 +1201,53 @@ def life_day_update(day_id):
                "evening_one_thing", "evening_distraction", "evening_line",
                "edit_why")
     fields = {k: body[k] for k in allowed if k in body}
-    if not fields:
+    swap_to = body.get("one_thing_goal_id")
+    if swap_to is not None and not isinstance(swap_to, str):
+        return _invalid("one_thing_goal_id: must be a goal id string")
+    if not fields and not swap_to:
         return _invalid("no fields to update")
     if "one_thing" in fields and not str(fields["one_thing"] or "").strip():
         return _invalid("one_thing: cannot be blank — change it, don't remove it")
+
+    # Both learning-contract records happen here, and they need the CURRENT
+    # row: draft_meta is a merge into what the morning wrote, never a blind
+    # overwrite. A row we cannot read degrades to the plain update — the tick
+    # is saved, the record is the cost (docs/life-checkin-learning-contract.md).
+    current = (store.day_by_id(user_id, day_id)
+               if (swap_to or "one_thing" in fields) else None)
+
+    if swap_to:
+        # Priority is GATED, never learned: the swap names the displaced
+        # ranked goal for the Sunday-review counter and nothing else. The
+        # drafting learner never sees it.
+        if current is None:
+            return _not_found()
+        swap_fields = engine.swap_one_thing(user_id, current, swap_to)
+        if swap_fields is None:
+            return _invalid("one_thing_goal_id: not one of your active goals")
+        # An explicit text edit in the same call wins over the swap's default
+        # text — the swap decides the GOAL, the person still owns the words.
+        swap_fields.update(fields)
+        fields = swap_fields
+
+    if "one_thing" in fields and current is not None:
+        # Extraction/formulation are LEARNED silently: the accepted text is
+        # the output side of the (drafted → accepted) pair. Recorded only
+        # when the morning actually drafted a slot — a hand-built card has
+        # no pair to teach with.
+        meta = dict(fields.get("draft_meta")
+                    or current.get("draft_meta") or {})
+        slot = meta.get("one_thing")
+        if isinstance(slot, dict):
+            slot["accepted"] = str(fields["one_thing"]).strip()[:500]
+            fields["draft_meta"] = meta
+
     row = store.update_day(user_id, day_id, fields)
+    if row is None and "draft_meta" in fields:
+        # The column ships with migrations/add_life_days_draft_meta.sql; an
+        # unrun migration costs the record, never the edit.
+        fields.pop("draft_meta")
+        row = store.update_day(user_id, day_id, fields)
     if not row:
         return _not_found()
     return jsonify({"day": lp.serialize_day(row)}), 200

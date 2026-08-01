@@ -40,6 +40,7 @@ changing responses it must not change.
 """
 from __future__ import annotations
 
+import json
 import os
 import re
 import unittest
@@ -1253,14 +1254,317 @@ class DailyCardTests(unittest.TestCase):
         # empty panel.
         with open(MIGRATION, "r", encoding="utf-8") as fh:
             sql = fh.read()
+        # Columns added by later migration files count too — draft_meta ships
+        # with add_life_days_draft_meta.sql. The guard's job is unchanged:
+        # every card key has a column SOMEWHERE a migration creates, or the
+        # 05:00 insert fails and is discovered by an empty panel.
+        later = os.path.join(os.path.dirname(MIGRATION),
+                             "add_life_days_draft_meta.sql")
+        with open(later, "r", encoding="utf-8") as fh:
+            sql += fh.read()
         block = sql[sql.index("CREATE TABLE IF NOT EXISTS life_days"):]
         block = block[:block.index(");")]
         added = set(re.findall(
-            r"ALTER TABLE life_days ADD COLUMN IF NOT EXISTS (\w+)", sql))
+            r"ALTER TABLE life_days\s+ADD COLUMN IF NOT EXISTS (\w+)", sql))
         card = self._card([])
         for key in card:
             self.assertTrue(key in block or key in added,
                             f"life_days has no column for {key}")
+
+
+@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
+class DayDraftContractTests(unittest.TestCase):
+    """docs/life-checkin-learning-contract.md, pinned.
+
+    The card drafts a day-sized action per slot; corrections to WORDING and
+    STEP are learned silently, a PRIORITY swap is gated to the Sunday review,
+    and the two records never cross. Every branch here degrades to the
+    deterministic title card."""
+
+    GOALS = [
+        {"id": "g1", "kind": "goal", "title": "Profitable",
+         "collection": "company", "order_key": 1000.0},
+        {"id": "g2", "kind": "goal", "title": "A marriage with years on it",
+         "collection": "life", "order_key": 2000.0},
+    ]
+    BETS = [
+        {"id": "b1", "kind": "bet", "title": "🟢 The Life", "order_key": 1.0},
+        {"id": "b2", "kind": "bet", "title": "🔵 The Company", "order_key": 2.0},
+        {"id": "b3", "kind": "bet", "title": "🟣 The Dream", "order_key": 3.0},
+    ]
+
+    def _built(self):
+        def _list(user_id, *, kind=None, **kw):
+            return {"goal": list(self.GOALS), "bet": self.BETS,
+                    "habit": []}.get(kind, [])
+        with patch.object(lengine.store, "list_items", side_effect=_list):
+            return lengine.build_daily_card(USER, date(2026, 8, 2))
+
+    def _drafted(self, card, actions, outcome=None):
+        with patch.object(lengine, "_complete_ex",
+                          return_value=({"actions": actions},
+                                        outcome or lengine.OUTCOME_OK)), \
+             patch.object(lengine, "_log_derivation"):
+            return lengine.draft_daily_actions(USER, card)
+
+    # ── the draft replaces the title, and is remembered ───────────────────
+
+    def test_the_skeleton_names_who_each_slot_serves(self):
+        card = self._built()
+        meta = card["draft_meta"]
+        self.assertEqual(meta["one_thing"]["goal_id"], "g2")
+        self.assertIsNone(meta["one_thing"]["drafted"])
+        self.assertEqual([s["goal_id"] for s in meta["focus"]], ["g1"])
+        self.assertEqual(card["focus_blocks"][0]["goal_id"], "g1")
+
+    def test_a_drafted_action_replaces_the_title_and_is_recorded(self):
+        card = self._drafted(self._built(),
+                             {"g2": "Book the venue and call her father",
+                              "g1": "Send the deck to the three warm leads"})
+        self.assertEqual(card["one_thing"],
+                         "Book the venue and call her father")
+        self.assertEqual(card["focus_blocks"][0]["text"],
+                         "Send the deck to the three warm leads")
+        # The pair's input side, for the silent learner.
+        self.assertEqual(card["draft_meta"]["one_thing"]["drafted"],
+                         "Book the venue and call her father")
+        # The goal stays named beside the action.
+        self.assertEqual(card["draft_meta"]["one_thing"]["goal"],
+                         "A marriage with years on it")
+
+    def test_a_failed_draft_is_yesterdays_card_exactly(self):
+        card = self._drafted(self._built(), None,
+                             outcome=lengine.OUTCOME_TRUNCATED)
+        self.assertEqual(card["one_thing"], "A marriage with years on it")
+        self.assertIsNone(card["draft_meta"]["one_thing"]["drafted"])
+
+    def test_a_skipped_goal_keeps_its_title(self):
+        card = self._drafted(self._built(), {"g1": "Send the deck"})
+        self.assertEqual(card["one_thing"], "A marriage with years on it")
+        self.assertEqual(card["focus_blocks"][0]["text"], "Send the deck")
+
+    def test_an_empty_card_makes_no_model_call(self):
+        with patch.object(lengine, "_complete_ex") as call:
+            lengine.draft_daily_actions(USER, {"draft_meta": {
+                "one_thing": None, "focus": []}})
+        call.assert_not_called()
+
+    def test_the_prompt_holds_the_contract_lines(self):
+        # Day-sized, the person's own language, never a restated goal — and
+        # it must FORMAT (it carries JSON braces, so literals are doubled).
+        prompt = lengine._DAY_DRAFT_SYSTEM
+        self.assertIn("day-sized", prompt.lower())
+        self.assertIn("Never restate the \\\ngoal".replace("\\\n", ""),
+                      prompt.replace("\\\n", ""))
+        rendered = prompt.format(today="2026-08-02")
+        self.assertIn("Today is 2026-08-02", rendered)
+
+    def test_an_unmigrated_draft_meta_costs_the_record_never_the_card(self):
+        calls = []
+
+        def _upsert(user_id, day, fields):
+            calls.append(dict(fields))
+            return None if "draft_meta" in fields else {"id": "d1"}
+
+        with patch.object(lengine.store, "get_day", return_value=None), \
+             patch.object(lengine.store, "upsert_day", side_effect=_upsert), \
+             patch.object(lengine, "rank_goals_by_expected_value"), \
+             patch.object(lengine, "build_daily_card",
+                          return_value={"one_thing": "x",
+                                        "draft_meta": {"one_thing": None,
+                                                       "focus": []}}), \
+             patch.object(lengine, "draft_daily_actions",
+                          side_effect=lambda u, c: c):
+            row = lengine.ensure_daily_card(USER, date(2026, 8, 2))
+        self.assertEqual(row, {"id": "d1"})
+        self.assertEqual(len(calls), 2)
+        self.assertNotIn("draft_meta", calls[1])
+
+    def test_a_draft_crash_does_not_cost_the_card(self):
+        with patch.object(lengine.store, "get_day", return_value=None), \
+             patch.object(lengine.store, "upsert_day",
+                          return_value={"id": "d1"}), \
+             patch.object(lengine, "rank_goals_by_expected_value"), \
+             patch.object(lengine, "draft_daily_actions",
+                          side_effect=RuntimeError("boom")):
+            row = lengine.ensure_daily_card(USER, date(2026, 8, 2))
+        self.assertEqual(row, {"id": "d1"})
+
+    # ── the swap: gated, recorded once, never crossed ─────────────────────
+
+    def _day_row(self, drafted="Book the venue"):
+        return {"id": "d1", "draft_meta": {
+            "one_thing": {"goal_id": "g2",
+                          "goal": "A marriage with years on it",
+                          "drafted": drafted},
+            "focus": [{"goal_id": "g1", "goal": "Profitable",
+                       "drafted": "Send the deck"}],
+        }}
+
+    def _swap(self, day_row, goal_id, goal=None):
+        def _list(user_id, *, kind=None, **kw):
+            return self.BETS if kind == "bet" else []
+        with patch.object(lengine.store, "get_item",
+                          return_value=goal), \
+             patch.object(lengine.store, "list_items", side_effect=_list):
+            return lengine.swap_one_thing(USER, day_row, goal_id)
+
+    def test_a_swap_records_the_displaced_ranked_goal_once(self):
+        fields = self._swap(self._day_row(), "g1",
+                            {"id": "g1", "kind": "goal", "title": "Profitable",
+                             "collection": "company", "status": "active"})
+        self.assertEqual(fields["draft_meta"]["displaced_goal_id"], "g2")
+        # The chosen goal was a focus block with its own drafted action —
+        # promoted, not re-drafted (no model call on a PATCH).
+        self.assertEqual(fields["one_thing"], "Send the deck")
+        self.assertEqual(fields["one_thing_bet"], "🔵 The Company")
+        # A second swap the same day does not rewrite history.
+        second = self._swap({"id": "d1", "draft_meta":
+                             fields["draft_meta"]}, "g2",
+                            {"id": "g2", "kind": "goal", "title": "A marriage",
+                             "collection": "life", "status": "active"})
+        self.assertEqual(second["draft_meta"]["displaced_goal_id"], "g2")
+
+    def test_a_swap_to_a_foreign_or_retired_goal_is_refused(self):
+        self.assertIsNone(self._swap(self._day_row(), "gX", None))
+        self.assertIsNone(self._swap(
+            self._day_row(), "g1",
+            {"id": "g1", "kind": "goal", "title": "x", "status": "retired"}))
+        self.assertIsNone(self._swap(
+            self._day_row(), "p1",
+            {"id": "p1", "kind": "phrase", "title": "x", "status": "active"}))
+
+    # ── the wire: goal name yes, learner data never ───────────────────────
+
+    def test_the_wire_carries_the_goal_and_never_the_learning(self):
+        payload = lp.serialize_day({
+            "id": "d1", "day": "2026-08-02", "one_thing": "Book the venue",
+            "draft_meta": {"one_thing": {"goal_id": "g2", "goal": "A marriage",
+                                         "drafted": "Book the venue",
+                                         "accepted": "Book it"},
+                           "focus": [],
+                           "displaced_goal_id": "g9"},
+        })
+        self.assertEqual(payload["one_thing_goal"], "A marriage")
+        self.assertEqual(payload["one_thing_goal_id"], "g2")
+        flat = json.dumps(payload)
+        self.assertNotIn("drafted", flat)
+        self.assertNotIn("accepted", flat)
+        self.assertNotIn("displaced", flat)
+        self.assertNotIn("draft_meta", flat)
+
+
+@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
+class DayDraftRouteTests(unittest.TestCase):
+    """The PATCH's half of the contract: accepted text is recorded into the
+    pair, the swap is validated and gated, and a missing migration costs the
+    record, never the edit."""
+
+    def setUp(self):
+        self.app = Flask(__name__)
+        self.app.register_blueprint(lroutes.life_bp)
+        self.client = self.app.test_client()
+        self._orig_verify = auth.verify_supabase_token
+        auth.verify_supabase_token = lambda token: {"sub": USER}
+        self._gates = [
+            patch.object(lroutes.chat, "is_enabled", return_value=True),
+            patch.object(lroutes.chat, "has_consented", return_value=True),
+        ]
+        for g in self._gates:
+            g.start()
+
+    def tearDown(self):
+        auth.verify_supabase_token = self._orig_verify
+        for g in self._gates:
+            g.stop()
+
+    ROW = {"id": "d1", "one_thing": "Book the venue",
+           "draft_meta": {"one_thing": {"goal_id": "g2", "goal": "A marriage",
+                                        "drafted": "Book the venue"},
+                          "focus": []}}
+
+    def _patch(self, body, row=None, update_result=None):
+        updates = []
+
+        def _update(user_id, day_id, fields):
+            updates.append(dict(fields))
+            if update_result is not None:
+                return update_result(fields)
+            return {**(row or self.ROW), **fields}
+
+        with patch.object(lroutes.store, "day_by_id",
+                          return_value=(row or self.ROW)), \
+             patch.object(lroutes.store, "update_day", side_effect=_update):
+            resp = self.client.patch("/v2/life/day/d1",
+                                     headers={"Authorization": "Bearer t"},
+                                     json=body)
+        return resp, updates
+
+    def test_an_edited_one_thing_records_the_accepted_text(self):
+        resp, updates = self._patch({"one_thing": "Book it before noon"})
+        self.assertEqual(resp.status_code, 200)
+        slot = updates[0]["draft_meta"]["one_thing"]
+        self.assertEqual(slot["accepted"], "Book it before noon")
+        # The input side of the pair is untouched by the edit.
+        self.assertEqual(slot["drafted"], "Book the venue")
+
+    def test_a_hand_built_card_records_no_pair(self):
+        resp, updates = self._patch({"one_thing": "My own plan"},
+                                    row={"id": "d1", "one_thing": "x",
+                                         "draft_meta": None})
+        self.assertEqual(resp.status_code, 200)
+        self.assertNotIn("draft_meta", updates[0])
+
+    def test_the_swap_is_validated_and_the_text_edit_wins(self):
+        with patch.object(lroutes.engine, "swap_one_thing",
+                          return_value=None):
+            resp, _ = self._patch({"one_thing_goal_id": "gX"})
+        self.assertEqual(resp.status_code, 400)
+
+        swapped = {"one_thing": "Send the deck", "one_thing_bet": "🔵",
+                   "draft_meta": {"one_thing": {"goal_id": "g1",
+                                                "goal": "Profitable",
+                                                "drafted": None},
+                                  "focus": [],
+                                  "displaced_goal_id": "g2"}}
+        with patch.object(lroutes.engine, "swap_one_thing",
+                          return_value=dict(swapped)):
+            resp, updates = self._patch({"one_thing_goal_id": "g1",
+                                         "one_thing": "My wording of it"})
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(updates[0]["one_thing"], "My wording of it")
+        self.assertEqual(updates[0]["draft_meta"]["displaced_goal_id"], "g2")
+
+    def test_an_unmigrated_column_costs_the_record_never_the_edit(self):
+        resp, updates = self._patch(
+            {"one_thing": "Book it"},
+            update_result=lambda f: None if "draft_meta" in f
+            else {"id": "d1", **f})
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(len(updates), 2)
+        self.assertNotIn("draft_meta", updates[1])
+
+
+@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
+class DraftMetaMigrationTests(unittest.TestCase):
+    """Same house lines as every life_* migration."""
+
+    def setUp(self):
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                            "migrations", "add_life_days_draft_meta.sql")
+        with open(path, "r", encoding="utf-8") as fh:
+            self.sql = fh.read()
+
+    def test_idempotent_nothing_dropped_and_a_partial_run_raises(self):
+        self.assertIn("ADD COLUMN IF NOT EXISTS draft_meta", self.sql)
+        self.assertNotRegex(self.sql.upper(), r"\bDROP\s+(TABLE|COLUMN)\b")
+        self.assertIn("RAISE EXCEPTION", self.sql)
+
+    def test_it_touches_life_tables_only(self):
+        for table in re.findall(
+                r"(?:CREATE TABLE IF NOT EXISTS|ALTER TABLE)\s+"
+                r"(?:public\.)?(\w+)", self.sql):
+            self.assertTrue(table.startswith("life_"), table)
 
 
 # ═════════════════════════════════════════════════════════════════════════
