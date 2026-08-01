@@ -28,7 +28,7 @@ from __future__ import annotations
 from typing import Optional
 
 
-PRICE_VERSION = "2026-07-28-v1"
+PRICE_VERSION = "2026-08-01-v2"
 """Bump on ANY change to the numbers in this file."""
 
 
@@ -47,7 +47,7 @@ TIERS: dict[str, dict] = {
     "free":    {"tokens":    12_000, "coach_reviews":  0, "usd": 0},
     "starter": {"tokens":    50_000, "coach_reviews":  1, "usd": 5},
     "pro":     {"tokens":   300_000, "coach_reviews":  6, "usd": 25},
-    "max":     {"tokens": 1_500_000, "coach_reviews": 10, "usd": 100},
+    "max":     {"tokens": 1_500_000, "coach_reviews": 30, "usd": 100},
 }
 
 DEFAULT_TIER = "free"
