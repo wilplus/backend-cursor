@@ -1023,8 +1023,53 @@ def _retire_prompt(user_id: str, new_principle: dict):
 
 
 # ═════════════════════════════════════════════════════════════════════════
-# Items · timeline
+# Items · goals · timeline
 # ═════════════════════════════════════════════════════════════════════════
+
+@life_bp.route("/v2/life/goals", methods=["GET"])
+@life_route()
+def life_goals():
+    """FE-9 — the three bets in LOCKED rank order, each with its goals.
+
+    The FE has called this since the Goals view shipped: it is in that file's
+    own contract header ("GET /v2/life/goals — bets in rank order, goals
+    beneath"). Nothing on this side ever answered it, so the view 404'd and
+    rendered its error state — which read as "the panel lost my goals" the
+    moment apply-proposed had visibly created them (2026-08-01 screenshot:
+    "Added. They are in your panel now." over "That did not load.").
+
+    The groups come from ``lp.BETS``, not from the seeded bet rows: the rank
+    is immutable core (L-2a), so the response's ORDER must not depend on what
+    is in the table. All three groups are always present, empty or not — the
+    three bets are the screen's skeleton ("Three bets, in order. The order is
+    the point."), not a search result.
+
+    A goal whose ``collection`` names no bet rides in ``ungrouped`` rather
+    than being dropped server-side: the wire must not lose rows the user
+    ticked, even while today's FE renders only the three groups. The label is
+    echoed for completeness, but the FE deliberately prefers its own name for
+    a key it knows — a rename must not show the new word in setup and an old
+    one here."""
+    user_id = _uid()
+    grouped: dict[str, list[dict]] = {}
+    ungrouped: list[dict] = []
+    bet_keys = {bet["key"] for bet in lp.BETS}
+    # One read, already in order_key order — the draft order the rows were
+    # created in, which is the document's own order for applied drafts.
+    for row in store.list_items(user_id, kind="goal", status="active"):
+        key = (row.get("collection") or "").strip().lower()
+        target = grouped.setdefault(key, []) if key in bet_keys else ungrouped
+        target.append(lp.serialize_item(row))
+    return jsonify({
+        "bets": [{
+            "key": bet["key"],
+            "rank": bet["rank"],
+            "label": f"{bet['emoji']} {bet['title']}",
+            "goals": grouped.get(bet["key"], []),
+        } for bet in lp.BETS],
+        "ungrouped": ungrouped,
+    }), 200
+
 
 @life_bp.route("/v2/life/items", methods=["GET"])
 @life_route()

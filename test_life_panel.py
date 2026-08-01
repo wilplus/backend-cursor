@@ -2552,6 +2552,116 @@ class DocumentAwareGenerationTests(unittest.TestCase):
 
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
+class GoalsRouteTests(unittest.TestCase):
+    """GET /v2/life/goals — the endpoint the FE has called since FE-9 shipped.
+
+    It never existed on this side, so the Goals view rendered an error over
+    rows apply-proposed had just visibly created (2026-08-01). These pin the
+    contract fetchGoals() actually reads: {bets: [{key, rank, label, goals}]},
+    all three bets always present, locked rank order, and nothing dropped."""
+
+    def setUp(self):
+        self.app = Flask(__name__)
+        self.app.register_blueprint(lroutes.life_bp)
+        self.client = self.app.test_client()
+        self._orig_verify = auth.verify_supabase_token
+        auth.verify_supabase_token = lambda token: {"sub": USER}
+        self._gates = [
+            patch.object(lroutes.chat, "is_enabled", return_value=True),
+            patch.object(lroutes.chat, "has_consented", return_value=True),
+        ]
+        for g in self._gates:
+            g.start()
+
+    def tearDown(self):
+        auth.verify_supabase_token = self._orig_verify
+        for g in self._gates:
+            g.stop()
+
+    def _get(self, rows):
+        with patch.object(lroutes.store, "list_items",
+                          return_value=rows) as listed:
+            resp = self.client.get("/v2/life/goals",
+                                   headers={"Authorization": "Bearer t"})
+        return resp, listed
+
+    def test_the_route_exists_and_reads_active_goals_only(self):
+        resp, listed = self._get([])
+        self.assertEqual(resp.status_code, 200)
+        # kind and status are the read's whole meaning: a retired goal on the
+        # Goals screen would be the panel resurrecting something dismissed.
+        self.assertEqual(listed.call_args.kwargs.get("kind"), "goal")
+        self.assertEqual(listed.call_args.kwargs.get("status"), "active")
+
+    def test_all_three_bets_are_present_in_locked_rank_order(self):
+        # Empty or not: the three bets are the screen's skeleton, not a search
+        # result — and the ORDER comes from lp.BETS (L-2a), never the table.
+        resp, _ = self._get([])
+        bets = resp.get_json()["bets"]
+        self.assertEqual([b["key"] for b in bets],
+                         [b["key"] for b in lp.BETS])
+        self.assertEqual([b["rank"] for b in bets], [1, 2, 3])
+        for bet in bets:
+            self.assertEqual(bet["goals"], [])
+
+    def test_goals_land_under_the_bet_their_collection_names(self):
+        resp, _ = self._get([
+            {"id": "g1", "kind": "goal", "title": "A marriage with years on it",
+             "collection": "life", "due_label": "to July 2031",
+             "due_at": "2031-07-01"},
+            {"id": "g2", "kind": "goal", "title": "Profitable",
+             "collection": "company"},
+        ])
+        by_key = {b["key"]: b for b in resp.get_json()["bets"]}
+        self.assertEqual([g["title"] for g in by_key["life"]["goals"]],
+                         ["A marriage with years on it"])
+        self.assertEqual([g["title"] for g in by_key["company"]["goals"]],
+                         ["Profitable"])
+        self.assertEqual(by_key["dream"]["goals"], [])
+        # The label the person wrote rides verbatim, with its parsed date
+        # beside it — the FE renders the label and places the marker by the
+        # date, never the other way round.
+        goal = by_key["life"]["goals"][0]
+        self.assertEqual(goal["due_label"], "to July 2031")
+        self.assertEqual(goal["due_at"], "2031-07-01")
+
+    def test_a_goal_with_no_bet_is_carried_not_dropped(self):
+        # The wire must not lose a row the user ticked. Today's FE renders the
+        # three groups only; the row still has to ARRIVE so tomorrow's can.
+        resp, _ = self._get([
+            {"id": "g1", "kind": "goal", "title": "Homeless", "collection": None},
+            {"id": "g2", "kind": "goal", "title": "Wall thing",
+             "collection": "wall"},
+        ])
+        payload = resp.get_json()
+        self.assertEqual([g["title"] for g in payload["ungrouped"]],
+                         ["Homeless", "Wall thing"])
+        for bet in payload["bets"]:
+            self.assertEqual(bet["goals"], [])
+
+    def test_every_row_appears_exactly_once(self):
+        # Grouped + ungrouped is a partition, not a filter with a leak.
+        rows = [
+            {"id": f"g{i}", "kind": "goal", "title": f"t{i}",
+             "collection": c}
+            for i, c in enumerate(
+                ["life", "company", "dream", None, "life", "bogus"])
+        ]
+        resp, _ = self._get(rows)
+        payload = resp.get_json()
+        served = [g["id"] for b in payload["bets"] for g in b["goals"]]
+        served += [g["id"] for g in payload["ungrouped"]]
+        self.assertEqual(sorted(served), sorted(r["id"] for r in rows))
+
+    def test_the_gate_still_gates(self):
+        # 404 when the panel is off — the route is a view, not an exemption.
+        with patch.object(lroutes.chat, "is_enabled", return_value=False):
+            resp = self.client.get("/v2/life/goals",
+                                   headers={"Authorization": "Bearer t"})
+        self.assertEqual(resp.status_code, 404)
+
+
+@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
 class DocumentKindHintTests(unittest.TestCase):
     """The hint scopes a second read of the same text. It never filters the
     answer, and it never changes the call the endpoint made yesterday."""
