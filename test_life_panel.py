@@ -40,6 +40,7 @@ changing responses it must not change.
 """
 from __future__ import annotations
 
+import json
 import os
 import re
 import unittest
@@ -936,6 +937,118 @@ class ChatIsolationTests(unittest.TestCase):
 # ═════════════════════════════════════════════════════════════════════════
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
+class GoalRankTests(unittest.TestCase):
+    """The Dalio order (FE handoff, 2026-08-02): expected value estimated
+    INTERNALLY, and only an ORDER ever leaves the model — written to
+    order_key, per bet, at day-card generation time."""
+
+    GOALS = [
+        {"id": "g1", "kind": "goal", "title": "Nice-to-have",
+         "collection": "life", "order_key": 1000.0},
+        {"id": "g2", "kind": "goal", "title": "Must-do",
+         "collection": "life", "order_key": 2000.0},
+        {"id": "g3", "kind": "goal", "title": "Solo",
+         "collection": "company", "order_key": 1000.0},
+    ]
+
+    def _rank(self, order, goals=None, outcome=None):
+        writes = []
+
+        def _update(user_id, item_id, fields):
+            writes.append((item_id, dict(fields)))
+            return {"id": item_id, **fields}
+
+        with patch.object(lengine.store, "list_items",
+                          return_value=list(goals or self.GOALS)), \
+             patch.object(lengine.store, "update_item",
+                          side_effect=_update), \
+             patch.object(lengine, "_complete_ex",
+                          return_value=({"order": order},
+                                        outcome or lengine.OUTCOME_OK)), \
+             patch.object(lengine, "_log_derivation"):
+            moved = lengine.rank_goals_by_expected_value(USER)
+        return moved, writes
+
+    def test_the_model_order_lands_in_order_key(self):
+        moved, writes = self._rank({"life": ["g2", "g1"]})
+        self.assertEqual(dict(writes), {"g2": {"order_key": 1000.0},
+                                        "g1": {"order_key": 2000.0}})
+        self.assertEqual(moved, 2)
+
+    def test_only_order_key_is_ever_written(self):
+        # AC-9/N4 on the write path: whatever the model estimated stays in
+        # its head. A probability or payoff column appearing here is the
+        # fence breach this pins against.
+        _, writes = self._rank({"life": ["g2", "g1"]})
+        for _, fields in writes:
+            self.assertEqual(list(fields.keys()), ["order_key"])
+
+    def test_an_unchanged_order_writes_nothing(self):
+        moved, writes = self._rank({"life": ["g1", "g2"]})
+        self.assertEqual(writes, [])
+        self.assertEqual(moved, 0)
+
+    def test_a_bet_with_one_goal_is_not_sent_to_the_model(self):
+        # "company" holds only g3: nothing to rank, nothing to pay for.
+        _, writes = self._rank({"company": ["g3"]})
+        self.assertNotIn("g3", [w[0] for w in writes])
+
+    def test_a_forgotten_id_keeps_its_place_at_the_tail(self):
+        # A short answer must never lose a goal: g1 was not mentioned, so it
+        # follows the ranked head in the order it already had.
+        _, writes = self._rank({"life": ["g2"]})
+        self.assertEqual(dict(writes), {"g2": {"order_key": 1000.0},
+                                        "g1": {"order_key": 2000.0}})
+
+    def test_an_invented_id_is_ignored(self):
+        _, writes = self._rank({"life": ["ghost", "g2", "g1"]})
+        self.assertEqual([w[0] for w in writes], ["g2", "g1"])
+
+    def test_a_failed_call_moves_nothing(self):
+        moved, writes = self._rank(None, outcome=lengine.OUTCOME_TRUNCATED)
+        self.assertEqual(writes, [])
+        self.assertEqual(moved, 0)
+
+    def test_the_card_generation_ranks_once_per_day(self):
+        # The card existing IS the marker that today's ranking already ran:
+        # a second read must not re-rank (or re-spend).
+        with patch.object(lengine.store, "get_day",
+                          return_value={"id": "d1"}), \
+             patch.object(lengine,
+                          "rank_goals_by_expected_value") as rank:
+            lengine.ensure_daily_card(USER, date(2026, 8, 1))
+        rank.assert_not_called()
+
+    def test_a_new_day_ranks_before_it_builds(self):
+        calls = []
+        with patch.object(lengine.store, "get_day", return_value=None), \
+             patch.object(lengine.store, "upsert_day",
+                          side_effect=lambda *a: calls.append("build") or {}), \
+             patch.object(lengine, "rank_goals_by_expected_value",
+                          side_effect=lambda *a, **k: calls.append("rank")), \
+             patch.object(lengine, "build_daily_card", return_value={}):
+            lengine.ensure_daily_card(USER, date(2026, 8, 1))
+        self.assertEqual(calls, ["rank", "build"])
+
+    def test_a_rank_crash_does_not_cost_the_card(self):
+        with patch.object(lengine.store, "get_day", return_value=None), \
+             patch.object(lengine.store, "upsert_day",
+                          return_value={"id": "d1"}) as up, \
+             patch.object(lengine, "rank_goals_by_expected_value",
+                          side_effect=RuntimeError("boom")), \
+             patch.object(lengine, "build_daily_card", return_value={}):
+            row = lengine.ensure_daily_card(USER, date(2026, 8, 1))
+        self.assertEqual(row, {"id": "d1"})
+        up.assert_called_once()
+
+    def test_the_prompt_never_asks_for_a_number_back(self):
+        # The order is the only thing allowed out of the model's head.
+        self.assertIn("Return ONLY the order", lengine._GOAL_RANK_SYSTEM)
+        self.assertIn("never a", lengine._GOAL_RANK_SYSTEM)
+
+
+
+@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
 class DailyCardTests(unittest.TestCase):
     """All three bets are eligible from day one. What holds the weekly
     document's rule is the SORT, not an exclusion — so these tests are what
@@ -1002,6 +1115,70 @@ class DailyCardTests(unittest.TestCase):
         self.assertEqual(card["one_thing"], "")
         self.assertEqual(card["one_thing_bet"], "")
         self.assertEqual(card["focus_blocks"], [])
+
+    # ── the 29/07 task shown on 01/08 (FE handoff, 2026-08-02) ────────────
+
+    def test_a_past_dated_goal_is_never_selected_as_current(self):
+        # The card asserts its content is today's work in its own copy, so no
+        # display rule downstream can contradict it. The list views still
+        # serve the row (the FE chips it "Past its date"); the CARD must not.
+        card = self._card([
+            {"id": "g1", "title": "Task from the 29th", "bet_id": "b1",
+             "due_at": "2026-07-24", "order_key": 1},
+            {"id": "g2", "title": "Current work", "bet_id": "b2",
+             "order_key": 9},
+        ])
+        self.assertEqual(card["one_thing"], "Current work")
+        self.assertNotIn("Task from the 29th",
+                         [b["text"] for b in card["focus_blocks"]])
+
+    def test_due_today_is_current_all_day(self):
+        # Calendar-day, matching the FE's rule: a goal due on the card's own
+        # date is today's work until midnight, not stale at 00:01.
+        card = self._card([{"id": "g1", "title": "Due today",
+                            "bet_id": "b1", "due_at": "2026-07-26"}])
+        self.assertEqual(card["one_thing"], "Due today")
+
+    def test_undated_goals_are_untouched_by_the_date_guard(self):
+        card = self._card([{"id": "g1", "title": "Standing goal",
+                            "bet_id": "b1"}])
+        self.assertEqual(card["one_thing"], "Standing goal")
+
+    def test_a_past_date_alone_yields_an_empty_card_not_a_stale_one(self):
+        # An empty one-thing is an honest answer; yesterday's work asserted
+        # as today's is not.
+        card = self._card([{"id": "g1", "title": "Old", "bet_id": "b1",
+                            "due_at": "2020-01-01"}])
+        self.assertEqual(card["one_thing"], "")
+
+    # ── collection carries the bet (same bug the FE mapper had) ───────────
+
+    def test_a_document_drafted_goal_ranks_under_its_bet(self):
+        # apply-proposed writes `collection`, not `bet_id`. Resolving bet_id
+        # alone made every drafted goal "unattached": rank 99, sorted last,
+        # no bet named on the card.
+        card = self._card([
+            {"id": "g3", "title": "7T research", "bet_id": "b3",
+             "order_key": 1},
+            {"id": "g1", "title": "A marriage with years on it",
+             "collection": "life", "order_key": 9},
+        ])
+        self.assertEqual(card["one_thing"], "A marriage with years on it")
+        self.assertEqual(card["one_thing_bet"], "🟢 The Life")
+
+    def test_bet_id_still_wins_when_both_are_present(self):
+        card = self._card([{"id": "g1", "title": "x", "bet_id": "b2",
+                            "collection": "life"}])
+        self.assertEqual(card["one_thing_bet"], "🔵 The Company")
+
+    def test_a_wall_collection_is_not_a_bet(self):
+        card = self._card([
+            {"id": "g1", "title": "Wall thing", "collection": "wall",
+             "order_key": 1},
+            {"id": "g2", "title": "Real goal", "collection": "company",
+             "order_key": 9},
+        ])
+        self.assertEqual(card["one_thing"], "Real goal")
 
     def test_the_evening_pass_recaps_the_morning_without_judging_it(self):
         summary = lengine.build_evening_pass({
@@ -1077,14 +1254,417 @@ class DailyCardTests(unittest.TestCase):
         # empty panel.
         with open(MIGRATION, "r", encoding="utf-8") as fh:
             sql = fh.read()
+        # Columns added by later migration files count too — draft_meta ships
+        # with add_life_days_draft_meta.sql. The guard's job is unchanged:
+        # every card key has a column SOMEWHERE a migration creates, or the
+        # 05:00 insert fails and is discovered by an empty panel.
+        later = os.path.join(os.path.dirname(MIGRATION),
+                             "add_life_days_draft_meta.sql")
+        with open(later, "r", encoding="utf-8") as fh:
+            sql += fh.read()
         block = sql[sql.index("CREATE TABLE IF NOT EXISTS life_days"):]
         block = block[:block.index(");")]
         added = set(re.findall(
-            r"ALTER TABLE life_days ADD COLUMN IF NOT EXISTS (\w+)", sql))
+            r"ALTER TABLE life_days\s+ADD COLUMN IF NOT EXISTS (\w+)", sql))
         card = self._card([])
         for key in card:
             self.assertTrue(key in block or key in added,
                             f"life_days has no column for {key}")
+
+
+@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
+class DayDraftContractTests(unittest.TestCase):
+    """docs/life-checkin-learning-contract.md, pinned.
+
+    The card drafts a day-sized action per slot; corrections to WORDING and
+    STEP are learned silently, a PRIORITY swap is gated to the Sunday review,
+    and the two records never cross. Every branch here degrades to the
+    deterministic title card."""
+
+    GOALS = [
+        {"id": "g1", "kind": "goal", "title": "Profitable",
+         "collection": "company", "order_key": 1000.0},
+        {"id": "g2", "kind": "goal", "title": "A marriage with years on it",
+         "collection": "life", "order_key": 2000.0},
+    ]
+    BETS = [
+        {"id": "b1", "kind": "bet", "title": "🟢 The Life", "order_key": 1.0},
+        {"id": "b2", "kind": "bet", "title": "🔵 The Company", "order_key": 2.0},
+        {"id": "b3", "kind": "bet", "title": "🟣 The Dream", "order_key": 3.0},
+    ]
+
+    def _built(self):
+        def _list(user_id, *, kind=None, **kw):
+            return {"goal": list(self.GOALS), "bet": self.BETS,
+                    "habit": []}.get(kind, [])
+        with patch.object(lengine.store, "list_items", side_effect=_list):
+            return lengine.build_daily_card(USER, date(2026, 8, 2))
+
+    def _drafted(self, card, actions, outcome=None):
+        with patch.object(lengine, "_complete_ex",
+                          return_value=({"actions": actions},
+                                        outcome or lengine.OUTCOME_OK)), \
+             patch.object(lengine, "_log_derivation"):
+            return lengine.draft_daily_actions(USER, card)
+
+    # ── the draft replaces the title, and is remembered ───────────────────
+
+    def test_the_skeleton_names_who_each_slot_serves(self):
+        card = self._built()
+        meta = card["draft_meta"]
+        self.assertEqual(meta["one_thing"]["goal_id"], "g2")
+        self.assertIsNone(meta["one_thing"]["drafted"])
+        self.assertEqual([s["goal_id"] for s in meta["focus"]], ["g1"])
+        self.assertEqual(card["focus_blocks"][0]["goal_id"], "g1")
+
+    def test_a_drafted_action_replaces_the_title_and_is_recorded(self):
+        card = self._drafted(self._built(),
+                             {"g2": "Book the venue and call her father",
+                              "g1": "Send the deck to the three warm leads"})
+        self.assertEqual(card["one_thing"],
+                         "Book the venue and call her father")
+        self.assertEqual(card["focus_blocks"][0]["text"],
+                         "Send the deck to the three warm leads")
+        # The pair's input side, for the silent learner.
+        self.assertEqual(card["draft_meta"]["one_thing"]["drafted"],
+                         "Book the venue and call her father")
+        # The goal stays named beside the action.
+        self.assertEqual(card["draft_meta"]["one_thing"]["goal"],
+                         "A marriage with years on it")
+
+    def test_a_failed_draft_is_yesterdays_card_exactly(self):
+        card = self._drafted(self._built(), None,
+                             outcome=lengine.OUTCOME_TRUNCATED)
+        self.assertEqual(card["one_thing"], "A marriage with years on it")
+        self.assertIsNone(card["draft_meta"]["one_thing"]["drafted"])
+
+    def test_a_skipped_goal_keeps_its_title(self):
+        card = self._drafted(self._built(), {"g1": "Send the deck"})
+        self.assertEqual(card["one_thing"], "A marriage with years on it")
+        self.assertEqual(card["focus_blocks"][0]["text"], "Send the deck")
+
+    def test_an_empty_card_makes_no_model_call(self):
+        with patch.object(lengine, "_complete_ex") as call:
+            lengine.draft_daily_actions(USER, {"draft_meta": {
+                "one_thing": None, "focus": []}})
+        call.assert_not_called()
+
+    def test_the_prompt_holds_the_contract_lines(self):
+        # Day-sized, the person's own language, never a restated goal — and
+        # it must FORMAT (it carries JSON braces, so literals are doubled).
+        prompt = lengine._DAY_DRAFT_SYSTEM
+        self.assertIn("day-sized", prompt.lower())
+        self.assertIn("Never restate the \\\ngoal".replace("\\\n", ""),
+                      prompt.replace("\\\n", ""))
+        rendered = prompt.format(today="2026-08-02")
+        self.assertIn("Today is 2026-08-02", rendered)
+
+    def test_an_unmigrated_draft_meta_costs_the_record_never_the_card(self):
+        calls = []
+
+        def _upsert(user_id, day, fields):
+            calls.append(dict(fields))
+            return None if "draft_meta" in fields else {"id": "d1"}
+
+        with patch.object(lengine.store, "get_day", return_value=None), \
+             patch.object(lengine.store, "upsert_day", side_effect=_upsert), \
+             patch.object(lengine, "rank_goals_by_expected_value"), \
+             patch.object(lengine, "build_daily_card",
+                          return_value={"one_thing": "x",
+                                        "draft_meta": {"one_thing": None,
+                                                       "focus": []}}), \
+             patch.object(lengine, "draft_daily_actions",
+                          side_effect=lambda u, c: c):
+            row = lengine.ensure_daily_card(USER, date(2026, 8, 2))
+        self.assertEqual(row, {"id": "d1"})
+        self.assertEqual(len(calls), 2)
+        self.assertNotIn("draft_meta", calls[1])
+
+    def test_a_draft_crash_does_not_cost_the_card(self):
+        with patch.object(lengine.store, "get_day", return_value=None), \
+             patch.object(lengine.store, "upsert_day",
+                          return_value={"id": "d1"}), \
+             patch.object(lengine, "rank_goals_by_expected_value"), \
+             patch.object(lengine, "draft_daily_actions",
+                          side_effect=RuntimeError("boom")):
+            row = lengine.ensure_daily_card(USER, date(2026, 8, 2))
+        self.assertEqual(row, {"id": "d1"})
+
+    # ── the swap: gated, recorded once, never crossed ─────────────────────
+
+    def _day_row(self, drafted="Book the venue"):
+        return {"id": "d1", "draft_meta": {
+            "one_thing": {"goal_id": "g2",
+                          "goal": "A marriage with years on it",
+                          "drafted": drafted},
+            "focus": [{"goal_id": "g1", "goal": "Profitable",
+                       "drafted": "Send the deck"}],
+        }}
+
+    def _swap(self, day_row, goal_id, goal=None):
+        def _list(user_id, *, kind=None, **kw):
+            return self.BETS if kind == "bet" else []
+        with patch.object(lengine.store, "get_item",
+                          return_value=goal), \
+             patch.object(lengine.store, "list_items", side_effect=_list):
+            return lengine.swap_one_thing(USER, day_row, goal_id)
+
+    def test_a_swap_records_the_displaced_ranked_goal_once(self):
+        fields = self._swap(self._day_row(), "g1",
+                            {"id": "g1", "kind": "goal", "title": "Profitable",
+                             "collection": "company", "status": "active"})
+        self.assertEqual(fields["draft_meta"]["displaced_goal_id"], "g2")
+        # The chosen goal was a focus block with its own drafted action —
+        # promoted, not re-drafted (no model call on a PATCH).
+        self.assertEqual(fields["one_thing"], "Send the deck")
+        self.assertEqual(fields["one_thing_bet"], "🔵 The Company")
+        # A second swap the same day does not rewrite history.
+        second = self._swap({"id": "d1", "draft_meta":
+                             fields["draft_meta"]}, "g2",
+                            {"id": "g2", "kind": "goal", "title": "A marriage",
+                             "collection": "life", "status": "active"})
+        self.assertEqual(second["draft_meta"]["displaced_goal_id"], "g2")
+
+    def test_a_swap_to_a_foreign_or_retired_goal_is_refused(self):
+        self.assertIsNone(self._swap(self._day_row(), "gX", None))
+        self.assertIsNone(self._swap(
+            self._day_row(), "g1",
+            {"id": "g1", "kind": "goal", "title": "x", "status": "retired"}))
+        self.assertIsNone(self._swap(
+            self._day_row(), "p1",
+            {"id": "p1", "kind": "phrase", "title": "x", "status": "active"}))
+
+    # ── piece 2: the memory feeds the draft, and never the swap ───────────
+
+    _DAYS = [
+        {"day": "2026-08-01", "draft_meta": {
+            "one_thing": {"goal_id": "g2", "goal": "A marriage",
+                          "drafted": "Book the venue",
+                          "accepted": "Zarezerwuj kościół przed południem"},
+            "displaced_goal_id": "g9"}},
+        {"day": "2026-07-31", "draft_meta": {
+            "one_thing": {"goal_id": "g1", "goal": "Profitable",
+                          "drafted": "Send the deck"}}},
+    ]
+
+    def _payload_sent(self, days):
+        seen = {}
+
+        def _complete(spec, *, system, user, surface, user_id):
+            seen["user"] = user
+            return {"actions": {}}, lengine.OUTCOME_OK
+
+        with patch.object(lengine.store, "list_recent_days",
+                          return_value=days), \
+             patch.object(lengine, "_complete_ex", side_effect=_complete), \
+             patch.object(lengine, "_log_derivation"):
+            lengine.draft_daily_actions(USER, self._built())
+        return seen["user"]
+
+    def test_corrections_and_anchors_ride_the_drafting_payload(self):
+        sent = self._payload_sent(self._DAYS)
+        # The rewrite is a correction — both sides of the pair travel.
+        self.assertIn("Zarezerwuj kościół przed południem", sent)
+        self.assertIn("Book the venue", sent)
+        # The unedited draft is a positive anchor.
+        self.assertIn('"accepted_as_is"', sent)
+        self.assertIn("Send the deck", sent)
+
+    def test_the_learner_never_sees_the_displacement(self):
+        # The contract's hard line, pinned at the exact seam: the displaced
+        # goal id is in the rows the memory reads, and must not be in what
+        # the model receives.
+        sent = self._payload_sent(self._DAYS)
+        self.assertNotIn("displaced", sent)
+        self.assertNotIn("g9", sent)
+
+    def test_a_memoryless_history_still_drafts(self):
+        sent = self._payload_sent([])
+        self.assertIn('"corrections": []', sent)
+
+    def test_the_prompt_explains_both_lists(self):
+        self.assertIn("corrections", lengine._DAY_DRAFT_SYSTEM)
+        self.assertIn("accepted_as_is", lengine._DAY_DRAFT_SYSTEM)
+
+    # ── piece 2: the 3-strike gate ────────────────────────────────────────
+
+    def _strikes(self, displaced_ids, goal=None):
+        days = [{"day": f"2026-08-0{i + 1}",
+                 "draft_meta": {"displaced_goal_id": d} if d != "NO_META"
+                 else None}
+                for i, d in enumerate(displaced_ids)]
+        with patch.object(lengine.store, "list_recent_days",
+                          return_value=days), \
+             patch.object(lengine.store, "get_item",
+                          return_value=goal):
+            return lengine.displaced_goal_for_review(USER)
+
+    def test_three_mornings_running_reaches_the_review(self):
+        out = self._strikes(["g2", "g2", "g2"],
+                            {"id": "g2", "kind": "goal", "status": "active",
+                             "title": "A marriage", "due_label": "to 2031"})
+        self.assertEqual(out, [{"id": "g2", "title": "A marriage",
+                                "due_label": "to 2031"}])
+
+    def test_two_strikes_or_a_mixed_three_stay_silent(self):
+        goal = {"id": "g2", "kind": "goal", "status": "active", "title": "x"}
+        self.assertEqual(self._strikes(["g2", "g2"], goal), [])
+        self.assertEqual(self._strikes(["g2", "g1", "g2"], goal), [])
+        self.assertEqual(self._strikes(["g2", "g2", None], goal), [])
+
+    def test_a_cardless_day_does_not_break_the_run(self):
+        # Only card days count as mornings: a day with no draft_meta (no card
+        # generated) is skipped, not treated as a reset.
+        out = self._strikes(["g2", "NO_META", "g2", "g2"],
+                            {"id": "g2", "kind": "goal", "status": "active",
+                             "title": "A marriage", "due_label": None})
+        self.assertEqual(len(out), 1)
+
+    def test_a_retired_goal_is_not_proposed_back(self):
+        out = self._strikes(["g2", "g2", "g2"],
+                            {"id": "g2", "kind": "goal", "status": "retired",
+                             "title": "x"})
+        self.assertEqual(out, [])
+
+    def test_the_review_item_carries_no_count_and_no_copy(self):
+        # AC-9/N3: the goal's own name and due wording, nothing else — no
+        # streak, no "you missed it" sentence, no number.
+        out = self._strikes(["g2", "g2", "g2"],
+                            {"id": "g2", "kind": "goal", "status": "active",
+                             "title": "A marriage", "due_label": "to 2031"})
+        self.assertEqual(sorted(out[0].keys()), ["due_label", "id", "title"])
+
+    # ── the wire: goal name yes, learner data never ───────────────────────
+
+    def test_the_wire_carries_the_goal_and_never_the_learning(self):
+        payload = lp.serialize_day({
+            "id": "d1", "day": "2026-08-02", "one_thing": "Book the venue",
+            "draft_meta": {"one_thing": {"goal_id": "g2", "goal": "A marriage",
+                                         "drafted": "Book the venue",
+                                         "accepted": "Book it"},
+                           "focus": [],
+                           "displaced_goal_id": "g9"},
+        })
+        self.assertEqual(payload["one_thing_goal"], "A marriage")
+        self.assertEqual(payload["one_thing_goal_id"], "g2")
+        flat = json.dumps(payload)
+        self.assertNotIn("drafted", flat)
+        self.assertNotIn("accepted", flat)
+        self.assertNotIn("displaced", flat)
+        self.assertNotIn("draft_meta", flat)
+
+
+@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
+class DayDraftRouteTests(unittest.TestCase):
+    """The PATCH's half of the contract: accepted text is recorded into the
+    pair, the swap is validated and gated, and a missing migration costs the
+    record, never the edit."""
+
+    def setUp(self):
+        self.app = Flask(__name__)
+        self.app.register_blueprint(lroutes.life_bp)
+        self.client = self.app.test_client()
+        self._orig_verify = auth.verify_supabase_token
+        auth.verify_supabase_token = lambda token: {"sub": USER}
+        self._gates = [
+            patch.object(lroutes.chat, "is_enabled", return_value=True),
+            patch.object(lroutes.chat, "has_consented", return_value=True),
+        ]
+        for g in self._gates:
+            g.start()
+
+    def tearDown(self):
+        auth.verify_supabase_token = self._orig_verify
+        for g in self._gates:
+            g.stop()
+
+    ROW = {"id": "d1", "one_thing": "Book the venue",
+           "draft_meta": {"one_thing": {"goal_id": "g2", "goal": "A marriage",
+                                        "drafted": "Book the venue"},
+                          "focus": []}}
+
+    def _patch(self, body, row=None, update_result=None):
+        updates = []
+
+        def _update(user_id, day_id, fields):
+            updates.append(dict(fields))
+            if update_result is not None:
+                return update_result(fields)
+            return {**(row or self.ROW), **fields}
+
+        with patch.object(lroutes.store, "day_by_id",
+                          return_value=(row or self.ROW)), \
+             patch.object(lroutes.store, "update_day", side_effect=_update):
+            resp = self.client.patch("/v2/life/day/d1",
+                                     headers={"Authorization": "Bearer t"},
+                                     json=body)
+        return resp, updates
+
+    def test_an_edited_one_thing_records_the_accepted_text(self):
+        resp, updates = self._patch({"one_thing": "Book it before noon"})
+        self.assertEqual(resp.status_code, 200)
+        slot = updates[0]["draft_meta"]["one_thing"]
+        self.assertEqual(slot["accepted"], "Book it before noon")
+        # The input side of the pair is untouched by the edit.
+        self.assertEqual(slot["drafted"], "Book the venue")
+
+    def test_a_hand_built_card_records_no_pair(self):
+        resp, updates = self._patch({"one_thing": "My own plan"},
+                                    row={"id": "d1", "one_thing": "x",
+                                         "draft_meta": None})
+        self.assertEqual(resp.status_code, 200)
+        self.assertNotIn("draft_meta", updates[0])
+
+    def test_the_swap_is_validated_and_the_text_edit_wins(self):
+        with patch.object(lroutes.engine, "swap_one_thing",
+                          return_value=None):
+            resp, _ = self._patch({"one_thing_goal_id": "gX"})
+        self.assertEqual(resp.status_code, 400)
+
+        swapped = {"one_thing": "Send the deck", "one_thing_bet": "🔵",
+                   "draft_meta": {"one_thing": {"goal_id": "g1",
+                                                "goal": "Profitable",
+                                                "drafted": None},
+                                  "focus": [],
+                                  "displaced_goal_id": "g2"}}
+        with patch.object(lroutes.engine, "swap_one_thing",
+                          return_value=dict(swapped)):
+            resp, updates = self._patch({"one_thing_goal_id": "g1",
+                                         "one_thing": "My wording of it"})
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(updates[0]["one_thing"], "My wording of it")
+        self.assertEqual(updates[0]["draft_meta"]["displaced_goal_id"], "g2")
+
+    def test_an_unmigrated_column_costs_the_record_never_the_edit(self):
+        resp, updates = self._patch(
+            {"one_thing": "Book it"},
+            update_result=lambda f: None if "draft_meta" in f
+            else {"id": "d1", **f})
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(len(updates), 2)
+        self.assertNotIn("draft_meta", updates[1])
+
+
+@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
+class DraftMetaMigrationTests(unittest.TestCase):
+    """Same house lines as every life_* migration."""
+
+    def setUp(self):
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                            "migrations", "add_life_days_draft_meta.sql")
+        with open(path, "r", encoding="utf-8") as fh:
+            self.sql = fh.read()
+
+    def test_idempotent_nothing_dropped_and_a_partial_run_raises(self):
+        self.assertIn("ADD COLUMN IF NOT EXISTS draft_meta", self.sql)
+        self.assertNotRegex(self.sql.upper(), r"\bDROP\s+(TABLE|COLUMN)\b")
+        self.assertIn("RAISE EXCEPTION", self.sql)
+
+    def test_it_touches_life_tables_only(self):
+        for table in re.findall(
+                r"(?:CREATE TABLE IF NOT EXISTS|ALTER TABLE)\s+"
+                r"(?:public\.)?(\w+)", self.sql):
+            self.assertTrue(table.startswith("life_"), table)
 
 
 # ═════════════════════════════════════════════════════════════════════════

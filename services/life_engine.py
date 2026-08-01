@@ -1146,6 +1146,319 @@ def export_user_copy(user_id: str) -> Optional[list[dict]]:
 # BE-8 — the daily card
 # ═════════════════════════════════════════════════════════════════════════
 
+# Founder 2026-08-01, via the FE handoff: "separate must-dos from like-to-dos,
+# rank by expected value (probability × payoff, weighed against the cost of
+# waiting), highest-impact-highest-probability first — for each bet."
+#
+# THE NUMBERS STAY IN THE MODEL'S HEAD (AC-9 / N4). This call returns an
+# ORDER of ids and nothing else: no expected value, no probability, no payoff
+# ever reaches a payload, a log line or a table. What persists is order_key —
+# a sort position, the same field every list already rides. The estimate is
+# internal machinery, never a surfaced figure.
+SPEC_LIFE_GOAL_RANK = LLMSpec(
+    model=CHEAP_MODEL,
+    # Near-deterministic: the same goals should rank the same way on a re-run.
+    # A ranking that reshuffles daily without the goals changing reads as the
+    # system changing its mind about the founder's priorities overnight.
+    temperature=0.1,
+    max_tokens=1000,
+    response_format={"type": "json_object"},
+)
+
+_GOAL_RANK_SYSTEM = """You order ONE person's goals within each of their \
+three bets, following Ray Dalio's expected-value discipline:
+
+ * separate the must-dos from the like-to-dos — a goal with a hard \
+consequence for missing it outranks a nice-to-have;
+ * among the rest, rank by expected value: probability of success times the \
+size of the payoff, weighed against the cost of waiting — \
+highest-impact-highest-probability first;
+ * a goal whose window is closing soon outranks an equal goal that can wait.
+
+Estimate whatever you need internally. Return ONLY the order — never a \
+number, a score or a reason. Do not drop, merge or invent an id; every id \
+you were given for a bet appears exactly once in that bet's list.
+
+Return STRICT JSON: {"order": {"<bet>": ["<id>", ...], ...}}"""
+
+
+def rank_goals_by_expected_value(user_id: str) -> int:
+    """Write the Dalio order into ``order_key``, per bet. Returns rows moved.
+
+    Runs at GENERATION TIME — once, when the day's card does not exist yet —
+    because that is the moment the order is consumed: the card's one-thing and
+    focus blocks take the head of it, and every list view sorts by it. The FE
+    defers to this order for every undated goal, so writing it here is the
+    whole of the ship.
+
+    THE FAILURE MODE IS THE STANDING BARGAIN: any failure costs the re-rank
+    and nothing else. The card is still built, the lists still serve, and the
+    order is simply yesterday's — which was also good.
+
+    Only ``order_key`` is ever written. A goal the model forgets keeps its
+    place at the tail in its previous order; an id the model invents is
+    ignored; a bet with fewer than two goals has nothing to rank."""
+    goals = [g for g in store.list_items(user_id, kind="goal",
+                                         status="active")
+             if str(g.get("collection") or "").strip().lower()
+             in {str(b["key"]) for b in lp.BETS}]
+    grouped: dict[str, list[dict]] = {}
+    for goal in goals:
+        grouped.setdefault(
+            str(goal.get("collection")).strip().lower(), []).append(goal)
+    rankable = {key: rows for key, rows in grouped.items() if len(rows) >= 2}
+    if not rankable:
+        return 0
+
+    payload = {
+        key: [{"id": str(g.get("id")),
+               "goal": (g.get("title") or "")[:300],
+               "detail": (g.get("body") or "")[:300],
+               "due": g.get("due_label") or "",
+               "horizon": g.get("horizon") or ""}
+              for g in rows]
+        for key, rows in rankable.items()
+    }
+    parsed, outcome = _complete_ex(
+        SPEC_LIFE_GOAL_RANK,
+        system=_GOAL_RANK_SYSTEM,
+        user=json.dumps(payload, ensure_ascii=False)[:20000],
+        surface="goal_rank",
+        user_id=user_id,
+    )
+    order = (parsed or {}).get("order")
+    if outcome in FAILED_OUTCOMES or not isinstance(order, dict):
+        return 0
+
+    moved = 0
+    for key, rows in rankable.items():
+        proposed = order.get(key)
+        if not isinstance(proposed, list):
+            continue
+        known = {str(g.get("id")): g for g in rows}
+        # The model's order first (unknown ids dropped), then anything it
+        # forgot, in the order it already had — nothing is ever lost to a
+        # short answer.
+        ranked = [str(i) for i in proposed if str(i) in known]
+        ranked += [gid for g in rows
+                   if (gid := str(g.get("id"))) not in ranked]
+        for index, gid in enumerate(ranked):
+            new_key = float(index + 1) * 1000.0
+            if float(known[gid].get("order_key") or 0) == new_key:
+                continue
+            if store.update_item(user_id, gid, {"order_key": new_key}):
+                moved += 1
+    _log_derivation("goal_rank", user_id=user_id, outcome=outcome,
+                    bets=len(rankable), moved=moved)
+    return moved
+
+
+# The drafted day-sized action (founder-agreed contract, 2026-08-02 —
+# docs/life-checkin-learning-contract.md). The card used to show the goal's
+# TITLE as the one thing: "Profitable" is not something you can do before
+# lunch. This drafts the concrete step; the goal it serves stays named beside
+# it, and the deterministic title card is the fallback for every failure.
+SPEC_LIFE_DAY_DRAFT = LLMSpec(
+    model=CHEAP_MODEL,
+    # Low, not zero: the same goal should yield a similar-sized step on a
+    # re-run, but today's step is allowed to differ from yesterday's — that
+    # is what makes it a day's work rather than a rename of the goal.
+    temperature=0.3,
+    max_tokens=600,
+    response_format={"type": "json_object"},
+)
+
+_DAY_DRAFT_SYSTEM = """Today is {today}.
+
+You draft ONE day-sized action for each of a person's goals — the concrete \
+step they could take TODAY that moves that goal, in their own working \
+language (keep Polish Polish, English English, matching each goal's own \
+wording).
+
+A day-sized action names something finishable before the day ends: "send the \
+deck to the three warm leads", not "grow the company". Never restate the \
+goal, never merge two goals, never invent a goal that is not given, and \
+never add advice, encouragement or commentary — the action line is the whole \
+answer.
+
+The input may carry the person's own history: `corrections` are drafts they \
+rewrote (match how they scope and phrase — their corrections outrank these \
+instructions), and `accepted_as_is` are drafts they kept unchanged (that \
+register was right; stay in it).
+
+Return STRICT JSON: {{"actions": {{"<goal_id>": "<the action>", ...}}}}"""
+
+
+def _correction_examples(user_id: str) -> dict:
+    """The drafting memory (contract: extraction + formulation learn silently).
+
+    Reads the last ~20 card days and returns two lists for the drafting
+    prompt: `corrections` — (goal, drafted, accepted) where the founder
+    rewrote the draft — and `accepted_as_is` — drafts that stood unedited,
+    the positive anchors that keep corrections from overcorrecting.
+    Corrections are weighted first: they fill the window before any anchor.
+
+    THE DISPLACEMENT IS NEVER READ HERE. A swap says which goal led the day;
+    it says nothing about wording, and the contract's hard line is that the
+    learner never sees it (a test greps this function's output for it).
+    Any store failure returns empty lists — drafting proceeds memoryless."""
+    corrections: list[dict] = []
+    anchors: list[dict] = []
+    try:
+        days = store.list_recent_days(user_id, limit=20)
+    except Exception:                               # pragma: no cover
+        return {"corrections": [], "accepted_as_is": []}
+    for row in days:
+        slot = (row.get("draft_meta") or {}).get("one_thing") or {}
+        drafted = (slot.get("drafted") or "").strip()
+        if not drafted:
+            continue
+        accepted = (slot.get("accepted") or "").strip()
+        example = {"goal": (slot.get("goal") or "")[:300],
+                   "drafted": drafted[:500]}
+        if accepted and accepted != drafted:
+            corrections.append({**example, "accepted": accepted[:500]})
+        else:
+            anchors.append(example)
+    kept = corrections[:20]
+    return {"corrections": kept,
+            "accepted_as_is": anchors[:max(0, 20 - len(kept))]}
+
+
+def displaced_goal_for_review(user_id: str) -> list[dict]:
+    """The gate's read (contract: priority is gated, never learned).
+
+    The same goal displaced on the 3 most recent card days becomes a Sunday
+    review item — retire / re-date / keep, decided consciously. Served as
+    data for the review to render; no count, no streak, no copy: the goal's
+    own name and due wording, nothing else (AC-9/N3)."""
+    days = [row for row in store.list_recent_days(user_id, limit=6)
+            if row.get("draft_meta") is not None][:3]
+    if len(days) < 3:
+        return []
+    ids = {str((row.get("draft_meta") or {}).get("displaced_goal_id") or "")
+           for row in days}
+    if len(ids) != 1 or "" in ids:
+        return []
+    goal = store.get_item(user_id, ids.pop())
+    if not goal or goal.get("kind") != "goal" \
+            or (goal.get("status") or "active") != "active":
+        return []
+    return [{"id": goal.get("id"), "title": goal.get("title") or "",
+             "due_label": goal.get("due_label")}]
+
+
+def draft_daily_actions(user_id: str, card: dict) -> dict:
+    """Overlay drafted day-sized actions onto a built card. Never raises.
+
+    The card arrives deterministic — goal titles in the slots, and a
+    ``draft_meta`` skeleton naming which goal each slot serves. One model
+    call drafts an action per slot; each drafted action replaces the slot's
+    display text AND is recorded in ``draft_meta`` as ``drafted``, which is
+    the silent learner's input side (the contract's extraction/formulation
+    layers). A goal the model skips keeps its title; a failed call keeps the
+    whole card exactly as built — the fallback IS yesterday's behaviour."""
+    meta = card.get("draft_meta") or {}
+    slots: list[dict] = []
+    if meta.get("one_thing"):
+        slots.append(meta["one_thing"])
+    slots.extend(meta.get("focus") or [])
+    if not slots:
+        return card
+    payload = {
+        "goals": [{"id": s.get("goal_id"),
+                   "goal": (s.get("goal") or "")[:300],
+                   "detail": (s.get("detail") or "")[:300],
+                   "due": s.get("due") or "",
+                   "bet": s.get("bet") or ""}
+                  for s in slots],
+        # The silent learner's whole influence on the system: worked examples
+        # of how this person corrected earlier drafts. Nothing else of the
+        # history rides — in particular, never the displacement.
+        **_correction_examples(user_id),
+    }
+    parsed, outcome = _complete_ex(
+        SPEC_LIFE_DAY_DRAFT,
+        system=_DAY_DRAFT_SYSTEM.format(
+            today=datetime.now(timezone.utc).date().isoformat()),
+        user=json.dumps(payload, ensure_ascii=False)[:20000],
+        surface="day_draft",
+        user_id=user_id,
+    )
+    actions = (parsed or {}).get("actions")
+    if outcome in FAILED_OUTCOMES or not isinstance(actions, dict):
+        _log_derivation("day_draft", user_id=user_id, outcome=outcome,
+                        drafted=0)
+        return card
+
+    def _action_for(slot: Optional[dict]) -> Optional[str]:
+        if not slot:
+            return None
+        text = actions.get(str(slot.get("goal_id")))
+        text = str(text).strip()[:500] if isinstance(text, str) else ""
+        if text:
+            slot["drafted"] = text
+        return text or None
+
+    drafted = 0
+    one = _action_for(meta.get("one_thing"))
+    if one:
+        card["one_thing"] = one
+        drafted += 1
+    for index, slot in enumerate(meta.get("focus") or []):
+        text = _action_for(slot)
+        blocks = card.get("focus_blocks") or []
+        if text and index < len(blocks):
+            blocks[index]["text"] = text
+            drafted += 1
+    _log_derivation("day_draft", user_id=user_id, outcome=outcome,
+                    drafted=drafted)
+    return card
+
+
+def swap_one_thing(user_id: str, day_row: dict, goal_id: str) -> Optional[dict]:
+    """The founder replaces the ranked one thing with another goal of theirs.
+
+    Returns the fields to write, or None when the goal cannot be resolved as
+    the caller's own active goal.
+
+    Two records, two consumers, NEVER crossed (the contract's hard line):
+    the swap sets ``displaced_goal_id`` — once, the first time, naming the
+    RANKED goal that got moved aside — which only the Sunday-review gate may
+    read. The drafting learner never sees it, and the swap writes nothing
+    into the (drafted → accepted) pairs."""
+    goal = store.get_item(user_id, goal_id)
+    if not goal or goal.get("kind") != "goal" \
+            or (goal.get("status") or "active") != "active":
+        return None
+    meta = dict(day_row.get("draft_meta") or {})
+    # If the chosen goal already holds a drafted action on today's card (it
+    # was a focus block), promote that action; otherwise the goal's title is
+    # the honest text — no fresh model call on a PATCH.
+    text = goal.get("title") or goal.get("body") or ""
+    for slot in [meta.get("one_thing"), *(meta.get("focus") or [])]:
+        if slot and str(slot.get("goal_id")) == str(goal_id) \
+                and slot.get("drafted"):
+            text = slot["drafted"]
+            break
+    bets = {str(b.get("id")): b
+            for b in store.list_items(user_id, kind="bet", status="active")}
+    bet_row = bets.get(str(goal.get("bet_id") or ""))
+    locked = {str(b["key"]): b for b in lp.BETS}.get(
+        str(goal.get("collection") or "").strip().lower())
+    bet_title = ((bet_row or {}).get("title")
+                 or (f"{locked['emoji']} {locked['title']}" if locked else ""))
+    if not meta.get("displaced_goal_id"):
+        displaced = (meta.get("one_thing") or {}).get("goal_id")
+        if displaced and str(displaced) != str(goal_id):
+            meta["displaced_goal_id"] = str(displaced)
+    meta["one_thing"] = {"goal_id": str(goal_id),
+                         "goal": goal.get("title") or "",
+                         "drafted": None}
+    return {"one_thing": text, "one_thing_bet": bet_title,
+            "draft_meta": meta}
+
+
 def build_daily_card(user_id: str, day: date) -> dict:
     """The card's content for one date, from the user's own rows.
 
@@ -1169,21 +1482,51 @@ def build_daily_card(user_id: str, day: date) -> dict:
     goals = store.list_items(user_id, kind="goal", status="active")
     bets = {str(b.get("id")): b
             for b in store.list_items(user_id, kind="bet", status="active")}
+    # `collection` carries the bet on every goal apply-proposed creates —
+    # "life" / "company" / "dream" — while `bet_id` (a row uuid) is only ever
+    # set by older paths. Resolving bet_id ALONE made every document-drafted
+    # goal "unattached": rank 99, sorted last, no bet named on the card. The
+    # same one-field bug the FE's mapper had, mirrored here.
+    by_key = {str(b["key"]): b for b in lp.BETS}
+
+    def _bet(goal: dict) -> Optional[dict]:
+        row = bets.get(str(goal.get("bet_id") or ""))
+        if row:
+            return {"rank": float(row.get("order_key") or 99),
+                    "title": row.get("title") or ""}
+        locked = by_key.get(str(goal.get("collection") or "").strip().lower())
+        if locked:
+            return {"rank": float(locked["rank"]),
+                    "title": f"{locked['emoji']} {locked['title']}"}
+        return None
 
     def _bet_rank(goal: dict) -> float:
-        bet = bets.get(str(goal.get("bet_id") or ""))
         # An unattached goal sorts last. It is not a Bet-3 item — it is a goal
         # nobody has decided a bet for, and it should not outrank one that has
         # been thought about.
-        return float((bet or {}).get("order_key") or 99)
+        bet = _bet(goal)
+        return bet["rank"] if bet else 99.0
 
     def _bet_title(goal: dict) -> str:
-        bet = bets.get(str(goal.get("bet_id") or ""))
-        return (bet or {}).get("title") or ""
+        bet = _bet(goal)
+        return bet["title"] if bet else ""
+
+    def _current(goal: dict) -> bool:
+        # THE CARD ASSERTS ITS CONTENT IS TODAY'S WORK, in its own copy — so a
+        # row whose date has passed must not be selected as current, whatever
+        # the list views (rightly, honestly) still display. This is the 29/07
+        # task shown on 01/08. Due TODAY is current all day, matching the FE's
+        # calendar-day rule; the row is left out rather than re-dated, because
+        # silently rewriting the date the person wrote would be the system
+        # editing their data to make its own claim true (N5), and expiry is
+        # silent state, never a nudge (N3).
+        due = str(goal.get("due_at") or "")[:10]
+        return not due or due >= day.isoformat()
 
     eligible = [
         g for g in goals
-        if lp.BET_3_DRIVES_DAILY_EXECUTION or _bet_rank(g) < 3
+        if _current(g)
+        and (lp.BET_3_DRIVES_DAILY_EXECUTION or _bet_rank(g) < 3)
     ]
     eligible.sort(key=lambda g: (_bet_rank(g),
                                  0 if g.get("horizon") == "now" else 1,
@@ -1193,8 +1536,23 @@ def build_daily_card(user_id: str, day: date) -> dict:
         return goal.get("title") or goal.get("body") or ""
 
     one_thing = _text(eligible[0]) if eligible else ""
-    focus = [{"text": _text(g), "box": False, "bet": _bet_title(g)}
+    # `goal` / `goal_id` ride the block so the card can say what an action is
+    # TOWARD once drafting replaces the text — and so a swap can promote a
+    # focus block's own drafted action.
+    focus = [{"text": _text(g), "box": False, "bet": _bet_title(g),
+              "goal": _text(g), "goal_id": str(g.get("id") or "")}
              for g in eligible[1:4]]
+
+    def _slot(goal: dict) -> dict:
+        # The draft_meta skeleton: who each slot serves, with the context the
+        # drafting pass needs. `drafted` stays None until a draft lands, so a
+        # card built without the model is exactly the card we always built.
+        return {"goal_id": str(goal.get("id") or ""),
+                "goal": _text(goal),
+                "detail": goal.get("body") or "",
+                "due": goal.get("due_label") or "",
+                "bet": _bet_title(goal),
+                "drafted": None}
 
     return {
         "morning_checks": {
@@ -1204,6 +1562,10 @@ def build_daily_card(user_id: str, day: date) -> dict:
         "one_thing": one_thing,
         "one_thing_bet": _bet_title(eligible[0]) if eligible else "",
         "focus_blocks": focus,
+        "draft_meta": {
+            "one_thing": _slot(eligible[0]) if eligible else None,
+            "focus": [_slot(g) for g in eligible[1:4]],
+        },
         "evening_line": "am I becoming the man I described?",
         "generated_at": datetime.now(timezone.utc).isoformat(),
     }
@@ -1222,8 +1584,29 @@ def ensure_daily_card(user_id: str, day: Optional[date] = None) -> Optional[dict
     existing = store.get_day(user_id, target.isoformat())
     if existing:
         return existing
-    return store.upsert_day(user_id, target.isoformat(),
-                            build_daily_card(user_id, target))
+    # A new day is the one moment the Dalio order is recomputed — BEFORE the
+    # card is built, because the card's one-thing and focus blocks take the
+    # head of that order. Once per day, not per read: the card existing is
+    # the marker that today's ranking already ran. Any failure inside costs
+    # the re-rank and nothing else; the card is still built on yesterday's
+    # order, which was also good.
+    try:
+        rank_goals_by_expected_value(user_id)
+    except Exception as e:                          # pragma: no cover
+        logger.warning("life: goal rank failed user=%s: %s", user_id, e)
+    card = build_daily_card(user_id, target)
+    try:
+        card = draft_daily_actions(user_id, card)
+    except Exception as e:                          # pragma: no cover
+        logger.warning("life: day draft failed user=%s: %s", user_id, e)
+    row = store.upsert_day(user_id, target.isoformat(), card)
+    if row is None and "draft_meta" in card:
+        # "On main" is not "run in prod": draft_meta ships with
+        # migrations/add_life_days_draft_meta.sql. A migration nobody ran
+        # costs the day's learning record — never the card.
+        card.pop("draft_meta")
+        row = store.upsert_day(user_id, target.isoformat(), card)
+    return row
 
 
 def build_evening_pass(day_row: dict) -> dict:

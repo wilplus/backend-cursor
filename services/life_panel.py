@@ -1112,6 +1112,14 @@ def serialize_day(row: dict) -> dict:
         # the rank rule is held by the ordering, and this is what makes that
         # ordering legible on the surface it governs.
         "one_thing_bet": row.get("one_thing_bet") or "",
+        # Which GOAL the drafted action is toward — the goal's name and id
+        # only. The rest of draft_meta (drafted, accepted, displacement) is
+        # learner and gate data and NEVER reaches the wire
+        # (docs/life-checkin-learning-contract.md).
+        "one_thing_goal": ((row.get("draft_meta") or {}).get("one_thing")
+                           or {}).get("goal") or "",
+        "one_thing_goal_id": ((row.get("draft_meta") or {}).get("one_thing")
+                              or {}).get("goal_id"),
         "focus_blocks": row.get("focus_blocks") or [],
         "distraction_flagged": row.get("distraction_flagged"),
         "evening_habits_ran": bool(row.get("evening_habits_ran")),
