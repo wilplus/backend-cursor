@@ -1269,6 +1269,12 @@ def life_week_get():
     return jsonify({
         "week": lp.serialize_week(row) if row else
         {"week_start": week_start.isoformat()},
+        # The learning contract's gate (docs/life-checkin-learning-contract.md):
+        # a goal displaced from the one-thing slot on the 3 most recent card
+        # days arrives HERE, as a conscious retire / re-date / keep decision —
+        # never as silent input to the ranking. The goal's own name and due
+        # wording only; the decision uses the existing item endpoints.
+        "displaced_goals": engine.displaced_goal_for_review(user_id),
         # The weekly review is where the queued proposals arrive as a ranked
         # batch of three (L-2b).
         "proposals": _with_warrants(user_id, lp.weekly_batch(queued)),

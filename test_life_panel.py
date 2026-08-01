@@ -1434,6 +1434,106 @@ class DayDraftContractTests(unittest.TestCase):
             self._day_row(), "p1",
             {"id": "p1", "kind": "phrase", "title": "x", "status": "active"}))
 
+    # ── piece 2: the memory feeds the draft, and never the swap ───────────
+
+    _DAYS = [
+        {"day": "2026-08-01", "draft_meta": {
+            "one_thing": {"goal_id": "g2", "goal": "A marriage",
+                          "drafted": "Book the venue",
+                          "accepted": "Zarezerwuj kościół przed południem"},
+            "displaced_goal_id": "g9"}},
+        {"day": "2026-07-31", "draft_meta": {
+            "one_thing": {"goal_id": "g1", "goal": "Profitable",
+                          "drafted": "Send the deck"}}},
+    ]
+
+    def _payload_sent(self, days):
+        seen = {}
+
+        def _complete(spec, *, system, user, surface, user_id):
+            seen["user"] = user
+            return {"actions": {}}, lengine.OUTCOME_OK
+
+        with patch.object(lengine.store, "list_recent_days",
+                          return_value=days), \
+             patch.object(lengine, "_complete_ex", side_effect=_complete), \
+             patch.object(lengine, "_log_derivation"):
+            lengine.draft_daily_actions(USER, self._built())
+        return seen["user"]
+
+    def test_corrections_and_anchors_ride_the_drafting_payload(self):
+        sent = self._payload_sent(self._DAYS)
+        # The rewrite is a correction — both sides of the pair travel.
+        self.assertIn("Zarezerwuj kościół przed południem", sent)
+        self.assertIn("Book the venue", sent)
+        # The unedited draft is a positive anchor.
+        self.assertIn('"accepted_as_is"', sent)
+        self.assertIn("Send the deck", sent)
+
+    def test_the_learner_never_sees_the_displacement(self):
+        # The contract's hard line, pinned at the exact seam: the displaced
+        # goal id is in the rows the memory reads, and must not be in what
+        # the model receives.
+        sent = self._payload_sent(self._DAYS)
+        self.assertNotIn("displaced", sent)
+        self.assertNotIn("g9", sent)
+
+    def test_a_memoryless_history_still_drafts(self):
+        sent = self._payload_sent([])
+        self.assertIn('"corrections": []', sent)
+
+    def test_the_prompt_explains_both_lists(self):
+        self.assertIn("corrections", lengine._DAY_DRAFT_SYSTEM)
+        self.assertIn("accepted_as_is", lengine._DAY_DRAFT_SYSTEM)
+
+    # ── piece 2: the 3-strike gate ────────────────────────────────────────
+
+    def _strikes(self, displaced_ids, goal=None):
+        days = [{"day": f"2026-08-0{i + 1}",
+                 "draft_meta": {"displaced_goal_id": d} if d != "NO_META"
+                 else None}
+                for i, d in enumerate(displaced_ids)]
+        with patch.object(lengine.store, "list_recent_days",
+                          return_value=days), \
+             patch.object(lengine.store, "get_item",
+                          return_value=goal):
+            return lengine.displaced_goal_for_review(USER)
+
+    def test_three_mornings_running_reaches_the_review(self):
+        out = self._strikes(["g2", "g2", "g2"],
+                            {"id": "g2", "kind": "goal", "status": "active",
+                             "title": "A marriage", "due_label": "to 2031"})
+        self.assertEqual(out, [{"id": "g2", "title": "A marriage",
+                                "due_label": "to 2031"}])
+
+    def test_two_strikes_or_a_mixed_three_stay_silent(self):
+        goal = {"id": "g2", "kind": "goal", "status": "active", "title": "x"}
+        self.assertEqual(self._strikes(["g2", "g2"], goal), [])
+        self.assertEqual(self._strikes(["g2", "g1", "g2"], goal), [])
+        self.assertEqual(self._strikes(["g2", "g2", None], goal), [])
+
+    def test_a_cardless_day_does_not_break_the_run(self):
+        # Only card days count as mornings: a day with no draft_meta (no card
+        # generated) is skipped, not treated as a reset.
+        out = self._strikes(["g2", "NO_META", "g2", "g2"],
+                            {"id": "g2", "kind": "goal", "status": "active",
+                             "title": "A marriage", "due_label": None})
+        self.assertEqual(len(out), 1)
+
+    def test_a_retired_goal_is_not_proposed_back(self):
+        out = self._strikes(["g2", "g2", "g2"],
+                            {"id": "g2", "kind": "goal", "status": "retired",
+                             "title": "x"})
+        self.assertEqual(out, [])
+
+    def test_the_review_item_carries_no_count_and_no_copy(self):
+        # AC-9/N3: the goal's own name and due wording, nothing else — no
+        # streak, no "you missed it" sentence, no number.
+        out = self._strikes(["g2", "g2", "g2"],
+                            {"id": "g2", "kind": "goal", "status": "active",
+                             "title": "A marriage", "due_label": "to 2031"})
+        self.assertEqual(sorted(out[0].keys()), ["due_label", "id", "title"])
+
     # ── the wire: goal name yes, learner data never ───────────────────────
 
     def test_the_wire_carries_the_goal_and_never_the_learning(self):

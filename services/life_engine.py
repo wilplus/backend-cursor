@@ -1281,7 +1281,71 @@ goal, never merge two goals, never invent a goal that is not given, and \
 never add advice, encouragement or commentary — the action line is the whole \
 answer.
 
+The input may carry the person's own history: `corrections` are drafts they \
+rewrote (match how they scope and phrase — their corrections outrank these \
+instructions), and `accepted_as_is` are drafts they kept unchanged (that \
+register was right; stay in it).
+
 Return STRICT JSON: {{"actions": {{"<goal_id>": "<the action>", ...}}}}"""
+
+
+def _correction_examples(user_id: str) -> dict:
+    """The drafting memory (contract: extraction + formulation learn silently).
+
+    Reads the last ~20 card days and returns two lists for the drafting
+    prompt: `corrections` — (goal, drafted, accepted) where the founder
+    rewrote the draft — and `accepted_as_is` — drafts that stood unedited,
+    the positive anchors that keep corrections from overcorrecting.
+    Corrections are weighted first: they fill the window before any anchor.
+
+    THE DISPLACEMENT IS NEVER READ HERE. A swap says which goal led the day;
+    it says nothing about wording, and the contract's hard line is that the
+    learner never sees it (a test greps this function's output for it).
+    Any store failure returns empty lists — drafting proceeds memoryless."""
+    corrections: list[dict] = []
+    anchors: list[dict] = []
+    try:
+        days = store.list_recent_days(user_id, limit=20)
+    except Exception:                               # pragma: no cover
+        return {"corrections": [], "accepted_as_is": []}
+    for row in days:
+        slot = (row.get("draft_meta") or {}).get("one_thing") or {}
+        drafted = (slot.get("drafted") or "").strip()
+        if not drafted:
+            continue
+        accepted = (slot.get("accepted") or "").strip()
+        example = {"goal": (slot.get("goal") or "")[:300],
+                   "drafted": drafted[:500]}
+        if accepted and accepted != drafted:
+            corrections.append({**example, "accepted": accepted[:500]})
+        else:
+            anchors.append(example)
+    kept = corrections[:20]
+    return {"corrections": kept,
+            "accepted_as_is": anchors[:max(0, 20 - len(kept))]}
+
+
+def displaced_goal_for_review(user_id: str) -> list[dict]:
+    """The gate's read (contract: priority is gated, never learned).
+
+    The same goal displaced on the 3 most recent card days becomes a Sunday
+    review item — retire / re-date / keep, decided consciously. Served as
+    data for the review to render; no count, no streak, no copy: the goal's
+    own name and due wording, nothing else (AC-9/N3)."""
+    days = [row for row in store.list_recent_days(user_id, limit=6)
+            if row.get("draft_meta") is not None][:3]
+    if len(days) < 3:
+        return []
+    ids = {str((row.get("draft_meta") or {}).get("displaced_goal_id") or "")
+           for row in days}
+    if len(ids) != 1 or "" in ids:
+        return []
+    goal = store.get_item(user_id, ids.pop())
+    if not goal or goal.get("kind") != "goal" \
+            or (goal.get("status") or "active") != "active":
+        return []
+    return [{"id": goal.get("id"), "title": goal.get("title") or "",
+             "due_label": goal.get("due_label")}]
 
 
 def draft_daily_actions(user_id: str, card: dict) -> dict:
@@ -1307,7 +1371,11 @@ def draft_daily_actions(user_id: str, card: dict) -> dict:
                    "detail": (s.get("detail") or "")[:300],
                    "due": s.get("due") or "",
                    "bet": s.get("bet") or ""}
-                  for s in slots]
+                  for s in slots],
+        # The silent learner's whole influence on the system: worked examples
+        # of how this person corrected earlier drafts. Nothing else of the
+        # history rides — in particular, never the displacement.
+        **_correction_examples(user_id),
     }
     parsed, outcome = _complete_ex(
         SPEC_LIFE_DAY_DRAFT,

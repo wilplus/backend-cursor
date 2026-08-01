@@ -643,6 +643,23 @@ def get_day(user_id: str, day: str) -> Optional[dict]:
         return None
 
 
+def list_recent_days(user_id: str, *, limit: int = 20) -> list[dict]:
+    """Newest card days first. One fetch, two DISJOINT consumers: the drafting
+    memory reads the (drafted → accepted) pairs, the Sunday-review gate reads
+    the displacement — and per the learning contract they never read each
+    other's field. Sharing the query is fine; sharing the data is the breach."""
+    try:
+        return _rows(
+            _t("life_days").select("day, draft_meta")
+            .eq("user_id", user_id).order("day", desc=True)
+            .limit(max(1, min(limit, 60))).execute()
+        )
+    except Exception as e:
+        logger.warning("life: list_recent_days failed user=%s: %s",
+                       user_id, e)
+        return []
+
+
 def day_by_id(user_id: str, day_id: str) -> Optional[dict]:
     """One day row, owner-scoped. The PATCH reads it before writing, because
     draft_meta is a MERGE (accepted text, a displacement) into what the
