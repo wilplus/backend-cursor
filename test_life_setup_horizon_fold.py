@@ -567,3 +567,117 @@ class ExtractionHonestyRouteTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class StrictDueDateTests(unittest.TestCase):
+    """Extraction resolves the date; the label keeps the person's words.
+
+    Founder 2026-08-01: the app forces concrete, achievable metrics, so a
+    vague "to July 2031" must become a real calendar date at EXTRACTION —
+    not be patched up by a frontend parser later.
+
+      D-1  the resolved date leads, and the verbatim label survives beside it;
+      D-2  parse_due_label stays the fallback for a row the model dated "";
+      D-3  the date rides the round trip, so a ticked goal is CREATED with the
+           date it was drafted with;
+      D-4  the prompt is told today, because "[Aug]" cannot be resolved
+           without it.
+    """
+
+    def setUp(self):
+        try:
+            from services import life_import, life_engine
+        except Exception as e:                      # pragma: no cover
+            self.skipTest(f"needs app deps: {e}")
+        self.imp = life_import
+        self.eng = life_engine
+
+    # ── D-1 ───────────────────────────────────────────────────────────────
+
+    def test_the_resolved_date_is_used_and_the_label_is_untouched(self):
+        plan = self.imp.plan_strategy("u1", {"goals": [{
+            "title": "A marriage with years on it",
+            "due_label": "to July 2031",
+            "due_date": "2031-07-01",
+            "horizon": "five_year",
+        }]})
+        goal = next(i for i in plan["items"] if i["kind"] == "goal")
+        self.assertEqual(goal["due_at"], "2031-07-01")
+        # The card still reads what they wrote, not a database row.
+        self.assertEqual(goal["due_label"], "to July 2031")
+
+    def test_a_label_the_old_parser_could_never_read_now_has_a_date(self):
+        # The exact regression: parse_due_label handles "[Jul '27]" and "2035"
+        # but not a "to ..." prefix, so this goal had no date and could not be
+        # placed on the timeline at all.
+        self.assertIsNone(self.imp.lp.parse_due_label("to July 2031"))
+        plan = self.imp.plan_strategy("u1", {"goals": [{
+            "title": "x", "due_label": "to July 2031",
+            "due_date": "2031-07-01"}]})
+        goal = next(i for i in plan["items"] if i["kind"] == "goal")
+        self.assertEqual(goal["due_at"], "2031-07-01")
+
+    # ── D-2 ───────────────────────────────────────────────────────────────
+
+    def test_the_parser_is_still_the_fallback(self):
+        # An older payload, or a row the model gave no date for, behaves
+        # exactly as it did before.
+        plan = self.imp.plan_strategy("u1", {"goals": [
+            {"title": "a", "due_label": "2035"},
+            {"title": "b", "due_label": "2035", "due_date": ""},
+        ]})
+        for goal in (i for i in plan["items"] if i["kind"] == "goal"):
+            self.assertEqual(goal["due_at"], "2035-01-01")
+
+    def test_an_undateable_goal_still_has_no_date(self):
+        # "Someday" gets none, and nothing invents one. A deadline nobody
+        # wrote reads as a commitment they made.
+        plan = self.imp.plan_strategy("u1", {"goals": [
+            {"title": "x", "due_label": "someday", "due_date": ""}]})
+        goal = next(i for i in plan["items"] if i["kind"] == "goal")
+        self.assertIsNone(goal["due_at"])
+
+    # ── D-3 ───────────────────────────────────────────────────────────────
+
+    def test_the_date_survives_the_tick(self):
+        # Drafted with a date, displayed, ticked, posted back. Recomputing
+        # from the label here would create the row WITHOUT the date it was
+        # shown with.
+        fields = self.imp.sanitize_confirmed_item({
+            "kind": "goal", "title": "A marriage with years on it",
+            "due_label": "to July 2031", "due_at": "2031-07-01"})
+        self.assertEqual(fields["due_at"], "2031-07-01")
+        self.assertEqual(fields["due_label"], "to July 2031")
+
+    def test_the_tick_accepts_either_spelling(self):
+        for key in ("due_at", "dueAt", "due_date"):
+            fields = self.imp.sanitize_confirmed_item({
+                "kind": "goal", "title": "x", "due_label": "to July 2031",
+                key: "2031-07-01"})
+            self.assertEqual(fields["due_at"], "2031-07-01", key)
+
+    def test_the_tick_falls_back_to_the_label(self):
+        fields = self.imp.sanitize_confirmed_item({
+            "kind": "goal", "title": "x", "due_label": "2035"})
+        self.assertEqual(fields["due_at"], "2035-01-01")
+
+    # ── D-4 ───────────────────────────────────────────────────────────────
+
+    def test_the_prompt_asks_for_a_strict_date_and_is_told_today(self):
+        self.assertIn("due_date", self.eng._DOC_DRAFT_SYSTEM)
+        self.assertIn("YYYY-MM-DD", self.eng._DOC_DRAFT_SYSTEM)
+        # Without today's date "[Aug]" and "by Friday" cannot be resolved, and
+        # a model guessing the year puts a 2026 goal on 2024.
+        self.assertIn("{today}", self.eng._DOC_DRAFT_SYSTEM)
+
+    def test_the_prompt_still_says_the_label_is_verbatim(self):
+        # The resolve is ADDITIVE. If this ever stops holding, the goal cards
+        # start reading as ISO dates instead of what the person wrote.
+        self.assertIn("VERBATIM", self.eng._DOC_DRAFT_SYSTEM)
+
+    def test_the_prompt_formats_without_error(self):
+        # It carries JSON braces, so every literal one must be doubled — a
+        # miss here is a KeyError at the first draft, not at import.
+        rendered = self.eng._DOC_DRAFT_SYSTEM.format(today="2026-08-01")
+        self.assertIn("Today is 2026-08-01", rendered)
+        self.assertIn('{"goals"', rendered)

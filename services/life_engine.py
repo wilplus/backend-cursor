@@ -720,15 +720,34 @@ def generate_documents(user_id: str, answers: dict) -> dict[str, str]:
     return out
 
 
-_DOC_DRAFT_SYSTEM = """You read ONE strategy document a user uploaded and \
-EXTRACT what THEY EXPLICITLY WROTE. You are a transcriber, not a coach: you \
-never invent, never complete, and never add an ambition they did not state. \
-If the document states nothing for a list, return it empty.
+_DOC_DRAFT_SYSTEM = """Today is {today}.
+
+You read ONE strategy document a user uploaded and EXTRACT what THEY \
+EXPLICITLY WROTE. You are a transcriber, not a coach: you never invent, never \
+complete, and never add an ambition they did not state. If the document states \
+nothing for a list, return it empty.
 
 Extract three lists:
  1. goals — each with the user's own wording. Copy any due notation VERBATIM \
-(e.g. "[NOW]", "[This week]", "[Aug]", "[Jul '27]", "2035") into due_label. \
-horizon is one of: now, week, month, quarter, year, five_year, ten_year, \
+(e.g. "[NOW]", "[This week]", "[Aug]", "[Jul '27]", "to July 2031", "2035") \
+into due_label — that is what the person reads back, so it keeps their words.
+
+    ALSO RESOLVE that notation into due_date, a strict calendar date, \
+YYYY-MM-DD. This is the one place you are allowed to compute rather than copy, \
+and it is not interpretation: "to July 2031" is 2031-07-01, "[Aug]" is the \
+first day of the NEXT August from today, "[Jul '27]" is 2027-07-01, "2035" is \
+2035-01-01, "by Friday" is the coming Friday, "this week" is the coming Sunday, \
+"end of the quarter" is the last day of the current quarter. A month with no \
+year means the next time that month occurs. A bare year means January 1st of \
+it. Never a date in the past for a goal written as still to come.
+
+    due_date is "" ONLY when the document gives no timing at all for that goal, \
+or gives one no calendar can hold ("someday", "eventually"). A standing \
+intention like "[NOW]" has no end date either: leave due_date "" for it. Do not \
+guess a date to fill the field — an invented deadline reads as a fact the \
+person committed to.
+
+    horizon is one of: now, week, month, quarter, year, five_year, ten_year, \
 twenty_year — or "" when the document does not say. Use "week" only when the \
 document itself scopes the goal to a week ("this week", "by Friday", a weekly \
 plan or review heading); a goal simply written down under no heading is "", \
@@ -738,12 +757,14 @@ does not tie the goal to a bet.
  3. distractions — each with the ENVIRONMENTAL response the document pairs \
 it with, if one is written; "" otherwise.
 
-Keep the user's language. Do not translate.
+Keep the user's language. Do not translate. due_date is a date, not language: \
+it is the same digits whatever the document is written in.
 
 Return STRICT JSON:
-{"goals": [{"title": "", "horizon": "", "due_label": "", "bet": ""}],
- "habits": [{"title": ""}],
- "distractions": [{"title": "", "response": ""}]}"""
+{{"goals": [{{"title": "", "horizon": "", "due_label": "", "due_date": "", \
+"bet": ""}}],
+ "habits": [{{"title": ""}}],
+ "distractions": [{{"title": "", "response": ""}}]}}"""
 
 SPEC_LIFE_DOC_DRAFT = LLMSpec(
     model=STRONG_MODEL,
@@ -880,7 +901,11 @@ def draft_items_from_document_ex(
     it when we simply ran out of room reading it."""
     parsed, outcome = _complete_ex(
         SPEC_LIFE_DOC_DRAFT,
-        system=_DOC_DRAFT_SYSTEM,
+        # The date is PASSED IN, not left to the model's own idea of now.
+        # "[Aug]", "by Friday" and "this week" cannot be resolved without it,
+        # and a model guessing the year is how a 2026 goal lands on 2024.
+        system=_DOC_DRAFT_SYSTEM.format(
+            today=datetime.now(timezone.utc).date().isoformat()),
         user=(text or "")[:20000],
         surface="doc_draft",
         user_id=user_id,

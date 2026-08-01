@@ -507,7 +507,16 @@ def plan_strategy(user_id: str, payload: dict) -> dict:
             "status": "active",
             "horizon": horizon if horizon in lp.HORIZONS else None,
             "due_label": label,
-            "due_at": lp.parse_due_label(label),
+            # THE MODEL'S RESOLVED DATE LEADS (founder 2026-08-01). The label
+            # is the person's own wording and stays exactly as written; the
+            # date is what places a marker on the timeline. parse_due_label
+            # only ever handled the notations it was taught — "[Jul '27]",
+            # "2035", "Aug" — and returned None for anything else, so a goal
+            # written "to July 2031" had no date at all and could never appear
+            # on the canvas. Extraction resolves it now, and the parser stays
+            # as the fallback for a row the model gave nothing for.
+            "due_at": (_date_only(raw.get("due_date"))
+                       or lp.parse_due_label(label)),
             "collection": _text(raw.get("bet")) or None,
             "order_key": float(index + 1) * 1000.0,
         })
@@ -865,7 +874,16 @@ def sanitize_confirmed_item(raw: Any) -> Optional[dict]:
         "status": "active",
         "horizon": horizon if horizon in lp.HORIZONS else None,
         "due_label": label,
-        "due_at": lp.parse_due_label(label),
+        # The resolved date RIDES THE ROUND TRIP. A goal is drafted with a
+        # due_at the extraction worked out, displayed, ticked, and posted back
+        # here — and recomputing it from the label alone would silently throw
+        # that away at the last step, so a goal written "to July 2031" would
+        # draft with a date and then be CREATED without one. Both spellings
+        # are accepted for the same reason bet/collection both are: neither
+        # side should have to translate.
+        "due_at": (_date_only(raw.get("due_at") or raw.get("dueAt")
+                              or raw.get("due_date"))
+                   or lp.parse_due_label(label)),
         "collection": collection,
     }
     external_id = _text(raw.get("external_id") or raw.get("externalId"))[:200]
