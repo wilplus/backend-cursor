@@ -177,11 +177,13 @@ class PriceTableTests(unittest.TestCase):
         self.assertEqual(grant_for("starter"), 50_000)
         self.assertEqual(grant_for("pro"), 300_000)
         self.assertEqual(grant_for("max"), 1_500_000)
-        # The coach cap deliberately does NOT follow the 1x/6x/30x ladder:
-        # 30 reviews would be 7.5 hours of the founder's month.
+        # Founder 2026-08-01: Max moves 10 -> 30 reviews. This REVERSES the
+        # earlier "30 would be 7.5 hours of the founder's month" note, with the
+        # calendar cost known and accepted at that size. The cap still exists
+        # and still binds independently of balance; only its Max value moved.
         self.assertEqual([coach_reviews_for(t)
                           for t in ("free", "starter", "pro", "max")],
-                         [0, 1, 6, 10])
+                         [0, 1, 6, 30])
 
     def test_unknown_tier_degrades_to_free_never_raises(self):
         from services.token_prices import grant_for, normalize_tier
@@ -291,7 +293,7 @@ class PeriodResetTests(unittest.TestCase):
 
     def test_coach_reviews_do_not_carry(self):
         """Non-rolling is the entire point of the cap — three quiet months
-        must not bank 30 reviews into a single week."""
+        must not bank 90 reviews into a single week."""
         start = datetime.now(UTC) - timedelta(days=95)
         db = FakeDB(account_row("max", balance=0, start=start, reviews=10))
         out = self.ta.ensure_period_current("u1", database=db)
@@ -366,7 +368,7 @@ class ChargeTests(unittest.TestCase):
     def test_coach_cap_binds_independently_of_a_large_balance(self):
         """A Max user holding 1.4M tokens can still be out of reviews. That is
         the design: the cap protects the founder's calendar, not the margin."""
-        db = FakeDB(account_row("max", balance=1_400_000, reviews=10))
+        db = FakeDB(account_row("max", balance=1_400_000, reviews=30))
         r = self.ta.charge("u1", "coach_review", ref_id="arc9", database=db)
         self.assertFalse(r.ok)
         self.assertEqual(r.reason, "coach_cap_reached")
