@@ -1146,6 +1146,113 @@ def export_user_copy(user_id: str) -> Optional[list[dict]]:
 # BE-8 — the daily card
 # ═════════════════════════════════════════════════════════════════════════
 
+# Founder 2026-08-01, via the FE handoff: "separate must-dos from like-to-dos,
+# rank by expected value (probability × payoff, weighed against the cost of
+# waiting), highest-impact-highest-probability first — for each bet."
+#
+# THE NUMBERS STAY IN THE MODEL'S HEAD (AC-9 / N4). This call returns an
+# ORDER of ids and nothing else: no expected value, no probability, no payoff
+# ever reaches a payload, a log line or a table. What persists is order_key —
+# a sort position, the same field every list already rides. The estimate is
+# internal machinery, never a surfaced figure.
+SPEC_LIFE_GOAL_RANK = LLMSpec(
+    model=CHEAP_MODEL,
+    # Near-deterministic: the same goals should rank the same way on a re-run.
+    # A ranking that reshuffles daily without the goals changing reads as the
+    # system changing its mind about the founder's priorities overnight.
+    temperature=0.1,
+    max_tokens=1000,
+    response_format={"type": "json_object"},
+)
+
+_GOAL_RANK_SYSTEM = """You order ONE person's goals within each of their \
+three bets, following Ray Dalio's expected-value discipline:
+
+ * separate the must-dos from the like-to-dos — a goal with a hard \
+consequence for missing it outranks a nice-to-have;
+ * among the rest, rank by expected value: probability of success times the \
+size of the payoff, weighed against the cost of waiting — \
+highest-impact-highest-probability first;
+ * a goal whose window is closing soon outranks an equal goal that can wait.
+
+Estimate whatever you need internally. Return ONLY the order — never a \
+number, a score or a reason. Do not drop, merge or invent an id; every id \
+you were given for a bet appears exactly once in that bet's list.
+
+Return STRICT JSON: {"order": {"<bet>": ["<id>", ...], ...}}"""
+
+
+def rank_goals_by_expected_value(user_id: str) -> int:
+    """Write the Dalio order into ``order_key``, per bet. Returns rows moved.
+
+    Runs at GENERATION TIME — once, when the day's card does not exist yet —
+    because that is the moment the order is consumed: the card's one-thing and
+    focus blocks take the head of it, and every list view sorts by it. The FE
+    defers to this order for every undated goal, so writing it here is the
+    whole of the ship.
+
+    THE FAILURE MODE IS THE STANDING BARGAIN: any failure costs the re-rank
+    and nothing else. The card is still built, the lists still serve, and the
+    order is simply yesterday's — which was also good.
+
+    Only ``order_key`` is ever written. A goal the model forgets keeps its
+    place at the tail in its previous order; an id the model invents is
+    ignored; a bet with fewer than two goals has nothing to rank."""
+    goals = [g for g in store.list_items(user_id, kind="goal",
+                                         status="active")
+             if str(g.get("collection") or "").strip().lower()
+             in {str(b["key"]) for b in lp.BETS}]
+    grouped: dict[str, list[dict]] = {}
+    for goal in goals:
+        grouped.setdefault(
+            str(goal.get("collection")).strip().lower(), []).append(goal)
+    rankable = {key: rows for key, rows in grouped.items() if len(rows) >= 2}
+    if not rankable:
+        return 0
+
+    payload = {
+        key: [{"id": str(g.get("id")),
+               "goal": (g.get("title") or "")[:300],
+               "detail": (g.get("body") or "")[:300],
+               "due": g.get("due_label") or "",
+               "horizon": g.get("horizon") or ""}
+              for g in rows]
+        for key, rows in rankable.items()
+    }
+    parsed, outcome = _complete_ex(
+        SPEC_LIFE_GOAL_RANK,
+        system=_GOAL_RANK_SYSTEM,
+        user=json.dumps(payload, ensure_ascii=False)[:20000],
+        surface="goal_rank",
+        user_id=user_id,
+    )
+    order = (parsed or {}).get("order")
+    if outcome in FAILED_OUTCOMES or not isinstance(order, dict):
+        return 0
+
+    moved = 0
+    for key, rows in rankable.items():
+        proposed = order.get(key)
+        if not isinstance(proposed, list):
+            continue
+        known = {str(g.get("id")): g for g in rows}
+        # The model's order first (unknown ids dropped), then anything it
+        # forgot, in the order it already had — nothing is ever lost to a
+        # short answer.
+        ranked = [str(i) for i in proposed if str(i) in known]
+        ranked += [gid for g in rows
+                   if (gid := str(g.get("id"))) not in ranked]
+        for index, gid in enumerate(ranked):
+            new_key = float(index + 1) * 1000.0
+            if float(known[gid].get("order_key") or 0) == new_key:
+                continue
+            if store.update_item(user_id, gid, {"order_key": new_key}):
+                moved += 1
+    _log_derivation("goal_rank", user_id=user_id, outcome=outcome,
+                    bets=len(rankable), moved=moved)
+    return moved
+
+
 def build_daily_card(user_id: str, day: date) -> dict:
     """The card's content for one date, from the user's own rows.
 
@@ -1169,21 +1276,51 @@ def build_daily_card(user_id: str, day: date) -> dict:
     goals = store.list_items(user_id, kind="goal", status="active")
     bets = {str(b.get("id")): b
             for b in store.list_items(user_id, kind="bet", status="active")}
+    # `collection` carries the bet on every goal apply-proposed creates —
+    # "life" / "company" / "dream" — while `bet_id` (a row uuid) is only ever
+    # set by older paths. Resolving bet_id ALONE made every document-drafted
+    # goal "unattached": rank 99, sorted last, no bet named on the card. The
+    # same one-field bug the FE's mapper had, mirrored here.
+    by_key = {str(b["key"]): b for b in lp.BETS}
+
+    def _bet(goal: dict) -> Optional[dict]:
+        row = bets.get(str(goal.get("bet_id") or ""))
+        if row:
+            return {"rank": float(row.get("order_key") or 99),
+                    "title": row.get("title") or ""}
+        locked = by_key.get(str(goal.get("collection") or "").strip().lower())
+        if locked:
+            return {"rank": float(locked["rank"]),
+                    "title": f"{locked['emoji']} {locked['title']}"}
+        return None
 
     def _bet_rank(goal: dict) -> float:
-        bet = bets.get(str(goal.get("bet_id") or ""))
         # An unattached goal sorts last. It is not a Bet-3 item — it is a goal
         # nobody has decided a bet for, and it should not outrank one that has
         # been thought about.
-        return float((bet or {}).get("order_key") or 99)
+        bet = _bet(goal)
+        return bet["rank"] if bet else 99.0
 
     def _bet_title(goal: dict) -> str:
-        bet = bets.get(str(goal.get("bet_id") or ""))
-        return (bet or {}).get("title") or ""
+        bet = _bet(goal)
+        return bet["title"] if bet else ""
+
+    def _current(goal: dict) -> bool:
+        # THE CARD ASSERTS ITS CONTENT IS TODAY'S WORK, in its own copy — so a
+        # row whose date has passed must not be selected as current, whatever
+        # the list views (rightly, honestly) still display. This is the 29/07
+        # task shown on 01/08. Due TODAY is current all day, matching the FE's
+        # calendar-day rule; the row is left out rather than re-dated, because
+        # silently rewriting the date the person wrote would be the system
+        # editing their data to make its own claim true (N5), and expiry is
+        # silent state, never a nudge (N3).
+        due = str(goal.get("due_at") or "")[:10]
+        return not due or due >= day.isoformat()
 
     eligible = [
         g for g in goals
-        if lp.BET_3_DRIVES_DAILY_EXECUTION or _bet_rank(g) < 3
+        if _current(g)
+        and (lp.BET_3_DRIVES_DAILY_EXECUTION or _bet_rank(g) < 3)
     ]
     eligible.sort(key=lambda g: (_bet_rank(g),
                                  0 if g.get("horizon") == "now" else 1,
@@ -1222,6 +1359,16 @@ def ensure_daily_card(user_id: str, day: Optional[date] = None) -> Optional[dict
     existing = store.get_day(user_id, target.isoformat())
     if existing:
         return existing
+    # A new day is the one moment the Dalio order is recomputed — BEFORE the
+    # card is built, because the card's one-thing and focus blocks take the
+    # head of that order. Once per day, not per read: the card existing is
+    # the marker that today's ranking already ran. Any failure inside costs
+    # the re-rank and nothing else; the card is still built on yesterday's
+    # order, which was also good.
+    try:
+        rank_goals_by_expected_value(user_id)
+    except Exception as e:                          # pragma: no cover
+        logger.warning("life: goal rank failed user=%s: %s", user_id, e)
     return store.upsert_day(user_id, target.isoformat(),
                             build_daily_card(user_id, target))
 

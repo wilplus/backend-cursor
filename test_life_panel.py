@@ -936,6 +936,118 @@ class ChatIsolationTests(unittest.TestCase):
 # ═════════════════════════════════════════════════════════════════════════
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
+class GoalRankTests(unittest.TestCase):
+    """The Dalio order (FE handoff, 2026-08-02): expected value estimated
+    INTERNALLY, and only an ORDER ever leaves the model — written to
+    order_key, per bet, at day-card generation time."""
+
+    GOALS = [
+        {"id": "g1", "kind": "goal", "title": "Nice-to-have",
+         "collection": "life", "order_key": 1000.0},
+        {"id": "g2", "kind": "goal", "title": "Must-do",
+         "collection": "life", "order_key": 2000.0},
+        {"id": "g3", "kind": "goal", "title": "Solo",
+         "collection": "company", "order_key": 1000.0},
+    ]
+
+    def _rank(self, order, goals=None, outcome=None):
+        writes = []
+
+        def _update(user_id, item_id, fields):
+            writes.append((item_id, dict(fields)))
+            return {"id": item_id, **fields}
+
+        with patch.object(lengine.store, "list_items",
+                          return_value=list(goals or self.GOALS)), \
+             patch.object(lengine.store, "update_item",
+                          side_effect=_update), \
+             patch.object(lengine, "_complete_ex",
+                          return_value=({"order": order},
+                                        outcome or lengine.OUTCOME_OK)), \
+             patch.object(lengine, "_log_derivation"):
+            moved = lengine.rank_goals_by_expected_value(USER)
+        return moved, writes
+
+    def test_the_model_order_lands_in_order_key(self):
+        moved, writes = self._rank({"life": ["g2", "g1"]})
+        self.assertEqual(dict(writes), {"g2": {"order_key": 1000.0},
+                                        "g1": {"order_key": 2000.0}})
+        self.assertEqual(moved, 2)
+
+    def test_only_order_key_is_ever_written(self):
+        # AC-9/N4 on the write path: whatever the model estimated stays in
+        # its head. A probability or payoff column appearing here is the
+        # fence breach this pins against.
+        _, writes = self._rank({"life": ["g2", "g1"]})
+        for _, fields in writes:
+            self.assertEqual(list(fields.keys()), ["order_key"])
+
+    def test_an_unchanged_order_writes_nothing(self):
+        moved, writes = self._rank({"life": ["g1", "g2"]})
+        self.assertEqual(writes, [])
+        self.assertEqual(moved, 0)
+
+    def test_a_bet_with_one_goal_is_not_sent_to_the_model(self):
+        # "company" holds only g3: nothing to rank, nothing to pay for.
+        _, writes = self._rank({"company": ["g3"]})
+        self.assertNotIn("g3", [w[0] for w in writes])
+
+    def test_a_forgotten_id_keeps_its_place_at_the_tail(self):
+        # A short answer must never lose a goal: g1 was not mentioned, so it
+        # follows the ranked head in the order it already had.
+        _, writes = self._rank({"life": ["g2"]})
+        self.assertEqual(dict(writes), {"g2": {"order_key": 1000.0},
+                                        "g1": {"order_key": 2000.0}})
+
+    def test_an_invented_id_is_ignored(self):
+        _, writes = self._rank({"life": ["ghost", "g2", "g1"]})
+        self.assertEqual([w[0] for w in writes], ["g2", "g1"])
+
+    def test_a_failed_call_moves_nothing(self):
+        moved, writes = self._rank(None, outcome=lengine.OUTCOME_TRUNCATED)
+        self.assertEqual(writes, [])
+        self.assertEqual(moved, 0)
+
+    def test_the_card_generation_ranks_once_per_day(self):
+        # The card existing IS the marker that today's ranking already ran:
+        # a second read must not re-rank (or re-spend).
+        with patch.object(lengine.store, "get_day",
+                          return_value={"id": "d1"}), \
+             patch.object(lengine,
+                          "rank_goals_by_expected_value") as rank:
+            lengine.ensure_daily_card(USER, date(2026, 8, 1))
+        rank.assert_not_called()
+
+    def test_a_new_day_ranks_before_it_builds(self):
+        calls = []
+        with patch.object(lengine.store, "get_day", return_value=None), \
+             patch.object(lengine.store, "upsert_day",
+                          side_effect=lambda *a: calls.append("build") or {}), \
+             patch.object(lengine, "rank_goals_by_expected_value",
+                          side_effect=lambda *a, **k: calls.append("rank")), \
+             patch.object(lengine, "build_daily_card", return_value={}):
+            lengine.ensure_daily_card(USER, date(2026, 8, 1))
+        self.assertEqual(calls, ["rank", "build"])
+
+    def test_a_rank_crash_does_not_cost_the_card(self):
+        with patch.object(lengine.store, "get_day", return_value=None), \
+             patch.object(lengine.store, "upsert_day",
+                          return_value={"id": "d1"}) as up, \
+             patch.object(lengine, "rank_goals_by_expected_value",
+                          side_effect=RuntimeError("boom")), \
+             patch.object(lengine, "build_daily_card", return_value={}):
+            row = lengine.ensure_daily_card(USER, date(2026, 8, 1))
+        self.assertEqual(row, {"id": "d1"})
+        up.assert_called_once()
+
+    def test_the_prompt_never_asks_for_a_number_back(self):
+        # The order is the only thing allowed out of the model's head.
+        self.assertIn("Return ONLY the order", lengine._GOAL_RANK_SYSTEM)
+        self.assertIn("never a", lengine._GOAL_RANK_SYSTEM)
+
+
+
+@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
 class DailyCardTests(unittest.TestCase):
     """All three bets are eligible from day one. What holds the weekly
     document's rule is the SORT, not an exclusion — so these tests are what
@@ -1002,6 +1114,70 @@ class DailyCardTests(unittest.TestCase):
         self.assertEqual(card["one_thing"], "")
         self.assertEqual(card["one_thing_bet"], "")
         self.assertEqual(card["focus_blocks"], [])
+
+    # ── the 29/07 task shown on 01/08 (FE handoff, 2026-08-02) ────────────
+
+    def test_a_past_dated_goal_is_never_selected_as_current(self):
+        # The card asserts its content is today's work in its own copy, so no
+        # display rule downstream can contradict it. The list views still
+        # serve the row (the FE chips it "Past its date"); the CARD must not.
+        card = self._card([
+            {"id": "g1", "title": "Task from the 29th", "bet_id": "b1",
+             "due_at": "2026-07-24", "order_key": 1},
+            {"id": "g2", "title": "Current work", "bet_id": "b2",
+             "order_key": 9},
+        ])
+        self.assertEqual(card["one_thing"], "Current work")
+        self.assertNotIn("Task from the 29th",
+                         [b["text"] for b in card["focus_blocks"]])
+
+    def test_due_today_is_current_all_day(self):
+        # Calendar-day, matching the FE's rule: a goal due on the card's own
+        # date is today's work until midnight, not stale at 00:01.
+        card = self._card([{"id": "g1", "title": "Due today",
+                            "bet_id": "b1", "due_at": "2026-07-26"}])
+        self.assertEqual(card["one_thing"], "Due today")
+
+    def test_undated_goals_are_untouched_by_the_date_guard(self):
+        card = self._card([{"id": "g1", "title": "Standing goal",
+                            "bet_id": "b1"}])
+        self.assertEqual(card["one_thing"], "Standing goal")
+
+    def test_a_past_date_alone_yields_an_empty_card_not_a_stale_one(self):
+        # An empty one-thing is an honest answer; yesterday's work asserted
+        # as today's is not.
+        card = self._card([{"id": "g1", "title": "Old", "bet_id": "b1",
+                            "due_at": "2020-01-01"}])
+        self.assertEqual(card["one_thing"], "")
+
+    # ── collection carries the bet (same bug the FE mapper had) ───────────
+
+    def test_a_document_drafted_goal_ranks_under_its_bet(self):
+        # apply-proposed writes `collection`, not `bet_id`. Resolving bet_id
+        # alone made every drafted goal "unattached": rank 99, sorted last,
+        # no bet named on the card.
+        card = self._card([
+            {"id": "g3", "title": "7T research", "bet_id": "b3",
+             "order_key": 1},
+            {"id": "g1", "title": "A marriage with years on it",
+             "collection": "life", "order_key": 9},
+        ])
+        self.assertEqual(card["one_thing"], "A marriage with years on it")
+        self.assertEqual(card["one_thing_bet"], "🟢 The Life")
+
+    def test_bet_id_still_wins_when_both_are_present(self):
+        card = self._card([{"id": "g1", "title": "x", "bet_id": "b2",
+                            "collection": "life"}])
+        self.assertEqual(card["one_thing_bet"], "🔵 The Company")
+
+    def test_a_wall_collection_is_not_a_bet(self):
+        card = self._card([
+            {"id": "g1", "title": "Wall thing", "collection": "wall",
+             "order_key": 1},
+            {"id": "g2", "title": "Real goal", "collection": "company",
+             "order_key": 9},
+        ])
+        self.assertEqual(card["one_thing"], "Real goal")
 
     def test_the_evening_pass_recaps_the_morning_without_judging_it(self):
         summary = lengine.build_evening_pass({
