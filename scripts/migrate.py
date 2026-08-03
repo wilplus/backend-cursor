@@ -283,6 +283,12 @@ def connect(database_url: str | None = None):
             "  `python scripts/migrate.py plan` and paste each file into the\n"
             "  Supabase SQL Editor — that remains a supported workflow."
         )
+    # Before the driver import, not after: this diagnoses the URL, which has
+    # nothing to do with whether psycopg2 is installed. Warning later means an
+    # environment missing the driver never learns its URL is also wrong, and
+    # fixes one problem only to hit the other.
+    warn_if_transaction_pooler(url)
+
     try:
         import psycopg2  # noqa: PLC0415 — lazy on purpose; not a runtime dep of app.py
     except ImportError as exc:
@@ -291,8 +297,6 @@ def connect(database_url: str | None = None):
             "  It is listed in requirements.txt for the runner; the Flask app\n"
             "  never imports it."
         ) from exc
-
-    warn_if_transaction_pooler(url)
 
     try:
         conn = psycopg2.connect(url)

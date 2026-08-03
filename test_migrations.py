@@ -25,6 +25,12 @@ What this suite defends, in order of how badly it hurts when it breaks:
 
 No database required — every test here reads files or uses a fake connection.
 
+STDLIB ONLY. The `migrations` CI job installs no dependencies, so nothing
+here may depend on psycopg2 (or any other optional package) being importable.
+A test that asserts on post-connect behaviour will pass locally and fail in
+CI — that is exactly how the pooler-warning test broke on its first run.
+Assert on what holds in both environments, or fake the connection.
+
 Run: python3 -m unittest test_migrations
 """
 from __future__ import annotations
@@ -557,14 +563,24 @@ class TransactionPoolerWarningTests(unittest.TestCase):
         Uses 127.0.0.1 so the attempt fails instantly with ECONNREFUSED: no
         DNS, no network, no timeout. (An earlier version of this test pointed
         at a realistic Supabase hostname and hung the suite for two minutes.)
+
+        The outcome after the warning differs by environment, and both are
+        correct: with psycopg2 installed the connection is refused; in the
+        stdlib-only `migrations` CI job the driver is missing. What must hold
+        in BOTH is that the warning fired — it diagnoses the URL, not the
+        driver. Asserting "could not connect" here is what turned this job red
+        on first run, because that CI job installs no dependencies.
         """
         original = migrate.os.environ.get("DATABASE_URL")
         migrate.os.environ["DATABASE_URL"] = "postgresql://u:p@127.0.0.1:6543/postgres"
         try:
             code, out = run_cli(["status"])
             self.assertEqual(code, EXIT_CANNOT_RUN, out)
-            self.assertIn("6543", out)                    # warned
-            self.assertIn("could not connect", out)       # and still tried
+            self.assertIn("6543", out)  # warned, driver present or not
+            self.assertTrue(
+                "could not connect" in out or "psycopg2 is not installed" in out,
+                f"expected a connection or driver failure after the warning, got: {out!r}",
+            )
         finally:
             if original is None:
                 migrate.os.environ.pop("DATABASE_URL", None)
