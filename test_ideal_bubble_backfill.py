@@ -15,7 +15,6 @@ Run: python3 -m unittest test_ideal_bubble_backfill
 from __future__ import annotations
 
 import unittest
-from unittest.mock import patch
 
 from services.arc_notifications import backfill_ideal_bubbles
 

@@ -313,7 +313,7 @@ class ProcessNewTakeTests(unittest.TestCase):
                           "n1": {"metrics": {"overall_score": 0.5}},
                           "n2": {"metrics": {"overall_score": 0.5}}},
             blocks=[block])
-        n = process_new_take(ARC, T2, db)
+        process_new_take(ARC, T2, db)
         cand = db.get_ideal_text_block(ARC, 10)
         self.assertIsNotNone(cand)
         self.assertEqual(cand["status"], "candidate")

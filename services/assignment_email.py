@@ -141,7 +141,6 @@ def build_student_new_homework_email_html(
     homework_url: str,
     logo_url: str | None = None,
 ) -> str:
-    safe_first = escape(_first_name(student_first_name))
     safe_coach = escape((coach_name or "Coach").strip() or "Coach")
     safe_role = escape((coach_role or "Public Speaking Coach").strip() or "Public Speaking Coach")
     safe_message = escape((coach_message or DEFAULT_COACH_MESSAGE).strip() or DEFAULT_COACH_MESSAGE)

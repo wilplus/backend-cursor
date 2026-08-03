@@ -1,10 +1,10 @@
 from flask import Blueprint, request, jsonify
 from supabase import create_client
 from config import Config
-from auth import require_auth
 import logging
 import sentry_sdk
 import services.db as db_module
+from utils.errors import safe_error
 
 logger = logging.getLogger(__name__)
 
@@ -256,8 +256,7 @@ def login():
         }), 200
         
     except Exception as e:
-        sentry_sdk.capture_exception(e)
-        return jsonify({"code": "LOGIN_ERROR", "error": str(e)}), 500
+        return safe_error("LOGIN_ERROR", 500, exc=e)
 
 @auth_bp.route("/reset-password", methods=["POST"])
 def reset_password():
@@ -277,5 +276,4 @@ def reset_password():
         return jsonify({"message": "Password reset email sent"}), 200
         
     except Exception as e:
-        sentry_sdk.capture_exception(e)
-        return jsonify({"code": "RESET_ERROR", "error": str(e)}), 500
+        return safe_error("RESET_ERROR", 500, exc=e)

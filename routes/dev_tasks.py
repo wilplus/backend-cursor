@@ -24,6 +24,7 @@ from flask import Blueprint, Response, jsonify, request
 
 from routes.dev_bugs import _key_error
 from services import dev_tasks as svc
+from utils.errors import safe_error
 
 logger = logging.getLogger(__name__)
 dev_tasks_bp = Blueprint("dev_tasks", __name__)
@@ -32,7 +33,7 @@ dev_tasks_bp = Blueprint("dev_tasks", __name__)
 def _err(e):
     sentry_sdk.capture_exception(e)
     logger.exception("dev_tasks route failed")
-    return jsonify({"code": "DEV_TASKS_ERROR", "error": str(e)}), 500
+    return safe_error("DEV_TASKS_ERROR", 500, exc=e)
 
 
 @dev_tasks_bp.route("/api/dev-tasks", methods=["GET"])

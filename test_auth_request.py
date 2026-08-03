@@ -43,7 +43,7 @@ def test_authenticated_request(token, endpoint="http://localhost:5000/user/profi
         try:
             error_json = json.loads(data)
             print(f"Error: {json.dumps(error_json, indent=2)}")
-        except:
+        except Exception:
             print(f"Response: {data}")
         return False
     except urllib.error.URLError as e:

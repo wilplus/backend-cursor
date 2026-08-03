@@ -19,6 +19,7 @@ from config import Config
 from services.annotation_export import result_to_dict, run_annotation_export
 from services.db import db
 from services.stripe_checkout_credits import apply_paid_checkout_session_credits
+from utils.errors import safe_error, scrub, scrub_process_output
 
 logger = logging.getLogger(__name__)
 config = Config()
@@ -278,8 +279,8 @@ def internal_annotation_export():
         )
         return jsonify({"status": "ok", **result_to_dict(result)}), 200
     except Exception as exc:
-        logger.warning("internal_annotation_export failed: %s", exc)
-        return jsonify({"code": "EXPORT_FAILED", "error": str(exc)}), 500
+        return safe_error("EXPORT_FAILED", 500, exc=exc,
+                          log="internal_annotation_export failed")
 
 
 @internal_webhooks_bp.route("/v2/internal/stress-model/train", methods=["POST"])
@@ -417,14 +418,17 @@ def internal_stress_model_train():
             timeout=900,
         )
         if export_proc.returncode != 0:
-            return jsonify(
-                {
-                    "code": "EXPORT_FAILED",
-                    "error": "Stress dataset export failed",
-                    "stdout": export_proc.stdout[-4000:],
-                    "stderr": export_proc.stderr[-4000:],
-                }
-            ), 500
+            # The subprocess echoes its full argv — absolute repo paths,
+            # the dataset location, and whatever the exporter printed. It
+            # goes to the log, never over the wire (P0 audit 2026-08-03).
+            logger.error(
+                "stress export rc=%s stdout=%s stderr=%s",
+                export_proc.returncode,
+                scrub_process_output(export_proc.stdout[-4000:]),
+                scrub_process_output(export_proc.stderr[-4000:]),
+            )
+            return safe_error("EXPORT_FAILED", 500,
+                              message="Stress dataset export failed.")
 
         train_proc = subprocess.run(
             train_cmd,
@@ -434,15 +438,16 @@ def internal_stress_model_train():
             timeout=1800,
         )
         if train_proc.returncode != 0:
-            return jsonify(
-                {
-                    "code": "TRAIN_FAILED",
-                    "error": "Stress model training failed",
-                    "stdout": train_proc.stdout[-6000:],
-                    "stderr": train_proc.stderr[-6000:],
-                    "dataset_path": dataset_path,
-                }
-            ), 500
+            # Same rule as the export branch — plus dataset_path, which
+            # named a real on-disk location to the caller.
+            logger.error(
+                "stress train rc=%s dataset=%s stdout=%s stderr=%s",
+                train_proc.returncode, dataset_path,
+                scrub_process_output(train_proc.stdout[-6000:]),
+                scrub_process_output(train_proc.stderr[-6000:]),
+            )
+            return safe_error("TRAIN_FAILED", 500,
+                              message="Stress model training failed.")
 
         import json as _json
 
@@ -557,15 +562,16 @@ def internal_stress_model_train():
                 "quality_gate": quality_gate,
                 "runtime_config": promoted,
                 "metrics": metrics_payload,
-                "export_stdout": export_proc.stdout[-2000:],
-                "train_stdout": train_proc.stdout[-2000:],
             }
         ), 200
     except subprocess.TimeoutExpired as te:
-        return jsonify({"code": "TIMEOUT", "error": f"Pipeline timed out: {te}"}), 504
+        # TimeoutExpired.__str__ renders the whole command list.
+        return safe_error("TIMEOUT", 504, exc=te,
+                          message="The training pipeline timed out.",
+                          log="internal_stress_model_train timed out")
     except Exception as exc:
-        logger.warning("internal_stress_model_train failed: %s", exc, exc_info=True)
-        return jsonify({"code": "PIPELINE_FAILED", "error": str(exc)}), 500
+        return safe_error("PIPELINE_FAILED", 500, exc=exc,
+                          log="internal_stress_model_train failed")
 
 
 @internal_webhooks_bp.route("/v2/internal/copilot-video/retrain", methods=["POST"])
@@ -716,7 +722,8 @@ def internal_copilot_video_retrain():
             status="failed",
             input_count=len(refs),
             metadata={"since": since_iso, "dry_run": dry_run, "reference_count": len(refs)},
-            error=str(exc)[:1000],
+            error=scrub(exc, limit=1000),
         )
-        logger.warning("internal_copilot_video_retrain failed: %s", exc, exc_info=True)
-        return jsonify({"code": "TRAIN_FAILED", "error": str(exc), "run_id": run.get("id")}), 500
+        return safe_error("TRAIN_FAILED", 500, exc=exc,
+                          log="internal_copilot_video_retrain failed",
+                          extra={"run_id": run.get("id")})

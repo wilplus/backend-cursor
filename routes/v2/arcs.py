@@ -7,6 +7,7 @@ They land in the module the arc routes will move into next.
 
 Re-exported from ``routes.v2_routes`` for import compatibility.
 """
+import hashlib
 import logging
 
 from routes.admin import is_admin, is_coach
@@ -20,7 +21,6 @@ def _presentation_id_from_slides(slides) -> str:
     URL (which changes on every re-upload). Same deck text → same id → same
     presentation group. Uses normalized title+body so cosmetic re-uploads
     don't split the take history."""
-    import hashlib
     if not slides:
         return ""
     parts = []

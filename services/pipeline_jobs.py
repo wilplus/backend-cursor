@@ -235,7 +235,7 @@ def _run_session_recording(job: Dict[str, Any]) -> Dict[str, Any]:
     """Execute one attempt of the full analysis for a claimed job.
     Raises on failure — the caller decides retry vs terminal."""
     from services.analysis_worker import run_full_analysis
-    from services.coach_video_storage import get_coach_object_bytes
+    from services.lab_audio_storage import get_lab_audio_bytes
 
     job_id = str(job.get("id"))
     payload = dict(job.get("payload") or {})
@@ -246,8 +246,13 @@ def _run_session_recording(job: Dict[str, Any]) -> Dict[str, Any]:
         "stage": "fetch_audio", "percent": 5,
         "message": "Loading your recording…",
     })
-    audio_bytes = get_coach_object_bytes(
-        str(payload.get("bucket") or ""), str(payload.get("storage_key") or ""),
+    # The payload records the bucket the upload actually landed in; the
+    # helper tries that first and falls back across the others, so a job
+    # enqueued either side of the lab-bucket split still finds its audio
+    # (P0 audit 2026-08-03).
+    audio_bytes = get_lab_audio_bytes(
+        str(payload.get("storage_key") or ""),
+        bucket_hint=str(payload.get("bucket") or "") or None,
     )
     if not audio_bytes:
         raise RuntimeError("audio object empty or missing in storage")

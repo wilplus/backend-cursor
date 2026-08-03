@@ -15,7 +15,7 @@ redundant dependency for a page the FE can already draw.)
 """
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Optional
 
 
 def build_ideal_text_report(talk_id: Optional[str], *, database=None) -> dict:

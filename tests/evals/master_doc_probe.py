@@ -61,7 +61,7 @@ import os
 import sys
 import time
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Optional
 
 # Allow ``python tests/evals/master_doc_probe.py`` from repo root.
 _REPO_ROOT = os.path.abspath(

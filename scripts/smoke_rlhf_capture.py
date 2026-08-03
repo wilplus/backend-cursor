@@ -45,7 +45,7 @@ import os
 import sys
 import time
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Optional
 
 import httpx
 
@@ -485,7 +485,7 @@ def run_smoke_test(
             )
             fail_count += 1
         else:
-            _ok("comment endpoint", f"status=200")
+            _ok("comment endpoint", "status=200")
             returned_mode = (resp1 or {}).get("acceptance_mode")
             if returned_mode == "admin_corrected":
                 _ok("response acceptance_mode", "admin_corrected echoed back")

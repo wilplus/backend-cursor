@@ -22,6 +22,13 @@ from flask import jsonify, request
 from auth import optional_auth
 from routes.v2.arcs import _arc_audit_paid, _continue_deck_arc, _continue_topic_arc
 from routes.v2.blueprint import v2_bp
+from services.rate_limits import heavy_limit, whisper_limit
+# Module scope on purpose: `except DeadlineExceeded` in the upload routes
+# must resolve even when the failure happens BEFORE the try body reaches
+# its own imports — otherwise the handler NameErrors while handling.
+from services.upload_guard import (
+    DeadlineExceeded, UploadTooLarge, deadline_for, read_capped,
+)
 from routes.v2.common import (
     _LAB_MAX_AUDIO_MB,
     _PRESENTATION_MAX_MB,
@@ -53,6 +60,7 @@ def _parse_lab_vocabulary(raw):
 
 
 @v2_bp.route("/lab/presentation/extract", methods=["POST"])
+@heavy_limit
 @optional_auth
 def v2_lab_presentation_extract():
     """willab slide-deck extract (UX Wave 4 §S / BE-S2). GUEST-ALLOWED.
@@ -185,7 +193,9 @@ def _recording_flow_tags(form) -> dict:
 # If FE wants optional-auth (use the real user_id when a JWT is present)
 # or a separate guest session_context step, say so — small change.
 
+
 @v2_bp.route("/lab/recordings", methods=["POST"])
+@whisper_limit
 @optional_auth
 def v2_lab_create_recording():
     """willab Lab upload — multipart, synchronous, guest-allowed (§3.3).
@@ -251,16 +261,22 @@ def v2_lab_create_recording():
                 "code": "FILE_TOO_LARGE",
                 "error": f"audio_file exceeds {_LAB_MAX_AUDIO_MB}MB",
             }), 413
-        file_bytes = audio_file.read()
-        if not file_bytes:
-            return jsonify({
-                "code": "INVALID_INPUT", "error": "audio_file is empty",
-            }), 400
-        if len(file_bytes) > max_bytes:
+        # BOUNDED read (P0 audit 2026-08-03). Content-Length above is a
+        # client assertion — a chunked or mis-declared body sails past it,
+        # and the old unbounded .read() then pulled the whole thing into
+        # the worker's heap. read_capped stops one byte past the cap.
+        deadline = deadline_for("lab-upload")
+        try:
+            file_bytes = read_capped(audio_file, max_bytes)
+        except UploadTooLarge:
             return jsonify({
                 "code": "FILE_TOO_LARGE",
                 "error": f"audio_file exceeds {_LAB_MAX_AUDIO_MB}MB",
             }), 413
+        if not file_bytes:
+            return jsonify({
+                "code": "INVALID_INPUT", "error": "audio_file is empty",
+            }), 400
         # Reject VIDEO (defensive — the FE picker blocks it and the Vercel
         # edge caps size, but a video that slips through should fail clean,
         # not as a confusing downstream decode error). By mimetype (incl.
@@ -429,10 +445,13 @@ def v2_lab_create_recording():
             }), 422
 
         # ── 4. store + session + recording ──────────────────────────
-        from services.coach_video_storage import (
-            put_coach_object_bytes, coach_media_public_url,
+        # Lab audio is the USER's voice — its own bucket, not the coach's
+        # media bucket (P0 audit 2026-08-03). Inert until R2_LAB_AUDIO_*
+        # is provisioned; see services/lab_audio_storage.py.
+        from services.lab_audio_storage import (
+            lab_audio_public_url, put_lab_audio_bytes,
         )
-        bucket = "coach_feedback_videos"
+        deadline.check("store")
         # ── SESSION-REUSE GUARD (founder bug 2026-07-20: "after the
         # re-read, recording the spoken version analyses the re-read").
         # A session that ALREADY carries a recording is spent: reusing it
@@ -476,13 +495,13 @@ def v2_lab_create_recording():
         content_type = (audio_file.mimetype or "audio/webm").strip() or "audio/webm"
 
         try:
-            put_coach_object_bytes(bucket, parent_key, file_bytes, content_type)
+            bucket = put_lab_audio_bytes(parent_key, file_bytes, content_type)
         except Exception as up_err:
             logger.error("lab: parent upload failed: %s", up_err, exc_info=True)
             return jsonify({
                 "code": "V2_ERROR", "error": "Failed to store recording",
             }), 500
-        parent_url = coach_media_public_url(parent_key) or f"s3://{bucket}/{parent_key}"
+        parent_url = lab_audio_public_url(parent_key) or f"s3://{bucket}/{parent_key}"
 
         # Guest session (create only if it doesn't already exist).
         if not db.v2_get_session_by_id(guest_session_id):
@@ -698,7 +717,10 @@ def v2_lab_create_recording():
         # mode, founder 2026-07-15: closing the tab / locking the phone must
         # never kill the analysis). Everything request-scoped is captured
         # HERE — the daemon must never touch flask.request.
-        from services.lab_recording import process_lab_recording
+        # Last boundary before the expensive stretch (transcribe → cut →
+        # metrics → persist). If the budget is already spent, fail clean
+        # here instead of starting work we can't finish.
+        deadline.check("analyze")
         _cad_user = getattr(request, "user_id", None)
         _worker_filename = audio_file.filename or "lab.webm"
         _worker_spark = str(form.get("spark") or "").strip().lower() in (
@@ -926,6 +948,17 @@ def v2_lab_create_recording():
             "recording_progress": recording_progress,
         }), 201
 
+    except DeadlineExceeded as de:
+        # The budget ran out between stages. The audio IS stored and the
+        # session row exists, so this is recoverable: the FE re-polls the
+        # readout rather than asking for a re-record.
+        logger.warning("lab/recordings POST deadline: %s", de)
+        return jsonify({
+            "code": "PROCESSING_TIMEOUT",
+            "error": "That recording is taking longer than expected — "
+                     "it's still processing, check back shortly.",
+            "session_id": locals().get("guest_session_id"),
+        }), 504
     except Exception as e:
         logger.error("lab/recordings POST failed: %s", e, exc_info=True)
         sentry_sdk.capture_exception(e)

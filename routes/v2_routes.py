@@ -3,63 +3,32 @@ V2 routes: admin CRUD + the willab learner flow (Lab/Readout/Insights,
 Lounge, Library, profile). All /v2/admin/* require auth + admin.
 (The legacy homework student flow was removed in the Phase-5 clearance.)
 """
-from flask import request, jsonify, make_response
+from flask import request, jsonify
 from config import Config
 from auth import require_auth, optional_auth
-from routes.admin import require_admin, is_admin, require_admin_or_coach, is_coach
+from routes.admin import (  # noqa: F401 — is_admin/is_coach kept: tests patch them on this module
+    require_admin, is_admin, require_admin_or_coach, is_coach,
+)
 from services.db import db
-from services.email_service import email_service
-from services.copilot_video_pipeline import (
-    build_feedback_video_storage_path,
-    build_script_manifest,
-    fetch_override_video_bytes,
-    generate_video_from_script,
-    parse_bool,
-    parse_reference_tags,
-    resolve_script_mode,
-)
-from services.stress_snippet_service import (
-    STRESS_SNIPPET_CLIP_SEC_DEFAULT,
-    STRESS_SNIPPET_CLIP_SEC_MAX,
-    STRESS_SNIPPET_CLIP_SEC_MIN,
-    generate_stress_snippets_for_recording,
-)
-from services.charisma_snippet_service import (
-    CHARISMA_SNIPPET_CLIP_SEC_DEFAULT,
-    CHARISMA_SNIPPET_CLIP_SEC_MAX,
-    CHARISMA_SNIPPET_CLIP_SEC_MIN,
-    generate_charisma_snippets_for_recording,
-)
-from services.coach_video_storage import (
-    coach_media_public_url,
-    coach_videos_use_r2,
-    guess_video_content_type,
-    presigned_get_coach_object,
-    presigned_put_coach_object,
-    put_coach_object_bytes,
-    get_coach_object_bytes,
-    r2_bucket_name,
+from services.rate_limits import (
+    guest_funnel_limit,
+    heavy_limit,
+    llm_limit,
+    regenerate_limit,
 )
 import logging
 import sentry_sdk
 import json
-import time
 import hashlib
-import random
 import mimetypes
 import os
 import re
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from werkzeug.utils import secure_filename
-from io import BytesIO
 from typing import Any
+from utils.errors import safe_error
 
-from services.draft_delivery import (
-    auto_approve_payload_for_send,
-    infer_delivery_lifecycle,
-    log_rlhf_auto_accept_events,
-)
 
 # ── Domain modules (god-file split, phase 1) ────────────────────────────────
 # `v2_bp` now lives in routes/v2/blueprint.py so the domain modules below can
@@ -236,37 +205,16 @@ def v2_admin_health():
     return jsonify({"status": "ok", "message": "Admin API reachable"}), 200
 
 
-# In-process rate limiter: (ip_or_global) -> [unix_timestamps].
-# Lost on restart, which is fine — these are anti-abuse caps, not auth.
-_guest_funnel_rate_limit: dict = {}
-_GUEST_FUNNEL_GLOBAL_KEY = "__global__"
-
-
-def _guest_funnel_rate_limit_check(client_ip: str) -> tuple[bool, str]:
-    """Return (allowed, reason). Sliding 1-hour window per IP and global."""
-    import time as _time
-    now = _time.time()
-    window_start = now - 3600.0
-    per_ip_cap = int(getattr(config, "GUEST_FUNNEL_RATE_LIMIT_PER_IP_PER_HOUR", 5) or 5)
-    global_cap = int(getattr(config, "GUEST_FUNNEL_RATE_LIMIT_GLOBAL_PER_HOUR", 200) or 200)
-    # Trim the IP bucket
-    bucket = [t for t in _guest_funnel_rate_limit.get(client_ip, []) if t >= window_start]
-    if len(bucket) >= per_ip_cap:
-        _guest_funnel_rate_limit[client_ip] = bucket
-        return False, "per_ip"
-    # Trim the global bucket
-    g_bucket = [t for t in _guest_funnel_rate_limit.get(_GUEST_FUNNEL_GLOBAL_KEY, []) if t >= window_start]
-    if len(g_bucket) >= global_cap:
-        _guest_funnel_rate_limit[_GUEST_FUNNEL_GLOBAL_KEY] = g_bucket
-        return False, "global"
-    bucket.append(now)
-    g_bucket.append(now)
-    _guest_funnel_rate_limit[client_ip] = bucket
-    _guest_funnel_rate_limit[_GUEST_FUNNEL_GLOBAL_KEY] = g_bucket
-    return True, ""
+# The guest funnel's two hourly caps (per-IP + global) now live in
+# services/rate_limits.py::guest_funnel_limit, decorated onto the upload
+# route below. Same caps, same config vars, same 429 copy — but counted in
+# the shared Redis instead of an in-process dict, so the real cap is the
+# stated cap rather than `stated x gunicorn workers`, and it survives a
+# restart.
 
 
 @v2_bp.route("/public/shaky-voice/upload", methods=["POST"])
+@guest_funnel_limit
 def v2_public_shaky_voice_upload():
     """Anonymous upload for the Curiosity Gate funnel.
 
@@ -280,13 +228,6 @@ def v2_public_shaky_voice_upload():
 
     try:
         client_ip = _client_ip_from_request()
-        allowed, reason = _guest_funnel_rate_limit_check(client_ip)
-        if not allowed:
-            logger.info("guest_funnel: rate limited ip=%s reason=%s", client_ip, reason)
-            return jsonify({
-                "code": "RATE_LIMITED",
-                "error": "Too many trial uploads — please wait a few minutes and try again.",
-            }), 429
 
         if "audio_file" not in request.files:
             return jsonify({"code": "AUDIO_FILE_REQUIRED", "error": "audio_file is required"}), 400
@@ -895,10 +836,11 @@ def v2_internal_whisper_health():
         }), 200
     except Exception as e:
         logger.error("whisper-health failed: %s", e, exc_info=True)
-        return jsonify({"error": str(e)}), 500
+        return safe_error("INTERNAL_ERROR", 500, exc=e)
 
 
 @v2_bp.route("/coaching/start", methods=["POST"])
+@llm_limit
 @require_auth
 def v2_coaching_start():
     """Open a micro-coaching session on one snippet.
@@ -1013,6 +955,7 @@ def v2_coaching_get(coaching_id):
 
 
 @v2_bp.route("/coaching/turn", methods=["POST"])
+@llm_limit
 @require_auth
 def v2_coaching_turn():
     """Run one LLM turn of the awareness stage.
@@ -1196,6 +1139,7 @@ def v2_coaching_turn():
 
 
 @v2_bp.route("/coaching/state-machine/turn", methods=["POST"])
+@llm_limit
 @require_auth
 def v2_coaching_state_machine_turn():
     """One turn of the 5-step coaching state machine.
@@ -1705,6 +1649,7 @@ def _persist_chat_turn(
 
 
 @v2_bp.route("/chat/query", methods=["POST"])
+@llm_limit
 @optional_auth
 def v2_chat_query():
     """Unified chat orchestrator for the /chat page.
@@ -2392,14 +2337,19 @@ def v2_public_unsubscribe():
                 "error": "Unsubscribe service is temporarily unavailable.",
             }), 503
         except UnsubscribeTokenExpired as e:
+            # PUBLIC endpoint (no auth) — the exception text describes the
+            # token scheme and its TTL, which is a free hint to anyone
+            # probing the signature. Detail to the log, not the link page.
+            logger.info("unsubscribe: expired token: %s", e)
             return jsonify({
                 "code": "INVALID_TOKEN",
-                "error": f"This unsubscribe link has expired ({e}).",
+                "error": "This unsubscribe link has expired.",
             }), 401
         except UnsubscribeTokenInvalid as e:
+            logger.info("unsubscribe: invalid token: %s", e)
             return jsonify({
                 "code": "INVALID_TOKEN",
-                "error": f"This unsubscribe link is invalid ({e}).",
+                "error": "This unsubscribe link is invalid.",
             }), 401
 
         # Make sure the user still exists (token may outlive the
@@ -2809,6 +2759,8 @@ def v2_admin_funnel_afterwards_video_upload():
     Accepts multipart form with video_file field, uploads to storage, and stores the URL
     in the funnel_config table.
     """
+    # Local import on purpose: binds at CALL time, so tests that monkeypatch
+    # services.coach_video_storage attributes take effect.
     from services.coach_video_storage import coach_media_public_url, put_coach_object_bytes
     from datetime import datetime
     import os
@@ -2864,7 +2816,7 @@ def v2_admin_funnel_afterwards_video_upload():
         video_url = coach_media_public_url(storage_key)
 
         # Store URL in funnel_config
-        config_row = db.set_funnel_config("afterwards_video_url", video_url)
+        db.set_funnel_config("afterwards_video_url", video_url)
 
         logger.info("funnel: uploaded afterwards-video storage_key=%s url=%s", storage_key, video_url)
 
@@ -3186,7 +3138,6 @@ def v2_internal_publish_session_results():
     notify_client (the in-app Lounge nudge always fires in the contract
     helper; only the email is opt-out).
     """
-    from services.email_service import send_email_resend
 
     try:
         body = request.get_json(silent=True) or {}
@@ -4031,13 +3982,11 @@ def v2_admin_get_session(session_id):
 # column shape.
 
 
-# In-process rate-limit map for the regenerate endpoint. {sid: ts}.
-# Per-worker (no cross-worker coordination), 60s window. The map is
-# bounded by the active-admin set size — no eviction needed at
-# realistic scale. Promote to Redis if we ever multi-worker the
-# admin surface heavily.
-_ICEBREAKER_REGEN_RATE_LIMIT_SEC = 60
-_icebreaker_regen_last: dict[str, float] = {}
+# The regenerate endpoint's 60s-per-session double-click guard now lives
+# in services/rate_limits.py::regenerate_limit (decorated below) — same
+# window, same force bypass, but counted in the shared Redis instead of a
+# per-worker dict, so a second click landing on a second worker no longer
+# buys a second LLM call.
 
 
 def _build_icebreaker_response(
@@ -4252,6 +4201,8 @@ def v2_admin_update_next_session_icebreaker(session_id):
     "/admin/sessions/<session_id>/next-session-icebreaker/regenerate",
     methods=["POST"],
 )
+@llm_limit
+@regenerate_limit
 @require_admin
 def v2_admin_regenerate_next_session_icebreaker(session_id):
     """Re-run the LLM to produce a fresh icebreaker.
@@ -4260,10 +4211,10 @@ def v2_admin_regenerate_next_session_icebreaker(session_id):
     admin edit on both columns — fresh ai_draft AND fresh current.
     FE owns the confirm modal.
 
-    Rate-limited to one call per session per minute (per worker)
-    unless ``{"force": true}`` is in the body. The cap exists to
-    keep an admin's accidental double-click from doubling our LLM
-    cost, not as a security boundary.
+    Rate-limited to one call per session per minute (shared across
+    workers) unless ``{"force": true}`` is in the body. The cap
+    exists to keep an admin's accidental double-click from doubling
+    our LLM cost, not as a security boundary.
 
     Responses:
       200 — same payload shape as GET, with new ai_draft + current.
@@ -4284,44 +4235,18 @@ def v2_admin_regenerate_next_session_icebreaker(session_id):
         }), 400
 
     try:
-        body = request.get_json(silent=True) or {}
-        force = bool(body.get("force", False))
-
         # Existence check — match the PUT behavior of returning 404
-        # before any DB writes when the session is gone.
+        # before any DB writes when the session is gone. The regenerate
+        # window was already spent by @regenerate_limit, which deducts
+        # on the way IN — so a slow (or hanging) LLM call still counts
+        # against the limit and an admin mashing the button during one
+        # can't queue up parallel duplicates.
         row_before = db.get_next_session_icebreaker_row(session_id)
         if not row_before:
             return jsonify({
                 "code": "SESSION_NOT_FOUND",
                 "error": "Session not found",
             }), 404
-
-        # Rate-limit: per-session, per-worker, in-memory map.
-        # `time.monotonic()` is non-decreasing within a process so a
-        # clock-skew event can't accidentally expire a valid entry.
-        now_mono = time.monotonic()
-        if not force:
-            last = _icebreaker_regen_last.get(session_id)
-            if last is not None:
-                elapsed = now_mono - last
-                if elapsed < _ICEBREAKER_REGEN_RATE_LIMIT_SEC:
-                    retry_after = int(
-                        _ICEBREAKER_REGEN_RATE_LIMIT_SEC - elapsed
-                    ) + 1
-                    return jsonify({
-                        "code": "RATE_LIMITED",
-                        "error": (
-                            "Regenerate is rate-limited. Try again in "
-                            f"{retry_after}s, or pass force=true."
-                        ),
-                        "retry_after_seconds": retry_after,
-                    }), 429
-
-        # Mark the attempt timestamp BEFORE the LLM call so a slow
-        # call (or one that hangs to timeout) still counts against
-        # the limit. Otherwise an admin could mash regenerate
-        # during a slow LLM and queue up parallel duplicates.
-        _icebreaker_regen_last[session_id] = now_mono
 
         from services.next_session_icebreaker import (
             generate_next_session_icebreaker,
@@ -4371,6 +4296,7 @@ def v2_admin_regenerate_next_session_icebreaker(session_id):
 
 
 @v2_bp.route("/chat/snippet-followup", methods=["POST"])
+@llm_limit
 @require_auth
 def v2_chat_snippet_followup():
     """One-shot follow-up question generator after a user labels a snippet.
@@ -4778,6 +4704,7 @@ def v2_admin_delete_directives_queue(user_id):
     "/admin/users/<user_id>/directives-queue/suggest",
     methods=["POST"],
 )
+@llm_limit
 @require_admin
 def v2_admin_suggest_directives_queue(user_id):
     """Generate 5 LLM-suggested directives for this user. NEVER
@@ -4913,6 +4840,7 @@ _COACHING_INTRO_STATIC_FALLBACK = (
 
 
 @v2_bp.route("/coaching/intro-bubble", methods=["POST"])
+@llm_limit
 @require_auth
 def v2_coaching_intro_bubble():
     """Generate a personalized intro line for the new official
@@ -5471,7 +5399,6 @@ def _pseudonymous_user_id(user_id):
     the queue + detail, but not reversible to the raw id."""
     if not user_id:
         return None
-    import hashlib
     digest = hashlib.sha256(
         (_COACH_PSEUDONYM_SALT + str(user_id)).encode("utf-8")
     ).hexdigest()
@@ -5513,6 +5440,7 @@ def v2_admin_review_queue():
 # off the label/publish hook. All @require_admin_or_coach.
 
 @v2_bp.route("/admin/learning/train", methods=["POST"])
+@heavy_limit
 @require_admin_or_coach
 def v2_admin_learning_train():
     """Manual 'train now'. export → fit logistic → eval → store artifact +
@@ -6327,6 +6255,15 @@ def v2_get_moment_explanation(arc_id, moment_id):
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR",
                         "error": "Failed to load the moment"}), 500
+
+
+# ── willab — coach-owned ideal-text correction (founder 2026-07-06) ─────
+#
+# The coach's OWN editing surface: always shows the CURRENT draft (auto, or
+# the coach's own correction where saved), regardless of coach_finalized —
+# the coach needs to see their own in-progress work. Never gated by payment
+# (constraint: the coach always reviews every take/arc, independent of the
+# student's payment state).
 
 
 # (The #186 batch card + per-slide coach ideal-text editing lived here —
@@ -7432,6 +7369,7 @@ def v2_explore_put_ideal_notes(arc_id):
 
 
 @v2_bp.route("/explore/arc/<arc_id>/prior-take/decide", methods=["POST"])
+@llm_limit
 @require_auth
 def v2_explore_decide_prior_take(arc_id):
     """The decision on a cross-take change (founder 2026-07-20 #4):
@@ -7499,6 +7437,7 @@ def v2_explore_decide_prior_take(arc_id):
 
 @v2_bp.route("/explore/arc/<arc_id>/blocks/<int:block_key>/decide",
              methods=["POST"])
+@llm_limit
 @require_auth
 def v2_explore_decide_block(arc_id, block_key):
     """The MASTER-DOCUMENT block decision (founder 2026-07-22):
@@ -7898,6 +7837,7 @@ def v2_explore_get_context_document(arc_id):
 
 
 @v2_bp.route("/explore/arc/<arc_id>/ideal-text/save", methods=["POST"])
+@llm_limit
 @require_auth
 def v2_explore_save_ideal_text(arc_id):
     """SAVE = ACCEPT-AND-FREEZE (founder decision #3, 2026-07-22): the
@@ -8543,6 +8483,7 @@ def v2_admin_dad_jokes_health():
 
 
 @v2_bp.route("/onboarding/opener/start", methods=["POST"])
+@llm_limit
 @optional_auth
 def v2_onboarding_opener_start():
     """Begin the dad-joke onboarding opener.
@@ -8587,6 +8528,7 @@ def v2_onboarding_opener_start():
 
 
 @v2_bp.route("/onboarding/opener/next", methods=["POST"])
+@llm_limit
 @optional_auth
 def v2_onboarding_opener_next():
     """Advance the opener to the next bubble.

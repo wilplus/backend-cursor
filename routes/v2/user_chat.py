@@ -25,6 +25,7 @@ from config import Config
 from routes.v2.blueprint import v2_bp
 from routes.v2.common import _is_valid_uuid
 from services.db import db
+from services.rate_limits import llm_limit
 from services.skills import (
     get_skill as _get_skill,
     list_skill_ids as _list_skill_ids,
@@ -153,7 +154,6 @@ def _build_few_shot_block(
     ]
     for i, ex in enumerate(examples, start=1):
         outcome = ex.get("follow_up_outcome") or {}
-        evaluator = (outcome.get("evaluator") or {}) if isinstance(outcome, dict) else {}
         score_raw = outcome.get("score") if isinstance(outcome, dict) else None
         try:
             score_pct = int(round(float(score_raw) * 100))
@@ -406,7 +406,6 @@ def _generate_llm_question(
     """
     try:
         from services.openai_service import OpenAIService
-        import openai
 
         service = OpenAIService()
         if not service.client:
@@ -879,6 +878,7 @@ def _build_master_score_block(user_id: str) -> str | None:
 
 
 @v2_bp.route("/user/chat/first-question", methods=["POST"])
+@llm_limit
 @require_auth
 def v2_user_chat_first_question():
     """Start a contextual chat by generating the first AI question.
@@ -1131,6 +1131,7 @@ def _best_self_rating(attempts: list[dict]) -> int | None:
 
 
 @v2_bp.route("/user/coaching/self-rating", methods=["POST"])
+@llm_limit
 @require_auth
 def v2_user_coaching_self_rating():
     """Capture the user's in-chat 1..10 self-rating for a coaching attempt.

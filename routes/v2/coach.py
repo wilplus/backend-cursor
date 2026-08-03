@@ -10,6 +10,7 @@ Routes register on the SAME ``v2_bp`` object, so endpoint names
 
 Re-exported from ``routes.v2_routes`` for import compatibility.
 """
+import hashlib
 import logging
 import os
 import re
@@ -24,6 +25,14 @@ from config import Config
 from routes.admin import require_admin_or_coach
 from routes.v2.arcs import _spoken_takes_and_reads
 from routes.v2.blueprint import v2_bp
+from services.rate_limits import heavy_limit, llm_limit, whisper_limit
+# Module scope on purpose: `except DeadlineExceeded` in the upload routes
+# must resolve even when the failure happens BEFORE the try body reaches
+# its own imports — otherwise the handler NameErrors while handling.
+from services.upload_guard import (
+    DeadlineExceeded, UploadTooLarge, deadline_for, read_capped,
+)
+from utils.errors import safe_error
 from routes.v2.common import (
     _COACH_PSEUDONYM_SALT,
     _LAB_MAX_AUDIO_MB,
@@ -74,7 +83,6 @@ def _coach_pseudonym(user_id):
     reversible to identity; no stored map. Empty user_id → 'Anonymous'."""
     if not user_id:
         return "Anonymous"
-    import hashlib
     h = int(hashlib.sha256(
         (_COACH_PSEUDONYM_SALT + str(user_id)).encode("utf-8")
     ).hexdigest(), 16)
@@ -413,6 +421,7 @@ def v2_coach_student_audit_send(user_id):
 
 
 @v2_bp.route("/coach/annotation-uploads", methods=["POST"])
+@whisper_limit
 @require_admin_or_coach
 def v2_coach_annotation_upload():
     """ANNOTATION MODE (Stage 4 / T4, founder 2026-07-23): the coach
@@ -444,13 +453,17 @@ def v2_coach_annotation_upload():
         if (request.content_length or 0) > max_bytes:
             return jsonify({"code": "FILE_TOO_LARGE",
                             "error": f"exceeds {_LAB_MAX_AUDIO_MB}MB"}), 413
-        file_bytes = audio_file.read()
+        # Bounded read + wall-clock budget — same guards as the student
+        # lab POST (P0 audit 2026-08-03).
+        deadline = deadline_for("annotation-upload")
+        try:
+            file_bytes = read_capped(audio_file, max_bytes)
+        except UploadTooLarge:
+            return jsonify({"code": "FILE_TOO_LARGE",
+                            "error": f"exceeds {_LAB_MAX_AUDIO_MB}MB"}), 413
         if not file_bytes:
             return jsonify({"code": "INVALID_INPUT",
                             "error": "audio_file is empty"}), 400
-        if len(file_bytes) > max_bytes:
-            return jsonify({"code": "FILE_TOO_LARGE",
-                            "error": f"exceeds {_LAB_MAX_AUDIO_MB}MB"}), 413
         # Audio only (guardrail: keep video blocked) — same gate as the
         # student POST.
         _up_ct = (audio_file.mimetype or "").strip().lower()
@@ -476,21 +489,23 @@ def v2_coach_annotation_upload():
         session_id = str(uuid.uuid4())
         recording_id = str(uuid.uuid4())
         ext = os.path.splitext(audio_file.filename or "")[1] or ".webm"
-        bucket = "coach_feedback_videos"
         key = f"willab_annotation/{session_id}/audio_{uuid.uuid4().hex}{ext}"
         content_type = (audio_file.mimetype
                         or "audio/webm").strip() or "audio/webm"
-        from services.coach_video_storage import (
-            coach_media_public_url, put_coach_object_bytes,
+        # Coach-uploaded, but still a person's recorded voice — same
+        # bucket as student takes, not the coach media bucket.
+        from services.lab_audio_storage import (
+            lab_audio_public_url, put_lab_audio_bytes,
         )
+        deadline.check("store")
         try:
-            put_coach_object_bytes(bucket, key, file_bytes, content_type)
+            bucket = put_lab_audio_bytes(key, file_bytes, content_type)
         except Exception as _up_err:
             logger.error("annotation upload: store failed: %s", _up_err,
                          exc_info=True)
             return jsonify({"code": "V2_ERROR",
                             "error": "Failed to store audio"}), 500
-        parent_url = coach_media_public_url(key) or f"s3://{bucket}/{key}"
+        parent_url = lab_audio_public_url(key) or f"s3://{bucket}/{key}"
 
         # The RECORDINGS row — REQUIRED before any snippet insert:
         # charisma_snippets.recording_id is a NOT NULL FK, and
@@ -542,6 +557,7 @@ def v2_coach_annotation_upload():
         # Snippets ONLY — the same cutter, no assembly (the student
         # POST's arc/ideal-text block is never invoked here).
         from services.lab_recording import process_lab_recording
+        deadline.check("analyze")
         readout = process_lab_recording(
             session_id=session_id,
             user_id=None,
@@ -568,6 +584,13 @@ def v2_coach_annotation_upload():
 
         return jsonify({"session_id": session_id, "n_snippets": _n,
                         "annotation_mode": True}), 201
+    except DeadlineExceeded as de:
+        logger.warning("annotation upload deadline: %s", de)
+        return jsonify({
+            "code": "PROCESSING_TIMEOUT",
+            "error": "That upload is taking longer than expected — "
+                     "it's still processing, check back shortly.",
+        }), 504
     except Exception as e:
         logger.error("annotation upload failed: %s", e, exc_info=True)
         sentry_sdk.capture_exception(e)
@@ -967,6 +990,7 @@ def v2_coach_put_moment_reference(snippet_id):
 
 
 @v2_bp.route("/coach/snippets/<snippet_id>/say-it-stronger", methods=["PUT"])
+@llm_limit
 @require_admin_or_coach
 def v2_coach_put_say_it_stronger(snippet_id):
     """Coach-corrected 'Say It Stronger' card (Engine 1, founder 2026-07-11).
@@ -1250,6 +1274,7 @@ def v2_coach_save_snippet(session_id, snippet_id):
 
 
 @v2_bp.route("/coach/sessions/<session_id>/recut", methods=["POST"])
+@heavy_limit
 @require_admin_or_coach
 def v2_coach_session_recut(session_id):
     """willab admin re-cut (UX Wave 3 E-2 / S7). Re-runs the willab segmenter
@@ -1306,9 +1331,11 @@ def v2_coach_session_recut(session_id):
         if not storage_path:
             return jsonify({"code": "NO_AUDIO", "error": "Recording has no stored audio."}), 422
 
-        from services.coach_video_storage import get_coach_object_bytes
+        # Bucket-tolerant read: a take may live in the lab bucket or, if
+        # it predates the split, the coach bucket (P0 audit 2026-08-03).
+        from services.lab_audio_storage import get_lab_audio_bytes
         try:
-            audio_bytes = get_coach_object_bytes("coach_feedback_videos", storage_path)
+            audio_bytes = get_lab_audio_bytes(storage_path)
         except Exception as fe:
             logger.error("recut: audio fetch failed sid=%s err=%s", session_id, fe)
             return jsonify({"code": "AUDIO_FETCH_FAILED", "error": "Could not load stored audio."}), 502
@@ -1358,6 +1385,7 @@ def v2_coach_session_recut(session_id):
 
 
 @v2_bp.route("/coach/sessions/<session_id>/video", methods=["POST"])
+@heavy_limit
 @require_admin_or_coach
 def v2_coach_session_video(session_id):
     """④ willab coach feedback video for a session (B.3).
@@ -1372,6 +1400,8 @@ def v2_coach_session_video(session_id):
     multipart/form-data: video_file (.mp4/.mov/.webm/.m4v).
     200 { status, session_id, video_ref } · 400/404/413/415/502
     """
+    # Local import on purpose: binds at CALL time, so tests that monkeypatch
+    # services.coach_video_storage attributes take effect.
     from services.coach_video_storage import (
         coach_media_public_url, put_coach_object_bytes,
     )
@@ -1478,6 +1508,7 @@ def v2_coach_session_video(session_id):
     "/coach/sessions/<session_id>/snippets/<snippet_id>/breakthrough-video",
     methods=["POST"],
 )
+@heavy_limit
 @require_admin_or_coach
 def v2_coach_snippet_breakthrough_video(session_id, snippet_id):
     """Per-snippet coach BREAKTHROUGH VIDEO upload (Phase 2 of #131; founder
@@ -1499,6 +1530,8 @@ def v2_coach_snippet_breakthrough_video(session_id, snippet_id):
     200 { status, session_id, snippet_id, breakthrough_video_ref }
     400 INVALID_INPUT · 404 SESSION/SNIPPET_NOT_FOUND · 413 · 415 · 502
     """
+    # Local import on purpose: binds at CALL time, so tests that monkeypatch
+    # services.coach_video_storage attributes take effect.
     from services.coach_video_storage import (
         coach_media_public_url, put_coach_object_bytes,
     )
@@ -1738,14 +1771,6 @@ def v2_coach_create_audit():
         return jsonify({"code": "V2_ERROR", "error": "Failed to upload audit"}), 500
 
 
-# ── willab — coach-owned ideal-text correction (founder 2026-07-06) ─────
-#
-# The coach's OWN editing surface: always shows the CURRENT draft (auto, or
-# the coach's own correction where saved), regardless of coach_finalized —
-# the coach needs to see their own in-progress work. Never gated by payment
-# (constraint: the coach always reviews every take/arc, independent of the
-# student's payment state).
-
 @v2_bp.route("/coach/arc/<arc_id>/best-presentation", methods=["GET"])
 @require_admin_or_coach
 def v2_coach_arc_best_presentation(arc_id):
@@ -1896,6 +1921,7 @@ def v2_coach_put_ideal_text(arc_id):
 
 
 @v2_bp.route("/coach/arc/<arc_id>/verify", methods=["POST"])
+@heavy_limit
 @require_admin_or_coach
 def v2_coach_verify_ideal_text(arc_id):
     """VERIFY — the coach's ONE action under the single deliverable (founder
@@ -1976,6 +2002,7 @@ def v2_coach_verify_ideal_text(arc_id):
 
 
 @v2_bp.route("/coach/arc/<arc_id>/ideal-text/approve", methods=["POST"])
+@heavy_limit
 @require_admin_or_coach
 def v2_coach_approve_ideal_text(arc_id):
     """Approve the ideal text for delivery (the Publish precondition). With
@@ -2142,10 +2169,12 @@ def v2_coach_save_feedback(session_id):
                     db.upsert_training_labels(
                         _own, str(request.user_id), _own_labels)
             except Exception as _lab_err:
-                return jsonify({
-                    "code": "INVALID_INPUT",
-                    "error": f"labels: {_lab_err}",
-                }), 422
+                # This is a DB/PostgREST exception, not a validation
+                # message: its text carries table + column names.
+                return safe_error(
+                    "INVALID_INPUT", 422,
+                    message="Those labels could not be saved.",
+                    exc=_lab_err, log="feedback: label upsert failed")
 
         if not db.set_session_feedback_saved(session_id):
             return jsonify({"code": "V2_ERROR",
@@ -2543,6 +2572,7 @@ def _int_or(raw, default: int) -> int:
 
 
 @v2_bp.route("/coach/training-imports", methods=["POST"])
+@whisper_limit
 @require_admin_or_coach
 def v2_coach_training_import():
     """Upload ONE audio file as coach-reviewable TRAINING data — analysed
