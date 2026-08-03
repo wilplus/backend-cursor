@@ -2864,7 +2864,8 @@ class NewMigrationTests(unittest.TestCase):
     holds: RLS in the creating file, zero policies, idempotent, no drops,
     raise on a partial run, life_* tables only."""
 
-    FILES = ("add_life_setup_documents.sql", "add_life_push_reminders.sql")
+    FILES = ("add_life_setup_documents.sql", "add_life_push_reminders.sql",
+             "add_life_period_reviews.sql")
 
     def _sql(self, name: str) -> str:
         path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
@@ -4104,6 +4105,462 @@ class UserCopyRouteTests(unittest.TestCase):
                                headers={"Authorization": "Bearer t"},
                                json={"one_thing": "smuggled"})
         self.assertEqual(resp.status_code, 400)
+
+
+# ═════════════════════════════════════════════════════════════════════════
+# Piece 5 (founder-agreed program, 2026-08-02) — the monthly + quarterly
+# reviews read the reflections layer
+# ═════════════════════════════════════════════════════════════════════════
+
+class PeriodFoldTests(unittest.TestCase):
+    """Any date names exactly one period, so the upsert key is stable
+    whichever day the review is opened — week_start_for's discipline, one and
+    two cadences up. The end is EXCLUSIVE, so the windows tile the calendar
+    with no shared day and no gap."""
+
+    def test_month_folds_and_bounds(self):
+        self.assertEqual(lp.month_start_for(date(2026, 8, 15)),
+                         date(2026, 8, 1))
+        self.assertEqual(lp.period_bounds("month", date(2026, 8, 31)),
+                         (date(2026, 8, 1), date(2026, 9, 1)))
+
+    def test_december_folds_into_january(self):
+        self.assertEqual(lp.period_bounds("month", date(2026, 12, 5)),
+                         (date(2026, 12, 1), date(2027, 1, 1)))
+
+    def test_quarter_folds_to_jan_apr_jul_oct(self):
+        for d, want in ((date(2026, 1, 1), date(2026, 1, 1)),
+                        (date(2026, 3, 31), date(2026, 1, 1)),
+                        (date(2026, 4, 1), date(2026, 4, 1)),
+                        (date(2026, 8, 15), date(2026, 7, 1)),
+                        (date(2026, 11, 2), date(2026, 10, 1))):
+            self.assertEqual(lp.quarter_start_for(d), want, d)
+
+    def test_q4_folds_into_next_year(self):
+        self.assertEqual(lp.period_bounds("quarter", date(2026, 11, 2)),
+                         (date(2026, 10, 1), date(2027, 1, 1)))
+
+    def test_the_windows_tile(self):
+        # The exclusive end of one period is exactly the start of the next.
+        for period in lp.PERIODS:
+            _, nxt = lp.period_bounds(period, date(2026, 8, 15))
+            self.assertEqual(lp.period_bounds(period, nxt)[0], nxt)
+
+    def test_each_period_names_its_strategy_document(self):
+        self.assertEqual(lp.PERIOD_STRATEGY_HORIZON,
+                         {"month": "monthly", "quarter": "quarterly"})
+        for horizon in lp.PERIOD_STRATEGY_HORIZON.values():
+            self.assertIn(horizon, lp.STRATEGY_HORIZONS)
+        for horizon in lp.PERIOD_ITEM_HORIZON.values():
+            self.assertIn(horizon, lp.HORIZONS)
+
+
+class PeriodGoalPartitionTests(unittest.TestCase):
+    """The goals a period review holds itself against. Pure — no DB."""
+
+    WINDOW = {"start": date(2026, 8, 1), "next_start": date(2026, 9, 1),
+              "period": "month"}
+
+    def test_dated_in_window_regardless_of_horizon(self):
+        # An [Aug] goal belongs to August's review even filed at the year
+        # horizon — due_at decides, not the shelf it sits on.
+        dated, _ = lp.partition_period_goals(
+            [{"id": "g", "status": "active", "horizon": "year",
+              "due_at": "2026-08-10T00:00:00+00:00"}], **self.WINDOW)
+        self.assertEqual([g["id"] for g in dated], ["g"])
+
+    def test_the_window_is_inclusive_start_exclusive_end(self):
+        rows = [{"id": "first", "status": "active", "due_at": "2026-08-01"},
+                {"id": "next", "status": "active", "due_at": "2026-09-01"}]
+        dated, undated = lp.partition_period_goals(rows, **self.WINDOW)
+        self.assertEqual([g["id"] for g in dated], ["first"])
+        self.assertEqual(undated, [])   # September's goal is September's
+
+    def test_done_stays_in_and_proposed_stays_out(self):
+        # Reviewing the month means seeing what was FINISHED too; a proposed
+        # row counts for nothing until approved (N5).
+        rows = [{"id": "done", "status": "done", "due_at": "2026-08-02"},
+                {"id": "draft", "status": "proposed", "due_at": "2026-08-02"},
+                {"id": "gone", "status": "retired", "horizon": "month"}]
+        dated, undated = lp.partition_period_goals(rows, **self.WINDOW)
+        self.assertEqual([g["id"] for g in dated], ["done"])
+        self.assertEqual(undated, [])
+
+    def test_undated_joins_only_at_its_own_horizon(self):
+        rows = [{"id": "mine", "status": "active", "horizon": "month"},
+                {"id": "far", "status": "active", "horizon": "ten_year"}]
+        _, undated = lp.partition_period_goals(rows, **self.WINDOW)
+        self.assertEqual([g["id"] for g in undated], ["mine"])
+
+    def test_an_unparseable_due_at_degrades_to_undated(self):
+        # The house rule since the timeline: never drop a row for a bad
+        # date, and never invent one.
+        rows = [{"id": "odd", "status": "active", "horizon": "month",
+                 "due_at": "sometime"}]
+        dated, undated = lp.partition_period_goals(rows, **self.WINDOW)
+        self.assertEqual(dated, [])
+        self.assertEqual([g["id"] for g in undated], ["odd"])
+
+    def test_input_order_is_preserved_not_re_ranked(self):
+        # order_key is the Dalio order the card maintains; a second opinion
+        # here would be a ranking nobody asked for.
+        rows = [{"id": "b", "status": "active", "due_at": "2026-08-20"},
+                {"id": "a", "status": "active", "due_at": "2026-08-02"}]
+        dated, _ = lp.partition_period_goals(rows, **self.WINDOW)
+        self.assertEqual([g["id"] for g in dated], ["b", "a"])
+
+    def test_quarter_uses_its_own_horizon(self):
+        rows = [{"id": "q", "status": "active", "horizon": "quarter"},
+                {"id": "m", "status": "active", "horizon": "month"}]
+        _, undated = lp.partition_period_goals(
+            rows, start=date(2026, 7, 1), next_start=date(2026, 10, 1),
+            period="quarter")
+        self.assertEqual([g["id"] for g in undated], ["q"])
+
+
+class PeriodReviewSerializationTests(unittest.TestCase):
+
+    def test_shape_and_defaults(self):
+        out = lp.serialize_period_review(
+            {"id": "r1", "period": "month", "period_start": "2026-08-01",
+             "goals_moved": None, "becoming_sentence": None,
+             "reviewed_on": "2026-08-30",
+             "user_id": "SECRET", "updated_at": "x"})
+        self.assertEqual(out, {"id": "r1", "period": "month",
+                               "period_start": "2026-08-01",
+                               "goals_moved": [],
+                               "becoming_sentence": None,
+                               "reviewed_on": "2026-08-30"})
+        # No user_id, no timestamps beyond reviewed_on — and nothing that
+        # counts, scores or grades the period (AC-9).
+        self.assertNotIn("user_id", out)
+
+
+class PeriodReviewMigrationTests(unittest.TestCase):
+    """The lines specific to add_life_period_reviews.sql; the generic house
+    lines (RLS in file, zero policies, idempotent, no drops, raising
+    post-condition, life_* only) ride NewMigrationTests.FILES."""
+
+    @classmethod
+    def setUpClass(cls):
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                            "migrations", "add_life_period_reviews.sql")
+        with open(path, "r", encoding="utf-8") as fh:
+            cls.sql = fh.read()
+
+    def test_one_review_per_user_period_and_start(self):
+        self.assertRegex(self.sql,
+                         r"CREATE UNIQUE INDEX IF NOT EXISTS\s+"
+                         r"life_period_reviews_user_period_uniq\s*\n?\s*"
+                         r"ON life_period_reviews \(user_id, period, "
+                         r"period_start\)")
+
+    def test_the_period_vocabulary_is_closed(self):
+        # 'month' | 'quarter' — the table must not quietly become a junk
+        # drawer of ad-hoc cadences.
+        self.assertIn("CHECK (period IN ('month', 'quarter'))", self.sql)
+
+    @unittest.skipIf(_IMPORT_ERROR is not None, "needs app deps")
+    def test_the_store_registries_carry_the_table(self):
+        # export_all and hard_delete iterate these; a table in neither would
+        # escape both "get it all out" and "wipe it all" (N9).
+        self.assertIn("life_period_reviews", lstore.LIFE_TABLES)
+        self.assertIn("life_period_reviews", lstore._DELETE_ORDER)
+        self.assertEqual(set(lstore.LIFE_TABLES), set(lstore._DELETE_ORDER))
+
+
+@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
+class PeriodReviewRouteTests(unittest.TestCase):
+    """GET assembles the period deterministically; POST stores only what the
+    founder typed. No model call, no proposal surface, on any path."""
+
+    def setUp(self):
+        self.app = Flask(__name__)
+        self.app.register_blueprint(lroutes.life_bp)
+        self.client = self.app.test_client()
+        self._orig_verify = auth.verify_supabase_token
+        auth.verify_supabase_token = lambda token: {"sub": USER}
+        self._gates = [
+            patch.object(lroutes.chat, "is_enabled", return_value=True),
+            patch.object(lroutes.chat, "has_consented", return_value=True),
+        ]
+        for g in self._gates:
+            g.start()
+
+    def tearDown(self):
+        auth.verify_supabase_token = self._orig_verify
+        for g in self._gates:
+            g.stop()
+
+    def _get(self, path):
+        return self.client.get(path, headers={"Authorization": "Bearer t"})
+
+    def _post(self, path, body):
+        return self.client.post(path, headers={"Authorization": "Bearer t"},
+                                json=body)
+
+    @staticmethod
+    def _notes(n, prefix="n"):
+        # Newest first, as the store returns them.
+        return [{"id": f"{prefix}{i}", "body": f"note {i}", "tag": "thoughts",
+                 "created_at": f"2026-08-{28 - (i % 28):02d}T10:00:00+00:00"}
+                for i in range(n)]
+
+    def _month(self, *, review=None, docs=None, notes=None, items=None,
+               weeks=None, path="/v2/life/month?month_start=2026-08-15"):
+        calls = {}
+
+        def _reflections(user_id, **kw):
+            calls["reflections"] = kw
+            return notes or []
+
+        with patch.object(lroutes.store, "get_period_review",
+                          return_value=review) as calls_get, \
+                patch.object(lroutes.store, "latest_strategy",
+                             return_value=docs if docs is not None else {}), \
+                patch.object(lroutes.store, "list_reflection_notes",
+                             side_effect=_reflections), \
+                patch.object(lroutes.store, "list_items",
+                             return_value=items or []) as calls_items, \
+                patch.object(lroutes.store, "list_weeks_between",
+                             return_value=weeks or []) as calls_weeks, \
+                patch.object(lroutes.store, "list_proposals") as calls_props, \
+                patch.object(lroutes, "engine") as fake_engine:
+            resp = self._get(path)
+        calls["get"] = calls_get.call_args
+        calls["items"] = calls_items.call_args
+        calls["weeks"] = calls_weeks.call_args
+        calls["proposals_called"] = calls_props.called
+        calls["engine_calls"] = fake_engine.mock_calls
+        return resp, calls
+
+    def test_the_month_reads_the_monthly_document_not_the_weekly(self):
+        resp, _ = self._month(docs={
+            "weekly": {"id": "w", "horizon": "weekly", "body": "WEEK DOC"},
+            "monthly": {"id": "m", "horizon": "monthly", "body": "MONTH DOC"},
+        })
+        self.assertEqual(resp.status_code, 200)
+        doc = resp.get_json()["document"]
+        self.assertEqual(doc["horizon"], "monthly")
+        self.assertEqual(doc["body"], "MONTH DOC")
+
+    def test_any_date_folds_and_the_skeleton_carries_the_key(self):
+        resp, calls = self._month()
+        body = resp.get_json()
+        self.assertEqual(body["review"], {"period": "month",
+                                          "period_start": "2026-08-01"})
+        self.assertEqual(calls["get"].args[1:], ("month", "2026-08-01"))
+        self.assertIsNone(body["document"])   # no docs → None, not a 500
+
+    def test_reflections_are_windowed_and_chronological(self):
+        # The store is asked for THIS month only, and the newest-first rows
+        # flip to oldest-first: the review re-reads the period as it happened.
+        notes = [{"id": "new", "body": "b", "tag": "thoughts",
+                  "created_at": "2026-08-20T10:00:00+00:00"},
+                 {"id": "old", "body": "a", "tag": "reflection",
+                  "created_at": "2026-08-02T10:00:00+00:00"}]
+        resp, calls = self._month(notes=notes)
+        self.assertEqual(calls["reflections"]["since"], "2026-08-01")
+        self.assertEqual(calls["reflections"]["until"], "2026-09-01")
+        got = resp.get_json()["reflections"]
+        self.assertEqual([n["id"] for n in got], ["old", "new"])
+        self.assertEqual(resp.get_json()["reflections_held_back"], 0)
+
+    def test_the_cap_binds_honestly(self):
+        # 105 in the window → the 100 most recent survive, still oldest
+        # first, and the payload says 5 fell off. A truncation the reader
+        # cannot see reads as "covered everything".
+        resp, _ = self._month(notes=self._notes(105))
+        body = resp.get_json()
+        self.assertEqual(len(body["reflections"]), lp.REVIEW_REFLECTION_CAP)
+        self.assertEqual(body["reflections_held_back"], 5)
+        self.assertEqual(body["reflections"][-1]["id"], "n0")   # newest kept
+        self.assertNotIn("n104", [n["id"] for n in body["reflections"]])
+
+    def test_the_month_reads_its_weeks_and_goals(self):
+        items = [{"id": "aug", "kind": "goal", "status": "active",
+                  "due_at": "2026-08-10", "measure": "3 talks"},
+                 {"id": "sep", "kind": "goal", "status": "active",
+                  "due_at": "2026-09-10"},
+                 {"id": "shelf", "kind": "goal", "status": "active",
+                  "horizon": "month"}]
+        weeks = [{"id": "wk1", "week_start": "2026-08-03",
+                  "becoming_sentence": "closer"}]
+        resp, calls = self._month(items=items, weeks=weeks)
+        body = resp.get_json()
+        self.assertEqual(calls["weeks"].args[1:], ("2026-08-01", "2026-09-01"))
+        self.assertEqual([w["week_start"] for w in body["weeks"]],
+                         ["2026-08-03"])
+        self.assertEqual([g["id"] for g in body["goals"]], ["aug"])
+        # The goal's own stated measure rides in — the period held against
+        # its own criterion, exactly as the evening holds the day.
+        self.assertEqual(body["goals"][0]["measure"], "3 talks")
+        self.assertEqual([g["id"] for g in body["undated"]], ["shelf"])
+
+    def test_no_proposals_and_no_engine_on_the_review_path(self):
+        # L-2b routes queued proposals to the WEEKLY review and nowhere
+        # else; and the whole assembly is deterministic — the engine (and so
+        # any model call) is never touched.
+        resp, calls = self._month(notes=self._notes(3))
+        self.assertNotIn("proposals", resp.get_json())
+        self.assertFalse(calls["proposals_called"])
+        self.assertEqual(calls["engine_calls"], [])
+
+    def test_the_quarter_folds_reads_quarterly_and_its_months(self):
+        months = [{"id": "m7", "period": "month",
+                   "period_start": "2026-07-01"},
+                  {"id": "m8", "period": "month",
+                   "period_start": "2026-08-01"}]
+        with patch.object(lroutes.store, "get_period_review",
+                          return_value=None) as get, \
+                patch.object(lroutes.store, "latest_strategy",
+                             return_value={"quarterly": {
+                                 "id": "q", "horizon": "quarterly",
+                                 "body": "Q DOC"}}), \
+                patch.object(lroutes.store, "list_reflection_notes",
+                             return_value=[]) as refl, \
+                patch.object(lroutes.store, "list_items", return_value=[]), \
+                patch.object(lroutes.store, "list_period_reviews_between",
+                             return_value=months) as betw, \
+                patch.object(lroutes, "engine") as fake_engine:
+            resp = self._get("/v2/life/quarter?quarter_start=2026-08-15")
+        body = resp.get_json()
+        self.assertEqual(get.call_args.args[1:], ("quarter", "2026-07-01"))
+        self.assertEqual(body["document"]["horizon"], "quarterly")
+        self.assertEqual(refl.call_args.kwargs["since"], "2026-07-01")
+        self.assertEqual(refl.call_args.kwargs["until"], "2026-10-01")
+        self.assertEqual(betw.call_args.args[1:],
+                         ("month", "2026-07-01", "2026-10-01"))
+        self.assertEqual([m["period_start"] for m in body["months"]],
+                         ["2026-07-01", "2026-08-01"])
+        self.assertNotIn("weeks", body)
+        self.assertEqual(fake_engine.mock_calls, [])
+
+    def test_post_folds_saves_the_founders_words_and_nothing_else(self):
+        with patch.object(lroutes.store, "upsert_period_review",
+                          side_effect=lambda u, p, s, f: {
+                              "id": "r1", "period": p, "period_start": s,
+                              **f}) as up:
+            resp = self._post("/v2/life/month",
+                              {"month_start": "2026-08-20",
+                               "goals_moved": [{"goal": "3 talks",
+                                                "next": "book #4"}],
+                               "becoming_sentence": "closer than July",
+                               "reviewed_on": "2026-08-30",
+                               "progress_score": 87})
+        self.assertEqual(resp.status_code, 200)
+        args = up.call_args.args
+        self.assertEqual(args[1:3], ("month", "2026-08-01"))
+        self.assertEqual(set(args[3]), {"goals_moved", "becoming_sentence",
+                                        "reviewed_on"})
+        # A number that grades the period does not get a column to land in.
+        self.assertNotIn("progress_score", args[3])
+        self.assertEqual(resp.get_json()["review"]["becoming_sentence"],
+                         "closer than July")
+
+    def test_an_unrun_migration_costs_the_save_and_says_so(self):
+        # The store returns None when the table is absent; the route answers
+        # a plain 500 and the GET keeps working on the skeleton.
+        with patch.object(lroutes.store, "upsert_period_review",
+                          return_value=None):
+            resp = self._post("/v2/life/quarter", {"becoming_sentence": "x"})
+        self.assertEqual(resp.status_code, 500)
+        resp, _ = self._month(review=None)
+        self.assertEqual(resp.status_code, 200)
+
+    def test_a_bad_date_is_a_400_on_both_verbs(self):
+        self.assertEqual(
+            self._get("/v2/life/month?month_start=augustish").status_code,
+            400)
+        self.assertEqual(
+            self._post("/v2/life/quarter",
+                       {"quarter_start": "Q3"}).status_code, 400)
+
+    def test_the_reviews_sit_behind_the_same_three_tier_gate(self):
+        for g in self._gates:
+            g.stop()
+        try:
+            with patch.object(lroutes.chat, "is_enabled",
+                              return_value=False):
+                for path in ("/v2/life/month", "/v2/life/quarter"):
+                    self.assertEqual(self._get(path).status_code, 404, path)
+            with patch.object(lroutes.chat, "is_enabled",
+                              return_value=True), \
+                    patch.object(lroutes.chat, "has_consented",
+                                 return_value=False):
+                self.assertEqual(self._get("/v2/life/month").status_code,
+                                 409)
+        finally:
+            for g in self._gates:
+                g.start()
+
+
+@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
+class PeriodReviewStoreTests(unittest.TestCase):
+    """The windowed reads translate to gte/lt on the right columns, and every
+    failure degrades to the empty answer, never a raise."""
+
+    def _q(self, log):
+        class _Q:
+            def __getattr__(self, name):
+                def _method(*a, **k):
+                    log.append((name, a))
+                    return self
+                return _method
+
+            def execute(self):
+                return type("R", (), {"data": []})()
+        return _Q()
+
+    def test_reflection_window_is_gte_lt_on_created_at(self):
+        log = []
+        with patch.object(lstore, "_t", return_value=self._q(log)):
+            lstore.list_reflection_notes(USER, since="2026-08-01",
+                                         until="2026-09-01")
+        self.assertIn(("gte", ("created_at", "2026-08-01")), log)
+        self.assertIn(("lt", ("created_at", "2026-09-01")), log)
+
+    def test_without_a_window_nothing_is_filtered(self):
+        # The strategy comparison's read stays byte-for-byte what it was.
+        log = []
+        with patch.object(lstore, "_t", return_value=self._q(log)):
+            lstore.list_reflection_notes(USER)
+        self.assertNotIn("gte", [name for name, _ in log])
+        self.assertNotIn("lt", [name for name, _ in log])
+
+    def test_weeks_window_on_week_start_and_periods_on_period_start(self):
+        log = []
+        with patch.object(lstore, "_t", return_value=self._q(log)):
+            lstore.list_weeks_between(USER, "2026-08-01", "2026-09-01")
+        self.assertIn(("gte", ("week_start", "2026-08-01")), log)
+        log2 = []
+        with patch.object(lstore, "_t", return_value=self._q(log2)):
+            lstore.list_period_reviews_between(USER, "month", "2026-07-01",
+                                               "2026-10-01")
+        self.assertIn(("eq", ("period", "month")), log2)
+        self.assertIn(("lt", ("period_start", "2026-10-01")), log2)
+
+    def test_the_upsert_conflicts_on_the_fold_key(self):
+        log = []
+        with patch.object(lstore, "_t", return_value=self._q(log)):
+            lstore.upsert_period_review(USER, "month", "2026-08-01",
+                                        {"becoming_sentence": "x"})
+        upserts = [a for name, a in log if name == "upsert"]
+        self.assertEqual(len(upserts), 1)
+        self.assertEqual(upserts[0][0]["period_start"], "2026-08-01")
+
+    def test_a_missing_table_degrades_and_names_the_migration(self):
+        def _raise(table):
+            raise RuntimeError("relation does not exist")
+        with patch.object(lstore, "_t", side_effect=_raise):
+            self.assertIsNone(lstore.get_period_review(USER, "month",
+                                                       "2026-08-01"))
+            self.assertEqual(lstore.list_weeks_between(
+                USER, "2026-08-01", "2026-09-01"), [])
+            with self.assertLogs("services.life_store", "ERROR") as logs:
+                self.assertIsNone(lstore.upsert_period_review(
+                    USER, "month", "2026-08-01", {}))
+        self.assertIn("add_life_period_reviews.sql", "".join(logs.output))
 
 
 if __name__ == "__main__":

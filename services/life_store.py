@@ -41,7 +41,7 @@ logger = logging.getLogger(__name__)
 LIFE_TABLES: tuple[str, ...] = (
     "life_consent", "life_setup", "life_notes", "life_cases", "life_items",
     "life_strategy", "life_proposals", "life_applications", "life_days",
-    "life_weeks",
+    "life_weeks", "life_period_reviews",
 )
 
 # Deleted in this order so a partial failure never strands a child row whose
@@ -49,8 +49,8 @@ LIFE_TABLES: tuple[str, ...] = (
 # that the rest was ever allowed to exist).
 _DELETE_ORDER: tuple[str, ...] = (
     "life_applications", "life_proposals", "life_items", "life_cases",
-    "life_days", "life_weeks", "life_strategy", "life_notes", "life_setup",
-    "life_consent",
+    "life_days", "life_weeks", "life_period_reviews", "life_strategy",
+    "life_notes", "life_setup", "life_consent",
 )
 
 
@@ -167,16 +167,27 @@ def setup_completed(user_id: str) -> bool:
 # Notes — append-only capture. Never edited, never deleted.
 # ═════════════════════════════════════════════════════════════════════════
 
-def list_reflection_notes(user_id: str, *, limit: int = 200) -> list[dict]:
+def list_reflection_notes(user_id: str, *, limit: int = 200,
+                          since: Optional[str] = None,
+                          until: Optional[str] = None) -> list[dict]:
     """The reality layer: every note tagged into the reflection route,
     newest first. Fetched raw and capped; relevance ranking happens in the
-    engine, in-process, exactly as it does for principles."""
+    engine, in-process, exactly as it does for principles.
+
+    ``since``/``until`` (ISO date, inclusive/exclusive) window the fetch for
+    the period reviews, which re-read a month or a quarter chronologically
+    rather than by relevance. Omitted, the behaviour is exactly what the
+    strategy comparison has always read."""
     try:
+        q = (_t("life_notes").select("*")
+             .eq("user_id", user_id)
+             .in_("tag", list(lp.REFLECTION_TAGS)))
+        if since:
+            q = q.gte("created_at", since)
+        if until:
+            q = q.lt("created_at", until)
         return _rows(
-            _t("life_notes").select("*")
-            .eq("user_id", user_id)
-            .in_("tag", list(lp.REFLECTION_TAGS))
-            .order("created_at", desc=True)
+            q.order("created_at", desc=True)
             .limit(max(1, min(limit, 500))).execute()
         )
     except Exception as e:
@@ -752,6 +763,81 @@ def upsert_week(user_id: str, week_start: str,
     except Exception as e:
         logger.error("life: upsert_week failed user=%s: %s", user_id, e)
         return None
+
+
+def list_weeks_between(user_id: str, since: str, until: str) -> list[dict]:
+    """The month's week rows, oldest first — a month is made of its weeks.
+
+    A week belongs to the period its ``week_start`` falls in: the straddle
+    week at a month boundary was reviewed on the earlier month's Sunday, so
+    it reads with that month."""
+    try:
+        return _rows(
+            _t("life_weeks").select("*").eq("user_id", user_id)
+            .gte("week_start", since).lt("week_start", until)
+            .order("week_start", desc=False).execute()
+        )
+    except Exception as e:
+        logger.warning("life: list_weeks_between failed user=%s: %s",
+                       user_id, e)
+        return []
+
+
+# ═════════════════════════════════════════════════════════════════════════
+# Period reviews — month + quarter (piece 5)
+# ═════════════════════════════════════════════════════════════════════════
+# Every read degrades to None/[] and the write returns None when the table is
+# absent — deploying before migrations/add_life_period_reviews.sql runs costs
+# the saved review, never the GET and never any other surface.
+
+def get_period_review(user_id: str, period: str,
+                      period_start: str) -> Optional[dict]:
+    try:
+        return _one(
+            _t("life_period_reviews").select("*")
+            .eq("user_id", user_id).eq("period", period)
+            .eq("period_start", period_start)
+            .limit(1).execute()
+        )
+    except Exception as e:
+        logger.warning("life: get_period_review failed user=%s: %s",
+                       user_id, e)
+        return None
+
+
+def upsert_period_review(user_id: str, period: str, period_start: str,
+                         fields: dict) -> Optional[dict]:
+    payload = {"user_id": user_id, "period": period,
+               "period_start": period_start, **(fields or {}),
+               "updated_at": _now()}
+    try:
+        return _one(
+            _t("life_period_reviews")
+            .upsert(payload, on_conflict="user_id,period,period_start")
+            .execute()
+        )
+    except Exception as e:
+        logger.error("life: upsert_period_review failed user=%s: %s — if the "
+                     "table is missing, run "
+                     "migrations/add_life_period_reviews.sql", user_id, e)
+        return None
+
+
+def list_period_reviews_between(user_id: str, period: str, since: str,
+                                until: str) -> list[dict]:
+    """The saved reviews of one cadence inside a window, oldest first — the
+    quarter reads its months the way the month reads its weeks."""
+    try:
+        return _rows(
+            _t("life_period_reviews").select("*")
+            .eq("user_id", user_id).eq("period", period)
+            .gte("period_start", since).lt("period_start", until)
+            .order("period_start", desc=False).execute()
+        )
+    except Exception as e:
+        logger.warning("life: list_period_reviews_between failed user=%s: %s",
+                       user_id, e)
+        return []
 
 
 # ═════════════════════════════════════════════════════════════════════════
