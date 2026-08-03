@@ -67,7 +67,6 @@ from routes.user import user_bp
 from routes.admin import admin_bp
 from routes.v2_routes import v2_bp
 from routes.internal_webhooks import internal_webhooks_bp
-from routes.snippet_labels_routes import snippet_labels_bp
 from routes.dev_bugs import dev_bugs_bp
 from routes.dev_tasks import dev_tasks_bp
 from routes.journal import journal_bp
@@ -81,7 +80,10 @@ app.register_blueprint(user_bp, url_prefix="/user")
 app.register_blueprint(admin_bp, url_prefix="/admin")
 app.register_blueprint(v2_bp)
 app.register_blueprint(internal_webhooks_bp)
-app.register_blueprint(snippet_labels_bp, url_prefix="/admin/snippet-labels")
+# /admin/snippet-labels is GONE (founder 2026-08-03, stress-lane deletion) —
+# it was the admin corpus writer for the acoustic stress classifier (labels on
+# stress_snippets), and that classifier no longer exists. The snippet_labels
+# TABLE is left in place (no table is ever auto-dropped); nothing reads it.
 # dev-bugs collector: full paths baked into the blueprint (no prefix), like
 # internal_webhooks_bp. Serves /api/dev-bugs* + the /dev-bugs page.
 app.register_blueprint(dev_bugs_bp)

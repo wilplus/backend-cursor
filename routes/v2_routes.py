@@ -3847,112 +3847,111 @@ def v2_chat_query():
         }), 500
 
 
-@v2_bp.route("/user/snippets/<snippet_id>/label", methods=["POST"])
+@v2_bp.route("/user/snippets/<snippet_id>/confidence-review", methods=["POST"])
 @require_auth
-def v2_user_snippet_label(snippet_id):
-    """Capture the user's self-confirmation of a snippet's
-    charismatic read (the chat state machine's "Would you label
-    your voice here as Charismatic? Yes / No" beat).
+def v2_user_snippet_confidence_review(snippet_id):
+    """The PEER-REVIEW VALIDATION LOOP (founder 2026-08-03) — what the retired
+    acoustic stress lane became.
 
-    RLHF signal. Paired with ``coach_label`` (admin annotation),
-    the (admin, user) tuple is the training pair we export later:
-    when the user disagrees with the admin, that's the moment the
-    classifier most needs to learn from.
+    A user or peer is shown the AI's confidence choice on one snippet and
+    answers one question: did it get this right?
 
     Body::
 
-        { "label": true | false }
-        // OR, equivalent alias for symmetry with the sibling
-        // /v2/chat/snippet-followup endpoint:
-        { "user_label": true | false }
-        // If BOTH keys are present, ``label`` wins (canonical).
+        { "ai_correct": true | false, "model_version": "…" }   // version optional
+
+    ``ai_correct`` must be a REAL boolean. The string "true" is a 400, not a
+    coercion — this is training data, and a coerced value is a fabricated
+    label indistinguishable from a real one afterwards (the same rule the
+    coach confidence-label route holds).
+
+    ``model_version`` records WHICH prediction was validated. Omitted → the
+    currently-shadowed version is stamped server-side, because "the AI got
+    this right" is meaningless without knowing which AI.
+
+    Replace-on-reflag: one row per (snippet_id, reviewer_user_id). A reviewer
+    who changes their mind updates their row; duplicate rows from one rater
+    are junk labels (N3, same as the voice game). Different reviewers keep
+    their own rows so peer agreement stays computable.
+
+    NOT owner-scoped, deliberately — this is PEER review, so the reviewer is
+    frequently not the speaker. ``require_auth`` + a real snippet is the gate;
+    the unique constraint is what stops one account stuffing the corpus.
 
     Responses::
 
-        200 { "status": "ok", "snippet_id": ..., "user_charisma_label": ... }
-        400 INVALID_INPUT — bad UUID / non-bool label / both keys missing
-        404 NOT_FOUND     — snippet doesn't exist or isn't owned by
-                            this user
+        200 { "saved": true, "snippet_id": ..., "ai_correct": ... }
+        400 INVALID_INPUT — bad UUID / non-boolean ai_correct / bad
+                            model_version type
+        404 NOT_FOUND     — snippet doesn't exist
         500 V2_ERROR
 
-    Owner-scoped at both the route level (require_auth + the
-    db.set_user_snippet_charisma_label filter on user_id) so a
-    user can't write to someone else's row even if they guess the
-    snippet UUID.
+    AC-9: capture only. Nothing here is ever read back to a user as a score,
+    verdict or ratio. BLIND COACH: these flags are NON-BLIND (the reviewer saw
+    the AI's call) and are stored in their own table under their own
+    provenance so they can never blend indistinguishably into the coach's
+    blind corpus — see migrations/add_snippet_confidence_reviews.sql.
     """
+    if not _is_valid_uuid(snippet_id):
+        return jsonify({
+            "code": "INVALID_INPUT",
+            "error": "snippet_id must be a valid UUID",
+        }), 400
+
+    from services.confidence_reviews import validate_confidence_review
+
+    row, err = validate_confidence_review(request.get_json(silent=True) or {})
+    if err:
+        return jsonify({"code": "INVALID_INPUT", "error": err}), 400
+
     try:
-        if not _is_valid_uuid(snippet_id):
+        if not db.get_snippet_by_id(snippet_id):
             return jsonify({
-                "code": "INVALID_INPUT",
-                "error": "snippet_id must be a valid UUID",
-            }), 400
-
-        body = request.get_json(silent=True) or {}
-        # Canonical field is "label"; "user_label" is an alias kept
-        # in sync with the sibling /v2/chat/snippet-followup endpoint
-        # so the frontend can use one consistent body shape across
-        # both labeling-related calls. If both are present, the
-        # canonical name wins.
-        label = body.get("label")
-        if label is None:
-            label = body.get("user_label")
-        # Strict bool — accept True/False only. The frontend
-        # ActionBubble emits one of those two; anything else (None,
-        # int, string "yes" / "charisma") signals a malformed call
-        # we want to surface rather than coerce.
-        if not isinstance(label, bool):
-            return jsonify({
-                "code": "INVALID_INPUT",
-                "error": (
-                    "label (or user_label) must be a boolean "
-                    "(true or false)"
-                ),
-            }), 400
-
-        user_id = request.user_id
-        updated = db.set_user_snippet_charisma_label(
-            snippet_id=snippet_id,
-            user_id=str(user_id),
-            label=label,
-        )
-        if not updated:
-            return jsonify({
-                "code": "NOT_FOUND",
-                "error": "Snippet not found or not owned by user",
+                "code": "NOT_FOUND", "error": "snippet not found",
             }), 404
 
-        # Subsystem-S multi-rater lane: also record this as a SECOND-ORDER peer
-        # signal in the shape that holds N raters (the single user_charisma_label
-        # boolean can't), so the future swipe game + the model's below-coach
-        # blend have a clean source from day one. Best-effort — never affects the
-        # primary label write.
-        try:
-            db.insert_snippet_peer_label(
-                snippet_id=snippet_id, rater_id=str(user_id),
-                label=("charisma" if label else "not_charisma"),
-                source="self_verification",
-            )
-        except Exception as _pl_err:
-            logger.warning("user_snippet_label: peer-label capture failed: %s "
-                           "(non-fatal)", _pl_err)
+        model_version = row["model_version"]
+        if not model_version:
+            # Attribute the prediction server-side. Best-effort: an
+            # unattributed row is still a usable verdict, so a registry read
+            # that fails must never cost us the label.
+            try:
+                from services.learning_serve import current_shadow_version
+                model_version = current_shadow_version()
+            except Exception as e:
+                logger.warning(
+                    "confidence_review: shadow version lookup failed snip=%s: "
+                    "%s (storing unattributed)", snippet_id, e,
+                )
+                model_version = None
+
+        saved = db.upsert_snippet_confidence_review(
+            snippet_id=snippet_id,
+            reviewer_user_id=str(request.user_id),
+            ai_correct=row["ai_correct"],
+            model_version=model_version,
+        )
+        if not saved:
+            return jsonify({
+                "code": "V2_ERROR",
+                "error": "could not save the review (run "
+                         "migrations/add_snippet_confidence_reviews.sql)",
+            }), 500
 
         return jsonify({
-            "status": "ok",
+            "saved": True,
             "snippet_id": snippet_id,
-            "user_charisma_label": updated.get("user_charisma_label"),
-            "user_charisma_label_set_at": updated.get(
-                "user_charisma_label_set_at"
-            ),
+            "ai_correct": row["ai_correct"],
         }), 200
-
     except Exception as e:
         logger.error(
-            "user_snippet_label.error err=%s", e, exc_info=True,
+            "confidence_review.error snip=%s err=%s", snippet_id, e,
+            exc_info=True,
         )
         sentry_sdk.capture_exception(e)
         return jsonify({
             "code": "V2_ERROR",
-            "error": "Failed to record snippet label",
+            "error": "Failed to record the confidence review",
         }), 500
 
 
