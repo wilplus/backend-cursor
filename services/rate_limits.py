@@ -411,22 +411,50 @@ def init_app(app) -> None:
 # ── tier decorators ──────────────────────────────────────────────────────
 # Built fresh per view so each registers under its own view name.
 
+def _transparent(decorated, original):
+    """Keep ``view.__wrapped__`` pointing at the UNDECORATED handler.
+
+    ``functools.wraps`` sets ``__wrapped__`` to whatever it wrapped, so
+    stacking a limiter above ``@require_auth`` makes ``view.__wrapped__``
+    the AUTH wrapper instead of the handler. That matters here because this
+    repo's route tests call ``route.__wrapped__(...)`` to invoke a handler
+    without auth — 112 call sites across 39 modules — and one extra layer
+    turns every one of them into a 401 against a mock that never sees the
+    request. (It did: 47 tests, first CI run.)
+
+    So each tier decorator re-points ``__wrapped__`` past itself. The
+    limiter becomes invisible to that convention, and the ordering that
+    matters at runtime — limit BEFORE auth, so an unauthenticated flood
+    still spends its budget — is preserved.
+    """
+    inner = getattr(original, "__wrapped__", None)
+    if inner is not None:
+        try:
+            decorated.__wrapped__ = inner
+        except Exception:  # pragma: no cover - exotic callables
+            pass
+    return decorated
+
+
 def whisper_limit(fn):
     """Audio upload -> Whisper transcription."""
-    return limiter.limit(whisper_limit_value, key_func=identity_key,
-                         scope="whisper")(fn)
+    return _transparent(
+        limiter.limit(whisper_limit_value, key_func=identity_key,
+                      scope="whisper")(fn), fn)
 
 
 def llm_limit(fn):
     """One interactive LLM call — chat, coaching turn, suggestion."""
-    return limiter.limit(llm_limit_value, key_func=identity_key,
-                         scope="llm")(fn)
+    return _transparent(
+        limiter.limit(llm_limit_value, key_func=identity_key,
+                      scope="llm")(fn), fn)
 
 
 def heavy_limit(fn):
     """Multi-call generation, media processing, model training."""
-    return limiter.limit(heavy_limit_value, key_func=identity_key,
-                         scope="heavy")(fn)
+    return _transparent(
+        limiter.limit(heavy_limit_value, key_func=identity_key,
+                      scope="heavy")(fn), fn)
 
 
 REGENERATE_MESSAGE = ("Regenerate is rate-limited. Try again shortly, or pass "
@@ -445,10 +473,11 @@ def regenerate_limit(fn):
     admin double-click can no longer buy a second LLM call just by landing
     on a different worker. Stacks with the caller's ``llm_limit``.
     """
-    return limiter.limit(regenerate_limit_value,
-                         key_func=view_arg_key("session_id"),
-                         scope="regenerate", error_message=REGENERATE_MESSAGE,
-                         exempt_when=_forced)(fn)
+    return _transparent(
+        limiter.limit(regenerate_limit_value,
+                      key_func=view_arg_key("session_id"),
+                      scope="regenerate", error_message=REGENERATE_MESSAGE,
+                      exempt_when=_forced)(fn), fn)
 
 
 GUEST_FUNNEL_MESSAGE = ("Too many trial uploads — please wait a few minutes "
@@ -462,12 +491,14 @@ def guest_funnel_limit(fn):
     same two caps, same config vars, same 429 copy — but the counters are
     now shared across workers instead of multiplied by them.
     """
-    fn = limiter.limit(guest_funnel_global_limit_value, key_func=global_key,
-                       scope="guest_funnel_global",
-                       error_message=GUEST_FUNNEL_MESSAGE)(fn)
-    return limiter.limit(guest_funnel_ip_limit_value, key_func=ip_key,
-                         scope="guest_funnel_ip",
-                         error_message=GUEST_FUNNEL_MESSAGE)(fn)
+    outer = _transparent(
+        limiter.limit(guest_funnel_global_limit_value, key_func=global_key,
+                      scope="guest_funnel_global",
+                      error_message=GUEST_FUNNEL_MESSAGE)(fn), fn)
+    return _transparent(
+        limiter.limit(guest_funnel_ip_limit_value, key_func=ip_key,
+                      scope="guest_funnel_ip",
+                      error_message=GUEST_FUNNEL_MESSAGE)(outer), outer)
 
 
 # ── 429 payload ──────────────────────────────────────────────────────────

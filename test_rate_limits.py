@@ -373,6 +373,115 @@ class DecoratorStackTests(_Base):
                           for _ in range(3)], [401, 401, 429])
 
 
+class WrappedTransparencyTests(_Base):
+    """``route.__wrapped__(...)`` must still reach the UNDECORATED handler.
+
+    39 test modules and 112 call sites in this repo invoke a route that way
+    to run the handler without auth. ``functools.wraps`` points
+    ``__wrapped__`` at whatever was wrapped, so a limiter stacked above
+    ``@require_auth`` silently makes it the AUTH wrapper — and every one of
+    those calls becomes a 401 against a mock that never sees a request.
+
+    That is not hypothetical: it took out 47 tests on this branch's first
+    CI run. These tests are the guard.
+    """
+
+    def _auth_stack(self):
+        """The production shape: limit above an auth decorator that 401s."""
+        from functools import wraps
+
+        def require_auth(f):
+            @wraps(f)
+            def decorated(*a, **kw):
+                return jsonify(code="UNAUTHORIZED"), 401
+            return decorated
+
+        def handler():
+            return "HANDLER"
+
+        return handler, require_auth(handler)
+
+    def test_wrapped_skips_past_the_limiter_and_the_auth_wrapper(self):
+        handler, authed = self._auth_stack()
+        for tier in ("llm_limit", "whisper_limit", "heavy_limit"):
+            with self.subTest(tier=tier):
+                view = getattr(self.rl, tier)(authed)
+                self.assertIs(view.__wrapped__, handler)
+                self.assertEqual(view.__wrapped__(), "HANDLER")
+
+    def test_wrapped_survives_stacked_limit_decorators(self):
+        """The guest funnel applies two, and regenerate stacks under llm."""
+        handler, authed = self._auth_stack()
+        for factory in (self.rl.guest_funnel_limit,
+                        lambda f: self.rl.llm_limit(self.rl.regenerate_limit(f))):
+            with self.subTest(factory=factory):
+                self.assertEqual(factory(authed).__wrapped__(), "HANDLER")
+
+    def test_undecorated_handler_keeps_pointing_at_itself(self):
+        """No inner decorator to skip — __wrapped__ is the handler."""
+        def handler():
+            return "HANDLER"
+        self.assertEqual(self.rl.llm_limit(handler).__wrapped__(), "HANDLER")
+
+    def test_the_runtime_order_is_still_limit_then_auth(self):
+        """Transparency is a metadata fix — it must not reorder the stack.
+
+        The limiter still runs FIRST, so an unauthenticated flood spends its
+        budget instead of probing a paid route for free: 401, 401, then 429.
+        """
+        with patch.dict(os.environ, {"RATE_LIMIT_LLM": "2 per minute"}):
+            self.rl = importlib.reload(rl)
+            _handler, authed = self._auth_stack()
+
+            def build(app, r):
+                app.add_url_rule("/paid", "paid", r.llm_limit(authed),
+                                 methods=["POST"])
+
+            c = self._app(build).test_client()
+            codes = [c.post("/paid").status_code for _ in range(3)]
+        self.assertEqual(codes, [401, 401, 429])
+
+
+try:
+    import routes.v2_routes as _v2_mod
+    import routes.life_routes as _life_mod
+    _ROUTES_ERR = None
+except Exception as e:  # pragma: no cover - needs the full app deps
+    _v2_mod = _life_mod = None
+    _ROUTES_ERR = e
+
+
+@unittest.skipIf(_ROUTES_ERR is not None,
+                 f"route-module tests need the app deps: {_ROUTES_ERR}")
+class RealRouteTransparencyTests(unittest.TestCase):
+    """The same guard as WrappedTransparencyTests, but on the REAL routes.
+
+    That class proves the decorators behave; this one proves they were
+    APPLIED that way on every capped route — which is what the 47 failing
+    tests actually depended on.
+    """
+
+    def test_every_capped_route_exposes_its_raw_handler(self):
+        capped = {name: mod
+                  for path, mod in (("routes/v2_routes.py", _v2_mod),
+                                    ("routes/life_routes.py", _life_mod))
+                  for name in CoveredRoutesTests.EXPECTED[path]}
+        self.assertGreater(len(capped), 30, "route list went stale")
+        for name, mod in capped.items():
+            with self.subTest(route=name):
+                view = getattr(mod, name, None)
+                self.assertIsNotNone(view, f"{name} disappeared")
+                inner = getattr(view, "__wrapped__", None)
+                self.assertIsNotNone(inner, f"{name} lost __wrapped__")
+                # The raw handler wraps nothing further. Anything else means
+                # a decorator layer leaked into the test convention.
+                self.assertIsNone(
+                    getattr(inner, "__wrapped__", None),
+                    f"{name}.__wrapped__ is still a wrapper — route tests "
+                    f"calling {name}.__wrapped__() will hit auth, not the "
+                    f"handler")
+
+
 class CoveredRoutesTests(unittest.TestCase):
     """Drift guard: the routes that spend money on OpenAI must carry a cap.
 
