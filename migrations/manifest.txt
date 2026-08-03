@@ -1,0 +1,277 @@
+# willab migration manifest — the ORDER OF RECORD. Append-only.
+#
+# Format: <version>\t<filename>   (tab-separated; # and blank lines ignored)
+#
+# WHY THIS FILE EXISTS
+#   The 239 migrations below were written as flat, unordered files and applied
+#   by hand. "Which migrations ran in prod?" was answered by grepping Railway
+#   logs for Postgres error codes (42703 / 42501). This manifest + the
+#   public.schema_migrations table replace that with a real answer.
+#
+# HOW THE INITIAL ORDER WAS DERIVED (versions 0001-0239, frozen 2026-08-03)
+#   The true historical application order is unrecoverable — files were applied
+#   by hand and out of band. What IS recoverable is the DEPENDENCY order, which
+#   is the only property a from-scratch rebuild needs: a file that ALTERs table
+#   T must come after the file that CREATEs T.
+#
+#   Each file's produced objects (CREATE TABLE/VIEW/TYPE) and required objects
+#   (ALTER, REFERENCES, CREATE INDEX/POLICY/TRIGGER, GRANT, INSERT, UPDATE)
+#   were extracted, a DAG built, and a topological sort run with a
+#   deterministic tiebreak. Result: 0 cycles, 0 ordering violations — every
+#   file lands after everything it depends on.
+#
+#   This is a RECONSTRUCTION, not history. Treat versions 0001-0239 as one
+#   baselined block (`migrate.py baseline`), not as a replayable timeline.
+#
+# NOT SELF-CONTAINED
+#   A few base tables (`recordings`, `admin_users`, `auth.users`, `storage.*`)
+#   are not created by any file here — they predate the directory or belong to
+#   Supabase. A from-scratch rebuild needs the Supabase base schema first.
+#
+# ADDING A MIGRATION
+#   Use `python scripts/migrate.py new <slug>` — it writes the .sql stub and
+#   appends the next version here. Never renumber, never reorder, never delete
+#   a line: applied versions are recorded in the DB by version + checksum, so
+#   editing history silently desynchronises every environment.
+#
+# See docs/MIGRATIONS.md for the full workflow.
+
+0001	add_admin_copilot_queue_archives.sql
+0002	add_admin_import_fields_to_recordings.sql
+0003	add_annotation_exports_storage_bucket.sql
+0004	add_arc_batch_deliveries.sql
+0005	add_arc_context_documents.sql
+0006	add_arc_invite_codes.sql
+0007	add_arc_purchases.sql
+0008	add_arc_credits_unlock.sql
+0009	add_best_presentation_cache.sql
+0010	add_best_presentation_edits.sql
+0011	add_candidate_windows.sql
+0012	add_coach_ai_conversations.sql
+0013	add_coach_arc_ideal_text.sql
+0014	add_coach_best_presentation_edits.sql
+0015	add_bp_coach_key_phrases.sql
+0016	add_coach_feedback_bucket_size_limit.sql
+0017	add_coach_snippet_drafts_table.sql
+0018	add_breakthrough_video_ref_to_coach_snippet_drafts.sql
+0019	add_coach_transcript_correction.sql
+0020	add_coach_users_table.sql
+0021	add_coach_video_assets.sql
+0022	add_coaching_directives_queue.sql
+0023	add_dad_jokes_table.sql
+0024	add_dev_bugs.sql
+0025	add_dev_bugs_images.sql
+0026	add_dev_tasks.sql
+0027	add_dev_tasks_images.sql
+0028	add_dev_tasks_reeval.sql
+0029	add_funnel_config.sql
+0030	add_game_saves.sql
+0031	add_ideal_decision_ledger.sql
+0032	add_ideal_text_auto_copy.sql
+0033	add_ideal_text_blocks.sql
+0034	add_ideal_text_versioning.sql
+0035	add_ideal_text_versions.sql
+0036	add_journal_posts.sql
+0037	add_journal_community_posts.sql
+0038	add_life_panel.sql
+0039	add_lounge_messages_table.sql
+0040	add_best_presentation_ready_kind.sql
+0041	add_cadence_lounge_kind.sql
+0042	add_feedback_ideal_lounge_kinds.sql
+0043	add_moment_reference_post.sql
+0044	add_moment_suggestions.sql
+0045	add_moment_unlocks.sql
+0046	add_recording_feelings.sql
+0047	add_recordings_task_id_reference_tasks.sql
+0048	add_rejected_takes.sql
+0049	add_rls_all_public_tables.sql
+0050	add_rls_arc_context_documents.sql
+0051	add_runtime_model_config.sql
+0052	add_stress_models_storage_bucket.sql
+0053	add_stripe_checkout_credit_grants.sql
+0054	add_strong_sides_library_table.sql
+0055	add_task_pool_label_fields.sql
+0056	add_training_labels_table.sql
+0057	add_learning_subsystem.sql
+0058	add_transcript_ready_lounge_kind.sql
+0059	add_transcription_language_to_recordings.sql
+0060	add_user_arc_ideal_notes.sql
+0061	add_user_audits.sql
+0062	add_user_consents_table.sql
+0063	add_user_consent_events_table.sql
+0064	add_user_ideal_edit.sql
+0065	add_user_suggestion_feedback.sql
+0066	add_user_transcript_edits.sql
+0067	add_v2_student_coaching_memory.sql
+0068	add_recurring_issues_to_coaching_memory.sql
+0069	add_v2_student_details.sql
+0070	add_credits_initialized_at.sql
+0071	add_free_intro_arc.sql
+0072	add_is_archived_to_student_details.sql
+0073	add_v2_student_details_credits.sql
+0074	add_video_shown_to_student_overrides.sql
+0075	alter_moment_suggestions_kind.sql
+0076	alter_moment_suggestions_kind_delivery.sql
+0077	bump_all_credits_to_25.sql
+0078	enable_rls_public_tables.sql
+0079	grant_v2_student_coaching_memory_service_role.sql
+0080	v1_planned_session.sql
+0081	v2_all_in_one.sql
+0082	v2_flow.sql
+0083	v2_focus_questions.sql
+0084	v2_focus_tasks.sql
+0085	add_focus_task_targets_and_difficulty.sql
+0086	grant_v2_focus_tables_service_role.sql
+0087	v2_metric_questions_pool.sql
+0088	v2_post_recording_questions_table.sql
+0089	v2_schema_unified.sql
+0090	add_admin_annotations_log.sql
+0091	add_ai_task_scoring_columns.sql
+0092	add_analysis_state.sql
+0093	add_behavioral_tasks_partition_and_seed.sql
+0094	add_boundary_metrics.sql
+0095	add_casual_voice_benchmarks.sql
+0096	add_charisma_profile_to_v2_sessions.sql
+0097	add_charisma_snippet_pipeline.sql
+0098	add_charisma_snippets_table.sql
+0099	add_admin_comment_acceptance_mode.sql
+0100	add_ai_draft_coach_note.sql
+0101	add_charisma_snippets_metrics_column.sql
+0102	add_coach_approval_columns.sql
+0103	add_coach_feedback_saved.sql
+0104	add_coach_grade_to_v2_sessions.sql
+0105	add_coach_insight_to_v2_sessions.sql
+0106	add_coach_override_fields_to_v2_sessions.sql
+0107	add_coach_video_ref_to_v2_sessions.sql
+0108	add_coaching_attempts_table.sql
+0109	add_coaching_attempt_annotations.sql
+0110	add_coaching_sessions_table.sql
+0111	add_conversation_summary_to_v2_sessions.sql
+0112	add_drift_flag_to_v2_sessions.sql
+0113	add_entities_to_coaching_attempts.sql
+0114	add_explore_arc.sql
+0115	add_feedback_credits_charged_at.sql
+0116	add_follow_up_question_to_charisma_snippets.sql
+0117	add_guest_funnel_columns.sql
+0118	add_homework_credits_charged_at.sql
+0119	add_index_v2_sessions_completed_lookup.sql
+0120	add_insights_payload_to_v2_sessions.sql
+0121	add_lab_credits_charged_at.sql
+0122	add_last_assigned_exercise_id.sql
+0123	add_next_questions_array_to_v2_sessions.sql
+0124	add_next_session_icebreaker_columns.sql
+0125	add_question_position_to_admin_annotations_log.sql
+0126	add_recording_1_performance_profile.sql
+0127	add_recording_1_processing_error_code.sql
+0128	add_recording_1_processing_status.sql
+0129	add_recording_kind.sql
+0130	add_recording_reviews.sql
+0131	add_recordings_v2_columns.sql
+0132	add_report_comment_to_v2_sessions.sql
+0133	add_review_opened_at.sql
+0134	add_say_it_stronger.sql
+0135	add_say_it_stronger_final.sql
+0136	add_score_for_display_to_v2_sessions.sql
+0137	add_self_rating_submitted_at.sql
+0138	add_self_rating_to_coaching_attempts.sql
+0139	add_session_duration.sql
+0140	add_session_kpi_narrative_ai_draft.sql
+0141	add_session_predictions_to_v2_sessions.sql
+0142	add_session_priming.sql
+0143	add_skill_id_to_coaching_attempts.sql
+0144	add_skip_metric_and_post_questions_overrides.sql
+0145	add_slide_transcripts.sql
+0146	add_snippet_arousal.sql
+0147	add_stickiness_topic_to_v2_sessions.sql
+0148	add_stress_snippet_labeling_pipeline.sql
+0149	add_ai_draft_fields_for_snippets.sql
+0150	add_snippet_labels_table.sql
+0151	add_snippet_transcripts.sql
+0152	add_stress_snippet_coach_attribution.sql
+0153	add_student_completion_email_tracking.sql
+0154	add_student_self_rating_to_v2_sessions.sql
+0155	add_surface_to_admin_annotations_log.sql
+0156	add_synthetic_provenance_walls.sql
+0157	add_task_score_to_v2_sessions.sql
+0158	add_tutor_feedback_deadline.sql
+0159	add_tutor_feedback_sent_at.sql
+0160	add_tutor_video_bucket_path_columns.sql
+0161	add_tutor_video_description.sql
+0162	add_tutor_video_url.sql
+0163	add_user_charisma_label_to_snippets.sql
+0164	add_user_sniper_profile.sql
+0165	add_admin_copilot_foundation.sql
+0166	add_ai_draft_fields_for_admin_rlhf.sql
+0167	add_annotation_export_pipeline.sql
+0168	add_copilot_video_pipeline.sql
+0169	add_copilot_reference_upload_jobs.sql
+0170	add_draft_delivery_lifecycle.sql
+0171	add_realtime_progression_to_user_sniper_profile.sql
+0172	add_session_sniper_completion_fields.sql
+0173	add_student_rating_session_sniper_metrics.sql
+0174	add_user_uploaded_files.sql
+0175	add_deleted_at_to_user_uploaded_files.sql
+0176	add_v2_sessions_score.sql
+0177	add_warm_up_columns_v2_sessions.sql
+0178	allow_focus_task_id_in_selected_task_id.sql
+0179	cleanup_unused_sessions.sql
+0180	drop_recording_reviews_ml_labeling.sql
+0181	drop_v2_sessions_legacy_performance_scores.sql
+0182	fix_charisma_snippets_nullable_user_id.sql
+0183	grant_sniper_tables_service_role.sql
+0184	interview_admin_upgrade.sql
+0185	add_admin_profile_override_to_user_settings.sql
+0186	add_admin_user_context_fields.sql
+0187	add_baseline_established_to_user_settings.sql
+0188	add_baseline_summary_to_user_settings.sql
+0189	add_consent_flags_to_user_settings.sql
+0190	add_consent_preferences_to_user_settings.sql
+0191	add_email_prefs_to_user_settings.sql
+0192	add_foundation_discriminators.sql
+0193	add_goal_change_tracking.sql
+0194	add_inferred_learner_profile_to_user_settings.sql
+0195	add_learner_mirror_to_user_settings.sql
+0196	add_profile_to_user_settings.sql
+0197	grant_service_role_on_user_settings.sql
+0198	rename_homework_session_status_warm_up_to_task.sql
+0199	rename_intro_0_to_0_intro.sql
+0200	reshape_recording_reviews_for_imports.sql
+0201	seed_intro_0_exercise.sql
+0202	v2_add_show_exercise_step.sql
+0203	v2_add_v1_session_id.sql
+0204	v2_homework_flow.sql
+0205	fix_v2_warm_up_tasks_max_performance_score_type.sql
+0206	v2_add_max_performance_score_to_tasks.sql
+0207	v2_homework_flow_schema_additions.sql
+0208	v2_metric_questions_table_only.sql
+0209	v2_pitch_variance_and_custom_metrics.sql
+0210	v2_sessions_add_post_answers.sql
+0211	v2_sessions_resume_snapshots.sql
+0212	v2_speaker_profiles.sql
+0213	v2_student_post_recording_questions.sql
+0214	v2_student_post_recording_questions_add_code.sql
+0215	v2_universal_questions_copy_v1.sql
+0216	v2_warm_up_task_pool.sql
+0217	rename_warmup_to_tasks_and_drop_focus.sql
+0218	v2_warm_up_task_pool_seed.sql
+0219	add_moment_suggestion_final.sql
+0220	add_star_verdicts.sql
+0221	add_confidence_labels.sql
+0222	add_journal_post_image.sql
+0223	add_speaker_sex.sql
+0224	add_training_import_source.sql
+0225	add_journal_science_category.sql
+0226	add_life_push_reminders.sql
+0227	add_life_setup_documents.sql
+0228	add_llm_usage.sql
+0229	add_token_pricing.sql
+0230	add_life_items_origin_document.sql
+0231	add_subscription_state.sql
+0232	add_life_items_week_horizon.sql
+0233	add_legacy_credit_conversion.sql
+0234	add_life_days_draft_meta.sql
+0235	add_ideal_text_variant_pool.sql
+0236	add_life_metric_readback.sql
+0237	add_life_period_reviews.sql
+0238	add_life_items_origin_wins.sql
+0239	add_processing_jobs.sql

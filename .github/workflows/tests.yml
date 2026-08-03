@@ -99,6 +99,37 @@ jobs:
             -p no:cacheprovider \
             -q
 
+  # Migration manifest gate. Catches the drift that used to be invisible
+  # until it hit prod: a .sql file added without a manifest entry (so it
+  # never runs anywhere), a manifest entry whose file was deleted or
+  # renamed, or a version renumbered after it had already been applied
+  # somewhere.
+  #
+  # Hermetic on purpose — `verify` reads files only, so this gate needs no
+  # database and no secrets. It is green on day 1 and stays green unless
+  # something is actually wrong, which is the bar the rest of this workflow
+  # sets. (Applying all 239 files to a throwaway Postgres would be the
+  # stronger check, but they target Supabase — auth.users, storage.*,
+  # service_role — so it would be red for environmental reasons forever.)
+  migrations:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12.1"
+
+      # No pip install: `verify` uses only the standard library, so this job
+      # stays fast and can't be broken by a dependency resolution problem.
+      - name: Verify migration manifest
+        run: python scripts/migrate.py verify --verbose
+
+      - name: Migration runner unit tests
+        run: python -m unittest test_migrations -v
+
   # Lounge-bot behavioral probe (tests/evals/master_doc_probe.py). This is
   # the ONLY gate that catches silent persona/capability drift in the
   # master-doc system prompt (the attention-ceiling failure mode). It makes

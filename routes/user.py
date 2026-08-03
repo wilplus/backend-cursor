@@ -1,8 +1,8 @@
 from flask import Blueprint, request, jsonify
 from auth import require_auth
 from services.db import db
-import sentry_sdk
 import logging
+from utils.errors import safe_error
 
 user_bp = Blueprint("user", __name__)
 logger = logging.getLogger(__name__)
@@ -26,8 +26,7 @@ def get_profile():
         }), 200
         
     except Exception as e:
-        sentry_sdk.capture_exception(e)
-        return jsonify({"code": "PROFILE_ERROR", "error": str(e)}), 500
+        return safe_error("PROFILE_ERROR", 500, exc=e)
 
 @user_bp.route("/metric-questions", methods=["GET"])
 @require_auth
@@ -38,8 +37,7 @@ def get_metric_questions():
         data = db.v2_get_user_metric_questions(user_id)
         return jsonify(data), 200
     except Exception as e:
-        sentry_sdk.capture_exception(e)
-        return jsonify({"code": "METRIC_QUESTIONS_ERROR", "error": str(e)}), 500
+        return safe_error("METRIC_QUESTIONS_ERROR", 500, exc=e)
 
 
 @user_bp.route("/metric-questions", methods=["PATCH"])
@@ -57,8 +55,7 @@ def update_metric_questions():
         out = db.v2_update_user_metric_questions(user_id, payload)
         return jsonify(out), 200
     except Exception as e:
-        sentry_sdk.capture_exception(e)
-        return jsonify({"code": "METRIC_QUESTIONS_ERROR", "error": str(e)}), 500
+        return safe_error("METRIC_QUESTIONS_ERROR", 500, exc=e)
 
 
 def _json_safe_profile(obj):
@@ -99,5 +96,4 @@ def get_recordings():
         }), 200
         
     except Exception as e:
-        sentry_sdk.capture_exception(e)
-        return jsonify({"code": "RECORDINGS_ERROR", "error": str(e)}), 500
+        return safe_error("RECORDINGS_ERROR", 500, exc=e)

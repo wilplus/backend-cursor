@@ -20,6 +20,13 @@ import uuid
 from datetime import datetime, timezone
 from werkzeug.utils import secure_filename
 from typing import Any
+from utils.errors import safe_error
+# Module scope on purpose: `except DeadlineExceeded` in the upload routes
+# must resolve even when the failure happens BEFORE the try body reaches
+# its own imports — otherwise the handler NameErrors while handling.
+from services.upload_guard import (
+    DeadlineExceeded, UploadTooLarge, deadline_for, read_capped,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -1998,7 +2005,7 @@ def v2_internal_whisper_health():
         }), 200
     except Exception as e:
         logger.error("whisper-health failed: %s", e, exc_info=True)
-        return jsonify({"error": str(e)}), 500
+        return safe_error("INTERNAL_ERROR", 500, exc=e)
 
 
 @v2_bp.route("/coaching/start", methods=["POST"])
@@ -4179,14 +4186,19 @@ def v2_public_unsubscribe():
                 "error": "Unsubscribe service is temporarily unavailable.",
             }), 503
         except UnsubscribeTokenExpired as e:
+            # PUBLIC endpoint (no auth) — the exception text describes the
+            # token scheme and its TTL, which is a free hint to anyone
+            # probing the signature. Detail to the log, not the link page.
+            logger.info("unsubscribe: expired token: %s", e)
             return jsonify({
                 "code": "INVALID_TOKEN",
-                "error": f"This unsubscribe link has expired ({e}).",
+                "error": "This unsubscribe link has expired.",
             }), 401
         except UnsubscribeTokenInvalid as e:
+            logger.info("unsubscribe: invalid token: %s", e)
             return jsonify({
                 "code": "INVALID_TOKEN",
-                "error": f"This unsubscribe link is invalid ({e}).",
+                "error": "This unsubscribe link is invalid.",
             }), 401
 
         # Make sure the user still exists (token may outlive the
@@ -9784,13 +9796,17 @@ def v2_coach_annotation_upload():
         if (request.content_length or 0) > max_bytes:
             return jsonify({"code": "FILE_TOO_LARGE",
                             "error": f"exceeds {_LAB_MAX_AUDIO_MB}MB"}), 413
-        file_bytes = audio_file.read()
+        # Bounded read + wall-clock budget — same guards as the student
+        # lab POST (P0 audit 2026-08-03).
+        deadline = deadline_for("annotation-upload")
+        try:
+            file_bytes = read_capped(audio_file, max_bytes)
+        except UploadTooLarge:
+            return jsonify({"code": "FILE_TOO_LARGE",
+                            "error": f"exceeds {_LAB_MAX_AUDIO_MB}MB"}), 413
         if not file_bytes:
             return jsonify({"code": "INVALID_INPUT",
                             "error": "audio_file is empty"}), 400
-        if len(file_bytes) > max_bytes:
-            return jsonify({"code": "FILE_TOO_LARGE",
-                            "error": f"exceeds {_LAB_MAX_AUDIO_MB}MB"}), 413
         # Audio only (guardrail: keep video blocked) — same gate as the
         # student POST.
         _up_ct = (audio_file.mimetype or "").strip().lower()
@@ -9816,21 +9832,23 @@ def v2_coach_annotation_upload():
         session_id = str(uuid.uuid4())
         recording_id = str(uuid.uuid4())
         ext = os.path.splitext(audio_file.filename or "")[1] or ".webm"
-        bucket = "coach_feedback_videos"
         key = f"willab_annotation/{session_id}/audio_{uuid.uuid4().hex}{ext}"
         content_type = (audio_file.mimetype
                         or "audio/webm").strip() or "audio/webm"
-        from services.coach_video_storage import (
-            coach_media_public_url, put_coach_object_bytes,
+        # Coach-uploaded, but still a person's recorded voice — same
+        # bucket as student takes, not the coach media bucket.
+        from services.lab_audio_storage import (
+            lab_audio_public_url, put_lab_audio_bytes,
         )
+        deadline.check("store")
         try:
-            put_coach_object_bytes(bucket, key, file_bytes, content_type)
+            bucket = put_lab_audio_bytes(key, file_bytes, content_type)
         except Exception as _up_err:
             logger.error("annotation upload: store failed: %s", _up_err,
                          exc_info=True)
             return jsonify({"code": "V2_ERROR",
                             "error": "Failed to store audio"}), 500
-        parent_url = coach_media_public_url(key) or f"s3://{bucket}/{key}"
+        parent_url = lab_audio_public_url(key) or f"s3://{bucket}/{key}"
 
         # The RECORDINGS row — REQUIRED before any snippet insert:
         # charisma_snippets.recording_id is a NOT NULL FK, and
@@ -9882,6 +9900,7 @@ def v2_coach_annotation_upload():
         # Snippets ONLY — the same cutter, no assembly (the student
         # POST's arc/ideal-text block is never invoked here).
         from services.lab_recording import process_lab_recording
+        deadline.check("analyze")
         readout = process_lab_recording(
             session_id=session_id,
             user_id=None,
@@ -9908,6 +9927,13 @@ def v2_coach_annotation_upload():
 
         return jsonify({"session_id": session_id, "n_snippets": _n,
                         "annotation_mode": True}), 201
+    except DeadlineExceeded as de:
+        logger.warning("annotation upload deadline: %s", de)
+        return jsonify({
+            "code": "PROCESSING_TIMEOUT",
+            "error": "That upload is taking longer than expected — "
+                     "it's still processing, check back shortly.",
+        }), 504
     except Exception as e:
         logger.error("annotation upload failed: %s", e, exc_info=True)
         sentry_sdk.capture_exception(e)
@@ -10646,9 +10672,11 @@ def v2_coach_session_recut(session_id):
         if not storage_path:
             return jsonify({"code": "NO_AUDIO", "error": "Recording has no stored audio."}), 422
 
-        from services.coach_video_storage import get_coach_object_bytes
+        # Bucket-tolerant read: a take may live in the lab bucket or, if
+        # it predates the split, the coach bucket (P0 audit 2026-08-03).
+        from services.lab_audio_storage import get_lab_audio_bytes
         try:
-            audio_bytes = get_coach_object_bytes("coach_feedback_videos", storage_path)
+            audio_bytes = get_lab_audio_bytes(storage_path)
         except Exception as fe:
             logger.error("recut: audio fetch failed sid=%s err=%s", session_id, fe)
             return jsonify({"code": "AUDIO_FETCH_FAILED", "error": "Could not load stored audio."}), 502
@@ -14461,10 +14489,12 @@ def v2_coach_save_feedback(session_id):
                     db.upsert_training_labels(
                         _own, str(request.user_id), _own_labels)
             except Exception as _lab_err:
-                return jsonify({
-                    "code": "INVALID_INPUT",
-                    "error": f"labels: {_lab_err}",
-                }), 422
+                # This is a DB/PostgREST exception, not a validation
+                # message: its text carries table + column names.
+                return safe_error(
+                    "INVALID_INPUT", 422,
+                    message="Those labels could not be saved.",
+                    exc=_lab_err, log="feedback: label upsert failed")
 
         if not db.set_session_feedback_saved(session_id):
             return jsonify({"code": "V2_ERROR",
@@ -15719,16 +15749,22 @@ def v2_lab_create_recording():
                 "code": "FILE_TOO_LARGE",
                 "error": f"audio_file exceeds {_LAB_MAX_AUDIO_MB}MB",
             }), 413
-        file_bytes = audio_file.read()
-        if not file_bytes:
-            return jsonify({
-                "code": "INVALID_INPUT", "error": "audio_file is empty",
-            }), 400
-        if len(file_bytes) > max_bytes:
+        # BOUNDED read (P0 audit 2026-08-03). Content-Length above is a
+        # client assertion — a chunked or mis-declared body sails past it,
+        # and the old unbounded .read() then pulled the whole thing into
+        # the worker's heap. read_capped stops one byte past the cap.
+        deadline = deadline_for("lab-upload")
+        try:
+            file_bytes = read_capped(audio_file, max_bytes)
+        except UploadTooLarge:
             return jsonify({
                 "code": "FILE_TOO_LARGE",
                 "error": f"audio_file exceeds {_LAB_MAX_AUDIO_MB}MB",
             }), 413
+        if not file_bytes:
+            return jsonify({
+                "code": "INVALID_INPUT", "error": "audio_file is empty",
+            }), 400
         # Reject VIDEO (defensive — the FE picker blocks it and the Vercel
         # edge caps size, but a video that slips through should fail clean,
         # not as a confusing downstream decode error). By mimetype (incl.
@@ -15897,10 +15933,13 @@ def v2_lab_create_recording():
             }), 422
 
         # ── 4. store + session + recording ──────────────────────────
-        from services.coach_video_storage import (
-            put_coach_object_bytes, coach_media_public_url,
+        # Lab audio is the USER's voice — its own bucket, not the coach's
+        # media bucket (P0 audit 2026-08-03). Inert until R2_LAB_AUDIO_*
+        # is provisioned; see services/lab_audio_storage.py.
+        from services.lab_audio_storage import (
+            lab_audio_public_url, put_lab_audio_bytes,
         )
-        bucket = "coach_feedback_videos"
+        deadline.check("store")
         # ── SESSION-REUSE GUARD (founder bug 2026-07-20: "after the
         # re-read, recording the spoken version analyses the re-read").
         # A session that ALREADY carries a recording is spent: reusing it
@@ -15944,13 +15983,13 @@ def v2_lab_create_recording():
         content_type = (audio_file.mimetype or "audio/webm").strip() or "audio/webm"
 
         try:
-            put_coach_object_bytes(bucket, parent_key, file_bytes, content_type)
+            bucket = put_lab_audio_bytes(parent_key, file_bytes, content_type)
         except Exception as up_err:
             logger.error("lab: parent upload failed: %s", up_err, exc_info=True)
             return jsonify({
                 "code": "V2_ERROR", "error": "Failed to store recording",
             }), 500
-        parent_url = coach_media_public_url(parent_key) or f"s3://{bucket}/{parent_key}"
+        parent_url = lab_audio_public_url(parent_key) or f"s3://{bucket}/{parent_key}"
 
         # Guest session (create only if it doesn't already exist).
         if not db.v2_get_session_by_id(guest_session_id):
@@ -16166,6 +16205,10 @@ def v2_lab_create_recording():
         # mode, founder 2026-07-15: closing the tab / locking the phone must
         # never kill the analysis). Everything request-scoped is captured
         # HERE — the daemon must never touch flask.request.
+        # Last boundary before the expensive stretch (transcribe → cut →
+        # metrics → persist). If the budget is already spent, fail clean
+        # here instead of starting work we can't finish.
+        deadline.check("analyze")
         _cad_user = getattr(request, "user_id", None)
         _worker_filename = audio_file.filename or "lab.webm"
         _worker_spark = str(form.get("spark") or "").strip().lower() in (
@@ -16393,6 +16436,17 @@ def v2_lab_create_recording():
             "recording_progress": recording_progress,
         }), 201
 
+    except DeadlineExceeded as de:
+        # The budget ran out between stages. The audio IS stored and the
+        # session row exists, so this is recoverable: the FE re-polls the
+        # readout rather than asking for a re-record.
+        logger.warning("lab/recordings POST deadline: %s", de)
+        return jsonify({
+            "code": "PROCESSING_TIMEOUT",
+            "error": "That recording is taking longer than expected — "
+                     "it's still processing, check back shortly.",
+            "session_id": locals().get("guest_session_id"),
+        }), 504
     except Exception as e:
         logger.error("lab/recordings POST failed: %s", e, exc_info=True)
         sentry_sdk.capture_exception(e)
