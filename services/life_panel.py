@@ -45,7 +45,7 @@ __all__ = [
     "LifeError",
     "CATEGORIES", "CATEGORY_LABELS", "ITEM_KINDS", "HORIZONS",
     "STRATEGY_HORIZONS", "ITEM_TO_STRATEGY_HORIZON", "strategy_horizon_for",
-    "BETS", "ADVISORS", "TAG_ROUTES", "PUBLIC_TAGS",
+    "BETS", "ADVISORS", "TAG_ROUTES", "PUBLIC_TAGS", "REFLECTION_TAGS",
     "parse_tag", "tag_suggestions",
     "map_import_category", "normalize_categories",
     "validate_case_input", "validate_item_input",
@@ -252,10 +252,21 @@ TAG_ROUTES: dict[str, str] = {
     "problem": "case",
     # compared against the strategy doc; inconsistencies flagged (BE-6)
     "data": "goal_diff",
-    "observation": "goal_diff",
-    "reflection": "goal_diff",
     "idea": "goal_diff",
     "finding": "goal_diff",
+    # the reality layer (founder-agreed, 2026-08-02): capture costs NOTHING —
+    # no derivation fires, no proposal is drafted. These notes become the
+    # retrieval CONTEXT the strategy work reads (compare_to_strategy, and the
+    # reviews after it), which is the opposite bargain from goal_diff's
+    # immediate model call. `observation` and `reflection` MOVED here from
+    # goal_diff for exactly that reason: writing a thought down must never
+    # spend a model call or queue a proposal the person did not ask for.
+    "thought": "reflection",
+    "thoughts": "reflection",
+    "reflection": "reflection",
+    "reflections": "reflection",
+    "observation": "reflection",
+    "observations": "reflection",
     # wins
     "win": "win",
     "wins": "win",
@@ -266,6 +277,11 @@ TAG_ROUTES: dict[str, str] = {
     # the daily card
     "edit": "edit",
 }
+
+# Every spelling that lands in the reflection layer. The note keeps the tag
+# the person actually typed; this set is how the retrieval finds them all.
+REFLECTION_TAGS: tuple[str, ...] = tuple(sorted(
+    t for t, r in TAG_ROUTES.items() if r == "reflection"))
 
 # The `#` autocomplete list. Four aliases per route are easy to build and
 # impossible to memorise; the picker is what keeps the guide page from having
@@ -284,6 +300,8 @@ _TAG_HINTS: dict[str, str] = {
     "win": "a win, for the wall",
     "phrase": "add to the smart-phrase wall",
     "edit": "edit today's card",
+    # Proposed copy (LIVE LOOP — flagged for founder sign-off in the PR).
+    "reflection": "kept as context for your strategy",
 }
 
 # A tag is the FIRST token, matched case-insensitively, terminated by
@@ -298,7 +316,8 @@ def parse_tag(text: Optional[str]) -> tuple[Optional[str], str, str]:
 
     ``tag`` is the normalized tag WITHOUT the ``#`` (None when the text does
     not start with one, or when the tag is unknown). ``route`` is one of
-    ``case`` / ``goal_diff`` / ``win`` / ``phrase`` / ``edit`` / ``capture``.
+    ``case`` / ``goal_diff`` / ``reflection`` / ``win`` / ``phrase`` /
+    ``edit`` / ``capture``.
     ``remainder`` is the prose after the tag — the note body the engine works
     on.
 

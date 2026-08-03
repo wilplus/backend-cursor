@@ -474,6 +474,25 @@ def retire_candidate(user_id: str, new_principle: dict) -> Optional[dict]:
 # BE-6 — strategy comparison, proposals, budget
 # ═════════════════════════════════════════════════════════════════════════
 
+def retrieve_reflections(user_id: str, text: str, *,
+                         limit: int = RETRIEVAL_LIMIT) -> list[dict]:
+    """The ~N reflection notes that bear on this text, most relevant first.
+
+    The reality layer: what the user tagged ``#thoughts`` / ``#reflections``
+    / ``#observations``. Same deterministic in-process lexical scoring as
+    ``retrieve_principles`` — the ranking itself sends nothing anywhere.
+    These are CONTEXT for the strategy comparison, never a warrant for it:
+    a proposal is still justified only by the user's own principles."""
+    rows = store.list_reflection_notes(user_id)
+    scored: list[tuple[float, dict]] = []
+    for row in rows:
+        score = lp.phrase_relevance(text, row.get("body") or "")
+        if score > 0:
+            scored.append((score, row))
+    scored.sort(key=lambda pair: (-pair[0], str(pair[1].get("created_at") or "")))
+    return [row for _, row in scored[:max(1, limit)]]
+
+
 _DIFF_SYSTEM = """You compare ONE observation a user just wrote against their \
 own strategy documents, and report a DIRECT inconsistency if one exists.
 
@@ -487,6 +506,12 @@ the section it came from, and you MUST propose the replacement text.
  * You MUST cite exactly one of the user's OWN principles (given below, \
 numbered) as the warrant for the change. If no principle of theirs justifies \
 it, there is no proposal — return {"inconsistent": false}.
+ * You may also be given RECENT REFLECTIONS the user wrote about their life \
+as it actually is. They are CONTEXT ONLY: use them to judge whether the \
+observation describes something real and current rather than a passing mood. \
+A reflection is NEVER the warrant for a change and NEVER the contradicted \
+line — the warrant must be a numbered principle, and the contradicted line \
+must be quoted from the strategy documents.
  * Never propose a change to Section I (The Anchor) or to the RANK of the \
 three bets. Those are hand-edited only. If that is what the observation bears \
 on, set {"inconsistent": true, "target": "anchor"} and stop — report, do not \
@@ -534,11 +559,33 @@ def compare_to_strategy(user_id: str, note_text: str, *,
         for horizon, row in sorted(docs.items())
     )
 
+    # The reality layer rides along as context. It can make the model more
+    # confident an observation is real; it can never be the warrant or the
+    # contradicted line — both of those live in principles and documents.
+    # A failed fetch costs the context, never the comparison.
+    try:
+        reflections = [
+            r for r in retrieve_reflections(user_id, note_text)
+            if not (note_id and str(r.get("id")) == str(note_id))
+        ]
+    except Exception as e:
+        logger.warning("life: reflection retrieval failed user=%s: %s",
+                       user_id, e)
+        reflections = []
+    reflection_block = ""
+    if reflections:
+        lines = "\n".join(
+            f"- {(r.get('body') or '').strip()[:300]}" for r in reflections)
+        reflection_block = (
+            f"RECENT REFLECTIONS (context only — never a warrant):\n"
+            f"{lines}\n\n")
+
     parsed = _complete(
         SPEC_LIFE_STRATEGY_DIFF,
         system=_DIFF_SYSTEM,
         user=(f"STRATEGY DOCUMENTS:\n{doc_block}\n\n"
               f"THE USER'S OWN PRINCIPLES (numbered):\n{numbered}\n\n"
+              f"{reflection_block}"
               f"OBSERVATION:\n{note_text}"),
         surface="diff",
         user_id=user_id,
