@@ -12753,6 +12753,12 @@ def _ideal_piece_provenance(arc_id):
                 inc = r.get("incumbent_pieces") or []
                 out.append({
                     "slide_index": r.get("slide_index"),
+                    # The KEYED pill→picker join (FE picker handoff
+                    # 2026-08-03): the FE deep-links a paragraph's pill
+                    # into the variants sheet by block_key — never by
+                    # index-zipping two lists that merely happen to be
+                    # sorted the same way.
+                    "block_key": r.get("block_key"),
                     "snippet_id": (inc[0].get("snippet_id")
                                    if inc else None),
                     "take_session_id": r.get("incumbent_take_session_id"),
@@ -12835,10 +12841,13 @@ def _ideal_text_pieces(arc_id, served_text, presentation_ref):
                 si = None
             _snip = src.get("snippet_id")
             _sess = src.get("take_session_id")
+            _bk = src.get("block_key")
             out.append({
                 "piece_key": i,
                 "text": para,
                 "slide_index": si,
+                "block_key": (_bk if isinstance(_bk, int)
+                              and not isinstance(_bk, bool) else None),
                 "snippet_id": str(_snip) if _snip else None,
                 "take_session_id": str(_sess) if _sess else None,
                 "take_index": src.get("take_index"),

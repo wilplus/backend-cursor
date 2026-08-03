@@ -101,6 +101,12 @@ All under the existing `/v2` blueprint, all `require_auth`, all owner-scoped
   current state). These disappear naturally as the arc gets new activity.
 * `500 {"code":"V2_ERROR"}` — read failure; show the existing retry
   affordance, never an empty picker (an empty picker lies).
+* **The pill→picker join is KEYED** (added 2026-08-03, same day): the
+  ideal-text GET's `pieces[]` entries now carry `block_key` (int | null;
+  null on legacy/misaligned lanes). Deep-link a paragraph's pill into the
+  picker by matching `pieces[i].block_key` to `blocks[].block_key` —
+  never by index-zipping the two lists. A null `block_key` = no pill
+  deep-link for that paragraph; the header entry point still covers it.
 
 ### 4.2 Select (mix & match — fear 3)
 
