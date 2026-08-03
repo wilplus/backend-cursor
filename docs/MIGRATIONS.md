@@ -118,6 +118,29 @@ instead — baselining an empty DB permanently hides that nothing ever ran.
 sh bin/railway-migrate.sh
 ```
 
+### Which connection string
+
+Supabase offers three, and two of them break things. Take the **session
+pooler**:
+
+| Option | Port | |
+|---|---|---|
+| Session pooler — `aws-0-<region>.pooler.supabase.com` | **5432** | ✅ use this |
+| Transaction pooler — same host | 6543 | ❌ breaks the concurrency guard |
+| Direct — `db.<ref>.supabase.co` | 5432 | ⚠️ IPv6-only on newer projects; Railway is IPv4 |
+
+The transaction pooler is the dangerous one because it *appears* to work.
+`apply` takes a `pg_advisory_lock` so two deploys can't apply the same
+migration at once, and advisory locks are **session-scoped**. A transaction
+pooler multiplexes connections per transaction, so the lock is taken on one
+backend and released against another — the guard silently stops guarding, and
+you only find out under a race. DDL in explicit transactions is unreliable
+there for the same reason.
+
+The runner detects a `:6543` URL and warns on every invocation. It does not
+refuse: someone whose only reachable endpoint is the pooler should still be
+able to migrate.
+
 Railway runs a pre-deploy command to completion before routing traffic to the
 new deployment: the schema lands before the code that needs it, and a
 non-zero exit stops the deploy rather than shipping a backend into a database
