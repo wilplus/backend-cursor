@@ -25,6 +25,12 @@ What this suite defends, in order of how badly it hurts when it breaks:
 
 No database required — every test here reads files or uses a fake connection.
 
+STDLIB ONLY. The `migrations` CI job installs no dependencies, so nothing
+here may depend on psycopg2 (or any other optional package) being importable.
+A test that asserts on post-connect behaviour will pass locally and fail in
+CI — that is exactly how the pooler-warning test broke on its first run.
+Assert on what holds in both environments, or fake the connection.
+
 Run: python3 -m unittest test_migrations
 """
 from __future__ import annotations
@@ -494,6 +500,92 @@ class BaselineSqlTests(unittest.TestCase):
     def test_sql_literals_are_quote_safe(self):
         self.assertEqual(migrate._sql_quote("plain"), "'plain'")
         self.assertEqual(migrate._sql_quote("it's"), "'it''s'")
+
+
+class TransactionPoolerWarningTests(unittest.TestCase):
+    """Port 6543 vs 5432 is a one-digit mistake with a silent consequence:
+    session-scoped advisory locks stop guarding on a transaction pooler, and
+    the failure only surfaces under a race, long after the misconfiguration."""
+
+    SESSION_POOLER = "postgresql://u:p@aws-0-eu-central-1.pooler.supabase.com:5432/postgres"
+    TXN_POOLER = "postgresql://u:p@aws-0-eu-central-1.pooler.supabase.com:6543/postgres"
+
+    def _warn(self, url: str) -> tuple[bool, str]:
+        buf = io.StringIO()
+        with redirect_stderr(buf):
+            warned = migrate.warn_if_transaction_pooler(url)
+        return warned, buf.getvalue()
+
+    def test_warns_on_transaction_pooler(self):
+        warned, err = self._warn(self.TXN_POOLER)
+        self.assertTrue(warned)
+        self.assertIn("6543", err)
+        self.assertIn("5432", err)
+
+    def test_silent_on_session_pooler(self):
+        warned, err = self._warn(self.SESSION_POOLER)
+        self.assertFalse(warned)
+        self.assertEqual(err, "")
+
+    def test_silent_on_direct_connection(self):
+        warned, _ = self._warn("postgresql://u:p@db.abcdef.supabase.co:5432/postgres")
+        self.assertFalse(warned)
+
+    def test_matches_port_only_at_a_boundary(self):
+        # A password or hostname containing 6543 is not a port.
+        for url in [
+            "postgresql://u:pass6543word@host:5432/postgres",
+            "postgresql://u:p@host-6543.example.com:5432/postgres",
+            "postgresql://u:p@host:54321/postgres",
+        ]:
+            with self.subTest(url=url):
+                self.assertFalse(self._warn(url)[0])
+
+    def test_matches_with_query_string_and_trailing_forms(self):
+        for url in [
+            "postgresql://u:p@host:6543/postgres",
+            "postgresql://u:p@host:6543/postgres?sslmode=require",
+            "postgresql://u:p@host:6543",
+        ]:
+            with self.subTest(url=url):
+                self.assertTrue(self._warn(url)[0])
+
+    def test_never_echoes_the_url(self):
+        # The URL carries the database password; it must not reach the logs.
+        _, err = self._warn(self.TXN_POOLER)
+        self.assertNotIn("u:p@", err)
+        self.assertNotIn("supabase.com", err)
+
+    def test_warning_does_not_block(self):
+        """It warns and still attempts the connection — refusing outright would
+        strand anyone whose only reachable endpoint is the pooler.
+
+        Uses 127.0.0.1 so the attempt fails instantly with ECONNREFUSED: no
+        DNS, no network, no timeout. (An earlier version of this test pointed
+        at a realistic Supabase hostname and hung the suite for two minutes.)
+
+        The outcome after the warning differs by environment, and both are
+        correct: with psycopg2 installed the connection is refused; in the
+        stdlib-only `migrations` CI job the driver is missing. What must hold
+        in BOTH is that the warning fired — it diagnoses the URL, not the
+        driver. Asserting "could not connect" here is what turned this job red
+        on first run, because that CI job installs no dependencies.
+        """
+        original = migrate.os.environ.get("DATABASE_URL")
+        migrate.os.environ["DATABASE_URL"] = "postgresql://u:p@127.0.0.1:6543/postgres"
+        try:
+            code, out = run_cli(["status"])
+            self.assertEqual(code, EXIT_CANNOT_RUN, out)
+            self.assertIn("6543", out)  # warned, driver present or not
+            self.assertTrue(
+                "could not connect" in out or "psycopg2 is not installed" in out,
+                f"expected a connection or driver failure after the warning, got: {out!r}",
+            )
+        finally:
+            if original is None:
+                migrate.os.environ.pop("DATABASE_URL", None)
+            else:
+                migrate.os.environ["DATABASE_URL"] = original
 
 
 class CliTests(unittest.TestCase):
