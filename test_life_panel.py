@@ -1667,6 +1667,219 @@ class DraftMetaMigrationTests(unittest.TestCase):
             self.assertTrue(table.startswith("life_"), table)
 
 
+@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
+class MetricReadbackTests(unittest.TestCase):
+    """Piece 3 (founder-agreed 2026-08-02): the evening holds the day against
+    the goal's OWN measure — the person's sentence on both sides of the seam,
+    never a computed number (AC-9)."""
+
+    BETS = [
+        {"id": "b1", "kind": "bet", "title": "🟢 The Life", "order_key": 1.0},
+        {"id": "b2", "kind": "bet", "title": "🔵 The Company", "order_key": 2.0},
+        {"id": "b3", "kind": "bet", "title": "🟣 The Dream", "order_key": 3.0},
+    ]
+
+    # ── the measure travels: goal → slot → evening ────────────────────────
+
+    def test_the_slot_carries_the_goals_measure(self):
+        def _list(user_id, *, kind=None, **kw):
+            return {"goal": [{"id": "g1", "title": "Profitable",
+                              "collection": "company",
+                              "measure": "3 talks, one draft sent"}],
+                    "bet": self.BETS, "habit": []}.get(kind, [])
+        with patch.object(lengine.store, "list_items", side_effect=_list):
+            card = lengine.build_daily_card(USER, date(2026, 8, 3))
+        self.assertEqual(card["draft_meta"]["one_thing"]["measure"],
+                         "3 talks, one draft sent")
+
+    def test_the_evening_recap_holds_the_measure_up(self):
+        summary = lengine.build_evening_pass({
+            "one_thing": "Send the deck",
+            "one_thing_bet": "🔵 The Company",
+            "draft_meta": {"one_thing": {"goal_id": "g1",
+                                         "measure": "3 talks"}},
+            "focus_blocks": [], "morning_checks": {},
+        })
+        self.assertEqual(summary["one_thing_measure"], "3 talks")
+
+    def test_the_wire_carries_measure_and_the_answer_verbatim(self):
+        payload = lp.serialize_day({
+            "id": "d1", "day": "2026-08-03",
+            "evening_measure": "two talks happened, the draft did not",
+            "draft_meta": {"one_thing": {"goal_id": "g1", "goal": "Profitable",
+                                         "measure": "3 talks",
+                                         "drafted": "x", "accepted": "y"}},
+        })
+        self.assertEqual(payload["one_thing_measure"], "3 talks")
+        self.assertEqual(payload["evening_measure"],
+                         "two talks happened, the draft did not")
+        # The learner's fields still never leave the row.
+        flat = json.dumps(payload)
+        self.assertNotIn("drafted", flat)
+        self.assertNotIn("accepted", flat)
+
+    def test_serialize_item_exposes_the_measure(self):
+        self.assertEqual(
+            lp.serialize_item({"kind": "goal", "measure": "10kg"})["measure"],
+            "10kg")
+        self.assertIsNone(lp.serialize_item({"kind": "goal"})["measure"])
+
+    # ── the write paths accept it, in the person's words ──────────────────
+
+    def test_validate_accepts_and_caps_the_measure(self):
+        out = lp.validate_item_input({"kind": "goal", "title": "x",
+                                      "measure": "  3 talks  "})
+        self.assertEqual(out["measure"], "3 talks")
+        out = lp.validate_item_input({"measure": ""}, partial=True)
+        self.assertIsNone(out["measure"])
+
+    def test_the_tick_carries_the_measure_and_absence_stays_absent(self):
+        fields = importer.sanitize_confirmed_item(
+            {"kind": "goal", "title": "x", "measure": "one draft"})
+        self.assertEqual(fields["measure"], "one draft")
+        # An older payload must not write NULL over the column.
+        self.assertNotIn("measure",
+                         importer.sanitize_confirmed_item(
+                             {"kind": "goal", "title": "x"}))
+
+    def test_plan_strategy_passes_the_documents_criterion_verbatim(self):
+        plan = importer.plan_strategy("u1", {"goals": [
+            {"title": "Profitable", "measure": "3 talks, 10kg, one draft"}]})
+        goal = next(i for i in plan["items"] if i["kind"] == "goal")
+        self.assertEqual(goal["measure"], "3 talks, 10kg, one draft")
+
+    def test_the_extraction_prompt_asks_for_the_criterion_verbatim(self):
+        prompt = lengine._DOC_DRAFT_SYSTEM
+        self.assertIn("measure", prompt)
+        self.assertIn("never invent a", prompt)
+        rendered = prompt.format(today="2026-08-03")
+        self.assertIn('"measure"', rendered)
+
+
+@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
+class MetricReadbackRouteTests(unittest.TestCase):
+    """The PATCH stores the evening answer, and every unrun migration costs
+    the record, never the edit."""
+
+    def setUp(self):
+        self.app = Flask(__name__)
+        self.app.register_blueprint(lroutes.life_bp)
+        self.client = self.app.test_client()
+        self._orig_verify = auth.verify_supabase_token
+        auth.verify_supabase_token = lambda token: {"sub": USER}
+        self._gates = [
+            patch.object(lroutes.chat, "is_enabled", return_value=True),
+            patch.object(lroutes.chat, "has_consented", return_value=True),
+        ]
+        for g in self._gates:
+            g.start()
+
+    def tearDown(self):
+        auth.verify_supabase_token = self._orig_verify
+        for g in self._gates:
+            g.stop()
+
+    def _patch(self, body, update_result=None):
+        updates = []
+
+        def _update(user_id, day_id, fields):
+            updates.append(dict(fields))
+            if update_result is not None:
+                return update_result(fields)
+            return {"id": day_id, **fields}
+
+        with patch.object(lroutes.store, "day_by_id",
+                          return_value={"id": "d1", "draft_meta": None}), \
+             patch.object(lroutes.store, "update_day", side_effect=_update):
+            resp = self.client.patch("/v2/life/day/d1",
+                                     headers={"Authorization": "Bearer t"},
+                                     json=body)
+        return resp, updates
+
+    def test_the_evening_answer_is_stored_trimmed_and_verbatim(self):
+        resp, updates = self._patch(
+            {"evening_measure": "  two talks happened  "})
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(updates[0]["evening_measure"], "two talks happened")
+
+    def test_a_blank_answer_stores_null_not_empty_prose(self):
+        resp, updates = self._patch({"evening_measure": "   "})
+        self.assertEqual(resp.status_code, 200)
+        self.assertIsNone(updates[0]["evening_measure"])
+
+    def test_an_unrun_migration_costs_the_record_never_the_tick(self):
+        resp, updates = self._patch(
+            {"evening_measure": "two talks", "evening_one_thing": True},
+            update_result=lambda f: None if "evening_measure" in f
+            else {"id": "d1", **f})
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(len(updates), 2)
+        self.assertNotIn("evening_measure", updates[1])
+        self.assertTrue(updates[1]["evening_one_thing"])
+
+
+@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
+class MetricLadderTests(unittest.TestCase):
+    """The ticked row survives every combination of unrun migrations."""
+
+    def _insert(self, fields, rejects):
+        attempts = []
+
+        def fake_insert(user_id, payload):
+            attempts.append(dict(payload))
+            return None if rejects(payload) else {"id": "row-1", **payload}
+
+        with patch.object(lroutes.store, "insert_item", fake_insert):
+            row = lroutes._insert_ticked_item("u1", dict(fields))
+        return row, attempts
+
+    def test_an_unmigrated_measure_lands_without_it(self):
+        row, _ = self._insert(
+            {"kind": "goal", "title": "x", "measure": "3 talks"},
+            rejects=lambda p: "measure" in p)
+        self.assertIsNotNone(row)
+        self.assertNotIn("measure", row)
+
+    def test_all_three_unrun_still_creates_the_row(self):
+        row, attempts = self._insert(
+            {"kind": "goal", "title": "x", "measure": "3 talks",
+             "horizon": "week", "origin_document_id": "doc-1"},
+            rejects=lambda p: ("measure" in p or "origin_document_id" in p
+                               or p.get("horizon") == "week"))
+        self.assertIsNotNone(row, "the ticked row must never be lost")
+        self.assertLessEqual(len(attempts), 6, "the ladder must terminate")
+
+    def test_a_migrated_database_writes_everything_first_try(self):
+        row, attempts = self._insert(
+            {"kind": "goal", "title": "x", "measure": "3 talks"},
+            rejects=lambda p: False)
+        self.assertEqual(row["measure"], "3 talks")
+        self.assertEqual(len(attempts), 1)
+
+
+@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
+class MetricMigrationTests(unittest.TestCase):
+    """Same house lines as every life_* migration."""
+
+    def setUp(self):
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                            "migrations", "add_life_metric_readback.sql")
+        with open(path, "r", encoding="utf-8") as fh:
+            self.sql = fh.read()
+
+    def test_both_columns_idempotent_nothing_dropped_raising(self):
+        self.assertIn("ADD COLUMN IF NOT EXISTS measure", self.sql)
+        self.assertIn("ADD COLUMN IF NOT EXISTS evening_measure", self.sql)
+        self.assertNotRegex(self.sql.upper(), r"\bDROP\s+(TABLE|COLUMN)\b")
+        self.assertIn("RAISE EXCEPTION", self.sql)
+
+    def test_it_touches_life_tables_only(self):
+        for table in re.findall(
+                r"(?:CREATE TABLE IF NOT EXISTS|ALTER TABLE)\s+"
+                r"(?:public\.)?(\w+)", self.sql):
+            self.assertTrue(table.startswith("life_"), table)
+
+
 # ═════════════════════════════════════════════════════════════════════════
 # N4 — the per-user master-doc injection
 # ═════════════════════════════════════════════════════════════════════════

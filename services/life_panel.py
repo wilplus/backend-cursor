@@ -490,6 +490,13 @@ def validate_item_input(body: dict, *, partial: bool = False) -> dict:
     if "body" in body or not partial:
         out["body"] = _text(body, "body", max_len=_MAX_BODY)
 
+    if "measure" in body:
+        # "How you will know it happened" — the goal's own metric, in the
+        # person's words (piece 3, 2026-08-02). Free text by design: the
+        # evening holds the day against this SENTENCE, it never computes
+        # against it (AC-9).
+        out["measure"] = _text(body, "measure", max_len=500) or None
+
     if "status" in body:
         status = body.get("status")
         if not isinstance(status, str) or status not in ITEM_STATUSES:
@@ -1047,6 +1054,9 @@ def serialize_item(row: dict) -> dict:
         "horizon": row.get("horizon"),
         "due_label": row.get("due_label"),
         "due_at": _iso(row.get("due_at")),
+        # The goal's own success criterion, verbatim. Null for every row
+        # written before the column existed — hence the plain .get.
+        "measure": row.get("measure"),
         "bet_id": row.get("bet_id"),
         "parent_id": row.get("parent_id"),
         "collection": row.get("collection"),
@@ -1120,6 +1130,12 @@ def serialize_day(row: dict) -> dict:
                            or {}).get("goal") or "",
         "one_thing_goal_id": ((row.get("draft_meta") or {}).get("one_thing")
                               or {}).get("goal_id"),
+        # The one thing's own measure, so the evening can hold the day
+        # against it — the founder's sentence, never a computed number.
+        "one_thing_measure": ((row.get("draft_meta") or {}).get("one_thing")
+                              or {}).get("measure") or "",
+        # Where the day landed, in their words (PATCH evening_measure).
+        "evening_measure": row.get("evening_measure"),
         "focus_blocks": row.get("focus_blocks") or [],
         "distraction_flagged": row.get("distraction_flagged"),
         "evening_habits_ran": bool(row.get("evening_habits_ran")),

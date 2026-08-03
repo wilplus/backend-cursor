@@ -521,6 +521,18 @@ def _insert_ticked_item(user_id: str, fields: dict) -> Optional[dict]:
     if row is not None:
         return row
 
+    if "measure" in fields:
+        # The newest column is the first rung to give up
+        # (migrations/add_life_metric_readback.sql not yet run).
+        retry = {k: v for k, v in fields.items() if k != "measure"}
+        row = store.insert_item(user_id, retry)
+        if row is not None:
+            logger.warning("life: apply-proposed created a row "
+                           "without its measure; run "
+                           "migrations/add_life_metric_readback.sql")
+            return row
+        fields = {k: v for k, v in fields.items() if k != "measure"}
+
     stamped = "origin_document_id" in fields
     weekly = fields.get("horizon") == "week"
 
@@ -1199,7 +1211,7 @@ def life_day_update(day_id):
     allowed = ("morning_checks", "one_thing", "focus_blocks",
                "distraction_flagged", "evening_habits_ran",
                "evening_one_thing", "evening_distraction", "evening_line",
-               "edit_why")
+               "evening_measure", "edit_why")
     fields = {k: body[k] for k in allowed if k in body}
     swap_to = body.get("one_thing_goal_id")
     if swap_to is not None and not isinstance(swap_to, str):
@@ -1242,7 +1254,17 @@ def life_day_update(day_id):
             slot["accepted"] = str(fields["one_thing"]).strip()[:500]
             fields["draft_meta"] = meta
 
+    if "evening_measure" in fields:
+        # "Where did it land, in your words" - free text, capped,
+        # stored verbatim. The system never computes against it.
+        fields["evening_measure"] = (str(fields["evening_measure"]
+                                         or "").strip()[:2000] or None)
     row = store.update_day(user_id, day_id, fields)
+    if row is None and "evening_measure" in fields:
+        # add_life_metric_readback.sql not yet run: the record is the
+        # cost, never the edit.
+        fields.pop("evening_measure")
+        row = store.update_day(user_id, day_id, fields)
     if row is None and "draft_meta" in fields:
         # The column ships with migrations/add_life_days_draft_meta.sql; an
         # unrun migration costs the record, never the edit.
