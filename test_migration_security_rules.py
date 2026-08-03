@@ -29,12 +29,25 @@ RULE 2 — FUNCTIONS GET THEIR EXECUTE REVOKED.
     again, through a door the sweep does not cover.
 
 THE LEGACY ALLOWLIST IS FROZEN.
-    47 migration files create tables without enabling RLS in the file. All of
-    them are covered in PRODUCTION by the dynamic sweep the founder ran on
-    2026-07-25 — the gap is in the FILES, not the database. They are listed
-    below so this gate is green on the day it lands: a red-on-day-1 gate gets
-    ignored, and an ignored gate protects nothing. The list may only ever
-    SHRINK. Anything new that fails is a real finding.
+    47 migration files create tables without enabling RLS in the file. They
+    are listed below so this gate is green on the day it lands: a red-on-day-1
+    gate gets ignored, and an ignored gate protects nothing. The list may only
+    ever SHRINK. Anything new that fails is a real finding.
+
+    46 of the 47 are covered in PRODUCTION by the dynamic sweep the founder ran
+    on 2026-07-25 — docs/RLS-AUDIT.md names them — so the gap is in the FILES,
+    not the database. (Git dates do not show this: repo history starts
+    2026-07-27, after the sweep. The audit's own table is the evidence.)
+
+    THE ONE EXCEPTION, and the first thing this gate caught:
+    `add_processing_jobs.sql` (0239) landed 2026-08-03 with the durable
+    Redis/RQ queue (#322) — AFTER the sweep, and absent from the audit. It was
+    genuinely exposed. Closed by migrations/add_rls_processing_jobs.sql rather
+    than by editing 0239, because 0239 is already manifested and editing an
+    applied file trips the runner's checksum drift detection. Its entry stays
+    below because the entry describes the FILE accurately; the database is
+    fixed. Do not read a frozen entry as "this table is safe" — read it as
+    "this file predates the rule."
 
 Run: python3 -m unittest test_migration_security_rules
 """
