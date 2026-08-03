@@ -8,14 +8,36 @@ from config import Config
 
 config = Config()
 
-# Initialize Sentry
+# Initialize Sentry.
+#
+# traces_sample_rate was 1.0 — a performance transaction for EVERY request,
+# including the health checks Railway polls continuously. That burns the
+# quota on noise, and a burned quota means no ERROR visibility on the live
+# loop when it matters. Sampling is env-tunable (SENTRY_TRACES_SAMPLE_RATE)
+# and defaults to 5% in production / 0 elsewhere; error capture is
+# unaffected — it is not sampled.
 if config.SENTRY_DSN:
     sentry_sdk.init(
         dsn=config.SENTRY_DSN,
         integrations=[FlaskIntegration()],
-        traces_sample_rate=1.0,
+        traces_sample_rate=config.SENTRY_TRACES_SAMPLE_RATE,
+        profiles_sample_rate=config.SENTRY_PROFILES_SAMPLE_RATE,
         environment=config.ENV,
+        release=config.RELEASE_SHA or None,
+        # Never let Sentry itself become the leak this sweep is closing:
+        # no request bodies, no headers, no user PII in the event payload.
+        send_default_pii=False,
+        max_request_body_size="never",
     )
+
+# Secret configuration audit (P2 ops sweep 2026-08-03). Runs before the
+# app is built: in production and staging a placeholder credential, a
+# truncated key, a staging box pointed at the production database or a
+# live Stripe key raise here and the deploy rolls back to the last good
+# release. In development it only logs. Never prints a secret VALUE.
+from services.secrets import enforce_at_boot  # noqa: E402
+
+enforce_at_boot()
 
 app = Flask(__name__)
 # Global request cap: must allow both recording uploads and larger admin reference video uploads.
@@ -110,6 +132,17 @@ def handle_405(e):
     return jsonify({"code": "METHOD_NOT_ALLOWED", "error": "Method not allowed"}), 405
 
 
+# Global JSON error net (P0 audit 2026-08-03). Catches what route-level
+# try/except cannot — exceptions raised before a route's own handler,
+# abort() calls, and Flask's stock HTML 404/500 pages. Clients get
+# {code, error, ref} with GENERIC copy; the real exception goes to the log
+# + Sentry under the same ref. Registered AFTER the 413/405 handlers above
+# so their specific copy still wins (Flask resolves most-specific first).
+from utils.errors import register_error_handlers  # noqa: E402
+
+register_error_handlers(app)
+
+
 def _health_response():
     """Single response for all health endpoints so frontend gets 200 regardless of path."""
     return {"status": "ok"}, 200
@@ -202,15 +235,19 @@ def health_jwks():
             "supabase_url": config.SUPABASE_URL
         }, 200
     except Exception as e:
-        logger.error(f"JWKS health check failed: {str(e)}")
-        supabase_url = _normalize_supabase_url(config.SUPABASE_URL) if config.SUPABASE_URL else "not configured"
-        jwks_url = f"{supabase_url}/auth/v1/.well-known/jwks.json" if config.SUPABASE_URL else "N/A"
+        # PUBLIC endpoint — no auth. It used to echo the exception plus the
+        # Supabase project URL to anyone who asked; an httpx error carries
+        # the full request URL, and a JWKS 401 carries key material in the
+        # SDK's message. Operators read the detail from the log line.
+        from utils.errors import new_ref, scrub
+
+        ref = new_ref()
+        logger.error("JWKS health check failed [ref=%s]: %s", ref, scrub(e))
         return {
             "status": "error",
             "jwks_accessible": False,
-            "error": str(e),
-            "jwks_url": jwks_url,
-            "supabase_url": config.SUPABASE_URL
+            "error": "JWKS endpoint unreachable.",
+            "ref": ref,
         }, 503
 
 def _startup_cleanup():

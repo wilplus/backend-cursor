@@ -2,8 +2,8 @@
 from flask import Blueprint, request, jsonify
 from auth import require_auth
 from services.db import db
-import sentry_sdk
 import logging
+from utils.errors import safe_error
 
 logger = logging.getLogger(__name__)
 admin_bp = Blueprint("admin", __name__)
@@ -136,5 +136,4 @@ def get_admin_recordings():
             "count": len(recordings),
         }), 200
     except Exception as e:
-        sentry_sdk.capture_exception(e)
-        return jsonify({"code": "RECORDINGS_ERROR", "error": str(e)}), 500
+        return safe_error("RECORDINGS_ERROR", 500, exc=e)
