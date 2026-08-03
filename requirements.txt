@@ -57,6 +57,13 @@ joblib==1.4.2
 # already owns retries/recovery so a heavier broker contract buys nothing.
 redis==5.0.8
 rq==1.16.2
+# Migration runner (scripts/migrate.py) — the ONLY thing that needs a direct
+# Postgres connection; the Flask app reaches Supabase over PostgREST and never
+# imports this. Lazy-imported inside migrate.py::connect(), so a missing wheel
+# degrades to "cannot run migrations here" (exit 2) rather than breaking an
+# app boot. -binary ships a self-contained manylinux wheel, so the Railway
+# image needs no libpq/pg_config at build time. See docs/MIGRATIONS.md.
+psycopg2-binary==2.9.12
 # Global rate limiting (services/rate_limits.py). Shares the queue's Redis
 # as its counter store (namespaced by RATELIMIT_KEY_PREFIX), so the cap on
 # the paid Whisper/LLM routes is one number across every gunicorn worker

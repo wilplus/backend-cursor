@@ -48,7 +48,8 @@ if not hasattr(sys.modules["sentry_sdk"], "capture_exception"):
 try:
     import jwt
     from flask import Flask, jsonify
-    from services import error_contract
+    from utils.errors import register_error_handlers
+    from utils import errors as errors_mod
     from services import rate_limits as rl
     _IMPORT_ERR = None
     if isinstance(rl.limiter, rl._NullLimiter):
@@ -59,15 +60,10 @@ except Exception as e:  # pragma: no cover - env/bootstrap guard
     jwt = None
     Flask = None
     jsonify = None
-    error_contract = None
+    register_error_handlers = None
+    errors_mod = None
     rl = None
     _IMPORT_ERR = e
-
-
-class _Config:
-    MAX_AUDIO_SIZE_MB = 25
-    MAX_REFERENCE_VIDEO_SIZE_MB = 500
-    is_production = False
 
 
 def _bearer(sub: str) -> dict:
@@ -98,11 +94,12 @@ class _Base(unittest.TestCase):
 
     def _app(self, build):
         """``build(app, rl)`` registers the views; we wire the limiter and
-        the error contract exactly the way app.py does."""
+        the app-wide error net exactly the way app.py does — init_app
+        installs the 429 handler, utils.errors nets everything else."""
         app = Flask(f"t{id(self)}")
         build(app, self.rl)
         self.rl.init_app(app)
-        error_contract.register(app, _Config())
+        register_error_handlers(app)
         return app
 
 
@@ -135,10 +132,15 @@ class CapTests(_Base):
         self.assertEqual(r.mimetype, "application/json")
         body = r.get_json()
         self.assertEqual(body["code"], "RATE_LIMITED")
-        self.assertEqual(body["error"], self.rl.DEFAULT_MESSAGE)
+        # Generic copy comes from utils.errors' status table — one source of
+        # truth, so this can't drift away from the rest of the API.
+        self.assertEqual(body["error"], errors_mod._STATUS_COPY[429])
         self.assertGreaterEqual(body["retry_after_seconds"], 1)
         self.assertEqual(r.headers["Retry-After"],
                          str(body["retry_after_seconds"]))
+        # utils.errors' correlation id must survive our custom handler —
+        # it is the join key between this response, the log line and Sentry.
+        self.assertRegex(body["ref"], r"^[0-9a-f]{8}$")
 
     def test_429_body_never_leaks_the_limit_expression(self):
         """"3 per 1 minute" is flask-limiter's internal description, not
@@ -337,7 +339,7 @@ class DecoratorStackTests(_Base):
         app = Flask(f"stack{id(self)}")
         app.register_blueprint(bp)
         r.init_app(app)
-        error_contract.register(app, _Config())
+        register_error_handlers(app)
 
         c = app.test_client()
         head = _bearer("user-stack")
@@ -529,7 +531,7 @@ class LiveLoopTests(_Base):
             @app.route("/ping")
             def ping():
                 return jsonify(ok=True)
-            error_contract.register(app, _Config())
+            register_error_handlers(app)
             self.assertEqual(app.test_client().get("/ping").status_code, 200)
 
     def test_missing_flask_limiter_degrades_to_no_limiting(self):
@@ -560,7 +562,7 @@ class LiveLoopTests(_Base):
         def paid():
             return jsonify(ok=True)
 
-        c = app.test_client()  # note: no init_app, no error_contract
+        c = app.test_client()  # note: no init_app, no error handlers
         self.assertEqual({c.post("/paid").status_code for _ in range(40)},
                          {200})
 
@@ -568,7 +570,7 @@ class LiveLoopTests(_Base):
         """The 429 helpers run inside an error handler — they must never
         raise, even when asked at a moment they know nothing about."""
         self.assertGreaterEqual(self.rl.retry_after_seconds(), 1)
-        self.assertEqual(self.rl.breach_message(object()), self.rl.DEFAULT_MESSAGE)
+        self.assertIsNone(self.rl.breach_message(object()))
         self.assertEqual(self.rl.breach_scope(object()), "unscoped")
 
 

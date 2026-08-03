@@ -473,17 +473,25 @@ def _load_parent_audio(audio_path: str) -> Optional[bytes]:
                 "recompute: get_audio_bytes(%s) miss: %s",
                 audio_path, e,
             )
-        for bucket in ("coach_feedback_videos", "audio_recordings"):
-            try:
-                from services.coach_video_storage import (
-                    get_coach_object_bytes,
-                )
-                return get_coach_object_bytes(bucket, audio_path)
-            except Exception as e:
-                logger.info(
-                    "recompute: get_coach_object_bytes(%s, %s) miss: %s",
-                    bucket, audio_path, e,
-                )
+        # Then the bucket-tolerant lab helper, which sweeps the lab bucket,
+        # the coach bucket (where takes lived before the 2026-08-03 split)
+        # and the interview-audio bucket in one call.
+        try:
+            from services.lab_audio_storage import get_lab_audio_bytes
+            return get_lab_audio_bytes(audio_path)
+        except Exception as e:
+            logger.info(
+                "recompute: get_lab_audio_bytes(%s) miss: %s", audio_path, e,
+            )
+        # Legacy Supabase bucket, not covered by the helper's candidates.
+        try:
+            from services.coach_video_storage import get_coach_object_bytes
+            return get_coach_object_bytes("audio_recordings", audio_path)
+        except Exception as e:
+            logger.info(
+                "recompute: get_coach_object_bytes(audio_recordings, %s) "
+                "miss: %s", audio_path, e,
+            )
         return None
 
     # URL path: pull bytes over HTTP. Short timeout — the admin is

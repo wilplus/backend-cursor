@@ -122,10 +122,10 @@ DEFAULT_WHISPER_LIMIT = "20 per minute;200 per hour"
 DEFAULT_LLM_LIMIT = "30 per minute;400 per hour"
 DEFAULT_HEAVY_LIMIT = "10 per minute;100 per hour"
 
-#: Shown to users on a 429. Operational copy, deliberately carrying no
-#: verdict about the user or their speech (CLAUDE.md AC-9 keeps the READ
-#: qualitative; this is a transport error, not a read).
-DEFAULT_MESSAGE = "Too many requests. Please wait a moment and try again."
+#: The generic 429 line is NOT defined here — ``utils.errors._STATUS_COPY``
+#: already owns it ("Too many requests — slow down and try again."), and two
+#: copies of one sentence drift. Only a limit with its own ``error_message``
+#: (the guest funnel) overrides it; see ``breach_message``.
 
 STORAGE_OPTIONS = {
     # Fail fast, exactly like services/job_queue.py. A blackholed broker
@@ -294,11 +294,64 @@ def is_durable() -> bool:
     return not storage_uri().startswith("memory://")
 
 
+def register_429(app) -> None:
+    """Install the 429 handler.
+
+    ``utils.errors.register_error_handlers`` already nets every
+    HTTPException into ``{code, error, ref}``. This one wins for 429 —
+    Flask resolves the code-keyed handler before the class-keyed
+    HTTPException one, whenever each was registered — because the generic
+    net would drop the two things a throttled caller actually needs: how
+    long to wait, and the guest funnel's own copy.
+
+    The envelope stays utils.errors' so the FE has ONE error shape; the
+    generic 429 line comes from their status table rather than being
+    duplicated here.
+    """
+    from utils.errors import error_payload
+    from flask import jsonify
+
+    @app.errorhandler(429)
+    def _handle_rate_limited(e):
+        retry_after = retry_after_seconds()
+        payload = error_payload(
+            "RATE_LIMITED", 429,
+            message=breach_message(e),
+            extra={"retry_after_seconds": retry_after},
+        )
+        logger.info("rate limited [ref=%s] %s %s scope=%s retry_after=%ss",
+                    payload.get("ref"), _req_method(), _req_path(),
+                    breach_scope(e), retry_after)
+        response = jsonify(payload)
+        response.headers["Retry-After"] = str(retry_after)
+        return response, 429
+
+
+def _req_path() -> str:
+    try:
+        return (request.path or "")[:200]
+    except Exception:
+        return ""
+
+
+def _req_method() -> str:
+    try:
+        return request.method or ""
+    except Exception:
+        return ""
+
+
 def init_app(app) -> None:
     """Wire the limiter onto ``app``. Never raises — a limiter that cannot
     start must not stop the app from serving."""
     if isinstance(limiter, _NullLimiter):
         return
+    try:
+        register_429(app)
+    except Exception as e:
+        logger.error("rate_limits: 429 handler registration failed (%s) — "
+                     "throttled callers fall back to the generic envelope "
+                     "from utils.errors.", e)
     try:
         uri = storage_uri()
         app.config.setdefault("RATELIMIT_STORAGE_URI", uri)
@@ -431,12 +484,13 @@ def retry_after_seconds() -> int:
     return 1
 
 
-def breach_message(exc) -> str:
-    """The user-facing 429 text: a limit's own ``error_message`` when it set
-    one (the guest funnel does), else the generic operational line.
+def breach_message(exc) -> Optional[str]:
+    """The 429 text when a limit carries its OWN copy (the guest funnel
+    does), else ``None`` so ``utils.errors`` supplies the generic line from
+    its status table — one source of truth for that sentence, not two.
 
     Never the raw limit expression — flask-limiter puts "5 per 1 hour" in
-    ``description`` and that is an internal detail, not product copy.
+    ``description``, and that is an internal detail, not copy.
     """
     try:
         limit = getattr(exc, "limit", None)
@@ -447,7 +501,7 @@ def breach_message(exc) -> str:
             return str(custom).strip()
     except Exception:
         pass
-    return DEFAULT_MESSAGE
+    return None
 
 
 def breach_scope(exc) -> str:

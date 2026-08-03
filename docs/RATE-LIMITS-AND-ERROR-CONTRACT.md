@@ -12,10 +12,12 @@ The debt this retires, in two halves:
    funnel — per gunicorn worker, so the *real* cap was `stated cap x
    workers`, and it reset on every restart. (A second such dict guarded the
    icebreaker regenerate endpoint with the same flaw.)
-2. **Only 413 and 405 were handled**, so anything else — an unhandled
-   exception, a 404, an `abort(400)` — rendered Werkzeug's HTML error page.
-   The Next.js app then crashed trying to `JSON.parse` a `<!doctype html>`,
-   on precisely the responses it most needed to degrade gracefully on.
+2. **429 had no place in the JSON error contract.** The app-wide net that
+   landed in #329 (`utils/errors.py`) turns every other failure into
+   `{code, error, ref}`, but a throttled caller needs two things it can't
+   supply: how long to wait, and the guest funnel's own copy. See §4 —
+   including why this branch's own error module was deleted rather than
+   shipped alongside it.
 
 ---
 
@@ -94,26 +96,9 @@ Two deliberate exclusions worth knowing:
 
 ### The 429 response
 
-```jsonc
-// 429
-{
-  "code": "RATE_LIMITED",
-  "error": "Too many requests. Please wait a moment and try again.",
-  "retry_after_seconds": 60          // mirrors the Retry-After header
-}
-```
-
-`retry_after_seconds` is the field the icebreaker regenerate endpoint has
-always sent, so the FE has one shape to handle. The guest funnel keeps its
-own copy ("Too many trial uploads — …") verbatim.
-
-The body **never** contains flask-limiter's limit expression ("3 per 1
-minute") — that is an internal detail, not copy.
-
-`X-RateLimit-*` budget headers are **off** by default (`RATE_LIMIT_HEADERS=1`
-to publish them). With them on, flask-limiter also stamps `Retry-After` on
-*successful* responses, and a FE that backs off on "is `Retry-After`
-present?" would throttle itself on every 200.
+See **§4** — it rides `utils/errors.py`'s envelope, plus
+`retry_after_seconds`. The guest funnel keeps its own copy ("Too many trial
+uploads — …") verbatim.
 
 ---
 
@@ -156,7 +141,7 @@ Nothing to migrate; no tables, no columns.
    sharing it with the queue is safe). Redeploy. The boot log flips to
    `rate_limits: active, durable storage (shared across workers) …` and the
    caps become global.
-3. **Watch** `rate limited: POST <path> scope=<tier> retry_after=<n>s` in the
+3. **Watch** `rate limited [ref=…] POST <path> scope=<tier> retry_after=<n>s` in the
    logs for a day. Real users tripping a cap show up here first; raise the
    matching `RATE_LIMIT_*` env var if so — no redeploy of code needed.
 
@@ -166,51 +151,56 @@ Kill switch: `RATE_LIMIT_ENABLED=0`.
 
 ## 4. The JSON error contract
 
-`services/error_contract.py::register(app, config)` installs all of it, and
-`app.py` calls it last so it sits behind every blueprint.
+**This is now owned by `utils/errors.py` (PR #329), not by this work.**
 
-| Status | `code` | When |
-|---|---|---|
-| 413 | `PAYLOAD_TOO_LARGE` | body over `MAX_CONTENT_LENGTH` (unchanged) |
-| 405 | `METHOD_NOT_ALLOWED` | (unchanged) |
-| 429 | `RATE_LIMITED` | see §1 |
-| 4xx | derived from the status name — `NOT_FOUND`, `BAD_REQUEST`, `UNAUTHORIZED`, … | any other HTTP error |
-| 500 | `INTERNAL_ERROR` | anything unhandled |
+This branch originally carried its own `services/error_contract.py`. While
+it was in review, #329 landed a global JSON error net that does the same job
+and more — a `ref` correlation id shared by the client envelope, the log
+line and the Sentry event, plus `scrub()` redaction of secret- and
+path-shaped substrings. Keeping both would have meant two competing
+`errorhandler(Exception)` registrations on one app, with whichever
+registered last silently winning. The duplicate was deleted; #329's net
+stands.
 
-Three things the catch-all has to get right, all pinned by
-`test_error_contract`:
+What this branch still contributes is **the 429**, registered by
+`services/rate_limits.py::register_429` (called from `init_app`):
 
-1. **HTTPExceptions keep their own status.** They reach `errorhandler(Exception)`
-   too — Flask's lookup walks the exception MRO and lands on `Exception`
-   when nothing more specific matches — so a 404 must not become a 500. The
-   413/405/429 handlers still win, because Flask checks code-keyed handlers
-   before class-keyed ones.
-2. **Sentry must still see crashes.** Registering `errorhandler(Exception)`
-   *suppresses* Flask's `got_request_exception` signal, which is how
-   sentry-sdk's Flask integration normally captures unhandled errors. The
-   handler therefore captures explicitly. Without that, adding a nicer error
-   page would have silently blinded Sentry — the single least obvious thing
-   in this change.
-3. **It re-raises where exceptions should propagate** (`app.debug`, or an
-   explicit `PROPAGATE_EXCEPTIONS`), so the Werkzeug debugger and test
-   tracebacks still work.
+```jsonc
+// 429
+{
+  "code": "RATE_LIMITED",
+  "error": "Too many requests — slow down and try again.",
+  "ref": "a1b2c3d4",                 // utils.errors correlation id
+  "retry_after_seconds": 60          // mirrors the Retry-After header
+}
+```
 
-`error` text: an explicit `abort(400, "take_session_id is required")`
-survives verbatim, but an untouched Werkzeug default collapses to the short
-status name — their defaults are browser copy ("If you entered the URL
-manually please check your spelling…"), which has no business in an API
-contract.
+It has to win over the generic `HTTPException` handler, and it does: Flask
+resolves the code-keyed handler (429) before the class-keyed one, whenever
+each was registered. It has to win because the generic net would drop the
+two things a throttled caller actually needs — how long to wait, and the
+guest funnel's own copy ("Too many trial uploads — …").
 
-Production never includes exception internals. Outside production the body
-carries an extra `detail` field (`"RuntimeError: ..."`) for debugging.
+The generic 429 sentence is **not** duplicated here: `breach_message()`
+returns `None` unless a limit carries its own `error_message`, so
+`utils.errors._STATUS_COPY[429]` supplies it. One source of truth.
 
----
+The body never contains flask-limiter's limit expression ("3 per 1 minute")
+— that is an internal detail, not copy.
+
+`X-RateLimit-*` budget headers are **off** by default (`RATE_LIMIT_HEADERS=1`
+to publish them). With them on, flask-limiter also stamps `Retry-After` on
+*successful* responses, and a FE that backs off on "is `Retry-After`
+present?" would throttle itself on every 200.
 
 ## 5. Tests
 
 ```
-python3 -m unittest test_rate_limits test_error_contract
+python3 -m unittest test_rate_limits
 ```
+
+(The error-contract tests went with the duplicate module — `utils/errors.py`
+carries its own coverage from #329.)
 
 `test_rate_limits.CoveredRoutesTests` is a static (AST) drift guard: it
 fails if a paid route loses its decorator or a handler is renamed without
