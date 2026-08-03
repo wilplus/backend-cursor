@@ -478,9 +478,7 @@ class DatabaseService:
         
         if not recordings.data:
             return []
-        
-        recording_ids = [r["id"] for r in recordings.data]
-        
+
         # Get post answers from these recordings
         # Note: We'll need to store question_set_id in post_answers or in a separate table
         # For now, return empty list (will be improved when question_set_id is stored)
@@ -672,20 +670,6 @@ class DatabaseService:
             .execute()
         
         return result.data
-    
-    def get_user_profile(self, user_id: str):
-        """Get user profile with summary stats"""
-        # Get recording stats
-        recordings = self.get_user_recordings(user_id, limit=1000)
-        
-        total_recordings = len(recordings)
-        latest_recordings = recordings[:5]
-        
-        return {
-            "user_id": user_id,
-            "total_recordings": total_recordings,
-            "latest_recordings": latest_recordings
-        }
     
     def create_signed_url(self, bucket: str, path: str, expires_in: int = 3600):
         """Create a signed URL for a file in Supabase Storage"""

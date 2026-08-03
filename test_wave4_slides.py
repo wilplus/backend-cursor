@@ -108,7 +108,8 @@ class DeckParserGuardTests(unittest.TestCase):
         """The 10-vs-8 bug: pypdf's lazy reader.pages can bail mid-generator
         on one malformed page → fewer slides than the deck. Index-based
         iteration must keep the loop running."""
-        import sys, types
+        import sys
+        import types
         # Stand up a fake pypdf module exposing exactly what _extract_pdf_text uses.
         class _Page:
             def __init__(self, text): self._text = text
@@ -124,7 +125,8 @@ class DeckParserGuardTests(unittest.TestCase):
             def __getitem__(self, i): return self._items[i]
         class _Reader:
             def __init__(self, _): self.pages = _Pages()
-        fake = types.ModuleType("pypdf"); fake.PdfReader = _Reader
+        fake = types.ModuleType("pypdf")
+        fake.PdfReader = _Reader
         prev = sys.modules.get("pypdf")
         sys.modules["pypdf"] = fake
         try:

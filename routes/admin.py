@@ -1,6 +1,5 @@
 """Admin routes (v2). is_admin / require_admin used by v2_routes."""
 from flask import Blueprint, request, jsonify
-from auth import require_auth
 from services.db import db
 import sentry_sdk
 import logging

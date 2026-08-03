@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import argparse
 import secrets
-import string
 import sys
 
 # Unambiguous alphabet — no 0/O/1/I/L to keep codes easy to read out loud.

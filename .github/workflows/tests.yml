@@ -22,6 +22,37 @@ on:
   workflow_dispatch:
 
 jobs:
+  # Static analysis gate: ruff (real-bug lint classes only — config in
+  # ruff.toml) + mypy (whole prod surface, legacy-red modules parked as a
+  # ratchet — config in mypy.ini). Both were green at introduction; a red
+  # here is a NEW defect, not environmental noise.
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12.1"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          # Full requirements so mypy sees the real installed packages (and
+          # their bundled type info) — same picture as a local `mypy .`.
+          pip install -r requirements.txt
+          pip install ruff==0.15.8 mypy==2.3.0
+
+      - name: Ruff (lint)
+        run: ruff check .
+
+      - name: Mypy (type-check)
+        run: mypy .
+
   unittest:
     runs-on: ubuntu-latest
     timeout-minutes: 20

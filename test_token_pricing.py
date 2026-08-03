@@ -100,7 +100,6 @@ class FakeTable:
 class AccountTable(FakeTable):
     def execute(self):
         row = self.store.get("row")
-        f = dict(self._filters)
         if self._op == "select":
             return MagicMock(data=[dict(row)] if row else [])
         if self._op == "upsert":

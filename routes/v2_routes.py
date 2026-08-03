@@ -3,63 +3,24 @@ V2 routes: admin CRUD + the willab learner flow (Lab/Readout/Insights,
 Lounge, Library, profile). All /v2/admin/* require auth + admin.
 (The legacy homework student flow was removed in the Phase-5 clearance.)
 """
-from flask import Blueprint, request, jsonify, make_response
+from flask import Blueprint, request, jsonify
 from config import Config
 from auth import require_auth, optional_auth
 from routes.admin import require_admin, is_admin, require_admin_or_coach, is_coach
 from services.db import db
-from services.email_service import email_service
-from services.copilot_video_pipeline import (
-    build_feedback_video_storage_path,
-    build_script_manifest,
-    fetch_override_video_bytes,
-    generate_video_from_script,
-    parse_bool,
-    parse_reference_tags,
-    resolve_script_mode,
-)
-from services.stress_snippet_service import (
-    STRESS_SNIPPET_CLIP_SEC_DEFAULT,
-    STRESS_SNIPPET_CLIP_SEC_MAX,
-    STRESS_SNIPPET_CLIP_SEC_MIN,
-    generate_stress_snippets_for_recording,
-)
-from services.charisma_snippet_service import (
-    CHARISMA_SNIPPET_CLIP_SEC_DEFAULT,
-    CHARISMA_SNIPPET_CLIP_SEC_MAX,
-    CHARISMA_SNIPPET_CLIP_SEC_MIN,
-    generate_charisma_snippets_for_recording,
-)
-from services.coach_video_storage import (
-    coach_media_public_url,
-    coach_videos_use_r2,
-    guess_video_content_type,
-    presigned_get_coach_object,
-    presigned_put_coach_object,
-    put_coach_object_bytes,
-    get_coach_object_bytes,
-    r2_bucket_name,
-)
 import logging
 import sentry_sdk
 import json
 import time
 import hashlib
-import random
 import mimetypes
 import os
 import re
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from werkzeug.utils import secure_filename
-from io import BytesIO
 from typing import Any
 
-from services.draft_delivery import (
-    auto_approve_payload_for_send,
-    infer_delivery_lifecycle,
-    log_rlhf_auto_accept_events,
-)
 
 logger = logging.getLogger(__name__)
 v2_bp = Blueprint("v2", __name__, url_prefix="/v2")
@@ -499,7 +460,6 @@ def _build_few_shot_block(
     ]
     for i, ex in enumerate(examples, start=1):
         outcome = ex.get("follow_up_outcome") or {}
-        evaluator = (outcome.get("evaluator") or {}) if isinstance(outcome, dict) else {}
         score_raw = outcome.get("score") if isinstance(outcome, dict) else None
         try:
             score_pct = int(round(float(score_raw) * 100))
@@ -752,7 +712,6 @@ def _generate_llm_question(
     """
     try:
         from services.openai_service import OpenAIService
-        import openai
 
         service = OpenAIService()
         if not service.client:
@@ -4637,6 +4596,8 @@ def v2_admin_funnel_afterwards_video_upload():
     Accepts multipart form with video_file field, uploads to storage, and stores the URL
     in the funnel_config table.
     """
+    # Local import on purpose: binds at CALL time, so tests that monkeypatch
+    # services.coach_video_storage attributes take effect.
     from services.coach_video_storage import coach_media_public_url, put_coach_object_bytes
     from datetime import datetime
     import os
@@ -4692,7 +4653,7 @@ def v2_admin_funnel_afterwards_video_upload():
         video_url = coach_media_public_url(storage_key)
 
         # Store URL in funnel_config
-        config_row = db.set_funnel_config("afterwards_video_url", video_url)
+        db.set_funnel_config("afterwards_video_url", video_url)
 
         logger.info("funnel: uploaded afterwards-video storage_key=%s url=%s", storage_key, video_url)
 
@@ -5014,7 +4975,6 @@ def v2_internal_publish_session_results():
     notify_client (the in-app Lounge nudge always fires in the contract
     helper; only the email is opt-out).
     """
-    from services.email_service import send_email_resend
 
     try:
         body = request.get_json(silent=True) or {}
@@ -7783,7 +7743,6 @@ def _presentation_id_from_slides(slides) -> str:
     URL (which changes on every re-upload). Same deck text → same id → same
     presentation group. Uses normalized title+body so cosmetic re-uploads
     don't split the take history."""
-    import hashlib
     if not slides:
         return ""
     parts = []
@@ -9043,7 +9002,6 @@ def _pseudonymous_user_id(user_id):
     the queue + detail, but not reversible to the raw id."""
     if not user_id:
         return None
-    import hashlib
     digest = hashlib.sha256(
         (_COACH_PSEUDONYM_SALT + str(user_id)).encode("utf-8")
     ).hexdigest()
@@ -9297,7 +9255,6 @@ def _coach_pseudonym(user_id):
     reversible to identity; no stored map. Empty user_id → 'Anonymous'."""
     if not user_id:
         return "Anonymous"
-    import hashlib
     h = int(hashlib.sha256(
         (_COACH_PSEUDONYM_SALT + str(user_id)).encode("utf-8")
     ).hexdigest(), 16)
@@ -10755,6 +10712,8 @@ def v2_coach_session_video(session_id):
     multipart/form-data: video_file (.mp4/.mov/.webm/.m4v).
     200 { status, session_id, video_ref } · 400/404/413/415/502
     """
+    # Local import on purpose: binds at CALL time, so tests that monkeypatch
+    # services.coach_video_storage attributes take effect.
     from services.coach_video_storage import (
         coach_media_public_url, put_coach_object_bytes,
     )
@@ -10882,6 +10841,8 @@ def v2_coach_snippet_breakthrough_video(session_id, snippet_id):
     200 { status, session_id, snippet_id, breakthrough_video_ref }
     400 INVALID_INPUT · 404 SESSION/SNIPPET_NOT_FOUND · 413 · 415 · 502
     """
+    # Local import on purpose: binds at CALL time, so tests that monkeypatch
+    # services.coach_video_storage attributes take effect.
     from services.coach_video_storage import (
         coach_media_public_url, put_coach_object_bytes,
     )
@@ -16205,7 +16166,6 @@ def v2_lab_create_recording():
         # mode, founder 2026-07-15: closing the tab / locking the phone must
         # never kill the analysis). Everything request-scoped is captured
         # HERE — the daemon must never touch flask.request.
-        from services.lab_recording import process_lab_recording
         _cad_user = getattr(request, "user_id", None)
         _worker_filename = audio_file.filename or "lab.webm"
         _worker_spark = str(form.get("spark") or "").strip().lower() in (

@@ -691,7 +691,7 @@ Metrics:
         if admin_context and admin_context.get("specific_questions"):
             post_questions = [q for q in admin_context['specific_questions'] if q.get('question_type') == 'post']
             if post_questions:
-                prompt += f"""
+                prompt += """
 **Admin-Suggested Focus Areas (use when relevant to this recording):**
 """
                 for q in post_questions[:3]:  # Limit to 3
@@ -1482,8 +1482,8 @@ Respond with valid JSON array:
         """
         score_str = f"{score_for_display_100}/100" if score_for_display_100 is not None else "unknown"
         fallback = (
-            f"Continue building on your last session. "
-            f"Focus on the areas highlighted in your feedback and aim for more consistent delivery."
+            "Continue building on your last session. "
+            "Focus on the areas highlighted in your feedback and aim for more consistent delivery."
         )
         if not self.client:
             return fallback

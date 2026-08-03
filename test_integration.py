@@ -30,7 +30,7 @@ try:
         os.getenv("SUPABASE_SERVICE_ROLE_KEY")
     )
     questions = supabase.table('pre_recording_questions').select('*').execute()
-    print(f"✅ Database connected")
+    print("✅ Database connected")
     print(f"   Found {len(questions.data)} pre-recording questions")
     for q in questions.data:
         print(f"   - {q['question_text']}")
@@ -42,7 +42,7 @@ print("\n3️⃣  Testing storage connection...")
 try:
     files = supabase.storage.from_('audio_recordings').list()
     print("✅ Storage bucket accessible")
-    print(f"   Bucket: audio_recordings")
+    print("   Bucket: audio_recordings")
     print(f"   Files in bucket: {len(files)}")
 except Exception as e:
     print(f"❌ Storage error: {e}")

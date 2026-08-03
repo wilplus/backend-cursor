@@ -142,9 +142,9 @@ def main() -> None:
         print(f"  {'─' * 34}  {'─' * 8}")
         print(f"  {'TOTAL PER TAKE':<36}${per_take:.5f}")
         tok = round(per_take * 7 * 10000, -2)
-        print(f"\n  At the plan's 10,000 tokens = $1.00 peg, a ×7 price on this is")
+        print("\n  At the plan's 10,000 tokens = $1.00 peg, a ×7 price on this is")
         print(f"  {tok:,.0f} willab tokens. docs/PRICING-TOKENS-PLAN.md §2 currently")
-        print(f"  prices a <2 min take at 1,000 and a 2-6 min take at 3,000.")
+        print("  prices a <2 min take at 1,000 and a 2-6 min take at 3,000.")
         if not any(r.get("session_id") for r in rows
                    if not (r.get("surface") or "").startswith("whisper_")):
             print("\n  NOTE: only Whisper rows carry session_id, so this is a MEAN, not a")

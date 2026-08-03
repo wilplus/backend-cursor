@@ -1,7 +1,6 @@
 from flask import Blueprint, request, jsonify
 from supabase import create_client
 from config import Config
-from auth import require_auth
 import logging
 import sentry_sdk
 import services.db as db_module
