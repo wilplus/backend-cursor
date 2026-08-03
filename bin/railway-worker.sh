@@ -28,13 +28,26 @@ if [ -z "$FFMPEG_FOUND" ]; then
   FFMPEG_FOUND="$(command -v ffmpeg 2>/dev/null || true)"
 fi
 
+# Last resort: the imageio-ffmpeg wheel bundles a real ffmpeg binary and is
+# always installed (requirements.txt). Railway's Railpack builder does NOT
+# read nixpacks.toml / apt.txt, so a service built with it has no system
+# ffmpeg — resolve the bundled one EXPLICITLY here rather than leaving
+# FFMPEG_PATH unset and letting each caller re-discover it. Pinning it also
+# makes the log say which binary is actually in use.
+if [ -z "$FFMPEG_FOUND" ]; then
+  FFMPEG_FOUND="$(python3 -c 'import imageio_ffmpeg,sys; sys.stdout.write(imageio_ffmpeg.get_ffmpeg_exe())' 2>/dev/null || true)"
+  if [ -n "$FFMPEG_FOUND" ]; then
+    echo "[startup] no system ffmpeg — using the imageio-ffmpeg bundled binary"
+  fi
+fi
+
 if [ -n "$FFMPEG_FOUND" ]; then
   export FFMPEG_PATH="$FFMPEG_FOUND"
   export PATH="$(dirname "$FFMPEG_FOUND"):${PATH}"
   echo "[startup] ffmpeg located at $FFMPEG_FOUND"
 else
   export PATH="${HOME}/.nix-profile/bin:/root/.nix-profile/bin:/nix/var/nix/profiles/default/bin:${PATH}"
-  echo "[startup] WARNING: no system ffmpeg found — Python will fall back to imageio-ffmpeg"
+  echo "[startup] WARNING: no ffmpeg found at all — audio decode will fail"
 fi
 
 # ── Boot the worker ────────────────────────────────────────────────────
