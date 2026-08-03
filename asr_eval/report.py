@@ -307,6 +307,96 @@ def gate(candidate: Any, baseline: Any = None, *,
     }
 
 
+# ── triage: the zero-transcription first read ────────────────────────────
+
+# Below this, the candidate buckets words essentially where whisper-1 does.
+TRIAGE_LOW_RISK = 0.002          # 0.2% of words change slide
+# Above this, a migration would visibly move per-slide text.
+TRIAGE_HIGH_RISK = 0.02          # 2%
+
+
+def triage(candidate: Any, baseline_name: str = "whisper-1") -> dict:
+    """How much would swapping to this candidate MOVE things? Audio only.
+
+    Deliberately NOT `gate`. The gate answers "may we ship this", which needs
+    ground truth. This answers "how much does this change where words land",
+    which needs only two providers and the same tap timeline — no human
+    transcripts at all. It is the read worth having BEFORE committing 12-18
+    hours to transcription, because it sizes whether that investment is
+    urgent or merely prudent.
+
+    What it cannot do, and must never be read as doing: say the candidate is
+    BETTER. Every number here is agreement with the incumbent. A candidate
+    that disagrees on 8% of words might be 8% better or 8% worse; triage
+    tells you the migration is high-stakes, not which way it goes. That is
+    exactly why HIGH risk argues FOR building the corpus rather than against.
+    """
+    c = candidate or {}
+    bucket = c.get("slide_bucket") or {}
+    timing = c.get("timing") or {}
+    lang = c.get("language_detection") or {}
+    bd = bucket.get("disagreement_rate")
+    bbd = bucket.get("boundary_disagreement_rate")
+    notes: list = []
+
+    if not c.get("takes_usable"):
+        return {"provider": c.get("provider"), "risk": "UNMEASURABLE",
+                "notes": [f"no usable takes — {c.get('failure_reasons')}"],
+                "recommendation": "fix provider/corpus before reading anything"}
+
+    if bd is None:
+        return {"provider": c.get("provider"), "risk": "UNMEASURABLE",
+                "notes": ["slide-bucket agreement not computable — needs a "
+                          "deck timeline (slide_advances + slides) and word "
+                          "timestamps from BOTH providers"],
+                "recommendation": "add slide timelines to the manifest"}
+
+    flips = lang.get("wrong") or 0
+    if flips:
+        notes.append(
+            f"{flips}/{lang.get('checked')} take(s) came back in the WRONG "
+            f"LANGUAGE ({lang.get('flips_to_l1') or 0} to the speaker's L1). "
+            f"This alone justifies the full corpus — it is not a tuning "
+            f"question.")
+
+    if bd < TRIAGE_LOW_RISK:
+        risk = "LOW"
+        rec = (f"{c.get('provider')} buckets words almost exactly where "
+               f"{baseline_name} does. A swap is unlikely to move per-slide "
+               f"text much. Build the corpus for confidence, not urgency.")
+    elif bd < TRIAGE_HIGH_RISK:
+        risk = "MODERATE"
+        rec = (f"a real minority of words would change slide. Worth the "
+               f"corpus before deciding — and worth checking WHICH slides "
+               f"(see worst-slide delta).")
+    else:
+        risk = "HIGH"
+        rec = (f"a swap would visibly move per-slide text. The corpus is now "
+               f"REQUIRED — at this magnitude, shipping on agreement numbers "
+               f"alone would be guessing which direction the change goes.")
+
+    notes.append(f"slide-bucket disagreement {bd:.3%}"
+                 + (f", boundary-adjacent {bbd:.2%}"
+                    if isinstance(bbd, (int, float)) else ""))
+    if isinstance(timing.get("p90_ms"), (int, float)):
+        notes.append(f"word-timestamp p90 drift {timing['p90_ms']:.0f}ms vs "
+                     f"{baseline_name}")
+    worst = bucket.get("worst_slide_word_delta") or 0
+    if worst:
+        notes.append(f"worst single slide gains/loses {worst} word(s)")
+
+    return {
+        "provider": c.get("provider"),
+        "risk": "HIGH" if flips else risk,
+        "notes": notes,
+        "recommendation": rec,
+        "caveat": ("AGREEMENT, not accuracy — this sizes the change, it does "
+                   "not say which provider is right."),
+        "thresholds": {"low_below": TRIAGE_LOW_RISK,
+                       "high_at_or_above": TRIAGE_HIGH_RISK},
+    }
+
+
 # ── rendering ────────────────────────────────────────────────────────────
 
 

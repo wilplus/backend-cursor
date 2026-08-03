@@ -825,6 +825,126 @@ class RunnerEndToEndTests(unittest.TestCase):
             self.assertEqual(rc, 2)
 
 
+class AgreementOnlyTests(unittest.TestCase):
+    """The zero-transcription first read: audio + slide timelines only."""
+
+    def _corpus_no_refs(self, tmp):
+        for name in ("t1.mp3", "t2.mp3"):
+            open(os.path.join(tmp, name), "wb").close()
+        p = os.path.join(tmp, "manifest.json")
+        with open(p, "w", encoding="utf-8") as fh:
+            json.dump({"takes": [{
+                "take_id": tid, "audio": f"{tid}.mp3", "language": "en",
+                "accent": "polish-l2-en", "accent_l1": "pl", "slides": 2,
+                "slide_advances": [{"index": 0, "t_ms": 0},
+                                   {"index": 1, "t_ms": 5000}],
+            } for tid in ("t1", "t2")]}, fh)
+        return p
+
+    def test_missing_references_block_by_default(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            c = corpus.load_manifest(self._corpus_no_refs(tmp))
+            r = corpus.readiness(c)
+            self.assertFalse(r["ready"])
+            self.assertTrue(any("reference_text" in b for b in r["blockers"]))
+
+    def test_agreement_only_does_not_block_on_missing_references(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            c = corpus.load_manifest(self._corpus_no_refs(tmp))
+            r = corpus.readiness(c, require_reference=False)
+            self.assertTrue(r["ready"])
+            self.assertTrue(r["can_compute_slide_bucket"])
+            self.assertFalse(r["can_compute_wer"])
+            self.assertTrue(any("AGREEMENT-ONLY" in w for w in r["warnings"]))
+
+    def test_end_to_end_agreement_run_needs_no_transcripts(self):
+        from asr_eval import providers
+
+        providers.register("stub:inc")(lambda path, **kw: {
+            "text": "alpha bravo charlie delta", "duration": 10.0,
+            "language": "en", "segments": [],
+            "words": [_w("alpha", 4.8), _w("bravo", 5.2),
+                      _w("charlie", 6.0), _w("delta", 7.0)]})
+        providers.register("stub:cand")(lambda path, **kw: {
+            "text": "alpha bravo charlie delta", "duration": 10.0,
+            "language": "en", "segments": [],
+            "words": [_w("alpha", 5.4), _w("bravo", 5.8),
+                      _w("charlie", 6.6), _w("delta", 7.6)]})
+
+        runner = RunnerEndToEndTests._load_runner()
+        with tempfile.TemporaryDirectory() as tmp:
+            out = os.path.join(tmp, "res.json")
+            rc = runner.main(["--manifest", self._corpus_no_refs(tmp),
+                              "--providers", "stub:inc,stub:cand",
+                              "--baseline", "stub:inc",
+                              "--agreement-only", "--out", out])
+            self.assertEqual(rc, 0)          # no gate verdict to fail on
+            with open(out, encoding="utf-8") as fh:
+                res = json.load(fh)
+
+        cand = next(s for s in res["summaries"] if s["provider"] == "stub:cand")
+        # No reference anywhere...
+        self.assertIsNone(cand["wer_verbatim"]["wer_micro"])
+        # ...and the metric that decides the migration still computed.
+        self.assertAlmostEqual(cand["slide_bucket"]["disagreement_rate"], 0.25)
+        t = next(x for x in res["triage"] if x["provider"] == "stub:cand")
+        self.assertEqual(t["risk"], "HIGH")
+        self.assertIn("AGREEMENT, not accuracy", t["caveat"])
+
+
+class TriageTests(unittest.TestCase):
+
+    def _summary(self, bd, **kw):
+        base = {
+            "provider": "cand", "takes_total": 8, "takes_usable": 8,
+            "takes_failed": 0, "failure_reasons": [],
+            "slide_bucket": {"disagreement_rate": bd,
+                             "boundary_disagreement_rate": bd * 2,
+                             "worst_slide_word_delta": 3},
+            "timing": {"tier": "tier3_agreement", "p90_ms": 120.0},
+            "language_detection": {"checked": 8, "wrong": 0,
+                                   "flips_to_l1": 0, "flip_rate": 0.0},
+        }
+        base.update(kw)
+        return base
+
+    def test_low_risk_when_bucketing_matches(self):
+        t = report.triage(self._summary(0.0005))
+        self.assertEqual(t["risk"], "LOW")
+        self.assertIn("not urgency", t["recommendation"])
+
+    def test_moderate_risk_band(self):
+        self.assertEqual(report.triage(self._summary(0.01))["risk"], "MODERATE")
+
+    def test_high_risk_demands_the_corpus(self):
+        t = report.triage(self._summary(0.08))
+        self.assertEqual(t["risk"], "HIGH")
+        self.assertIn("REQUIRED", t["recommendation"])
+
+    def test_any_language_flip_forces_high_regardless_of_bucketing(self):
+        t = report.triage(self._summary(
+            0.0001, language_detection={"checked": 8, "wrong": 1,
+                                        "flips_to_l1": 1, "flip_rate": 0.125}))
+        self.assertEqual(t["risk"], "HIGH")
+        self.assertTrue(any("WRONG LANGUAGE" in n for n in t["notes"]))
+
+    def test_unmeasurable_when_no_deck_timeline(self):
+        t = report.triage(self._summary(
+            0.01, slide_bucket={"disagreement_rate": None}))
+        self.assertEqual(t["risk"], "UNMEASURABLE")
+
+    def test_unmeasurable_when_provider_produced_nothing(self):
+        t = report.triage(self._summary(0.01, takes_usable=0,
+                                        failure_reasons=["no timestamps"]))
+        self.assertEqual(t["risk"], "UNMEASURABLE")
+
+    def test_never_claims_the_candidate_is_better(self):
+        # The caveat is load-bearing: triage sizes the change, it does not
+        # say which direction it goes.
+        for bd in (0.0001, 0.01, 0.08):
+            self.assertIn("not accuracy", report.triage(self._summary(bd))["caveat"])
+
+
 class RenderTests(unittest.TestCase):
 
     def test_render_does_not_raise_on_sparse_summary(self):

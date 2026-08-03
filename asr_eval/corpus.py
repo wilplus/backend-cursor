@@ -240,12 +240,20 @@ def load_manifest(path: str) -> dict:
             "load_errors": load_errors}
 
 
-def readiness(corpus: Any) -> dict:
+def readiness(corpus: Any, *, require_reference: bool = True) -> dict:
     """What this corpus can and cannot measure, before spending a cent.
 
     Run before any sweep. Its job is to answer "is the golden set good
     enough yet?" concretely enough to hand back as a data request, rather
     than discovering mid-run that the headline metric is unmeasurable.
+
+    ``require_reference=False`` is AGREEMENT-ONLY mode: no human transcripts,
+    so no WER — but slide-bucket agreement, timestamp drift and language
+    flips are all provider-vs-provider and need none. That combination
+    answers "how much would this migration move F1?" from audio alone, which
+    is worth knowing BEFORE committing 12-18 hours to transcription. It
+    cannot answer "is the candidate better" — nothing without ground truth
+    can.
     """
     takes = (corpus or {}).get("takes") or []
     load_errors = (corpus or {}).get("load_errors") or []
@@ -276,9 +284,17 @@ def readiness(corpus: Any) -> dict:
             "agreement, the metric that decides this migration, cannot be "
             "computed for any take")
     if not with_ref:
-        blockers.append("no take has reference_text — no WER is computable")
+        msg = "no take has reference_text — no WER is computable"
+        if require_reference:
+            blockers.append(msg)
 
     warnings = []
+    if not with_ref and not require_reference:
+        warnings.append(
+            "AGREEMENT-ONLY: no reference transcripts, so there is no WER and "
+            "no accuracy claim available. Slide-bucket agreement, timestamp "
+            "drift and language flips still compute — they answer 'how much "
+            "would this migration move F1?', never 'is the candidate better'.")
     if not with_times:
         warnings.append(
             "no take has reference_words — all timing numbers will be TIER 3 "

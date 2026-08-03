@@ -22,6 +22,39 @@ python scripts/asr_eval_run.py --manifest evals/asr/manifest.json \
 
 ---
 
+## Start here: a first answer with ZERO transcription
+
+The 12–18 hours of transcription below buys *accuracy*. But the question
+"how much would this migration actually move F1?" needs no transcripts at
+all — slide-bucket agreement, timestamp drift and language flips are all
+provider-vs-provider. **Audio + slide timelines is enough.**
+
+```bash
+python scripts/asr_eval_run.py --manifest evals/asr/manifest.json \
+    --providers openai:whisper-1,whisperx --baseline openai:whisper-1 \
+    --agreement-only --no-language-hint
+```
+
+You get a `RISK: LOW / MODERATE / HIGH` read per candidate, and it sizes
+whether the full corpus is urgent or merely prudent:
+
+- **LOW** — the candidate buckets words almost exactly where whisper-1 does.
+  A swap is unlikely to move per-slide text. Build the corpus for
+  confidence, not urgency.
+- **HIGH** — a swap would visibly move per-slide text, so the corpus becomes
+  *required*: at that magnitude, shipping on agreement numbers alone is
+  guessing which direction the change goes.
+- **Any language flip → HIGH automatically.** That is not a tuning question.
+
+What it cannot do, and is written not to imply: say a candidate is
+**better**. Every number is agreement with the incumbent. A candidate that
+disagrees on 8% of words might be 8% better or 8% worse — which is exactly
+why HIGH argues *for* building the corpus, not against it.
+
+Do this before anyone spends an afternoon transcribing.
+
+---
+
 ## What we need from you
 
 ### 0. First, the free data you already have

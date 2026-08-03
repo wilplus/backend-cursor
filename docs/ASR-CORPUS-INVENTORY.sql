@@ -305,3 +305,27 @@ END
 $inv$;
 
 SELECT section, metric, value FROM asr_inventory ORDER BY ord, metric;
+
+
+-- ── TL;DR — one row, if the table above is awkward to copy ───────────────
+-- Everything needed to decide "record takes" vs "label the gaps" fits here.
+-- Pasting just this line is enough to unblock the next step.
+SELECT
+    'TL;DR' AS answer,
+    COALESCE(MAX(value) FILTER (
+        WHERE metric = 'b. usable_for_wer (has audio)'), 'n/a')
+        AS coach_fixed_transcripts_with_audio,
+    COALESCE(MAX(value) FILTER (
+        WHERE metric = 'd. usable_for_wer'), 'n/a')
+        AS user_fixed_transcripts_with_audio,
+    COALESCE(MAX(value) FILTER (
+        WHERE metric = 'b. with_slide_timeline (>=2)'), 'n/a')
+        AS decked_takes_with_slide_timeline,
+    COALESCE(MAX(value) FILTER (
+        WHERE metric = 'f. total_minutes'), 'n/a')
+        AS corrected_audio_minutes,
+    (SELECT count(*) FROM asr_inventory
+      WHERE value LIKE 'NOT MIGRATED%' OR value LIKE 'SKIPPED%'
+         OR value LIKE 'MISSING%')::text
+        AS sections_or_columns_missing
+  FROM asr_inventory;

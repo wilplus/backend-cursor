@@ -156,6 +156,13 @@ def main(argv=None) -> int:
                          "(lab_recording.py:408), and it is the only mode in "
                          "which the language-flip metric means anything")
     ap.add_argument("--out", default=None)
+    ap.add_argument("--agreement-only", action="store_true",
+                    help="run WITHOUT reference transcripts: slide-bucket "
+                         "agreement, timestamp drift and language flips vs "
+                         "the incumbent. Needs audio + slide timelines only "
+                         "— no human labeling. Sizes how much a migration "
+                         "would move F1 before committing to transcription; "
+                         "cannot say which provider is BETTER.")
     ap.add_argument("--force", action="store_true",
                     help="run even when readiness reports blockers")
     args = ap.parse_args(argv)
@@ -171,7 +178,8 @@ def main(argv=None) -> int:
         print(f"manifest error: {e}", file=sys.stderr)
         return 2
 
-    ready = corpus_mod.readiness(c)
+    ready = corpus_mod.readiness(
+        c, require_reference=not args.agreement_only)
     _print_readiness(ready)
     if args.check:
         return 0 if ready["ready"] else 1
@@ -211,7 +219,7 @@ def main(argv=None) -> int:
                 f"{res.get('wall_seconds')}s")
             print(f"   {t['take_id']}: {note}")
 
-    summaries, gates, per_take = [], [], {}
+    summaries, gates, triages, per_take = [], [], [], {}
     base_rows = raw.get(args.baseline) or {}
     for p in names:
         rows = []
@@ -245,6 +253,22 @@ def main(argv=None) -> int:
     print()
     print(report.render(summaries, gates, baseline=args.baseline))
 
+    if args.agreement_only:
+        print("\n" + "=" * 78)
+        print("TRIAGE — how much would a swap MOVE things? (agreement, not accuracy)")
+        print("=" * 78)
+        for s in summaries:
+            if s["provider"] == args.baseline:
+                continue
+            t = report.triage(s, baseline_name=args.baseline)
+            triages.append(t)
+            print(f"\n  {t['provider']}  →  RISK: {t['risk']}")
+            for n in t.get("notes") or []:
+                print(f"    · {n}")
+            print(f"    ⇒ {t['recommendation']}")
+            if t.get("caveat"):
+                print(f"    ! {t['caveat']}")
+
     def _breakdown(key: str) -> None:
         print("\n" + "-" * 78)
         print(f"BY {key.upper()}")
@@ -276,6 +300,7 @@ def main(argv=None) -> int:
                 "readiness": ready,
                 "summaries": summaries,
                 "gates": gates,
+                "triage": triages,
                 "per_take": {p: [{"take_id": r["take"]["take_id"],
                                   "accent": r["take"]["accent"],
                                   "result": r["result"]}
@@ -286,6 +311,10 @@ def main(argv=None) -> int:
 
     # Exit non-zero if any non-baseline candidate failed its gate, so this
     # can gate CI later without rewriting the runner.
+    if args.agreement_only:
+        # The gate cannot PASS without ground truth, so its verdict carries
+        # no information here — exit on whether the run itself worked.
+        return 0 if summaries else 1
     bad = [g for g in gates
            if g["provider"] != args.baseline and g["verdict"] != "PASS"]
     return 1 if bad else 0
