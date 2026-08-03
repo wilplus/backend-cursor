@@ -732,6 +732,11 @@ Extract three lists:
 (e.g. "[NOW]", "[This week]", "[Aug]", "[Jul '27]", "to July 2031", "2035") \
 into due_label — that is what the person reads back, so it keeps their words.
 
+    ALSO COPY the goal's stated success criterion, VERBATIM, into measure - \
+the document's own "how I will know it happened" ("3 talks", "10kg", "one \
+draft sent"). measure is "" when the document states none: never invent a \
+metric the person did not write.
+
     ALSO RESOLVE that notation into due_date, a strict calendar date, \
 YYYY-MM-DD. This is the one place you are allowed to compute rather than copy, \
 and it is not interpretation: "to July 2031" is 2031-07-01, "[Aug]" is the \
@@ -762,7 +767,7 @@ it is the same digits whatever the document is written in.
 
 Return STRICT JSON:
 {{"goals": [{{"title": "", "horizon": "", "due_label": "", "due_date": "", \
-"bet": ""}}],
+"measure": "", "bet": ""}}],
  "habits": [{{"title": ""}}],
  "distractions": [{{"title": "", "response": ""}}]}}"""
 
@@ -1552,6 +1557,12 @@ def build_daily_card(user_id: str, day: date) -> dict:
                 "detail": goal.get("body") or "",
                 "due": goal.get("due_label") or "",
                 "bet": _bet_title(goal),
+                # The goal's own metric, carried so the EVENING can
+                # hold the day against it (piece 3). The drafting
+                # model sees it too: a day-sized step toward "3
+                # talks" is likelier to be one talk than a
+                # restatement.
+                "measure": goal.get("measure") or "",
                 "drafted": None}
 
     return {
@@ -1624,6 +1635,13 @@ def build_evening_pass(day_row: dict) -> dict:
     return {
         "one_thing": day_row.get("one_thing") or "",
         "one_thing_bet": day_row.get("one_thing_bet") or "",
+        # The measure the morning's goal carries, displayed so the
+        # recap can hold the day against the person's own criterion.
+        # Display ONLY: the answer is theirs, free text, never a
+        # computed anything (AC-9).
+        "one_thing_measure": (((day_row.get("draft_meta") or {})
+                               .get("one_thing") or {})
+                              .get("measure") or ""),
         "focus_blocks": focus if isinstance(focus, list) else [],
         "habits": sorted((day_row.get("morning_checks") or {}).keys()),
         "distraction_flagged": day_row.get("distraction_flagged"),

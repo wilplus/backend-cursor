@@ -518,6 +518,9 @@ def plan_strategy(user_id: str, payload: dict) -> dict:
             "due_at": (_date_only(raw.get("due_date"))
                        or lp.parse_due_label(label)),
             "collection": _text(raw.get("bet")) or None,
+            # The document's own stated success criterion, when extraction
+            # found one — verbatim, like everything else in this planner.
+            "measure": _text(raw.get("measure"))[:500] or None,
             "order_key": float(index + 1) * 1000.0,
         })
 
@@ -861,6 +864,9 @@ def sanitize_confirmed_item(raw: Any) -> Optional[dict]:
     # the column. BOTH are accepted so neither side has to translate; the FE's
     # mapping is belt-and-braces, not a requirement.
     collection = _text(raw.get("bet") or raw.get("collection"))[:120] or None
+    # The metric rides the round trip exactly like the resolved date does: a
+    # goal drafted WITH a measure must not be created without one at the tick.
+    measure = _text(raw.get("measure"))[:500] or None
     if kind == "phrase" and not collection:
         # A phrase with no collection lands under "Uncollected". Defaulted
         # here as well as at draft time so a client that drops the field —
@@ -886,6 +892,10 @@ def sanitize_confirmed_item(raw: Any) -> Optional[dict]:
                    or lp.parse_due_label(label)),
         "collection": collection,
     }
+    if measure:
+        # Only when present: an absent measure must not write NULL over a
+        # column an older payload never mentioned.
+        fields["measure"] = measure
     external_id = _text(raw.get("external_id") or raw.get("externalId"))[:200]
     if external_id:
         # Round-tripped from plan_strategy so the unique partial index makes a
