@@ -96,11 +96,53 @@ exactly as before.
 3. **Add Redis**: Railway → project → New → Database → **Redis**. Note the
    `REDIS_URL` it provisions.
 4. **Create the worker service**: New service → connect this same repo →
-   Settings → Start Command: `sh bin/railway-worker.sh`. Give it the SAME
-   env group as the web service, PLUS `REDIS_URL` and
-   `PIPELINE_QUEUE_ENABLED=1`. It boots, warms librosa, sweeps, and idles
-   (queue is empty — web isn't enqueueing yet). Check logs for
-   `librosa numba JIT warmed` + `worker starting on queue 'pipeline'`.
+   Settings → Start Command: `sh bin/railway-worker.sh`.
+
+   **Variables — the step that actually bites.** The worker is NOT a thin
+   shim: it re-downloads the take from object storage, writes through
+   `services.db`, calls Whisper + the analysis LLMs, and emails the coach.
+   It needs the web service's WHOLE config, not a subset. `services/db.py`
+   builds its Supabase client at import time, so a missing `SUPABASE_URL`
+   kills the process before it can log anything useful and Railway
+   restarts it forever. `worker.py` preflights the four hard requirements
+   and names what is missing, but the fix is always the same: copy the
+   variables over.
+
+   Fastest: web service → Variables → **Raw Editor** → copy all → paste
+   into the worker's Raw Editor. Better long-term: a project-level
+   **Shared Variable group** both services reference, so they cannot
+   drift. At minimum:
+
+   | Group | Vars | Why the worker needs it |
+   |---|---|---|
+   | Supabase | `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | every DB read/write (import-time hard requirement) |
+   | OpenAI | `OPENAI_API_KEY` (+ any `OPENAI_*_MODEL`) | Whisper + the analysis LLM calls |
+   | Storage | `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `COACH_FEEDBACK_VIDEO_BUCKET`, any `R2_*` bucket / base-URL vars | **fetching the audio** — the queue carries an id, not bytes |
+   | Email | `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, `ADMIN_EMAIL`, `FRONTEND_URL` | auto-send to the coach queue |
+   | Ops | `SENTRY_DSN`, `ENV` | worker exceptions reach Sentry |
+   | Queue | `REDIS_URL`, `PIPELINE_QUEUE_ENABLED=1` | the broker + the flag |
+   | Feature flags | whatever web has on (`MOMENT_SUGGESTIONS_ENABLED`, `MASTER_DOCUMENT_*`, …) | the pipeline branches on these — a mismatch silently changes what a take produces |
+
+   Do NOT set `PORT`: the worker serves no HTTP, and Railway will fail
+   healthchecks against a service it thinks is a web target.
+
+   It then boots, warms librosa, sweeps, and idles (queue is empty — web
+   isn't enqueueing yet). Healthy log, in order:
+   ```
+   [startup] ffmpeg located at ...
+   librosa numba JIT warmed (pid=...)
+   boot sweep: {'requeued': 0, 'failed': 0}
+   worker starting on queue 'pipeline' (job timeout 3600s)
+   ```
+
+   **Builder note.** Railway's newer **Railpack** builder does NOT read
+   `nixpacks.toml` / `apt.txt`, so a service built with it has no system
+   ffmpeg and logs `no system ffmpeg — using the imageio-ffmpeg bundled
+   binary`. That fallback works (the bundled wheel is a real ffmpeg), but
+   for parity with web either switch the service's builder to Nixpacks
+   (Settings → Build → Builder) or give Railpack an equivalent apt
+   package. Worth checking on the WEB service too after any rebuild — a
+   silent switch there would degrade the live loop the same way.
 5. **Canary**: flip `PIPELINE_QUEUE_ENABLED=1` + set `REDIS_URL` on the
    **web** service. Record one take; confirm 202 with `job_id`, worker log
    shows the job, poll reaches `ready`, readout renders. (Do this before
