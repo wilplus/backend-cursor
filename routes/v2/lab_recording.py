@@ -159,6 +159,13 @@ def _recording_flow_tags(form) -> dict:
                          the student GET's reread_done; non-int dropped)
       paired_snippet_id  a delivery-star snippet re-record's target snippet
                          (UUID; invalid dropped)
+      named_emotion      the pre-recording emotion-naming answer (F2
+                         handoff §2, 2026-08-03) — a KEY from the closed
+                         vocabulary in services/named_emotion.py; unknown
+                         words are dropped (never block a recording). The
+                         key is the user's own self-report and rides to
+                         the coach; its threat/challenge BUCKET is
+                         internal-only (CONSTRUCT — log line, never wire).
     """
     tags: dict = {}
     if (form.get("read_target") or "").strip().lower() == "ideal_text":
@@ -170,6 +177,13 @@ def _recording_flow_tags(form) -> dict:
     _psnip = (form.get("paired_snippet_id") or "").strip()
     if _psnip and _is_valid_uuid(_psnip):
         tags["paired_snippet_id"] = _psnip
+    try:
+        from services.named_emotion import normalize_named_emotion
+        _emo = normalize_named_emotion(form.get("named_emotion"))
+        if _emo:
+            tags["named_emotion"] = _emo
+    except Exception:
+        pass
     return tags
 
 
@@ -518,6 +532,17 @@ def v2_lab_create_recording():
         # FE sends as flat multipart fields are folded in EXPLICITLY here
         # (nothing "rides through" on its own).
         session_context.update(_recording_flow_tags(form))
+        # Drift-metric stream (F2 handoff §2): one internal log line per
+        # captured emotion — the rolling threat-share per user is computed
+        # OFF-SURFACE from these. Log-only; the bucket never persists.
+        if session_context.get("named_emotion"):
+            try:
+                from services.named_emotion import log_drift_signal
+                log_drift_signal(getattr(request, "user_id", None),
+                                 guest_session_id,
+                                 session_context["named_emotion"])
+            except Exception:
+                pass
 
         # Persist session_context on the session row.
         db.set_session_intake_context(guest_session_id, session_context)

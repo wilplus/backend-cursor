@@ -173,5 +173,134 @@ class SpokenOnlyIsArcTruthTests(unittest.TestCase):
                          ["t1", "t2"])
 
 
+class _PoolAuditDB:
+    """Fake db for the ranking-pool exclusion audit: an arc with one
+    SPOKEN take and one paired READ, both fully transcribed and labeled
+    — the adversarial setup where a read WOULD win if it ever entered."""
+
+    def __init__(self):
+        self.sessions = [
+            {"id": "t1", "take_index": 1, "recording_kind": "spoken",
+             "created_at": "2026-08-01T10:00:00Z",
+             "intake_context": {
+                 "topic": "T",
+                 "slides": [{"title": "S1", "body": ""}],
+                 "slide_advances": [{"index": 0, "t_ms": 0}],
+             }},
+            # The read is NEWER and coach-labeled challenge — if any lane
+            # ever admits it, it would both seed the skeleton and win the
+            # pick. It must do neither.
+            {"id": "r1", "take_index": 1, "recording_kind": "read",
+             "paired_session_id": "t1",
+             "created_at": "2026-08-02T10:00:00Z",
+             "intake_context": {
+                 "topic": "T",
+                 "slides": [{"title": "S1", "body": ""}],
+                 "slide_advances": [{"index": 0, "t_ms": 0}],
+             }},
+        ]
+        self.snips = {
+            "t1": [{"id": "sp1", "start_offset_ms": 0, "duration_ms": 900,
+                    "transcript": "the spoken words",
+                    "storage_path": "s3://sp1",
+                    "metrics": {"overall_score": 0.2}}],
+            "r1": [{"id": "rd1", "start_offset_ms": 0, "duration_ms": 900,
+                    "transcript": "the script read back",
+                    "storage_path": "s3://rd1",
+                    "metrics": {"overall_score": 0.99,
+                                "recording_kind": "read"}}],
+        }
+        self.blocks_written = []
+
+    def get_arc_sessions(self, arc_id):
+        return list(self.sessions)
+
+    def get_snippets_by_session(self, sid):
+        return list(self.snips.get(sid, []))
+
+    def get_training_labels(self, sid):
+        return [{"snippet_id": s["id"], "value": "challenge"}
+                for s in self.snips.get(sid, [])]
+
+    def get_best_presentation_edits(self, arc_id):
+        return {}
+
+    def get_coach_best_presentation_edits(self, arc_id):
+        return {}
+
+    def v2_get_session_by_id(self, sid):
+        for s in self.sessions:
+            if s["id"] == sid:
+                return s
+        return None
+
+    def upsert_ideal_text_block(self, arc_id, block_key, fields):
+        self.blocks_written.append((block_key, fields))
+        return True
+
+    def list_ideal_text_blocks(self, arc_id):
+        return []
+
+
+@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
+class RankingPoolExclusionAuditTests(unittest.TestCase):
+    """F1-CORE guard (handoff §4, 2026-08-03): `recording_kind: "read"`
+    sessions are STRICTLY excluded from the best-text-per-slide pool —
+    selection AND challenger generation. A read's transcript is the
+    script read back; inside the pool it would dominate text-quality
+    signals while being the behavior the product trains users out of.
+    The audit found reads already excluded at every lane (the
+    spoken_arc_sessions load filter + the worker's spoken-only gate);
+    these tests pin that so a refactor can't quietly let them back in."""
+
+    def test_read_snippets_never_enter_selection(self):
+        # End-to-end: even a newer, higher-scoring, coach-challenge-
+        # labeled read never surfaces in the composed slides.
+        from services import best_presentation as bp
+        _orig = bp._render_composition
+        bp._render_composition = lambda picks, slides: None
+        try:
+            out = bp.build_best_presentation("a1", database=_PoolAuditDB(),
+                                             coach_view=True)
+        finally:
+            bp._render_composition = _orig
+        for s in (out.get("slides") or []):
+            self.assertNotEqual(s.get("session_id"), "r1")
+            self.assertNotEqual(s.get("snippet_id"), "rd1")
+            self.assertNotIn("script read back", s.get("text") or "")
+            self.assertNotIn("script read back", s.get("verbatim") or "")
+
+    def test_master_skeleton_never_seeds_from_a_read(self):
+        # The skeleton seeds from the LATEST spoken take with pieces —
+        # a newer read must not be that seed.
+        from services.master_document import build_skeleton
+        db = _PoolAuditDB()
+        rows = build_skeleton("a1", db)
+        self.assertTrue(rows, "skeleton should build from the spoken take")
+        for row in rows:
+            self.assertEqual(row["incumbent_take_session_id"], "t1")
+            for p in row["incumbent_pieces"]:
+                self.assertNotEqual(p["snippet_id"], "rd1")
+
+    def test_challenger_and_variant_lanes_sit_behind_the_spoken_gate(self):
+        # Source pins. (1) process_new_take — block upgrade offers, the
+        # challenger generator — is called INSIDE the worker's
+        # spoken-only block, so a read can never generate an offer.
+        from services import analysis_worker
+        wsrc = inspect.getsource(analysis_worker.run_full_analysis)
+        gate = wsrc.index('if arc_id and recording_kind == "spoken":')
+        self.assertIn("process_new_take(", wsrc)
+        self.assertGreater(wsrc.index("process_new_take("), gate)
+        # (2) The variant pool (#314) captures take material only from
+        # inside process_new_take — it inherits the same gate rather
+        # than reading arc sessions itself.
+        from services import master_document
+        msrc = inspect.getsource(master_document.process_new_take)
+        self.assertIn("capture_take_variants", msrc)
+        from services import ideal_text_variants
+        vsrc = inspect.getsource(ideal_text_variants)
+        self.assertNotIn("get_arc_sessions", vsrc)
+
+
 if __name__ == "__main__":
     unittest.main()
