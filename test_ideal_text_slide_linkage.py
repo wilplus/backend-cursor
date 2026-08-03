@@ -227,6 +227,8 @@ class MasterDocumentProvenanceTests(unittest.TestCase):
         self.assertEqual(pieces[0]["slide_index"], 4)
         self.assertEqual(pieces[0]["snippet_id"], "sn1")
         self.assertEqual(pieces[0]["status"], "settled")
+        # The keyed pill→picker join (FE picker handoff 2026-08-03).
+        self.assertEqual(pieces[0]["block_key"], 0)
 
     def test_pending_upgrade_status_rides_honestly(self):
         blocks = [{"block_key": 0, "active": True,
