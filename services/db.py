@@ -11269,6 +11269,198 @@ class DatabaseService:
         except Exception:
             return None
 
+    # ── variant pool + compositions (founder 2026-08-03) ─────────────
+    # See services/ideal_text_variants.py + add_ideal_text_variant_pool
+    # .sql. Append-only lanes; all best-effort; list reads return None
+    # on FAILURE ([] only on a real empty read).
+
+    def insert_ideal_text_block_variant(self, arc_id: str, block_key: int,
+                                        fields: dict) -> Optional[dict]:
+        """One APPEND-ONLY variant row; returns the inserted row (the
+        caller needs its id for composition pointers) or None. A take-
+        sourced duplicate (same arc/block/take — the partial unique
+        index) returns None quietly: the pool already has it."""
+        if not arc_id or not isinstance(block_key, int) \
+                or not isinstance(fields, dict):
+            return None
+        try:
+            payload = dict(fields)
+            payload["arc_id"] = str(arc_id)
+            payload["block_key"] = block_key
+            res = (self.client.table("ideal_text_block_variants")
+                   .insert(payload).execute())
+            return (res.data or [None])[0]
+        except Exception as e:
+            _e = str(e).lower()
+            if "duplicate" in _e or "unique" in _e or "23505" in _e:
+                return None
+            if "ideal_text_block_variants" in _e and (
+                "does not exist" in _e or "pgrst" in _e
+            ):
+                logger.warning(
+                    "insert_ideal_text_block_variant: table missing (run "
+                    "migrations/add_ideal_text_variant_pool.sql)")
+                return None
+            logger.warning("insert_ideal_text_block_variant failed "
+                           "arc=%s: %s", arc_id, e)
+            return None
+
+    def list_ideal_text_block_variants(
+            self, arc_id: Optional[str]) -> Optional[list]:
+        if not arc_id:
+            return None
+        try:
+            res = (
+                self.client.table("ideal_text_block_variants")
+                .select("*")
+                .eq("arc_id", str(arc_id))
+                .order("created_at", desc=False)
+                .execute()
+            )
+            return res.data or []
+        except Exception as e:
+            _e = str(e).lower()
+            if not ("ideal_text_block_variants" in _e and (
+                    "does not exist" in _e or "pgrst" in _e)):
+                logger.warning("list_ideal_text_block_variants failed "
+                               "arc=%s: %s", arc_id, e)
+            return None
+
+    def get_ideal_text_block_variant(self, arc_id: Optional[str],
+                                     variant_id: Any) -> Optional[dict]:
+        """One variant by id, ARC-SCOPED — the select route must never
+        resolve another arc's variant id."""
+        if not arc_id or not variant_id:
+            return None
+        try:
+            res = (
+                self.client.table("ideal_text_block_variants")
+                .select("*")
+                .eq("arc_id", str(arc_id))
+                .eq("id", str(variant_id))
+                .limit(1)
+                .execute()
+            )
+            return (res.data or [None])[0]
+        except Exception as e:
+            logger.warning("get_ideal_text_block_variant failed arc=%s: %s",
+                           arc_id, e)
+            return None
+
+    def insert_ideal_text_composition(self, arc_id: str, revision: int,
+                                      selections: Any, reason: Any,
+                                      created_by: Any) -> bool:
+        """One APPEND-ONLY composition revision. A (arc, revision)
+        conflict returns False — the caller retries with the next
+        number; existing history is never overwritten."""
+        if not arc_id or not isinstance(revision, int) or revision < 1:
+            return False
+        try:
+            (self.client.table("ideal_text_compositions").insert({
+                "arc_id": str(arc_id),
+                "revision": revision,
+                "selections": selections or [],
+                "reason": reason,
+                "created_by": (str(created_by) if created_by else None),
+            }).execute())
+            return True
+        except Exception as e:
+            _e = str(e).lower()
+            if "ideal_text_compositions" in _e and (
+                "does not exist" in _e or "pgrst" in _e
+            ):
+                logger.warning(
+                    "insert_ideal_text_composition: table missing (run "
+                    "migrations/add_ideal_text_variant_pool.sql)")
+                return False
+            if not ("duplicate" in _e or "unique" in _e or "23505" in _e):
+                logger.warning("insert_ideal_text_composition failed "
+                               "arc=%s: %s", arc_id, e)
+            return False
+
+    def get_ideal_text_composition(self, arc_id: Optional[str],
+                                   revision: Any) -> Optional[dict]:
+        if not arc_id or not isinstance(revision, int):
+            return None
+        try:
+            res = (
+                self.client.table("ideal_text_compositions")
+                .select("*")
+                .eq("arc_id", str(arc_id))
+                .eq("revision", revision)
+                .limit(1)
+                .execute()
+            )
+            return (res.data or [None])[0]
+        except Exception as e:
+            logger.warning("get_ideal_text_composition failed arc=%s: %s",
+                           arc_id, e)
+            return None
+
+    def list_ideal_text_compositions(self, arc_id: Optional[str],
+                                     limit: int = 50) -> Optional[list]:
+        """Newest first, bounded — the revisions timeline read."""
+        if not arc_id:
+            return None
+        try:
+            res = (
+                self.client.table("ideal_text_compositions")
+                .select("*")
+                .eq("arc_id", str(arc_id))
+                .order("revision", desc=True)
+                .limit(max(1, int(limit)))
+                .execute()
+            )
+            return res.data or []
+        except Exception as e:
+            _e = str(e).lower()
+            if not ("ideal_text_compositions" in _e and (
+                    "does not exist" in _e or "pgrst" in _e)):
+                logger.warning("list_ideal_text_compositions failed "
+                               "arc=%s: %s", arc_id, e)
+            return None
+
+    def get_ideal_text_composition_head(
+            self, arc_id: Optional[str]) -> Optional[dict]:
+        if not arc_id:
+            return None
+        try:
+            res = (
+                self.client.table("ideal_text_composition_head")
+                .select("*")
+                .eq("arc_id", str(arc_id))
+                .limit(1)
+                .execute()
+            )
+            return (res.data or [None])[0]
+        except Exception:
+            return None
+
+    def set_ideal_text_composition_head(self, arc_id: str,
+                                        revision: int) -> bool:
+        """Repoint the one live pointer — undo/restore IS this write."""
+        if not arc_id or not isinstance(revision, int) or revision < 1:
+            return False
+        try:
+            self.client.table("ideal_text_composition_head").upsert({
+                "arc_id": str(arc_id),
+                "head_revision": revision,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }, on_conflict="arc_id").execute()
+            return True
+        except Exception as e:
+            _e = str(e).lower()
+            if "ideal_text_composition_head" in _e and (
+                "does not exist" in _e or "pgrst" in _e
+            ):
+                logger.warning(
+                    "set_ideal_text_composition_head: table missing (run "
+                    "migrations/add_ideal_text_variant_pool.sql)")
+                return False
+            logger.warning("set_ideal_text_composition_head failed "
+                           "arc=%s: %s", arc_id, e)
+            return False
+
     def set_session_priming(
         self, session_id: str,
         condition: Optional[str], phrase: Optional[str],
