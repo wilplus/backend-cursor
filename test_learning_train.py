@@ -51,7 +51,9 @@ class TrainDirectionClassifierTests(unittest.TestCase):
         self.assertGreater(metrics["accuracy"], 0.6)
 
     def test_artifact_round_trips_and_predicts(self):
-        import io, joblib, numpy as np
+        import io
+        import joblib
+        import numpy as np
         artifact, _m, _w = self._train(_corpus(20))
         bundle = joblib.load(io.BytesIO(artifact))
         self.assertEqual(bundle["features"], list(FEATURES_11))

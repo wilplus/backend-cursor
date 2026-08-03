@@ -282,7 +282,6 @@ class TestMasterDocRagRecordIntent(unittest.TestCase):
 
     def setUp(self):
         # Re-imported per-test so the patches always start clean.
-        import importlib
         import services.openai_service as openai_service_module
         self._openai_module = openai_service_module
         self._original_service = openai_service_module.OpenAIService

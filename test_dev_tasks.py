@@ -231,15 +231,18 @@ class ExportBundleTests(unittest.TestCase):
 class TransformTests(unittest.TestCase):
 
     def test_classify_none_without_client(self):
-        fake = MagicMock(); fake.client = None
+        fake = MagicMock()
+        fake.client = None
         with patch.dict("sys.modules", {"services.openai_service": MagicMock(openai_service=fake)}):
             self.assertIsNone(svc.classify_bug("some bug"))
 
     def test_classify_parses_json(self):
         fake_client = MagicMock()
-        msg = MagicMock(); msg.content = '{"theme":"T1","epic":"1.1","user_story":"as a user...","body":"x","priority":1}'
+        msg = MagicMock()
+        msg.content = '{"theme":"T1","epic":"1.1","user_story":"as a user...","body":"x","priority":1}'
         fake_client.chat.completions.create.return_value = MagicMock(choices=[MagicMock(message=msg)])
-        fake_mod = MagicMock(); fake_mod.openai_service = MagicMock(client=fake_client)
+        fake_mod = MagicMock()
+        fake_mod.openai_service = MagicMock(client=fake_client)
         with patch.dict("sys.modules", {"services.openai_service": fake_mod}):
             out = svc.classify_bug("bug text")
         self.assertEqual(out["theme"], "T1")

@@ -215,7 +215,7 @@ def health_jwks():
     
     try:
         # Test JWKS connectivity by initializing the client
-        jwks_client = get_jwks_client()
+        get_jwks_client()
         
         # Try to fetch JWKS to verify connectivity
         supabase_url = _normalize_supabase_url(config.SUPABASE_URL)

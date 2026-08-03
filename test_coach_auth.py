@@ -15,6 +15,8 @@ from __future__ import annotations
 import unittest
 from functools import wraps
 
+from tests.fakes import FakeSupabaseClient
+
 try:
     from flask import Flask, request, jsonify
     import auth as auth_mod
@@ -29,35 +31,6 @@ except Exception as e:  # pragma: no cover - env/bootstrap guard
     _IMPORT_ERROR = e
 
 
-class _FakeResult:
-    def __init__(self, rows):
-        self.data = rows
-
-
-class _FakeQuery:
-    """Chainable stub for table(...).select(...).eq(...).eq(...).execute()."""
-
-    def __init__(self, rows):
-        self._rows = rows
-
-    def select(self, *a, **k):
-        return self
-
-    def eq(self, *a, **k):
-        return self
-
-    def execute(self):
-        return _FakeResult(self._rows)
-
-
-class _FakeClient:
-    def __init__(self, table_rows):
-        self._table_rows = table_rows  # {table_name: [rows]}
-
-    def table(self, name):
-        return _FakeQuery(self._table_rows.get(name, []))
-
-
 @unittest.skipIf(_IMPORT_ERROR is not None, f"coach auth tests need app deps: {_IMPORT_ERROR}")
 class IsCoachTests(unittest.TestCase):
     """is_coach keys on token email against an active coach_users row."""
@@ -70,7 +43,7 @@ class IsCoachTests(unittest.TestCase):
         admin_mod.db.client = self._orig_client
 
     def _set_rows(self, rows):
-        admin_mod.db.client = _FakeClient({"coach_users": rows})
+        admin_mod.db.client = FakeSupabaseClient({"coach_users": rows})
 
     def test_active_coach_email_authorized(self):
         self._set_rows([{"id": "c1"}])
