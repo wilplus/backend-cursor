@@ -59,13 +59,11 @@ _MAX_LLM_ATTEMPTS = 2
 # calibrated (mirrors the delivery-star z convention), tune on a separate set.
 _CONGRUENCE_AROUSAL_MAX = -0.6
 
-_SYSTEM_PROMPT = (
-    "You judge ONE thing for a speaker reviewing their own recording: are the "
-    "WORDS of this moment clearly upbeat / positive in meaning? Not neutral, "
-    "not negative — clearly positive.\n\n"
-    'Return JSON only: {"words_positive": true|false}. Judge the meaning of '
-    "the words alone. Do not explain."
-)
+# Prompt text lives in the registry (services/prompts/) — moved verbatim
+# 2026-08-03; hash-locked in prompts.lock.json.
+from services.prompts import delivery_alignment as _prompts
+
+_SYSTEM_PROMPT = _prompts.SYSTEM
 
 
 def delivery_alignment_enabled() -> bool:
@@ -110,7 +108,7 @@ def congruence_candidates(unstarred: Any, baseline: Any) -> list:
 
 def build_sentiment_messages(transcript: str) -> tuple[str, str]:
     """(system, user) for the positive-content judgment. Pure."""
-    return _SYSTEM_PROMPT, f'The words for this moment:\n"{(transcript or "").strip()}"'
+    return _SYSTEM_PROMPT, _prompts.user(transcript)
 
 
 def words_positive(parsed: Any) -> bool:

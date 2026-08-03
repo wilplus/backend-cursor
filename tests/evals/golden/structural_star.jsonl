@@ -1,0 +1,4 @@
+// SEED dataset (engineering, 2026-08-03) — anti-hallucination pin: quote must be verbatim.
+// The founder's golden cases replace/extend these. Format: docs/prompt_evals.md
+{"id": "SS-SEED-01", "surface": "structural_star", "description": "clean rule-of-three is detected with a verbatim quote", "input": {"transcript": "our plan is simple: we listen, we build, we ship"}, "rubric": {"expect": {"device": "list_of_three"}, "substring_of_input": [{"path": "quote", "input": "transcript"}]}}
+{"id": "SS-SEED-02", "surface": "structural_star", "description": "plain sentence yields no device (never invent to be helpful)", "input": {"transcript": "the migration took about three weeks and went fine overall"}, "rubric": {"allow_none_output": true, "semantic_intent": "No rhetorical device is claimed for a plain factual sentence — a None/none result is the correct outcome."}}
