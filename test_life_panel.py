@@ -180,8 +180,11 @@ class TagRouterTests(unittest.TestCase):
     def test_every_documented_tag_routes(self):
         for tag in ("principle", "sin", "mistake", "error", "problem"):
             self.assertEqual(lp.parse_tag(f"#{tag} x")[1], "case")
-        for tag in ("data", "observation", "reflection", "idea", "finding"):
+        for tag in ("data", "idea", "finding"):
             self.assertEqual(lp.parse_tag(f"#{tag} x")[1], "goal_diff")
+        for tag in ("thought", "thoughts", "reflection", "reflections",
+                    "observation", "observations"):
+            self.assertEqual(lp.parse_tag(f"#{tag} x")[1], "reflection")
         for tag in ("win", "wins", "wygrane", "liftmeup"):
             self.assertEqual(lp.parse_tag(f"#{tag} x")[1], "win")
         self.assertEqual(lp.parse_tag("#add x")[1], "phrase")
@@ -221,6 +224,152 @@ class TagRouterTests(unittest.TestCase):
         self.assertEqual(lp.parse_tag("")[1], "capture")
         self.assertEqual(lp.parse_tag(None)[1], "capture")
         self.assertEqual(lp.parse_tag("#")[1], "capture")
+
+
+# ═════════════════════════════════════════════════════════════════════════
+# The reality layer — #thoughts / #reflections / #observations
+# ═════════════════════════════════════════════════════════════════════════
+# Founder-agreed 2026-08-02: these tags are CONTEXT for the strategy, never a
+# trigger. Capture costs nothing (no model call, no proposal); retrieval feeds
+# compare_to_strategy as background; a reflection is never the warrant.
+
+class ReflectionLayerTests(unittest.TestCase):
+
+    def test_reflection_tags_cover_every_spelling(self):
+        self.assertEqual(lp.REFLECTION_TAGS,
+                         ("observation", "observations", "reflection",
+                          "reflections", "thought", "thoughts"))
+
+    @unittest.skipIf(_IMPORT_ERROR is not None, "needs app deps")
+    def test_a_reflection_note_is_stored_and_derives_nothing(self):
+        # The bargain that moved observation/reflection out of goal_diff:
+        # writing a thought down must never spend a model call or queue a
+        # proposal the person did not ask for.
+        with patch.object(lchat, "has_consented", return_value=True), \
+                patch.object(lchat.store, "setup_completed",
+                             return_value=True), \
+                patch.object(lchat.store, "insert_note",
+                             return_value={"id": "n1"}) as insert, \
+                patch.object(lchat.engine, "derive_case") as case, \
+                patch.object(lchat.engine, "compare_to_strategy") as diff, \
+                patch.object(lchat.engine, "attach_phrase",
+                             return_value=None):
+            out = lchat.handle_note(USER, "#thoughts energy dips after lunch")
+        insert.assert_called_once()
+        self.assertEqual(insert.call_args.kwargs.get("tag"), "thoughts")
+        case.assert_not_called()
+        diff.assert_not_called()
+        self.assertIsNotNone(out)
+
+    @unittest.skipIf(_IMPORT_ERROR is not None, "needs app deps")
+    def test_setup_replay_never_derives_a_reflection(self):
+        # Same rule on the second door: pre-setup notes replayed at setup
+        # completion run case and goal_diff derivations, and nothing else.
+        with patch.object(lengine.store, "get_setup",
+                          return_value={"answers": {}}), \
+                patch.object(lengine, "generate_documents", return_value={}), \
+                patch.object(lengine.store, "insert_strategy_version"), \
+                patch.object(lengine.store, "complete_setup"), \
+                patch.object(lengine.store, "pending_replay_notes",
+                             return_value=[{"id": "n1",
+                                            "body": "#observation x"}]), \
+                patch.object(lengine.store, "mark_replayed"), \
+                patch.object(lengine, "derive_case") as case, \
+                patch.object(lengine, "compare_to_strategy") as diff:
+            out = lengine.complete_setup_and_generate(USER)
+        case.assert_not_called()
+        diff.assert_not_called()
+        self.assertNotIn("derivation", out["replayed"][0])
+
+    @unittest.skipIf(_IMPORT_ERROR is not None, "needs app deps")
+    def test_retrieval_is_relevance_ranked_and_capped(self):
+        rows = [{"id": "a", "body": "deep work mornings", "created_at": "1"},
+                {"id": "b", "body": "energy dips after lunch, deep work "
+                                    "impossible", "created_at": "2"},
+                {"id": "c", "body": "unrelated grocery list",
+                 "created_at": "3"}]
+        with patch.object(lengine.store, "list_reflection_notes",
+                          return_value=rows):
+            got = lengine.retrieve_reflections(USER, "deep work after lunch")
+        ids = [r["id"] for r in got]
+        self.assertNotIn("c", ids)          # zero relevance is left out
+        self.assertEqual(ids[0], "b")       # most relevant first
+        self.assertLessEqual(len(got), lengine.RETRIEVAL_LIMIT)
+
+    @unittest.skipIf(_IMPORT_ERROR is not None, "needs app deps")
+    def test_the_diff_reads_reflections_as_context_only(self):
+        # The block reaches the prompt labelled context-only, and the system
+        # prompt forbids using it as the warrant or the contradicted line.
+        seen = {}
+
+        def _fake_complete(spec, *, system, user, surface, user_id):
+            seen["system"], seen["user"] = system, user
+            return {"inconsistent": False}
+
+        with patch.object(lengine.store, "latest_strategy",
+                          return_value={"weekly": {"body": "doc"}}), \
+                patch.object(lengine, "retrieve_principles",
+                             return_value=[{"title": "Keep mornings"}]), \
+                patch.object(lengine, "retrieve_reflections",
+                             return_value=[{"id": "r1",
+                                            "body": "afternoons are dead"}]), \
+                patch.object(lengine, "_complete",
+                             side_effect=_fake_complete), \
+                patch.object(lengine, "_log_derivation"):
+            lengine.compare_to_strategy(USER, "move deep work to mornings")
+        self.assertIn("RECENT REFLECTIONS", seen["user"])
+        self.assertIn("afternoons are dead", seen["user"])
+        self.assertIn("context only — never a warrant", seen["user"])
+        self.assertIn("NEVER the warrant", seen["system"])
+        self.assertIn("NEVER the contradicted", seen["system"])
+
+    @unittest.skipIf(_IMPORT_ERROR is not None, "needs app deps")
+    def test_the_note_under_comparison_never_cites_itself(self):
+        # If the compared note somehow lives in the reflection layer too, it
+        # must not arrive as its own supporting context.
+        seen = {}
+
+        def _fake_complete(spec, *, system, user, surface, user_id):
+            seen["user"] = user
+            return {"inconsistent": False}
+
+        with patch.object(lengine.store, "latest_strategy",
+                          return_value={"weekly": {"body": "doc"}}), \
+                patch.object(lengine, "retrieve_principles",
+                             return_value=[{"title": "p"}]), \
+                patch.object(lengine, "retrieve_reflections",
+                             return_value=[{"id": "self",
+                                            "body": "the note itself"}]), \
+                patch.object(lengine, "_complete",
+                             side_effect=_fake_complete), \
+                patch.object(lengine, "_log_derivation"):
+            lengine.compare_to_strategy(USER, "the note itself",
+                                        note_id="self")
+        self.assertNotIn("RECENT REFLECTIONS", seen["user"])
+
+    @unittest.skipIf(_IMPORT_ERROR is not None, "needs app deps")
+    def test_a_reflection_fetch_failure_costs_the_context_not_the_diff(self):
+        # Degradation ladder: the reflections are seasoning. If the store
+        # call dies, the comparison still runs — without the block.
+        seen = {}
+
+        def _fake_complete(spec, *, system, user, surface, user_id):
+            seen["user"] = user
+            return {"inconsistent": False}
+
+        with patch.object(lengine.store, "latest_strategy",
+                          return_value={"weekly": {"body": "doc"}}), \
+                patch.object(lengine, "retrieve_principles",
+                             return_value=[{"title": "p"}]), \
+                patch.object(lengine.store, "list_reflection_notes",
+                             side_effect=RuntimeError("db down")), \
+                patch.object(lengine, "_complete",
+                             side_effect=_fake_complete), \
+                patch.object(lengine, "_log_derivation"):
+            out = lengine.compare_to_strategy(USER, "an observation")
+        self.assertEqual(out["kind"], "none")
+        self.assertIn("OBSERVATION", seen["user"])
+        self.assertNotIn("RECENT REFLECTIONS", seen["user"])
 
 
 # ═════════════════════════════════════════════════════════════════════════

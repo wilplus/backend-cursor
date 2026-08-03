@@ -167,6 +167,24 @@ def setup_completed(user_id: str) -> bool:
 # Notes — append-only capture. Never edited, never deleted.
 # ═════════════════════════════════════════════════════════════════════════
 
+def list_reflection_notes(user_id: str, *, limit: int = 200) -> list[dict]:
+    """The reality layer: every note tagged into the reflection route,
+    newest first. Fetched raw and capped; relevance ranking happens in the
+    engine, in-process, exactly as it does for principles."""
+    try:
+        return _rows(
+            _t("life_notes").select("*")
+            .eq("user_id", user_id)
+            .in_("tag", list(lp.REFLECTION_TAGS))
+            .order("created_at", desc=True)
+            .limit(max(1, min(limit, 500))).execute()
+        )
+    except Exception as e:
+        logger.warning("life: list_reflection_notes failed user=%s: %s",
+                       user_id, e)
+        return []
+
+
 def insert_note(user_id: str, body: str, *, source: str = "chat",
                 tag: Optional[str] = None,
                 pending_replay: bool = False) -> Optional[dict]:
