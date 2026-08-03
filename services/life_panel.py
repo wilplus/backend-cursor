@@ -419,6 +419,101 @@ def week_start_for(d: date) -> date:
 
 
 # ═════════════════════════════════════════════════════════════════════════
+# Period reviews — month + quarter (piece 5)
+# ═════════════════════════════════════════════════════════════════════════
+# The same fold discipline as week_start_for: any date names exactly one
+# period, so the upsert key is stable whichever day the review is opened.
+
+PERIODS: tuple[str, ...] = ("month", "quarter")
+
+# Which of the eight strategy documents a period review holds itself against,
+# and which item horizon its undated goals live at. Two mappings because the
+# two vocabularies are deliberately different tables (see the note above
+# ITEM_TO_STRATEGY_HORIZON).
+PERIOD_STRATEGY_HORIZON: dict[str, str] = {
+    "month": "monthly", "quarter": "quarterly",
+}
+PERIOD_ITEM_HORIZON: dict[str, str] = {
+    "month": "month", "quarter": "quarter",
+}
+
+# The most reflections a review payload carries. A cap this high is a
+# guard-rail, not a filter — 100 in one month is already three a day — and
+# when it binds, the payload SAYS how many were held back rather than
+# truncating silently.
+REVIEW_REFLECTION_CAP = 100
+
+
+def month_start_for(d: date) -> date:
+    """The first day of ``d``'s month."""
+    return d.replace(day=1)
+
+
+def quarter_start_for(d: date) -> date:
+    """The first day of ``d``'s quarter — Jan/Apr/Jul/Oct 1."""
+    return d.replace(month=d.month - (d.month - 1) % 3, day=1)
+
+
+def period_bounds(period: str, d: date) -> tuple[date, date]:
+    """``(start, next_start)`` of the period holding ``d``.
+
+    The end is EXCLUSIVE — the next period's first day — so the two windows
+    tile the calendar with no shared day and no gap, and December folds into
+    January without a special case."""
+    if period == "quarter":
+        start = quarter_start_for(d)
+        next_start = (start.replace(year=start.year + 1, month=1)
+                      if start.month == 10
+                      else start.replace(month=start.month + 3))
+    else:
+        start = month_start_for(d)
+        next_start = (start.replace(year=start.year + 1, month=1)
+                      if start.month == 12
+                      else start.replace(month=start.month + 1))
+    return start, next_start
+
+
+def partition_period_goals(
+        goals: Iterable[dict], *, start: date, next_start: date,
+        period: str) -> tuple[list[dict], list[dict]]:
+    """``(dated, undated)`` — the goals a period review holds itself against.
+
+    Dated: ``due_at`` falls inside the window, whatever the horizon — an
+    [Aug] goal belongs to August's review even if it was filed at the year
+    horizon. Undated: no parsed date, but the goal lives AT this period's
+    horizon, so the label ("this month") is the only calendar it has.
+
+    Done rows stay in: reviewing the month means seeing what was finished,
+    not only what remains. Proposed rows stay out (N5 — a draft counts for
+    nothing until approved), and retired/dismissed/archived rows were already
+    decided by an earlier review. Input order is preserved — order_key is the
+    Dalio order the card maintains, and re-ranking here would be a second
+    opinion (never surfaced, so never a score)."""
+    dated: list[dict] = []
+    undated: list[dict] = []
+    horizon = PERIOD_ITEM_HORIZON.get(period)
+    for row in goals or []:
+        if (row.get("status") or "active") not in ("active", "done"):
+            continue
+        parsed: Optional[date] = None
+        due = str(row.get("due_at") or "")[:10]
+        if due:
+            try:
+                parsed = date.fromisoformat(due)
+            except ValueError:
+                # An unparseable due_at degrades to the undated bucket
+                # rather than vanishing — the house rule since the timeline:
+                # never drop a row for a bad date, and never invent one.
+                parsed = None
+        if parsed is not None:
+            if start <= parsed < next_start:
+                dated.append(row)
+        elif horizon and row.get("horizon") == horizon:
+            undated.append(row)
+    return dated, undated
+
+
+# ═════════════════════════════════════════════════════════════════════════
 # Case + item validation (N5 lives here)
 # ═════════════════════════════════════════════════════════════════════════
 
@@ -1183,6 +1278,22 @@ def serialize_week(row: dict) -> dict:
         "goals_moved": row.get("goals_moved") or [],
         "main_distraction": row.get("main_distraction"),
         "environmental_change": row.get("environmental_change"),
+        "becoming_sentence": row.get("becoming_sentence"),
+        "reviewed_on": _iso(row.get("reviewed_on")),
+    }
+
+
+def serialize_period_review(row: dict) -> dict:
+    """A month or quarter review row — the founder's own answers, verbatim.
+
+    The same three slots either way: which goals moved, the becoming sentence
+    at this range, and the day the review actually happened. Nothing here is
+    computed; nothing here is a number (AC-9)."""
+    return {
+        "id": row.get("id"),
+        "period": row.get("period"),
+        "period_start": _iso(row.get("period_start")),
+        "goals_moved": row.get("goals_moved") or [],
         "becoming_sentence": row.get("becoming_sentence"),
         "reviewed_on": _iso(row.get("reviewed_on")),
     }

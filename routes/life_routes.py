@@ -1329,6 +1329,125 @@ def life_week_post():
 
 
 # ═════════════════════════════════════════════════════════════════════════
+# Month + quarter — the reviews that read the reflections layer (piece 5)
+# ═════════════════════════════════════════════════════════════════════════
+# The same job as the Sunday review one and two cadences up, and built the
+# same way the evening was built: hold the period against its own measure.
+# Three things sit next to each other at read time — the period's strategy
+# document (what was intended, in the founder's words), the period's
+# reflections (what actually happened, in the founder's words — the piece-4
+# reality layer, re-read chronologically), and the period's goals with their
+# own stated measures. The founder writes the synthesis; the system writes
+# none of it (L-1/N5). Everything is assembled deterministically on GET — no
+# model call fires on any path through these four endpoints.
+#
+# Deliberately ABSENT, both cadences: the proposal batch. L-2b routes queued
+# proposals to the WEEKLY review and nowhere else — a second surfacing
+# surface would widen the change budget by the back door. Absent too:
+# displaced goals (the Sunday gate) and the untagged-note review (weekly by
+# spec §5). The month and the quarter read; the week decides.
+
+def _period_review_payload(user_id: str, period: str, target: date) -> dict:
+    start, next_start = lp.period_bounds(period, target)
+    row = store.get_period_review(user_id, period, start.isoformat())
+    doc = store.latest_strategy(user_id).get(
+        lp.PERIOD_STRATEGY_HORIZON[period])
+    # Newest-first from the store, capped there at 500; the review re-reads
+    # the period AS IT HAPPENED, so the kept rows flip to chronological. When
+    # the cap binds, the most recent survive and the payload says how many
+    # fell off — a truncation the reader cannot see reads as "covered
+    # everything" (same honesty as queued_held_back on the week).
+    notes = store.list_reflection_notes(
+        user_id, limit=500,
+        since=start.isoformat(), until=next_start.isoformat())
+    kept = list(reversed(notes[:lp.REVIEW_REFLECTION_CAP]))
+    dated, undated = lp.partition_period_goals(
+        store.list_items(user_id, kind="goal"),
+        start=start, next_start=next_start, period=period)
+    payload = {
+        "review": (lp.serialize_period_review(row) if row else
+                   {"period": period, "period_start": start.isoformat()}),
+        "document": lp.serialize_strategy(doc) if doc else None,
+        "reflections": [lp.serialize_note(n) for n in kept],
+        "reflections_held_back": max(0, len(notes) - len(kept)),
+        "goals": [lp.serialize_item(g) for g in dated],
+        "undated": [lp.serialize_item(g) for g in undated],
+    }
+    if period == "month":
+        # A month is made of its weeks; the becoming sentences and the
+        # environmental changes are the record the month review reads back.
+        payload["weeks"] = [
+            lp.serialize_week(w) for w in store.list_weeks_between(
+                user_id, start.isoformat(), next_start.isoformat())]
+    else:
+        # And the quarter is made of its months, the same containment one
+        # level up. Its weeks are reachable through each month's review.
+        payload["months"] = [
+            lp.serialize_period_review(m) for m in
+            store.list_period_reviews_between(
+                user_id, "month", start.isoformat(),
+                next_start.isoformat())]
+    return payload
+
+
+def _period_review_get(period: str, param: str):
+    user_id = _uid()
+    raw = (request.args.get(param) or "").strip()
+    try:
+        target = (date.fromisoformat(raw[:10]) if raw
+                  else datetime.now(timezone.utc).date())
+    except ValueError:
+        return _invalid(f"{param}: must be YYYY-MM-DD")
+    return jsonify(_period_review_payload(user_id, period, target)), 200
+
+
+def _period_review_post(period: str, param: str):
+    user_id = _uid()
+    body = _body()
+    raw = (body.get(param) or "").strip()
+    try:
+        target = (date.fromisoformat(raw[:10]) if raw
+                  else datetime.now(timezone.utc).date())
+    except (ValueError, AttributeError):
+        return _invalid(f"{param}: must be YYYY-MM-DD")
+    start, _ = lp.period_bounds(period, target)
+    allowed = ("goals_moved", "becoming_sentence", "reviewed_on")
+    fields = {k: body[k] for k in allowed if k in body}
+    row = store.upsert_period_review(user_id, period, start.isoformat(),
+                                     fields)
+    if not row:
+        return jsonify({"code": "V2_ERROR", "error": "Could not save"}), 500
+    return jsonify({"review": lp.serialize_period_review(row)}), 200
+
+
+@life_bp.route("/v2/life/month", methods=["GET"])
+@life_route()
+def life_month_get():
+    """The monthly review. Any date in ``month_start`` folds to its month."""
+    return _period_review_get("month", "month_start")
+
+
+@life_bp.route("/v2/life/month", methods=["POST"])
+@life_route()
+def life_month_post():
+    return _period_review_post("month", "month_start")
+
+
+@life_bp.route("/v2/life/quarter", methods=["GET"])
+@life_route()
+def life_quarter_get():
+    """The quarterly review. Any date in ``quarter_start`` folds to its
+    quarter (Jan/Apr/Jul/Oct 1)."""
+    return _period_review_get("quarter", "quarter_start")
+
+
+@life_bp.route("/v2/life/quarter", methods=["POST"])
+@life_route()
+def life_quarter_post():
+    return _period_review_post("quarter", "quarter_start")
+
+
+# ═════════════════════════════════════════════════════════════════════════
 # Notes (the router's HTTP entrance) + board + lookup
 # ═════════════════════════════════════════════════════════════════════════
 
