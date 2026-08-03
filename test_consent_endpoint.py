@@ -78,9 +78,13 @@ class ConsentEndpointTests(unittest.TestCase):
         setattr(v2.db, attr, replacement)
 
     def _patch_config(self, attr, replacement):
+        # /v2/user/consent lives in routes.v2.user_account (god-file split),
+        # which holds its own Config instance — setattr on v2.config would
+        # not reach it.
+        from routes.v2 import user_account as ua
         key = f"config:{attr}"
-        self.originals[key] = (v2.config, attr, getattr(v2.config, attr, None))
-        setattr(v2.config, attr, replacement)
+        self.originals[key] = (ua.config, attr, getattr(ua.config, attr, None))
+        setattr(ua.config, attr, replacement)
 
     # ── in-memory fakes ──────────────────────────────────────────────
 

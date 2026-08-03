@@ -320,14 +320,14 @@ class DocumentTargetTests(unittest.TestCase):
                                   "replacement_text": "smoother"}}), \
                  patch.object(v2.db, "get_coach_arc_ideal_text",
                               return_value={"version": 2}), \
-                 patch.object(v2, "_document_phrase_for",
+                 patch("routes.v2.user_sessions._document_phrase_for",
                               side_effect=lambda a, sn, fallback=None:
                               fallback), \
                  patch.object(v2.db, "upsert_ideal_decision",
                               return_value=True) as m_led, \
                  patch.object(v2.db, "delete_moment_suggestion",
                               return_value=True), \
-                 patch.object(v2, "_reassemble_after_decision",
+                 patch("routes.v2.user_sessions._reassemble_after_decision",
                               return_value=None):
                 out = v2.v2_user_suggestion_feedback.__wrapped__(SNIP)
                 resp, status = out if isinstance(out, tuple) else (out, 200)

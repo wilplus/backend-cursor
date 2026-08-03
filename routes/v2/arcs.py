@@ -151,3 +151,25 @@ def _spoken_takes_and_reads(sessions):
     for _lst in reads.values():
         _lst.sort(key=lambda x: (x.get("created_at") or ""))
     return spoken, reads
+
+
+def _reassemble_after_decision(arc_id) -> None:
+    """A decision that CHANGES the document must take effect at once
+    (founder: "when I approve it the crossed text disappears and only
+    the new one stays").
+
+    The bake runs at ASSEMBLY, and the student GET serves the PERSISTED
+    document — so without this an approval would only show up after the
+    next take (the review's most-confirmed defect). Reassembling here
+    re-bakes, re-anchors, bumps the version and snapshots it, exactly as
+    a new take would. Best-effort: the decision is already saved."""
+    try:
+        from services.ideal_text_block import (
+            _living_transcript_enabled, maybe_assemble_ideal_text,
+        )
+        if not _living_transcript_enabled():
+            return
+        maybe_assemble_ideal_text(str(arc_id), require_target=False)
+    except Exception as e:
+        logger.warning("living_transcript: post-decision reassembly "
+                       "failed arc=%s: %s", arc_id, e)
