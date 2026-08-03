@@ -27,10 +27,6 @@ from services.stress_snippet_service import (
     _frame_db,
     _build_candidates,
     _energy_std_for_window,
-    _extract_window_signal,
-    _feature_vector_for_model,
-    _predict_with_baseline_model,
-    _load_baseline_model,
     _acoustic_diversity_embedding,
     _select_clip_indices,
     _floor_clip_window,
@@ -97,41 +93,18 @@ def generate_charisma_snippets_for_recording(
         transcript = (rec.get("transcription_text") or "").strip()
         candidates = _build_candidates(transcript, duration_sec, dbs, clip_sec)
 
-        # ⚠️ KNOWN GAP (flagged, intentionally NOT changed — product/ML decision
-        # pending): _load_baseline_model() hardcodes the runtime_config key
-        # `stress_baseline_model_path`, i.e. charisma snippet selection is
-        # ranked by the STRESS classifier. There is no charisma-specific model
-        # key or artifact. The predicted probability below is therefore
-        # "probability of stress", used here only to steer clip SELECTION
-        # (uncertainty term) for coach labeling — never surfaced (AC-9 /
-        # CONSTRUCT). Surfaced as known_gaps["charisma_uses_stress_model"] in
-        # GET /v2/admin/learning/trace (services/learning_trace.py). Do not
-        # "fix" silently: a charisma model key + trainer is a founder decision.
-        baseline_model = _load_baseline_model()
+        # The KNOWN GAP that used to live here ("charisma clips are ranked by
+        # the STRESS classifier") is CLOSED BY DELETION (founder 2026-08-03):
+        # there is no stress model any more, so nothing ranks these clips but
+        # the heuristic suspicion score below. Selection only — never surfaced
+        # (AC-9 / CONSTRUCT).
         scored_items: list[ScoredClip] = []
         for c in candidates:
             energy_std = _energy_std_for_window(signal, c.start_sec, c.end_sec)
             energy_norm = min(1.0, energy_std / 0.08) if energy_std > 0 else 0.0
             suspicion = 0.45 * c.filler_density + 0.35 * c.pause_strength + 0.20 * energy_norm
-            duration_ms = int(round((c.end_sec - c.start_sec) * 1000))
-            snippet_features = {
-                "pause_strength": c.pause_strength,
-                "filler_density": c.filler_density,
-                "energy_std": energy_std,
-            }
             prob = max(0.01, min(0.99, suspicion))
             confidence = max(0.5, min(1.0, 0.5 + abs(prob - 0.5)))
-            if baseline_model is not None:
-                window_signal = _extract_window_signal(signal, c.start_sec, c.end_sec)
-                vector = _feature_vector_for_model(
-                    window_signal=window_signal,
-                    scenario=c.scenario,
-                    snippet_features=snippet_features,
-                    duration_ms=duration_ms,
-                )
-                pred = _predict_with_baseline_model(baseline_model, vector)
-                if pred is not None:
-                    prob, confidence = pred
             uncertainty = 1.0 - confidence
             selection_score = 0.6 * suspicion + 0.4 * uncertainty
             emb = _acoustic_diversity_embedding(signal, c.start_sec, c.end_sec)

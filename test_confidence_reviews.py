@@ -1,0 +1,281 @@
+"""The peer-review validation loop (founder 2026-08-03) — the capture that
+replaced the retired acoustic stress lane.
+
+1) ValidateConfidenceReviewTests — the pure validator. The load-bearing rule
+   is STRICT BOOLEAN: "true" the string is a 400, not a coercion, because a
+   coerced value is a fabricated training label and afterwards it is
+   indistinguishable from a real one.
+2) ConfidenceReviewRouteTests — POST /v2/user/snippets/<id>/confidence-review:
+   auth, 404 on an unknown snippet, replace-on-reflag, and the server-side
+   model_version attribution when the client omits it.
+3) ReviewCorpusSummaryTests — the class-balance read a trainer would need
+   BEFORE training on this corpus.
+
+Flask/Supabase-dependent → skips locally without deps, runs in CI.
+
+Run: python3 -m unittest test_confidence_reviews
+"""
+from __future__ import annotations
+
+import unittest
+from unittest.mock import patch
+
+try:
+    from flask import Flask
+    from services import confidence_reviews
+    from services.confidence_reviews import validate_confidence_review
+    _IMPORT_ERROR = None
+except Exception as e:  # pragma: no cover
+    Flask = None
+    confidence_reviews = None
+    validate_confidence_review = None
+    _IMPORT_ERROR = e
+
+
+_SNIPPET = "11111111-2222-3333-4444-555555555555"
+_REVIEWER = "99999999-8888-7777-6666-555555555555"
+
+
+# ── 1) the validator ───────────────────────────────────────────────────────
+
+@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
+class ValidateConfidenceReviewTests(unittest.TestCase):
+
+    def test_accepts_a_real_boolean(self):
+        for value in (True, False):
+            row, err = validate_confidence_review({"ai_correct": value})
+            self.assertIsNone(err)
+            self.assertIs(row["ai_correct"], value)
+            self.assertIsNone(row["model_version"])
+
+    def test_string_true_is_rejected_not_coerced(self):
+        """THE rule. A corpus that quietly accepted "true" would record a
+        human verdict nobody gave, and nothing downstream could tell it from
+        a real one."""
+        for junk in ("true", "false", "yes", 1, 0, None, [], {}):
+            row, err = validate_confidence_review({"ai_correct": junk})
+            self.assertIsNone(row, f"coerced {junk!r}")
+            self.assertIn("ai_correct", err)
+
+    def test_missing_ai_correct_is_rejected(self):
+        row, err = validate_confidence_review({})
+        self.assertIsNone(row)
+        self.assertIn("ai_correct", err)
+
+    def test_non_object_body_is_rejected(self):
+        for junk in (None, "ai_correct=true", [True], 7):
+            row, err = validate_confidence_review(junk)
+            self.assertIsNone(row)
+            self.assertIn("body", err)
+
+    def test_model_version_is_optional_and_typed(self):
+        row, err = validate_confidence_review(
+            {"ai_correct": True, "model_version": "direction-v1-20260801Z"})
+        self.assertIsNone(err)
+        self.assertEqual(row["model_version"], "direction-v1-20260801Z")
+
+        row, err = validate_confidence_review(
+            {"ai_correct": True, "model_version": 7})
+        self.assertIsNone(row)
+        self.assertIn("model_version", err)
+
+    def test_blank_model_version_reads_as_absent(self):
+        """A blank string is a client that sent nothing, not a version named
+        "". Storing "" would create a fake attribution bucket."""
+        row, err = validate_confidence_review(
+            {"ai_correct": False, "model_version": "   "})
+        self.assertIsNone(err)
+        self.assertIsNone(row["model_version"])
+
+    def test_provenance_is_its_own_selection_source(self):
+        """Separate provenance, always — peer flags are NON-BLIND and must
+        never be indistinguishable from the blind coach labels."""
+        self.assertEqual(confidence_reviews.SELECTION_SOURCE, "peer_review")
+        self.assertNotIn(confidence_reviews.SELECTION_SOURCE,
+                         ("heuristic", "random", "coach"))
+
+    def test_retrain_trigger_participation_is_an_explicit_decision(self):
+        """Whether these rows count toward the >=50 / >=25-new trigger is a
+        decision, not a default. It is currently NO — a non-blind validation
+        of the model's own prediction must not set that model's retrain
+        schedule."""
+        self.assertIs(confidence_reviews.COUNTS_TOWARD_RETRAIN_TRIGGER, False)
+
+
+# ── 2) the route ───────────────────────────────────────────────────────────
+
+@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
+class ConfidenceReviewRouteTests(unittest.TestCase):
+
+    def setUp(self):
+        import auth
+        from routes import v2_routes
+        self.v2 = v2_routes
+        self.app = Flask(__name__)
+        self.app.register_blueprint(v2_routes.v2_bp, url_prefix="/v2")
+        self.client = self.app.test_client()
+
+        # @require_auth is bound at import time, so the token check is what
+        # gets stubbed — not the decorator (same pattern as test_speaker_sex).
+        self.reviewer = _REVIEWER
+        self._orig_verify = auth.verify_supabase_token
+        auth.verify_supabase_token = lambda token: {"sub": self.reviewer}
+        self._auth = auth
+
+        self.saved: list[dict] = []
+        self.snippet_exists = True
+
+        def fake_get_snippet(snippet_id, user_id=None):
+            return {"id": snippet_id, "session_id": "sess"} \
+                if self.snippet_exists else None
+
+        def fake_upsert(**kwargs):
+            # Replace-on-reflag, modelled the way the unique constraint
+            # behaves: one row per (snippet_id, reviewer_user_id).
+            key = (kwargs["snippet_id"], kwargs["reviewer_user_id"])
+            self.saved[:] = [r for r in self.saved
+                             if (r["snippet_id"], r["reviewer_user_id"]) != key]
+            self.saved.append(dict(kwargs))
+            return True
+
+        self._p = [
+            patch.object(self.v2.db, "get_snippet_by_id",
+                         side_effect=fake_get_snippet),
+            patch.object(self.v2.db, "upsert_snippet_confidence_review",
+                         side_effect=fake_upsert, create=True),
+        ]
+        for p in self._p:
+            p.start()
+
+    def tearDown(self):
+        for p in self._p:
+            p.stop()
+        self._auth.verify_supabase_token = self._orig_verify
+
+    def _post(self, body, snippet_id=_SNIPPET):
+        return self.client.post(
+            f"/v2/user/snippets/{snippet_id}/confidence-review",
+            json=body,
+            headers={"Authorization": "Bearer test"},
+        )
+
+    def test_saves_a_flag(self):
+        r = self._post({"ai_correct": True})
+        self.assertEqual(r.status_code, 200, r.get_data(as_text=True))
+        data = r.get_json()
+        self.assertTrue(data["saved"])
+        self.assertEqual(data["snippet_id"], _SNIPPET)
+        self.assertIs(data["ai_correct"], True)
+        self.assertEqual(len(self.saved), 1)
+        self.assertEqual(self.saved[0]["reviewer_user_id"], _REVIEWER)
+
+    def test_string_true_is_a_400_at_the_route(self):
+        r = self._post({"ai_correct": "true"})
+        self.assertEqual(r.status_code, 400)
+        self.assertEqual(r.get_json()["code"], "INVALID_INPUT")
+        self.assertEqual(self.saved, [])
+
+    def test_bad_uuid_is_a_400(self):
+        r = self._post({"ai_correct": True}, snippet_id="not-a-uuid")
+        self.assertEqual(r.status_code, 400)
+        self.assertEqual(self.saved, [])
+
+    def test_unknown_snippet_is_a_404(self):
+        self.snippet_exists = False
+        r = self._post({"ai_correct": True})
+        self.assertEqual(r.status_code, 404)
+        self.assertEqual(self.saved, [])
+
+    def test_reflagging_replaces_rather_than_stacks(self):
+        """N3: duplicate rows from one rater are junk labels. A reviewer who
+        changes their mind should leave ONE row carrying their current view."""
+        self._post({"ai_correct": True})
+        self._post({"ai_correct": False})
+        self.assertEqual(len(self.saved), 1)
+        self.assertIs(self.saved[0]["ai_correct"], False)
+
+    def test_a_second_reviewer_gets_their_own_row(self):
+        """Multi-rater agreement has to stay computable — replace-on-reflag is
+        per reviewer, not per snippet."""
+        self._post({"ai_correct": True})
+        other = "12121212-3434-5656-7878-909090909090"
+        self.reviewer = other
+        self._post({"ai_correct": False})
+        self.assertEqual(len(self.saved), 2)
+        self.assertEqual({r["reviewer_user_id"] for r in self.saved},
+                         {_REVIEWER, other})
+
+    def test_absent_model_version_is_attributed_server_side(self):
+        """"The AI got this right" is meaningless without knowing which AI."""
+        from services import learning_serve
+        with patch.object(learning_serve, "current_shadow_version",
+                          return_value="direction-v1-20260801T000000Z"):
+            self._post({"ai_correct": True})
+        self.assertEqual(self.saved[0]["model_version"],
+                         "direction-v1-20260801T000000Z")
+
+    def test_client_supplied_model_version_wins(self):
+        from services import learning_serve
+        with patch.object(learning_serve, "current_shadow_version",
+                          return_value="server-side-version"):
+            self._post({"ai_correct": True, "model_version": "client-v9"})
+        self.assertEqual(self.saved[0]["model_version"], "client-v9")
+
+    def test_version_lookup_failure_still_saves_the_label(self):
+        """An unattributed verdict is still a usable verdict — a registry read
+        that blows up must never cost us the human's answer."""
+        from services import learning_serve
+        with patch.object(learning_serve, "current_shadow_version",
+                          side_effect=RuntimeError("registry down")):
+            r = self._post({"ai_correct": False})
+        self.assertEqual(r.status_code, 200)
+        self.assertIsNone(self.saved[0]["model_version"])
+
+    def test_missing_table_surfaces_as_a_500_naming_the_migration(self):
+        with patch.object(self.v2.db, "upsert_snippet_confidence_review",
+                          return_value=False, create=True):
+            r = self._post({"ai_correct": True})
+        self.assertEqual(r.status_code, 500)
+        self.assertIn("add_snippet_confidence_reviews.sql",
+                      r.get_json()["error"])
+
+    def test_response_carries_no_score_or_verdict(self):
+        """AC-9: capture only. The response says it saved and echoes the
+        human's own answer — never a machine read of any kind."""
+        data = self._post({"ai_correct": True}).get_json()
+        self.assertEqual(set(data), {"saved", "snippet_id", "ai_correct"})
+
+
+# ── 3) corpus summary ──────────────────────────────────────────────────────
+
+@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
+class ReviewCorpusSummaryTests(unittest.TestCase):
+
+    def test_balance_and_reviewer_count(self):
+        rows = [
+            {"ai_correct": True, "reviewer_user_id": "a", "model_version": "v1"},
+            {"ai_correct": True, "reviewer_user_id": "a", "model_version": "v1"},
+            {"ai_correct": False, "reviewer_user_id": "b", "model_version": None},
+        ]
+        s = confidence_reviews.review_corpus_summary(rows)
+        self.assertEqual(s["total"], 3)
+        self.assertEqual(s["ai_correct_true"], 2)
+        self.assertEqual(s["ai_correct_false"], 1)
+        self.assertEqual(s["agreement_rate"], round(2 / 3, 3))
+        self.assertEqual(s["reviewers"], 2)
+        self.assertEqual(s["by_model_version"],
+                         {"v1": 2, "(unattributed)": 1})
+
+    def test_empty_corpus_reports_no_rate(self):
+        s = confidence_reviews.review_corpus_summary([])
+        self.assertEqual(s["total"], 0)
+        self.assertIsNone(s["agreement_rate"])
+
+    def test_summary_declares_itself_non_blind(self):
+        s = confidence_reviews.review_corpus_summary([])
+        self.assertIs(s["blind"], False)
+        self.assertEqual(s["selection_source"], "peer_review")
+
+
+if __name__ == "__main__":
+    unittest.main()

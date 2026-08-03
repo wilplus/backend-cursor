@@ -380,6 +380,23 @@ def build_state_machine_system_prompt(
         "in snippet_player.snippet_id so the frontend knows which "
         "audio to load.\n"
         "\n"
+        # ⚠️ DANGLING TARGET — FOUNDER DECISION NEEDED (BE 2026-08-03).
+        # STEP 2 below tells the FE to wire its Yes/No to
+        # POST /v2/user/snippets/<id>/label. That route was DELETED with the
+        # stress lane (founder's list, this date), and the FE deleted its BFF
+        # proxy for it in the same pass — so the button already went nowhere
+        # before this change; nothing regressed here, but nothing captures the
+        # answer either.
+        #
+        # Left EXACTLY AS-IS on purpose: the STEP 2 question is user-facing
+        # copy in a running coaching chat, and the LIVE LOOP fence puts that
+        # behind founder sign-off. Two compliant fixes, both the founder's
+        # call, neither taken here:
+        #   (a) repoint the beat at the peer-review capture
+        #       (POST /v2/user/snippets/<id>/confidence-review) — note that
+        #       endpoint asks a DIFFERENT question ("did the AI get this
+        #       right?", not "is this you"), so the copy changes with it; or
+        #   (b) retire STEP 2 and renumber the protocol.
         "STEP 2 — REFLECTION & RLHF LABEL (after the user's first "
         "response to STEP 1):\n"
         "  Per RULE 2 above, start with a sentence that reflects "
