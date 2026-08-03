@@ -80,6 +80,10 @@ app.register_blueprint(tokens_bp)
 app.register_blueprint(life_bp)
 # Opt-in life reminders cron webhook (X-Internal-Secret: LIFE_REMINDER_SECRET).
 app.register_blueprint(life_reminders_webhook_bp)
+# Durable pipeline job polling (async-queue work): GET /v2/jobs/<id>/status
+# + the internal sweep poke. Full paths baked in.
+from routes.jobs import jobs_bp
+app.register_blueprint(jobs_bp)
 
 
 @app.errorhandler(RequestEntityTooLarge)
@@ -220,6 +224,18 @@ def _startup_cleanup():
             _logger.info("Startup: marked %d stale upload job(s) as failed", n)
     except Exception as exc:
         _logger.warning("Startup cleanup skipped: %s", exc)
+    # Durable pipeline jobs (async-queue work): re-enqueue orphans / fail
+    # exhausted ones so a web redeploy also doubles as a recovery pass.
+    # No-op (cheap SELECT) when the queue is off or nothing is stale.
+    try:
+        from services.job_queue import queue_configured
+        if queue_configured():
+            from services.pipeline_jobs import sweep_stale_jobs
+            counts = sweep_stale_jobs()
+            if counts.get("requeued") or counts.get("failed"):
+                _logger.info("Startup: pipeline job sweep %s", counts)
+    except Exception as exc:
+        _logger.warning("Startup pipeline-job sweep skipped: %s", exc)
 
 
 with app.app_context():

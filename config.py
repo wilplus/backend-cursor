@@ -73,6 +73,18 @@ class Config:
     
     # OpenAI (strip so .env newlines/quotes don't break the key)
     OPENAI_API_KEY = (os.getenv("OPENAI_API_KEY") or "").strip().strip('"').strip("'")
+
+    # Strict OpenAI client timeouts (async-queue work 2026-08-03). The SDK
+    # default is 600s — one hung call used to park a gunicorn worker (half
+    # of --workers 2) for 10 minutes. LLM/chat calls get the client-wide
+    # OPENAI_TIMEOUT_SECONDS; Whisper transcription overrides per-call with
+    # the larger OPENAI_TRANSCRIBE_TIMEOUT_SECONDS (a long take's
+    # transcription legitimately runs minutes). Malformed env values fall
+    # back to the defaults — never crash import (live loop).
+    OPENAI_TIMEOUT_SECONDS = _env_float("OPENAI_TIMEOUT_SECONDS", 120.0)
+    OPENAI_TRANSCRIBE_TIMEOUT_SECONDS = _env_float(
+        "OPENAI_TRANSCRIBE_TIMEOUT_SECONDS", 600.0)
+    OPENAI_MAX_RETRIES = _env_int("OPENAI_MAX_RETRIES", 2)
     
     # Email (Resend)
     RESEND_API_KEY = os.getenv("RESEND_API_KEY")

@@ -47,3 +47,13 @@ pywebpush==2.0.3
 # nothing. Lazy-imported in services/learning_train.py.
 scikit-learn==1.5.2
 joblib==1.4.2
+# Durable recording-pipeline queue (async-queue work 2026-08-03): Redis is
+# the DELIVERY rail only — job state of record is Postgres
+# (migrations/add_processing_jobs.sql). Both are lazy-imported
+# (services/job_queue.py); absent packages or an unset REDIS_URL degrade to
+# the pre-queue daemon/sync paths, never a crash (live loop). RQ over
+# Celery/Dramatiq: fork-per-job returns librosa/numpy memory after every
+# take and inherits the parent's warmed numba JIT (worker.py), and Postgres
+# already owns retries/recovery so a heavier broker contract buys nothing.
+redis==5.0.8
+rq==1.16.2

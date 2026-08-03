@@ -12064,6 +12064,20 @@ def _async_analysis_enabled() -> bool:
         in ("1", "true", "yes")
 
 
+def _pipeline_queue_enabled() -> bool:
+    """Durable queue mode (async-queue work 2026-08-03): the upload 202s
+    with a job_id and the pipeline runs on the Redis/RQ worker service,
+    with job state in processing_jobs (Postgres) — unlike the daemon below,
+    a redeploy mid-job re-runs the job (sweeper) instead of stranding the
+    session in 'processing'. DEFAULT OFF (PIPELINE_QUEUE_ENABLED + REDIS_URL
+    both required); ANY failure falls back to the ASYNC_ANALYSIS_ENABLED
+    daemon / sync path, so flipping the flag can never block an upload
+    (live loop). Deploy order: migration → Redis + worker service on
+    Railway → flip PIPELINE_QUEUE_ENABLED=1 on the web service."""
+    from services.job_queue import queue_configured
+    return queue_configured()
+
+
 def _moment_suggestions_enabled() -> bool:
     """Star suggestions on the SD ideal text (founder 2026-07-18): grey
     suggestion stars (emphasize / replace) resolved coach-label-first, else
@@ -16199,8 +16213,16 @@ def v2_lab_create_recording():
         )
 
         def _run_analysis_pipeline():
-            """Runs to completion server-side. Returns (readout, sent)."""
-            readout_local = process_lab_recording(
+            """Runs to completion server-side. Returns (readout, sent).
+
+            Body lives in services/analysis_worker.py::run_full_analysis
+            (durable-queue work): the SAME code serves this sync path, the
+            ASYNC_ANALYSIS_ENABLED daemon below, and the queue worker
+            (services/pipeline_jobs.py) — one implementation, three
+            execution modes, so behaviour can't drift between them.
+            """
+            from services.analysis_worker import run_full_analysis
+            return run_full_analysis(
                 session_id=guest_session_id,
                 user_id=_uploader_id,  # fix #2b: attribute at record time
                 recording_id=recording_id,
@@ -16209,178 +16231,77 @@ def v2_lab_create_recording():
                 session_context=session_context,
                 parent_audio_url=parent_url,
                 recording_kind=_rec_kind,  # spoken | read (2026-07-14)
-                # A re-read z-scores against its PARENT take (2026-07-17) —
-                # 1–2 pieces can't be their own reference.
+                # A re-read z-scores against its PARENT take (2026-07-17).
                 paired_session_id=_paired_session_id,
+                arc_id=arc_id,
+                take_index=take_index,
+                arc_take_count=arc_take_count,
+                spark_enabled=_worker_spark,
             )
-            logger.info(
-                "lab: recording processed sid=%s rec=%s snippets=%d",
-                guest_session_id, recording_id,
-                len(readout_local.get("snippets") or []),
+
+        # DURABLE QUEUE mode (async-queue work 2026-08-03): create a
+        # processing_jobs row (Postgres = state of record) and hand the
+        # job_id to the Redis/RQ worker service; 202 with job_id + the
+        # poll URL. This retires the daemon's accepted gap: a redeploy
+        # mid-job is re-run by the sweeper, never stranded. On ANY
+        # failure (flag off, broker down, insert failed) fall through to
+        # the daemon/sync paths below — the queue can only ADD capacity,
+        # never block an upload (live loop).
+        if _pipeline_queue_enabled():
+            from services.pipeline_jobs import enqueue_session_recording_job
+            _job_row = None
+            try:
+                _job_row = enqueue_session_recording_job(
+                    session_id=guest_session_id,
+                    user_id=_uploader_id,
+                    recording_id=recording_id,
+                    bucket=bucket,
+                    storage_key=parent_key,
+                    filename=_worker_filename,
+                    session_context=session_context,
+                    parent_audio_url=parent_url,
+                    recording_kind=_rec_kind,
+                    paired_session_id=_paired_session_id,
+                    arc_id=arc_id,
+                    take_index=take_index,
+                    arc_take_count=arc_take_count,
+                    spark_enabled=_worker_spark,
+                )
+            except Exception as _q_err:
+                logger.warning(
+                    "lab: queue enqueue raised sid=%s: %s (falling back)",
+                    guest_session_id, _q_err,
+                )
+            if _job_row:
+                # State AFTER a confirmed enqueue: if we flipped it first
+                # and then fell back to the sync path, nothing would ever
+                # write 'ready' and the readout GET would show
+                # 'processing' forever. (The worker also stamps
+                # 'processing' on claim, covering a crash right here.)
+                db.set_session_analysis_state(guest_session_id, "processing")
+                _dur_secs_q = int(_rec_duration or 0)
+                _job_id_q = str(_job_row.get("id"))
+                return jsonify({
+                    "status": "processing",
+                    "state": "processing",
+                    "job_id": _job_id_q,
+                    "job_status_url": f"/v2/jobs/{_job_id_q}/status",
+                    "session_id": guest_session_id,
+                    "recording_id": recording_id,
+                    "duration_minutes": round(_dur_secs_q / 60.0, 1),
+                    "audits_needed": max(1, -(-_dur_secs_q // 600)),
+                    "session_context": session_context,
+                    "readout": None,
+                    "arc_id": arc_id,
+                    "take_index": take_index,
+                    "take_count": arc_take_count,
+                    "audit_paid": _arc_audit_paid(arc_id, _cad_user),
+                }), 202
+            logger.warning(
+                "lab: queue unavailable sid=%s — falling back to %s path",
+                guest_session_id,
+                "daemon" if _async_analysis_enabled() else "sync",
             )
-
-            # Explore-session cadence (Prompt A §6 C3) — after a take in an
-            # arc, invite the NEXT take as a Lounge bubble. Authed only;
-            # best-effort + idempotent.
-            if _cad_user and arc_id:
-                try:
-                    from services.session_cadence import (
-                        fire_arc_start, fire_post_take,
-                    )
-                    _goal = (db.get_user_profile(_cad_user) or {}).get("goal")
-                    # Always-on (2026-06-17): the framing fires here on take 1.
-                    # Idempotent per arc.
-                    if take_index == 1:
-                        fire_arc_start(_cad_user, arc_id, goal=_goal)
-                    fire_post_take(
-                        _cad_user, arc_id, take_index,
-                        take_count=arc_take_count,
-                        spark_enabled=_worker_spark,
-                        goal=_goal,
-                    )
-                except Exception as _ce:
-                    logger.warning("lab: cadence fire failed sid=%s: %s",
-                                   guest_session_id, _ce)
-
-            # AUTO-SEND to the coach (founder re-lock 2026-07-06, bug #4):
-            # EVERY registered recording reaches the coach queue. Idempotent
-            # + best-effort; the merge-path send stays the guest fallback.
-            sent_local = False
-            if _cad_user:
-                try:
-                    from services.lab_send import send_lab_recording_to_coach
-                    _send_res = send_lab_recording_to_coach(
-                        guest_session_id, str(_cad_user),
-                    )
-                    sent_local = bool(_send_res.get("ok"))
-                    logger.info(
-                        "lab: auto-send sid=%s ok=%s already=%s",
-                        guest_session_id, _send_res.get("ok"),
-                        _send_res.get("already_sent"),
-                    )
-                except Exception as _send_err:
-                    logger.warning(
-                        "lab: auto-send failed sid=%s: %s (non-fatal)",
-                        guest_session_id, _send_err,
-                    )
-
-            # Arc lifecycle cards + notes (founder #1/#11) — idempotent per
-            # (arc, kind), best-effort.
-            if _cad_user and arc_id:
-                try:
-                    from services.arc_notifications import (
-                        fire_human_check_note,
-                    )
-                    if take_index == 1:
-                        fire_human_check_note(db, _cad_user, arc_id)
-                except Exception as _bpe:
-                    logger.warning(
-                        "lab: arc cards failed sid=%s: %s (non-fatal)",
-                        guest_session_id, _bpe,
-                    )
-
-            # EAGER ideal-text assembly (founder 2026-07-15): the moment the
-            # arc's 3rd SPOKEN take finishes analysis, assemble + persist the
-            # machine draft so the coach's panel opens instantly ("no loading
-            # or anything" fixed at the source). Idempotent; never clobbers a
-            # coach edit. Best-effort.
-            #
-            # SPOKEN ONLY (founder bug 2026-07-20). An older condition let a
-            # RE-READ run the whole assembly (regenerate suggestions, reassemble
-            # the text, bump the version, fire a ready bubble), so a re-read read
-            # as a take. "Only a spoken take is a real take" is now enforced
-            # here, not just in the counters.
-            if arc_id and _rec_kind == "spoken":
-                try:
-                    from services.ideal_text_block import (
-                        maybe_assemble_ideal_text,
-                    )
-                    # Star suggestions (2026-07-18): generate BEFORE the
-                    # assembly so the fresh text's anchors include the
-                    # suggestion-flagged picks. Best-effort.
-                    if _moment_suggestions_enabled():
-                        try:
-                            from services.moment_suggestions import (
-                                generate_for_session,
-                            )
-                            generate_for_session(
-                                guest_session_id, arc_id)
-                        except Exception as _ms_err:
-                            logger.warning(
-                                "lab: moment suggestions failed "
-                                "sid=%s: %s (non-fatal)",
-                                guest_session_id, _ms_err)
-                    # Single deliverable (2026-07-17): assemble after
-                    # EVERY take (take 1 included) AND every re-read;
-                    # a changed compose bumps the version, resetting
-                    # verification. The per-VERSION ready bubble fires
-                    # idempotently (a no-op reassembly re-fires the
-                    # same version key → deduped).
-                    # MASTER DOCUMENT (founder 2026-07-22, flag-gated):
-                    # judge this take against the persistent master
-                    # BEFORE assembly — take 1 builds the skeleton,
-                    # later takes write approve-gated block upgrade
-                    # offers. Best-effort; the master never moves
-                    # without an accept.
-                    try:
-                        from services.master_document import (
-                            master_document_enabled, process_new_take,
-                        )
-                        if master_document_enabled():
-                            process_new_take(arc_id, guest_session_id,
-                                             db)
-                    except Exception as _md_err:
-                        logger.warning(
-                            "lab: master-document take processing "
-                            "failed sid=%s: %s (non-fatal)",
-                            guest_session_id, _md_err)
-                    _eager_ok = maybe_assemble_ideal_text(
-                        arc_id, require_target=False,
-                        include_suggestion_anchors=(
-                            _moment_suggestions_enabled()))
-                    if _eager_ok and _cad_user:
-                        from services.arc_notifications import (
-                            fire_ideal_version_ready,
-                        )
-                        _row = db.get_coach_arc_ideal_text(arc_id) or {}
-                        _new_v = _row.get("version") or 1
-                        # Spoken take count → the takes-1-and-2 nudge
-                        # line (bug token 3c; soft nudge, never a gate).
-                        try:
-                            from services.best_presentation import (
-                                spoken_arc_sessions,
-                            )
-                            _n_spoken = len(spoken_arc_sessions(
-                                db.get_arc_sessions(arc_id)))
-                        except Exception:
-                            _n_spoken = None
-                        fire_ideal_version_ready(
-                            db, _cad_user, arc_id, _new_v,
-                            spoken_take_count=_n_spoken)
-                        # BE-4: a student edit of a PRIOR version is the
-                        # strongest phrasing-preference signal the corpus
-                        # gets. The assembler has no per-user selection
-                        # channel yet, so capture it as structured
-                        # metadata (selection-influence = named follow-up).
-                        try:
-                            _pe = db.get_user_ideal_edit(arc_id, _cad_user)
-                            if _pe and isinstance(_pe.get("version"), int) \
-                                    and _pe["version"] < _new_v:
-                                logger.info(
-                                    "ideal_text: user-edit superseded "
-                                    "arc=%s edited_v=%s new_v=%s chars=%d "
-                                    "(preference signal; assembler "
-                                    "selection-influence is a follow-up)",
-                                    arc_id, _pe["version"], _new_v,
-                                    len(_pe.get("text") or ""))
-                        except Exception:
-                            pass
-                except Exception as _ea_err:
-                    logger.warning(
-                        "lab: eager ideal-text failed sid=%s: %s (non-fatal)",
-                        guest_session_id, _ea_err,
-                    )
-            return readout_local, sent_local
 
         # ASYNC mode (founder 2026-07-15, flag default OFF until the FE ships
         # polling): flip the session to 'processing', run the pipeline in a
@@ -16388,7 +16309,8 @@ def v2_lab_create_recording():
         # polls the readout GET until state ready|failed. Accepted gap
         # (decision 2026-07-15): a backend redeploy mid-job strands that one
         # job in 'processing' — the FE times out at ~3 min and offers
-        # re-record.
+        # re-record. SUPERSEDED by the durable-queue branch above when
+        # PIPELINE_QUEUE_ENABLED is on; kept as its fallback.
         if _async_analysis_enabled():
             db.set_session_analysis_state(guest_session_id, "processing")
 

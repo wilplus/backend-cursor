@@ -160,7 +160,17 @@ class OpenAIService:
     def __init__(self):
         if config.OPENAI_API_KEY:
             openai.api_key = config.OPENAI_API_KEY
-        self.client = openai.OpenAI(api_key=config.OPENAI_API_KEY) if config.OPENAI_API_KEY else None
+        # Strict client-side timeout (async-queue work 2026-08-03): the SDK
+        # default is 600s, so ONE hung OpenAI call used to park a gunicorn
+        # worker — half the backend's capacity at --workers 2 — for 10 min.
+        # Whisper calls override this with the larger transcribe timeout
+        # (see transcribe_audio); the 4s per-call override at the model-list
+        # probe is likewise untouched (per-call wins over the client default).
+        self.client = openai.OpenAI(
+            api_key=config.OPENAI_API_KEY,
+            timeout=config.OPENAI_TIMEOUT_SECONDS,
+            max_retries=config.OPENAI_MAX_RETRIES,
+        ) if config.OPENAI_API_KEY else None
         self._model_cache: dict[str, tuple[float, str]] = {}
 
     def _chat_model(self, purpose: str = "default") -> str:
@@ -287,12 +297,18 @@ class OpenAIService:
                 if _lang:
                     _create_kwargs["language"] = _lang
                 _create_kwargs["prompt"] = prompt
+            # Whisper on a long take legitimately runs minutes — give
+            # transcription its own (larger, still bounded) timeout instead
+            # of the client-wide LLM one.
+            _tclient = self.client.with_options(
+                timeout=config.OPENAI_TRANSCRIBE_TIMEOUT_SECONDS,
+            )
             try:
                 # Ask for BOTH granularities: segments (existing per-snippet
                 # transcript slicing) AND words (willab #6 — precise per-slide
                 # transcript sync; a word's slide is the one on screen at its
                 # timestamp). Same single call, just a richer response.
-                transcript_response = self.client.audio.transcriptions.create(
+                transcript_response = _tclient.audio.transcriptions.create(
                     timestamp_granularities=["segment", "word"], **_create_kwargs,
                 )
             except Exception as _gran_err:
@@ -303,7 +319,7 @@ class OpenAIService:
                     "transcribe_audio: word granularity unavailable, "
                     "falling back to segments-only: %s", _gran_err,
                 )
-                transcript_response = self.client.audio.transcriptions.create(
+                transcript_response = _tclient.audio.transcriptions.create(
                     **_create_kwargs,
                 )
 

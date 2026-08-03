@@ -4841,6 +4841,216 @@ class DatabaseService:
             logger.warning("mark_stale_upload_jobs_failed: %s", e)
             return 0
 
+    # ── processing_jobs — durable state for the async recording pipeline ──
+    # (migrations/add_processing_jobs.sql). Postgres is the source of truth;
+    # Redis only delivers. All writers here are exact-shape (no phantom
+    # columns — the PGRST204 whole-update-rejected lesson from
+    # v2_update_session_status_unscoped applies to every method below).
+
+    def create_processing_job(
+        self,
+        *,
+        kind: str,
+        user_id: Optional[str],
+        session_id: Optional[str],
+        dedup_key: Optional[str],
+        payload: Dict[str, Any],
+        max_attempts: int = 3,
+    ) -> Optional[Dict[str, Any]]:
+        """Insert a pending job row. Returns the row, or None on failure
+        (including a dedup conflict — caller checks for an active twin)."""
+        row = {
+            "kind": kind,
+            "user_id": user_id,
+            "session_id": session_id,
+            "dedup_key": dedup_key,
+            "status": "pending",
+            "attempts": 0,
+            "max_attempts": max(1, int(max_attempts)),
+            "payload": payload or {},
+        }
+        try:
+            res = self.client.table("processing_jobs").insert(row).execute()
+            return res.data[0] if res.data else None
+        except Exception as e:
+            logger.warning("create_processing_job failed kind=%s sid=%s: %s",
+                           kind, session_id, e)
+            return None
+
+    def get_processing_job(self, job_id: str) -> Optional[Dict[str, Any]]:
+        try:
+            res = (
+                self.client.table("processing_jobs")
+                .select("*")
+                .eq("id", job_id)
+                .limit(1)
+                .execute()
+            )
+            return res.data[0] if res.data else None
+        except Exception as e:
+            logger.warning("get_processing_job failed job=%s: %s", job_id, e)
+            return None
+
+    def get_active_processing_job_by_dedup(
+        self, dedup_key: str,
+    ) -> Optional[Dict[str, Any]]:
+        """The pending/processing job holding this dedup_key, if any."""
+        try:
+            res = (
+                self.client.table("processing_jobs")
+                .select("*")
+                .eq("dedup_key", dedup_key)
+                .in_("status", ["pending", "processing"])
+                .limit(1)
+                .execute()
+            )
+            return res.data[0] if res.data else None
+        except Exception as e:
+            logger.warning("get_active_processing_job_by_dedup failed: %s", e)
+            return None
+
+    def claim_processing_job(
+        self, job_id: str, expected_attempts: int,
+    ) -> Optional[Dict[str, Any]]:
+        """Atomically claim a job for one run: pending|processing →
+        processing, attempts+1 — guarded by eq(attempts, expected) so of two
+        racing claimers (double delivery, sweeper vs live worker) exactly
+        one wins. Returns the claimed row or None if the CAS lost."""
+        now = datetime.now(timezone.utc).isoformat()
+        try:
+            res = (
+                self.client.table("processing_jobs")
+                .update({
+                    "status": "processing",
+                    "attempts": int(expected_attempts) + 1,
+                    "started_at": now,
+                    "heartbeat_at": now,
+                    "updated_at": now,
+                })
+                .eq("id", job_id)
+                .eq("attempts", int(expected_attempts))
+                .in_("status", ["pending", "processing"])
+                .execute()
+            )
+            return res.data[0] if res.data else None
+        except Exception as e:
+            logger.warning("claim_processing_job failed job=%s: %s", job_id, e)
+            return None
+
+    def update_processing_job(
+        self, job_id: str, fields: Dict[str, Any],
+    ) -> bool:
+        """Generic best-effort field update (heartbeat / stage / percent)."""
+        try:
+            payload = dict(fields)
+            payload["updated_at"] = datetime.now(timezone.utc).isoformat()
+            self.client.table("processing_jobs").update(payload).eq(
+                "id", job_id
+            ).execute()
+            return True
+        except Exception as e:
+            logger.warning("update_processing_job failed job=%s: %s", job_id, e)
+            return False
+
+    def finish_processing_job(
+        self,
+        job_id: str,
+        status: str,
+        *,
+        error: Optional[str] = None,
+        result: Optional[Dict[str, Any]] = None,
+    ) -> bool:
+        """Terminal transition → completed | failed."""
+        if status not in ("completed", "failed"):
+            return False
+        now = datetime.now(timezone.utc).isoformat()
+        fields: Dict[str, Any] = {
+            "status": status,
+            "finished_at": now,
+            "updated_at": now,
+        }
+        if status == "completed":
+            fields["percent"] = 100
+            fields["stage"] = "completed"
+            fields["error"] = None
+        if error is not None:
+            fields["error"] = str(error)[:500]
+        if result is not None:
+            fields["result"] = result
+        try:
+            self.client.table("processing_jobs").update(fields).eq(
+                "id", job_id
+            ).execute()
+            return True
+        except Exception as e:
+            logger.warning("finish_processing_job failed job=%s: %s", job_id, e)
+            return False
+
+    def release_processing_job_for_retry(
+        self, job_id: str, error: Optional[str] = None,
+    ) -> bool:
+        """processing → pending (a failed run that still has attempts left,
+        or a sweeper-recovered orphan). The attempts counter is NOT reset —
+        it is the lifetime run count the cap applies to."""
+        now = datetime.now(timezone.utc).isoformat()
+        fields: Dict[str, Any] = {
+            "status": "pending",
+            "heartbeat_at": None,
+            "updated_at": now,
+        }
+        if error is not None:
+            fields["error"] = str(error)[:500]
+        try:
+            res = (
+                self.client.table("processing_jobs")
+                .update(fields)
+                .eq("id", job_id)
+                .eq("status", "processing")
+                .execute()
+            )
+            return bool(res.data)
+        except Exception as e:
+            logger.warning("release_processing_job_for_retry failed job=%s: %s",
+                           job_id, e)
+            return False
+
+    def list_stale_processing_jobs(
+        self, stale_minutes: int = 15, max_rows: int = 100,
+    ) -> List[Dict[str, Any]]:
+        """Jobs the sweeper should look at: 'processing' rows whose heartbeat
+        is older than the cutoff (worker killed mid-job), plus 'pending' rows
+        untouched for the same window (enqueue lost — e.g. Redis wiped)."""
+        from datetime import timedelta
+        cutoff = (
+            datetime.now(timezone.utc) - timedelta(minutes=max(2, stale_minutes))
+        ).isoformat()
+        out: List[Dict[str, Any]] = []
+        try:
+            res = (
+                self.client.table("processing_jobs")
+                .select("*")
+                .eq("status", "processing")
+                .lt("heartbeat_at", cutoff)
+                .limit(max_rows)
+                .execute()
+            )
+            out.extend(res.data or [])
+        except Exception as e:
+            logger.warning("list_stale_processing_jobs (processing): %s", e)
+        try:
+            res = (
+                self.client.table("processing_jobs")
+                .select("*")
+                .eq("status", "pending")
+                .lt("updated_at", cutoff)
+                .limit(max_rows)
+                .execute()
+            )
+            out.extend(res.data or [])
+        except Exception as e:
+            logger.warning("list_stale_processing_jobs (pending): %s", e)
+        return out
+
     def create_model_training_run(
         self,
         *,
