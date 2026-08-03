@@ -51,6 +51,7 @@ from services import life_panel as lp
 # asserts both.
 from services import life_reminders as reminders
 from services import life_store as store
+from services.rate_limits import heavy_limit, llm_limit
 from services.context_document import (SUPPORTED_UPLOAD_EXTENSIONS,
                                        extract_document_text)
 
@@ -332,6 +333,7 @@ def life_setup_put():
 
 
 @life_bp.route("/v2/life/setup/complete", methods=["POST"])
+@heavy_limit
 @life_route()
 def life_setup_complete():
     """Generate the document set from the user's own answers, then replay any
@@ -425,6 +427,7 @@ def life_setup_documents_list():
 
 
 @life_bp.route("/v2/life/setup/propose-from-document", methods=["POST"])
+@heavy_limit
 @life_route()
 def life_setup_propose_from_document():
     """DRAFT rows from the uploaded document. WRITES NOTHING.
@@ -748,6 +751,7 @@ def life_proposals():
 
 
 @life_bp.route("/v2/life/proposals/<proposal_id>/approve", methods=["POST"])
+@llm_limit
 @life_route()
 def life_proposal_approve(proposal_id):
     """Apply a proposed change and bump the horizon's version.
@@ -903,6 +907,7 @@ def life_cases_list():
 
 
 @life_bp.route("/v2/life/cases", methods=["POST"])
+@llm_limit
 @life_route()
 def life_case_create():
     """Create a case from the founder's own text.
@@ -1181,6 +1186,7 @@ def life_timeline():
 # ═════════════════════════════════════════════════════════════════════════
 
 @life_bp.route("/v2/life/wins/derive", methods=["POST"])
+@heavy_limit
 @life_route()
 def life_wins_derive():
     """Propose principles from the recent wins — the case engine's positive
@@ -1502,6 +1508,7 @@ def life_notes_list():
 
 
 @life_bp.route("/v2/life/notes", methods=["POST"])
+@llm_limit
 @life_route()
 def life_note_create():
     """The same router the chat surface uses, over HTTP.
@@ -1533,6 +1540,7 @@ def life_note_create():
 
 
 @life_bp.route("/v2/life/board", methods=["POST"])
+@llm_limit
 @life_route()
 def life_board():
     """"I'm stuck on X" → one of the five advisors, in that lens."""
@@ -1543,6 +1551,7 @@ def life_board():
 
 
 @life_bp.route("/v2/life/lookup", methods=["GET"])
+@llm_limit
 @life_route()
 def life_lookup():
     """"what do I have on money?" — the ~10 relevant rows, never a dump."""

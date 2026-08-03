@@ -1,7 +1,6 @@
-from flask import Flask, jsonify, send_from_directory, request, redirect
+from flask import Flask, send_from_directory, request, redirect
 from flask_cors import CORS
 import os
-from werkzeug.exceptions import RequestEntityTooLarge
 import sentry_sdk
 from sentry_sdk.integrations.flask import FlaskIntegration
 from config import Config
@@ -85,29 +84,22 @@ app.register_blueprint(life_reminders_webhook_bp)
 from routes.jobs import jobs_bp
 app.register_blueprint(jobs_bp)
 
-
-@app.errorhandler(RequestEntityTooLarge)
-@app.errorhandler(413)
-def handle_413(e):
-    """Return JSON when request body exceeds MAX_CONTENT_LENGTH."""
-    path = (request.path or "").strip()
-    if "/v2/admin/copilot/reference-videos/upload" in path:
-        return jsonify({
-            "code": "PAYLOAD_TOO_LARGE",
-            "error": (
-                f"Reference video is too large. Max allowed is "
-                f"{int(getattr(config, 'MAX_REFERENCE_VIDEO_SIZE_MB', 500))}MB."
-            ),
-        }), 413
-    return jsonify({
-        "code": "PAYLOAD_TOO_LARGE",
-        "error": f"Request body exceeds {config.MAX_AUDIO_SIZE_MB}MB limit. Keep recording under {config.MAX_AUDIO_SIZE_MB}MB.",
-    }), 413
+# Rate limiting (services/rate_limits.py). The @rate_limits.*_limit
+# decorators on the paid routes registered themselves while the blueprints
+# above were imported; this call attaches the storage + the before_request
+# check. It never raises — a limiter that can't start must not stop the app
+# from serving (live loop).
+from services import rate_limits
+rate_limits.init_app(app)
 
 
-@app.errorhandler(405)
-def handle_405(e):
-    return jsonify({"code": "METHOD_NOT_ALLOWED", "error": "Method not allowed"}), 405
+# The JSON error contract (services/error_contract.py): 413/405/429, every
+# other HTTP error, and a catch-all for unhandled exceptions. Registered
+# LAST so it sits behind every blueprint. Without the catch-all, an
+# unhandled exception renders Werkzeug's HTML page and the Next.js app
+# crashes parsing it instead of degrading.
+from services import error_contract
+error_contract.register(app, config)
 
 
 def _health_response():
