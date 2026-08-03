@@ -12713,6 +12713,144 @@ def v2_coach_approve_ideal_text(arc_id):
         return jsonify({"code": "V2_ERROR", "error": "Failed to approve"}), 500
 
 
+def _ideal_piece_provenance(arc_id):
+    """The machine assembly's per-piece slide identity, in served order —
+    mirrors maybe_assemble_ideal_text's source choice WITHOUT re-running
+    any composition on the student GET:
+
+      * master flag: the skeleton blocks own the cutter's slide_index;
+      * living transcript: the take's pieces, slide from the cutter's
+        metrics.piece.slide_index bucket;
+      * legacy: the persisted best-presentation compose cache — the very
+        picks auto_text's paragraphs were joined from. No cache row →
+        no attachment; the composer (its LLM pass included) NEVER runs
+        on this GET.
+
+    Each entry: {slide_index, snippet_id, take_session_id, take_index,
+    status, challenger}. Best-effort; [] when nothing is provable."""
+    from services.ideal_text_block import (
+        _living_transcript_enabled, _polish_as_suggestions_enabled,
+    )
+    from services.master_document import master_document_enabled
+
+    def _snip_slide(snip):
+        # The cutter's own bucket (the slide on screen when the words
+        # were spoken) — same read master_document keys its skeleton on.
+        m = (snip or {}).get("metrics")
+        piece = m.get("piece") if isinstance(m, dict) else None
+        si = piece.get("slide_index") if isinstance(piece, dict) else None
+        return si if isinstance(si, int) and not isinstance(si, bool) \
+            else None
+
+    if _living_transcript_enabled() and master_document_enabled():
+        rows = sorted(
+            (r for r in (db.list_ideal_text_blocks(str(arc_id)) or [])
+             if r.get("active", True) and r.get("status") != "candidate"),
+            key=lambda r: r.get("block_key") or 0)
+        if rows:
+            out = []
+            for r in rows:
+                inc = r.get("incumbent_pieces") or []
+                out.append({
+                    "slide_index": r.get("slide_index"),
+                    "snippet_id": (inc[0].get("snippet_id")
+                                   if inc else None),
+                    "take_session_id": r.get("incumbent_take_session_id"),
+                    "take_index": r.get("incumbent_take_index"),
+                    "status": r.get("status") or "settled",
+                    "challenger": r.get("challenger_take_index"),
+                })
+            return out
+        # No skeleton yet → the living-transcript document, exactly the
+        # fallback the assembly itself makes.
+    if _living_transcript_enabled():
+        from services.transcript_document import build_transcript_document
+        doc = build_transcript_document(arc_id, database=db)
+        pieces = (doc or {}).get("pieces") or []
+        if not pieces:
+            return []
+        sid = doc.get("take_session_id")
+        snips = {str(s.get("id")): s
+                 for s in (db.get_snippets_by_session(sid) or [])} \
+            if sid else {}
+        return [{
+            "slide_index": _snip_slide(snips.get(str(p.get("snippet_id")))),
+            "snippet_id": p.get("snippet_id"),
+            "take_session_id": p.get("take_session_id"),
+            "take_index": p.get("take_index"),
+            "status": "settled",
+            "challenger": None,
+        } for p in pieces]
+    _get_cache = getattr(db, "get_best_presentation_cache", None)
+    cached = _get_cache(arc_id) if callable(_get_cache) else None
+    slides = ((cached or {}).get("payload") or {}).get("slides") or []
+    _polish_on = _polish_as_suggestions_enabled()
+    out = []
+    for s in slides:
+        if not isinstance(s, dict):
+            continue
+        _edited = (s.get("text") or "").strip()
+        _verbatim = (s.get("verbatim") or "").strip()
+        # Mirror assemble_ideal_text_block's paragraph filter exactly —
+        # a pick it skipped must not shift the alignment here.
+        if not ((_verbatim if _polish_on else _edited) or _edited):
+            continue
+        out.append({
+            "slide_index": s.get("index"),
+            "snippet_id": s.get("snippet_id"),
+            "take_session_id": s.get("session_id"),
+            "take_index": s.get("take_index"),
+            "status": "settled",
+            "challenger": None,
+        })
+    return out
+
+
+def _ideal_text_pieces(arc_id, served_text, presentation_ref):
+    """The slide-linkage `pieces[]` of the SD student GET (FE handoff
+    2026-08-03, FE PR #222): one entry per "\\n\\n"-paragraph of the
+    SERVED text, each carrying the deck page its words were bucketed to.
+
+    `slide_index` attaches ONLY when the mapping is structural — the
+    machine assembly's piece list lines up 1:1 with the served
+    paragraphs (the FE's own provability bar: it zips or hides on
+    anything weaker). A reshaped text (user rewrite, coach restructure,
+    stale cache) misaligns the counts and every slide_index degrades to
+    null — the FE falls back to its exact-count zip, never a guessed
+    attachment. A deckless arc (no presentation_ref) never attaches:
+    the deckless compose keys picks by SECTION index, which is not a
+    deck page. Provenance only, no scores (AC-9). Best-effort; []."""
+    try:
+        paragraphs = [p.strip() for p in (served_text or "").split("\n\n")
+                      if p.strip()]
+        if not paragraphs:
+            return []
+        prov = _ideal_piece_provenance(arc_id) if presentation_ref else []
+        aligned = bool(prov) and len(prov) == len(paragraphs)
+        out = []
+        for i, para in enumerate(paragraphs):
+            src = prov[i] if aligned else {}
+            si = src.get("slide_index")
+            if isinstance(si, bool) or not isinstance(si, int) or si < 0:
+                si = None
+            _snip = src.get("snippet_id")
+            _sess = src.get("take_session_id")
+            out.append({
+                "piece_key": i,
+                "text": para,
+                "slide_index": si,
+                "snippet_id": str(_snip) if _snip else None,
+                "take_session_id": str(_sess) if _sess else None,
+                "take_index": src.get("take_index"),
+                "status": src.get("status") or "settled",
+                "challenger": src.get("challenger"),
+            })
+        return out
+    except Exception as e:
+        logger.warning("ideal-text pieces failed arc=%s: %s", arc_id, e)
+        return []
+
+
 @v2_bp.route("/explore/arc/<arc_id>/ideal-text", methods=["GET"])
 @require_auth
 def v2_explore_get_ideal_text(arc_id):
@@ -13182,6 +13320,22 @@ def v2_explore_get_ideal_text(arc_id):
         # can be started.
         _can_record_take = bool(_spoken_rows)
 
+        # ── SLIDE LINKAGE (FE handoff 2026-08-03, FE PR #222): the deck
+        # url + per-paragraph slide identity, so the reading view can
+        # interleave slide → its words exactly, cross-device (the FE's
+        # localStorage fallback only covered the recording device). The
+        # FIRST non-null presentation_ref across takes in take order —
+        # the same never-clobbered-by-a-deckless-retake resolution
+        # build_best_presentation uses for its canonical deck ref. Zero
+        # extra queries (the ownership read already has the sessions). ──
+        _pres_ref = None
+        for _s in _spoken_rows:
+            _ctx = _s.get("intake_context") if isinstance(
+                _s.get("intake_context"), dict) else {}
+            if _ctx.get("presentation_ref"):
+                _pres_ref = _ctx.get("presentation_ref")
+                break
+
         return jsonify({
             "arc_id": arc_id,
             "version": _version,
@@ -13211,6 +13365,15 @@ def v2_explore_get_ideal_text(arc_id):
             # /setup); reads never flip it.
             "can_record_take": _can_record_take,
             "text": _text,
+            # The arc's served deck PDF (FE handoff 2026-08-03) — null on
+            # a deckless arc; the FE treats anything but a non-empty
+            # string as absent.
+            "presentation_ref": _pres_ref or None,
+            # One entry per "\n\n"-paragraph of `text`, carrying the deck
+            # page (`slide_index`) its words were bucketed to when the
+            # mapping is provable — null degrades the FE to its
+            # exact-count zip, never a guessed attachment.
+            "pieces": _ideal_text_pieces(arc_id, _text, _pres_ref),
             # True when the served text is the student's own edit of the
             # current version (the FE labels it).
             "user_edited": _user_edited,
