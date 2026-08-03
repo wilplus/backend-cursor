@@ -1,5 +1,28 @@
 # Migrations
 
+> **Read [docs/MIGRATIONS.md](../docs/MIGRATIONS.md) first.** These files are
+> now **ordered** by [`manifest.txt`](manifest.txt) and **tracked** in
+> `public.schema_migrations`. Use the runner:
+>
+> ```bash
+> python scripts/migrate.py status    # what this database has applied, and what's pending
+> python scripts/migrate.py new <name>  # scaffold a migration + register it
+> python scripts/migrate.py apply     # run pending migrations, in order
+> ```
+>
+> **A `.sql` file added without a manifest entry never runs anywhere — CI
+> fails on it.** `scripts/migrate.py new` handles that for you.
+>
+> The rest of this file is the historical per-migration notes, kept because
+> they carry real operational detail (what to deploy first, what breaks if you
+> skip one). Where a note says *"run this if Railway logs show 42703"* — that
+> was the old way to discover a missed migration. Now run
+> `python scripts/migrate.py status` and it will tell you before a user does.
+>
+> Applying by hand in the Supabase SQL Editor is still supported:
+> `python scripts/migrate.py plan --offline` prints the ordered list, and
+> `migrate.py baseline --to <version>` records what you ran.
+
 ## Single migration for current homework flow (recommended)
 
 - **`v2_schema_unified.sql`** — **one file** for the full v2 homework schema. Run this in the Supabase SQL Editor (after `auth.users` and `recordings` exist).
