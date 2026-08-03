@@ -168,6 +168,23 @@ def send_email_resend(
     if not getattr(resend, "api_key", None):
         resend.api_key = config.RESEND_API_KEY
 
+    # ── NON-PRODUCTION RECIPIENT REDIRECT ────────────────────────────────
+    # A staging environment that mirrors prod also mirrors prod's user
+    # table — so a test run of the coach digest emails real students from
+    # a box nobody is watching. With EMAIL_REDIRECT_TO set, every outbound
+    # message goes to that one address instead, subject-tagged with the
+    # real recipient so the mail is still testable. Production ignores
+    # this entirely, and an unset value keeps today's behaviour, so it can
+    # only ever narrow delivery, never widen it.
+    _redirect = (getattr(config, "EMAIL_REDIRECT_TO", "") or "").strip()
+    if _redirect and not config.is_production:
+        logger.info(
+            "send_email_resend: redirecting %s -> %s (env=%s)",
+            to, _redirect, config.ENV,
+        )
+        subject = f"[{config.ENV} → {to}] {subject}"
+        to = _redirect
+
     fallback_text = text or re.sub(r"<[^>]+>", "", html or "").strip()
     params: dict[str, Any] = {
         "from": (from_addr or config.RESEND_FROM_EMAIL),

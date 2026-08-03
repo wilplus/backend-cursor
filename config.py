@@ -3,7 +3,18 @@ from urllib.parse import urlparse
 
 from dotenv import load_dotenv
 
+from services.secrets import resolve as _secret
+
 load_dotenv()
+
+# Secrets go through services.secrets.resolve, which honours the
+# `<NAME>_FILE` indirection every managed secret store speaks (Docker
+# secrets, Kubernetes projected volumes, Vault Agent, the AWS Secrets
+# Manager CSI driver) before falling back to the plain env var. It also
+# strips the trailing newline a mounted file or `echo >` leaves behind —
+# the classic silent auth failure. Non-secret settings below keep using
+# os.getenv directly; the seam lives only where the sensitive values are.
+# See services/secrets.py + docs/OPS-SECRETS-AND-STAGING.md.
 
 
 # The production app origin — CODE-guaranteed in the CORS allow-list
@@ -67,12 +78,12 @@ class Config:
     HOMEWORK_UNLOCK_WHEN_EMAIL_FAILS = os.getenv("HOMEWORK_UNLOCK_WHEN_EMAIL_FAILS", "false").lower() == "true"
 
     # Supabase
-    SUPABASE_URL = os.getenv("SUPABASE_URL")
-    SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-    SUPABASE_JWT_SECRET = os.getenv("SUPABASE_JWT_SECRET")
+    SUPABASE_URL = _secret("SUPABASE_URL")
+    SUPABASE_SERVICE_ROLE_KEY = _secret("SUPABASE_SERVICE_ROLE_KEY")
+    SUPABASE_JWT_SECRET = _secret("SUPABASE_JWT_SECRET")
     
     # OpenAI (strip so .env newlines/quotes don't break the key)
-    OPENAI_API_KEY = (os.getenv("OPENAI_API_KEY") or "").strip().strip('"').strip("'")
+    OPENAI_API_KEY = _secret("OPENAI_API_KEY") or ""
 
     # Strict OpenAI client timeouts (async-queue work 2026-08-03). The SDK
     # default is 600s — one hung call used to park a gunicorn worker (half
@@ -87,9 +98,15 @@ class Config:
     OPENAI_MAX_RETRIES = _env_int("OPENAI_MAX_RETRIES", 2)
     
     # Email (Resend)
-    RESEND_API_KEY = os.getenv("RESEND_API_KEY")
+    RESEND_API_KEY = _secret("RESEND_API_KEY")
     RESEND_FROM_EMAIL = os.getenv("RESEND_FROM_EMAIL")
     ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "artur@willonski.com")
+    # Non-production recipient redirect. When set (and ENV != production),
+    # services.email_service.send_email_resend sends EVERY message here
+    # instead of the real recipient, subject-tagged with who it was for.
+    # This is what makes a prod-mirroring staging environment safe to run
+    # against a copy of the user table. Unset = today's behaviour.
+    EMAIL_REDIRECT_TO = (os.getenv("EMAIL_REDIRECT_TO") or "").strip()
 
     # Current published Terms / Privacy Policy version. Must match the
     # "Last updated" date in the live legal docs (e.g. "1.0" = Terms
@@ -103,6 +120,26 @@ class Config:
 
     # Sentry
     SENTRY_DSN = os.getenv("SENTRY_DSN")
+    # Performance tracing sample rate. Was hardcoded 1.0 in app.py + worker.py
+    # — a transaction per request, health checks included, which exhausts the
+    # quota on noise and then costs us ERROR visibility on the live loop.
+    # 5% in production is plenty for latency trends; 0 elsewhere so local and
+    # CI runs send nothing. ERROR capture is never sampled by this.
+    SENTRY_TRACES_SAMPLE_RATE = _env_float(
+        "SENTRY_TRACES_SAMPLE_RATE",
+        0.05 if (os.getenv("ENV", "development") or "").strip().lower()
+        in ("production", "prod") else 0.0,
+    )
+    # Profiling multiplies on top of tracing (it samples sampled traces).
+    # Off by default — turn it on deliberately when chasing a CPU question.
+    SENTRY_PROFILES_SAMPLE_RATE = _env_float("SENTRY_PROFILES_SAMPLE_RATE", 0.0)
+    # Deploy identifier for Sentry release tagging. Railway injects
+    # RAILWAY_GIT_COMMIT_SHA; anything else can set RELEASE_SHA directly.
+    RELEASE_SHA = (
+        os.getenv("RELEASE_SHA")
+        or os.getenv("RAILWAY_GIT_COMMIT_SHA")
+        or ""
+    ).strip()
     
     # CORS (browser admin UI → backend; include production app origin or set CORS_ORIGINS explicitly)
     CORS_ORIGINS = _merge_cors_origins()
@@ -157,8 +194,8 @@ class Config:
         "STRUCTURAL_STARS_MAX_PER_TAKE", 3)   # founder 2026-07-18: 2-3 → 3
     # Cloudflare R2 (S3 API) for coach/reference/feedback videos — set all four to use R2 instead of Supabase Storage.
     R2_ACCOUNT_ID = (os.getenv("R2_ACCOUNT_ID") or "").strip()
-    R2_ACCESS_KEY_ID = (os.getenv("R2_ACCESS_KEY_ID") or "").strip()
-    R2_SECRET_ACCESS_KEY = (os.getenv("R2_SECRET_ACCESS_KEY") or "").strip()
+    R2_ACCESS_KEY_ID = _secret("R2_ACCESS_KEY_ID") or ""
+    R2_SECRET_ACCESS_KEY = _secret("R2_SECRET_ACCESS_KEY") or ""
     # Optional; defaults to COACH_FEEDBACK_VIDEO_BUCKET (e.g. coach-feedback-videos).
     R2_BUCKET_NAME = (os.getenv("R2_BUCKET_NAME") or "").strip()
     # Optional public or custom domain base for stable <video src> URLs, no trailing slash (e.g. https://videos.example.com).
@@ -203,6 +240,33 @@ class Config:
     # matching the codebase's pre-migration default.
     R2_AUDIO_BUCKET_NAME = (os.getenv("R2_AUDIO_BUCKET_NAME") or "").strip()
     R2_AUDIO_PUBLIC_BASE_URL = (os.getenv("R2_AUDIO_PUBLIC_BASE_URL") or "").strip()
+
+    # ── Cloudflare R2 — WILLAB LAB AUDIO (the user's takes) ──────────────
+    # P0 audit 2026-08-03: lab takes were landing in coach_feedback_videos,
+    # mixing the user's voice with the coach's curated (effectively public)
+    # media under one access policy and one lifecycle rule. Own bucket, own
+    # public base, own retention.
+    #
+    # BOTH must be set for the split to activate (services.lab_audio_storage
+    # .lab_audio_segregated). Setting only the bucket would write to the new
+    # location while still minting URLs against the OLD public domain, so
+    # every new take's audio_url would 404. With either unset, behaviour is
+    # byte-for-byte what it was before — reads always fall back across
+    # buckets, so nothing written pre-cutover becomes unreadable, and
+    # unsetting these rolls the change back.
+    R2_LAB_AUDIO_BUCKET = (os.getenv("R2_LAB_AUDIO_BUCKET") or "").strip()
+    R2_LAB_AUDIO_PUBLIC_BASE_URL = (
+        os.getenv("R2_LAB_AUDIO_PUBLIC_BASE_URL") or ""
+    ).strip()
+
+    # Wall-clock budget (seconds) for the SYNCHRONOUS upload→analysis path,
+    # checked at stage boundaries (services.upload_guard.Deadline). Bounds
+    # the SUM of the per-step timeouts: without it a run where every stage
+    # is merely slow parks a gunicorn worker until --timeout 1800 reaps it,
+    # and the client sees a dead socket instead of an error. 0 disables.
+    # Well under Railway's proxy timeout so the 504 is OURS, with a code
+    # the FE can act on.
+    SYNC_UPLOAD_DEADLINE_SECONDS = _env_int("SYNC_UPLOAD_DEADLINE_SECONDS", 600)
 
     # ── Phase 1: tenant-scoped few-shot pool ─────────────────────────────
     # When TRUE, services.db.get_top_followup_examples scopes exemplars
@@ -447,9 +511,9 @@ class Config:
     ).strip()
 
     # Stripe Checkout → credits (POST /v2/internal/stripe/webhook). Webhook signing secret from Stripe Dashboard.
-    STRIPE_WEBHOOK_SECRET = (os.getenv("STRIPE_WEBHOOK_SECRET") or "").strip()
+    STRIPE_WEBHOOK_SECRET = _secret("STRIPE_WEBHOOK_SECRET") or ""
     # Secret key used to expand/verify Checkout Session line items in the webhook handler.
-    STRIPE_SECRET_KEY = (os.getenv("STRIPE_SECRET_KEY") or "").strip()
+    STRIPE_SECRET_KEY = _secret("STRIPE_SECRET_KEY") or ""
     # JSON object: Stripe Price id → integer credits to add, e.g. {"price_abc":15,"price_def":40}
     STRIPE_CHECKOUT_PRICE_CREDITS_JSON = (os.getenv("STRIPE_CHECKOUT_PRICE_CREDITS_JSON") or "").strip()
 
@@ -600,3 +664,16 @@ class Config:
     @property
     def is_production(self):
         return self.ENV == "production"
+
+    @property
+    def is_staging(self):
+        """A prod-shaped deploy that is NOT prod (docs/OPS-SECRETS-AND-STAGING.md).
+
+        Deliberately separate from ``is_production``: staging must keep
+        every production-only safety OFF (no live Stripe, no real user
+        email) while still exercising the production code paths. Anything
+        that asks "am I allowed to touch the real world?" checks
+        ``is_production``; anything that asks "am I the rehearsal?" checks
+        this.
+        """
+        return self.ENV == "staging"

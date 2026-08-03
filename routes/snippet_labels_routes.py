@@ -11,6 +11,7 @@ from typing import Any
 
 import sentry_sdk
 from flask import Blueprint, jsonify, request
+from utils.errors import safe_error
 
 from routes.admin import require_admin
 from services import snippet_labels as snippet_labels_svc
@@ -45,7 +46,7 @@ def next_unlabeled():
     except Exception as e:
         sentry_sdk.capture_exception(e)
         logger.exception("snippet_labels.next failed")
-        return jsonify({"code": "SNIPPET_LABELS_ERROR", "error": str(e)}), 500
+        return safe_error("SNIPPET_LABELS_ERROR", 500, exc=e)
 
 
 @snippet_labels_bp.route("/submit", methods=["POST"])
@@ -82,7 +83,7 @@ def submit_label():
     except Exception as e:
         sentry_sdk.capture_exception(e)
         logger.exception("snippet_labels.submit failed")
-        return jsonify({"code": "SNIPPET_LABELS_ERROR", "error": str(e)}), 500
+        return safe_error("SNIPPET_LABELS_ERROR", 500, exc=e)
 
 
 @snippet_labels_bp.route("/stats", methods=["GET"])
@@ -96,4 +97,4 @@ def stats():
     except Exception as e:
         sentry_sdk.capture_exception(e)
         logger.exception("snippet_labels.stats failed")
-        return jsonify({"code": "SNIPPET_LABELS_ERROR", "error": str(e)}), 500
+        return safe_error("SNIPPET_LABELS_ERROR", 500, exc=e)

@@ -28,6 +28,7 @@ from flask import Blueprint, jsonify, request, send_from_directory
 
 from config import Config
 from services import dev_bugs as svc
+from utils.errors import safe_error
 
 logger = logging.getLogger(__name__)
 config = Config()
@@ -181,7 +182,7 @@ def dev_bugs_collection():
     except Exception as e:  # noqa: BLE001
         sentry_sdk.capture_exception(e)
         logger.exception("dev_bugs collection failed")
-        return jsonify({"code": "DEV_BUGS_ERROR", "error": str(e)}), 500
+        return safe_error("DEV_BUGS_ERROR", 500, exc=e)
 
 
 @dev_bugs_bp.route("/api/dev-bugs/<int:bug_id>", methods=["DELETE"])
@@ -195,7 +196,7 @@ def dev_bugs_delete(bug_id: int):
     except Exception as e:  # noqa: BLE001
         sentry_sdk.capture_exception(e)
         logger.exception("dev_bugs delete failed")
-        return jsonify({"code": "DEV_BUGS_ERROR", "error": str(e)}), 500
+        return safe_error("DEV_BUGS_ERROR", 500, exc=e)
 
 
 @dev_bugs_bp.route("/api/dev-bugs/<int:bug_id>", methods=["PATCH"])
@@ -212,7 +213,7 @@ def dev_bugs_edit(bug_id: int):
     except Exception as e:  # noqa: BLE001
         sentry_sdk.capture_exception(e)
         logger.exception("dev_bugs edit failed")
-        return jsonify({"code": "DEV_BUGS_ERROR", "error": str(e)}), 500
+        return safe_error("DEV_BUGS_ERROR", 500, exc=e)
 
 
 @dev_bugs_bp.route("/api/dev-bugs/send", methods=["POST"])
@@ -226,8 +227,8 @@ def dev_bugs_send():
     except RuntimeError as e:
         # Email did not go out (SEND_EMAILS off / provider error); bugs kept open.
         logger.warning("dev_bugs send not delivered: %s", e)
-        return jsonify({"code": "EMAIL_NOT_SENT", "error": str(e)}), 503
+        return safe_error("EMAIL_NOT_SENT", 503, exc=e)
     except Exception as e:  # noqa: BLE001
         sentry_sdk.capture_exception(e)
         logger.exception("dev_bugs send failed")
-        return jsonify({"code": "DEV_BUGS_ERROR", "error": str(e)}), 500
+        return safe_error("DEV_BUGS_ERROR", 500, exc=e)
