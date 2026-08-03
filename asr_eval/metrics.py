@@ -388,6 +388,54 @@ def boundary_critical_wer(ref_words: Any, hyp_words: Any,
 # ── coverage guard ───────────────────────────────────────────────────────
 
 
+def language_detection(result: Any, *, expected: Any,
+                       accent_l1: Any = None,
+                       hint_given: bool = False) -> Optional[dict]:
+    """Did the provider identify the right LANGUAGE?
+
+    The catastrophic failure mode for an L2-accented user base, and the one
+    no WER number can see. `lab_recording.py` passes a language code only
+    when `session_context.language` is set; otherwise the live path
+    AUTO-DETECTS. So for a heavily-accented English take, Whisper can decide
+    the audio is Polish and return a Polish transcript — or a translation.
+    The take is then scored against an English reference and reports ~100%
+    WER, which reads as "the model is bad at accents" when the real failure
+    was one wrong routing decision upstream of transcription.
+
+    Worse, willab's own prompt rule keys off language: a detected
+    non-English language means the English disfluency primer is dropped
+    (`openai_service.transcribe_audio`), so one flip silently changes the
+    decoding configuration too.
+
+    ``flipped_to_l1`` isolates the signature case — detected the speaker's
+    NATIVE language instead of the one they were actually speaking. That is
+    a different bug from generic confusion and argues for a different fix
+    (declare the language at record time vs. change model).
+
+    Returns None when there is nothing to check against. ``hint_given``
+    records whether the language was declared to the API, because detection
+    is meaningless when the model was simply told the answer — the gate
+    reads this rather than scoring a foregone conclusion.
+    """
+    exp = (str(expected or "").strip().lower() or None)
+    if not exp or not isinstance(result, dict):
+        return None
+    exp = exp[:2]
+    det_raw = result.get("language")
+    det = (str(det_raw or "").strip().lower() or None)
+    det = det[:2] if det else None
+    l1 = (str(accent_l1 or "").strip().lower() or None)
+    l1 = l1[:2] if l1 else None
+    return {
+        "expected": exp,
+        "detected": det,
+        "ok": (det == exp) if det else None,
+        "reported": det is not None,
+        "flipped_to_l1": bool(det and l1 and det == l1 and det != exp),
+        "hint_given": bool(hint_given),
+    }
+
+
 def coverage(result: Any, *, expect_words: bool = True) -> dict:
     """Did the provider actually return usable output?
 
@@ -419,6 +467,7 @@ def evaluate_take(*, reference_text: Any, candidate: Any,
                   baseline: Any = None, slide_advances: Any = None,
                   slides: Any = None, language: Any = None,
                   reference_words: Any = None,
+                  accent_l1: Any = None, hint_given: bool = False,
                   risk_ms: int = DEFAULT_RISK_MS) -> dict:
     """Every metric for ONE take, tiers labeled. Pure.
 
@@ -430,6 +479,14 @@ def evaluate_take(*, reference_text: Any, candidate: Any,
     """
     cov = coverage(candidate)
     out: dict = {"coverage": cov}
+    # Language detection is evaluated BEFORE the coverage short-circuit: a
+    # flip is itself a likely cause of an unusable result, and losing that
+    # diagnosis to an early return is how "the model is bad at accents" gets
+    # recorded when the real failure was one wrong routing decision.
+    lang = language_detection(candidate, expected=language,
+                              accent_l1=accent_l1, hint_given=hint_given)
+    if lang:
+        out["language_detection"] = lang
     if not cov["ok"]:
         # Everything downstream would be measuring an absence. Say so once.
         out["skipped"] = cov["reason"]

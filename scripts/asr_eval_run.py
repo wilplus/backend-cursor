@@ -41,12 +41,65 @@ def _print_readiness(r: dict) -> None:
     print(f"  with reference_text        {r['with_reference_text']}  → WER")
     print(f"  with deck timeline         {r['with_deck_timeline']}  → SLIDE-BUCKET (the metric)")
     print(f"  with reference word times  {r['with_reference_word_times']}  → timestamp ACCURACY (tier 2)")
+    print(f"  tracks                     {r.get('tracks')}")
     print(f"  strata                     {r['strata']}")
     for b in r["blockers"]:
         print(f"  BLOCKER  {b}")
     for w in r["warnings"]:
         print(f"  warning  {w}")
     print(f"  ready: {r['ready']}")
+
+
+def _scaffold(manifest_path: str) -> int:
+    """Create the audio/ and refs/ layout a manifest implies.
+
+    Reads the RAW entries rather than going through ``load_manifest``,
+    because the thing it fixes — reference files that do not exist yet — is
+    exactly what stops that manifest from loading. Empty stub files are the
+    point: an empty reference reads as "no reference yet", which is true,
+    whereas a stub containing placeholder prose would be scored as if it
+    were a real transcript.
+    """
+    root = os.path.dirname(os.path.abspath(manifest_path))
+    with open(manifest_path, "r", encoding="utf-8") as fh:
+        raw = fh.read().strip()
+    doc = json.loads(raw)
+    entries = doc.get("takes") if isinstance(doc, dict) else doc
+    if not isinstance(entries, list):
+        print("manifest has no `takes` list", file=sys.stderr)
+        return 2
+
+    made_dirs, made_refs, have_audio = set(), 0, 0
+    for e in entries:
+        if not isinstance(e, dict):
+            continue
+        for field in ("audio", "reference_text"):
+            val = e.get(field)
+            if not isinstance(val, str) or not val.strip():
+                continue
+            v = val.strip()
+            if not ("/" in v or v.lower().endswith(
+                    (".txt", ".md", ".json", ".vtt", ".srt", ".text"))):
+                continue          # inline text, not a path
+            path = v if os.path.isabs(v) else os.path.join(root, v)
+            d = os.path.dirname(path)
+            if d and not os.path.isdir(d):
+                os.makedirs(d, exist_ok=True)
+                made_dirs.add(os.path.relpath(d, root))
+            if field == "audio":
+                have_audio += os.path.isfile(path)
+                continue
+            if not os.path.exists(path):
+                open(path, "w", encoding="utf-8").close()
+                made_refs += 1
+
+    print(f"created dirs        {sorted(made_dirs) or '(none needed)'}")
+    print(f"created ref stubs   {made_refs}")
+    print(f"audio present       {have_audio}/{len(entries)}")
+    print("\nNext: drop the audio files in, then fill each refs/*.txt with the "
+          "VERBATIM transcript (fillers included — see README.md). Empty ref "
+          "files are counted as 'no reference yet', not as an empty transcript.")
+    return 0
 
 
 def _align(c: dict) -> int:
@@ -90,11 +143,27 @@ def main(argv=None) -> int:
                     help="report corpus readiness and exit (no API calls)")
     ap.add_argument("--align", action="store_true",
                     help="forced-align reference_text to produce tier-2 word times")
-    ap.add_argument("--strata", default="accent")
+    ap.add_argument("--scaffold", action="store_true",
+                    help="create the audio/ and refs/ layout this manifest "
+                         "implies, with empty reference stubs to fill in")
+    ap.add_argument("--strata", default="accent",
+                    help="corpus field to break results down by "
+                         "(accent | track | condition | speaker_id)")
+    ap.add_argument("--no-language-hint", action="store_true",
+                    help="withhold the language code and let the provider "
+                         "auto-detect — this is what the LIVE path does "
+                         "whenever session_context.language is unset "
+                         "(lab_recording.py:408), and it is the only mode in "
+                         "which the language-flip metric means anything")
     ap.add_argument("--out", default=None)
     ap.add_argument("--force", action="store_true",
                     help="run even when readiness reports blockers")
     args = ap.parse_args(argv)
+
+    # Runs before load_manifest on purpose: the layout it creates is what
+    # lets the manifest load in the first place.
+    if args.scaffold:
+        return _scaffold(args.manifest)
 
     try:
         c = corpus_mod.load_manifest(args.manifest)
@@ -132,9 +201,10 @@ def main(argv=None) -> int:
             if not t["audio_exists"]:
                 print(f"   skip {t['take_id']} (audio missing)")
                 continue
-            res = providers.transcribe(p, t["audio_path"],
-                                       language=t["language"],
-                                       vocabulary=t["vocabulary"])
+            res = providers.transcribe(
+                p, t["audio_path"],
+                language=None if args.no_language_hint else t["language"],
+                vocabulary=t["vocabulary"])
             raw[p][t["take_id"]] = res
             note = res.get("unavailable") or (
                 f"{len(res.get('words') or [])} words, "
@@ -157,6 +227,8 @@ def main(argv=None) -> int:
                 slides=t["slides"],
                 language=t["language"],
                 reference_words=t["reference_words"],
+                accent_l1=t["accent_l1"],
+                hint_given=not args.no_language_hint,
             )
             rows.append({"take": t, "result": m})
         per_take[p] = rows
@@ -173,20 +245,29 @@ def main(argv=None) -> int:
     print()
     print(report.render(summaries, gates, baseline=args.baseline))
 
-    # Per-stratum, because a corpus average hides the accent case.
-    print("\n" + "-" * 78)
-    print(f"BY {args.strata.upper()}")
-    for p in names:
-        st = corpus_mod.strata_report(per_take[p], key=args.strata)
-        print(f"\n  {p}")
-        for name, grp in st.items():
-            sub = report.summarize(p, grp["rows"])
-            flag = "" if grp["trustworthy"] else "  (too few takes — noise)"
-            bd = (sub["slide_bucket"] or {}).get("disagreement_rate")
-            wv = (sub["wer_verbatim"] or {}).get("wer_micro")
-            print(f"    {name:<28} n={grp['takes']:<3} "
-                  f"bucket={report._pct(bd, 3):<9} "
-                  f"wer={report._pct(wv):<8}{flag}")
+    def _breakdown(key: str) -> None:
+        print("\n" + "-" * 78)
+        print(f"BY {key.upper()}")
+        for p in names:
+            st = corpus_mod.strata_report(per_take[p], key=key)
+            print(f"\n  {p}")
+            for name, grp in st.items():
+                sub = report.summarize(p, grp["rows"])
+                flag = "" if grp["trustworthy"] else "  (too few takes — noise)"
+                bd = (sub["slide_bucket"] or {}).get("disagreement_rate")
+                wv = (sub["wer_verbatim"] or {}).get("wer_micro")
+                lf = (sub["language_detection"] or {}).get("flip_rate")
+                print(f"    {name:<26} n={grp['takes']:<3} "
+                      f"bucket={report._pct(bd, 3):<9} "
+                      f"wer={report._pct(wv):<8} "
+                      f"lang_flip={report._pct(lf, 1):<7}{flag}")
+
+    # ALWAYS by track: L2-English and native non-English run under different
+    # prompt configurations, so a combined number describes a setup no take
+    # actually ran under. Then by whatever slice was asked for.
+    _breakdown("track")
+    if args.strata and args.strata != "track":
+        _breakdown(args.strata)
 
     if args.out:
         with open(args.out, "w", encoding="utf-8") as fh:

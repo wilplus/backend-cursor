@@ -26,6 +26,13 @@ MAX_BOUNDARY_DISAGREEMENT = 0.02         # 2% of boundary-adjacent words
 MAX_VERBATIM_WER_REGRESSION = 0.0        # no WER regression vs incumbent
 MAX_BOUNDARY_TIMING_P90_MS = 200.0       # p90 |Δstart| at the boundary
 
+# Language flips are held to zero, unlike every other threshold here. A flip
+# does not degrade a take, it destroys it: the transcript comes back in the
+# wrong language (or translated), and willab's own prompt rule then drops the
+# disfluency primer on top. There is no acceptable rate of that, so this is
+# the one threshold not expected to move after the baseline run.
+MAX_LANGUAGE_FLIP_RATE = 0.0
+
 
 def _mean(vals: Any) -> Optional[float]:
     v = [x for x in (vals or []) if isinstance(x, (int, float))]
@@ -107,6 +114,39 @@ def _pooled_timing(results: Any) -> dict:
     }
 
 
+def _pooled_language(results: Any) -> dict:
+    """Language-detection accuracy across every take that declared one.
+
+    Pooled over ALL results, not just usable ones: a flip often IS why a
+    take came back unusable, so restricting to usable takes would hide the
+    failure it is meant to expose.
+    """
+    rows = [(r or {}).get("language_detection") for r in (results or [])
+            if isinstance((r or {}).get("language_detection"), dict)]
+    checked = [d for d in rows if d.get("ok") is not None]
+    wrong = [d for d in checked if not d["ok"]]
+    by_lang: dict = {}
+    for d in checked:
+        e = by_lang.setdefault(d["expected"],
+                               {"takes": 0, "wrong": 0, "detected_as": {}})
+        e["takes"] += 1
+        if not d["ok"]:
+            e["wrong"] += 1
+            k = d.get("detected") or "(none)"
+            e["detected_as"][k] = e["detected_as"].get(k, 0) + 1
+    return {
+        "takes": len(rows),
+        "checked": len(checked),
+        "wrong": len(wrong),
+        "flip_rate": (len(wrong) / len(checked)) if checked else None,
+        "flips_to_l1": sum(1 for d in wrong if d.get("flipped_to_l1")),
+        # Detection is meaningless where the code was handed to the API.
+        "hinted": sum(1 for d in rows if d.get("hint_given")),
+        "auto_detected": sum(1 for d in rows if not d.get("hint_given")),
+        "by_expected_language": by_lang,
+    }
+
+
 def summarize(provider: str, rows: Any) -> dict:
     """One provider's corpus-level summary. ``rows`` are per-take results."""
     results = [(r or {}).get("result") or {} for r in (rows or [])]
@@ -119,6 +159,7 @@ def summarize(provider: str, rows: Any) -> dict:
         "takes_failed": len(failed),
         "failure_reasons": sorted({r.get("skipped") for r in failed
                                    if r.get("skipped")}),
+        "language_detection": _pooled_language(results),
         "wer_verbatim": _pooled_wer(usable, "wer_verbatim"),
         "wer_content": _pooled_wer(usable, "wer_content"),
         "wer_boundary_critical": _pooled_wer(usable, "wer_boundary_critical"),
@@ -131,7 +172,8 @@ def gate(candidate: Any, baseline: Any = None, *,
          max_bucket: float = MAX_BUCKET_DISAGREEMENT,
          max_boundary: float = MAX_BOUNDARY_DISAGREEMENT,
          max_wer_regression: float = MAX_VERBATIM_WER_REGRESSION,
-         max_boundary_p90_ms: float = MAX_BOUNDARY_TIMING_P90_MS) -> dict:
+         max_boundary_p90_ms: float = MAX_BOUNDARY_TIMING_P90_MS,
+         max_language_flip: float = MAX_LANGUAGE_FLIP_RATE) -> dict:
     """PASS / FAIL / INSUFFICIENT-DATA for one candidate.
 
     INSUFFICIENT-DATA is a first-class outcome, not a soft pass. The most
@@ -146,12 +188,35 @@ def gate(candidate: Any, baseline: Any = None, *,
     reasons: list = []
     blocking: list = []
 
+    # Checked before the no-usable-takes short-circuit, because a flip is a
+    # plausible CAUSE of an unusable run and the diagnosis is the point.
+    lang = c.get("language_detection") or {}
+    flip = lang.get("flip_rate")
+    if isinstance(flip, (int, float)) and flip > max_language_flip:
+        detail = ""
+        if lang.get("flips_to_l1"):
+            detail = (f" — {lang['flips_to_l1']} of them detected the "
+                      f"speaker's NATIVE language instead of the one spoken, "
+                      f"the signature L2-accent failure")
+        reasons.append(
+            f"LANGUAGE FLIP on {lang.get('wrong')}/{lang.get('checked')} "
+            f"take(s) ({flip:.1%}){detail}. A flipped take is not a degraded "
+            f"transcript, it is the wrong language — and it silently drops "
+            f"the disfluency primer too.")
+        blocking.append("language flip")
+        if lang.get("hinted") and not lang.get("auto_detected"):
+            reasons.append(
+                "…though every take was given a language hint, so this is a "
+                "provider bug, not a detection problem")
+
     if not c.get("takes_usable"):
         return {
             "verdict": "FAIL",
             "provider": c.get("provider"),
-            "reasons": [f"no usable takes — {c.get('failure_reasons') or ['unknown']}"],
-            "thresholds": {},
+            "blocking": blocking + ["no usable takes"],
+            "reasons": reasons + [
+                f"no usable takes — {c.get('failure_reasons') or ['unknown']}"],
+            "thresholds": {"max_language_flip_rate": max_language_flip},
         }
 
     if c.get("takes_failed"):
@@ -237,6 +302,7 @@ def gate(candidate: Any, baseline: Any = None, *,
             "max_boundary_disagreement": max_boundary,
             "max_verbatim_wer_regression": max_wer_regression,
             "max_boundary_timing_p90_ms": max_boundary_p90_ms,
+            "max_language_flip_rate": max_language_flip,
         },
     }
 
@@ -284,6 +350,21 @@ def render(summaries: Any, gates: Any = None,
         if s.get("failure_reasons"):
             for r in s["failure_reasons"]:
                 lines.append(f"     ! {r}")
+
+        ld = s.get("language_detection") or {}
+        if ld.get("checked"):
+            mode = ("auto-detect" if not ld.get("hinted")
+                    else ("hinted" if not ld.get("auto_detected") else "mixed"))
+            line = (f"   LANGUAGE flips        {ld.get('wrong')}/"
+                    f"{ld.get('checked')}  ({_pct(ld.get('flip_rate'), 1)})"
+                    f"  [{mode}]")
+            if ld.get("flips_to_l1"):
+                line += f"   → {ld['flips_to_l1']} to speaker's L1"
+            lines.append(line)
+            for exp, e in sorted((ld.get("by_expected_language") or {}).items()):
+                if e.get("wrong"):
+                    lines.append(f"     {exp}: {e['wrong']}/{e['takes']} wrong"
+                                 f"  heard as {e.get('detected_as')}")
 
         b = s.get("slide_bucket") or {}
         if is_base:

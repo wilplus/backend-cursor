@@ -111,6 +111,27 @@ def _coerce_advances(raw: Any) -> list:
     return out
 
 
+def _derive_track(entry: Any) -> str:
+    """Which of the two questions a take answers.
+
+    The founder's brief names two, and they must never be averaged together
+    because they exercise different code paths — the English disfluency
+    primer is applied on one and DROPPED on the other
+    (``openai_service.transcribe_audio``), so a single corpus-wide number
+    describes a configuration that no take actually ran under:
+
+      l2_english          L2 English — accented, language='en', primer ON
+      native_non_english  native fluent speech — primer OFF, vocabulary only
+      en_native           the control that separates accent from everything else
+    """
+    lang = (str((entry or {}).get("language") or "").strip().lower() or "en")[:2]
+    accent = str((entry or {}).get("accent") or "").strip().lower()
+    if lang != "en":
+        return "native_non_english"
+    return "en_native" if accent.startswith(("en-native", "en_native",
+                                             "native-en")) else "l2_english"
+
+
 def load_take(entry: Any, root: str) -> dict:
     """One manifest entry → a validated take dict."""
     if not isinstance(entry, dict):
@@ -163,6 +184,16 @@ def load_take(entry: Any, root: str) -> dict:
         "accent": (str(entry.get("accent") or "").strip() or "unspecified"),
         "condition": (str(entry.get("condition") or "").strip() or "unspecified"),
         "speaker_id": (str(entry.get("speaker_id") or "").strip() or None),
+        # The speaker's NATIVE language, which is NOT the language of the
+        # audio for an L2 take. Lets language_detection isolate the signature
+        # failure — accented English detected as the speaker's L1 — from
+        # generic language confusion.
+        "accent_l1": (str(entry.get("accent_l1") or "").strip().lower()[:2]
+                      or None),
+        # Which of the two questions this take answers. Derived when absent
+        # so an older manifest keeps working.
+        "track": (str(entry.get("track") or "").strip()
+                  or _derive_track(entry)),
         "duration_s": entry.get("duration_s"),
         "notes": entry.get("notes") or "",
     }
@@ -189,12 +220,24 @@ def load_manifest(path: str) -> dict:
         entries = [json.loads(ln) for ln in raw.splitlines()
                    if ln.strip() and not ln.lstrip().startswith("#")]
 
-    takes = [load_take(e, root) for e in entries]
+    # Take-level problems are COLLECTED, not raised. A 60-take corpus with
+    # three bad reference paths should report all three in one run rather
+    # than dying on the first — `--check` exists to hand back the full list
+    # of what needs fixing. Manifest-level problems (unparseable JSON,
+    # duplicate ids) still raise, since nothing meaningful survives them.
+    takes, load_errors = [], []
+    for e in entries:
+        try:
+            takes.append(load_take(e, root))
+        except CorpusError as err:
+            load_errors.append(str(err))
+
     ids = [t["take_id"] for t in takes]
     dupes = {i for i in ids if ids.count(i) > 1}
     if dupes:
         raise CorpusError(f"duplicate take_id(s): {sorted(dupes)}")
-    return {"root": root, "meta": meta, "takes": takes}
+    return {"root": root, "meta": meta, "takes": takes,
+            "load_errors": load_errors}
 
 
 def readiness(corpus: Any) -> dict:
@@ -205,6 +248,7 @@ def readiness(corpus: Any) -> dict:
     than discovering mid-run that the headline metric is unmeasurable.
     """
     takes = (corpus or {}).get("takes") or []
+    load_errors = (corpus or {}).get("load_errors") or []
     n = len(takes)
     missing_audio = [t["take_id"] for t in takes if not t["audio_exists"]]
     with_ref = [t for t in takes if t["reference_text"]]
@@ -213,12 +257,16 @@ def readiness(corpus: Any) -> dict:
     with_times = [t for t in takes if t["reference_words"]]
 
     strata: dict = {}
+    tracks: dict = {}
     for t in takes:
         strata.setdefault(t["accent"], []).append(t["take_id"])
+        tracks.setdefault(t["track"], []).append(t["take_id"])
 
     blockers = []
-    if not n:
+    if not n and not load_errors:
         blockers.append("corpus is empty")
+    for err in load_errors:
+        blockers.append(f"take failed to load — {err}")
     if missing_audio:
         blockers.append(f"{len(missing_audio)} take(s) have no audio file on "
                         f"disk: {missing_audio[:5]}")
@@ -246,11 +294,13 @@ def readiness(corpus: Any) -> dict:
 
     return {
         "takes": n,
+        "load_errors": load_errors,
         "with_audio": n - len(missing_audio),
         "with_reference_text": len(with_ref),
         "with_deck_timeline": len(with_deck),
         "with_reference_word_times": len(with_times),
         "strata": {k: len(v) for k, v in sorted(strata.items())},
+        "tracks": {k: len(v) for k, v in sorted(tracks.items())},
         "can_compute_wer": bool(with_ref),
         "can_compute_slide_bucket": bool(with_deck),
         "can_compute_timestamp_accuracy": bool(with_times),

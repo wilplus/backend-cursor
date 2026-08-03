@@ -392,11 +392,15 @@ class CorpusTests(unittest.TestCase):
                 self.assertIsInstance(a["t_ms"], int)
                 self.assertIsInstance(a["index"], int)
 
-    def test_missing_required_field_raises(self):
+    def test_missing_required_field_is_a_collected_blocker(self):
+        # Take-level: one malformed entry must not kill a 60-take manifest.
         with tempfile.TemporaryDirectory() as tmp:
-            p = self._manifest(tmp, [{"audio": "a.mp3"}])
-            with self.assertRaises(corpus.CorpusError):
-                corpus.load_manifest(p)
+            p = self._manifest(tmp, [{"audio": "a.mp3"},
+                                     {"take_id": "ok", "audio": "b.mp3"}])
+            c = corpus.load_manifest(p)
+            self.assertEqual([t["take_id"] for t in c["takes"]], ["ok"])
+            self.assertTrue(any("take_id" in e for e in c["load_errors"]))
+            self.assertFalse(corpus.readiness(c)["ready"])
 
     def test_duplicate_take_id_raises(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -463,6 +467,125 @@ class CorpusTests(unittest.TestCase):
             self.assertTrue(any("strata below" in w for w in r["warnings"]))
 
 
+class LanguageDetectionTests(unittest.TestCase):
+    """The catastrophic failure for an L2-accented user base, and the one
+    no WER number can see."""
+
+    def test_correct_detection(self):
+        d = metrics.language_detection({"language": "en"}, expected="en")
+        self.assertTrue(d["ok"])
+        self.assertFalse(d["flipped_to_l1"])
+
+    def test_flip_to_speaker_l1_is_isolated(self):
+        # Polish-accented English heard as Polish — the signature failure.
+        d = metrics.language_detection({"language": "pl"}, expected="en",
+                                       accent_l1="pl")
+        self.assertFalse(d["ok"])
+        self.assertTrue(d["flipped_to_l1"])
+
+    def test_generic_confusion_is_not_an_l1_flip(self):
+        d = metrics.language_detection({"language": "de"}, expected="en",
+                                       accent_l1="pl")
+        self.assertFalse(d["ok"])
+        self.assertFalse(d["flipped_to_l1"])
+
+    def test_native_polish_flipping_to_english_is_caught(self):
+        # The other direction: fluent Polish heard as English.
+        d = metrics.language_detection({"language": "en"}, expected="pl",
+                                       accent_l1="pl")
+        self.assertFalse(d["ok"])
+        self.assertFalse(d["flipped_to_l1"])   # detected != l1
+
+    def test_locale_suffix_normalized(self):
+        d = metrics.language_detection({"language": "en-US"}, expected="en")
+        self.assertTrue(d["ok"])
+
+    def test_provider_reporting_no_language(self):
+        d = metrics.language_detection({"language": None}, expected="en")
+        self.assertIsNone(d["ok"])
+        self.assertFalse(d["reported"])
+
+    def test_none_when_nothing_to_check_against(self):
+        self.assertIsNone(
+            metrics.language_detection({"language": "en"}, expected=None))
+
+    def test_evaluated_even_when_take_is_unusable(self):
+        # A flip is a plausible CAUSE of an unusable result; losing the
+        # diagnosis to the coverage short-circuit is the bug this prevents.
+        out = metrics.evaluate_take(
+            reference_text="hello", language="en", accent_l1="pl",
+            candidate={"text": "dzien dobry", "words": [], "language": "pl"})
+        self.assertIn("skipped", out)
+        self.assertTrue(out["language_detection"]["flipped_to_l1"])
+
+    def test_gate_blocks_on_any_flip(self):
+        s = report.summarize("cand", [
+            {"take": {}, "result": {
+                "coverage": {"ok": True},
+                "language_detection": {"expected": "en", "detected": "pl",
+                                       "ok": False, "reported": True,
+                                       "flipped_to_l1": True,
+                                       "hint_given": False}}}])
+        g = report.gate(s)
+        self.assertIn("language flip", g["blocking"])
+        self.assertTrue(any("NATIVE language" in r for r in g["reasons"]))
+
+    def test_flip_rate_pooled_by_expected_language(self):
+        rows = [{"take": {}, "result": {
+            "coverage": {"ok": True},
+            "language_detection": {"expected": e, "detected": d,
+                                   "ok": e == d, "reported": True,
+                                   "flipped_to_l1": False,
+                                   "hint_given": False}}}
+            for e, d in (("en", "en"), ("en", "pl"), ("pl", "pl"))]
+        ld = report.summarize("x", rows)["language_detection"]
+        self.assertEqual(ld["checked"], 3)
+        self.assertEqual(ld["wrong"], 1)
+        self.assertAlmostEqual(ld["flip_rate"], 1 / 3)
+        self.assertEqual(ld["by_expected_language"]["en"]["detected_as"],
+                         {"pl": 1})
+
+
+class TrackDerivationTests(unittest.TestCase):
+    """L2-English and native non-English run under DIFFERENT prompt
+    configurations, so they must never be averaged."""
+
+    def _track(self, **entry):
+        with tempfile.TemporaryDirectory() as tmp:
+            p = os.path.join(tmp, "manifest.json")
+            with open(p, "w", encoding="utf-8") as fh:
+                json.dump({"takes": [{"take_id": "t", "audio": "a.mp3",
+                                      **entry}]}, fh)
+            return corpus.load_manifest(p)["takes"][0]["track"]
+
+    def test_accented_english_is_l2(self):
+        self.assertEqual(
+            self._track(language="en", accent="polish-l2-en"), "l2_english")
+
+    def test_native_polish_is_native_non_english(self):
+        self.assertEqual(
+            self._track(language="pl", accent="pl-native"),
+            "native_non_english")
+
+    def test_native_english_control_is_separate(self):
+        self.assertEqual(
+            self._track(language="en", accent="en-native-us"), "en_native")
+
+    def test_explicit_track_wins_over_derivation(self):
+        self.assertEqual(
+            self._track(language="en", accent="polish-l2-en",
+                        track="custom"), "custom")
+
+    def test_accent_l1_normalized(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            p = os.path.join(tmp, "manifest.json")
+            with open(p, "w", encoding="utf-8") as fh:
+                json.dump({"takes": [{"take_id": "t", "audio": "a.mp3",
+                                      "accent_l1": "PL-pl"}]}, fh)
+            self.assertEqual(
+                corpus.load_manifest(p)["takes"][0]["accent_l1"], "pl")
+
+
 class ReferencePathTests(unittest.TestCase):
     """A typo'd reference path must never become the reference transcript."""
 
@@ -472,20 +595,53 @@ class ReferencePathTests(unittest.TestCase):
             json.dump({"takes": takes}, fh)
         return p
 
-    def test_missing_reference_file_raises_not_silently_inlines(self):
+    def test_missing_reference_file_is_a_blocker_not_an_inline_fallback(self):
         with tempfile.TemporaryDirectory() as tmp:
             p = self._manifest(tmp, [{"take_id": "t1", "audio": "a.mp3",
                                       "reference_text": "refs/nope.txt"}])
-            with self.assertRaises(corpus.CorpusError) as ctx:
-                corpus.load_manifest(p)
-            self.assertIn("looks like a path", str(ctx.exception))
+            c = corpus.load_manifest(p)
+            self.assertEqual(c["takes"], [])
+            self.assertTrue(any("looks like a path" in e
+                                for e in c["load_errors"]))
+            self.assertFalse(corpus.readiness(c)["ready"])
+
+    def test_all_bad_takes_reported_not_just_the_first(self):
+        # A 60-take corpus with three bad paths should surface all three in
+        # one run, not die on the first.
+        with tempfile.TemporaryDirectory() as tmp:
+            p = self._manifest(tmp, [
+                {"take_id": f"t{i}", "audio": "a.mp3",
+                 "reference_text": f"refs/nope{i}.txt"} for i in range(3)])
+            c = corpus.load_manifest(p)
+            self.assertEqual(len(c["load_errors"]), 3)
+
+    def test_good_takes_survive_alongside_bad_ones(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            p = self._manifest(tmp, [
+                {"take_id": "bad", "audio": "a.mp3",
+                 "reference_text": "refs/nope.txt"},
+                {"take_id": "good", "audio": "a.mp3",
+                 "reference_text": "actual prose here"}])
+            c = corpus.load_manifest(p)
+            self.assertEqual([t["take_id"] for t in c["takes"]], ["good"])
+            self.assertEqual(len(c["load_errors"]), 1)
 
     def test_bare_txt_name_is_also_treated_as_a_path(self):
         with tempfile.TemporaryDirectory() as tmp:
             p = self._manifest(tmp, [{"take_id": "t1", "audio": "a.mp3",
                                       "reference_text": "take01.txt"}])
-            with self.assertRaises(corpus.CorpusError):
-                corpus.load_manifest(p)
+            self.assertTrue(corpus.load_manifest(p)["load_errors"])
+
+    def test_empty_reference_file_means_no_reference_not_empty_transcript(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            os.makedirs(os.path.join(tmp, "refs"))
+            open(os.path.join(tmp, "refs", "t1.txt"), "w").close()
+            p = self._manifest(tmp, [{"take_id": "t1", "audio": "a.mp3",
+                                      "reference_text": "refs/t1.txt"}])
+            c = corpus.load_manifest(p)
+            self.assertEqual(c["load_errors"], [])
+            self.assertFalse(c["takes"][0]["reference_text"])
+            self.assertEqual(corpus.readiness(c)["with_reference_text"], 0)
 
     def test_ordinary_prose_still_accepted_inline(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -597,6 +753,69 @@ class RunnerEndToEndTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             rc = runner.main(["--manifest", self._corpus(tmp), "--check"])
             self.assertEqual(rc, 0)          # audio present, deck present
+
+    def test_scaffold_creates_layout_that_then_loads(self):
+        runner = self._load_runner()
+        with tempfile.TemporaryDirectory() as tmp:
+            p = os.path.join(tmp, "manifest.json")
+            with open(p, "w", encoding="utf-8") as fh:
+                json.dump({"takes": [{
+                    "take_id": "t1", "audio": "audio/t1.mp3",
+                    "reference_text": "refs/t1.txt", "language": "en",
+                    "accent": "polish-l2-en", "accent_l1": "pl"}]}, fh)
+            # Before: the manifest cannot load (reference path unresolved).
+            self.assertTrue(corpus.load_manifest(p)["load_errors"])
+            self.assertEqual(runner.main(["--manifest", p, "--scaffold"]), 0)
+            # After: it loads clean, with the reference correctly absent
+            # rather than silently filled with placeholder prose.
+            c = corpus.load_manifest(p)
+            self.assertEqual(c["load_errors"], [])
+            self.assertEqual(len(c["takes"]), 1)
+            self.assertFalse(c["takes"][0]["reference_text"])
+            self.assertTrue(os.path.isdir(os.path.join(tmp, "audio")))
+
+    def test_no_language_hint_mode_marks_results_auto_detected(self):
+        from asr_eval import providers
+
+        # Provider mishears Polish-accented English as Polish.
+        providers.register("stub:flipper")(lambda path, **kw: {
+            "text": "alpha bravo charlie delta", "duration": 10.0,
+            "language": "pl", "segments": [],
+            "words": [_w("alpha", 4.8), _w("bravo", 5.2),
+                      _w("charlie", 6.0), _w("delta", 7.0)]})
+
+        runner = self._load_runner()
+        with tempfile.TemporaryDirectory() as tmp:
+            for name in ("t1.mp3", "t2.mp3"):
+                open(os.path.join(tmp, name), "wb").close()
+            p = os.path.join(tmp, "manifest.json")
+            with open(p, "w", encoding="utf-8") as fh:
+                json.dump({"takes": [{
+                    "take_id": tid, "audio": f"{tid}.mp3",
+                    "reference_text": "alpha bravo charlie delta",
+                    "language": "en", "accent": "polish-l2-en",
+                    "accent_l1": "pl", "slides": 2,
+                    "slide_advances": [{"index": 0, "t_ms": 0},
+                                       {"index": 1, "t_ms": 5000}],
+                } for tid in ("t1", "t2")]}, fh)
+            out = os.path.join(tmp, "res.json")
+            rc = runner.main(["--manifest", p, "--providers", "stub:flipper",
+                              "--baseline", "stub:flipper",
+                              "--no-language-hint", "--out", out, "--force"])
+            with open(out, encoding="utf-8") as fh:
+                res = json.load(fh)
+
+        ld = res["summaries"][0]["language_detection"]
+        self.assertEqual(ld["checked"], 2)
+        self.assertEqual(ld["wrong"], 2)
+        self.assertEqual(ld["flips_to_l1"], 2)
+        self.assertEqual(ld["auto_detected"], 2)
+        self.assertEqual(ld["hinted"], 0)
+        # Baseline is not gated, so the run itself is clean...
+        self.assertEqual(rc, 0)
+        # ...but the flip is recorded and would block any candidate.
+        g = report.gate(res["summaries"][0])
+        self.assertIn("language flip", g["blocking"])
 
     def test_unknown_provider_is_rejected(self):
         runner = self._load_runner()

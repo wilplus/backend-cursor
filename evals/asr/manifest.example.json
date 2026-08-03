@@ -2,6 +2,9 @@
   "_comment": [
     "GOLDEN SET MANIFEST — copy to manifest.json and fill in.",
     "",
+    "One entry per stratum is shown below as a shape reference. The real",
+    "corpus repeats each shape N times (counts in README.md).",
+    "",
     "Only `take_id` and `audio` are required. Every other field unlocks a",
     "metric; a take without them still contributes what it can:",
     "",
@@ -10,113 +13,157 @@
     "                             \"refs/take-01.txt\"). A path-shaped value",
     "                             that does not resolve is an ERROR, not a",
     "                             fallback to inline text — see corpus.py.",
-    "                             The examples below are inline so this file",
-    "                             loads as-is; a real corpus uses paths.",
     "  slide_advances + slides -> SLIDE-BUCKET AGREEMENT, the metric that",
     "                             decides the migration. Without these the",
     "                             run cannot answer the actual question.",
     "  reference_words         -> timestamp ACCURACY (tier 2) instead of",
     "                             agreement-with-whisper-1 (tier 3). Generate",
     "                             with:  scripts/asr_eval_run.py --align",
-    "  accent / condition      -> per-stratum breakdown. A corpus average",
-    "                             hides the exact subgroup we are trying to",
-    "                             fix, so these matter more than they look.",
+    "  language                -> the language SPOKEN in the audio. For an",
+    "                             L2-English take this is \"en\", NOT the",
+    "                             speaker's mother tongue.",
+    "  accent_l1               -> the speaker's NATIVE language. Lets the",
+    "                             harness isolate the signature L2 failure:",
+    "                             accented English auto-detected as the",
+    "                             speaker's L1, which returns a wrong-language",
+    "                             transcript and silently drops the English",
+    "                             disfluency primer.",
+    "  accent / condition      -> per-stratum breakdown.",
+    "  track                   -> derived automatically; override only if the",
+    "                             derivation is wrong for a given take.",
     "",
-    "slide_advances is the raw tap timeline as the FE sends it: {index, t_ms}",
-    "with t_ms on the UI clock, integers. slide_clock_offset_ms is the",
-    "measured audio-vs-UI offset when the client reported one.",
+    "TWO TRACKS, NEVER AVERAGED. l2_english runs WITH the English disfluency",
+    "primer; native_non_english runs with it DROPPED (production rule in",
+    "openai_service.transcribe_audio). A combined number describes a setup no",
+    "take actually ran under, so the runner always reports them apart.",
     "",
-    "Audio files are NOT committed — see evals/asr/README.md."
+    "Audio files and reference transcripts are NOT committed — see README.md."
   ],
-  "corpus_version": "0.1",
-  "notes": "Example only. Replace `takes` with the real golden set.",
+
+  "corpus_version": "0.2",
+  "notes": "Strata shapes for the willab user base. Replace with real takes.",
+
   "takes": [
     {
-      "take_id": "en-native-decked-01",
-      "audio": "audio/en-native-decked-01.mp3",
-      "reference_text": "REPLACE ME with the verbatim human transcript for this take, fillers included.",
+      "take_id": "en-native-01",
+      "audio": "audio/en-native-01.mp3",
+      "reference_text": "refs/en-native-01.txt",
       "language": "en",
-      "accent": "en-native-us",
+      "accent": "en-native",
+      "accent_l1": "en",
       "condition": "quiet-room",
       "speaker_id": "sp-001",
-      "duration_s": 214,
-      "vocabulary": [
-        "willab",
-        "kubernetes"
-      ],
       "slides": 4,
       "slide_advances": [
-        {
-          "index": 0,
-          "t_ms": 0
-        },
-        {
-          "index": 1,
-          "t_ms": 48200
-        },
-        {
-          "index": 2,
-          "t_ms": 105600
-        },
-        {
-          "index": 3,
-          "t_ms": 167300
-        }
+        { "index": 0, "t_ms": 0 },
+        { "index": 1, "t_ms": 48200 },
+        { "index": 2, "t_ms": 105600 },
+        { "index": 3, "t_ms": 167300 }
       ],
       "slide_clock_offset_ms": 140,
-      "notes": "Clean baseline take — the control for the accent strata."
+      "notes": "CONTROL — isolates accent from deck, mic, room, topic."
     },
+
     {
-      "take_id": "pl-l2-en-decked-01",
-      "audio": "audio/pl-l2-en-decked-01.mp3",
-      "reference_text": "REPLACE ME with the verbatim human transcript for this take, fillers included.",
+      "take_id": "pl-l2-en-01",
+      "audio": "audio/pl-l2-en-01.mp3",
+      "reference_text": "refs/pl-l2-en-01.txt",
       "language": "en",
       "accent": "polish-l2-en",
+      "accent_l1": "pl",
       "condition": "quiet-room",
-      "speaker_id": "sp-004",
-      "duration_s": 189,
+      "speaker_id": "sp-010",
       "slides": 3,
       "slide_advances": [
-        {
-          "index": 0,
-          "t_ms": 0
-        },
-        {
-          "index": 1,
-          "t_ms": 61000
-        },
-        {
-          "index": 2,
-          "t_ms": 128400
-        }
+        { "index": 0, "t_ms": 0 },
+        { "index": 1, "t_ms": 61000 },
+        { "index": 2, "t_ms": 128400 }
       ],
-      "notes": "Heavy L2 accent, English audio. The case the migration is for."
+      "notes": "Largest accent group. Watch for auto-detect flipping en->pl."
     },
     {
-      "take_id": "pl-native-decked-01",
-      "audio": "audio/pl-native-decked-01.mp3",
-      "reference_text": "REPLACE ME with the verbatim human transcript for this take, fillers included.",
-      "language": "pl",
-      "accent": "pl-native",
+      "take_id": "de-l2-en-01",
+      "audio": "audio/de-l2-en-01.mp3",
+      "reference_text": "refs/de-l2-en-01.txt",
+      "language": "en",
+      "accent": "german-l2-en",
+      "accent_l1": "de",
       "condition": "quiet-room",
-      "speaker_id": "sp-004",
-      "duration_s": 202,
+      "speaker_id": "sp-020",
       "slides": 3,
       "slide_advances": [
-        {
-          "index": 0,
-          "t_ms": 0
-        },
-        {
-          "index": 1,
-          "t_ms": 55800
-        },
-        {
-          "index": 2,
-          "t_ms": 141200
-        }
+        { "index": 0, "t_ms": 0 },
+        { "index": 1, "t_ms": 57500 },
+        { "index": 2, "t_ms": 119800 }
+      ]
+    },
+    {
+      "take_id": "it-l2-en-01",
+      "audio": "audio/it-l2-en-01.mp3",
+      "reference_text": "refs/it-l2-en-01.txt",
+      "language": "en",
+      "accent": "italian-l2-en",
+      "accent_l1": "it",
+      "condition": "quiet-room",
+      "speaker_id": "sp-030",
+      "slides": 3,
+      "slide_advances": [
+        { "index": 0, "t_ms": 0 },
+        { "index": 1, "t_ms": 52100 },
+        { "index": 2, "t_ms": 133900 }
+      ]
+    },
+    {
+      "take_id": "uk-l2-en-01",
+      "audio": "audio/uk-l2-en-01.mp3",
+      "reference_text": "refs/uk-l2-en-01.txt",
+      "language": "en",
+      "accent": "ukrainian-l2-en",
+      "accent_l1": "uk",
+      "condition": "quiet-room",
+      "speaker_id": "sp-040",
+      "slides": 3,
+      "slide_advances": [
+        { "index": 0, "t_ms": 0 },
+        { "index": 1, "t_ms": 64300 },
+        { "index": 2, "t_ms": 141000 }
       ],
-      "notes": "Non-English path: prompt rule differs (English disfluency prompt is dropped)."
+      "notes": "uk vs ru confusion is a known ASR failure — accent_l1 catches it."
+    },
+    {
+      "take_id": "asian-l2-en-zh-01",
+      "audio": "audio/asian-l2-en-zh-01.mp3",
+      "reference_text": "refs/asian-l2-en-zh-01.txt",
+      "language": "en",
+      "accent": "asian-l2-en",
+      "accent_l1": "zh",
+      "condition": "quiet-room",
+      "speaker_id": "sp-050",
+      "slides": 3,
+      "slide_advances": [
+        { "index": 0, "t_ms": 0 },
+        { "index": 1, "t_ms": 59900 },
+        { "index": 2, "t_ms": 124700 }
+      ],
+      "notes": "One stratum, mixed L1s (zh / ja / hi) — keep accent_l1 exact so the mix can be split apart if one sub-group behaves differently."
+    },
+
+    {
+      "take_id": "pl-native-01",
+      "audio": "audio/pl-native-01.mp3",
+      "reference_text": "refs/pl-native-01.txt",
+      "language": "pl",
+      "accent": "pl-native",
+      "accent_l1": "pl",
+      "condition": "quiet-room",
+      "speaker_id": "sp-010",
+      "slides": 3,
+      "slide_advances": [
+        { "index": 0, "t_ms": 0 },
+        { "index": 1, "t_ms": 55800 },
+        { "index": 2, "t_ms": 141200 }
+      ],
+      "notes": "TRACK 2 — native fluent Polish. Different code path: the English disfluency primer is DROPPED, so only domain vocabulary primes the decode. Same speaker_id as pl-l2-en-01 where possible, which separates 'the model dislikes this voice' from 'the model dislikes this language'."
     }
   ]
 }

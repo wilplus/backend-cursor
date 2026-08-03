@@ -117,11 +117,42 @@ here. The one dependency runs the other way: `metrics._bucket` calls the
 **production** `slide_index_for_offset` rather than reimplementing it, so
 the eval cannot drift from the rule it is gating.
 
+### Language flips (added 2026-08-03, after the demographics landed)
+
+The user base is L2-English speakers — Polish, German, Italian, Ukrainian,
+and a Mandarin/Japanese/Indian mix — who ALSO speak fluent native Polish. So
+`en` and `pl` are both live in the same product, and the live path
+**auto-detects** language whenever `session_context.language` is unset
+(`lab_recording.py:408`).
+
+That makes language detection a first-class F1 concern rather than a
+hypothetical. The signature failure is Whisper hearing accented English as
+the speaker's mother tongue: the transcript comes back in the wrong language
+(or translated), and willab's own prompt rule then drops the English
+disfluency primer on top, because that rule keys off language. Scored against
+an English reference the take reports ~100% WER and looks like an accent
+problem, when the real failure was one routing decision upstream of
+transcription.
+
+`metrics.language_detection` reports it, `accent_l1` in the corpus separates
+a flip-to-L1 from generic confusion, and the gate holds flips to **zero** —
+the one threshold here not expected to move after the baseline run. A flip
+does not degrade a take, it destroys it.
+
+Corpus is split into two tracks that are never averaged (`l2_english`,
+`native_non_english`) because they run under different decoding
+configurations. Strata, counts, and a 26-take phase-1 subset are in
+`evals/asr/README.md`.
+
 ### Metric ranking, and why it is not WER
 
 Ranked by decision-relevance. Getting this order wrong is how a migration
 ships a regression while the headline improves:
 
+0. **language flip** — is the transcript even in the right language?
+   Evaluated before coverage, because a flip is a plausible cause of an
+   unusable result and losing that diagnosis to an early return is how an
+   upstream routing bug gets recorded as an accent problem.
 1. **coverage** — did the provider return word timestamps at all? Reported
    first because a provider that returns none otherwise sails through every
    timing metric as "no disagreements found". This is a hard fail, and it is
