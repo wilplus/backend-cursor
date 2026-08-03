@@ -107,6 +107,14 @@ app.register_blueprint(life_reminders_webhook_bp)
 from routes.jobs import jobs_bp
 app.register_blueprint(jobs_bp)
 
+# Rate limiting (services/rate_limits.py). The @rate_limits.*_limit
+# decorators on the paid routes registered themselves while the blueprints
+# above were imported; this call attaches the storage + the before_request
+# check. It never raises — a limiter that can't start must not stop the app
+# from serving (live loop).
+from services import rate_limits
+rate_limits.init_app(app)
+
 
 @app.errorhandler(RequestEntityTooLarge)
 @app.errorhandler(413)
