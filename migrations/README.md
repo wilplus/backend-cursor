@@ -19,9 +19,10 @@
 > was the old way to discover a missed migration. Now run
 > `python scripts/migrate.py status` and it will tell you before a user does.
 >
-> Applying by hand in the Supabase SQL Editor is still supported:
-> `python scripts/migrate.py plan --offline` prints the ordered list, and
-> `migrate.py baseline --to <version>` records what you ran.
+> Applying by hand in the Supabase SQL Editor is still supported — and needs
+> no `DATABASE_URL`: `migrate.py plan --offline` prints the ordered list, and
+> `migrate.py baseline --sql` prints a paste-able block that records what you
+> ran.
 
 ## Single migration for current homework flow (recommended)
 

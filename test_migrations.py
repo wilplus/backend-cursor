@@ -440,6 +440,62 @@ class LedgerSqlTests(unittest.TestCase):
         self.assertEqual(destructive_statements(self.sql), [])
 
 
+class BaselineSqlTests(unittest.TestCase):
+    """`baseline --sql` is the only adoption path that works without a
+    DATABASE_URL — which is the founder's actual environment
+    (docs/RLS-AUDIT.md). If it regresses, the machine that most needs to
+    adopt tracking silently can't."""
+
+    @classmethod
+    def setUpClass(cls):
+        code, cls.out = run_cli(["baseline", "--sql"])
+        cls.code = code
+
+    def test_needs_no_database(self):
+        original = migrate.os.environ.pop("DATABASE_URL", None)
+        try:
+            code, out = run_cli(["baseline", "--sql"])
+            self.assertEqual(code, EXIT_OK, out)
+            self.assertIn("INSERT INTO public.schema_migrations", out)
+        finally:
+            if original is not None:
+                migrate.os.environ["DATABASE_URL"] = original
+
+    def test_emits_a_row_per_manifest_entry(self):
+        migrations = load_manifest()
+        for migration in (migrations[0], migrations[len(migrations) // 2], migrations[-1]):
+            with self.subTest(version=migration.version):
+                self.assertIn(f"('{migration.version}', '{migration.filename}'", self.out)
+        self.assertEqual(self.out.count("), TRUE)") + self.out.count(", TRUE)"),
+                         len(migrations))
+
+    def test_rows_are_marked_baselined(self):
+        # Every emitted row must be baselined=TRUE — this path never executes
+        # SQL, so claiming a verified apply would be a lie.
+        self.assertNotIn(", FALSE)", self.out)
+        self.assertIn(", TRUE)", self.out)
+
+    def test_checksums_match_the_files(self):
+        migration = load_manifest()[0]
+        self.assertIn(checksum(migration.read()), self.out)
+
+    def test_is_idempotent_and_cannot_clobber_a_real_apply(self):
+        """ON CONFLICT DO NOTHING is what stops a pasted baseline from
+        overwriting a runner-applied row (baselined=FALSE) with TRUE."""
+        self.assertIn("ON CONFLICT (version) DO NOTHING", self.out)
+        self.assertNotIn("DO UPDATE", self.out)
+
+    def test_respects_the_to_bound(self):
+        code, out = run_cli(["baseline", "--sql", "--to", "0003"])
+        self.assertEqual(code, EXIT_OK, out)
+        self.assertIn("('0003',", out)
+        self.assertNotIn("('0004',", out)
+
+    def test_sql_literals_are_quote_safe(self):
+        self.assertEqual(migrate._sql_quote("plain"), "'plain'")
+        self.assertEqual(migrate._sql_quote("it's"), "'it''s'")
+
+
 class CliTests(unittest.TestCase):
 
     def test_verify_passes_on_the_real_tree(self):

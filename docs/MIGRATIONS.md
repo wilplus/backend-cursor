@@ -87,6 +87,19 @@ DATABASE_URL=... python scripts/migrate.py baseline --dry-run   # look first
 DATABASE_URL=... python scripts/migrate.py baseline             # then confirm
 ```
 
+**No `DATABASE_URL`?** Generate the SQL and paste it into the Supabase SQL
+Editor, right after `create_schema_migrations.sql`:
+
+```bash
+python scripts/migrate.py baseline --sql          # needs no database
+```
+
+Generated on demand rather than committed as a `baseline.sql`, because a
+checked-in one goes stale the moment a migration is added, and a stale
+baseline silently under-records. It carries `ON CONFLICT (version) DO
+NOTHING`, so it is re-runnable and can never overwrite a real runner-applied
+row (`baselined = FALSE`) with an assumption.
+
 `baseline` records every manifest entry as applied **without executing any
 SQL**, marking each row `baselined = TRUE` so an assumption is never mistaken
 for a verified apply. Tracking starts for real at the next migration.
