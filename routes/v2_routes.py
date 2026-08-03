@@ -13488,6 +13488,184 @@ def v2_explore_decide_block(arc_id, block_key):
                         "error": "Failed to save the decision"}), 500
 
 
+def _block_variants_gate() -> bool:
+    """The variant-pool read surfaces exist only on top of the master
+    model (founder 2026-08-03; BLOCK_VARIANTS_ENABLED default OFF —
+    flag off, every route below is a plain 404 and the FE is
+    unaffected)."""
+    try:
+        from services.ideal_text_block import _living_transcript_enabled
+        from services.ideal_text_variants import variants_enabled
+        from services.master_document import master_document_enabled
+        return (variants_enabled() and master_document_enabled()
+                and _living_transcript_enabled())
+    except Exception:
+        return False
+
+
+@v2_bp.route("/explore/arc/<arc_id>/blocks/variants", methods=["GET"])
+@require_auth
+def v2_explore_block_variants(arc_id):
+    """The PICKER read (founder 2026-08-03, fear #3): per block, every
+    text this block has ever had — each take's version (verbatim,
+    take-badged) plus the student's latest edit — with the current one
+    flagged. Block-level granularity by design (the mobile picker stays
+    clean). AC-9: provenance and text only, no scores.
+
+    200 { blocks: [{block_key, label, take_index, variants: [
+          {variant_id, source, take_index, text, is_current}]}],
+          head_revision } · 404 · 500
+    """
+    try:
+        if not _block_variants_gate():
+            return jsonify({"code": "NOT_FOUND", "error": "not found"}), 404
+        owned, _ = _arc_owned_by_caller(arc_id)
+        if not owned:
+            return jsonify({"code": "NOT_FOUND",
+                            "error": "arc not found"}), 404
+        from services.ideal_text_variants import block_variants_payload
+        payload = block_variants_payload(db, str(arc_id))
+        if payload is None:
+            return jsonify({"code": "V2_ERROR",
+                            "error": "Could not read the document — "
+                                     "try again."}), 500
+        return jsonify({"arc_id": arc_id, **payload}), 200
+    except Exception as e:
+        logger.error("block variants GET failed arc=%s: %s", arc_id, e,
+                     exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to load"}), 500
+
+
+@v2_bp.route("/explore/arc/<arc_id>/blocks/<int:block_key>/select",
+             methods=["POST"])
+@require_auth
+def v2_explore_select_block_variant(arc_id, block_key):
+    """MIX AND MATCH (founder 2026-08-03): point one block at ANY pooled
+    variant — this take's, an earlier take's, or my own edit. The
+    displaced text stays in the pool (selecting is never destructive),
+    the composition records a new revision, and the document reassembles
+    at once.
+
+    Body: { variant_id }
+    200 { saved } · 400 · 404 · 409 NOT_PENDING (candidate block) · 500
+    """
+    try:
+        if not _block_variants_gate():
+            return jsonify({"code": "NOT_FOUND", "error": "not found"}), 404
+        owned, _ = _arc_owned_by_caller(arc_id)
+        if not owned:
+            return jsonify({"code": "NOT_FOUND",
+                            "error": "arc not found"}), 404
+        body = request.get_json(silent=True) or {}
+        variant_id = (str(body.get("variant_id") or "")).strip()
+        if not variant_id:
+            return jsonify({"code": "INVALID_INPUT",
+                            "error": "variant_id is required"}), 400
+        from services.ideal_text_variants import select_block_variant
+        ok, err = select_block_variant(db, str(arc_id), int(block_key),
+                                       variant_id, str(request.user_id))
+        if not ok:
+            if err == "NOT_FOUND":
+                return jsonify({"code": "NOT_FOUND",
+                                "error": "block or variant not found"}), 404
+            if err == "NOT_PENDING":
+                return jsonify({"code": "NOT_PENDING",
+                                "error": "This block is not selectable "
+                                         "yet."}), 409
+            return jsonify({"code": "V2_ERROR",
+                            "error": "Could not save"}), 500
+        _reassemble_after_decision(arc_id)
+        return jsonify({"saved": True}), 200
+    except Exception as e:
+        logger.error("block select failed arc=%s key=%s: %s",
+                     arc_id, block_key, e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR",
+                        "error": "Failed to save the selection"}), 500
+
+
+@v2_bp.route("/explore/arc/<arc_id>/ideal-text/revisions", methods=["GET"])
+@require_auth
+def v2_explore_ideal_revisions(arc_id):
+    """The composition timeline (founder 2026-08-03, fear #2): every
+    selection state the document has been in, newest first, with the
+    head flagged — the FE's undo/history surface. Selections are pointer
+    lists; the texts live in the pool, so nothing here is a copy.
+
+    200 { revisions: [{revision, reason, created_at, is_head}],
+          head_revision } · 404 · 500
+    """
+    try:
+        if not _block_variants_gate():
+            return jsonify({"code": "NOT_FOUND", "error": "not found"}), 404
+        owned, _ = _arc_owned_by_caller(arc_id)
+        if not owned:
+            return jsonify({"code": "NOT_FOUND",
+                            "error": "arc not found"}), 404
+        rows = db.list_ideal_text_compositions(str(arc_id), limit=50)
+        if rows is None:
+            rows = []
+        head = (db.get_ideal_text_composition_head(str(arc_id))
+                or {}).get("head_revision")
+        return jsonify({
+            "arc_id": arc_id,
+            "head_revision": head,
+            "revisions": [{
+                "revision": r.get("revision"),
+                "reason": r.get("reason"),
+                "created_at": r.get("created_at"),
+                "is_head": r.get("revision") == head,
+            } for r in rows],
+        }), 200
+    except Exception as e:
+        logger.error("ideal revisions GET failed arc=%s: %s", arc_id, e,
+                     exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to load"}), 500
+
+
+@v2_bp.route("/explore/arc/<arc_id>/ideal-text/revisions/<int:revision>"
+             "/restore", methods=["POST"])
+@require_auth
+def v2_explore_restore_ideal_revision(arc_id, revision):
+    """GO BACK (founder 2026-08-03, fear #2): repoint the document at an
+    earlier composition. Blocks that revision recorded write through;
+    blocks added since stay as they are (restore repoints, never
+    deletes). The restore lands as a NEW revision, so it is itself
+    undoable. The document reassembles at once.
+
+    200 { restored, head_revision } · 404 · 500
+    """
+    try:
+        if not _block_variants_gate():
+            return jsonify({"code": "NOT_FOUND", "error": "not found"}), 404
+        owned, _ = _arc_owned_by_caller(arc_id)
+        if not owned:
+            return jsonify({"code": "NOT_FOUND",
+                            "error": "arc not found"}), 404
+        from services.ideal_text_variants import restore_revision
+        ok, err = restore_revision(db, str(arc_id), int(revision),
+                                   str(request.user_id))
+        if not ok:
+            if err == "NOT_FOUND":
+                return jsonify({"code": "NOT_FOUND",
+                                "error": "revision not found"}), 404
+            return jsonify({"code": "V2_ERROR",
+                            "error": "Could not restore"}), 500
+        _reassemble_after_decision(arc_id)
+        head = (db.get_ideal_text_composition_head(str(arc_id))
+                or {}).get("head_revision")
+        return jsonify({"restored": True, "arc_id": arc_id,
+                        "head_revision": head}), 200
+    except Exception as e:
+        logger.error("ideal revision restore failed arc=%s rev=%s: %s",
+                     arc_id, revision, e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR",
+                        "error": "Failed to restore"}), 500
+
+
 @v2_bp.route("/explore/arc/<arc_id>/setup", methods=["GET"])
 @require_auth
 def v2_explore_arc_setup(arc_id):
@@ -14010,6 +14188,36 @@ def v2_explore_put_ideal_user_edit(arc_id):
         except Exception as _led_err:
             logger.warning("ideal user-edit: ledger failed arc=%s: %s",
                            arc_id, _led_err)
+        # ── VARIANT CAPTURE (founder 2026-08-03, fear #1): under the
+        # master model the edit ALSO lands BLOCK-LEVEL in the variant
+        # pool (source='user_edit') — a first-class picker citizen a new
+        # take can never supersede, beside the whole-blob lane above.
+        # Only when the base the student edited against IS the master
+        # text (a verified snapshot that diverged would make the diff
+        # attribute coach changes to the student). Best-effort. ──
+        try:
+            from services.master_document import (
+                assemble_master_document, master_document_enabled,
+            )
+            if master_document_enabled():
+                _m = assemble_master_document(arc_id, database=db)
+                _mtext = (_m.get("text") or "")
+                _vbase = ((_row.get("verified_text") or "").strip()
+                          if _row.get("verified_version") == current
+                          else "") or _machine
+                if _m.get("ready") and _mtext and _vbase and \
+                        re.sub(r"\s+", " ", _mtext).strip().lower() == \
+                        re.sub(r"\s+", " ", _vbase).strip().lower():
+                    from services.ideal_text_variants import (
+                        capture_user_edit_variants,
+                    )
+                    capture_user_edit_variants(
+                        db, str(arc_id), str(request.user_id), _mtext,
+                        ((_m.get("document") or {}).get("pieces") or []),
+                        text)
+        except Exception as _var_err:
+            logger.warning("ideal user-edit: variant capture failed "
+                           "arc=%s: %s", arc_id, _var_err)
         return jsonify({"saved": True, "arc_id": arc_id,
                         "version": current}), 200
     except Exception as e:

@@ -220,6 +220,19 @@ def build_skeleton(arc_id: Any, database) -> list:
                 rows.append({"arc_id": str(arc_id),
                              "block_key": i * _KEY_STEP, **fields,
                              "rejected_take_session_ids": []})
+        # DUAL-WRITE (founder 2026-08-03): the seed take's blocks enter
+        # the append-only variant pool and revision 1 pins the head —
+        # from the first build, "my text" is a pointer list that later
+        # takes can never overwrite. Best-effort beside the skeleton.
+        if rows:
+            try:
+                from services.ideal_text_variants import (
+                    snapshot_composition,
+                )
+                snapshot_composition(database, arc_id, reason="seed")
+            except Exception as _ve:
+                logger.warning("master_document: seed variants failed "
+                               "arc=%s: %s", arc_id, _ve)
         return rows
     except Exception as e:
         logger.warning("master_document: skeleton build failed arc=%s: %s",
@@ -482,6 +495,19 @@ def process_new_take(arc_id: Any, session_id: Any, database) -> int:
         mapping, extras = segment_take_for_blocks(
             doc["pieces"], rows, snips_by_id)
 
+        # DUAL-WRITE (founder 2026-08-03, fear #1): EVERY mapped segment
+        # of this take enters the append-only pool BEFORE the duel —
+        # losing blocks and displaced offers included. The single
+        # challenger slot below keeps its legacy behavior; the pool is
+        # what the picker reads. Best-effort, never blocks the judging.
+        try:
+            from services.ideal_text_variants import capture_take_variants
+            capture_take_variants(database, arc_id, sid, take_index,
+                                  mapping)
+        except Exception as _ve:
+            logger.warning("master_document: variant capture failed "
+                           "arc=%s: %s", arc_id, _ve)
+
         # ONE bulk metrics read for every judged snippet (review finding
         # #21: per-snippet round trips inside the recording POST).
         wanted: set = set()
@@ -564,6 +590,17 @@ def process_new_take(arc_id: Any, session_id: Any, database) -> int:
                 }
                 if database.upsert_ideal_text_block(str(arc_id), next_key,
                                                     fields):
+                    # The candidate's material pools too — if it is
+                    # kept-mine (row deleted) and said again later, the
+                    # words survive either way. Best-effort.
+                    try:
+                        from services.ideal_text_variants import (
+                            capture_take_variants,
+                        )
+                        capture_take_variants(database, arc_id, sid,
+                                              take_index, {next_key: grp})
+                    except Exception:
+                        pass
                     offers += 1
                     next_key += _KEY_STEP
         return offers
@@ -695,6 +732,17 @@ def decide_block(arc_id: Any, block_key: Any, action: str,
             }
         ok = database.upsert_ideal_text_block(str(arc_id), int(block_key),
                                               fields)
+        if ok and action == "accept":
+            # DUAL-WRITE (2026-08-03): an accepted upgrade is a new
+            # composition revision — the displaced incumbent stays in
+            # the pool, restorable. Best-effort.
+            try:
+                from services.ideal_text_variants import (
+                    snapshot_composition,
+                )
+                snapshot_composition(database, arc_id, reason="accept")
+            except Exception:
+                pass
         return (bool(ok), None if ok else "WRITE_FAILED")
     if status == "candidate":
         offered = str(row.get("incumbent_take_session_id") or "")
@@ -704,6 +752,15 @@ def decide_block(arc_id: Any, block_key: Any, action: str,
             ok = database.upsert_ideal_text_block(
                 str(arc_id), int(block_key),
                 {"status": "settled", "active": True})
+            if ok:
+                try:
+                    from services.ideal_text_variants import (
+                        snapshot_composition,
+                    )
+                    snapshot_composition(database, arc_id,
+                                         reason="accept")
+                except Exception:
+                    pass
             return (bool(ok), None if ok else "WRITE_FAILED")
         # keep → the row is DELETED, not parked: a settled-inactive
         # candidate became an invisible ghost that swallowed later takes'
