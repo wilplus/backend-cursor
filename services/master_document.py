@@ -354,11 +354,14 @@ def segment_take_for_blocks(new_pieces: list, blocks: list,
 
     Decked (both sides carry slide identity): EXACT slide_index match —
     no similarity anywhere (review finding #1: character similarity
-    mis-mapped a slide-8 retake onto slide 1). Deckless: proportional
-    ordinal split across the active blocks in key order.
+    mis-mapped a slide-8 retake onto slide 1). Deckless: FORCED
+    ALIGNMENT against the known script when TAKE_ALIGNMENT_ENABLED
+    (founder 2026-08-03 — anchor+NW word alignment, deterministic, the
+    off-script fallback below), else the proportional ordinal split.
 
     Only ACTIVE, non-candidate blocks are mapping targets (a kept
-    candidate is deleted outright — review finding #2's ghost). Pure."""
+    candidate is deleted outright — review finding #2's ghost). Pure
+    given rows (the alignment flag is the one env read)."""
     targets = sorted(
         (r for r in (blocks or [])
          if r.get("active", True) and r.get("status") != "candidate"),
@@ -390,6 +393,29 @@ def segment_take_for_blocks(new_pieces: list, blocks: list,
                 extras.append((si, grp))
             # si None on a decked take: cutter gap — not mappable, skip.
         return mapping, extras
+
+    # FORCED ALIGNMENT (founder 2026-08-03): the speaker is re-reading a
+    # text we hold — map pieces to blocks by CONTENT, not count. An
+    # off-script take (low coverage) falls back to the proportional
+    # split rather than fabricating a mapping. Best-effort.
+    try:
+        from services.take_alignment import (
+            alignment_enabled, map_take_to_blocks,
+        )
+        if alignment_enabled():
+            aligned, _ai = map_take_to_blocks(list(new_pieces), targets)
+            if aligned is not None:
+                logger.info(
+                    "take_alignment: %d pieces onto %d blocks "
+                    "(coverage=%.2f)", len(new_pieces), len(aligned),
+                    _ai.get("coverage") or 0)
+                return aligned, []
+            logger.info("take_alignment: off-script, proportional "
+                        "fallback (coverage=%.2f)",
+                        _ai.get("coverage") or 0)
+    except Exception as _ae:
+        logger.warning("take_alignment failed, proportional fallback: %s",
+                       _ae)
 
     segments = _proportional_split(list(new_pieces), len(targets))
     return ({t.get("block_key"): seg
