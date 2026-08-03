@@ -802,8 +802,11 @@ class BatchCapLiftTests(unittest.TestCase):
                 "slides": [{"title": "One", "body": "b"}]}}
             for _ in range(3)                     # what used to be a full batch
         ]
-        with patch.object(v2, "_presentation_id_from_slides",
-                          return_value="deck-hash"), \
+        # Patch where _continue_deck_arc RESOLVES the hash (routes.v2.arcs),
+        # not the routes.v2_routes re-export — patching the re-export is a
+        # no-op for the caller and the stub would silently not apply.
+        with patch("routes.v2.arcs._presentation_id_from_slides",
+                   return_value="deck-hash"), \
              patch.object(v2.db, "v2_list_user_lab_sessions",
                           return_value=sessions):
             return v2._continue_deck_arc(
