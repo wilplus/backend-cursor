@@ -66,9 +66,13 @@ class ProfileRouteTests(unittest.TestCase):
         self.db.get_user_speaker_sex.return_value = None
         self.db.set_user_profile.return_value = True
         self.db.set_user_speaker_sex.return_value = True
-        self._db_patch = patch.object(v2_routes, "db", self.db)
+        # /v2/user/profile lives in routes.v2.user_account (god-file split) —
+        # the whole-object db/is_coach rebinds must target THAT module's
+        # namespace, not the routes.v2_routes re-exports.
+        from routes.v2 import user_account as ua
+        self._db_patch = patch.object(ua, "db", self.db)
         self._db_patch.start()
-        self._coach_patch = patch.object(v2_routes, "is_coach",
+        self._coach_patch = patch.object(ua, "is_coach",
                                          return_value=False)
         self._coach_patch.start()
 
@@ -169,7 +173,10 @@ class ProfileRouteTests(unittest.TestCase):
             USER, domain="sales", goal=None)
 
     def test_the_sex_value_is_not_logged(self):
-        with self.assertLogs("routes.v2_routes", level="INFO") as captured:
+        # Capture the whole routes.* hierarchy: the profile route logs as
+        # routes.v2.user_account since the god-file split, and pinning one
+        # module name would silently blind this privacy fence on the next move.
+        with self.assertLogs("routes", level="INFO") as captured:
             self._post({"sex": "female"})
         joined = " ".join(captured.output)
         self.assertIn("sex_set=True", joined)

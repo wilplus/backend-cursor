@@ -637,7 +637,7 @@ class ReceiptNotResultTests(unittest.TestCase):
     def test_the_route_202_carries_no_counts(self):
         """Source-level pin on the route body itself, since that dict is
         what actually goes on the wire."""
-        with open("routes/v2_routes.py", encoding="utf-8") as fh:
+        with open("routes/v2/coach.py", encoding="utf-8") as fh:
             source = fh.read()
         block = source.split('"ok": True, "status": "processing"')[1][:600]
         for banned in ("snippet_count", "queue_count"):
@@ -789,7 +789,7 @@ class IndexRowCarriesTheRunContext(unittest.TestCase):
     back TRANSLATED into English, and nothing else on the row says so."""
 
     def test_the_route_maps_the_run_context_onto_each_row(self):
-        with open("routes/v2_routes.py", encoding="utf-8") as fh:
+        with open("routes/v2/coach.py", encoding="utf-8") as fh:
             source = fh.read()
         block = source.split("def v2_coach_list_training_imports")[1][:4000]
         for field in ('"language": ctx.get("language")',
@@ -881,7 +881,7 @@ class ArchiveIsNotDeleteTests(unittest.TestCase):
     corpus."""
 
     def _blocks(self):
-        with open("routes/v2_routes.py", encoding="utf-8") as fh:
+        with open("routes/v2/coach.py", encoding="utf-8") as fh:
             source = fh.read()
         archive = source.split(
             "def v2_coach_archive_training_import")[1].split("@v2_bp.route")[0]

@@ -462,10 +462,16 @@ class RealRouteTransparencyTests(unittest.TestCase):
     """
 
     def test_every_capped_route_exposes_its_raw_handler(self):
-        capped = {name: mod
-                  for path, mod in (("routes/v2_routes.py", _v2_mod),
-                                    ("routes/life_routes.py", _life_mod))
-                  for name in CoveredRoutesTests.EXPECTED[path]}
+        # Iterate EVERY registry bucket (the /v2 layer is split across
+        # routes/v2_routes.py + routes/v2/* since the god-file split).
+        # routes.v2_routes re-exports every moved handler, so resolving the
+        # v2 buckets through it also re-verifies the re-export surface the
+        # suite's `v2.<handler>.__wrapped__()` convention depends on.
+        capped = {}
+        for path, expected in CoveredRoutesTests.EXPECTED.items():
+            mod = _life_mod if path == "routes/life_routes.py" else _v2_mod
+            for name in expected:
+                capped[name] = mod
         self.assertGreater(len(capped), 30, "route list went stale")
         for name, mod in capped.items():
             with self.subTest(route=name):
@@ -491,37 +497,47 @@ class CoveredRoutesTests(unittest.TestCase):
     surfaces stay covered.
     """
 
+    # The /v2 route layer is split across routes/v2_routes.py and the domain
+    # modules under routes/v2/ (god-file split). Handlers are keyed by the
+    # file that OWNS them now — every (handler, decorator) pair below is
+    # unchanged from the registry's introduction; only the path keys moved
+    # with the code.
     EXPECTED = {
         "routes/v2_routes.py": {
-            # audio -> Whisper
-            "v2_lab_create_recording": "whisper_limit",
-            "v2_coach_annotation_upload": "whisper_limit",
-            "v2_coach_training_import": "whisper_limit",
             # interactive LLM
             "v2_chat_query": "llm_limit",
             "v2_chat_snippet_followup": "llm_limit",
             "v2_coaching_turn": "llm_limit",
             "v2_coaching_state_machine_turn": "llm_limit",
             "v2_coaching_intro_bubble": "llm_limit",
-            "v2_user_chat_first_question": "llm_limit",
             "v2_onboarding_opener_start": "llm_limit",
             "v2_onboarding_opener_next": "llm_limit",
-            "v2_coach_put_say_it_stronger": "llm_limit",
             "v2_admin_suggest_directives_queue": "llm_limit",
             "v2_explore_save_ideal_text": "llm_limit",
             "v2_explore_decide_block": "llm_limit",
             "v2_explore_decide_prior_take": "llm_limit",
             # multi-call generation / media / training
-            "v2_lab_presentation_extract": "heavy_limit",
             "v2_admin_learning_train": "heavy_limit",
+            # bespoke
+            "v2_public_shaky_voice_upload": "guest_funnel_limit",
+            "v2_admin_regenerate_next_session_icebreaker": "regenerate_limit",
+        },
+        "routes/v2/lab_recording.py": {
+            "v2_lab_create_recording": "whisper_limit",
+            "v2_lab_presentation_extract": "heavy_limit",
+        },
+        "routes/v2/coach.py": {
+            "v2_coach_annotation_upload": "whisper_limit",
+            "v2_coach_training_import": "whisper_limit",
+            "v2_coach_put_say_it_stronger": "llm_limit",
             "v2_coach_verify_ideal_text": "heavy_limit",
             "v2_coach_approve_ideal_text": "heavy_limit",
             "v2_coach_session_recut": "heavy_limit",
             "v2_coach_session_video": "heavy_limit",
             "v2_coach_snippet_breakthrough_video": "heavy_limit",
-            # bespoke
-            "v2_public_shaky_voice_upload": "guest_funnel_limit",
-            "v2_admin_regenerate_next_session_icebreaker": "regenerate_limit",
+        },
+        "routes/v2/user_chat.py": {
+            "v2_user_chat_first_question": "llm_limit",
         },
         "routes/life_routes.py": {
             "life_board": "llm_limit",
