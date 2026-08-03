@@ -1,6 +1,15 @@
 # Railway / Nixpacks: install ffmpeg for recording-pipeline audio analysis.
 # https://nixpacks.com/docs/configuration/file
 #
+# KEEP IN SYNC WITH railpack.json. Railway replaced Nixpacks with RAILPACK
+# as the default builder, and Railpack does NOT read this file or apt.txt —
+# its only config file is railpack.json (verified against the railpack
+# source: no "nixpacks"/"apt.txt" references exist in it). A service built
+# with Railpack therefore gets ffmpeg from railpack.json's
+# deploy.aptPackages, NOT from here. This file still governs any service
+# left on the Nixpacks builder, so both must list the same system packages
+# until every service has moved over.
+#
 # Runtime: gunicorn must see Nix profile on PATH (see Procfile), or shutil.which("ffmpeg")
 # fails and Python falls back to imageio-ffmpeg.
 # (UX Wave 4 slide-deck is PDF-only: decks are uploaded as PDF and rendered

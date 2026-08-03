@@ -135,14 +135,44 @@ exactly as before.
    worker starting on queue 'pipeline' (job timeout 3600s)
    ```
 
-   **Builder note.** Railway's newer **Railpack** builder does NOT read
-   `nixpacks.toml` / `apt.txt`, so a service built with it has no system
-   ffmpeg and logs `no system ffmpeg — using the imageio-ffmpeg bundled
-   binary`. That fallback works (the bundled wheel is a real ffmpeg), but
-   for parity with web either switch the service's builder to Nixpacks
-   (Settings → Build → Builder) or give Railpack an equivalent apt
-   package. Worth checking on the WEB service too after any rebuild — a
-   silent switch there would degrade the live loop the same way.
+   **Builder note — ffmpeg.** Railway's default builder is now
+   **Railpack**, which does NOT read `nixpacks.toml` or `apt.txt` (its
+   only config file is `railpack.json`). A service built with it has no
+   system ffmpeg and logs `no system ffmpeg — using the imageio-ffmpeg
+   bundled binary`. That fallback is a real ffmpeg and the pipeline runs,
+   but it diverges from web.
+
+   The fix is committed as **`railpack.json`** at the repo root:
+
+   ```json
+   { "$schema": "https://schema.railpack.com",
+     "deploy": { "aptPackages": ["...", "ffmpeg"] } }
+   ```
+
+   Three things about that file, each of which silently breaks it:
+   - `deploy.aptPackages` is the RUNTIME list. Root-level
+     `buildAptPackages` exists but only lives in the builder stage — put
+     ffmpeg there and the final image still won't have it.
+   - The `"..."` entry extends Railpack's generated package list. Without
+     it the list REPLACES what the Python provider adds (`libpq5` etc.),
+     so it is not cosmetic.
+   - A root `Dockerfile` would override all of this (there is none — the
+     `Dockerfile.*-cron` files are per-service paths, not the default).
+
+   Equivalent without a file, as a service variable:
+   `RAILPACK_DEPLOY_APT_PACKAGES="... ffmpeg"`.
+
+   Nixpacks is NOT a fallback plan: Railway removed its documentation and
+   dropped it from the documented builder enum (`RAILPACK` | `DOCKERFILE`)
+   in March 2026. Services still on it keep working, which is why
+   `nixpacks.toml` stays in the repo and must list the same packages as
+   `railpack.json` — but don't design around switching back to it.
+
+   Check the WEB service after any rebuild too: if it silently moved to
+   Railpack it lost ffmpeg the same way, and there it degrades the live
+   loop. Verify from its deploy log's `[startup] ffmpeg located at …`
+   line, or in a build log look for the `packages:apt:runtime` step
+   installing ffmpeg.
 5. **Canary**: flip `PIPELINE_QUEUE_ENABLED=1` + set `REDIS_URL` on the
    **web** service. Record one take; confirm 202 with `job_id`, worker log
    shows the job, poll reaches `ready`, readout renders. (Do this before
