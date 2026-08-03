@@ -332,7 +332,7 @@ class SavePublishTests(unittest.TestCase):
                               return_value={"id": sid}), \
                  patch.object(v2.db, "get_snippets_by_session",
                               return_value=[{"id": snip}]), \
-                 patch.object(v2, "_save_coach_snippet_lanes",
+                 patch("routes.v2.coach._save_coach_snippet_lanes",
                               return_value=None) as m_lanes, \
                  patch("services.training_labels.validate_publish_labels",
                        side_effect=lambda raw, ids, require_all: raw), \
@@ -362,7 +362,7 @@ class SavePublishTests(unittest.TestCase):
             request.user_id = "coach1"
             with patch.object(v2.db, "v2_get_session_by_id",
                               return_value={"id": sid}), \
-                 patch.object(v2, "_save_coach_snippet_lanes") as m_lanes, \
+                 patch("routes.v2.coach._save_coach_snippet_lanes") as m_lanes, \
                  patch.object(v2.db, "set_session_feedback_saved",
                               return_value=True) as m_save:
                 resp, status = v2.v2_coach_save_feedback.__wrapped__(sid)

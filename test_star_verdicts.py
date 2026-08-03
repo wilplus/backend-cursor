@@ -22,10 +22,28 @@ Run: python3 -m unittest test_star_verdicts
 """
 from __future__ import annotations
 
+import glob
+import os
 import sys
 import types
 import unittest
 from unittest.mock import MagicMock
+
+# The /v2 route layer is split across routes/v2_routes.py and the per-domain
+# modules under routes/v2/ (the god-file split). Source-level fences below
+# must read ALL of them, or carving a domain out silently empties the fence.
+# Globbed rather than listed so later phases are covered automatically.
+_V2_ROUTE_FILES = {
+    p: open(p, encoding="utf-8").read()
+    for p in ["routes/v2_routes.py"] + sorted(glob.glob("routes/v2/*.py"))
+    if os.path.basename(p) != "__init__.py"
+}
+
+
+def _v2_route_source() -> str:
+    """Every /v2 route module's source, concatenated."""
+    return "\n".join(_V2_ROUTE_FILES.values())
+
 
 _ORIG_SERVICES_DB = None
 
@@ -411,8 +429,7 @@ class TestBlindCoachFence(unittest.TestCase):
     def test_the_two_surfaces_are_different_endpoints(self):
         """Separation is enforced by routing, not by discipline: the verdict
         endpoints must not be bolted onto the labeling route."""
-        with open("routes/v2_routes.py", encoding="utf-8") as fh:
-            source = fh.read()
+        source = _v2_route_source()
         self.assertIn('"/coach/snippets/<snippet_id>/star-verdict"', source)
         self.assertIn('"/coach/arc/<arc_id>/stars"', source)
         # The labeling route is its own path and must stay that way.
@@ -434,19 +451,25 @@ class TestAC9Fence(unittest.TestCase):
             path = line.split(":", 1)[0]
             self.assertIn(path, (
                 "services/star_verdicts.py", "services/db.py",
-                "routes/v2_routes.py",
+                "routes/v2_routes.py", "routes/v2/coach.py",
             ), f"unexpected reader of star_verdicts: {line}")
 
     def test_the_routes_are_coach_gated(self):
-        with open("routes/v2_routes.py", encoding="utf-8") as fh:
-            source = fh.read()
+        for source in _V2_ROUTE_FILES.values():
+            for route in ('"/coach/arc/<arc_id>/stars"',
+                          '"/coach/snippets/<snippet_id>/star-verdict"'):
+                idx = source.find(route)
+                if idx < 0:
+                    continue
+                # The decorator immediately under the route must be the coach gate.
+                self.assertIn("@require_admin_or_coach",
+                              source[idx:idx + 400])
+        # Both routes must actually exist somewhere — a typo'd path above must
+        # not silently pass by matching nothing.
+        joined = _v2_route_source()
         for route in ('"/coach/arc/<arc_id>/stars"',
                       '"/coach/snippets/<snippet_id>/star-verdict"'):
-            idx = source.find(route)
-            self.assertGreater(idx, 0)
-            # The decorator immediately under the route must be the coach gate.
-            self.assertIn("@require_admin_or_coach",
-                          source[idx:idx + 400])
+            self.assertIn(route, joined)
 
 
 if __name__ == "__main__":

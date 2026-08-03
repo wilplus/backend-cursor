@@ -132,3 +132,22 @@ def _arc_audit_paid(arc_id, user_id):
     if user_id and (is_admin(user_id) or is_coach(user_id)):
         return True
     return is_arc_entitled(db, arc_id, user_id)
+
+
+def _spoken_takes_and_reads(sessions):
+    """Split an arc's sessions into spoken takes (ordered by take_index) and
+    a {spoken_session_id: [read_session, ...]} map — a take can carry SEVERAL
+    mid-take re-reads and ALL of them fold into it (founder 2026-07-16),
+    oldest first. Rows without recording_kind (pre-migration / legacy) read
+    as spoken."""
+    spoken, reads = [], {}
+    for s in sessions:
+        if (s.get("recording_kind") == "read") or s.get("paired_session_id"):
+            if s.get("paired_session_id"):
+                reads.setdefault(str(s.get("paired_session_id")), []).append(s)
+        else:
+            spoken.append(s)
+    spoken.sort(key=lambda x: (x.get("take_index") or 0))
+    for _lst in reads.values():
+        _lst.sort(key=lambda x: (x.get("created_at") or ""))
+    return spoken, reads

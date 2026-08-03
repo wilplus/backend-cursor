@@ -54,6 +54,26 @@ from unittest.mock import patch
 os.environ.setdefault("SUPABASE_URL", "https://life-panel-test.invalid")
 os.environ.setdefault("SUPABASE_SERVICE_ROLE_KEY", "aaaa.bbbb.cccc")
 
+
+def _product_py_files(root: str) -> list[str]:
+    """Every product .py under services/ and routes/, RECURSIVELY.
+
+    Recursive on purpose: the god-file split put route modules in the
+    routes/v2/ subpackage, and a flat os.listdir() would walk straight past
+    them — quietly emptying the N2 isolation fences below of the very files
+    most likely to grow a life_* import.
+    """
+    out = []
+    for folder in ("services", "routes"):
+        for dirpath, dirnames, filenames in os.walk(os.path.join(root, folder)):
+            dirnames[:] = [d for d in dirnames if d != "__pycache__"]
+            for name in filenames:
+                if not name.endswith(".py"):
+                    continue
+                out.append(os.path.relpath(
+                    os.path.join(dirpath, name), root).replace(os.sep, "/"))
+    return sorted(out)
+
 from services import life_panel as lp           # noqa: E402  (pure, always importable)
 from services import life_import as importer    # noqa: E402  (pure)
 
@@ -2191,17 +2211,13 @@ class NoNudgesTests(unittest.TestCase):
     def test_pywebpush_appears_only_in_the_sanctioned_module(self):
         root = os.path.dirname(os.path.abspath(__file__))
         offenders = []
-        for folder in ("services", "routes"):
-            for name in sorted(os.listdir(os.path.join(root, folder))):
-                if not name.endswith(".py"):
-                    continue
-                rel = f"{folder}/{name}"
-                if rel == "services/life_reminders.py":
-                    continue
-                with open(os.path.join(root, rel), "r",
-                          encoding="utf-8") as fh:
-                    if "pywebpush" in fh.read():
-                        offenders.append(rel)
+        for rel in _product_py_files(root):
+            if rel == "services/life_reminders.py":
+                continue
+            with open(os.path.join(root, rel), "r",
+                      encoding="utf-8") as fh:
+                if "pywebpush" in fh.read():
+                    offenders.append(rel)
         self.assertEqual(offenders, [])
 
 
@@ -2244,20 +2260,16 @@ class IsolationTests(unittest.TestCase):
         root = os.path.dirname(os.path.abspath(__file__))
         permitted = {"routes/v2_routes.py"}
         offenders = []
-        for folder in ("services", "routes"):
-            for name in sorted(os.listdir(os.path.join(root, folder))):
-                rel = f"{folder}/{name}"
-                if not name.endswith(".py") or rel in self.LIFE_MODULES:
-                    continue
-                if rel in permitted:
-                    continue
-                with open(os.path.join(root, rel), "r", encoding="utf-8") as fh:
-                    src = fh.read()
-                if re.search(r"^\s*from services import life_|"
-                             r"^\s*from services\.life_|"
-                             r"^\s*import services\.life_",
-                             src, re.MULTILINE):
-                    offenders.append(rel)
+        for rel in _product_py_files(root):
+            if rel in self.LIFE_MODULES or rel in permitted:
+                continue
+            with open(os.path.join(root, rel), "r", encoding="utf-8") as fh:
+                src = fh.read()
+            if re.search(r"^\s*from services import life_|"
+                         r"^\s*from services\.life_|"
+                         r"^\s*import services\.life_",
+                         src, re.MULTILINE):
+                offenders.append(rel)
         self.assertEqual(offenders, [])
 
     def test_the_chat_route_is_the_only_touched_product_file(self):

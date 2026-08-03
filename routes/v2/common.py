@@ -52,3 +52,9 @@ def _pipeline_queue_enabled() -> bool:
     Railway → flip PIPELINE_QUEUE_ENABLED=1 on the web service."""
     from services.job_queue import queue_configured
     return queue_configured()
+
+
+# Shared by _coach_pseudonym (routes/v2/coach.py) and
+# _pseudonymous_user_id (routes/v2_routes.py) -- both hash against it,
+# so it must stay one value in one place.
+_COACH_PSEUDONYM_SALT = "willab-coach-pseudonym-v1"

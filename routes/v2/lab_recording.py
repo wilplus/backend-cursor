@@ -165,6 +165,26 @@ def _recording_flow_tags(form) -> dict:
     return tags
 
 
+# ── willab beta — Lab upload handler (design §4, contract §3.3) ──────
+#
+# The convergence: multipart audio + inline session_context → min-content
+# gate → store → Whisper → segment → features → per-snippet stickiness →
+# §3.3 Readout payload, synchronously (FE confirmed multipart-sync).
+#
+# AUTH-MODEL ASSUMPTIONS (flagged for FE — easy to change, the route is
+# thin):
+#   (a) PUBLIC / guest-allowed — the willab pre-send flow is unsigned
+#       (account is created only at Send, §13), so the Lab records as a
+#       guest. Mirrors the existing /v2/public/interview/* funnel:
+#       guest_session_id keyed, user_id=NULL, claimed at send via
+#       v2_claim_guest_session.
+#   (b) session_context arrives INLINE in the multipart (topic + optional
+#       audience/target_length_seconds/domain_vocabulary), because an
+#       unsigned user's session_context isn't on the server (the
+#       @require_auth /intake-context PUT is the signed-user variant).
+# If FE wants optional-auth (use the real user_id when a JWT is present)
+# or a separate guest session_context step, say so — small change.
+
 @v2_bp.route("/lab/recordings", methods=["POST"])
 @optional_auth
 def v2_lab_create_recording():
