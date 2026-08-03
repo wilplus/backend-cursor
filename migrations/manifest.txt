@@ -275,3 +275,4 @@
 0237	add_life_period_reviews.sql
 0238	add_life_items_origin_wins.sql
 0239	add_processing_jobs.sql
+0240	add_snippet_confidence_reviews.sql

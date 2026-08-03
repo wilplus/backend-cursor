@@ -45,6 +45,21 @@ def _latest_model_row():
     return row
 
 
+def current_shadow_version() -> Optional[str]:
+    """The model version currently running in shadow, or None when no model is
+    registered yet.
+
+    The peer-review capture stamps this when the client doesn't send a
+    ``model_version``: "the AI got this right" is meaningless without knowing
+    WHICH AI, and a corpus of unattributed verdicts can't be split by version
+    later. Reads through the same short TTL cache as predict_direction, so a
+    burst of reviews costs one query, not one per review. Nothing in this lane
+    is ever promoted, so the latest registered version IS the shadowed one."""
+    row = _latest_model_row() or {}
+    version = row.get("version")
+    return str(version) if version else None
+
+
 def _latest_bundle():
     """(version, bundle) of the newest model, cached by version. (None, None)
     when there's no model / load fails."""

@@ -415,8 +415,13 @@ class TestBlindCoachFence(unittest.TestCase):
             source = fh.read()
         self.assertIn('"/coach/snippets/<snippet_id>/star-verdict"', source)
         self.assertIn('"/coach/arc/<arc_id>/stars"', source)
-        # The labeling route is its own path and must stay that way.
-        self.assertIn('"/user/snippets/<snippet_id>/label"', source)
+        # The user-side labeling route is its own path and must stay that way.
+        # It used to be /user/snippets/<id>/label; that route was deleted with
+        # the stress lane (founder 2026-08-03) and the peer-review capture
+        # took its place. The separation it guards is unchanged.
+        self.assertIn(
+            '"/user/snippets/<snippet_id>/confidence-review"', source)
+        self.assertNotIn('"/user/snippets/<snippet_id>/label"', source)
 
 
 class TestAC9Fence(unittest.TestCase):
