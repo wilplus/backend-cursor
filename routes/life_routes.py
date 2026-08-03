@@ -1124,13 +1124,26 @@ def life_item_create():
 @life_route()
 def life_item_update(item_id):
     user_id = _uid()
-    if not store.get_item(user_id, item_id):
+    existing = store.get_item(user_id, item_id)
+    if not existing:
         return _not_found()
     row = store.update_item(user_id, item_id,
                             lp.validate_item_input(_body(), partial=True))
     if not row:
         return jsonify({"code": "V2_ERROR", "error": "Could not save"}), 500
-    return jsonify({"item": lp.serialize_item(row)}), 200
+    # BE-7's retire question, at the same moment the case-approve path asks
+    # it: a principle has just ENTERED the archive through this PATCH
+    # (proposed → active — the wins-derivation's approve lands here), so
+    # "does this replace one already in it?" is answerable. Additive field:
+    # null on every other update, and a pair the founder already answered
+    # `no` on is never raised again (retire_candidate skips those).
+    retire_prompt = None
+    if (existing.get("kind") == "principle"
+            and existing.get("status") == "proposed"
+            and row.get("status") == "active"):
+        retire_prompt = _retire_prompt(user_id, row)
+    return jsonify({"item": lp.serialize_item(row),
+                    "retire_prompt": retire_prompt}), 200
 
 
 @life_bp.route("/v2/life/items/<item_id>", methods=["DELETE"])
@@ -1160,6 +1173,33 @@ def life_timeline():
         "goals": [lp.serialize_item(g) for g in dated],
         "undated": [lp.serialize_item(g) for g in undated],
         "bets": [lp.serialize_item(b) for b in bets],
+    }), 200
+
+
+# ═════════════════════════════════════════════════════════════════════════
+# Wins → proposed principles (piece 6)
+# ═════════════════════════════════════════════════════════════════════════
+
+@life_bp.route("/v2/life/wins/derive", methods=["POST"])
+@life_route()
+def life_wins_derive():
+    """Propose principles from the recent wins — the case engine's positive
+    mirror, founder-initiated.
+
+    POST because it writes (`status='proposed'` items), and only by hand:
+    nothing schedules this, no capture path triggers it (L-4). Every proposal
+    carries the wins that ground it, and none of them is part of the archive
+    — or retrievable as it — until the founder approves it through the item
+    PATCH (N5: propose, never commit). ``wins_read`` / ``wins_total`` /
+    ``already_held`` are window-honesty counts in the class of
+    ``queued_held_back``; nothing here grades anything (AC-9)."""
+    out = engine.derive_principles_from_wins(_uid())
+    return jsonify({
+        "outcome": out.get("outcome"),
+        "proposed": [lp.serialize_item(r) for r in out.get("proposed") or []],
+        "wins_read": int(out.get("wins_read") or 0),
+        "wins_total": int(out.get("wins_total") or 0),
+        "already_held": int(out.get("already_held") or 0),
     }), 200
 
 

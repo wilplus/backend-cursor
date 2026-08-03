@@ -4563,5 +4563,368 @@ class PeriodReviewStoreTests(unittest.TestCase):
         self.assertIn("add_life_period_reviews.sql", "".join(logs.output))
 
 
+@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
+class WinsDeriveTests(unittest.TestCase):
+    """Piece 6 — the case engine's positive mirror, founder-initiated.
+
+    Propose-never-commit on every path: proposals land as
+    ``status='proposed'`` items, each grounded in wins that were actually in
+    the window, deduped against the whole archive in ANY status. The window
+    is honest (read/total counts), the cap is hard, and nothing the model
+    says ever touches a win."""
+
+    @staticmethod
+    def _wins(n):
+        # Increasing created_at: w0 oldest, w{n-1} newest.
+        return [{"id": f"w{i}", "kind": "win", "status": "active",
+                 "body": f"win {i}",
+                 "created_at": (f"2026-{(i // 28) + 1:02d}-"
+                                f"{(i % 28) + 1:02d}T10:00:00+00:00")}
+                for i in range(n)]
+
+    def _derive(self, *, wins, principles=None, retrieved=None, reply,
+                refuse_origin=False):
+        created: list[dict] = []
+        calls: dict = {}
+
+        def _list_items(user_id, *, kind=None, **kw):
+            if kind == "win":
+                return list(wins)
+            if kind == "principle":
+                rows = list(principles or [])
+                if kw.get("status") == "active":
+                    rows = [r for r in rows
+                            if (r.get("status") or "active") == "active"]
+                return rows
+            return []
+
+        def _insert(user_id, fields):
+            if refuse_origin and "origin_win_ids" in fields:
+                return None
+            row = {"id": f"new{len(created)}", **fields}
+            created.append(row)
+            return row
+
+        def _fake_complete(spec, *, system, user, surface, user_id):
+            calls["system"], calls["user"] = system, user
+            calls["surface"] = surface
+            return reply
+
+        with patch.object(lengine.store, "list_items",
+                          side_effect=_list_items), \
+                patch.object(lengine.store, "insert_item",
+                             side_effect=_insert) as inserts, \
+                patch.object(lengine, "retrieve_principles",
+                             return_value=list(retrieved or [])), \
+                patch.object(lengine, "_complete",
+                             side_effect=_fake_complete) as complete, \
+                patch.object(lengine.store, "update_item") as updates:
+            out = lengine.derive_principles_from_wins(USER)
+        return out, created, calls, complete, updates, inserts
+
+    def test_no_wins_means_no_model_call(self):
+        out, created, _, complete, _, _ = self._derive(wins=[], reply={})
+        self.assertEqual(out["outcome"], "no_wins")
+        self.assertEqual(complete.call_count, 0)
+        self.assertEqual(created, [])
+        self.assertEqual(out["wins_total"], 0)
+
+    def test_the_window_is_recent_chronological_and_honest(self):
+        out, _, calls, _, _, _ = self._derive(
+            wins=self._wins(25), reply={"proposals": []})
+        self.assertEqual(out["wins_read"], lengine.WINS_DERIVE_WINDOW)
+        self.assertEqual(out["wins_total"], 25)
+        # The 20 most recent, oldest first — the wall beyond the window is
+        # not in the prompt, and the numbering starts at the window's edge.
+        self.assertIn("1. win 5", calls["user"])
+        self.assertIn("20. win 24", calls["user"])
+        self.assertNotIn("win 4\n", calls["user"])
+        self.assertNotIn("win 3", calls["user"])
+
+    def test_proposals_land_proposed_with_their_grounding(self):
+        out, created, _, _, _, _ = self._derive(
+            wins=self._wins(25),
+            reply={"proposals": [{"principle": "Ship before polishing.",
+                                  "win_numbers": [1, 20, 1, 99]}]})
+        self.assertEqual(len(created), 1)
+        row = created[0]
+        self.assertEqual(row["kind"], "principle")
+        # Propose, never commit (N5) — and store.principles is active-only,
+        # so a proposed row is not retrievable as archive either.
+        self.assertEqual(row["status"], "proposed")
+        self.assertEqual(row["title"], "Ship before polishing.")
+        # Numbers map into the WINDOW (1 = w5, 20 = w24); repeats collapse,
+        # out-of-range is dropped rather than guessed.
+        self.assertEqual(row["origin_win_ids"], ["w5", "w24"])
+        self.assertEqual(out["outcome"], "ok")
+        self.assertEqual(out["proposed"], created)
+
+    def test_an_ungrounded_proposal_is_not_a_proposal(self):
+        _, created, _, _, _, _ = self._derive(
+            wins=self._wins(5),
+            reply={"proposals": [
+                {"principle": "No grounding at all.", "win_numbers": []},
+                {"principle": "Points nowhere.", "win_numbers": [99]},
+            ]})
+        self.assertEqual(created, [])
+
+    def test_the_cap_holds(self):
+        _, created, _, _, _, _ = self._derive(
+            wins=self._wins(10),
+            reply={"proposals": [
+                {"principle": f"Distinct lesson number {i}.",
+                 "win_numbers": [i + 1]} for i in range(6)
+            ]})
+        self.assertEqual(len(created), lengine.WINS_DERIVE_CAP)
+
+    def test_a_line_the_archive_holds_in_any_status_is_skipped(self):
+        # Dismissed counts as held: the founder already said no to this
+        # wording, and re-proposing it is the wearing-down the retire rule
+        # exists to prevent. Fold-matching: case and diacritics don't make
+        # it new.
+        out, created, _, _, _, _ = self._derive(
+            wins=self._wins(5),
+            principles=[{"id": "e1", "kind": "principle",
+                         "status": "dismissed",
+                         "title": "Śpij przed decyzją."}],
+            reply={"proposals": [{"principle": "spij przed decyzja",
+                                  "win_numbers": [1]}]})
+        self.assertEqual(created, [])
+        self.assertEqual(out["already_held"], 1)
+
+    def test_the_same_line_twice_in_one_answer_lands_once(self):
+        out, created, _, _, _, _ = self._derive(
+            wins=self._wins(5),
+            reply={"proposals": [
+                {"principle": "One line.", "win_numbers": [1]},
+                {"principle": "ONE LINE!", "win_numbers": [2]},
+            ]})
+        self.assertEqual(len(created), 1)
+        self.assertEqual(out["already_held"], 1)
+
+    def test_an_unrun_migration_costs_provenance_not_the_proposal(self):
+        _, created, _, _, _, inserts = self._derive(
+            wins=self._wins(5), refuse_origin=True,
+            reply={"proposals": [{"principle": "Survives without the column.",
+                                  "win_numbers": [1]}]})
+        self.assertEqual(len(created), 1)
+        self.assertNotIn("origin_win_ids", created[0])
+        self.assertEqual(created[0]["status"], "proposed")
+        self.assertEqual(inserts.call_count, 2)
+
+    def test_model_failure_is_no_derivation_not_an_empty_wall(self):
+        out, created, _, _, _, _ = self._derive(wins=self._wins(3),
+                                                reply=None)
+        self.assertEqual(out["outcome"], "no_derivation")
+        self.assertEqual(created, [])
+        self.assertEqual(out["wins_read"], 3)
+
+    def test_nothing_the_model_says_touches_a_win(self):
+        # The wins are read-only context. No update path exists in the
+        # derivation at all — N5's shape on this surface.
+        _, _, _, _, updates, _ = self._derive(
+            wins=self._wins(5),
+            reply={"proposals": [{"principle": "A new one.",
+                                  "win_numbers": [1]}]})
+        updates.assert_not_called()
+
+    def test_two_proposals_in_one_run_do_not_share_an_order_key(self):
+        _, created, _, _, _, _ = self._derive(
+            wins=self._wins(5),
+            principles=[{"id": "e1", "kind": "principle", "status": "active",
+                         "title": "Existing.", "order_key": 1000.0}],
+            reply={"proposals": [
+                {"principle": "First new lesson.", "win_numbers": [1]},
+                {"principle": "Second new lesson.", "win_numbers": [2]},
+            ]})
+        keys = [r["order_key"] for r in created]
+        self.assertEqual(len(keys), len(set(keys)))
+        self.assertTrue(all(k > 1000.0 for k in keys))
+
+
+@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
+class WinsDeriveRouteTests(unittest.TestCase):
+    """POST /v2/life/wins/derive — gated like every other life surface,
+    serializes proposals, and carries the window-honesty counts through."""
+
+    def setUp(self):
+        self.app = Flask(__name__)
+        self.app.register_blueprint(lroutes.life_bp)
+        self.client = self.app.test_client()
+        self._orig_verify = auth.verify_supabase_token
+        auth.verify_supabase_token = lambda token: {"sub": USER}
+
+    def tearDown(self):
+        auth.verify_supabase_token = self._orig_verify
+
+    def _post(self):
+        return self.client.post("/v2/life/wins/derive",
+                                headers={"Authorization": "Bearer t"})
+
+    def test_flag_off_is_404_and_unconsented_is_409(self):
+        with patch.object(lroutes.chat, "is_enabled", return_value=False):
+            self.assertEqual(self._post().status_code, 404)
+        with patch.object(lroutes.chat, "is_enabled", return_value=True), \
+                patch.object(lroutes.chat, "has_consented",
+                             return_value=False):
+            self.assertEqual(self._post().status_code, 409)
+
+    def test_proposals_ride_the_item_serializer(self):
+        engine_out = {
+            "outcome": "ok",
+            "proposed": [{"id": "p1", "kind": "principle",
+                          "status": "proposed", "title": "New line.",
+                          "body": "New line.",
+                          "origin_win_ids": ["w1", "w2"]}],
+            "wins_read": 12, "wins_total": 40, "already_held": 1,
+        }
+        with patch.object(lroutes.chat, "is_enabled", return_value=True), \
+                patch.object(lroutes.chat, "has_consented",
+                             return_value=True), \
+                patch.object(lroutes.engine, "derive_principles_from_wins",
+                             return_value=engine_out) as derive:
+            resp = self._post()
+        self.assertEqual(resp.status_code, 200)
+        body = resp.get_json()
+        self.assertEqual(derive.call_args.args, (USER,))
+        self.assertEqual(body["outcome"], "ok")
+        self.assertEqual(body["wins_read"], 12)
+        self.assertEqual(body["wins_total"], 40)
+        self.assertEqual(body["already_held"], 1)
+        self.assertEqual(len(body["proposed"]), 1)
+        self.assertEqual(body["proposed"][0]["status"], "proposed")
+        self.assertEqual(body["proposed"][0]["origin_win_ids"],
+                         ["w1", "w2"])
+
+
+@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
+class ItemApproveRetireTests(unittest.TestCase):
+    """The retire question moves to the moment a principle ENTERS the archive
+    through the generic item PATCH (proposed → active) — the wins
+    derivation's approve path. Null everywhere else, and the veto stays
+    absolute: the PATCH itself retires nothing."""
+
+    def setUp(self):
+        self.app = Flask(__name__)
+        self.app.register_blueprint(lroutes.life_bp)
+        self.client = self.app.test_client()
+        self._orig_verify = auth.verify_supabase_token
+        auth.verify_supabase_token = lambda token: {"sub": USER}
+        self._gates = [
+            patch.object(lroutes.chat, "is_enabled", return_value=True),
+            patch.object(lroutes.chat, "has_consented", return_value=True),
+        ]
+        for g in self._gates:
+            g.start()
+
+    def tearDown(self):
+        auth.verify_supabase_token = self._orig_verify
+        for g in self._gates:
+            g.stop()
+
+    def _patch(self, *, existing, updated, body=None, candidate=None,
+               ordered=None):
+        with patch.object(lroutes.store, "get_item",
+                          return_value=existing), \
+                patch.object(lroutes.store, "update_item",
+                             return_value=updated), \
+                patch.object(lroutes.engine, "retire_candidate",
+                             return_value=candidate) as asked, \
+                patch.object(lroutes.store, "principles",
+                             return_value=ordered or []):
+            resp = self.client.patch(
+                "/v2/life/items/i1",
+                headers={"Authorization": "Bearer t"},
+                json=body or {"status": "active"})
+        return resp, asked
+
+    def test_approving_a_proposed_principle_asks_the_retire_question(self):
+        old = {"id": "old1", "kind": "principle", "status": "active",
+               "title": "The one it might replace."}
+        resp, _ = self._patch(
+            existing={"id": "i1", "kind": "principle", "status": "proposed"},
+            updated={"id": "i1", "kind": "principle", "status": "active",
+                     "title": "New line."},
+            candidate=old, ordered=[old])
+        self.assertEqual(resp.status_code, 200)
+        prompt = resp.get_json()["retire_prompt"]
+        self.assertIsNotNone(prompt)
+        self.assertEqual(prompt["number"], 1)
+        self.assertEqual(prompt["retires"]["id"], "old1")
+        # The item itself still rides the response as before.
+        self.assertEqual(resp.get_json()["item"]["status"], "active")
+
+    def test_null_when_nothing_supersedes(self):
+        resp, asked = self._patch(
+            existing={"id": "i1", "kind": "principle", "status": "proposed"},
+            updated={"id": "i1", "kind": "principle", "status": "active"},
+            candidate=None)
+        self.assertIsNone(resp.get_json()["retire_prompt"])
+        self.assertEqual(asked.call_count, 1)
+
+    def test_an_ordinary_edit_never_asks(self):
+        # Already active: retitling, reordering, dismissing — no question.
+        resp, asked = self._patch(
+            existing={"id": "i1", "kind": "principle", "status": "active"},
+            updated={"id": "i1", "kind": "principle", "status": "active",
+                     "title": "Renamed."},
+            body={"title": "Renamed."})
+        self.assertIsNone(resp.get_json()["retire_prompt"])
+        asked.assert_not_called()
+
+    def test_a_non_principle_never_asks(self):
+        resp, asked = self._patch(
+            existing={"id": "i1", "kind": "win", "status": "proposed"},
+            updated={"id": "i1", "kind": "win", "status": "active"},
+            body={"status": "active"})
+        self.assertIsNone(resp.get_json()["retire_prompt"])
+        asked.assert_not_called()
+
+
+class OriginWinsMigrationTests(unittest.TestCase):
+    """The wins-provenance column ships with the same lines every life_*
+    migration holds: idempotent, nothing dropped, a raising post-condition,
+    and it touches no product table."""
+
+    NAME = "add_life_items_origin_wins.sql"
+
+    def setUp(self):
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                            "migrations", self.NAME)
+        with open(path, "r", encoding="utf-8") as fh:
+            self.sql = fh.read()
+
+    def test_it_is_idempotent(self):
+        self.assertRegex(self.sql,
+                         r"ADD COLUMN IF NOT EXISTS\s+origin_win_ids")
+
+    def test_nothing_is_dropped_and_a_partial_run_raises(self):
+        self.assertNotRegex(self.sql.upper(), r"\bDROP\s+(TABLE|COLUMN)\b")
+        self.assertIn("RAISE EXCEPTION", self.sql)
+
+    def test_it_touches_life_tables_only(self):
+        for table in re.findall(
+                r"(?:CREATE TABLE IF NOT EXISTS|ALTER TABLE)\s+"
+                r"(?:public\.)?(\w+)", self.sql):
+            self.assertTrue(table.startswith("life_"), table)
+
+    def test_no_foreign_key_cascades_a_wins_delete_into_the_items(self):
+        # "Delete my wins" must not become "delete the principles I approved
+        # from them". Same call origin_case_id makes.
+        self.assertNotIn("REFERENCES", self.sql.upper())
+
+    @unittest.skipIf(_IMPORT_ERROR is not None, "needs app deps")
+    def test_the_column_rides_the_item_serializer_with_a_set_default(self):
+        self.assertEqual(
+            lp.serialize_item({"kind": "principle",
+                               "origin_win_ids": ["w1"]})["origin_win_ids"],
+            ["w1"])
+        # A row written before the column existed reads as "no grounding
+        # recorded" — an empty set, not a crash and not None-vs-[] casework
+        # for the FE.
+        self.assertEqual(
+            lp.serialize_item({"kind": "principle"})["origin_win_ids"], [])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -104,6 +104,29 @@ SPEC_LIFE_BOARD = LLMSpec(
     response_format={"type": "json_object"},
 )
 
+SPEC_LIFE_WINS = LLMSpec(
+    model=CHEAP_MODEL,
+    # Same posture as the case spec: a one-line phrasing against a closed
+    # record, not invention. A re-run over the same wins should land on the
+    # same lessons.
+    temperature=0.2,
+    max_tokens=400,
+    response_format={"type": "json_object"},
+)
+
+# The wins derivation reads a WINDOW, not the wall. Recency is the honest
+# cut — the most recent wins are the pattern still running — and the same
+# privacy line as retrieval holds: never the whole corpus in one prompt
+# (§2.4). When the window binds, the response says how many wins it read out
+# of how many, so a partial read never looks like a full one.
+WINS_DERIVE_WINDOW = 20
+
+# At most three proposals per derivation. Scarcity is what keeps "approve"
+# meaningful — the same reasoning L-2b writes down for strategy proposals,
+# applied here as a cap rather than a budget because the founder initiates
+# every run by hand.
+WINS_DERIVE_CAP = 3
+
 
 # ═════════════════════════════════════════════════════════════════════════
 # LLM plumbing
@@ -446,6 +469,159 @@ def log_case_applications(user_id: str, case_id: str,
     return store.insert_applications(user_id, lp.application_rows_for(
         user_id, [p.get("id") for p in (principles or [])],
         context="case", ref_id=case_id))
+
+
+# ═════════════════════════════════════════════════════════════════════════
+# Piece 6 — wins → proposed principles
+# ═════════════════════════════════════════════════════════════════════════
+
+_WINS_SYSTEM = """You assist a personal principles archive. Below are the \
+user's recent WINS — things that went right, in their own words — and the \
+principles their archive already holds.
+
+You do ONE thing: propose the NEW principles these wins teach, at most \
+three. For each, one sentence, imperative, in the language the user wrote \
+in, plus the numbers of the wins that ground it.
+
+Rules:
+ * Every proposal MUST cite at least one listed win by number. A lesson you \
+cannot point at a win is not grounded — leave it out.
+ * NEVER propose a principle the archive already holds. Rephrasing an \
+existing one does not make it new.
+ * Most win lists teach nothing new. Returning an empty list is the common \
+and correct answer.
+ * You do not rewrite the wins, you do not summarise them back, and you do \
+not grade or score anything.
+
+Return STRICT JSON:
+{"proposals": [{"principle": "<one line>", "win_numbers": [<int>, ...]}]}"""
+
+
+def derive_principles_from_wins(user_id: str) -> dict:
+    """The positive mirror of ``derive_case``, founder-initiated (piece 6).
+
+    Reads the most recent ``WINS_DERIVE_WINDOW`` wins and proposes at most
+    ``WINS_DERIVE_CAP`` new principle one-liners, each grounded in the wins
+    that teach it. Every survivor lands as a ``status='proposed'`` item —
+    propose, never commit (N5): nothing enters the archive, or its
+    retrieval, until the founder approves it. Runs ONLY when called from the
+    wins endpoint — nothing schedules it and no capture path triggers it
+    (L-4: the system is dormant until opened).
+
+    Returns ``{outcome, proposed, wins_read, wins_total, already_held}``
+    with raw rows in ``proposed`` (the route serializes). ``outcome`` is
+    ``ok`` / ``no_wins`` / ``no_derivation`` — a state, never a grade.
+    """
+    wins = [w for w in store.list_items(user_id, kind="win")
+            if (w.get("status") or "active") == "active"]
+    total = len(wins)
+    if not wins:
+        _log_derivation("wins", user_id=user_id, outcome="no_wins",
+                        wins=0, proposed=0)
+        return {"outcome": "no_wins", "proposed": [], "wins_read": 0,
+                "wins_total": 0, "already_held": 0}
+
+    # Most recent WINDOW, then chronological within it — the derivation
+    # re-reads the record the way the reviews do, oldest first.
+    recent = sorted(wins,
+                    key=lambda w: str(w.get("created_at") or ""))[-WINS_DERIVE_WINDOW:]
+    numbered_wins = "\n".join(
+        f"{i + 1}. {(w.get('body') or w.get('title') or '').strip()}"
+        for i, w in enumerate(recent))
+
+    # The archive context is retrieval-shaped (top-N by relevance, §2.4) for
+    # the PROMPT; the dedup below checks the whole archive deterministically,
+    # so a duplicate the retrieval missed still cannot land twice.
+    existing = retrieve_principles(user_id, numbered_wins)
+    numbered_principles = "\n".join(
+        f"{i + 1}. {(p.get('title') or p.get('body') or '').strip()}"
+        for i, p in enumerate(existing)
+    ) or "(the archive is empty)"
+
+    parsed = _complete(
+        SPEC_LIFE_WINS,
+        system=_WINS_SYSTEM,
+        user=(
+            f"PRINCIPLES THE ARCHIVE ALREADY HOLDS (top {len(existing)} by "
+            f"relevance — this is NOT the whole archive):\n"
+            f"{numbered_principles}\n\n"
+            f"RECENT WINS (numbered, oldest first):\n{numbered_wins}"
+        ),
+        surface="wins",
+        user_id=user_id,
+    ) or {}
+
+    # A one-liner is "already held" against the WHOLE archive, in any status:
+    # active (it exists), proposed (it is already on the table), dismissed or
+    # retired (the founder already said no — re-proposing a declined line is
+    # the retire rule's wearing-someone-down failure, and it never re-asks).
+    held = {lp._fold(p.get("title") or p.get("body") or "")
+            for p in store.list_items(user_id, kind="principle")}
+    held.discard("")
+
+    already = 0
+    accepted: list[tuple[str, list[str]]] = []
+    for prop in (parsed.get("proposals") or []):
+        if len(accepted) >= WINS_DERIVE_CAP:
+            break
+        line = prop.get("principle") if isinstance(prop, dict) else None
+        line = line.strip() if isinstance(line, str) else ""
+        if not line:
+            continue
+        win_ids: list[str] = []
+        for n in (prop.get("win_numbers") or []):
+            try:
+                idx = int(n) - 1
+            except (TypeError, ValueError):
+                continue
+            if 0 <= idx < len(recent):
+                win_id = str(recent[idx].get("id") or "")
+                if win_id and win_id not in win_ids:
+                    win_ids.append(win_id)
+        if not win_ids:
+            continue            # ungrounded — not a proposal (see system)
+        folded = lp._fold(line)
+        if not folded or folded in held:
+            already += 1
+            continue
+        held.add(folded)        # two of the same line in one answer → one
+        accepted.append((line, win_ids))
+
+    base_key = lp.next_order_key(store.principles(user_id))
+    created: list[dict] = []
+    for i, (line, win_ids) in enumerate(accepted):
+        fields = {
+            "kind": "principle",
+            "title": line[:500],
+            "body": line,
+            # Propose, never commit. Not part of the archive — and not
+            # retrievable as one (store.principles is active-only) — until
+            # it is approved.
+            "status": "proposed",
+            "origin_win_ids": win_ids,
+            "order_key": base_key + i * 1000.0,
+        }
+        row = store.insert_item(user_id, fields)
+        if row is None:
+            # migrations/add_life_items_origin_wins.sql not yet run: the
+            # provenance is the cost, never the proposal.
+            fields.pop("origin_win_ids")
+            row = store.insert_item(user_id, fields)
+        if row:
+            created.append(row)
+
+    _log_derivation("wins", user_id=user_id,
+                    outcome="ok" if parsed else "no_derivation",
+                    wins=len(recent), retrieved=len(existing),
+                    proposed=len(created), already_held=already)
+
+    return {
+        "outcome": "ok" if parsed else "no_derivation",
+        "proposed": created,
+        "wins_read": len(recent),
+        "wins_total": total,
+        "already_held": already,
+    }
 
 
 # ═════════════════════════════════════════════════════════════════════════

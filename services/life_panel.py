@@ -1182,6 +1182,11 @@ def serialize_item(row: dict) -> dict:
         # ticked (origin_document_id). Absent on a row written before the
         # column existed, hence the plain .get.
         "origin_document_id": row.get("origin_document_id"),
+        # The wins that ground a proposed principle (piece 6) — a SET, since
+        # the derivation reads patterns across several wins. `or []` because
+        # a row written before the column existed carries None, and "no
+        # grounding recorded" renders the same either way.
+        "origin_win_ids": row.get("origin_win_ids") or [],
         "created_at": _iso(row.get("created_at")),
     }
 
