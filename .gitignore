@@ -25,3 +25,11 @@ ENV/
 # from a page that no longer matches. Regenerate instead:
 #   python scripts/render_doc_pdf.py docs/<doc>.md exports/<doc>.pdf "Title"
 exports/*.pdf
+
+# ASR golden set (evals/asr) — user voice + human reference transcripts.
+# Sensitive under the same policy as services/audio_storage.py; the manifest
+# schema and the example are committed, the corpus itself never is.
+evals/asr/audio/
+evals/asr/refs/
+evals/asr/manifest.json
+evals/asr/*.words.json
