@@ -133,12 +133,18 @@ class ReadNeverAssemblesTests(unittest.TestCase):
     (new version + ready bubble) in the mode that is LIVE in prod."""
 
     def test_assembly_gate_is_spoken_only(self):
+        # The pipeline body (and this gate with it) moved VERBATIM to
+        # services/analysis_worker.py::run_full_analysis (async-queue
+        # extraction 2026-08-03) so sync/daemon/queue modes share one
+        # implementation. The pin follows the code: the gate lives there
+        # on SPOKEN alone, un-OR'd — and the handler still carries the
+        # lane through the seam.
+        from services import analysis_worker
+        wsrc = inspect.getsource(analysis_worker.run_full_analysis)
+        self.assertIn('if arc_id and recording_kind == "spoken":', wsrc)
+        self.assertNotIn("_single_deliverable_enabled", wsrc)
         src = inspect.getsource(v2.v2_lab_create_recording)
-        self.assertIn('if arc_id and _rec_kind == "spoken":', src)
-        self.assertNotIn(
-            'if arc_id and (_rec_kind == "spoken"\n'
-            '                           or _single_deliverable_enabled()):',
-            src)
+        self.assertIn("recording_kind=_rec_kind", src)
 
     def test_read_still_links_and_tags_without_counting(self):
         # The read lane itself is untouched: it inherits the parent's arc
