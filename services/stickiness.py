@@ -34,7 +34,6 @@ from __future__ import annotations
 import json
 import logging
 from collections import Counter
-from typing import Any
 
 
 logger = logging.getLogger(__name__)

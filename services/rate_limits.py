@@ -79,11 +79,15 @@ try:
 except Exception:  # pragma: no cover - env/bootstrap guard
     request = None  # type: ignore[assignment]
 
+# Held as a plain Optional[type] rather than rebinding the imported name to
+# None in the except branch — rebinding a CLASS to None is two separate mypy
+# complaints ([misc] and [assignment]) and would need both suppressed.
+_LimiterClass: Optional[type] = None
+_IMPORT_ERROR: Optional[Exception] = None
 try:
-    from flask_limiter import Limiter as _Limiter
-    _IMPORT_ERROR: Optional[Exception] = None
+    from flask_limiter import Limiter
+    _LimiterClass = Limiter
 except Exception as _limiter_err:  # pragma: no cover - env/bootstrap guard
-    _Limiter = None  # type: ignore[assignment]
     _IMPORT_ERROR = _limiter_err
 
 
@@ -254,13 +258,13 @@ class _NullLimiter:
 
 
 def _build_limiter():
-    if _Limiter is None:
+    if _LimiterClass is None:
         logger.warning(
             "rate_limits: flask_limiter unavailable (%s) — rate limiting is "
             "OFF. Paid endpoints are uncapped.", _IMPORT_ERROR,
         )
         return _NullLimiter()
-    return _Limiter(
+    return _LimiterClass(
         key_func=identity_key,
         # No default limits: capping is opt-in per route (see module doc).
         default_limits=[],

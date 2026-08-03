@@ -9,6 +9,8 @@ flask. Run: python3 -m unittest test_optional_auth
 """
 import unittest
 
+from tests.fakes import swap_attr
+
 try:
     from flask import Flask, request
     import auth
@@ -27,10 +29,6 @@ except Exception as import_err:  # pragma: no cover - env/bootstrap guard
 class OptionalAuthTests(unittest.TestCase):
     def setUp(self):
         self.app = Flask(__name__)
-        self._orig_verify = auth.verify_supabase_token
-
-    def tearDown(self):
-        auth.verify_supabase_token = self._orig_verify
 
     def _run(self, headers):
         @auth.optional_auth
@@ -45,16 +43,17 @@ class OptionalAuthTests(unittest.TestCase):
         self.assertIsNone(payload)
 
     def test_valid_token_attaches_user(self):
-        auth.verify_supabase_token = lambda t: {"sub": "user-123", "x": 1}
-        uid, payload = self._run({"Authorization": "Bearer good"})
+        with swap_attr(auth, "verify_supabase_token",
+                       lambda t: {"sub": "user-123", "x": 1}):
+            uid, payload = self._run({"Authorization": "Bearer good"})
         self.assertEqual(uid, "user-123")
         self.assertEqual(payload, {"sub": "user-123", "x": 1})
 
     def test_invalid_token_is_anonymous_not_401(self):
         def boom(_t):
             raise Exception("expired")
-        auth.verify_supabase_token = boom
-        uid, payload = self._run({"Authorization": "Bearer bad"})
+        with swap_attr(auth, "verify_supabase_token", boom):
+            uid, payload = self._run({"Authorization": "Bearer bad"})
         # Lapsed/invalid token degrades to anonymous — chat still works.
         self.assertIsNone(uid)
         self.assertIsNone(payload)

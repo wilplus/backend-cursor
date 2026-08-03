@@ -4,7 +4,6 @@ Run: python3 -m unittest test_game_engine
 """
 from __future__ import annotations
 
-import re
 import sys
 import types
 import unittest
@@ -143,8 +142,7 @@ class BuildRoundsTests(unittest.TestCase):
         self.assertEqual(self._rounds(db=db), [])
 
     def test_threat_moment_is_a_decoy_not_a_key(self):
-        rounds = self._rounds()
-        ids = {r["snippet_id"] for r in rounds}
+        self._rounds()
         # t1 (threat) may appear — but only as a decoy; answering it "key"
         # must be wrong (covered in AnswerTests).
         from services.game_engine import _arc_moments
