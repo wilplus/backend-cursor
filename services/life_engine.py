@@ -144,7 +144,13 @@ def _client():
     if key:
         try:
             import openai
-            return openai.OpenAI(api_key=key)
+            # Same strict client timeout as the shared OpenAIService client
+            # (a hung call must never park a worker for the SDK's 600s).
+            return openai.OpenAI(
+                api_key=key,
+                timeout=config.OPENAI_TIMEOUT_SECONDS,
+                max_retries=config.OPENAI_MAX_RETRIES,
+            )
         except Exception as e:
             logger.warning("life: dedicated OpenAI client failed: %s", e)
             return None
