@@ -40,6 +40,31 @@ else
   echo "[startup] WARNING: no system ffmpeg found — Python will fall back to imageio-ffmpeg"
 fi
 
+# ── Optional migration step (OFF by default) ───────────────────────────
+# The supported place to run migrations is bin/railway-migrate.sh as a
+# Railway pre-deploy command — it runs to completion before traffic moves to
+# the new deployment, and a failure stops the deploy.
+#
+# This hook exists for environments where a pre-deploy command isn't
+# available. It is opt-in (MIGRATE_ON_BOOT=1) and deliberately CANNOT fail
+# the boot: CLAUDE.md's live-loop constraint means a bad migration must
+# degrade to "the schema change didn't land", never to a crash-looping web
+# service. Every failure path here logs loudly and falls through to gunicorn.
+if [ "$MIGRATE_ON_BOOT" = "1" ]; then
+  echo "[startup] MIGRATE_ON_BOOT=1 — applying pending migrations"
+  MIGRATION_ACTOR="${MIGRATION_ACTOR:-railway-boot}"
+  export MIGRATION_ACTOR
+  python3 scripts/migrate.py apply
+  MIGRATE_STATUS=$?
+  if [ "$MIGRATE_STATUS" -eq 0 ]; then
+    echo "[startup] migrations up to date"
+  else
+    # Intentionally swallowed. Surfaced in logs and in `migrate.py status`.
+    echo "[startup] WARNING: migrations did not complete (exit $MIGRATE_STATUS) — booting anyway."
+    echo "[startup] Run 'python3 scripts/migrate.py status' to see what is pending."
+  fi
+fi
+
 # ── Boot gunicorn ──────────────────────────────────────────────────────
 # Large multipart uploads (reference videos up to MAX_REFERENCE_VIDEO_SIZE_MB)
 # need a long worker timeout. Override with GUNICORN_TIMEOUT (seconds),
