@@ -41,14 +41,33 @@ if [ -z "$FFMPEG_FOUND" ]; then
   fi
 fi
 
+# ── Resolve the interpreter BEFORE touching PATH ───────────────────────
+# Dependencies live in the build's virtualenv (/app/.venv under Railpack
+# and Nixpacks alike). Under Railpack ffmpeg installs to /usr/bin, and
+# PREPENDING that directory below would shadow the venv's python3 with the
+# system interpreter — which has none of our packages, so the worker booted
+# without sentry_sdk/supabase/rq and died in confusing ways. Pin the
+# interpreter by absolute path here and the PATH order stops mattering.
+if [ -n "$VIRTUAL_ENV" ] && [ -x "$VIRTUAL_ENV/bin/python" ]; then
+  PYTHON="$VIRTUAL_ENV/bin/python"
+elif [ -x /app/.venv/bin/python ]; then
+  PYTHON=/app/.venv/bin/python
+else
+  PYTHON="$(command -v python3 || echo python3)"
+fi
+echo "[startup] python interpreter: $PYTHON"
+
 if [ -n "$FFMPEG_FOUND" ]; then
   export FFMPEG_PATH="$FFMPEG_FOUND"
-  export PATH="$(dirname "$FFMPEG_FOUND"):${PATH}"
+  # APPEND, never prepend: FFMPEG_PATH is what the audio pipeline actually
+  # reads (services/audio_metrics.py checks it first), so PATH only needs to
+  # let subprocesses resolve a bare `ffmpeg` — not worth shadowing the venv.
+  export PATH="${PATH}:$(dirname "$FFMPEG_FOUND")"
   echo "[startup] ffmpeg located at $FFMPEG_FOUND"
 else
-  export PATH="${HOME}/.nix-profile/bin:/root/.nix-profile/bin:/nix/var/nix/profiles/default/bin:${PATH}"
+  export PATH="${PATH}:${HOME}/.nix-profile/bin:/root/.nix-profile/bin:/nix/var/nix/profiles/default/bin"
   echo "[startup] WARNING: no ffmpeg found at all — audio decode will fail"
 fi
 
 # ── Boot the worker ────────────────────────────────────────────────────
-exec python3 worker.py
+exec "$PYTHON" worker.py
