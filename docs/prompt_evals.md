@@ -125,6 +125,47 @@ Authoring guidance (from the probe's hard-won history):
 - Keep inputs **synthetic and PII-free** (probe rule).
 - 5–15 cases per surface is plenty to start; each case costs ~a cent.
 
+### Flakes vs. real bugs
+
+A semantic-grader failure re-runs **the surface** once (not just the
+grade — it is the output that varies) and only fails the build if it
+fails again. Model output is nondeterministic even at temperature 0, so
+one bad roll is not a regression; two in a row effectively always is.
+Deterministic checks never retry — they are reproducible by
+construction, and retrying them would hide real failures. Retries print
+to the log, so an intermittently-disobeyed prompt stays visible.
+
+### `known_failing` — quarantining a documented bug
+
+A case-level (NOT rubric-level) boolean for a **real, reproducible**
+product bug whose fix is owned elsewhere — typically a product-copy
+edit held for founder sign-off:
+
+```json
+{"id": "SIS-SEED-03", "...": "...", "known_failing": true,
+ "notes": "KNOWN BUG (date), fix owned by X. <what's wrong>. REMOVE with the fix."}
+```
+
+The case still runs and still reports, as `KNOWN-FAIL`, and the summary
+line names every quarantined case so the skip is never invisible. It
+just does not turn the build red — so one known bug cannot mask
+regressions in every other case.
+
+Two rules keep this from becoming a way to silence inconvenient cases:
+
+1. **`notes` is mandatory** (enforced by `validate_case_dict`) and must
+   say what the bug is and who owns the fix.
+2. **The marker self-expires.** If a `known_failing` case ever
+   *passes*, the build goes **red** — the bug is fixed and the marker
+   is now lying about the product. The fix itself forces the marker's
+   removal, so a quarantine cannot quietly rot into a case that is
+   never gated again.
+
+Use it for "we know, it's real, someone else owns the fix". Do **not**
+use it for a flaky case — that is what the retry above is for — and do
+not use it instead of loosening a rubric that is genuinely wrong; if
+the rubric is wrong, fix the rubric.
+
 ## 4. What's NOT gated yet (known gaps)
 
 - `routes/v2_routes.py` interview/coaching prompts and the
