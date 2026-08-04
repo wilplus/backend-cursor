@@ -159,7 +159,19 @@ def report(found: dict) -> str:
 
 def _tell_sentry(found: dict) -> None:
     """Best-effort. A monitoring hiccup must never be the reason a boot log is
-    missing its security line, so every failure here is swallowed."""
+    missing its security line, so every failure here is swallowed.
+
+    Module-level init/capture, NOT a hand-built Client + Scope. The first draft
+    of this used ``Client.capture_message`` inside ``with Scope() as scope``;
+    neither exists in sentry-sdk 2.x, so the whole block raised on its first
+    line and the ``except`` below ate it — a reporter that could never once
+    have reported, and looked fine because nothing crashed. mypy caught it.
+    That is also why ``test_sentry_reports_findings_through_the_real_api``
+    asserts the call actually lands rather than merely that nothing blew up.
+
+    Safe to init here: this is a standalone process that runs before gunicorn,
+    so there is no app Sentry client to disturb.
+    """
     if not (found["tables"] or found["functions"]):
         return
     try:
@@ -167,21 +179,17 @@ def _tell_sentry(found: dict) -> None:
         if not dsn:
             return
         import sentry_sdk  # noqa: PLC0415
-        # Its own client: this runs as a standalone process before gunicorn, so
-        # app.py's sentry_sdk.init has not happened and there is no hub to use.
-        client = sentry_sdk.Client(dsn=dsn)
-        with sentry_sdk.Scope() as scope:
-            scope.set_level("error")
-            scope.set_context("rls_guard", {
-                "tables_without_rls": found["tables"],
-                "functions_anon_can_execute": found["functions"],
-            })
-            client.capture_message(
-                f"RLS guard: {len(found['tables'])} table(s) without RLS, "
-                f"{len(found['functions'])} anon-callable function(s)",
-                scope=scope,
-            )
-        client.flush(timeout=5)
+        sentry_sdk.init(dsn=dsn, default_integrations=False)
+        sentry_sdk.set_context("rls_guard", {
+            "tables_without_rls": found["tables"],
+            "functions_anon_can_execute": found["functions"],
+        })
+        sentry_sdk.capture_message(
+            f"RLS guard: {len(found['tables'])} table(s) without RLS, "
+            f"{len(found['functions'])} anon-callable function(s)",
+            level="error",
+        )
+        sentry_sdk.flush(timeout=5)
     except Exception:  # noqa: BLE001 — monitoring must never break the check
         pass
 

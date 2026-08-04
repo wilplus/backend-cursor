@@ -226,6 +226,52 @@ class ReportContentTests(unittest.TestCase):
         # Nothing to report -> returns before touching the environment at all.
         rls_guard._tell_sentry({"tables": [], "functions": [], "anon_role": True})
 
+    def test_sentry_reports_findings_through_the_real_api(self):
+        """The reporter must actually REPORT.
+
+        The first version of _tell_sentry called APIs that do not exist in
+        sentry-sdk 2.x (``Client.capture_message``, ``with Scope()``). It threw
+        on its first line every time and the best-effort ``except`` swallowed
+        it, so it never reported anything and no test noticed — the only
+        assertion was "does not crash", which a no-op passes trivially.
+
+        This asserts the message LANDS, and binds against the installed SDK's
+        real surface so a future API change fails here instead of going quiet.
+        """
+        import sentry_sdk
+        import rls_guard
+
+        for name in ("init", "set_context", "capture_message", "flush"):
+            self.assertTrue(hasattr(sentry_sdk, name),
+                            f"sentry_sdk.{name} is gone — _tell_sentry needs updating")
+
+        found = {"tables": ["leaky"], "functions": ["f(x text)"], "anon_role": True}
+        with patch.dict(os.environ, {"SENTRY_DSN": "https://k@example.invalid/1"}), \
+             patch.object(sentry_sdk, "init") as init, \
+             patch.object(sentry_sdk, "set_context") as set_context, \
+             patch.object(sentry_sdk, "capture_message") as capture, \
+             patch.object(sentry_sdk, "flush"):
+            rls_guard._tell_sentry(found)
+
+        init.assert_called_once()
+        capture.assert_called_once()
+        self.assertEqual(capture.call_args.kwargs.get("level"), "error")
+        msg = capture.call_args.args[0]
+        self.assertIn("1 table(s) without RLS", msg)
+        self.assertIn("1 anon-callable function(s)", msg)
+        ctx = set_context.call_args.args[1]
+        self.assertEqual(ctx["tables_without_rls"], ["leaky"])
+        self.assertEqual(ctx["functions_anon_can_execute"], ["f(x text)"])
+
+    def test_sentry_is_skipped_entirely_without_a_dsn(self):
+        import sentry_sdk
+        import rls_guard
+        with patch.dict(os.environ, {}, clear=True), \
+             patch.object(sentry_sdk, "init") as init:
+            rls_guard._tell_sentry({"tables": ["leaky"], "functions": [],
+                                    "anon_role": True})
+        init.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()
