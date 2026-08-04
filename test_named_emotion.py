@@ -29,11 +29,26 @@ except Exception as e:  # pragma: no cover
 
 class VocabularyTests(unittest.TestCase):
 
-    def test_vocabulary_is_the_ten_signed_off_keys(self):
+    def test_vocabulary_is_the_signed_off_keys(self):
         self.assertEqual(EMOTION_KEYS, {
             "calm", "curious", "excited", "determined", "confident",
             "nervous", "tense", "overwhelmed", "doubtful", "tired",
+            "unsure",
         })
+
+    def test_unsure_is_captured_and_buckets_neutral_never_threat(self):
+        # Founder sign-off 2026-08-04. The FE's "Not sure" chip has always
+        # sent this key; before it was in the vocabulary those takes
+        # recorded NO emotion, so the drift metric under-sampled the least
+        # settled users. It must never be folded into `doubtful`: a
+        # non-answer about the question is not a threat-flavoured report
+        # about oneself, and booking it as one would bias the very metric
+        # this capture exists to produce.
+        self.assertEqual(normalize_named_emotion("unsure"), "unsure")
+        with self.assertLogs("services.named_emotion", level="INFO") as cm:
+            log_drift_signal("u1", "s1", "unsure")
+        self.assertIn("bucket=neutral", cm.output[0])
+        self.assertNotIn("bucket=threat", cm.output[0])
 
     def test_normalize_accepts_keys_case_and_padding_tolerant(self):
         self.assertEqual(normalize_named_emotion("  Nervous "), "nervous")

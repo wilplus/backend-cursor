@@ -2,9 +2,18 @@
 
 The pre-recording emotion-naming exercise's answer used to evaporate.
 Captured now as `named_emotion` on the take's intake_context: a KEY from
-the closed vocabulary below (the FE sends the key; display text lives FE-
-side pending founder sign-off of the exact 10 words — the keys and their
-buckets are stable regardless).
+the closed vocabulary below (the FE sends the key; display text lives
+FE-side).
+
+`unsure` is in the vocabulary and is NEUTRAL (founder sign-off
+2026-08-04). The FE's check-in has always offered a "Not sure" chip, and
+before this it was the one answer the vocabulary had no key for — those
+takes recorded no emotion at all, so the drift metric quietly
+under-sampled exactly the users whose state was least settled. It is
+deliberately NOT folded into `doubtful`: "I don't know how I feel" is a
+non-answer about the question, while `doubtful` is a threat-flavoured
+report about oneself. Mapping one to the other would book a threat
+signal the user never gave and bias the very metric this capture feeds.
 
 The coach SEES the named emotion (founder-decided: it is the user's own
 self-report, not a machine guess — the blind-coach fence bans model
@@ -24,7 +33,9 @@ logger = logging.getLogger(__name__)
 # The closed vocabulary — keys only; store the key, not display text.
 CHALLENGE_KEYS = ("calm", "curious", "excited", "determined", "confident")
 THREAT_KEYS = ("nervous", "tense", "overwhelmed", "doubtful")
-NEUTRAL_KEYS = ("tired",)
+# `unsure` is the FE's "Not sure" chip: a non-answer, not a negative one —
+# neutral beside `tired`, never threat (see the module docstring).
+NEUTRAL_KEYS = ("tired", "unsure")
 EMOTION_KEYS = frozenset(CHALLENGE_KEYS + THREAT_KEYS + NEUTRAL_KEYS)
 
 # INTERNAL analytics bucket per key (CONSTRUCT — log-only, never wire).
