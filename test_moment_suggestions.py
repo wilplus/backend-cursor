@@ -399,9 +399,9 @@ class StudentGetStarTests(unittest.TestCase):
                "verified_version": None, "verified_text": None}
         with self.app.test_request_context():
             request.user_id = "u1"
-            with patch.object(v2, "_arc_owned_by_caller",
+            with patch("routes.v2.explore_ideal_text._arc_owned_by_caller",
                               return_value=(True, [])), \
-                 patch.object(v2, "_moment_suggestions_enabled",
+                 patch("routes.v2.explore_ideal_text._moment_suggestions_enabled",
                               return_value=stars), \
                  patch.object(v2.db, "get_coach_arc_ideal_text",
                               return_value=row), \

@@ -618,7 +618,7 @@ class SaveEndpointTests(unittest.TestCase):
         with self.app.test_request_context(json={}):
             request.user_id = "u1"
             with patch.dict("os.environ", flags or _FLAGS), \
-                 patch.object(v2, "_arc_owned_by_caller",
+                 patch("routes.v2.explore_ideal_text._arc_owned_by_caller",
                               return_value=(True, [])), \
                  patch.object(v2.db, "list_ideal_text_blocks",
                               return_value=blocks), \
@@ -672,7 +672,7 @@ class DecideEndpointTests(unittest.TestCase):
         with self.app.test_request_context(json=body):
             request.user_id = "u1"
             with patch.dict("os.environ", _FLAGS), \
-                 patch.object(v2, "_arc_owned_by_caller",
+                 patch("routes.v2.explore_ideal_text._arc_owned_by_caller",
                               return_value=(True, [])), \
                  patch.object(v2.db, "get_ideal_text_block",
                               return_value=row), \

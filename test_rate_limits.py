@@ -513,9 +513,6 @@ class CoveredRoutesTests(unittest.TestCase):
             "v2_onboarding_opener_start": "llm_limit",
             "v2_onboarding_opener_next": "llm_limit",
             "v2_admin_suggest_directives_queue": "llm_limit",
-            "v2_explore_save_ideal_text": "llm_limit",
-            "v2_explore_decide_block": "llm_limit",
-            "v2_explore_decide_prior_take": "llm_limit",
             # multi-call generation / media / training
             "v2_admin_learning_train": "heavy_limit",
             # bespoke
@@ -538,6 +535,11 @@ class CoveredRoutesTests(unittest.TestCase):
         },
         "routes/v2/user_chat.py": {
             "v2_user_chat_first_question": "llm_limit",
+        },
+        "routes/v2/explore_ideal_text.py": {
+            "v2_explore_save_ideal_text": "llm_limit",
+            "v2_explore_decide_block": "llm_limit",
+            "v2_explore_decide_prior_take": "llm_limit",
         },
         "routes/life_routes.py": {
             "life_board": "llm_limit",
