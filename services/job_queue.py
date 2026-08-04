@@ -27,7 +27,9 @@ from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
-_redis_conn = None  # cached broker connection (per process)
+# Cached broker connections, per process, keyed by profile
+# ("client" = fail-fast enqueue side, "worker" = blocking-dequeue side).
+_redis_conns: dict = {}
 
 
 def _flag(name: str, default: str = "0") -> bool:
@@ -53,24 +55,49 @@ def queue_configured() -> bool:
     )
 
 
-def get_redis():
-    """Lazily build (and cache) the Redis connection. None on any failure."""
-    global _redis_conn
-    if _redis_conn is not None:
-        return _redis_conn
+def get_redis(*, for_worker: bool = False):
+    """Lazily build (and cache) a Redis connection. None on any failure.
+
+    TWO PROFILES, because the two sides want opposite things:
+
+    * ``for_worker=False`` (the web/enqueue side) — fail fast. A dead broker
+      must cost the upload route milliseconds before it falls back to the
+      sync path, never hang it. LPUSH is instant, so a 5s read timeout is
+      generous.
+
+    * ``for_worker=True`` (the RQ worker) — NO read timeout. The worker
+      dequeues with a BLOCKING BLPOP that legitimately waits minutes for a
+      job (rq's dequeue_timeout is DEFAULT_WORKER_TTL-5 ≈ 415s). A short
+      ``socket_timeout`` aborts that blocking read and rq treats it as a
+      dead broker: "Redis connection timeout, quitting..." exactly
+      socket_timeout seconds after "Listening on ...", on a perfectly
+      healthy Redis. ``health_check_interval`` keeps the long-lived
+      connection honest instead.
+    """
+    key = "worker" if for_worker else "client"
+    cached = _redis_conns.get(key)
+    if cached is not None:
+        return cached
     url = (os.getenv("REDIS_URL") or "").strip()
     if not url:
         return None
     try:
         import redis  # lazy: package absent → queue silently off
-        _redis_conn = redis.from_url(
-            url,
-            # Fail fast: a dead broker must cost the upload route
-            # milliseconds (then fall back to sync), never hang it.
-            socket_connect_timeout=2,
-            socket_timeout=5,
-        )
-        return _redis_conn
+        if for_worker:
+            conn = redis.from_url(
+                url,
+                socket_connect_timeout=5,
+                # socket_timeout deliberately UNSET — see docstring.
+                health_check_interval=30,
+            )
+        else:
+            conn = redis.from_url(
+                url,
+                socket_connect_timeout=2,
+                socket_timeout=5,
+            )
+        _redis_conns[key] = conn
+        return conn
     except Exception as e:
         logger.warning("job_queue: redis unavailable: %s", e)
         return None

@@ -136,7 +136,10 @@ def main() -> int:
 
     from services import job_queue
 
-    conn = job_queue.get_redis()
+    # for_worker=True: no socket read timeout. rq's dequeue is a BLOCKING
+    # BLPOP that waits ~415s for a job, so a short socket_timeout aborts it
+    # and rq quits ("Redis connection timeout") on a healthy broker.
+    conn = job_queue.get_redis(for_worker=True)
     if conn is None:
         logger.error("REDIS_URL missing or broker unreachable — the worker "
                      "service cannot run without its broker.")
