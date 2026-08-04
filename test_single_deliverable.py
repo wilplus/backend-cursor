@@ -858,12 +858,15 @@ class SeamSmoothingContractPinTests(unittest.TestCase):
     seam-smoothing of selected verbatim pieces, never free rewriting."""
 
     def test_compose_prompt_pins_verbatim_and_no_new_claims(self):
-        import inspect
-        from services import best_presentation as bp
-        src = inspect.getsource(bp._render_composition)
-        self.assertIn("MOSTLY VERBATIM", src)
-        self.assertIn("NEVER add new claims", src)
-        self.assertIn("continuity", src)
+        # The prompt text moved to the registry (services/prompts/,
+        # 2026-08-03) — pin the contract on the RENDERED system prompt
+        # (what the LLM actually receives), which is strictly stronger
+        # than pinning the builder's source.
+        from services.prompts import best_presentation as bp_prompts
+        rendered = bp_prompts.system()
+        self.assertIn("MOSTLY VERBATIM", rendered)
+        self.assertIn("NEVER add new claims", rendered)
+        self.assertIn("continuity", rendered)
 
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")

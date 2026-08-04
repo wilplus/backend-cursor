@@ -52,60 +52,14 @@ def metric_observations(metrics: Optional[dict]) -> dict:
     return {k: v for k, v in buckets.items() if v}
 
 
-_STYLE_EXAMPLE = (
-    "🎤 Friendly, approachable delivery — the positive tone fits the message "
-    "and builds trust early.\n"
-    "✅ Your speaking speed feels comfortable and easy to follow.\n"
-    "✅ Your voice naturally rises and falls, which keeps it engaging.\n"
-    "💡 \"get to know yourself a little better\" is a bit vague — try "
-    "\"understand how you come across as a speaker.\"\n"
-    "📈 Compared to your last take, your pace was a touch more controlled."
-)
+# Prompt text lives in the registry (services/prompts/) — moved verbatim
+# 2026-08-03; hash-locked in prompts.lock.json. Aliases keep this module's
+# surface stable for callers and tests.
+from services.prompts import coach_comment_drafter as _prompts
 
-
-def _system_prompt() -> str:
-    from services.will_voice import with_voice_rules
-    return with_voice_rules(
-        "You draft the feedback note a willab speaking coach leaves on ONE "
-        "moment of a user's slide presentation. The coach sees it pre-filled "
-        "and edits it; the user ultimately reads it — so write warm, plain, "
-        "and specific.\n\n"
-        "RULES:\n"
-        "1. Start with the overall impression.\n"
-        "2. Name the speaker's GOAL and whether the delivery supports it.\n"
-        "3. Plain language ONLY. NEVER use technical terms — no F0, SD, "
-        "voiced %, dB, wpm, 'coherence score'. You are GIVEN the metrics "
-        "already turned into plain observations; use those words.\n"
-        "4. When the prompt gives a comparison to previous takes, mention it.\n"
-        "5. Give ONE thing that's working and ONE thing to improve next.\n"
-        "6. Under 120 words. 2-4 emojis max. Encouragement first, correction "
-        "second.\n"
-        "7. LANGUAGE: write the ENTIRE note in the SAME language the user spoke "
-        "in — match the transcript's language. A Polish transcript gets a "
-        "Polish note, a Spanish one a Spanish note, and so on. Never default to "
-        "English unless the user spoke English.\n\n"
-        "FORMAT — short emoji-led lines (the example is English; mirror its "
-        "shape in the user's language), e.g.:\n" + _STYLE_EXAMPLE +
-        "\n\nOUTPUT: strict JSON with key \"coach_note\" only."
-    )
-
-
-def _user_prompt(transcript, slide, observations, take_comparison, goal) -> str:
-    title = (slide.get("title") or "").strip() if isinstance(slide, dict) else ""
-    body = (slide.get("body") or "").strip() if isinstance(slide, dict) else ""
-    if len(body) > 400:
-        body = body[:400].rstrip() + "…"
-    obs = "; ".join(f"{k}: {v}" for k, v in (observations or {}).items()) or "(no metric read)"
-    lines = []
-    if goal:
-        lines.append(f"speaker's goal / what this talk is about: \"{goal}\"")
-    lines.append(f"slide title: \"{title}\"")
-    lines.append(f"slide body: \"{body or '(none)'}\"")
-    lines.append(f"what they said in this moment: \"{transcript}\"")
-    lines.append(f"delivery (plain observations): {obs}")
-    if take_comparison:
-        lines.append(f"vs their previous takes: {take_comparison}")
-    return "\n".join(lines)
+_STYLE_EXAMPLE = _prompts.STYLE_EXAMPLE
+_system_prompt = _prompts.system
+_user_prompt = _prompts.user
 
 
 def generate_coach_note_draft(

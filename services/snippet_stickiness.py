@@ -115,31 +115,14 @@ def _llm_score(transcripts: list[str]) -> Optional[list]:
     try:
         from services.llm import chat_complete
         from services.llm_config import SPEC_SNIPPET_STICKINESS
-        from services.will_voice import with_voice_rules
+        # Prompt text lives in the registry (services/prompts/) — moved
+        # verbatim 2026-08-03; hash-locked in prompts.lock.json.
+        from services.prompts import snippet_stickiness as _prompts
     except Exception as e:
         logger.warning("snippet_stickiness: llm import failed: %s", e)
         return None
 
-    system = with_voice_rules(
-        "You read short speech snippets from one recording. For EACH "
-        "snippet, judge TOPIC COHERENCE — how well the speaker held a "
-        "single line of thought versus scattering across unrelated "
-        "ideas — and produce two things:\n"
-        "  composite: a number from 0.0 to 1.0 (1.0 = stayed tightly "
-        "on one idea and built on it; 0.0 = scattered, jumped between "
-        "unrelated things).\n"
-        "  comment: ONE short observational sentence (≤200 chars), "
-        "second-person, neutral — describe what the speaker did with "
-        "their thread, no praise, no grade, no advice.\n"
-        "\n"
-        "Return one entry per snippet in the EXACT order given; the "
-        "array length must equal the number of snippets. For a snippet "
-        "with no real content, use composite 0.0 and an empty comment "
-        "rather than inventing one.\n"
-        "\n"
-        "Output strict JSON: "
-        "{\"per_snippet\": [{\"composite\": <num>, \"comment\": \"...\"}]}."
-    )
+    system = _prompts.system()
     user = _build_prompt(transcripts)
 
     schema = {

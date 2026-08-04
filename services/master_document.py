@@ -89,23 +89,16 @@ def _llm_boundaries(piece_texts: list) -> Optional[list]:
     try:
         from services.llm import chat_complete
         from services.llm_config import SPEC_MASTER_CHUNKING
+        # Prompt text lives in the registry (services/prompts/) — moved
+        # verbatim 2026-08-03; hash-locked in prompts.lock.json.
+        from services.prompts import master_document as _prompts
         numbered = "\n".join(f"{i}: {t}" for i, t in enumerate(piece_texts))
         short = len(piece_texts) <= _SHORT_TAKE_PIECES
-        frame = (
-            "Use exactly these four blocks in order: Hook, Context, "
-            "Core Message, Closer." if short else
-            "Chunk by natural topic shifts; label each block with a "
-            "2-4 word neutral topic label.")
+        frame = _prompts.FRAME_SHORT if short else _prompts.FRAME_LONG
         result = chat_complete(
             spec=SPEC_MASTER_CHUNKING,
-            system=(
-                "You segment a spoken-talk transcript into logical blocks. "
-                "You NEVER rewrite, summarise or quote the text — you only "
-                "return piece INDEX boundaries and a short label per "
-                "block. Blocks must be contiguous, cover every piece "
-                "exactly once, and stay in order. Output strict JSON: "
-                '{"blocks": [{"start": int, "end": int, "label": str}]}'),
-            user=f"{frame}\n\nPieces:\n{numbered}",
+            system=_prompts.CHUNKING_SYSTEM,
+            user=_prompts.chunking_user(frame, numbered),
             surface="master_document_chunking",
         )
         parsed = getattr(result, "parsed", None) or {}
