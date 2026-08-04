@@ -210,12 +210,19 @@ def life_state():
     if active:
         menu = ["principles", "wins", "phrases", "today", "goals", "timeline",
                 "distractions", "strategy", "notes"]
-        # Prayer stays OFF (founder 2026-07-26). The allowlist is empty by
-        # default, so this appends nothing until someone is explicitly added —
-        # and pompeiana.willpowerlab.com keeps working signed-out regardless,
-        # which is the whole point of it staying a separate app.
-        if chat.is_allowlisted(user_id):
-            menu.append("prayer")
+        # PRAYER IS NOT SENT, for anyone, allowlisted or not (founder
+        # 2026-08-04, superseding the 2026-07-26 allowlisted entry).
+        #
+        # willpowerlab.com is the voice app. Prayer is a SEPARATE web app on
+        # pompeiana.willpowerlab.com, joined to this one by the shared
+        # WillpowerLab login and nothing else. It was never a view of this
+        # app, and the menu is the list of THIS app's views, so it does not
+        # belong in the payload.
+        #
+        # The FE now drops a "prayer" key it cannot route, so sending one
+        # would be a no-op that reads like a working feature — the two repos
+        # disagreeing in a way nothing fails on. It stops at the source
+        # instead.
 
     answers = (setup or {}).get("answers") or {}
     return jsonify({

@@ -2357,6 +2357,23 @@ class RouteGateTests(unittest.TestCase):
             menu = self._get("/v2/life/state").get_json()["menu"]
         self.assertNotIn("prayer", menu)
 
+    def test_prayer_is_absent_from_the_menu_even_when_allowlisted(self):
+        """Founder 2026-08-04: prayer is not a view of this app, for anyone.
+
+        willpowerlab.com is the voice app. Prayer is a separate web app on
+        pompeiana.willpowerlab.com, joined to this one by the shared login and
+        nothing else, so it is not in this app's list of views. The FE drops a
+        "prayer" key it cannot route, so sending one would be a silent no-op
+        that reads like a working feature — it stops here instead.
+        """
+        with patch.object(lroutes.chat, "is_enabled", return_value=True), \
+                patch.object(lroutes.chat, "has_consented", return_value=True), \
+                patch.object(lroutes.chat, "is_allowlisted", return_value=True), \
+                patch.object(lroutes.store, "get_setup",
+                             return_value={"completed_at": "2026-07-26"}):
+            menu = self._get("/v2/life/state").get_json()["menu"]
+        self.assertNotIn("prayer", menu)
+
     def _state(self, *, consented, setup):
         with patch.object(lroutes.chat, "is_enabled", return_value=True), \
                 patch.object(lroutes.chat, "has_consented",
