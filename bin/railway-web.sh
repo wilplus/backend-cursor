@@ -29,9 +29,18 @@ fi
 
 if [ -n "$FFMPEG_FOUND" ]; then
   export FFMPEG_PATH="$FFMPEG_FOUND"
-  # Also prepend the directory to PATH so any subprocess that calls
-  # `shutil.which("ffmpeg")` finds the same binary.
-  export PATH="$(dirname "$FFMPEG_FOUND"):${PATH}"
+  # APPEND the directory to PATH so a subprocess calling
+  # `shutil.which("ffmpeg")` still finds the same binary.
+  #
+  # Appended, NOT prepended (2026-08-04): under Railway's Railpack builder
+  # ffmpeg installs to /usr/bin, and prepending that shadowed the build
+  # virtualenv's python3 with the system interpreter — which carries none
+  # of our dependencies. That bit the worker service for real; this script
+  # only escaped it because `gunicorn` happens not to exist in /usr/bin.
+  # FFMPEG_PATH above is what the audio pipeline actually reads
+  # (services/audio_metrics.py checks it first), so PATH order buys us
+  # nothing worth that risk.
+  export PATH="${PATH}:$(dirname "$FFMPEG_FOUND")"
   echo "[startup] ffmpeg located at $FFMPEG_FOUND"
 else
   # Always include the common Nix profile dirs so imageio-ffmpeg's
