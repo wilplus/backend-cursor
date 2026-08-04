@@ -255,7 +255,7 @@ class DecideEndpointTests(unittest.TestCase):
             with patch.dict("os.environ",
                             {"LIVING_TRANSCRIPT_ENABLED":
                              "1" if flag else "0"}), \
-                 patch.object(v2, "_arc_owned_by_caller",
+                 patch("routes.v2.explore_ideal_text._arc_owned_by_caller",
                               return_value=(owned, [])), \
                  patch.object(v2.db, "get_coach_arc_ideal_text",
                               return_value={"version": 3}), \

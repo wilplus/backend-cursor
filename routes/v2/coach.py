@@ -1794,6 +1794,20 @@ def v2_coach_arc_best_presentation(arc_id):
         }), 500
 
 
+# ── willab — coach-owned ideal-text correction (founder 2026-07-06) ─────
+#
+# The coach's OWN editing surface: always shows the CURRENT draft (auto, or
+# the coach's own correction where saved), regardless of coach_finalized —
+# the coach needs to see their own in-progress work. Never gated by payment
+# (constraint: the coach always reviews every take/arc, independent of the
+# student's payment state).
+
+
+# (The #186 batch card + per-slide coach ideal-text editing lived here —
+#  DELETED 2026-07-15 after the FE switched to /coach/arc/<id>/publish-analysis,
+#  /explore/arc/<id>/feedback and the one-block ideal-text routes. History: PR #186/#193.)
+
+
 @v2_bp.route("/coach/arc/<arc_id>/ideal-text", methods=["GET"])
 @require_admin_or_coach
 def v2_coach_get_ideal_text(arc_id):

@@ -258,7 +258,7 @@ class GameRouteTests(unittest.TestCase):
     def setUp(self):
         self.app = Flask(__name__)
         self._p = [
-            patch.object(_v2, "_arc_owned_by_caller", lambda a: (True, [])),
+            patch("routes.v2.arcs._arc_owned_by_caller", lambda a: (True, [])),
         ]
         for p_ in self._p:
             p_.start()

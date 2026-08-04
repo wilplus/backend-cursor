@@ -81,7 +81,7 @@ class _FeedbackHarness(unittest.TestCase):
 
     def setUp(self):
         self.app = Flask(__name__)
-        self._p = [patch.object(v2, "_arc_owned_by_caller",
+        self._p = [patch("routes.v2.arcs._arc_owned_by_caller",
                                 lambda a: (True, _sessions()))]
         for p in self._p:
             p.start()
@@ -294,7 +294,7 @@ class IdealTextRoutesTests(unittest.TestCase):
     def test_notes_put_never_touches_canonical(self):
         with self.app.test_request_context(json={"text": "my edited copy"}):
             request.user_id = "u1"
-            with patch.object(v2, "_arc_owned_by_caller",
+            with patch("routes.v2.explore_ideal_text._arc_owned_by_caller",
                               lambda a: (True, _sessions())), \
                  patch.object(v2.db, "upsert_user_arc_ideal_notes",
                               return_value=True) as m_notes, \

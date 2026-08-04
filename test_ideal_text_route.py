@@ -52,7 +52,12 @@ class IdealTextRouteCompositionTests(unittest.TestCase):
         sessions = [_sess(f"s{i}") for i in range(3)]
         snips = {f"s{i}": [_snip(f"c{i}")] for i in range(3)}
         self._p = [
-            patch.object(v2, "_arc_owned_by_caller",
+            # v2_talk_ideal_text resolves this from routes.v2.explore_ideal_text;
+            # the pencil-edit route below resolves it from routes.v2.arcs. Patch
+            # both bindings so either route under test sees the stub.
+            patch("routes.v2.explore_ideal_text._arc_owned_by_caller",
+                        lambda arc_id: (True, sessions)),
+            patch("routes.v2.arcs._arc_owned_by_caller",
                         lambda arc_id: (True, sessions)),
             patch.object(v2, "is_admin", lambda uid: False),
             patch.object(v2, "is_coach", lambda uid: False),
@@ -107,7 +112,8 @@ class IdealTextRouteCompositionTests(unittest.TestCase):
                          "coach's corrected line")
 
     def test_not_owner_404s(self):
-        with patch.object(v2, "_arc_owned_by_caller",
+        # this class drives v2_talk_ideal_text, which lives in explore_ideal_text
+        with patch("routes.v2.explore_ideal_text._arc_owned_by_caller",
                           lambda arc_id: (False, [])):
             body, status = self._call()
         self.assertEqual(status, 404)
@@ -127,7 +133,7 @@ class PencilEditRichFormatTests(unittest.TestCase):
             return True
 
         self._p = [
-            patch.object(v2, "_arc_owned_by_caller", lambda a: (True, [])),
+            patch("routes.v2.arcs._arc_owned_by_caller", lambda a: (True, [])),
             patch.object(v2.db, "upsert_best_presentation_edit", _upsert),
         ]
         for p in self._p:

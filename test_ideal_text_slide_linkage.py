@@ -63,10 +63,10 @@ class SlideLinkageTests(unittest.TestCase):
     def _get(self, *, sessions, row, cache=None, edit=None):
         with self.app.test_request_context():
             request.user_id = "u1"
-            with patch.object(v2, "_arc_owned_by_caller",
+            with patch("routes.v2.explore_ideal_text._arc_owned_by_caller",
                               return_value=(True, sessions)), \
-                 patch.object(v2, "_moments_entitled", return_value=False), \
-                 patch.object(v2, "_moment_explanations_map",
+                 patch("routes.v2.explore_ideal_text._moments_entitled", return_value=False), \
+                 patch("routes.v2.explore_ideal_text._moment_explanations_map",
                               return_value={}), \
                  patch.object(v2.db, "get_coach_arc_ideal_text",
                               return_value=row), \
@@ -191,14 +191,14 @@ class MasterDocumentProvenanceTests(unittest.TestCase):
             with patch.dict(os.environ,
                             {"LIVING_TRANSCRIPT_ENABLED": "1",
                              "MASTER_DOCUMENT_ENABLED": "1"}), \
-                 patch.object(v2, "_arc_owned_by_caller",
+                 patch("routes.v2.explore_ideal_text._arc_owned_by_caller",
                               return_value=(True, sessions)), \
-                 patch.object(v2, "_moments_entitled", return_value=False), \
-                 patch.object(v2, "_moment_explanations_map",
+                 patch("routes.v2.explore_ideal_text._moments_entitled", return_value=False), \
+                 patch("routes.v2.explore_ideal_text._moment_explanations_map",
                               return_value={}), \
-                 patch.object(v2, "_ideal_save_state",
+                 patch("routes.v2.explore_ideal_text._ideal_save_state",
                               return_value={}), \
-                 patch.object(v2, "_tracked_changes_block",
+                 patch("routes.v2.explore_ideal_text._tracked_changes_block",
                               return_value={}), \
                  patch.object(v2.db, "get_coach_arc_ideal_text",
                               return_value=row), \

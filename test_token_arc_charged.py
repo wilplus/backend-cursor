@@ -156,8 +156,13 @@ class PerArcRegistryTests(unittest.TestCase):
         PER_ARC_ACTIONS ships with a permanently stale price label on the FE,
         and nobody finds out until a user says they were charged twice."""
         from services.token_prices import PER_ARC_ACTIONS
+        # The /v2 route layer is split across routes/v2_routes.py and the
+        # per-domain modules under routes/v2/ (god-file split) — glob them so
+        # carving out a domain can never quietly empty this drift guard.
+        import glob
         src = ""
-        for path in ("routes/v2_routes.py", "services/lab_recording.py"):
+        for path in (["routes/v2_routes.py", "services/lab_recording.py"]
+                     + sorted(glob.glob("routes/v2/*.py"))):
             with open(path) as fh:
                 src += fh.read()
         found = set(re.findall(

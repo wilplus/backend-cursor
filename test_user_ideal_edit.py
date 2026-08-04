@@ -47,7 +47,7 @@ class UserEditPutTests(unittest.TestCase):
     def _put(self, body, *, row=_row(), owned=True):
         with self.app.test_request_context(json=body):
             request.user_id = "u1"
-            with patch.object(v2, "_arc_owned_by_caller",
+            with patch("routes.v2.explore_ideal_text._arc_owned_by_caller",
                               return_value=(owned, [])), \
                  patch.object(v2.db, "get_coach_arc_ideal_text",
                               return_value=row), \
@@ -105,7 +105,10 @@ class UserEditPutTests(unittest.TestCase):
 
     def test_reapplied_true_logs_once(self):
         # Founder 2026-07-28: the re-apply decision metric — LOG-ONLY.
-        with self.assertLogs("routes.v2_routes", level="INFO") as cm:
+        # The user-edit route logs as routes.v2.explore_ideal_text since the
+        # god-file split; capture the whole routes.* hierarchy so a later
+        # move cannot silently blind this assertion.
+        with self.assertLogs("routes", level="INFO") as cm:
             body, status, _ = self._put(
                 {"text": "my edit", "version": 3, "reapplied": True})
         self.assertEqual(status, 200)
@@ -138,7 +141,7 @@ class LedgerInheritanceTests(unittest.TestCase):
         with self.app.test_request_context(
                 json={"text": text, "version": row.get("version")}):
             request.user_id = "u1"
-            with patch.object(v2, "_arc_owned_by_caller",
+            with patch("routes.v2.explore_ideal_text._arc_owned_by_caller",
                               return_value=(True, [])), \
                  patch.object(v2.db, "get_coach_arc_ideal_text",
                               return_value=row), \
@@ -187,7 +190,7 @@ class LedgerInheritanceTests(unittest.TestCase):
         with self.app.test_request_context(
                 json={"text": "we kept moving strong", "version": 2}):
             request.user_id = "u1"
-            with patch.object(v2, "_arc_owned_by_caller",
+            with patch("routes.v2.explore_ideal_text._arc_owned_by_caller",
                               return_value=(True, [])), \
                  patch.object(v2.db, "get_coach_arc_ideal_text",
                               return_value=row), \
@@ -211,10 +214,10 @@ class StudentGetDisplayPriorityTests(unittest.TestCase):
     def _get(self, *, row, edit):
         with self.app.test_request_context():
             request.user_id = "u1"
-            with patch.object(v2, "_arc_owned_by_caller",
+            with patch("routes.v2.explore_ideal_text._arc_owned_by_caller",
                               return_value=(True, [])), \
-                 patch.object(v2, "_moments_entitled", return_value=False), \
-                 patch.object(v2, "_moment_explanations_map",
+                 patch("routes.v2.explore_ideal_text._moments_entitled", return_value=False), \
+                 patch("routes.v2.explore_ideal_text._moment_explanations_map",
                               return_value={}), \
                  patch.object(v2.db, "get_coach_arc_ideal_text",
                               return_value=row), \
@@ -271,10 +274,10 @@ class PriorEditReofferTests(unittest.TestCase):
         with self.app.test_request_context():
             request.user_id = "u1"
             _edit_patch = edit if callable(edit) else (lambda a, u: edit)
-            with patch.object(v2, "_arc_owned_by_caller",
+            with patch("routes.v2.explore_ideal_text._arc_owned_by_caller",
                               return_value=(True, [])), \
-                 patch.object(v2, "_moments_entitled", return_value=False), \
-                 patch.object(v2, "_moment_explanations_map",
+                 patch("routes.v2.explore_ideal_text._moments_entitled", return_value=False), \
+                 patch("routes.v2.explore_ideal_text._moment_explanations_map",
                               return_value={}), \
                  patch.object(v2.db, "get_coach_arc_ideal_text",
                               return_value=row), \

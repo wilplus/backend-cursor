@@ -216,7 +216,7 @@ class KeyPointsServeWiringTests(unittest.TestCase):
         served = "Grab attention here. Then the ask lands."
         pieces = [{"block_key": 0, "block_label": "Hook",
                    "start": 0, "end": 20, "text": "Grab attention here."}]
-        with patch.object(v2, "_key_points_enabled", return_value=flag), \
+        with patch("routes.v2.explore_ideal_text._key_points_enabled", return_value=flag), \
              patch("services.ideal_text_block._living_transcript_enabled",
                    return_value=True), \
              patch("services.master_document.master_document_enabled",
@@ -231,8 +231,8 @@ class KeyPointsServeWiringTests(unittest.TestCase):
                    side_effect=lambda c: c), \
              patch("services.tracked_changes.verify_changes",
                    return_value=True), \
-             patch.object(v2, "_moment_applied_map", return_value={}), \
-             patch.object(v2, "_previous_spoken_session", return_value=None), \
+             patch("routes.v2.explore_ideal_text._moment_applied_map", return_value={}), \
+             patch("routes.v2.explore_ideal_text._previous_spoken_session", return_value=None), \
              patch.object(v2.db, "get_moment_suggestions_by_arc",
                           return_value={}):
             return v2._tracked_changes_block("a1", served)

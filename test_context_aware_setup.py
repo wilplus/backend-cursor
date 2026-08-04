@@ -181,7 +181,7 @@ class SetupEndpointTests(unittest.TestCase):
     def _get(self, sessions, *, owned=True):
         with self.app.test_request_context():
             request.user_id = UID
-            with patch.object(v2, "_arc_owned_by_caller",
+            with patch("routes.v2.arcs._arc_owned_by_caller",
                               return_value=(owned, sessions)):
                 out = v2.v2_explore_arc_setup.__wrapped__(ARC)
                 resp, status = out if isinstance(out, tuple) else (out, 200)

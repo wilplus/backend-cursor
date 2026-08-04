@@ -210,11 +210,11 @@ class StudentGetSingleDeliverableTests(unittest.TestCase):
     def _get(self, row, *, entitled_moments=False, expl=None):
         with self.app.test_request_context():
             request.user_id = "u1"
-            with patch.object(v2, "_arc_owned_by_caller",
+            with patch("routes.v2.explore_ideal_text._arc_owned_by_caller",
                               return_value=(True, [])), \
-                 patch.object(v2, "_moments_entitled",
+                 patch("routes.v2.explore_ideal_text._moments_entitled",
                               return_value=entitled_moments), \
-                 patch.object(v2, "_moment_explanations_map",
+                 patch("routes.v2.explore_ideal_text._moment_explanations_map",
                               return_value=(expl or {})), \
                  patch.object(v2.db, "get_coach_arc_ideal_text",
                               return_value=row), \
@@ -299,10 +299,10 @@ class CrucialBubbleFieldTests(unittest.TestCase):
     def _get(self, row, sessions):
         with self.app.test_request_context():
             request.user_id = "u1"
-            with patch.object(v2, "_arc_owned_by_caller",
+            with patch("routes.v2.explore_ideal_text._arc_owned_by_caller",
                               return_value=(True, sessions)), \
-                 patch.object(v2, "_moments_entitled", return_value=False), \
-                 patch.object(v2, "_moment_explanations_map",
+                 patch("routes.v2.explore_ideal_text._moments_entitled", return_value=False), \
+                 patch("routes.v2.explore_ideal_text._moment_explanations_map",
                               return_value={}), \
                  patch.object(v2.db, "get_coach_arc_ideal_text",
                               return_value=row), \
@@ -532,10 +532,10 @@ class HistoricalVersionTests(unittest.TestCase):
         with self.app.test_request_context(
                 query_string={"version": version_param}):
             request.user_id = "u1"
-            with patch.object(v2, "_arc_owned_by_caller",
+            with patch("routes.v2.explore_ideal_text._arc_owned_by_caller",
                               return_value=(True, [])), \
-                 patch.object(v2, "_moments_entitled", return_value=False), \
-                 patch.object(v2, "_moment_explanations_map",
+                 patch("routes.v2.explore_ideal_text._moments_entitled", return_value=False), \
+                 patch("routes.v2.explore_ideal_text._moment_explanations_map",
                               return_value={}), \
                  patch.object(v2.db, "get_coach_arc_ideal_text",
                               return_value=(row or _row(version=3))), \
@@ -649,7 +649,7 @@ class MomentsUnlockTests(unittest.TestCase):
               owned=True):
         with self.app.test_request_context(json={}):
             request.user_id = UID
-            with patch.object(v2, "_arc_owned_by_caller",
+            with patch("routes.v2.arcs._arc_owned_by_caller",
                               return_value=(owned, [])), \
                  patch.object(v2.db, "get_moment_unlock",
                               return_value=({"arc_id": ARC} if entitled
@@ -714,11 +714,11 @@ class MomentExplanationGetTests(unittest.TestCase):
                      "recording_kind": "spoken", "paired_session_id": None}]
         with self.app.test_request_context():
             request.user_id = "u1"
-            with patch.object(v2, "_arc_owned_by_caller",
+            with patch("routes.v2.arcs._arc_owned_by_caller",
                               return_value=(True, sessions)), \
-                 patch.object(v2, "_moments_entitled",
+                 patch("routes.v2.arcs._moments_entitled",
                               return_value=entitled), \
-                 patch.object(v2, "_take_key_moments",
+                 patch("routes.v2.arcs._take_key_moments",
                               return_value=[{
                                   "snippet_id": "sn1",
                                   "take_session_id": "s1",
@@ -878,7 +878,7 @@ class PaywallRetirementTests(unittest.TestCase):
     def _best_presentation(self):
         with self.app.test_request_context():
             request.user_id = UID
-            with patch.object(v2, "_arc_owned_by_caller",
+            with patch("routes.v2.arcs._arc_owned_by_caller",
                               return_value=(True, [])), \
                  patch("services.best_presentation.build_best_presentation",
                        return_value={"ready": True, "slides": []}):
@@ -896,13 +896,13 @@ class PaywallRetirementTests(unittest.TestCase):
                   {"id": "s2", "take_index": 2}]
         with self.app.test_request_context():
             request.user_id = UID
-            with patch.object(v2, "_arc_owned_by_caller",
+            with patch("routes.v2.arcs._arc_owned_by_caller",
                               return_value=(True, spoken)), \
-                 patch.object(v2, "_spoken_takes_and_reads",
-                              return_value=(spoken, {})), \
-                 patch.object(v2, "_take_full_text",
+                 patch("routes.v2.arcs._spoken_takes_and_reads",
+                       return_value=(spoken, {})), \
+                 patch("routes.v2.arcs._take_full_text",
                               side_effect=lambda sid: f"text-{sid}"), \
-                 patch.object(v2, "_take_key_moments",
+                 patch("routes.v2.arcs._take_key_moments",
                               side_effect=lambda sid, rids: []), \
                  patch.object(v2.db, "get_coach_arc_ideal_text",
                               return_value={}):
