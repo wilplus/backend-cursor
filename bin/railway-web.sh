@@ -45,7 +45,12 @@ if [ -n "$FFMPEG_FOUND" ]; then
 else
   # Always include the common Nix profile dirs so imageio-ffmpeg's
   # fallback isn't the only option if Nix arrives later in the boot.
-  export PATH="${HOME}/.nix-profile/bin:/root/.nix-profile/bin:/nix/var/nix/profiles/default/bin:${PATH}"
+  # APPENDED for the same reason as the branch above (and as this same
+  # branch in bin/railway-worker.sh): a nix profile can carry its own
+  # python3, and prepending it would shadow the venv interpreter — the
+  # 2026-08-04 worker outage, one directory over. This was the one PATH
+  # edit the append fix missed.
+  export PATH="${PATH}:${HOME}/.nix-profile/bin:/root/.nix-profile/bin:/nix/var/nix/profiles/default/bin"
   echo "[startup] WARNING: no system ffmpeg found — Python will fall back to imageio-ffmpeg"
 fi
 
