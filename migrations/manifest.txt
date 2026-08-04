@@ -281,3 +281,5 @@
 0243	add_rls_processing_jobs.sql
 0244	add_read_alignments.sql
 0245	add_reflection_clips.sql
+0246	add_stripe_credit_grant_rpc.sql
+0247	fix_token_charge_uuid_cast.sql

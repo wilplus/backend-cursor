@@ -24,6 +24,96 @@ from services.stripe_checkout_webhook import (
 
 logger = logging.getLogger(__name__)
 
+# The Postgres function that claims the session AND applies the credits in one
+# transaction. migrations/add_stripe_credit_grant_rpc.sql.
+_GRANT_RPC = "stripe_checkout_grant_credits"
+
+# Sentinel: the function is not installed, so the caller runs the legacy
+# three-call path. Distinct from "it ran and refused" and from "it errored" —
+# retrying a grant that may already have COMMITTED is how you credit twice.
+_RPC_MISSING = object()
+
+# Negative cache, so a database without the migration does not pay a failed
+# round trip per checkout. Re-probes so applying the migration takes effect
+# without a redeploy — migrations here are run by hand.
+_RPC_RECHECK_SECONDS = 600.0
+_rpc_missing_until: float = 0.0
+
+
+def _rpc_not_found(err: Exception) -> bool:
+    """Absent, or present and broken? Only "absent" may fall back.
+
+    Deliberately stricter than a code match. token_charge (#328) shipped with a
+    `uuid = text` comparison that raises SQLSTATE 42883 — the same code
+    PostgREST uses for a genuinely missing function — and the fallback read it
+    as "not installed", so the atomicity fix sat inert in production behind an
+    INFO log for its entire life. See migrations/fix_token_charge_uuid_cast.sql
+    and services/token_account._rpc_not_found, which carries the same guard.
+    """
+    low = f"{getattr(err, 'message', '')} {err}".lower()
+    code = str(getattr(err, "code", "") or "")
+
+    if code == "PGRST202" or "pgrst202" in low:
+        return True
+    if code == "42883" or "42883" in low:
+        # A missing OPERATOR inside a function that exists is a broken body,
+        # not a missing function.
+        if "operator does not exist" in low:
+            return False
+        return _GRANT_RPC in low
+    return (
+        ("could not find the function" in low and _GRANT_RPC in low)
+        or ("schema cache" in low and _GRANT_RPC in low)
+    )
+
+
+def _grant_atomic(sid: str, user_id: str, credits: int):
+    """One round trip: claim + grant, or neither.
+
+    Returns the function's result dict, ``_RPC_MISSING`` when the migration has
+    not been run, or None when the call genuinely failed (caller reports an
+    error and does NOT retry through the legacy path).
+    """
+    global _rpc_missing_until
+    import time
+
+    if time.monotonic() < _rpc_missing_until:
+        return _RPC_MISSING
+
+    from services.db import _free_credit_grant
+
+    try:
+        res = db.client.rpc(_GRANT_RPC, {
+            "p_checkout_session_id": str(sid),
+            "p_user_id": str(user_id),
+            "p_credits": int(credits),
+            "p_free_grant": int(_free_credit_grant()),
+        }).execute()
+    except Exception as e:
+        if _rpc_not_found(e):
+            _rpc_missing_until = time.monotonic() + _RPC_RECHECK_SECONDS
+            logger.info(
+                "stripe credits: %s() not installed — using the legacy "
+                "non-atomic path (run migrations/add_stripe_credit_grant_rpc.sql)",
+                _GRANT_RPC)
+            return _RPC_MISSING
+        # The function exists and something went wrong inside it. The
+        # transaction rolled back, so nothing was claimed and nothing granted —
+        # but we must not retry through the legacy path, because a lost
+        # response after a successful commit is indistinguishable from here.
+        logger.error("stripe credits: atomic grant failed session=%s user=%s "
+                     "err=%s", sid, user_id, e, exc_info=True)
+        return None
+
+    payload = getattr(res, "data", None)
+    if isinstance(payload, list):
+        payload = payload[0] if payload else None
+    if not isinstance(payload, dict):
+        logger.error("stripe credits: atomic grant returned %r session=%s",
+                     payload, sid)
+        return None
+    return payload
+
 
 def _session_field(session: Any, key: str, default: Any = None) -> Any:
     if isinstance(session, dict):
@@ -199,6 +289,41 @@ def apply_paid_checkout_session_credits(
             configured_price_ids=configured_ids,
         )
 
+    # ── The atomic path: claim + grant in ONE transaction ─────────────────
+    #
+    # The three-call path below can take a payment, claim the session, then
+    # die before crediting — after which every Stripe retry reports
+    # duplicate=true and the user never gets what they paid for. Nothing
+    # detects it. This collapses the claim and the grant into one commit, so a
+    # crash leaves NOTHING and the next retry grants correctly.
+    outcome = _grant_atomic(sid, db_user_id, total)
+    if outcome is not _RPC_MISSING:
+        if outcome is None:
+            return CheckoutCreditsApplyResult.error(
+                500, "V2_ERROR",
+                "Could not apply credits (atomic grant failed — check Railway logs).",
+                hint="The grant rolled back; nothing was claimed. Stripe will "
+                     "retry, and the retry will apply cleanly.")
+        if not outcome.get("ok"):
+            return CheckoutCreditsApplyResult.error(
+                500, "V2_ERROR",
+                f"Could not apply credits ({outcome.get('reason') or 'unknown'}).")
+        credited = int(outcome.get("credits") or 0)
+        if outcome.get("duplicate"):
+            logger.info("stripe checkout credits duplicate session=%s user=%s "
+                        "credits=%s", sid, db_user_id, credited)
+            return CheckoutCreditsApplyResult.success(
+                200, credits=credited, duplicate=True, delta_applied=0,
+                used_auth_fallback=used_auth_fallback)
+        logger.info("stripe checkout credits applied (atomic) user_id=%s "
+                    "session=%s delta=%s new_credits=%s",
+                    db_user_id, sid, total, credited)
+        return CheckoutCreditsApplyResult.success(
+            200, credits=credited, duplicate=False,
+            delta_applied=int(outcome.get("delta") or 0),
+            user_id=db_user_id, used_auth_fallback=used_auth_fallback)
+
+    # ── Legacy three-call path, for a database without the migration ──────
     try:
         claimed = db.stripe_checkout_grant_claim(sid)
     except Exception as e:

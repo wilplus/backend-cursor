@@ -309,6 +309,172 @@ class NewFunctionsRevokeExecuteTests(unittest.TestCase):
             f"hijack away from running as the owner: {offenders}"))
 
 
+_CREATE_FN_BLOCK = re.compile(
+    # Params span multiple lines in every real migration here, so the group
+    # must cross newlines — an earlier `(.*?)` matched ZERO functions and made
+    # the scan below pass vacuously. test_the_scan_is_not_vacuous exists
+    # because of that.
+    r"CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+(?:public\.)?(\w+)\s*\("
+    r"([\s\S]*?)\)\s*RETURNS[\s\S]*?\$(\w*)\$([\s\S]*?)\$\3\$", re.I)
+
+# Columns that are UUID in the schema but arrive from PostgREST as TEXT.
+# `uuid_col = text_param` has no operator and raises 42883 at RUNTIME —
+# CREATE FUNCTION succeeds, the first call fails.
+_UUID_COLUMNS = {"v2_student_details": "user_id"}
+
+# Files that carry the bug and are FIXED BY A LATER MIGRATION rather than
+# edited in place. Editing an applied .sql changes its sha256 and trips the
+# runner's drift detection (docs/MIGRATIONS.md), so the broken original has to
+# stay exactly as it shipped.
+#
+# This is not an opt-out. An entry here is a claim that a later migration
+# CREATE OR REPLACEs the same function correctly, and
+# test_superseded_files_are_actually_superseded enforces that claim.
+SUPERSEDED_UUID_TEXT_FILES = {
+    "add_token_charge_rpc.sql": "fix_token_charge_uuid_cast.sql",
+}
+
+
+class UuidTextComparisonTests(unittest.TestCase):
+    """The bug that made token_charge inert in production for its whole life.
+
+    migrations/add_token_charge_rpc.sql compared `v2_student_details.user_id`
+    (UUID) to a `text` parameter. Postgres has no `uuid = text` operator, so it
+    raised SQLSTATE 42883 on the first call — but plpgsql resolves SQL at first
+    EXECUTION, not at CREATE, so the migration applied cleanly and reported
+    success. The app then read 42883 as "function not installed" and silently
+    fell back to the legacy path. Nothing looked wrong for its entire lifetime.
+
+    No unit double can catch this: services/db is faked in tests and the fake
+    has no column types. Neither can a live-Postgres run against a hand-written
+    fixture — the #328 fixture declared user_id as TEXT, which is precisely why
+    a "verified against live PostgreSQL" claim was wrong. The only thing that
+    catches it cheaply is reading the SQL against the DECLARED schema.
+    """
+
+    def test_no_function_compares_a_uuid_column_to_a_text_parameter(self):
+        offenders = []
+        for name in _sql_files():
+            if name in SUPERSEDED_UUID_TEXT_FILES:
+                continue
+            with open(os.path.join(MIGRATIONS, name), encoding="utf-8",
+                      errors="replace") as fh:
+                sql = _strip_comments(fh.read())
+            for fn, params, _tag, body in _CREATE_FN_BLOCK.findall(sql):
+                text_params = {
+                    m.group(1)
+                    for m in re.finditer(r"(\w+)\s+text\b", params, re.I)
+                }
+                if not text_params:
+                    continue
+                # Scope per STATEMENT, not per function body. token_ledger.user_id
+                # is TEXT while v2_student_details.user_id is UUID, and both are
+                # touched by the same function — so `user_id = p_user_id` is
+                # correct in one statement and a runtime error in the next.
+                # Checking the whole body cannot tell them apart.
+                for stmt in body.split(";"):
+                    for table, col in _UUID_COLUMNS.items():
+                        if table not in stmt:
+                            continue
+                        for p in text_params:
+                            if re.search(r"\b" + re.escape(col) + r"\s*=\s*"
+                                         + re.escape(p) + r"\b(?!\s*::)", stmt):
+                                offenders.append(
+                                    f"{name}: {fn}() — {table}.{col} (uuid) "
+                                    f"= {p} (text)")
+                            # ...and the dynamic-SQL form: USING <text_param>.
+                            if (re.search(r"\b" + re.escape(col) + r"\s*=\s*\$\d", stmt)
+                                    and re.search(r"USING\s+" + re.escape(p) + r"\b", stmt)):
+                                offenders.append(
+                                    f"{name}: {fn}() — EXECUTE ... {col} = $n "
+                                    f"USING {p} (text)")
+
+        self.assertEqual(sorted(set(offenders)), [], (
+            "A function compares a UUID column to a TEXT parameter. Postgres "
+            "has no `uuid = text` operator: CREATE succeeds and the FIRST CALL "
+            "raises 42883, so this ships looking healthy and fails silently "
+            "forever after.\n\n"
+            "Fix: cast once at the top of the function, guarded —\n\n"
+            "    BEGIN\n"
+            "        v_uid := p_user_id::uuid;\n"
+            "    EXCEPTION WHEN invalid_text_representation THEN\n"
+            "        RETURN <degraded result>;\n"
+            "    END;\n\n"
+            "then use v_uid for that table. See "
+            "migrations/fix_token_charge_uuid_cast.sql.\n"
+            f"Offenders: {sorted(set(offenders))}"))
+
+    def test_superseded_files_are_actually_superseded(self):
+        """An exemption is only honest if the fix really exists, really comes
+        LATER in the manifest, and really redefines the same function."""
+        with open(os.path.join(MIGRATIONS, "manifest.txt"), encoding="utf-8") as fh:
+            order = [ln.split("\t")[-1].strip() for ln in fh
+                     if ln.strip() and not ln.startswith("#")]
+
+        for broken, fixer in SUPERSEDED_UUID_TEXT_FILES.items():
+            self.assertIn(broken, order, f"{broken} is not in the manifest")
+            self.assertIn(fixer, order, f"{fixer} is not in the manifest")
+            self.assertLess(order.index(broken), order.index(fixer),
+                            f"{fixer} must run AFTER {broken}")
+
+            def fns(fname):
+                with open(os.path.join(MIGRATIONS, fname), encoding="utf-8") as fh2:
+                    return {f for f, _p, _t, _b in
+                            _CREATE_FN_BLOCK.findall(_strip_comments(fh2.read()))}
+
+            shared = fns(broken) & fns(fixer)
+            self.assertTrue(shared, (
+                f"{fixer} does not redefine any function from {broken}, so the "
+                "exemption is unearned"))
+
+    def test_the_scan_is_not_vacuous(self):
+        """A scan that matches nothing reports "no offenders" forever.
+
+        The first version of _CREATE_FN_BLOCK used `(.*?)` for the parameter
+        list, which cannot cross newlines — and every real function here
+        declares its parameters one per line. It matched ZERO functions, so
+        the offender check passed while reading nothing at all. Exactly the
+        failure mode this repo keeps hitting: a check that can only report
+        success is not a check.
+        """
+        seen = []
+        for name in _sql_files():
+            with open(os.path.join(MIGRATIONS, name), encoding="utf-8",
+                      errors="replace") as fh:
+                sql = _strip_comments(fh.read())
+            seen += [f"{name}:{fn}" for fn, _p, _t, _b in _CREATE_FN_BLOCK.findall(sql)]
+
+        self.assertGreaterEqual(len(seen), 3, (
+            "The function-block regex matched fewer functions than this repo "
+            "is known to define — the uuid/text scan is reading nothing. "
+            f"Matched: {seen}"))
+        joined = " ".join(seen)
+        for expected in ("token_charge", "stripe_checkout_grant_credits",
+                         "credits_increment"):
+            self.assertIn(expected, joined,
+                          f"{expected}() is defined in migrations but the scan "
+                          "does not see it")
+
+    def test_the_check_actually_catches_the_original_bug(self):
+        """A guard nobody has watched fail is a comment. This feeds it the
+        exact shape 0241 shipped with and requires a hit."""
+        sql = """
+        CREATE OR REPLACE FUNCTION public.probe(p_user_id text)
+        RETURNS jsonb LANGUAGE plpgsql AS $fn$
+        BEGIN
+            PERFORM 1 FROM public.v2_student_details
+             WHERE user_id = p_user_id FOR UPDATE;
+            RETURN '{}'::jsonb;
+        END;
+        $fn$;
+        """
+        blocks = _CREATE_FN_BLOCK.findall(sql)
+        self.assertTrue(blocks, "the function-block regex stopped matching")
+        _fn, params, _tag, body = blocks[0]
+        self.assertIn("p_user_id", params)
+        self.assertRegex(body, r"\buser_id\s*=\s*p_user_id\b(?!\s*::)")
+
+
 class TokenChargeFunctionTests(unittest.TestCase):
     """The specific function this rule arrived with. Spot checks, not a parser —
     these are the properties whose absence would be silent and expensive."""

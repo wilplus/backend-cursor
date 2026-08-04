@@ -3120,7 +3120,54 @@ class DatabaseService:
             return None
 
     def v2_increment_student_credits(self, user_id: str, delta: int) -> int | None:
-        """Add delta to credits (e.g. Stripe payment). Negative delta allowed for corrections; result floors at 0. Returns new balance or None on failure."""
+        """Add delta to credits (e.g. Stripe payment). Negative delta allowed for corrections; result floors at 0. Returns new balance or None on failure.
+
+        Prefers public.credits_increment (migrations/add_stripe_credit_grant_rpc.sql),
+        which does the whole thing in one `credits = credits + N` statement.
+        The fallback below is read-modify-write across two HTTP calls with NO
+        compare-and-swap: two concurrent callers both read the old balance and
+        both write it back, so one grant — or one REFUND — silently vanishes.
+        Both remaining callers are money paths (the admin adjustment webhook
+        and the moments-unlock refund), so that race costs real credits.
+        """
+        try:
+            d = int(delta)
+            res = self.client.rpc("credits_increment", {
+                "p_user_id": str(user_id),
+                "p_delta": d,
+                "p_free_grant": int(_free_credit_grant()),
+            }).execute()
+            payload = getattr(res, "data", None)
+            if isinstance(payload, list):
+                payload = payload[0] if payload else None
+            if isinstance(payload, dict) and payload.get("ok"):
+                return int(payload.get("credits") or 0)
+            # ok=false is a real refusal (invalid input) — do not silently
+            # re-run it through the racy path.
+            if isinstance(payload, dict):
+                logger.warning("credits_increment refused user_id=%s delta=%s "
+                               "reason=%s", user_id, d, payload.get("reason"))
+                return None
+        except Exception as e:
+            # Only "the function is absent" may fall through to the legacy
+            # path. A broken-but-present function raises 42883 too (see
+            # migrations/fix_token_charge_uuid_cast.sql), and treating that as
+            # "not installed" is exactly how a fix stays inert unnoticed.
+            low = f"{getattr(e, 'message', '')} {e}".lower()
+            absent = (
+                "pgrst202" in low
+                or ("42883" in low and "operator does not exist" not in low
+                    and "credits_increment" in low)
+                or ("could not find the function" in low and "credits_increment" in low)
+            )
+            if not absent:
+                logger.warning("credits_increment failed user_id=%s delta=%s: %s",
+                               user_id, d, e, exc_info=True)
+                return None
+            logger.info("credits_increment not installed — using the legacy "
+                        "read-modify-write path (run "
+                        "migrations/add_stripe_credit_grant_rpc.sql)")
+
         try:
             d = int(delta)
             details = self.v2_get_student_details(user_id)

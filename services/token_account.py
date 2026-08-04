@@ -400,27 +400,52 @@ def _spend(db, user_id: str, price: int, monthly: int, bonus: int) -> bool:
 
 
 def _rpc_not_found(err: Exception) -> bool:
-    """Is this "the function does not exist" rather than "the charge failed"?
+    """Is the function ABSENT, or is it present and BROKEN?
 
-    The distinction decides whether we may fall back to the legacy path. Get it
-    wrong in the permissive direction and a charge that already COMMITTED gets
-    replayed by the fallback — a double debit, which is the exact failure this
-    whole change exists to remove. So this matches narrowly and anything it
-    does not recognise is treated as a real failure.
+    Only "absent" may fall back to the legacy path. Both wrong answers hurt,
+    in opposite directions:
 
-    PostgREST reports a missing function as PGRST202 ("Could not find the
-    function public.token_charge(...) in the schema cache"); Postgres itself
-    reports 42883 / undefined_function.
+      * too permissive — a charge that already COMMITTED gets replayed by the
+        fallback: a double debit, the exact failure this change removes;
+      * too permissive in the OTHER sense — a function that exists but throws
+        gets quietly downgraded to the legacy path forever, and the only
+        symptom is an INFO log saying "not installed" about something that is
+        installed.
+
+    THE SECOND ONE ACTUALLY HAPPENED. token_charge (0241) shipped comparing a
+    uuid column to a text parameter, which Postgres rejects with SQLSTATE
+    42883 — the same code PostgREST uses for a genuinely missing function.
+    This helper matched a bare 42883, so every call fell back, the atomicity
+    fix was inert in production from the day it was applied, and nothing
+    looked wrong. See migrations/fix_token_charge_uuid_cast.sql.
+
+    So the codes are no longer trusted on their own:
+
+      * PGRST202 is unambiguous — PostgREST could not resolve the function.
+      * 42883 (undefined_function) is NOT: Postgres raises it for a missing
+        OPERATOR or helper inside a function body that exists perfectly well.
+        It only counts as "absent" when the message also names our function
+        and is not an operator-resolution failure.
+
+    Anything unrecognised is treated as a real failure, which fails open on
+    the charge and leaves a WARNING rather than silently rerouting.
     """
-    code = str(getattr(err, "code", "") or "")
-    if code in ("PGRST202", "42883", "404"):
-        return True
     low = f"{getattr(err, 'message', '')} {err}".lower()
+    code = str(getattr(err, "code", "") or "")
+
+    if code == "PGRST202" or "pgrst202" in low:
+        return True
+
+    if code == "42883" or "42883" in low:
+        # "operator does not exist: uuid = text" is a BROKEN body, not a
+        # missing function — and it is the exact string that fooled this
+        # helper before.
+        if "operator does not exist" in low:
+            return False
+        return _CHARGE_RPC in low
+
     return (
-        "pgrst202" in low
-        or "42883" in low
-        or "could not find the function" in low
-        or ("does not exist" in low and _CHARGE_RPC in low)
+        ("could not find the function" in low and _CHARGE_RPC in low)
         or ("schema cache" in low and _CHARGE_RPC in low)
     )
 
