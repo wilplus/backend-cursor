@@ -10536,7 +10536,6 @@ class DatabaseService:
         try:
             self.client.table("v2_sessions").update(payload).eq(
                 "id", session_id).execute()
-            return True
         except Exception as e:
             if "analysis_state" in str(e).lower():
                 logger.warning(
@@ -10547,6 +10546,17 @@ class DatabaseService:
             logger.warning("set_session_analysis_state failed sid=%s: %s",
                            session_id, e)
             return False
+        # Push half (docs/BE-HANDOFF-analysis-state-push.md): announce the
+        # flip AFTER the write lands, never before — the FE's poll fallback
+        # must always agree with what push said. Guarded here too so a broken
+        # notifier can never turn a landed write into a reported failure.
+        try:
+            from services.realtime_notify import broadcast_analysis_state
+            broadcast_analysis_state(str(session_id), state)
+        except Exception:
+            logger.debug(
+                "analysis-state broadcast wrapper failed sid=%s", session_id)
+        return True
 
     def set_session_feedback_saved(self, session_id: str) -> bool:
         """Stamp the per-take coach 'Save' checkpoint (nothing delivered —
