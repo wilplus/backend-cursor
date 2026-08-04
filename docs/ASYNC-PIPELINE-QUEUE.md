@@ -96,11 +96,83 @@ exactly as before.
 3. **Add Redis**: Railway → project → New → Database → **Redis**. Note the
    `REDIS_URL` it provisions.
 4. **Create the worker service**: New service → connect this same repo →
-   Settings → Start Command: `sh bin/railway-worker.sh`. Give it the SAME
-   env group as the web service, PLUS `REDIS_URL` and
-   `PIPELINE_QUEUE_ENABLED=1`. It boots, warms librosa, sweeps, and idles
-   (queue is empty — web isn't enqueueing yet). Check logs for
-   `librosa numba JIT warmed` + `worker starting on queue 'pipeline'`.
+   Settings → Start Command: `sh bin/railway-worker.sh`.
+
+   **Variables — the step that actually bites.** The worker is NOT a thin
+   shim: it re-downloads the take from object storage, writes through
+   `services.db`, calls Whisper + the analysis LLMs, and emails the coach.
+   It needs the web service's WHOLE config, not a subset. `services/db.py`
+   builds its Supabase client at import time, so a missing `SUPABASE_URL`
+   kills the process before it can log anything useful and Railway
+   restarts it forever. `worker.py` preflights the four hard requirements
+   and names what is missing, but the fix is always the same: copy the
+   variables over.
+
+   Fastest: web service → Variables → **Raw Editor** → copy all → paste
+   into the worker's Raw Editor. Better long-term: a project-level
+   **Shared Variable group** both services reference, so they cannot
+   drift. At minimum:
+
+   | Group | Vars | Why the worker needs it |
+   |---|---|---|
+   | Supabase | `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | every DB read/write (import-time hard requirement) |
+   | OpenAI | `OPENAI_API_KEY` (+ any `OPENAI_*_MODEL`) | Whisper + the analysis LLM calls |
+   | Storage | `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `COACH_FEEDBACK_VIDEO_BUCKET`, any `R2_*` bucket / base-URL vars | **fetching the audio** — the queue carries an id, not bytes |
+   | Email | `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, `ADMIN_EMAIL`, `FRONTEND_URL` | auto-send to the coach queue |
+   | Ops | `SENTRY_DSN`, `ENV` | worker exceptions reach Sentry |
+   | Queue | `REDIS_URL`, `PIPELINE_QUEUE_ENABLED=1` | the broker + the flag |
+   | Feature flags | whatever web has on (`MOMENT_SUGGESTIONS_ENABLED`, `MASTER_DOCUMENT_*`, …) | the pipeline branches on these — a mismatch silently changes what a take produces |
+
+   Do NOT set `PORT`: the worker serves no HTTP, and Railway will fail
+   healthchecks against a service it thinks is a web target.
+
+   It then boots, warms librosa, sweeps, and idles (queue is empty — web
+   isn't enqueueing yet). Healthy log, in order:
+   ```
+   [startup] ffmpeg located at ...
+   librosa numba JIT warmed (pid=...)
+   boot sweep: {'requeued': 0, 'failed': 0}
+   worker starting on queue 'pipeline' (job timeout 3600s)
+   ```
+
+   **Builder note — ffmpeg.** Railway's default builder is now
+   **Railpack**, which does NOT read `nixpacks.toml` or `apt.txt` (its
+   only config file is `railpack.json`). A service built with it has no
+   system ffmpeg and logs `no system ffmpeg — using the imageio-ffmpeg
+   bundled binary`. That fallback is a real ffmpeg and the pipeline runs,
+   but it diverges from web.
+
+   The fix is committed as **`railpack.json`** at the repo root:
+
+   ```json
+   { "$schema": "https://schema.railpack.com",
+     "deploy": { "aptPackages": ["...", "ffmpeg"] } }
+   ```
+
+   Three things about that file, each of which silently breaks it:
+   - `deploy.aptPackages` is the RUNTIME list. Root-level
+     `buildAptPackages` exists but only lives in the builder stage — put
+     ffmpeg there and the final image still won't have it.
+   - The `"..."` entry extends Railpack's generated package list. Without
+     it the list REPLACES what the Python provider adds (`libpq5` etc.),
+     so it is not cosmetic.
+   - A root `Dockerfile` would override all of this (there is none — the
+     `Dockerfile.*-cron` files are per-service paths, not the default).
+
+   Equivalent without a file, as a service variable:
+   `RAILPACK_DEPLOY_APT_PACKAGES="... ffmpeg"`.
+
+   Nixpacks is NOT a fallback plan: Railway removed its documentation and
+   dropped it from the documented builder enum (`RAILPACK` | `DOCKERFILE`)
+   in March 2026. Services still on it keep working, which is why
+   `nixpacks.toml` stays in the repo and must list the same packages as
+   `railpack.json` — but don't design around switching back to it.
+
+   Check the WEB service after any rebuild too: if it silently moved to
+   Railpack it lost ffmpeg the same way, and there it degrades the live
+   loop. Verify from its deploy log's `[startup] ffmpeg located at …`
+   line, or in a build log look for the `packages:apt:runtime` step
+   installing ffmpeg.
 5. **Canary**: flip `PIPELINE_QUEUE_ENABLED=1` + set `REDIS_URL` on the
    **web** service. Record one take; confirm 202 with `job_id`, worker log
    shows the job, poll reaches `ready`, readout renders. (Do this before

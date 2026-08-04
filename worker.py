@@ -100,9 +100,39 @@ def _warm_analysis_stack() -> None:
         logger.warning("librosa warmup skipped: %s", e)
 
 
+def _preflight() -> list:
+    """Names of REQUIRED env vars that are missing.
+
+    The worker shares the web service's whole config: it re-downloads the
+    take from object storage, writes through services.db, and calls
+    Whisper/LLMs itself. A missing SUPABASE_URL used to surface as a
+    supabase traceback from a module import three frames deep, once per
+    restart — this turns that into one actionable line naming what to set
+    in the Railway service.
+    """
+    required = (
+        "SUPABASE_URL",           # services.db — hard requirement
+        "SUPABASE_SERVICE_ROLE_KEY",
+        "OPENAI_API_KEY",         # Whisper + the analysis LLM calls
+        "REDIS_URL",              # the broker
+    )
+    return [name for name in required if not (os.getenv(name) or "").strip()]
+
+
 def main() -> int:
     _enforce_secrets()
     _init_sentry()
+
+    missing = _preflight()
+    if missing:
+        logger.error(
+            "missing required env var(s): %s — the worker service needs the "
+            "SAME variables as the web service (Supabase, OpenAI, R2/storage, "
+            "Resend) PLUS REDIS_URL and PIPELINE_QUEUE_ENABLED=1. In Railway: "
+            "worker service → Variables. See docs/ASYNC-PIPELINE-QUEUE.md §3.",
+            ", ".join(missing),
+        )
+        return 1
 
     from services import job_queue
 
