@@ -26,7 +26,7 @@ import os
 import re
 import sys
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Callable, Optional
 
@@ -296,35 +296,68 @@ def llm_grade(case: GoldenCase, output: Any) -> tuple[bool, str]:
 # ─────────────────────────────────────────────────────────────────
 
 
+# A semantic-grader failure has two possible causes: the prompt really
+# regressed, or the production call was simply nondeterministic on this
+# run (real even at temperature 0). Re-run the SURFACE — not just the
+# grade, since it is the output that varies — and only call it a
+# regression when it fails again. A genuine regression fails every
+# attempt; a coin-flip rarely does twice. Deterministic failures never
+# retry: those are reproducible by construction. Retries are printed,
+# so an intermittently-disobeyed prompt stays visible in the log
+# instead of being silently absorbed into a green run.
+_SEMANTIC_ATTEMPTS = 2
+
+
+def _attempt(surface: str, case: GoldenCase,
+             adapter: Callable[[dict], Any]) -> tuple[Verdict, bool]:
+    """Run the surface once and grade it.
+
+    Returns the verdict plus whether the failure was the semantic
+    grader's (the only kind worth a second attempt).
+    """
+    try:
+        output = adapter(case.input)
+    except Exception as e:
+        return Verdict(
+            case_id=case.id, surface=surface, passed=False,
+            reason=f"adapter raised: {type(e).__name__}: {e}",
+            description=case.description), False
+    det = deterministic_check(case, output)
+    if det:
+        return Verdict(
+            case_id=case.id, surface=surface, passed=False,
+            reason=det, description=case.description,
+            output=output), False
+    if output is None and case.rubric.get("allow_none_output"):
+        # A permitted None is a complete verdict — nothing to grade.
+        return Verdict(
+            case_id=case.id, surface=surface, passed=True,
+            reason="ok (None permitted)",
+            description=case.description), False
+    ok, reason = llm_grade(case, output)
+    return Verdict(
+        case_id=case.id, surface=surface, passed=ok,
+        reason="ok" if ok else reason,
+        description=case.description, output=output), not ok
+
+
 def run_surface(surface: str,
                 adapter: Callable[[dict], Any]) -> list[Verdict]:
     verdicts: list[Verdict] = []
     for case in load_golden(surface):
-        try:
-            output = adapter(case.input)
-        except Exception as e:
-            verdicts.append(Verdict(
-                case_id=case.id, surface=surface, passed=False,
-                reason=f"adapter raised: {type(e).__name__}: {e}",
-                description=case.description))
-            continue
-        det = deterministic_check(case, output)
-        if det:
-            verdicts.append(Verdict(
-                case_id=case.id, surface=surface, passed=False,
-                reason=det, description=case.description, output=output))
-            continue
-        if output is None and case.rubric.get("allow_none_output"):
-            # A permitted None is a complete verdict — nothing to grade.
-            verdicts.append(Verdict(
-                case_id=case.id, surface=surface, passed=True,
-                reason="ok (None permitted)", description=case.description))
-            continue
-        ok, reason = llm_grade(case, output)
-        verdicts.append(Verdict(
-            case_id=case.id, surface=surface, passed=ok,
-            reason="ok" if ok else reason,
-            description=case.description, output=output))
+        verdict, retryable = _attempt(surface, case, adapter)
+        attempts = 1
+        while retryable and attempts < _SEMANTIC_ATTEMPTS:
+            attempts += 1
+            print(f"  … {case.id}: semantic grader failed "
+                  f"({verdict.reason}) — re-running the surface "
+                  f"(attempt {attempts}/{_SEMANTIC_ATTEMPTS})",
+                  flush=True)
+            verdict, retryable = _attempt(surface, case, adapter)
+        if attempts > 1 and verdict.passed:
+            verdict = replace(
+                verdict, reason=f"ok (passed on attempt {attempts})")
+        verdicts.append(verdict)
     return verdicts
 
 
