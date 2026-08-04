@@ -53,6 +53,14 @@ class GoldenCase:
     rubric: dict
     description: str = ""
     notes: str = ""
+    # A case documenting a KNOWN, REPRODUCIBLE product bug whose fix is
+    # owned elsewhere (typically a product-copy edit behind founder
+    # sign-off). It still runs and still reports — it just does not turn
+    # the build red, so one known bug cannot mask regressions in the
+    # other cases. This is NOT a way to silence an inconvenient case:
+    # ``notes`` must say what the bug is and who owns the fix, and the
+    # marker self-expires — see ``is_blocking_failure``.
+    known_failing: bool = False
 
 
 @dataclass
@@ -63,6 +71,22 @@ class Verdict:
     reason: str = ""
     description: str = ""
     output: Any = None
+    known_failing: bool = False
+
+
+def is_blocking_failure(v: Verdict) -> bool:
+    """Does this verdict turn the build red?
+
+    A quarantined case that still fails does not — that is the point.
+    But a quarantined case that PASSES does, because the bug it
+    documents is gone and the marker is now lying about the product.
+    That is what makes the quarantine self-expiring: the fix itself
+    forces the marker's removal, so it cannot quietly rot into a
+    permanently-skipped case.
+    """
+    if v.known_failing:
+        return v.passed
+    return not v.passed
 
 
 _REQUIRED_KEYS = ("id", "surface", "input", "rubric")
@@ -100,6 +124,16 @@ def validate_case_dict(raw: Any, *, where: str = "") -> list[str]:
                 f"{where}: unknown rubric key(s) {sorted(unknown)} — "
                 f"known keys: {sorted(_KNOWN_RUBRIC_KEYS)}"
             )
+    if "known_failing" in raw:
+        if not isinstance(raw["known_failing"], bool):
+            problems.append(f"{where}: 'known_failing' must be a boolean")
+        elif raw["known_failing"] and not str(raw.get("notes") or "").strip():
+            # Quarantining a case without saying why is how a gate
+            # rots. The note is the audit trail.
+            problems.append(
+                f"{where}: 'known_failing' requires a non-empty 'notes' "
+                "explaining the bug and who owns the fix"
+            )
     return problems
 
 
@@ -129,6 +163,7 @@ def load_golden(surface: str) -> list[GoldenCase]:
                 rubric=raw["rubric"],
                 description=str(raw.get("description") or ""),
                 notes=str(raw.get("notes") or ""),
+                known_failing=bool(raw.get("known_failing", False)),
             ))
     if problems:
         raise ValueError("golden dataset invalid:\n  " + "\n  ".join(problems))
@@ -321,24 +356,27 @@ def _attempt(surface: str, case: GoldenCase,
         return Verdict(
             case_id=case.id, surface=surface, passed=False,
             reason=f"adapter raised: {type(e).__name__}: {e}",
-            description=case.description), False
+            description=case.description,
+            known_failing=case.known_failing), False
     det = deterministic_check(case, output)
     if det:
         return Verdict(
             case_id=case.id, surface=surface, passed=False,
             reason=det, description=case.description,
-            output=output), False
+            output=output, known_failing=case.known_failing), False
     if output is None and case.rubric.get("allow_none_output"):
         # A permitted None is a complete verdict — nothing to grade.
         return Verdict(
             case_id=case.id, surface=surface, passed=True,
             reason="ok (None permitted)",
-            description=case.description), False
+            description=case.description,
+            known_failing=case.known_failing), False
     ok, reason = llm_grade(case, output)
     return Verdict(
         case_id=case.id, surface=surface, passed=ok,
         reason="ok" if ok else reason,
-        description=case.description, output=output), not ok
+        description=case.description, output=output,
+        known_failing=case.known_failing), not ok
 
 
 def run_surface(surface: str,
@@ -347,6 +385,12 @@ def run_surface(surface: str,
     for case in load_golden(surface):
         verdict, retryable = _attempt(surface, case, adapter)
         attempts = 1
+        if case.known_failing:
+            # A quarantined case is EXPECTED to fail, so a second call
+            # would just buy the same answer at twice the price. The
+            # signal that matters here is the opposite one — it passing
+            # — and attempt 1 already tells us that.
+            retryable = False
         while retryable and attempts < _SEMANTIC_ATTEMPTS:
             attempts += 1
             print(f"  … {case.id}: semantic grader failed "
@@ -369,17 +413,33 @@ def print_report(verdicts: list[Verdict], elapsed_sec: float) -> None:
     print("prompt golden evals")
     print(_RULE)
     for v in verdicts:
-        mark = "PASS" if v.passed else "FAIL"
+        if v.known_failing and not v.passed:
+            mark = "KNOWN-FAIL"
+        elif v.known_failing and v.passed:
+            mark = "FIXED!"
+        else:
+            mark = "PASS" if v.passed else "FAIL"
         print(f"{mark}  {v.case_id}  [{v.surface}]  {v.description}")
-        if not v.passed:
+        if v.known_failing and v.passed:
+            print("       this case is marked known_failing but PASSED — "
+                  "the bug is fixed. Remove the marker (and its notes) "
+                  "from the golden dataset to re-arm the gate.")
+        elif not v.passed:
             print(f"       reason: {v.reason}")
             if v.output is not None:
                 out = _flatten(v.output)
                 print(f"       output: {out[:200]}{'…' if len(out) > 200 else ''}")
     passed_n = sum(1 for v in verdicts if v.passed)
+    quarantined = [v for v in verdicts if v.known_failing and not v.passed]
     print(_RULE)
     print(f"RESULT  {passed_n} / {len(verdicts)} passed"
           f"   wall_time {elapsed_sec:.1f}s")
+    if quarantined:
+        # Never let a quarantine be invisible: an unreported skip reads
+        # as "all good" when it isn't.
+        print(f"        {len(quarantined)} known-failing "
+              f"({', '.join(v.case_id for v in quarantined)}) — "
+              "documented bugs, not gating")
     print(_RULE)
 
 
@@ -408,4 +468,4 @@ def run(surfaces: list[str],
             continue
         all_verdicts.extend(run_surface(surface, adapter))
     print_report(all_verdicts, time.perf_counter() - t0)
-    return 1 if any(not v.passed for v in all_verdicts) else 0
+    return 1 if any(is_blocking_failure(v) for v in all_verdicts) else 0
