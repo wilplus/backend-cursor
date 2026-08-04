@@ -146,19 +146,32 @@ class StressLaneIsGoneTests(unittest.TestCase):
         with open("app.py", encoding="utf-8") as fh:
             app_src = fh.read()
         self.assertNotIn("snippet_labels_bp", app_src)
-        with open("routes/v2_routes.py", encoding="utf-8") as fh:
-            v2_src = fh.read()
+        v2_src = _v2_route_layer_source()
         self.assertNotIn('"/user/snippets/<snippet_id>/label"', v2_src)
 
     def test_the_replacement_capture_exists(self):
         """The lane is not merely deleted — it is pivoted. The peer-review
         capture is the thing it became."""
-        with open("routes/v2_routes.py", encoding="utf-8") as fh:
-            v2_src = fh.read()
+        v2_src = _v2_route_layer_source()
         self.assertIn('"/user/snippets/<snippet_id>/confidence-review"', v2_src)
 
 
 # ── 2) learning trace aggregation ──────────────────────────────────────────
+
+def _v2_route_layer_source() -> str:
+    """Every /v2 route module concatenated.
+
+    The layer is split across routes/v2_routes.py and routes/v2/* (god-file
+    split); globbed so carving out a domain cannot quietly empty these fences.
+    """
+    import glob
+    import os
+    return "\n".join(
+        open(p, encoding="utf-8").read()
+        for p in ["routes/v2_routes.py"] + sorted(glob.glob("routes/v2/*.py"))
+        if os.path.basename(p) != "__init__.py"
+    )
+
 
 class _FakeQuery:
     def __init__(self, store, table):

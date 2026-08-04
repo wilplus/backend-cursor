@@ -958,8 +958,10 @@ class ChatIsolationTests(unittest.TestCase):
     def test_the_hook_in_the_chat_route_is_flag_and_auth_guarded(self):
         # The one contact point with v2_routes.py. Both guards must be on the
         # same line of defence as the call itself.
+        # The chat route (and with it the one contact point) lives in
+        # routes/v2/coaching.py since the god-file split.
         with open(os.path.join(os.path.dirname(MIGRATION), "..",
-                               "routes", "v2_routes.py"),
+                               "routes", "v2", "coaching.py"),
                   "r", encoding="utf-8") as fh:
             src = fh.read()
         hook = src[src.index("Life Panel hashtag router"):]
@@ -2258,7 +2260,7 @@ class IsolationTests(unittest.TestCase):
         points (the chat route and master_doc_rag's per-user block) may name
         it, and master_doc_rag names only its own renderer — not the module."""
         root = os.path.dirname(os.path.abspath(__file__))
-        permitted = {"routes/v2_routes.py"}
+        permitted = {"routes/v2/coaching.py"}   # the chat-router hook
         offenders = []
         for rel in _product_py_files(root):
             if rel in self.LIFE_MODULES or rel in permitted:

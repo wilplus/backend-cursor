@@ -503,22 +503,6 @@ class CoveredRoutesTests(unittest.TestCase):
     # unchanged from the registry's introduction; only the path keys moved
     # with the code.
     EXPECTED = {
-        "routes/v2_routes.py": {
-            # interactive LLM
-            "v2_chat_query": "llm_limit",
-            "v2_chat_snippet_followup": "llm_limit",
-            "v2_coaching_turn": "llm_limit",
-            "v2_coaching_state_machine_turn": "llm_limit",
-            "v2_coaching_intro_bubble": "llm_limit",
-            "v2_onboarding_opener_start": "llm_limit",
-            "v2_onboarding_opener_next": "llm_limit",
-            "v2_admin_suggest_directives_queue": "llm_limit",
-            # multi-call generation / media / training
-            "v2_admin_learning_train": "heavy_limit",
-            # bespoke
-            "v2_public_shaky_voice_upload": "guest_funnel_limit",
-            "v2_admin_regenerate_next_session_icebreaker": "regenerate_limit",
-        },
         "routes/v2/lab_recording.py": {
             "v2_lab_create_recording": "whisper_limit",
             "v2_lab_presentation_extract": "heavy_limit",
@@ -535,6 +519,23 @@ class CoveredRoutesTests(unittest.TestCase):
         },
         "routes/v2/user_chat.py": {
             "v2_user_chat_first_question": "llm_limit",
+        },
+        "routes/v2/coaching.py": {
+            "v2_chat_query": "llm_limit",
+            "v2_chat_snippet_followup": "llm_limit",
+            "v2_coaching_intro_bubble": "llm_limit",
+            "v2_coaching_state_machine_turn": "llm_limit",
+            "v2_coaching_turn": "llm_limit",
+            "v2_onboarding_opener_next": "llm_limit",
+            "v2_onboarding_opener_start": "llm_limit",
+        },
+        "routes/v2/admin.py": {
+            "v2_admin_learning_train": "heavy_limit",
+            "v2_admin_regenerate_next_session_icebreaker": "regenerate_limit",
+            "v2_admin_suggest_directives_queue": "llm_limit",
+        },
+        "routes/v2/funnel.py": {
+            "v2_public_shaky_voice_upload": "guest_funnel_limit",
         },
         "routes/v2/explore_ideal_text.py": {
             "v2_explore_save_ideal_text": "llm_limit",
