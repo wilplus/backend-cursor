@@ -40,6 +40,7 @@ from __future__ import annotations
 
 import logging
 import os
+import time
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
@@ -57,6 +58,23 @@ logger = logging.getLogger(__name__)
 
 _ACCOUNT_TABLE = "v2_student_details"
 _LEDGER_TABLE = "token_ledger"
+
+# The Postgres function that performs a charge as ONE transaction.
+# migrations/add_token_charge_rpc.sql — see _charge_atomic below.
+_CHARGE_RPC = "token_charge"
+
+# Sentinel: the function is not installed on this database, so the caller
+# should run the legacy multi-call path. Distinct from "the function ran and
+# refused the charge" and from "the function errored", which must NOT fall back
+# — retrying a charge that may have already committed is how you double-bill.
+_RPC_MISSING = object()
+
+# Negative cache. Once we learn the function is absent, stop paying a failed
+# round trip on every charge — but re-probe periodically so running the
+# migration takes effect WITHOUT a redeploy. "Merged on main" never means "run
+# in prod" in this repo; the founder applies migrations by hand.
+_RPC_RECHECK_SECONDS = 600.0
+_rpc_missing_until: float = 0.0
 
 
 class ChargeResult:
@@ -381,6 +399,106 @@ def _spend(db, user_id: str, price: int, monthly: int, bonus: int) -> bool:
     return bool(q.execute().data)
 
 
+def _rpc_not_found(err: Exception) -> bool:
+    """Is this "the function does not exist" rather than "the charge failed"?
+
+    The distinction decides whether we may fall back to the legacy path. Get it
+    wrong in the permissive direction and a charge that already COMMITTED gets
+    replayed by the fallback — a double debit, which is the exact failure this
+    whole change exists to remove. So this matches narrowly and anything it
+    does not recognise is treated as a real failure.
+
+    PostgREST reports a missing function as PGRST202 ("Could not find the
+    function public.token_charge(...) in the schema cache"); Postgres itself
+    reports 42883 / undefined_function.
+    """
+    code = str(getattr(err, "code", "") or "")
+    if code in ("PGRST202", "42883", "404"):
+        return True
+    low = f"{getattr(err, 'message', '')} {err}".lower()
+    return (
+        "pgrst202" in low
+        or "42883" in low
+        or "could not find the function" in low
+        or ("does not exist" in low and _CHARGE_RPC in low)
+        or ("schema cache" in low and _CHARGE_RPC in low)
+    )
+
+
+def _charge_atomic(db, user_id: str, action: str, price: int, *,
+                   ref_id: Optional[str], tier: str, coach_action: bool,
+                   coach_allowed: int):
+    """One round trip: the whole charge, or none of it.
+
+    Calls migrations/add_token_charge_rpc.sql, which holds a row lock on the
+    user's account for the duration and commits the debit, the coach counter
+    and the ledger row together. That closes three half-states the four-call
+    Python path below cannot:
+
+      * a debit whose ledger row never landed — which silently re-arms the
+        idempotency probe and lets a pipeline retry charge the same recording
+        twice;
+      * two concurrent charges for one ref both passing the probe and both
+        debiting, with the unique index quietly dropping the second ledger row;
+      * a spent balance with an unmoved coach counter — a free review past a cap
+        that is a fence, not a preference.
+
+    Returns a ChargeResult, or ``_RPC_MISSING`` when the migration has not been
+    run on this database (the caller then uses the legacy path). Never raises:
+    a real RPC failure fails OPEN, same as every other error on this module's
+    live-loop path.
+    """
+    global _rpc_missing_until
+
+    if time.monotonic() < _rpc_missing_until:
+        return _RPC_MISSING
+
+    try:
+        res = db.client.rpc(_CHARGE_RPC, {
+            "p_user_id": str(user_id),
+            "p_action": action,
+            "p_price": int(price),
+            "p_ref_id": str(ref_id) if ref_id is not None else None,
+            "p_tier": tier,
+            "p_price_version": PRICE_VERSION,
+            "p_coach_action": bool(coach_action),
+            "p_coach_allowed": int(coach_allowed),
+        }).execute()
+    except Exception as e:
+        if _rpc_not_found(e):
+            _rpc_missing_until = time.monotonic() + _RPC_RECHECK_SECONDS
+            logger.info(
+                "token_account: %s() not installed — using the legacy "
+                "non-atomic path (run migrations/add_token_charge_rpc.sql); "
+                "re-probing in %.0fs", _CHARGE_RPC, _RPC_RECHECK_SECONDS,
+            )
+            return _RPC_MISSING
+        # The function exists and something went wrong inside it. The
+        # transaction rolled back, so nothing was charged — but we must not
+        # retry through the legacy path, because "rolled back" is what the
+        # error SAYS and a lost response after a successful commit looks
+        # identical from here.
+        logger.warning("token_account: atomic charge failed user=%s action=%s "
+                       "err=%s", user_id, action, e)
+        return ChargeResult(True, 0, 0, "write_failed", action)
+
+    payload = getattr(res, "data", None)
+    if isinstance(payload, list):            # PostgREST can wrap scalars
+        payload = payload[0] if payload else None
+    if not isinstance(payload, dict):
+        logger.warning("token_account: atomic charge returned %r user=%s",
+                       payload, user_id)
+        return ChargeResult(True, 0, 0, "write_failed", action)
+
+    return ChargeResult(
+        bool(payload.get("ok")),
+        int(payload.get("charged") or 0),
+        int(payload.get("balance") or 0),
+        str(payload.get("reason") or ""),
+        action,
+    )
+
+
 def charge(user_id: str, action: str, *, ref_id: Optional[str] = None,
            database=None) -> ChargeResult:
     """Deduct the flat price of ``action``. NEVER raises.
@@ -394,6 +512,19 @@ def charge(user_id: str, action: str, *, ref_id: Optional[str] = None,
     unique index on (user_id, action, ref_id) rejects the second insert, which
     is reported as ok with charged=0 ("already paid"), not as an error. Pass
     None for legitimately repeatable actions like chat.
+
+    TWO IMPLEMENTATIONS, ONE CONTRACT
+    ---------------------------------
+    The charge itself runs in Postgres (``_charge_atomic``) so the debit, the
+    coach counter and the ledger row commit as ONE transaction. On a database
+    where that migration has not been run yet, ``_charge_legacy`` reproduces
+    the old four-round-trip behaviour byte for byte. Both return the same
+    ChargeResult; callers cannot tell which ran, and no caller should try.
+
+    ``ensure_period_current`` stays on THIS side of the line. It seeds the
+    account and rolls the monthly period, and it has its own CAS and its own
+    ledger row — a separate invariant from "charge atomically", and the next
+    candidate to move rather than something to bundle in here.
     """
     if not enabled():
         return ChargeResult(True, 0, 0, "disabled", action)
@@ -408,6 +539,31 @@ def charge(user_id: str, action: str, *, ref_id: Optional[str] = None,
                        "action=%s", user_id, action)
         return ChargeResult(True, 0, 0, "account_unavailable", action)
 
+    tier = normalize_tier(acct.get("tier"))
+    coach_action = action in COACH_ACTIONS
+
+    outcome = _charge_atomic(
+        db, user_id, action, price, ref_id=ref_id, tier=tier,
+        coach_action=coach_action,
+        coach_allowed=coach_reviews_for(tier) if coach_action else 0,
+    )
+    if outcome is not _RPC_MISSING:
+        return outcome
+
+    return _charge_legacy(db, user_id, action, price, ref_id=ref_id, acct=acct)
+
+
+def _charge_legacy(db, user_id: str, action: str, price: int, *,
+                   ref_id: Optional[str], acct: dict) -> ChargeResult:
+    """The pre-transaction path, kept VERBATIM for databases without the RPC.
+
+    Four unsynchronised round trips — probe, debit, coach counter, ledger — with
+    the half-states catalogued in migrations/add_token_charge_rpc.sql. Nothing
+    here is a good idea; it is what shipped, and deleting it before the
+    migration is applied everywhere would take charging down instead of making
+    it atomic. Delete this once the function is confirmed live in production.
+    """
+    acct = acct or {}
     monthly = int(acct.get("token_balance") or 0)
     bonus = _read_bonus_balance(user_id, database=db)
     balance = monthly + bonus

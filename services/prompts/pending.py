@@ -28,10 +28,11 @@ from services.prompts.registry import SourceRef
 _MDR = "services/master_doc_rag.py"
 _OAI = "services/openai_service.py"
 _V2 = "routes/v2_routes.py"
-# The #324 carve-up moved the user-facing chat/interview half of the
-# v2 god-file into routes/v2/user_chat.py (v2_routes re-exports the
-# names, but a re-export is an ImportFrom — SourceRef resolves
-# definitions only, so these must point at the defining module).
+# The v2_routes god-file carve-up (#324) moved most of the interview/chat
+# prompts into this module while #326 was in flight. Both landed together, so
+# the registry pointed at symbols that were no longer there and
+# `build_manifest()` raised — taking the whole prompt-eval gate down with it.
+# `_generate_snippet_follow_up_question` did NOT move and stays on _V2.
 _V2_CHAT = "routes/v2/user_chat.py"
 _LIFE = "services/life_engine.py"
 
@@ -66,7 +67,7 @@ REGISTER = {
     "legacy_openai.next_task": SourceRef(_OAI, "OpenAIService.generate_next_task_suggestion"),
     "legacy_openai.video_script": SourceRef(_OAI, "OpenAIService.generate_video_script_draft"),
 
-    # ── interview / coaching chat (routes/v2_routes.py + routes/v2/) ──
+    # ── interview / coaching chat (routes/v2/user_chat.py) ──
     "interview.system": SourceRef(_V2_CHAT, "_INTERVIEW_SYSTEM_PROMPT"),
     "interview.snippet_followup": SourceRef(_V2, "_generate_snippet_follow_up_question"),
     "interview.llm_question": SourceRef(_V2_CHAT, "_generate_llm_question"),
