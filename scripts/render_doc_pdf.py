@@ -212,7 +212,8 @@ def convert(md: str, st) -> list:
         stripped = ln.strip()
 
         if stripped.startswith("```"):
-            flush_para(); flush_list()
+            flush_para()
+            flush_list()
             i += 1
             buf = []
             while i < n and not lines[i].strip().startswith("```"):
@@ -225,7 +226,8 @@ def convert(md: str, st) -> list:
             continue
 
         if stripped.startswith("|") and "|" in stripped[1:]:
-            flush_para(); flush_list()
+            flush_para()
+            flush_list()
             buf = []
             while i < n and lines[i].strip().startswith("|"):
                 buf.append(lines[i])
@@ -238,12 +240,14 @@ def convert(md: str, st) -> list:
             continue
 
         if not stripped:
-            flush_para(); flush_list()
+            flush_para()
+            flush_list()
             i += 1
             continue
 
         if re.fullmatch(r"-{3,}", stripped):
-            flush_para(); flush_list()
+            flush_para()
+            flush_list()
             flow.append(Spacer(1, 5))
             flow.append(HRFlowable(width="100%", thickness=0.5, color=RULE))
             flow.append(Spacer(1, 5))
@@ -252,7 +256,8 @@ def convert(md: str, st) -> list:
 
         m = re.match(r"(#{1,6})\s+(.*)", stripped)
         if m:
-            flush_para(); flush_list()
+            flush_para()
+            flush_list()
             lvl = len(m.group(1))
             key = "h1" if lvl == 1 else ("h2" if lvl == 2 else "h3")
             para = Paragraph(inline(m.group(2)), st[key])
@@ -262,7 +267,8 @@ def convert(md: str, st) -> list:
             continue
 
         if stripped.startswith(">"):
-            flush_para(); flush_list()
+            flush_para()
+            flush_list()
             buf = []
             while i < n and lines[i].strip().startswith(">"):
                 buf.append(lines[i].strip().lstrip(">").strip())

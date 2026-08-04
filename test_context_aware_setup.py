@@ -74,11 +74,11 @@ class ExplicitSelectionTests(unittest.TestCase):
             request.user_id = caller
             with patch.object(v2.db, "get_arc_sessions",
                               return_value=sessions), \
-                 patch.object(v2, "_continue_deck_arc",
-                              side_effect=RuntimeError("deck heuristic")) \
+                 patch("routes.v2.lab_recording._continue_deck_arc",
+                       side_effect=RuntimeError("deck heuristic")) \
                     as m_deck, \
-                 patch.object(v2, "_continue_topic_arc",
-                              side_effect=RuntimeError("topic heuristic")) \
+                 patch("routes.v2.lab_recording._continue_topic_arc",
+                       side_effect=RuntimeError("topic heuristic")) \
                     as m_topic, \
                  patch("services.coach_video_storage."
                        "put_coach_object_bytes"), \

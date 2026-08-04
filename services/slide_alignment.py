@@ -222,14 +222,9 @@ def _llm_decompose(slides_by_index):
         {"index": i, "title": s.get("title") or "", "body": s.get("body") or ""}
         for i, s in slides_by_index.items()
     ]
-    system = (
-        "You decompose presentation slides into atomic, checkable CLAIMS — the "
-        "discrete points a speaker would need to make to deliver each slide. "
-        "Each claim is one short standalone statement (no slide jargon). This "
-        "is extraction, not judgment. 1-5 claims per slide; fewer for sparse "
-        "slides. Return strict JSON: {\"slides\":[{\"index\":<int>,\"claims\":"
-        "[\"...\"]}]} with one entry per input slide, same indexes."
-    )
+    # Prompt text lives in the registry (services/prompts/) — moved
+    # verbatim 2026-08-03; hash-locked in prompts.lock.json.
+    from services.prompts.slide_alignment import CLAIMS_SYSTEM as system
     import json as _json
     schema = {
         "name": "slide_claims",
@@ -282,17 +277,9 @@ def _entail_batch(work):
          "claims": w["claims"]}
         for w in work
     ]
-    system = (
-        "For each snippet, decide whether its transcript ENTAILS each of its "
-        "slide's claims — does the speaker actually say that point, in any "
-        "words? Judge MEANING, never literal term presence: 'top line grew' "
-        "entails 'revenue grew'; explaining a concept without naming it counts "
-        "as covered. Per claim return one of: covered | partial | not. "
-        "'partial' = touched but incomplete/vague. Return strict JSON: "
-        "{\"snippets\":[{\"ref\":\"...\",\"verdicts\":[\"covered\"|\"partial\""
-        "|\"not\", ...]}]}, verdicts aligned to that snippet's claims order, "
-        "one entry per input snippet."
-    )
+    # Prompt text lives in the registry (services/prompts/) — moved
+    # verbatim 2026-08-03; hash-locked in prompts.lock.json.
+    from services.prompts.slide_alignment import ENTAILMENT_SYSTEM as system
     schema = {
         "name": "slide_entailment",
         "schema": {

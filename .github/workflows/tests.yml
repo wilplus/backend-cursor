@@ -22,6 +22,37 @@ on:
   workflow_dispatch:
 
 jobs:
+  # Static analysis gate: ruff (real-bug lint classes only — config in
+  # ruff.toml) + mypy (whole prod surface, legacy-red modules parked as a
+  # ratchet — config in mypy.ini). Both were green at introduction; a red
+  # here is a NEW defect, not environmental noise.
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12.1"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          # Full requirements so mypy sees the real installed packages (and
+          # their bundled type info) — same picture as a local `mypy .`.
+          pip install -r requirements.txt
+          pip install ruff==0.15.8 mypy==2.3.0
+
+      - name: Ruff (lint)
+        run: ruff check .
+
+      - name: Mypy (type-check)
+        run: mypy .
+
   unittest:
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -149,6 +180,58 @@ jobs:
             exit 0
           fi
           python tests/evals/master_doc_probe.py
+
+  # Prompt golden evals (tests/evals/run_prompt_evals.py). The behavioral
+  # half of the prompt-registry drift gate: the deterministic half
+  # (test_prompt_registry.py, lockfile vs code) runs free in the unittest
+  # job above; THIS job diffs services/prompts/prompts.lock.json against
+  # the merge base and runs the founder's golden evals for exactly the
+  # surfaces whose prompts changed — the master-doc-probe pattern extended
+  # to the F1 surfaces (polish, claims/entailment, feedback drafting).
+  # Live OpenAI calls (pennies/run), so it gates only when OPENAI_API_KEY
+  # exists as a repo secret; until then it SKIPS green. On push to main /
+  # manual dispatch it runs --all as a full-baseline sweep.
+  prompt-evals:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12.1"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run golden evals for changed prompts (skips without OPENAI_API_KEY)
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          # Same placeholder env as master-doc-probe (see the comment
+          # there for why SUPABASE_SERVICE_ROLE_KEY must be a
+          # well-formed FAKE JWT — it's the public supabase local-dev
+          # demo token; the URL is invalid so nothing ever connects).
+          JWT_SECRET: ci-placeholder-secret
+          SUPABASE_URL: https://ci-placeholder.invalid
+          SUPABASE_KEY: ci-placeholder-key
+          SUPABASE_SERVICE_ROLE_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            # Golden-eval only the surfaces whose prompts changed vs the
+            # merge base. A missing base lockfile (first PR that ships
+            # the registry) falls back to empty = everything changed.
+            git fetch origin "${{ github.base_ref }}" --depth=1
+            git show "origin/${{ github.base_ref }}:services/prompts/prompts.lock.json" \
+              > /tmp/base-lock.json 2>/dev/null \
+              || echo '{"prompts": {}}' > /tmp/base-lock.json
+            python tests/evals/run_prompt_evals.py --changed-against /tmp/base-lock.json
+          else
+            python tests/evals/run_prompt_evals.py --all
+          fi
 
   # Router A/B parity probe — same probe with the two-stage router ON
   # (LOUNGE_ROUTER_ENABLED=1). NON-BLOCKING (continue-on-error) because the

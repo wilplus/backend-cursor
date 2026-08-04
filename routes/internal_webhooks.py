@@ -4,12 +4,18 @@ Server-to-server hooks (no student JWT).
 - POST /v2/internal/student-credits/increment — X-Internal-Secret: INTERNAL_CREDITS_WEBHOOK_SECRET
 - POST /v2/internal/stripe/webhook — Stripe-Signature (STRIPE_WEBHOOK_SECRET); credits from STRIPE_CHECKOUT_PRICE_CREDITS_JSON
 - POST /v2/internal/annotation-export — X-Internal-Secret: ANNOTATION_EXPORT_CRON_SECRET
-- POST /v2/internal/stress-model/train — X-Internal-Secret: STRESS_MODEL_TRAIN_SECRET
 - POST /v2/internal/copilot-video/retrain — X-Internal-Secret: COPILOT_VIDEO_RETRAIN_SECRET
+
+RETIRED (founder 2026-08-03, stress-lane deletion): POST /v2/internal/stress-
+model/train. It ran a `subprocess.run` train pipeline INSIDE the request
+handler (30-minute timeout on a web dyno), defaulted `auto_promote` to true,
+and promoted `runtime_config.stress_baseline_model_path`. The whole second
+lane is gone and there is NO replacement trainer — the peer-review validation
+loop (POST /v2/user/snippets/<id>/confidence-review) replaces it. Do not
+reintroduce a trainer in a request handler; nothing may promote a model
+artifact without a quality gate AND a human decision.
 """
 import logging
-import os
-import subprocess
 from datetime import datetime, timezone
 
 import httpx
@@ -19,6 +25,7 @@ from config import Config
 from services.annotation_export import result_to_dict, run_annotation_export
 from services.db import db
 from services.stripe_checkout_credits import apply_paid_checkout_session_credits
+from utils.errors import safe_error, scrub
 
 logger = logging.getLogger(__name__)
 config = Config()
@@ -278,294 +285,8 @@ def internal_annotation_export():
         )
         return jsonify({"status": "ok", **result_to_dict(result)}), 200
     except Exception as exc:
-        logger.warning("internal_annotation_export failed: %s", exc)
-        return jsonify({"code": "EXPORT_FAILED", "error": str(exc)}), 500
-
-
-@internal_webhooks_bp.route("/v2/internal/stress-model/train", methods=["POST"])
-def internal_stress_model_train():
-    """
-    One-click pipeline:
-      1) export stress snippet dataset JSONL
-      2) train baseline stress classifier
-      3) optionally promote model path into runtime_config
-
-    Header:
-      X-Internal-Secret: STRESS_MODEL_TRAIN_SECRET
-
-    Optional JSON body:
-      {
-        "source_type": "all" | "student" | "internet",
-        "limit": 20000,
-        "max_train_rows": 5000,
-        "min_samples": 80,
-        "epochs": 350,
-        "learning_rate": 0.08,
-        "l2": 0.002,
-        "train_ratio": 0.8,
-        "split_group": "user_id",
-        "seed": 42,
-        "target_recall_stress": 0.85,
-        "target_precision_stress": 0.75,
-        "target_fpr_no_stress": 0.30,
-        "auto_promote": true,
-        "force_promote": false,
-        "export_with_audio_url": false
-      }
-
-    Promotion is GATE-GUARDED (PHASE-A0-FINDINGS.md A3.4: "Promote stays
-    human-gated"): auto_promote=true only promotes when the trainer's
-    quality_gate passed. A failing/missing gate → promoted:false with
-    promotion_skipped_reason. force_promote:true is the explicit human
-    override for the gate (logged loudly, recorded in runtime_config
-    metadata) — it does NOT override a failed storage upload: a local
-    ephemeral path is never promoted (other dynos can't read it).
-    """
-    secret = (getattr(config, "STRESS_MODEL_TRAIN_SECRET", None) or "").strip()
-    if not secret:
-        return jsonify({"code": "DISABLED", "error": "STRESS_MODEL_TRAIN_SECRET not configured"}), 503
-    if (request.headers.get("X-Internal-Secret") or "").strip() != secret:
-        return jsonify({"code": "UNAUTHORIZED", "error": "Invalid or missing X-Internal-Secret"}), 401
-
-    data = request.get_json(silent=True) or {}
-    source_type = (data.get("source_type") or "all").strip().lower()
-    if source_type not in ("all", "student", "internet"):
-        return jsonify({"code": "INVALID_INPUT", "error": "source_type must be one of: all, student, internet"}), 400
-
-    try:
-        limit = int(data.get("limit", 20000))
-        max_train_rows = int(data.get("max_train_rows", 5000))
-        min_samples = int(data.get("min_samples", 80))
-        epochs = int(data.get("epochs", 350))
-        seed = int(data.get("seed", 42))
-        lr = float(data.get("learning_rate", data.get("lr", 0.08)))
-        l2 = float(data.get("l2", 0.002))
-        train_ratio = float(data.get("train_ratio", 0.8))
-        target_recall_stress = float(data.get("target_recall_stress", 0.85))
-        target_precision_stress = float(data.get("target_precision_stress", 0.75))
-        target_fpr_no_stress = float(data.get("target_fpr_no_stress", 0.30))
-    except (TypeError, ValueError):
-        return jsonify({"code": "INVALID_INPUT", "error": "Invalid numeric training parameters"}), 400
-
-    auto_promote = _parse_bool(data.get("auto_promote"), True)
-    force_promote = _parse_bool(data.get("force_promote"), False)
-    export_with_audio_url = _parse_bool(data.get("export_with_audio_url"), False)
-    split_group = (data.get("split_group") or "user_id").strip().lower()
-    if split_group not in ("user_id", "session_id", "recording_id"):
-        return jsonify({"code": "INVALID_INPUT", "error": "split_group must be one of: user_id, session_id, recording_id"}), 400
-
-    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    exports_dir = os.path.join(repo_root, "exports")
-    os.makedirs(exports_dir, exist_ok=True)
-    run_id = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
-    dataset_path = os.path.join(exports_dir, f"stress-dataset-{source_type}-{run_id}.jsonl")
-    model_path = os.path.join(exports_dir, f"stress-model-{source_type}-{run_id}.json")
-    metrics_path = os.path.join(exports_dir, f"stress-model-{source_type}-{run_id}-metrics.json")
-
-    export_cmd = [
-        "python3",
-        "scripts/export_stress_snippets_dataset.py",
-        "-o",
-        dataset_path,
-        "--source-type",
-        source_type,
-    ]
-    if export_with_audio_url:
-        export_cmd.append("--with-audio-url")
-
-    train_cmd = [
-        "python3",
-        "scripts/train_stress_classifier_baseline.py",
-        "--model-out",
-        model_path,
-        "--metrics-out",
-        metrics_path,
-        "--source-type",
-        source_type,
-        "--limit",
-        str(max(1, limit)),
-        "--max-train-rows",
-        str(max(1, max_train_rows)),
-        "--min-samples",
-        str(max(20, min_samples)),
-        "--epochs",
-        str(max(10, epochs)),
-        "--lr",
-        str(max(0.0001, lr)),
-        "--l2",
-        str(max(0.0, l2)),
-        "--train-ratio",
-        str(max(0.5, min(0.95, train_ratio))),
-        "--seed",
-        str(seed),
-        "--split-group",
-        split_group,
-        "--target-recall-stress",
-        str(max(0.0, min(1.0, target_recall_stress))),
-        "--target-precision-stress",
-        str(max(0.0, min(1.0, target_precision_stress))),
-        "--target-fpr-no-stress",
-        str(max(0.0, min(1.0, target_fpr_no_stress))),
-    ]
-
-    try:
-        export_proc = subprocess.run(
-            export_cmd,
-            cwd=repo_root,
-            capture_output=True,
-            text=True,
-            timeout=900,
-        )
-        if export_proc.returncode != 0:
-            return jsonify(
-                {
-                    "code": "EXPORT_FAILED",
-                    "error": "Stress dataset export failed",
-                    "stdout": export_proc.stdout[-4000:],
-                    "stderr": export_proc.stderr[-4000:],
-                }
-            ), 500
-
-        train_proc = subprocess.run(
-            train_cmd,
-            cwd=repo_root,
-            capture_output=True,
-            text=True,
-            timeout=1800,
-        )
-        if train_proc.returncode != 0:
-            return jsonify(
-                {
-                    "code": "TRAIN_FAILED",
-                    "error": "Stress model training failed",
-                    "stdout": train_proc.stdout[-6000:],
-                    "stderr": train_proc.stderr[-6000:],
-                    "dataset_path": dataset_path,
-                }
-            ), 500
-
-        import json as _json
-
-        metrics_payload = None
-        try:
-            with open(metrics_path, "r", encoding="utf-8") as fh:
-                metrics_payload = _json.load(fh)
-        except Exception:
-            metrics_payload = None
-
-        # The trainer's quality gate (scripts/train_stress_classifier_baseline.py
-        # serializes it into both the metrics file and the model artifact).
-        # Prefer the metrics file; fall back to the artifact.
-        quality_gate = None
-        if isinstance(metrics_payload, dict):
-            qg = metrics_payload.get("quality_gate")
-            if isinstance(qg, dict):
-                quality_gate = qg
-        if quality_gate is None:
-            try:
-                with open(model_path, "r", encoding="utf-8") as fh:
-                    artifact_payload = _json.load(fh)
-                qg = ((artifact_payload or {}).get("metrics") or {}).get("quality_gate")
-                if isinstance(qg, dict):
-                    quality_gate = qg
-            except Exception:
-                quality_gate = None
-
-        # ── Gate-guarded promotion (A3.4 "Promote stays human-gated") ──
-        # auto_promote (default True) only promotes a model whose quality
-        # gate PASSED. Failing/missing gate → no promote, unless the caller
-        # explicitly sends force_promote:true (human override, logged +
-        # recorded in the runtime_config metadata). A model whose artifact
-        # could not be uploaded to storage is NEVER promoted — the local
-        # exports/ path is dyno-ephemeral and unreadable elsewhere — and
-        # force_promote does NOT override that.
-        promoted = None
-        promoted_flag = False
-        promotion_skipped_reason = None
-        gate_ok = bool(quality_gate.get("ok")) if isinstance(quality_gate, dict) else None
-
-        if auto_promote or force_promote:
-            bucket = (getattr(config, "STRESS_MODEL_BUCKET", None) or "stress_models").strip() or "stress_models"
-            storage_key = f"baseline/{source_type}/{run_id}.json"
-            promote_value = None
-            try:
-                with open(model_path, "rb") as mf:
-                    model_bytes = mf.read()
-                db.upload_audio(bucket, storage_key, model_bytes, "application/json")
-                promote_value = f"storage://{bucket}/{storage_key}"
-                logger.info(
-                    "internal_stress_model_train uploaded model bucket=%s key=%s",
-                    bucket,
-                    storage_key,
-                )
-            except Exception as upload_exc:
-                logger.warning(
-                    "internal_stress_model_train: storage upload failed — model NOT promoted "
-                    "(promotion requires the storage:// ref; set up bucket %s): %s",
-                    bucket,
-                    upload_exc,
-                )
-
-            if promote_value is None:
-                promotion_skipped_reason = "artifact_not_in_storage"
-            elif quality_gate is None and not force_promote:
-                promotion_skipped_reason = "quality_gate_missing"
-            elif quality_gate is not None and not gate_ok and not force_promote:
-                promotion_skipped_reason = "quality_gate_failed"
-            else:
-                if force_promote and not gate_ok:
-                    logger.warning(
-                        "internal_stress_model_train: FORCE-PROMOTING run_id=%s despite "
-                        "quality_gate ok=%s (explicit force_promote:true override)",
-                        run_id,
-                        gate_ok,
-                    )
-                promoted = db.upsert_runtime_config(
-                    key="stress_baseline_model_path",
-                    value=promote_value,
-                    updated_by="internal:stress-model-train",
-                    metadata={
-                        "source_type": source_type,
-                        "run_id": run_id,
-                        "dataset_path": dataset_path,
-                        "metrics_path": metrics_path,
-                        "local_model_path": model_path,
-                        "storage_bucket": bucket,
-                        "storage_key": storage_key,
-                        # Gate outcome + override provenance — the learning
-                        # trace page reads these back.
-                        "quality_gate": quality_gate,
-                        "quality_gate_ok": gate_ok,
-                        "force_promote": force_promote,
-                        "promoted_via": "force_promote" if (force_promote and not gate_ok) else "quality_gate_pass",
-                    },
-                )
-                promoted_flag = promoted is not None
-
-        return jsonify(
-            {
-                "status": "ok",
-                "run_id": run_id,
-                "source_type": source_type,
-                "dataset_path": dataset_path,
-                "model_path": model_path,
-                "metrics_path": metrics_path,
-                "auto_promote": auto_promote,
-                "force_promote": force_promote,
-                "promoted": promoted_flag,
-                "promotion_skipped_reason": promotion_skipped_reason,
-                "quality_gate": quality_gate,
-                "runtime_config": promoted,
-                "metrics": metrics_payload,
-                "export_stdout": export_proc.stdout[-2000:],
-                "train_stdout": train_proc.stdout[-2000:],
-            }
-        ), 200
-    except subprocess.TimeoutExpired as te:
-        return jsonify({"code": "TIMEOUT", "error": f"Pipeline timed out: {te}"}), 504
-    except Exception as exc:
-        logger.warning("internal_stress_model_train failed: %s", exc, exc_info=True)
-        return jsonify({"code": "PIPELINE_FAILED", "error": str(exc)}), 500
+        return safe_error("EXPORT_FAILED", 500, exc=exc,
+                          log="internal_annotation_export failed")
 
 
 @internal_webhooks_bp.route("/v2/internal/copilot-video/retrain", methods=["POST"])
@@ -716,7 +437,8 @@ def internal_copilot_video_retrain():
             status="failed",
             input_count=len(refs),
             metadata={"since": since_iso, "dry_run": dry_run, "reference_count": len(refs)},
-            error=str(exc)[:1000],
+            error=scrub(exc, limit=1000),
         )
-        logger.warning("internal_copilot_video_retrain failed: %s", exc, exc_info=True)
-        return jsonify({"code": "TRAIN_FAILED", "error": str(exc), "run_id": run.get("id")}), 500
+        return safe_error("TRAIN_FAILED", 500, exc=exc,
+                          log="internal_copilot_video_retrain failed",
+                          extra={"run_id": run.get("id")})

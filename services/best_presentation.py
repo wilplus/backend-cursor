@@ -140,25 +140,15 @@ def _render_composition(picks_text: list, slides: list) -> Optional[dict]:
 
         from services.llm import chat_complete
         from services.llm_config import SPEC_BEST_PRESENTATION
-        from services.will_voice import with_voice_rules
+        # Prompt text lives in the registry (services/prompts/) — moved
+        # verbatim 2026-08-03; hash-locked in prompts.lock.json.
+        from services.prompts import best_presentation as _prompts
     except Exception as e:  # pragma: no cover - import guard
         from services.f1_observability import observe_f1_degrade
         observe_f1_degrade("polish_import_failed", exc=e)
         return None
 
-    system = with_voice_rules("\n".join(f"- {r}" for r in [
-        "You assemble a speaker's STRONGEST version of their talk from lines "
-        "they actually said. For each slide you get the slide's title/body and "
-        "the user's best spoken line for it.",
-        "Return that line MOSTLY VERBATIM. You may change only a FEW words per "
-        "slide — just enough for continuity with the neighbouring slides and "
-        "accuracy to this slide's point.",
-        "NEVER add new claims, facts, numbers, or sentences the user didn't say. "
-        "Keep the user's voice. If a line is already clean, return it unchanged.",
-        "Render in the SAME language the user spoke in.",
-        'Output strict JSON: {"slides": [{"slide_index": int, "text": str}]} '
-        "with one entry per input slide.",
-    ]))
+    system = _prompts.system()
     payload = {
         "slides": [
             {

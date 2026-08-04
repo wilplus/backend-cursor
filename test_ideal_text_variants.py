@@ -17,7 +17,6 @@ Run: python3 -m unittest test_ideal_text_variants
 from __future__ import annotations
 
 import unittest
-from unittest.mock import patch
 
 from services.ideal_text_variants import (
     block_variants_payload,

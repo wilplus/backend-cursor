@@ -17,7 +17,6 @@ Examples:
   python3 run_cleanup_incomplete_sessions.py --days 10
 """
 import argparse
-import os
 import sys
 
 # Load env so config works

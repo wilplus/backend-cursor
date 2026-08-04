@@ -210,7 +210,6 @@ class FullStateUpsertTests(unittest.TestCase):
     def _svc_payload(self, row):
         import sys as _sys
         import types as _types
-        from unittest.mock import MagicMock as _MM
         _orig = _sys.modules.get("supabase")
         if _orig is None:
             m = _types.ModuleType("supabase")

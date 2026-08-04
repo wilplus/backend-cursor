@@ -91,13 +91,16 @@ class _FakeCountClient:
         return self
 
     def eq(self, c, v):
-        self.filters.append(("eq", c, v)); return self
+        self.filters.append(("eq", c, v))
+        return self
 
     def neq(self, c, v):
-        self.filters.append(("neq", c, v)); return self
+        self.filters.append(("neq", c, v))
+        return self
 
     def is_(self, c, v):
-        self.filters.append(("is", c, v)); return self
+        self.filters.append(("is", c, v))
+        return self
 
     def limit(self, *a, **k):
         return self

@@ -23,12 +23,12 @@ duplicate the engine map.
 
 ## How to read the page
 
-Top to bottom: **Pipelines** (the three stage-flows; orange badges mark
-decision points), then one card per lane with its live numbers, then
-**Known gaps**. A yellow banner at the top lists any sections that failed to
-load — the rest of the page still renders.
+Top to bottom: **Pipelines** (the stage-flows; orange badges mark decision
+points), then one card per lane with its live numbers, then **Known gaps**. A
+yellow banner at the top lists any sections that failed to load — the rest of
+the page still renders.
 
-## The three lanes
+## The two lanes
 
 ### Lane 1 — shadow direction classifier (coach voice labels)
 
@@ -52,6 +52,54 @@ load — the rest of the page still renders.
   standardized features, sorted by |w|) is the direct answer to "how do the
   coach's annotations shape the model's understanding of acoustics".
 
+#### The peer-review side lane (2026-08-03)
+
+`peer flags a prediction → snippet_confidence_reviews → counted, not trained on`
+
+Not a third lane — a **provenance bucket** hanging off Lane 1.
+`POST /v2/user/snippets/<id>/confidence-review` (`@require_auth`) captures one
+boolean: did the AI get this snippet's confidence call right?
+
+- **Strict boolean.** `"true"` the string is a **400, not a coercion**. This
+  is training data; a coerced value is a fabricated label and afterwards it is
+  indistinguishable from a real one.
+- **Replace-on-reflag.** Unique on `(snippet_id, reviewer_user_id)` — a
+  reviewer who changes their mind updates their row. Duplicate rows from one
+  rater are junk labels (N3, same rule as the voice game). Different reviewers
+  keep their own rows, so peer agreement stays computable.
+- **`model_version`** records WHICH prediction was validated; omitted → the
+  currently-shadowed version is stamped server-side
+  (`learning_serve.current_shadow_version`). "The AI got this right" is
+  meaningless without knowing which AI.
+- **NOT owner-scoped**, deliberately — this is *peer* review, so the reviewer
+  is frequently not the speaker.
+
+**Provenance is the whole game.** These flags are **NON-BLIND** (the reviewer
+saw the AI's choice before answering); the coach labels are **BLIND** and stay
+that way. Blended indistinguishably, the model would grade its own homework:
+validation of a prediction correlates with the prediction, so an unlabelled
+mix invites a confirmation feedback loop. Hence the separate table, the
+separate `selection_source` (`peer_review`), and the fact that the page counts
+the bucket in `by_selection_source` — the **mix** is the thing worth watching.
+`training_labels.total` still means blind coach truth only.
+
+**Decision (BE 2026-08-03): `peer_review` rows do NOT count toward the ≥50
+total / ≥25-new auto-retrain trigger.** That trigger governs the blind
+coach-truth corpus, and letting non-blind validations of the model's own
+predictions set its retrain schedule is exactly the loop the split exists to
+prevent. Reversible on purpose — flipping it on is one constant
+(`services/confidence_reviews.py:COUNTS_TOWARD_RETRAIN_TRIGGER`), whereas a
+model already retrained on a bad blend cannot be un-trained. **How to WEIGHT
+peer vs. blind coach labels is still a founder call; nothing trains on this
+corpus yet** (surfaced as `known_gaps["peer_review_weighting_undecided"]`).
+
+The screen that shows the AI's choice and asks "did it get this right?" is
+**not shipped** — it needs founder-signed copy (LIVE LOOP) and must stay off
+the blind game rounds, or the AI's read leaks into the blind peer-guess lane
+and poisons those labels. This is the capture path only.
+
+Migration to run: `migrations/add_snippet_confidence_reviews.sql`.
+
 ### Lane 2 — annotations → writer models (copilot SFT/DPO)
 
 `publish/keep/verify capture → JSONL export → SFT/DPO export (CLI) → manual promote → serve`
@@ -67,65 +115,53 @@ load — the rest of the page still renders.
   `runtime_config.openai_copilot_model`, read by
   `services/openai_service.py:178`. No automation — PHASE-A0 A3.4.
 
-### Lane 3 — acoustic stress baseline (coach clip labels)
+### ~~Lane 3 — acoustic stress baseline~~ — DELETED 2026-08-03
 
-`clip generation + coach label → dataset export → train (17 features) → quality gate → gate-guarded promote → serve`
+**Founder decision: stress recognition is dead.** The lane is not paused or
+flagged, it is removed, and there is **no replacement trainer**. What it was
+pivoted into is the peer-review side lane documented under Lane 1 above.
 
-- Corpora: `stress_snippets` / `charisma_snippets` `coach_label`, plus the
-  multi-labeler `snippet_labels` table (`routes/snippet_labels_routes.py`).
-- Train: `scripts/train_stress_classifier_baseline.py`; serving twin:
-  `services/stress_snippet_service.py:672` (`_feature_vector_for_model`).
-- **Decision point (quality gate):** the trainer computes `quality_gate`
-  (recall/precision/FPR targets) into the metrics file and the artifact.
-- **Decision point (promote):** `routes/internal_webhooks.py`
-  `internal_stress_model_train` promotes
-  `runtime_config.stress_baseline_model_path` — now **gate-guarded** (see
-  fixes below). The promotion metadata records the gate outcome and any
-  force flag, and the page shows them.
-- Serving: the classifier only steers which clips get offered for coach
-  labeling (selection/uncertainty). The probability is never surfaced
-  (AC-9 / CONSTRUCT).
+Deleted (all of it, not just the call sites):
 
-## The two fixes shipped with this page (2026-07-30)
+| What | Where it was | Why it had to go |
+|---|---|---|
+| `POST /v2/internal/stress-model/train` | `routes/internal_webhooks.py` | Ran a `subprocess.run` train pipeline **inside a web request handler**, with a 30-minute timeout |
+| `auto_promote` defaulting to **true** | same route | No surviving code path may promote a model artifact without the quality gate **and** a human decision |
+| the local-file-path model ref | `config.STRESS_BASELINE_MODEL_PATH`, `_load_baseline_model`'s non-`storage://` branch | A path on Railway's ephemeral filesystem dies at the next deploy. Deleted the mechanism, not just its caller |
+| the trainer + dataset export | `scripts/train_stress_classifier_baseline.py`, `scripts/export_stress_snippets_dataset.py` | The whole second-lane trainer goes |
+| `runtime_config.stress_baseline_model_path` + its promote writer | `internal_stress_model_train` | The only key the lane promoted |
+| the model loader / predictor | `services/stress_snippet_service.py` (`_load_baseline_model`, `_predict_with_baseline_model`, `_feature_vector_for_model`) and its import in `charisma_snippet_service` | Nothing left to load |
+| `/admin/snippet-labels/*` | `routes/snippet_labels_routes.py` + `services/snippet_labels.py` | The lane's admin corpus writer (labels on `stress_snippets`), feeding a trainer that no longer exists |
+| `POST /v2/user/snippets/<id>/label` | `routes/v2_routes.py` + `db.set_user_snippet_charisma_label` | The legacy user label route; the peer-review capture replaces it |
+| `lane_acoustic` | `services/learning_trace.py` | The FE renders two lanes; a trace still serving a third keeps it alive |
 
-1. **16-vs-17 feature-vector training/serving skew** —
-   `scripts/train_stress_classifier_baseline.py` returned a 16-dim zero
-   vector on the empty-frame path while the populated path and the serving
-   twin (`services/stress_snippet_service.py:681`) are 17-dim. Fixed with a
-   module-level `FEATURE_NAMES` (17 names, serving order) as the single
-   source of truth: the zeros path returns `len(FEATURE_NAMES)` and the
-   artifact's `feature_names` derives from it. Test:
-   `test_learning_trace.py::StressTrainerFeatureParityTests`.
+**Behavior change — checked before deleting, and it is nil.** The promoted
+stress model fed **clip selection only** (the uncertainty term that decides
+which clips get offered for labeling); the no-model state already ran
+heuristic suspicion scoring. Deleting the model makes that heuristic the
+permanent selector — the state the system was already in whenever no model was
+promoted, not a new one. The classifier never touched anything surfaced
+(AC-9 / CONSTRUCT), so nothing user-facing moved. This closes the old
+`charisma_uses_stress_model` known gap **by deletion**: charisma clips were
+ranked by the stress classifier, and now nothing ranks them but the heuristic.
 
-2. **Quality gate not enforced on auto-promote** — the train webhook passed
-   gate thresholds to the trainer but never read the result;
-   `auto_promote` (default true) promoted gate-failing models, and on a
-   storage-upload failure it promoted a **local ephemeral path** unreadable
-   on other dynos. Now (`routes/internal_webhooks.py`
-   `internal_stress_model_train`):
-   - gate failed or missing → **no promote**, response
-     `promoted:false` + `promotion_skipped_reason:
-     "quality_gate_failed" | "quality_gate_missing"` + the gate details;
-   - explicit `force_promote:true` overrides the gate (logged loudly,
-     recorded in the runtime_config metadata);
-   - storage upload failed → **never promote**
-     (`promotion_skipped_reason:"artifact_not_in_storage"`) —
-     `force_promote` does NOT override this;
-   - the promotion metadata blob records `quality_gate`,
-     `quality_gate_ok`, `force_promote`, `promoted_via`.
-   `auto_promote` still defaults to true, but is gate-guarded — this is what
-   PHASE-A0's "Promote stays human-gated (A3.4)" means in practice: passing
-   models may still auto-promote; failing models cannot slip through without
-   an explicit human `force_promote`. Tests:
-   `test_learning_trace.py::StressModelTrainWebhookGateTests`.
+**Tables are NOT dropped.** `stress_snippets`, `snippet_labels`, and
+`charisma_snippets.user_charisma_label` are all left in place — no table or
+column is ever auto-dropped. Nothing reads `snippet_labels` any more.
+
+Regression gate: `test_learning_trace.py::StressLaneIsGoneTests` asserts each
+row of that table, so "someone quietly brings the second lane back" fails CI.
+
+The two 2026-07-30 fixes this page shipped with (the 16-vs-17 feature-vector
+training/serving skew, and the quality gate not being enforced on
+auto-promote) are moot: both lived in code that no longer exists.
 
 ## Known gaps (surfaced in the payload's `known_gaps`)
 
-- **`charisma_uses_stress_model`** — `services/charisma_snippet_service.py`
-  (~line 100) ranks charisma clips with the STRESS classifier
-  (`_load_baseline_model` hardcodes `stress_baseline_model_path`; no
-  charisma model key exists). Flagged in code + here; behavior deliberately
-  unchanged — a charisma-specific model is a product/ML (founder) decision.
+- **`peer_review_weighting_undecided`** — peer flags are captured with their
+  own provenance but nothing trains on them: whether and how heavily a
+  NON-BLIND peer validation should weigh against a BLIND coach label is a
+  founder call. Decide it before any trainer reads that corpus.
 - **`dpo_sft_exports_cli_only`** — writer-model exports and copilot
   promotion are CLI scripts only.
 - **`no_annotation_model_lineage`** — nothing links annotation

@@ -17,7 +17,7 @@ data) and unit-tested; ingest_session_library does the DB I/O.
 """
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Optional
 
 
 def build_library_rows(

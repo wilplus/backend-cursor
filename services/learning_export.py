@@ -114,7 +114,7 @@ def export_snippet_labels_dataset() -> tuple[list[dict], dict]:
     yet anyway)."""
     from services.db import db
     labels = db.get_all_training_labels() or []
-    sids = [l.get("snippet_id") for l in labels if l.get("snippet_id")]
+    sids = [row.get("snippet_id") for row in labels if row.get("snippet_id")]
     metrics = db.get_snippet_metrics_by_ids(sids) or {}
     origins = db.get_snippet_data_origin_by_ids(sids) or {}
     return build_export_rows(labels, metrics, origins)

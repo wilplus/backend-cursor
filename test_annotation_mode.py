@@ -180,11 +180,15 @@ class QueueLabelTests(unittest.TestCase):
         ]
         with app.test_request_context():
             request.user_id = "coach-1"
+            # v2_coach_queue lives in routes.v2.coach and resolves these
+            # helpers from THAT module — patching the routes.v2_routes
+            # re-export would leave the real helpers running.
             with patch.object(v2.db, "list_review_queue", return_value=rows), \
-                 patch.object(v2, "_coach_state_map", return_value={}), \
-                 patch.object(v2, "_coach_session_state",
-                              return_value="to_review"), \
-                 patch.object(v2, "_coach_pseudonym", return_value="Falcon"), \
+                 patch("routes.v2.coach._coach_state_map", return_value={}), \
+                 patch("routes.v2.coach._coach_session_state",
+                       return_value="to_review"), \
+                 patch("routes.v2.coach._coach_pseudonym",
+                       return_value="Falcon"), \
                  patch.object(v2.db, "get_snippets_by_session",
                               return_value=[{"id": "s"}]):
                 out = v2.v2_coach_queue.__wrapped__()

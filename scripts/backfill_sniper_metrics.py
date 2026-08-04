@@ -12,11 +12,9 @@ Run from project root:
 Requires: ffmpeg installed (brew install ffmpeg), numpy, .env configured.
 """
 import argparse
-import io
 import logging
 import math
 import os
-import struct
 import subprocess
 import sys
 import time
@@ -160,7 +158,6 @@ def compute_energy_ratio(sig: np.ndarray, dbs: np.ndarray) -> Optional[float]:
     if len(dbs) < 5:
         return None
     voiced_mask = dbs >= SILENCE_DB_THRESHOLD
-    n_voiced = int(np.sum(voiced_mask))
     n_total = len(voiced_mask)
     if n_total == 0:
         return None

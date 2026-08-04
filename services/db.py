@@ -478,9 +478,7 @@ class DatabaseService:
         
         if not recordings.data:
             return []
-        
-        recording_ids = [r["id"] for r in recordings.data]
-        
+
         # Get post answers from these recordings
         # Note: We'll need to store question_set_id in post_answers or in a separate table
         # For now, return empty list (will be improved when question_set_id is stored)
@@ -672,20 +670,6 @@ class DatabaseService:
             .execute()
         
         return result.data
-    
-    def get_user_profile(self, user_id: str):
-        """Get user profile with summary stats"""
-        # Get recording stats
-        recordings = self.get_user_recordings(user_id, limit=1000)
-        
-        total_recordings = len(recordings)
-        latest_recordings = recordings[:5]
-        
-        return {
-            "user_id": user_id,
-            "total_recordings": total_recordings,
-            "latest_recordings": latest_recordings
-        }
     
     def create_signed_url(self, bucket: str, path: str, expires_in: int = 3600):
         """Create a signed URL for a file in Supabase Storage"""
@@ -7102,58 +7086,6 @@ class DatabaseService:
             )
             return None
 
-    def set_user_snippet_charisma_label(
-        self,
-        snippet_id: str,
-        user_id: str,
-        label: bool | None,
-    ) -> Optional[dict]:
-        """RLHF signal capture — the user's self-confirmation of a
-        snippet's charismatic read.
-
-        Owner-scoped: the .eq("user_id", user_id) clause guarantees
-        a user can only label their own snippets (the route handler
-        already gates auth, but defence-in-depth at the DB layer
-        keeps stray writes from leaking into someone else's row).
-
-        ``label=True``  → user confirms the snippet as charismatic.
-        ``label=False`` → user disagrees with the admin's "charisma"
-                          coach_label.
-        ``label=None``  → clears the column (admin tooling /
-                          backfill use only; the user-facing chat
-                          state machine only ever writes True/False).
-
-        Returns the updated row on success, ``None`` when the
-        owner-scoped match found nothing (snippet doesn't exist or
-        belongs to a different user). Failure logs + returns None
-        so the chat continues even if the RLHF capture missed.
-        """
-        try:
-            now = datetime.now(timezone.utc).isoformat()
-            result = (
-                self.client.table("charisma_snippets")
-                .update({
-                    "user_charisma_label": label,
-                    "user_charisma_label_set_at": (
-                        now if label is not None else None
-                    ),
-                    "updated_at": now,
-                })
-                .eq("id", snippet_id)
-                .eq("user_id", user_id)
-                .execute()
-            )
-            if result.data and len(result.data) > 0:
-                return result.data[0]
-            return None
-        except Exception as e:
-            logger.warning(
-                "set_user_snippet_charisma_label failed snippet=%s "
-                "user=%s err=%s",
-                snippet_id, user_id, e,
-            )
-            return None
-
     def promote_ai_drafts_to_admin_comments(self, session_id: str) -> int:
         """Copy ai_draft_admin_comment → admin_comment for every snippet
         in ``session_id`` that has a draft but no human comment yet.
@@ -12925,6 +12857,86 @@ class DatabaseService:
                      .limit(int(limit)).execute().data) or []
         except Exception as e:
             logger.warning("get_confidence_label_corpus failed: %s", e)
+            return []
+
+    # ── Peer-review validation loop (founder 2026-08-03) ───────────────
+    # A user/peer flags whether the AI's confidence choice was right. SEPARATE
+    # table from confidence_labels on purpose: these are NON-BLIND (the
+    # reviewer saw the AI's call first), and blending them indistinguishably
+    # with the blind coach corpus would let the model grade its own homework.
+    # See services/confidence_reviews.py + add_snippet_confidence_reviews.sql.
+
+    def upsert_snippet_confidence_review(
+        self, *, snippet_id: str, reviewer_user_id: str, ai_correct: bool,
+        model_version: Optional[str] = None,
+    ) -> bool:
+        """Store (or REPLACE) one reviewer's flag on one snippet.
+
+        Replace-on-reflag: (snippet_id, reviewer_user_id) is unique, so a
+        reviewer who changes their mind updates their row rather than stacking
+        a second one — duplicate rows from one rater are junk labels (the same
+        N3 rule the voice game follows). Other reviewers' rows are untouched,
+        so peer agreement stays computable.
+
+        ``ai_correct`` is already a validated real boolean by the time it gets
+        here (services/confidence_reviews.validate_confidence_review); this
+        method does no validation of its own. Best-effort, missing-table-safe;
+        NEVER raises."""
+        if not snippet_id or not reviewer_user_id:
+            return False
+        payload: dict = {
+            "snippet_id": str(snippet_id),
+            "reviewer_user_id": str(reviewer_user_id),
+            "ai_correct": bool(ai_correct),
+            "model_version": model_version,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+        try:
+            (self.client.table("snippet_confidence_reviews")
+                 .upsert(payload,
+                         on_conflict="snippet_id,reviewer_user_id").execute())
+            return True
+        except Exception as e:
+            err_low = str(e).lower()
+            # 42P10: ON CONFLICT found no matching unique constraint — the
+            # composite UNIQUE in the migration has not been applied.
+            if "42p10" in err_low or "on conflict" in err_low:
+                logger.warning(
+                    "upsert_snippet_confidence_review: unique constraint does "
+                    "not match ON CONFLICT — run "
+                    "migrations/add_snippet_confidence_reviews.sql",
+                )
+                return False
+            if "snippet_confidence_reviews" in err_low and (
+                "does not exist" in err_low or "pgrst" in err_low
+                or "42p01" in err_low
+            ):
+                logger.warning(
+                    "upsert_snippet_confidence_review: table missing (run "
+                    "migrations/add_snippet_confidence_reviews.sql)",
+                )
+                return False
+            logger.warning("upsert_snippet_confidence_review failed snip=%s: %s",
+                           snippet_id, e)
+            return False
+
+    def get_snippet_confidence_reviews(self, *, limit: int = 5000) -> list:
+        """The peer-review corpus pull, newest first. [] on anything missing —
+        the trace then reports zero peer_review rows rather than erroring."""
+        try:
+            return (self.client.table("snippet_confidence_reviews")
+                    .select("snippet_id, reviewer_user_id, ai_correct, "
+                            "model_version, created_at")
+                    .order("created_at", desc=True)
+                    .limit(int(limit)).execute().data) or []
+        except Exception as e:
+            err_low = str(e).lower()
+            if "snippet_confidence_reviews" in err_low and (
+                "does not exist" in err_low or "pgrst" in err_low
+                or "42p01" in err_low
+            ):
+                return []
+            logger.warning("get_snippet_confidence_reviews failed: %s", e)
             return []
 
     def find_training_import_by_key(self, key: str) -> Optional[dict]:

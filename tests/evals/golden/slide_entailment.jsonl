@@ -1,0 +1,4 @@
+// SEED dataset (engineering, 2026-08-03) — meaning-level entailment verdicts.
+// The founder's golden cases replace/extend these. Format: docs/prompt_evals.md
+{"id": "SE-SEED-01", "surface": "slide_entailment", "description": "paraphrase counts as covered (meaning, not literal terms)", "input": {"work": [{"ref": "a", "transcript": "our top line grew by a lot this year, way past what we planned", "claims": ["Revenue grew this year"]}]}, "rubric": {"expect": {"a.0": "covered"}}}
+{"id": "SE-SEED-02", "surface": "slide_entailment", "description": "unrelated speech does not cover the claim", "input": {"work": [{"ref": "b", "transcript": "let me tell you about our new office space and the commute", "claims": ["Churn dropped to a record low"]}]}, "rubric": {"expect": {"b.0": "not"}}}

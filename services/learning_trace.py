@@ -1,10 +1,17 @@
 """Learning-trace aggregation — backlog item 11 (developer observability).
 
 Builds the payload behind GET /v2/admin/learning/trace: one structured view
-of the three learning lanes (shadow direction classifier, annotation/writer
-corpus, acoustic stress/charisma baseline) so the DEVELOPER can see how coach
-labels and admin annotations flow into models — stages, corpora, decision
-points, current promoted models, and known gaps.
+of the TWO surviving learning lanes (shadow direction classifier,
+annotation/writer corpus) so the DEVELOPER can see how coach labels and admin
+annotations flow into models — stages, corpora, decision points, current
+promoted models, and known gaps.
+
+``lane_acoustic`` (the acoustic stress/charisma baseline) is GONE — founder
+2026-08-03 retired stress recognition and pivoted the feature into the
+peer-review validation loop. Its trainer, promote writer, runtime_config key
+and admin label endpoints are all deleted. What replaces it is not a third
+lane but a PROVENANCE bucket on lane_shadow: ``peer_review`` flags captured by
+POST /v2/user/snippets/<id>/confidence-review (see ``_peer_review_corpus``).
 
 ADMIN-ONLY surface (BLIND COACH: the shadow lane exposes machine guesses vs
 coach labels — a coach must never see this; AC-9/CONSTRUCT: nothing here is
@@ -148,7 +155,18 @@ def _shadow_agreement_over_time() -> Optional[list]:
 
 
 def _training_label_counts() -> dict:
+    """Blind coach-truth corpus counts, plus the NON-BLIND peer_review bucket
+    alongside them in by_selection_source.
+
+    The peer bucket is counted here — not hidden in its own card — precisely
+    because the MIX is the thing worth watching: peer flags are validations of
+    the model's own predictions, so a corpus quietly drifting toward them is
+    a corpus drifting toward self-agreement. It is reported from its own table
+    (snippet_confidence_reviews), never merged into training_labels, and it is
+    excluded from `total` — `total` means blind coach truth and must keep
+    meaning that."""
     from services.db import db
+    from services.confidence_reviews import SELECTION_SOURCE as _PEER_SOURCE
     total = db.count_training_labels()
     res = (
         db.client.table("training_labels")
@@ -164,17 +182,60 @@ def _training_label_counts() -> dict:
         s = r.get("selection_source") or "heuristic"
         by_class[v] = by_class.get(v, 0) + 1
         by_source[s] = by_source.get(s, 0) + 1
+    try:
+        peer_n = _count("snippet_confidence_reviews")
+    except Exception as e:
+        # Pre-migration / unreachable: the peer bucket is simply absent. A new
+        # table must never take down the coach-corpus counts that were
+        # rendering fine before it existed.
+        logger.warning("learning_trace: peer_review count unavailable: %s", e)
+        peer_n = 0
+    if peer_n:
+        by_source[_PEER_SOURCE] = peer_n
     return {
         "total": total,
         "by_class": by_class,
         "by_selection_source": by_source,
         "scanned": len(rows),
+        "note": f"`total` and `by_class` are BLIND coach labels "
+                f"(training_labels) only. by_selection_source additionally "
+                f"carries the NON-BLIND '{_PEER_SOURCE}' bucket, read from "
+                f"snippet_confidence_reviews — see lane_shadow.peer_review.",
     }
+
+
+def _peer_review_corpus() -> dict:
+    """The peer-review validation corpus (founder 2026-08-03) — what the
+    retired acoustic stress lane became.
+
+    Separate provenance, always: these flags are NON-BLIND (the reviewer saw
+    the AI's choice before flagging), unlike the coach labels, which stay
+    blind. Mixing the two indistinguishably would let the model grade its own
+    homework, so the split is reported here rather than assumed."""
+    from services.db import db
+    from services import confidence_reviews
+    rows = db.get_snippet_confidence_reviews(limit=_LABEL_SCAN_LIMIT)
+    summary = confidence_reviews.review_corpus_summary(rows)
+    summary["scan_capped_at"] = _LABEL_SCAN_LIMIT
+    summary["counts_toward_retrain_trigger"] = \
+        confidence_reviews.COUNTS_TOWARD_RETRAIN_TRIGGER
+    summary["decision"] = (
+        "BE 2026-08-03: peer_review rows do NOT count toward the >=50 total / "
+        ">=25 new auto-retrain trigger. That trigger governs the blind "
+        "coach-truth corpus; letting non-blind validations of the model's own "
+        "predictions set its retrain schedule is the confirmation loop this "
+        "split exists to prevent. Reversible on purpose — switching it on is "
+        "one constant (confidence_reviews.COUNTS_TOWARD_RETRAIN_TRIGGER), "
+        "while a model already retrained on a bad blend cannot be un-trained. "
+        "How to WEIGHT peer vs. blind coach labels remains a founder call; "
+        "nothing trains on this corpus yet."
+    )
+    return summary
 
 
 def _build_lane_shadow(errors: list) -> dict:
     from services.db import db
-    from services import learning_serve
+    from services import confidence_reviews, learning_serve
     return {
         "model_versions": _section(
             errors, "lane_shadow.model_versions",
@@ -193,11 +254,19 @@ def _build_lane_shadow(errors: list) -> dict:
         "training_labels": _section(
             errors, "lane_shadow.training_labels", _training_label_counts,
         ),
+        "peer_review": _section(
+            errors, "lane_shadow.peer_review", _peer_review_corpus,
+        ),
         "auto_retrain": {
             "min_total": learning_serve._RETRAIN_MIN_TOTAL,
             "new_delta": learning_serve._RETRAIN_NEW_DELTA,
+            "counts_peer_review":
+                confidence_reviews.COUNTS_TOWARD_RETRAIN_TRIGGER,
             "note": "fires off the label submit; result stays status=shadow — "
-                    "never promoted (services/learning_serve.py)",
+                    "never promoted (services/learning_serve.py). Counts BLIND "
+                    "coach labels only: peer_review rows are excluded by "
+                    "decision, not by accident — see lane_shadow.peer_review"
+                    ".decision",
         },
     }
 
@@ -280,56 +349,6 @@ def _build_lane_annotations(errors: list) -> dict:
     }
 
 
-# ── lane_acoustic — coach clip labels → baseline stress classifier ─────────
-
-def _snippet_label_counts(table: str, positive: str, negative: str) -> dict:
-    return {
-        "total": _count(table),
-        "labeled_" + positive: _count(table, coach_label=positive),
-        "labeled_" + negative: _count(table, coach_label=negative),
-    }
-
-
-def _snippet_labels_stats() -> dict:
-    """Multi-labeler snippet_labels table (routes/snippet_labels_routes.py
-    stats twin, without the per-admin split)."""
-    from services.db import db
-    total = _count("snippet_labels")
-    high = (
-        db.client.table("snippet_labels")
-        .select("id", count="exact").eq("confidence", "high").limit(1).execute()
-    )
-    low = (
-        db.client.table("snippet_labels")
-        .select("id", count="exact").eq("confidence", "low").limit(1).execute()
-    )
-    return {
-        "labels_total": total,
-        "confidence_high": int(getattr(high, "count", None) or 0),
-        "confidence_low": int(getattr(low, "count", None) or 0),
-    }
-
-
-def _build_lane_acoustic(errors: list) -> dict:
-    return {
-        "stress_snippets": _section(
-            errors, "lane_acoustic.stress_snippets",
-            lambda: _snippet_label_counts("stress_snippets", "stress", "no_stress"),
-        ),
-        "charisma_snippets": _section(
-            errors, "lane_acoustic.charisma_snippets",
-            lambda: _snippet_label_counts("charisma_snippets", "charisma", "no_charisma"),
-        ),
-        "stress_baseline_model": _section(
-            errors, "lane_acoustic.stress_baseline_model",
-            lambda: _runtime_config_row("stress_baseline_model_path"),
-        ),
-        "snippet_labels": _section(
-            errors, "lane_acoustic.snippet_labels", _snippet_labels_stats,
-        ),
-    }
-
-
 # ── static pipeline description + known gaps (spec: ENGINE-MAP.md §2–4) ────
 
 _PIPELINE_DOCS = {
@@ -347,10 +366,15 @@ _PIPELINE_DOCS = {
                 {"stage": "auto-retrain @ ≥50 total / ≥25 new", "file": "services/learning_serve.py:maybe_auto_retrain", "decision_point": True},
                 {"stage": "fit logistic regression", "file": "services/learning_train.py"},
                 {"stage": "shadow predict + agreement log", "file": "services/learning_serve.py → shadow_predictions"},
+                {"stage": "peer-review capture (NON-BLIND, side lane)", "file": "routes/v2_routes.py:/v2/user/snippets/<id>/confidence-review → snippet_confidence_reviews"},
+                {"stage": "peer_review counts toward retrain? NO", "file": "services/confidence_reviews.py:COUNTS_TOWARD_RETRAIN_TRIGGER", "decision_point": True},
             ],
             "fence": "BLIND COACH — shadow only, never promoted, never pre-fills "
                      "or surfaces a guess; frozen holdout excluded from training "
-                     "(services/holdout.py)",
+                     "(services/holdout.py). Peer-review flags are NON-BLIND and "
+                     "live in their own table under their own provenance — they "
+                     "never blend into the blind corpus without a founder "
+                     "decision on weighting.",
         },
         {
             "id": "annotation_writer",
@@ -365,33 +389,56 @@ _PIPELINE_DOCS = {
             ],
             "fence": "human-gated promote (PHASE-A0 A3.4); text lane — no scores",
         },
+    ],
+    "retired_lanes": [
         {
             "id": "acoustic_baseline",
             "title": "Acoustic stress baseline (coach clip labels)",
-            "corpus": "stress_snippets / charisma_snippets coach_label + snippet_labels",
-            "stages": [
-                {"stage": "clip generation + coach label", "file": "services/stress_snippet_service.py, routes/snippet_labels_routes.py"},
-                {"stage": "dataset export", "file": "scripts/export_stress_snippets_dataset.py"},
-                {"stage": "train (17-feature logreg)", "file": "scripts/train_stress_classifier_baseline.py"},
-                {"stage": "quality gate (recall/precision/FPR targets)", "file": "scripts/train_stress_classifier_baseline.py quality_gate", "decision_point": True},
-                {"stage": "gate-guarded promote → runtime_config", "file": "routes/internal_webhooks.py:internal_stress_model_train", "decision_point": True},
-                {"stage": "serve (clip selection only)", "file": "services/stress_snippet_service.py:_load_baseline_model"},
+            "retired_at": "2026-08-03",
+            "reason": "Founder decision: stress recognition is dead. The lane "
+                      "is pivoted into the peer-review validation loop — a "
+                      "user/peer flags whether the AI's confidence choice was "
+                      "correct (POST /v2/user/snippets/<id>/confidence-review).",
+            "deleted": [
+                "routes/internal_webhooks.py:internal_stress_model_train "
+                "(a subprocess train pipeline inside the request handler, "
+                "30-minute timeout, auto_promote defaulting to true)",
+                "scripts/train_stress_classifier_baseline.py + "
+                "scripts/export_stress_snippets_dataset.py — no replacement "
+                "trainer",
+                "runtime_config key stress_baseline_model_path and its "
+                "promote writer; the local-file-path model ref with it",
+                "routes/snippet_labels_routes.py + services/snippet_labels.py "
+                "(/admin/snippet-labels — the lane's admin corpus writer)",
+                "POST /v2/user/snippets/<id>/label (the legacy user label "
+                "route) and db.set_user_snippet_charisma_label",
             ],
-            "fence": "AC-9/CONSTRUCT — classifier steers clip SELECTION for coach "
-                     "labeling only; probability never surfaced",
+            "behavior_change": "Clip selection now runs on heuristic suspicion "
+                               "scoring, permanently — which is exactly what "
+                               "the no-model state always ran. The classifier "
+                               "only ever steered SELECTION, never anything "
+                               "surfaced, so nothing user-facing moved.",
+            "tables_kept": "stress_snippets / snippet_labels / "
+                           "charisma_snippets.user_charisma_label are LEFT IN "
+                           "PLACE (no table or column is ever auto-dropped). "
+                           "Nothing reads snippet_labels any more.",
         },
     ],
 }
 
 _KNOWN_GAPS = [
     {
-        "id": "charisma_uses_stress_model",
-        "summary": "charisma_snippet_service ranks charisma clips with the STRESS "
-                   "classifier — _load_baseline_model() hardcodes "
-                   "stress_baseline_model_path; no charisma model key exists.",
-        "file": "services/charisma_snippet_service.py:~100",
-        "status": "flagged only — behavior unchanged; a charisma-specific model "
-                  "is a product/ML (founder) decision",
+        "id": "peer_review_weighting_undecided",
+        "summary": "Peer-review flags are captured with their own provenance "
+                   "(selection_source 'peer_review') but nothing trains on "
+                   "them yet: whether and how heavily a NON-BLIND peer "
+                   "validation should weigh against a BLIND coach label is a "
+                   "founder call. The schema keeps every option open; the "
+                   "retrain trigger currently ignores them entirely.",
+        "file": "migrations/add_snippet_confidence_reviews.sql, "
+                "services/learning_trace.py:_peer_review_corpus",
+        "status": "open — decide the weight before any trainer reads this "
+                  "corpus",
     },
     {
         "id": "dpo_sft_exports_cli_only",
@@ -433,9 +480,6 @@ def build_learning_trace() -> dict:
         ),
         "lane_annotations": _section(
             errors, "lane_annotations", lambda: _build_lane_annotations(errors),
-        ),
-        "lane_acoustic": _section(
-            errors, "lane_acoustic", lambda: _build_lane_acoustic(errors),
         ),
         "pipeline_docs": _PIPELINE_DOCS,
         "known_gaps": _KNOWN_GAPS,

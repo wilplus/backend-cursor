@@ -60,8 +60,6 @@ import numpy as np
 
 from services.audio_metrics import (
     FRAME_MS,
-    FRAME_SIZE,
-    HOP,
     SAMPLE_RATE,
     SILENCE_DB_THRESHOLD,
     _frame_rms_db,

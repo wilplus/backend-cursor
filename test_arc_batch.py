@@ -13,7 +13,6 @@ Run: python3 -m unittest test_arc_batch
 """
 from __future__ import annotations
 
-import json
 import unittest
 from unittest.mock import patch
 

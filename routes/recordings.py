@@ -3,9 +3,9 @@ from flask import Blueprint, request, jsonify
 from auth import require_auth
 from services.db import db
 from config import Config
-import sentry_sdk
 import uuid
 import logging
+from utils.errors import safe_error
 
 logger = logging.getLogger(__name__)
 recordings_v2_bp = Blueprint("recordings_v2", __name__)
@@ -68,8 +68,7 @@ def get_recording_v2(recording_id):
         return jsonify(payload), 200
 
     except Exception as e:
-        sentry_sdk.capture_exception(e)
-        return jsonify({"code": "RECORDING_ERROR", "error": str(e)}), 500
+        return safe_error("RECORDING_ERROR", 500, exc=e)
 
 
 @recordings_v2_bp.route("/<recording_id>/playback-url", methods=["GET"])
@@ -94,5 +93,4 @@ def get_recording_playback_url(recording_id):
         return jsonify({"audio_url": audio_url}), 200
     except Exception as e:
         logger.exception("Playback URL for %s: %s", recording_id, e)
-        sentry_sdk.capture_exception(e)
-        return jsonify({"code": "RECORDING_ERROR", "error": str(e)}), 500
+        return safe_error("RECORDING_ERROR", 500, exc=e)
