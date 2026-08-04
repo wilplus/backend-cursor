@@ -159,9 +159,9 @@ class PublishInlineSnippetsTests(unittest.TestCase):
                           return_value=session), \
              patch.object(v2.db, "get_snippets_by_session",
                           return_value=[{"id": self.SNIP_ID}]), \
-             patch.object(v2, "_save_coach_snippet_lanes",
+             patch("routes.v2.publish._save_coach_snippet_lanes",
                           return_value=None) as m_lanes, \
-             patch.object(v2, "_apply_willab_publish_contract",
+             patch("routes.v2.publish._apply_willab_publish_contract",
                           return_value=None), \
              patch.object(v2.db, "record_snippet_publish_annotations",
                           return_value=0), \
@@ -192,7 +192,7 @@ class PublishInlineSnippetsTests(unittest.TestCase):
                           return_value=session), \
              patch.object(v2.db, "get_snippets_by_session",
                           return_value=[{"id": self.SNIP_ID}]), \
-             patch.object(v2, "_apply_willab_publish_contract") as m_contract:
+             patch("routes.v2.publish._apply_willab_publish_contract") as m_contract:
             body, status = self._call({
                 "session_id": self.SESSION_ID,
                 "notify_client": False,
@@ -206,8 +206,8 @@ class PublishInlineSnippetsTests(unittest.TestCase):
         session = {"id": self.SESSION_ID, "user_id": None}
         with patch.object(v2.db, "v2_get_session_by_id",
                           return_value=session), \
-             patch.object(v2, "_save_coach_snippet_lanes") as m_lanes, \
-             patch.object(v2, "_apply_willab_publish_contract",
+             patch("routes.v2.publish._save_coach_snippet_lanes") as m_lanes, \
+             patch("routes.v2.publish._apply_willab_publish_contract",
                           return_value=None), \
              patch.object(v2.db, "record_snippet_publish_annotations",
                           return_value=0), \

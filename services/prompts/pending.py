@@ -27,13 +27,19 @@ from services.prompts.registry import SourceRef
 
 _MDR = "services/master_doc_rag.py"
 _OAI = "services/openai_service.py"
-_V2 = "routes/v2_routes.py"
-# The v2_routes god-file carve-up (#324) moved most of the interview/chat
-# prompts into this module while #326 was in flight. Both landed together, so
-# the registry pointed at symbols that were no longer there and
-# `build_manifest()` raised — taking the whole prompt-eval gate down with it.
-# `_generate_snippet_follow_up_question` did NOT move and stays on _V2.
+# The v2_routes god-file carve-up moved every prompt-bearing symbol below out
+# of routes/v2_routes.py, which is now a registration + re-export façade with
+# no route code left. A SourceRef hashes the symbol's SOURCE SEGMENT, not its
+# path, so these verbatim moves leave every hash untouched — only the path
+# constants change, and prompts.lock.json is byte-identical across the split.
+#
+# When #324 landed alongside #326 the paths were NOT updated in the same
+# change, `build_manifest()` raised, and the whole prompt-eval gate went down.
+# Hence the rule: a route module rename/move updates this map in the SAME
+# commit. The manifest fails loudly (never silently drops coverage), so a
+# green `python -m services.prompts.registry check` is the proof.
 _V2_CHAT = "routes/v2/user_chat.py"
+_V2_COACHING = "routes/v2/coaching.py"
 _LIFE = "services/life_engine.py"
 
 REGISTER = {
@@ -69,16 +75,16 @@ REGISTER = {
 
     # ── interview / coaching chat (routes/v2/user_chat.py) ──
     "interview.system": SourceRef(_V2_CHAT, "_INTERVIEW_SYSTEM_PROMPT"),
-    "interview.snippet_followup": SourceRef(_V2, "_generate_snippet_follow_up_question"),
+    "interview.snippet_followup": SourceRef(_V2_COACHING, "_generate_snippet_follow_up_question"),
     "interview.llm_question": SourceRef(_V2_CHAT, "_generate_llm_question"),
     "interview.few_shot_block": SourceRef(_V2_CHAT, "_build_few_shot_block"),
     "interview.longitudinal_block": SourceRef(_V2_CHAT, "_build_longitudinal_context_block"),
     "interview.master_score_block": SourceRef(_V2_CHAT, "_build_master_score_block"),
     "interview.profile_augment": SourceRef(_V2_CHAT, "_augment_interview_prompt_with_profile"),
-    "coaching.intent_system": SourceRef(_V2, "_system_prompt_for_intent"),
-    "coaching.profile_augment": SourceRef(_V2, "_augment_coaching_system_prompt"),
-    "coaching.turn": SourceRef(_V2, "v2_coaching_turn"),
-    "chat.snippet_followup": SourceRef(_V2, "v2_chat_snippet_followup"),
+    "coaching.intent_system": SourceRef(_V2_COACHING, "_system_prompt_for_intent"),
+    "coaching.profile_augment": SourceRef(_V2_COACHING, "_augment_coaching_system_prompt"),
+    "coaching.turn": SourceRef(_V2_COACHING, "v2_coaching_turn"),
+    "chat.snippet_followup": SourceRef(_V2_COACHING, "v2_chat_snippet_followup"),
 
     # ── 9-step structured coaching chat ──
     "coaching_state_machine.system": SourceRef(

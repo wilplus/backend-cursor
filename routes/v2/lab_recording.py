@@ -39,7 +39,10 @@ from routes.v2.common import (
 )
 from services.db import db
 
+from config import Config
+
 logger = logging.getLogger(__name__)
+config = Config()
 
 
 def _parse_lab_vocabulary(raw):
@@ -990,3 +993,108 @@ def v2_lab_create_recording():
         return jsonify({
             "code": "V2_ERROR", "error": "Failed to process recording",
         }), 500
+
+
+@v2_bp.route("/lab/recordings/<session_id>/readout", methods=["GET"])
+@optional_auth
+def v2_guest_get_recording_readout(session_id):
+    """Re-read a GUEST recording's readout — the unauth twin of
+    /user/sessions/<id>/readout (bug fix 2026-07-13).
+
+    Why it exists: a signed-out user records, gets the inline 201 readout,
+    but the Say-It-Stronger cards generate a few seconds LATER (async
+    daemon), and re-opening the recording (the "Your Recording" chat
+    bubble) previously hit the @require_auth re-read → 401 → the FE's
+    "We couldn't load these insights" screen. This endpoint lets the FE
+    (a) POLL until the synonym cards populate and (b) re-open the
+    recording, both without auth.
+
+    Ownership model = the guest funnel's: the unguessable session UUID is
+    the capability. HARD RULE — only an UNCLAIMED session (user_id IS
+    NULL) is served without auth; once a session is CLAIMED by a user,
+    only that owner may read it (else 404, no existence leak). So this can
+    never surface a signed-in user's readout to a bare id.
+
+    Response mirrors the authed readout: 200 { session_id, state, readout }
+             · 400 bad uuid · 404 not found / claimed-by-another · 500
+    """
+    if not _is_valid_uuid(session_id):
+        return jsonify({
+            "code": "INVALID_INPUT", "error": "session_id must be a valid UUID",
+        }), 400
+    try:
+        session = db.v2_get_session_by_id(session_id)
+        if not session:
+            return jsonify({
+                "code": "SESSION_NOT_FOUND", "error": "Recording not found",
+            }), 404
+        owner = session.get("user_id")
+        caller = getattr(request, "user_id", None)
+        # Claimed session → owner-only (they should use the authed route,
+        # but honor it here for the owner too). Unclaimed → open to the id.
+        if owner and str(owner) != str(caller or ""):
+            return jsonify({
+                "code": "SESSION_NOT_FOUND", "error": "Recording not found",
+            }), 404
+
+        # Async analysis (founder 2026-07-15) — job state first; the FE polls
+        # this route (guests included) until analysis_state ready|failed.
+        _an_state = session.get("analysis_state")
+        if _an_state == "processing":
+            return jsonify({
+                "session_id": session_id, "state": "processing",
+                "analysis_state": "processing", "readout": None,
+            }), 200
+        if _an_state == "failed":
+            return jsonify({
+                "session_id": session_id, "state": "failed",
+                "analysis_state": "failed", "readout": None,
+            }), 200
+
+        from services.lab_recording import build_readout_from_session
+        readout = build_readout_from_session(session_id)
+
+        if session.get("results_published_at"):
+            state = "insights_ready"
+        elif session.get("status") == "pending_admin_review":
+            state = "review_pending"
+        else:
+            state = "readout_ready"
+
+        return jsonify({
+            "session_id": session_id,
+            "state": state,
+            # Unambiguous poll terminal (see the authed twin): past
+            # processing|failed everything is "ready".
+            "analysis_state": "ready",
+            "readout": readout,
+        }), 200
+    except Exception as e:
+        logger.error(
+            "lab/recordings/<id>/readout GET failed sid=%s err=%s",
+            session_id, e, exc_info=True,
+        )
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to fetch readout"}), 500
+
+
+@v2_bp.route("/config/recording", methods=["GET"])
+@optional_auth
+def v2_config_recording():
+    """willab recording config (UX Wave v2 D5 / B-3). Single source of truth
+    for the recording floor so the FE stops hardcoding 60s. The SERVER is the
+    real gate — min_content_gate rejects anything under this on upload (422,
+    RECORDING_REJECTED); this just lets the FE preview the same numbers.
+
+    `long_take_caution_sec` (founder 2026-07-27) is the CEILING side of the
+    same idea, and is deliberately NOT a gate: at or above it the setup wizard
+    shows a soft caution and the student proceeds anyway if they choose. It
+    lives here so the FE never hardcodes the threshold it states in copy.
+    """
+    from services.min_content_gate import MIN_DURATION_SEC, MIN_VOICED_SEC
+    return jsonify({
+        "min_duration_sec": MIN_DURATION_SEC,
+        "min_voiced_sec": MIN_VOICED_SEC,
+        "long_take_caution_sec": int(getattr(
+            config, "LONG_TAKE_CAUTION_SECONDS", 600) or 600),
+    }), 200

@@ -1791,3 +1791,130 @@ def _document_phrase_for(arc_id, snippet_id, *, fallback=None):
         logger.warning("document phrase lookup failed arc=%s snip=%s: %s",
                        arc_id, snippet_id, e)
     return fallback
+
+
+@v2_bp.route("/user/snippets/<snippet_id>/confidence-review", methods=["POST"])
+@require_auth
+def v2_user_snippet_confidence_review(snippet_id):
+    """The PEER-REVIEW VALIDATION LOOP (founder 2026-08-03) — what the retired
+    acoustic stress lane became.
+
+    A user or peer is shown the AI's confidence choice on one snippet and
+    answers one question: did it get this right?
+
+    Body::
+
+        { "ai_correct": true | false, "model_version": "…" }   // version optional
+
+    ``ai_correct`` must be a REAL boolean. The string "true" is a 400, not a
+    coercion — this is training data, and a coerced value is a fabricated
+    label indistinguishable from a real one afterwards (the same rule the
+    coach confidence-label route holds).
+
+    ``model_version`` records WHICH prediction was validated. Omitted → the
+    currently-shadowed version is stamped server-side, because "the AI got
+    this right" is meaningless without knowing which AI.
+
+    Replace-on-reflag: one row per (snippet_id, reviewer_user_id). A reviewer
+    who changes their mind updates their row; duplicate rows from one rater
+    are junk labels (N3, same as the voice game). Different reviewers keep
+    their own rows so peer agreement stays computable.
+
+    NOT owner-scoped, deliberately — this is PEER review, so the reviewer is
+    frequently not the speaker. ``require_auth`` + a real snippet is the gate;
+    the unique constraint is what stops one account stuffing the corpus.
+
+    Responses::
+
+        200 { "saved": true, "snippet_id": ..., "ai_correct": ... }
+        400 INVALID_INPUT — bad UUID / non-boolean ai_correct / bad
+                            model_version type
+        404 NOT_FOUND     — snippet doesn't exist
+        500 V2_ERROR
+
+    AC-9: capture only. Nothing here is ever read back to a user as a score,
+    verdict or ratio. BLIND COACH: these flags are NON-BLIND (the reviewer saw
+    the AI's call) and are stored in their own table under their own
+    provenance so they can never blend indistinguishably into the coach's
+    blind corpus — see migrations/add_snippet_confidence_reviews.sql.
+    """
+    if not _is_valid_uuid(snippet_id):
+        return jsonify({
+            "code": "INVALID_INPUT",
+            "error": "snippet_id must be a valid UUID",
+        }), 400
+
+    from services.confidence_reviews import validate_confidence_review
+
+    row, err = validate_confidence_review(request.get_json(silent=True) or {})
+    if err:
+        return jsonify({"code": "INVALID_INPUT", "error": err}), 400
+
+    try:
+        if not db.get_snippet_by_id(snippet_id):
+            return jsonify({
+                "code": "NOT_FOUND", "error": "snippet not found",
+            }), 404
+
+        model_version = row["model_version"]
+        if not model_version:
+            # Attribute the prediction server-side. Best-effort: an
+            # unattributed row is still a usable verdict, so a registry read
+            # that fails must never cost us the label.
+            try:
+                from services.learning_serve import current_shadow_version
+                model_version = current_shadow_version()
+            except Exception as e:
+                logger.warning(
+                    "confidence_review: shadow version lookup failed snip=%s: "
+                    "%s (storing unattributed)", snippet_id, e,
+                )
+                model_version = None
+
+        saved = db.upsert_snippet_confidence_review(
+            snippet_id=snippet_id,
+            reviewer_user_id=str(request.user_id),
+            ai_correct=row["ai_correct"],
+            model_version=model_version,
+        )
+        if not saved:
+            return jsonify({
+                "code": "V2_ERROR",
+                "error": "could not save the review (run "
+                         "migrations/add_snippet_confidence_reviews.sql)",
+            }), 500
+
+        return jsonify({
+            "saved": True,
+            "snippet_id": snippet_id,
+            "ai_correct": row["ai_correct"],
+        }), 200
+    except Exception as e:
+        logger.error(
+            "confidence_review.error snip=%s err=%s", snippet_id, e,
+            exc_info=True,
+        )
+        sentry_sdk.capture_exception(e)
+        return jsonify({
+            "code": "V2_ERROR",
+            "error": "Failed to record the confidence review",
+        }), 500
+
+
+@v2_bp.route("/session/status", methods=["GET"])
+@require_auth
+def v2_session_status():
+    """willab session status — the FE's getStatus() seam (homeworkApi).
+
+    GET → {credits, can_start_analysis, audit_paid, audit_price}. Identical
+    payload to GET /v2/user/credits; this is the endpoint the FE's BFF proxies
+    (/v2/session/status). can_start_analysis drives the Lounge credit/paywall
+    gate; audit_paid drives locked affordances; audit_price shows the headline
+    $50 on the pricing card.
+    """
+    try:
+        return jsonify(_build_user_session_status(request.user_id)), 200
+    except Exception as e:
+        logger.error("session/status GET failed: %s", e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to fetch status"}), 500
