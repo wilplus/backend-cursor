@@ -2321,7 +2321,7 @@ class RouteGateTests(unittest.TestCase):
         # exist.
         with patch.object(lroutes.chat, "is_enabled", return_value=False):
             for path in ("/v2/life/state", "/v2/life/principles",
-                         "/v2/life/strategy", "/v2/life/prayer"):
+                         "/v2/life/strategy"):
                 self.assertEqual(self._get(path).status_code, 404, path)
 
     def test_not_consented_is_409_with_a_pointer(self):
@@ -2339,19 +2339,70 @@ class RouteGateTests(unittest.TestCase):
                 patch.object(lroutes.store, "get_setup", return_value=None):
             self.assertEqual(self._get("/v2/life/state").status_code, 200)
 
+    def _allowlisted_probe_client(self):
+        """A throwaway route behind `life_route(allowlist=True)`.
+
+        The gate used to be covered through /v2/life/prayer, which is retired
+        (2026-08-04). Testing it through a product route was always incidental:
+        once that route is gone the assertion still passes, but for the wrong
+        reason — a missing route 404s too, so the test would go green while
+        gating nothing. This owns its own route, so it fails if and only if the
+        GATE stops working.
+        """
+        app = Flask(__name__)
+
+        @app.route("/probe")
+        @lroutes.life_route(allowlist=True)
+        def _probe():
+            return "founder-only-body", 200
+
+        return app.test_client()
+
     def test_a_founder_only_surface_404s_rather_than_403s(self):
-        # A 403 confirms the surface exists.
+        # A 403 confirms the surface exists. 404 is the whole point: someone
+        # off the allowlist must not be able to tell the difference between
+        # "not for you" and "not a thing".
+        client = self._allowlisted_probe_client()
         with patch.object(lroutes.chat, "is_enabled", return_value=True), \
                 patch.object(lroutes.chat, "has_consented", return_value=True), \
                 patch.object(lroutes.chat, "is_allowlisted", return_value=False):
-            resp = self._get("/v2/life/prayer")
+            resp = client.get("/probe", headers={"Authorization": "Bearer t"})
         self.assertEqual(resp.status_code, 404)
-        self.assertNotIn("pompeiana", resp.get_data(as_text=True))
+        # And the body it was guarding did not leak on the way out.
+        self.assertNotIn("founder-only-body", resp.get_data(as_text=True))
+
+    def test_the_allowlist_gate_still_lets_an_allowlisted_caller_through(self):
+        # The other half: a gate that 404s EVERYONE would pass the test above
+        # while being broken. This is what makes that assertion mean something.
+        client = self._allowlisted_probe_client()
+        with patch.object(lroutes.chat, "is_enabled", return_value=True), \
+                patch.object(lroutes.chat, "has_consented", return_value=True), \
+                patch.object(lroutes.chat, "is_allowlisted", return_value=True):
+            resp = client.get("/probe", headers={"Authorization": "Bearer t"})
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("founder-only-body", resp.get_data(as_text=True))
 
     def test_a_founder_only_entry_is_absent_from_the_menu(self):
         with patch.object(lroutes.chat, "is_enabled", return_value=True), \
                 patch.object(lroutes.chat, "has_consented", return_value=True), \
                 patch.object(lroutes.chat, "is_allowlisted", return_value=False), \
+                patch.object(lroutes.store, "get_setup",
+                             return_value={"completed_at": "2026-07-26"}):
+            menu = self._get("/v2/life/state").get_json()["menu"]
+        self.assertNotIn("prayer", menu)
+
+    def test_prayer_is_absent_from_the_menu_even_when_allowlisted(self):
+        """Founder 2026-08-04: prayer is not a view of this app, for anyone.
+
+        willpowerlab.com is the voice app. Prayer is a separate web app on
+        pompeiana.willpowerlab.com, joined to this one by the shared login and
+        nothing else, so it is not in this app's list of views. The FE drops a
+        "prayer" key it cannot route, so sending one would be a silent no-op
+        that reads like a working feature — it stops here instead.
+        """
+        with patch.object(lroutes.chat, "is_enabled", return_value=True), \
+                patch.object(lroutes.chat, "has_consented", return_value=True), \
+                patch.object(lroutes.chat, "is_allowlisted", return_value=True), \
                 patch.object(lroutes.store, "get_setup",
                              return_value={"completed_at": "2026-07-26"}):
             menu = self._get("/v2/life/state").get_json()["menu"]

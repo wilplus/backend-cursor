@@ -83,7 +83,10 @@ def is_enabled() -> bool:
 
 
 def is_allowlisted(user_id: Optional[str]) -> bool:
-    """Founder-only surfaces (the prayer link, coach-only entries).
+    """Founder-only surfaces (coach-only entries).
+
+    The prayer link this was built for is retired (2026-08-04): prayer is a
+    separate app on pompeiana.willpowerlab.com, not a surface of this one.
 
     NOT the principles engine — that ships public behind the consent screen
     (L-6). Non-members get 404s and absent menu entries, never a 403: a 403
