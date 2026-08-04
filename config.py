@@ -457,9 +457,11 @@ class Config:
     #                         is never reached, so chat is byte-identical to
     #                         today. Flip it only after the FE deploys.
     #   LIFE_PANEL_ALLOWLIST  comma-separated user ids for the FOUNDER-ONLY
-    #                         surfaces (prayer link and anything coach-only).
-    #                         NOT the principles engine — that one is public
-    #                         behind the consent screen (L-6).
+    #                         surfaces (anything coach-only). NOT the
+    #                         principles engine — that one is public behind
+    #                         the consent screen (L-6). The prayer link it was
+    #                         built for is retired (2026-08-04); prayer is a
+    #                         separate app on pompeiana.willpowerlab.com.
     #
     # Allowlisted entries are ABSENT from the payload and their endpoints 404
     # rather than 403: a 403 confirms the surface exists.
