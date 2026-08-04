@@ -74,7 +74,7 @@
     "coaching_state_machine.system": {
       "kind": "source_ref",
       "module": "pending",
-      "sha256": "26a83927f5d26267dc1ab0f59d87c80bfec27293f898041a5db9fb1963b6105d"
+      "sha256": "9e4e0dd17da629976b6206ca0133d7518a4c114617ec84230eac74caebb57b6d"
     },
     "community_content.preamble": {
       "kind": "source_ref",
@@ -164,12 +164,12 @@
     "interview.few_shot_block": {
       "kind": "source_ref",
       "module": "pending",
-      "sha256": "13ad216d9831f2c62f26df43f4a215afea1cf77d171ec9e2f92a5c344066c105"
+      "sha256": "9d5ec5b92e22b2904abe04a464565d1269f0f785cd69f72ee517e580ee0d1bcc"
     },
     "interview.llm_question": {
       "kind": "source_ref",
       "module": "pending",
-      "sha256": "7987bb14038646101ad9ba5050ac3cbe7aedae1e1c5662c02df546d87ee2e940"
+      "sha256": "b601749d9f0b6315abc968bfeeda6baf7db535f8e46254436eb8aaeed2b9f3f3"
     },
     "interview.longitudinal_block": {
       "kind": "source_ref",
@@ -254,7 +254,7 @@
     "legacy_openai.final_report": {
       "kind": "source_ref",
       "module": "pending",
-      "sha256": "8b92439c354e2eedffd1bbe939b680cdf12881636ec48b6d776d391127b1ef2e"
+      "sha256": "197e6598856739c05f80069a921a9098626bc3fc873cd6dc745b68084b01bb06"
     },
     "legacy_openai.final_task": {
       "kind": "source_ref",
@@ -264,7 +264,7 @@
     "legacy_openai.next_task": {
       "kind": "source_ref",
       "module": "pending",
-      "sha256": "a783bcde29c32e1e6094303576768f81acb5991e8062f96f7c858261d98dbb81"
+      "sha256": "ffe5aa468282d95bc139066d4c94167e4aa3668a596bee839efeba87c6ecd72e"
     },
     "legacy_openai.student_email": {
       "kind": "source_ref",
