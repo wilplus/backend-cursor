@@ -369,6 +369,26 @@ _W_CONF_MACHINE = 1.0   # swing 2.0 — unchanged from _W_V
 
 **The panel term scales with label quality.** A two-rater split decision must not move ranking as much as a five-rater unanimous one. `quality` is a function of `n_raters` and `agreement` — both already stored (I10). This also means the peer lane strengthens the term automatically as it grows, with no weight change.
 
+```python
+_QUALITY_SHRINKAGE = 2.0   # k
+
+def quality(n_raters: int, agreement: float) -> float:
+    """Bounded (0, 1), monotone in both terms, SAMPLE SIZE DOMINATES."""
+    return (n_raters / (n_raters + _QUALITY_SHRINKAGE)) * (0.5 + 0.5 * agreement)
+```
+
+**Sample size dominates agreement, by decision.** A five-rater panel at 60% agreement (0.57) outweighs a two-rater unanimous one (0.50). That is the correct statistical intuition for a perceptual construct: the panel is estimating a *population percept*, so more independent witnesses beats fewer confident ones. Two people agreeing is a small sample, not a strong finding.
+
+| n_raters | agreement | quality |
+|---|---|---|
+| 1 | 1.00 | 0.33 |
+| 2 | 1.00 | 0.50 |
+| 5 | 0.60 | **0.57** |
+| 5 | 1.00 | 0.71 |
+| 10 | 1.00 | 0.83 |
+
+The agreement term never zeroes the product — a genuinely ambiguous moment still carries half its size-derived weight, because ambiguity is a finding (I10), not an absence of one.
+
 **Do not bucket the machine score into three classes** — that destroys the variance needed to break ties across the unlabelled majority, which is most of the corpus.
 
 **The coach is a peer for confidence.** There is no privileged expert vote on a percept — §2's routing principle says the panel constitutes the truth. The coach's ternary rating carries the same weight as any peer's inside the aggregate.
@@ -478,8 +498,19 @@ A moment enters the album at **three-way agreement** — model, coach, peer. The
 ### 9.2 · Presentation
 
 - **The album never names the state.** "You sounded confident here" is a verdict about the user under AC-9. The moment plays; the qualitative framing carries the meaning.
-- **Capped at 5 — the five most recent that qualified.** Not top-5-by-score.
+- **The album is uncapped and grows.** Nothing ages out. A moment that cleared quorum stays.
 - **Predict-then-reveal is a mandatory hard gate** before any playback. Harvey et al. found no corrective shift without cognitive preparation, and anxious users anchor on flaws — without the gate the album makes them worse, not better.
+
+**Structure — two levels, both recency-first:**
+
+| Level | Contains | Ordering |
+|---|---|---|
+| **Per project** (arc) | every qualified moment from that arc | most recent first; the 5 most recent displayed at the top |
+| **Pool** | every qualified moment the user owns, across all arcs | most recent first; the 5 most recent displayed at the top |
+
+The five-most-recent rule is a **display** rule, not a retention rule. Everything is kept; recency decides what the user meets first. That matters for the mechanism — self-modelling works on *mastery experience*, and the most recent evidence that you can do the thing is the strongest form of it.
+
+**Consequence for `_W_B` (§7.2):** because nothing ages out, "cleared the album quorum" and "is in the album" are the same predicate. The bonus fires once a moment clears quorum and does not decay. Had the album rotated, ranking would drift for reasons unconnected to the speech.
 - The gate's by-product is the **calibration** measure (Appendix B) and the **self-observer discrepancy** segmentation axis (§12.4), at no extra instrumentation cost.
 
 ### 9.3 · What the album is for
@@ -710,6 +741,42 @@ V22 is the obvious sixth Feedback finding. It is not in v1.0 scope and is noted 
 3. I4 proportion — start 20%, tune down once recall is estimable
 4. τ and the choice between the two `R` forms in §8.2 — start with the simplified in-session form
 5. Whether V22 joins v1.0 (§15.2)
+
+---
+
+## §17 · Operational definitions
+
+**This section is the registry §1.4 requires.** Every `question_id` on a `TernaryRating` resolves to an entry here. A question with no entry cannot ship. Entries are versioned; changing the wording starts a new corpus (§3.2), so a change means a **new version**, never an edit in place.
+
+### `conf-q-v1` — vocal confidence
+
+| | |
+|---|---|
+| **`state_id`** | `confidence` |
+| **Construct** | How **assured the speaker sounds in their delivery** of this moment. A property of the voice, not of the content. |
+| **Question text** | *"Does the speaker sound confident here?"* |
+| **Answers** | `yes` · `no` · `neutral` — plus the separate `unrateable` control (§3.2) |
+| **Engine** | ALBUM — perceptual, requires witnesses |
+| **External anchor** | Jiang & Pell 2017, Speech Communication 88:106–126. Listener panel reached >83% agreement; mean ratings 4.52 / 3.24 / 2.05 across confident / close-to-confident / unconfident items on a 1–5 scale |
+
+**What it is not.** Three constructs sit adjacent and must not be folded in:
+
+- **Not authority.** Someone can sound entirely sure of themselves without sounding commanding. The earlier draft asked "confident **and authoritative**", which is two questions in one — the defect §1.4 exists to prevent (D14).
+- **Not feeling-of-knowing.** That is certainty about *what is being said*; this is assurance in *how it is said*. A speaker can deliver a wrong answer confidently — Tenney's finding, where confident-and-wrong collapsed to 2.8 credibility once the error surfaced.
+- **Not correctness, likeability, or charisma.** None of those is what the panel is being asked.
+
+**Rater guidance — deliberately thin.** Raters get the moment and the question, and nothing else (I1). No band, no score, no acoustic hint, no worked examples of "what confident sounds like." Worked examples would anchor the panel to whoever wrote them, and the panel is supposed to *constitute* the truth, not ratify an author's.
+
+- **`yes`** — it sounds assured
+- **`no`** — it sounds unsure or tentative
+- **`neutral`** — it sounds middling; neither reads
+- **`unrateable`** — you cannot judge it, usually because of the audio. **Not** a synonym for `neutral`: `neutral` is a judgment about the moment, `unrateable` is a judgment about your ability to make one
+
+### Adding an entry
+
+A new entry requires, in order: the construct written out; what it is explicitly *not*, naming the adjacent constructs it will be confused with; the single-barrelled question; the answer semantics; the engine; and an external anchor if one exists. Then the lane, then the capacity.
+
+**Adding a `NOTICE` entry is a scope decision, not a detector** (Appendix C.8).
 
 ---
 

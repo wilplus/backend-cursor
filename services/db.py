@@ -12813,6 +12813,96 @@ class DatabaseService:
                            snippet_id, e)
             return False
 
+    def upsert_state_rating(
+        self, *, snippet_id: str, row: dict, rater_id: Optional[str] = None,
+        session_id: Optional[str] = None, lane: str = "coach",
+        intensity: Optional[int] = None,
+        model_version_at_time: Optional[str] = None,
+        probe_score_at_time: Optional[float] = None,
+    ) -> bool:
+        """Store (or replace) one rater's TERNARY rating on one snippet
+        (SPEC.md v3 §3.2). ``row`` is the validated shape from
+        services.state_ratings.validate_rating — no validation happens here.
+
+        Writes the SAME physical table as upsert_confidence_label
+        (confidence_labels, extended by add_state_generic_ratings.sql), so the
+        two instruments share the per-rater uniqueness and a coach who
+        re-rates replaces their own row rather than doubling it.
+
+        The legacy ``confident`` boolean is written alongside for continuity —
+        yes/no map onto it, and NEUTRAL WRITES NULL. Neutral is the one answer
+        the binary instrument could never express, so a null is the honest
+        record; coercing it to false would fabricate a negative label, and
+        every reader of that column already tolerates a null row.
+
+        ``intensity`` is written ONLY when the caller passes it explicitly in
+        the same request that carried the answer — i.e. a legacy body where
+        both came from one judgment. It is never carried forward from a
+        previous row: a stale 1-5 grade attached to an answer nobody graded is
+        the failure the FULL-STATE upsert above exists to prevent, and absent
+        training data beats wrong training data.
+
+        Best-effort, missing-column-safe; NEVER raises."""
+        if not snippet_id or not isinstance(row, dict):
+            return False
+        value = row.get("value")
+        payload: dict = {
+            "snippet_id": str(snippet_id),
+            "state_id": row.get("state_id") or "confidence",
+            "value": value,
+            "unrateable": bool(row.get("unrateable")),
+            "question_id": row.get("question_id"),
+            "question_version": row.get("question_version"),
+            "saw_model_output": bool(row.get("saw_model_output")),
+            "latency_ms": row.get("latency_ms"),
+            "note": row.get("note"),
+            "lane": lane,
+            # `source` predates `lane` and several readers still filter on it.
+            # Both bootstrap and coach lanes ARE the coach rating; the lane
+            # column is what separates them.
+            "source": "coach" if lane in ("bootstrap", "coach") else "game",
+            "confident": (True if value == "yes"
+                          else False if value == "no" else None),
+            # FULL-STATE, like the binary upsert: an omitted intensity CLEARS
+            # the stored one rather than carrying the previous answer's grade
+            # onto a new answer.
+            "intensity": intensity,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+        if rater_id:
+            payload["rater_id"] = str(rater_id)
+        if session_id:
+            payload["session_id"] = str(session_id)
+        if model_version_at_time:
+            payload["model_version_at_time"] = str(model_version_at_time)
+        if probe_score_at_time is not None:
+            payload["probe_score_at_time"] = float(probe_score_at_time)
+        try:
+            (self.client.table("confidence_labels")
+                 .upsert(payload,
+                         on_conflict="snippet_id,rater_id").execute())
+            return True
+        except Exception as e:
+            err_low = str(e).lower()
+            if ("column" in err_low and (
+                    "state_id" in err_low or "unrateable" in err_low
+                    or "question_version" in err_low or "lane" in err_low)):
+                logger.warning(
+                    "upsert_state_rating: ternary columns missing (run "
+                    "migrations/add_state_generic_ratings.sql)",
+                )
+                return False
+            if "42p10" in err_low or "on conflict" in err_low:
+                logger.warning(
+                    "upsert_state_rating: unique constraint shape does not "
+                    "match ON CONFLICT — re-run "
+                    "migrations/add_confidence_labels.sql",
+                )
+                return False
+            logger.warning("upsert_state_rating failed snip=%s: %s",
+                           snippet_id, e)
+            return False
+
     def get_confidence_labels_by_snippet_ids(self, snippet_ids: list) -> dict:
         """{snippet_id: [label rows]} for the given snippets. {} on anything
         missing — the queue then renders every piece as unlabelled."""
