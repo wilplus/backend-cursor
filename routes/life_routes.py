@@ -20,8 +20,11 @@ The three-tier gate (§1.4), and why each answer is the code it is
                           the founder-only entries are absent from the payload
                           and their endpoints deny that they were ever there.
 
-The allowlist covers the prayer link and founder-only surfaces ONLY. The
-principles engine is PUBLIC behind consent (L-6).
+The allowlist covers founder-only surfaces ONLY. The principles engine is
+PUBLIC behind consent (L-6). As of 2026-08-04 it gates no surface: the prayer
+link it was built for is retired (prayer is a separate app on
+pompeiana.willpowerlab.com), and the gate is kept for the next founder-only
+endpoint rather than rebuilt then.
 
 BE-10's launch blockers are in this file and not in a follow-up: consent
 recording, self-serve export, and a hard delete that reports what it actually
@@ -1773,18 +1776,22 @@ def life_delete():
 # ═════════════════════════════════════════════════════════════════════════
 # Founder-only surfaces — 404 to everyone else
 # ═════════════════════════════════════════════════════════════════════════
-
-@life_bp.route("/v2/life/prayer", methods=["GET"])
-@life_route(allowlist=True)
-def life_prayer():
-    """The link out to pompeiana.willpowerlab.com. Coach-only for now (§3.4).
-
-    A LINK, not a port. Pompeiana is zero-network by design, offline-first,
-    and its scripture text is deliberately not in its repo — absorbing it
-    would break the rule the app was built around. The daily card's
-    ``☐ Pompeiana`` checkbox stays a local habit tick in life_days and does
-    NOT read the prayer app's state: coupling stays at zero."""
-    return jsonify({
-        "url": "https://pompeiana.willpowerlab.com",
-        "opens": "external",
-    }), 200
+#
+# RETIRED 2026-08-04: ``GET /v2/life/prayer``.
+#
+# It existed to hand the client the pompeiana.willpowerlab.com URL so this app
+# could render a link to it. Prayer is a SEPARATE web app, joined to this one
+# by the shared WillpowerLab login and nothing else, so this app no longer
+# links to it and nothing calls this route. Allowlist-gated, it 404'd for
+# everyone by default; removed, it 404s for everyone always. No client sees a
+# behaviour change.
+#
+# Pompeiana is reached by going to pompeiana.willpowerlab.com and signing in.
+# It stays zero-network and offline-first by design, and the daily card's
+# ``☐ Pompeiana`` checkbox remains a local habit tick in life_days that does
+# NOT read the prayer app's state: coupling stays at zero, which is why there
+# is nothing to replace this route with.
+#
+# `life_route(allowlist=True)` is KEPT and still tested. It currently gates no
+# surface, but it is the 404-not-403 gate the next founder-only endpoint
+# should use, and its security property is worth more than the few lines.
