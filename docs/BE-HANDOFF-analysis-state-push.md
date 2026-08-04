@@ -1,8 +1,15 @@
 # BE handoff — push the analysis-state flip (kill the FE's 2s status polling)
 
-Status: **NOT STARTED.** FE half shipped 2026-08-03 (frontend-cursor #232,
-`fb831b4`). Implementation here is small (~30 LOC + tests at ONE choke point).
-Founder queued this 2026-08-04.
+Status: **IMPLEMENTED 2026-08-04** on this branch —
+`services/realtime_notify.py` (the broadcast sender),
+`set_session_analysis_state` instrumentation (services/db.py), and
+`test_analysis_state_broadcast.py` (the three contracts below).
+FE half shipped 2026-08-03 (frontend-cursor #232, `fb831b4`).
+Remaining: merge, then the FE follow-up (broadcast subscription as
+`useLabReadoutLive`'s primary tier). NOTE for reviewer: verify the Supabase
+broadcast REST endpoint shape against current docs before merge — the
+sketch below was written against 2026-era docs and the tests pin OUR wire
+shape, not Supabase's acceptance of it.
 
 `FILTER: ADVANCE-F1-SURFACE — cat {F1-SURFACE} — fences {clear: plumbing-state
 payload only (AC-9), push-first with poll fallback (LIVE LOOP)} — locks {clear}
