@@ -78,7 +78,7 @@ def get_signing_key(token):
         # - Handles key rotation
         signing_key = jwks_client.get_signing_key_from_jwt(token)
         
-        logger.debug(f"Successfully retrieved signing key for token")
+        logger.debug("Successfully retrieved signing key for token")
         return signing_key.key
         
     except jwt.DecodeError as e:
@@ -134,7 +134,7 @@ def verify_supabase_token(token):
         raise Exception("Invalid token audience")
     except jwt.InvalidIssuerError:
         logger.warning(f"Token has invalid issuer. Expected: {issuer}")
-        raise Exception(f"Invalid token issuer")
+        raise Exception("Invalid token issuer")
     except jwt.InvalidTokenError as e:
         logger.warning(f"Invalid token: {str(e)}")
         raise Exception(f"Invalid token: {str(e)}")

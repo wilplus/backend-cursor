@@ -220,7 +220,7 @@ class SnippetWriteRoutingTests(unittest.TestCase):
                               return_value=[]), \
                  patch.object(v2.db, "get_coach_snippet_drafts",
                               return_value=[]), \
-                 patch.object(v2, "_save_coach_snippet_lanes",
+                 patch("routes.v2.coach._save_coach_snippet_lanes",
                               return_value=None) as m_lanes:
                 resp, status = v2.v2_coach_save_snippet.__wrapped__(
                     SPOKEN, snippet_id)
@@ -270,7 +270,7 @@ class SaveFeedbackRoutingTests(unittest.TestCase):
                                   str(sid), [])), \
                  patch.object(v2.db, "get_read_sessions_for",
                               return_value=[{"id": READ}]), \
-                 patch.object(v2, "_save_coach_snippet_lanes",
+                 patch("routes.v2.coach._save_coach_snippet_lanes",
                               return_value=None) as m_lanes, \
                  patch("services.training_labels.validate_publish_labels",
                        side_effect=lambda raw, ids, require_all: raw), \
@@ -303,7 +303,7 @@ class SaveFeedbackRoutingTests(unittest.TestCase):
                               return_value=[{"id": PSNIP1}]), \
                  patch.object(v2.db, "get_read_sessions_for",
                               return_value=[]), \
-                 patch.object(v2, "_save_coach_snippet_lanes") as m_lanes:
+                 patch("routes.v2.coach._save_coach_snippet_lanes") as m_lanes:
                 resp, status = v2.v2_coach_save_feedback.__wrapped__(SPOKEN)
         self.assertEqual(status, 404)
         m_lanes.assert_not_called()

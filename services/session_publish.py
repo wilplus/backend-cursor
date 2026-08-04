@@ -13,7 +13,6 @@ no callers left. What remains here is the willab-used surface:
 from __future__ import annotations
 
 import logging
-from typing import Any
 
 from services.db import db
 

@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Any, Optional
+from typing import Optional
 
 from config import Config
 from services import life_panel as lp

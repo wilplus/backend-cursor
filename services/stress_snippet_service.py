@@ -5,10 +5,9 @@ import os
 import re
 import shutil
 import subprocess
-import json
 import uuid
 from dataclasses import dataclass
-from typing import Optional, Tuple
+from typing import Optional
 
 import numpy as np
 import sentry_sdk
@@ -25,7 +24,14 @@ _SCENARIOS = ("after_pause", "before_pause", "high_filler_density", "low_filler_
 STRESS_SNIPPET_CLIP_SEC_DEFAULT = 5.0
 STRESS_SNIPPET_CLIP_SEC_MIN = 0.5
 STRESS_SNIPPET_CLIP_SEC_MAX = 5.0
-_MODEL_CACHE: dict[str, dict] = {}
+
+# NO MODEL. The promoted acoustic stress baseline was deleted with its lane
+# (founder 2026-08-03): the trainer, the promote writer, and the
+# runtime_config key `stress_baseline_model_path` are all gone. Clip selection
+# runs on the heuristic suspicion score below — which is exactly what the
+# no-model state always ran, so this is not a regression, it is that state made
+# permanent. The classifier only ever steered SELECTION (which clips get
+# offered), never anything surfaced (AC-9 / CONSTRUCT).
 
 # MMR / diversity (time IoU + acoustic embedding). Global assignment = exhaustive on top-K per scenario.
 _MMR_LAMBDA = 0.62
@@ -62,51 +68,6 @@ class ScoredClip:
     prob: float
     cand: CandidateWindow
     emb: np.ndarray
-
-
-def _sigmoid(z: float) -> float:
-    z = max(-35.0, min(35.0, float(z)))
-    return 1.0 / (1.0 + math.exp(-z))
-
-
-def _parse_storage_uri(uri: str) -> Optional[Tuple[str, str]]:
-    raw = (uri or "").strip()
-    prefix = "storage://"
-    if not raw.startswith(prefix):
-        return None
-    rest = raw[len(prefix) :].lstrip("/")
-    if "/" not in rest:
-        return None
-    bucket, _, obj_key = rest.partition("/")
-    bucket, obj_key = bucket.strip(), obj_key.strip()
-    if not bucket or not obj_key:
-        return None
-    return bucket, obj_key
-
-
-def _load_baseline_model() -> Optional[dict]:
-    runtime_path = (db.get_runtime_config("stress_baseline_model_path") or "").strip()
-    path = runtime_path or (getattr(config, "STRESS_BASELINE_MODEL_PATH", None) or "").strip()
-    if not path:
-        return None
-    if path in _MODEL_CACHE:
-        return _MODEL_CACHE[path]
-    try:
-        storage = _parse_storage_uri(path)
-        if storage:
-            bucket, obj_key = storage
-            raw = db.download_audio(bucket, obj_key)
-            data = json.loads(raw.decode("utf-8"))
-        else:
-            with open(path, "r", encoding="utf-8") as fh:
-                data = json.load(fh)
-        if not isinstance(data, dict) or "weights" not in data or "norm_mean" not in data or "norm_std" not in data:
-            return None
-        _MODEL_CACHE[path] = data
-        return data
-    except Exception as e:
-        logger.warning("stress_snippet_service: failed to load baseline model path=%s err=%s", path, e)
-        return None
 
 
 def _resolve_ffmpeg_executable() -> Optional[str]:
@@ -669,84 +630,6 @@ def _select_clip_indices(
     return out
 
 
-def _feature_vector_for_model(
-    window_signal: np.ndarray,
-    scenario: str,
-    snippet_features: dict,
-    duration_ms: int,
-) -> np.ndarray:
-    frame = 320
-    n = len(window_signal) // frame
-    if n <= 0:
-        return np.zeros((17,), dtype=np.float32)
-    frames = window_signal[: n * frame].reshape(n, frame)
-    eps = 1e-9
-    rms = np.sqrt(np.mean(frames * frames, axis=1) + eps)
-    db_vals = 20.0 * np.log10(rms + eps)
-    silence_ratio = float(np.mean(db_vals < -45.0))
-    energy_mean = float(np.mean(rms))
-    energy_std = float(np.std(rms))
-    energy_p95 = float(np.percentile(rms, 95))
-    energy_p05 = float(np.percentile(rms, 5))
-    dynamic_range = float(max(0.0, energy_p95 - energy_p05))
-    signs = np.sign(frames)
-    zcr = np.mean(np.abs(np.diff(signs, axis=1)) > 0, axis=1)
-    zcr_mean = float(np.mean(zcr))
-    zcr_std = float(np.std(zcr))
-    fft_mag = np.abs(np.fft.rfft(frames, axis=1))
-    freqs = np.fft.rfftfreq(frames.shape[1], d=1.0 / 16000.0)
-    denom = np.sum(fft_mag, axis=1) + eps
-    centroid = np.sum(fft_mag * freqs[None, :], axis=1) / denom
-    centroid_mean = float(np.mean(centroid))
-    centroid_std = float(np.std(centroid))
-    scenario_one_hot = {
-        "after_pause": [1, 0, 0, 0, 0],
-        "before_pause": [0, 1, 0, 0, 0],
-        "high_filler_density": [0, 0, 1, 0, 0],
-        "low_filler_density": [0, 0, 0, 1, 0],
-        "uncertain": [0, 0, 0, 0, 1],
-    }.get(scenario or "", [0, 0, 0, 0, 1])
-    pause_strength = float((snippet_features or {}).get("pause_strength") or 0.0)
-    filler_density = float((snippet_features or {}).get("filler_density") or 0.0)
-    energy_std_hint = float((snippet_features or {}).get("energy_std") or 0.0)
-    clip_duration_s = max(0.1, float(duration_ms or 0) / 1000.0)
-    return np.array(
-        [
-            energy_mean,
-            energy_std,
-            dynamic_range,
-            silence_ratio,
-            zcr_mean,
-            zcr_std,
-            centroid_mean / 4000.0,
-            centroid_std / 4000.0,
-            pause_strength,
-            filler_density,
-            energy_std_hint,
-            clip_duration_s / max(0.1, float(STRESS_SNIPPET_CLIP_SEC_MAX)),
-            *scenario_one_hot,
-        ],
-        dtype=np.float32,
-    )
-
-
-def _predict_with_baseline_model(model: dict, vector: np.ndarray) -> Optional[tuple[float, float]]:
-    try:
-        w = np.array(model.get("weights") or [], dtype=np.float32)
-        m = np.array(model.get("norm_mean") or [], dtype=np.float32)
-        s = np.array(model.get("norm_std") or [], dtype=np.float32)
-        if vector.shape[0] != w.shape[0] or m.shape[0] != w.shape[0] or s.shape[0] != w.shape[0]:
-            return None
-        s = np.where(s < 1e-6, 1.0, s)
-        vn = (vector - m) / s
-        bias = float(model.get("bias") or 0.0)
-        prob = _sigmoid(float(np.dot(vn, w) + bias))
-        confidence = max(0.5, min(1.0, 0.5 + abs(prob - 0.5)))
-        return prob, confidence
-    except Exception:
-        return None
-
-
 def generate_stress_snippets_for_recording(
     recording_id: str,
     *,
@@ -802,31 +685,15 @@ def generate_stress_snippets_for_recording(
         language = rec.get("transcription_language") or rec.get("language") or None
         candidates = _build_candidates(transcript, duration_sec, dbs, clip_sec, language=language)
 
-        baseline_model = _load_baseline_model()
         scored_items: list[ScoredClip] = []
         for c in candidates:
             energy_std = _energy_std_for_window(signal, c.start_sec, c.end_sec)
             energy_norm = min(1.0, energy_std / 0.08) if energy_std > 0 else 0.0
             suspicion = 0.45 * c.filler_density + 0.35 * c.pause_strength + 0.20 * energy_norm
-            duration_ms = int(round((c.end_sec - c.start_sec) * 1000))
-            snippet_features = {
-                "pause_strength": c.pause_strength,
-                "filler_density": c.filler_density,
-                "energy_std": energy_std,
-            }
+            # Heuristic suspicion scoring — the permanent selector (see the
+            # NO MODEL note at the top of this module).
             prob = max(0.01, min(0.99, suspicion))
             confidence = max(0.5, min(1.0, 0.5 + abs(prob - 0.5)))
-            if baseline_model is not None:
-                window_signal = _extract_window_signal(signal, c.start_sec, c.end_sec)
-                vector = _feature_vector_for_model(
-                    window_signal=window_signal,
-                    scenario=c.scenario,
-                    snippet_features=snippet_features,
-                    duration_ms=duration_ms,
-                )
-                pred = _predict_with_baseline_model(baseline_model, vector)
-                if pred is not None:
-                    prob, confidence = pred
             uncertainty = 1.0 - confidence
             selection_score = 0.6 * suspicion + 0.4 * uncertainty
             emb = _acoustic_diversity_embedding(signal, c.start_sec, c.end_sec)

@@ -16,7 +16,7 @@ from __future__ import annotations
 import io
 import logging
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Optional
 
 from services.learning_export import FEATURES_11
 

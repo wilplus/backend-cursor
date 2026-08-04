@@ -228,6 +228,45 @@ class CannotRun(RuntimeError):
     """Environment can't run migrations. Callers exit 2, never 1."""
 
 
+# Supabase's transaction-mode pooler. Its connection string differs from the
+# session pooler's by ONE DIGIT (6543 vs 5432) and the dashboard offers both,
+# so picking the wrong one is easy and — without this warning — invisible.
+_TRANSACTION_POOLER_PORT_RE = re.compile(r":6543(?=[/?]|$)")
+
+
+def warn_if_transaction_pooler(url: str) -> bool:
+    """Warn when DATABASE_URL points at a transaction pooler. Returns True if warned.
+
+    Why this matters enough to check: `apply` takes a pg_advisory_lock so two
+    deploys can't apply the same migration concurrently, and advisory locks
+    are SESSION-scoped. A transaction pooler multiplexes connections per
+    transaction — the lock is taken on one backend and released against
+    another, so the guard silently stops guarding. DDL in explicit
+    transactions has the same problem.
+
+    Nothing fails here: the connection usually works, and single-runner
+    migrations usually succeed. That is precisely the danger — the failure
+    only shows up under a race, months later, with no error to trace it to.
+    Warn loudly, proceed anyway; refusing would strand anyone whose only
+    reachable endpoint is the pooler.
+
+    The URL is never echoed — it carries the database password.
+    """
+    if not _TRANSACTION_POOLER_PORT_RE.search(url):
+        return False
+    print(
+        "WARNING: DATABASE_URL uses port 6543 — Supabase's TRANSACTION pooler.\n"
+        "  Advisory locks are session-scoped, so the concurrency guard that stops\n"
+        "  two deploys applying the same migration will not work there, and DDL\n"
+        "  in explicit transactions is unreliable.\n"
+        "  Use the SESSION pooler (port 5432) instead:\n"
+        "    Supabase → Project Settings → Database → Connection string → Session pooler\n"
+        "  Continuing anyway.",
+        file=sys.stderr,
+    )
+    return True
+
+
 def connect(database_url: str | None = None):
     """Open an autocommit connection, or raise CannotRun.
 
@@ -244,6 +283,12 @@ def connect(database_url: str | None = None):
             "  `python scripts/migrate.py plan` and paste each file into the\n"
             "  Supabase SQL Editor — that remains a supported workflow."
         )
+    # Before the driver import, not after: this diagnoses the URL, which has
+    # nothing to do with whether psycopg2 is installed. Warning later means an
+    # environment missing the driver never learns its URL is also wrong, and
+    # fixes one problem only to hit the other.
+    warn_if_transaction_pooler(url)
+
     try:
         import psycopg2  # noqa: PLC0415 — lazy on purpose; not a runtime dep of app.py
     except ImportError as exc:

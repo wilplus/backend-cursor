@@ -64,3 +64,12 @@ rq==1.16.2
 # app boot. -binary ships a self-contained manylinux wheel, so the Railway
 # image needs no libpq/pg_config at build time. See docs/MIGRATIONS.md.
 psycopg2-binary==2.9.12
+# Global rate limiting (services/rate_limits.py). Shares the queue's Redis
+# as its counter store (namespaced by RATELIMIT_KEY_PREFIX), so the cap on
+# the paid Whisper/LLM routes is one number across every gunicorn worker
+# instead of one-per-worker. `limits` is flask-limiter's storage layer —
+# pinned alongside it because a surprise major there changes how the
+# counters behave in prod. Both degrade gracefully: a missing package or a
+# dead broker falls back to per-worker counting, never a crash (live loop).
+flask-limiter==3.8.0
+limits==5.8.0

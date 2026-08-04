@@ -333,9 +333,11 @@ class ChunkSlideWordsTests(unittest.TestCase):
                               "end": round(t + dur, 3)})
                 t += dur
         _speak("intro words on slide zero")
-        advances.append({"index": 1, "t_ms": int(t * 1000) + 50}); t += 1.0
+        advances.append({"index": 1, "t_ms": int(t * 1000) + 50})
+        t += 1.0
         _speak(" ".join(["middle"] * 80))
-        advances.append({"index": 0, "t_ms": int(t * 1000) + 50}); t += 1.0
+        advances.append({"index": 0, "t_ms": int(t * 1000) + 50})
+        t += 1.0
         _speak("closing back on zero again")
         slides = [{"title": "A"}, {"title": "B"}]
         pieces = chunk_slide_words_by_chars(words, advances, slides)

@@ -40,18 +40,40 @@ logging.basicConfig(
 logger = logging.getLogger("pipeline-worker")
 
 
+def _enforce_secrets() -> None:
+    """Same boot-time secret audit as the web service.
+
+    The worker holds MORE dangerous credentials than the web process (it
+    writes storage and runs the pipeline unattended), so a placeholder or
+    truncated key here has to be just as fatal. Letting the worker start
+    with a broken credential is worse than a crash: jobs get claimed,
+    fail, and burn their retries.
+    """
+    from services.secrets import enforce_at_boot
+
+    enforce_at_boot()
+
+
 def _init_sentry() -> None:
     try:
         import sentry_sdk
         from config import Config
         cfg = Config()
         if cfg.SENTRY_DSN:
+            # Same sampling story as app.py: 1.0 meant a transaction per
+            # job (and per queue poll), which burns the quota that error
+            # capture depends on. Errors are still captured unsampled.
             sentry_sdk.init(
                 dsn=cfg.SENTRY_DSN,
-                traces_sample_rate=1.0,
+                traces_sample_rate=cfg.SENTRY_TRACES_SAMPLE_RATE,
+                profiles_sample_rate=cfg.SENTRY_PROFILES_SAMPLE_RATE,
                 environment=cfg.ENV,
+                release=cfg.RELEASE_SHA or None,
+                send_default_pii=False,
+                max_request_body_size="never",
             )
-            logger.info("sentry initialized (env=%s)", cfg.ENV)
+            logger.info("sentry initialized (env=%s traces=%.3f)",
+                        cfg.ENV, cfg.SENTRY_TRACES_SAMPLE_RATE)
     except Exception as e:
         logger.warning("sentry init skipped: %s", e)
 
@@ -79,6 +101,7 @@ def _warm_analysis_stack() -> None:
 
 
 def main() -> int:
+    _enforce_secrets()
     _init_sentry()
 
     from services import job_queue

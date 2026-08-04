@@ -100,7 +100,6 @@ class FakeTable:
 class AccountTable(FakeTable):
     def execute(self):
         row = self.store.get("row")
-        f = dict(self._filters)
         if self._op == "select":
             return MagicMock(data=[dict(row)] if row else [])
         if self._op == "upsert":
@@ -141,17 +140,139 @@ class LedgerTable(FakeTable):
         return MagicMock(data=[])
 
 
+class RpcNotInstalled(RuntimeError):
+    """What PostgREST returns for a function that is not in the schema cache.
+
+    Shaped like the real thing (code + message) so _rpc_not_found is exercised
+    on its actual matching logic rather than on a convenient stand-in."""
+
+    code = "PGRST202"
+
+    def __init__(self, name="token_charge"):
+        super().__init__(
+            f"Could not find the function public.{name} in the schema cache")
+
+
+class _RpcCall:
+    def __init__(self, fn):
+        self._fn = fn
+
+    def execute(self):
+        return MagicMock(data=self._fn())
+
+
 class FakeDB:
-    def __init__(self, row=None):
+    """Supabase double.
+
+    ``rpc_installed`` chooses which half of services/token_account.charge runs:
+
+      * True  — token_charge() exists, so charging goes through the ATOMIC
+        path. This is the default because it is what production runs once
+        migrations/add_token_charge_rpc.sql is applied, and every behavioural
+        test in this file should be pinning THAT.
+      * False — the function is missing and PostgREST says PGRST202, so the
+        legacy four-round-trip path runs. Still covered, because a database
+        where the migration has not been run yet must keep charging.
+
+    The contract is that the two are indistinguishable to a caller, which is
+    why the same test bodies are run against both (ChargeAtomicityTests).
+    """
+
+    def __init__(self, row=None, rpc_installed=True):
         self.store = {"row": dict(row) if row else None}
         self.ledger: list = []
+        self.rpc_installed = rpc_installed
+        # Set by a test to make the ledger INSERT inside the function blow up,
+        # which is how the atomicity guarantee gets proven rather than asserted.
+        self.ledger_insert_fails = False
+        self.rpc_calls: list = []
+        # Every account write the FUNCTION made, so a test can assert on the
+        # column list the same way it can spy on .table().update() for the
+        # legacy path.
+        self.account_writes: list = []
         self.client = MagicMock()
         self.client.table.side_effect = self._table
+        self.client.rpc.side_effect = self._rpc
 
     def _table(self, name):
         if name == "token_ledger":
             return LedgerTable(self.store, self.ledger)
         return AccountTable(self.store, self.ledger)
+
+    # ── the Postgres function, in Python ──────────────────────────────
+    def _rpc(self, name, params):
+        if not self.rpc_installed:
+            raise RpcNotInstalled(name)
+        if name != "token_charge":
+            raise RuntimeError(f"unexpected rpc {name}")
+        self.rpc_calls.append(dict(params))
+        return _RpcCall(lambda: self._token_charge(params))
+
+    def _token_charge(self, p):
+        """Mirrors migrations/add_token_charge_rpc.sql.
+
+        The ONE property this double exists to reproduce is atomicity: every
+        write is staged and applied only after the ledger insert has succeeded,
+        so a failing insert leaves the balance untouched — exactly what the
+        function's single transaction gives you and what the legacy path
+        cannot.
+        """
+        row = self.store.get("row")
+        price = max(0, int(p.get("p_price") or 0))
+        if not (p.get("p_user_id") or "").strip() or p.get("p_action") is None:
+            return {"ok": True, "charged": 0, "balance": 0, "reason": "no_user"}
+        if row is None:
+            return {"ok": True, "charged": 0, "balance": 0,
+                    "reason": "account_unavailable"}
+
+        monthly = max(0, int(row.get("token_balance") or 0))
+        bonus = max(0, int(row.get("bonus_balance") or 0))
+        reviews = max(0, int(row.get("coach_reviews_used") or 0))
+        balance = monthly + bonus
+        ref_id = p.get("p_ref_id")
+
+        # Probe and debit are inside the same lock — no window between them.
+        if ref_id is not None and any(
+            r.get("user_id") == p["p_user_id"] and r.get("action") == p["p_action"]
+            and r.get("ref_id") == ref_id for r in self.ledger
+        ):
+            return {"ok": True, "charged": 0, "balance": balance,
+                    "reason": "already_charged"}
+
+        if p.get("p_coach_action") and reviews >= int(p.get("p_coach_allowed") or 0):
+            return {"ok": False, "charged": 0, "balance": balance,
+                    "reason": "coach_cap_reached"}
+
+        if price and balance < price:
+            return {"ok": False, "charged": 0, "balance": balance,
+                    "reason": "insufficient"}
+
+        from_monthly = min(price, monthly)
+        from_bonus = price - from_monthly
+        new_balance = balance - price
+
+        staged = {"token_balance": monthly - from_monthly}
+        if from_bonus:
+            staged["bonus_balance"] = bonus - from_bonus
+        if p.get("p_coach_action"):
+            staged["coach_reviews_used"] = reviews + 1
+
+        entry = {
+            "user_id": p["p_user_id"], "delta": -price,
+            "balance_after": new_balance, "action": p["p_action"],
+            "ref_id": ref_id, "price_version": p.get("p_price_version"),
+            "tier": p.get("p_tier"),
+        }
+        if self.ledger_insert_fails:
+            # The transaction aborts: the staged UPDATE never lands.
+            raise RuntimeError("ledger insert exploded")
+
+        self.ledger.append(entry)
+        self.account_writes.append(dict(staged))
+        row.update(staged)
+        self.store["row"] = row
+        return {"ok": True, "charged": price, "balance": new_balance,
+                "reason": ""}
 
     def grants(self):
         return [r for r in self.ledger if r["action"] == "period_grant"]
@@ -818,11 +939,25 @@ class LegacyCreditConversionTests(unittest.TestCase):
     def test_a_charge_without_any_bonus_writes_the_same_row_as_before(self):
         """Pre-migration safety: with no bonus in play the write must not
         mention bonus_balance at all, or it would fail on a database where the
-        column does not exist yet."""
+        column does not exist yet.
+
+        Asserted on BOTH paths. The atomic one builds its SET list dynamically
+        precisely so a database without add_legacy_credit_conversion.sql never
+        sees the column named — the property is the same, only the mechanism
+        differs, so neither implementation gets to skip it."""
         import services.token_account as ta
+
+        # Atomic path: the function's staged column list.
         db = FakeDB(account_row("free", balance=12_000))
+        ta.charge("u1", "take_short", database=db)
+        self.assertTrue(db.account_writes, "no account write happened")
+        for w in db.account_writes:
+            self.assertNotIn("bonus_balance", w)
+
+        # Legacy path: the same property, seen through .table().update().
+        legacy = FakeDB(account_row("free", balance=12_000), rpc_installed=False)
         writes = []
-        orig = db._table
+        orig = legacy._table
 
         def _spy(name):
             t = orig(name)
@@ -834,8 +969,8 @@ class LegacyCreditConversionTests(unittest.TestCase):
                     return inner(payload)
                 t.update = _update
             return t
-        db.client.table.side_effect = _spy
-        ta.charge("u1", "take_short", database=db)
+        legacy.client.table.side_effect = _spy
+        ta.charge("u1", "take_short", database=legacy)
         self.assertTrue(writes, "no account write happened")
         for w in writes:
             self.assertNotIn("bonus_balance", w)
@@ -937,6 +1072,289 @@ class PlanStateTests(unittest.TestCase):
             self.assertNotIn(key.lower().replace("_", ""),
                              [b.replace("_", "") for b in banned],
                              f"plan.{key} is performance framing")
+
+
+class ChargeAtomicityTests(unittest.TestCase):
+    """The transaction boundary — services/token_account.charge routed through
+    migrations/add_token_charge_rpc.sql.
+
+    Founder directive 2026-08-03: eliminate the half-states so a crash cannot
+    permanently corrupt user data. These tests do not assert that a transaction
+    is "used"; they reproduce each half-state ON THE LEGACY PATH, show it
+    corrupting the balance, and then show the atomic path refusing to produce
+    it. A guarantee nobody has watched fail is a comment, not a test.
+    """
+
+    def setUp(self):
+        self.env = patch.dict("os.environ", {"TOKEN_PRICING_ENABLED": "1"})
+        self.env.start()
+        import services.token_account as ta
+        # The negative cache is module state; a test that trips it would
+        # otherwise silently push every later test onto the legacy path.
+        ta._rpc_missing_until = 0.0
+
+    def tearDown(self):
+        self.env.stop()
+        import services.token_account as ta
+        ta._rpc_missing_until = 0.0
+
+    # ── it actually goes through the function ─────────────────────────
+    def test_charging_calls_the_postgres_function_with_the_priced_amount(self):
+        import services.token_account as ta
+        db = FakeDB(account_row("free", balance=12_000))
+        res = ta.charge("u1", "take_short", ref_id="rec1", database=db)
+        self.assertTrue(res.ok)
+        self.assertEqual(len(db.rpc_calls), 1)
+        call = db.rpc_calls[0]
+        self.assertEqual(call["p_user_id"], "u1")
+        self.assertEqual(call["p_action"], "take_short")
+        self.assertEqual(call["p_price"], res.charged)
+        self.assertEqual(call["p_ref_id"], "rec1")
+        # The price version rides with the charge so a repricing stays
+        # auditable and historical rows never re-interpret.
+        self.assertEqual(call["p_price_version"], ta.PRICE_VERSION)
+
+    # ── half-state A: a debit whose ledger row never landed ───────────
+    def test_legacy_debits_without_a_ledger_row_then_double_charges(self):
+        """The bug, demonstrated. The ledger is the idempotency record, so a
+        debit that fails to record it re-arms the probe — and the recording
+        pipeline retries by design."""
+        import services.token_account as ta
+        db = FakeDB(account_row("free", balance=12_000), rpc_installed=False)
+
+        with patch.object(ta, "_ledger", lambda *a, **k: None):
+            ta.charge("u1", "take_short", ref_id="rec1", database=db)
+        first = db.store["row"]["token_balance"]
+        self.assertLess(first, 12_000, "the debit landed")
+        self.assertEqual(db.ledger, [], "…and nothing recorded it")
+
+        # The pipeline retries the same recording_id. Nothing remembers.
+        ta.charge("u1", "take_short", ref_id="rec1", database=db)
+        self.assertLess(db.store["row"]["token_balance"], first,
+                        "legacy path charged the same recording twice")
+
+    def test_atomic_charge_leaves_the_balance_untouched_if_the_ledger_fails(self):
+        """Same failure, one transaction: the INSERT takes the UPDATE down with
+        it, so there is no debit to be un-recorded and the retry is still
+        priced normally."""
+        import services.token_account as ta
+        db = FakeDB(account_row("free", balance=12_000))
+        db.ledger_insert_fails = True
+
+        res = ta.charge("u1", "take_short", ref_id="rec1", database=db)
+        self.assertEqual(db.store["row"]["token_balance"], 12_000,
+                         "balance moved despite the ledger insert failing")
+        self.assertEqual(db.ledger, [])
+        # Fence §6.1 still holds — a billing failure never fails the take.
+        self.assertTrue(res.ok)
+        self.assertEqual(res.charged, 0)
+        self.assertEqual(res.reason, "write_failed")
+
+        # And the retry is a NORMAL first charge, not a second one.
+        db.ledger_insert_fails = False
+        again = ta.charge("u1", "take_short", ref_id="rec1", database=db)
+        self.assertTrue(again.ok)
+        self.assertEqual(len(db.ledger), 1)
+        self.assertEqual(db.store["row"]["token_balance"],
+                         12_000 - again.charged)
+
+    # ── half-state B: TOCTOU between the probe and the debit ──────────
+    def test_legacy_probe_and_debit_race_into_a_double_debit(self):
+        """Two workers, one ref. Both probe an empty ledger, both debit; the
+        unique index drops the second ROW and the second DEBIT stands. The
+        balance and the ledger then disagree, permanently — and the ledger is
+        the documented source of truth, so nothing can reconcile them.
+
+        The interleaving is produced for real: the second charge runs at the
+        exact moment the first is about to write its ledger row."""
+        import services.token_account as ta
+        db = FakeDB(account_row("free", balance=12_000), rpc_installed=False)
+        start = 12_000
+        orig_table = db._table
+        reentered = []
+
+        def _racing_table(name):
+            t = orig_table(name)
+            if name == "token_ledger":
+                inner = t.execute
+
+                def _execute():
+                    if t._op == "insert" and not reentered:
+                        reentered.append(True)
+                        # Worker 2 arrives here: the ledger is still empty, so
+                        # its probe says "not charged" and it debits too.
+                        ta.charge("u1", "take_short", ref_id="rec1",
+                                  database=db)
+                    return inner()
+                t.execute = _execute
+            return t
+        db.client.table.side_effect = _racing_table
+
+        ta.charge("u1", "take_short", ref_id="rec1", database=db)
+
+        price = ta.price_of("take_short")
+        self.assertTrue(reentered, "the race never happened — test is broken")
+        self.assertEqual(len(db.ledger), 1, "one row, as the index enforces")
+        self.assertEqual(db.store["row"]["token_balance"], start - 2 * price,
+                         "legacy path debited twice for one ledger row")
+
+    def test_atomic_charge_is_idempotent_per_ref_under_the_lock(self):
+        """The probe and the debit are the same transaction behind a row lock,
+        so the second charge for a ref cannot find a window to debit in."""
+        import services.token_account as ta
+        db = FakeDB(account_row("free", balance=12_000))
+        first = ta.charge("u1", "take_short", ref_id="rec1", database=db)
+        after = db.store["row"]["token_balance"]
+
+        second = ta.charge("u1", "take_short", ref_id="rec1", database=db)
+        self.assertTrue(second.ok)
+        self.assertEqual(second.charged, 0)
+        self.assertEqual(second.reason, "already_charged")
+        self.assertEqual(db.store["row"]["token_balance"], after)
+        self.assertEqual(len(db.ledger), 1)
+        self.assertGreater(first.charged, 0)
+
+    def test_chat_stays_repeatable_because_it_has_no_ref(self):
+        """The once-per-ref guard must not leak onto actions that legitimately
+        repeat — a second chat turn is a second charge."""
+        import services.token_account as ta
+        db = FakeDB(account_row("free", balance=12_000))
+        ta.charge("u1", "chat", database=db)
+        ta.charge("u1", "chat", database=db)
+        self.assertEqual(len(db.ledger), 2)
+
+    # ── half-state C: a spent balance with an unmoved coach counter ───
+    def test_the_coach_counter_moves_in_the_same_write_as_the_debit(self):
+        import services.token_account as ta
+        db = FakeDB(account_row("pro", balance=300_000, reviews=0))
+        res = ta.charge("u1", "coach_review", ref_id="arc1", database=db)
+        self.assertTrue(res.ok)
+        self.assertEqual(db.store["row"]["coach_reviews_used"], 1)
+        # One write carrying both, not a debit plus a second CAS that can fail
+        # on its own and hand out a free review past the cap.
+        self.assertEqual(len(db.account_writes), 1)
+        self.assertIn("coach_reviews_used", db.account_writes[0])
+        self.assertIn("token_balance", db.account_writes[0])
+
+    def test_a_capped_coach_review_writes_nothing_at_all(self):
+        import services.token_account as ta
+        db = FakeDB(account_row("starter", balance=50_000, reviews=1))
+        res = ta.charge("u1", "coach_review", ref_id="arc1", database=db)
+        self.assertFalse(res.ok)
+        self.assertEqual(res.reason, "coach_cap_reached")
+        self.assertEqual(db.account_writes, [])
+        self.assertEqual(db.ledger, [])
+        self.assertEqual(db.store["row"]["token_balance"], 50_000)
+
+    # ── the migration may not have been run yet ───────────────────────
+    def test_a_database_without_the_function_still_charges(self):
+        """"Merged on main" is not "run in prod" in this repo. A database
+        without the migration must keep charging, not start failing open."""
+        import services.token_account as ta
+        db = FakeDB(account_row("free", balance=12_000), rpc_installed=False)
+        res = ta.charge("u1", "take_short", ref_id="rec1", database=db)
+        self.assertTrue(res.ok)
+        self.assertGreater(res.charged, 0)
+        self.assertEqual(len(db.ledger), 1)
+        self.assertEqual(db.store["row"]["token_balance"],
+                         12_000 - res.charged)
+
+    def test_both_paths_return_the_same_result_for_the_same_scenario(self):
+        """The contract callers depend on is identical either side of the
+        migration — that is what makes the rollout safe in either order."""
+        import services.token_account as ta
+        for ref in ("rec1", None):
+            atomic = ta.charge(
+                "u1", "take_short", ref_id=ref,
+                database=FakeDB(account_row("free", balance=12_000)))
+            legacy = ta.charge(
+                "u1", "take_short", ref_id=ref,
+                database=FakeDB(account_row("free", balance=12_000),
+                                rpc_installed=False))
+            self.assertEqual(atomic.as_dict(), legacy.as_dict(), f"ref={ref}")
+
+        # …including the refusals.
+        broke = ta.charge("u1", "take_short",
+                          database=FakeDB(account_row("free", balance=0)))
+        broke_legacy = ta.charge(
+            "u1", "take_short",
+            database=FakeDB(account_row("free", balance=0),
+                            rpc_installed=False))
+        self.assertEqual(broke.as_dict(), broke_legacy.as_dict())
+        self.assertFalse(broke.ok)
+        self.assertEqual(broke.reason, "insufficient")
+
+    def test_the_missing_function_probe_is_cached_then_retried(self):
+        """One failed round trip per window, not one per charge — but it MUST
+        expire, or running the migration would need a redeploy to take effect."""
+        import services.token_account as ta
+        db = FakeDB(account_row("free", balance=12_000), rpc_installed=False)
+        ta.charge("u1", "chat", database=db)
+        self.assertEqual(len(db.rpc_calls), 0)   # raised before recording
+        probes = db.client.rpc.call_count
+        self.assertEqual(probes, 1)
+
+        ta.charge("u1", "chat", database=db)
+        self.assertEqual(db.client.rpc.call_count, probes,
+                         "re-probed inside the cache window")
+
+        ta._rpc_missing_until = 0.0               # window elapsed
+        ta.charge("u1", "chat", database=db)
+        self.assertEqual(db.client.rpc.call_count, probes + 1,
+                         "never re-probed — the migration would need a deploy")
+
+    # ── a real failure must NOT be retried through the legacy path ────
+    def test_a_genuine_rpc_error_fails_open_without_falling_back(self):
+        """This is the dangerous direction. "The call failed" and "the call
+        committed but the response was lost" are indistinguishable from here,
+        so falling back would replay a charge that may already have landed —
+        the double debit this whole change removes."""
+        import services.token_account as ta
+        db = FakeDB(account_row("free", balance=12_000))
+        db.client.rpc.side_effect = RuntimeError("connection reset by peer")
+
+        res = ta.charge("u1", "take_short", ref_id="rec1", database=db)
+        self.assertTrue(res.ok, "fence §6.1: billing never fails the take")
+        self.assertEqual(res.charged, 0)
+        self.assertEqual(res.reason, "write_failed")
+        # No fallback ran: nothing was written by hand behind the function.
+        self.assertEqual(db.ledger, [])
+        self.assertEqual(db.store["row"]["token_balance"], 12_000)
+
+    def test_only_a_missing_function_counts_as_missing(self):
+        import services.token_account as ta
+        self.assertTrue(ta._rpc_not_found(RpcNotInstalled()))
+        self.assertTrue(ta._rpc_not_found(
+            RuntimeError("PGRST202 Could not find the function")))
+        self.assertFalse(ta._rpc_not_found(RuntimeError("connection reset")))
+        self.assertFalse(ta._rpc_not_found(
+            RuntimeError("insufficient_privilege for token_charge")))
+        # A row-level failure inside a function that DOES exist must never be
+        # read as "not installed".
+        self.assertFalse(ta._rpc_not_found(
+            RuntimeError("duplicate key value violates unique constraint "
+                         "uq_token_ledger_once_per_ref")))
+
+    def test_an_account_row_that_vanished_mid_flight_fails_open(self):
+        """The function's own NOT FOUND branch.
+
+        Reaching it takes a row that disappears BETWEEN the seed and the
+        charge — ensure_period_current re-seeds an absent account first, so an
+        ordinary missing row just charges normally. Rare, and it still must
+        not fail a recording: fence §6.1 says a billing lookup we cannot
+        complete costs us the fee, never the take."""
+        import services.token_account as ta
+        db = FakeDB(account_row("free", balance=12_000))
+
+        with patch.object(ta, "ensure_period_current",
+                          return_value=account_row("free", 12_000)):
+            db.store["row"] = None                # deleted after the seed
+            res = ta.charge("u1", "take_short", database=db)
+
+        self.assertTrue(res.ok)
+        self.assertEqual(res.charged, 0)
+        self.assertEqual(res.reason, "account_unavailable")
+        self.assertEqual(db.ledger, [])
 
 
 if __name__ == "__main__":

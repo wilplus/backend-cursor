@@ -181,9 +181,6 @@ def import_training_audio(
     if database is None:
         from services.db import db as database
 
-    from services.coach_video_storage import (
-        coach_media_public_url, put_coach_object_bytes,
-    )
 
     prepared = prepare_training_import(
         audio_bytes=audio_bytes, filename=filename, user_id=user_id,

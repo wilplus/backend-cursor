@@ -1,0 +1,22 @@
+# Lint gate — runs in CI (.github/workflows/tests.yml, "lint" job) and locally
+# via `ruff check .`.
+#
+# Standalone ruff.toml on purpose, NOT a [tool.ruff] table in pyproject.toml:
+# nixpacks keys its Python build plan off pyproject.toml's presence, and the
+# Railway deploy must not change because we added a linter.
+#
+# Rule set is ruff's default (E4/E7/E9 pycodestyle errors + all of pyflakes):
+# undefined names, unused imports/variables, duplicate definitions, syntax
+# errors — real-bug classes only, no style bikeshed. The gate was green at
+# the commit that introduced it; keep it green.
+
+target-version = "py312"
+
+[lint]
+ignore = [
+    # Mid-file module imports are a deliberate idiom in this codebase:
+    # blueprint imports after the Flask app + CORS setup (app.py), lazy
+    # imports behind env/dependency guards (services, scripts). Not a bug
+    # class here.
+    "E402",
+]

@@ -26,7 +26,7 @@ from __future__ import annotations
 import difflib
 import logging
 import re
-from typing import Any, Optional
+from typing import Any
 
 from services.ideal_decision_ledger import normalize_phrase
 
