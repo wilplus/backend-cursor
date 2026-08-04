@@ -12,7 +12,6 @@ exactly as the service did inline.
 """
 from __future__ import annotations
 
-from typing import Optional
 
 STYLE_EXAMPLE = (
     "🎤 Friendly, approachable delivery — the positive tone fits the message "

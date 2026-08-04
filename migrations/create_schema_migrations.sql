@@ -52,9 +52,31 @@ CREATE TABLE IF NOT EXISTS public.schema_migrations (
 CREATE INDEX IF NOT EXISTS schema_migrations_applied_at_idx
     ON public.schema_migrations (applied_at DESC);
 
--- The backend connects as the service role; RLS off matches the other
--- internal/ops tables (processing_jobs, dev_bugs are service-role only).
--- This table holds no user data.
+-- RLS ON, zero policies (amended 2026-08-03, PR #328).
+--
+-- This previously read "RLS off matches the other internal/ops tables; this
+-- table holds no user data." The first half is true and the second is too —
+-- but both reason about READS, and RLS-off is not a read setting. Supabase's
+-- default grants to anon/authenticated make a public table without RLS
+-- WRITABLE via PostgREST by anyone holding the anon key from the browser
+-- bundle (docs/RLS-AUDIT.md). For a migration ledger that is worse than a
+-- leak, because the runner TRUSTS this table:
+--
+--   * INSERT a row for a pending version -> `migrate.py apply` treats it as
+--     already applied and SILENTLY SKIPS the migration. Prod never gets the
+--     schema change and nothing reports an error.
+--   * DELETE rows -> migrations re-run.
+--   * UPDATE checksum -> defeats the drift detection this file exists to
+--     provide, which is the "silent killer" the column comment above names.
+--
+-- Safe for every consumer: `scripts/migrate.py` connects via DATABASE_URL as
+-- the table OWNER (owners are exempt from RLS absent FORCE ROW LEVEL
+-- SECURITY), and the backend's service_role has BYPASSRLS. Verified against
+-- PostgreSQL 16.13. Same shape as the 2026-07-25 sweep: enable it, add no
+-- policies. `schema_migrations` postdates that sweep, so nothing else covers
+-- it.
+ALTER TABLE public.schema_migrations ENABLE ROW LEVEL SECURITY;
+
 --
 -- Guarded because `service_role` is a Supabase role, not a Postgres one: a
 -- bare GRANT aborts with 42704 (role does not exist) on a plain Postgres —

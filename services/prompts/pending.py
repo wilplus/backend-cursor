@@ -28,6 +28,12 @@ from services.prompts.registry import SourceRef
 _MDR = "services/master_doc_rag.py"
 _OAI = "services/openai_service.py"
 _V2 = "routes/v2_routes.py"
+# The v2_routes god-file carve-up (#324) moved most of the interview/chat
+# prompts into this module while #326 was in flight. Both landed together, so
+# the registry pointed at symbols that were no longer there and
+# `build_manifest()` raised — taking the whole prompt-eval gate down with it.
+# `_generate_snippet_follow_up_question` did NOT move and stays on _V2.
+_V2_CHAT = "routes/v2/user_chat.py"
 _LIFE = "services/life_engine.py"
 
 REGISTER = {
@@ -61,14 +67,14 @@ REGISTER = {
     "legacy_openai.next_task": SourceRef(_OAI, "OpenAIService.generate_next_task_suggestion"),
     "legacy_openai.video_script": SourceRef(_OAI, "OpenAIService.generate_video_script_draft"),
 
-    # ── interview / coaching chat (routes/v2_routes.py) ──
-    "interview.system": SourceRef(_V2, "_INTERVIEW_SYSTEM_PROMPT"),
+    # ── interview / coaching chat (routes/v2/user_chat.py) ──
+    "interview.system": SourceRef(_V2_CHAT, "_INTERVIEW_SYSTEM_PROMPT"),
     "interview.snippet_followup": SourceRef(_V2, "_generate_snippet_follow_up_question"),
-    "interview.llm_question": SourceRef(_V2, "_generate_llm_question"),
-    "interview.few_shot_block": SourceRef(_V2, "_build_few_shot_block"),
-    "interview.longitudinal_block": SourceRef(_V2, "_build_longitudinal_context_block"),
-    "interview.master_score_block": SourceRef(_V2, "_build_master_score_block"),
-    "interview.profile_augment": SourceRef(_V2, "_augment_interview_prompt_with_profile"),
+    "interview.llm_question": SourceRef(_V2_CHAT, "_generate_llm_question"),
+    "interview.few_shot_block": SourceRef(_V2_CHAT, "_build_few_shot_block"),
+    "interview.longitudinal_block": SourceRef(_V2_CHAT, "_build_longitudinal_context_block"),
+    "interview.master_score_block": SourceRef(_V2_CHAT, "_build_master_score_block"),
+    "interview.profile_augment": SourceRef(_V2_CHAT, "_augment_interview_prompt_with_profile"),
     "coaching.intent_system": SourceRef(_V2, "_system_prompt_for_intent"),
     "coaching.profile_augment": SourceRef(_V2, "_augment_coaching_system_prompt"),
     "coaching.turn": SourceRef(_V2, "v2_coaching_turn"),
