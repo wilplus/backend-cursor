@@ -44,8 +44,13 @@ assistant turn.
 The frontend reads the structured output and:
   - On step==1: renders SnippetPlayerBubble + opens the
     "do you agree with the coach?" reflection input.
-  - On step==2: renders ActionBubble (Yes / No) wired to
-    POST /v2/user/snippets/<id>/label.
+  - On step==2: renders ActionBubble ("Yes, accurate" / "Not
+    quite") wired to POST /v2/user/snippets/<id>/confidence-review
+    with {"ai_correct": true|false} — the PEER-REVIEW beat
+    (founder-signed 2026-08-04). It validates the AI's pick, not
+    the user's self-image. Trigger renamed to
+    show_confidence_review_buttons; the old
+    show_charisma_label_buttons pointed at a deleted route.
   - On step==3..7: renders standard chat bubbles for each
     Director's Script question; input box stays open.
   - On step==8: shows the acoustic-targets card (the bridge —
@@ -88,6 +93,30 @@ _MAX_SCRIPT_QUESTIONS = 5
 # Target filler density — chat goal frames it as "fewer fillers
 # next time". 1/min reads as fluent on conversational delivery.
 _TARGET_FILLERS_PER_MIN = 1.0
+
+# ── STEP 2: the peer-review beat (founder-signed copy, 2026-08-04) ────────
+#
+# STEP 2 used to ask "would you label your voice here as Charismatic?" and
+# wire its Yes/No to POST /v2/user/snippets/<id>/label. That route died with
+# the stress lane (2026-08-03); the button had been inert since. The founder
+# signed off this replacement: the beat now validates the AI's pick and feeds
+# the peer-review corpus (POST /v2/user/snippets/<id>/confidence-review).
+#
+# THESE THREE STRINGS ARE SIGNED USER-FACING COPY (LIVE LOOP). Do not reword
+# them, and do not let the model reword them: the question is marked VERBATIM
+# in the prompt, and the two button labels are stamped onto the response
+# server-side (routes/v2_routes.py) rather than trusted from the model — an
+# LLM that paraphrases "Not quite" into something friendlier would be
+# shipping unsigned copy to a live chat.
+STEP2_QUESTION = "Did the AI pick the right moment here?"
+STEP2_YES_LABEL = "Yes, accurate"
+STEP2_NO_LABEL = "Not quite"
+
+# The trigger is RENAMED, not reused: `show_charisma_label_buttons` described
+# a different question against a deleted endpoint. The FE has to change
+# either way (the POST target moved), and a rename makes it render nothing
+# until it does — strictly better than rendering the old dead button.
+CONFIDENCE_REVIEW_TRIGGER = "show_confidence_review_buttons"
 
 
 def compute_acoustic_targets(
@@ -380,34 +409,30 @@ def build_state_machine_system_prompt(
         "in snippet_player.snippet_id so the frontend knows which "
         "audio to load.\n"
         "\n"
-        # ⚠️ DANGLING TARGET — FOUNDER DECISION NEEDED (BE 2026-08-03).
-        # STEP 2 below tells the FE to wire its Yes/No to
-        # POST /v2/user/snippets/<id>/label. That route was DELETED with the
-        # stress lane (founder's list, this date), and the FE deleted its BFF
-        # proxy for it in the same pass — so the button already went nowhere
-        # before this change; nothing regressed here, but nothing captures the
-        # answer either.
-        #
-        # Left EXACTLY AS-IS on purpose: the STEP 2 question is user-facing
-        # copy in a running coaching chat, and the LIVE LOOP fence puts that
-        # behind founder sign-off. Two compliant fixes, both the founder's
-        # call, neither taken here:
-        #   (a) repoint the beat at the peer-review capture
-        #       (POST /v2/user/snippets/<id>/confidence-review) — note that
-        #       endpoint asks a DIFFERENT question ("did the AI get this
-        #       right?", not "is this you"), so the copy changes with it; or
-        #   (b) retire STEP 2 and renumber the protocol.
-        "STEP 2 — REFLECTION & RLHF LABEL (after the user's first "
-        "response to STEP 1):\n"
+        # STEP 2 is the PEER-REVIEW beat (founder-signed 2026-08-04). It
+        # validates the AI's pick — NOT the user's self-image — and its answer
+        # lands in the peer-review corpus. The question is signed copy, hence
+        # VERBATIM; the button labels are stamped server-side after this
+        # returns. See the STEP2_* constants at the top of this module.
+        "STEP 2 — REFLECTION & PEER-REVIEW FLAG (after the user's "
+        "first response to STEP 1):\n"
         "  Per RULE 2 above, start with a sentence that reflects "
         "their actual reflection (not a generic ack). Then ask "
-        "(in English per RULE 1): \"Would you "
-        f"actually label your voice here as "
-        f"{'Charismatic' if coach_label != 'stress' else 'a stress moment'}?\"\n"
+        "this question VERBATIM (in English per RULE 1) — it is "
+        "signed copy, so do NOT reword, soften or translate it: "
+        f"\"{STEP2_QUESTION}\"\n"
         "  Set step=2, current_question_position=null, and "
-        "triggers=['show_charisma_label_buttons']. Pass the "
-        "snippet_id in label_buttons.snippet_id so the frontend "
-        "wires the Yes/No to POST /v2/user/snippets/<id>/label.\n"
+        f"triggers=['{CONFIDENCE_REVIEW_TRIGGER}']. Pass the "
+        "snippet_id in label_buttons.snippet_id, and set "
+        f"label_buttons.yes_label=\"{STEP2_YES_LABEL}\" and "
+        f"label_buttons.no_label=\"{STEP2_NO_LABEL}\". The frontend "
+        "wires those two buttons to POST "
+        "/v2/user/snippets/<id>/confidence-review with "
+        "{\"ai_correct\": true} and {\"ai_correct\": false}.\n"
+        "  You are asking whether the AI picked the RIGHT MOMENT — "
+        "this is not a question about whether they liked their own "
+        "delivery, and 'Not quite' is a judgement on the pick, not "
+        "on them. Do not editorialise either answer.\n"
         "\n"
         "─────────────────────────────────────────────────\n"
         "DIRECTOR'S SCRIPT — the admin-prepared sequence of "
@@ -673,7 +698,7 @@ STATE_MACHINE_RESPONSE_SCHEMA: dict[str, Any] = {
                     "type": "string",
                     "enum": [
                         "render_snippet_player",
-                        "show_charisma_label_buttons",
+                        CONFIDENCE_REVIEW_TRIGGER,
                         "show_acoustic_targets_card",
                         "show_trial_recording_mic",
                         "none",
@@ -682,6 +707,11 @@ STATE_MACHINE_RESPONSE_SCHEMA: dict[str, Any] = {
                 "description": (
                     "Which UI affordances the frontend should render "
                     "alongside this turn's narration. "
+                    "'show_confidence_review_buttons' fires on STEP 2 "
+                    "and renders the two peer-review buttons that POST "
+                    "to /v2/user/snippets/<id>/confidence-review "
+                    "(replaced 'show_charisma_label_buttons', which "
+                    "pointed at a deleted endpoint). "
                     "'show_trial_recording_mic' fires on STEP 9 and "
                     "unlocks the mic that POSTs to "
                     "/v2/coaching/trial-recording."

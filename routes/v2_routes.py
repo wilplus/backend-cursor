@@ -1243,6 +1243,9 @@ def v2_coaching_state_machine_turn():
             build_state_machine_system_prompt,
             STATE_MACHINE_RESPONSE_SCHEMA,
             parse_state_machine_response,
+            CONFIDENCE_REVIEW_TRIGGER as _CONFIDENCE_REVIEW_TRIGGER,
+            STEP2_YES_LABEL as _STEP2_YES_LABEL,
+            STEP2_NO_LABEL as _STEP2_NO_LABEL,
         )
         targets = compute_acoustic_targets(
             global_wpm=parent_session.get("global_wpm"),
@@ -1362,6 +1365,22 @@ def v2_coaching_state_machine_turn():
                     "Coach response was malformed. Please send again."
                 ),
             }), 502
+
+        # STEP 2 button copy is FOUNDER-SIGNED (LIVE LOOP), so it is stamped
+        # here rather than trusted from the model. The prompt asks for these
+        # exact labels, but "asked nicely" is not a guarantee — a model that
+        # helpfully softens "Not quite" would ship unsigned copy into a live
+        # chat, and nothing downstream would catch it. Overwrite, don't
+        # default: a present-but-reworded label is the case worth fixing.
+        # snippet_id stays the model's (it varies per turn); only the two
+        # signed strings are pinned.
+        if _CONFIDENCE_REVIEW_TRIGGER in (parsed.get("triggers") or []):
+            buttons = parsed.get("label_buttons")
+            if not isinstance(buttons, dict):
+                buttons = {}
+            buttons["yes_label"] = _STEP2_YES_LABEL
+            buttons["no_label"] = _STEP2_NO_LABEL
+            parsed["label_buttons"] = buttons
 
         # Persist user side first so the admin transcript reads
         # chronologically even if assistant persist fails downstream.
