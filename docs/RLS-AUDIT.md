@@ -164,8 +164,96 @@ was in fact readable by anyone who opened the site's JS, that is a
 GDPR-relevant finding and may warrant a breach assessment. I am not a lawyer;
 this is flagged so the decision is made deliberately rather than by default.
 
-## Standing rule going forward
+## The second door: FUNCTIONS (2026-08-03)
 
-**Every new `public`-schema table gets `ENABLE ROW LEVEL SECURITY` in the same
-migration that creates it.** Adding it later is a separate migration that has to
-be run separately, and until it is, the table is world-readable.
+**RLS does not cover this one.** RLS is table-level. PostgREST also publishes
+every function in the exposed schema:
+
+```
+POST https://<project>.supabase.co/rest/v1/rpc/<name>
+     apikey: <anon key from the bundle>
+```
+
+and two defaults make that dangerous the moment anyone writes one:
+
+1. `CREATE FUNCTION` grants `EXECUTE` to **PUBLIC**. Not to the owner — to
+   everyone. It has to be taken away explicitly.
+2. Supabase's `ALTER DEFAULT PRIVILEGES` additionally grants `anon` /
+   `authenticated` on functions in `public`, **directly** — and a direct grant
+   survives a `REVOKE ... FROM PUBLIC`. Both roles have to be named.
+
+Until 2026-08-03 this repo had **zero** functions, so the surface did not exist
+and nobody had to think about it. `migrations/add_token_charge_rpc.sql` is the
+first one, and it moves money — an unrevoked `token_charge` would let anyone
+holding the bundle's anon key set any user's balance to anything. Same incident
+class as the table sweep above, through a door that sweep does not touch.
+
+`SECURITY DEFINER` is the sharper edge and is avoided outright: it runs as the
+owner and **bypasses RLS for whoever called it**, so it would turn a leaked anon
+key into full write access even with the grants locked down. `token_charge` is
+`SECURITY INVOKER` with a pinned `search_path`; the backend already connects as
+service-role, so INVOKER costs nothing and removes the escalation.
+
+| Surface | Control | State |
+|---|---|---|
+| public tables | `ENABLE ROW LEVEL SECURITY` | ✅ swept 2026-07-25 |
+| public functions | `REVOKE EXECUTE FROM PUBLIC, anon, authenticated` | ⚠️ **`migrations/lock_down_public_function_grants.sql` — NOT YET RUN IN PROD** |
+
+The sweep is the same shape as the table one: dynamic (reads `pg_proc`, not a
+file-derived list), idempotent, skips extension-owned routines via `pg_depend`,
+`RAISE NOTICE` per routine.
+
+**It does not — cannot — protect FUTURE functions.** Measured on PostgreSQL
+16.13 rather than assumed:
+
+```sql
+ALTER DEFAULT PRIVILEGES IN SCHEMA public
+    REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC;   -- silently does nothing
+```
+
+`ALTER DEFAULT PRIVILEGES` can only remove privileges granted *through* `ALTER
+DEFAULT PRIVILEGES`. `EXECUTE TO PUBLIC` on a new function is a **built-in**
+default, and `pg_default_acl` cannot record its absence — the stored row is
+merged with the built-in defaults at `CREATE` time, so PUBLIC returns. Four
+orderings were tried; all four produced a new function carrying `=X/postgres`
+(PUBLIC=EXECUTE), with `anon` inheriting through PUBLIC.
+
+So the defence is exactly two things, and there is no third:
+
+1. the explicit `REVOKE` in each function's own migration — **enforced in CI**
+   by `test_migration_security_rules.py`, which is why that test is the guard
+   rather than a nicety;
+2. re-running the sweep after any migration that adds a function.
+
+The sweep still removes Supabase's *direct* default grants to
+`anon`/`authenticated`, which narrows things — it just is not sufficient alone.
+
+**Preview first**, same as before — the read-only query is in the file header,
+and after the run `anon` and `authenticated` must both be `false` for every row.
+
+Note this one is only strictly needed once `add_token_charge_rpc.sql` is
+applied, and that file carries its own REVOKE block, so the two can be run
+together. The sweep is the backstop, not the primary control.
+
+## Standing rules going forward
+
+**1 — Every new `public`-schema table gets `ENABLE ROW LEVEL SECURITY` in the
+same migration that creates it.** Adding it later is a separate migration that
+has to be run separately, and until it is, the table is world-readable.
+
+**2 — Every new `public` function gets its `EXECUTE` revoked in the same
+migration that creates it:**
+
+```sql
+REVOKE ALL ON FUNCTION public.<name>(<types>) FROM PUBLIC;
+-- plus anon / authenticated, guarded on pg_roles
+GRANT EXECUTE ON FUNCTION public.<name>(<types>) TO service_role;
+```
+
+Both rules are now enforced in CI by **`test_migration_security_rules.py`**, so
+they hold on the week someone is busy rather than only when someone remembers.
+The 47 pre-2026-07-25 migration files that create tables without the RLS line
+are grandfathered in a frozen allowlist there — they are covered in production
+by the sweep, the gap is in the *files* — and that list may only ever shrink.
+The function rule has no allowlist and never should: it arrived with the first
+function in the repo.
